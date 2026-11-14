@@ -18,6 +18,7 @@ public protocol RingStore {
 public protocol RingHistory {
     func contains(_ id: UUID) -> Bool
     func record(_ id: UUID)
+    func remove(_ id: UUID)
 }
 
 public struct UserDefaultsRingHistory: RingHistory {
@@ -36,6 +37,16 @@ public struct UserDefaultsRingHistory: RingHistory {
         var ids = Set(defaults?.stringArray(forKey: Self.key) ?? [])
         ids.insert(id.uuidString)
         defaults?.set(ids.sorted(), forKey: Self.key)
+    }
+
+    public func remove(_ id: UUID) {
+        var ids = Set(defaults?.stringArray(forKey: Self.key) ?? [])
+        ids.remove(id.uuidString)
+        defaults?.set(ids.sorted(), forKey: Self.key)
+    }
+
+    public static func clear() {
+        UserDefaults(suiteName: AgentIdentityStore.suiteName)?.removeObject(forKey: key)
     }
 }
 

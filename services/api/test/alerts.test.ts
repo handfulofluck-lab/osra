@@ -640,35 +640,26 @@ describe("ring alert intake", () => {
   });
 
   it("keeps an unexpired restart ring active and returns its remaining seconds", async () => {
-    vi.useFakeTimers();
-    const started = Date.parse("2026-11-14T00:00:00Z");
-    vi.setSystemTime(started);
+    const started = Date.now() - 100_000;
     const { app, rows, postRing } = await fixture();
     prismaMock.deviceCommand.findUnique.mockResolvedValue({
       id: ringId, deviceId: "dev-1", type: "ring", createdAt: new Date(started),
     });
     try {
-      vi.setSystemTime(started + 100_000);
       const response = await postRing("timed_out", 0, { afterRestart: true });
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual({ active: true, retryAfterSeconds: 200 });
       expect(rows).toHaveLength(0);
-    } finally {
-      await app.close();
-      vi.useRealTimers();
-    }
+    } finally { await app.close(); }
   });
 
   it("accepts a genuine restart timeout with afterRestart and the approved fallback", async () => {
-    vi.useFakeTimers();
-    const started = Date.parse("2026-11-14T00:00:00Z");
-    vi.setSystemTime(started);
+    const started = Date.now() - 600_000;
     const { app, rows, postRing } = await fixture();
     prismaMock.deviceCommand.findUnique.mockResolvedValue({
       id: ringId, deviceId: "dev-1", type: "ring", createdAt: new Date(started),
     });
     try {
-      vi.setSystemTime(started + 600_000);
       const response = await postRing("timed_out", 0, { afterRestart: true });
       expect(response.statusCode).toBe(201);
       expect(response.json().alert.metadata.afterRestart).toBe(true);

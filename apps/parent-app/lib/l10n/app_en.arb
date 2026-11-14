@@ -1367,5 +1367,6 @@
   "alertBodyRingPinStopped": "The ring was stopped on the phone with the parent PIN.",
   "alertBodyRingParentStopped": "A parent stopped the ring from the OSRA app.",
   "alertBodyRingTimedOut": "The ring ended by itself after 5 minutes.",
+  "alertBodyRingAfterRestart": "The ring ended after the phone was restarted.",
   "commandRefusedRingUnsupportedOs": "This iPhone cannot ring yet. It needs iOS 26 or later."
 }

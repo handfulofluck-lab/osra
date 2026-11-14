@@ -937,5 +937,6 @@
   "alertBodyRingPinStopped": "أُوقف الرنين على الهاتف برمز PIN للوالدين.",
   "alertBodyRingParentStopped": "أوقف أحد الوالدين الرنين من تطبيق أسرة.",
   "alertBodyRingTimedOut": "انتهى الرنين تلقائيًا بعد 5 دقائق.",
+  "alertBodyRingAfterRestart": "انتهى الرنين بعد إعادة تشغيل الهاتف.",
   "commandRefusedRingUnsupportedOs": "لا يمكن أن يرنّ هذا الآيفون حاليًا. يحتاج إلى iOS 26 أو أحدث."
 }

@@ -3,6 +3,7 @@ import Foundation
 #if os(iOS)
 import AlarmKit
 import AppIntents
+import SwiftUI
 
 @available(iOS 26.0, *)
 private struct RingAlarmMetadata: AlarmMetadata {}

@@ -662,20 +662,25 @@ describe("ring dismissal push coalescing", () => {
       }
     }));
     setPushProviders([provider]);
-    const first = dismissal(0, 1);
-    vi.useRealTimers();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    const event = (seconds: number, count: number) => ({
+      id: `restart-race-${count}`, childId: "child-1", severity: "warning", category: "ring",
+      title: "Phone ring", body: "The ring alert was dismissed on the phone.",
+      metadata: { state: "child_dismissed", ringId }, createdAt: new Date(start + seconds * 1000),
+    });
+    vi.setSystemTime(start);
+    const first = notifyParentsOfAlert("fam-1", event(0, 1));
+    await vi.advanceTimersByTimeAsync(0);
     expect(provider.sent).toHaveLength(1);
-    vi.useFakeTimers();
-    const send = vi.spyOn(provider, "send");
-    await dismissal(60, 2);
+    vi.setSystemTime(start + 60_000);
+    const second = await notifyParentsOfAlert("fam-1", event(60, 2));
+    expect(second).toMatchObject({ delivered: 1, skipped: null });
     expect(provider.sent).toHaveLength(2);
-    await expect(send.mock.results[1].value).resolves.toEqual({ ok: true });
     expect(reservations.size).toBe(1);
     if (failFirst) failFirst();
     await first;
     expect(reservations.size).toBe(1);
-    await dismissal(70, 3);
+    vi.setSystemTime(start + 70_000);
+    await notifyParentsOfAlert("fam-1", event(70, 3));
     expect(provider.sent).toHaveLength(2);
   });
 });

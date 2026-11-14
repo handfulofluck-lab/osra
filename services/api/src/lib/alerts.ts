@@ -234,5 +234,6 @@ export function ringAlertFields(category: string, metadata: Record<string, unkno
     if (!/^[1-9][0-9]*$/.test(rawCount)) return {};
     params.dismissalCount = Number(rawCount);
   }
+  if (state === "timed_out" && metadata?.afterRestart === true) params.afterRestart = true;
   return { bodyKey, params };
 }

@@ -119,6 +119,19 @@ export async function alertsRoutes(app: FastifyInstance) {
     if (!(await assertProcessingAllowed(childId, reply))) return;
 
     const effectiveDeviceId = deviceId ?? auth.device?.id;
+    let acceptedMetadata = metadata;
+    if (category === "ring" && metadata?.state === "timed_out" && metadata.afterRestart === true) {
+      const ringId = typeof metadata.ringId === "string" ? metadata.ringId : "";
+      const command = ringId ? await prisma.deviceCommand.findUnique({ where: { id: ringId } }) : null;
+      if (!command || command.deviceId !== effectiveDeviceId || command.type !== "ring") {
+        return reply.code(400).send({ error: "invalid_ring_command" });
+      }
+      const retryAfterSeconds = Math.min(300, Math.ceil((command.createdAt.getTime() + 300_000 - Date.now()) / 1000));
+      if (retryAfterSeconds > 0) {
+        return reply.code(200).send({ active: true, retryAfterSeconds });
+      }
+      acceptedMetadata = { ...metadata, afterRestart: true };
+    }
 
     // Phase 2a: one path creates the row, publishes the WS event and pushes to the parents' phones.
     // Issue #225: a repeated dedupeKey is a retry, not a new alert — 200 with the existing row.

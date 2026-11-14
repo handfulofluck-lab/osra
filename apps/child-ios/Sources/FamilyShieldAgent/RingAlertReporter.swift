@@ -1,8 +1,21 @@
 import Foundation
 
+public enum RingReportOutcome: Equatable {
+    case delivered
+    case pending
+    case resume(after: Int)
+}
+
 @MainActor
 public protocol RingAlertReporting {
-    func report(state: RingEventState, ringId: UUID, dismissalCount: Int) async -> Bool
+    func report(state: RingEventState, ringId: UUID, dismissalCount: Int,
+                afterRestart: Bool) async -> RingReportOutcome
+}
+
+public extension RingAlertReporting {
+    func report(state: RingEventState, ringId: UUID, dismissalCount: Int) async -> RingReportOutcome {
+        await report(state: state, ringId: ringId, dismissalCount: dismissalCount, afterRestart: false)
+    }
 }
 
 @MainActor
@@ -21,22 +34,31 @@ public struct RingAlertReporter: RingAlertReporting {
         self.sender = sender
     }
 
-    public func report(state: RingEventState, ringId: UUID, dismissalCount: Int) async -> Bool {
+    public func report(state: RingEventState, ringId: UUID, dismissalCount: Int,
+                       afterRestart: Bool = false) async -> RingReportOutcome {
         let key = RingPolicy.dedupeKey(for: state, ringId: ringId, dismissalCount: dismissalCount)
         let delivered = Set(defaults?.stringArray(forKey: Self.deliveredKey) ?? [])
-        guard !delivered.contains(key) else { return true }
-        let metadata: [String: Any] = ["state": state.rawValue, "ringId": ringId.uuidString]
+        guard !delivered.contains(key) else { return .delivered }
+        var metadata: [String: Any] = ["state": state.rawValue, "ringId": ringId.uuidString]
+        if afterRestart { metadata["afterRestart"] = true }
         guard let request = reporter.makeRequest(
             category: "ring", severity: state == .childDismissed ? "warning" : "info",
-            title: "Phone ring", body: Self.fallback(state, dismissalCount: dismissalCount),
-            childId: AlertReporter.pairedChildId(), metadata: metadata, dedupeKey: key) else { return false }
+            title: "Phone ring", body: Self.fallback(state, dismissalCount: dismissalCount, afterRestart: afterRestart),
+            childId: AlertReporter.pairedChildId(), metadata: metadata, dedupeKey: key) else { return .pending }
         do {
             let response = try await sender(request)
-            guard response.status == 200 || response.status == 201 else { return false }
+            guard response.status == 200 || response.status == 201 else { return .pending }
+            let payload = try? JSONSerialization.jsonObject(with: response.body) as? [String: Any]
+            if payload?["active"] as? Bool == true {
+                guard state == .timedOut, afterRestart,
+                      let seconds = payload?["retryAfterSeconds"] as? Int, seconds > 0, seconds <= 300
+                else { return .pending }
+                return .resume(after: seconds)
+            }
             defaults?.set(delivered.union([key]).sorted(), forKey: Self.deliveredKey)
-            return true
+            return .delivered
         } catch {
-            return false
+            return .pending
         }
     }
 
@@ -44,7 +66,8 @@ public struct RingAlertReporter: RingAlertReporting {
         UserDefaults(suiteName: AgentIdentityStore.suiteName)?.removeObject(forKey: deliveredKey)
     }
 
-    private static func fallback(_ state: RingEventState, dismissalCount: Int) -> String {
+    private static func fallback(_ state: RingEventState, dismissalCount: Int, afterRestart: Bool) -> String {
+        if state == .timedOut && afterRestart { return "The ring ended after the phone was restarted." }
         switch state {
         case .childDismissed where dismissalCount == 1:
             return "The ring alert was dismissed on the phone. It is ringing again."

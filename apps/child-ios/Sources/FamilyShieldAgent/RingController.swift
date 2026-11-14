@@ -79,11 +79,7 @@ public final class RingController: ObservableObject {
         history.record(current.commandId)
         try? await backend.stop(current.commandId)
         lastScheduledIDs = []
-        if await reporter.report(state: event, ringId: current.commandId,
-                                 dismissalCount: current.dismissalCount) {
-            store.save(nil)
-            state = nil
-        }
+        await report(event, for: stopped)
     }
 
     public func stopForUnpair() async {
@@ -94,6 +90,7 @@ public final class RingController: ObservableObject {
         state = nil
         lastScheduledIDs = []
         RingAlertReporter.clear()
+        UserDefaultsRingHistory.clear()
     }
 
     public func stopForConsentWithdrawal() async {
@@ -106,27 +103,50 @@ public final class RingController: ObservableObject {
             state = nil
             return
         }
+        state = restored
+        restarted = monotonic() < restored.monotonicStart
         if let source = restored.stopSource {
-            state = nil
             let event: RingEventState
             switch source {
             case .pinVerified: event = .pinStopped
             case .parentCommand: event = .parentStopped
             case .timeout: event = .timedOut
             }
-            if await reporter.report(state: event, ringId: restored.commandId,
-                                     dismissalCount: restored.dismissalCount) {
-                store.save(nil)
-            }
+            await report(event, for: restored)
+            if state?.stopSource != nil { state = nil }
             return
         }
-        state = restored
-        restarted = monotonic() < restored.monotonicStart
         if restored.dismissalCount > 0 {
             _ = await reporter.report(state: .childDismissed, ringId: restored.commandId,
                                       dismissalCount: restored.dismissalCount)
         }
         await process(scheduledIDs: await backend.scheduledIDs())
+    }
+
+    private func report(_ event: RingEventState, for current: RingState) async {
+        let outcome = await reporter.report(state: event, ringId: current.commandId,
+                                            dismissalCount: current.dismissalCount, afterRestart: restarted)
+        if event == .timedOut, case .resume(let seconds) = outcome {
+            history.remove(current.commandId)
+            var resumed = current
+            resumed.stopSource = nil
+            resumed.endAt = now().addingTimeInterval(seconds)
+            resumed.monotonicStart = monotonic()
+            store.save(resumed)
+            state = resumed
+            restarted = false
+            do {
+                try await backend.schedule(current.commandId)
+                lastScheduledIDs = [current.commandId]
+            } catch {
+                lastScheduledIDs = nil
+            }
+            return
+        }
+        if outcome == .delivered {
+            store.save(nil)
+            state = nil
+        }
     }
 
     public func process(scheduledIDs: Set<UUID>) async {

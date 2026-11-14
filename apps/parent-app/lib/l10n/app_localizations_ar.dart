@@ -3232,6 +3232,10 @@ class AppLocalizationsAr extends AppLocalizations {
   String get alertBodyRingTimedOut => 'انتهى الرنين تلقائيًا بعد 5 دقائق.';
 
   @override
+  String get alertBodyRingAfterRestart =>
+      'انتهى الرنين بعد إعادة تشغيل الهاتف.';
+
+  @override
   String get commandRefusedRingUnsupportedOs =>
       'لا يمكن أن يرنّ هذا الآيفون حاليًا. يحتاج إلى iOS 26 أو أحدث.';
 }

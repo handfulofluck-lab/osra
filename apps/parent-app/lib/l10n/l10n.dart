@@ -209,7 +209,9 @@ String alertBodyFor(Alert alert, AppLocalizations l10n) {
     case 'alertBodyRingParentStopped':
       return l10n.alertBodyRingParentStopped;
     case 'alertBodyRingTimedOut':
-      return l10n.alertBodyRingTimedOut;
+      return values['afterRestart'] == true
+          ? l10n.alertBodyRingAfterRestart
+          : l10n.alertBodyRingTimedOut;
     default:
       return alert.body;
   }

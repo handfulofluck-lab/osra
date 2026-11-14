@@ -3080,6 +3080,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'The ring ended by itself after 5 minutes.';
 
   @override
+  String get alertBodyRingAfterRestart =>
+      'The ring ended after the phone was restarted.';
+
+  @override
   String get commandRefusedRingUnsupportedOs =>
       'This iPhone cannot ring yet. It needs iOS 26 or later.';
 }

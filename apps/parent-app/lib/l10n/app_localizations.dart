@@ -5144,6 +5144,12 @@ abstract class AppLocalizations {
   /// **'The ring ended by itself after 5 minutes.'**
   String get alertBodyRingTimedOut;
 
+  /// No description provided for @alertBodyRingAfterRestart.
+  ///
+  /// In en, this message translates to:
+  /// **'The ring ended after the phone was restarted.'**
+  String get alertBodyRingAfterRestart;
+
   /// No description provided for @commandRefusedRingUnsupportedOs.
   ///
   /// In en, this message translates to:
