@@ -83,7 +83,7 @@ void main() {
     );
     await openLocationTab(tester, [ping]);
 
-    expect(find.textContaining('· الدقة ±8 م'), findsOneWidget);
+    expect(find.textContaining('\u206625.27690, 51.52110\u2069 · الدقة ±8 م'), findsOneWidget);
     expect(find.textContaining('±8 m'), findsNothing);
   });
 
