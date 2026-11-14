@@ -473,12 +473,30 @@ swift test list
 swift test
 ```
 
-The discovery step requires 211 macOS tests and names one case each from pairing, HMAC signing, rule
+The discovery step requires 225 macOS tests and names one case each from pairing, HMAC signing, rule
 interpretation and both localisation string suites. Five iOS-only authorization tests remain behind
 `#if os(iOS)` because `CLAuthorizationStatus.authorizedWhenInUse` is unavailable on macOS; the other location
 and client tests still run. Wrapping any additional portable source file in `#if os(iOS)` removes its tests and
 turns this step red; leaving an iOS-only framework user unguarded turns `swift build` red. The expected count
 changes only when the package deliberately adds or removes tests.
+
+### The Mac agent daemon (roadmap 5.9 step ii, #775)
+
+The same `macos-core` job then lints `apps/child-ios/MacAgent/launchd/com.osratech.agent.plist` and builds and
+tests the daemon's own package, which is nested in the shared package's folder so the path filters do not
+change. On a Mac:
+
+```bash
+cd apps/child-ios/MacAgent
+swift build
+swift test
+```
+
+The unit tests fake the network, the clock and the keychain's owner, and one suite runs the keychain store
+against a throwaway file-based keychain. What needs a real Mac and staging (pairing, a rule change arriving, the
+heartbeat showing "online", launchd restarting a killed daemon, a wrong HMAC key, the secret being unreadable
+by a standard user) is the row table in `apps/child-ios/MacAgent/README.md`, run with
+`sudo ./scripts/install-dev.sh` on the test Mac.
 
 This is compile and unit-test evidence for the shared core only. No Mac application target or enforcement
 runtime exists in step (i), and the job proves nothing about Screen Time on a phone or a physical Mac.
