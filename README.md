@@ -116,7 +116,7 @@ Two kinds of gate, deliberately separate (see [`docs/adr/0005`](docs/adr/0005-ad
 | API vitest | routes, auth, token hygiene, blocklists, content, comms, telemetry | 452/452 (35 files; 2026-10-21) |
 | Flutter `flutter test` (+ `flutter analyze`) | parent app widgets/providers, layout at 320×568, Arabic RTL | 257/257, analyze clean (2026-10-21) |
 | Android JVM tests | rule engine, counters, monitored apps, HMAC logic, comms watermarks | 559/559 per flavour (Play and Full; 2026-10-21) |
-| Desktop xunit | Windows configuration, hosts, per-session pipe, enforcement, pairing and capabilities | 316/316 in Debug and Release (2026-11-14); no clean-machine verification |
+| Desktop xunit | Windows configuration, hosts, per-session pipe, enforcement, pairing and capabilities | 328/328 in Debug and Release (2026-11-14 CI); no clean-machine verification |
 | AI pytest | classifier, API smoke, evaluation harness | 63 passed |
 | Evaluation harness (`eval.banks`, `eval.generate --check`, `eval.run_eval`) | the labelled set and the published per-category scores | 7 banks validate · 1,179 rows · scores in [`services/ai-engine/EVAL.md`](services/ai-engine/EVAL.md) |
 | Live e2e (`services/api/scripts/e2e.mjs`) | pairing → rules → alerts → commands → export | 71/71 |
@@ -217,13 +217,17 @@ verified where it was written is stated as such. Details:
   agent log — a PC cannot be locked into a PIN that anyone can guess.
 - **Windows W1 is not an external-tester release.** The `OSRA.Windows-W1-unsigned` CI artifact contains
   co-located self-contained win-x64 service/tray hosts, not an installer. The pipe requires the launched
-  PID/image and a SYSTEM server token, denies NETWORK, and derives session SIDs from tokens; that is not
+  PID/image and a session-0 server, denies NETWORK, and derives session SIDs from tokens; that is not
   publisher proof or protection against same-user code injection. Device restrictions persist in a
-  SYSTEM/admin-only JSON store and re-arm every 20-second grace period while no verified tray is connected,
-  including a session that had no slot. SOS is rate-limited and capabilities carry `source: tray`; foreground
+  protected SYSTEM/admin-only directory and re-arm every 20-second grace period while no verified tray is
+  connected, including a session that had no slot. Missing state starts empty; corrupt or insecure state
+  fails closed immediately; stale temporary files are replaced only after the directory trust check; save
+  failures retain in-memory enforcement and log/raise one tamper alert per failure episode; unlock/resume
+  clears disconnected sessions too. SOS is rate-limited and capabilities carry `source: tray`; foreground
   usage remains self-reported until W2. W1b PIN hashing and W3 installed-directory ACLs, MSI/service
-  recovery and signing are still required; W2 DNS/firewall policies and W4 updates are separate. No clean
-  Windows-machine verification has happened yet.
+  recovery and signing are still required; W2 DNS/firewall policies and W4 updates are separate. A child
+  who is a local administrator is outside W1's protection model. No clean Windows-machine verification
+  has happened yet.
 - Release APKs are minified, HTTPS-only and signed with the upload key when `OSRA_UPLOAD_KEYSTORE*` is
   set (debug key otherwise); the **debug** build is what pairs against LAN / `adb reverse` servers.
   Store listing, AABs, privacy policy and permission declarations are

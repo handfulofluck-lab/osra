@@ -269,3 +269,12 @@ Claude ruled that all five areas in osra-security#22 belong in W1. Only service-
 - [ ] **Step 3: Implement device-level persistence, re-armed fallback, session-0 verification and the thread/queue fixes.** Production uses the service-owned store; tests use only temp files and fakes. Do not add a plaintext PIN or credential to the persisted state.
 - [ ] **Step 4: Run all desktop configurations and compile the service probe, then run the real CI-only service row on the next head.** No local Windows service is created, stopped or deleted.
 - [ ] **Step 5: Commit** `test: pin durable device restrictions (#623)` then `feat: persist and verify restricted sessions (#623)`.
+
+### Task 12: Protect the state directory and recover fail-closed (Fable W10–W12)
+
+- A service-created directory has a SYSTEM owner or Administrators owner, is not a reparse point, and grants no other principal write access. Every load/save rechecks it. A temporary file is created protected with `FileMode.CreateNew`; no untrusted pre-existing file is overwritten.
+- A missing restriction file means no stored restriction. An unreadable/corrupt/insecure state means `Unreadable = true`, a locked replay and an immediate fallback/alert, not a startup crash and not a free device. Loading corrupt state leaves its bytes untouched until explicit fallback recovery writes known-good locked state; no separate audit quarantine is claimed.
+- After the directory trust check, a stale temporary file is removed before the protected `CreateNew`. A failed save retains in-memory enforcement and produces one error log and one tamper alert per continuous failure episode, resetting only after a successful save.
+- `unlock` and `resume` clear all session and device restrictions, including a session the fallback disconnected. A later sign-in cannot inherit an unlocked restriction.
+- [x] Write failing tests for insecure directories, ACLs, missing/corrupt state and disconnected-session unlock. Run them RED, implement minimally, then run the complete desktop suite and the real CI probe again.
+- [ ] Update ADR-0041, the testing guide and the PR with the actual real-service result. Keep the artifact unsigned and keep W1b/W2/W3/W4 exclusions explicit.
