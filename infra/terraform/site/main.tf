@@ -21,6 +21,9 @@ locals {
     png   = "image/png"
     ico   = "image/x-icon"
     woff2 = "font/woff2"
+    js    = "text/javascript; charset=utf-8"
+    webp  = "image/webp"
+    mp4   = "video/mp4"
   }
 }
 
