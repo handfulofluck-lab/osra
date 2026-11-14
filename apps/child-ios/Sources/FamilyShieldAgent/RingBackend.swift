@@ -15,6 +15,30 @@ public protocol RingStore {
     func save(_ state: RingState?)
 }
 
+public protocol RingHistory {
+    func contains(_ id: UUID) -> Bool
+    func record(_ id: UUID)
+}
+
+public struct UserDefaultsRingHistory: RingHistory {
+    public static let key = "ring.stoppedCommandIds"
+    private let defaults: UserDefaults?
+
+    public init(defaults: UserDefaults? = UserDefaults(suiteName: AgentIdentityStore.suiteName)) {
+        self.defaults = defaults
+    }
+
+    public func contains(_ id: UUID) -> Bool {
+        defaults?.stringArray(forKey: Self.key)?.contains(id.uuidString) == true
+    }
+
+    public func record(_ id: UUID) {
+        var ids = Set(defaults?.stringArray(forKey: Self.key) ?? [])
+        ids.insert(id.uuidString)
+        defaults?.set(ids.sorted(), forKey: Self.key)
+    }
+}
+
 public final class UserDefaultsRingStore: RingStore {
     public static let key = "ring.state"
     private let defaults: UserDefaults?
