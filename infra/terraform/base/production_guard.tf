@@ -33,8 +33,16 @@ resource "terraform_data" "production_guard" {
       error_message = "production: pin exactly one account in allowed_account_ids and set assume_role_arn."
     }
     precondition {
-      condition     = var.log_retention_days >= 30
-      error_message = "production: log_retention_days must be 30 or more."
+      condition     = var.log_retention_days >= 90
+      error_message = "production: log_retention_days must be 90 or more (#766 item 11)."
+    }
+    precondition {
+      condition     = var.alarm_email_secondary != "" && var.alarm_email_secondary != var.alarm_email
+      error_message = "production: alarm_email_secondary must be set and differ from alarm_email (#766 item 6)."
+    }
+    precondition {
+      condition     = aws_ecr_repository.api.image_tag_mutability == "IMMUTABLE" && aws_ecr_repository.api.image_scanning_configuration[0].scan_on_push
+      error_message = "production: the API image repository must have immutable tags and scan-on-push (#766 item 12)."
     }
   }
 }
