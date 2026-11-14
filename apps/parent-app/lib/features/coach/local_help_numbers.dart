@@ -72,39 +72,46 @@ class LocalHelpNumbers {
   ///
   /// The order is the UI/UX Bureau's: the step explains how to reach the line, so it cannot come after
   /// the hours, and both stay in the same sentence so the hours cannot drift away from the number.
-  String _dial(String number, {required bool arabic, String? step, String? hours}) {
+  String _dial(String number, {String? step, String? hours}) {
+    // The step and the bracket arrive already written in the language being rendered, so there is no
+    // per-language branch here on purpose: the wording is the Bureaus', the order is this method's.
     final buffer = StringBuffer(isolatedNumber(number));
-    if (step != null) buffer.write(arabic ? ' $step' : ' $step');
+    if (step != null) buffer.write(' $step');
     if (hours != null) buffer.write(' $hours');
     return buffer.toString();
   }
 
   /// "call emergency services on 999", or "call your country's emergency number" when nothing is known.
   String emergencyClause({required bool arabic}) => emergency == null
-      ? (arabic ? 'اتصل برقم الطوارئ في بلدك' : "call your country's emergency number")
+      ? (arabic
+          ? 'اتصل برقم الطوارئ في بلدك'
+          : "call your country's emergency number")
       : (arabic
-          ? 'اتصل بالطوارئ على الرقم ${_dial(emergency!, arabic: true, hours: hoursAr)}'
-          : 'call emergency services on ${_dial(emergency!, arabic: false, hours: hoursEn)}');
+          ? 'اتصل بالطوارئ على الرقم ${_dial(emergency!, hours: hoursAr)}'
+          : 'call emergency services on ${_dial(emergency!, hours: hoursEn)}');
 
   /// "call the crisis line on 80046342", or "call the crisis line in your country".
   String crisisClause({required bool arabic}) => crisis == null
-      ? (arabic ? 'اتصل بخط الدعم النفسي في بلدك' : 'call the crisis line in your country')
+      ? (arabic
+          ? 'اتصل بخط الدعم النفسي في بلدك'
+          : 'call the crisis line in your country')
       : (arabic
           ? 'اتصل بخط الدعم النفسي على الرقم '
-              '${_dial(crisis!, arabic: true, step: stepAr, hours: hoursAr)}'
+              '${_dial(crisis!, step: stepAr, hours: hoursAr)}'
           : 'call the crisis line on '
-              '${_dial(crisis!, arabic: false, step: stepEn, hours: hoursEn)}');
+              '${_dial(crisis!, step: stepEn, hours: hoursEn)}');
 
   /// "call the child-protection line on 116111", or "contact your country's child-protection service".
-  String childProtectionClause({required bool arabic}) => childProtection == null
-      ? (arabic
-          ? 'أبلغ جهة حماية الطفل في بلدك'
-          : "contact your country's child-protection service")
-      : (arabic
-          ? 'اتصل بخط حماية الطفل على الرقم '
-              '${_dial(childProtection!, arabic: true, step: stepAr, hours: hoursAr)}'
-          : 'call the child-protection line on '
-              '${_dial(childProtection!, arabic: false, step: stepEn, hours: hoursEn)}');
+  String childProtectionClause({required bool arabic}) =>
+      childProtection == null
+          ? (arabic
+              ? 'أبلغ جهة حماية الطفل في بلدك'
+              : "contact your country's child-protection service")
+          : (arabic
+              ? 'اتصل بخط حماية الطفل على الرقم '
+                  '${_dial(childProtection!, step: stepAr, hours: hoursAr)}'
+              : 'call the child-protection line on '
+                  '${_dial(childProtection!, step: stepEn, hours: hoursEn)}');
 
   @override
   bool operator ==(Object other) =>
