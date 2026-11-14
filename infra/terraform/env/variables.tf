@@ -301,3 +301,10 @@ variable "alarm_email" {
   default     = ""
   sensitive   = true
 }
+
+variable "alarm_email_secondary" {
+  description = "A second, different address for the same alerts, so one missed inbox cannot hide an outage (#766 item 6). Gitignored tfvars only. Production requires it."
+  type        = string
+  default     = ""
+  sensitive   = true
+}

@@ -218,13 +218,34 @@ resource "aws_vpc_security_group_ingress_rule" "api_from_alb" {
   ip_protocol                  = "tcp"
 }
 
-# Tasks need outbound for ECR image pulls, CloudWatch Logs, Secrets Manager, Resend/FCM and
-# (later) the AI engine. Locking these to AWS prefix lists would be tighter but brittle.
-resource "aws_vpc_security_group_egress_rule" "api_all" {
+# Tasks leave the VPC only over HTTPS (#766 item 6): ECR pulls, CloudWatch Logs, Secrets Manager, Resend,
+# FCM, APNs and the AI engine all speak 443. Inside the VPC they reach only PostgreSQL and Redis. DNS to
+# the VPC resolver is not filtered by security groups, so it needs no rule.
+resource "aws_vpc_security_group_egress_rule" "api_https" {
   security_group_id = aws_security_group.api.id
-  description       = "Outbound to AWS APIs and external providers through the NAT"
+  description       = "HTTPS to AWS APIs and external providers through the NAT"
   cidr_ipv4         = "0.0.0.0/0"
-  ip_protocol       = "-1"
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
+}
+
+resource "aws_vpc_security_group_egress_rule" "api_to_rds" {
+  security_group_id            = aws_security_group.api.id
+  description                  = "PostgreSQL"
+  referenced_security_group_id = aws_security_group.rds.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+}
+
+resource "aws_vpc_security_group_egress_rule" "api_to_redis" {
+  security_group_id            = aws_security_group.api.id
+  description                  = "Redis"
+  referenced_security_group_id = aws_security_group.redis.id
+  from_port                    = 6379
+  to_port                      = 6379
+  ip_protocol                  = "tcp"
 }
 
 resource "aws_vpc_security_group_ingress_rule" "rds_from_api" {
