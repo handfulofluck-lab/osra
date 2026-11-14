@@ -1,7 +1,11 @@
 # --- Organisation audit trail (#766 item 2) ---------------------------------------------------
 # One CloudTrail trail for every account in the organisation, every region, management events, with log
 # file validation. It lives in the MANAGEMENT account, so the record of what happened in osra-production
-# is stored outside osra-production: whoever controls production cannot quietly edit its history.
+# is stored outside osra-production: production's own credentials cannot reach it. The management account's
+# operators can, so the bucket also has S3 Object Lock (every log file kept unchangeable for the retention
+# period) and the agents' key is denied every way of switching the trail, the lock or the bucket off
+# (access.tf, #784). GOVERNANCE mode can still be bypassed by an identity granted s3:BypassGovernanceRetention;
+# COMPLIANCE mode cannot be bypassed by anyone, root included, which is Karim's call (trail_lock_mode).
 #
 # Run from the management account (the deployer profile), never from a member account:
 #   terraform -chdir=infra/terraform/org-audit init -backend-config=../backend/org-audit.hcl
@@ -42,6 +46,17 @@ variable "trail_retention_days" {
   description = "Days the trail's log files are kept. Audit records about operators, not families; 365 is the usual minimum for an investigation."
   type        = number
   default     = 365
+}
+
+variable "trail_lock_mode" {
+  description = "S3 Object Lock mode on the trail's log files. GOVERNANCE: bypassable only with s3:BypassGovernanceRetention. COMPLIANCE: no one can shorten or remove it (switching to it cannot be undone for files already written)."
+  type        = string
+  default     = "GOVERNANCE"
+
+  validation {
+    condition     = contains(["GOVERNANCE", "COMPLIANCE"], var.trail_lock_mode)
+    error_message = "trail_lock_mode must be GOVERNANCE or COMPLIANCE."
+  }
 }
 
 provider "aws" {
@@ -114,6 +129,9 @@ resource "aws_kms_alias" "trail" {
 resource "aws_s3_bucket" "trail" {
   bucket = "osra-org-trail-${local.account_id}-${var.region}"
 
+  # Object Lock can only be switched on when the bucket is created; it also forces versioning on.
+  object_lock_enabled = true
+
   lifecycle {
     prevent_destroy = true
   }
@@ -124,6 +142,21 @@ resource "aws_s3_bucket_versioning" "trail" {
   versioning_configuration {
     status = "Enabled"
   }
+}
+
+# Every log file is unchangeable and undeletable for as long as it is kept. The lifecycle rule's expiry then
+# removes it on the same day the lock ends.
+resource "aws_s3_bucket_object_lock_configuration" "trail" {
+  bucket = aws_s3_bucket.trail.id
+
+  rule {
+    default_retention {
+      mode = var.trail_lock_mode
+      days = var.trail_retention_days
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.trail]
 }
 
 resource "aws_s3_bucket_public_access_block" "trail" {
@@ -219,7 +252,7 @@ resource "aws_cloudtrail" "org" {
   include_global_service_events = true
   enable_log_file_validation    = true
 
-  depends_on = [aws_s3_bucket_policy.trail]
+  depends_on = [aws_s3_bucket_policy.trail, aws_s3_bucket_object_lock_configuration.trail]
 }
 
 output "trail_arn" {
