@@ -1021,6 +1021,9 @@ pairing and test data returned to their previous state.
 
 The existing manual `workflow_dispatch` accepts an optional `swift_test_filter` for focused red/green development
 runs (for example `Ring` or `RingPolicyTests`). It adds no trigger and does not replace the unfiltered PR jobs.
+For layout evidence, `ring_screenshots=true` runs `RingScreenshotsTests` after the ordinary iOS jobs pass and uploads
+English/Arabic, light/dark and large-text PNGs. These hosted captures use a fake backend: they are not AlarmKit,
+permission-prompt, notification, keyboard or physical escape-row evidence. The Mac test bed still owns those rows.
 
 ## 5h. First-run pairing time (roadmap 3.2, proxy)
 

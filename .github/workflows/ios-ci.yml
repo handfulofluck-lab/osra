@@ -29,6 +29,11 @@ on:
         description: 'Optional Swift test class filter for red/green development evidence'
         required: false
         type: string
+      ring_screenshots:
+        description: 'Capture hosted ring-view screenshots after the standard iOS jobs pass'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: ios-ci-${{ github.ref }}
@@ -349,3 +354,49 @@ jobs:
       - name: API log on failure
         if: failure()
         run: tail -n 200 "$RUNNER_TEMP/api.log"
+
+
+  ring-screenshots:
+    name: Capture the ring view for the UI Bureau (manual only)
+    needs: test-ios
+    if: inputs.ring_screenshots
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Select the newest Xcode on the image
+        run: |
+          XCODE="$(ls -d /Applications/Xcode_*.app | grep -viE 'beta|_rc|release_candidate' | sort -V | tail -1)"
+          echo "Selecting $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+          swift --version
+      - name: Install XcodeGen ${{ env.XCODEGEN_VERSION }}
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/xcodegen.zip" \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          echo "${XCODEGEN_SHA256}  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+      - name: Generate the Xcode project
+        working-directory: apps/child-ios
+        run: xcodegen generate --spec project.yml
+      - name: Capture the ring view in English and Arabic, light and dark, and large text
+        working-directory: apps/child-ios
+        run: |
+          DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for r,l in d.items() if "iOS" in r for x in l if x["name"].startswith("iPhone")))')"
+          echo "Simulator: $DEVICE_ID"
+          TEST_RUNNER_OSRA_RING_SCREENSHOT_DIR="$RUNNER_TEMP/ring-screenshots" \
+            xcodebuild test \
+              -project OSRAAgent.xcodeproj \
+              -scheme OSRAAgent \
+              -destination "id=$DEVICE_ID" \
+              -derivedDataPath .build/ringScreenshotData \
+              -only-testing:OSRAAgentHostedTests/RingScreenshotsTests
+      - name: Upload the hosted screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: ring-view-screenshots-${{ github.run_id }}
+          path: ${{ runner.temp }}/ring-screenshots
+          retention-days: 7
