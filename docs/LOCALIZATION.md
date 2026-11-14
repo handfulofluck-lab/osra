@@ -88,10 +88,11 @@ plurals alike.
   `EdgeInsets.only(left:)`, `EdgeInsets.fromLTRB`, or `Alignment.centerLeft` for chrome.
 - Do not hard-code `TextDirection`. `MaterialApp` derives it from the locale; tests wrap a
   screen in `Directionality(textDirection: TextDirection.rtl)` to prove it.
-- In code review, reject a bare value made of several numeric pieces (a space, comma or plus sign)
-  in a `Text` or ARB placeholder. Wrap the value with `ltrIsolate` from `lib/core/ltr_isolate.dart`
-  so its LRI/PDI boundary preserves the order in an RTL sentence. This includes coordinates and
-  spaced phone numbers; a single number, time, date or version does not need it. Keep the isolate in
+- In code review, reject a bare value made of several numeric pieces, or a number with a plus or
+  minus sign, in a `Text` or ARB placeholder: coordinates, a phone number, `+15`. Wrap the value with
+  `ltrIsolate` from `lib/core/ltr_isolate.dart` so its LRI/PDI boundary preserves the order in an RTL
+  sentence. A plain number, a time, a date, a version or a percentage does not need it. A number with
+  a Latin unit (`8 m`) is not isolated: the unit is translated in the ARB line. Keep the isolate in
   code, not inside an Arabic translation (#751). #743 and #727 adopt the same helper when they fold it.
 - `Row`, `Wrap`, `TabBar` and `AppBar` actions mirror automatically. Prefer `Wrap` over a
   fixed `Row` where translated labels are longer, and make tab bars scrollable when four or

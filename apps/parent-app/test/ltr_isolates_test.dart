@@ -57,7 +57,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  // Mutant: remove any one of the six ltrIsolate calls; its corresponding row must go red.
+  // Mutant: remove any one of the seven ltrIsolate calls; its corresponding row must go red.
   testWidgets('latest location isolates both coordinates in Arabic RTL', (tester) async {
     await openLocationTab(tester, const []);
 
@@ -83,7 +83,8 @@ void main() {
     );
     await openLocationTab(tester, [ping]);
 
-    expect(find.textContaining('\u206625.27690, 51.52110\u2069 · ±8 m'), findsOneWidget);
+    expect(find.textContaining('· الدقة ±8 م'), findsOneWidget);
+    expect(find.textContaining('±8 m'), findsNothing);
   });
 
   testWidgets('dashboard child card isolates both coordinates in Arabic RTL', (tester) async {
@@ -116,5 +117,13 @@ void main() {
     );
 
     expect(find.text('\u2066+971 50 123 4567\u2069'), findsOneWidget);
+  });
+
+  testWidgets('signed bonus-time values are isolated in Arabic RTL', (tester) async {
+    await pumpArabic(tester, const ChildDetailScreen(childId: 'child-1'));
+
+    expect(find.text('\u2066+15\u2069'), findsOneWidget);
+    expect(find.text('\u2066+30\u2069'), findsOneWidget);
+    expect(find.text('\u2066+60\u2069'), findsOneWidget);
   });
 }

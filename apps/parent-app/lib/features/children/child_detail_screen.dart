@@ -383,7 +383,7 @@ class _BonusTimeCardState extends ConsumerState<_BonusTimeCard> {
                 for (final minutes in const [15, 30, 60])
                   OutlinedButton(
                     onPressed: _granting ? null : () => _grant(minutes),
-                    child: Text('+$minutes'),
+                    child: Text(ltrIsolate('+$minutes')),
                   ),
               ],
             ),
@@ -756,7 +756,7 @@ class _HistoryScrubberState extends ConsumerState<_HistoryScrubber> {
                             ? '${ltrIsolate('${ping.lat.toStringAsFixed(5)}, ${ping.lng.toStringAsFixed(5)}')} · ${l10n.accuracyUnknown}'
                             : '${DateFormat.Hm(context.localeName).format(ts.toLocal())} · '
                                 '${ltrIsolate('${ping.lat.toStringAsFixed(5)}, ${ping.lng.toStringAsFixed(5)}')} · '
-                                '±${ping.accuracyM.round()} m',
+                                '${l10n.accuracyShort(ping.accuracyM.round())}',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ),
