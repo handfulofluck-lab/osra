@@ -7,15 +7,15 @@ public protocol RingAlertReporting {
 
 @MainActor
 public struct RingAlertReporter: RingAlertReporting {
-    public typealias Sender = (URLRequest) async throws -> (status: Int, body: Data)
+    typealias Sender = (URLRequest) async throws -> (status: Int, body: Data)
     public static let deliveredKey = "ring.deliveredDedupeKeys"
     private let defaults: UserDefaults?
     private let reporter: AlertReporter
     private let sender: Sender
 
-    public init(defaults: UserDefaults? = UserDefaults(suiteName: AgentIdentityStore.suiteName),
-                reporter: AlertReporter? = nil,
-                sender: @escaping Sender = { try await AlertReporter.send($0) }) {
+    init(defaults: UserDefaults? = UserDefaults(suiteName: AgentIdentityStore.suiteName),
+         reporter: AlertReporter? = nil,
+         sender: @escaping Sender = { try await AlertReporter.send($0) }) {
         self.defaults = defaults
         self.reporter = reporter ?? AlertReporter(hmacSecret: AlertReporter.pairedHmacSecret())
         self.sender = sender
