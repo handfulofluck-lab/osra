@@ -51,8 +51,11 @@ Add `RingPolicy.swift` and `RingState.swift` to the shared package.
 
 - command UUID;
 - start and end dates;
+- a monotonic start timestamp from `ContinuousClock` (or uptime);
 - stop source, if stopped;
 - per-ring dismissal count.
+
+While the app is alive, elapsed time uses the monotonic clock, so a forward wall-clock jump cannot shorten the ring. The stored wall-clock end date is used only across a reboot, and timeout requires both clocks to agree that 300 seconds have elapsed. A wall-clock jump of ten minutes inside a 30-second monotonic ring is still ringing.
 
 An active ring resumes on launch. An expired ring stops as `timed_out`. A stopped ring does not resume.
 
@@ -80,7 +83,7 @@ On `start(commandId:)` it:
 3. schedules the immediate alert;
 4. persists start/end state and presents the ring UI.
 
-Authorization denial or a scheduling error produces no active state and a failed command ack with a typed reason.
+Authorization denial or a scheduling error produces no active state and a failed command ack with a typed reason. On iOS below 26, `ring` acks `failed` with `unsupported_os` and schedules nothing; the parent app shows its own localized line saying the iPhone cannot ring and needs an update, reviewed by both Bureaus.
 
 On `alarmUpdates` it compares the active UUID. If that UUID disappears before the cap, it schedules it again and emits one warning per dismissal. If it is absent because an approved stop occurred, nothing re-arms. If it is absent because the cap elapsed, the controller times out and reports that state.
 
@@ -129,6 +132,10 @@ Severities and push:
 
 Server `shouldPush` suppresses only `parent_stopped`, leaving all existing policies unchanged.
 
+Every dismissal is recorded as its own alert with its own dedupe key, but pushes are coalesced: only the first dismissal of a ring pushes immediately; subsequent dismissals within 60 seconds produce at most one push carrying the latest count. Three dismissals in ten seconds therefore produce three alerts and one push. This is recording without flooding, not suppression of the events themselves.
+
+Every ring push remains only a wake through the existing generic loc-key path (`PUSH_ALERT_TITLE` / `PUSH_ALERT_BODY`). No state, ring id or dismissal count enters the APNs or FCM payload; the parent app fetches the alert through the authenticated API.
+
 The device sends only the category, state, ring id and dedupe key. It never sends `metadata.bodyKey` or `metadata.bodyParams`. The server maps `(ring, state)` to its own `bodyKey` and required params, using the #718 validation path. An API test must prove a device-supplied key is stripped and the server key is stored instead. Both HTTP 200 and 201 mean delivered.
 
 The parent app renders each state through the #718 `bodyKey` mechanism and localized text, not raw metadata. English fallback text remains for older parent apps. No raw `state: value` rows are shown.
@@ -150,6 +157,7 @@ The parent app renders each state through the #718 `bodyKey` mechanism and local
 - Dismissal count is per ring, so two dismissals produce two distinct events and two distinct dedupe keys.
 - A child cannot clear `shield.requestTimes` or any other request-throttle state.
 - Existing encoding and stored entries remain valid; no migration or key-format change is introduced.
+- Unpairing or consent withdrawal stops an active ring locally and emits no ring alert, because there is no family left to tell. This is the one stop that does not report.
 
 ## Test plan
 
@@ -158,8 +166,11 @@ The parent app renders each state through the #718 `bodyKey` mechanism and local
 - Stop sources and the exact 300-second cap.
 - UUID validation and start replacement.
 - Authorization denial and schedule failure.
+- iOS below 26 returns `unsupported_os`, schedules nothing and shows the localized update reason.
 - Persistence across restart, timeout, and no re-arm after a real stop.
 - Re-arm on a missing UUID before the cap, with one event per dismissal and increasing counters.
+- A forward wall-clock jump of ten minutes inside a 30-second monotonic ring does not end it; timeout needs both clocks.
+- Unpair or consent withdrawal stops locally without emitting a ring alert.
 - 200 and 201 both delivered; non-delivered responses retry without a duplicate.
 - `stop_ring` idempotency.
 - Parent PIN success and existing lockout behaviour.
@@ -169,12 +180,14 @@ The parent app renders each state through the #718 `bodyKey` mechanism and local
 - `ring` is accepted with each state and `ringId`.
 - Dedupe returns 200 with the existing alert, not another alert or push.
 - `parent_stopped` alone is not pushed; the other states retain existing policy.
+- Three dismissals in ten seconds create three alerts but only one push.
 - A caller-supplied `metadata.bodyKey` is stripped and replaced by the server's validated key.
 - English fallback remains present.
 
 ### Parent tests
 
 - Every state renders through its `bodyKey` and localized text, never raw metadata.
+- The `unsupported_os` line says the iPhone cannot ring and needs an update, localized by both Bureaus.
 - English and Bureau-approved Arabic, light and dark, with direction-isolated identifiers/times.
 - Existing suites remain green.
 
