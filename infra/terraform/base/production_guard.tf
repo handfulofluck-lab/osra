@@ -33,6 +33,10 @@ resource "terraform_data" "production_guard" {
       error_message = "production: pin exactly one account in allowed_account_ids and set assume_role_arn."
     }
     precondition {
+      condition     = var.secrets_out_of_band
+      error_message = "production: secrets_out_of_band must be true (no secret values in Terraform state, #766 item 1)."
+    }
+    precondition {
       condition     = var.log_retention_days == 90
       error_message = "production: log_retention_days must be exactly 90 (#766 item 11: at least 90 for investigations; the privacy policy promises at most 90)."
     }

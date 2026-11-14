@@ -79,3 +79,23 @@ output "internal_hmac_secret_fingerprint" {
   description = "First 12 hex characters of SHA-256 of INTERNAL_HMAC_SECRET, for the #637 evidence (shows it differs from any exposed value without revealing it). 48 bits of a hash of a 64-character random value reveal nothing usable, hence nonsensitive()."
   value       = var.internal_hmac_secret_enabled ? nonsensitive(substr(sha256(random_password.internal_hmac[0].result), 0, 12)) : ""
 }
+
+output "execution_role_name" {
+  description = "Name of the ECS task execution role (env adds read access to the RDS-managed master secret for the db-admin task)."
+  value       = aws_iam_role.execution.name
+}
+
+output "api_db_password_secret_arn" {
+  description = "Secret holding the osra_api database password (null unless secrets_out_of_band)."
+  value       = one(aws_secretsmanager_secret.api_db_password[*].arn)
+}
+
+output "redis_auth_token_secret_arn" {
+  description = "Secret holding the ElastiCache AUTH token (null unless secrets_out_of_band)."
+  value       = one(aws_secretsmanager_secret.redis_auth_token[*].arn)
+}
+
+output "redis_url_secret_arn" {
+  description = "Secret holding REDIS_URL with the AUTH token (null unless secrets_out_of_band)."
+  value       = one(aws_secretsmanager_secret.redis_url[*].arn)
+}

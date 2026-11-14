@@ -39,7 +39,8 @@ data "aws_iam_policy_document" "execution_secrets" {
       # this the moment push_enabled maps it. Without it ECS fails at start with
       # ResourceInitializationError (AccessDenied on the secret) (#318 review).
       aws_secretsmanager_secret.fcm_service_account.arn,
-    ], aws_secretsmanager_secret.demo_password[*].arn, aws_secretsmanager_secret.internal_hmac_secret[*].arn)
+      ], aws_secretsmanager_secret.demo_password[*].arn, aws_secretsmanager_secret.internal_hmac_secret[*].arn,
+    aws_secretsmanager_secret.redis_url[*].arn, aws_secretsmanager_secret.api_db_password[*].arn)
   }
 }
 
