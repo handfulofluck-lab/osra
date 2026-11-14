@@ -108,12 +108,12 @@ public struct RingAlertReporter: RingAlertReporting {
         var events = pendingEvents()
         guard !events.contains(event) else { return }
         events.append(event)
-        defaults?.set(events.map { try? JSONEncoder().encode($0) }, forKey: Self.pendingKey)
+        defaults?.set(events.compactMap { try? JSONEncoder().encode($0) }, forKey: Self.pendingKey)
     }
 
     private func removePending(_ key: String) {
         let remaining = pendingEvents().filter { $0.dedupeKey != key }
-        defaults?.set(remaining.map { try? JSONEncoder().encode($0) }, forKey: Self.pendingKey)
+        defaults?.set(remaining.compactMap { try? JSONEncoder().encode($0) }, forKey: Self.pendingKey)
     }
 
     private static func fallback(_ state: RingEventState, dismissalCount: Int, afterRestart: Bool) -> String {

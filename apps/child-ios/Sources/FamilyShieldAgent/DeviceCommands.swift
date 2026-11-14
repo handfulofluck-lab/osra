@@ -144,7 +144,7 @@ public struct LiveRingCommands: RingCommandHandling {
     }
 
     public func stopRing(targetId: String?) async -> RingCommandError? {
-        let target = targetId.map { UUID(uuidString: $0) }
+        let target = targetId.flatMap { UUID(uuidString: $0) }
         if targetId != nil && target == nil { return .invalidCommand }
         return await (controller ?? RingController.shared).stop(.parentCommand, commandId: target ?? nil)
     }

@@ -568,13 +568,22 @@ extension RingControllerTests {
     }
 
     func testDeadlineDoesNotStopAt299Point9() async {
-        let controller = controller(sleep: { self.uptime += min($0, 299.9) })
+        var firstWake = true
+        let controller = controller(sleep: { seconds in
+            if firstWake {
+                firstWake = false
+                self.uptime += min(seconds, 299.9)
+            } else {
+                while !Task.isCancelled { await Task.yield() }
+            }
+        })
         clockDriving = true
         await controller.start(id)
         uptime = 10
         await flushTasks()
+        XCTAssertEqual(uptime, 309.9)
         XCTAssertTrue(backend.stopCalls.isEmpty)
-        uptime = 309.9
+        uptime = 310
         await controller.resume()
         await flushTasks()
         XCTAssertEqual(backend.stopCalls, [id])

@@ -160,7 +160,9 @@ public final class RingController: ObservableObject {
         if let source = restored.stopSource {
             cancelDeadline()
             do {
-                try await backend.stop(restored.commandId)
+                if try await backend.scheduledIDs().contains(restored.commandId) {
+                    try await backend.stop(restored.commandId)
+                }
             } catch {
                 return .stopFailed
             }
@@ -277,6 +279,11 @@ public final class RingController: ObservableObject {
             guard let self, !Task.isCancelled else { return }
             guard generation == self.deadlineGeneration,
                   let current = self.state, current.commandId == id, current.stopSource == nil else { return }
+            guard RingPolicy.hasTimedOut(current, nowWall: self.now(), nowMonotonic: self.monotonic(),
+                                         restarted: self.restarted) else {
+                self.armDeadline()
+                return
+            }
             if self.restarted {
                 await self.timeoutAfterRestart(current)
             } else {
