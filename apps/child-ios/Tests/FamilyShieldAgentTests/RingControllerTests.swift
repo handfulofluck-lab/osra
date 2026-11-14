@@ -531,6 +531,8 @@ extension RingControllerTests {
 
 private final class RingRequestRecorder {
     var requests: [URLRequest] = []
+    var count: Int { requests.count }
+    func append(_ request: URLRequest) { requests.append(request) }
 }
 
 @MainActor
