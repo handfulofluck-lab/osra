@@ -332,7 +332,8 @@ Apple's Arabic support pages on 2026-11-12: «الإعدادات», «مدة ا�
 - That rule is about what the app shows. What a person types is another matter: a code, a PIN or a
   number typed as `٠–٩` (U+0660 to U+0669) or `۰–۹` (U+06F0 to U+06F9) is accepted and turned into
   `0–9` in code before any check, hash, comparison or request. Decided 14 Nov 2026; the apps do not do
-  this yet (issue #771, read from the code, not yet tried on a phone).
+  this yet (issues #769 and #771). On the Flip4 the Android child app's number pads cannot type or
+  paste `٠–٩` (14 Nov), so nothing fails there today; the iPhone and the parent app are not tried yet.
 - A counted noun always goes through a plural rule with all six Arabic forms (ICU in ARB, `<plurals>`
   on Android): «دقيقة واحدة», «دقيقتان», «3 دقائق», «11 دقيقة». Where no plural mechanism exists (an
   email template, a web page), reword so that no noun follows the number («المدة بالدقائق: 45»).
