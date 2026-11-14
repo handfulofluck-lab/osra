@@ -134,6 +134,13 @@ reviewer work on. No hosted translation service for now (see Alternatives).
 - `Parent.locale` (BCP-47, nullable), sent by the parent app at login and whenever the picker changes, the
   way ADR-0020 handles the timezone. `null` keeps today's English + Arabic email.
 - Emails move from two-languages-in-code to one template set per language, chosen by `Parent.locale`.
+  Each email is a set of keyed lines in ICU form, in a JSON catalog per language beside the API, not text
+  inside TypeScript. No sentence is glued from pieces: counts use plural forms, lists use the language's
+  own separator (`Intl.ListFormat`), a role or other wire value is mapped to a phrase, and punctuation
+  around a link (French's no-break space before the colon) is part of the translated line. The subject is
+  in one language. The key layout is the one the Language Bureaus drafted (37 lines for the six emails,
+  `language-bureaus/outside/en/emails.en.json`). Faults this exposed in English and Arabic today are
+  #796.
 - **Text is written on the device where it is read, in that reader's language.** An alert carries a
   **type and parameters** (`search_flagged`, `{engine}`; `access_requested`, `{app}`), whoever raises it:
   the server or a child's device. The parent app renders the sentence, the way it already renders the
