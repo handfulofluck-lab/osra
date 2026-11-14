@@ -31,6 +31,7 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
     private readonly DesktopRestrictionState _restrictions;
     private readonly IDesktopSessionFallback _fallback;
     private readonly Func<DateTime> _clock;
+    private DateTime? _lastSosUtc;
     private readonly Dictionary<int, SessionSlot> _slots = new();
     private readonly object _gate = new();
 
@@ -167,6 +168,13 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
                 _activity.AddSample(sessionId, message.Payload!.Value.GetProperty("processName").GetString()!, DateTime.UtcNow);
                 break;
             case TrayMessageKind.sos:
+                var now = _clock();
+                if (_lastSosUtc is { } lastSos && now - lastSos < TimeSpan.FromSeconds(60))
+                {
+                    _log.LogInformation("SOS ignored inside the per-device 60-second window");
+                    break;
+                }
+                _lastSosUtc = now;
                 await _api.PostAlert(SosHotkey.BuildAlert(_config), cancellationToken);
                 break;
             case TrayMessageKind.pairing_complete:

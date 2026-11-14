@@ -49,7 +49,7 @@ public static class DesktopCapabilities
             ["web_filter"] = facts.WebFiltering ? "degraded" : "unavailable",
             ["pause_internet"] = facts.WebFiltering ? "degraded" : "unavailable",
         };
-        return JsonSerializer.SerializeToElement(new { client, grants, features });
+        return JsonSerializer.SerializeToElement(new { client, grants, features, source = "tray" });
     }
 
     public static RuntimeFacts CurrentFacts(AgentConfig config, TrayConnectionState? state = null) => new(
@@ -73,8 +73,10 @@ public sealed class DesktopCapabilitiesStore
     public void Update(JsonElement report)
     {
         if (report.ValueKind != JsonValueKind.Object ||
-            report.EnumerateObject().Select(p => p.Name).ToHashSet() is not { Count: 3 } top ||
-            !top.SetEquals(["client", "grants", "features"])) throw new InvalidDataException("Invalid capability envelope.");
+            report.EnumerateObject().Select(p => p.Name).ToHashSet() is not { Count: 4 } top ||
+            !top.SetEquals(["client", "grants", "features", "source"])) throw new InvalidDataException("Invalid capability envelope.");
+        if (report.GetProperty("source").GetString() != "tray")
+            throw new InvalidDataException("Unexpected desktop report source.");
         if (report.GetProperty("client").GetProperty("app").GetString() != "agent-desktop")
             throw new InvalidDataException("Unexpected desktop client.");
         if (report.GetProperty("grants").EnumerateObject().Select(p => p.Name).SingleOrDefault() != "child_account_admin")
