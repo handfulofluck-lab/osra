@@ -398,8 +398,12 @@ their work but not preferably"): Antigravity and Hydrogen may verify each other'
 a verifier from another vendor first when one is free within the claim timer.
 
 **Branch prefix names the author:** `kimi/`, `claude/` (also `qa/`, `verify/`), `fable/`, `ahmed/`, `k31/`,
-`k31mac/`, `antigravity/`, `hydrogen/`. A branch with none of these is read as Kimi's (the convention before 13 Nov), so members other than Kimi
-must use their prefix. A Kimi-authored commit (commit email) makes Kimi a co-author whatever the prefix.
+`k31mac/`, `antigravity/`, `hydrogen/`. Every new branch uses its author's prefix. A branch with none of these fails
+the gate, unless it carries a Kimi-authored commit (read as Kimi's, the convention before 13 Nov) or is one of the five
+unprefixed branches open on 14 Nov (`LEGACY_UNPREFIXED` in the policy script, read as Kimi's until they merge).
+The commit-email escape is only as strong as the committer's honesty, so it is temporary: by **1 Dec 2026** (before
+closed beta A) Claude opens the PR that removes it and empties `LEGACY_UNPREFIXED`, after which only a known prefix
+counts. A Kimi-authored commit (commit email) makes Kimi a co-author whatever the prefix.
 
 **Risk tiers.** The gate takes the higher of the `risk:R1/R2/R3` label and the tier computed from the changed paths
 (`scripts/verified-gate-policy.mjs`); a label can raise the tier, never lower it.
