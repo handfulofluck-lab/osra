@@ -1,10 +1,13 @@
-# --- The deployer user cannot erase evidence or backups, in any account (Ahmed, #637 comment 6881460052) ---
+# --- Nobody but Karim can erase evidence or backups in production (Ahmed, #637 comment 6881460052) ---
 # Karim's decision (osra-security#27): the agents keep a permanent key with full rights. Ahmed's condition for
 # signing against it: that key, and any role it assumes, cannot erase the evidence of what it did or the
-# backups. In this account the user policy in access.tf does that; the agents reach osra-production through
-# OrganizationAccountAccessRole, which an IAM user policy does not bind, so this service control policy does
-# it there. It names only that role: Karim signs in through Identity Center (AWSReservedSSO_* roles) and is not
-# affected, so anything below that is ever needed is done by him with MFA.
+# backups. In this account the user policy in access.tf does that. The agents reach osra-production through
+# OrganizationAccountAccessRole, which an IAM user policy does not bind, and that role can create further
+# roles there. So this service control policy binds EVERY principal in production except Karim's Identity
+# Center roles (aws-reserved/sso.amazonaws.com/*), not one role name (Fable B1 on #793, osra-security#27).
+# Service-linked roles are never bound by an SCP, and log, object and automated-backup expiry is done by the
+# services themselves. The one exception is AWS Backup's own role, which deletes expired recovery points:
+# it may still do that, and no one but Karim may change that role or create a role under aws-reserved/.
 #
 # Two things an IAM condition cannot express, and what covers them instead:
 # - turning off RDS deletion protection (rds:ModifyDBInstance has no condition key for it): deleting the
@@ -13,14 +16,19 @@
 # - lowering the RDS backup retention: the AWS Backup recovery points, here and in the off-site copy vault
 #   (management account, Vault Lock), are denied deletion.
 # The restore drill's own throw-away instance (*-restore-drill-*) is the one deletion left open.
+# Not denied here on purpose: cloudwatch:PutMetricAlarm and kms:PutKeyPolicy, because the env stack's own
+# applies write those; the organisation trail and GuardDuty record every such call.
 
 locals {
-  agent_role_pattern = "arn:aws:iam::*:role/OrganizationAccountAccessRole"
+  karim_sso_roles     = "arn:aws:iam::*:role/aws-reserved/sso.amazonaws.com/*"
+  production_backup   = "arn:aws:iam::${var.production_account_id}:role/osra-production-backup"
+  not_karim           = { ArnNotLike = { "aws:PrincipalArn" = [local.karim_sso_roles] } }
+  not_karim_or_backup = { ArnNotLike = { "aws:PrincipalArn" = [local.karim_sso_roles, local.production_backup] } }
 }
 
 resource "aws_organizations_policy" "agent_cannot_erase_evidence" {
   name        = "osra-agent-cannot-erase-evidence"
-  description = "OrganizationAccountAccessRole (the agents' route into member accounts) cannot erase audit evidence or backups."
+  description = "No principal except Karim's Identity Center roles can erase audit evidence or backups in production."
   type        = "SERVICE_CONTROL_POLICY"
   content = jsonencode({
     Version = "2012-10-17"
@@ -37,7 +45,7 @@ resource "aws_organizations_policy" "agent_cannot_erase_evidence" {
           "config:DeleteConfigRule",
         ]
         Resource  = "*"
-        Condition = { ArnLike = { "aws:PrincipalArn" = local.agent_role_pattern } }
+        Condition = local.not_karim
       },
       {
         Sid    = "AuditLogs"
@@ -47,7 +55,7 @@ resource "aws_organizations_policy" "agent_cannot_erase_evidence" {
           "arn:aws:logs:*:*:log-group:aws-waf-logs-*",
           "arn:aws:logs:*:*:log-group:/aws/rds/*",
         ]
-        Condition = { ArnLike = { "aws:PrincipalArn" = local.agent_role_pattern } }
+        Condition = local.not_karim
       },
       {
         Sid    = "AccessLogBucket"
@@ -57,21 +65,21 @@ resource "aws_organizations_policy" "agent_cannot_erase_evidence" {
           "arn:aws:s3:::*-access-logs-*",
           "arn:aws:s3:::*-access-logs-*/*",
         ]
-        Condition = { ArnLike = { "aws:PrincipalArn" = local.agent_role_pattern } }
+        Condition = local.not_karim
       },
       {
         Sid       = "AlarmsAndTopic"
         Effect    = "Deny"
-        Action    = ["cloudwatch:DeleteAlarms", "cloudwatch:DisableAlarmActions", "sns:DeleteTopic", "sns:SetTopicAttributes", "sns:Unsubscribe", "sns:RemovePermission"]
+        Action    = ["cloudwatch:DeleteAlarms", "cloudwatch:DisableAlarmActions", "cloudwatch:SetAlarmState", "sns:DeleteTopic", "sns:SetTopicAttributes", "sns:Unsubscribe", "sns:RemovePermission"]
         Resource  = ["arn:aws:cloudwatch:*:*:alarm:osra-*", "arn:aws:sns:*:*:osra-*-alarms", "arn:aws:sns:*:*:osra-*-alarms:*"]
-        Condition = { ArnLike = { "aws:PrincipalArn" = local.agent_role_pattern } }
+        Condition = local.not_karim
       },
       {
         Sid       = "Keys"
         Effect    = "Deny"
         Action    = ["kms:ScheduleKeyDeletion", "kms:DisableKey"]
         Resource  = "*"
-        Condition = { ArnLike = { "aws:PrincipalArn" = local.agent_role_pattern } }
+        Condition = local.not_karim
       },
       {
         Sid    = "Backups"
@@ -83,14 +91,25 @@ resource "aws_organizations_policy" "agent_cannot_erase_evidence" {
           "backup:DeleteBackupVaultAccessPolicy", "backup:DeleteBackupPlan", "backup:DeleteBackupSelection",
         ]
         Resource  = "*"
-        Condition = { ArnLike = { "aws:PrincipalArn" = local.agent_role_pattern } }
+        Condition = local.not_karim_or_backup
       },
       {
         Sid         = "DatabaseInstances"
         Effect      = "Deny"
         Action      = "rds:DeleteDBInstance"
         NotResource = "arn:aws:rds:*:*:db:*-restore-drill-*"
-        Condition   = { ArnLike = { "aws:PrincipalArn" = local.agent_role_pattern } }
+        Condition   = local.not_karim
+      },
+      {
+        Sid    = "ReservedAndBackupRolesStay"
+        Effect = "Deny"
+        Action = [
+          "iam:CreateRole", "iam:DeleteRole", "iam:UpdateRole", "iam:UpdateAssumeRolePolicy", "iam:PutRolePolicy",
+          "iam:DeleteRolePolicy", "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:PutRolePermissionsBoundary",
+          "iam:DeleteRolePermissionsBoundary",
+        ]
+        Resource  = ["arn:aws:iam::*:role/aws-reserved/*", local.production_backup]
+        Condition = local.not_karim
       },
     ]
   })

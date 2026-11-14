@@ -54,7 +54,7 @@ locals {
 
   # New principals created by the deployer user itself: a way around the deny below, so it alarms. Expected
   # during an org-audit apply that adds a role; anything else is an incident.
-  agent_new_principals = "($.userIdentity.arn = \"${local.agent_user_arn}\") && (($.eventName = \"CreateUser\") || ($.eventName = \"CreateRole\") || ($.eventName = \"CreateLoginProfile\") || ($.eventName = \"UpdateAssumeRolePolicy\") || ($.eventName = \"CreateOpenIDConnectProvider\") || ($.eventName = \"CreateSAMLProvider\") || ($.eventName = \"CreateAccountAssignment\") || ($.eventName = \"CreatePermissionSet\") || ($.eventName = \"CreateGroupMembership\") || (($.eventName = \"CreateAccessKey\") && ($.requestParameters.userName != \"${var.agent_user_name}\")))"
+  agent_new_principals = "($.userIdentity.arn = \"${local.agent_user_arn}\") && (($.eventName = \"CreateUser\") || ($.eventName = \"CreateRole\") || ($.eventName = \"CreateLoginProfile\") || ($.eventName = \"UpdateAssumeRolePolicy\") || ($.eventName = \"CreateOpenIDConnectProvider\") || ($.eventName = \"CreateSAMLProvider\") || ($.eventName = \"CreateAccountAssignment\") || ($.eventName = \"CreatePermissionSet\") || ($.eventName = \"CreateGroupMembership\") || ($.eventName = \"UpdatePassword\") || ($.eventName = \"DeleteMfaDeviceForUser\") || ($.eventName = \"UpdateMfaDeviceForUser\") || ($.eventName = \"StartVirtualMfaDeviceRegistration\") || (($.eventName = \"CreateAccessKey\") && ($.requestParameters.userName != \"${var.agent_user_name}\")))"
 
   agent_key_changes = "(($.eventName = \"CreateAccessKey\") || ($.eventName = \"UpdateAccessKey\") || ($.eventName = \"DeleteAccessKey\")) && ($.requestParameters.userName = \"${var.agent_user_name}\")"
 }
@@ -409,9 +409,24 @@ resource "aws_iam_policy" "agent_no_escalation" {
       },
       {
         # Fable seat 2, E6: Identity Center is Karim's way in; after the first apply only he changes it, with MFA.
-        Sid      = "IdentityCenterStays"
+        # Every write in the three Identity Center namespaces, by verb (Fable B2 on #793): the deployer user must
+        # not be able to reset Karim's password, remove his MFA or change his permission set. Reads stay, so
+        # Terraform can still refresh. Verbs checked against the AWS service reference, 15 Nov 2026.
+        Sid    = "IdentityCenterStays"
+        Effect = "Deny"
+        Action = [
+          "sso-directory:*",
+          "sso:Add*", "sso:Associate*", "sso:Attach*", "sso:Create*", "sso:Delete*", "sso:Detach*", "sso:Disassociate*",
+          "sso:Import*", "sso:Provision*", "sso:Put*", "sso:Remove*", "sso:Start*", "sso:Update*",
+          "identitystore:Add*", "identitystore:Create*", "identitystore:Delete*", "identitystore:Remove*",
+          "identitystore:Reserve*", "identitystore:Update*",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid      = "NoNewAccountsOrDelegates"
         Effect   = "Deny"
-        Action   = ["sso:CreateAccountAssignment", "sso:DeleteAccountAssignment", "sso:CreatePermissionSet", "sso:UpdatePermissionSet", "sso:AttachManagedPolicyToPermissionSet", "sso:PutInlinePolicyToPermissionSet", "sso:ProvisionPermissionSet", "identitystore:CreateUser", "identitystore:UpdateUser", "identitystore:CreateGroupMembership"]
+        Action   = ["organizations:RegisterDelegatedAdministrator", "organizations:CreateAccount", "organizations:CreateGovCloudAccount", "organizations:InviteAccountToOrganization"]
         Resource = "*"
       },
       {

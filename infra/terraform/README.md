@@ -650,18 +650,23 @@ Owner decision, rationale and runbook: osra-security#27 (private).
   stack by the deployer user that touches them fails by design.
 - **Ahmed's six conditions for the access exception** (#637 comment 6881460052; Karim's OK 14 Nov 23:54 UAE):
   1. *No erasing evidence or backups:* the user's three managed deny policies here, and in osra-production the
-     service control policy `osra-agent-cannot-erase-evidence` (`org-audit/agent_guardrails.tf`) on
-     `OrganizationAccountAccessRole`, the agents' only way in. Karim's Identity Center roles are not affected.
+     service control policy `osra-agent-cannot-erase-evidence` (`org-audit/agent_guardrails.tf`), which binds
+     every principal there except Karim's Identity Center roles, so a role the agents create there is bound too.
+     AWS Backup's own role may still expire recovery points, and no one but Karim may change it or create a role
+     under `aws-reserved/`. The policy type must be enabled on the organisation root (checked 15 Nov: enabled).
      RDS deletion protection has no IAM condition key, so deleting the instance, snapshots, automated backups
      and recovery points is denied instead; only the restore drill's `*-restore-drill-*` instance stays deletable.
   2. *No self-escalation:* own keys only, no changes to its own policies, and every role it creates or changes
      here carries `osra-management-role-boundary` (`org-audit/role_boundary.tf`); roles are passed only to
-     CloudTrail, EventBridge, Backup and Config; no new identity providers or Identity Center access.
+     CloudTrail, EventBridge, Backup and Config; no new identity providers, no new accounts or delegated
+     administrators, and no Identity Center writes at all (`sso-directory:*`, every `sso:`/`identitystore:` write
+     verb), so the key cannot reset Karim's password or MFA.
   3. *Key age:* AWS Config rule `osra-access-keys-rotated` (100 days) mails both alarm addresses. Claude rotates
      monthly.
   4. *Key store:* `move-agent-key-to-store.sh` (once) moves the key into a Windows DPAPI store under Karim's
      Windows user; the profile reads it through `agent-credential.ps1` (`credential_process`), and
-     `rotate-agent-key.sh` writes new keys there. The key is never put in a repository, a CI secret, a cloud
+     `rotate-agent-key.sh` writes new keys there and reads the store back, refusing to go on unless it holds the
+     new key id. The key is never put in a repository, a CI secret, a cloud
      agent session or a chat.
   5. *Use from outside Karim's network* raises an alarm and blocks nothing.
   6. *Root:* osra-production has no root password, keys or MFA (centralised root management, recovery through

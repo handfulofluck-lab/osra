@@ -66,7 +66,7 @@ resource "aws_iam_policy" "role_boundary" {
       {
         Sid      = "NoNewWaysIn"
         Effect   = "Deny"
-        Action   = ["iam:CreateOpenIDConnectProvider", "iam:UpdateOpenIDConnectProviderThumbprint", "iam:AddClientIDToOpenIDConnectProvider", "iam:CreateSAMLProvider", "iam:UpdateSAMLProvider", "sso:*", "identitystore:Create*", "identitystore:Update*"]
+        Action   = ["iam:CreateOpenIDConnectProvider", "iam:UpdateOpenIDConnectProviderThumbprint", "iam:AddClientIDToOpenIDConnectProvider", "iam:CreateSAMLProvider", "iam:UpdateSAMLProvider", "sso:*", "sso-directory:*", "identitystore:Add*", "identitystore:Create*", "identitystore:Delete*", "identitystore:Remove*", "identitystore:Update*", "organizations:RegisterDelegatedAdministrator", "organizations:CreateAccount", "organizations:InviteAccountToOrganization"]
         Resource = "*"
       },
       {

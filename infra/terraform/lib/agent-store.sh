@@ -7,5 +7,15 @@ agent_store_write() { # id secret
   local win
   win=$(cygpath -w "$AGENT_STORE")
   printf '%s\n%s\n' "$1" "$2" | OSRA_STORE="$win" powershell.exe -NoProfile -NonInteractive -Command \
-    '$t = [Console]::In.ReadToEnd(); ConvertTo-SecureString $t -AsPlainText -Force | ConvertFrom-SecureString | Set-Content -NoNewline -Path $env:OSRA_STORE'
+    '$ErrorActionPreference = "Stop"; $t = [Console]::In.ReadToEnd(); ConvertTo-SecureString $t -AsPlainText -Force | ConvertFrom-SecureString | Set-Content -NoNewline -Path $env:OSRA_STORE'
+}
+
+# Prints only the access key id the store holds now, read back through agent-credential.ps1 exactly as the
+# AWS CLI reads it. The secret stays inside PowerShell and is never printed (Fable B3 on #793).
+agent_store_id() {
+  local win helper
+  win=$(cygpath -w "$AGENT_STORE")
+  helper=$(cygpath -w "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/agent-credential.ps1")
+  OSRA_STORE="$win" OSRA_HELPER="$helper" powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \
+    '$ErrorActionPreference = "Stop"; (& $env:OSRA_HELPER -Store $env:OSRA_STORE | ConvertFrom-Json).AccessKeyId' | tr -d '\r'
 }

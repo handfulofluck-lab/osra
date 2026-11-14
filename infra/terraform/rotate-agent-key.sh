@@ -62,8 +62,12 @@ rm -f "$tmp/new"
 [ -n "$new_id" ] && [ -n "${new_secret:-}" ] || { echo "create-access-key returned nothing usable" >&2; exit 1; }
 
 if [ "$mode" = store ]; then
-  agent_store_write "$new_id" "$new_secret"
+  agent_store_write "$new_id" "$new_secret" || { echo "could not write the key store $AGENT_STORE" >&2; exit 1; }
   unset new_secret
+  # A write that silently failed would leave the OLD key in the store; the proof below would then pass with it
+  # and the old key would be deleted. So the store must hand back the new id before anything is proven.
+  [ "$(agent_store_id 2>/dev/null)" = "$new_id" ] \
+    || { echo "the key store does not hold the new key after writing it" >&2; exit 1; }
 else
   # Rewrite only this profile's two lines in the credentials file; everything else is kept as it was.
   # The secret reaches awk through its environment, not its arguments (arguments are visible in the process list).

@@ -226,8 +226,25 @@ run "ahmed_controls_fit_and_reach_production" {
     error_message = "the evidence SCP must fit the 5,120-character limit and be attached to osra-production"
   }
   assert {
-    condition     = alltrue([for a in ["OrganizationAccountAccessRole", "rds:DeleteDBSnapshot", "backup:DeleteRecoveryPoint", "guardduty:DeleteDetector", "cloudtrail:StopLogging", "config:StopConfigurationRecorder", "cloudwatch:DeleteAlarms", "kms:ScheduleKeyDeletion", "-restore-drill-"] : strcontains(aws_organizations_policy.agent_cannot_erase_evidence.content, a)])
-    error_message = "the SCP must bind the agents' role on audit services, logs, alarms, keys and backups, leaving only the drill instance deletable"
+    condition     = alltrue([for a in ["rds:DeleteDBSnapshot", "backup:DeleteRecoveryPoint", "guardduty:DeleteDetector", "cloudtrail:StopLogging", "config:StopConfigurationRecorder", "cloudwatch:DeleteAlarms", "cloudwatch:SetAlarmState", "kms:ScheduleKeyDeletion", "-restore-drill-"] : strcontains(aws_organizations_policy.agent_cannot_erase_evidence.content, a)])
+    error_message = "the SCP must cover audit services, logs, alarms, keys and backups, leaving only the drill instance deletable"
+  }
+  assert {
+    # Fable B1: every statement is a Deny that binds every principal except Karim's Identity Center roles
+    # (ArnNotLike, not ArnLike on one role name); only the Backups statement also spares AWS Backup's own role.
+    condition = alltrue([for st in jsondecode(aws_organizations_policy.agent_cannot_erase_evidence.content).Statement :
+      st.Effect == "Deny" && jsonencode(st.Condition) == jsonencode({ ArnNotLike = { "aws:PrincipalArn" = (st.Sid == "Backups"
+        ? ["arn:aws:iam::*:role/aws-reserved/sso.amazonaws.com/*", "arn:aws:iam::111111111111:role/osra-production-backup"]
+      : ["arn:aws:iam::*:role/aws-reserved/sso.amazonaws.com/*"]) } })
+    ])
+    error_message = "every SCP statement must deny all principals except Karim's Identity Center roles (and, for Backups only, AWS Backup's role)"
+  }
+  assert {
+    condition = anytrue([for st in jsondecode(aws_organizations_policy.agent_cannot_erase_evidence.content).Statement :
+      st.Sid == "ReservedAndBackupRolesStay" && contains(st.Action, "iam:CreateRole") && contains(st.Action, "iam:UpdateAssumeRolePolicy")
+      && jsonencode(st.Resource) == jsonencode(["arn:aws:iam::*:role/aws-reserved/*", "arn:aws:iam::111111111111:role/osra-production-backup"])
+    ])
+    error_message = "no one but Karim may create or re-trust a role under aws-reserved/ or change AWS Backup's role"
   }
   assert {
     condition     = jsondecode(aws_config_config_rule.access_keys_rotated.input_parameters).maxAccessKeyAge == "100" && aws_cloudwatch_event_target.access_key_too_old.arn == aws_sns_topic.access_alarms.arn
@@ -243,11 +260,11 @@ run "roles_carry_the_boundary" {
     error_message = "every role this stack makes in the management account must carry the boundary"
   }
   assert {
-    condition     = alltrue([for a in ["iam:PermissionsBoundary", "iam:PassedToService", "iam:DeleteRolePermissionsBoundary", "osra-management-role-boundary", "iam:CreateOpenIDConnectProvider", "iam:CreateSAMLProvider", "sso:CreateAccountAssignment", "sso:CreatePermissionSet", "identitystore:CreateUser"] : strcontains(aws_iam_policy.agent_no_escalation.policy, a)])
+    condition     = alltrue([for a in ["iam:PermissionsBoundary", "iam:PassedToService", "iam:DeleteRolePermissionsBoundary", "osra-management-role-boundary", "iam:CreateOpenIDConnectProvider", "iam:CreateSAMLProvider", "sso-directory:*", "sso:Create*", "sso:Delete*", "sso:Put*", "sso:Update*", "identitystore:Delete*", "identitystore:Update*", "organizations:RegisterDelegatedAdministrator"] : strcontains(aws_iam_policy.agent_no_escalation.policy, a)])
     error_message = "the deployer user must be held to the boundary when it creates or changes roles, pass roles only to this stack's services, and register no identity provider or Identity Center access (Fable E4-E6)"
   }
   assert {
-    condition     = alltrue([for a in ["cloudtrail:StopLogging", "s3:BypassGovernanceRetention", "backup:DeleteRecoveryPoint", "iam:CreateAccessKey", "organizations:DetachPolicy"] : strcontains(aws_iam_policy.role_boundary.policy, a)])
+    condition     = alltrue([for a in ["cloudtrail:StopLogging", "s3:BypassGovernanceRetention", "backup:DeleteRecoveryPoint", "iam:CreateAccessKey", "organizations:DetachPolicy", "sso-directory:*", "identitystore:Delete*", "organizations:RegisterDelegatedAdministrator"] : strcontains(aws_iam_policy.role_boundary.policy, a)])
     error_message = "the boundary must repeat the watcher denies"
   }
 }
