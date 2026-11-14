@@ -298,6 +298,12 @@
       "time": { "type": "String" }
     }
   },
+  "accuracyShort": "±{meters} m",
+  "@accuracyShort": {
+    "placeholders": {
+      "meters": { "type": "int" }
+    }
+  },
   "mapPreview": "Map preview",
   "locationHistoryLoadFailed": "Failed to load history: {error}",
   "@locationHistoryLoadFailed": {
@@ -820,6 +826,13 @@
       "count": { "type": "int" }
     }
   },
+  "alertTechnicalDetails": "Technical details",
+  "relativeOverHoursAgo": "more than {count}h ago",
+  "@relativeOverHoursAgo": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
   "relativeDaysAgo": "{count}d ago",
   "@relativeDaysAgo": {
     "placeholders": {
@@ -1289,6 +1302,50 @@
   "alertTitleUnknownContact": "Unknown contact",
   "alertTitleGeneric": "Alert",
     "alertPushBodyGeneric": "Open OSRA to see the details.\nProtecting your family at all times.",
+    "alertSosWhereMinutes": "{n, plural, =1{Last location: {coords}, 1 min ago} other{Last location: {coords}, {n} min ago}}",
+    "@alertSosWhereMinutes": {
+      "description": "#672: the SOS fix named with its coordinates and its age, one whole line per plural case (Arabic Language Bureau rule). The app wraps {coords} in LRI/PDI so the pair keeps its order in a right-to-left line.",
+      "placeholders": {"n": {"type": "int"}, "coords": {"type": "String"}}
+    },
+    "alertSosWhereHours": "{n, plural, =1{Last location: {coords}, more than 1 hour ago} other{Last location: {coords}, more than {n} hours ago}}",
+    "@alertSosWhereHours": {
+      "description": "#672: the same line for a fix an hour or more old; hours round down and the line says «more than».",
+      "placeholders": {"n": {"type": "int"}, "coords": {"type": "String"}}
+    },
+    "alertSosLocationMinutes": "{n, plural, =1{Location from 1 min ago. Tap to see it on the map.} other{Location from {n} min ago. Tap to see it on the map.}}",
+    "@alertSosLocationMinutes": {
+      "description": "#672, UI/UX Bureau: the notification body. A location exists and is this old — no coordinates on a lock screen; a tap opens the alert.",
+      "placeholders": {"n": {"type": "int"}}
+    },
+    "alertSosLocationHours": "{n, plural, =1{Location from more than 1 hour ago. Tap to see it on the map.} other{Location from more than {n} hours ago. Tap to see it on the map.}}",
+    "@alertSosLocationHours": {
+      "description": "#672: the notification body for a fix an hour or more old; hours round down and the line says «more than».",
+      "placeholders": {"n": {"type": "int"}}
+    },
+    "alertLocationAccuracy": "accurate to about {m} m",
+    "@alertLocationAccuracy": {
+      "description": "#672, UI/UX Bureau: the detail line's accuracy clause, shown only when the fix carries one.",
+      "placeholders": {"m": {"type": "int"}}
+    },
+    "alertCopyCoordinates": "Copy coordinates",
+    "@alertCopyCoordinates": {
+      "description": "#672, UI/UX Bureau: quiet action in the SOS alert's detail; copies five decimals, left to right."
+    },
+    "alertCoordinatesCopied": "Coordinates copied",
+    "@alertCoordinatesCopied": {
+      "description": "#672: short confirmation after Copy coordinates."
+    },
+    "alertOpenInMaps": "Open in Maps",
+    "@alertOpenInMaps": {
+      "description": "#672, UI/UX Bureau: hands the fix to the phone's own maps app, for a build whose in-app map cannot draw."
+    },
+    "alertShowOnMap": "Show on map",
+    "@alertShowOnMap": {
+      "description": "#672: the SOS alert's primary action, the family map opened on its fix."
+    },
+    "@alertShowOnMap": {
+      "description": "#672: the SOS alert's action that opens the family map on its fix."
+    },
   "riskSelfHarm": "Self-harm",
   "riskSubstanceUse": "Substance use",
   "riskSubstanceAbuse": "Substance abuse",
@@ -1299,12 +1356,12 @@
   "riskViolence": "Violence",
   "riskHateSpeech": "Hate speech",
   "riskAiConcern": "Concerning content",
-  "phoneSetupOtherSpaceClone": "This phone has a second space for cloned apps (Dual Messenger).",
-  "@phoneSetupOtherSpaceClone": {"description": "Phone setup row (osra-security#6): the capability report's profiles.kinds holds clone. Arabic is a draft pending Karim's review."},
+  "phoneSetupOtherSpaceClone": "This phone has another secure space that may run cloned apps (more than one copy of the same app). OSRA may not be able to monitor it until it is turned off in the phone's Settings.",
+  "@phoneSetupOtherSpaceClone": {"description": "Phone setup row (osra-security#6): the capability report's profiles.kinds holds clone. Arabic wording by Karim (2026-11-11)."},
   "phoneSetupOtherSpaceWork": "This phone has a work profile.",
-  "@phoneSetupOtherSpaceWork": {"description": "Phone setup row (osra-security#6): profiles.kinds holds work. Arabic is a draft pending Karim's review."},
+  "@phoneSetupOtherSpaceWork": {"description": "Phone setup row (osra-security#6): profiles.kinds holds work. Arabic approved by Karim."},
   "phoneSetupOtherSpaceOther": "This phone has another space. OSRA may not reach the apps inside it.",
-  "@phoneSetupOtherSpaceOther": {"description": "Phone setup row (osra-security#6): profiles.kinds holds other or secure_folder. Arabic is a draft pending Karim's review."},
+  "@phoneSetupOtherSpaceOther": {"description": "Phone setup row (osra-security#6): profiles.kinds holds other or secure_folder. Arabic approved by Karim."},
   "phoneSetupTitle": "Phone setup",
   "phoneSetupNeverReported": "This phone has not reported what it can do yet.",
   "phoneSetupReported": "Reported {age}",

@@ -116,7 +116,7 @@ void main() {
             'dailyEmail': true,
             'weeklyEmail': false,
             'pushEnabled': true,
-            'emails': ['qa@familyshield.dev'],
+            'emails': ['qa@osratech.com'],
           },
       // Family screen: one pending invite with every permission, so the
       // longest subtitle it can render is on screen at 320 px.
@@ -124,7 +124,7 @@ void main() {
             'items': [
               {
                 'id': 'inv-1',
-                'email': 'grandma@familyshield.dev',
+                'email': 'grandma@osratech.com',
                 'role': 'guardian',
                 'status': 'pending',
                 'permissions': ['rules', 'location', 'alerts', 'social'],
@@ -132,7 +132,7 @@ void main() {
               },
               {
                 'id': 'inv-2',
-                'email': 'accepted@familyshield.dev',
+                'email': 'accepted@osratech.com',
                 'role': 'co-parent',
                 'status': 'accepted',
                 'permissions': ['rules'],
@@ -444,7 +444,7 @@ void main() {
       await tester.pumpWidget(themedApp(const FamilyScreen(), designApi()));
       await tester.pumpAndSettle();
       expect(find.text('Parents'), findsOneWidget);
-      expect(find.text('grandma@familyshield.dev'), findsOneWidget);
+      expect(find.text('grandma@osratech.com'), findsOneWidget);
 
       await tester.tap(find.text('Invite member'));
       await tester.pumpAndSettle();

@@ -47,7 +47,7 @@ void main() {
 
   Future<void> fillRegister(
     WidgetTester tester, {
-    String email = 'new@familyshield.dev',
+    String email = 'new@osratech.com',
     String password = validPassword,
     String familyName = 'Rivera',
     String displayName = 'Sam',
@@ -184,7 +184,7 @@ void main() {
       final api = FakeApiClient(standardRoutes());
       await pumpLogin(tester, api, locale: const Locale('ar'));
       await tester.enterText(fieldByLabel(ar.serverLabel), 'http://testserver');
-      await tester.enterText(fieldByLabel(ar.emailLabel), 'new@familyshield.dev');
+      await tester.enterText(fieldByLabel(ar.emailLabel), 'new@osratech.com');
       await tester.enterText(fieldByLabel(ar.passwordLabel), 'short');
       await tester.tap(find.text(ar.createAccount));
       await tester.pumpAndSettle();

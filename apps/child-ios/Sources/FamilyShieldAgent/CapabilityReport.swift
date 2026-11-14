@@ -129,16 +129,27 @@ public struct CapabilityReport: Equatable {
 }
 
 extension CapabilityReport.Client {
-    /// This build, from the bundle. Debug builds are `dev`; a release with a sandbox receipt is TestFlight.
+    /// This build, from the bundle (#693). Debug builds are `dev`. A build that still carries its provisioning
+    /// profile (`embedded.mobileprovision`) was signed by a developer, for a device or ad hoc, so it is `dev` too:
+    /// App Store and TestFlight signing removes the profile. Only then does the receipt tell TestFlight (sandbox)
+    /// from the App Store.
     public static func current(bundle: Bundle = .main) -> CapabilityReport.Client {
         let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
         let build = Int(bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "") ?? 0
         #if DEBUG
-        let flavour = CapabilityReport.Flavour.dev
+        let isDebug = true
         #else
-        let flavour: CapabilityReport.Flavour =
-            bundle.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt" ? .testflight : .appstore
+        let isDebug = false
         #endif
+        let flavour = Self.flavour(isDebug: isDebug,
+                                   hasEmbeddedProfile: bundle.path(forResource: "embedded", ofType: "mobileprovision") != nil,
+                                   receiptName: bundle.appStoreReceiptURL?.lastPathComponent)
         return CapabilityReport.Client(version: version, build: build, flavour: flavour)
+    }
+
+    /// The decision, pure so each kind of build has a row.
+    public static func flavour(isDebug: Bool, hasEmbeddedProfile: Bool, receiptName: String?) -> CapabilityReport.Flavour {
+        if isDebug || hasEmbeddedProfile { return .dev }
+        return receiptName == "sandboxReceipt" ? .testflight : .appstore
     }
 }

@@ -15,8 +15,10 @@
 | Path | Purpose |
 |---|---|
 | `FamilyShield.Agent.MacOS.csproj` | `net8.0-macos` (Microsoft.NET.Sdk, nullable + implicit usings). References **Microsoft.Data.Sqlite 8.0.6** and **System.Reactive 6.0.1** only — deliberately **no Titanium.Web.Proxy**: macOS traffic filtering is entitlement-bound via NetworkExtension, not a user-space WinINET proxy. |
-| `Services/PortableStatus.cs` | The one working service: writes `~/Library/Application Support/FamilyShield/status.json` every 60 s with `state` / `paused` / `updatedAt` placeholders. Proves the folder compiles, runs, and persists state on macOS. |
-| `Program.cs` | Entry point that starts `PortableStatus`. |
+| `Services/PortableStatus.cs` | The one working service: writes `~/Library/Application Support/OSRA/status.json` every 60 s with `state` / `paused` / `updatedAt` placeholders. Proves the folder compiles, runs, and persists state on macOS. |
+| `Services/DataFolderMigration.cs` | One-time migration of the legacy `~/Library/Application Support/FamilyShield` folder to `~/Library/Application Support/OSRA` (issue #608). Renames the legacy folder when the new folder is absent; leaves both intact when both exist. A failed rename is reported (not thrown) and always leaves the legacy folder untouched. |
+| `tests/FamilyShield.Agent.MacOS.Tests/` | Pure `net8.0` xunit target (Windows/Linux-runnable, linked sources) covering the migration's old-only, both-present, neither/idempotent, move-failure, and active-path cases. |
+| `Program.cs` | Entry point that starts `PortableStatus` and returns its exit code (non-zero when the migration fails). |
 | `scripts/build-macos.sh` | `dotnet publish -c Release -r osx-arm64` (default) or `osx-x64`, self-contained, to `dist/<rid>/`. |
 | `scripts/run-macos.sh` | `dotnet run` for dev (framework-dependent). |
 
@@ -62,11 +64,16 @@ this phase ships scaffolding + scripts instead of a compiled agent:
 
 1. On a Mac with the .NET 8 SDK: `bash scripts/build-macos.sh` (or `osx-x64`) publishes a
    self-contained `FamilyShield.Agent.MacOS` binary; `bash scripts/run-macos.sh` starts it
-   and creates/updates `~/Library/Application Support/FamilyShield/status.json` every 60 s.
+   and creates/updates `~/Library/Application Support/OSRA/status.json` every 60 s.
 2. That is the entire verified scope: **status file I/O only**. No pairing, no rule sync,
    no filtering, no telemetry — those arrive service-by-service per the porting map.
 3. csproj XML inspected on Windows; `net8.0-macos` compilation is Mac-only by definition
    (Apple SDK bindings). Do not attempt to build this folder on Windows.
+4. The one-time FamilyShield→OSRA migration (`Services/DataFolderMigration.cs`) is pure .NET
+   and is covered by the Windows/Linux-runnable `tests/FamilyShield.Agent.MacOS.Tests/` project
+   (`dotnet test`), which `.github/workflows/agent-macos.yml` runs on `ubuntu-latest` when
+   `apps/agent-macos/**` changes. On a migration I/O failure the app prints a clear message to
+   stderr and exits non-zero rather than crashing.
 
 ## Next steps (in order)
 

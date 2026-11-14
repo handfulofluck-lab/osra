@@ -103,8 +103,8 @@ If this loads, every app below will work. If not, see *Troubleshooting*.
 3. Open **OSRA**:
    - **Server**: `https://<your-tunnel-url>` (the field is above the email box; it is
      saved for future launches).
-   - Sign in with the demo account **demo@familyshield.dev /
-     CorrectHorseBatteryStaple!** (seeded family with child "Alex"), or tap
+   - Sign in with the demo account **demo@osratech.com** (password is the local
+     seed default, defined in `services/api/scripts/seed-password.ts`; seeded family with child "Alex"), or tap
      *Create account* to register a fresh family (choose region US/EU/UK/OTHER).
 
 You should land on the dashboard showing the seeded child, device status and battery.
@@ -158,7 +158,7 @@ SafeSearch rewrites apply to HTTPS too.
   apps), WinHTTP/service traffic and VPN tunnels bypass the proxy; a child who removes the
   local root CA or disables the proxy is reported by the tamper check but not prevented.
 - **The root CA is the trust anchor.** The private key sits in
-  `%LOCALAPPDATA%\FamilyShield\rootCert.pfx`, readable by the logged-in (child) user, and the
+  `%LOCALAPPDATA%\OSRA\rootCert.pfx`, readable by the logged-in (child) user, and the
   public key is trusted for that user until removed. Inspection therefore protects against
   ordinary browsing, not against a child who can read that file or install another trusted
   root. Do not treat it as tamper-proof.

@@ -61,7 +61,7 @@ echo [5/5] Starting API on port 3000...
 echo.
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4"') do echo    LAN address candidate: http://%%a:3000
 echo.
-echo    Demo parent login:  demo@familyshield.dev / CorrectHorseBatteryStaple!
+echo    Demo parent login:  demo@osratech.com / local seed default in services/api/scripts/seed-password.ts
 echo.
 node dist\server.js
 goto :eof
