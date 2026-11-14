@@ -125,6 +125,25 @@ class PinLockoutTest {
     }
 
     @Test
+    fun `a reboot with no readable boot count still costs one window and no more`() {
+        // Settings.Global.BOOT_COUNT could not be read on either side, so the count is NO_BOOT both times and
+        // says nothing. The monotonic clock reading lower than the stored one is the reboot.
+        val state = PinLockout.State(
+            failures = 5,
+            lastFailureMs = wall,
+            lastFailureElapsedMs = elapsedAfter(0) + 10L * 24 * 60 * 60 * 1000,
+            lastFailureBootCount = PinLockout.NO_BOOT,
+        )
+        val afterReboot = PinLockout.anchored(state, wall, 2_000L, PinLockout.NO_BOOT)
+        assertNotEquals("the state changed, so the activity has something to persist", state, afterReboot)
+        assertTrue("a full window from the first read after boot", PinLockout.isLocked(afterReboot, 2_000L))
+        assertFalse(
+            "not ten days until the old uptime is caught up with: one window, then open",
+            PinLockout.isLocked(afterReboot, 62_000L),
+        )
+    }
+
+    @Test
     fun `one alert per lockout, and a new lockout is a new alert`() {
         var state = PinLockout.CLEARED
         repeat(4) { state = PinLockout.recordFailure(state, wall, elapsedAfter(0), boot) }

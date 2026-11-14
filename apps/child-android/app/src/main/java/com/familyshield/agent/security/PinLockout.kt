@@ -60,11 +60,17 @@ object PinLockout {
      *
      * Called on every open and on every attempt, before [isLocked]: after a reboot the monotonic clock has
      * restarted, so the stored reading means nothing and the window starts again from here. A state whose
-     * boot matches, or that is not locked, comes back unchanged so the caller can skip the write.
+     * boot matches **and** whose monotonic reading has not gone backwards, or that is not locked, comes back
+     * unchanged so the caller can skip the write.
+     *
+     * The elapsed comparison matters on its own: when `Settings.Global.BOOT_COUNT` cannot be read, both
+     * sides carry [NO_BOOT] and the boot count proves nothing. A monotonic clock that reads lower than the
+     * stored one is proof of a reboot by itself — and without this condition the gate would stay shut until
+     * the new uptime caught up with the old, which on a phone that had been up for days is days.
      */
     fun anchored(state: State, nowWallMs: Long, nowElapsedMs: Long, nowBootCount: Int): State {
         if (state.failures < MAX_ATTEMPTS || state.lastFailureMs == 0L) return state
-        if (nowBootCount == state.lastFailureBootCount) return state
+        if (nowBootCount == state.lastFailureBootCount && nowElapsedMs >= state.lastFailureElapsedMs) return state
         return state.copy(
             lastFailureMs = nowWallMs,
             lastFailureElapsedMs = nowElapsedMs,
