@@ -81,15 +81,15 @@ describe("digit normalization (#771)", () => {
     expect(normalizeDigits("٠١٢٣٤٥٦")).toBe("0123456");
     expect(normalizeDigits("۱۲۳۴۵۶")).toBe("123456");
     expect(normalizeDigits("1٢3۴ 5\u200E6\u200F7\u061C8")).toBe("12345678");
-    expect(normalizeDigits("٠1٢2۳3۴4۵5۶6")).toBe("0123456");
+    expect(normalizeDigits("٠1٢2۳3۴4۵5۶6")).toBe("012233445566");
   });
 
   it("refuses full-width digits, other scripts and every other character", () => {
-    for (const value of ["１２３４５６", "۱۲۳۴۵۶", "١٢٣٤٥٦", "12a456", "123\n456", "123\t456", "١٢٣٤٥٦٧٨٩0"]) {
+    for (const value of ["１２３４５６", "\u09E7\u09E8\u09E9\u09EA\u09EB\u09EC", "\u0967\u0968\u0969\u096A\u096B\u096C", "12a456", "123\n456", "123\t456"]) {
       expect(normalizeDigits(value)).toBeNull();
     }
     expect(ReauthSchema.safeParse({ password, mfaCode: "１２３４５６" }).success).toBe(false);
-    expect(ReauthSchema.parse({ password, mfaCode: "٠١٢٣٤٥٦" }).mfaCode).toBe("0123456");
+    expect(ReauthSchema.parse({ password, mfaCode: "١٢٣٤٥٦" }).mfaCode).toBe("123456");
   });
 
   it("uses the normalized code for TOTP replay, not only for shape validation", async () => {
@@ -106,9 +106,9 @@ describe("digit normalization (#771)", () => {
 
   it("normalizes reset-code hashes before comparing them", () => {
     const stored = hashResetCode("01234567");
-    expect(resetCodeMatches("٠١٢٣٤٥٦٧٨", stored)).toBe(true);
-    expect(resetCodeMatches("۰۱۲۳۴۵۶۷۸", stored)).toBe(true);
-    expect(resetCodeMatches("٠١٢٣٤٥٦٧٨", hashResetCode("۰۱۲۳۴۵۶۷۸"))).toBe(true);
+    expect(resetCodeMatches("٠١٢٣٤٥٦٧", stored)).toBe(true);
+    expect(resetCodeMatches("۰۱۲۳۴۵۶۷", stored)).toBe(true);
+    expect(resetCodeMatches("٠١٢٣٤٥٦٧", hashResetCode("۰۱۲۳۴۵۶۷"))).toBe(true);
     expect(resetCodeMatches("１２３４５６７８", stored)).toBe(false);
   });
 
@@ -139,16 +139,16 @@ describe("digit normalization (#771)", () => {
 
   it("accepts Arabic and Persian pairing codes, but not full-width or other scripts", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
-    for (const code of ["٠١٢٣٤٥٦", "۱۲۳۴۵۶"]) {
-      store.set("pair:123456", JSON.stringify({ childId: "child-1", familyId: "fam-1" }));
+    for (const [code, ascii] of [["١٢٣٤٥٦", "123456"], ["۱۲۳۴۵۷", "123457"]]) {
+      store.set(`pair:${ascii}`, JSON.stringify({ childId: "child-1", familyId: "fam-1" }));
       const res = await app.inject({
         method: "POST", url: "/v1/devices/pair/claim",
         payload: { code, platform: "android", model: "test-device", osVersion: "14" },
       });
       expect(res.statusCode).toBe(202);
-      expect(store.has("pair:123456")).toBe(true);
+      expect(store.has(`pair:${ascii}`)).toBe(true);
     }
-    for (const code of ["１２３４５６", "۱۲۳۴۵۶"]) {
+    for (const code of ["１２３４５６", "\u09E7\u09E8\u09E9\u09EA\u09EB\u09EC"]) {
       const res = await app.inject({
         method: "POST", url: "/v1/devices/pair/claim",
         payload: { code, platform: "android", model: "test-device", osVersion: "14" },

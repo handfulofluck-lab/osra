@@ -8,12 +8,12 @@ void main() {
     test('maps both approved digit sets, mixed input and approved marks/spaces', () {
       expect(normalizeDigits('٠١٢٣٤٥٦'), '0123456');
       expect(normalizeDigits('۱۲۳۴۵۶'), '123456');
-      expect(normalizeDigits('٠1٢2۳3۴4۵5۶6'), '0123456');
+      expect(normalizeDigits('٠1٢2۳3۴4۵5۶6'), '012233445566');
       expect(normalizeDigits('1٢3۴ 5\u200E6\u200F7\u061C8'), '12345678');
     });
 
     test('rejects full-width digits, other scripts and every other character', () {
-      for (final value in ['１２３４５６', '۱۲۳۴۵۶', '١٢٣٤٥٦', '12a456', '123\n456', '123\t456']) {
+      for (final value in ['１２３４５６', '\u09E7\u09E8\u09E9\u09EA\u09EB\u09EC', '\u0967\u0968\u0969\u096A\u096B\u096C', '12a456', '123\n456', '123\t456']) {
         expect(normalizeDigits(value), isNull);
       }
     });
@@ -32,7 +32,7 @@ void main() {
           ),
         ),
       ));
-      await focus.requestFocus();
+      focus.requestFocus();
 
       await tester.enterText(find.byType(TextField), '٠');
       expect(controller.text, '0');
@@ -64,8 +64,8 @@ void main() {
 
   group('PairQrPayload', () {
     test('normalizes the code before encoding, and rejects full-width digits', () {
-      final payload = PairQrPayload(code: '٠١٢٣٤٥٦', apiBaseUrl: 'https://unit.test');
-      expect(payload.encode(), contains('code=0123456'));
+      final payload = PairQrPayload(code: '١٢٣٤٥٦', apiBaseUrl: 'https://unit.test');
+      expect(payload.encode(), contains('code=123456'));
       expect(
         () => PairQrPayload(code: '１２３４５６', apiBaseUrl: 'https://unit.test').encode(),
         throwsFormatException,
