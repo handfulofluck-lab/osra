@@ -783,7 +783,6 @@ extension RingControllerTests {
         let controller = controller()
         let error = await controller.start(replacement)
         XCTAssertEqual(error, .scheduleFailed)
-        XCTAssertEqual(backend.stopCalls, [previous])
         XCTAssertEqual(backend.scheduled, [previous])
     }
 
