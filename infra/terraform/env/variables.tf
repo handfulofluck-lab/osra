@@ -94,3 +94,204 @@ variable "push_enabled" {
   type        = bool
   default     = false
 }
+
+# --- Account wiring (issue #714). Staging leaves all of these at their defaults. ---
+
+variable "assume_role_arn" {
+  description = "Role the provider (and the backend file) assumes. Empty in staging; production names the deploy role inside osra-production."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.assume_role_arn == "" || can(regex("^arn:aws:iam::[0-9]{12}:role/.+$", var.assume_role_arn))
+    error_message = "assume_role_arn must be empty or an IAM role ARN."
+  }
+}
+
+variable "allowed_account_ids" {
+  description = "Account IDs this stack may touch. Empty = no check (staging). Production pins its own account so a wrong profile fails before planning."
+  type        = list(string)
+  default     = []
+}
+
+variable "state_bucket" {
+  description = "Bucket holding base's state (must match backend/<env>-base.hcl)."
+  type        = string
+  default     = "osra-terraform-state-222207908538-eu-north-1"
+}
+
+variable "state_region" {
+  description = "Region of state_bucket."
+  type        = string
+  default     = "eu-north-1"
+}
+
+variable "base_state_key" {
+  description = "Key of base's state in state_bucket."
+  type        = string
+  default     = "staging/base/terraform.tfstate"
+}
+
+# --- Production settings (issue #714): every default is today's staging value. ---
+
+variable "nat_gateway_count" {
+  description = "NAT gateways: 1 (staging, cost over HA) or 2 (production, one per AZ so losing an AZ does not cut the tasks' outbound path to Secrets Manager, ECR and FCM)."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = contains([1, 2], var.nat_gateway_count)
+    error_message = "nat_gateway_count must be 1 or 2."
+  }
+}
+
+variable "db_allocated_storage" {
+  description = "RDS gp3 storage in GiB."
+  type        = number
+  default     = 20
+}
+
+variable "db_max_allocated_storage" {
+  description = "Storage autoscaling ceiling in GiB; 0 turns autoscaling off (staging)."
+  type        = number
+  default     = 0
+}
+
+variable "db_backup_retention_days" {
+  description = "Automated backups and point-in-time restore window. 0 in throwaway staging; production MUST be above 0 (14)."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.db_backup_retention_days >= 0 && var.db_backup_retention_days <= 35
+    error_message = "db_backup_retention_days must be 0-35."
+  }
+}
+
+variable "db_deletion_protection" {
+  description = "RDS deletion protection. Off so staging's `down` is one command; production MUST be on."
+  type        = bool
+  default     = false
+}
+
+variable "db_skip_final_snapshot" {
+  description = "Skip the final snapshot on destroy. True for staging; production MUST be false."
+  type        = bool
+  default     = true
+}
+
+variable "db_performance_insights" {
+  description = "Performance Insights (7-day retention, the free tier). Off in staging."
+  type        = bool
+  default     = false
+}
+
+variable "db_backup_window" {
+  description = "Daily UTC backup window (hh24:mi-hh24:mi) or null for AWS's choice. Production: 23:00-23:30 UTC = 03:00 UAE."
+  type        = string
+  default     = null
+}
+
+variable "db_maintenance_window" {
+  description = "Weekly UTC maintenance window (ddd:hh24:mi-ddd:hh24:mi) or null for AWS's choice."
+  type        = string
+  default     = null
+}
+
+variable "redis_num_nodes" {
+  description = "Cache nodes in the replication group: 1 in staging, 2 (primary + replica in another AZ) in production."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.redis_num_nodes >= 1 && var.redis_num_nodes <= 3
+    error_message = "redis_num_nodes must be 1-3."
+  }
+}
+
+variable "redis_failover" {
+  description = "Automatic failover and Multi-AZ for the cache. Needs redis_num_nodes >= 2."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.redis_failover || var.redis_num_nodes >= 2
+    error_message = "redis_failover needs redis_num_nodes >= 2."
+  }
+}
+
+variable "redis_transit_encryption" {
+  description = "TLS between the API and the cache. The API then gets a rediss:// URL (ioredis turns TLS on for that scheme). Off in staging."
+  type        = bool
+  default     = false
+}
+
+variable "api_min_count" {
+  description = "Minimum (and initial) API task count. ADR-0028's floor is 2."
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = var.api_min_count >= 2
+    error_message = "api_min_count must be at least 2 (ADR-0028: one task can die without an outage)."
+  }
+}
+
+variable "api_max_count" {
+  description = "Autoscaling ceiling for API tasks: 4 in staging, 6 in production."
+  type        = number
+  default     = 4
+
+  validation {
+    condition     = var.api_max_count >= var.api_min_count
+    error_message = "api_max_count must be >= api_min_count."
+  }
+}
+
+variable "container_insights" {
+  description = "ECS Container Insights (per-metric charge). Off in staging."
+  type        = bool
+  default     = false
+}
+
+variable "alb_deletion_protection" {
+  description = "ALB deletion protection. Off so staging's `down` works; on in production."
+  type        = bool
+  default     = false
+}
+
+variable "waf_enabled" {
+  description = "Attach a WAFv2 web ACL to the ALB: AWS managed Common, KnownBadInputs and IP-reputation rules plus a per-IP rate rule. Off in staging."
+  type        = bool
+  default     = false
+}
+
+variable "waf_rate_limit" {
+  description = "Requests per 5 minutes per client IP before the rate rule matches."
+  type        = number
+  default     = 2000
+}
+
+variable "waf_rate_action" {
+  description = "What the rate rule does on a match: count (first weeks, to learn real traffic) or block."
+  type        = string
+  default     = "count"
+
+  validation {
+    condition     = contains(["count", "block"], var.waf_rate_action)
+    error_message = "waf_rate_action must be count or block."
+  }
+}
+
+variable "alarms_enabled" {
+  description = "Create the SNS alarm topic and the ALB, ECS, RDS and Redis alarms. Off in staging, where the Redis memory alarm still exists without an action."
+  type        = bool
+  default     = false
+}
+
+variable "alarm_email" {
+  description = "Address subscribed to the alarm topic. Set it only in the gitignored tfvars; never commit an address. Empty = topic without subscribers."
+  type        = string
+  default     = ""
+  sensitive   = true
+}

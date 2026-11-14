@@ -6,7 +6,7 @@ resource "aws_ecs_cluster" "main" {
   # Container Insights has a per-metric charge; staging uses task logs and ALB metrics instead.
   setting {
     name  = "containerInsights"
-    value = "disabled"
+    value = var.container_insights ? "enabled" : "disabled"
   }
 
   tags = {
@@ -54,7 +54,7 @@ resource "aws_ecs_task_definition" "api" {
           { name = "TRUST_PROXY", value = "1" },
           # The API fail-closes parent sessions when Redis is unreachable, so this must point at
           # the ElastiCache node from elasticache.tf, never localhost.
-          { name = "REDIS_URL", value = "redis://${aws_elasticache_replication_group.main.primary_endpoint_address}:6379" },
+          { name = "REDIS_URL", value = local.redis_url },
         ],
         var.cors_origin != "" ? [{ name = "CORS_ORIGIN", value = var.cors_origin }] : [],
         # Roadmap 5.8: count a device's request rate so "idle child phone <= 3 requests per 10 min" can be
@@ -112,8 +112,8 @@ resource "aws_lb" "main" {
   # WebSocket clients (parent live view) would be dropped by the 60 s default.
   idle_timeout = 300
 
-  # On-demand staging: `down` must not need a console step.
-  enable_deletion_protection = false
+  # On-demand staging: `down` must not need a console step. Production protects it.
+  enable_deletion_protection = var.alb_deletion_protection
   drop_invalid_header_fields = true
 
   tags = {
@@ -214,8 +214,9 @@ resource "aws_ecs_service" "api" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.api.arn
 
-  # ADR-0028's minimum: two copies so one task can die without an outage.
-  desired_count = 2
+  # ADR-0028's minimum: two copies so one task can die without an outage. Autoscaling owns the count
+  # afterwards, so a later apply must not reset it (ignore_changes below).
+  desired_count = var.api_min_count
   launch_type   = "FARGATE"
 
   # `up` must fail here rather than print a URL for a service whose tasks are crash-looping.
@@ -245,6 +246,10 @@ resource "aws_ecs_service" "api" {
     container_port   = 3000
   }
 
+  lifecycle {
+    ignore_changes = [desired_count]
+  }
+
   depends_on = [
     aws_db_instance.main,
     aws_elasticache_replication_group.main,
@@ -264,9 +269,9 @@ resource "aws_appautoscaling_target" "ecs" {
   scalable_dimension = "ecs:service:DesiredCount"
   resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.api[0].name}"
 
-  # ADR-0028: minimum two copies; four is enough for staging's expected traffic.
-  min_capacity = 2
-  max_capacity = 4
+  # ADR-0028: minimum two copies; staging tops out at four, production at six (#714).
+  min_capacity = var.api_min_count
+  max_capacity = var.api_max_count
 }
 
 resource "aws_appautoscaling_policy" "cpu" {

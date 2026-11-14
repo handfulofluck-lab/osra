@@ -37,7 +37,7 @@ output "publish_role_arn" {
 
 output "bedrock_eval_role_arn" {
   description = "Role ai-eval-bedrock.yml assumes over OIDC to measure candidate models (ADR-0033); empty unless OIDC is configured."
-  value       = local.github_oidc_enabled ? aws_iam_role.bedrock_eval[0].arn : ""
+  value       = local.bedrock_eval_enabled ? aws_iam_role.bedrock_eval[0].arn : ""
 }
 
 output "certificate_arn" {
@@ -52,7 +52,7 @@ output "domain_name" {
 
 output "hosted_zone_id" {
   description = "Route 53 zone that holds the API record, or empty when no hosted_zone_name is set (env then creates no record)."
-  value       = var.hosted_zone_name != "" ? data.aws_route53_zone.main[0].zone_id : ""
+  value       = local.hosted_zone_id
 }
 
 output "log_group_name" {
@@ -63,4 +63,9 @@ output "log_group_name" {
 output "fcm_service_account_secret_arn" {
   description = "Secret holding the FCM service account JSON; its value is written out of band, never by Terraform."
   value       = aws_secretsmanager_secret.fcm_service_account.arn
+}
+
+output "hosted_zone_name_servers" {
+  description = "Name servers of the zone created here (production). The parent zone needs an NS record for hosted_zone_name with these four values; empty when no zone is created."
+  value       = var.create_hosted_zone ? aws_route53_zone.api[0].name_servers : []
 }

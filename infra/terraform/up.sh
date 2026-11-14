@@ -1,8 +1,11 @@
 #!/bin/sh
-# Bring up the on-demand staging stack: base (idempotent), env (per session), then schema + seed.
+# Bring up a stack: base (idempotent), env, then schema (+ demo seed in staging).
 #
-#   ./infra/terraform/up.sh                 # from the repo root
+#   ./infra/terraform/up.sh                 # staging, from the repo root
 #   ./infra/terraform/up.sh -auto-approve   # any extra args go to every apply
+#   OSRA_ENV=production ./infra/terraform/up.sh                       # production: PLAN ONLY
+#   OSRA_ENV=production OSRA_PROD_APPLY=yes ./infra/terraform/up.sh   # production apply (#714):
+#       only with Karim's written go and Ahmed's #637 sign-off for the exact commit.
 #
 # Why the seed step is a one-off ECS task: the RDS instance is private (no public IP, no route
 # from a workstation), so `prisma migrate deploy` must run inside the VPC. The task definition
@@ -12,16 +15,74 @@ set -euo pipefail
 
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
+OSRA_ENV="${OSRA_ENV:-staging}"
+case "$OSRA_ENV" in
+  staging) default_region=eu-north-1 ;;
+  production) default_region=eu-central-1 ;;
+  *) echo "OSRA_ENV must be staging or production (got '$OSRA_ENV')" >&2; exit 1 ;;
+esac
+
 # USD per hour for env at the defaults (db_multi_az = false, 2 Fargate tasks, 1 NAT, 1 ALB,
 # 1 cache node, 3 public IPv4 addresses). Derived from README.md's table / 730 h; keep the two in sync.
 HOURLY_COST_USD="${HOURLY_COST_USD:-0.194}"
 
 : "${AWS_PROFILE:=osra-staging}"
-: "${AWS_REGION:=eu-north-1}"
+: "${AWS_REGION:=$default_region}"
 export AWS_PROFILE AWS_REGION
 
 command -v terraform >/dev/null 2>&1 || { echo "terraform is not on PATH" >&2; exit 1; }
 command -v aws >/dev/null 2>&1 || { echo "aws CLI is not on PATH" >&2; exit 1; }
+
+# Each stack's backend comes from a file (#714). -reconfigure because the same directory serves both
+# environments; it never copies state between them.
+init_stack() {
+  stack=$1
+  backend_file="$HERE/backend/$OSRA_ENV-$stack.hcl"
+  [ -f "$backend_file" ] || { echo "missing $backend_file (copy it from the .example next to it)" >&2; exit 1; }
+  terraform -chdir="$HERE/$stack" init -input=false -reconfigure -backend-config="$backend_file"
+}
+
+if [ "$OSRA_ENV" = production ]; then
+  for stack in base env; do
+    # Terraform loads terraform.tfvars by itself, so a staging file in the same directory would quietly
+    # fill any value production.tfvars leaves out. Refuse rather than plan against a mixed configuration.
+    if [ -f "$HERE/$stack/terraform.tfvars" ]; then
+      echo "refusing production: $stack/terraform.tfvars (staging) is present and would be auto-loaded." >&2
+      echo "Run production from a separate worktree that has only production.tfvars." >&2
+      exit 1
+    fi
+    [ -f "$HERE/$stack/production.tfvars" ] || { echo "missing $stack/production.tfvars (copy the .example)" >&2; exit 1; }
+  done
+
+  echo "==> production base: plan"
+  init_stack base
+  terraform -chdir="$HERE/base" plan -input=false -var-file=production.tfvars -out=production.tfplan
+  echo "==> production env: plan (needs base applied; on a first run it stops here)"
+  init_stack env
+  terraform -chdir="$HERE/env" plan -input=false -var-file=production.tfvars -out=production.tfplan || {
+    echo "    env plan failed. Before base's first apply this is expected: env reads base's state." >&2
+    [ "${OSRA_PROD_APPLY:-}" = yes ] || exit 1
+  }
+
+  if [ "${OSRA_PROD_APPLY:-}" != yes ]; then
+    echo
+    echo "Plan only. Saved plans: base/production.tfplan, env/production.tfplan (gitignored)."
+    echo "Production applies need Karim's written go and Ahmed's #637 sign-off, then OSRA_PROD_APPLY=yes."
+    exit 0
+  fi
+
+  echo "==> production base: apply (the plan saved above, nothing else)"
+  terraform -chdir="$HERE/base" apply -input=false production.tfplan
+  echo "==> production env: plan + apply (service deferred until the schema exists on a first run)"
+  service_state=$(terraform -chdir="$HERE/env" state list 2>/dev/null || true)
+  case "$service_state" in
+    *aws_ecs_service.api*) terraform -chdir="$HERE/env" apply -input=false -var-file=production.tfvars -target=aws_ecs_task_definition.api "$@" ;;
+    *) terraform -chdir="$HERE/env" apply -input=false -var-file=production.tfvars -var api_service_enabled=false "$@" ;;
+  esac
+  # Production migrates only: no demo family in the real database.
+  migrate_command='["node_modules/.bin/prisma","migrate","deploy"]'
+  env_var_args="-var-file=production.tfvars"
+else
 
 # Issue #337: base state is shared in S3, and most of base is `count`-gated on variables that live in a
 # GITIGNORED terraform.tfvars. Without that file the counts evaluate to zero, so the apply does not
@@ -58,7 +119,7 @@ fi
 
 
 echo "==> base (created once; a no-op when nothing changed)"
-terraform -chdir="$HERE/base" init -input=false
+init_stack base
 terraform -chdir="$HERE/base" apply "$@"
 
 # And check what base actually produced before env depends on it. A silent empty output here is how the
@@ -72,7 +133,7 @@ if [ -z "$publish_role_arn" ]; then
 fi
 
 echo "==> env (per session)"
-terraform -chdir="$HERE/env" init -input=false
+init_stack env
 
 # The API exits at boot when the database has no schema, and Terraform waits for a new ECS service
 # to stabilise — so a fresh session creates everything except the service, seeds, then starts it.
@@ -91,8 +152,11 @@ case "$service_state" in
     terraform -chdir="$HERE/env" apply -var api_service_enabled=false "$@"
     ;;
 esac
+migrate_command='["sh","scripts/migrate-and-seed.sh"]'
+env_var_args=""
+fi
 
-echo "==> migrate + seed"
+echo "==> migrate$( [ "$OSRA_ENV" = staging ] && echo ' + seed')"
 cluster=$(terraform -chdir="$HERE/env" output -raw cluster_name)
 taskdef=$(terraform -chdir="$HERE/env" output -raw task_definition_arn)
 subnets=$(terraform -chdir="$HERE/env" output -raw private_subnet_ids)
@@ -107,7 +171,7 @@ task_arn=$(aws ecs run-task \
   --launch-type FARGATE \
   --started-by osra-up-seed \
   --network-configuration "awsvpcConfiguration={subnets=[$subnets],securityGroups=[$sg],assignPublicIp=DISABLED}" \
-  --overrides '{"containerOverrides":[{"name":"api","command":["sh","scripts/migrate-and-seed.sh"]}]}' \
+  --overrides "{\"containerOverrides\":[{\"name\":\"api\",\"command\":$migrate_command}]}" \
   --query 'tasks[0].taskArn' --output text)
 
 echo "    seed task: $task_arn"
@@ -124,10 +188,14 @@ if [ "$exit_code" != "0" ]; then
 fi
 
 echo "==> env (service: created on a fresh session, rolled onto the new image otherwise)"
-terraform -chdir="$HERE/env" apply "$@"
+# shellcheck disable=SC2086 # env_var_args is empty or one flag without spaces
+terraform -chdir="$HERE/env" apply $env_var_args "$@"
 
 echo
 echo "API URL:        $(terraform -chdir="$HERE/env" output -raw api_url)"
+if [ "$OSRA_ENV" = production ]; then
+  exit 0
+fi
 echo "Session start:  $(date -d "@$start_epoch" '+%Y-%m-%d %H:%M:%S %Z')"
 echo "Estimated cost: \$$HOURLY_COST_USD/hour for env (base is ~\$2/month and always on)"
 echo "                ~\$$(awk -v r="$HOURLY_COST_USD" 'BEGIN { printf "%.2f", r * 8 }') per 8-hour session"

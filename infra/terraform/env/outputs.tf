@@ -47,3 +47,8 @@ output "database_url_secret_arn" {
   description = "ARN of the Secrets Manager entry whose current version holds DATABASE_URL."
   value       = data.terraform_remote_state.base.outputs.database_url_secret_arn
 }
+
+output "alarm_topic_arn" {
+  description = "SNS topic the production alarms publish to (empty when alarms are off)."
+  value       = var.alarms_enabled ? aws_sns_topic.alarms[0].arn : ""
+}
