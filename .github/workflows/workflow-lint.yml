@@ -54,6 +54,15 @@ jobs:
           node scripts/check-ci-cost-guardrails.mjs --selftest
           node scripts/check-ci-cost-guardrails.mjs
 
+      - name: up.sh refuses production without a production credential (osra-security#27)
+        # The script defaults AWS_PROFILE to the staging profile, and a production run passes
+        # `-var-file=production.tfvars` through "$@" like any other argument - so the natural way to run
+        # production was with the long-lived staging key on the shared PC. The guard sits first in the
+        # script, so this runs without terraform or the AWS CLI and touches no cloud account.
+        run: |
+          node scripts/check-up-production-guard.mjs --selftest
+          node scripts/check-up-production-guard.mjs
+
       - name: Parse every workflow as YAML (the one thing the structural linter cannot do)
         # `check-workflows.mjs` matches text; it cannot tell that a comment lost its `#` and became a
         # bare line. That is exactly what happened to verified-gate.yml on 2026-10-19: the linter
