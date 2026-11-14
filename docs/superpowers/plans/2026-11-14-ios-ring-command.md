@@ -361,6 +361,16 @@ it("three dismissals in ten seconds create three alerts and one push", async () 
   await postRing({ state: "child_dismissed", ringId: "ring-1", dismissalCount: 3 });
   expect(provider.sent).toHaveLength(1);
 });
+
+it("times dismissal pushes from the last push, not the last recorded dismissal", async () => {
+  const start = new Date("2026-11-14T00:00:00Z");
+  for (const [index, seconds] of [0, 30, 60, 90, 120].entries()) {
+    vi.setSystemTime(start.getTime() + seconds * 1000);
+    await postRing({ state: "child_dismissed", ringId: "ring-1", dismissalCount: index + 1 });
+  }
+  expect(provider.sent).toHaveLength(3);
+  expect(pushTimes(provider)).toEqual([0, 60, 120]);
+});
 ```
 
 - [ ] **Step 2: Run the tests and verify they fail**
@@ -374,7 +384,7 @@ Add `ring` to `AlertCategoryExtended` and `InternalAlertSchema`. Add `alertBodyR
 
 The route maps `(ring, state)` to the server key/params and passes them through #718 validation. Caller `metadata.bodyKey`/`bodyParams` is stripped before the validated pair is written. English fallback remains.
 
-`shouldPush` suppresses only `parent_stopped`. Extend `AlertLike` with the metadata it needs. For `child_dismissed`, `notifyParentsOfAlert` checks for another dismissal alert from the same ring in the previous 60 seconds, excluding the current row. If found, it returns `skipped: "coalesced"` without sending; the parent fetches the latest count through the existing wake. Payload remains only the generic wake marker.
+`shouldPush` suppresses only `parent_stopped`. Extend `AlertLike` with the metadata it needs. For `child_dismissed`, `notifyParentsOfAlert` finds the last **pushed** dismissal of the same ring, excluding the current row; mere recorded dismissals do not restart the window. Push the first dismissal and, once 60 seconds have elapsed since the last pushed dismissal, push the latest count. If less than 60 seconds have elapsed, return `skipped: "coalesced"` without sending. Dismissals at 0, 30, 60, 90 and 120 seconds create five alerts and pushes at 0, 60 and 120 seconds. The parent fetches the latest count through the existing wake. Payload remains only the generic wake marker.
 
 - [ ] **Step 4: Run the tests and verify they pass**
 

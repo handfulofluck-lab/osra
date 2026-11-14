@@ -132,7 +132,7 @@ Severities and push:
 
 Server `shouldPush` suppresses only `parent_stopped`, leaving all existing policies unchanged.
 
-Every dismissal is recorded as its own alert with its own dedupe key, but pushes are coalesced: only the first dismissal of a ring pushes immediately; subsequent dismissals within 60 seconds produce at most one push carrying the latest count. Three dismissals in ten seconds therefore produce three alerts and one push. This is recording without flooding, not suppression of the events themselves.
+Every dismissal is recorded as its own alert with its own dedupe key, but pushes are coalesced: the first dismissal of a ring pushes immediately; a later dismissal pushes once 60 seconds have elapsed since the last **pushed** dismissal, carrying the latest count. An unpushed dismissal does not restart the window. Three dismissals in ten seconds therefore produce three alerts and one push; dismissals at 0, 30, 60, 90 and 120 seconds produce five alerts and three pushes at 0, 60 and 120 seconds. This is recording without flooding, not suppression of the events themselves.
 
 Every ring push remains only a wake through the existing generic loc-key path (`PUSH_ALERT_TITLE` / `PUSH_ALERT_BODY`). No state, ring id or dismissal count enters the APNs or FCM payload; the parent app fetches the alert through the authenticated API.
 
