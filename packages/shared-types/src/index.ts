@@ -47,6 +47,10 @@ export const ALERT_BODY_KEYS = [
   "alertBodySearchFlagged",
   "alertBodySocialConcern",
   "alertBodyYouTubeFlagged",
+  "alertBodyRingChildDismissed",
+  "alertBodyRingPinStopped",
+  "alertBodyRingParentStopped",
+  "alertBodyRingTimedOut",
 ] as const;
 export type AlertBodyKey = typeof ALERT_BODY_KEYS[number];
 export type AlertBodyParams = Record<string, string | number>;

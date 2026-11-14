@@ -1,11 +1,16 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { generateKeyPairSync } from "node:crypto";
-import { prismaMock, resetPrismaMock } from "./helpers.js";
+import { MockRedis, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", () => ({ prisma: prismaMock }));
 vi.mock("../src/realtime/gateway.js", () => ({ publishFamilyEvent: vi.fn(async () => undefined) }));
+vi.mock("ioredis", async () => {
+  const { MockRedis } = await import("./helpers.js");
+  return { Redis: MockRedis };
+});
 
 import { FcmProvider, buildAssertion } from "../src/lib/push/fcm.js";
+import { getRedis } from "../src/redis.js";
 import { ApnsProvider, buildProviderToken } from "../src/lib/push/apns.js";
 import {
   buildParentAlertMessage,
@@ -18,7 +23,7 @@ import {
   shouldPush,
 } from "../src/lib/push/notify.js";
 import { enqueueDeviceCommand } from "../src/lib/deviceCommands.js";
-import { raiseAlert } from "../src/lib/alerts.js";
+import { raiseAlert, raiseAlertOnce } from "../src/lib/alerts.js";
 import { publishFamilyEvent } from "../src/realtime/gateway.js";
 import type { PushMessage, PushProvider, PushResult } from "../src/lib/push/types.js";
 
@@ -507,5 +512,134 @@ describe("the child device wake (#319)", () => {
     expect([first.id, second.id]).toEqual(["c-old", "c-old"]);
     expect(prismaMock.deviceCommand.create).not.toHaveBeenCalled();
     expect(wakes).toEqual(["dev-1", "dev-1"]);
+  });
+});
+
+
+describe("ring alert push policy", () => {
+  const ringId = "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6B";
+  const start = Date.parse("2026-11-14T00:00:00Z");
+
+  it("suppresses only parent_stopped", () => {
+    expect(shouldPush({ category: "ring", severity: "info", metadata: { state: "parent_stopped" } }, "info")).toBe(false);
+    expect(shouldPush({ category: "ring", severity: "info", metadata: { state: "pin_stopped" } }, "info")).toBe(true);
+    expect(shouldPush({ category: "ring", severity: "info", metadata: { state: "timed_out" } }, "info")).toBe(true);
+    expect(shouldPush({ category: "ring", severity: "warning", metadata: { state: "child_dismissed" } }, "info")).toBe(true);
+  });
+});
+
+describe("ring dismissal push coalescing", () => {
+  const ringId = "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6B";
+  const start = Date.parse("2026-11-14T00:00:00Z");
+  let provider: FakeProvider;
+  let pushTimes: number[];
+  let reservations: Map<string, string>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    resetPrismaMock();
+    pushTimes = [];
+    reservations = new Map();
+    provider = new FakeProvider(() => {
+      pushTimes.push((Date.now() - start) / 1000);
+      return { ok: true };
+    });
+    setPushProviders([provider]);
+    prismaMock.digestPrefs.findUnique.mockResolvedValue(null);
+    prismaMock.parent.findMany.mockResolvedValue([{ id: "parent-1" }]);
+    prismaMock.parentPushToken.findMany.mockResolvedValue([
+      { id: "token-1", parentId: "parent-1", token: "parent-token", platform: "android" },
+    ]);
+    prismaMock.alert.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+      id: `ring-alert-${prismaMock.alert.create.mock.calls.length}`, createdAt: new Date(), ...data,
+    }));
+    const redis = getRedis() as unknown as MockRedis;
+    redis.eval.mockImplementation(async (script: string, _count: number, key: string, cutoff: string,
+                                         current: string, _ttl: number, previous?: string) => {
+      const old = reservations.get(key) ?? null;
+      if (script.includes("local old")) {
+        if (old !== null && Number(old) > Number(cutoff)) return [0, old];
+        reservations.set(key, current);
+        return [1, old];
+      }
+      if (reservations.get(key) === cutoff) {
+        if (current) reservations.set(key, current);
+        else reservations.delete(key);
+      }
+      return 1;
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    setPushProviders(null);
+  });
+
+  async function dismissal(seconds: number, count: number, id = ringId) {
+    vi.setSystemTime(start + seconds * 1000);
+    return raiseAlertOnce({
+      childId: "child-1", familyId: "fam-1", severity: "warning", category: "ring",
+      title: "Phone ring", body: "The ring alert was dismissed on the phone and has been re-armed.",
+      bodyKey: "alertBodyRingChildDismissed", params: { ringId: id, dismissalCount: count },
+      metadata: { state: "child_dismissed", ringId: id },
+      dedupeKey: `ring:${id}:child_dismissed:${count}`,
+    });
+  }
+
+  it("three dismissals in ten seconds create three alerts and one push", async () => {
+    await dismissal(0, 1);
+    await dismissal(5, 2);
+    await dismissal(10, 3);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(3);
+    expect(provider.sent).toHaveLength(1);
+    expect(JSON.stringify(provider.sent[0].message)).not.toContain(ringId);
+    expect(provider.sent[0].message.data).toEqual({ w: "1" });
+  });
+
+  it("times pushes from the last push, not the last recorded dismissal", async () => {
+    await dismissal(0, 1);
+    expect((await dismissal(30, 2)).alert).toBeDefined();
+    await dismissal(60, 3);
+    await dismissal(90, 4);
+    await dismissal(120, 5);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(5);
+    expect(pushTimes).toEqual([0, 60, 120]);
+  });
+
+  it("returns coalesced inside the window without losing the event", async () => {
+    await dismissal(0, 1);
+    const second = await dismissal(30, 2);
+    expect(second.deduplicated).toBe(false);
+    const stored = prismaMock.alert.create.mock.calls[1][0] as {
+      data: Parameters<typeof notifyParentsOfAlert>[1];
+    };
+    const outcome = await notifyParentsOfAlert("fam-1", { ...stored.data, id: "second-dismissal" });
+    expect(outcome.skipped).toBe("coalesced");
+    expect(provider.sent).toHaveLength(1);
+    expect(reservations.size).toBe(1);
+  });
+
+  it("does not coalesce different rings", async () => {
+    await dismissal(0, 1);
+    await dismissal(0, 1, "0E9D8C7B-6A5F-4E3D-8C2D-1A0F9E8D7C6B");
+    expect(provider.sent).toHaveLength(2);
+  });
+
+  it("releases the reservation after provider failure so a later dismissal can wake", async () => {
+    provider = new FakeProvider((token) => {
+      pushTimes.push((Date.now() - start) / 1000);
+      return provider.sent.length === 1
+        ? { ok: false, invalidToken: false, reason: "temporary" }
+        : { ok: true };
+    });
+    setPushProviders([provider]);
+    const redis = getRedis() as unknown as MockRedis;
+    redis.eval.mockClear();
+    await dismissal(0, 1);
+    expect(redis.eval).toHaveBeenCalledTimes(2);
+    expect(redis.eval.mock.calls[1]?.slice(2)).toEqual([expect.any(String), String(start), "", 600]);
+    expect(reservations.size).toBe(0);
+    await dismissal(10, 2);
+    expect(provider.sent).toHaveLength(2);
   });
 });

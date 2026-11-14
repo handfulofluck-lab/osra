@@ -548,3 +548,86 @@ describe("alerts routes", () => {
     await app.close();
   });
 });
+
+
+describe("ring alert intake", () => {
+  const ringId = "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6B";
+  const fallback: Record<string, string> = {
+    child_dismissed: "The ring alert was dismissed on the phone and has been re-armed.",
+    pin_stopped: "The parent PIN stopped the ring.",
+    parent_stopped: "The parent stopped the ring.",
+    timed_out: "The ring stopped after 5 minutes.",
+  };
+
+  async function fixture() {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    const rows: Array<Record<string, unknown>> = [];
+    prismaMock.alert.findFirst.mockImplementation(async ({ where }: { where: { dedupeKey?: string } }) =>
+      rows.find((row) => row.dedupeKey === where.dedupeKey) ?? null);
+    prismaMock.alert.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+      const row = { id: `ring-alert-${rows.length + 1}`, createdAt: new Date(), ...data };
+      rows.push(row);
+      return row;
+    });
+    async function postRing(state: string, dismissalCount = 0, extraMetadata: Record<string, unknown> = {}) {
+      const dedupeKey = state === "child_dismissed"
+        ? `ring:${ringId}:child_dismissed:${dismissalCount}`
+        : `ring:${ringId}:${state}`;
+      const payload = {
+        childId: CHILD.id, deviceId: "dev-1", severity: state === "child_dismissed" ? "warning" : "info",
+        category: "ring", title: "Phone ring", body: fallback[state], dedupeKey,
+        metadata: { state, ringId, ...extraMetadata },
+      };
+      const raw = JSON.stringify(payload);
+      return app.inject({
+        method: "POST", url: "/v1/alerts/internal",
+        headers: { "content-type": "application/json", ...signV2(SECRET, raw, { caller: "ai-engine" }) },
+        payload: raw,
+      });
+    }
+    return { app, rows, postRing };
+  }
+
+  it("accepts ring and returns the existing alert on dedupe", async () => {
+    const { app, rows, postRing } = await fixture();
+    try {
+      expect((await postRing("child_dismissed", 1)).statusCode).toBe(201);
+      const retry = await postRing("child_dismissed", 1);
+      expect(retry.statusCode).toBe(200);
+      expect(rows).toHaveLength(1);
+      expect(retry.json().alert.metadata.bodyParams.dismissalCount).toBe(1);
+    } finally { await app.close(); }
+  });
+
+  it("strips a device bodyKey and stores the server key", async () => {
+    const { app, postRing } = await fixture();
+    try {
+      const response = await postRing("pin_stopped", 0, {
+        bodyKey: "callerChoice", bodyParams: { ringId: "callerChoice" },
+      });
+      expect(response.statusCode).toBe(201);
+      expect(response.json().alert.metadata.bodyKey).toBe("alertBodyRingPinStopped");
+      expect(response.json().alert.metadata.bodyParams).toEqual({ ringId });
+    } finally { await app.close(); }
+  });
+
+  it("maps all four states, deriving the count from the dedupe key", async () => {
+    const { app, postRing } = await fixture();
+    try {
+      const cases = [
+        ["child_dismissed", 3, "alertBodyRingChildDismissed", { ringId, dismissalCount: 3 }],
+        ["pin_stopped", 0, "alertBodyRingPinStopped", { ringId }],
+        ["parent_stopped", 0, "alertBodyRingParentStopped", { ringId }],
+        ["timed_out", 0, "alertBodyRingTimedOut", { ringId }],
+      ] as const;
+      for (const [state, count, key, params] of cases) {
+        const response = await postRing(state, count);
+        expect(response.statusCode).toBe(201);
+        expect(response.json().alert.metadata.bodyKey).toBe(key);
+        expect(response.json().alert.metadata.bodyParams).toEqual(params);
+        expect(response.json().alert.body).toBe(fallback[state]);
+      }
+    } finally { await app.close(); }
+  });
+});

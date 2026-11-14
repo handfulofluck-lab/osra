@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
-import { raiseAlertOnce } from "../lib/alerts.js";
+import { raiseAlertOnce, ringAlertFields } from "../lib/alerts.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
 import { requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
 
@@ -33,6 +33,7 @@ const InternalAlertSchema = z.object({
     "vpn_detected",
     "install_request",
     "unknown_contact",
+    "ring",
   ]),
   title: z.string().min(1),
   body: z.string().min(1),
@@ -129,6 +130,7 @@ export async function alertsRoutes(app: FastifyInstance) {
       category,
       title,
       body,
+      ...ringAlertFields(category, metadata, dedupeKey),
       metadata,
       dedupeKey,
       attemptCount,
