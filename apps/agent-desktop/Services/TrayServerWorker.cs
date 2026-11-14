@@ -60,7 +60,12 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
             var session = group.First();
             lock (_gate)
             {
-                if (_slots.ContainsKey(session.SessionId)) continue;
+                if (_slots.TryGetValue(session.SessionId, out var existing))
+                {
+                    if (!existing.IsCompleted) continue;
+                    existing.Dispose();
+                    _slots.Remove(session.SessionId);
+                }
                 var slot = new SessionSlot(session, _factory.Create(session.SessionId, session.UserSid), HandleMessage, _log);
                 _slots.Add(session.SessionId, slot);
                 _ = slot.RunAsync();
@@ -126,6 +131,9 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         private readonly Queue<TrayMessage> _pending = new();
         private readonly object _gate = new();
         private readonly CancellationTokenSource _stop = new();
+        private volatile bool _completed;
+
+        public bool IsCompleted => _completed;
 
         public SessionSlot(InteractiveSession session, ITrayServer server,
             Func<int, TrayMessage, CancellationToken, Task> handle, ILogger<TrayServerWorker> log)
@@ -173,8 +181,15 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
             }
             finally
             {
-                if (connection is not null) await connection.DisposeAsync();
-                await _server.DisposeAsync();
+                try
+                {
+                    if (connection is not null) await connection.DisposeAsync();
+                    await _server.DisposeAsync();
+                }
+                finally
+                {
+                    _completed = true;
+                }
             }
         }
 
