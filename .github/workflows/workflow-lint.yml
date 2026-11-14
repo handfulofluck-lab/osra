@@ -54,6 +54,14 @@ jobs:
           node scripts/check-ci-cost-guardrails.mjs --selftest
           node scripts/check-ci-cost-guardrails.mjs
 
+      - name: up.sh never runs production on the staging profile by name (osra#768)
+        # #765 refuses a production run with no AWS_PROFILE. This pins the case it still allowed: a profile
+        # that was given, and is the staging one. The check spawns bash (up.sh needs it for `pipefail`) and
+        # stubs terraform/aws on PATH, so it measures the guard rather than the runner's toolchain.
+        run: |
+          node scripts/check-up-production-credential.mjs --selftest
+          node scripts/check-up-production-credential.mjs
+
       - name: Parse every workflow as YAML (the one thing the structural linter cannot do)
         # `check-workflows.mjs` matches text; it cannot tell that a comment lost its `#` and became a
         # bare line. That is exactly what happened to verified-gate.yml on 2026-10-19: the linter
@@ -202,10 +210,12 @@ jobs:
           node scripts/check-user-visible-brand.mjs --selftest
           node scripts/check-user-visible-brand.mjs
 
-      - name: verified-gate reads a verification only from the agent account
+      - name: verified-gate reads a verification only from the agent account, plus Ahmed's own "— Ahmed"
         # The repository is public and, from 2026-10-23, has a second member working with his own Claude
-        # agent: a comment from any other account that ends "— Claude" must never verify a PR. The
-        # self-test proves the check fails on the pre-fix filter, structurally and under jq.
+        # agent: a comment from any other account that ends "— Claude" must never verify a PR. From
+        # 2026-11-13 (#617) Ahmed's account counts for one thing, a Verified-sha signed "— Ahmed", and a
+        # "— Ahmed" from the agent account never counts. The self-test proves the check fails on twelve
+        # broken gates (an edited comment from his account among them), structurally and under jq.
         run: |
           node scripts/check-verified-gate-signers.mjs --selftest
           node scripts/check-verified-gate-signers.mjs
@@ -221,6 +231,13 @@ jobs:
         # -U0 ids). The patch comparison is kept as a second layer; no fixture isolates it any more, because
         # a clean fold cannot change it.
         run: node scripts/verified-gate-carry.mjs --selftest
+
+      - name: Mesh merge policy never lets an author, or the author's model family, verify alone (AGENTS.md §6.6)
+        # Maintainer 2026-11-13 15:42Z (#617, #719): every PR needs a signer who is not the author and, from R2
+        # up, from another model family; R3 needs a second key (Ahmed or Fable); Bureau lines when the diff
+        # needs them. Each rule has a case that fails without it, including a label trying to lower the tier.
+        run: |
+          node scripts/verified-gate-policy.mjs --selftest | tee /dev/stderr | grep -q '^verified-gate policy self-test: [0-9]* cases pass$'
 
       - name: Check documentation links resolve
         # A documentation set is only navigable if its links work; a moved guide rots the index

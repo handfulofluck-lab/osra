@@ -1,6 +1,6 @@
 import Foundation
 
-#if canImport(UIKit) && canImport(ManagedSettings) && canImport(ManagedSettingsUI)
+#if os(iOS)
 import UIKit
 import ManagedSettings
 import ManagedSettingsUI
@@ -42,10 +42,12 @@ open class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
     private static func makeConfiguration(_ text: ShieldText) -> ShieldConfiguration {
         #if DEBUG
         // #654 device row: what the extension process is told about languages, to confirm the cause.
-        let preferred = Locale.preferredLanguages.joined(separator: ",")
+        let preferred = ShieldText.freshPreferredLanguages().joined(separator: ",")
+        let standard = (UserDefaults.standard.array(forKey: "AppleLanguages") as? [String] ?? []).joined(separator: ",")
         let bundle = Bundle.main.preferredLocalizations.joined(separator: ",")
-        let chosen = ShieldText.preferredLanguage()
-        logger.debug("shield_language preferred=\(preferred, privacy: .public) bundle=\(bundle, privacy: .public) chosen=\(chosen, privacy: .public)")
+        let stored = SharedLanguage.stored() ?? "none"
+        let chosen = ShieldText.resolvedLanguage()
+        logger.debug("shield_language preferred=\(preferred, privacy: .public) standard=\(standard, privacy: .public) locale=\(Locale.current.identifier, privacy: .public) bundle=\(bundle, privacy: .public) stored=\(stored, privacy: .public) chosen=\(chosen, privacy: .public)")
         #endif
         return ShieldConfiguration(
             backgroundBlurStyle: nil,
@@ -74,7 +76,7 @@ open class FamilyShieldShieldActionDelegate: ShieldActionDelegate {
         for application: ApplicationToken,
         completionHandler: @escaping (ShieldActionResponse) -> Void
     ) {
-        respond(to: action, completionHandler: completionHandler)
+        respond(to: action, target: Self.target("app", application), completionHandler: completionHandler)
     }
 
     /// Handles a shield action raised for a blocked website.
@@ -83,7 +85,7 @@ open class FamilyShieldShieldActionDelegate: ShieldActionDelegate {
         for webDomain: WebDomainToken,
         completionHandler: @escaping (ShieldActionResponse) -> Void
     ) {
-        respond(to: action, completionHandler: completionHandler)
+        respond(to: action, target: Self.target("web", webDomain), completionHandler: completionHandler)
     }
 
     /// ADR-0037: a tap on the shield of an app blocked through a group's category; Ask parent works the same.
@@ -92,12 +94,19 @@ open class FamilyShieldShieldActionDelegate: ShieldActionDelegate {
         for category: ActivityCategoryToken,
         completionHandler: @escaping (ShieldActionResponse) -> Void
     ) {
-        respond(to: action, completionHandler: completionHandler)
+        respond(to: action, target: Self.target("category", category), completionHandler: completionHandler)
+    }
+
+    /// An opaque local key for the shielded app, website or category (#744). Tokens are Codable; the key never
+    /// leaves the app group.
+    private static func target<T: Encodable>(_ kind: String, _ token: T) -> String {
+        let encoded = (try? JSONEncoder().encode(token))?.base64EncodedString() ?? "unknown"
+        return "\(kind):\(encoded)"
     }
 
     /// Routes the tap through `ShieldTapPolicy` (#602): Request access alerts the parent and keeps the shield;
     /// Exit to Home closes the app, is counted, and sends nothing.
-    private func respond(to action: ShieldAction, completionHandler: (ShieldActionResponse) -> Void) {
+    private func respond(to action: ShieldAction, target: String, completionHandler: (ShieldActionResponse) -> Void) {
         let tap: ShieldTapPolicy.Tap
         switch action {
         case .primaryButtonPressed: tap = .requestAccess
@@ -105,7 +114,9 @@ open class FamilyShieldShieldActionDelegate: ShieldActionDelegate {
         default: tap = .other
         }
         let outcome = ShieldTapPolicy.outcome(tap)
-        if outcome.alertsParent {
+        // #744: one request per target every few minutes; further taps keep the shield and send nothing.
+        if outcome.alertsParent,
+           ShieldTapPolicy.shouldSendRequest(target: target, defaults: UserDefaults(suiteName: AgentIdentityStore.suiteName)) {
             reporter.report(
                 category: "app_blocked",
                 title: "Child asked for access",

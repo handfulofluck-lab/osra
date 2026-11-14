@@ -16,7 +16,7 @@ principle survives every re-cut, enforced at the merge (§6.5).
 | **Kimi Code** (development lead) | Implements features and fixes; owns `main` and releases | Edit application code, tests, CI and docs; open and **merge** PRs (§6.5); tag and prepare releases | Merge unverified work, **including their own**; merge with a red gate; push to `main` (§6); act on a store account, entitlement or key |
 | **Claude** (architecture + testing, **team coordinator** from 2026-10-23) | Owns architecture decisions and **all testing**: runs the gates, tests PR claims, runs the hardware rows, with a detailed fix for every finding (§12). Coordinates the team: assigns members' tasks and is the one point of contact for technical questions | Decide architecture and record it as an ADR; review designs and diffs against their roadmap row; re-run every gate on a branch; run hardware rows on the leased phone (§9); verify TR rows and sign `Verified-sha:`; write tests, checklists, harnesses and test requests; assign and schedule members' work | Merge; push to `main`; write product code; verify its own PR; change the code under test to make a claim true; weaken or delete a failing check |
 | **Antigravity** | **Inactive from 2026-10-19** (maintainer), once the Group 1 hardware re-runs and TR-52 in flight at that time are filed. A silent member until the maintainer says otherwise: takes no new testing tasks and is not assigned any | Finish the rows already in flight; read | Take new rows; merge |
-| **Ahmed** (security + testing, from 2026-10-23; also the iOS child agent from 2026-10-24) | A human member in Doha, working with his own Claude Code agent from his own GitHub account (`ahmedyusseff`). Security reviews, penetration testing of our own code and test environments, threat modelling and testing, each finding with the fix he recommends (§12). From 2026-10-24 he also builds the iOS child agent, `apps/child-ios` (roadmap 5.5, #372), on the GitHub macOS runner | Open PRs from `ahmed/<roadmap-item>-<topic>` branches, including product code under `apps/child-ios/` and its CI workflow; review any PR (advisory); test on his own local stack, emulator or phone; test staging only in a window Claude schedules with him; report exploitable findings privately (§4) | Merge; set `state:verified` or write a `Verified-sha:` line (his account's comments never count, §6.4); sign as another member, including `— Claude`; use the physical test phone, production or real family data |
+| **Ahmed** (security + testing, from 2026-10-23; also the iOS child agent from 2026-10-24) | A human member in Doha, working with his own Claude Code agent from his own GitHub account (`ahmedyusseff`). Security reviews, penetration testing of our own code and test environments, threat modelling and testing, each finding with the fix he recommends (§12). From 2026-10-24 he also builds the iOS child agent, `apps/child-ios` (roadmap 5.5, #372), on the GitHub macOS runner | Open PRs from `ahmed/<roadmap-item>-<topic>` branches, including product code under `apps/child-ios/` and its CI workflow; review any PR (advisory); test on his own local stack, emulator or phone; test staging only in a window Claude schedules with him; report exploitable findings privately (§4) | Merge or switch on auto-merge; sign a verification other than as `— Ahmed` from his own account (from 2026-11-13 21:15Z he verifies and is an R3 security key alongside Fable, §6.6 rule 5; nothing else from his account counts, §6.4); sign as another member, including `— Claude`; use the physical test phone, production or real family data |
 | Human maintainer | Product and security trade-offs; anything that needs an account or money | Everything; final call on scope | — |
 
 **New member and coordinator (maintainer, 2026-10-23 12:38Z):** *"we have a new colleague joining our team as
@@ -286,7 +286,7 @@ correct and silently do nothing.**
 | `scripts/install-git-hooks.sh` → copies `.githooks/*` into `.git/hooks/` | Refuses a push whose destination is `refs/heads/main` | Per clone; must be run once. Verified working (see below) |
 | `.githooks/pre-push` + `git config core.hooksPath <ABSOLUTE path>` | Same, driven from the versioned file | The path **must be absolute** — a relative `core.hooksPath` silently resolves to nothing on Git for Windows. Also, the file only exists in checkouts that contain it (i.e. not on `main` before this PR merges) |
 | `.github/workflows/main-guard.yml` | Server-side: on every push to `main`, asserts an associated PR exists; fails the run and files a `needs-human` issue otherwise | Detection, not prevention; only active once merged to `main` |
-| `.github/workflows/verified-gate.yml` (maintainer decision, 2026-10-19) | On every PR to `main`: fails unless the PR has `state:verified` **and** a comment **written by the agent account `handfulofluck-lab`** (from 2026-10-23; a comment by any other account is never read, pinned by `scripts/check-verified-gate-signers.mjs` in `workflow-lint`) signed `— Claude`, `— Antigravity` (rows in flight on 2026-10-19 only) or `— Kimi Code` (only on a PR with no Kimi-authored non-merge commit, checked by commit email) with `Verified-sha: <sha>` matching the current head, or carried forward across a merge from `main` when the PR's patch-id is unchanged (§6.5 rule 6) | Binds only once `verified-gate` is a required status check with bypass disabled (`enforce_admins`), because every agent pushes as a repo admin. One shared account: CI cannot prove which agent wrote the comment, and a member with write access can edit an agent's comment (GitHub keeps the edit history) |
+| `.github/workflows/verified-gate.yml` (maintainer decision, 2026-10-19) | On every PR to `main`: fails unless the PR has `state:verified` **and** a comment **written by the agent account `handfulofluck-lab`** (from 2026-10-23; a comment by any other account is never read, pinned by `scripts/check-verified-gate-signers.mjs` in `workflow-lint`; one exception from 2026-11-13: a `Verified-sha:` signed `— Ahmed` from Ahmed's own account `ahmedyusseff`, and a `— Ahmed` from the agent account is dropped, §6.6 rule 5) signed `— Claude`, `— Antigravity` (rows in flight on 2026-10-19 only) or `— Kimi Code` (only on a PR with no Kimi-authored non-merge commit, checked by commit email) with `Verified-sha: <sha>` matching the current head, or carried forward across a merge from `main` when the PR's patch-id is unchanged (§6.5 rule 6) | Binds only once `verified-gate` is a required status check with bypass disabled (`enforce_admins`), because every agent pushes as a repo admin. One shared account: CI cannot prove which agent wrote the comment, and a member with write access can edit an agent's comment (GitHub keeps the edit history) |
 | This file + PR review | The real control | Relies on both agents honouring it |
 
 **Install (recommended, works regardless of which branch is checked out):**
@@ -309,6 +309,10 @@ is made a required status check on `main` with "Do not allow bypassing the above
 Maintainer override (deliberate, rare): `OSRA_ALLOW_MAIN_PUSH=1 git push <remote> main`.
 
 ### 6.5 Merge rules
+
+> **Superseded in part on 2026-11-13 by §6.6 (mesh workflow).** Where §6.5 says Kimi is the only merger, or
+> Claude (or Kimi for Claude's PRs) is the only verifier, §6.6 wins: GitHub auto-merge merges once the gate is
+> green, and any member from another model family may verify. Rules 1, 2, 4 and 5 below still apply to every PR.
 
 **Kimi is the only agent who merges**, for every kind of change: code, tests, CI, docs, `docs/QA/**`.
 Claude and Antigravity review and verify but do not merge, not even their own work. Owning `main` means
@@ -367,6 +371,120 @@ justifies the change.
 it during the merge. Confirm it (`gh api repos/OWNER/REPO -q .delete_branch_on_merge`, then `git ls-remote --heads
 origin`), and delete it by hand only if it survived because the merge happened outside GitHub. Never leave a review open
 on the strength of a "will tidy up later" — and never delete an unmerged branch to tidy a list.
+
+### 6.6 Mesh workflow: rotating verification, auto-merge (maintainer, 2026-11-13 15:42Z)
+
+**Why.** Waiting, not writing, was the slow part: 52% of hours from 11 Oct to 13 Nov had no merge, and 2 to 8 Nov
+produced one merge because one member merged and signed for everyone. The maintainer adopted the mesh model
+(decision row on #617, everyone's confirmation on #719): *"i agree with the full model above, communicate to all
+teams"*. It is for **development**; production operations after go-live have one owner (Claude) with Kimi as the
+drilled fallback, and are not a rotation. All members keep posting from the maintainer's one account and sign by name
+(§11).
+
+**Three different hands on every PR:** the author; a code verifier who is not the author and, from R2 up, is from a
+different AI model family; and GitHub auto-merge, which merges the moment every required check is green.
+
+| Family | Members (signature) |
+|---|---|
+| Anthropic | Claude (`— Claude`), Fable threads (`— Fable`), Mac and PC device verifiers (Claude), Ahmed (`— Ahmed`; his tool is Claude Code) |
+| DeepSeek | Kimi (`— Kimi Code`) |
+| Moonshot | K31 (`— K31`), K31-Mac (`— K31-Mac`) |
+
+**Branch prefix names the author:** `kimi/`, `claude/` (also `qa/`, `verify/`), `fable/`, `ahmed/`, `k31/`,
+`k31mac/`. A branch with none of these is read as Kimi's (the convention before 13 Nov), so members other than Kimi
+must use their prefix. A Kimi-authored commit (commit email) makes Kimi a co-author whatever the prefix.
+
+**Risk tiers.** The gate takes the higher of the `risk:R1/R2/R3` label and the tier computed from the changed paths
+(`scripts/verified-gate-policy.mjs`); a label can raise the tier, never lower it.
+
+| Tier | What | Signatures the gate needs | Target open-to-merge |
+|---|---|---|---|
+| R1 | docs, Markdown, tests only | one member who is not the author | 2 h |
+| R2 | normal features and fixes | one member from another model family than the author, planted faults on changed logic, a device row if it runs on a device | 6 h |
+| R3 | auth, sessions, tokens, pairing, MFA/TOTP, invites, account deletion, device revocation, billing, refunds, purchases, entitlements, consent, children's location, the Prisma schema and migrations, API middleware, `infra/`, signing, secrets, the build/publish/deploy workflows, the merge gate and its lint, this file | two different members, neither the author: one from a model family other than the author's, and one security key (**Ahmed or Fable**). The two may share a family with each other, e.g. Claude + Fable on a Kimi or K31 PR | 24 h |
+
+**Bureaus, enforced by the gate.** The maintainer, 2026-11-13 18:44Z: "any screen should have the UI/UX Bureau OK
+before it goes". The Bureau judges against ADR-0038 (logo, palette, one design language), Material 3, Apple HIG and
+WCAG, and reviews the whole screen on a device picture, in light and dark, English and Arabic (not a diff or a single
+string). So a diff a family sees needs `UIUX-Bureau: reviewed <head sha>`: the whole parent app (`apps/parent-app/lib/`,
+its Android `MainActivity` and its iOS `Runner/`), every Android resource and manifest in any source set, Kotlin that
+draws a screen or holds its words (`*Activity`, `*Screen(s)`, `*Overlay`, `*Dialog`, `*View`, `*Theme`, `*Compose`,
+`*Composable`, `*Copy`, `*Tile`, anything under a `ui/` package), the Android files that build a notification or cover
+in code (`CommandDispatcher`, `CommandPollWorker`, `UnlinkedNotice`, `CallEnforcer`, `LocationService`,
+`FilterVpnService`), the iOS app shell, extensions, resources, `L10n.swift`, `Shield*.swift` and SwiftUI views, the
+desktop lock overlay, dialogs, alerts, SOS prompt, block page, `Resources/` and `.xaml`, asset catalogs, `.lproj`,
+storyboards, `.arb`, `.strings(dict)`, `.xcstrings`, the API email templates (`services/api/src/lib/email/`) and push
+alert choice (`services/api/src/lib/push/notify.ts`), `site/`, `scripts/site/`, `docs/store/`, `docs/design/`, or label
+`needs:uiux`. A test file alone does not need it, but only a file in a test folder (`test/`, `tests/`, `Tests/`,
+`__tests__/`, `androidTest/`, `testFixtures/`) or a JS/TS `.test`/`.spec` file, and never one under a shipping root
+(`apps/*/lib/`, Android `src/main|full|play|debug|release/`, iOS `Runner/`, `Sources/`, `App/`, `Extensions/`, the
+desktop and Mac agents outside their test folders, `site/`, `scripts/site/`, `docs/store/`, `docs/design/`): a screen
+named like a test still needs the line. The list errs toward asking; the
+exact patterns are `UIUX_PATHS` in `scripts/verified-gate-policy.mjs`. When a matched file changes nothing anyone sees,
+the Bureau, and only the Bureau, may answer with `UIUX-Bureau: not user-visible <head sha>` instead; that waiver does
+not answer a `needs:uiux` label, which needs a real review.
+A diff with Arabic text (`*_ar.arb`, `values-ar/`, `ar.lproj/`, `site/ar/`, `*.ar.*`, `docs/store/`, `docs/customer/`,
+the API email templates, or label `needs:arabic`) needs `Arabic-Bureau: reviewed <head sha>`. Both carry forward across
+clean merges of `main` like `Verified-sha:`. The comment's signature line must name the Bureau (`— Claude (UI/UX
+Bureau)`, `— Claude (Arabic Language Bureau)`). Order is unchanged: UI/UX Bureau, Arabic Bureau, then code verification.
+
+**How a signature is read** (Fable's review of #721). `Verified-sha:`, `UIUX-Bureau: reviewed` and
+`Arabic-Bureau: reviewed` count only at the **start of a line**, never inside a fenced code block, and the signer
+is the **last line that starts with `— <Name>`**. So when you ask someone to post a line, write it inline or in a
+code block, or write `<head sha>` instead of the real sha; never put a real head sha on its own line after one of
+these keywords in a request.
+When a Bureau authors a user-visible PR itself, its line cites the maintainer's written yes.
+
+**Rotation** (1st claims; the backup takes over when the 1st has not claimed within 1 hour):
+
+| Area | Usual authors | Code verifier: 1st / backup | Device verifier | R3 second key |
+|---|---|---|---|---|
+| Server / API / Terraform | Kimi, K31 | Kimi's PR: Claude / K31. K31's PR: Claude / Kimi | Claude, live probe on staging | Ahmed / Fable |
+| Android child + parent | Kimi | K31 / Claude | Claude on the PC, Flip4 (lease, §9) | Ahmed / Fable |
+| iPhone | Ahmed, K31-Mac, K31, Kimi | Ahmed's PR: K31 / Kimi. Others: Claude / Ahmed | Mac Claude, test iPhone | Ahmed (Fable if Ahmed authored) |
+| Mac client | K31-Mac | Claude / Kimi (never K31: same family) | Mac Claude, MacBook | Ahmed / Fable |
+| Windows client | K31 | Kimi / Claude | Claude on the PC, staging Windows Server, then the maintainer's PC | Ahmed / Fable |
+| Claude's own PRs | Claude | K31 / Kimi | as the area | Ahmed / Fable |
+| Docs, CI, tests-only | anyone | any other member | none | n/a |
+
+**Rules.**
+
+1. Nobody signs, labels `state:verified` or device-tests as verification their own PR.
+2. **Claim before verifying:** comment `Verifying: <name> — ETA <time>` and set `state:verifying`, so two members
+   never verify the same PR.
+3. **Timers:** claim within 1 h of `state:ready-for-verification`; finish R1 in 2 h, R2 in 4 h, R3 in 12 h after
+   claiming; the author answers changes requested within 4 h; a claim silent for 4 h passes to the backup. Team
+   collaboration sync enforces them and reports each verifier's queue.
+4. **Work in progress:** at most 3 of your PRs waiting for review; review someone else's before opening a 4th.
+5. **Merging:** the author turns on auto-merge when marking the PR ready
+   (`gh pr merge <N> --auto --merge`). The merge commit names the PR; the verification record is the signed
+   comment on it (this replaces §6.5 rule 3's merge-message line). Kimi stays lead developer and **merge captain**:
+   conflicts, rebases, release branches. Team collaboration sync updates auto-merge PRs that fall behind `main`
+   (protection stays `strict`), and the signature carries forward when the fold is clean (§6.5 rule 6).
+   **Fold right before signing** (Kimi, #719): the verifier merges current `main` into the branch (a clean merge,
+   GitHub's *Update branch*) immediately before posting `Verified-sha:`, so auto-merge can fire without another fold.
+   **A hand-resolved conflict voids the signatures** (Kimi, #719): when the merge captain or anyone else resolves a
+   conflict inside the PR's own files, a verifier from a model family other than the resolver's re-checks the
+   resolution (§5a) and signs the new head; the original signers do not carry.
+   **Ahmed's agent signs as a security key, alongside Fable** (maintainer, 2026-11-13 21:15Z, #617; this replaces
+   the 16:51Z rule that it only posted verdicts). It signs from its own account, `ahmedyusseff`, with
+   `Verified-sha: <head>` and the signer line `— Ahmed`, and the gate reads exactly that from that account (§6.4):
+   no other signer name and no Bureau line. A `— Ahmed` signature from the agent account never counts, so no
+   other agent can sign as Ahmed. **A signature from Ahmed's account must be a new, unedited comment**: an admin
+   account can edit another user's comment without changing its author, so the gate skips any comment of his whose
+   `updated_at` differs from `created_at` (Fable's review of #745), and Ahmed posts a fresh one instead of editing.
+   Ahmed's own conditions (#719): never on his own PRs; never the only signer on
+   an Anthropic-family author's PR (the gate already needs a cross-family signer there); a fresh review after a
+   re-push that changes the PR's own diff; and he still never merges or switches on auto-merge. Fable stays a
+   security key, so either one can be the R3 second key.
+6. A **revert** is R1 and may be verified by anyone but its author.
+7. **Unchanged:** release security gates #630 to #637 are signed `Security-signoff:` by Ahmed alone and only the
+   maintainer overrides them in writing; K31, K31-Mac and Kimi do no AWS, store, secret or account work; Claude runs
+   the after-merge check on every merge.
+
+**Honest limit, as in §6.4:** one shared account means the gate checks the name in a signature, not who typed it.
+Team collaboration sync audits each signature against the signer's own session; forging another member's name is a
+deliberate act on a permanent record.
 
 ## 7. Device and environment hygiene (standing rule, human-mandated 2026-10-11)
 
@@ -533,7 +651,9 @@ did not see any recent comms among you guys" — the messages existed, and the m
 **Ahmed (from 2026-10-23) posts from his own account, `ahmedyusseff`.** He opens comments with
 `**Ahmed (security + testing) →**` and ends them `— Ahmed (security + testing)`. His agent is also Claude Code, so
 it never signs `— Claude`: that is another member's signature, and from 2026-10-23 the merge gate reads
-verifications only from the agent account (§6.4), so a signature from any other account never counts.
+verifications only from the agent account (§6.4), so a signature from any other account never counts. The one
+exception (2026-11-13, §6.6 rule 5): from `ahmedyusseff` the gate reads a `Verified-sha:` signed `— Ahmed`, and
+nothing else.
 
 So identity is part of the message:
 

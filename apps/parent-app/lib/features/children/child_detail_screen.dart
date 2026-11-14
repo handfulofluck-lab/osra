@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import 'command_messages.dart';
 import '../../providers/auth_provider.dart';
@@ -382,7 +383,7 @@ class _BonusTimeCardState extends ConsumerState<_BonusTimeCard> {
                 for (final minutes in const [15, 30, 60])
                   OutlinedButton(
                     onPressed: _granting ? null : () => _grant(minutes),
-                    child: Text('+$minutes'),
+                    child: Text(ltrIsolate('+$minutes')),
                   ),
               ],
             ),
@@ -636,7 +637,7 @@ class _LocationTab extends ConsumerWidget {
             Card(
               child: ListTile(
                 leading: const Icon(Icons.location_on),
-                title: Text('${p.lat.toStringAsFixed(6)}, ${p.lng.toStringAsFixed(6)}'),
+                title: Text(ltrIsolate('${p.lat.toStringAsFixed(6)}, ${p.lng.toStringAsFixed(6)}')),
                 subtitle: Text(l10n.accuracyLabel(
                   p.accuracyM.round(),
                   p.timestamp == null
@@ -752,10 +753,10 @@ class _HistoryScrubberState extends ConsumerState<_HistoryScrubber> {
                     Expanded(
                       child: Text(
                         ts == null
-                            ? '${ping.lat.toStringAsFixed(5)}, ${ping.lng.toStringAsFixed(5)} · ${l10n.accuracyUnknown}'
+                            ? '${ltrIsolate('${ping.lat.toStringAsFixed(5)}, ${ping.lng.toStringAsFixed(5)}')} · ${l10n.accuracyUnknown}'
                             : '${DateFormat.Hm(context.localeName).format(ts.toLocal())} · '
-                                '${ping.lat.toStringAsFixed(5)}, ${ping.lng.toStringAsFixed(5)} · '
-                                '±${ping.accuracyM.round()} m',
+                                '${ltrIsolate('${ping.lat.toStringAsFixed(5)}, ${ping.lng.toStringAsFixed(5)}')} · '
+                                '${l10n.accuracyShort(ping.accuracyM.round())}',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ),
