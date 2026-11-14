@@ -55,10 +55,16 @@ open class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
             icon: nil,
             title: ShieldConfiguration.Label(text: text.title, color: .label),
             subtitle: text.subtitle.map { ShieldConfiguration.Label(text: $0, color: .secondaryLabel) },
-            primaryButtonLabel: ShieldConfiguration.Label(text: text.primaryButton, color: .systemBlue),
-            primaryButtonBackgroundColor: nil,
-            secondaryButtonLabel: ShieldConfiguration.Label(text: text.secondaryButton, color: .systemGray)
+            // U14: one fixed pair in both modes; the shield ignores a dynamic label colour on a device (ShieldPalette).
+            primaryButtonLabel: ShieldConfiguration.Label(text: text.primaryButton, color: Self.color(ShieldPalette.buttonLabel)),
+            primaryButtonBackgroundColor: Self.color(ShieldPalette.buttonBackground),
+            secondaryButtonLabel: ShieldConfiguration.Label(text: text.secondaryButton, color: .label)
         )
+    }
+
+    /// A fixed colour, the same in light and dark.
+    private static func color(_ c: ShieldPalette.RGB) -> UIColor {
+        UIColor(red: c.red, green: c.green, blue: c.blue, alpha: 1)
     }
 }
 
