@@ -25,6 +25,34 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      # osra-security#26, #609: no secret in the history or the tree. gitleaks is built from its Go module
+      # at a pinned version (the Go checksum database verifies it), with the repo's own `.gitleaks.toml`
+      # (default rules plus two reviewed fixtures) and `.gitleaksignore` (one reviewed historical line).
+      # The whole history is scanned, not just this PR's commits: about 7 s for the repo today.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: false
+      - name: No secret in the git history or the tree (gitleaks)
+        run: |
+          go install github.com/zricethezav/gitleaks/v8@v8.30.1
+          "$(go env GOPATH)/bin/gitleaks" git --config .gitleaks.toml --redact --no-banner --exit-code 1 .
+          "$(go env GOPATH)/bin/gitleaks" dir --config .gitleaks.toml --redact --no-banner --exit-code 1 .
+      - name: The gitleaks allowlist still catches a new key inside an allowlisted fixture file
+        # Mutant guard (Antigravity, #767): without `targetRules` the allowlist skips whole files. A random
+        # key under an unlisted name, written into each fixture file at run time, must turn gitleaks red.
+        run: |
+          GL="$(go env GOPATH)/bin/gitleaks"
+          trap 'git checkout -- services/api/test/auth.test.ts scripts/hardware/scenario-family.test.mjs' EXIT
+          for f in services/api/test/auth.test.ts scripts/hardware/scenario-family.test.mjs; do
+            printf '\nconst unapprovedProbeKey = "k%s";\n' "$(openssl rand -hex 20)" >> "$f"
+            if "$GL" dir --config .gitleaks.toml --redact --no-banner --exit-code 1 "$f" >/dev/null 2>&1; then
+              echo "::error file=.gitleaks.toml::a new key in $f was not reported; the allowlist exempts the whole file"
+              exit 1
+            fi
+            git checkout -- "$f"
+            echo "caught: a new key in $f"
+          done
       # Moved here from ci.yml (review N2): this gate reads the PR title, and `workflow-lint` runs on
       # `edited`, so a retitle re-checks it in ~20 s instead of rebuilding the Android app.
       - name: A code change carries a changelog fragment
@@ -264,3 +292,14 @@ jobs:
         run: |
           node scripts/check-redis-durability.mjs --selftest
           node scripts/check-redis-durability.mjs
+
+      - name: A production task definition is a release configuration, and every variable the API reads is classified (gate #637)
+        # scripts/check-production-taskdef.mjs reads what `aws ecs describe-task-definition` prints and fails on a
+        # development, staging or test switch, a secret passed as a plain value, a moving image tag, a missing
+        # required setting or a variable nobody classified. CI has no AWS access, so two things run here: the
+        # self-test (one fixture per rule, each differing from a clean one by one thing and expected to raise
+        # exactly that finding), and `--source`, which fails when the API starts reading a variable the script
+        # has no decision for. Mutant for `--source`: add `process.env.NEW_SWITCH` anywhere under services/api/src.
+        run: |
+          node scripts/check-production-taskdef.mjs --selftest
+          node scripts/check-production-taskdef.mjs --source

@@ -137,10 +137,13 @@ export class ConsoleEmailSender implements EmailSender {
   readonly name = "console";
   constructor(private readonly production = process.env.NODE_ENV === "production") {}
   async send(message: EmailMessage): Promise<EmailResult> {
-    const to = Array.isArray(message.to) ? message.to.join(",") : message.to;
     if (this.production) {
-      console.warn(`[email:unconfigured] would send "${message.subject}" to ${to} — set RESEND_API_KEY`);
+      // Gate #637: the log is kept for months and read by people who never see the database. The recipient
+      // is a parent's address and a subject can carry a child's name (a digest), so neither is written:
+      // only that a message was not sent, and how to fix it.
+      console.warn("[email:unconfigured] a message was not sent: no provider is configured — set EMAIL_PROVIDER=ses and EMAIL_FROM");
     } else {
+      const to = Array.isArray(message.to) ? message.to.join(",") : message.to;
       console.log(`[email:dev] to=${to} subject="${message.subject}"\n${message.text}`);
     }
     return { ok: true };
