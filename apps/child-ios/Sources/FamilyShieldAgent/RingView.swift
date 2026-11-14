@@ -31,12 +31,10 @@ public struct RingView: View {
                         .font(.body)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
-                    if RingPINPresentation.resolve(isConfigured: ParentPinStore.isConfigured) == .gate {
-                        PinGateView(title: L10n.tr("ring_pin_title")) {
-                            Task {
-                                await controller.stop(.pinVerified)
-                                RingNotifier.cancel()
-                            }
+                    PinGateView(title: L10n.tr("ring_pin_title")) {
+                        Task {
+                            await controller.stop(.pinVerified)
+                            RingNotifier.cancel()
                         }
                     }
                     .frame(minHeight: 240)

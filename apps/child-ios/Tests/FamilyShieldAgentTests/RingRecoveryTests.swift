@@ -144,6 +144,7 @@ final class RingRecoveryTests: XCTestCase {
         XCTAssertEqual(error, .scheduleFailed)
         XCTAssertEqual(controller.state?.commandId, id)
         XCTAssertEqual(backend.scheduled, [id])
+        backend.stopCalls = []
         uptime += 300
         clockDriving = true
         await flushTasks()
