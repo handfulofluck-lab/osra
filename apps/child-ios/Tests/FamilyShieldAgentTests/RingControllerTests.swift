@@ -315,7 +315,9 @@ extension RingControllerTests {
         let defaults = UserDefaults(suiteName: AgentIdentityStore.suiteName)
         var statuses = [500, 200]
         var attempts: [Int] = []
-        let reporter = RingAlertReporter(defaults: defaults, sender: { _ in
+        let reporter = RingAlertReporter(defaults: defaults,
+                                            reporter: AlertReporter(apiBaseURL: URL(string: "https://api.example.invalid")!, hmacSecret: "hmac"),
+                                            sender: { _ in
             let status = statuses.removeFirst()
             attempts.append(status)
             return (status, Data())
