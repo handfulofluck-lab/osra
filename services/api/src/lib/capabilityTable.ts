@@ -39,12 +39,12 @@ const NOT_SUPPORTED: Record<CapabilityApp, Partial<Record<CapabilityFlavour, rea
 };
 
 /**
- * A6: commands no feature describes that a build still cannot run. `lock`, `unlock`, `ring` and
+ * A6: commands no feature describes that a build still cannot run. `lock`, `unlock` and
  * `pause_internet` to an iPhone are recorded failed at once; `lock` and `pause_internet` come through
  * their features above, and these two have no feature to carry them.
  */
 const NOT_SUPPORTED_COMMANDS: Partial<Record<CapabilityApp, readonly string[]>> = {
-  "child-ios": ["unlock", "ring"],
+  "child-ios": ["unlock"],
 };
 
 /** True when this app cannot run [command] at all, whatever its features say (A6). */
