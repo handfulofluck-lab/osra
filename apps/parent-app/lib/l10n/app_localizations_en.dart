@@ -3120,4 +3120,61 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get appRuleHiddenOnIphone =>
       'On the iPhone, this app is hidden instead of showing the OSRA screen.';
+
+  @override
+  String get addAComputer => 'Add a computer';
+
+  @override
+  String get computerSelectPrompt => 'Which computer are you adding?';
+
+  @override
+  String get computerWindows => 'Windows';
+
+  @override
+  String get computerMac => 'Mac';
+
+  @override
+  String get computerAdminInstallNote =>
+      'An administrator of that computer — you — installs the client. Your child keeps a standard account.';
+
+  @override
+  String get computerPairIntro =>
+      'Open the address below on the computer, install OSRA there, then type this code on the computer.';
+
+  @override
+  String get computerDownloadAddress => 'Address to open on the computer';
+
+  @override
+  String get copyLink => 'Copy link';
+
+  @override
+  String get linkCopied => 'Link copied';
+
+  @override
+  String get sendTheLinkLine =>
+      'Send the link to yourself, or type it into the computer\'s browser.';
+
+  @override
+  String get sendTheLink => 'Send the link';
+
+  @override
+  String get sendLinkCopied =>
+      'Link copied. Paste it into a message to send it to yourself or the computer.';
+
+  @override
+  String pairClaimBodyComputer(String device) {
+    return '$device wants to be paired. Allow it only if it is the computer in front of you.';
+  }
+
+  @override
+  String get pairClaimAllowedComputer =>
+      'Allowed. The computer is finishing pairing…';
+
+  @override
+  String get pairClaimDeniedComputer =>
+      'Declined. Make a new code to pair a computer.';
+
+  @override
+  String get computerAdminWarning =>
+      'Protection is weak on this computer because your child\'s account is an administrator.';
 }

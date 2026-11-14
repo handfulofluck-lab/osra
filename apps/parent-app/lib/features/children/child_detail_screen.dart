@@ -16,6 +16,7 @@ import '../rules/rules_behind_banner.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../dashboard/dashboard_screen.dart' show formatLastSeen;
+import '../pairing/add_computer_screen.dart';
 import '../pairing/pair_qr_screen.dart';
 import '../rules/active_window.dart';
 import '../social/social_screen.dart' show SocialSectionsView;
@@ -140,10 +141,23 @@ class _OverviewTab extends ConsumerWidget {
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             Text(l10n.devices, style: Theme.of(context).textTheme.titleMedium),
-            TextButton.icon(
-              onPressed: () => _pairDevice(context, ref, childId),
-              icon: const Icon(Icons.phonelink_setup, size: 18),
-              label: Text(l10n.pairADevice),
+            Wrap(
+              spacing: AppSpace.xs,
+              children: [
+                TextButton.icon(
+                  onPressed: () => _pairDevice(context, ref, childId),
+                  icon: const Icon(Icons.phonelink_setup, size: 18),
+                  label: Text(l10n.pairADevice),
+                ),
+                // ADR-0041 D5.1: a Windows or Mac client pairs with the same code; this only picks which
+                // download address the parent is shown and sends.
+                TextButton.icon(
+                  key: const ValueKey('addComputerButton'),
+                  onPressed: () => _addComputer(context, ref, childId),
+                  icon: const Icon(Icons.computer, size: 18),
+                  label: Text(l10n.addAComputer),
+                ),
+              ],
             ),
           ],
         ),
@@ -905,6 +919,14 @@ class AlertTile extends StatelessWidget {
 Future<void> _pairDevice(BuildContext context, WidgetRef ref, String childId) async {
   await Navigator.of(context).push<void>(
     MaterialPageRoute(builder: (_) => PairingQrScreen(childId: childId)),
+  );
+  ref.invalidate(familyProvider);
+}
+
+/// ADR-0041 D5.1: pick Windows or Mac first, then the same pairing screen with that computer's address.
+Future<void> _addComputer(BuildContext context, WidgetRef ref, String childId) async {
+  await Navigator.of(context).push<void>(
+    MaterialPageRoute(builder: (_) => AddComputerScreen(childId: childId)),
   );
   ref.invalidate(familyProvider);
 }
