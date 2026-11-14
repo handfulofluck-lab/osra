@@ -227,6 +227,41 @@ void main() {
       expect(n.crisisClause(arabic: false), contains('\u2066800 46342\u2069'));
     });
   });
+
+  group('opening hours and steps (#727 UI/UX Bureau)', () {
+    // The card never works out whether a line is open: a wrong "closed" stops a parent calling a line
+    // that would have answered. It shows the hours the Bureaus worded, inside the sentence, right after
+    // the number, and the emergency number is always beside it.
+    test('the hours sit in brackets directly after the number, in the same sentence', () {
+      const n = LocalHelpNumbers(crisis: '800 4673', hoursEn: '(open daily 08:00-20:00)');
+      expect(n.crisisClause(arabic: false),
+          'call the crisis line on \u2066800 4673\u2069 (open daily 08:00-20:00)');
+    });
+
+    test('a step comes before the hours, and the number itself stays diallable', () {
+      const n = LocalHelpNumbers(
+        crisis: '16000',
+        stepEn: 'and choose option 4',
+        hoursEn: '(open Saturday to Thursday 08:00-18:00)',
+      );
+      final clause = n.crisisClause(arabic: false);
+      expect(clause, 'call the crisis line on \u206616000\u2069 and choose option 4 '
+          '(open Saturday to Thursday 08:00-18:00)');
+      expect(clause.indexOf('and choose'), lessThan(clause.indexOf('(open')));
+    });
+
+    test('no hours means no bracket at all, not an empty pair', () {
+      const n = LocalHelpNumbers(emergency: '999');
+      expect(n.emergencyClause(arabic: false), isNot(contains('(')));
+      expect(n.emergencyClause(arabic: true), isNot(contains('(')));
+    });
+
+    test('the Arabic clause carries the Arabic bracket it is given', () {
+      const n = LocalHelpNumbers(emergency: '999', hoursAr: '(+ساعات)');
+      expect(n.emergencyClause(arabic: true), contains('(+ساعات)'));
+      expect(n.emergencyClause(arabic: false), isNot(contains('+ساعات')), reason: 'the English card never borrows the Arabic bracket');
+    });
+  });
 }
 
 /// The shipped self-harm card, reached through the public lookup so the test

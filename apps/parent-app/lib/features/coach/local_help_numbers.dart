@@ -30,7 +30,30 @@ class LocalHelpNumbers {
   /// The crisis or suicide-prevention line, which differs by country.
   final String? crisis;
 
-  const LocalHelpNumbers({this.emergency, this.childProtection, this.crisis});
+  /// How to reach the line before dialling the whole number: Qatar's `16000 (then option 4)` needs
+  /// "and choose option 4" **before** the hours, so it is a step and not part of the number (#727 UI/UX).
+  final String? stepEn;
+  final String? stepAr;
+
+  /// The opening hours, as the whole bracket including its parentheses, in each language. The card never
+  /// works out whether a line is open (#727 UI/UX): a wrong "closed" stops a parent calling a line that
+  /// would have answered, and a wrong "open" is the 2 a.m. case. The parent reads the hours and decides;
+  /// what makes that safe is that the emergency number is always on the same card.
+  ///
+  /// `null` means the source does not state hours, and then **no bracket is shown at all**. A line open
+  /// around the clock carries the Bureaus' 24-hour bracket.
+  final String? hoursEn;
+  final String? hoursAr;
+
+  const LocalHelpNumbers({
+    this.emergency,
+    this.childProtection,
+    this.crisis,
+    this.stepEn,
+    this.stepAr,
+    this.hoursEn,
+    this.hoursAr,
+  });
 
   static const LocalHelpNumbers none = LocalHelpNumbers();
 
@@ -44,19 +67,33 @@ class LocalHelpNumbers {
   /// shows. A number with a space or a leading `+` is the case that breaks; the tests use both.
   static String isolatedNumber(String number) => '$LRI$number$PDI';
 
+  /// The number as a sentence reads it: the dialled number, then the step, then the hours bracket —
+  /// `16000 and choose option 4 (open Saturday to Thursday 08:00–18:00)`.
+  ///
+  /// The order is the UI/UX Bureau's: the step explains how to reach the line, so it cannot come after
+  /// the hours, and both stay in the same sentence so the hours cannot drift away from the number.
+  String _dial(String number, {required bool arabic, String? step, String? hours}) {
+    final buffer = StringBuffer(isolatedNumber(number));
+    if (step != null) buffer.write(arabic ? ' $step' : ' $step');
+    if (hours != null) buffer.write(' $hours');
+    return buffer.toString();
+  }
+
   /// "call emergency services on 999", or "call your country's emergency number" when nothing is known.
   String emergencyClause({required bool arabic}) => emergency == null
       ? (arabic ? 'اتصل برقم الطوارئ في بلدك' : "call your country's emergency number")
       : (arabic
-          ? 'اتصل بالطوارئ على الرقم ${isolatedNumber(emergency!)}'
-          : 'call emergency services on ${isolatedNumber(emergency!)}');
+          ? 'اتصل بالطوارئ على الرقم ${_dial(emergency!, arabic: true, hours: hoursAr)}'
+          : 'call emergency services on ${_dial(emergency!, arabic: false, hours: hoursEn)}');
 
   /// "call the crisis line on 80046342", or "call the crisis line in your country".
   String crisisClause({required bool arabic}) => crisis == null
       ? (arabic ? 'اتصل بخط الدعم النفسي في بلدك' : 'call the crisis line in your country')
       : (arabic
-          ? 'اتصل بخط الدعم النفسي على الرقم ${isolatedNumber(crisis!)}'
-          : 'call the crisis line on ${isolatedNumber(crisis!)}');
+          ? 'اتصل بخط الدعم النفسي على الرقم '
+              '${_dial(crisis!, arabic: true, step: stepAr, hours: hoursAr)}'
+          : 'call the crisis line on '
+              '${_dial(crisis!, arabic: false, step: stepEn, hours: hoursEn)}');
 
   /// "call the child-protection line on 116111", or "contact your country's child-protection service".
   String childProtectionClause({required bool arabic}) => childProtection == null
@@ -64,8 +101,10 @@ class LocalHelpNumbers {
           ? 'أبلغ جهة حماية الطفل في بلدك'
           : "contact your country's child-protection service")
       : (arabic
-          ? 'اتصل بخط حماية الطفل على الرقم ${isolatedNumber(childProtection!)}'
-          : 'call the child-protection line on ${isolatedNumber(childProtection!)}');
+          ? 'اتصل بخط حماية الطفل على الرقم '
+              '${_dial(childProtection!, arabic: true, step: stepAr, hours: hoursAr)}'
+          : 'call the child-protection line on '
+              '${_dial(childProtection!, arabic: false, step: stepEn, hours: hoursEn)}');
 
   @override
   bool operator ==(Object other) =>
