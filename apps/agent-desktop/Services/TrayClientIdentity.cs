@@ -6,7 +6,7 @@ using System.Security.Principal;
 
 namespace FamilyShield.Agent.Services;
 
-public sealed record ClientIdentity(int SessionId, string UserSid);
+public sealed record ClientIdentity(int SessionId, string UserSid, int ProcessId = 0, string? ImagePath = null);
 
 public interface IClientIdentitySource
 {
@@ -22,16 +22,32 @@ public sealed class TrayClientIdentity
         _source = source ?? new WindowsClientIdentitySource();
     }
 
-    public void Verify(int clientPid, int expectedSessionId, string expectedSid)
+    public void Verify(int clientPid, int expectedSessionId, string expectedSid,
+        int? expectedPid = null, string? expectedImagePath = null)
     {
         var identity = _source.Read(clientPid);
         if (identity.SessionId != expectedSessionId || identity.UserSid != expectedSid)
             throw new UnauthorizedAccessException("The tray client is not the expected user in this session.");
+        if (expectedPid is not null && identity.ProcessId != expectedPid)
+            throw new UnauthorizedAccessException("The pipe client is not the process launched for this session.");
+        if (expectedImagePath is not null &&
+            (identity.ImagePath is null || !string.Equals(Path.GetFullPath(identity.ImagePath),
+                Path.GetFullPath(expectedImagePath), StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new UnauthorizedAccessException("The pipe client is not the installed tray image.");
+        }
     }
 
     public static int ClientProcessId(PipeStream stream)
     {
         if (!NativePipeMethods.GetNamedPipeClientProcessId(stream.SafePipeHandle.DangerousGetHandle(), out var pid))
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        return checked((int)pid);
+    }
+
+    public static int ServerProcessId(PipeStream stream)
+    {
+        if (!NativePipeMethods.GetNamedPipeServerProcessId(stream.SafePipeHandle.DangerousGetHandle(), out var pid))
             throw new Win32Exception(Marshal.GetLastWin32Error());
         return checked((int)pid);
     }
@@ -47,7 +63,7 @@ internal sealed class WindowsClientIdentitySource : IClientIdentitySource
         try
         {
             using var identity = new WindowsIdentity(token);
-            return new ClientIdentity(process.SessionId, identity.User!.Value);
+            return new ClientIdentity(process.SessionId, identity.User!.Value, process.Id, process.MainModule?.FileName);
         }
         finally
         {
@@ -62,6 +78,9 @@ internal static class NativePipeMethods
 
     [DllImport("kernel32.dll", SetLastError = true)]
     public static extern bool GetNamedPipeClientProcessId(IntPtr namedPipe, out uint clientProcessId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool GetNamedPipeServerProcessId(IntPtr namedPipe, out uint serverProcessId);
 
     [DllImport("advapi32.dll", SetLastError = true)]
     public static extern bool OpenProcessToken(IntPtr processHandle, int desiredAccess, out IntPtr tokenHandle);

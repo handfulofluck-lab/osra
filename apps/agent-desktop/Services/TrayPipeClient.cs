@@ -10,6 +10,13 @@ public interface ITrayClient : IAsyncDisposable
 
 public sealed class TrayPipeClient : ITrayClient
 {
+    private readonly IServiceIdentityVerifier _serviceIdentity;
+
+    public TrayPipeClient(IServiceIdentityVerifier? serviceIdentity = null)
+    {
+        _serviceIdentity = serviceIdentity ?? new WindowsServiceIdentityVerifier();
+    }
+
     public async Task<TrayPipeConnection> ConnectAsync(int sessionId, CancellationToken cancellationToken = default)
     {
         var stream = new NamedPipeClientStream(
@@ -18,6 +25,8 @@ public sealed class TrayPipeClient : ITrayClient
         try
         {
             await stream.ConnectAsync(5000, cancellationToken);
+            if (!_serviceIdentity.Verify(TrayClientIdentity.ServerProcessId(stream)))
+                throw new UnauthorizedAccessException("The tray pipe server is not the OSRA service.");
             await TrayProtocol.WriteAsync(stream, new TrayMessage(TrayMessageKind.hello), TrayDirection.ToService, cancellationToken);
             return new TrayPipeConnection(stream, sessionId, WindowsIdentity.GetCurrent().User!.Value);
         }

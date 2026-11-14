@@ -10,6 +10,12 @@ public interface IInteractiveSessionSource
 public interface ITrayProcess : IDisposable
 {
     bool HasExited { get; }
+    int ProcessId { get; }
+}
+
+public interface ITrayProcessRegistry
+{
+    int? ProcessIdForSession(int sessionId);
 }
 
 public interface ITrayLauncher

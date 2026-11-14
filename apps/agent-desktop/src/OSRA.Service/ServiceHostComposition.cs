@@ -9,7 +9,9 @@ internal static class ServiceHostComposition
         services.AddSingleton<IInteractiveSessionSource, WtsInteractiveSessionSource>();
         services.AddSingleton<INativeProcessLauncher, NativeProcessLauncher>();
         services.AddSingleton<ITrayLauncher, SessionProcess>();
-        services.AddHostedService<TraySupervisor>();
+        services.AddSingleton<TraySupervisor>();
+        services.AddSingleton<ITrayProcessRegistry>(provider => provider.GetRequiredService<TraySupervisor>());
+        services.AddHostedService(provider => provider.GetRequiredService<TraySupervisor>());
         if (config is not null)
         {
             DesktopRuntime.AddService(services, config);

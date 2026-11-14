@@ -4,12 +4,12 @@ namespace FamilyShield.Agent.Services;
 
 public interface ITrayServerFactory
 {
-    ITrayServer Create(int sessionId, string userSid);
+    ITrayServer Create(int sessionId, string userSid, int expectedPid);
 }
 
 public sealed class TrayPipeServerFactory : ITrayServerFactory
 {
-    public ITrayServer Create(int sessionId, string userSid) => new TrayPipeServer(sessionId, userSid);
+    public ITrayServer Create(int sessionId, string userSid, int expectedPid) => new TrayPipeServer(sessionId, userSid, expectedPid);
 }
 
 public sealed class TrayServerEvents
@@ -27,12 +27,13 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
     private readonly ApiClient _api;
     private readonly AgentConfig _config;
     private readonly TrayServerEvents _events;
+    private readonly ITrayProcessRegistry? _processRegistry;
     private readonly Dictionary<int, SessionSlot> _slots = new();
     private readonly object _gate = new();
 
     public TrayServerWorker(IInteractiveSessionSource sessions, ITrayServerFactory factory,
         ILogger<TrayServerWorker> log, ForegroundActivityAccumulator activity, ApiClient api,
-        AgentConfig config, TrayServerEvents events)
+        AgentConfig config, TrayServerEvents events, ITrayProcessRegistry? processRegistry = null)
     {
         _sessions = sessions;
         _factory = factory;
@@ -41,6 +42,7 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         _api = api;
         _config = config;
         _events = events;
+        _processRegistry = processRegistry;
     }
 
     public Task SendAsync(TrayMessage message, CancellationToken cancellationToken = default)
@@ -60,6 +62,7 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
             var session = group.First();
             lock (_gate)
             {
+                if (_processRegistry?.ProcessIdForSession(session.SessionId) is not int expectedPid) continue;
                 IReadOnlyList<TrayMessage>? pending = null;
                 if (_slots.TryGetValue(session.SessionId, out var existing))
                 {
@@ -68,7 +71,7 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
                     existing.Dispose();
                     _slots.Remove(session.SessionId);
                 }
-                var slot = new SessionSlot(session, _factory.Create(session.SessionId, session.UserSid), HandleMessage, _log);
+                var slot = new SessionSlot(session, _factory.Create(session.SessionId, session.UserSid, expectedPid), HandleMessage, _log);
                 if (pending is not null)
                 {
                     foreach (var message in pending) slot.Enqueue(message);

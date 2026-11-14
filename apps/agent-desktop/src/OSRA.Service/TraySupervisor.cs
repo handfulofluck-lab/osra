@@ -2,7 +2,7 @@ using FamilyShield.Agent.Services;
 
 namespace OSRA.Service;
 
-internal sealed class TraySupervisor : BackgroundService
+internal sealed class TraySupervisor : BackgroundService, ITrayProcessRegistry
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(15);
     private readonly IInteractiveSessionSource _sessions;
@@ -19,6 +19,9 @@ internal sealed class TraySupervisor : BackgroundService
 
     public static IReadOnlyList<InteractiveSession> DesiredSessions(IEnumerable<InteractiveSession> sessions) =>
         sessions.Where(s => s.SessionId > 0 && s.IsActive).GroupBy(s => s.SessionId).Select(g => g.First()).ToArray();
+
+    public int? ProcessIdForSession(int sessionId) =>
+        _processes.TryGetValue(sessionId, out var process) && !process.HasExited ? process.ProcessId : null;
 
     public void Synchronize()
     {

@@ -36,7 +36,12 @@ public sealed class SessionProcess : ITrayLauncher
 internal sealed class NativeTrayProcess : ITrayProcess
 {
     private IntPtr _handle;
-    public NativeTrayProcess(IntPtr handle) => _handle = handle;
+    public NativeTrayProcess(IntPtr handle, int processId)
+    {
+        _handle = handle;
+        ProcessId = processId;
+    }
+    public int ProcessId { get; }
     public bool HasExited => _handle == IntPtr.Zero || NativeMethods.WaitForSingleObject(_handle, 0) == 0;
     public void Dispose()
     {
@@ -70,7 +75,7 @@ internal sealed class NativeProcessLauncher : INativeProcessLauncher
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             }
             NativeMethods.CloseHandle(process.ThreadHandle);
-            return new NativeTrayProcess(process.ProcessHandle);
+            return new NativeTrayProcess(process.ProcessHandle, process.ProcessId);
         }
         finally
         {
@@ -82,7 +87,23 @@ internal sealed class NativeProcessLauncher : INativeProcessLauncher
 
 internal sealed class WtsInteractiveSessionSource : IInteractiveSessionSource
 {
-    public IReadOnlyList<InteractiveSession> List()
+    private readonly Func<IReadOnlyList<InteractiveSession>> _listSessions;
+    private readonly Func<int, string> _tokenUserSid;
+
+    public WtsInteractiveSessionSource(
+        Func<IReadOnlyList<InteractiveSession>>? listSessions = null,
+        Func<int, string>? tokenUserSid = null)
+    {
+        _listSessions = listSessions ?? ListNativeSessions;
+        _tokenUserSid = tokenUserSid ?? TokenUserSid;
+    }
+
+    public IReadOnlyList<InteractiveSession> List() => _listSessions()
+        .Where(session => session.SessionId > 0 && session.IsActive)
+        .Select(session => session with { UserSid = _tokenUserSid(session.SessionId) })
+        .ToArray();
+
+    private static IReadOnlyList<InteractiveSession> ListNativeSessions()
     {
         var sessions = new List<InteractiveSession>();
         if (!NativeMethods.WTSEnumerateSessions(IntPtr.Zero, 0, 1, out var buffer, out var count))
@@ -94,20 +115,7 @@ internal sealed class WtsInteractiveSessionSource : IInteractiveSessionSource
             {
                 var info = Marshal.PtrToStructure<NativeMethods.SessionInfo>(buffer + i * size);
                 if (info.SessionId <= 0 || info.State != NativeMethods.WtsActive) continue;
-                if (!NativeMethods.WTSQuerySessionInformation(
-                        IntPtr.Zero, info.SessionId, NativeMethods.WtsUserName,
-                        out var name, out _)) continue;
-                try
-                {
-                    var account = Marshal.PtrToStringUni(name);
-                    if (string.IsNullOrWhiteSpace(account)) continue;
-                    var sid = new NTAccount(account).Translate(typeof(SecurityIdentifier)).Value;
-                    sessions.Add(new InteractiveSession(info.SessionId, sid, true));
-                }
-                finally
-                {
-                    NativeMethods.WTSFreeMemory(name);
-                }
+                sessions.Add(new InteractiveSession(info.SessionId, string.Empty, true));
             }
         }
         finally
@@ -116,13 +124,27 @@ internal sealed class WtsInteractiveSessionSource : IInteractiveSessionSource
         }
         return sessions;
     }
+
+    private static string TokenUserSid(int sessionId)
+    {
+        if (!NativeMethods.WTSQueryUserToken(sessionId, out var token))
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        try
+        {
+            using var identity = new WindowsIdentity(token);
+            return identity.User!.Value;
+        }
+        finally
+        {
+            NativeMethods.CloseHandle(token);
+        }
+    }
 }
 
 internal static class NativeMethods
 {
     public const uint CreateUnicodeEnvironment = 0x00000400;
     public const int WtsActive = 0;
-    public const int WtsUserName = 5;
 
     [StructLayout(LayoutKind.Sequential)]
     public struct SessionInfo
@@ -166,9 +188,6 @@ internal static class NativeMethods
 
     [DllImport("wtsapi32.dll", SetLastError = true)]
     public static extern bool WTSEnumerateSessions(IntPtr server, int reserved, int version, out IntPtr sessions, out int count);
-
-    [DllImport("wtsapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    public static extern bool WTSQuerySessionInformation(IntPtr server, int sessionId, int infoClass, out IntPtr buffer, out int bytesReturned);
 
     [DllImport("wtsapi32.dll", SetLastError = true)]
     public static extern bool WTSQueryUserToken(int sessionId, out IntPtr token);

@@ -193,3 +193,64 @@ git diff --check
 Expected: all exit 0. Read the .NET test totals, publish both hosts successfully, inspect the co-located artifact, and report exact counts rather than estimates.
 - [ ] **Step 4: Inspect the delivered diff.** No Arabic edits, new plaintext PIN path, secrets, generated binaries or unrelated proxy/DNS/MSI/updater work. Remove local artifacts from tracking; leave the working tree clean after committing intended files.
 - [ ] **Step 5: Open the #623 PR with the approved restatement, raw test results, package additions and explicit unverified Windows-machine claims.** Enable auto-merge and notify Claude that the unsigned CI artifact is ready for the isolated Windows Server 2025 run. Do not merge directly.
+
+---
+
+## Approved R3 scope expansion (#754 comment 6869067412)
+
+Claude ruled that all five areas in osra-security#22 belong in W1. Only service-side foreground sampling moves to W2. The following known limits are accepted and must remain explicit: same-user code injection into a user-mode tray; the existing plaintext PIN until W1b; the child-writable identity file, installed-directory ACLs and signing until W3; and self-reported foreground usage until W2. No clean-machine claim follows from these unit tests. Every native effect is behind an injected seam; never lock or disconnect this development session or contact a real family.
+
+### Task 7: Bind both pipe endpoints and derive identity from tokens
+
+**Files:** `InteractiveSession.cs`, `TrayClientIdentity.cs`, `TrayPipeServer.cs`, `TrayPipeClient.cs`, `TrayServerWorker.cs`, `ServiceIdentityVerifier.cs` (new), `SessionProcess.cs`, `TraySupervisor.cs`, `ServiceHostComposition.cs`, `DesktopRuntime.cs`, and endpoint/security test files.
+
+**Interfaces:**
+- `ITrayProcess.ProcessId` and an `ITrayProcessRegistry`, implemented by `TraySupervisor`, supply the actual process the service launched for each session. `NativeTrayProcess` retains the PID returned by `CreateProcessAsUser`.
+- `ITrayServerFactory.Create(sessionId, userSid, expectedPid)` passes the launched PID to the server. A missing launched PID does not create an unauthenticated listener.
+- `ClientIdentity` includes an optional image path for its test/native boundary. `TrayClientIdentity.Verify` can require an exact launched PID and normalized co-located image path in addition to session and SID. `WindowsClientIdentitySource` supplies the actual executable path.
+- `IServiceIdentityVerifier` verifies the server PID's token user is `S-1-5-18` before the client sends `hello`. A test verifier can accept the loopback server without weakening production.
+- `WtsInteractiveSessionSource` obtains the session user's SID through `WTSQueryUserToken` and the token user. No `NTAccount` translation remains. An injected session/account source proves that a name resolving to another SID cannot alter the ACL.
+
+- [ ] **Step 1: Write failing tests.** Wrong PID, wrong image, non-SYSTEM server and network SID are refused; a correct launched tray connects after an impostor; the launched PID reaches the factory; token-derived SID alone determines the ACL; the ACL explicitly denies `S-1-5-2` (`NETWORK`).
+- [ ] **Step 2: Run the focused tests and confirm RED on the missing PID/token boundaries.**
+- [ ] **Step 3: Implement PID/image/server-token validation and token-derived session identity.** Preserve strict SID/session checks and all existing frame bounds. An impostor is refused before `hello` or any queued message is written. Replace a failed session with its queued messages preserved.
+- [ ] **Step 4: Run the endpoint and whole desktop suites in both configurations.** No native process or real pipe is started by the new tests except the existing same-user loopback, which uses an injected server-token verdict.
+- [ ] **Step 5: Commit** `test: pin both pipe endpoint identities (#623)` then `feat: bind the tray and service endpoints (#623)`.
+
+### Task 8: Persist restrictions and protect an offline session
+
+**Files:** `DesktopRestrictionState.cs` (new), `SessionFallback.cs` (new), `TrayServerWorker.cs`, `TrayCommandRouter.cs`, `ServiceHostComposition.cs`, `DesktopRuntime.cs`, `DesktopRestrictionStateTests.cs` (new), `TrayServerWorkerTests.cs`.
+
+**Interfaces:**
+- `DesktopRestrictionState` tracks locked, paused, wind-down deadline, last verified connection, disconnect time and one fallback per episode per session. It replays the current state before older queued messages on every accepted connection.
+- `IDesktopSessionFallback.LockWorkstation(sessionId)` uses an injected native WTS disconnect seam in production and a recording fake in tests. The old empty `LockWorkstationAction` is removed, not hidden behind a no-op.
+- A restricted session with no verified connection for 20 seconds gets one fallback and one tamper alert. Reconnection resets the episode. A failed pipe create is reported as tamper and follows the same fallback path; no real session is disconnected in tests.
+
+- [ ] **Step 1: Write failing tests.** A new tray's first message is the current lock; pause and wind-down also replay; unlock/resume clear the appropriate state; an offline restricted session reaches the WTS fallback exactly once with one alert; reconnection resets the next episode; pipe-create failure produces the tamper path. No command is delivered to an unverified endpoint.
+- [ ] **Step 2: Run the restriction tests and confirm RED on missing state and fallback seams.**
+- [ ] **Step 3: Implement restriction state, full replay and WTS fallback.** State transitions match the existing tray behavior. Full current state precedes queued commands. Timer and clock are injectable.
+- [ ] **Step 4: Run all desktop suites in both configurations, including pending-command retention.**
+- [ ] **Step 5: Commit** `test: specify persistent restrictions and offline fallback (#623)` then `feat: keep restricted sessions protected (#623)`.
+
+### Task 9: Bound SOS and identify tray-sourced reports
+
+**Files:** `TrayServerWorker.cs`, `DesktopCapabilities.cs`, `packages/shared-types/src/capabilities.ts`, `services/api/src/lib/capabilities.ts`, `TrayServerWorkerTests.cs`, `DesktopCapabilitiesTests.cs`, `services/api/test/capabilities.test.ts`.
+
+**Interfaces:**
+- A per-device clock permits at most one SOS POST per 60 seconds; a repeated event inside the window is logged and not sent.
+- `source: "tray"` is added to desktop capability reports and accepted by the strict shared/API schema. Other sources and unknown top-level fields remain rejected; existing Android/iOS reports without `source` remain valid. `DesktopCapabilitiesStore` requires exactly this source and rejects missing/other sources.
+
+- [ ] **Step 1: Write failing tests.** First SOS posts, second at 59 seconds does not, third at 60 seconds posts. Desktop report/store asserts `source: tray`; the API accepts that exact source and rejects another. Existing non-desktop reports remain accepted.
+- [ ] **Step 2: Run the focused .NET and API tests and confirm RED.**
+- [ ] **Step 3: Implement the SOS window and source field.** Do not derive trust from a client-supplied SID. Foreground usage is explicitly self-reported until W2, not silently promoted to a service measurement.
+- [ ] **Step 4: Run all desktop suites in both configurations and the full API suite.**
+- [ ] **Step 5: Commit** `test: pin SOS throttling and report provenance (#623)` then `feat: bound tray-originated reports (#623)`.
+
+### Task 10: Record the security scope and refresh the artifact
+
+**Files:** `docs/adr/0041-one-family-plan-and-computer-downloads.md`, `docs/TESTING.md`, `docs/ROADMAP.md`, `README.md`, `CHANGELOG.d/2026-11-13-windows-w1-service-tray.md`, this plan, `.github/workflows/agent-desktop.yml` only if a gate changes.
+
+- [ ] **Step 1: Amend ADR-0041 D6's W1 scope with the five areas and the accepted known limits.** Document exact counts, no-device limits and self-reported foreground usage. Do not claim W1b, W2, W3 or W4 is complete.
+- [ ] **Step 2: Run every desktop configuration, the full API and repository guards.** Publish and inspect the refreshed unsigned win-x64 artifact without executing it; clean local outputs afterward.
+- [ ] **Step 3: Review the complete R3 diff, fold current main and rerun affected checks.** No secrets, Arabic edits, new plaintext PIN path or unapproved W2/W3/W4 work.
+- [ ] **Step 4: Update PR #754 with raw results, known limits and security questions resolved.** Keep WIP until Ahmed's dependency disposition. Then mark ready, enable auto-merge, and ask Claude for the isolated Windows Server 2025 rows and Fable for the R3 key. Never merge directly.
