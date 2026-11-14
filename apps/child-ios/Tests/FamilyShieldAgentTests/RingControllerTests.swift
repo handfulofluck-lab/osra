@@ -57,14 +57,22 @@ final class FakeRingBackend: RingBackend {
 @MainActor
 private final class TrackingRingReporter: RingAlertReporting {
     let base: RingAlertReporter
+    let storage: UserDefaults
     private(set) var outcomes: [RingReportOutcome] = []
 
-    init(base: RingAlertReporter) { self.base = base }
+    init(base: RingAlertReporter, storage: UserDefaults) {
+        self.base = base
+        self.storage = storage
+    }
 
     func report(state: RingEventState, ringId: UUID, dismissalCount: Int,
                 afterRestart: Bool) async -> RingReportOutcome {
+        let before = base.pendingEvents().map(\.dismissalCount)
         let outcome = await base.report(state: state, ringId: ringId,
                                         dismissalCount: dismissalCount, afterRestart: afterRestart)
+        let after = base.pendingEvents().map(\.dismissalCount)
+        let raw = storage.array(forKey: RingAlertReporter.pendingKey)?.count ?? -1
+        print("RINGTRACE state=\(state) count=\(dismissalCount) before=\(before) after=\(after) raw=\(raw) outcome=\(outcome)")
         outcomes.append(outcome)
         return outcome
     }
@@ -713,7 +721,7 @@ extension RingControllerTests {
                 requests.append(request)
                 return (statuses.removeFirst(), Data())
             })
-        let tracking = TrackingRingReporter(base: reporter)
+        let tracking = TrackingRingReporter(base: reporter, storage: defaults)
         let controller = controller(reporter: tracking)
         await controller.start(id)
         await controller.process(scheduledIDs: [])
@@ -791,6 +799,20 @@ extension RingControllerTests {
         XCTAssertEqual(controller.state?.dismissalCount, 0)
         XCTAssertEqual(backend.scheduled, [id])
         XCTAssertEqual(reporter.callCount, 0)
+    }
+
+    func testColdStartReplacementCancelsPersistedAlarmBeforeScheduling() async {
+        let previous = UUID()
+        let replacement = UUID()
+        backend.scheduled = [previous]
+        backend.stopError = TransportFailure()
+        store.save(RingState(commandId: previous, startedAt: wall,
+                             endAt: wall.addingTimeInterval(300), monotonicStart: uptime, bootSession: 1))
+        let controller = controller()
+        let error = await controller.start(replacement)
+        XCTAssertEqual(error, .scheduleFailed)
+        XCTAssertEqual(backend.stopCalls, [previous])
+        XCTAssertEqual(backend.scheduled, [previous])
     }
 
     func testActiveRingReplayKeepsOriginalDeadline() async {
