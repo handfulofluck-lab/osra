@@ -100,16 +100,28 @@ model and a pipeline, not word lists.
 ### D1. One language registry
 
 A single file, `packages/shared-types/locales.json`, lists every language OSRA knows: BCP-47 tag (`ar`,
-`tr`, `pt-BR`), direction, script, CLDR plural categories, whether it needs extra line height (Urdu
-Nastaliq, Thai, Hindi, Burmese), and a **status per surface**: `draft`, `beta` or `released` for each of
-the seven clients, email, site, store, and the scorer. A check fails when a client offers a language the
-registry does not mark `beta` or `released` for it. Pickers, parity tests and the site builder read the
+`tr`, `pt-BR`), the **tag each platform uses where it differs** (Android's resource folder for Indonesian
+is `values-in`, not `values-id`; Hebrew is `iw`), direction, script, CLDR plural categories, a line-height
+multiplier for the script (D6), and a **status per surface**: `draft`, `beta` or `released` for each of
+the seven clients, email, site, store, and the scorer.
+
+- `draft`: the catalog may sit in the repository but is **not compiled into any build**. Flutter builds
+  `supportedLocales` from every ARB file it finds, so a `draft` ARB lives outside `lib/l10n/` (or is
+  excluded by the build) until its status changes.
+- `beta`: compiled into internal and closed-test builds only, never a production store build. This is the
+  "testers only" state.
+- `released`: in every build.
+
+A check fails when a build offers a language the registry does not allow for that client and build type. Pickers, parity tests and the site builder read the
 registry instead of naming `en` and `ar`.
 
 ### D2. Each platform keeps its native catalog; nothing user-visible is a literal
 
 ARB (Flutter), `strings.xml` + `<plurals>` (Android), `.strings` + `.stringsdict` (iPhone and Mac), and new
-`.resx` resources for the Windows agent. A lint per client fails the build on a user-visible literal.
+`.resx` resources for the Windows agent. A lint per client fails the build on a user-visible literal, on
+code that changes the letter case of interface text (Turkish `i`/`ı`: casing is the translator's choice,
+written in the catalog), and on a word ending glued to a placeholder (`{name}'s`, `{count}s`): the whole
+sentence, with its plural or select form, belongs in the catalog.
 Counted text always uses the platform's plural form. Names and times inside a sentence are
 direction-isolated (the #506 rule) on every client.
 
@@ -143,7 +155,12 @@ languages: a catalog is `released` on a client only when every key is present.
 1. **Source.** English, with a context note on every key.
 2. **Platform terms.** A script pulls the matching Android source strings for the language; Apple, Microsoft
    and Samsung terms are looked up by the Bureau. The result is a machine-readable glossary,
-   `docs/l10n/<tag>/glossary.json`, with required and banned terms.
+   `docs/l10n/<tag>/glossary.json`, in the shape the Language Bureaus thread already uses:
+   `terms[{en, term, source, note, enPattern?, forms?}]` and `banned[{pattern, why}]`. Its
+   `tools/build-pack.mjs` (key and placeholder parity, CLDR plural categories, style rules, banned and
+   required terms) is the starting point for the CI gates in step 6. Signature lines are
+   `<Language>-Bureau: reviewed <sha>` (`Turkish-Bureau`, `Indonesian-Bureau`, `Malay-Bureau`,
+   `French-Bureau`, `Urdu-Bureau`, beside `Arabic-Bureau`).
 3. **Machine draft**, with the glossary and the Bureau's rules.
 4. **Language Bureau** (one thread per language, the Arabic model) reviews and signs
    `<Language>-Bureau: reviewed <sha>`.
@@ -160,7 +177,21 @@ languages: a catalog is `released` on a client only when every key is present.
 
 System fonts in the apps; a bundled font only where the system has none worth using (the site already
 bundles IBM Plex Sans Arabic). Text heights come from line-height tokens, never a fixed pixel height, so a
-tall script grows the row instead of clipping.
+tall script grows the row instead of clipping. The token is a base value times the registry's per-script
+multiplier, not one fixed number: Urdu in Nastaliq needs about 2.0 to 2.2 (Urdu Bureau's figure, to be
+confirmed on devices), which today's fixed tokens would clip. The typeface for each script is the UI/UX
+Bureau's choice.
+
+### D6a. Digits typed by a person are normalised once
+
+Codes and PINs are compared as ASCII digits. One helper per client turns any Unicode decimal digit
+(Arabic-Indic ٠-٩, Extended Arabic-Indic ۰-۹ used in Urdu and Farsi, and others) into 0-9 before
+validation, hashing or sending. Today the rule differs by field: `PairingActivity.kt` and
+`PairQrPayload.kt` match `\d{6}`, which in Kotlin is ASCII-only, the Dart fields use
+`FilteringTextInputFormatter.digitsOnly` (ASCII-only), and `ParentPin.kt` uses `isDigit()`, which accepts
+any Unicode digit. So a pairing code typed on an Arabic keyboard may be refused, and a parent PIN set
+with one digit set may not match when typed with the other. **Read from the code, not yet tried on a
+phone**: it needs a device row in Arabic before it is called a defect.
 
 ### D7. The scorer is language-neutral, and each language passes its own gate
 
