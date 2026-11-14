@@ -53,6 +53,22 @@ open class TamperGuardActivity : ComponentActivity() {
         val unlock = Button(this).apply { text = "Continue" }
         val back = Button(this).apply { text = "Go back" }
 
+        // osra-security#17: Continue stays disabled until the field holds a length the PIN can have, so
+        // an empty submit never reaches the verifier at all. The verifier fails closed on its own now;
+        // this is the other half — a button that cannot be pressed with nothing typed.
+        fun syncUnlockEnabled() {
+            unlock.isEnabled =
+                pin.text.length in ParentPin.MIN_LENGTH..ParentPin.MAX_LENGTH
+        }
+        pin.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) =
+                syncUnlockEnabled()
+
+            override fun afterTextChanged(s: android.text.Editable?) = Unit
+        })
+        syncUnlockEnabled()
+
         unlock.setOnClickListener {
             val entered = pin.text.toString()
             if (pinStore.verify(entered)) {
