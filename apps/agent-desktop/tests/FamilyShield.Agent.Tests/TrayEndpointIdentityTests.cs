@@ -98,6 +98,23 @@ public sealed class TrayEndpointIdentityTests
         }
     }
 
+    [Fact]
+    public async Task ServiceCheckUsesSessionZeroWithoutOpeningTheProcess()
+    {
+        var session = checked(Process.GetCurrentProcess().SessionId + 11000);
+        await using var server = new NamedPipeServerStream(
+            TrayPipeName.ForSession(session), PipeDirection.InOut, 1,
+            PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+        var connecting = server.WaitForConnectionAsync();
+        await using var client = new NamedPipeClientStream(
+            ".", TrayPipeName.ForSession(session), PipeDirection.InOut, PipeOptions.Asynchronous);
+        await client.ConnectAsync(5000, CancellationToken.None);
+        await connecting;
+        var verifier = new WindowsServiceIdentityVerifier();
+
+        Assert.False(verifier.Verify(client));
+    }
+
     private sealed class FakeIdentitySource(ClientIdentity identity) : IClientIdentitySource
     {
         public ClientIdentity Read(int clientPid) => identity;
@@ -106,9 +123,9 @@ public sealed class TrayEndpointIdentityTests
     private sealed class FakeServiceIdentityVerifier(bool accepted) : IServiceIdentityVerifier
     {
         public int ServerPid { get; private set; }
-        public bool Verify(int serverPid)
+        public bool Verify(PipeStream stream)
         {
-            ServerPid = serverPid;
+            ServerPid = TrayClientIdentity.ServerProcessId(stream);
             return accepted;
         }
     }

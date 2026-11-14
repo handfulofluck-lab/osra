@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using FamilyShield.Agent.Services;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -104,6 +105,34 @@ public sealed class DesktopOfflineFallbackTests
         await ReadKind(server, TrayMessageKind.@lock);
     }
 
+    [Fact]
+    public async Task FullQueueDoesNotRemoveAnUnsentMessageAfterAnOlderWrite()
+    {
+        var stream = new WriteBlockingStream();
+        var server = new FakeServer(7, "user", stream);
+        var slot = new TrayServerWorker.SessionSlot(
+            new InteractiveSession(7, "user", true), server,
+            (_, _, _) => Task.CompletedTask, NullLogger<TrayServerWorker>.Instance);
+        slot.Enqueue(new TrayMessage(TrayMessageKind.wind_down, Minutes(1)));
+        var running = slot.RunAsync();
+        await stream.FirstWriteStarted;
+        for (var minutes = 2; minutes <= 33; minutes++)
+            slot.Enqueue(new TrayMessage(TrayMessageKind.wind_down, Minutes(minutes)));
+        stream.Release();
+        await running;
+
+        var actual = new List<int>();
+        var reading = new MemoryStream(server.Stream!.ToArray());
+        while (reading.Position < reading.Length)
+        {
+            var message = await TrayProtocol.ReadAsync(reading, TrayDirection.ToTray);
+            actual.Add(message.Payload!.Value.GetProperty("minutes").GetInt32());
+        }
+        Assert.Equal(Enumerable.Range(1, 33), actual);
+    }
+
+    private static JsonElement Minutes(int value) => JsonSerializer.SerializeToElement(new { minutes = value });
+
     private static async Task ReadKind(FakeServer server, TrayMessageKind expected)
     {
         for (var attempt = 0; attempt < 100 && !server.Disposed; attempt++)
@@ -163,7 +192,36 @@ public sealed class DesktopOfflineFallbackTests
             throw new UnauthorizedAccessException("The pipe name is already occupied.");
     }
 
-    private sealed class DelayedMemoryStream : MemoryStream
+    private sealed class WriteBlockingStream : DelayedMemoryStream
+    {
+        private readonly TaskCompletionSource<bool> _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task FirstWriteStarted { get; private set; } = Task.CompletedTask;
+
+        public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        {
+            HoldFirstWrite();
+            await _release.Task.WaitAsync(cancellationToken);
+            await base.WriteAsync(buffer, offset, count, cancellationToken);
+        }
+
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            HoldFirstWrite();
+            await _release.Task.WaitAsync(cancellationToken);
+            await base.WriteAsync(buffer, cancellationToken);
+        }
+
+        public void Release() => _release.TrySetResult(true);
+
+        private void HoldFirstWrite()
+        {
+            if (FirstWriteStarted.IsCompleted) return;
+            FirstWriteStarted = _release.Task;
+        }
+    }
+
+    private class DelayedMemoryStream : MemoryStream
     {
         public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {

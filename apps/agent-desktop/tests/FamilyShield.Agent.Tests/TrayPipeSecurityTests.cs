@@ -65,7 +65,7 @@ public sealed class TrayPipeSecurityTests
 
     private sealed class AcceptingServiceIdentityVerifier : IServiceIdentityVerifier
     {
-        public bool Verify(int serverPid) => true;
+        public bool Verify(PipeStream stream) => true;
     }
 
     private sealed class FakeIdentitySource(ClientIdentity identity) : IClientIdentitySource
