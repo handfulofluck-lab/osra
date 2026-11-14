@@ -1,6 +1,7 @@
 using FamilyShield.Agent.Services;
 using OSRA.Service;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -57,6 +58,31 @@ public sealed class RuntimeCoordinatorTests
         Assert.True(host.Disposed);
         store.Dispose();
         try { Directory.Delete(dir, recursive: true); } catch (Exception) { }
+    }
+
+    [Fact]
+    public void UnpairedTransportResolvesItsWorker()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "osra-runtime-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var store = new LocalRuleStore(NullLogger<LocalRuleStore>.Instance,
+            Path.Combine(dir, "agent.db"), Path.Combine(dir, "status.json"));
+        try
+        {
+            var services = new ServiceCollection();
+            services.AddLogging();
+            ServiceHostComposition.ConfigureServices(services, null);
+            services.Remove(services.Single(service => service.ServiceType == typeof(LocalRuleStore)));
+            services.AddSingleton(store);
+            using var provider = services.BuildServiceProvider();
+
+            Assert.NotNull(provider.GetRequiredService<ITrayCommandSink>());
+        }
+        finally
+        {
+            store.Dispose();
+            try { Directory.Delete(dir, recursive: true); } catch (Exception) { }
+        }
     }
 
     private sealed class FakeSink : ITrayCommandSink

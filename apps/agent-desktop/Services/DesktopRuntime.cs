@@ -8,6 +8,7 @@ public static class DesktopRuntime
     public static IServiceCollection AddServiceTransport(IServiceCollection services, AgentConfig config, TrayServerEvents events)
     {
         services.AddSingleton(config);
+        services.AddHttpClient<ApiClient>(client => client.BaseAddress = new Uri(config.ApiBase ?? AgentConfig.ProductionApiBase));
         services.AddSingleton<LocalRuleStore>();
         services.AddSingleton<ForegroundActivityAccumulator>();
         services.AddSingleton<DesktopCapabilitiesStore>();
