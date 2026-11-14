@@ -224,10 +224,12 @@ Expected: FAIL for missing dismissal reporting and unpair handling.
 - [ ] **Step 3: Implement reporting and offline-safe stop**
 
 `RingAlertReporter` calls `AlertReporter.send` with `category: "ring"`, `metadata.state`, `metadata.ringId`, and the Task 1 dedupe key. `child_dismissed` is warning; other states are info. No `metadata.bodyKey`/`bodyParams` is sent. Both 200 and 201 are delivered; all other statuses leave the event pending. The English fallback is exactly:
-- child dismissal: "The ring alert was dismissed on the phone and has been re-armed."
-- PIN stop: "The parent PIN stopped the ring."
-- parent stop: "The parent stopped the ring."
-- timeout: "The ring stopped after 5 minutes."
+- child dismissal, once: "The ring alert was dismissed on the phone. It is ringing again."
+- child dismissal, more than once: "The ring alert was dismissed on the phone {count} times. It is still ringing."
+- PIN stop: "The ring was stopped on the phone with the parent PIN."
+- parent stop: "A parent stopped the ring from the OSRA app."
+- timeout: "The ring ended by itself after 5 minutes."
+- timeout after restart: "The ring ended after the phone was restarted."
 
 Each dismissal increments `dismissalCount`, produces a new dedupe key and re-arms. Timeout stops with `timedOut` and uses Task 1's two-clock rule. Unpair/consent withdrawal clears state locally without calling the reporter. Dismissal never clears `shield.requestTimes` or any other request-throttle state.
 
@@ -299,7 +301,7 @@ Add `CommandAction.ring` and `stopRing` mappings and `RingCommandHandling`. `Com
 
 `RingView` is full-screen and uses only `L10n.tr`: title, persistent-ring explanation and parent-PIN action. It embeds the existing `PinGateView`, so a child always has a route to a real stop. `AgentRootView` presents it while controller state is active and hides it after a real stop.
 
-`RingNotifier` wraps `UNUserNotificationCenter` for the return-to-ring notification and cancellation. No visible string is literal. `App/Info.plist` gains `NSAlarmKitUsageDescription` with the exact English line: "OSRA alerts you when your parent rings this phone, even in Silent mode, Focus, and at volume zero." Arabic comes only from the Bureau.
+`RingNotifier` wraps `UNUserNotificationCenter` for the return-to-ring notification and cancellation. No visible string is literal. `App/Info.plist` and both localized `InfoPlist.strings` files gain `NSAlarmKitUsageDescription` with the exact English line: "OSRA Kids rings this phone out loud when your parent rings it, even in Silent mode, in a Focus, or with the volume turned down." Arabic comes only from the Bureau.
 
 - [ ] **Step 4: Run the tests and verify they pass**
 
@@ -384,7 +386,7 @@ Add `ring` to `AlertCategoryExtended` and `InternalAlertSchema`. Add `alertBodyR
 
 The route maps `(ring, state)` to the server key/params and passes them through #718 validation. Caller `metadata.bodyKey`/`bodyParams` is stripped before the validated pair is written. English fallback remains.
 
-`shouldPush` suppresses only `parent_stopped`. Extend `AlertLike` with the metadata it needs. For `child_dismissed`, `notifyParentsOfAlert` finds the last **pushed** dismissal of the same ring, excluding the current row; mere recorded dismissals do not restart the window. Push the first dismissal and, once 60 seconds have elapsed since the last pushed dismissal, push the latest count. If less than 60 seconds have elapsed, return `skipped: "coalesced"` without sending. Dismissals at 0, 30, 60, 90 and 120 seconds create five alerts and pushes at 0, 60 and 120 seconds. The parent fetches the latest count through the existing wake. Payload remains only the generic wake marker.
+`shouldPush` suppresses only `parent_stopped`. Extend `AlertLike` with the metadata it needs. For `child_dismissed`, `notifyParentsOfAlert` reserves an environment/family/ring key with `SET <unique-token> NX EX 60`; mere recorded dismissals do not extend that reservation. The first dismissal pushes, and a later dismissal pushes once the last pushed reservation expires, with the latest count. Inside the window it returns `skipped: "coalesced"` without sending. Provider failure compare-and-deletes only its own token; Redis failure fails open. Dismissals at 0, 30, 60, 90 and 120 seconds create five alerts and pushes at 0, 60 and 120 seconds. The parent fetches the latest count through the existing wake. Payload remains only the generic wake marker.
 
 - [ ] **Step 4: Run the tests and verify they pass**
 
@@ -443,7 +445,7 @@ Expected: FAIL because the ring body helper does not exist.
 
 - [ ] **Step 3: Implement localized ring rendering**
 
-Add `alertBodyFor(alert, language)` with a `bodyKey` switch and the English fallback `alert.body`. Ring states use `bodyParams.ringId` and, for dismissal, `dismissalCount`. No raw `state: value` rows are printed. Add `unsupported_os` to the reason renderer with the line specified in the spec.
+Add `alertBodyFor(alert, l10n)` with a `bodyKey` switch and the English fallback `alert.body`. Ring states use `bodyParams.ringId` and, for dismissal, `dismissalCount` mapped to the localized `count` placeholder. `timed_out` with `bodyParams.afterRestart == true` uses the Bureau-approved restart line. No raw `state: value` rows are printed. Add `unsupported_os` to `commandRefusalText` with the Bureau-approved iOS-update line.
 
 Add English keys in `app_en.arb`. Arabic keys enter only after the Arabic Bureau posts exact approved lines; copy those lines byte for byte and request `Bureau review: #<PR>` on #604. Include light/dark English/Arabic screenshots on #650 for UI/UX review.
 

@@ -59,6 +59,8 @@ While the app is alive, elapsed time uses the monotonic clock, so a forward wall
 
 An active ring resumes on launch. An expired ring stops as `timed_out`. A stopped ring does not resume.
 
+Claude's restart ruling on #750 (2026-11-14 04:04Z): `timed_out` carries `afterRestart: true` rather than adding a fifth state. After a restart, the server reads the original ring command's timestamp. If less than 300 seconds remain, it refuses the timeout without creating an alert and returns `active: true` with `retryAfterSeconds`; the phone re-arms for that remaining time. If the full window elapsed, it records `timed_out` with `afterRestart: true`. Offline expiry uses the stored wall-clock end and reports `afterRestart` when the phone is online again. The parent shows the Bureau-approved whole line "The ring ended after the phone was restarted." in English and its approved Arabic equivalent.
+
 ### Alarm backend
 
 `RingBackend` is a small protocol with operations to request/check authorization, schedule an alert, stop it by UUID and observe the set of scheduled UUIDs.
@@ -132,7 +134,7 @@ Severities and push:
 
 Server `shouldPush` suppresses only `parent_stopped`, leaving all existing policies unchanged.
 
-Every dismissal is recorded as its own alert with its own dedupe key, but pushes are coalesced: the first dismissal of a ring pushes immediately; a later dismissal pushes once 60 seconds have elapsed since the last **pushed** dismissal, carrying the latest count. An unpushed dismissal does not restart the window. Three dismissals in ten seconds therefore produce three alerts and one push; dismissals at 0, 30, 60, 90 and 120 seconds produce five alerts and three pushes at 0, 60 and 120 seconds. This is recording without flooding, not suppression of the events themselves.
+Every dismissal is recorded as its own alert with its own dedupe key, but pushes are coalesced: the first dismissal of a ring pushes immediately; a later dismissal pushes once 60 seconds have elapsed since the last **pushed** dismissal, carrying the latest count. An unpushed dismissal does not restart the window. Three dismissals in ten seconds therefore produce three alerts and one push; dismissals at 0, 30, 60, 90 and 120 seconds produce five alerts and three pushes at 0, 60 and 120 seconds. This is recording without flooding, not suppression of the events themselves. The API reserves an environment/family/ring key with `SET <unique-token> NX EX 60`, and compare-and-deletes only its own token after provider failure. A Redis outage fails open so a parent wake is not lost.
 
 Every ring push remains only a wake through the existing generic loc-key path (`PUSH_ALERT_TITLE` / `PUSH_ALERT_BODY`). No state, ring id or dismissal count enters the APNs or FCM payload; the parent app fetches the alert through the authenticated API.
 

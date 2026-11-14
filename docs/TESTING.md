@@ -473,7 +473,7 @@ swift test list
 swift test
 ```
 
-The discovery step requires 211 macOS tests and names one case each from pairing, HMAC signing, rule
+The discovery step requires 267 macOS tests and names one case each from pairing, HMAC signing, rule
 interpretation and both localisation string suites. Five iOS-only authorization tests remain behind
 `#if os(iOS)` because `CLAuthorizationStatus.authorizedWhenInUse` is unavailable on macOS; the other location
 and client tests still run. Wrapping any additional portable source file in `#if os(iOS)` removes its tests and
@@ -988,6 +988,39 @@ First run on Karim's MacBook and iPhone 13, 11 Nov 2026 (#372). The ids are the 
    **App groups** asks for it: five wrong PINs lock it for 30 s. Make a group ("Games"), **Choose apps** (e.g.
    Calculator), **Add group**: the app shows the OSRA screen, not hidden, and **Ask parent** raises an alert on the
    parent side. An older bundle-id rule still hides its app. **Re-pair** also asks for the PIN.
+
+### iPhone ring (#750): KR01 and the §1 escape rows
+
+The Mac test bed owns these physical rows on the signed test iPhone; the author does not claim them from a simulator.
+Use the normal signed test pairing with consent and a parent PIN, and never write a PIN, device token or other secret
+into a screenshot or test log. AlarmKit is used on iOS 26 and later; no Critical Alerts entitlement is requested here.
+
+- **KR01:** with the Ring/Silent switch on, a Focus/Do Not Disturb enabled and volume zero, `ring` requests AlarmKit
+  authorization and alerts immediately. Check the permission prompt in English and Arabic. An older iOS returns a
+  failed command with `unsupported_os` and schedules nothing; the parent sees the localized iOS-update reason.
+- **The only stops:** the parent PIN, the parent's `stop_ring`, or 300 seconds. A correct PIN reports `pin_stopped`;
+  `stop_ring` records `parent_stopped` without another push; the cap reports `timed_out`. Five wrong PINs still lock
+  the PIN gate without stopping the alarm. Replaying a stopped `ring` command never schedules another alarm.
+- **§1 escape rows:** dismissing the system alert, Home/swipe-up, the app switcher, Notification Centre, Control
+  Centre, the side button, force-quitting, rebooting and going offline are not stops. `alarmUpdates` re-arms a missing
+  active UUID and records each dismissal once. "Open OSRA Kids" returns to the PIN gate; no notification accepts PIN
+  input. `shield.requestTimes` and the other request-throttle state must remain unchanged.
+- **Restart and trusted time:** moving the wall clock forward cannot end a live ring. Online after a reboot, the API
+  compares the original command's timestamp with its own clock, returns `retryAfterSeconds` while the command is
+  unexpired and the phone re-arms for that remainder. Offline expiry uses the stored wall-clock end and later reports
+  `timed_out` with `afterRestart: true`. A genuine five-minute timeout uses that same flag and its own parent line.
+- **Family removal:** unpairing, server revocation and consent withdrawal stop locally and send no ring alert.
+- **Pictures:** capture the ring view with the keyboard down and up, the largest ordinary text size, the system alert,
+  the return notification on the lock screen and the AlarmKit permission prompt, in light and dark, English and
+  Arabic. Capture the parent's dismissal, PIN stop, parent stop, timeout and restart lines too. The parent's
+  unsupported-OS answer is a localized command result, not an alert in the feed.
+
+If a row fails, record the actual system behavior and do not substitute a custom notification loop. Critical Alerts
+is a named fallback whose entitlement request belongs to Karim. Every run ends with the ring stopped and the device,
+pairing and test data returned to their previous state.
+
+The existing manual `workflow_dispatch` accepts an optional `swift_test_filter` for focused red/green development
+runs (for example `Ring` or `RingPolicyTests`). It adds no trigger and does not replace the unfiltered PR jobs.
 
 ## 5h. First-run pairing time (roadmap 3.2, proxy)
 

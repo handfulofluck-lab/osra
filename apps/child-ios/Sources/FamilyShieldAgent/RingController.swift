@@ -130,7 +130,7 @@ public final class RingController: ObservableObject {
             history.remove(current.commandId)
             var resumed = current
             resumed.stopSource = nil
-            resumed.endAt = now().addingTimeInterval(seconds)
+            resumed.endAt = now().addingTimeInterval(TimeInterval(seconds))
             resumed.monotonicStart = monotonic()
             store.save(resumed)
             state = resumed
