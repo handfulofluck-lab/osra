@@ -16,24 +16,18 @@ HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # 1 cache node, 3 public IPv4 addresses). Derived from README.md's table / 730 h; keep the two in sync.
 HOURLY_COST_USD="${HOURLY_COST_USD:-0.194}"
 
-# osra-security#27 (Fable's review of the production Terraform): this script defaults the credential to
-# the *staging* profile, and a production run passes `-var-file=production.tfvars` through "$@" like any
-# other argument. That combination would assume the production deploy role with a long-lived staging key
-# living on the shared PC. A convention is not enough for that, so refuse here, before anything is read:
-#
-#   - a run that names production must set AWS_PROFILE explicitly, and
-#   - it must not be osra-staging.
-#
-# The check is first on purpose, so it fires without terraform or the AWS CLI installed and can be tested
-# by `node scripts/check-up-production-guard.mjs` without touching a cloud account.
+# osra-security#27: this script defaults the credential to the staging profile, and a production run
+# passes its tfvars through "$@" like any other argument. A production run must name its credential
+# explicitly rather than inherit one, so refuse here, before anything is read. The detail is on the
+# private issue; this comment says only what the code does.
 case " $* " in
   *production*)
     if [ -z "${AWS_PROFILE:-}" ]; then
       cat >&2 <<'EOG'
 refusing: this run names production and AWS_PROFILE is unset.
 
-up.sh would otherwise default to the osra-staging profile, whose access key is a long-lived key on a
-shared machine (osra-security#27). Set the production credential explicitly, and keep it off this PC:
+up.sh would otherwise default to a credential the caller did not choose. Set the production profile
+explicitly (osra-security#27):
 
     AWS_PROFILE=<production-profile> ./infra/terraform/up.sh -var-file=production.tfvars
 EOG
@@ -43,8 +37,7 @@ EOG
       cat >&2 <<'EOG'
 refusing: this run names production while AWS_PROFILE is osra-staging.
 
-Being wrong here means the production deploy role is assumed with the staging long-lived key, and the
-database password, the JWT secret and the vault key all sit in that state (osra-security#27).
+A production run must name its own credential; see osra-security#27.
 EOG
       exit 1
     fi

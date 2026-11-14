@@ -33,7 +33,7 @@ const SCRIPT = join(ROOT, 'infra', 'terraform', 'up.sh');
 
 const UNSET_MSG = 'refusing: this run names production and AWS_PROFILE is unset';
 const STAGING_MSG = 'refusing: this run names production while AWS_PROFILE is osra-staging';
-const GUARD_MARKER = '# osra-security#27 (Fable\'s review of the production Terraform)';
+const GUARD_MARKER = '# osra-security#27: this script defaults the credential to the staging profile';
 
 /** Run up.sh with a controlled environment. Returns {status, stderr}. */
 function run(scriptPath, { args = [], profile }) {
