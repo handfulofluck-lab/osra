@@ -335,6 +335,10 @@ Apple's Arabic support pages on 2026-11-12: «الإعدادات», «مدة ا�
   this yet (issues #769 and #771). On the Flip4 the Android child app's number pads cannot type or
   paste `٠–٩` (14 Nov), so nothing fails there today. On the test iPhone the number pad's globe key types `٠–٩` into the
   parent PIN and the sign-in code fields, and both refuse them (14 Nov): a beta-A blocker, K31's fix.
+- The same holds for typed punctuation: a list "separated by commas" is split on `,` and on the Arabic
+  comma `،` (U+060C) alike, and on `;`, `؛` and line breaks. The labels «(مفصولة بفواصل)» stay; the
+  app never asks a person to change keyboard. Decided 14 Nov 2026; the parent app splits on `,` only
+  today (issue #794).
 - A counted noun always goes through a plural rule with all six Arabic forms (ICU in ARB, `<plurals>`
   on Android): «دقيقة واحدة», «دقيقتان», «3 دقائق», «11 دقيقة». Where no plural mechanism exists (an
   email template, a web page), reword so that no noun follows the number («المدة بالدقائق: 45»).
