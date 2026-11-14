@@ -15,7 +15,8 @@ principle survives every re-cut, enforced at the merge (§6.5).
 |---|---|---|---|
 | **Kimi Code** (development lead) | Implements features and fixes; owns `main` and releases | Edit application code, tests, CI and docs; open and **merge** PRs (§6.5); tag and prepare releases | Merge unverified work, **including their own**; merge with a red gate; push to `main` (§6); act on a store account, entitlement or key |
 | **Claude** (architecture + testing, **team coordinator** from 2026-10-23) | Owns architecture decisions and **all testing**: runs the gates, tests PR claims, runs the hardware rows, with a detailed fix for every finding (§12). Coordinates the team: assigns members' tasks and is the one point of contact for technical questions | Decide architecture and record it as an ADR; review designs and diffs against their roadmap row; re-run every gate on a branch; run hardware rows on the leased phone (§9); verify TR rows and sign `Verified-sha:`; write tests, checklists, harnesses and test requests; assign and schedule members' work | Merge; push to `main`; write product code; verify its own PR; change the code under test to make a claim true; weaken or delete a failing check |
-| **Antigravity** | **Inactive from 2026-10-19** (maintainer), once the Group 1 hardware re-runs and TR-52 in flight at that time are filed. A silent member until the maintainer says otherwise: takes no new testing tasks and is not assigned any | Finish the rows already in flight; read | Take new rows; merge |
+| **Antigravity** (Gemini 4 Carbon; inactive 2026-10-19 to 2026-11-14) | **Senior member from 2026-11-14 18:01Z** (maintainer's decision card, #617): same rank as Fable for cyber security and complex/critical tasks; R3 security key (§6.6); security reviews, threat models, hard root causes, independent ADR reviews. Start-here #786 | Review and verify any PR it did not author; sign `Verified-sha:` as `— Antigravity`; open PRs from `antigravity/` branches; report exploitable findings privately (§4) | Merge or switch on auto-merge for others' PRs; touch AWS (it goes through Claude, or Kimi standing in), store accounts, keys or secrets; use the physical test phones |
+| **Hydrogen** (Gemini 4 Hydrogen, from 2026-11-14) | Code reviewer and tester, plus roles Claude assigns: cross-family verification with planted faults, test backfill, automated child-escape rows, shadow after-merge checks. Start-here #785 | Review and verify any PR it did not author; sign `Verified-sha:` as `— Hydrogen`; open PRs from `hydrogen/` branches | Merge or switch on auto-merge for others' PRs; touch AWS, store accounts, keys or secrets; use the physical test phones; give the R3 security key |
 | **Ahmed** (security + testing, from 2026-10-23; also the iOS child agent from 2026-10-24) | A human member in Doha, working with his own Claude Code agent from his own GitHub account (`ahmedyusseff`). Security reviews, penetration testing of our own code and test environments, threat modelling and testing, each finding with the fix he recommends (§12). From 2026-10-24 he also builds the iOS child agent, `apps/child-ios` (roadmap 5.5, #372), on the GitHub macOS runner | Open PRs from `ahmed/<roadmap-item>-<topic>` branches, including product code under `apps/child-ios/` and its CI workflow; review any PR (advisory); test on his own local stack, emulator or phone; test staging only in a window Claude schedules with him; report exploitable findings privately (§4) | Merge or switch on auto-merge; sign a verification other than as `— Ahmed` from his own account (from 2026-11-13 21:15Z he verifies and is an R3 security key alongside Fable, §6.6 rule 5; nothing else from his account counts, §6.4); sign as another member, including `— Claude`; use the physical test phone, production or real family data |
 | Human maintainer | Product and security trade-offs; anything that needs an account or money | Everything; final call on scope | — |
 
@@ -389,9 +390,15 @@ different AI model family; and GitHub auto-merge, which merges the moment every 
 | Anthropic | Claude (`— Claude`), Fable threads (`— Fable`), Mac and PC device verifiers (Claude), Ahmed (`— Ahmed`; his tool is Claude Code) |
 | DeepSeek | Kimi (`— Kimi Code`) |
 | Moonshot | K31 (`— K31`), K31-Mac (`— K31-Mac`) |
+| Google Carbon | Antigravity (`— Antigravity`; Gemini 4 Carbon) |
+| Google Hydrogen | Hydrogen (`— Hydrogen`; Gemini 4 Hydrogen) |
+
+The two Google models count as two families (maintainer, 2026-11-14 17:58Z: "different models completely and can sign
+their work but not preferably"): Antigravity and Hydrogen may verify each other's PRs, but Team collaboration sync picks
+a verifier from another vendor first when one is free within the claim timer.
 
 **Branch prefix names the author:** `kimi/`, `claude/` (also `qa/`, `verify/`), `fable/`, `ahmed/`, `k31/`,
-`k31mac/`. A branch with none of these is read as Kimi's (the convention before 13 Nov), so members other than Kimi
+`k31mac/`, `antigravity/`, `hydrogen/`. A branch with none of these is read as Kimi's (the convention before 13 Nov), so members other than Kimi
 must use their prefix. A Kimi-authored commit (commit email) makes Kimi a co-author whatever the prefix.
 
 **Risk tiers.** The gate takes the higher of the `risk:R1/R2/R3` label and the tier computed from the changed paths
@@ -401,7 +408,7 @@ must use their prefix. A Kimi-authored commit (commit email) makes Kimi a co-aut
 |---|---|---|---|
 | R1 | docs, Markdown, tests only | one member who is not the author | 2 h |
 | R2 | normal features and fixes | one member from another model family than the author, planted faults on changed logic, a device row if it runs on a device | 6 h |
-| R3 | auth, sessions, tokens, pairing, MFA/TOTP, invites, account deletion, device revocation, billing, refunds, purchases, entitlements, consent, children's location, the Prisma schema and migrations, API middleware, `infra/`, signing, secrets, the build/publish/deploy workflows, the merge gate and its lint, this file | two different members, neither the author: one from a model family other than the author's, and one security key (**Ahmed or Fable**). The two may share a family with each other, e.g. Claude + Fable on a Kimi or K31 PR | 24 h |
+| R3 | auth, sessions, tokens, pairing, MFA/TOTP, invites, account deletion, device revocation, billing, refunds, purchases, entitlements, consent, children's location, the Prisma schema and migrations, API middleware, `infra/`, signing, secrets, the build/publish/deploy workflows, the merge gate and its lint, this file | two different members, neither the author: one from a model family other than the author's, and one security key (**Ahmed, Fable or Antigravity**). The two may share a family with each other, e.g. Claude + Fable on a Kimi or K31 PR | 24 h |
 
 **Bureaus, enforced by the gate.** The maintainer, 2026-11-13 18:44Z: "any screen should have the UI/UX Bureau OK
 before it goes". The Bureau judges against ADR-0038 (logo, palette, one design language), Material 3, Apple HIG and
@@ -661,7 +668,7 @@ So identity is part of the message:
    `— <Agent> (<role>) → <addressee>: …`; PR comments open with `**<Agent> (<role>) →**`. The role word
    matters as much as the name, because roles changed on 2026-10-17 and a reader needs to know which
    hat was on.
-2. **Commits carry a trailer** — `Co-Authored-By: Kimi Code <dev-lead>`, `… Antigravity <testing>`,
+2. **Commits carry a trailer** — `Co-Authored-By: Kimi Code <dev-lead>`, `… Antigravity <security>`, `… Hydrogen <testing>`,
    `… KCL lead <architecture>` — so `git log` shows the pair, not a single author.
 3. **A silence is not an absence.** If an agent has not replied, the message says when it was sent and
    what the default is, so the next reader can act without waiting. Never interpret no-reply as agreement.
