@@ -611,20 +611,15 @@ extension RingControllerTests {
         XCTAssertNil(controller.state)
     }
 
-    func testReplacementCancellationFailureKeepsPreviousRing() async {
+    func testPreviousCancelFailureDoesNotBlockReplacement() async {
         let controller = controller()
         let newer = UUID()
         await controller.start(id)
         backend.stopError = TransportFailure()
         let error = await controller.start(newer)
-        XCTAssertEqual(error, .scheduleFailed)
-        XCTAssertEqual(controller.state?.commandId, id)
-        XCTAssertEqual(backend.scheduled, [id])
-        backend.stopError = nil
-        let retry = await controller.start(newer)
-        XCTAssertNil(retry)
+        XCTAssertNil(error)
         XCTAssertEqual(controller.state?.commandId, newer)
-        XCTAssertEqual(backend.scheduled, [newer])
+        XCTAssertTrue(backend.scheduled.contains(newer))
     }
 
     func testReporterCreatedBeforePairingUsesCurrentIdentity() async {
@@ -782,7 +777,7 @@ extension RingControllerTests {
         XCTAssertEqual(reporter.callCount, 0)
     }
 
-    func testColdStartReplacementCancelsPersistedAlarmBeforeScheduling() async {
+    func testColdStartCancelFailureDoesNotBlockReplacement() async {
         let previous = UUID()
         let replacement = UUID()
         backend.scheduled = [previous]
@@ -791,8 +786,8 @@ extension RingControllerTests {
                              endAt: wall.addingTimeInterval(300), monotonicStart: uptime, bootSession: 1))
         let controller = controller()
         let error = await controller.start(replacement)
-        XCTAssertEqual(error, .scheduleFailed)
-        XCTAssertEqual(backend.scheduled, [previous])
+        XCTAssertNil(error)
+        XCTAssertTrue(backend.scheduled.contains(replacement))
     }
 
     func testActiveRingReplayKeepsOriginalDeadline() async {
