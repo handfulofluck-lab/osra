@@ -1031,7 +1031,8 @@ The existing manual `workflow_dispatch` accepts an optional `swift_test_filter` 
 runs (for example `Ring` or `RingPolicyTests`). It adds no trigger and does not replace the unfiltered PR jobs.
 For layout evidence, `ring_screenshots=true` runs `RingScreenshotsTests` after the ordinary iOS jobs pass and uploads
 English/Arabic, light/dark and large-text PNGs. Separate `xcodebuild -testLanguage en` and `-testLanguage ar` launches
-select the real package resource bundles; the fixture checks the selected language and uses a fake ring backend. Neither
+select the real package resource bundles; the fixture checks the selected language, measures that the ring title responds
+to Dynamic Type, and compares the PIN form's background pixel with the page. It uses a fake ring backend. Neither
 simulator preferences nor production localization are changed. This is not AlarmKit, permission-prompt, notification,
 keyboard or physical escape-row evidence. The Mac test bed still owns those rows.
 

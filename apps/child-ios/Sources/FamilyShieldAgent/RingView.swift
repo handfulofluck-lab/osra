@@ -25,7 +25,7 @@ public struct RingView: View {
                     }
                     .padding(.top, 24)
                     Text(L10n.tr("ring_title"))
-                        .font(.system(size: 26, weight: .bold))
+                        .font(.title.bold())
                         .multilineTextAlignment(.center)
                     Text(L10n.tr("ring_explanation"))
                         .font(.body)
@@ -37,6 +37,7 @@ public struct RingView: View {
                             RingNotifier.cancel()
                         }
                     }
+                    .scrollContentBackground(.hidden)
                     .frame(minHeight: 240)
                 }
                 .frame(maxWidth: .infinity)
