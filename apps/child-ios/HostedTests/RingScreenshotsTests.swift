@@ -8,7 +8,7 @@ private var screenshotBundle: Bundle?
 private var screenshotSwizzled = false
 
 private extension Bundle {
-    @objc func osra_localizedString(forKey key: String, value: String?, table tableName: String?) -> String {
+    @MainActor @objc func osra_localizedString(forKey key: String, value: String?, table tableName: String?) -> String {
         if let screenshotBundle {
             return screenshotBundle.localizedString(forKey: key, value: value, table: tableName)
         }
