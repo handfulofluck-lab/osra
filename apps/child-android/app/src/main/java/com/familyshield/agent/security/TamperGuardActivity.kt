@@ -29,7 +29,8 @@ open class TamperGuardActivity : ComponentActivity() {
 
     @Inject lateinit var pinStore: ParentPinStore
 
-    private var attempts = 0
+    /** osra-security#24: the wrong-PIN count is persisted, so reopening this screen does not reset it. */
+    @Inject lateinit var attemptStore: PinAttemptStore
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -80,21 +81,55 @@ open class TamperGuardActivity : ComponentActivity() {
         })
         syncUnlockEnabled()
 
+        // osra-security#24: reopening the screen must not hand back a fresh set of tries. The notice is
+        // shown immediately, and Continue stays off for as long as the lockout lasts.
+        val openedAt = System.currentTimeMillis()
+        val openedState = attemptStore.read()
+        if (PinLockout.isLocked(openedState, openedAt)) {
+            error.text = PinLockout.lockoutNotice(PinLockout.remainingMs(openedState, openedAt))
+            unlock.isEnabled = false
+        }
+
         unlock.setOnClickListener {
+            val now = System.currentTimeMillis()
+            // osra-security#24: a closed gate refuses **every** PIN, the right one included. Checking this
+            // before verify() is what makes the back-off a lockout rather than a message.
+            val state = attemptStore.read()
+            if (PinLockout.isLocked(state, now)) {
+                pin.text.clear()
+                error.text = PinLockout.lockoutNotice(PinLockout.remainingMs(state, now))
+                return@setOnClickListener
+            }
             val entered = pin.text.toString()
             if (pinStore.verify(entered)) {
-                TamperState.grantGrace(this, System.currentTimeMillis() + TamperScreenPolicy.GRACE_MS)
+                // The only thing that resets the count.
+                attemptStore.clear()
+                TamperState.grantGrace(this, now + TamperScreenPolicy.GRACE_MS)
                 setResult(RESULT_OK)
                 finish()
             } else {
-                attempts += 1
+                val failed = PinLockout.recordFailure(state, now)
+                if (PinLockout.shouldAlert(failed)) {
+                    // One alert per lockout: the parent is told the gate is closed, not told again for each
+                    // further attempt inside the same closed gate.
+                    attemptStore.write(PinLockout.markedAlerted(failed))
+                    TamperAlertWorker.enqueue(
+                        this,
+                        TamperAlertWorker.TYPE_GUARD_TRIGGERED,
+                        detail = "Parent PIN locked for ${PinLockout.lockWindowMs(failed.failures) / 60_000} minute(s) " +
+                            "after ${failed.failures} wrong tries.",
+                        windowStartMs = failed.lastFailureMs,
+                        attemptCount = failed.failures,
+                    )
+                } else {
+                    attemptStore.write(failed)
+                }
                 pin.text.clear()
-                error.text = if (attempts >= MAX_ATTEMPTS) {
-                    "Too many attempts. Ask your parent."
+                error.text = if (PinLockout.isLocked(failed, now)) {
+                    PinLockout.lockoutNotice(PinLockout.remainingMs(failed, now))
                 } else {
                     "Wrong PIN."
                 }
-                if (attempts >= MAX_ATTEMPTS) goHome()
             }
         }
         back.setOnClickListener { goHome() }
@@ -195,7 +230,6 @@ open class TamperGuardActivity : ComponentActivity() {
         const val REASON_REPAIR = "repair"
         const val REASON_REMOVE = "remove"
         const val REASON_RING = "ring"
-        private const val MAX_ATTEMPTS = 5
     }
 }
 
