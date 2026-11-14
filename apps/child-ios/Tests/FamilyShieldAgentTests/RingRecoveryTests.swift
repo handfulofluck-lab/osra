@@ -71,7 +71,8 @@ final class RingRecoveryTests: XCTestCase {
         let controller = controller()
         await controller.start(id)
         backend.stopError = RingControllerTests.TransportFailure()
-        XCTAssertEqual(await controller.stop(.pinVerified), .stopFailed)
+        let error = await controller.stop(.pinVerified)
+        XCTAssertEqual(error, .stopFailed)
         backend.stopError = nil
         uptime += 300
         clockDriving = true
@@ -86,7 +87,8 @@ final class RingRecoveryTests: XCTestCase {
         let controller = controller()
         await controller.start(id)
         backend.stopError = RingControllerTests.TransportFailure()
-        XCTAssertEqual(await controller.start(replacement), .scheduleFailed)
+        let error = await controller.start(replacement)
+        XCTAssertEqual(error, .scheduleFailed)
         backend.stopError = nil
         uptime += 300
         clockDriving = true
@@ -102,7 +104,8 @@ final class RingRecoveryTests: XCTestCase {
         backend.scheduleErrorID = replacement
         let controller = controller()
         await controller.start(id)
-        XCTAssertEqual(await controller.start(replacement), .scheduleFailed)
+        let error = await controller.start(replacement)
+        XCTAssertEqual(error, .scheduleFailed)
         XCTAssertEqual(controller.state?.commandId, id)
         XCTAssertEqual(backend.scheduled, [id])
         uptime += 300
@@ -118,9 +121,10 @@ final class RingRecoveryTests: XCTestCase {
         let pendingReporter = transportReporter(defaults: defaults, status: 500)
         let controller = controller(reporter: pendingReporter)
         await controller.start(id)
-        XCTAssertEqual(await pendingReporter.report(state: .timedOut, ringId: id,
-                                                   dismissalCount: 0, afterRestart: true), .pending)
-        let recreated = controller(reporter: transportReporter(defaults: defaults, status: 201))
+        let outcome = await pendingReporter.report(state: .timedOut, ringId: id,
+                                                   dismissalCount: 0, afterRestart: true)
+        XCTAssertEqual(outcome, .pending)
+        let recreated = self.controller(reporter: transportReporter(defaults: defaults, status: 201))
         await recreated.resume()
         XCTAssertEqual(backend.stopCalls, [id])
         XCTAssertEqual(backend.scheduled, [])
