@@ -60,13 +60,19 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
             var session = group.First();
             lock (_gate)
             {
+                IReadOnlyList<TrayMessage>? pending = null;
                 if (_slots.TryGetValue(session.SessionId, out var existing))
                 {
                     if (!existing.IsCompleted) continue;
+                    pending = existing.PendingMessages();
                     existing.Dispose();
                     _slots.Remove(session.SessionId);
                 }
                 var slot = new SessionSlot(session, _factory.Create(session.SessionId, session.UserSid), HandleMessage, _log);
+                if (pending is not null)
+                {
+                    foreach (var message in pending) slot.Enqueue(message);
+                }
                 _slots.Add(session.SessionId, slot);
                 _ = slot.RunAsync();
             }
@@ -191,6 +197,11 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
                     _completed = true;
                 }
             }
+        }
+
+        public IReadOnlyList<TrayMessage> PendingMessages()
+        {
+            lock (_gate) return _pending.ToArray();
         }
 
         public void Dispose() => _stop.Cancel();

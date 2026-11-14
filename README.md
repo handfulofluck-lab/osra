@@ -116,7 +116,7 @@ Two kinds of gate, deliberately separate (see [`docs/adr/0005`](docs/adr/0005-ad
 | API vitest | routes, auth, token hygiene, blocklists, content, comms, telemetry | 452/452 (35 files; 2026-10-21) |
 | Flutter `flutter test` (+ `flutter analyze`) | parent app widgets/providers, layout at 320×568, Arabic RTL | 257/257, analyze clean (2026-10-21) |
 | Android JVM tests | rule engine, counters, monitored apps, HMAC logic, comms watermarks | 559/559 per flavour (Play and Full; 2026-10-21) |
-| Desktop xunit | Windows configuration, hosts, per-session pipe, enforcement, pairing and capabilities | 296/296 in Debug and Release (2026-11-14); no clean-machine verification |
+| Desktop xunit | Windows configuration, hosts, per-session pipe, enforcement, pairing and capabilities | 299/299 in Debug and Release (2026-11-14); no clean-machine verification |
 | AI pytest | classifier, API smoke, evaluation harness | 63 passed |
 | Evaluation harness (`eval.banks`, `eval.generate --check`, `eval.run_eval`) | the labelled set and the published per-category scores | 7 banks validate · 1,179 rows · scores in [`services/ai-engine/EVAL.md`](services/ai-engine/EVAL.md) |
 | Live e2e (`services/api/scripts/e2e.mjs`) | pairing → rules → alerts → commands → export | 71/71 |
