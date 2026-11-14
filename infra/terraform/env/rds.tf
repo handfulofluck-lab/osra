@@ -18,6 +18,28 @@ resource "random_password" "db" {
   special = false
 }
 
+# Every connection must use TLS (#766 item 9). PostgreSQL 16 on RDS already defaults rds.force_ssl to 1;
+# pinning it here means a changed default or a hand edit in the console cannot turn it off unnoticed.
+resource "aws_db_parameter_group" "postgres" {
+  name        = "${local.name_prefix}-postgres16"
+  family      = "postgres16"
+  description = "OSRA PostgreSQL 16: TLS required for every connection"
+
+  parameter {
+    name         = "rds.force_ssl"
+    value        = "1"
+    apply_method = "pending-reboot"
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-postgres16"
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
 resource "aws_db_instance" "main" {
   identifier = "${local.name_prefix}-postgres"
   engine     = "postgres"
@@ -63,6 +85,7 @@ resource "aws_db_instance" "main" {
   publicly_accessible = false
   port                = 5432
 
+  parameter_group_name   = aws_db_parameter_group.postgres.name
   vpc_security_group_ids = [aws_security_group.rds.id]
   db_subnet_group_name   = aws_db_subnet_group.main.name
 

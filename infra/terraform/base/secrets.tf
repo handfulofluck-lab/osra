@@ -48,12 +48,17 @@ resource "aws_secretsmanager_secret_version" "vault_key" {
 
 # The demo parent's password is generated here so the seed never carries a password that is published
 # in this repository; no specials keeps it typeable on a phone keyboard.
+# Production never seeds a demo parent (up.sh migrates only), so it has no demo password at all (#766 item 6).
 resource "random_password" "demo" {
+  count = local.demo_password_enabled ? 1 : 0
+
   length  = 24
   special = false
 }
 
 resource "aws_secretsmanager_secret" "demo_password" {
+  count = local.demo_password_enabled ? 1 : 0
+
   name                    = "${local.name_prefix}/demo-password"
   description             = "Password of the seeded demo parent; env injects it as SEED_DEMO_PASSWORD"
   recovery_window_in_days = var.secret_recovery_window_days # see database_url above
@@ -61,8 +66,10 @@ resource "aws_secretsmanager_secret" "demo_password" {
 
 # Kept across sessions like the other two values, so the demo login survives `down` and a re-seed.
 resource "aws_secretsmanager_secret_version" "demo_password" {
-  secret_id     = aws_secretsmanager_secret.demo_password.id
-  secret_string = random_password.demo.result
+  count = local.demo_password_enabled ? 1 : 0
+
+  secret_id     = aws_secretsmanager_secret.demo_password[0].id
+  secret_string = random_password.demo[0].result
 }
 
 # DATABASE_URL is deliberately NOT written here: it embeds the per-session RDS endpoint and
@@ -105,4 +112,24 @@ resource "aws_secretsmanager_secret_version" "internal_hmac_secret" {
 
   secret_id     = aws_secretsmanager_secret.internal_hmac_secret[0].id
   secret_string = random_password.internal_hmac[0].result
+}
+
+locals {
+  demo_password_enabled = var.environment != "production"
+}
+
+# Staging's existing demo-password entries keep their addresses.
+moved {
+  from = random_password.demo
+  to   = random_password.demo[0]
+}
+
+moved {
+  from = aws_secretsmanager_secret.demo_password
+  to   = aws_secretsmanager_secret.demo_password[0]
+}
+
+moved {
+  from = aws_secretsmanager_secret_version.demo_password
+  to   = aws_secretsmanager_secret_version.demo_password[0]
 }

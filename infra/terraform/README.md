@@ -499,10 +499,13 @@ assuming a role from the management-account deployer (no key inside the producti
 | Cache | 1 node, plaintext | primary + replica, automatic failover, **TLS** (`rediss://`, which ioredis handles on its own — `services/api/test/redis-url-tls.test.ts`) |
 | HTTPS | `api.staging.osratech.com` | `api.osratech.com`, TLS 1.2/1.3 policy, HTTP → HTTPS 301 |
 | WAF | none | AWS managed IP-reputation, known-bad-inputs and common rules; per-IP rate rule (2,000 / 5 min) in **count** mode for the first two weeks |
-| Alarms | Redis memory, no action | SNS topic `osra-production-alarms` (e-mail) for ALB 5xx, unhealthy targets, ECS CPU/memory, RDS CPU/storage/connections, Redis memory per node |
-| Budget | hand-made `osra-monthly` | `osra-production-monthly`, US$400: forecast 100%, actual 80% and 100% |
-| Logs / secrets | 14 days / 0-day recovery | 30 days / 7-day recovery |
-| Seed | demo family | **migrations only** (`prisma migrate deploy`); no demo data in the real database |
+| Alarms | Redis memory, no action | SNS topic `osra-production-alarms` (e-mail to **two different addresses**, `alarm_email` and `alarm_email_secondary`) for ALB 5xx, unhealthy targets, ECS CPU/memory, RDS CPU/storage/connections, Redis memory per node |
+| Budget | hand-made `osra-monthly` | `osra-production-monthly`, US$400: forecast 100%, actual 80% and 100%, to both alarm addresses |
+| Logs / secrets | 14 days / 0-day recovery | **exactly 90 days** (the privacy policy promises at most 90) / 7-day recovery |
+| Database TLS | `rds.force_ssl = 1` in `osra-staging-postgres16` | the same, pinned in `osra-production-postgres16` |
+| Task egress | 443 to anywhere; 5432/6379 to RDS/Redis only | the same |
+| Image repository | immutable tags, scan on push | the same, enforced by the guard, never force-deleted |
+| Seed | demo family | **migrations only** (`prisma migrate deploy`); no demo data and no demo-password secret |
 | GitHub OIDC | publish + Bedrock evaluation roles | publish role only |
 | `INTERNAL_HMAC_SECRET` | not set | generated fresh in Secrets Manager, passed as a `secrets` entry; `internal_hmac_secret_fingerprint` output (SHA-256 prefix) is the #637 evidence that it differs from any exposed value |
 
@@ -530,8 +533,13 @@ without backups.
 4. **Plan base:** `OSRA_ENV=production AWS_PROFILE=<profile> ./infra/terraform/up.sh` saves `base/production.tfplan`
    and stops when base has changes (env is only planned against an applied base).
 5. **Apply base:** the same command with `OSRA_PROD_APPLY=yes` applies that saved file and nothing else.
-6. **Publish the image** to the production repository over OIDC (`api-publish.yml` targets staging today; a
-   production target is a follow-up on #714) and name its sha in `env/production.tfvars` as `api_image`.
+6. **Publish the image** to the production repository over OIDC:
+   `gh workflow run api-publish.yml --ref main -f target=production`. Once, after base is applied, set the two
+   production variables from production base's outputs:
+   `gh variable set AWS_PRODUCTION_ECR_REPOSITORY --body "$(terraform -chdir=infra/terraform/base output -raw ecr_repository_url)"`
+   and the same for `AWS_PRODUCTION_PUBLISH_ROLE_ARN` (`publish_role_arn`). The workflow refuses a role and repository
+   from different accounts, or a repository not named `osra-production/api`. Name the published sha (12 characters)
+   in `env/production.tfvars` as `api_image`.
 7. **Schema phase:** plan again (env, `OSRA_PROD_PHASE=schema`, the default): the first time it creates everything but
    the service; on an upgrade it registers only the new task definition. Apply it with `OSRA_PROD_APPLY=yes`: after
    the apply, `up.sh` assumes the production role for its CLI calls, checks the account, takes a manual RDS snapshot

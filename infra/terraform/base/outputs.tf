@@ -20,7 +20,7 @@ output "vault_key_secret_arn" {
 
 output "demo_password_secret_arn" {
   description = "ARN of the Secrets Manager entry holding the seeded demo parent's password (env injects it as SEED_DEMO_PASSWORD)."
-  value       = aws_secretsmanager_secret.demo_password.arn
+  value       = one(aws_secretsmanager_secret.demo_password[*].arn)
 }
 
 output "execution_role_arn" {
