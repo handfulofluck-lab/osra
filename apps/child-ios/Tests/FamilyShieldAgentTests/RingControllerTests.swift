@@ -172,18 +172,21 @@ final class RingControllerTests: XCTestCase {
 @MainActor
 final class RecordingRingReporter: RingAlertReporting {
     var statuses: [Int] = [201]
-    private(set) var calls: [(state: RingEventState, ringId: UUID, count: Int)] = []
+    var nextOutcome: RingReportOutcome?
+    private(set) var calls: [(state: RingEventState, ringId: UUID, count: Int, afterRestart: Bool)] = []
     private var delivered = Set<String>()
     var callCount: Int { calls.count }
 
-    func report(state: RingEventState, ringId: UUID, dismissalCount: Int) async -> Bool {
+    func report(state: RingEventState, ringId: UUID, dismissalCount: Int,
+                afterRestart: Bool) async -> RingReportOutcome {
         let key = RingPolicy.dedupeKey(for: state, ringId: ringId, dismissalCount: dismissalCount)
-        guard !delivered.contains(key) else { return true }
-        calls.append((state, ringId, dismissalCount))
+        guard !delivered.contains(key) else { return .delivered }
+        calls.append((state, ringId, dismissalCount, afterRestart))
+        if let nextOutcome { return nextOutcome }
         let status = statuses.count > 1 ? statuses.removeFirst() : statuses[0]
-        guard status == 200 || status == 201 else { return false }
+        guard status == 200 || status == 201 else { return .pending }
         delivered.insert(key)
-        return true
+        return .delivered
     }
 }
 
@@ -297,8 +300,8 @@ extension RingControllerTests {
         })
         let first = await reporter.report(state: .childDismissed, ringId: id, dismissalCount: 2)
         let second = await reporter.report(state: .childDismissed, ringId: id, dismissalCount: 2)
-        XCTAssertTrue(first)
-        XCTAssertTrue(second)
+        XCTAssertEqual(first, .delivered)
+        XCTAssertEqual(second, .delivered)
         XCTAssertEqual(requests.count, 1)
         let body = try XCTUnwrap(try JSONSerialization.jsonObject(with: XCTUnwrap(requests[0].httpBody)) as? [String: Any])
         XCTAssertEqual(body["category"] as? String, "ring")
@@ -327,8 +330,8 @@ extension RingControllerTests {
             childId: "child-1", familyId: "fam-1", hmacSecret: "hmac")))
         let first = await reporter.report(state: .timedOut, ringId: id, dismissalCount: 0)
         let second = await reporter.report(state: .timedOut, ringId: id, dismissalCount: 0)
-        XCTAssertFalse(first)
-        XCTAssertTrue(second, "delivery attempts: \(attempts)")
+        XCTAssertEqual(first, .pending)
+        XCTAssertEqual(second, .delivered, "delivery attempts: \(attempts)")
         XCTAssertEqual(attempts, [500, 200])
     }
 }
@@ -389,10 +392,79 @@ extension RingControllerTests {
         ]
         for (state, count, expected) in cases {
             let delivered = await reporter.report(state: state, ringId: id, dismissalCount: count)
-            XCTAssertTrue(delivered)
+            XCTAssertEqual(delivered, .delivered)
             let body = try XCTUnwrap(bodies.last)
             XCTAssertEqual(body["title"] as? String, "Phone ring")
             XCTAssertEqual(body["body"] as? String, expected)
         }
+    }
+}
+
+
+extension InMemoryRingHistory {
+    func remove(_ id: UUID) { ids.remove(id) }
+}
+
+@MainActor
+extension RingControllerTests {
+    func testOnlineRestartWithMovedClockResumesRing() async {
+        reporter.nextOutcome = .resume(after: 240)
+        let controller = controller()
+        await controller.start(id)
+        wall = wall.addingTimeInterval(600)
+        uptime = 0
+        await controller.resume()
+        XCTAssertEqual(controller.state?.stopSource, nil)
+        XCTAssertEqual(controller.state?.endAt, wall.addingTimeInterval(240))
+        XCTAssertEqual(controller.state?.monotonicStart, uptime)
+        XCTAssertFalse(history.contains(id))
+        XCTAssertEqual(backend.scheduled, [id, id])
+        XCTAssertEqual(reporter.calls.map(\.afterRestart), [true])
+    }
+
+    func testOfflineRestartRecordsAfterRestart() async {
+        let controller = controller()
+        await controller.start(id)
+        wall = wall.addingTimeInterval(600)
+        uptime = 0
+        await controller.resume()
+        XCTAssertNil(controller.state)
+        XCTAssertNil(store.load())
+        XCTAssertEqual(reporter.calls.map(\.state), [.timedOut])
+        XCTAssertEqual(reporter.calls.map(\.afterRestart), [true])
+        XCTAssertEqual(backend.stopCalls, [id])
+    }
+
+    func testGenuineTimeoutAfterRestartRecordsAfterRestart() async {
+        let controller = controller()
+        await controller.start(id)
+        wall = wall.addingTimeInterval(300)
+        uptime = 0
+        await controller.resume()
+        XCTAssertNil(controller.state)
+        XCTAssertEqual(reporter.calls.map(\.state), [.timedOut])
+        XCTAssertEqual(reporter.calls.map(\.afterRestart), [true])
+    }
+
+    func testActiveRestartResponseResumesWithoutMarkingTimeoutDelivered() async throws {
+        let defaults = UserDefaults(suiteName: AgentIdentityStore.suiteName)
+        XCTAssertTrue(AgentIdentityStore.save(AgentIdentity(
+            apiBaseURL: URL(string: "https://api.example.invalid")!, deviceToken: "device-jwt", deviceId: "dev-1",
+            childId: "child-1", familyId: "fam-1", hmacSecret: "hmac")))
+        var requestBody: [String: Any]?
+        let reporter = RingAlertReporter(
+            defaults: defaults,
+            reporter: AlertReporter(apiBaseURL: URL(string: "https://api.example.invalid")!, hmacSecret: "hmac"),
+            sender: { request in
+                requestBody = try JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: Any]
+                return (200, Data(#"{"active":true,"retryAfterSeconds":240}"#.utf8))
+            })
+        let outcome = await reporter.report(state: .timedOut, ringId: id, dismissalCount: 0, afterRestart: true)
+        XCTAssertEqual(outcome, .resume(after: 240))
+        let body = try XCTUnwrap(requestBody)
+        let metadata = try XCTUnwrap(body["metadata"] as? [String: Any])
+        XCTAssertEqual(metadata["afterRestart"] as? Bool, true)
+        XCTAssertEqual(body["body"] as? String, "The ring ended after the phone was restarted.")
+        XCTAssertNil(defaults?.stringArray(forKey: RingAlertReporter.deliveredKey))
     }
 }

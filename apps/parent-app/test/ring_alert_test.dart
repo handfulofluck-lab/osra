@@ -41,6 +41,14 @@ void main() {
     });
   });
 
+  test('a restart timeout has its own whole localized line', () {
+    final alert = ringAlert('timed_out', 'alertBodyRingTimedOut',
+        {'ringId': 'ring-1', 'afterRestart': true}, 'English fallback');
+    expect(alertBodyFor(alert, AppLocalizationsEn()),
+        'The ring ended after the phone was restarted.');
+    expect(alertBodyFor(alert, AppLocalizationsAr()), 'انتهى الرنين بعد إعادة تشغيل الهاتف.');
+  });
+
   test('Arabic dismissal plurals and the unsupported OS line match the Bureau', () {
     final sentences = {
       1: 'أُغلق تنبيه الرنين على الهاتف. عاد الهاتف إلى الرنين.',

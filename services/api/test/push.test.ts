@@ -533,7 +533,7 @@ describe("ring dismissal push coalescing", () => {
   const start = Date.parse("2026-11-14T00:00:00Z");
   let provider: FakeProvider;
   let pushTimes: number[];
-  let reservations: Map<string, string>;
+  let reservations: Map<string, { token: string; expiresAt: number }>;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -554,18 +554,16 @@ describe("ring dismissal push coalescing", () => {
       id: `ring-alert-${prismaMock.alert.create.mock.calls.length}`, createdAt: new Date(), ...data,
     }));
     const redis = getRedis() as unknown as MockRedis;
-    redis.eval.mockImplementation(async (script: string, _count: number, key: string, cutoff: string,
-                                         current: string, _ttl: number, previous?: string) => {
-      const old = reservations.get(key) ?? null;
-      if (script.includes("local old")) {
-        if (old !== null && Number(old) > Number(cutoff)) return [0, old];
-        reservations.set(key, current);
-        return [1, old];
-      }
-      if (reservations.get(key) === cutoff) {
-        if (current) reservations.set(key, current);
-        else reservations.delete(key);
-      }
+    redis.set.mockImplementation(async (key: string, token: string, ...args: unknown[]) => {
+      const current = reservations.get(key);
+      if (current && current.expiresAt > Date.now()) return null;
+      const ttl = Number(args[args.indexOf("EX") + 1]);
+      reservations.set(key, { token, expiresAt: Date.now() + ttl * 1000 });
+      return "OK";
+    });
+    redis.eval.mockImplementation(async (_script: string, _count: number, key: string, token: string) => {
+      if (reservations.get(key)?.token !== token) return 0;
+      reservations.delete(key);
       return 1;
     });
   });
@@ -626,7 +624,7 @@ describe("ring dismissal push coalescing", () => {
   });
 
   it("releases the reservation after provider failure so a later dismissal can wake", async () => {
-    provider = new FakeProvider((token) => {
+    provider = new FakeProvider(() => {
       pushTimes.push((Date.now() - start) / 1000);
       return provider.sent.length === 1
         ? { ok: false, invalidToken: false, reason: "temporary" }
@@ -636,10 +634,48 @@ describe("ring dismissal push coalescing", () => {
     const redis = getRedis() as unknown as MockRedis;
     redis.eval.mockClear();
     await dismissal(0, 1);
-    expect(redis.eval).toHaveBeenCalledTimes(2);
-    expect(redis.eval.mock.calls[1]?.slice(2)).toEqual([expect.any(String), String(start), "", 600]);
+    expect(redis.eval).toHaveBeenCalledTimes(1);
     expect(reservations.size).toBe(0);
     await dismissal(10, 2);
+    expect(provider.sent).toHaveLength(2);
+  });
+
+  it("sends rather than suppressing a parent wake when Redis is down", async () => {
+    const redis = getRedis() as unknown as MockRedis;
+    redis.set.mockRejectedValue(new Error("Redis unavailable"));
+    await dismissal(0, 1);
+    await dismissal(30, 2);
+    await dismissal(60, 3);
+    await dismissal(90, 4);
+    await dismissal(120, 5);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(5);
+    expect(pushTimes).toEqual([0, 30, 60, 90, 120]);
+  });
+
+  it("does not delete a newer request's reservation after a failed send", async () => {
+    let failFirst: (() => void) | undefined;
+    provider = new FakeProvider(() => new Promise<PushResult>((resolve) => {
+      if (provider.sent.length === 1) {
+        failFirst = () => resolve({ ok: false, invalidToken: false, reason: "temporary" });
+      } else {
+        resolve({ ok: true });
+      }
+    }));
+    setPushProviders([provider]);
+    const first = dismissal(0, 1);
+    vi.useRealTimers();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(provider.sent).toHaveLength(1);
+    vi.useFakeTimers();
+    const send = vi.spyOn(provider, "send");
+    await dismissal(60, 2);
+    expect(provider.sent).toHaveLength(2);
+    await expect(send.mock.results[1].value).resolves.toEqual({ ok: true });
+    expect(reservations.size).toBe(1);
+    if (failFirst) failFirst();
+    await first;
+    expect(reservations.size).toBe(1);
+    await dismissal(70, 3);
     expect(provider.sent).toHaveLength(2);
   });
 });

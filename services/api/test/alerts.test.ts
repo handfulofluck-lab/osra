@@ -553,10 +553,10 @@ describe("alerts routes", () => {
 describe("ring alert intake", () => {
   const ringId = "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6B";
   const fallback: Record<string, string> = {
-    child_dismissed: "The ring alert was dismissed on the phone and has been re-armed.",
-    pin_stopped: "The parent PIN stopped the ring.",
-    parent_stopped: "The parent stopped the ring.",
-    timed_out: "The ring stopped after 5 minutes.",
+    child_dismissed: "The ring alert was dismissed on the phone. It is ringing again.",
+    pin_stopped: "The ring was stopped on the phone with the parent PIN.",
+    parent_stopped: "A parent stopped the ring from the OSRA app.",
+    timed_out: "The ring ended by itself after 5 minutes.",
   };
 
   async function fixture() {
@@ -576,7 +576,13 @@ describe("ring alert intake", () => {
         : `ring:${ringId}:${state}`;
       const payload = {
         childId: CHILD.id, deviceId: "dev-1", severity: state === "child_dismissed" ? "warning" : "info",
-        category: "ring", title: "Phone ring", body: fallback[state], dedupeKey,
+        category: "ring", title: "Phone ring",
+        body: state === "child_dismissed" && dismissalCount !== 1
+          ? `The ring alert was dismissed on the phone ${dismissalCount} times. It is still ringing.`
+          : state === "timed_out" && extraMetadata.afterRestart === true
+            ? "The ring ended after the phone was restarted."
+            : fallback[state],
+        dedupeKey,
         metadata: { state, ringId, ...extraMetadata },
       };
       const raw = JSON.stringify(payload);
@@ -626,8 +632,64 @@ describe("ring alert intake", () => {
         expect(response.statusCode).toBe(201);
         expect(response.json().alert.metadata.bodyKey).toBe(key);
         expect(response.json().alert.metadata.bodyParams).toEqual(params);
-        expect(response.json().alert.body).toBe(fallback[state]);
+        expect(response.json().alert.body).toBe(state === "child_dismissed"
+          ? `The ring alert was dismissed on the phone ${count} times. It is still ringing.`
+          : fallback[state]);
       }
+    } finally { await app.close(); }
+  });
+
+  it("keeps an unexpired restart ring active and returns its remaining seconds", async () => {
+    vi.useFakeTimers();
+    const started = Date.parse("2026-11-14T00:00:00Z");
+    vi.setSystemTime(started);
+    const { app, rows, postRing } = await fixture();
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: ringId, deviceId: "dev-1", type: "ring", createdAt: new Date(started),
+    });
+    try {
+      vi.setSystemTime(started + 100_000);
+      const response = await postRing("timed_out", 0, { afterRestart: true });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ active: true, retryAfterSeconds: 200 });
+      expect(rows).toHaveLength(0);
+    } finally {
+      await app.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("accepts a genuine restart timeout with afterRestart and the approved fallback", async () => {
+    vi.useFakeTimers();
+    const started = Date.parse("2026-11-14T00:00:00Z");
+    vi.setSystemTime(started);
+    const { app, rows, postRing } = await fixture();
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: ringId, deviceId: "dev-1", type: "ring", createdAt: new Date(started),
+    });
+    try {
+      vi.setSystemTime(started + 600_000);
+      const response = await postRing("timed_out", 0, { afterRestart: true });
+      expect(response.statusCode).toBe(201);
+      expect(response.json().alert.metadata.afterRestart).toBe(true);
+      expect(response.json().alert.metadata.bodyKey).toBe("alertBodyRingTimedOut");
+      expect(response.json().alert.metadata.bodyParams).toEqual({ ringId, afterRestart: true });
+      expect(response.json().alert.body).toBe("The ring ended after the phone was restarted.");
+      expect(rows).toHaveLength(1);
+    } finally {
+      await app.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not accept a restart timeout for an unknown ring command", async () => {
+    const { app, rows, postRing } = await fixture();
+    prismaMock.deviceCommand.findUnique.mockResolvedValue(null);
+    try {
+      const response = await postRing("timed_out", 0, { afterRestart: true });
+      expect(response.statusCode).toBe(400);
+      expect(response.json().error).toBe("invalid_ring_command");
+      expect(rows).toHaveLength(0);
     } finally { await app.close(); }
   });
 });
