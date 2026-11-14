@@ -79,7 +79,7 @@ public sealed class FileDesktopRestrictionStore : IRestrictionStore
         File.Delete(temporary);
         _beforeTemporaryCreate?.Invoke();
         var security = ProtectedFile();
-        using (var stream = new FileInfo(temporary).Create(FileMode.CreateNew, FileSystemRights.FullControl,
+        using (var stream = new FileInfo(temporary).Create(FileMode.Create, FileSystemRights.FullControl,
                    FileShare.Read, bufferSize: 4096, FileOptions.SequentialScan, security))
         using (var writer = new StreamWriter(stream))
         {
