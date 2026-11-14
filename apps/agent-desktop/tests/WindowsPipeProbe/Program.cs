@@ -155,7 +155,7 @@ sealed class ProbeServer(ProbeSettings settings) : BackgroundService
         var temporary = temporaryPath + ".tmp";
         var collide = false;
         var temporaryStore = new FileDesktopRestrictionStore(temporaryPath, (_, _) => { },
-            beforeTemporaryCreate: () => { if (collide) File.WriteAllText(temporary, "competitor"); });
+            beforeTemporaryCreate: () => { if (collide) CreateCompetitor(temporary); });
         if (temporaryStore.Load().Count != 0) throw new InvalidDataException("The temporary fixture was not empty.");
         File.WriteAllText(temporaryPath, "[]");
         temporaryStore.Save([new SessionRestriction { SessionId = sessionId, Locked = true }]);
@@ -261,6 +261,20 @@ sealed class ProbeServer(ProbeSettings settings) : BackgroundService
         if (owner is not ("S-1-5-18" or "S-1-5-32-544"))
             throw new InvalidDataException("The restriction directory owner is not trusted.");
         RequireOnlySystemAndAdministrators(security);
+    }
+
+    private static void CreateCompetitor(string path)
+    {
+        var security = new FileSecurity();
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        security.AddAccessRule(new FileSystemAccessRule(
+            new SecurityIdentifier("S-1-5-18"), FileSystemRights.FullControl, AccessControlType.Allow));
+        security.AddAccessRule(new FileSystemAccessRule(
+            new SecurityIdentifier("S-1-5-32-544"), FileSystemRights.FullControl, AccessControlType.Allow));
+        using var stream = new FileInfo(path).Create(FileMode.CreateNew, FileSystemRights.FullControl,
+            FileShare.Read, bufferSize: 4096, FileOptions.SequentialScan, security);
+        using var writer = new StreamWriter(stream);
+        writer.Write("competitor");
     }
 
     private static void RequireProtectedFile(string path) =>
