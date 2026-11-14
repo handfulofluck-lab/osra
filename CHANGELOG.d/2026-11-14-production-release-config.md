@@ -5,7 +5,7 @@
   setting, or a variable nobody classified. It names variables and never prints a value. `--pre-launch` reports the
   iPhone-push and Play-billing settings as pending instead of failing; nothing else can be waived.
 - `--source` fails when the API starts reading an environment variable the script has no decision for, so a new
-  switch cannot reach production unclassified. CI runs it and the 38-case self-test in `workflow-lint`.
+  switch cannot reach production unclassified. CI runs it and the 42-case self-test in `workflow-lint`.
 - The API no longer writes a recipient's address or a subject line to the production log when no e-mail provider is
   configured: it says only that a message was not sent and how to fix it.
 - `services/api/test/log-hygiene.test.ts` reads every log call in the API and fails when one names a field a family

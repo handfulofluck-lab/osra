@@ -127,8 +127,10 @@ export function checkTaskDefinition(doc, { preLaunch = false } = {}) {
   if (!/^\d{12}\.dkr\.ecr\.eu-central-1\.amazonaws\.com\/osra-production\/api[:@]/.test(image)) {
     findings.push('image: not from the osra-production/api repository in eu-central-1');
   }
-  if (!/^sha256:[0-9a-f]{64}$/.test(ref) && !/^[0-9a-f]{40}$/.test(ref)) {
-    findings.push('image: not pinned to a digest or a full commit sha (a moving tag such as "latest" can change under the service)');
+  // api-publish.yml tags with the 12-character commit sha (`git rev-parse --short=12`); the repository's tags are
+  // immutable, so that names one image for good. A digest or the full sha is accepted too; a word is not.
+  if (!/^sha256:[0-9a-f]{64}$/.test(ref) && !/^([0-9a-f]{12}|[0-9a-f]{40})$/.test(ref)) {
+    findings.push('image: not pinned to a digest or a commit sha of 12 or 40 characters (a moving tag such as "latest" can change under the service)');
   }
 
   if (api.privileged === true) findings.push('container: privileged');
@@ -290,6 +292,8 @@ function selftest() {
     ['location kept too long', (t) => setEnv(t, 'LOCATION_RETENTION_DAYS', '365'), 'LOCATION_RETENTION_DAYS: location history'],
     ['unknown variable', (t) => setEnv(t, 'DEBUG', '*'), 'DEBUG: unknown variable'],
     ['moving image tag', (t) => { api(t).image = api(t).image.replace(/:[0-9a-f]{40}$/, ':latest'); }, 'image: not pinned'],
+    ['version-shaped tag', (t) => { api(t).image = api(t).image.replace(/:[0-9a-f]{40}$/, ':1.4.0'); }, 'image: not pinned'],
+    ['a sha cut to 7 characters', (t) => { api(t).image = api(t).image.replace(/:[0-9a-f]{40}$/, ':abcdef0'); }, 'image: not pinned'],
     ['staging image', (t) => { api(t).image = api(t).image.replace('osra-production', 'osra-staging'); }, 'image: not from the osra-production/api'],
     ['command override', (t) => { api(t).command = ['sh', '-c', 'node dist/server.js']; }, 'command or entryPoint'],
     ['root user', (t) => { api(t).user = '0'; }, 'runs as root'],
@@ -304,6 +308,11 @@ function selftest() {
 
   const clean = checkTaskDefinition(goodTask());
   say(clean.findings.length === 0 && clean.pending.length === 0, `the good fixture is clean${clean.findings.length ? `: ${clean.findings.join(' | ')}` : ''}`);
+  for (const [label, ref] of [['a 12-character sha tag', `:${'b'.repeat(12)}`], ['a digest', `@sha256:${'c'.repeat(64)}`]]) {
+    const t = goodTask();
+    api(t).image = api(t).image.replace(/:[0-9a-f]{40}$/, ref);
+    say(checkTaskDefinition(t).findings.length === 0, `${label} is accepted`);
+  }
 
   for (const [label, mutate, expected] of cases) {
     const t = goodTask();
@@ -334,7 +343,7 @@ function selftest() {
   const seen = variablesReadBy('const a = process.env.ALPHA_ONE; f(env.BETA_TWO); const { GAMMA_3, DELTA: d } = env; g(envVars.EPSILON);');
   say(['ALPHA_ONE', 'BETA_TWO', 'GAMMA_3', 'DELTA', 'EPSILON'].every((n) => seen.has(n)) && seen.size === 5, 'the source scan finds dotted and destructured reads');
 
-  console.log(failed === 0 ? `selftest: ${cases.length + 4} checks pass` : `selftest: ${failed} check(s) FAILED`);
+  console.log(failed === 0 ? `selftest: ${cases.length + 6} checks pass` : `selftest: ${failed} check(s) FAILED`);
   process.exit(failed === 0 ? 0 : 1);
 }
 
