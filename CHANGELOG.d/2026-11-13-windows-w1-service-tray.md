@@ -1,4 +1,4 @@
-### Windows — the W1 service and tray foundation (#623)
+### Windows — the W1 service and tray foundation (#623, PR #754)
 - Split the desktop agent into a shared library, a LocalSystem service and a per-user tray. The service owns network/rule state, enforcement and telemetry; pairing and interactive actions stay in the user's session.
 - Added a per-session typed named pipe with SYSTEM/session-user access control and OS-derived client identity checks. Commands and capability reports contain no parent PIN or device credentials.
 - Release builds ignore environment identity, endpoint, secret and PIN overrides; they use `https://api.osratech.com`. Pairing has no server field and reports the interactive user's administrator capability.
