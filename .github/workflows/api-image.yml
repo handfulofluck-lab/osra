@@ -99,12 +99,12 @@ jobs:
           for i in 1 2; do
             echo "==> migrate + seed, run $i"
             docker run --rm --network host \
-              -e NODE_ENV=production -e DATABASE_URL="$DB" -e SEED_DEMO_PASSWORD="$SEED" \
+              -e NODE_ENV=production -e CORS_ALLOW_ANY_ORIGIN=1 -e DATABASE_URL="$DB" -e SEED_DEMO_PASSWORD="$SEED" \
               osra-api:ci sh scripts/migrate-and-seed.sh
           done
           echo "==> boot"
           docker run -d --name api --network host \
-            -e NODE_ENV=production -e PORT=3000 \
+            -e NODE_ENV=production -e CORS_ALLOW_ANY_ORIGIN=1 -e PORT=3000 \
             -e DATABASE_URL="$DB" -e REDIS_URL=redis://127.0.0.1:6379 \
             -e JWT_SECRET="$(openssl rand -hex 32)" -e VAULT_KEY="$(openssl rand -base64 32)" \
             osra-api:ci

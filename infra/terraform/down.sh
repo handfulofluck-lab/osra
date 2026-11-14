@@ -6,6 +6,14 @@ set -euo pipefail
 
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
+# Production is never torn down by a script (#714): it holds real families' data, and its database and
+# load balancer carry deletion protection anyway. Retiring production is a written, reviewed plan.
+OSRA_ENV="${OSRA_ENV:-staging}"
+if [ "$OSRA_ENV" != staging ]; then
+  echo "down.sh refuses OSRA_ENV=$OSRA_ENV: only on-demand staging is destroyed by script." >&2
+  exit 1
+fi
+
 # Must match up.sh; both derive from README.md's table / 730 h.
 HOURLY_COST_USD="${HOURLY_COST_USD:-0.194}"
 
@@ -15,7 +23,7 @@ export AWS_PROFILE AWS_REGION
 
 command -v terraform >/dev/null 2>&1 || { echo "terraform is not on PATH" >&2; exit 1; }
 
-terraform -chdir="$HERE/env" init -input=false >/dev/null
+terraform -chdir="$HERE/env" init -input=false -reconfigure -backend-config="$HERE/backend/staging-env.hcl" >/dev/null
 
 # Refuse rather than report a successful teardown of something that was never created. `state
 # list` reads the backend without evaluating variables, so it cannot be confused by a missing

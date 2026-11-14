@@ -71,7 +71,7 @@ class BlockWindowCopyTest {
             schoolHours = ARABIC_SCHOOL,
             template = ARABIC_TEMPLATE,
         )
-        assertEquals("محجوب بسبب ${iso(ARABIC_SCHOOL)} حتى ${iso("15:00")}", arabic)
+        assertEquals("محجوب بواسطة ${iso(ARABIC_SCHOOL)} حتى ${iso("15:00")}", arabic)
     }
 
     @Test
@@ -85,10 +85,10 @@ class BlockWindowCopyTest {
             schoolHours = ARABIC_SCHOOL,
             template = ARABIC_TEMPLATE,
         )
-        assertEquals("محجوب بسبب \u2068Homework\u2069 حتى \u206823:50\u2069", line)
+        assertEquals("محجوب بواسطة \u2068Homework\u2069 حتى \u206823:50\u2069", line)
         // And they are zero-width: strip them and the sentence a reader actually sees is unchanged.
         assertEquals(
-            "محجوب بسبب Homework حتى 23:50",
+            "محجوب بواسطة Homework حتى 23:50",
             line!!.replace("\u2068", "").replace("\u2069", ""),
         )
     }
@@ -101,7 +101,7 @@ class BlockWindowCopyTest {
             schoolHours = ARABIC_SCHOOL,
             template = ARABIC_TEMPLATE,
         )
-        assertEquals("محجوب بسبب \u2068واجب\u2069 حتى \u206823:50\u2069", line)
+        assertEquals("محجوب بواسطة \u2068واجب\u2069 حتى \u206823:50\u2069", line)
     }
 
     @Test
@@ -120,7 +120,7 @@ class BlockWindowCopyTest {
 
         const val ARABIC_BEDTIME = "وقت النوم"
         const val ARABIC_SCHOOL = "الساعات المدرسية"
-        const val ARABIC_TEMPLATE = "محجوب بسبب %1\$s حتى %2\$s"
+        const val ARABIC_TEMPLATE = "محجوب بواسطة %1\$s حتى %2\$s"
 
         /** The wrapper `BlockWindowCopy` applies: first-strong isolate, then pop directional isolate. */
         fun iso(value: String): String = "\u2068$value\u2069"
