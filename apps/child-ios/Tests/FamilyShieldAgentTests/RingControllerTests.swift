@@ -77,7 +77,8 @@ final class RingControllerTests: XCTestCase {
 
     func testStartSchedulesAndPersists() async {
         let controller = controller()
-        XCTAssertNil(await controller.start(id))
+        let error = await controller.start(id)
+        XCTAssertNil(error)
         XCTAssertEqual(backend.scheduled, [id])
         XCTAssertEqual(controller.state?.commandId, id)
         XCTAssertEqual(controller.state?.dismissalCount, 0)
@@ -87,7 +88,8 @@ final class RingControllerTests: XCTestCase {
 
     func testInvalidCommandIdDoesNotSchedule() async {
         let controller = controller()
-        XCTAssertEqual(await controller.start(commandId: "not-a-uuid"), .invalidCommand)
+        let error = await controller.start(commandId: "not-a-uuid")
+        XCTAssertEqual(error, .invalidCommand)
         XCTAssertTrue(backend.scheduled.isEmpty)
         XCTAssertNil(store.load())
     }
@@ -95,7 +97,8 @@ final class RingControllerTests: XCTestCase {
     func testAuthorizationDenialSchedulesNothing() async {
         backend.authorized = false
         let controller = controller()
-        XCTAssertEqual(await controller.start(id), .authorizationDenied)
+        let error = await controller.start(id)
+        XCTAssertEqual(error, .authorizationDenied)
         XCTAssertTrue(backend.scheduled.isEmpty)
         XCTAssertNil(store.load())
     }
@@ -104,7 +107,8 @@ final class RingControllerTests: XCTestCase {
         struct Refused: Error {}
         backend.scheduleError = Refused()
         let controller = controller()
-        XCTAssertEqual(await controller.start(id), .scheduleFailed)
+        let error = await controller.start(id)
+        XCTAssertEqual(error, .scheduleFailed)
         XCTAssertNil(store.load())
         XCTAssertNil(controller.state)
     }

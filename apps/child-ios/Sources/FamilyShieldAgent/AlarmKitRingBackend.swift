@@ -30,10 +30,13 @@ public final class AlarmKitRingBackend: RingBackend {
     public func schedule(_ id: UUID) async throws {
         #if os(iOS)
         guard #available(iOS 26.0, *) else { throw RingCommandError.unsupportedOS }
-        let alert = AlarmPresentation.Alert(title: L10n.tr("ring_alarm_title"), stopButton: .stopButton)
-        let attributes = AlarmAttributes(presentation: AlarmPresentation(alert: alert),
-                                         metadata: RingAlarmMetadata(), tintColor: nil)
-        let configuration = AlarmManager.AlarmConfiguration.alarm(
+        let alert = AlarmPresentation.Alert(
+            title: LocalizedStringResource(stringLiteral: L10n.tr("ring_alarm_title")),
+            stopButton: AlarmButton(text: LocalizedStringResource(stringLiteral: L10n.tr("ring_dismiss")),
+                                    textColor: .white, systemImageName: "xmark"))
+        let attributes = AlarmAttributes<RingAlarmMetadata>(
+            presentation: AlarmPresentation(alert: alert), metadata: RingAlarmMetadata(), tintColor: .accentColor)
+        let configuration: AlarmManager.AlarmConfiguration<RingAlarmMetadata> = .alarm(
             schedule: .fixed(Date()), attributes: attributes, sound: .default)
         _ = try await AlarmManager.shared.schedule(id: id, configuration: configuration)
         #else
