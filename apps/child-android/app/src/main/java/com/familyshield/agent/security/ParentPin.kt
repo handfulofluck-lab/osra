@@ -48,11 +48,10 @@ object ParentPin {
     /**
      * Constant-time check of [pin] against a [stored] hash; false on any malformed input.
      *
-     * osra-security#17: an **empty** PIN used to reach PBKDF2, which throws `IllegalArgumentException:
-     * password empty`. The throw crossed into the UI and killed the whole agent process — taking the
-     * ring and enforcement with it — so a child could silence a parent's ring with one tap and no PIN.
-     * Every path out of here is now a boolean: a blank, too-short or too-long input is a wrong PIN, and
-     * the KDF itself is wrapped so nothing it can throw reaches a caller.
+     * osra-security#17: an **empty** PIN used to reach PBKDF2, which can throw `IllegalArgumentException`
+     * on Android. The throw crossed into the UI and took the agent process down, and enforcement stopped
+     * with it. Every path out of here is now a boolean: a blank, too-short or too-long input is a wrong
+     * PIN, and the key derivation is wrapped so nothing it throws reaches a caller.
      */
     fun verify(pin: String, stored: String?): Boolean = verify(pin, stored, ::pbkdf2)
 

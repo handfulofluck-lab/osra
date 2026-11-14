@@ -58,9 +58,8 @@ class ParentPinTest {
     }
 
     /**
-     * osra-security#17: an empty submit used to reach PBKDF2, which throws `password empty` — the throw
-     * killed the agent process, and the ring and enforcement died with it. A child silenced a parent's
-     * ring with one tap and no PIN (Flip4, 13 Nov 20:28Z).
+     * osra-security#17: an empty submit used to reach PBKDF2, which can throw on Android; the throw
+     * took the agent process down and enforcement stopped with it.
      *
      * Both halves are pinned here: the verifier answers false instead of throwing, and an input outside
      * the accepted length never reaches the KDF at all. Mutant: drop the length guard -> the empty and
