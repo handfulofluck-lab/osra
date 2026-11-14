@@ -2,7 +2,7 @@ import { prisma } from "../../db.js";
 import { FcmProvider, loadServiceAccountFromEnv } from "./fcm.js";
 import { ApnsProvider, loadApnsConfigFromEnv } from "./apns.js";
 import type { PushMessage, PushPlatform, PushProvider } from "./types.js";
-import { releaseRingDismissalPush, reserveRingDismissalPush } from "./ring-dismissal.js";
+import { releaseRingDismissalPush, reserveRingDismissalPush, ringMetadataObject } from "./ring-dismissal.js";
 
 /**
  * Parent notification policy (Phase 2a). Given an alert, decide which parents' devices receive a
@@ -21,7 +21,7 @@ export interface AlertLike {
   title: string;
   body: string;
   createdAt?: Date | string;
-  metadata?: Record<string, unknown>;
+  metadata?: unknown;
 }
 
 type Severity = "info" | "warning" | "critical";
@@ -35,7 +35,7 @@ export function minPushSeverity(env: NodeJS.ProcessEnv = process.env): Severity 
 
 export function shouldPush(alert: Pick<AlertLike, "severity" | "category" | "metadata"> | null | undefined, min: Severity): boolean {
   if (!alert) return false;
-  if (alert.category === "ring" && alert.metadata?.state === "parent_stopped") return false;
+  if (alert.category === "ring" && ringMetadataObject(alert.metadata).state === "parent_stopped") return false;
   const sev = (alert.severity as Severity) in SEVERITY_RANK ? (alert.severity as Severity) : "info";
   // SOS and tamper always wake the parent regardless of the floor.
   if (alert.category === "sos" || alert.category === "tamper") return true;

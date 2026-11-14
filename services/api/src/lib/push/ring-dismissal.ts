@@ -6,12 +6,19 @@ const TTL_SECONDS = 600;
 
 type Reservation = { key: string; now: string; previous: string | null };
 
+export function ringMetadataObject(metadata: unknown): Record<string, unknown> {
+  return typeof metadata === "object" && metadata !== null && !Array.isArray(metadata)
+    ? metadata as Record<string, unknown>
+    : {};
+}
+
 export async function reserveRingDismissalPush(
   familyId: string,
   alert: Pick<AlertLike, "category" | "metadata" | "createdAt">,
 ): Promise<{ coalesced: boolean; reservation?: Reservation }> {
-  if (alert.category !== "ring" || alert.metadata?.state !== "child_dismissed") return { coalesced: false };
-  const ringId = alert.metadata.ringId;
+  const metadata = ringMetadataObject(alert.metadata);
+  if (alert.category !== "ring" || metadata.state !== "child_dismissed") return { coalesced: false };
+  const ringId = metadata.ringId;
   if (typeof ringId !== "string" || !ringId) return { coalesced: false };
   const key = `push:ring-dismissal:${familyId}:${ringId}`;
   const timestamp = alert.createdAt ? new Date(alert.createdAt).getTime() : Date.now();
