@@ -973,11 +973,12 @@ mis-measure.
 
 First run on Karim's MacBook and iPhone 13, 11 Nov 2026 (#372). The ids are the decision-2B ones (#543).
 
-1. **Signing.** Sign the host app and its three extensions (`com.osratech.child`, `.Monitor`, `.ShieldConfiguration`,
-   `.ShieldAction`) with the paid team. All four need `com.apple.developer.family-controls` (development) and
-   `group.com.osratech.child`; the host also needs `aps-environment`.
+1. **Signing.** Sign the host app and its four extensions (`com.osratech.child`, `.Monitor`, `.ShieldConfiguration`,
+   `.ShieldAction`, `.RingService`) with the paid team. The host and the three Screen Time extensions need
+   `com.apple.developer.family-controls` (development) and `group.com.osratech.child`; the notification service
+   extension carries the app group only and must not claim Family Controls. The host also needs `aps-environment`.
 2. **App group, by hand.** Register `group.com.osratech.child` in the Apple developer portal and attach it to all
-   four ids before signing. Command-line signing cannot create an app group, so a CLI-only setup fails here.
+   five ids before signing. Command-line signing cannot create an app group, so a CLI-only setup fails here.
 3. **Child account.** The iPhone is signed in to a child Apple ID in the parent's Family Sharing; FamilyControls
    `.child` authorization needs it.
 4. **On the phone, Status screen:** tap **Turn on Screen Time** and approve the prompt; the row reads `On` and rule

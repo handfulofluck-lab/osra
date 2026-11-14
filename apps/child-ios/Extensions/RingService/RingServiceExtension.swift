@@ -21,25 +21,29 @@ final class RingServiceExtension: UNNotificationServiceExtension {
             // The drain polls the command channel and, on a `ring`, tries the AlarmKit schedule through
             // the existing controller. Started or fallback, the delivered content is the same localized
             // notification: a fetch or schedule failure must never blank it.
-            _ = await RingPushDrainer.drainNow()
-            deliver(content)
+            let outcome = await RingPushDrainer.drainNow()
+            deliver(content, ringSound: outcome == .started)
         }
     }
 
     override func serviceExtensionTimeWillExpire() {
-        deliver(bestAttemptContent ?? UNMutableNotificationContent())
+        deliver(bestAttemptContent ?? UNMutableNotificationContent(), ringSound: false)
     }
 
     /// Exactly once: the first caller wins, the other (the drained task losing the race to the
     /// deadline) finds no handler left.
-    private func deliver(_ content: UNMutableNotificationContent) {
+    private func deliver(_ content: UNMutableNotificationContent, ringSound: Bool) {
         guard let contentHandler else { return }
         self.contentHandler = nil
         bestAttemptContent = nil
         content.title = L10n.tr("ring_notification_title")
         content.body = L10n.tr("ring_notification_body")
-        if #available(iOS 26.0, *) {
-            content.sound = .defaultRingtone
+        if ringSound {
+            if #available(iOS 26.0, *) {
+                content.sound = .defaultRingtone
+            } else {
+                content.sound = .default
+            }
         } else {
             content.sound = .default
         }
