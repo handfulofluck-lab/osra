@@ -35,13 +35,15 @@ docker run --rm "$IMAGE" sh -c 'test -f /app/services/api/dist/server.js'
 docker run --rm "$IMAGE" sh -c '
   set -eu
   b=/app/certs/rds-global-bundle.pem
-  test -r "$b"
+  # Every row says which one failed: a bare `test` under `set -e` stops the script with no line at all.
+  no() { echo "image check 4: $1"; ls -ld /app/certs /app/certs/* 2>&1 || true; id; exit 1; }
+  test -r "$b" || no "the API user cannot read $b"
   # `if`, not `! test`: under `set -e` a negated command that fails does not stop the script.
-  if test -w "$b"; then echo "the API user can rewrite $b"; exit 1; fi
-  test "$(grep -c "BEGIN CERTIFICATE" "$b")" -ge 50
-  if grep -q "PRIVATE KEY" /app/certs/*.pem; then echo "a private key is in /app/certs"; exit 1; fi
-  test -r /app/certs/decoy-ca.pem
-  test -f /app/services/api/scripts/check-db-tls.mjs
+  if test -w "$b"; then no "the API user can rewrite $b"; fi
+  test "$(grep -c "BEGIN CERTIFICATE" "$b")" -ge 50 || no "$b holds fewer than 50 certificates"
+  if grep -q "PRIVATE KEY" /app/certs/*.pem; then no "a private key is in /app/certs"; fi
+  test -r /app/certs/decoy-ca.pem || no "the decoy CA is missing or unreadable"
+  test -f /app/services/api/scripts/check-db-tls.mjs || no "scripts/check-db-tls.mjs is not in the image"
 '
 # 4b. With the switch on, the image refuses to boot on a URL that would not verify (the refusal comes before
 #     any connection, so no database is needed), and says why without printing the URL.

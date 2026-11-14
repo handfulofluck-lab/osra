@@ -74,6 +74,9 @@ COPY --from=build --chown=osra:osra /app/services/api/data ./services/api/data
 # Amazon's RDS root certificates, at the path production's DATABASE_URL names as `sslcert`, and the decoy CA
 # that scripts/check-db-tls.mjs must see refused (certs/README.md). Public certificates, no key. Root-owned
 # and read-only to the `osra` user: the process that trusts this file must not be able to rewrite it.
+# The directory is made first and on purpose: left to COPY, `--chmod=444` can land on the directory it creates
+# as well, and a directory without the execute bit hides its files from every user but root.
+RUN mkdir -p /app/certs && chmod 755 /app/certs
 COPY --from=build --chmod=444 /app/services/api/certs/rds-global-bundle.pem /app/services/api/certs/decoy-ca.pem /app/certs/
 # The seed is scripts/seed.ts, not a prisma/seed; tsx (installed above) runs it as written.
 # seed-password.ts is imported by seed.ts (#293), and migrate-and-seed.sh is what up.sh and CI call —
