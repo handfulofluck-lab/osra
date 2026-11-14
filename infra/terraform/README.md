@@ -643,7 +643,7 @@ Owner decision, rationale and runbook: osra-security#27 (private).
   switching any of that monitoring off (trail, its bucket and its Object Lock, log group and filters, alarms,
   topic, keys, the management account's GuardDuty detectors and their alert rules, and its own policies).
   Management-account GuardDuty findings of severity 7+ reach the same two addresses (`guardduty_alerts.tf`;
-  us-east-1 findings are forwarded to the home region's event bus first). The same policy closes the indirect route: the user
+  us-east-1 findings are forwarded to the home region's event bus first). The same policies narrow the indirect route (not close it; the "new principals" alarm covers the rest, and roles it makes carry a boundary, see role_boundary.tf): the user
   cannot assume any management-account role, create users, sign-in passwords or other users' keys, detach the
   trail at the organisation level, or remove the off-site copy vault's lock or policy. Nothing the agents do needs
   those; production and staging are reached through roles in the member accounts. Changing those resources later is done through Identity Center with MFA; an apply of this
