@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/controls_provider.dart';
@@ -305,7 +306,7 @@ class ChildCard extends ConsumerWidget {
                           ? l10n.readPermissionRequired
                           : location == null
                               ? l10n.noLocationYet
-                              : '${location.lat.toStringAsFixed(4)}, ${location.lng.toStringAsFixed(4)}',
+                              : ltrIsolate('${location.lat.toStringAsFixed(4)}, ${location.lng.toStringAsFixed(4)}'),
                       style: Theme.of(context).textTheme.bodySmall,
                       overflow: TextOverflow.ellipsis,
                     ),
