@@ -269,7 +269,7 @@ void main() {
       expect(find.byIcon(Icons.call_made), findsOneWidget);
       expect(find.byIcon(Icons.call_received), findsOneWidget);
       expect(find.byIcon(Icons.sms_outlined), findsOneWidget);
-      expect(find.text('+15551234567'), findsOneWidget);
+      expect(find.text('\u2066+15551234567\u2069'), findsOneWidget);
       expect(find.text('01:35'), findsOneWidget);
       expect(find.text('00:12'), findsOneWidget);
       // 200-char body is capped at 120 chars.

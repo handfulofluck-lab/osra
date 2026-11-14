@@ -1,4 +1,4 @@
-#if canImport(SwiftUI) && canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+#if os(iOS)
 import FamilyControls
 import SwiftUI
 

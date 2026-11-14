@@ -55,7 +55,7 @@ void main() {
 
       expect(find.text('Bonus time'), findsOneWidget);
       final scrollable = find.byType(Scrollable).first;
-      for (final (label, minutes) in [('+15', 15), ('+30', 30), ('+60', 60)]) {
+      for (final (label, minutes) in [('\u2066+15\u2069', 15), ('\u2066+30\u2069', 30), ('\u2066+60\u2069', 60)]) {
         await tester.scrollUntilVisible(find.text(label), 100, scrollable: scrollable);
         await tester.pumpAndSettle();
         await tester.tap(find.text(label));

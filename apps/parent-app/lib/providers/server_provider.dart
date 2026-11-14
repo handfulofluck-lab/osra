@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -37,6 +38,13 @@ String? builtInServerUrl([String builtIn = kDefaultServerUrl]) => normalizeServe
 
 /// Whether the server field is locked to [builtInServerUrl].
 bool isServerLocked([String builtIn = kDefaultServerUrl]) => builtInServerUrl(builtIn) != null;
+
+/// Whether the login screen shows the server field. A locked (built-in) build hides the field outside
+/// debug, so the built-in server cannot be edited or redirected; the read-only `serverShown` caption
+/// stays visible. Debug keeps the field visible and locked (see [isServerLocked]) for testers, and an
+/// unlocked build always shows the editable field.
+bool showServerField({bool debug = kDebugMode, String builtIn = kDefaultServerUrl}) =>
+    debug || !isServerLocked(builtIn);
 
 /// The server to use: the built-in one when there is one, else the saved one, else empty.
 String effectiveServerUrl({String? saved, String builtIn = kDefaultServerUrl}) =>
