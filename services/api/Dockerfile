@@ -71,6 +71,10 @@ COPY --from=build --chown=osra:osra /app/services/api/dist ./services/api/dist
 # prisma/ for `migrate deploy`; data/ is read per request by routes/blocklists.ts (`../../data/…`).
 COPY --from=build --chown=osra:osra /app/services/api/prisma ./services/api/prisma
 COPY --from=build --chown=osra:osra /app/services/api/data ./services/api/data
+# Amazon's RDS root certificates, at the path production's DATABASE_URL names as `sslcert`, and the decoy CA
+# that scripts/check-db-tls.mjs must see refused (certs/README.md). Public certificates, no key. Root-owned
+# and read-only to the `osra` user: the process that trusts this file must not be able to rewrite it.
+COPY --from=build --chmod=444 /app/services/api/certs/rds-global-bundle.pem /app/services/api/certs/decoy-ca.pem /app/certs/
 # The seed is scripts/seed.ts, not a prisma/seed; tsx (installed above) runs it as written.
 # seed-password.ts is imported by seed.ts (#293), and migrate-and-seed.sh is what up.sh and CI call —
 # a single-file COPY here is how the seed shipped without its import once already.
@@ -78,6 +82,7 @@ COPY --from=build --chown=osra:osra \
   /app/services/api/scripts/seed.ts \
   /app/services/api/scripts/seed-password.ts \
   /app/services/api/scripts/migrate-and-seed.sh \
+  /app/services/api/scripts/check-db-tls.mjs \
   ./services/api/scripts/
 
 USER osra

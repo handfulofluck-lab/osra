@@ -29,4 +29,27 @@ docker run --rm --network none --workdir /app/services/api "$IMAGE" node_modules
 #    `sh -c` rather than `--entrypoint test`: Alpine's test is a shell builtin, not a binary.
 docker run --rm "$IMAGE" sh -c 'test -f /app/services/api/dist/server.js'
 
-echo "verified: $IMAGE — node, prisma CLI and /app/services/api/dist/server.js are all present"
+# 4. The RDS CA bundle is where production's DATABASE_URL says it is (`sslcert=/app/certs/rds-global-bundle.pem`,
+#    #766 item 3), it holds certificates, and the user the API runs as can read it and cannot write it. A missing
+#    file would only show at the first production boot. The decoy and the checker ship with it.
+docker run --rm "$IMAGE" sh -c '
+  set -eu
+  b=/app/certs/rds-global-bundle.pem
+  test -r "$b"
+  # `if`, not `! test`: under `set -e` a negated command that fails does not stop the script.
+  if test -w "$b"; then echo "the API user can rewrite $b"; exit 1; fi
+  test "$(grep -c "BEGIN CERTIFICATE" "$b")" -ge 50
+  if grep -q "PRIVATE KEY" /app/certs/*.pem; then echo "a private key is in /app/certs"; exit 1; fi
+  test -r /app/certs/decoy-ca.pem
+  test -f /app/services/api/scripts/check-db-tls.mjs
+'
+# 4b. With the switch on, the image refuses to boot on a URL that would not verify (the refusal comes before
+#     any connection, so no database is needed), and says why without printing the URL.
+out="$(docker run --rm --network none -e DATABASE_TLS_VERIFY=required \
+  -e DATABASE_URL="postgresql://u:image-check-pw@db.invalid:5432/x?sslmode=require" \
+  -e JWT_SECRET=image-check-not-a-dev-value -e VAULT_KEY=image-check -e CORS_ALLOW_ANY_ORIGIN=1 \
+  "$IMAGE" 2>&1 || true)"
+echo "$out" | grep -q "sslaccept=strict" || { echo "the image booted, or failed for another reason, on an unverified database URL:"; echo "$out" | tail -5; exit 1; }
+if echo "$out" | grep -q "image-check-pw"; then echo "the boot refusal printed the database password"; exit 1; fi
+
+echo "verified: $IMAGE — node, prisma CLI, /app/services/api/dist/server.js and the RDS CA bundle are all present"
