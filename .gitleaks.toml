@@ -1,0 +1,18 @@
+# gitleaks configuration (osra-security#26, #609). The default rules stay on; this only allowlists
+# reviewed test fixtures, by file AND by the fixture's own variable names, so a real secret added to
+# either file is still reported.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Reviewed test fixtures (osra-security#26)"
+condition = "AND"
+paths = [
+  '''^scripts/hardware/scenario-family\.test\.mjs$''',
+  '''^services/api/test/auth\.test\.ts$''',
+]
+regexTarget = "line"
+regexes = [
+  '''^\s*(password|token)\s*:\s*"''',
+  '''^\s*const (oldSecret|attackerSecret)\s*=\s*"''',
+]
