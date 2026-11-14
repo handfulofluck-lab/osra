@@ -14,6 +14,14 @@ resource "aws_sns_topic" "alarms" {
   }
 }
 
+resource "aws_sns_topic_subscription" "alarms_email_secondary" {
+  count = var.alarms_enabled && var.alarm_email_secondary != "" ? 1 : 0
+
+  topic_arn = aws_sns_topic.alarms[0].arn
+  protocol  = "email"
+  endpoint  = var.alarm_email_secondary
+}
+
 resource "aws_sns_topic_subscription" "alarms_email" {
   count = var.alarms_enabled && var.alarm_email != "" ? 1 : 0
 

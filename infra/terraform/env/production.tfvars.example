@@ -52,7 +52,8 @@ waf_rate_limit  = 2000
 waf_rate_action = "count" # switch to "block" after two weeks of real traffic
 
 alarms_enabled = true
-alarm_email    = "<alerts-address>"
+alarm_email           = "<alerts-address>"
+alarm_email_secondary = "<second-alerts-address>" # required: a different inbox
 
 # Required in production (the guard refuses empty or "*"). No browser page uses the API yet; this names the
 # future parent web app's origin, so nothing else can call it with credentials from a browser.

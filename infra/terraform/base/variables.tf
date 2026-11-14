@@ -165,6 +165,13 @@ variable "alarm_email" {
   sensitive   = true
 }
 
+variable "alarm_email_secondary" {
+  description = "A second, different address for the same alerts, so one missed inbox cannot hide an outage (#766 item 6). Gitignored tfvars only. Production requires it."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "internal_hmac_secret_enabled" {
   description = "Create INTERNAL_HMAC_SECRET (the ai-engine's service credential) as a fresh random value in Secrets Manager. Staging sets none today; production MUST be true so its value is never one that was exposed before (#714, osra-security#26)."
   type        = bool
