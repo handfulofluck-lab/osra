@@ -118,6 +118,23 @@ public sealed class DirectorySecurityAndRecoveryTests
     }
 
     [Fact]
+    public void UntrustedDirectoryDoesNotDeleteItsTemporaryFile()
+    {
+        var directory = NewDirectory();
+        var info = new DirectoryInfo(directory);
+        var security = info.GetAccessControl();
+        security.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User!,
+            FileSystemRights.FullControl, AccessControlType.Allow));
+        info.SetAccessControl(security);
+        var path = Path.Combine(directory, "restrictions.json");
+        File.WriteAllText(path + ".tmp", "stale");
+        var store = new FileDesktopRestrictionStore(path);
+
+        Assert.Throws<UnauthorizedAccessException>(() => store.Save([]));
+        Assert.Equal("stale", File.ReadAllText(path + ".tmp"));
+    }
+
+    [Fact]
     public void UnlockClearsDisconnectedSessionsToo()
     {
         var state = new DesktopRestrictionState();

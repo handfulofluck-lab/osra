@@ -10,6 +10,7 @@ return await RunService(args);
 
 static async Task<int> RunClient()
 {
+    PrepareUntrustedOwnerFixture();
     var sessionId = Process.GetCurrentProcess().SessionId;
     for (var attempt = 0; attempt < 40; attempt++)
     {
@@ -32,6 +33,19 @@ static async Task<int> RunClient()
         }
     }
     return 2;
+}
+
+static void PrepareUntrustedOwnerFixture()
+{
+    var path = Path.Combine(AppContext.BaseDirectory, "probe-untrusted-owner");
+    Directory.CreateDirectory(path);
+    var security = new DirectorySecurity();
+    security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+    security.AddAccessRule(new FileSystemAccessRule(
+        new SecurityIdentifier("S-1-5-18"), FileSystemRights.FullControl, AccessControlType.Allow));
+    security.AddAccessRule(new FileSystemAccessRule(
+        new SecurityIdentifier("S-1-5-32-544"), FileSystemRights.FullControl, AccessControlType.Allow));
+    new DirectoryInfo(path).SetAccessControl(security);
 }
 
 static async Task<int> RunService(string[] args)
@@ -155,15 +169,15 @@ sealed class ProbeServer(ProbeSettings settings) : BackgroundService
 
     private static void ProbeDirectoryRejections(string userSid)
     {
-        var untrusted = FixtureDirectory("probe-untrusted-owner", userSid);
+        var untrusted = Path.Combine(AppContext.BaseDirectory, "probe-untrusted-owner");
         RequireUnreadable(new FileDesktopRestrictionStore(Path.Combine(untrusted, "restrictions.json")).Load(),
             "An untrusted directory owner was accepted.");
 
-        var otherWriter = FixtureDirectory("probe-other-writer", "S-1-5-18", userSid);
+        var otherWriter = TrustedFixtureDirectory("probe-other-writer", userSid);
         RequireUnreadable(new FileDesktopRestrictionStore(Path.Combine(otherWriter, "restrictions.json")).Load(),
             "Another directory writer was accepted.");
 
-        var target = FixtureDirectory("probe-reparse-target", "S-1-5-18");
+        var target = TrustedFixtureDirectory("probe-reparse-target");
         var reparse = Path.Combine(AppContext.BaseDirectory, "probe-reparse");
         Directory.CreateSymbolicLink(reparse, target);
         RequireUnreadable(new FileDesktopRestrictionStore(Path.Combine(reparse, "restrictions.json")).Load(),
@@ -176,23 +190,19 @@ sealed class ProbeServer(ProbeSettings settings) : BackgroundService
         RequireProtectedDirectory(rewrite);
     }
 
-    private static string FixtureDirectory(string name, string ownerSid, string? otherWriterSid = null)
+    private static string TrustedFixtureDirectory(string name, string? otherWriterSid = null)
     {
         var path = Path.Combine(AppContext.BaseDirectory, name);
-        Directory.CreateDirectory(path);
-        var security = new DirectorySecurity();
-        security.SetOwner(new SecurityIdentifier(ownerSid));
-        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
-        security.AddAccessRule(new FileSystemAccessRule(
-            new SecurityIdentifier("S-1-5-18"), FileSystemRights.FullControl, AccessControlType.Allow));
-        security.AddAccessRule(new FileSystemAccessRule(
-            new SecurityIdentifier("S-1-5-32-544"), FileSystemRights.FullControl, AccessControlType.Allow));
+        if (new FileDesktopRestrictionStore(Path.Combine(path, "restrictions.json")).Load().Count != 0)
+            throw new InvalidDataException("The trusted fixture could not be created.");
         if (otherWriterSid is not null)
         {
+            var directory = new DirectoryInfo(path);
+            var security = directory.GetAccessControl();
             security.AddAccessRule(new FileSystemAccessRule(
                 new SecurityIdentifier(otherWriterSid), FileSystemRights.FullControl, AccessControlType.Allow));
+            directory.SetAccessControl(security);
         }
-        new DirectoryInfo(path).SetAccessControl(security);
         return path;
     }
 
