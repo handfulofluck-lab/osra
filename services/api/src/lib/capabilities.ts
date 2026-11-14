@@ -268,7 +268,7 @@ export function setupFor(report: CapabilityReport, nowMs: number = Date.now()): 
     stale: nowMs - at > CAPABILITIES_MAX_AGE_MS,
     features: shownFeatures as DeviceSetup["features"],
     missing: (Object.entries(grants) as Array<[keyof typeof grants, string]>)
-      .filter(([, state]) => state === "missing")
+      .filter(([key, state]) => state === "missing" && key !== "child_account_admin")
       .map(([key]) => key as DeviceSetup["missing"][number]),
     profiles: profiles ?? null,
     groups: groups ?? null,

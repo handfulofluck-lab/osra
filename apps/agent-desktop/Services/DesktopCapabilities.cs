@@ -39,7 +39,7 @@ public static class DesktopCapabilities
         {
             ["child_account_admin"] = user.IsAdministrator ? "granted" : "missing",
         };
-        var interactive = facts.HasParentPin && facts.TrayConnected ? "ready" : "unavailable";
+        var interactive = !facts.HasParentPin ? "unavailable" : facts.TrayConnected ? "ready" : "degraded";
         var features = new Dictionary<string, string>
         {
             ["lock_screen"] = interactive,

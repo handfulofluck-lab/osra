@@ -18,10 +18,10 @@ class PhoneSetupSection extends StatelessWidget {
   final Device device;
   const PhoneSetupSection({super.key, required this.device});
 
-  /// The server's `GRANT_KEYS`, verbatim (`packages/shared-types/src/capabilities.ts`).
+  /// Generic permission grants from `packages/shared-types/src/capabilities.ts`.
   ///
-  /// Kept here so a test can compare the two lists: a grant added to the shared vocabulary without a label
-  /// below would otherwise reach a parent as `• full_screen_intent` in the "what to fix" list.
+  /// Desktop account-administrator state is excluded: ADR-0041 D5 handles that pairing warning separately.
+  /// A grant added to the generic vocabulary without a label would otherwise reach a parent as a raw key.
   static const grantKeys = [
     'accessibility',
     'usage_access',

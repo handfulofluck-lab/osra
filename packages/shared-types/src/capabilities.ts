@@ -163,7 +163,7 @@ export interface DeviceSetup {
   reportedAt: string | null;
   stale: boolean;
   features: Partial<Record<FeatureKey, FeatureState>>;
-  /** The grants the device reported as `missing` — the "what to fix" list. */
+  /** Generic missing permissions; desktop account-administrator state uses ADR-0041 D5's warning instead. */
   missing: GrantKey[];
   /** osra-security#6 item 2: the last reported other spaces, or null when no report has carried them. */
   profiles: DeviceProfiles | null;
