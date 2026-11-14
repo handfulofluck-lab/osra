@@ -11,6 +11,8 @@ public sealed class TrayPipeClientWorker : BackgroundService, ITrayCommandSink
     private readonly Queue<TrayMessage> _pending = new();
     private readonly Queue<TrayMessage> _priority = new();
     private readonly object _gate = new();
+    private TrayMessage? _awaitingSos;
+    private DateTime _sosRetryAfter = DateTime.MinValue;
 
     public TrayPipeClientWorker(ITrayClient client, TrayUserActions actions, ILogger<TrayPipeClientWorker> log,
         TrayConnectionState? state = null)
@@ -27,7 +29,7 @@ public sealed class TrayPipeClientWorker : BackgroundService, ITrayCommandSink
         {
             if (message.Kind == TrayMessageKind.sos)
             {
-                _priority.Enqueue(message);
+                if (_awaitingSos is null && _priority.Count == 0) _priority.Enqueue(message);
             }
             else
             {
@@ -49,9 +51,12 @@ public sealed class TrayPipeClientWorker : BackgroundService, ITrayCommandSink
                 await TrayProtocol.WriteAsync(connection.Stream, new TrayMessage(TrayMessageKind.hello),
                     TrayDirection.ToService, stoppingToken);
                 _state.IsConnected = true;
-                var incoming = ReadIncoming(connection, stoppingToken);
-                var outgoing = WriteOutgoing(connection, stoppingToken);
-                await Task.WhenAny(incoming, outgoing);
+                using var connectionStop = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                var incoming = ReadIncoming(connection, connectionStop.Token);
+                var outgoing = WriteOutgoing(connection, connectionStop.Token);
+                var completed = await Task.WhenAny(incoming, outgoing);
+                await connectionStop.CancelAsync();
+                await completed;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -64,6 +69,7 @@ public sealed class TrayPipeClientWorker : BackgroundService, ITrayCommandSink
             finally
             {
                 _state.IsConnected = false;
+                RequeueUnacknowledgedSos();
             }
             try
             {
@@ -82,6 +88,22 @@ public sealed class TrayPipeClientWorker : BackgroundService, ITrayCommandSink
         {
             var message = await TrayProtocol.ReadAsync(connection.Stream, TrayDirection.ToTray,
                 Timeout.InfiniteTimeSpan, cancellationToken);
+            if (message.Kind == TrayMessageKind.sos_result)
+            {
+                var accepted = message.Payload!.Value.GetProperty("accepted").GetBoolean();
+                lock (_gate)
+                {
+                    if (_awaitingSos is { } sos)
+                    {
+                        _awaitingSos = null;
+                        if (!accepted)
+                        {
+                            _priority.Enqueue(sos);
+                            _sosRetryAfter = DateTime.UtcNow.AddSeconds(2);
+                        }
+                    }
+                }
+            }
             await _actions.HandleAsync(message, cancellationToken);
         }
     }
@@ -90,17 +112,50 @@ public sealed class TrayPipeClientWorker : BackgroundService, ITrayCommandSink
     {
         while (true)
         {
-            TrayMessage? pending;
+            TrayMessage? pending = null;
+            var sos = false;
             lock (_gate)
             {
-                pending = _priority.Count > 0 ? _priority.Dequeue() : _pending.Count > 0 ? _pending.Dequeue() : null;
+                if (_awaitingSos is null && _priority.Count > 0 && DateTime.UtcNow >= _sosRetryAfter)
+                {
+                    pending = _priority.Peek();
+                    _awaitingSos = pending;
+                    sos = true;
+                }
+                else if (_pending.Count > 0)
+                {
+                    pending = _pending.Peek();
+                }
             }
             if (pending is null)
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
                 continue;
             }
-            await TrayProtocol.WriteAsync(connection.Stream, pending, TrayDirection.ToService, cancellationToken);
+            try
+            {
+                await TrayProtocol.WriteAsync(connection.Stream, pending, TrayDirection.ToService, cancellationToken);
+            }
+            catch
+            {
+                if (sos) RequeueUnacknowledgedSos();
+                throw;
+            }
+            lock (_gate)
+            {
+                var queue = sos ? _priority : _pending;
+                if (queue.Count > 0 && ReferenceEquals(queue.Peek(), pending)) queue.Dequeue();
+            }
+        }
+    }
+
+    private void RequeueUnacknowledgedSos()
+    {
+        lock (_gate)
+        {
+            if (_awaitingSos is not { } sos) return;
+            _awaitingSos = null;
+            _priority.Enqueue(sos);
         }
     }
 }

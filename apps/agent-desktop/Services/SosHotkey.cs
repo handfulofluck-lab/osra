@@ -24,12 +24,17 @@ public sealed class SosHotkey : BackgroundService
 
     private readonly ILogger<SosHotkey> _log;
     private readonly ITrayCommandSink? _sink;
+    private readonly Action<bool?> _feedback;
+    private HotkeyLoop? _loop;
 
     /// <summary>Creates the worker.</summary>
-    public SosHotkey(ILogger<SosHotkey> log, ITrayCommandSink? sink = null)
+    public SosHotkey(ILogger<SosHotkey> log, ITrayCommandSink? sink = null,
+        TrayUserActions? actions = null, Action<bool?>? feedback = null)
     {
         _log = log;
         _sink = sink;
+        _feedback = feedback ?? ShowFeedback;
+        if (actions is not null) actions.SosResult = accepted => _feedback(accepted);
     }
 
     /// <summary>True when FS_SOS_HOTKEY=1.</summary>
@@ -54,10 +59,10 @@ public sealed class SosHotkey : BackgroundService
     /// <summary>Runs the hotkey loop until stopped; every failure is swallowed, never thrown.</summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var loop = new HotkeyLoop(_log, OnHotkeyPressed);
+        _loop = new HotkeyLoop(_log, OnHotkeyPressed);
         try
         {
-            loop.Start();
+            _loop.Start();
             await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
         }
         catch (OperationCanceledException)
@@ -70,23 +75,45 @@ public sealed class SosHotkey : BackgroundService
         }
         finally
         {
-            loop.Stop();
+            _loop.Stop();
+            _loop = null;
         }
     }
 
-    private void OnHotkeyPressed()
+    internal void OnHotkeyPressed()
+    {
+        if (_sink is null)
+        {
+            _log.LogError("SOS alert was not sent: no service sink is registered.");
+            _feedback(false);
+            return;
+        }
+        _feedback(null);
+        _ = SendSos();
+    }
+
+    private async Task SendSos()
     {
         try
         {
-            if (_sink is not null) _ = _sink.SendAsync(new TrayMessage(TrayMessageKind.sos));
-            else _log.LogError("SOS alert was not sent: no service sink is registered.");
-            SosToast.Show();
+            await _sink!.SendAsync(new TrayMessage(TrayMessageKind.sos));
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "SOS hotkey handling failed");
+            _feedback(false);
         }
     }
+
+    private void ShowFeedback(bool? accepted) =>
+        _loop?.Post(() => SosToast.Show(accepted));
+
+    internal static string FeedbackText(bool? accepted) => accepted switch
+    {
+        true => "SOS sent to your parent",
+        false => "Couldn't send the SOS. Trying again.",
+        null => "Sending SOS to your parent…",
+    };
 
     /// <summary>Message-only window + GetMessage loop on a dedicated STA thread.</summary>
     private sealed class HotkeyLoop
@@ -96,6 +123,7 @@ public sealed class SosHotkey : BackgroundService
         private readonly ManualResetEventSlim _ready = new();
         private Thread? _thread;
         private IntPtr _hwnd;
+        private SynchronizationContext? _context;
 
         public HotkeyLoop(ILogger log, Action onHotkey)
         {
@@ -129,9 +157,13 @@ public sealed class SosHotkey : BackgroundService
             }
         }
 
+        public void Post(Action action) => _context?.Post(_ => action(), null);
+
         private void Run()
         {
             IntPtr hwnd = IntPtr.Zero;
+            SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
+            _context = SynchronizationContext.Current;
             try
             {
                 hwnd = CreateWindowEx(0, "Message", "FamilyShieldSOS", 0, 0, 0, 0, 0,
@@ -222,19 +254,18 @@ public sealed class SosHotkey : BackgroundService
 
     /// <summary>
     /// Topmost confirmation shown after an SOS; auto-dismisses after 10 s so the child is never
-    /// left with a stuck topmost window. NOTE: unlike LockOverlay this runs entirely on the
-    /// hotkey message-loop thread (its only caller), so no SynchronizationContext marshalling.
+    /// left with a stuck topmost window. Pipe results are posted back to the hotkey message loop.
     /// </summary>
     private static class SosToast
     {
         private static SosToastForm? _open;
 
-        public static void Show()
+        public static void Show(bool? accepted)
         {
             try
             {
                 _open?.Close();
-                _open = new SosToastForm();
+                _open = new SosToastForm(accepted);
                 _open.FormClosed += (_, __) => _open = null;
                 _open.Show();
             }
@@ -247,7 +278,7 @@ public sealed class SosHotkey : BackgroundService
 
     private sealed class SosToastForm : Form
     {
-        public SosToastForm()
+        public SosToastForm(bool? accepted)
         {
             Text = "OSRA SOS";
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -266,7 +297,7 @@ public sealed class SosHotkey : BackgroundService
                 TextAlign = ContentAlignment.MiddleCenter,
                 ForeColor = Color.White,
                 Font = new Font(FontFamily.GenericSansSerif, 14f, FontStyle.Bold),
-                Text = "SOS sent to your parent",
+                Text = FeedbackText(accepted),
             };
             var okButton = new Button { Text = "OK", Dock = DockStyle.Bottom, Height = 34 };
             okButton.Click += (_, __) => Close();

@@ -50,6 +50,7 @@ public sealed class TrayUserActions
     internal Action HideOverlay = LockOverlay.Hide;
     internal Action RingAction = Ring;
     internal Func<TimeSpan, CancellationToken, Task> Delay = Task.Delay;
+    internal Action<bool> SosResult = _ => { };
     internal string? LastArmRefusal { get; private set; }
 
     public TrayUserActions(AgentConfig config, LocalRuleStore store, ILogger<TrayUserActions> log)
@@ -82,6 +83,9 @@ public sealed class TrayUserActions
                 break;
             case TrayMessageKind.ring:
                 _ = Task.Run(RingAction, cancellationToken);
+                break;
+            case TrayMessageKind.sos_result:
+                SosResult(message.Payload!.Value.GetProperty("accepted").GetBoolean());
                 break;
             case TrayMessageKind.wind_down:
                 var minutes = TrayCommandRouter.ParseMinutes(message.Payload);
