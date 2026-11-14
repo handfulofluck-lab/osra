@@ -28,7 +28,9 @@ HOURLY_COST_USD="${HOURLY_COST_USD:-0.194}"
 
 # Production never falls back to the staging profile (#765, Fable B3): the caller names the profile.
 profile_given="${AWS_PROFILE:-}"
-: "${AWS_PROFILE:=osra-staging}"
+# One source of truth for the default's name, because production refuses it by name below (osra#768).
+staging_profile=osra-staging
+: "${AWS_PROFILE:=$staging_profile}"
 : "${AWS_REGION:=$default_region}"
 export AWS_PROFILE AWS_REGION
 
@@ -52,6 +54,13 @@ if [ "$OSRA_ENV" = production ]; then
   # definition on an upgrade, and the apply then snapshots the database and migrates. OSRA_PROD_PHASE=service
   # plans everything else (creating the service, or rolling it onto the new task definition).
   [ -n "$profile_given" ] || { echo "production: set AWS_PROFILE explicitly; it never defaults to the staging profile." >&2; exit 1; }
+  # osra#768: the profile must not only be given, it must not be the staging one by name. #765 refuses an
+  # unset profile; `OSRA_ENV=production AWS_PROFILE=osra-staging` would still name the credential that
+  # belongs to the other environment. A production run names its own credential, or it does not run.
+  if [ "$AWS_PROFILE" = "$staging_profile" ]; then
+    echo "production: AWS_PROFILE is the staging profile ($staging_profile); name the production profile instead." >&2
+    exit 1
+  fi
   phase="${OSRA_PROD_PHASE:-schema}"
   case "$phase" in schema|service) ;; *) echo "OSRA_PROD_PHASE must be schema or service" >&2; exit 1 ;; esac
 
