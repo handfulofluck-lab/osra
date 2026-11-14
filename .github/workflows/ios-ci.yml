@@ -104,9 +104,9 @@ jobs:
           missing = sorted(required - tests)
           if missing:
               print("Portable tests missing on macOS:", *missing, sep="\n", file=sys.stderr)
-          if len(tests) != 297:
-              print(f"macOS test count changed: expected 297, discovered {len(tests)}", file=sys.stderr)
-          if missing or len(tests) != 297:
+          if len(tests) != 300:
+              print(f"macOS test count changed: expected 300, discovered {len(tests)}", file=sys.stderr)
+          if missing or len(tests) != 300:
               print("Discovered macOS test identifiers:", *sorted(tests), sep="\n", file=sys.stderr)
               sys.exit(1)
           print(f"macOS portable tests discovered: {len(tests)}; pairing, signer, rules and strings present")

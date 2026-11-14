@@ -90,20 +90,48 @@ final class RingRecoveryTests: XCTestCase {
         XCTAssertNil(controller.state)
     }
 
-    func testFailedReplacementCancellationRestoresDeadline() async {
+    func testPreviousCancelFailureDoesNotBlockReplacement() async {
         let replacement = UUID()
         let controller = controller()
         await controller.start(id)
         backend.stopError = RingControllerTests.TransportFailure()
         let error = await controller.start(replacement)
-        XCTAssertEqual(error, .scheduleFailed)
+        XCTAssertNil(error)
+        XCTAssertEqual(controller.state?.commandId, replacement)
+        XCTAssertTrue(backend.scheduled.contains(replacement))
         backend.stopError = nil
         uptime += 300
         clockDriving = true
         await flushTasks()
-        XCTAssertEqual(controller.state?.commandId, id)
-        XCTAssertEqual(backend.stopCalls, [id])
+        XCTAssertEqual(backend.stopCalls, [replacement])
         XCTAssertEqual(reporter.calls.map(\.state), [.timedOut])
+    }
+
+    func testEmptyStopTargetUsesCurrentRing() async {
+        let controller = controller()
+        await controller.start(id)
+        let error = await LiveRingCommands(controller: controller).stopRing(targetId: "")
+        XCTAssertNil(error)
+        XCTAssertEqual(backend.stopCalls, [id])
+        XCTAssertNil(controller.state)
+    }
+
+    func testWrongStopTargetIsFailedWithoutStoppingCurrentRing() async {
+        let controller = controller()
+        await controller.start(id)
+        let error = await LiveRingCommands(controller: controller).stopRing(targetId: UUID().uuidString)
+        XCTAssertEqual(error, .invalidCommand)
+        XCTAssertEqual(controller.state?.commandId, id)
+        XCTAssertTrue(backend.stopCalls.isEmpty)
+    }
+
+    func testAlarmKitUsesNearFutureScheduleAndSafeErrorLogging() throws {
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent/AlarmKitRingBackend.swift")
+        let backend = try String(contentsOf: source, encoding: .utf8)
+        XCTAssertTrue(backend.contains(".fixed(Date().addingTimeInterval(1))"))
+        XCTAssertTrue(backend.contains("RingAlarmErrorLog"))
+        XCTAssertTrue(backend.contains("type(of: error)"))
     }
 
     func testFailedReplacementSchedulingRestoresAlarmAndDeadline() async {
@@ -145,7 +173,7 @@ final class RingRecoveryTests: XCTestCase {
         await controller.start(id)
         var release: (() -> Void)?
         reporter.reportGate = {
-            reporter.reportGate = nil
+            self.reporter.reportGate = nil
             await withCheckedContinuation { continuation in
                 release = { continuation.resume() }
             }
