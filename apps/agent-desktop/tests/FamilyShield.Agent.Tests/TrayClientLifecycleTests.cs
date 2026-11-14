@@ -87,6 +87,60 @@ public sealed class TrayClientLifecycleTests
     }
 
     [Fact]
+    public async Task PostConnectOrdinaryMessageIsSent()
+    {
+        var stream = new DuplexStream();
+        var store = NewStore(out var directory);
+        try
+        {
+            using var worker = new TrayPipeClientWorker(new FakeClient(stream), NewActions(store),
+                NullLogger<TrayPipeClientWorker>.Instance);
+            await worker.StartAsync(CancellationToken.None);
+            await worker.SendAsync(new TrayMessage(TrayMessageKind.foreground_sample,
+                JsonSerializer.SerializeToElement(new { processName = "ordinary-app" })));
+
+            Assert.Equal(TrayMessageKind.hello, (await ReadFrame(stream)).Kind);
+            var message = await ReadFrame(stream, index: 1);
+            Assert.Equal(TrayMessageKind.foreground_sample, message.Kind);
+            Assert.Equal("ordinary-app", message.Payload!.Value.GetProperty("processName").GetString());
+        }
+        finally
+        {
+            store.Dispose();
+            try { Directory.Delete(directory, recursive: true); } catch (Exception) { }
+        }
+    }
+
+    [Fact]
+    public async Task UnacknowledgedSosIsRetriedOnTheNextConnection()
+    {
+        var first = new DuplexStream { CloseAfterFrame = 2 };
+        var second = new DuplexStream();
+        var client = new FakeClient(first, second);
+        var store = NewStore(out var directory);
+        try
+        {
+            using var worker = new TrayPipeClientWorker(client, NewActions(store),
+                NullLogger<TrayPipeClientWorker>.Instance);
+            await worker.StartAsync(CancellationToken.None);
+            Assert.Equal(TrayMessageKind.hello, (await ReadFrame(first)).Kind);
+            await worker.SendAsync(new TrayMessage(TrayMessageKind.sos));
+            Assert.Equal(TrayMessageKind.sos, (await ReadFrame(first, index: 1)).Kind);
+            for (var attempt = 0; attempt < 400 && !first.EofRead; attempt++) await Task.Delay(10);
+            Assert.True(first.EofRead, $"The first stream did not reach EOF (closed={first.Closed}).");
+
+            Assert.Equal(TrayMessageKind.hello, (await ReadFrame(second)).Kind);
+            Assert.Equal(TrayMessageKind.sos, (await ReadFrame(second, index: 1)).Kind);
+            Assert.Equal(2, client.Connections);
+        }
+        finally
+        {
+            store.Dispose();
+            try { Directory.Delete(directory, recursive: true); } catch (Exception) { }
+        }
+    }
+
+    [Fact]
     public async Task FailedSosIsRetriedAfterTheServiceResult()
     {
         var stream = new DuplexStream();
@@ -179,13 +233,17 @@ public sealed class TrayClientLifecycleTests
         private readonly MemoryStream _outgoing = new();
         private readonly object _gate = new();
         private bool _closed;
+        public bool Closed => _closed;
+        public bool EofRead { get; private set; }
         public bool CloseAfterFirstFrame { get; init; }
+        public int? CloseAfterFrame { get; init; }
         public override bool CanRead => true;
         public override bool CanSeek => false;
         public override bool CanWrite => true;
         public override long Length => throw new NotSupportedException();
         public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
         public override void Flush() { }
+        public override Task FlushAsync(CancellationToken cancellationToken) => Task.CompletedTask;
         public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
         public override void SetLength(long value) => throw new NotSupportedException();
@@ -200,6 +258,7 @@ public sealed class TrayClientLifecycleTests
             }
             catch (ChannelClosedException)
             {
+                EofRead = true;
                 return 0;
             }
         }
@@ -217,17 +276,28 @@ public sealed class TrayClientLifecycleTests
             lock (_gate)
             {
                 _outgoing.Write(buffer.Span);
-                if (CloseAfterFirstFrame && !_closed && _outgoing.Length >= 4)
+                var frames = CompleteFrameCount();
+                if (!_closed && (CloseAfterFirstFrame && frames >= 1 || CloseAfterFrame is { } closeAfter && frames >= closeAfter))
                 {
-                    var length = BitConverter.ToInt32(_outgoing.GetBuffer(), 0);
-                    if (_outgoing.Length >= 4 + length)
-                    {
-                        _closed = true;
-                        _incoming.Writer.TryComplete();
-                    }
+                    _closed = true;
+                    _incoming.Writer.TryComplete();
                 }
             }
             return ValueTask.CompletedTask;
+        }
+
+        private int CompleteFrameCount()
+        {
+            var frames = 0;
+            var position = 0;
+            while (position + 4 <= _outgoing.Length)
+            {
+                var length = BitConverter.ToInt32(_outgoing.GetBuffer(), position);
+                if (length <= 0 || length > TrayProtocol.MaxFrameBytes || position + 4 + length > _outgoing.Length) break;
+                position += 4 + length;
+                frames++;
+            }
+            return frames;
         }
         public async Task WriteToClient(byte[] bytes)
         {
