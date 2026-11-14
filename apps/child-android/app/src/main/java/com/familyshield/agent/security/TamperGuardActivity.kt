@@ -2,6 +2,8 @@ package com.familyshield.agent.security
 
 import android.content.res.Configuration
 import android.os.Bundle
+import android.os.SystemClock
+import android.provider.Settings
 import android.text.InputFilter
 import android.text.InputType
 import android.view.Gravity
@@ -11,8 +13,14 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import com.familyshield.agent.R
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+
+/**
+ * osra-security#24: the gate's five-try rule, kept as the local name the wiring test reads.
+ */
+private const val MAX_ATTEMPTS = PinLockout.MAX_ATTEMPTS
 
 /**
  * Full-screen parent-PIN gate (ADR-0010 §3). Launched by the accessibility service over the OS
@@ -83,21 +91,46 @@ open class TamperGuardActivity : ComponentActivity() {
 
         // osra-security#24: reopening the screen must not hand back a fresh set of tries. The notice is
         // shown immediately, and Continue stays off for as long as the lockout lasts.
-        val openedAt = System.currentTimeMillis()
-        val openedState = attemptStore.read()
-        if (PinLockout.isLocked(openedState, openedAt)) {
-            error.text = PinLockout.lockoutNotice(PinLockout.remainingMs(openedState, openedAt))
+        //
+        // Two clocks, and only one of them decides: a window is measured on `elapsedRealtime`, which a
+        // changed wall clock cannot move. A reboot restarts it, so `anchored` re-anchors the window to a full
+        // one from this read — a reboot costs a window, never more than one.
+        fun bootCount(): Int = runCatching {
+            Settings.Global.getInt(contentResolver, Settings.Global.BOOT_COUNT, PinLockout.NO_BOOT)
+        }.getOrDefault(PinLockout.NO_BOOT)
+
+        fun lockedState(): PinLockout.State {
+            val stored = attemptStore.read()
+            val state = PinLockout.anchored(
+                stored,
+                System.currentTimeMillis(),
+                SystemClock.elapsedRealtime(),
+                bootCount(),
+            )
+            if (state != stored) attemptStore.write(state)
+            return state
+        }
+
+        fun notice(): String {
+            val minutes = PinLockout.remainingMinutes(lockedState(), SystemClock.elapsedRealtime())
+            return resources.getQuantityString(R.plurals.pin_locked_notice, minutes, minutes)
+        }
+
+        if (PinLockout.isLocked(lockedState(), SystemClock.elapsedRealtime())) {
+            error.text = notice()
             unlock.isEnabled = false
         }
 
         unlock.setOnClickListener {
+            // The wall clock is only ever handed to the grace window and the alert; nothing here compares it.
             val now = System.currentTimeMillis()
+            val elapsed = SystemClock.elapsedRealtime()
             // osra-security#24: a closed gate refuses **every** PIN, the right one included. Checking this
             // before verify() is what makes the back-off a lockout rather than a message.
-            val state = attemptStore.read()
-            if (PinLockout.isLocked(state, now)) {
+            val state = lockedState()
+            if (PinLockout.isLocked(state, elapsed)) {
                 pin.text.clear()
-                error.text = PinLockout.lockoutNotice(PinLockout.remainingMs(state, now))
+                error.text = notice()
                 return@setOnClickListener
             }
             val entered = pin.text.toString()
@@ -108,7 +141,7 @@ open class TamperGuardActivity : ComponentActivity() {
                 setResult(RESULT_OK)
                 finish()
             } else {
-                val failed = PinLockout.recordFailure(state, now)
+                val failed = PinLockout.recordFailure(state, now, elapsed, bootCount())
                 if (PinLockout.shouldAlert(failed)) {
                     // One alert per lockout: the parent is told the gate is closed, not told again for each
                     // further attempt inside the same closed gate.
@@ -125,8 +158,11 @@ open class TamperGuardActivity : ComponentActivity() {
                     attemptStore.write(failed)
                 }
                 pin.text.clear()
-                error.text = if (PinLockout.isLocked(failed, now)) {
-                    PinLockout.lockoutNotice(PinLockout.remainingMs(failed, now))
+                val attempts = failed.failures
+                // #484: the fifth wrong PIN still lands Home. The lockout is what the next open reports.
+                if (attempts >= MAX_ATTEMPTS) goHome()
+                error.text = if (PinLockout.isLocked(failed, SystemClock.elapsedRealtime())) {
+                    notice()
                 } else {
                     "Wrong PIN."
                 }
