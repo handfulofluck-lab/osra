@@ -51,6 +51,46 @@ public sealed class DesktopCompositionTests
     }
 
     [Fact]
+    public async Task PairedServiceAndCoordinatorAlsoResolveOneInstanceEach()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "osra-composition-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var store = new LocalRuleStore(NullLogger<LocalRuleStore>.Instance,
+            Path.Combine(directory, "rules.db"), Path.Combine(directory, "status.json"));
+        try
+        {
+            var paired = new ServiceCollection().AddLogging();
+            paired.AddSingleton<IInteractiveSessionSource>(new FakeSessions([]));
+            paired.AddSingleton<ITrayProcessRegistry>(new FakeRegistry());
+            DesktopRuntime.AddService(paired, new AgentConfig { ApiBase = AgentConfig.ProductionApiBase });
+            UseStore(paired, store);
+            UseRestrictionStore(paired, directory);
+            await using var pairedProvider = paired.BuildServiceProvider();
+            var sink = pairedProvider.GetRequiredService<ITrayCommandSink>();
+            var worker = pairedProvider.GetRequiredService<IEnumerable<IHostedService>>().OfType<TrayServerWorker>().Single();
+            Assert.Same(sink, worker);
+
+            var unpaired = new ServiceCollection().AddLogging();
+            ServiceHostComposition.ConfigureServices(unpaired, null);
+            var storeRegistration = Assert.Single(unpaired.Where(descriptor => descriptor.ServiceType == typeof(IRestrictionStore)));
+            unpaired.Remove(storeRegistration);
+            unpaired.AddSingleton<IRestrictionStore>(new FileDesktopRestrictionStore(
+                Path.Combine(directory, "restrictions.json"), directoryIsTrusted: _ => true));
+            UseStore(unpaired, store);
+            await using var unpairedProvider = unpaired.BuildServiceProvider();
+            var coordinator = unpairedProvider.GetRequiredService<RuntimeCoordinator>();
+            var hostedCoordinator = unpairedProvider.GetRequiredService<IEnumerable<IHostedService>>()
+                .OfType<RuntimeCoordinator>().Single();
+            Assert.Same(coordinator, hostedCoordinator);
+        }
+        finally
+        {
+            store.Dispose();
+            try { Directory.Delete(directory, recursive: true); } catch (Exception) { }
+        }
+    }
+
+    [Fact]
     public async Task PairingEventStartsTheComposedRuntimeCoordinator()
     {
         var directory = Path.Combine(Path.GetTempPath(), "osra-composition-tests", Guid.NewGuid().ToString("N"));
@@ -100,6 +140,15 @@ public sealed class DesktopCompositionTests
         foreach (var descriptor in services.Where(descriptor => descriptor.ServiceType == typeof(LocalRuleStore)).ToArray())
             services.Remove(descriptor);
         services.AddSingleton(store);
+    }
+
+    private static void UseRestrictionStore(IServiceCollection services, string directory)
+    {
+        var registration = Assert.Single(services.Where(descriptor => descriptor.ServiceType == typeof(IRestrictionStore)));
+        Assert.Equal(typeof(FileDesktopRestrictionStore), registration.ImplementationType);
+        services.Remove(registration);
+        services.AddSingleton<IRestrictionStore>(new FileDesktopRestrictionStore(
+            Path.Combine(directory, "restrictions.json"), directoryIsTrusted: _ => true));
     }
 
     private sealed class FakeSessions(IReadOnlyList<InteractiveSession> sessions) : IInteractiveSessionSource

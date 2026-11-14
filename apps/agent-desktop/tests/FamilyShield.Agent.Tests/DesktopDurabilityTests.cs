@@ -20,24 +20,41 @@ public sealed class DesktopDurabilityTests
     }
 
     [Fact]
-    public void StatePersistsAndRearmsEveryGracePeriod()
+    public void StatePersistsAndRestartsOfflineGraceWithoutAnInheritedAlert()
     {
         var store = new MemoryDesktopRestrictionStore();
-        var first = new DesktopRestrictionState(store);
+        var first = new DesktopRestrictionState(store, clock: () => Start);
         first.ObserveDevice(new TrayMessage(TrayMessageKind.@lock), Start);
         first.MarkConnected(7, Start);
         Assert.True(first.MarkFallback(7, Start.AddSeconds(20)));
 
-        var restored = new DesktopRestrictionState(store);
-        Assert.Equal(TrayMessageKind.@lock, Assert.Single(restored.MessagesFor(7, Start.AddSeconds(21))).Kind);
-        Assert.True(restored.NeedsFallback(7, Start.AddSeconds(40)));
-        Assert.False(restored.MarkFallback(7, Start.AddSeconds(40)));
-        Assert.True(restored.NeedsFallback(7, Start.AddSeconds(60)));
+        var restoredAt = Start.AddSeconds(30);
+        var restored = new DesktopRestrictionState(store, clock: () => restoredAt);
+        Assert.Equal(TrayMessageKind.@lock, Assert.Single(restored.MessagesFor(7, restoredAt)).Kind);
+        Assert.False(restored.NeedsFallback(7, restoredAt.AddSeconds(19)));
+        Assert.True(restored.NeedsFallback(7, restoredAt.AddSeconds(20)));
+        Assert.True(restored.MarkFallback(7, restoredAt.AddSeconds(20)));
+        Assert.False(restored.NeedsFallback(7, restoredAt.AddSeconds(39)));
+        Assert.True(restored.NeedsFallback(7, restoredAt.AddSeconds(40)));
     }
 
-    private sealed class MemoryDesktopRestrictionStore : IRestrictionStore
+    [Fact]
+    public void DeviceLockIsNotHiddenByAStaleSessionRecord()
     {
-        private string? _json;
+        var store = new MemoryDesktopRestrictionStore(
+            new SessionRestriction { SessionId = 0, Locked = true, ObservedAt = Start.AddHours(-2) },
+            new SessionRestriction { SessionId = 7, Paused = true, ObservedAt = Start.AddDays(-1) });
+        var restored = new DesktopRestrictionState(store, clock: () => Start);
+
+        Assert.Equal([TrayMessageKind.@lock, TrayMessageKind.pause],
+            restored.MessagesFor(7, Start).Select(message => message.Kind).ToArray());
+        Assert.False(restored.NeedsFallback(7, Start.AddSeconds(19)));
+        Assert.True(restored.NeedsFallback(7, Start.AddSeconds(20)));
+    }
+
+    private sealed class MemoryDesktopRestrictionStore(params SessionRestriction[] initial) : IRestrictionStore
+    {
+        private string? _json = initial.Length == 0 ? null : JsonSerializer.Serialize(initial);
 
         public IReadOnlyList<SessionRestriction> Load() =>
             _json is null ? [] : JsonSerializer.Deserialize<List<SessionRestriction>>(_json)!;

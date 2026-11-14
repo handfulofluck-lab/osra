@@ -74,12 +74,12 @@ public sealed class DesktopOfflineFallbackTests
                 new ApiClient(new HttpClient(alerts) { BaseAddress = new Uri("https://unit.test") }, config), config,
                 new TrayServerEvents(), new FakeProcessRegistry(42), new DesktopRestrictionState(), fallback);
 
-            Assert.Throws<UnauthorizedAccessException>(() => worker.Synchronize());
+            worker.Synchronize();
             await worker.EnforceFallback();
             Assert.Equal(1, alerts.Count);
             Assert.Empty(fallback.Sessions);
 
-            Assert.Throws<UnauthorizedAccessException>(() => worker.Synchronize());
+            worker.Synchronize();
             await worker.EnforceFallback();
             Assert.Equal(1, alerts.Count);
         }

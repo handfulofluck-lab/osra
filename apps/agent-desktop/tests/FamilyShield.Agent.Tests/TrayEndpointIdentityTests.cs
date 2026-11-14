@@ -114,6 +114,23 @@ public sealed class TrayEndpointIdentityTests
         Assert.False(verifier.Verify(client));
     }
 
+    [Fact]
+    public async Task OnlyTheFirstServerCanOwnTheSessionPipeName()
+    {
+        var session = checked(Process.GetCurrentProcess().Id + 20000);
+        var sid = WindowsIdentity.GetCurrent().User!.Value;
+        var pid = Process.GetCurrentProcess().Id;
+        var image = Process.GetCurrentProcess().MainModule!.FileName;
+        await using var first = new TrayPipeServer(session, sid, pid, expectedImagePath: image);
+        TrayPipeServer? duplicate = null;
+
+        var failure = Record.Exception(() => duplicate = new TrayPipeServer(session, sid, pid, expectedImagePath: image));
+        if (duplicate is not null) await duplicate.DisposeAsync();
+
+        Assert.True(failure is IOException or UnauthorizedAccessException,
+            $"A second pipe owner must be refused, got {failure?.GetType().FullName ?? "no exception"}.");
+    }
+
     private sealed class FakeIdentitySource(ClientIdentity identity) : IClientIdentitySource
     {
         public ClientIdentity Read(int clientPid) => identity;
