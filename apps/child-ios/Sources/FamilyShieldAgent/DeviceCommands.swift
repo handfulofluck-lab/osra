@@ -7,6 +7,23 @@ import os
 public struct DeviceCommand: Decodable, Equatable {
     public var id: String
     public var type: String
+    public var payload: [String: String]?
+
+    public init(id: String, type: String, payload: [String: String]? = nil) {
+        self.id = id
+        self.type = type
+        self.payload = payload
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, type, payload }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        type = try container.decode(String.self, forKey: .type)
+        guard container.contains(.payload) else { payload = nil; return }
+        payload = (try? container.decode([String: String].self, forKey: .payload)) ?? [:]
+    }
 }
 
 /// What the iOS agent does with a command. iOS enforces through Screen Time, so it handles what changes the
@@ -16,6 +33,8 @@ public enum CommandAction: Equatable {
     case syncRules
     /// A fresh point for the parent's map, uploaded before the ack (5.5 PR E).
     case locateNow
+    case ring
+    case stopRing
     /// Not something this agent can do; acked `failed` with the reason.
     case unsupported
 
@@ -23,6 +42,8 @@ public enum CommandAction: Equatable {
         switch type {
         case "rules_updated", "consent_revoked", "consent_granted": return .syncRules
         case "locate_now": return .locateNow
+        case "ring": return .ring
+        case "stop_ring": return .stopRing
         default: return .unsupported
         }
     }
@@ -106,6 +127,29 @@ public struct LiveLocateNow: LocateNowHandling {
     public func locateNow() async -> LocateAck? { await LocationController.shared.locateNow() }
 }
 
+public protocol RingCommandHandling {
+    func startRing(id: String) async -> RingCommandError?
+    func stopRing(targetId: String?) async -> RingCommandError?
+}
+
+public struct LiveRingCommands: RingCommandHandling {
+    private let controller: RingController?
+
+    public init(controller: RingController? = nil) {
+        self.controller = controller
+    }
+
+    public func startRing(id: String) async -> RingCommandError? {
+        await (controller ?? RingController.shared).start(commandId: id)
+    }
+
+    public func stopRing(targetId: String?) async -> RingCommandError? {
+        let target = targetId.flatMap { UUID(uuidString: $0) }
+        if targetId != nil && target == nil { return .invalidCommand }
+        return await (controller ?? RingController.shared).stop(.parentCommand, commandId: target ?? nil)
+    }
+}
+
 public enum CommandDrainer {
     private static let logger = Logger(subsystem: "com.osratech.child", category: "Commands")
 
@@ -124,6 +168,7 @@ public enum CommandDrainer {
     public static func drainNow(client: CommandClient = CommandClient(),
                                 tokenSession: URLSession = .shared,
                                 locator: LocateNowHandling = LiveLocateNow(),
+                                ring: RingCommandHandling = LiveRingCommands(),
                                 sync: () async -> RuleSyncer.Outcome = { await RuleSyncer.syncNow() }) async -> Result {
         var result = Result()
         guard let identity = AgentIdentityStore.load() else { return result }
@@ -186,6 +231,25 @@ public enum CommandDrainer {
                     break // the point was not stored: no ack, so the server offers the command again in 120 s
                 }
                 result.handled.append(command.type)
+            case .ring:
+                if let error = await ring.startRing(id: command.id) {
+                    try? await client.ack(identity, commandId: command.id, ok: false,
+                                          detail: ["reason": error.rawValue])
+                    result.refused.append(command.type)
+                } else {
+                    try? await client.ack(identity, commandId: command.id, ok: true)
+                    result.handled.append(command.type)
+                }
+            case .stopRing:
+                let targetId = command.payload.map { $0["ringId"] ?? "" }
+                if let error = await ring.stopRing(targetId: targetId) {
+                    try? await client.ack(identity, commandId: command.id, ok: false,
+                                          detail: ["reason": error.rawValue])
+                    result.refused.append(command.type)
+                } else {
+                    try? await client.ack(identity, commandId: command.id, ok: true)
+                    result.handled.append(command.type)
+                }
             case .unsupported:
                 try? await client.ack(identity, commandId: command.id, ok: false,
                                       detail: ["reason": "not_supported", "type": command.type])

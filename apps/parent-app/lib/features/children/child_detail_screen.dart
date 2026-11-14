@@ -209,6 +209,16 @@ class _OverviewTab extends ConsumerWidget {
                           label: Text(l10n.ring),
                         ),
                         TextButton.icon(
+                          onPressed: () async {
+                            final history = await ref.read(deviceCommandHistoryProvider(d.id).future);
+                            final ringId = history.where((command) => command.type == 'ring').firstOrNull?.id;
+                            if (!context.mounted) return;
+                            await _sendCommand(context, ref, d, 'stop_ring', ringId: ringId);
+                          },
+                          icon: const Icon(Icons.stop, size: 18),
+                          label: Text(l10n.commandStopRing),
+                        ),
+                        TextButton.icon(
                           onPressed: () => _sendCommand(context, ref, d, 'lock'),
                           icon: const Icon(Icons.lock, size: 18),
                           label: Text(l10n.lock),
@@ -473,10 +483,10 @@ class _WindDownCard extends ConsumerWidget {
 /// reason}` instead of queueing them — a `locate_now` the phone's last
 /// telemetry says it cannot answer. Reporting "queued" there would be the same
 /// silent failure the refusal exists to remove, so the reason is shown instead.
-Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, String command) async {
+Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, String command, {String? ringId}) async {
   final l10n = context.l10n;
   try {
-    final response = await ref.read(apiClientProvider).raw.post('/v1/devices/${device.id}/command', data: {'command': command});
+    final response = await ref.read(apiClientProvider).raw.post('/v1/devices/${device.id}/command', data: {'command': command, if (ringId != null) 'payload': {'ringId': ringId}});
     ref.invalidate(deviceCommandHistoryProvider(device.id));
     if (!context.mounted) return;
     final body = response.data;

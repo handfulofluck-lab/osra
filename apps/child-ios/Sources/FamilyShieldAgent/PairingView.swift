@@ -124,6 +124,7 @@ public struct AgentRootView: View {
     @State private var syncFailed = false
     /// #661: the server address is for support, so it sits closed at the bottom of the screen.
     @State private var showTechnicalDetails = false
+    @StateObject private var ring = RingController.shared
     #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
     @StateObject private var screenTime = ScreenTimePermission(authorizer: FamilyControlsAuthorizer())
     #endif
@@ -251,6 +252,10 @@ public struct AgentRootView: View {
                     }
                 )
             }
+        }
+        .fullScreenCover(isPresented: Binding(
+            get: { ring.state != nil && ring.state?.stopSource == nil }, set: { _ in })) {
+            RingView(controller: ring, onPinConfigured: { pinConfigured = true })
         }
         .onAppear {
             identity = AgentIdentityStore.load()

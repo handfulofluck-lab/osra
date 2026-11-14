@@ -21,9 +21,14 @@ public enum DeviceRevocation {
         #endif
     }
 
+    public static var stopRing: () -> Void = {
+        Task { await RingController.shared.stopForUnpair() }
+    }
+
     /// Leaves the paired state. The orphan sweep runs after the clear, so the parent PIN goes too and the next
     /// pairing sets a new one.
     public static func unpair() {
+        stopRing()
         AgentIdentityStore.clear()
         LocationBuffer.clear()
         AgentIdentityStore.clearOrphanedSecrets()

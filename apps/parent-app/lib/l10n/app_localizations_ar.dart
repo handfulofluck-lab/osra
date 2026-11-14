@@ -3292,4 +3292,40 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get appRuleHiddenOnIphone =>
       'على هواتف آيفون، يُخفى هذا التطبيق بدلًا من عرض شاشة الحظر.';
+
+  @override
+  String get alertTitleRing => 'رنين الهاتف';
+
+  @override
+  String alertBodyRingChildDismissed(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'أُغلق تنبيه الرنين على الهاتف $count مرة. ما زال الهاتف يرنّ.',
+      many: 'أُغلق تنبيه الرنين على الهاتف $count مرة. ما زال الهاتف يرنّ.',
+      few: 'أُغلق تنبيه الرنين على الهاتف $count مرات. ما زال الهاتف يرنّ.',
+      two: 'أُغلق تنبيه الرنين على الهاتف مرتين. ما زال الهاتف يرنّ.',
+      one: 'أُغلق تنبيه الرنين على الهاتف. عاد الهاتف إلى الرنين.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get alertBodyRingPinStopped =>
+      'أُوقف الرنين على الهاتف برمز PIN للوالدين.';
+
+  @override
+  String get alertBodyRingParentStopped =>
+      'أوقف أحد الوالدين الرنين من تطبيق أسرة.';
+
+  @override
+  String get alertBodyRingTimedOut => 'انتهى الرنين تلقائيًا بعد 5 دقائق.';
+
+  @override
+  String get alertBodyRingAfterRestart =>
+      'انتهى الرنين بعد إعادة تشغيل الهاتف.';
+
+  @override
+  String get commandRefusedRingUnsupportedOs =>
+      'لا يمكن أن يرنّ هذا الآيفون حاليًا. يحتاج إلى iOS 26 أو أحدث.';
 }

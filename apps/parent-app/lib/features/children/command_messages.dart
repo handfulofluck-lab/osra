@@ -37,6 +37,7 @@ String commandRefusalText(
     // detail and history already render here; the server-side up-front refusal arrives with
     // ADR-0034 PRs 2–3, and the map branch below is ready for it.
     'not_supported' => l10n.commandRefusedNotSupported(type, deviceModel),
+    'unsupported_os' => l10n.commandRefusedRingUnsupportedOs,
     'invalid_payload' => l10n.commandRefusedInvalidPayload,
     _ => l10n.commandFailed('${reason ?? 'unknown'}'),
   };

@@ -134,7 +134,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 // dialog a parent opens later to ask "did my last change land?". The feed itself is
                 // family-wide, so it carries no line; the Block path already refetches the family.
                 RulesBehindBanner(childId: alert.childId),
-                if (alert.body.isNotEmpty) Text(alert.body),
+                if (alert.body.isNotEmpty) Text(alertBodyFor(alert, l10n)),
                 // #672: where, in words and in the Bureau's sentence, in the alert the parent opened
                 // deliberately — the lock screen carries neither. The coordinates are isolated (LRI/PDI)
                 // so they keep their order in Arabic; the accuracy clause only when the fix has one.
@@ -200,7 +200,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 // rows stay available, closed by default and last in the content, for the case that needs
                 // them (a support call). Values are drawn left to right in code, both languages, because a
                 // value can be an Arabic app name and would otherwise reorder its own parts.
-                if (alert.metadata.isNotEmpty) ...[
+                // Ring metadata has its localized rendering above, so it never gets raw rows.
+                if (alert.category != 'ring' && alert.metadata.isNotEmpty) ...[
                   const Divider(),
                   ExpansionTile(
                     key: const ValueKey('alert-technical-details'),

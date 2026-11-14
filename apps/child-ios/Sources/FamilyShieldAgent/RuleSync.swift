@@ -356,6 +356,7 @@ public enum RuleSyncer {
             return .synced(rules)
         } catch RuleSyncClient.SyncError.httpError(status: 428) {
             RuleStore.clear()
+            DeviceRevocation.stopRing()
             #if os(iOS)
             if enforce { ScreenTimeController().clearRules() }
             #endif

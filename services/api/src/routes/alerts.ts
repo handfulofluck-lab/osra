@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
-import { raiseAlertOnce } from "../lib/alerts.js";
+import { raiseAlertOnce, ringAlertFields } from "../lib/alerts.js";
 import { sanitizeAlertMetadata, withoutAlertLocation } from "../lib/alertLocation.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
 import { guardianPermissions, requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
@@ -34,6 +34,7 @@ const InternalAlertSchema = z.object({
     "vpn_detected",
     "install_request",
     "unknown_contact",
+    "ring",
   ]),
   title: z.string().min(1),
   body: z.string().min(1),
@@ -128,6 +129,24 @@ export async function alertsRoutes(app: FastifyInstance) {
     if (!(await assertProcessingAllowed(childId, reply))) return;
 
     const effectiveDeviceId = deviceId ?? auth.device?.id;
+    let acceptedMetadata = metadata;
+    if (category === "ring") {
+      const ringId = typeof metadata?.ringId === "string" ? metadata.ringId.toLowerCase() : "";
+      const command = /^[0-9a-f-]{36}$/.test(ringId)
+        ? await prisma.deviceCommand.findUnique({ where: { id: ringId } })
+        : null;
+      if (!command || command.deviceId !== effectiveDeviceId || command.type !== "ring") {
+        return reply.code(400).send({ error: "invalid_ring_command" });
+      }
+      acceptedMetadata = { ...metadata, ringId };
+      if (metadata?.state === "timed_out" && metadata.afterRestart === true) {
+        const retryAfterSeconds = Math.min(300, Math.ceil((command.createdAt.getTime() + 300_000 - Date.now()) / 1000));
+        if (retryAfterSeconds > 0) {
+          return reply.code(200).send({ active: true, retryAfterSeconds });
+        }
+        acceptedMetadata.afterRestart = true;
+      }
+    }
 
     // Phase 2a: one path creates the row, publishes the WS event and pushes to the parents' phones.
     // Issue #225: a repeated dedupeKey is a retry, not a new alert — 200 with the existing row.
@@ -139,10 +158,11 @@ export async function alertsRoutes(app: FastifyInstance) {
       category,
       title,
       body,
+      ...ringAlertFields(category, acceptedMetadata, dedupeKey),
       // Issue #672: an SOS may carry where it was sent from, as the five flat keys the agent writes.
       // The location is normalised here — or dropped, keeping every other key — and never rejects the
       // alert: an SOS with no usable fix is still an SOS a parent must receive.
-      metadata: sanitizeAlertMetadata(metadata),
+      metadata: sanitizeAlertMetadata(acceptedMetadata),
       dedupeKey,
       attemptCount,
       childName: child.displayName,

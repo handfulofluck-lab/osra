@@ -95,3 +95,13 @@
 "status_syncing" = "Syncing…";
 "status_sync_failed" = "Could not reach the server. Try again in a moment.";
 "status_sync_note" = "While OSRA Kids is closed, a change from your parent can take a few minutes to arrive. Opening the app or tapping \"Sync now\" gets it at once.";
+
+
+"ring_alarm_title" = "Your parent is ringing this phone";
+"ring_dismiss" = "Open OSRA Kids";
+"ring_alert_ok" = "OK";
+"ring_title" = "Your parent is ringing this phone";
+"ring_explanation" = "Your parent is trying to find this phone or reach you. The ring stops when your parent stops it from their app or enters the parent PIN here. It stops by itself after 5 minutes.";
+"ring_pin_title" = "Parent PIN";
+"ring_notification_title" = "Your parent is ringing this phone";
+"ring_notification_body" = "Open OSRA Kids so your parent can enter the parent PIN.";

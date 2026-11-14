@@ -58,6 +58,10 @@ const ALERT_BODY_REQUIRED_PARAMS = {
   // channel is a real case, and the English body already copes with an empty one. A required param here would
   // mean no alert at all for that video (#718 review).
   alertBodyYouTubeFlagged: [],
+  alertBodyRingChildDismissed: ["ringId", "dismissalCount"],
+  alertBodyRingPinStopped: ["ringId"],
+  alertBodyRingParentStopped: ["ringId"],
+  alertBodyRingTimedOut: ["ringId"],
 } as const satisfies Record<AlertBodyKey, readonly string[]>;
 
 /**
@@ -206,4 +210,33 @@ export async function raiseAlertOnce(
 /** Backwards-compatible wrapper for producers that do not use a dedupe key. */
 export async function raiseAlert(input: KeyedRaiseAlertInput) {
   return (await raiseAlertOnce(input)).alert;
+}
+
+
+const RING_BODY_KEYS: Record<string, AlertBodyKey> = {
+  child_dismissed: "alertBodyRingChildDismissed",
+  pin_stopped: "alertBodyRingPinStopped",
+  parent_stopped: "alertBodyRingParentStopped",
+  timed_out: "alertBodyRingTimedOut",
+};
+
+export function ringAlertFields(category: string, metadata: Record<string, unknown> | undefined,
+                                dedupeKey: string | undefined): { bodyKey?: AlertBodyKey; params?: AlertBodyParams } {
+  if (category !== "ring") return {};
+  const state = typeof metadata?.state === "string" ? metadata.state : "";
+  const ringId = typeof metadata?.ringId === "string" ? metadata.ringId.toLowerCase() : "";
+  const bodyKey = RING_BODY_KEYS[state];
+  if (!bodyKey || !ringId) return {};
+  const params: AlertBodyParams = { ringId };
+  const canonicalDedupe = dedupeKey?.toLowerCase();
+  if (state === "child_dismissed") {
+    const prefix = `ring:${ringId}:child_dismissed:`;
+    const rawCount = canonicalDedupe?.startsWith(prefix) ? canonicalDedupe.slice(prefix.length) : "";
+    if (!/^[1-9][0-9]{0,3}$/.test(rawCount)) return {};
+    params.dismissalCount = Number(rawCount);
+  } else if (canonicalDedupe !== `ring:${ringId}:${state}`) {
+    return {};
+  }
+  if (state === "timed_out" && metadata?.afterRestart === true) params.afterRestart = true;
+  return { bodyKey, params };
 }

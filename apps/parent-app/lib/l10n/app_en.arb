@@ -1411,5 +1411,13 @@
   "setupMonitoringConsent": "A flagged message excerpt is kept for 90 days and an alert for 12 months. Nothing is read from an app you untick.",
   "setupMonitoringContinue": "Continue",
   "appRuleHiddenOnIphone": "On the iPhone, this app is hidden instead of showing the OSRA screen.",
-  "@appRuleHiddenOnIphone": {"description": "ADR-0037 decision 3: under a blocked app rule when the child has an iPhone, where a blocked app id is hidden rather than shielded. Arabic is a draft pending Karim's review."}
+  "@appRuleHiddenOnIphone": {"description": "ADR-0037 decision 3: under a blocked app rule when the child has an iPhone, where a blocked app id is hidden rather than shielded. Arabic is a draft pending Karim's review."},
+  "alertTitleRing": "Phone ring",
+  "alertBodyRingChildDismissed": "{count, plural, =1{The ring alert was dismissed on the phone. It is ringing again.} other{The ring alert was dismissed on the phone {count} times. It is still ringing.}}",
+  "@alertBodyRingChildDismissed": {"placeholders": {"count": {"type": "int"}}},
+  "alertBodyRingPinStopped": "The ring was stopped on the phone with the parent PIN.",
+  "alertBodyRingParentStopped": "A parent stopped the ring from the OSRA app.",
+  "alertBodyRingTimedOut": "The ring ended by itself after 5 minutes.",
+  "alertBodyRingAfterRestart": "The ring ended after the phone was restarted.",
+  "commandRefusedRingUnsupportedOs": "This iPhone cannot ring yet. It needs iOS 26 or later."
 }

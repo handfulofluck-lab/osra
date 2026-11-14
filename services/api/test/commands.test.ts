@@ -327,3 +327,15 @@ describe("command routes (Phase 2b)", () => {
     await app.close();
   });
 });
+
+
+describe("stop_ring targeting", () => {
+  beforeEach(() => resetPrismaMock());
+
+  it("preserves an optional target ring id in the durable command payload", async () => {
+    const ringId = "6f1c2b8e-3d4a-4e5f-9a0b-1c2d3e4f5a6b";
+    const command = await enqueueDeviceCommand("dev-1", "stop_ring", { ringId }, { requestedBy: "parent-1" });
+    expect(command.type).toBe("stop_ring");
+    expect(command.payload).toEqual({ ringId });
+  });
+});
