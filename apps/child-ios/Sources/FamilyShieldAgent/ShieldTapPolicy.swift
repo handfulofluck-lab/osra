@@ -24,6 +24,28 @@ public enum ShieldTapPolicy {
         }
     }
 
+    /// #744: one access request per blocked app, website or category every `requestWindow`. Repeated taps on
+    /// "Request access" inside the window send nothing, so a child cannot flood the parent's phone and bury the
+    /// real request; the shield stays up either way.
+    public static let requestWindow: TimeInterval = 5 * 60
+    public static let requestTimesKey = "shield.requestTimes"
+
+    /// Whether this tap on "Request access" for `target` should alert the parent, recording it when it does.
+    /// With no app group it sends, so a request is never lost to a storage problem.
+    public static func shouldSendRequest(target: String, now: Date = Date(), defaults: UserDefaults?) -> Bool {
+        guard let defaults else { return true }
+        let nowSeconds = now.timeIntervalSince1970
+        var times = (defaults.dictionary(forKey: requestTimesKey) as? [String: Double] ?? [:])
+            .filter { nowSeconds - $0.value < requestWindow && $0.value <= nowSeconds }
+        if times[target] != nil {
+            defaults.set(times, forKey: requestTimesKey)
+            return false
+        }
+        times[target] = nowSeconds
+        defaults.set(times, forKey: requestTimesKey)
+        return true
+    }
+
     /// The app-group key of the dismissal count (read by telemetry later; never reset by a tap).
     public static let dismissalCountKey = "shield.dismissals"
 
