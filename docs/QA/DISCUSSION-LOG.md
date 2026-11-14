@@ -250,7 +250,7 @@ clone's configuration.
 2. **Adversarial Gate Execution:**
    Executed `services/api/scripts/qa-probe.mjs` against the live backend stack (Postgres `OSRA-Postgres` + Redis 6379 + Fastify port 3000):
    ```
-   Command: $env:INTERNAL_HMAC_SECRET="2ba89432821810743f5ab6cfabf4fe8d95e8c5946803afbad3ae62814a84b1da"; node scripts/qa-probe.mjs
+   Command: $env:INTERNAL_HMAC_SECRET="<redacted>"; node scripts/qa-probe.mjs
    Result:  49 passed · 19 failed · 2 targets · 2 notes (exit 1)
    ```
    Matches Kimi's gate output identically across every single check.
