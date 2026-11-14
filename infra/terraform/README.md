@@ -628,6 +628,29 @@ policies let a copy be made and read back. Both runs' logs go on #637. The copy 
 (1 to 90 days), so retention is enforced beyond the vault policy; switching it to compliance mode would make it
 permanent after the cooling-off period, so that is Karim's call, not a default.
 
+### Access (#766 item 7)
+
+Owner decision, rationale and runbook: osra-security#27 (private).
+
+- **People** sign in through IAM Identity Center (`org-audit/identity_center.tf`): user, permission set
+  `OsraAdministrator` (8-hour sessions), assigned in the management account and osra-production.
+  **Order matters:** first, in the console, Settings → Authentication → require MFA at every sign-in and
+  require a device to be registered at first sign-in, and post evidence of that setting on #637; **then** apply.
+  Without that setting the new user would be an administrator with a password only.
+- **The deployer user** (`org-audit/access.tf`): the organisation trail also writes to `/osra/org-trail`
+  (90 days); three alarms reach both alarm addresses: use from an unexpected address, any change to that
+  user's keys, and that user creating a new IAM principal. An explicit deny stops the deployer user from
+  switching any of that monitoring off (trail, its bucket and its Object Lock, log group and filters, alarms,
+  topic, keys, the management account's GuardDuty detectors and their alert rules, and its own policies).
+  Management-account GuardDuty findings of severity 7+ reach the same two addresses (`guardduty_alerts.tf`;
+  us-east-1 findings are forwarded to the home region's event bus first). The same policy closes the indirect route: the user
+  cannot assume any management-account role, create users, sign-in passwords or other users' keys, detach the
+  trail at the organisation level, or remove the off-site copy vault's lock or policy. Nothing the agents do needs
+  those; production and staging are reached through roles in the member accounts. Changing those resources later is done through Identity Center with MFA; an apply of this
+  stack by the deployer user that touches them fails by design.
+- `rotate-agent-key.sh` replaces the key without a gap: new key, written to the credentials file, proved,
+  then the old one deleted; on any failure before that, the new key is deleted and the file restored.
+
 ### Production cost (estimate, on-demand list prices in `eu-central-1`, 730 h/month)
 
 | Item | Basis | US$/month |

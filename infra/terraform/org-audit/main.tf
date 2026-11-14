@@ -4,7 +4,7 @@
 # is stored outside osra-production: production's own credentials cannot reach it. The management account's
 # operators can, so the bucket also has S3 Object Lock (every log file kept unchangeable for the retention
 # period) and the agents' key is denied every way of switching the trail, the lock or the bucket off
-# (access.tf, #784). GOVERNANCE mode can still be bypassed by an identity granted s3:BypassGovernanceRetention;
+# (access.tf). GOVERNANCE mode can still be bypassed by an identity granted s3:BypassGovernanceRetention;
 # COMPLIANCE mode cannot be bypassed by anyone, root included, which is Karim's call (trail_lock_mode).
 #
 # Run from the management account (the deployer profile), never from a member account:
@@ -252,7 +252,11 @@ resource "aws_cloudtrail" "org" {
   include_global_service_events = true
   enable_log_file_validation    = true
 
-  depends_on = [aws_s3_bucket_policy.trail, aws_s3_bucket_object_lock_configuration.trail]
+  # A 90-day searchable copy that the access alarms read (access.tf).
+  cloud_watch_logs_group_arn = "${aws_cloudwatch_log_group.trail.arn}:*"
+  cloud_watch_logs_role_arn  = aws_iam_role.trail_to_logs.arn
+
+  depends_on = [aws_s3_bucket_policy.trail, aws_iam_role_policy.trail_to_logs, aws_s3_bucket_object_lock_configuration.trail]
 }
 
 output "trail_arn" {

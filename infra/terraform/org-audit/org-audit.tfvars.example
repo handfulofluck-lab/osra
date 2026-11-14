@@ -4,3 +4,13 @@ management_account_id = "<management-account-id>"
 trail_retention_days  = 365
 production_account_id = "<prod-account-id>"
 backup_copy_region    = "eu-west-1"
+
+# Access (#766 item 7, access.tf and identity_center.tf).
+agent_user_name           = "osra-staging-deployer"
+agent_trusted_ip_prefixes = ["<prefix>."]
+alarm_email               = "<owner-email>"
+alarm_email_secondary     = "<support-email>"
+owner_user_name           = "<owner-user-name>"
+owner_given_name          = "<given-name>"
+owner_family_name         = "<family-name>"
+owner_email               = "<owner-email>"
