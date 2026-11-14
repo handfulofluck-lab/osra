@@ -1,0 +1,10 @@
+# Copy to production-base.hcl (gitignored) and replace <prod-account-id>. The bucket is created by
+# infra/terraform/bootstrap-state inside osra-production; reaching it needs the same role the provider
+# assumes, so the backend assumes it too.
+bucket = "osra-terraform-state-<prod-account-id>-eu-central-1"
+key    = "production/base/terraform.tfstate"
+region = "eu-central-1"
+
+assume_role = {
+  role_arn = "arn:aws:iam::<prod-account-id>:role/<deploy-role-name>"
+}

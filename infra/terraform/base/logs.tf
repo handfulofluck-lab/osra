@@ -3,8 +3,8 @@
 resource "aws_cloudwatch_log_group" "api" {
   name = "/ecs/${local.name_prefix}-api"
 
-  # 14 days keeps log ingestion/storage inside the staging budget.
-  retention_in_days = 14
+  # 14 days keeps staging inside its budget; production keeps 30 (#714).
+  retention_in_days = var.log_retention_days
 
   tags = {
     Name = "${local.name_prefix}-api"

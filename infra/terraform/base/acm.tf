@@ -25,10 +25,26 @@ resource "aws_acm_certificate" "api" {
 # Looked up whenever a zone is named: env needs its id for the API alias record even when the
 # certificate is supplied rather than created here (base/outputs.tf).
 data "aws_route53_zone" "main" {
-  count = var.hosted_zone_name != "" ? 1 : 0
+  count = var.hosted_zone_name != "" && !var.create_hosted_zone ? 1 : 0
 
   name         = var.hosted_zone_name
   private_zone = false
+}
+
+# Production (#714): the osratech.com zone lives in the management account, so osra-production owns a
+# child zone for api.osratech.com and the management zone delegates to it with one NS record. That NS
+# record is a one-off step outside Terraform (README "Production"); until it exists the certificate
+# cannot validate, which is why the README applies this zone first with -target.
+resource "aws_route53_zone" "api" {
+  count = var.create_hosted_zone ? 1 : 0
+
+  name    = var.hosted_zone_name
+  comment = "OSRA ${var.environment} API zone, delegated from the parent zone in the management account"
+
+  # Deleting the zone would break the delegation and every client's DNS until it is rebuilt by hand.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "aws_route53_record" "validation" {
@@ -40,7 +56,7 @@ resource "aws_route53_record" "validation" {
     }
   } : {}
 
-  zone_id         = data.aws_route53_zone.main[0].zone_id
+  zone_id         = local.hosted_zone_id
   name            = each.value.name
   type            = each.value.type
   records         = [each.value.record]
