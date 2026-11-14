@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:familyshield_parent/core/date_formatting.dart';
 import 'package:familyshield_parent/features/alerts/alerts_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
@@ -121,5 +122,31 @@ void main() {
     await tester.tap(find.text('Sam: Meet was blocked'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('rules-behind-banner')), findsOneWidget);
+  });
+
+  testWidgets('Arabic alert detail and day headers use Western digits', (tester) async {
+    await configureDateFormatting();
+    final api = FakeApiClient({
+      ...standardRoutes(
+        familyMe: {...familyMeTwoChildren(), 'children': [child('child-1')]},
+        alerts: [alert('a1', 'child-1', 'Meet was blocked')],
+      ),
+    });
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: localizedTestApp(const AlertsScreen(), locale: const Locale('ar')),
+    ));
+    await tester.pumpAndSettle();
+
+    final visibleText = tester.widgetList<Text>(find.byType(Text)).map((text) => text.data).whereType<String>().join(' | ');
+    expect(find.text('الاثنين، 19 أكتوبر 2026'), findsOneWidget, reason: visibleText);
+    await tester.tap(find.byType(Dismissible));
+    await tester.pumpAndSettle();
+
+    final arabicIndicDigits = RegExp(r'[\u0660-\u0669\u06F0-\u06F9]');
+    final texts = tester.widgetList<Text>(find.byType(Text)).map((text) => text.data).whereType<String>();
+    for (final text in texts) {
+      expect(text, isNot(contains(arabicIndicDigits)), reason: text);
+    }
   });
 }

@@ -611,7 +611,7 @@ void main() {
       expect(severityIconColor(tester, 'Daily limit reached'), Colors.blue);
 
       // Grouped under one header per distinct local day.
-      String dayLabel(DateTime at) => DateFormat('EEEE, MMM d, yyyy').format(DateTime(at.year, at.month, at.day));
+      String dayLabel(DateTime at) => DateFormat.yMMMMEEEEd().format(DateTime(at.year, at.month, at.day));
       final days = {
         for (final a in alertItems) dayLabel(DateTime.parse(a['createdAt'] as String).toLocal()),
       };
