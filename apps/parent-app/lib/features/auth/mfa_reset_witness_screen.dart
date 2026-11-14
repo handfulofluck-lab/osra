@@ -52,7 +52,7 @@ class _MfaResetWitnessScreenState extends ConsumerState<MfaResetWitnessScreen> {
   }
 
   Future<void> _submit() async {
-    final code = normalizeDigits(_code.text.trim());
+    final code = normalizeDigits(_code.text);
     if (code == null || !RegExp(r'^\d{8}$').hasMatch(code)) {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(context.l10n.mfaResetWitnessEnterCode)));

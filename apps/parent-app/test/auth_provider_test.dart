@@ -157,6 +157,11 @@ void main() {
     expect(api.loginBody!['code'], isNot('123456'));
   });
 
+  test('login does not trim unapproved whitespace around a code', () async {
+    await container.read(authProvider.notifier).login('demo@osratech.com', 'good-password', '\t123456\n');
+    expect(api.loginBody!['code'], '\t123456\n');
+  });
+
   test('401 with an mfa error shows Invalid authentication code', () async {
     await container.read(authProvider.notifier).login('demo@osratech.com', 'mfa-password');
     final state = container.read(authProvider);

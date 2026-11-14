@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.familyshield.agent.setup.normalizePairingCode
 import java.util.Base64
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
@@ -24,6 +25,12 @@ class DigitNormalizationTest {
         assertEquals("123456", normalizeDigits("۱۲۳۴۵۶"))
         assertEquals("012233445566", normalizeDigits("٠1٢2۳3۴4۵5۶6"))
         assertEquals("12345678", normalizeDigits("1٢3۴ 5\u200E6\u200F7\u061C8"))
+    }
+
+    @Test
+    fun `pairing does not trim unapproved whitespace at the edges`() {
+        assertNull(normalizePairingCode("\t١٢٣٤٥٦\n"))
+        assertEquals("123456", normalizePairingCode(" ١٢٣٤٥٦ "))
     }
 
     @Test

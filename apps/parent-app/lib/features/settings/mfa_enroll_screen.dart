@@ -113,7 +113,7 @@ class _MfaEnrollScreenState extends ConsumerState<MfaEnrollScreen> {
   }
 
   Future<void> _verify() async {
-    final code = normalizeDigits(_code.text.trim());
+    final code = normalizeDigits(_code.text);
     if (code == null || !RegExp(r'^\d{6}$').hasMatch(code)) {
       setState(() => _verifyError = MfaFailureKind.invalidCode);
       return;

@@ -47,7 +47,7 @@ class _ReauthDialogState extends State<ReauthDialog> {
   }
 
   void _submit() {
-    final proof = ReauthProof(password: _password.text, code: _code.text.trim());
+    final proof = ReauthProof(password: _password.text, code: normalizeDigits(_code.text) ?? _code.text);
     if (proof.isEmpty) {
       setState(() => _error = context.l10n.mfaReauthRequired);
       return;

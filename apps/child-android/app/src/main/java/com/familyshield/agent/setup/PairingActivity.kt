@@ -39,7 +39,6 @@ import com.familyshield.agent.security.ParentPinStore
 import com.familyshield.agent.security.ProtectionStatusNote
 import com.familyshield.agent.security.ProtectionTier
 import com.familyshield.agent.security.TamperGuardActivity
-import com.familyshield.agent.security.normalizeDigits
 import com.familyshield.agent.services.LocationService
 import com.familyshield.agent.services.LocationStartPolicy
 import dagger.hilt.android.AndroidEntryPoint
@@ -461,8 +460,8 @@ class PairingActivity : ComponentActivity() {
             error.visibility = View.VISIBLE
             return
         }
-        val code = normalizeDigits(enteredCode.trim())
-        if (code == null || !code.matches(Regex("[0-9]{6}"))) {
+        val code = normalizePairingCode(enteredCode)
+        if (code == null) {
             error.text = getString(R.string.pair_error_code)
             error.visibility = View.VISIBLE
             return

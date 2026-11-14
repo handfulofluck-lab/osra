@@ -123,8 +123,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// non-empty (MFA) it is included in the request body as `code`.
   Future<void> login(String email, String password, [String? code]) => _authenticate(() {
         final body = <String, dynamic>{'email': email, 'password': password};
-        final trimmed = code?.trim();
-        if (trimmed != null && trimmed.isNotEmpty) body['code'] = normalizeDigits(trimmed) ?? trimmed;
+        if (code != null && code.isNotEmpty) body['code'] = normalizeDigits(code) ?? code;
         return _api.raw.post('/v1/auth/login', data: body);
       });
 
