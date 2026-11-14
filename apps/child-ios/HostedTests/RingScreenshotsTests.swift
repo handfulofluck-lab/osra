@@ -27,7 +27,7 @@ final class RingScreenshotsTests: XCTestCase {
         }
         let fileManager = FileManager.default
         try fileManager.createDirectory(atPath: directory, withIntermediateDirectories: true)
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: "RingScreenshotsTests")
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "RingScreenshotsTests"))
         let store = UserDefaultsRingStore(defaults: defaults)
         let history = UserDefaultsRingHistory(defaults: defaults)
         let originalLanguages = UserDefaults.standard.object(forKey: "AppleLanguages")
