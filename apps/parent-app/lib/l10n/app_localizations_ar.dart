@@ -626,6 +626,11 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String accuracyShort(int meters) {
+    return 'الدقة ±$meters م';
+  }
+
+  @override
   String get mapPreview => 'معاينة الخريطة';
 
   @override

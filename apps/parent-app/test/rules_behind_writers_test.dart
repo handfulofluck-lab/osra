@@ -109,9 +109,9 @@ void main() {
 
     childJson['rulesVersion'] = 8; // the grant bumped it; the phone still has 7
     // The card sits below the fold on a 800x600 test surface: scroll it in, or the tap lands nowhere.
-    await tester.ensureVisible(find.text('+15'));
+    await tester.ensureVisible(find.text('\u2066+15\u2069'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('+15'));
+    await tester.tap(find.text('\u2066+15\u2069'));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('rules-behind-banner')), findsOneWidget);
