@@ -1,6 +1,6 @@
 # --- GuardDuty in the management account (#782 review) ------------------------------------------
 # Production's own detector (base/guardduty.tf) watches production. The management account holds the
-# organisation, the trail, Identity Center and the agents' permanent key, so it gets its own detector:
+# organisation, the trail, Identity Center and the deployer user, so it gets its own detector:
 # in the home region and in us-east-1, where IAM, Organizations and Identity Center sign-in events land.
 # High findings (severity 7+) are mailed through the access alarm topic (guardduty_alerts.tf).
 

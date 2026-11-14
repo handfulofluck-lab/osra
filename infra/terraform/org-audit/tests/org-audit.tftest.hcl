@@ -110,6 +110,11 @@ mock_provider "aws" {
       names = ["eu-west-1a", "eu-west-1b", "eu-west-1c"]
     }
   }
+  mock_resource "aws_backup_vault" {
+    defaults = {
+      arn = "arn:aws:backup:eu-west-1:000000000000:backup-vault:osra-production-copy"
+    }
+  }
   mock_resource "aws_kms_key" {
     defaults = {
       arn = "arn:aws:kms:eu-west-1:000000000000:key/copy"
@@ -188,8 +193,8 @@ run "agent_key_cannot_switch_off_lock_or_guardduty" {
   command = plan
 
   assert {
-    condition     = alltrue([for a in ["s3:BypassGovernanceRetention", "s3:PutObjectRetention", "s3:PutObjectLegalHold", "s3:PutBucketObjectLockConfiguration", "guardduty:DeleteDetector", "guardduty:CreateFilter", "events:DisableRule"] : strcontains(aws_iam_user_policy.agent_cannot_disable_watchers.policy, a)])
-    error_message = "the agents' key must be denied bypassing the Object Lock and switching off management GuardDuty or its alert rules (#782)"
+    condition     = alltrue([for a in ["s3:BypassGovernanceRetention", "s3:PutObjectRetention", "s3:PutObjectLegalHold", "s3:PutBucketObjectLockConfiguration", "guardduty:DeleteDetector", "guardduty:CreateFilter", "events:DisableRule", "sts:AssumeRole", "iam:CreateUser", "iam:CreateLoginProfile", "iam:UpdateLoginProfile", "iam:CreateAccessKey", "NotResource", "organizations:DisableAWSServiceAccess", "organizations:RemoveAccountFromOrganization", "organizations:DeregisterDelegatedAdministrator", "organizations:DeleteOrganization", "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:PutRolePermissionsBoundary", "backup:DeleteBackupVaultLockConfiguration", "backup:PutBackupVaultAccessPolicy", "backup:DeleteBackupVaultAccessPolicy", "backup:DeleteBackupVault"] : strcontains(aws_iam_user_policy.agent_cannot_disable_watchers.policy, a)])
+    error_message = "the deployer user must be denied bypassing the Object Lock, switching off management GuardDuty or its alert rules, the copy vault, and the indirect route through new roles, users, keys or the organisation (#782, #784)"
   }
   assert {
     condition     = aws_cloudwatch_event_target.management_guardduty_forward.arn == "arn:aws:events:eu-central-1:000000000000:event-bus/default"

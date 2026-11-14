@@ -643,7 +643,10 @@ Owner decision, rationale and runbook: osra-security#27 (private).
   switching any of that monitoring off (trail, its bucket and its Object Lock, log group and filters, alarms,
   topic, keys, the management account's GuardDuty detectors and their alert rules, and its own policies).
   Management-account GuardDuty findings of severity 7+ reach the same two addresses (`guardduty_alerts.tf`;
-  us-east-1 findings are forwarded to the home region's event bus first). Changing those resources later is done through Identity Center with MFA; an apply of this
+  us-east-1 findings are forwarded to the home region's event bus first). The same policy closes the indirect route: the user
+  cannot assume any management-account role, create users, sign-in passwords or other users' keys, detach the
+  trail at the organisation level, or remove the off-site copy vault's lock or policy. Nothing the agents do needs
+  those; production and staging are reached through roles in the member accounts. Changing those resources later is done through Identity Center with MFA; an apply of this
   stack by the deployer user that touches them fails by design.
 - `rotate-agent-key.sh` replaces the key without a gap: new key, written to the credentials file, proved,
   then the old one deleted; on any failure before that, the new key is deleted and the file restored.

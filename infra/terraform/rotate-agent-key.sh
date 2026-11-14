@@ -75,5 +75,11 @@ for attempt in 1 2 3 4 5 6; do
 done
 [ "$proven" = true ] || { echo "The new key does not work." >&2; exit 1; }
 
-aws iam delete-access-key --profile "$PROFILE" --user-name "$USER_NAME" --access-key-id "$old_id"
+if ! aws iam delete-access-key --profile "$PROFILE" --user-name "$USER_NAME" --access-key-id "$old_id"; then
+  echo "THE NEW KEY WORKS AND IS SAVED, BUT THE OLD KEY ${old_id:0:4}…${old_id: -4} WAS NOT DELETED." >&2
+  echo "The user now has two working keys and the next run will refuse to start. Delete the old one with:" >&2
+  echo "  aws iam delete-access-key --profile $PROFILE --user-name $USER_NAME --access-key-id <the id ending ${old_id: -4}>" >&2
+  echo "  (aws iam list-access-keys --profile $PROFILE --user-name $USER_NAME shows both ids)" >&2
+  exit 1
+fi
 echo "Rotated: ${old_id:0:4}…${old_id: -4} deleted, ${new_id:0:4}…${new_id: -4} active on profile $PROFILE."

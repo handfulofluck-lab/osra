@@ -304,14 +304,48 @@ resource "aws_iam_user_policy" "agent_cannot_disable_watchers" {
       {
         Sid      = "GuardDutyForwardRole"
         Effect   = "Deny"
-        Action   = ["iam:DeleteRole", "iam:DeleteRolePolicy", "iam:PutRolePolicy", "iam:UpdateAssumeRolePolicy"]
+        Action   = ["iam:DeleteRole", "iam:DeleteRolePolicy", "iam:PutRolePolicy", "iam:UpdateAssumeRolePolicy", "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:PutRolePermissionsBoundary"]
         Resource = aws_iam_role.guardduty_forward.arn
       },
       {
         Sid      = "TrailRole"
         Effect   = "Deny"
-        Action   = ["iam:DeleteRole", "iam:DeleteRolePolicy", "iam:PutRolePolicy", "iam:UpdateAssumeRolePolicy"]
+        Action   = ["iam:DeleteRole", "iam:DeleteRolePolicy", "iam:PutRolePolicy", "iam:UpdateAssumeRolePolicy", "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:PutRolePermissionsBoundary"]
         Resource = aws_iam_role.trail_to_logs.arn
+      },
+      {
+        Sid      = "CopyVault"
+        Effect   = "Deny"
+        Action   = ["backup:DeleteBackupVaultLockConfiguration", "backup:PutBackupVaultAccessPolicy", "backup:DeleteBackupVaultAccessPolicy", "backup:DeleteBackupVault"]
+        Resource = aws_backup_vault.production_copy.arn
+      },
+      {
+        # The indirect route (#784 review): a new role or user is not this user, so none of the denies above
+        # would bind it, and it could remove the alarms before they fire. The agents reach production and
+        # staging through roles in the member accounts and apply this stack as the user itself, so no
+        # management-account role is needed.
+        Sid      = "NoManagementRoles"
+        Effect   = "Deny"
+        Action   = "sts:AssumeRole"
+        Resource = "arn:aws:iam::${local.account_id}:role/*"
+      },
+      {
+        Sid      = "NoNewSignIns"
+        Effect   = "Deny"
+        Action   = ["iam:CreateUser", "iam:CreateLoginProfile", "iam:UpdateLoginProfile"]
+        Resource = "*"
+      },
+      {
+        Sid         = "NoKeysForOthers"
+        Effect      = "Deny"
+        Action      = "iam:CreateAccessKey"
+        NotResource = local.agent_user_arn
+      },
+      {
+        Sid      = "OrganisationKeepsTheTrail"
+        Effect   = "Deny"
+        Action   = ["organizations:DisableAWSServiceAccess", "organizations:RemoveAccountFromOrganization", "organizations:DeregisterDelegatedAdministrator", "organizations:DeleteOrganization"]
+        Resource = "*"
       },
       {
         # Including this policy itself.
