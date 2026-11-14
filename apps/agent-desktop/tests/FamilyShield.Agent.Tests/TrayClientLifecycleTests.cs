@@ -86,6 +86,47 @@ public sealed class TrayClientLifecycleTests
         }
     }
 
+    [Fact]
+    public async Task FailedSosIsRetriedAfterTheServiceResult()
+    {
+        var stream = new DuplexStream();
+        var store = NewStore(out var directory);
+        try
+        {
+            var actions = NewActions(store);
+            var feedback = new List<bool>();
+            actions.SosResult = feedback.Add;
+            using var worker = new TrayPipeClientWorker(new FakeClient(stream), actions,
+                NullLogger<TrayPipeClientWorker>.Instance);
+            await worker.StartAsync(CancellationToken.None);
+            Assert.Equal(TrayMessageKind.hello, (await ReadFrame(stream)).Kind);
+            await worker.SendAsync(new TrayMessage(TrayMessageKind.sos));
+            Assert.Equal(TrayMessageKind.sos, (await ReadFrame(stream, index: 1)).Kind);
+
+            await WriteResult(stream, accepted: false);
+            var retry = await ReadFrame(stream, index: 2);
+            Assert.Equal(TrayMessageKind.sos, retry.Kind);
+            Assert.Equal([false], feedback);
+
+            await WriteResult(stream, accepted: true);
+            for (var attempt = 0; attempt < 100 && feedback.Count < 2; attempt++) await Task.Delay(10);
+            Assert.Equal([false, true], feedback);
+        }
+        finally
+        {
+            store.Dispose();
+            try { Directory.Delete(directory, recursive: true); } catch (Exception) { }
+        }
+    }
+
+    private static async Task WriteResult(DuplexStream stream, bool accepted)
+    {
+        using var bytes = new MemoryStream();
+        await TrayProtocol.WriteAsync(bytes, new TrayMessage(TrayMessageKind.sos_result,
+            JsonSerializer.SerializeToElement(new { accepted })), TrayDirection.ToTray);
+        await stream.WriteToClient(bytes.ToArray());
+    }
+
     private static TrayUserActions NewActions(LocalRuleStore store) =>
         new(new AgentConfig(), store, NullLogger<TrayUserActions>.Instance);
 
@@ -186,6 +227,10 @@ public sealed class TrayClientLifecycleTests
                 }
             }
             return ValueTask.CompletedTask;
+        }
+        public async Task WriteToClient(byte[] bytes)
+        {
+            foreach (var value in bytes) await _incoming.Writer.WriteAsync(value);
         }
         public byte[] Snapshot()
         {

@@ -103,6 +103,24 @@ public sealed class TrayProtocolTests
     }
 
     [Fact]
+    public async Task SosResultIsStrictAndOnlyFlowsToTheTray()
+    {
+        await using var stream = new MemoryStream();
+        var message = new TrayMessage(TrayMessageKind.sos_result, Payload("{\"accepted\":true}"));
+        await TrayProtocol.WriteAsync(stream, message, TrayDirection.ToTray);
+        stream.Position = 0;
+        var decoded = await TrayProtocol.ReadAsync(stream, TrayDirection.ToTray);
+        Assert.True(decoded.Payload!.Value.GetProperty("accepted").GetBoolean());
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => TrayProtocol.WriteAsync(
+            new MemoryStream(), message, TrayDirection.ToService));
+        await using var missing = Frame("{\"kind\":\"sos_result\",\"payload\":{}}");
+        await Assert.ThrowsAsync<JsonException>(() => TrayProtocol.ReadAsync(missing, TrayDirection.ToTray));
+        await using var extra = Frame("{\"kind\":\"sos_result\",\"payload\":{\"accepted\":true,\"extra\":1}}");
+        await Assert.ThrowsAsync<JsonException>(() => TrayProtocol.ReadAsync(extra, TrayDirection.ToTray));
+    }
+
+    [Fact]
     public async Task ValidWindDownRoundTripsExactly()
     {
         await using var stream = new MemoryStream();
