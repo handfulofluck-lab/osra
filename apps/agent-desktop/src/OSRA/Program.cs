@@ -36,10 +36,8 @@ var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
     ContentRootPath = AppContext.BaseDirectory,
 });
 DesktopRuntime.AddTray(builder.Services, config);
+var host = builder.Build();
 if (!wasPaired)
-{
-    var sink = builder.Services.BuildServiceProvider().GetRequiredService<ITrayCommandSink>();
-    await sink.SendAsync(new TrayMessage(TrayMessageKind.pairing_complete));
-}
-await builder.Build().RunAsync();
+    await host.Services.GetRequiredService<ITrayCommandSink>().SendAsync(new TrayMessage(TrayMessageKind.pairing_complete));
+await host.RunAsync();
 return 0;

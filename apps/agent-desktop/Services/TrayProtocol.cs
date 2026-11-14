@@ -24,6 +24,7 @@ public enum TrayMessageKind
     pairing_complete,
     foreground_sample,
     sos,
+    sos_result,
     capabilities,
 }
 
@@ -91,6 +92,7 @@ public static class TrayProtocol
         var valid = destination == TrayDirection.ToTray
             ? kind is TrayMessageKind.rules or TrayMessageKind.@lock or TrayMessageKind.unlock or TrayMessageKind.pause
                 or TrayMessageKind.resume or TrayMessageKind.ring or TrayMessageKind.wind_down or TrayMessageKind.pairing_reset
+                or TrayMessageKind.sos_result
             : kind is TrayMessageKind.hello or TrayMessageKind.pairing_complete or TrayMessageKind.foreground_sample
                 or TrayMessageKind.sos or TrayMessageKind.capabilities;
         if (!valid) throw new UnauthorizedAccessException("Tray message is not allowed in this direction.");
@@ -129,6 +131,10 @@ public static class TrayProtocol
                 if (payload.ValueKind != JsonValueKind.Object) throw new InvalidDataException("Invalid capabilities report.");
                 RefuseCredentials(payload);
                 break;
+            case TrayMessageKind.sos_result:
+                _ = payload.Deserialize<SosResultPayload>(JsonOptions)
+                    ?? throw new InvalidDataException("Invalid SOS result.");
+                break;
             default:
                 throw new InvalidDataException("This tray command does not accept a payload.");
         }
@@ -153,6 +159,11 @@ public static class TrayProtocol
         {
             foreach (var item in payload.EnumerateArray()) RefuseCredentials(item);
         }
+    }
+
+    private sealed class SosResultPayload
+    {
+        [JsonRequired] public bool Accepted { get; set; }
     }
 
     private sealed class WindDownPayload

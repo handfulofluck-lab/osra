@@ -5,7 +5,7 @@ public static class DesktopRuntime
 {
     public static void MigrateDataFolder() => DataFolder.MigrateOnce();
 
-    public static IServiceCollection AddServiceTransport(IServiceCollection services, AgentConfig config, TrayServerEvents events)
+    public static IServiceCollection AddServiceTransport(IServiceCollection services, AgentConfig config, TrayServerEvents? events = null)
     {
         AddRestrictionState(services);
         services.AddSingleton(config);
@@ -13,10 +13,11 @@ public static class DesktopRuntime
         services.AddSingleton<LocalRuleStore>();
         services.AddSingleton<ForegroundActivityAccumulator>();
         services.AddSingleton<DesktopCapabilitiesStore>();
-        services.AddSingleton(events);
+        if (events is not null) services.AddSingleton(events);
         services.AddSingleton<ITrayServerFactory, TrayPipeServerFactory>();
-        services.AddSingleton<ITrayCommandSink, TrayServerWorker>();
-        services.AddHostedService<TrayServerWorker>();
+        services.AddSingleton<TrayServerWorker>();
+            services.AddSingleton<ITrayCommandSink>(provider => provider.GetRequiredService<TrayServerWorker>());
+        services.AddHostedService(provider => provider.GetRequiredService<TrayServerWorker>());
         return services;
     }
 
@@ -42,8 +43,9 @@ public static class DesktopRuntime
                 },
             });
             services.AddSingleton<ITrayServerFactory, TrayPipeServerFactory>();
-            services.AddSingleton<ITrayCommandSink, TrayServerWorker>();
-            services.AddHostedService<TrayServerWorker>();
+            services.AddSingleton<TrayServerWorker>();
+            services.AddSingleton<ITrayCommandSink>(provider => provider.GetRequiredService<TrayServerWorker>());
+            services.AddHostedService(provider => provider.GetRequiredService<TrayServerWorker>());
         }
         else
         {
@@ -71,8 +73,9 @@ public static class DesktopRuntime
         services.AddSingleton<TrayConnectionState>();
         services.AddSingleton<TrayUserActions>();
         services.AddSingleton<ITrayClient, TrayPipeClient>();
-        services.AddSingleton<ITrayCommandSink, TrayPipeClientWorker>();
-        services.AddHostedService<TrayPipeClientWorker>();
+        services.AddSingleton<TrayPipeClientWorker>();
+        services.AddSingleton<ITrayCommandSink>(provider => provider.GetRequiredService<TrayPipeClientWorker>());
+        services.AddHostedService(provider => provider.GetRequiredService<TrayPipeClientWorker>());
         services.AddHostedService<ForegroundActivityReporter>();
         services.AddHostedService<DesktopCapabilitiesReporter>();
         services.AddHostedService<ScreenTimeEnforcer>();

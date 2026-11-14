@@ -4,7 +4,7 @@ namespace OSRA.Service;
 
 internal static class ServiceHostComposition
 {
-    public static void ConfigureServices(IServiceCollection services, AgentConfig? config)
+    public static void ConfigureServices(IServiceCollection services, AgentConfig? config, RuntimeCoordinator? coordinator = null)
     {
         services.AddSingleton<IInteractiveSessionSource, WtsInteractiveSessionSource>();
         services.AddSingleton<INativeProcessLauncher, NativeProcessLauncher>();
@@ -20,8 +20,16 @@ internal static class ServiceHostComposition
 
         var transportConfig = new AgentConfig { ApiBase = AgentConfig.ProductionApiBase };
         services.AddSingleton(transportConfig);
-        services.AddSingleton<RuntimeCoordinator>();
-        services.AddHostedService<RuntimeCoordinator>();
+        if (coordinator is null)
+        {
+            services.AddSingleton<RuntimeCoordinator>();
+            services.AddHostedService<RuntimeCoordinator>();
+        }
+        else
+        {
+            services.AddSingleton(coordinator);
+            services.AddHostedService<RuntimeCoordinator>(_ => coordinator);
+        }
         services.AddSingleton(serviceProvider => new TrayServerEvents
         {
             PairingComplete = (sessionId, ct) => serviceProvider.GetRequiredService<RuntimeCoordinator>().StartPairedRuntime(sessionId, ct),
@@ -31,7 +39,6 @@ internal static class ServiceHostComposition
                 return Task.CompletedTask;
             },
         });
-        DesktopRuntime.AddServiceTransport(services, transportConfig,
-            services.BuildServiceProvider().GetRequiredService<TrayServerEvents>());
+        DesktopRuntime.AddServiceTransport(services, transportConfig);
     }
 }

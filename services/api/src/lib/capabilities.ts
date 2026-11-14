@@ -119,6 +119,12 @@ export const CapabilitiesSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
+    if (value.source !== undefined && value.client.app !== "agent-desktop") {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["source"], message: "tray provenance is a Windows desktop report" });
+    }
+    if (value.grants.child_account_admin !== undefined && value.client.app !== "agent-desktop") {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["grants", "child_account_admin"], message: "child account administrator is a Windows desktop report" });
+    }
     if (value.groups !== undefined && value.client.app !== "child-ios") {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["groups"], message: "app groups are an iPhone report" });
     }

@@ -163,7 +163,7 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         Metadata = new Dictionary<string, object> { ["type"] = type },
     });
 
-    private async Task HandleMessage(int sessionId, TrayMessage message, CancellationToken cancellationToken)
+    private async Task<TrayMessage?> HandleMessage(int sessionId, TrayMessage message, CancellationToken cancellationToken)
     {
         switch (message.Kind)
         {
@@ -175,11 +175,13 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
                 if (_lastSosUtc is { } lastSos && now - lastSos < TimeSpan.FromSeconds(60))
                 {
                     _log.LogInformation("SOS ignored inside the per-device 60-second window");
-                    break;
+                    return new TrayMessage(TrayMessageKind.sos_result,
+                        JsonSerializer.SerializeToElement(new { accepted = true }));
                 }
-                _lastSosUtc = now;
-                await _api.PostAlert(SosHotkey.BuildAlert(_config), cancellationToken);
-                break;
+                var accepted = await _api.PostAlert(SosHotkey.BuildAlert(_config), cancellationToken);
+                if (accepted) _lastSosUtc = now;
+                return new TrayMessage(TrayMessageKind.sos_result,
+                    JsonSerializer.SerializeToElement(new { accepted }));
             case TrayMessageKind.pairing_complete:
                 await _events.PairingComplete(sessionId, cancellationToken);
                 break;
@@ -187,6 +189,7 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
                 await _events.Capabilities(message.Payload!.Value, cancellationToken);
                 break;
         }
+        return null;
     }
 
     public override void Dispose()
@@ -204,10 +207,11 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
     {
         private readonly InteractiveSession _session;
         private readonly ITrayServer _server;
-        private readonly Func<int, TrayMessage, CancellationToken, Task> _handle;
+        private readonly Func<int, TrayMessage, CancellationToken, Task<TrayMessage?>> _handle;
         private readonly ILogger<TrayServerWorker> _log;
         private readonly DesktopRestrictionState _restrictions;
         private readonly Func<DateTime> _clock;
+        private readonly Queue<TrayMessage> _responses = new();
         private readonly Queue<TrayMessage> _pending = new();
         private readonly object _gate = new();
         private readonly CancellationTokenSource _stop = new();
@@ -217,7 +221,7 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         public bool IsCompleted => _completed;
 
         public SessionSlot(InteractiveSession session, ITrayServer server,
-            Func<int, TrayMessage, CancellationToken, Task> handle, ILogger<TrayServerWorker> log,
+            Func<int, TrayMessage, CancellationToken, Task<TrayMessage?>> handle, ILogger<TrayServerWorker> log,
             DesktopRestrictionState? restrictions = null, Func<DateTime>? clock = null)
         {
             _session = session;
@@ -232,6 +236,11 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         {
             lock (_gate)
             {
+                if (message.Kind == TrayMessageKind.sos_result)
+                {
+                    _responses.Enqueue(message);
+                    return;
+                }
                 if (_pending.Count >= 32) _pending.Dequeue();
                 _pending.Enqueue(message);
             }
@@ -281,8 +290,10 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         {
             while (true)
             {
-                var message = await TrayProtocol.ReadAsync(connection.Stream, TrayDirection.ToService, cancellationToken: cancellationToken);
-                await _handle(_session.SessionId, message, cancellationToken);
+                var message = await TrayProtocol.ReadAsync(connection.Stream, TrayDirection.ToService,
+                    Timeout.InfiniteTimeSpan, cancellationToken);
+                if (await _handle(_session.SessionId, message, cancellationToken) is { } response)
+                    Enqueue(response);
             }
         }
 
@@ -291,7 +302,12 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
             while (true)
             {
                 TrayMessage? pending;
-                lock (_gate) pending = _pending.Count > 0 ? _pending.Peek() : null;
+                bool response;
+                lock (_gate)
+                {
+                    response = _responses.Count > 0;
+                    pending = response ? _responses.Peek() : _pending.Count > 0 ? _pending.Peek() : null;
+                }
                 if (pending is null)
                 {
                     await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
@@ -300,14 +316,15 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
                 await TrayProtocol.WriteAsync(connection.Stream, pending, TrayDirection.ToTray, cancellationToken);
                 lock (_gate)
                 {
-                    if (_pending.Count > 0 && ReferenceEquals(_pending.Peek(), pending)) _pending.Dequeue();
+                    var queue = response ? _responses : _pending;
+                    if (queue.Count > 0 && ReferenceEquals(queue.Peek(), pending)) queue.Dequeue();
                 }
             }
         }
 
         public IReadOnlyList<TrayMessage> PendingMessages()
         {
-            lock (_gate) return _pending.ToArray();
+            lock (_gate) return _responses.Concat(_pending).ToArray();
         }
 
         public void Dispose() => _stop.Cancel();

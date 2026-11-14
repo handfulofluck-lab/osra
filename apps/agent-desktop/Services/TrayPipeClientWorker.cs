@@ -9,6 +9,7 @@ public sealed class TrayPipeClientWorker : BackgroundService, ITrayCommandSink
     private readonly ILogger<TrayPipeClientWorker> _log;
     private readonly TrayConnectionState _state;
     private readonly Queue<TrayMessage> _pending = new();
+    private readonly Queue<TrayMessage> _priority = new();
     private readonly object _gate = new();
 
     public TrayPipeClientWorker(ITrayClient client, TrayUserActions actions, ILogger<TrayPipeClientWorker> log,
@@ -24,8 +25,15 @@ public sealed class TrayPipeClientWorker : BackgroundService, ITrayCommandSink
     {
         lock (_gate)
         {
-            if (_pending.Count >= 32) _pending.Dequeue();
-            _pending.Enqueue(message);
+            if (message.Kind == TrayMessageKind.sos)
+            {
+                _priority.Enqueue(message);
+            }
+            else
+            {
+                if (_pending.Count >= 32) _pending.Dequeue();
+                _pending.Enqueue(message);
+            }
         }
         return Task.CompletedTask;
     }
@@ -38,37 +46,61 @@ public sealed class TrayPipeClientWorker : BackgroundService, ITrayCommandSink
             {
                 var session = Process.GetCurrentProcess().SessionId;
                 await using var connection = await _client.ConnectAsync(session, stoppingToken);
+                await TrayProtocol.WriteAsync(connection.Stream, new TrayMessage(TrayMessageKind.hello),
+                    TrayDirection.ToService, stoppingToken);
                 _state.IsConnected = true;
-                try
-                {
-                    while (true)
-                    {
-                        TrayMessage? pending;
-                        lock (_gate) pending = _pending.Count > 0 ? _pending.Dequeue() : null;
-                        if (pending is null) break;
-                        await TrayProtocol.WriteAsync(connection.Stream, pending, TrayDirection.ToService, stoppingToken);
-                    }
-                    while (true)
-                    {
-                        var message = await TrayProtocol.ReadAsync(connection.Stream, TrayDirection.ToTray, cancellationToken: stoppingToken);
-                        await _actions.HandleAsync(message, stoppingToken);
-                    }
-                }
-                finally
-                {
-                    _state.IsConnected = false;
-                }
+                var incoming = ReadIncoming(connection, stoppingToken);
+                var outgoing = WriteOutgoing(connection, stoppingToken);
+                await Task.WhenAny(incoming, outgoing);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;
             }
             catch (Exception ex)
             {
                 _log.LogDebug(ex, "Tray pipe disconnected; retrying");
-                try { await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken); }
-                catch (OperationCanceledException) { break; }
             }
+            finally
+            {
+                _state.IsConnected = false;
+            }
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+        }
+    }
+
+    private async Task ReadIncoming(TrayPipeConnection connection, CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            var message = await TrayProtocol.ReadAsync(connection.Stream, TrayDirection.ToTray,
+                Timeout.InfiniteTimeSpan, cancellationToken);
+            await _actions.HandleAsync(message, cancellationToken);
+        }
+    }
+
+    private async Task WriteOutgoing(TrayPipeConnection connection, CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            TrayMessage? pending;
+            lock (_gate)
+            {
+                pending = _priority.Count > 0 ? _priority.Dequeue() : _pending.Count > 0 ? _pending.Dequeue() : null;
+            }
+            if (pending is null)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
+                continue;
+            }
+            await TrayProtocol.WriteAsync(connection.Stream, pending, TrayDirection.ToService, cancellationToken);
         }
     }
 }
