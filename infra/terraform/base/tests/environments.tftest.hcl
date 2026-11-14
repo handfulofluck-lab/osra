@@ -360,6 +360,32 @@ run "production_requires_log_retention_days" {
   expect_failures = [terraform_data.production_guard]
 }
 
+run "production_keeps_logs_at_most_90_days" {
+  command = plan
+
+  variables {
+    environment                  = "production"
+    region                       = "eu-central-1"
+    domain_name                  = "api.example.test"
+    hosted_zone_name             = "api.example.test"
+    create_hosted_zone           = true
+    github_repo                  = "owner/repo"
+    github_owner_id              = "1"
+    github_repo_id               = "2"
+    bedrock_eval_role_enabled    = false
+    log_retention_days           = 365
+    secret_recovery_window_days  = 7
+    budget_limit_usd             = 400
+    internal_hmac_secret_enabled = true
+    alarm_email                  = "alerts@example.test"
+    alarm_email_secondary        = "oncall@example.test"
+    allowed_account_ids          = ["000000000000"]
+    assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
 run "production_requires_alarm_email_secondary" {
   command = plan
 

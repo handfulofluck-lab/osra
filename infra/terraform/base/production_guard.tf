@@ -33,8 +33,8 @@ resource "terraform_data" "production_guard" {
       error_message = "production: pin exactly one account in allowed_account_ids and set assume_role_arn."
     }
     precondition {
-      condition     = var.log_retention_days >= 90
-      error_message = "production: log_retention_days must be 90 or more (#766 item 11)."
+      condition     = var.log_retention_days == 90
+      error_message = "production: log_retention_days must be exactly 90 (#766 item 11: at least 90 for investigations; the privacy policy promises at most 90)."
     }
     precondition {
       condition     = var.alarm_email_secondary != "" && var.alarm_email_secondary != var.alarm_email

@@ -501,7 +501,7 @@ assuming a role from the management-account deployer (no key inside the producti
 | WAF | none | AWS managed IP-reputation, known-bad-inputs and common rules; per-IP rate rule (2,000 / 5 min) in **count** mode for the first two weeks |
 | Alarms | Redis memory, no action | SNS topic `osra-production-alarms` (e-mail to **two different addresses**, `alarm_email` and `alarm_email_secondary`) for ALB 5xx, unhealthy targets, ECS CPU/memory, RDS CPU/storage/connections, Redis memory per node |
 | Budget | hand-made `osra-monthly` | `osra-production-monthly`, US$400: forecast 100%, actual 80% and 100%, to both alarm addresses |
-| Logs / secrets | 14 days / 0-day recovery | **90 days** / 7-day recovery |
+| Logs / secrets | 14 days / 0-day recovery | **exactly 90 days** (the privacy policy promises at most 90) / 7-day recovery |
 | Database TLS | `rds.force_ssl = 1` in `osra-staging-postgres16` | the same, pinned in `osra-production-postgres16` |
 | Task egress | 443 to anywhere; 5432/6379 to RDS/Redis only | the same |
 | Image repository | immutable tags, scan on push | the same, enforced by the guard, never force-deleted |
