@@ -20,7 +20,7 @@ class SosFixText {
   /// Whole minutes, floored, never below 1.
   final int ageMinutes;
 
-  /// Whole hours, rounded up, never below 1.
+  /// Whole hours, rounded DOWN, and the line says "more than", never below 1.
   final int ageHours;
 
   final bool underAnHour;
@@ -61,7 +61,7 @@ class SosFixText {
   /// The map pin's caption: the category title (already translated) and the age.
   ///
   /// Hours read "about 2 hours": the age rounds **up** everywhere (a parent must never be told a fix is
-  /// fresher than it is), so the pin says "about" too — otherwise the same fix reads «قبل ساعتين» on the
+  /// fresher than it is), so the pin says "more than" too — otherwise the same fix reads «قبل ساعتين» on the
   /// pin and «قبل نحو ساعتين» in the detail beside it (Arabic Bureau, #743 second review).
   String pinCaption(AppLocalizations l10n, String title) {
     final age = underAnHour ? l10n.relativeMinutesAgo(ageMinutes) : l10n.relativeOverHoursAgo(ageHours);

@@ -1303,7 +1303,7 @@
     },
     "alertSosWhereHours": "{n, plural, =1{Last location: {coords}, more than 1 hour ago} other{Last location: {coords}, more than {n} hours ago}}",
     "@alertSosWhereHours": {
-      "description": "#672: the same line for a fix an hour or more old; hours round up and carry \"about\".",
+      "description": "#672: the same line for a fix an hour or more old; hours round down and the line says «more than».",
       "placeholders": {"n": {"type": "int"}, "coords": {"type": "String"}}
     },
     "alertSosLocationMinutes": "{n, plural, =1{Location from 1 min ago. Tap to see it on the map.} other{Location from {n} min ago. Tap to see it on the map.}}",
@@ -1313,7 +1313,7 @@
     },
     "alertSosLocationHours": "{n, plural, =1{Location from more than 1 hour ago. Tap to see it on the map.} other{Location from more than {n} hours ago. Tap to see it on the map.}}",
     "@alertSosLocationHours": {
-      "description": "#672: the notification body for a fix an hour or more old; hours round up.",
+      "description": "#672: the notification body for a fix an hour or more old; hours round down and the line says «more than».",
       "placeholders": {"n": {"type": "int"}}
     },
     "alertLocationAccuracy": "accurate to about {m} m",

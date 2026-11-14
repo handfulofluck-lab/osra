@@ -171,8 +171,15 @@ void main() {
       expect(body(2), 'سُجّل آخر موقع قبل دقيقتين. اضغط لعرضه.');
       expect(body(3), 'سُجّل آخر موقع قبل 3 دقائق. اضغط لعرضه.');
       expect(body(11), 'سُجّل آخر موقع قبل 11 دقيقة. اضغط لعرضه.');
-      // 61 minutes is the hours branch, and it must say «نحو» (about) like the detail beside it.
-      expect(body(61), 'سُجّل آخر موقع قبل أكثر من ساعة. اضغط لعرضه.');
+      // 60 minutes enters the hours branch, and it must say «أكثر من» (more than) like the detail beside it.
+      // The Bureau's list, on the notification: 60 and 119 both floor to one hour, 120 to two, and
+      // 182 (3 h 02) and 239 (3 h 59) both to three. The word is «أكثر من», true for every minute of the
+      // hour it names, so a parent is never told a place is fresher than it is.
+      expect(body(60), 'سُجّل آخر موقع قبل أكثر من ساعة. اضغط لعرضه.');
+      expect(body(119), 'سُجّل آخر موقع قبل أكثر من ساعة. اضغط لعرضه.');
+      expect(body(120), 'سُجّل آخر موقع قبل أكثر من ساعتين. اضغط لعرضه.');
+      expect(body(182), 'سُجّل آخر موقع قبل أكثر من 3 ساعات. اضغط لعرضه.');
+      expect(body(239), 'سُجّل آخر موقع قبل أكثر من 3 ساعات. اضغط لعرضه.');
       expect(body(3), isNot(contains('25.276')));
     });
   });
@@ -207,6 +214,25 @@ void main() {
       final alert = sos(metadata: fixAgo(3));
       final caption = SosFixText.of(alert, alert.location!, alertAt).pinCaption(en, 'SOS');
       expect(caption, 'SOS · 3m ago');
+    });
+
+    test('the Arabic detail line and the pin say the same "more than" as the notification', () {
+      // The Bureau asked for these two surfaces as well as the notification: the same number must read
+      // the same way wherever a parent meets it (120 -> «ساعتين», 239 -> «3 ساعات»).
+      String detail(int minutes) {
+        final a = sos(metadata: fixAgo(minutes));
+        return SosFixText.of(a, a.location!, alertAt).locationLine(ar, a.location!.isolatedCoords);
+      }
+
+      expect(detail(120), contains('قبل أكثر من ساعتين'));
+      expect(detail(239), contains('قبل أكثر من 3 ساعات'));
+
+      final a239 = sos(metadata: fixAgo(239));
+      expect(SosFixText.of(a239, a239.location!, alertAt).pinCaption(ar, 'استغاثة'),
+          contains('قبل أكثر من 3 ساعات'));
+      final a120 = sos(metadata: fixAgo(120));
+      expect(SosFixText.of(a120, a120.location!, alertAt).pinCaption(ar, 'استغاثة'),
+          contains('قبل أكثر من ساعتين'));
     });
   });
 

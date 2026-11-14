@@ -4784,7 +4784,7 @@ abstract class AppLocalizations {
   /// **'{n, plural, =1{Last location: {coords}, 1 min ago} other{Last location: {coords}, {n} min ago}}'**
   String alertSosWhereMinutes(int n, String coords);
 
-  /// #672: the same line for a fix an hour or more old; hours round up and carry "about".
+  /// #672: the same line for a fix an hour or more old; hours round down and the line says «more than».
   ///
   /// In en, this message translates to:
   /// **'{n, plural, =1{Last location: {coords}, more than 1 hour ago} other{Last location: {coords}, more than {n} hours ago}}'**
@@ -4796,7 +4796,7 @@ abstract class AppLocalizations {
   /// **'{n, plural, =1{Location from 1 min ago. Tap to see it on the map.} other{Location from {n} min ago. Tap to see it on the map.}}'**
   String alertSosLocationMinutes(int n);
 
-  /// #672: the notification body for a fix an hour or more old; hours round up.
+  /// #672: the notification body for a fix an hour or more old; hours round down and the line says «more than».
   ///
   /// In en, this message translates to:
   /// **'{n, plural, =1{Location from more than 1 hour ago. Tap to see it on the map.} other{Location from more than {n} hours ago. Tap to see it on the map.}}'**

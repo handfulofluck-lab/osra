@@ -880,7 +880,7 @@
     },
     "alertSosWhereMinutes": "{n, plural, =1{آخر موقع: {coords}، قبل دقيقة} =2{آخر موقع: {coords}، قبل دقيقتين} few{آخر موقع: {coords}، قبل {n} دقائق} many{آخر موقع: {coords}، قبل {n} دقيقة} other{آخر موقع: {coords}، قبل {n} دقيقة}}",
     "@alertSosWhereHours": {
-      "description": "#672, Arabic Language Bureau: the same line for a fix an hour or more old; hours round up and carry \"about\".",
+      "description": "#672, Arabic Language Bureau: the same line for a fix an hour or more old; hours round down, and the line says «more than» and carry \"about\".",
       "placeholders": {"n": {"type": "int"}, "coords": {"type": "String"}}
     },
     "alertSosWhereHours": "{n, plural, =1{آخر موقع: {coords}، قبل أكثر من ساعة} =2{آخر موقع: {coords}، قبل أكثر من ساعتين} few{آخر موقع: {coords}، قبل أكثر من {n} ساعات} many{آخر موقع: {coords}، قبل أكثر من {n} ساعة} other{آخر موقع: {coords}، قبل أكثر من {n} ساعة}}",
@@ -891,7 +891,7 @@
   "alertTechnicalDetails": "التفاصيل التقنية",
     "alertSosLocationMinutes": "{n, plural, =1{سُجّل آخر موقع قبل دقيقة. اضغط لعرضه.} =2{سُجّل آخر موقع قبل دقيقتين. اضغط لعرضه.} few{سُجّل آخر موقع قبل {n} دقائق. اضغط لعرضه.} many{سُجّل آخر موقع قبل {n} دقيقة. اضغط لعرضه.} other{سُجّل آخر موقع قبل {n} دقيقة. اضغط لعرضه.}}",
     "@alertSosLocationHours": {
-      "description": "Arabic Language Bureau, #743. Notification body for a fix an hour or more old; carries \"about\", hours rounded up.",
+      "description": "Arabic Language Bureau, #743. Notification body for a fix an hour or more old; says «more than», hours rounded down.",
       "placeholders": {"n": {"type": "int"}}
     },
     "alertSosLocationHours": "{n, plural, =1{سُجّل آخر موقع قبل أكثر من ساعة. اضغط لعرضه.} =2{سُجّل آخر موقع قبل أكثر من ساعتين. اضغط لعرضه.} few{سُجّل آخر موقع قبل أكثر من {n} ساعات. اضغط لعرضه.} many{سُجّل آخر موقع قبل أكثر من {n} ساعة. اضغط لعرضه.} other{سُجّل آخر موقع قبل أكثر من {n} ساعة. اضغط لعرضه.}}",
