@@ -22,8 +22,24 @@ mock_provider "aws" {
   alias = "us_east_1"
 }
 
+mock_provider "aws" {
+  alias = "copy"
+
+  mock_data "aws_availability_zones" {
+    defaults = {
+      names = ["eu-west-1a", "eu-west-1b", "eu-west-1c"]
+    }
+  }
+  mock_resource "aws_kms_key" {
+    defaults = {
+      arn = "arn:aws:kms:eu-west-1:000000000000:key/copy"
+    }
+  }
+}
+
 variables {
   management_account_id = "000000000000"
+  production_account_id = "111111111111"
 }
 
 run "trail_bucket_is_object_locked" {
@@ -68,5 +84,14 @@ run "management_account_has_guardduty" {
   assert {
     condition     = aws_guardduty_detector.management.enable && aws_guardduty_detector.management_us_east_1.enable
     error_message = "the management account needs GuardDuty in the home region and us-east-1 (#782)"
+  }
+}
+
+run "backup_copy_vault_is_locked" {
+  command = plan
+
+  assert {
+    condition     = aws_backup_vault_lock_configuration.production_copy.min_retention_days >= 1 && aws_db_subnet_group.restore_drill.name == "osra-restore-drill"
+    error_message = "the cross-account backup copy vault must have Vault Lock, and the restore drill its own subnet group (#783)"
   }
 }
