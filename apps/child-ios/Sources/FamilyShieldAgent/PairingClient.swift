@@ -88,25 +88,22 @@ public struct PairingClient {
     /// token arrives on `POST /v1/devices/pair/claims/:claimId/poll` once the parent has allowed this phone.
     /// Throws `PairingError` for every refusal (unknown code, code in use, Deny, expiry, consent) and parse
     /// failure; network errors on the claim propagate as thrown `Error` from URLSession.
+    ///
+    /// Mac step (ii), #775: `device` says what is pairing. The default is this iPhone, exactly as before; the Mac
+    /// daemon passes its own platform, model, capability report and `X-OSRA-Client` (ADR-0041 D5.4).
     public func claim(
         baseURL: URL,
         code: String,
-        deviceName: String?
+        deviceName: String?,
+        device: ClaimDevice = .thisPhone()
     ) async throws -> AgentIdentity {
         var request = URLRequest(url: baseURL.appendingPathComponent("v1/devices/pair/claim"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let clientHeader = device.clientHeader { request.setValue(clientHeader, forHTTPHeaderField: "X-OSRA-Client") }
         request.timeoutInterval = 30.0 // 30s timeout so pairing never hangs indefinitely (IOS-07)
-        var payload: [String: Any] = [
-            "code": code,
-            "platform": "ios",
-            "model": Self.deviceModel(),
-            "osVersion": Self.osVersion(),
-        ]
-        if let deviceName, !deviceName.trimmingCharacters(in: .whitespaces).isEmpty {
-            payload["deviceName"] = deviceName.trimmingCharacters(in: .whitespaces)
-        }
-        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        request.httpBody = try JSONSerialization.data(
+            withJSONObject: Self.claimPayload(code: code, deviceName: deviceName, device: device))
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw PairingError.unusableResponse }
@@ -132,6 +129,47 @@ public struct PairingClient {
             throw PairingError.unusableResponse
         }
         return identity
+    }
+
+    /// What a claim says about the device that is pairing (`ClaimSchema`, `services/api/src/routes/devices.ts`).
+    public struct ClaimDevice {
+        /// The server's platform word: "ios" or "macos".
+        public var platform: String
+        public var model: String
+        public var osVersion: String
+        /// ADR-0034 A2: the capability report, when the client sends one with the claim.
+        public var capabilities: [String: Any]?
+        /// `X-OSRA-Client` (ADR-0034 A3), when the client has one.
+        public var clientHeader: String?
+
+        public init(platform: String, model: String, osVersion: String, capabilities: [String: Any]? = nil,
+                    clientHeader: String? = nil) {
+            self.platform = platform
+            self.model = model
+            self.osVersion = osVersion
+            self.capabilities = capabilities
+            self.clientHeader = clientHeader
+        }
+
+        /// The iPhone agent's claim, unchanged since 5.5: no capability report and no client header.
+        public static func thisPhone() -> ClaimDevice {
+            ClaimDevice(platform: "ios", model: PairingClient.deviceModel(), osVersion: PairingClient.osVersion())
+        }
+    }
+
+    /// The claim's JSON body. Pure, so the tests pin what each platform sends.
+    public static func claimPayload(code: String, deviceName: String?, device: ClaimDevice) -> [String: Any] {
+        var payload: [String: Any] = [
+            "code": code,
+            "platform": device.platform,
+            "model": device.model,
+            "osVersion": device.osVersion,
+        ]
+        if let deviceName, !deviceName.trimmingCharacters(in: .whitespaces).isEmpty {
+            payload["deviceName"] = deviceName.trimmingCharacters(in: .whitespaces)
+        }
+        if let capabilities = device.capabilities { payload["capabilities"] = capabilities }
+        return payload
     }
 
     /// What the claim's status means: nil for 202 (waiting for the parent), the refusal otherwise.
@@ -259,7 +297,7 @@ public struct PairingClient {
         }
     }
 
-    private static func deviceModel() -> String {
+    static func deviceModel() -> String {
         #if canImport(UIKit)
         return UIDevice.current.model // "iPhone" / "iPad"
         #else
@@ -267,7 +305,7 @@ public struct PairingClient {
         #endif
     }
 
-    private static func osVersion() -> String {
+    static func osVersion() -> String {
         #if canImport(UIKit)
         return UIDevice.current.systemVersion
         #else
