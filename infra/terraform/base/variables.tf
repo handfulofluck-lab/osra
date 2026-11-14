@@ -183,3 +183,9 @@ variable "secrets_out_of_band" {
   type        = bool
   default     = false
 }
+
+variable "guardduty_enabled" {
+  description = "Turn on GuardDuty in this account (#766 item 2). Production MUST be true."
+  type        = bool
+  default     = false
+}

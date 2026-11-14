@@ -136,6 +136,9 @@ resource "aws_lb" "main" {
   enable_deletion_protection = var.alb_deletion_protection
   drop_invalid_header_fields = true
 
+  # No ALB access logs (#782 review): they record the full request line, query string included, and the
+  # WebSocket ticket travels in the query string. WAF logs (query string redacted) cover who called what.
+
   tags = {
     Name = "${local.name_prefix}-alb"
   }

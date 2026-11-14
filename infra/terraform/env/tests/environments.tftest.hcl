@@ -37,6 +37,27 @@ mock_provider "aws" {
       arn = "arn:aws:ecs:eu-central-1:000000000000:cluster/test"
     }
   }
+  mock_resource "aws_s3_bucket" {
+    defaults = {
+      arn = "arn:aws:s3:::test-access-logs"
+      id  = "test-access-logs"
+    }
+  }
+  mock_resource "aws_cloudwatch_log_group" {
+    defaults = {
+      arn = "arn:aws:logs:eu-central-1:000000000000:log-group:test"
+    }
+  }
+  mock_resource "aws_kms_key" {
+    defaults = {
+      arn = "arn:aws:kms:eu-central-1:000000000000:key/test"
+    }
+  }
+  mock_data "aws_caller_identity" {
+    defaults = {
+      account_id = "000000000000"
+    }
+  }
   mock_resource "aws_iam_role" {
     defaults = {
       arn = "arn:aws:iam::000000000000:role/test-role"
@@ -148,6 +169,10 @@ run "staging_defaults_are_unchanged" {
     error_message = "staging keeps Terraform-generated secrets and a plain REDIS_URL"
   }
   assert {
+    condition     = length(aws_flow_log.vpc) == 0 && length(aws_s3_bucket.access_logs) == 0 && length(aws_lb.main.access_logs) == 0
+    error_message = "staging creates no audit logs"
+  }
+  assert {
     condition     = one([for p in aws_db_parameter_group.postgres.parameter : p.value if p.name == "rds.force_ssl"]) == "1" && aws_db_instance.main.parameter_group_name == aws_db_parameter_group.postgres.name
     error_message = "the database must require TLS through its own parameter group (#766 item 9)"
   }
@@ -186,6 +211,7 @@ run "production_settings" {
     alarm_email              = "alerts@example.test"
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
+    audit_logs_enabled       = true
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -276,6 +302,30 @@ run "production_settings" {
     error_message = "the db-admin task must read the master password from the RDS-managed secret"
   }
   assert {
+    condition     = length(aws_flow_log.vpc) == 1 && length(aws_wafv2_web_acl_logging_configuration.api) == 1 && aws_db_instance.main.enabled_cloudwatch_logs_exports == toset(["postgresql"])
+    error_message = "production needs VPC flow, WAF and PostgreSQL logs (#766 item 2)"
+  }
+  assert {
+    condition     = length(aws_lb.main.access_logs) == 0 || !anytrue([for l in aws_lb.main.access_logs : l.enabled])
+    error_message = "ALB access logs must stay off: they would store the WebSocket ticket from the query string (#782)"
+  }
+  assert {
+    condition     = length([for f in aws_wafv2_web_acl_logging_configuration.api[0].redacted_fields : f if length(f.query_string) == 1]) == 1 && toset(flatten([for f in aws_wafv2_web_acl_logging_configuration.api[0].redacted_fields : [for h in f.single_header : h.name]])) == toset(["authorization", "cookie", "x-familyshield-signature"])
+    error_message = "WAF logs must redact the query string, authorization, cookie and x-familyshield-signature (#782)"
+  }
+  assert {
+    condition     = strcontains(aws_kms_key.alarms[0].policy, "aws:SourceAccount")
+    error_message = "the alarm key's service statement must be limited to this account (#782)"
+  }
+  assert {
+    condition     = aws_cloudwatch_log_group.waf[0].retention_in_days == 90 && aws_cloudwatch_log_group.postgresql[0].retention_in_days == 90 && one([for r in aws_s3_bucket_lifecycle_configuration.access_logs[0].rule : r.expiration[0].days]) == 90
+    error_message = "every production access log is kept exactly 90 days (privacy policy)"
+  }
+  assert {
+    condition     = aws_sns_topic.alarms[0].kms_master_key_id == aws_kms_key.alarms[0].arn && length(aws_cloudwatch_event_target.guardduty_high) == 1
+    error_message = "the alarm topic must use a key CloudWatch and EventBridge can use, and GuardDuty high findings must reach it"
+  }
+  assert {
     condition     = length(aws_sns_topic_subscription.alarms_email_secondary) == 1
     error_message = "production alarms must reach a second address (#766 item 6)"
   }
@@ -336,6 +386,7 @@ run "production_requires_db_multi_az" {
     alarm_email              = "alerts@example.test"
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
+    audit_logs_enabled       = true
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -373,6 +424,7 @@ run "production_requires_db_backup_retention_days" {
     alarm_email              = "alerts@example.test"
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
+    audit_logs_enabled       = true
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -410,6 +462,7 @@ run "production_requires_db_deletion_protection" {
     alarm_email              = "alerts@example.test"
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
+    audit_logs_enabled       = true
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -447,6 +500,7 @@ run "production_requires_db_skip_final_snapshot" {
     alarm_email              = "alerts@example.test"
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
+    audit_logs_enabled       = true
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -484,6 +538,7 @@ run "production_requires_redis_transit_encryption" {
     alarm_email              = "alerts@example.test"
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
+    audit_logs_enabled       = true
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -521,6 +576,7 @@ run "production_requires_nat_gateway_count" {
     alarm_email              = "alerts@example.test"
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
+    audit_logs_enabled       = true
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -558,6 +614,7 @@ run "production_requires_waf_enabled" {
     alarm_email              = "alerts@example.test"
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
+    audit_logs_enabled       = true
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -595,6 +652,7 @@ run "production_requires_alarms_enabled" {
     alarm_email              = "alerts@example.test"
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
+    audit_logs_enabled       = true
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -632,6 +690,7 @@ run "production_requires_alb_deletion_protection" {
     alarm_email              = "alerts@example.test"
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
+    audit_logs_enabled       = true
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -669,6 +728,7 @@ run "production_requires_region" {
     alarm_email              = "alerts@example.test"
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
+    audit_logs_enabled       = true
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -706,6 +766,7 @@ run "production_requires_assume_role_arn" {
     alarm_email              = "alerts@example.test"
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
+    audit_logs_enabled       = true
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = ""
@@ -743,6 +804,7 @@ run "production_requires_cors_origin" {
     alarm_email              = "alerts@example.test"
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
+    audit_logs_enabled       = true
     cors_origin              = ""
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -814,6 +876,43 @@ run "production_requires_secrets_out_of_band" {
     alarms_enabled           = true
     alarm_email              = "alerts@example.test"
     alarm_email_secondary    = "oncall@example.test"
+    cors_origin              = "https://app.example.test"
+    allowed_account_ids      = ["000000000000"]
+    assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_audit_logs_enabled" {
+  command = plan
+
+  variables {
+    environment              = "production"
+    region                   = "eu-central-1"
+    api_image                = "example/api:test"
+    api_cpu                  = 1024
+    api_memory               = 2048
+    api_min_count            = 2
+    api_max_count            = 6
+    nat_gateway_count        = 2
+    db_instance_class        = "db.t4g.small"
+    db_multi_az              = true
+    db_allocated_storage     = 50
+    db_max_allocated_storage = 200
+    db_backup_retention_days = 14
+    db_deletion_protection   = true
+    db_skip_final_snapshot   = false
+    db_performance_insights  = true
+    redis_num_nodes          = 2
+    redis_failover           = true
+    redis_transit_encryption = true
+    alb_deletion_protection  = true
+    waf_enabled              = true
+    alarms_enabled           = true
+    alarm_email              = "alerts@example.test"
+    alarm_email_secondary    = "oncall@example.test"
+    secrets_out_of_band      = true
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"

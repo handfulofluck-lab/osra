@@ -39,6 +39,10 @@ resource "terraform_data" "production_guard" {
       error_message = "production: alarms_enabled must be true with an alarm_email."
     }
     precondition {
+      condition     = var.audit_logs_enabled
+      error_message = "production: audit_logs_enabled must be true (ALB, VPC flow, WAF and PostgreSQL logs; #766 item 2)."
+    }
+    precondition {
       condition     = var.secrets_out_of_band && var.redis_transit_encryption
       error_message = "production: secrets_out_of_band must be true (RDS-managed master password, osra_api role, Redis AUTH, verifying database TLS; #766 items 1 and 3)."
     }

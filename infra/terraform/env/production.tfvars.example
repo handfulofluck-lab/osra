@@ -70,3 +70,6 @@ secrets_out_of_band = true
 app_public_url = "https://app.osratech.com"
 email_provider = ""
 email_from     = ""
+
+# ALB access logs, VPC flow logs, WAF logs and PostgreSQL logs, each kept exactly 90 days (#766 item 2).
+audit_logs_enabled = true

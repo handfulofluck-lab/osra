@@ -133,6 +133,7 @@ run "production_settings" {
     alarm_email                  = "alerts@example.test"
     alarm_email_secondary        = "oncall@example.test"
     secrets_out_of_band          = true
+    guardduty_enabled            = true
     allowed_account_ids          = ["000000000000"]
     assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
   }
@@ -178,6 +179,10 @@ run "production_settings" {
     error_message = "production needs the containers production-secrets.sh fills"
   }
   assert {
+    condition     = length(aws_guardduty_detector.main) == 1 && length(aws_guardduty_detector_feature.rds_login) == 1
+    error_message = "production needs GuardDuty with RDS login monitoring (#766 item 2)"
+  }
+  assert {
     condition     = aws_ecr_repository.api.image_tag_mutability == "IMMUTABLE" && aws_ecr_repository.api.image_scanning_configuration[0].scan_on_push && !aws_ecr_repository.api.force_delete
     error_message = "production's image repository must be immutable, scanned on push and never force-deleted (#766 item 12)"
   }
@@ -215,6 +220,7 @@ run "production_requires_secret_recovery_window_days" {
     alarm_email                  = "alerts@example.test"
     alarm_email_secondary        = "oncall@example.test"
     secrets_out_of_band          = true
+    guardduty_enabled            = true
     allowed_account_ids          = ["000000000000"]
     assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
   }
@@ -242,6 +248,7 @@ run "production_requires_budget_limit_usd" {
     alarm_email                  = "alerts@example.test"
     alarm_email_secondary        = "oncall@example.test"
     secrets_out_of_band          = true
+    guardduty_enabled            = true
     allowed_account_ids          = ["000000000000"]
     assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
   }
@@ -269,6 +276,7 @@ run "production_requires_bedrock_eval_role_enabled" {
     alarm_email                  = "alerts@example.test"
     alarm_email_secondary        = "oncall@example.test"
     secrets_out_of_band          = true
+    guardduty_enabled            = true
     allowed_account_ids          = ["000000000000"]
     assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
   }
@@ -296,6 +304,7 @@ run "production_requires_internal_hmac_secret_enabled" {
     alarm_email                  = "alerts@example.test"
     alarm_email_secondary        = "oncall@example.test"
     secrets_out_of_band          = true
+    guardduty_enabled            = true
     allowed_account_ids          = ["000000000000"]
     assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
   }
@@ -323,6 +332,7 @@ run "production_requires_region" {
     alarm_email                  = "alerts@example.test"
     alarm_email_secondary        = "oncall@example.test"
     secrets_out_of_band          = true
+    guardduty_enabled            = true
     allowed_account_ids          = ["000000000000"]
     assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
   }
@@ -350,6 +360,7 @@ run "production_requires_assume_role_arn" {
     alarm_email                  = "alerts@example.test"
     alarm_email_secondary        = "oncall@example.test"
     secrets_out_of_band          = true
+    guardduty_enabled            = true
     allowed_account_ids          = ["000000000000"]
     assume_role_arn              = ""
   }
@@ -377,6 +388,7 @@ run "production_requires_log_retention_days" {
     alarm_email                  = "alerts@example.test"
     alarm_email_secondary        = "oncall@example.test"
     secrets_out_of_band          = true
+    guardduty_enabled            = true
     allowed_account_ids          = ["000000000000"]
     assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
   }
@@ -404,6 +416,7 @@ run "production_keeps_logs_at_most_90_days" {
     alarm_email                  = "alerts@example.test"
     alarm_email_secondary        = "oncall@example.test"
     secrets_out_of_band          = true
+    guardduty_enabled            = true
     allowed_account_ids          = ["000000000000"]
     assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
   }
@@ -462,6 +475,33 @@ run "production_requires_secrets_out_of_band" {
   expect_failures = [terraform_data.production_guard]
 }
 
+run "production_requires_guardduty_enabled" {
+  command = plan
+
+  variables {
+    environment                  = "production"
+    region                       = "eu-central-1"
+    domain_name                  = "api.example.test"
+    hosted_zone_name             = "api.example.test"
+    create_hosted_zone           = true
+    github_repo                  = "owner/repo"
+    github_owner_id              = "1"
+    github_repo_id               = "2"
+    bedrock_eval_role_enabled    = false
+    log_retention_days           = 90
+    secret_recovery_window_days  = 7
+    budget_limit_usd             = 400
+    internal_hmac_secret_enabled = true
+    alarm_email                  = "alerts@example.test"
+    alarm_email_secondary        = "oncall@example.test"
+    secrets_out_of_band          = true
+    allowed_account_ids          = ["000000000000"]
+    assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
 run "production_requires_a_different_secondary_address" {
   command = plan
 
@@ -482,6 +522,7 @@ run "production_requires_a_different_secondary_address" {
     alarm_email                  = "alerts@example.test"
     alarm_email_secondary        = "alerts@example.test"
     secrets_out_of_band          = true
+    guardduty_enabled            = true
     allowed_account_ids          = ["000000000000"]
     assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
   }
