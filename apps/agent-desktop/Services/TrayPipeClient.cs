@@ -25,7 +25,7 @@ public sealed class TrayPipeClient : ITrayClient
         try
         {
             await stream.ConnectAsync(5000, cancellationToken);
-            if (!_serviceIdentity.Verify(TrayClientIdentity.ServerProcessId(stream)))
+            if (!_serviceIdentity.Verify(stream))
                 throw new UnauthorizedAccessException("The tray pipe server is not the OSRA service.");
             await TrayProtocol.WriteAsync(stream, new TrayMessage(TrayMessageKind.hello), TrayDirection.ToService, cancellationToken);
             return new TrayPipeConnection(stream, sessionId, WindowsIdentity.GetCurrent().User!.Value);

@@ -254,3 +254,18 @@ Claude ruled that all five areas in osra-security#22 belong in W1. Only service-
 - [ ] **Step 2: Run every desktop configuration, the full API and repository guards.** Publish and inspect the refreshed unsigned win-x64 artifact without executing it; clean local outputs afterward.
 - [ ] **Step 3: Review the complete R3 diff, fold current main and rerun affected checks.** No secrets, Arabic edits, new plaintext PIN path or unapproved W2/W3/W4 work.
 - [ ] **Step 4: Update PR #754 with raw results, known limits and security questions resolved.** Keep WIP until Ahmed's dependency disposition. Then mark ready, enable auto-merge, and ask Claude for the isolated Windows Server 2025 rows and Fable for the R3 key. Never merge directly.
+
+### Task 11: Close the device-level and durability gaps (Fable W6–W9)
+
+**Interfaces and acceptance:**
+- Observe restrictions at device level, not only in existing slots. A session that appears later receives the current lock/pause/wind-down and is eligible for fallback even if no PID, pipe or slot ever existed.
+- Persist restriction state in a service-owned, SYSTEM/admin-only JSON store. Missing state starts empty; corrupt state is not silently forgotten. The store atomically replaces its file and tests its ACL and round trip. Runtime connection flags are not restored as trusted connections.
+- Re-arm the fallback every 20-second grace period while a restriction remains without a verified tray, including after a service restart. A verified reconnect resets the episode and alert throttle.
+- Verify the server through `GetNamedPipeServerSessionId` on the pipe, requiring session 0, with no attempt to open a SYSTEM process or token. A separate CI-only Windows SYSTEM service probe exercises the production pipe server and client, never the developer's real service, desktop, installer or production.
+- Protect the supervisor PID registry with a lock. A full outgoing queue must not remove an unsent message after a successful older write. Tray SOS feedback remains local and does not promise server delivery.
+
+- [ ] **Step 1: Write failing tests.** Device-level observation without a slot, persisted state and ACL, repeated fallback after 20 seconds, server-session verification, and full-queue preservation. The CI service probe is built locally but never launched locally.
+- [ ] **Step 2: Run the focused tests and confirm RED on the missing store, device observation and session-ID boundary.**
+- [ ] **Step 3: Implement device-level persistence, re-armed fallback, session-0 verification and the thread/queue fixes.** Production uses the service-owned store; tests use only temp files and fakes. Do not add a plaintext PIN or credential to the persisted state.
+- [ ] **Step 4: Run all desktop configurations and compile the service probe, then run the real CI-only service row on the next head.** No local Windows service is created, stopped or deleted.
+- [ ] **Step 5: Commit** `test: pin durable device restrictions (#623)` then `feat: persist and verify restricted sessions (#623)`.

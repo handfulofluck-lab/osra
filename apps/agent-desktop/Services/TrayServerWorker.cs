@@ -58,11 +58,10 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
     {
         lock (_gate)
         {
-            foreach (var slot in _slots.Values)
-            {
-                _restrictions.Observe(slot.SessionId, message, _clock());
-                slot.Enqueue(message);
-            }
+            _restrictions.ObserveDevice(message, _clock());
+            foreach (var session in _sessions.List().Where(session => session.SessionId > 0 && session.IsActive))
+                _restrictions.Observe(session.SessionId, message, _clock());
+            foreach (var slot in _slots.Values) slot.Enqueue(message);
         }
         return Task.CompletedTask;
     }
@@ -294,7 +293,10 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
                     continue;
                 }
                 await TrayProtocol.WriteAsync(connection.Stream, pending, TrayDirection.ToTray, cancellationToken);
-                lock (_gate) _pending.Dequeue();
+                lock (_gate)
+                {
+                    if (_pending.Count > 0 && ReferenceEquals(_pending.Peek(), pending)) _pending.Dequeue();
+                }
             }
         }
 

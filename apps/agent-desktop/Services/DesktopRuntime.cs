@@ -7,6 +7,7 @@ public static class DesktopRuntime
 
     public static IServiceCollection AddServiceTransport(IServiceCollection services, AgentConfig config, TrayServerEvents events)
     {
+        AddRestrictionState(services);
         services.AddSingleton(config);
         services.AddHttpClient<ApiClient>(client => client.BaseAddress = new Uri(config.ApiBase ?? AgentConfig.ProductionApiBase));
         services.AddSingleton<LocalRuleStore>();
@@ -22,6 +23,7 @@ public static class DesktopRuntime
     public static IServiceCollection AddService(IServiceCollection services, AgentConfig config,
         ITrayCommandSink? transport = null, LocalRuleStore? store = null, DesktopCapabilitiesStore? capabilityStore = null)
     {
+        AddRestrictionState(services);
         services.AddSingleton(config);
         services.AddHttpClient<ApiClient>(client => client.BaseAddress = new Uri(config.ApiBase ?? AgentConfig.ProductionApiBase));
         if (store is null) services.AddSingleton<LocalRuleStore>();
@@ -52,6 +54,13 @@ public static class DesktopRuntime
         services.AddHostedService<RuleSyncService>();
         services.AddHostedService<TelemetryUploader>();
         return services;
+    }
+
+    private static void AddRestrictionState(IServiceCollection services)
+    {
+        if (services.Any(descriptor => descriptor.ServiceType == typeof(IRestrictionStore))) return;
+        services.AddSingleton<IRestrictionStore, FileDesktopRestrictionStore>();
+        services.AddSingleton<DesktopRestrictionState>();
     }
 
     public static IServiceCollection AddTray(IServiceCollection services, AgentConfig config)

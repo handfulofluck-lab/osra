@@ -39,6 +39,11 @@ jobs:
       - run: dotnet test tests/FamilyShield.Agent.Tests -c Release --nologo
       - run: dotnet publish src/OSRA.Service -c Release -r win-x64 --self-contained true -o artifacts/windows-w1
       - run: dotnet publish src/OSRA -c Release -r win-x64 --self-contained true -o artifacts/windows-w1
+      - name: Verify the real Windows service boundary
+        shell: pwsh
+        run: ./tests/run-windows-service-pipe.ps1
+        env:
+          OSRA_WINDOWS_SERVICE_TEST: "1"
       - name: Check the co-located hosts
         run: |
           $required = @('OSRA.Service.exe', 'OSRA.exe', 'OSRA.Agent.dll')

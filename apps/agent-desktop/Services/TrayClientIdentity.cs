@@ -51,6 +51,13 @@ public sealed class TrayClientIdentity
             throw new Win32Exception(Marshal.GetLastWin32Error());
         return checked((int)pid);
     }
+
+    public static int ServerSessionId(PipeStream stream)
+    {
+        if (!NativePipeMethods.GetNamedPipeServerSessionId(stream.SafePipeHandle.DangerousGetHandle(), out var sessionId))
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        return checked((int)sessionId);
+    }
 }
 
 internal sealed class WindowsClientIdentitySource : IClientIdentitySource
@@ -81,6 +88,9 @@ internal static class NativePipeMethods
 
     [DllImport("kernel32.dll", SetLastError = true)]
     public static extern bool GetNamedPipeServerProcessId(IntPtr namedPipe, out uint serverProcessId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool GetNamedPipeServerSessionId(IntPtr namedPipe, out uint sessionId);
 
     [DllImport("advapi32.dll", SetLastError = true)]
     public static extern bool OpenProcessToken(IntPtr processHandle, int desiredAccess, out IntPtr tokenHandle);

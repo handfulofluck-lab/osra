@@ -1,13 +1,13 @@
+using System.IO.Pipes;
+
 namespace FamilyShield.Agent.Services;
 
 public interface IServiceIdentityVerifier
 {
-    bool Verify(int serverPid);
+    bool Verify(PipeStream stream);
 }
 
-internal sealed class WindowsServiceIdentityVerifier(IClientIdentitySource? source = null) : IServiceIdentityVerifier
+internal sealed class WindowsServiceIdentityVerifier : IServiceIdentityVerifier
 {
-    private readonly IClientIdentitySource _source = source ?? new WindowsClientIdentitySource();
-
-    public bool Verify(int serverPid) => _source.Read(serverPid).UserSid == "S-1-5-18";
+    public bool Verify(PipeStream stream) => TrayClientIdentity.ServerSessionId(stream) == 0;
 }

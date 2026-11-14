@@ -9,6 +9,7 @@ internal sealed class TraySupervisor : BackgroundService, ITrayProcessRegistry
     private readonly ITrayLauncher _launcher;
     private readonly ILogger<TraySupervisor> _log;
     private readonly Dictionary<int, ITrayProcess> _processes = new();
+    private readonly object _gate = new();
 
     public TraySupervisor(IInteractiveSessionSource sessions, ITrayLauncher launcher, ILogger<TraySupervisor> log)
     {
@@ -20,28 +21,36 @@ internal sealed class TraySupervisor : BackgroundService, ITrayProcessRegistry
     public static IReadOnlyList<InteractiveSession> DesiredSessions(IEnumerable<InteractiveSession> sessions) =>
         sessions.Where(s => s.SessionId > 0 && s.IsActive).GroupBy(s => s.SessionId).Select(g => g.First()).ToArray();
 
-    public int? ProcessIdForSession(int sessionId) =>
-        _processes.TryGetValue(sessionId, out var process) && !process.HasExited ? process.ProcessId : null;
+    public int? ProcessIdForSession(int sessionId)
+    {
+        lock (_gate)
+        {
+            return _processes.TryGetValue(sessionId, out var process) && !process.HasExited ? process.ProcessId : null;
+        }
+    }
 
     public void Synchronize()
     {
-        foreach (var session in DesiredSessions(_sessions.List()))
+        lock (_gate)
         {
-            if (_processes.TryGetValue(session.SessionId, out var running))
+            foreach (var session in DesiredSessions(_sessions.List()))
             {
-                if (!running.HasExited) continue;
-                running.Dispose();
-                _processes.Remove(session.SessionId);
-            }
+                if (_processes.TryGetValue(session.SessionId, out var running))
+                {
+                    if (!running.HasExited) continue;
+                    running.Dispose();
+                    _processes.Remove(session.SessionId);
+                }
 
-            try
-            {
-                _processes[session.SessionId] = _launcher.StartInstalledTray(session);
-                _log.LogInformation("Started the installed tray in session {SessionId}", session.SessionId);
-            }
-            catch (Exception ex)
-            {
-                _log.LogError(ex, "Could not start the installed tray in session {SessionId}", session.SessionId);
+                try
+                {
+                    _processes[session.SessionId] = _launcher.StartInstalledTray(session);
+                    _log.LogInformation("Started the installed tray in session {SessionId}", session.SessionId);
+                }
+                catch (Exception ex)
+                {
+                    _log.LogError(ex, "Could not start the installed tray in session {SessionId}", session.SessionId);
+                }
             }
         }
     }
@@ -72,8 +81,11 @@ internal sealed class TraySupervisor : BackgroundService, ITrayProcessRegistry
 
     public override void Dispose()
     {
-        foreach (var process in _processes.Values) process.Dispose();
-        _processes.Clear();
+        lock (_gate)
+        {
+            foreach (var process in _processes.Values) process.Dispose();
+            _processes.Clear();
+        }
         base.Dispose();
     }
 }

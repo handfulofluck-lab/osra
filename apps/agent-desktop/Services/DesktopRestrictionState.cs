@@ -6,7 +6,29 @@ public sealed class DesktopRestrictionState
 {
     private static readonly TimeSpan OfflineGrace = TimeSpan.FromSeconds(20);
     private readonly Dictionary<int, Entry> _entries = new();
+    private readonly IRestrictionStore? _store;
     private readonly object _gate = new();
+
+    public DesktopRestrictionState(IRestrictionStore? store = null)
+    {
+        _store = store;
+        if (_store is null) return;
+        foreach (var saved in _store.Load())
+        {
+            _entries[saved.SessionId] = new Entry
+            {
+                Locked = saved.Locked,
+                Paused = saved.Paused,
+                WindDownAt = saved.WindDownAt,
+                ObservedAt = saved.ObservedAt,
+                DisconnectedAt = saved.DisconnectedAt,
+                FallbackAt = saved.FallbackAt,
+                TamperAlerted = saved.TamperAlerted,
+            };
+        }
+    }
+
+    public void ObserveDevice(TrayMessage message, DateTime utcNow) => Observe(0, message, utcNow);
 
     public void Observe(int sessionId, TrayMessage message, DateTime utcNow)
     {
@@ -15,6 +37,7 @@ public sealed class DesktopRestrictionState
             if (message.Kind is TrayMessageKind.unlock or TrayMessageKind.resume)
             {
                 _entries.Remove(sessionId);
+                Persist();
                 return;
             }
             var minutes = message.Kind == TrayMessageKind.wind_down
@@ -35,6 +58,7 @@ public sealed class DesktopRestrictionState
                     entry.WindDownAt = utcNow.AddMinutes(minutes);
                     break;
             }
+            Persist();
         }
     }
 
@@ -42,11 +66,12 @@ public sealed class DesktopRestrictionState
     {
         lock (_gate)
         {
-            if (!_entries.TryGetValue(sessionId, out var entry)) return [];
+            if (!TryGet(sessionId, out var entry)) return [];
             if (entry.WindDownAt is not null && entry.WindDownAt <= utcNow)
             {
                 entry.Locked = true;
                 entry.WindDownAt = null;
+                Persist();
             }
             var messages = new List<TrayMessage>();
             if (entry.Locked) messages.Add(new TrayMessage(TrayMessageKind.@lock));
@@ -65,11 +90,12 @@ public sealed class DesktopRestrictionState
     {
         lock (_gate)
         {
-            if (!_entries.TryGetValue(sessionId, out var entry)) return;
+            var entry = EntryFor(sessionId, null);
             entry.Connected = true;
             entry.DisconnectedAt = null;
             entry.FallbackAt = null;
             entry.TamperAlerted = false;
+            Persist();
         }
     }
 
@@ -80,6 +106,7 @@ public sealed class DesktopRestrictionState
             if (!_entries.TryGetValue(sessionId, out var entry) || !entry.Connected) return;
             entry.Connected = false;
             entry.DisconnectedAt = utcNow;
+            Persist();
         }
     }
 
@@ -87,10 +114,9 @@ public sealed class DesktopRestrictionState
     {
         lock (_gate)
         {
-            if (!_entries.TryGetValue(sessionId, out var entry) || entry.Connected || entry.FallbackAt is not null)
-                return false;
+            if (!TryGet(sessionId, out var entry) || entry.Connected) return false;
             if (!entry.Locked && !entry.Paused && entry.WindDownAt is null) return false;
-            var since = entry.DisconnectedAt ?? entry.ObservedAt;
+            var since = entry.FallbackAt ?? entry.DisconnectedAt ?? entry.ObservedAt;
             return since is not null && utcNow - since >= OfflineGrace;
         }
     }
@@ -99,12 +125,17 @@ public sealed class DesktopRestrictionState
     {
         lock (_gate)
         {
-            if (!_entries.TryGetValue(sessionId, out var entry) || entry.FallbackAt is not null) return false;
+            var entry = EntryFor(sessionId, utcNow);
             entry.Locked = true;
             entry.WindDownAt = null;
             entry.FallbackAt = utcNow;
-            if (entry.TamperAlerted) return false;
+            if (entry.TamperAlerted)
+            {
+                Persist();
+                return false;
+            }
             entry.TamperAlerted = true;
+            Persist();
             return true;
         }
     }
@@ -115,8 +146,13 @@ public sealed class DesktopRestrictionState
         {
             var entry = EntryFor(sessionId, null);
             entry.Connected = false;
-            if (entry.TamperAlerted) return false;
+            if (entry.TamperAlerted)
+            {
+                Persist();
+                return false;
+            }
             entry.TamperAlerted = true;
+            Persist();
             return true;
         }
     }
@@ -124,10 +160,48 @@ public sealed class DesktopRestrictionState
     private Entry EntryFor(int sessionId, DateTime? utcNow)
     {
         if (!_entries.TryGetValue(sessionId, out var entry))
-            _entries[sessionId] = entry = new Entry();
+        {
+            entry = sessionId > 0 && _entries.TryGetValue(0, out var device) ? Clone(device) : new Entry();
+            _entries[sessionId] = entry;
+        }
         entry.ObservedAt ??= utcNow;
         return entry;
     }
+
+    private bool TryGet(int sessionId, out Entry entry)
+    {
+        if (_entries.TryGetValue(sessionId, out entry!)) return true;
+        if (sessionId > 0 && _entries.TryGetValue(0, out entry!)) return true;
+        entry = null!;
+        return false;
+    }
+
+    private void Persist()
+    {
+        if (_store is null) return;
+        _store.Save(_entries.Select(pair => new SessionRestriction
+        {
+            SessionId = pair.Key,
+            Locked = pair.Value.Locked,
+            Paused = pair.Value.Paused,
+            WindDownAt = pair.Value.WindDownAt,
+            ObservedAt = pair.Value.ObservedAt,
+            DisconnectedAt = pair.Value.DisconnectedAt,
+            FallbackAt = pair.Value.FallbackAt,
+            TamperAlerted = pair.Value.TamperAlerted,
+        }).ToArray());
+    }
+
+    private static Entry Clone(Entry source) => new()
+    {
+        Locked = source.Locked,
+        Paused = source.Paused,
+        WindDownAt = source.WindDownAt,
+        ObservedAt = source.ObservedAt,
+        DisconnectedAt = source.DisconnectedAt,
+        FallbackAt = source.FallbackAt,
+        TamperAlerted = source.TamperAlerted,
+    };
 
     private sealed class Entry
     {
