@@ -561,6 +561,39 @@ without backups.
 8. **Service phase:** `OSRA_PROD_PHASE=service`, plan, read, apply: creates the service or rolls it onto the new task
    definition.
 
+### Load balancer to task: plain HTTP inside the VPC (#766 item 4, proposed acceptance)
+
+TLS ends at the ALB (`ELBSecurityPolicy-TLS13-1-2-2021-06`). From the ALB to a task, traffic is HTTP on
+port 3000 inside the VPC. **Proposed for acceptance by Ahmed (gate #637) and Karim**, for these reasons:
+- The path never leaves the VPC: the tasks are in private subnets with no public address, and the task
+  security group accepts port 3000 **only** from the ALB's security group (`env/network.tf`, `api_from_alb`).
+  No other host in any network can open that port.
+- AWS encrypts traffic between instances of the Nitro family at the hardware level inside a VPC, and Fargate
+  runs on Nitro. A reader on the wire between the two would need AWS's own network.
+- The ALB does not validate a target's certificate. TLS to the task would add encryption against that same
+  in-VPC observer, but not identity. It would also need a certificate inside the image and a code change in
+  the API, which the gate's schedule does not allow before the beta.
+- Everything sensitive inside that hop is already protected another way: tokens are short-lived and signed,
+  and family content is end-to-end encrypted by the apps (ADR-0006).
+
+Revisit when any of these changes: a second service joins the VPC, the ALB is replaced by something that
+validates targets, or a reviewer asks for it. Changing it then means an HTTPS listener in the API, the target
+group on `HTTPS`, and the security group rule on the new port.
+
+### Backups outside the account (#766 item 5)
+
+Production's database uses its own KMS key (`db_customer_kms_key`), because a backup encrypted with the
+AWS-managed `aws/rds` key cannot be copied to another account. AWS Backup takes a daily backup at 05:00 UAE,
+keeps it 30 days in production's vault, and copies it to `osra-production-copy` in the **management account**
+in **eu-west-1** (`org-audit/backup_vault.tf`). The copy is deleted after 90 days, and the vault policy
+forbids deleting it early. Once, in the management account:
+`aws organizations enable-aws-service-access --service-principal backup.amazonaws.com` and
+`aws backup update-global-settings --global-settings isCrossAccountBackupEnabled=true`.
+
+**Restore drill:** `AWS_PROFILE=<profile> ./infra/terraform/restore-drill.sh` restores the newest recovery point
+into a temporary private instance, waits until it is available, prints what it restored, and deletes it. Its
+log is the gate evidence. Run it once before go-live and after any change to the backup plan.
+
 ### Production cost (estimate, on-demand list prices in `eu-central-1`, 730 h/month)
 
 | Item | Basis | US$/month |
