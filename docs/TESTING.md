@@ -349,7 +349,7 @@ off, the read route still answers but returns `counting: false` and `withinBudge
 | `agent-desktop.yml` | `apps/agent-desktop/**` | `dotnet test` of the desktop agent, on a Windows runner (billed above the Linux rate, about 1.67× at the 2026 rates) |
 | `ai-engine.yml` | `services/ai-engine/**` | `pytest`, then the evaluation banks, the generated-set check and the regex-scorer evaluation |
 | `ios-ci.yml` | six path patterns: `apps/child-ios/**`, `apps/parent-app/ios/**`, the workflow itself, and the three API contract files (`services/api/src/routes/devices.ts`, `services/api/src/routes/alerts.ts`, `services/api/src/lib/internalAuth.ts`); `push` runs on `main` only, plus weekly Monday 01:23 and `workflow_dispatch` | The **child** agent's iOS gate (SwiftPM build + `generic/platform=iOS Simulator`). Since 2026-10-24 it is no longer the only iOS gate: the parent app's Flutter iOS build is the `parent-app-ios` job in `parent-app.yml` |
-| `api-image.yml` | PRs touching what the image is built from: `services/api/**`, `packages/**`, the root package files, `.dockerignore` | Builds `services/api/Dockerfile` from the repo root (`docker/build-push-action`, `push: false`, `linux/arm64` on GitHub's arm64 runner) and runs `services/api/scripts/verify-image.sh` inside the result, then migrates, seeds twice and boots the image against Postgres and Redis. The Dockerfile has no `|| true`, so a failed install or build fails the PR, and a build that cannot migrate or seed fails it too. ECR stores images rather than building them; publishing needs an OIDC role scoped to the one repository (#258) |
+| `api-image.yml` | PRs touching what the image is built from: `services/api/**`, `packages/**`, the root package files, `.dockerignore` | Builds `services/api/Dockerfile` from the repo root (`docker/build-push-action`, `push: false`, `linux/arm64` on GitHub's arm64 runner) and runs `services/api/scripts/verify-image.sh` inside the result, then migrates, seeds twice and boots the image against Postgres and Redis. `verify-image.sh` also checks that the RDS CA bundle is at `/app/certs/rds-global-bundle.pem`, readable and not writable by the API's user, and that with `DATABASE_TLS_VERIFY=required` the image refuses to boot on a database URL that would not verify the server's certificate, without printing the URL (#766 item 3). The Dockerfile has no `|| true`, so a failed install or build fails the PR, and a build that cannot migrate or seed fails it too. ECR stores images rather than building them; publishing needs an OIDC role scoped to the one repository (#258) |
 | `workflow-lint.yml` | every PR | `scripts/check-workflows.mjs --strict` — a YAML file GitHub rejects means **zero jobs run**, so this is checked in its own file — and `scripts/check-docs-links.mjs` in the same job, with the self-tests of the other gates. Among them `scripts/check-verified-gate-signers.mjs` (2026-10-23): it fails if `verified-gate.yml` could read a verification from any account but the agent account, structurally and by running the gate's own jq filter over fixture comments (`--selftest` proves both layers fail on the pre-fix filter; without `jq` it runs the structural layer only, and in CI a missing `jq` is exit 2). Since 2026-10-24 also `scripts/check-ci-paths.mjs` (below) and `scripts/verified-gate-carry.mjs --selftest` (below). Since 2026-11-13 also `scripts/check-ci-cost-guardrails.mjs` (below). Since 2026-11-12 also `scripts/check-site-design.mjs` (roadmap 3.19): `site/style.css` must carry the values of `docs/design/tokens.json` under the same names in both themes, no colour outside those two blocks, nothing loaded from another site, `dir="rtl"` on an Arabic page and no physical side in the sheet; rules and fixtures in `docs/design/WEBSITE.md` §5. Since 2026-11-12 also `scripts/check-user-visible-brand.mjs` (issue #608): fails any tracked or untracked repo file carrying the pre-OSRA user-visible forms, with exact-path exemptions for the dated QA audit records and only the two named legacy demo-email migration constants; rules, fixtures and CLI wiring in `--selftest` |
 | `verified-gate.yml` | On every PR to `main`: `state:verified` **and** a `Verified-sha:` line at the head, in a comment written by the agent account `handfulofluck-lab` and signed by a verifier (`AGENTS.md` §6.4, §6.5 rule 6). A comment by any other account is never read: the run log prints how many were left out. Since 2026-10-24 the carry-forward decision is `scripts/verified-gate-carry.mjs <signed-sha> <head-sha>`, run from `origin/main` so a PR's edit to the script does not judge its own carry-forward (the workflow file still comes from the PR; see #359). It exits 0 when only clean merges of main followed the signature and the PR's own `-U0` patch is unchanged; 1 when that patch moved, or when a merge after the signature was not a clean merge of its parents (a conflict, a resolution, an evil merge, or a merge with other than two parents); 2 when it cannot decide (missing or unknown sha, not an ancestor, a non-merge commit after the signature, git older than 2.38 so a merge cannot be re-run). Context is ignored, so position is not compared — a line moved by a hand-edited merge is refused by the clean-merge rule, and the only remaining limit is a line moved by a clean merge, which is git's own result. `--selftest` runs seven cases on real git repositories. Local: `node scripts/check-verified-gate-signers.mjs --selftest` and `node scripts/verified-gate-carry.mjs --selftest`. Since 2026-10-31 the trigger list also carries **`edited`**: when a stacked PR's base branch is deleted GitHub retargets the PR to `main` and announces it only as `edited` (`changes.base`), so without that event the required check is never created at all and the PR cannot merge while every visible check is green (#501; measured on the scratch PR #503 — see §6) |
 | `terraform.yml` | On a PR touching `infra/terraform/**`: `terraform fmt -check -recursive` plus `init -backend=false` and `validate` in `base/` and `env/` (Terraform 1.13.4, no credentials, no `plan`). `plan` and `apply` stay human steps — see `infra/terraform/README.md` |
@@ -374,7 +374,26 @@ node scripts/check-user-visible-brand.mjs          # no old user-visible brandin
 node scripts/check-user-visible-brand.mjs --selftest  # 60 cases: each rule fires, and the CLI wires it
 node scripts/check-redis-durability.mjs        # ElastiCache must not be able to lose revocation state
 node scripts/check-redis-durability.mjs --selftest   # 6 cases, one per rule and per way to fake it
+node scripts/check-production-taskdef.mjs --selftest  # 68 checks: a release task definition, one fixture per rule (gate #637)
+node scripts/check-production-taskdef.mjs --source    # every variable the API reads is required, allowed or forbidden in production
 ```
+
+**The production task definition check (gate #637, box 3).** CI runs only `--selftest` and `--source`: they prove
+the rules fire and that every variable the API reads (dotted, destructured, or `env[CONSTANT]`) is classified. The
+evidence for the gate is a third run, on what AWS holds. Claude (server gate) runs it from the maintainer's PC with
+the production profile, once per candidate build, and again after any change to the task definition:
+
+```bash
+aws ecs describe-task-definition --task-definition osra-production-api --region eu-central-1 > taskdef.json
+node scripts/check-production-taskdef.mjs --file taskdef.json --account <production account number>   # add --pre-launch before the store credentials exist
+```
+
+The whole output (it names variables and never prints a value) is posted on #637 as "Row 3 evidence", with the task
+definition revision and the image tag. `taskdef.json` is not committed and not posted. A finding is fixed in
+Terraform, never by editing the file. What the check refuses besides switches and misplaced secrets: a setting held
+as a `secrets` entry (its value cannot be read, so it was not checked), `environmentFiles`, any volume or mount
+point, a task role, an image, secret or execution role in another account, added Linux capabilities, a
+non-essential container, and `TRUST_PROXY` other than `1`.
 
 **The user-visible brand gate (issue #608).** `scripts/check-user-visible-brand.mjs` fails on any
 tracked or untracked-but-not-ignored repo file carrying the pre-OSRA user-visible surfaces — the old
@@ -473,12 +492,30 @@ swift test list
 swift test
 ```
 
-The discovery step requires 211 macOS tests and names one case each from pairing, HMAC signing, rule
+The discovery step requires 225 macOS tests and names one case each from pairing, HMAC signing, rule
 interpretation and both localisation string suites. Five iOS-only authorization tests remain behind
 `#if os(iOS)` because `CLAuthorizationStatus.authorizedWhenInUse` is unavailable on macOS; the other location
 and client tests still run. Wrapping any additional portable source file in `#if os(iOS)` removes its tests and
 turns this step red; leaving an iOS-only framework user unguarded turns `swift build` red. The expected count
 changes only when the package deliberately adds or removes tests.
+
+### The Mac agent daemon (roadmap 5.9 step ii, #775)
+
+The same `macos-core` job then lints `apps/child-ios/MacAgent/launchd/com.osratech.agent.plist` and builds and
+tests the daemon's own package, which is nested in the shared package's folder so the path filters do not
+change. On a Mac:
+
+```bash
+cd apps/child-ios/MacAgent
+swift build
+swift test
+```
+
+The unit tests fake the network, the clock and the keychain's owner, and one suite runs the keychain store
+against a throwaway file-based keychain. What needs a real Mac and staging (pairing, a rule change arriving, the
+heartbeat showing "online", launchd restarting a killed daemon, a wrong HMAC key, the secret being unreadable
+by a standard user) is the row table in `apps/child-ios/MacAgent/README.md`, run with
+`sudo ./scripts/install-dev.sh` on the test Mac.
 
 This is compile and unit-test evidence for the shared core only. No Mac application target or enforcement
 runtime exists in step (i), and the job proves nothing about Screen Time on a phone or a physical Mac.
