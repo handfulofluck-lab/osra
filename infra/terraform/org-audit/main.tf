@@ -10,9 +10,10 @@
 # Run from the management account (the deployer profile), never from a member account:
 #   terraform -chdir=infra/terraform/org-audit init -backend-config=../backend/org-audit.hcl
 #   terraform -chdir=infra/terraform/org-audit plan -var-file=org-audit.tfvars -out=org-audit.tfplan
-# One prerequisite outside Terraform, once: CloudTrail's trusted access in Organizations
+# Prerequisites outside Terraform, once: CloudTrail's trusted access in Organizations
 #   aws organizations enable-aws-service-access --service-principal cloudtrail.amazonaws.com
-# (additive; it lets CloudTrail create the trail in member accounts and changes nothing else).
+# (additive; it lets CloudTrail create the trail in member accounts and changes nothing else), and the two
+# AWS Backup settings in backup_vault.tf.
 
 terraform {
   required_version = ">= 1.10"

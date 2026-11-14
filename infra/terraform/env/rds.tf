@@ -62,6 +62,7 @@ resource "aws_db_instance" "main" {
   storage_type          = "gp3"
   # Encryption stays on: it costs nothing and an unencrypted instance would have to be replaced.
   storage_encrypted = true
+  kms_key_id        = var.db_customer_kms_key ? aws_kms_key.rds[0].arn : null
 
   # Off for on-demand staging: a standby buys a test run nothing and doubles the longest part of
   # the apply. Production MUST set db_multi_az = true (ADR-0028 requires a standby).
