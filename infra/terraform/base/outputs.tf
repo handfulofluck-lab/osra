@@ -77,11 +77,11 @@ output "internal_hmac_secret_arn" {
 
 output "internal_hmac_secret_fingerprint" {
   description = "First 12 hex characters of SHA-256 of INTERNAL_HMAC_SECRET, for the #637 evidence (shows it differs from any exposed value without revealing it). 48 bits of a hash of a 64-character random value reveal nothing usable, hence nonsensitive()."
-  value       = var.internal_hmac_secret_enabled ? nonsensitive(substr(sha256(random_password.internal_hmac[0].result), 0, 12)) : ""
+  value       = length(random_password.internal_hmac) == 1 ? nonsensitive(substr(sha256(random_password.internal_hmac[0].result), 0, 12)) : "" # out-of-band: production-secrets.sh prints it
 }
 
 output "execution_role_name" {
-  description = "Name of the ECS task execution role (env adds read access to the RDS-managed master secret for the db-admin task)."
+  description = "Name of the API task execution role. The db-admin task has its own (env/db_admin.tf), so this one reads neither the master password nor the osra_api password."
   value       = aws_iam_role.execution.name
 }
 
