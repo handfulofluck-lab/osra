@@ -167,8 +167,16 @@ public sealed class DesktopOfflineFallbackTests
     {
         public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
-            await Task.Delay(100, cancellationToken);
-            return await base.ReadAsync(buffer, cancellationToken);
+            while (true)
+            {
+                var bytes = ToArray();
+                if (bytes.Length >= 4)
+                {
+                    var frameLength = BitConverter.ToInt32(bytes, 0);
+                    if (bytes.Length >= frameLength + 4) return await base.ReadAsync(buffer, cancellationToken);
+                }
+                await Task.Delay(5, cancellationToken);
+            }
         }
     }
 
