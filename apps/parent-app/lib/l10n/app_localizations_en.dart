@@ -601,6 +601,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String accuracyShort(int meters) {
+    return '±$meters m';
+  }
+
+  @override
   String get mapPreview => 'Map preview';
 
   @override
@@ -1646,6 +1651,14 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String relativeHoursAgo(int count) {
     return '${count}h ago';
+  }
+
+  @override
+  String get alertTechnicalDetails => 'Technical details';
+
+  @override
+  String relativeOverHoursAgo(int count) {
+    return 'more than ${count}h ago';
   }
 
   @override
@@ -2859,6 +2872,67 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get alertPushBodyGeneric =>
       'Open OSRA to see the details.\nProtecting your family at all times.';
+
+  @override
+  String alertSosWhereMinutes(int n, String coords) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Last location: $coords, $n min ago',
+      one: 'Last location: $coords, 1 min ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertSosWhereHours(int n, String coords) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Last location: $coords, more than $n hours ago',
+      one: 'Last location: $coords, more than 1 hour ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertSosLocationMinutes(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Location from $n min ago. Tap to see it on the map.',
+      one: 'Location from 1 min ago. Tap to see it on the map.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertSosLocationHours(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Location from more than $n hours ago. Tap to see it on the map.',
+      one: 'Location from more than 1 hour ago. Tap to see it on the map.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertLocationAccuracy(int m) {
+    return 'accurate to about $m m';
+  }
+
+  @override
+  String get alertCopyCoordinates => 'Copy coordinates';
+
+  @override
+  String get alertCoordinatesCopied => 'Coordinates copied';
+
+  @override
+  String get alertOpenInMaps => 'Open in Maps';
+
+  @override
+  String get alertShowOnMap => 'Show on map';
 
   @override
   String get riskSelfHarm => 'Self-harm';

@@ -19,6 +19,8 @@
  *   1. Structural: `SIGNER_LOGIN`, `SECURITY_KEY_LOGIN` and `SECURITY_KEY_NAME` are each set once, to the values
  *      below; the gate reads comment bodies on exactly two lines, each with its author filter; and each parse
  *      line carries its awk filter exactly as below.
+ *      Since #730 it also holds main's policy rules: the policy is read only from `origin/main`, never the
+ *      PR's copy, and the gate requires the policy's `OK: counted` line.
  *   2. Behavioural: those lines, exactly as written in the workflow, run under bash + jq + awk + the policy's
  *      --parse over fixture comments from three accounts (forgeries included); only the two genuine signatures
  *      may come out. Without `jq` this layer is skipped locally, and in CI (`CI=true`) a missing `jq` is an
@@ -94,6 +96,20 @@ function structural(text) {
     if (parses.filter((l) => l === want).length !== 1) problems.push(`missing the parse line for ${what}: ${want}`);
   }
   if (parses.length !== 2) problems.push(`the gate must parse signatures on exactly two lines; found ${parses.length}`);
+  // The policy that judges a PR is main's copy, never the PR's own: no bootstrap fallback (#730).
+  const MAIN_POLICY = 'git show origin/main:scripts/verified-gate-policy.mjs';
+  const code = codeLines(text);
+  const policyRefs = code.filter((l) => /verified-gate-policy\.mjs/.test(l));
+  if (!policyRefs.some((l) => l.includes(MAIN_POLICY))) problems.push(`the policy is not read with \`${MAIN_POLICY}\``);
+  // Every mention outside an error message must be main's copy or the temp file it is written to.
+  for (const l of policyRefs) {
+    if (/^\s*echo "::error::/.test(l)) continue;
+    const all = (l.match(/verified-gate-policy\.mjs/g) || []).length;
+    const ok = (l.match(/(origin\/main:scripts\/|\$RUNNER_TEMP\/)verified-gate-policy\.mjs/g) || []).length;
+    if (all !== ok) problems.push(`the policy is taken from somewhere other than main: ${l.trim()}`);
+  }
+  // A policy run that prints no decision must not pass.
+  if (!code.some((l) => l.includes(`grep -q '^OK: counted '`))) problems.push("the gate does not require the policy's `OK: counted` line");
   return problems;
 }
 
@@ -195,9 +211,22 @@ if (process.argv.includes('--selftest')) {
     ['SECURITY_KEY_NAME set to Claude', swap(`SECURITY_KEY_NAME: ${KEY_NAME}`, 'SECURITY_KEY_NAME: Claude')],
     ['SIGNER_LOGIN removed', swap(`SIGNER_LOGIN: ${AGENT_LOGIN}`, '')],
   ];
+  const policyBroken = [
+    [
+      'a fallback to the PR copy of the policy',
+      swap(
+        `git show origin/main:scripts/verified-gate-policy.mjs > "$policy" 2>/dev/null || [ ! -s "$policy" ]; then`,
+        `git show origin/main:scripts/verified-gate-policy.mjs > "$policy" 2>/dev/null || [ ! -s "$policy" ]; then cp scripts/verified-gate-policy.mjs "$policy"`
+      ),
+    ],
+    ['reading the policy only from the PR checkout', swap(`git show origin/main:scripts/verified-gate-policy.mjs > "$policy"`, `cat scripts/verified-gate-policy.mjs > "$policy"`)],
+    ['dropping the OK-line requirement', swap(`grep -q '^OK: counted '`, `true`)],
+  ];
   const cases = [
     { name: 'the committed workflow passes', text: source, want: 0 },
     ...broken.map(([name, text]) => ({ name: `structural: ${name} fails`, run: () => structural(text), want: 1 })),
+    // #730's policy rules are structural only: the behavioural layer runs the local policy by design.
+    ...policyBroken.map(([name, text]) => ({ name: `structural: ${name} fails`, run: () => structural(text), want: 1 })),
   ];
   if (withJq) {
     // Each layer must catch every broken gate on its own, not only through the other one.

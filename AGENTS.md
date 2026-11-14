@@ -403,8 +403,26 @@ must use their prefix. A Kimi-authored commit (commit email) makes Kimi a co-aut
 | R2 | normal features and fixes | one member from another model family than the author, planted faults on changed logic, a device row if it runs on a device | 6 h |
 | R3 | auth, sessions, tokens, pairing, MFA/TOTP, invites, account deletion, device revocation, billing, refunds, purchases, entitlements, consent, children's location, the Prisma schema and migrations, API middleware, `infra/`, signing, secrets, the build/publish/deploy workflows, the merge gate and its lint, this file | two different members, neither the author: one from a model family other than the author's, and one security key (**Ahmed or Fable**). The two may share a family with each other, e.g. Claude + Fable on a Kimi or K31 PR | 24 h |
 
-**Bureaus, enforced by the gate.** A diff a family sees (app `features/`, `theme/`, `l10n/`, string resources,
-SwiftUI views, `site/`, `docs/store/`, `docs/design/`, or label `needs:uiux`) needs `UIUX-Bureau: reviewed <head sha>`.
+**Bureaus, enforced by the gate.** The maintainer, 2026-11-13 18:44Z: "any screen should have the UI/UX Bureau OK
+before it goes". The Bureau judges against ADR-0038 (logo, palette, one design language), Material 3, Apple HIG and
+WCAG, and reviews the whole screen on a device picture, in light and dark, English and Arabic (not a diff or a single
+string). So a diff a family sees needs `UIUX-Bureau: reviewed <head sha>`: the whole parent app (`apps/parent-app/lib/`,
+its Android `MainActivity` and its iOS `Runner/`), every Android resource and manifest in any source set, Kotlin that
+draws a screen or holds its words (`*Activity`, `*Screen(s)`, `*Overlay`, `*Dialog`, `*View`, `*Theme`, `*Compose`,
+`*Composable`, `*Copy`, `*Tile`, anything under a `ui/` package), the Android files that build a notification or cover
+in code (`CommandDispatcher`, `CommandPollWorker`, `UnlinkedNotice`, `CallEnforcer`, `LocationService`,
+`FilterVpnService`), the iOS app shell, extensions, resources, `L10n.swift`, `Shield*.swift` and SwiftUI views, the
+desktop lock overlay, dialogs, alerts, SOS prompt, block page, `Resources/` and `.xaml`, asset catalogs, `.lproj`,
+storyboards, `.arb`, `.strings(dict)`, `.xcstrings`, the API email templates (`services/api/src/lib/email/`) and push
+alert choice (`services/api/src/lib/push/notify.ts`), `site/`, `scripts/site/`, `docs/store/`, `docs/design/`, or label
+`needs:uiux`. A test file alone does not need it, but only a file in a test folder (`test/`, `tests/`, `Tests/`,
+`__tests__/`, `androidTest/`, `testFixtures/`) or a JS/TS `.test`/`.spec` file, and never one under a shipping root
+(`apps/*/lib/`, Android `src/main|full|play|debug|release/`, iOS `Runner/`, `Sources/`, `App/`, `Extensions/`, the
+desktop and Mac agents outside their test folders, `site/`, `scripts/site/`, `docs/store/`, `docs/design/`): a screen
+named like a test still needs the line. The list errs toward asking; the
+exact patterns are `UIUX_PATHS` in `scripts/verified-gate-policy.mjs`. When a matched file changes nothing anyone sees,
+the Bureau, and only the Bureau, may answer with `UIUX-Bureau: not user-visible <head sha>` instead; that waiver does
+not answer a `needs:uiux` label, which needs a real review.
 A diff with Arabic text (`*_ar.arb`, `values-ar/`, `ar.lproj/`, `site/ar/`, `*.ar.*`, `docs/store/`, `docs/customer/`,
 the API email templates, or label `needs:arabic`) needs `Arabic-Bureau: reviewed <head sha>`. Both carry forward across
 clean merges of `main` like `Verified-sha:`. The comment's signature line must name the Bureau (`— Claude (UI/UX

@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 import { signV2 } from "../src/lib/internalAuth.js";
 import { contentRoutes } from "../src/routes/content.js";
 import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
+import { expectKeyedAlertBody } from "./alertBody.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -128,6 +129,32 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
         }),
       }),
     );
+    expectKeyedAlertBody(
+      prismaMock.alert.create.mock.calls[0][0].data,
+      "alertBodySearchFlagged",
+      { engine: "youtube" },
+    );
+  });
+
+  it("the search alert's params are exactly the engine, so the URL never reaches the rendered sentence (Fable n5)", async () => {
+    // The URL is in the alert's `metadata` for the vault and the history list, and must NOT be in
+    // `bodyParams`: those are what the app substitutes into the sentence it shows a parent and into the
+    // push. `toEqual` cannot tell `{ engine }` from `{ engine, url: undefined }`, so this row sends a URL
+    // that exists and compares with `toStrictEqual`.
+    prismaMock.alert.create.mockResolvedValue({ id: "alert-p", childId: CHILD.id });
+    prismaMock.socialEvent.create.mockResolvedValue({ id: "event-p" });
+
+    const res = await postSearchEvent(app, {
+      childId: CHILD.id,
+      engine: "google",
+      query: "how can I kill myself tonight",
+      url: "https://www.google.com/search?q=how+can+I+kill+myself+tonight",
+    });
+    expect(res.statusCode).toBe(201);
+
+    const data = prismaMock.alert.create.mock.calls[0][0].data as { metadata?: Record<string, unknown> };
+    expect((data.metadata as { bodyParams: unknown }).bodyParams).toStrictEqual({ engine: "google" });
+    expect(JSON.stringify(data.metadata?.bodyParams)).not.toContain("http");
   });
 
   it("analyzes YouTube watch event and flags dangerous title (201)", async () => {
@@ -146,6 +173,11 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
     expect(body.flagged).toBe(true);
     expect(body.severity).toBe("critical");
     expect(prismaMock.alert.create).toHaveBeenCalled();
+    expectKeyedAlertBody(
+      prismaMock.alert.create.mock.calls[0][0].data,
+      "alertBodyYouTubeFlagged",
+      { channel: "bad_channel" },
+    );
   });
 
   it("parent endpoint GET /v1/content/searches requires parent role and returns decrypted history", async () => {
