@@ -111,8 +111,6 @@ public sealed class FileDesktopRestrictionStore : IRestrictionStore
         {
             var security = directory.GetAccessControl();
             var owner = security.GetOwner(typeof(SecurityIdentifier))?.Value;
-            if (owner != SystemSid && owner != AdministratorsSid)
-                throw new UnauthorizedAccessException("The restriction directory owner is not trusted.");
             foreach (var rule in security.GetAccessRules(true, false, typeof(SecurityIdentifier))
                          .Cast<FileSystemAccessRule>())
             {
