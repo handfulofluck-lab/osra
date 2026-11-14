@@ -512,11 +512,15 @@ export async function deviceRoutes(app: FastifyInstance) {
       { sub: device.id, deviceId: device.id, childId: record.childId, familyId: record.familyId, role: "device" },
       { expiresIn: DEVICE_TOKEN_TTL_SECONDS },
     );
+    // #602: the child's own phone shows the child's name on its status screen instead of an id. The name the
+    // parent typed, for the child this claim was approved for; null when it cannot be read.
+    const child = await prisma.child.findUnique({ where: { id: record.childId }, select: { displayName: true } });
     return reply.code(201).send({
       device,
       token,
       childId: record.childId,
       familyId: record.familyId,
+      childName: child?.displayName ?? null,
       hmacSecret: internalSecret,
     });
   });

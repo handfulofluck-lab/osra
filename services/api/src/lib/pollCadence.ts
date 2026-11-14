@@ -55,15 +55,42 @@ export function lastSeenIsStale(lastSeen: Date | null | undefined, now: Date = n
 /**
  * Refreshes `lastSeen` when it is older than [LAST_SEEN_REFRESH_MS]. The `lt` condition makes two
  * concurrent polls one write, and a failure never fails the poll (the commands are already claimed).
+ *
+ * `markOnline: false` writes `lastSeen` and nothing else (issue #601): the rules fetch proves the agent is
+ * awake, but `status` belongs to the calls that already own it — the poll, the telemetry upload and the
+ * location ping — so an agent read is not a second status writer.
  */
-export async function touchLastSeen(device: PolledDevice, now: Date = new Date()): Promise<void> {
+export async function touchLastSeen(
+  device: PolledDevice,
+  now: Date = new Date(),
+  opts: { markOnline?: boolean } = {},
+): Promise<void> {
   if (!lastSeenIsStale(device.lastSeen, now)) return;
   try {
     await prisma.device.updateMany({
       where: { id: device.id, lastSeen: { lt: new Date(now.getTime() - LAST_SEEN_REFRESH_MS) } },
-      data: { lastSeen: now, status: "online" },
+      data: opts.markOnline === false ? { lastSeen: now } : { lastSeen: now, status: "online" },
     });
   } catch (err) {
     console.warn(`[poll] lastSeen refresh failed device=${device.id}`, err);
   }
+}
+
+/**
+ * Refresh `lastSeen` for the device behind an agent token on a read that means "the agent is alive"
+ * (issue #601): today the rules fetch, `GET /v1/rules/:childId`.
+ *
+ * Parent tokens return immediately — a parent opening the dashboard must not make the phone look alive —
+ * and so does a device token with no id. There is deliberately no select first: the caller does not have
+ * the row in hand, `lastSeenIsStale(undefined)` is true, and the `lt` guard in the WHERE is what makes this
+ * one no-op statement when the clock is already fresh — one write, not a read plus a conditional write.
+ */
+export async function touchAgentLastSeen(
+  user: { role?: string; deviceId?: string; sub?: string } | undefined,
+  now: Date = new Date(),
+): Promise<void> {
+  if (user?.role !== "device") return;
+  const id = user.deviceId ?? user.sub;
+  if (!id) return;
+  await touchLastSeen({ id }, now, { markOnline: false });
 }

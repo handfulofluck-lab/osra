@@ -198,7 +198,7 @@ if (-not $env:JWT_SECRET) {
 if (-not (Start-Api 1 "api-v1on.log")) { Fail "API (v1 on) did not start" }
 
 Section "5. pair the phone"
-$login = Api POST "/v1/auth/login" @{ email = "demo@familyshield.dev"; password = "CorrectHorseBatteryStaple!" } $null
+$login = Api POST "/v1/auth/login" @{ email = "demo@osratech.com"; password = "CorrectHorseBatteryStaple!" } $null
 if (-not $login.token) { Fail "demo parent login failed on the shared DB" }
 $TOKEN = $login.token
 $me = Api GET "/v1/family/me" $null $TOKEN

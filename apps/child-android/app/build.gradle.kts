@@ -36,6 +36,28 @@ val hasReleaseKey = !releaseKeystore.isNullOrBlank() && !releaseKeystorePassword
     !releaseKeyAlias.isNullOrBlank() && !releaseKeyPassword.isNullOrBlank() &&
     releaseKeystoreFile != null && releaseKeystoreFile.exists()
 
+// ADR-0039 D2: the Full build has its **own** signing key, kept apart from the Play upload key so losing or
+// rotating one never touches the other. Same four-variable shape as the upload key, and the same loud failure
+// when it is half configured. Play must never read these: only the `full` flavour uses this config.
+val fullKeystore = System.getenv("OSRA_FULL_KEYSTORE")
+val fullKeystorePassword = System.getenv("OSRA_FULL_KEYSTORE_PASSWORD")
+val fullKeyAlias = System.getenv("OSRA_FULL_KEY_ALIAS")
+val fullKeyPassword = System.getenv("OSRA_FULL_KEY_PASSWORD")
+val fullKeystoreFile = fullKeystore?.let { rootProject.file(it) }
+val hasFullKey = !fullKeystore.isNullOrBlank() && !fullKeystorePassword.isNullOrBlank() &&
+    !fullKeyAlias.isNullOrBlank() && !fullKeyPassword.isNullOrBlank() &&
+    fullKeystoreFile != null && fullKeystoreFile.exists()
+val anyFullEnv = listOf(fullKeystore, fullKeystorePassword, fullKeyAlias, fullKeyPassword).any { !it.isNullOrBlank() }
+if (anyFullEnv && !hasFullKey) {
+    val missing = mutableListOf<String>()
+    if (fullKeystore.isNullOrBlank()) missing.add("OSRA_FULL_KEYSTORE")
+    if (fullKeystorePassword.isNullOrBlank()) missing.add("OSRA_FULL_KEYSTORE_PASSWORD")
+    if (fullKeyAlias.isNullOrBlank()) missing.add("OSRA_FULL_KEY_ALIAS")
+    if (fullKeyPassword.isNullOrBlank()) missing.add("OSRA_FULL_KEY_PASSWORD")
+    if (missing.isEmpty()) missing.add("a keystore file at ${fullKeystoreFile?.absolutePath ?: "?"} (not found)")
+    throw GradleException("Full signing is half configured; missing or unusable: ${missing.joinToString()}")
+}
+
 // #409 / #408's sibling: a **signed** release must not ship without Firebase config. Without the file the
 // Google Services plugin above is not applied, so there are no `google_app_id`/`gcm_defaultSenderId`
 // resources, `getToken()` returns nothing and no push token can register - silently, with no error. The
@@ -80,13 +102,27 @@ android {
         applicationId = "com.osratech.child"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        // Play refuses a second upload under a versionCode it already has, so the number must rise with every
+        // published build. CI sets `OSRA_VERSION_CODE` from its own run number, which only ever increases; the
+        // literal below is the floor for a local build and the value a tester's APK reports.
+        val osraVersionCode = (System.getenv("OSRA_VERSION_CODE") ?: "2").trim().toIntOrNull() ?: 2
+        versionCode = maxOf(osraVersionCode, 2)
+        versionName = (System.getenv("OSRA_VERSION_NAME") ?: "0.2.0").trim().ifBlank { "0.2.0" }
         // G4 of the customer guide. Declared here so every variant has the field; the real value is set on
         // `release` only (below), because a debug APK is what a tester points at a LAN server.
         buildConfigField("String", "API_BASE", "\"\"")
     }
     signingConfigs {
+        // ADR-0039 D2: `fullRelease` reads only the OSRA_FULL_* variables, so the Play upload key is never
+        // used for a Full artefact and the Full key is never used for a store build.
+        create("fullRelease") {
+            if (hasFullKey) {
+                storeFile = fullKeystoreFile
+                storePassword = fullKeystorePassword
+                keyAlias = fullKeyAlias
+                keyPassword = fullKeyPassword
+            }
+        }
         create("release") {
             if (hasReleaseKey) {
                 storeFile = releaseKeystoreFile
@@ -114,12 +150,11 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = if (hasReleaseKey) {
-                signingConfigs.getByName("release")
-            } else {
-                logger.warn("OSRA: no release keystore in the environment (OSRA_UPLOAD_KEYSTORE / _PASSWORD / OSRA_UPLOAD_KEY_ALIAS / OSRA_UPLOAD_KEY_PASSWORD) — release APK is debug-signed")
-                signingConfigs.getByName("debug")
-            }
+            // ADR-0039 D2: the signing key is chosen per FLAVOUR, below, not here. A `signingConfig` on the
+            // build type wins over the flavour's in AGP, so setting one here silently gave Full the store's
+            // key (or the debug key) while the flavour block looked correct — caught by Claude on #659 in the
+            // `signingReport`, and proved there: with OSRA_FULL_* set, `fullRelease` still resolved to debug.
+            // Nothing may set `signingConfig` on a build type again; the flavours own it.
             // G4 of the customer guide: the server a store build pairs against, so it never asks a child to
             // type an address the parent's screen cannot show. Read from the same repository variable the
             // parent app uses (`OSRA_API_BASE`), or `-Posra.apiBase=` locally. Checked here rather than only
@@ -155,6 +190,15 @@ android {
     productFlavors {
         create("play") {
             dimension = "distribution"
+            // ADR-0039 D2: the store build signs with the upload key. A missing key falls back to debug **with
+            // a warning naming the right variables**, so a tester's sideload still installs while nobody
+            // mistakes it for a release.
+            signingConfig = if (hasReleaseKey) {
+                signingConfigs.getByName("release")
+            } else {
+                logger.warn("OSRA: no upload keystore in the environment (OSRA_UPLOAD_KEYSTORE / _PASSWORD / OSRA_UPLOAD_KEY_ALIAS / OSRA_UPLOAD_KEY_PASSWORD) — Play release APK is debug-signed")
+                signingConfigs.getByName("debug")
+            }
             // No NotificationListenerService and no BIND_NOTIFICATION_LISTENER_SERVICE in this artefact,
             // so onboarding must not ask for a permission the build cannot use (ADR-0016 §4).
             buildConfigField("boolean", "CAPTURE_NOTIFICATIONS", "false")
@@ -165,6 +209,20 @@ android {
             dimension = "distribution"
             buildConfigField("boolean", "CAPTURE_NOTIFICATIONS", "true")
             buildConfigField("boolean", "CAPTURE_CALL_SMS", "true")
+            // ADR-0039 D1: the Full build is its own app, so a phone can tell it from the Play one, Play can
+            // never be handed a Full artefact, and the two can carry different signing keys. `namespace` and the
+            // Kotlin packages are untouched, and `EssentialPackages.OWN_PACKAGE` derives from
+            // `BuildConfig.APPLICATION_ID`, so the agent still recognises itself.
+            applicationIdSuffix = ".full"
+            versionNameSuffix = "-full"
+            // ADR-0039 D2: the Full key, and only the Full key. `buildTypes.release` cannot see the flavour, so
+            // the choice is made here rather than in a variant hook that AGP 8 makes read-only.
+            signingConfig = if (hasFullKey) {
+                signingConfigs.getByName("fullRelease")
+            } else {
+                logger.warn("OSRA: no Full keystore in the environment (OSRA_FULL_KEYSTORE / _PASSWORD / OSRA_FULL_KEY_ALIAS / OSRA_FULL_KEY_PASSWORD) — Full release APK is debug-signed")
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

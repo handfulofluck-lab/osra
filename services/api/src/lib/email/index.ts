@@ -8,6 +8,14 @@
  * live in `templates.ts` so copy and HTML stay out of route handlers.
  */
 
+import { SESv2Client, SendEmailCommand, type SendEmailCommandInput } from "@aws-sdk/client-sesv2";
+
+/**
+ * Imported statically on purpose: this module is ESM (`"type": "module"`, `node dist/server.js`), so a
+ * `require(...)` here throws `ReferenceError: require is not defined` at runtime in the container — while
+ * `tsc` accepts it, because `@types/node` still declares `require`. Importing the SDK reads no credentials;
+ * the provider chain resolves on the first `send`, which is why the *client* is what stays lazy.
+ */
 export interface EmailMessage {
   to: string | string[];
   subject: string;
@@ -70,6 +78,61 @@ export class ResendEmailSender implements EmailSender {
   }
 }
 
+/**
+ * AWS SES (v2) sender — Play decision 11 A, Karim 2026-11-11. Replaces Resend once it is the default.
+ *
+ * **No credentials in the environment.** On Fargate the task role supplies them through the default provider
+ * chain, so there is no key to leak into a repo, a log or a `.env`. `EMAIL_FROM` stays the single source of
+ * the From address, and the SES identity (DKIM) for that domain is infrastructure, not this file.
+ *
+ * The classification matches the Resend sender's, because callers branch on it: throttling, timeouts and 5xx
+ * are the provider's fault and are retried; any other 4xx is about this message or this recipient and is not.
+ */
+export class SesEmailSender implements EmailSender {
+  readonly name = "ses";
+  /**
+   * The transport is injected rather than the client, so a unit test asserts the exact request SES receives
+   * and a network failure cannot reach the suite. `buildSesSender` is the only place that knows about
+   * `SendEmailCommand`.
+   */
+  constructor(
+    private readonly transport: (input: Record<string, unknown>) => Promise<{ MessageId?: string }>,
+    private readonly from: string,
+  ) {}
+
+  async send(message: EmailMessage): Promise<EmailResult> {
+    const to = Array.isArray(message.to) ? message.to : [message.to];
+    try {
+      const out = await this.transport({
+        FromEmailAddress: this.from,
+        Destination: { ToAddresses: to },
+        Content: {
+          Simple: {
+            Subject: { Data: message.subject, Charset: "UTF-8" },
+            Body: {
+              Html: { Data: message.html, Charset: "UTF-8" },
+              Text: { Data: message.text, Charset: "UTF-8" },
+            },
+          },
+        },
+      });
+      return { ok: true, id: out.MessageId };
+    } catch (err) {
+      // SES errors carry `$metadata.httpStatusCode`; a network failure has none and is transient.
+      const e = err as { name?: string; message?: string; $metadata?: { httpStatusCode?: number } };
+      const status = e.$metadata?.httpStatusCode;
+      const retryable =
+        status === undefined ||
+        status === 408 ||
+        status === 429 ||
+        status >= 500 ||
+        e.name === "ThrottlingException" ||
+        e.name === "TooManyRequestsException";
+      return { ok: false, reason: `${e.name ?? "error"}: ${(e.message ?? "").slice(0, 200)}`, retryable };
+    }
+  }
+}
+
 export class ConsoleEmailSender implements EmailSender {
   readonly name = "console";
   constructor(private readonly production = process.env.NODE_ENV === "production") {}
@@ -92,8 +155,15 @@ export function setEmailSender(s: EmailSender | null): void {
 
 export function getEmailSender(env: NodeJS.ProcessEnv = process.env): EmailSender {
   if (sender) return sender;
-  const key = env.RESEND_API_KEY;
   const from = env.EMAIL_FROM;
+  const provider = (env.EMAIL_PROVIDER ?? "").trim().toLowerCase();
+  if (provider === "ses" && from) {
+    // The client is constructed lazily, so importing this module never needs AWS credentials.
+    sender = buildSesSender(from, env);
+    return sender;
+  }
+  if (provider === "ses" && !from) console.warn("[email] EMAIL_PROVIDER=ses but EMAIL_FROM missing; email disabled");
+  const key = env.RESEND_API_KEY;
   if (key && from) sender = new ResendEmailSender(key, from);
   else {
     if (key && !from) console.warn("[email] RESEND_API_KEY set but EMAIL_FROM missing; email disabled");
@@ -102,8 +172,22 @@ export function getEmailSender(env: NodeJS.ProcessEnv = process.env): EmailSende
   return sender;
 }
 
+/**
+ * The real client, built here so it is only constructed (and credentials only resolved) when SES is selected.
+ * On Fargate the task role is the credential source; nothing is read from env.
+ */
+function buildSesSender(from: string, env: NodeJS.ProcessEnv = process.env): EmailSender {
+  const client = new SESv2Client(env.AWS_REGION ? { region: env.AWS_REGION } : {});
+  return new SesEmailSender(
+    (input) => client.send(new SendEmailCommand(input as unknown as SendEmailCommandInput)),
+    from,
+  );
+}
+
 /** True when a real provider is configured — routes use it to decide whether a token may be echoed in dev. */
 export function emailConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
+  const provider = (env.EMAIL_PROVIDER ?? "").trim().toLowerCase();
+  if (provider === "ses") return Boolean(env.EMAIL_FROM);
   return Boolean(env.RESEND_API_KEY && env.EMAIL_FROM);
 }
 

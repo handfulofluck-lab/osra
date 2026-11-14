@@ -14,6 +14,7 @@ import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/providers/onboarding_provider.dart';
+import 'package:familyshield_parent/providers/server_provider.dart';
 
 import 'fake_api_client.dart';
 import 'test_app.dart';
@@ -117,7 +118,7 @@ void main() {
       await pumpScreen(tester, const LoginScreen(), api);
 
       await tester.enterText(fieldByLabel('Server'), 'http://testserver');
-      await tester.enterText(fieldByLabel('Email'), 'qa@familyshield.dev');
+      await tester.enterText(fieldByLabel('Email'), 'qa@osratech.com');
       await tester.enterText(fieldByLabel('Password'), 'wrong-password');
       await tapSignIn(tester);
       await tester.pumpAndSettle();
@@ -139,7 +140,7 @@ void main() {
       expect(find.byType(LoginScreen), findsOneWidget);
 
       await tester.enterText(fieldByLabel('Server'), 'http://testserver');
-      await tester.enterText(fieldByLabel('Email'), 'qa@familyshield.dev');
+      await tester.enterText(fieldByLabel('Email'), 'qa@osratech.com');
       await tester.enterText(fieldByLabel('Password'), 'good-password');
       await tapSignIn(tester);
       await tester.pumpAndSettle();
@@ -148,6 +149,42 @@ void main() {
       expect(find.byType(DashboardScreen), findsOneWidget);
       expect(find.text('Alex'), findsOneWidget);
       expect(find.text('Sam'), findsOneWidget);
+    });
+
+    testWidgets('a locked build hides the server field outside debug', (tester) async {
+      const builtIn = 'https://api.osratech.com';
+      final api = FakeApiClient(standardRoutes());
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          serverUrlProvider.overrideWith((_) => ServerUrlNotifier(api, builtIn: builtIn)),
+        ],
+        child: localizedTestApp(const LoginScreen(debug: false, builtIn: builtIn)),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('loginServerField')), findsNothing);
+      expect(find.text('Server'), findsNothing);
+      // The read-only caption stays: the built-in server is shown, not editable/redirectable.
+      expect(find.text('Server: https://api.osratech.com'), findsOneWidget);
+    });
+
+    testWidgets('debug keeps the server field visible and locked to the built-in value', (tester) async {
+      const builtIn = 'https://api.osratech.com';
+      final api = FakeApiClient(standardRoutes());
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          serverUrlProvider.overrideWith((_) => ServerUrlNotifier(api, builtIn: builtIn)),
+        ],
+        child: localizedTestApp(const LoginScreen(debug: true, builtIn: builtIn)),
+      ));
+      await tester.pumpAndSettle();
+
+      final field = tester.widget<TextField>(find.byKey(const ValueKey('loginServerField')));
+      expect(field.readOnly, isTrue);
+      expect(field.enabled, isFalse);
+      expect(field.controller!.text, builtIn);
     });
   });
 
@@ -158,23 +195,30 @@ void main() {
 
       expect(find.text('Alex'), findsOneWidget);
       expect(find.text('Sam'), findsOneWidget);
-      // Alex's device checked in just now → online; Sam's is 2h stale → offline.
-      expect(find.text('online'), findsOneWidget);
-      expect(find.text('offline'), findsOneWidget);
+      // #601: the word is the server's `status`, so a device it calls online reads online however old
+      // its `lastSeen` is. Sam's is 2h old and still online — the row below uses four hours.
+      expect(find.text('online'), findsNWidgets(2));
+      expect(find.text('offline'), findsNothing);
       // Battery chip shown for 55%, hidden for 0%.
       expect(find.text('55%'), findsOneWidget);
       expect(find.text('0%'), findsNothing);
     });
 
-    testWidgets('device shows offline when lastSeen is older than 3 minutes', (tester) async {
-      final api = FakeApiClient(standardRoutes());
+    /// Issue #601: the API's `status` is the server's judgement and it wins the word; `lastSeen` is
+    /// shown beside it as an age by the device card. The app used to override the word with a local
+    /// 15-minute window, which reported a healthy suspended iPhone — one that had last fetched its
+    /// rules four hours ago — as offline while `GET /v1/devices` answered `online`.
+    ///
+    /// Mutant: put `isDeviceOnline(d.lastSeen)` back in `ChildCard` and this row goes red.
+    testWidgets('a device the server calls online renders online with a four-hour-old lastSeen', (tester) async {
+      final api = FakeApiClient(
+        standardRoutes(familyMe: familyMeTwoChildren(samLastSeen: const Duration(hours: 4))),
+      );
       await pumpScreen(tester, const DashboardScreen(), api);
 
-      // Sam's device reported status 'online' from the server but its lastSeen
-      // is 2h old, so the card must derive 'offline'.
       final samCard = find.ancestor(of: find.text('Sam'), matching: find.byType(Card));
-      expect(find.descendant(of: samCard, matching: find.text('offline')), findsOneWidget);
-      expect(find.descendant(of: samCard, matching: find.text('online')), findsNothing);
+      expect(find.descendant(of: samCard, matching: find.text('online')), findsOneWidget);
+      expect(find.descendant(of: samCard, matching: find.text('offline')), findsNothing);
     });
 
     testWidgets('pull-to-refresh refetches the family overview', (tester) async {
@@ -238,12 +282,56 @@ void main() {
       expect(find.text('Last seen: never'), findsNothing);
     });
 
-    testWidgets('stale device shows offline and 0% battery chip is hidden', (tester) async {
+    /// Issue #601, the capability half: the API's stored report has to reach the screen. The fixture is
+    /// the `/v1/family/me` envelope — the read this page uses — carrying the `setup` projection exactly as
+    /// `services/api/src/routes/family.ts` now builds it.
+    testWidgets('a device with a stored report shows its features, not "has not reported"', (tester) async {
+      final me = familyMeTwoChildren();
+      (me['devices'] as List)[0]['setup'] = {
+        'reportedAt': DateTime.now().toUtc().subtract(const Duration(minutes: 3)).toIso8601String(),
+        'stale': false,
+        'features': {'lock_screen': 'ready', 'web_filter': 'degraded'},
+        'missing': ['overlay'],
+        'profiles': null,
+        'groups': null,
+      };
+      final api = FakeApiClient(standardRoutes(familyMe: me));
+      await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
+
+      expect(find.text('Phone setup'), findsOneWidget);
+      expect(find.text('Lock screen · Ready'), findsOneWidget);
+      expect(find.text('Web filter · Limited'), findsOneWidget);
+      expect(find.text('• Display over other apps'), findsOneWidget);
+      expect(find.text('This phone has not reported what it can do yet.'), findsNothing);
+    });
+
+    /// The other side of the same branch: a current server always sends the object and puts
+    /// `reportedAt: null` inside it for a phone that never reported. Testing the object alone would show
+    /// an empty "Phone setup" block to every parent of a phone that has not checked in yet.
+    testWidgets('a server-sent setup with no reportedAt still reads as "has not reported"', (tester) async {
+      final me = familyMeTwoChildren();
+      (me['devices'] as List)[0]['setup'] = {
+        'reportedAt': null,
+        'stale': true,
+        'features': <String, String>{},
+        'missing': <String>[],
+        'profiles': null,
+        'groups': null,
+      };
+      final api = FakeApiClient(standardRoutes(familyMe: me));
+      await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
+
+      expect(find.text('This phone has not reported what it can do yet.'), findsOneWidget);
+      expect(find.text('Phone setup'), findsNothing);
+    });
+
+    testWidgets('a stale-but-awake device keeps the server word; 0% battery chip is hidden', (tester) async {
       final api = FakeApiClient(standardRoutes());
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-2'), api);
 
       expect(find.text('Galaxy A14'), findsOneWidget);
-      expect(find.text('android 13 · offline'), findsOneWidget);
+      // #601: the server says online, so the page says online; lastSeen is a separate age line.
+      expect(find.text('android 13 · online'), findsOneWidget);
       expect(find.text('0%'), findsNothing);
     });
 

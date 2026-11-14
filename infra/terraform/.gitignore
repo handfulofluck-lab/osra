@@ -28,3 +28,8 @@ env/.terraform/
 .session-start
 
 # Note: .terraform.lock.hcl is intentionally NOT ignored; it pins provider versions.
+site/*.tfstate
+site/*.tfstate.*
+site/*.tfvars
+site/*.tfplan
+site/.terraform/

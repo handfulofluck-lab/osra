@@ -1,1 +1,5 @@
 #include "Generated.xcconfig"
+
+// #598: the iOS Google Maps key. CI writes it here from a secret before `flutter build ios`; empty in a
+// local build, which is why the map screen renders its "not available" state instead of crashing.
+MAPS_API_KEY=

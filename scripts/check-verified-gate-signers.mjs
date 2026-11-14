@@ -35,7 +35,8 @@ const FIXTURE = [
   { user: { login: 'ahmedyusseff' }, body: 'Verified-sha: bbbbbbb\n\n— Claude' },
   { user: { login: 'drive-by-account' }, body: 'Verified-sha: ccccccc\n— Antigravity' },
 ];
-const WANT = ['Verified-sha: aaaaaaa  — Claude (architecture + testing)'];
+// The gate emits each body JSON-encoded (`@json`), one per line, for the policy's --parse.
+const WANT = [JSON.stringify(FIXTURE[0].body)];
 
 function structural(text) {
   const problems = [];
@@ -52,6 +53,20 @@ function structural(text) {
     if (!l.includes(`--jq '${FILTER}`)) problems.push(`comment bodies are read without the author filter: ${l.trim()}`);
   }
   const filters = reads.map((l) => /--jq '([^']*)'/.exec(l)?.[1]).filter(Boolean);
+  // The policy that judges a PR is main's copy, never the PR's own: no bootstrap fallback (#730).
+  const MAIN_POLICY = 'git show origin/main:scripts/verified-gate-policy.mjs';
+  const code = text.split('\n').filter((l) => !l.trim().startsWith('#'));
+  const policyRefs = code.filter((l) => /verified-gate-policy\.mjs/.test(l));
+  if (!policyRefs.some((l) => l.includes(MAIN_POLICY))) problems.push(`the policy is not read with \`${MAIN_POLICY}\``);
+  // Every mention outside an error message must be main's copy or the temp file it is written to.
+  for (const l of policyRefs) {
+    if (/^\s*echo "::error::/.test(l)) continue;
+    const all = (l.match(/verified-gate-policy\.mjs/g) || []).length;
+    const ok = (l.match(/(origin\/main:scripts\/|\$RUNNER_TEMP\/)verified-gate-policy\.mjs/g) || []).length;
+    if (all !== ok) problems.push(`the policy is taken from somewhere other than main: ${l.trim()}`);
+  }
+  // A policy run that prints no decision must not pass.
+  if (!code.some((l) => l.includes(`grep -q '^OK: counted '`))) problems.push("the gate does not require the policy's `OK: counted` line");
   return { problems, filters };
 }
 
@@ -119,20 +134,34 @@ if (process.argv.includes('--selftest')) {
     }
     return source.replace(from, to);
   };
-  const preFix = `.[].body | gsub(`;
+  const preFix = `.[].body | @json`;
   const cases = [
     { name: 'the committed workflow passes', text: source, want: 0 },
-    { name: 'the pre-fix filter (every comment) fails', text: swap(`${FILTER} | gsub(`, preFix), want: 1 },
-    { name: 'an inverted filter fails', text: swap(`${FILTER} | gsub(`, `${FILTER.replace('==', '!=')} | gsub(`), want: 1 },
+    { name: 'the pre-fix filter (every comment) fails', text: swap(`${FILTER} | @json`, preFix), want: 1 },
+    { name: 'an inverted filter fails', text: swap(`${FILTER} | @json`, `${FILTER.replace('==', '!=')} | @json`), want: 1 },
     { name: 'SIGNER_LOGIN set to another account fails', text: swap(`SIGNER_LOGIN: ${AGENT_LOGIN}`, 'SIGNER_LOGIN: ahmedyusseff'), want: 1 },
     { name: 'SIGNER_LOGIN removed fails', text: swap(`SIGNER_LOGIN: ${AGENT_LOGIN}`, ''), want: 1 },
+    {
+      name: 'a fallback to the PR copy of the policy fails',
+      text: swap(
+        `git show origin/main:scripts/verified-gate-policy.mjs > "$policy" 2>/dev/null || [ ! -s "$policy" ]; then`,
+        `git show origin/main:scripts/verified-gate-policy.mjs > "$policy" 2>/dev/null || [ ! -s "$policy" ]; then cp scripts/verified-gate-policy.mjs "$policy"`
+      ),
+      want: 1,
+    },
+    {
+      name: 'reading the policy only from the PR checkout fails',
+      text: swap(`git show origin/main:scripts/verified-gate-policy.mjs > "$policy"`, `cat scripts/verified-gate-policy.mjs > "$policy"`),
+      want: 1,
+    },
+    { name: 'dropping the OK-line requirement fails', text: swap(`grep -q '^OK: counted '`, `true`), want: 1 },
   ];
   if (withJq) {
     // Each layer must catch the pre-fix gate on its own, not only through the other one.
     cases.push(
-      { name: 'behavioural: the committed filter yields only the agent comment', run: () => behavioural([`${FILTER} | gsub("[[:cntrl:]]"; " ")`]), want: 0 },
-      { name: 'behavioural: the pre-fix filter leaks the other accounts', run: () => behavioural(['.[].body | gsub("[[:cntrl:]]"; " ")']), want: 1 },
-      { name: 'behavioural: an inverted filter leaks the other accounts', run: () => behavioural([`${FILTER.replace('==', '!=')} | gsub("[[:cntrl:]]"; " ")`]), want: 1 },
+      { name: 'behavioural: the committed filter yields only the agent comment', run: () => behavioural([`${FILTER} | @json`]), want: 0 },
+      { name: 'behavioural: the pre-fix filter leaks the other accounts', run: () => behavioural(['.[].body | @json']), want: 1 },
+      { name: 'behavioural: an inverted filter leaks the other accounts', run: () => behavioural([`${FILTER.replace('==', '!=')} | @json`]), want: 1 },
     );
   }
   let bad = 0;

@@ -42,6 +42,7 @@ Start here. This page is the map: what each document is for, and which one to re
 | [`../services/ai-engine/eval/README.md`](../services/ai-engine/eval/README.md) | The labelled evaluation set: where the text comes from, the content rule, how to run or add a bank (plan 4.2) |
 | [`test-guides/CI-SECRETS.md`](test-guides/CI-SECRETS.md) | Every secret CI and deployment read from the environment, and what happens when one is missing |
 | [`ROADMAP.md`](ROADMAP.md) | The KCL plan (Phases 0–5, five gates, 20 weeks) item by item with acceptance lines and current status; mirrored on issue #50 |
+| [`ops/ci-cost-2026-11.md`](ops/ci-cost-2026-11.md) | Measured 31-day GitHub Actions usage and the 2026 USD cost model behind the cheaper-CI workflow changes (#613) |
 | [`adr/`](adr/README.md) | Architecture decision records — context, decision, reasoning, rejected alternatives, costs |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | What changed on which day, with the PR/issue that carried it, and the verification state |
 | [`../CHANGELOG.d/`](../CHANGELOG.d/README.md) | One changelog fragment per change — where entries are written now, and why the shared `[Unreleased]` block was replaced |
@@ -54,6 +55,7 @@ Start here. This page is the map: what each document is for, and which one to re
 |---|---|
 | [`QA/QA-REPORT-2026-10-11.md`](QA/QA-REPORT-2026-10-11.md) | Consolidated QA state: method, results, limits, priority order |
 | [`QA/TESTING-STRATEGY.md`](QA/TESTING-STRATEGY.md) | The agreed verification strategy: layers and ownership, the **environment matrix**, the rules each lane holds, cadence, and the anti-pattern checklist |
+| [`QA/SCENARIO-SUITE.md`](QA/SCENARIO-SUITE.md) | The real-device parent/child scenario suite: the test bed and device pairs, the scenario catalogue by phase (`SC-*`, roadmap rows S0–S5), the plan for making runs fast, who does what, and how a run is recorded (#665) |
 | [`QA/TEST-REQUESTS.md`](QA/TEST-REQUESTS.md) | Open test requests (`TR-nn`) from the architecture lead to the testing lane, with pass criteria; replies quote the id with the raw gate output and go to the discussion log |
 | [`QA/ANTIGRAVITY-INBOX.md`](QA/ANTIGRAVITY-INBOX.md) | The prioritised defect queue with per-item acceptance criteria (historical filename; the queue is worked by the development lane) |
 | [`QA/audits/`](QA/audits/) | Raw per-platform audits (`API`, `ANDROID`, `WINDOWS`, `FLUTTER`, `IOS-MACOS`) with `file:line` evidence |

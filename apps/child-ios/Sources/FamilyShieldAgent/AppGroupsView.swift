@@ -1,4 +1,4 @@
-#if canImport(SwiftUI) && canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+#if os(iOS)
 import FamilyControls
 import SwiftUI
 
@@ -14,51 +14,66 @@ public struct AppGroupsView: View {
     @State private var editSelection = FamilyActivitySelection()
     @State private var pickingEdit = false
     @State private var error: String?
+    @State private var serverBlocked = RuleStore.blockedGroupIds()
 
     public init() {}
 
     public var body: some View {
         Form {
             if list.groups.isEmpty {
-                Section { Text("No groups yet.").foregroundStyle(.secondary) }
+                Section { Text(L10n.tr("groups_empty")).foregroundStyle(.secondary) }
             }
             ForEach(list.groups, id: \.id) { group in
+                let byParentApp = list.isBlockedByParentApp(id: group.id, serverBlocked: serverBlocked)
                 Section {
-                    Toggle("Blocked", isOn: Binding(
-                        get: { group.blocked },
+                    // ADR-0037 PR B3: a group blocked from the parent app stays blocked here; only the parent app
+                    // can lift that block.
+                    Toggle(L10n.tr("groups_blocked"), isOn: Binding(
+                        get: { group.blocked || byParentApp },
                         set: { list.setBlocked($0, id: group.id); commit() }
                     ))
-                    LabeledContent("Chosen", value: group.counts.summary)
-                    Button("Change apps") {
+                    .disabled(byParentApp)
+                    .accessibilityIdentifier(A11yID.group(group.id, .blocked))
+                    LabeledContent(L10n.tr("groups_chosen"), value: group.counts.summary)
+                        .accessibilityIdentifier(A11yID.group(group.id, .chosen))
+                    Button(L10n.tr("groups_change")) {
                         editingId = group.id
                         editSelection = group.selection
                         pickingEdit = true
                     }
-                    Button("Delete group", role: .destructive) {
+                    .accessibilityIdentifier(A11yID.group(group.id, .change))
+                    Button(L10n.tr("groups_delete"), role: .destructive) {
                         list.remove(id: group.id)
                         commit()
                     }
+                    .accessibilityIdentifier(A11yID.group(group.id, .delete))
                 } header: {
                     Text(group.label)
                 } footer: {
                     if group.counts.isEmpty {
-                        Text("Nothing is chosen, so this group blocks nothing. Tap \"Change apps\" to choose again.")
+                        Text(L10n.tr("groups_empty_footer"))
+                    } else if byParentApp {
+                        Text(L10n.tr("groups_by_parent"))
                     }
                 }
             }
             Section {
-                TextField("Group name, e.g. Games", text: $newLabel)
-                Button("Choose apps") { pickingNew = true }
-                LabeledContent("Chosen", value: newSelection.counts.summary)
-                Button("Add group") { addGroup() }
-                if let error { Text(error).foregroundStyle(.red) }
+                TextField(L10n.tr("groups_name_field"), text: $newLabel)
+                    .accessibilityIdentifier(A11yID.groupsNewName)
+                Button(L10n.tr("groups_choose")) { pickingNew = true }
+                    .accessibilityIdentifier(A11yID.groupsNewChoose)
+                LabeledContent(L10n.tr("groups_chosen"), value: newSelection.counts.summary)
+                    .accessibilityIdentifier(A11yID.groupsNewChosen)
+                Button(L10n.tr("groups_add")) { addGroup() }
+                    .accessibilityIdentifier(A11yID.groupsNewAdd)
+                if let error { Text(error).foregroundStyle(.red).accessibilityIdentifier(A11yID.groupsError) }
             } header: {
-                Text("New group")
+                Text(L10n.tr("groups_new"))
             } footer: {
-                Text("Up to \(AppGroupLabel.maxLength) characters. Blocked apps show the OSRA screen with \"Ask parent\".")
+                Text(L10n.tr("groups_new_footer"))
             }
         }
-        .navigationTitle("App groups")
+        .navigationTitle(L10n.tr("groups"))
         .familyActivityPicker(isPresented: $pickingNew, selection: $newSelection)
         .familyActivityPicker(isPresented: $pickingEdit, selection: $editSelection)
         .onChange(of: pickingEdit) { stillPicking in
@@ -71,13 +86,13 @@ public struct AppGroupsView: View {
 
     private func addGroup() {
         guard !newSelection.counts.isEmpty else {
-            error = "Choose at least one app, category or website."
+            error = L10n.tr("groups_error_choose")
             return
         }
         guard list.add(label: newLabel, selection: newSelection, blocked: true) != nil else {
             error = AppGroupLabel.sanitize(newLabel) == nil
-                ? "Give the group a name."
-                : "There can be at most \(AppGroupList<FamilyActivitySelection>.maxGroups) groups."
+                ? L10n.tr("groups_error_name")
+                : L10n.tr("groups_error_max")
             return
         }
         error = nil
@@ -90,6 +105,8 @@ public struct AppGroupsView: View {
     private func commit() {
         AppGroupStore<FamilyActivitySelection>().save(list)
         ScreenTimeController().applyGroups(list)
+        // ADR-0037: the parent sees the change (label and counts only) without waiting for the next open.
+        Task { await LocationController.shared.reportGrant() }
     }
 }
 #endif

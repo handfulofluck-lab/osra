@@ -32,6 +32,8 @@ import com.familyshield.agent.enforcement.WindowLayout
 import com.familyshield.agent.enforcement.WindowSnapshot
 import com.familyshield.agent.security.GuardAttemptWindow
 import com.familyshield.agent.security.GuardDebouncePolicy
+import com.familyshield.agent.security.GuardWindow
+import com.familyshield.agent.security.GuardCoverPolicy
 import com.familyshield.agent.security.GuardGateState
 import com.familyshield.agent.security.ParentPinStore
 import com.familyshield.agent.security.TamperAlertWorker
@@ -86,6 +88,9 @@ class AccessibilityMonitorService : AccessibilityService() {
 
     /** Issue #175: the cover over a blocked PiP window, which stays above the block screen otherwise. */
     private val pipCover by lazy { PipCoverOverlay(this) }
+    /** osra-security#7: the cover over a protection screen that shares the screen ([GuardCoverPolicy]). */
+    private val guardCover by lazy { PipCoverOverlay(this) }
+    private var guardCoverBounds: WindowBounds? = null
 
     /** Issue #460: the fallback that raises the deferred block screen when no launcher event arrives. */
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
@@ -150,6 +155,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         media.onDestroy()
         rules.removeRulesChangedListener(rulesChanged)
         pipCover.remove()
+        guardCover.remove()
         // #460 review: a deferred raise posted inside the fallback window must not fire after the
         // service is gone — the child turning accessibility off is exactly when that window exists.
         cancelDeferredRaise()
@@ -165,8 +171,18 @@ class AccessibilityMonitorService : AccessibilityService() {
             media.onNotification(event)
             return
         }
+        // osra-security#7: a window opened, closed, moved or resized (split screen, pop-up, freeform). It names no
+        // package, and only the guard's cover needs it.
+        if (event?.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
+            coverSharedProtectionScreens()
+            return
+        }
         val eventPkg = event?.packageName?.toString() ?: return
         calls.onEvent()
+        // osra-security#7: before the own-window return below, which our gate's events take.
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            TamperScreenPolicy.mayHostProtectionScreen(eventPkg)
+        ) coverSharedProtectionScreens()
         // Issue #284: our own block screen is in front and this stream never records our package, so
         // the blocked app's interval would stay open and the next real event would charge it the stay.
         if (eventPkg == packageName) {
@@ -546,6 +562,11 @@ class AccessibilityMonitorService : AccessibilityService() {
         if (!TamperScreenPolicy.shouldGuard(screen, pinStore.isConfigured(), TamperState.graceUntil(this), now)) return
         lastGuardMs = now
         guardedWindowId = event.windowId
+        stepIn(screen, pkg, now)
+    }
+
+    /** Opens the PIN gate over [screen] and tells the parent (one alert per five-minute window). */
+    private fun stepIn(screen: TamperScreen, pkg: String?, now: Long) {
         // #484 (Flip4, 1 Nov): no global Back action before the gate any more. BACK is asynchronous, so it
         // landed either on the protection screen (closing it, the gate then over the list behind it) or on
         // the gate itself (whose back is "Go back", so the child was sent Home) — three end states across
@@ -571,6 +592,83 @@ class AccessibilityMonitorService : AccessibilityService() {
             attemptCount = attempt.state.count,
             screens = attempt.state.screens,
         )
+    }
+
+    /**
+     * osra-security#7: a protection screen that shares the screen with another window (split screen, a pop-up
+     * or freeform window) is covered by an accessibility overlay over its bounds, which is above every
+     * application window, until it is gone or a parent PIN starts the grace window ([GuardCoverPolicy]). The gate
+     * alone cannot do this: it refuses to share the screen, and One UI keeps pop-ups above it. Every visible
+     * application window is judged, not only the active one: in split screen the other half holds focus.
+     */
+    private fun coverSharedProtectionScreens() {
+        if (!settings.isPairedSync()) return removeGuardCover()
+        val now = System.currentTimeMillis()
+        val guardActive = pinStore.isConfigured() && now >= TamperState.graceUntil(this)
+        if (!guardActive) return removeGuardCover()
+        val all = runCatching { windows }.getOrNull().orEmpty()
+        val found = ArrayList<GuardWindow>(4)
+        var firstScreen = TamperScreen.NONE
+        var firstPkg: String? = null
+        try {
+            val apps = all.filter { runCatching { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }.getOrDefault(false) }
+            if (apps.size < 2) return removeGuardCover()
+            for (window in apps) {
+                val root = runCatching { window.root }.getOrNull() ?: continue
+                try {
+                    val pkg = runCatching { root.packageName?.toString() }.getOrNull()
+                    var screen = TamperScreen.NONE
+                    if (TamperScreenPolicy.mayHostProtectionScreen(pkg)) {
+                        val texts = ArrayList<CharSequence?>(64)
+                        collectTexts(root, texts, 0)
+                        screen = TamperScreenPolicy.classify(
+                            packageName = pkg,
+                            texts = texts,
+                            agentLabel = getString(com.familyshield.agent.R.string.app_name),
+                            adminLabel = getString(com.familyshield.agent.R.string.device_admin_label),
+                            agentPackage = packageName,
+                            ourAdminActive = deviceAdmin.isAdminActive(),
+                            // The last state change's class belongs to the active window only.
+                            windowClass = lastWindowClass.takeIf {
+                                runCatching { window.isActive }.getOrDefault(false) && lastWindowClassPkg == pkg
+                            },
+                        )
+                        if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) {
+                            screen = TamperScreen.NONE
+                        }
+                    }
+                    if (screen != TamperScreen.NONE && firstScreen == TamperScreen.NONE) {
+                        firstScreen = screen
+                        firstPkg = pkg
+                    }
+                    val bounds = runCatching {
+                        val r = android.graphics.Rect()
+                        window.getBoundsInScreen(r)
+                        WindowBounds(r.left, r.top, r.right, r.bottom)
+                    }.getOrNull()
+                    found.add(GuardWindow(protected = screen != TamperScreen.NONE, bounds = bounds))
+                } finally {
+                    runCatching { root.recycle() }
+                }
+            }
+        } finally {
+            all.forEach { runCatching { it.recycle() } }
+        }
+        val next = GuardCoverPolicy.cover(found, guardActive)
+        val previous = guardCoverBounds
+        guardCover.update(next)
+        guardCoverBounds = next
+        if (GuardCoverPolicy.stepIn(previous, next)) {
+            Log.i(TAG, "guard cover over a protection screen sharing the screen (osra-security#7)")
+            lastGuardMs = now
+            stepIn(firstScreen, firstPkg, now)
+        }
+    }
+
+    private fun removeGuardCover() {
+        if (guardCoverBounds == null) return
+        guardCover.remove()
+        guardCoverBounds = null
     }
 
     private var lastReraiseMs = 0L

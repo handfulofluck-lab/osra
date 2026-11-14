@@ -61,6 +61,12 @@ final class RuleSyncTests: XCTestCase {
         XCTAssertNil(parseHHMM("7"))
     }
 
+    #if os(iOS)
+    func testScreenTimeApplyIsPresentOnIOS() {
+        XCTAssertNotNil(RuleSyncer.defaultApply, "iOS must always have its Screen Time apply path")
+    }
+    #endif
+
     // MARK: - Decoding and storing
 
     func testDecodesTheServerShapeAndPicksTheBlockedApps() throws {
@@ -84,6 +90,59 @@ final class RuleSyncTests: XCTestCase {
         XCTAssertEqual(schedules.last?.allowedApps, ["com.example.reader"])
     }
 
+    // MARK: - App group rules (ADR-0037 PR B3)
+
+    private func withGroupRules(_ rules: String) -> Data {
+        Data(rulesJSON.replacingOccurrences(of: "\"alwaysAllowedApps\":",
+                                            with: "\"appGroupRules\": \(rules), \"alwaysAllowedApps\":").utf8)
+    }
+
+    func testTheGroupsTheParentBlockedAreReadLowercasedAndOnce() throws {
+        let rules = try JSONDecoder().decode(RuleSet.self, from: withGroupRules("""
+        [{ "groupId": "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6B", "action": "block" },
+         { "groupId": "6f1c2b8e-3d4a-4e5f-9a0b-1c2d3e4f5a6b", "action": "block" },
+         { "groupId": "0E9D8C7B-6A5F-4E3D-8C2B-1A0F9E8D7C6B", "action": "limit" }]
+        """))
+        XCTAssertEqual(rules.blockedGroupIds, ["6f1c2b8e-3d4a-4e5f-9a0b-1c2d3e4f5a6b"], "block only, one per group")
+    }
+
+    func testAServerBeforeB3aSendsNoGroupRules() throws {
+        let rules = try JSONDecoder().decode(RuleSet.self, from: Data(rulesJSON.utf8))
+        XCTAssertNil(rules.appGroupRules)
+        XCTAssertEqual(rules.blockedGroupIds, [])
+    }
+
+    func testTheBlockedGroupsAreStoredForTheGroupsScreenAndCleared() throws {
+        let rules = try JSONDecoder().decode(RuleSet.self, from: withGroupRules("""
+        [{ "groupId": "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6B", "action": "block" }]
+        """))
+        XCTAssertTrue(RuleStore.save(rules))
+        XCTAssertEqual(RuleStore.blockedGroupIds(), ["6f1c2b8e-3d4a-4e5f-9a0b-1c2d3e4f5a6b"])
+        // A later sync without the rule lifts the parent app's block.
+        XCTAssertTrue(RuleStore.save(try JSONDecoder().decode(RuleSet.self, from: Data(rulesJSON.utf8))))
+        XCTAssertEqual(RuleStore.blockedGroupIds(), [])
+        RuleStore.save(rules)
+        AgentIdentityStore.clear()
+        XCTAssertEqual(RuleStore.blockedGroupIds(), [], "unpairing clears it with the other rules")
+    }
+
+    // #602: the status screen reads back exactly when the rules were stored, and nothing before the first sync.
+    func testSyncedAtIsWhenTheRulesWereStored() throws {
+        RuleStore.clear()
+        XCTAssertNil(RuleStore.syncedAt(), "never synced")
+        let at = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertTrue(RuleStore.save(try JSONDecoder().decode(RuleSet.self, from: Data(rulesJSON.utf8)), now: at))
+        XCTAssertEqual(RuleStore.syncedAt(), at)
+        RuleStore.clear()
+        XCTAssertNil(RuleStore.syncedAt(), "unpairing forgets it")
+    }
+
+    // #602 item 4: a stored ruleset is a successful manual sync.
+    func testASyncedRulesetIsASuccessfulManualSync() throws {
+        let rules = try JSONDecoder().decode(RuleSet.self, from: Data(rulesJSON.utf8))
+        XCTAssertTrue(SyncStatus.succeeded(.synced(rules)))
+    }
+
     func testUnpairingClearsTheSyncedRules() throws {
         RuleStore.save(try JSONDecoder().decode(RuleSet.self, from: Data(rulesJSON.utf8)))
         AgentIdentityStore.clear()
@@ -92,6 +151,25 @@ final class RuleSyncTests: XCTestCase {
     }
 
     // MARK: - What a running interval shields (ShieldPolicy)
+
+    /// Bedtime and an allow-list routine shield every website as well as every app but the allowed ones; a
+    /// routine that only blocks some apps does not touch the web.
+    func testEverythingExceptAllowedIncludesTheWeb() {
+        XCTAssertTrue(ShieldPolicy.allExcept(["com.apple.mobilephone"]).shieldsAllWeb, "bedtime covers the browser")
+        XCTAssertFalse(ShieldPolicy.only(["com.example.game"]).shieldsAllWeb)
+        XCTAssertFalse(ShieldPolicy.none.shieldsAllWeb)
+    }
+
+    func testTheMonitorShieldsTheWebWhenThePolicySaysSo() throws {
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent/DeviceActivityMonitor.swift")
+        let text = try String(contentsOf: source, encoding: .utf8)
+        let allExcept = try XCTUnwrap(text.range(of: "case .allExcept(let allowed):"))
+        let web = try XCTUnwrap(text.range(of: "if policy.shieldsAllWeb { store.shield.webDomainCategories = .all() }"))
+        let only = try XCTUnwrap(text.range(of: "case .only(let blocked):"))
+        XCTAssertTrue(allExcept.lowerBound < web.lowerBound && web.lowerBound < only.lowerBound,
+                      "the web shield is applied in the all-except branch")
+    }
 
     private let homework = RuleStore.RoutineSchedule(name: "Homework", startTime: "16:00", endTime: "18:00",
                                                     swiftWeekdays: [2, 1], blockedApps: ["com.example.game"], allowedApps: [])

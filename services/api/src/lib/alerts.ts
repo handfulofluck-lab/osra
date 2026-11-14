@@ -1,4 +1,5 @@
 import type { Alert, Prisma } from "@prisma/client";
+import { ALERT_BODY_KEYS, type AlertBodyKey, type AlertBodyParams } from "@familyshield/shared-types";
 import { prisma } from "../db.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 import { notifyParentsOfAlert } from "./push/notify.js";
@@ -17,6 +18,13 @@ export interface RaiseAlertInput {
   category: string;
   title: string;
   body: string;
+  /**
+   * The parent app renders this key with params. An installed parent app that predates this change
+   * renders `body`, so removing the English title/body would blank every alert on every un-updated
+   * phone. The English pair is the compatibility floor; the key is the future.
+   */
+  bodyKey?: AlertBodyKey;
+  params?: AlertBodyParams;
   metadata?: Record<string, unknown>;
   /** Shown as the push title prefix; looked up when omitted. */
   childName?: string;
@@ -33,6 +41,67 @@ export interface RaiseAlertInput {
    * #225 event key, which keeps its duplicate-is-a-no-op rule.
    */
   attemptCount?: number | null;
+}
+
+export type KeyedRaiseAlertInput = Omit<RaiseAlertInput, "bodyKey" | "params"> & {
+  bodyKey: AlertBodyKey;
+  params: AlertBodyParams;
+};
+
+const ALERT_BODY_REQUIRED_PARAMS = {
+  alertBodyDeviceSilent: ["model", "minutes"],
+  alertBodyGeofenceEnter: ["label", "radiusM"],
+  alertBodyGeofenceExit: ["label", "radiusM"],
+  alertBodySearchFlagged: ["engine"],
+  alertBodySocialConcern: ["app"],
+  // `channel` is deliberately NOT required: YouTubeWatchSchema defaults it to "", so a flagged video with no
+  // channel is a real case, and the English body already copes with an empty one. A required param here would
+  // mean no alert at all for that video (#718 review).
+  alertBodyYouTubeFlagged: [],
+} as const satisfies Record<AlertBodyKey, readonly string[]>;
+
+/**
+ * Never let the localization fields stop an alert. A key or a param that cannot be trusted costs the
+ * *key*, not the alert: the row is written with the English `body` and the app falls back exactly as an
+ * un-updated app does (#718 review). The one thing that still throws is a programmer error a test catches —
+ * params without a key — because that is a caller mistake, not a runtime condition.
+ *
+ * `bodyKey` and `bodyParams` are **reserved**: a caller's `metadata` is stripped of them before the
+ * validated pair is added (Fable's n9, osra-security#16). Without the strip, a caller that passes its own
+ * `metadata.bodyKey` keeps it on every path that drops the validated key — so the app would render an
+ * untrusted key and params as if they had been validated.
+ */
+const RESERVED_ALERT_BODY_FIELDS = ["bodyKey", "bodyParams"] as const;
+
+function withoutReservedAlertBodyFields(
+  metadata: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (metadata === undefined) return undefined;
+  const out: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(metadata)) {
+    if (!(RESERVED_ALERT_BODY_FIELDS as readonly string[]).includes(name)) out[name] = value;
+  }
+  return out;
+}
+
+function metadataWithAlertBody(input: RaiseAlertInput): Record<string, unknown> | undefined {
+  if (input.bodyKey === undefined) {
+    if (input.params !== undefined) throw new Error("Alert body params require a bodyKey");
+    return withoutReservedAlertBodyFields(input.metadata);
+  }
+  if (!(ALERT_BODY_KEYS as readonly string[]).includes(input.bodyKey)) {
+    console.warn(`[alerts] unknown bodyKey "${input.bodyKey}"; raising the alert with the English body only`);
+    return withoutReservedAlertBodyFields(input.metadata);
+  }
+  const params = input.params ?? {};
+  for (const name of ALERT_BODY_REQUIRED_PARAMS[input.bodyKey]) {
+    const value = params[name];
+    if (value === undefined || value === null || value === "") {
+      console.warn(`[alerts] empty body param "${name}" for ${input.bodyKey}; raising the alert with the English body only`);
+      return withoutReservedAlertBodyFields(input.metadata);
+    }
+  }
+  return { ...withoutReservedAlertBodyFields(input.metadata), bodyKey: input.bodyKey, bodyParams: params };
 }
 
 /** A unique-constraint violation from Prisma (`P2002`), without importing the client's error class. */
@@ -90,50 +159,51 @@ async function applyAttemptCount(existing: Alert, input: RaiseAlertInput): Promi
 export async function raiseAlertOnce(
   input: RaiseAlertInput,
 ): Promise<{ alert: Alert; deduplicated: boolean }> {
-  const dedupeKey = input.dedupeKey ?? null;
+  const normalizedInput = { ...input, metadata: metadataWithAlertBody(input) };
+  const dedupeKey = normalizedInput.dedupeKey ?? null;
 
   if (dedupeKey) {
-    const existing = await findDuplicate({ ...input, dedupeKey });
-    if (existing) return { alert: await applyAttemptCount(existing, input), deduplicated: true };
+    const existing = await findDuplicate({ ...normalizedInput, dedupeKey });
+    if (existing) return { alert: await applyAttemptCount(existing, normalizedInput), deduplicated: true };
   }
 
   let alert;
   try {
     alert = await prisma.alert.create({
       data: {
-        childId: input.childId,
-        deviceId: input.deviceId ?? undefined,
-        severity: input.severity,
-        category: input.category,
-        title: input.title,
-        body: input.body,
-        metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
+        childId: normalizedInput.childId,
+        deviceId: normalizedInput.deviceId ?? undefined,
+        severity: normalizedInput.severity,
+        category: normalizedInput.category,
+        title: normalizedInput.title,
+        body: normalizedInput.body,
+        metadata: (normalizedInput.metadata ?? {}) as Prisma.InputJsonValue,
         dedupeKey: dedupeKey ?? undefined,
-        attemptCount: input.attemptCount ?? 1,
+        attemptCount: normalizedInput.attemptCount ?? 1,
       },
     });
   } catch (e) {
     // Two workers can pass the check above together; the partial unique index settles it.
     if (!dedupeKey || !isUniqueViolation(e)) throw e;
-    const existing = await findDuplicate({ ...input, dedupeKey });
-    if (existing) return { alert: await applyAttemptCount(existing, input), deduplicated: true };
+    const existing = await findDuplicate({ ...normalizedInput, dedupeKey });
+    if (existing) return { alert: await applyAttemptCount(existing, normalizedInput), deduplicated: true };
     throw e;
   }
 
-  await publishFamilyEvent(input.familyId, { type: "alert", payload: alert, ts: new Date().toISOString() });
+  await publishFamilyEvent(normalizedInput.familyId, { type: "alert", payload: alert, ts: new Date().toISOString() });
 
-  let childName = input.childName;
+  let childName = normalizedInput.childName;
   if (!childName) {
-    const child = await prisma.child.findUnique({ where: { id: input.childId }, select: { displayName: true } });
+    const child = await prisma.child.findUnique({ where: { id: normalizedInput.childId }, select: { displayName: true } });
     childName = child?.displayName;
   }
   // Fire-and-forget by contract: notifyParentsOfAlert never throws and must not delay the agent's
   // 201. Awaited here only so tests can observe it; the cost is one in-memory fan-out.
-  await notifyParentsOfAlert(input.familyId, alert, childName);
+  await notifyParentsOfAlert(normalizedInput.familyId, alert, childName);
   return { alert, deduplicated: false };
 }
 
 /** Backwards-compatible wrapper for producers that do not use a dedupe key. */
-export async function raiseAlert(input: RaiseAlertInput) {
+export async function raiseAlert(input: KeyedRaiseAlertInput) {
   return (await raiseAlertOnce(input)).alert;
 }

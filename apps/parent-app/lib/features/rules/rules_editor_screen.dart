@@ -194,7 +194,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
     final l10n = context.l10n;
     final st = _draft.screenTime;
     void update(ScreenTimeRule Function(ScreenTimeRule) f) =>
-        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: f(st), webFilter: _draft.webFilter, appRules: _draft.appRules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, updatedAt: _draft.updatedAt));
+        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: f(st), webFilter: _draft.webFilter, appRules: _draft.appRules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
 
     Widget timeTile(String label, String value, ValueChanged<TimeOfDay> onPicked) => ListTile(
           title: Text(label),
@@ -282,7 +282,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
     final l10n = context.l10n;
     final wf = _draft.webFilter;
     void update(WebFilterRule Function(WebFilterRule) f) =>
-        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: f(wf), appRules: _draft.appRules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, updatedAt: _draft.updatedAt));
+        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: f(wf), appRules: _draft.appRules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
 
     List<String> splitDomains(String text) =>
         text.split(',').map((d) => d.trim()).where((d) => d.isNotEmpty).toList();
@@ -364,11 +364,18 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
 
   Widget _buildApps() {
     final l10n = context.l10n;
+    // ADR-0037 decision 3: on an iPhone a blocked app id is hidden, not shielded; the rows say so.
+    final childHasIphone = ref.watch(familyProvider).valueOrNull?.devices
+            .any((d) => d.childId == widget.childId && d.platform == 'ios') ??
+        false;
+    final childHasAndroid = ref.watch(familyProvider).valueOrNull?.devices
+            .any((d) => d.childId == widget.childId && d.platform == 'android') ??
+        false;
     void update(List<AppRule> rules) =>
-        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: _draft.webFilter, appRules: rules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, updatedAt: _draft.updatedAt));
+        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: _draft.webFilter, appRules: rules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
 
     void updateAlwaysAllowed(List<String> apps) =>
-        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: _draft.webFilter, appRules: _draft.appRules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: apps, updatedAt: _draft.updatedAt));
+        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: _draft.webFilter, appRules: _draft.appRules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: apps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
 
     return ListView(
       key: const ValueKey('appsRulesList'),
@@ -401,11 +408,14 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
         // #172 / ADR-0035: payment surfaces stay blocked at bedtime, and this is where a family that
         // needs one fixes it. The sentence and the shortcut sit together on purpose — the decision is
         // only defensible if the way out of it is one tap away.
-        Text(
-          l10n.bedtimeBlocksPayments,
-          key: const ValueKey('bedtime-blocks-payments'),
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
+        // #643: Samsung Pay and Google Wallet are Android package ids. Hidden only when the child has NO
+        // Android device — a mixed child (an iPhone and a tablet) must keep it for the tablet.
+        if (childHasAndroid || !childHasIphone)
+          Text(
+            l10n.bedtimeBlocksPayments,
+            key: const ValueKey('bedtime-blocks-payments'),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         const SizedBox(height: AppSpace.sm),
         OutlinedButton.icon(
           icon: const Icon(Icons.add),
@@ -453,11 +463,21 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
           _AppRuleTile(
             key: ValueKey(_draft.appRules[i].packageId),
             rule: _draft.appRules[i],
+            childHasIphone: childHasIphone,
             onChanged: (r) => update([..._draft.appRules]..[i] = r),
             onRemove: () => update([..._draft.appRules]..removeAt(i)),
           ),
         const SizedBox(height: AppSpace.sm),
-        OutlinedButton.icon(
+        // #643: iOS never reports an app list, so the picker is a dead end for an iPhone-only child. A
+        // mixed child keeps it for the Android device, and the sentence explains the iPhone path beside it.
+        if (childHasIphone)
+          Padding(
+            key: const ValueKey('iosAppsExplained'),
+            padding: const EdgeInsets.only(bottom: AppSpace.sm),
+            child: Text(l10n.appGroupsBody, style: Theme.of(context).textTheme.bodyMedium),
+          ),
+        if (childHasAndroid || !childHasIphone)
+          OutlinedButton.icon(
           key: const ValueKey('pickInstalledApp'),
           icon: const Icon(Icons.apps),
           label: Text(l10n.chooseInstalledApp),
@@ -494,7 +514,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
   Widget _buildRoutines() {
     final l10n = context.l10n;
     void update(List<Routine> routines) =>
-        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: _draft.webFilter, appRules: _draft.appRules, routines: routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, updatedAt: _draft.updatedAt));
+        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: _draft.webFilter, appRules: _draft.appRules, routines: routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
 
     Future<void> edit([Routine? existing]) async {
       final result = await showDialog<Routine>(context: context, builder: (_) => _RoutineDialog(existing: existing));
@@ -532,7 +552,8 @@ class _AppRuleTile extends StatefulWidget {
   final AppRule rule;
   final ValueChanged<AppRule> onChanged;
   final VoidCallback onRemove;
-  const _AppRuleTile({super.key, required this.rule, required this.onChanged, required this.onRemove});
+  final bool childHasIphone;
+  const _AppRuleTile({super.key, required this.rule, required this.onChanged, required this.onRemove, this.childHasIphone = false});
 
   @override
   State<_AppRuleTile> createState() => _AppRuleTileState();
@@ -574,6 +595,14 @@ class _AppRuleTileState extends State<_AppRuleTile> {
               selected: {r.action},
               onSelectionChanged: (sel) => widget.onChanged(AppRule(packageId: r.packageId, appName: r.appName, action: sel.first, dailyLimitMinutes: r.dailyLimitMinutes)),
             ),
+            if (r.action == 'block' && widget.childHasIphone) ...[
+              const SizedBox(height: AppSpace.xs),
+              Text(
+                l10n.appRuleHiddenOnIphone,
+                key: ValueKey('hiddenOnIphone-${r.packageId}'),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
             if (r.action == 'time_limit') ...[
               const SizedBox(height: AppSpace.sm),
               TextField(

@@ -1,0 +1,3 @@
+/* Info.plist strings for the parent app (en). Keep the key names identical to Runner/Info.plist.
+   Apple's ITMS-90683 scan reads the built bundle, so this file and the Info.plist entry must agree. */
+"NSLocationWhenInUseUsageDescription" = "OSRA does not use your location. The family map shows only where your child's phone is.";

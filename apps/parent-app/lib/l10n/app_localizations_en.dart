@@ -601,6 +601,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String accuracyShort(int meters) {
+    return '±$meters m';
+  }
+
+  @override
   String get mapPreview => 'Map preview';
 
   @override
@@ -1646,6 +1651,14 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String relativeHoursAgo(int count) {
     return '${count}h ago';
+  }
+
+  @override
+  String get alertTechnicalDetails => 'Technical details';
+
+  @override
+  String relativeOverHoursAgo(int count) {
+    return 'more than ${count}h ago';
   }
 
   @override
@@ -2861,6 +2874,67 @@ class AppLocalizationsEn extends AppLocalizations {
       'Open OSRA to see the details.\nProtecting your family at all times.';
 
   @override
+  String alertSosWhereMinutes(int n, String coords) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Last location: $coords, $n min ago',
+      one: 'Last location: $coords, 1 min ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertSosWhereHours(int n, String coords) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Last location: $coords, more than $n hours ago',
+      one: 'Last location: $coords, more than 1 hour ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertSosLocationMinutes(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Location from $n min ago. Tap to see it on the map.',
+      one: 'Location from 1 min ago. Tap to see it on the map.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertSosLocationHours(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Location from more than $n hours ago. Tap to see it on the map.',
+      one: 'Location from more than 1 hour ago. Tap to see it on the map.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertLocationAccuracy(int m) {
+    return 'accurate to about $m m';
+  }
+
+  @override
+  String get alertCopyCoordinates => 'Copy coordinates';
+
+  @override
+  String get alertCoordinatesCopied => 'Coordinates copied';
+
+  @override
+  String get alertOpenInMaps => 'Open in Maps';
+
+  @override
+  String get alertShowOnMap => 'Show on map';
+
+  @override
   String get riskSelfHarm => 'Self-harm';
 
   @override
@@ -3010,4 +3084,40 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get grantBackgroundRefresh => 'Background app refresh';
+
+  @override
+  String get appGroupsTitle => 'App groups on this iPhone';
+
+  @override
+  String get appGroupsBody =>
+      'Groups are made on the child\'s iPhone, behind the parent PIN. Block one here and the iPhone shields its apps.';
+
+  @override
+  String appGroupsCounts(Object apps, Object categories, Object sites) {
+    return 'Apps $apps · Categories $categories · Websites $sites';
+  }
+
+  @override
+  String get appGroupsBlock => 'Block';
+
+  @override
+  String get appGroupsSaveFailed => 'Could not save the change. Try again.';
+
+  @override
+  String get setupMonitoringTitle => 'Which apps should OSRA watch for you?';
+
+  @override
+  String get setupMonitoringIntro =>
+      'OSRA checks messages in these apps for signs of bullying, grooming or self-harm, and tells you when it finds something. Tick the apps you want; you can change this any time in the rules.';
+
+  @override
+  String get setupMonitoringConsent =>
+      'A flagged message excerpt is kept for 90 days and an alert for 12 months. Nothing is read from an app you untick.';
+
+  @override
+  String get setupMonitoringContinue => 'Continue';
+
+  @override
+  String get appRuleHiddenOnIphone =>
+      'On the iPhone, this app is hidden instead of showing the OSRA screen.';
 }

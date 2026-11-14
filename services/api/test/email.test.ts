@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prismaMock, resetPrismaMock, buildApp, authHeader, MockRedis } from "./helpers.js";
 
@@ -13,7 +14,7 @@ vi.mock("../src/redis.js", async () => {
   };
 });
 
-import { ConsoleEmailSender, ResendEmailSender, setEmailSender, type EmailMessage, type EmailSender } from "../src/lib/email/index.js";
+import { ConsoleEmailSender, ResendEmailSender, SesEmailSender, emailConfigured, getEmailSender, setEmailSender, type EmailMessage, type EmailSender } from "../src/lib/email/index.js";
 import { digestEmail, inviteEmail, passwordResetEmail } from "../src/lib/email/templates.js";
 import { runDigestsDue, sendFamilyDigest } from "../src/jobs/digestScheduler.js";
 import { digestsDueAt } from "../src/lib/digestSchedule.js";
@@ -90,6 +91,117 @@ describe("templates", () => {
     const invite = inviteEmail("co@example.com", { inviterName: "I".repeat(200), familyName: longFamily, role: "guardian", link: "l" });
     expect(invite.subject).not.toContain("F".repeat(81));
     expect(invite.text).not.toContain("I".repeat(81));
+  });
+});
+
+describe("SES sender (Play decision 11 A)", () => {
+  // The client is injected, so these rows assert the *request* SES receives without the SDK reaching the
+  // network — the same shape the Resend rows use with a fetch mock.
+  it("sends FromEmailAddress, the destination and both bodies, and returns the MessageId", async () => {
+    const sent: unknown[] = [];
+    const client = {
+      send: vi.fn(async (cmd: unknown) => {
+        sent.push(cmd);
+        return { MessageId: "ses-1" };
+      }),
+    };
+    const sender = new SesEmailSender(client.send as never, "OSRA <no-reply@osratech.com>");
+    const r = await sender.send({ to: ["p@x", "q@y"], subject: "S", html: "<b>h</b>", text: "t" });
+    expect(r).toEqual({ ok: true, id: "ses-1" });
+    expect(sent[0]).toEqual({
+      FromEmailAddress: "OSRA <no-reply@osratech.com>",
+      Destination: { ToAddresses: ["p@x", "q@y"] },
+      Content: {
+        Simple: {
+          Subject: { Data: "S", Charset: "UTF-8" },
+          Body: { Html: { Data: "<b>h</b>", Charset: "UTF-8" }, Text: { Data: "t", Charset: "UTF-8" } },
+        },
+      },
+    });
+  });
+
+  it("a single recipient is still a list, because SES takes lists", async () => {
+    const sent: unknown[] = [];
+    const client = { send: vi.fn(async (cmd: unknown) => { sent.push(cmd); return { MessageId: "x" }; }) };
+    await new SesEmailSender(client.send as never, "a@b").send({ to: "only@x", subject: "S", html: "", text: "" });
+    expect((sent[0] as { Destination: { ToAddresses: string[] } }).Destination.ToAddresses).toEqual(["only@x"]);
+  });
+
+  it("a 429 with an unknown error name is still retryable, on the status alone", async () => {
+    // Claude's optional row: the name and the status clauses overlap for ThrottlingException, so dropping the
+    // status check stayed green. This pins the status on its own, which is what an unfamiliar provider error
+    // (a proxy, a new SES error code) looks like.
+    const transport = vi.fn(async () => {
+      throw { name: "SomeNewError", message: "slow down", $metadata: { httpStatusCode: 429 } };
+    });
+    const r = await new SesEmailSender(transport as never, "a@b").send({ to: "p@x", subject: "S", html: "", text: "" });
+    expect(r.ok).toBe(false);
+    expect(r.ok === false && r.retryable).toBe(true);
+  });
+
+  it("classifies provider errors instead of throwing, on the same rule as Resend", async () => {
+    const msg = { to: "p@x", subject: "S", html: "", text: "" };
+    const rejects = (err: unknown) => vi.fn(async () => { throw err; });
+    // Throttling and 5xx are the provider's fault: retry.
+    const throttled = await new SesEmailSender(
+      rejects({ name: "ThrottlingException", $metadata: { httpStatusCode: 429 } }) as never, "a@b",
+    ).send(msg);
+    expect(throttled).toEqual({ ok: false, reason: expect.stringContaining("ThrottlingException"), retryable: true });
+    const server = await new SesEmailSender(
+      rejects({ name: "InternalFailure", $metadata: { httpStatusCode: 500 } }) as never, "a@b",
+    ).send(msg);
+    expect(server.ok).toBe(false);
+    expect(server.ok === false && server.retryable).toBe(true);
+    // A rejected message is about this message: a retry sends the same bad request.
+    const rejected = await new SesEmailSender(
+      rejects({ name: "MessageRejected", message: "Email address is not verified", $metadata: { httpStatusCode: 400 } }) as never,
+      "a@b",
+    ).send(msg);
+    expect(rejected).toEqual({ ok: false, reason: "MessageRejected: Email address is not verified", retryable: false });
+    // A network failure has no status and is transient.
+    const network = await new SesEmailSender(rejects(new Error("socket hang up")) as never, "a@b").send(msg);
+    expect(network.ok === false && network.retryable).toBe(true);
+  });
+});
+
+describe("the module is valid ESM at runtime, not only under the test runner", () => {
+  // Claude compiled this head with tsc and called the path from plain Node: `require is not defined`. Vitest
+  // supplies `require`, so a runtime test cannot see it — and the production image runs `node dist/server.js`.
+  // This row is the guard that does: the email module must not use `require`.
+  const source = readFileSync(new URL("../src/lib/email/index.ts", import.meta.url), "utf8");
+  it("uses no `require(`, which plain Node ESM does not have", () => {
+    expect(source).not.toMatch(/require\s*\(/);
+  });
+  it("and the one SDK it needs is imported statically, so the import itself cannot throw", () => {
+    expect(source).toMatch(/^import \{[^}]*SESv2Client[^}]*\} from "@aws-sdk\/client-sesv2";/m);
+  });
+});
+
+describe("email provider selection", () => {
+  // The row Claude asked for: the *selection* path, not only the sender. Its absence is why a `require(...)`
+  // in an ESM module shipped past everything else — the sender rows never called `getEmailSender`.
+  afterEach(() => setEmailSender(null));
+
+  it("EMAIL_PROVIDER=ses selects the SES sender, and needs only EMAIL_FROM", () => {
+    setEmailSender(null);
+    const sender = getEmailSender({ EMAIL_PROVIDER: "ses", EMAIL_FROM: "OSRA <no-reply@osratech.com>" } as NodeJS.ProcessEnv);
+    expect(sender.name).toBe("ses");
+  });
+
+  it("emailConfigured is true for ses with EMAIL_FROM, and false without it", () => {
+    expect(emailConfigured({ EMAIL_PROVIDER: "ses", EMAIL_FROM: "a@b" } as NodeJS.ProcessEnv)).toBe(true);
+    // No EMAIL_FROM is not a configured provider: the route must keep echoing tokens in dev.
+    expect(emailConfigured({ EMAIL_PROVIDER: "ses" } as NodeJS.ProcessEnv)).toBe(false);
+    // Resend still needs its key, so the two providers do not share a rule by accident.
+    expect(emailConfigured({ RESEND_API_KEY: "re_x", EMAIL_FROM: "a@b" } as NodeJS.ProcessEnv)).toBe(true);
+    expect(emailConfigured({ EMAIL_PROVIDER: "ses", RESEND_API_KEY: "re_x" } as NodeJS.ProcessEnv)).toBe(false);
+  });
+
+  it("an unset provider keeps the previous behaviour", () => {
+    setEmailSender(null);
+    expect(getEmailSender({ EMAIL_FROM: "a@b" } as NodeJS.ProcessEnv).name).toBe("console");
+    setEmailSender(null);
+    expect(getEmailSender({ RESEND_API_KEY: "re_x", EMAIL_FROM: "a@b" } as NodeJS.ProcessEnv).name).toBe("resend");
   });
 });
 

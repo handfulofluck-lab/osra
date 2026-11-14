@@ -44,6 +44,18 @@ final class PairingTests: XCTestCase {
         try! JSONSerialization.data(withJSONObject: obj)
     }
 
+    // #602: the server's childName, trimmed; missing or blank is no name.
+    func testParsesTheChildsName() {
+        let base = ["device": ["id": "dev-1"], "token": "jwt", "childId": "child-1"] as [String: Any]
+        var withName = base; withName["childName"] = "  Alex "
+        XCTAssertEqual(PairingClient.parseClaimResponse(json(withName), baseURL: self.base)?.childName, "Alex")
+        XCTAssertNil(PairingClient.parseClaimResponse(json(base), baseURL: self.base)?.childName, "a server before #602")
+        var blank = base; blank["childName"] = "   "
+        XCTAssertNil(PairingClient.parseClaimResponse(json(blank), baseURL: self.base)?.childName)
+        var null = base; null["childName"] = NSNull()
+        XCTAssertNil(PairingClient.parseClaimResponse(json(null), baseURL: self.base)?.childName)
+    }
+
     func testParsesObjectDeviceWithHmacSecret() {
         let data = json([
             "device": ["id": "dev-1", "platform": "ios"],

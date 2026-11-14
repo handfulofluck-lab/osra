@@ -41,7 +41,9 @@ class AccessibilityServiceListPolicyTest {
     // does not exist.
     @Test
     fun `the component is package-from-the-build and class-from-the-namespace`() {
-        val installed = "com.osratech.child"
+        // ADR-0039 D1: Full is `com.osratech.child.full`, so the package half must come from the build rather
+        // than a literal — otherwise this row passes for Play and proves nothing about the artefact that ships.
+        val installed = com.familyshield.agent.BuildConfig.APPLICATION_ID
         val monitor = "com.familyshield.agent.services.AccessibilityMonitorService"
 
         assertTrue(

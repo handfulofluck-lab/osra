@@ -1,6 +1,8 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { getRedis } from "../redis.js";
 import { markDeviceRevoked } from "./deviceRevocation.js";
+import { stripAlertLocation } from "./alertLocation.js";
 
 /**
  * Phase 2c (ADR-0013): the durable usage model.
@@ -40,6 +42,20 @@ export function locationRetentionDays(env: NodeJS.ProcessEnv = process.env): num
   const n = Number(raw);
   if (raw === undefined || String(raw).trim() === "" || !Number.isInteger(n)) return Math.min(30, retentionDays(env));
   return Math.min(Math.max(n, 7), retentionDays(env));
+}
+
+/**
+ * Alerts have their own window (Play decision 10 B, Karim 2026-11-11): **365 days**, longer than the raw
+ * tables because an alert is the record a parent may need months later. `ALERT_RETENTION_DAYS` may lower it
+ * but never raise it, the same rule location follows, so a mistyped override cannot make the product keep a
+ * child's alerts forever, and the 7-day floor matches the other raw windows: a mistyped `1` must not wipe a
+ * parent's alert history every night. An unusable value takes the product default.
+ */
+export function alertRetentionDays(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.ALERT_RETENTION_DAYS;
+  const n = Number(raw);
+  if (raw === undefined || String(raw).trim() === "" || !Number.isInteger(n)) return 365;
+  return Math.min(Math.max(n, 7), 365);
 }
 
 export function rollupRetentionDays(env: NodeJS.ProcessEnv = process.env): number {
@@ -230,6 +246,13 @@ export interface RetentionResult {
   socialEvents: number;
   locationPings: number;
   usageDays: number;
+  /** Play decision 10 B: alerts older than `ALERT_RETENTION_DAYS` (365, never raised). */
+  alerts: number;
+  /**
+   * Issue #672 review (Fable B2): alerts still inside the year but past the location window whose five
+   * location keys were removed. The rows stay; only the place goes.
+   */
+  alertLocations: number;
 }
 
 /**
@@ -243,14 +266,46 @@ export async function applyRetention(at: Date = new Date(), env: NodeJS.ProcessE
   const rawCutoff = new Date(at.getTime() - retentionDays(env) * MS_PER_DAY);
   const locationCutoff = new Date(at.getTime() - locationRetentionDays(env) * MS_PER_DAY);
   const rollupCutoff = utcDay(new Date(at.getTime() - rollupRetentionDays(env) * MS_PER_DAY));
-  const [a, w, s, l, u] = await Promise.all([
+  const alertCutoff = new Date(at.getTime() - alertRetentionDays(env) * MS_PER_DAY);
+  const [a, w, s, l, u, al] = await Promise.all([
     prisma.activityEvent.deleteMany({ where: { ts: { lt: rawCutoff } } }),
     prisma.webVisit.deleteMany({ where: { ts: { lt: rawCutoff } } }),
     prisma.socialEvent.deleteMany({ where: { createdAt: { lt: rawCutoff } } }),
     prisma.locationPing.deleteMany({ where: { timestamp: { lt: locationCutoff } } }),
     prisma.appUsageDaily.deleteMany({ where: { day: { lt: rollupCutoff } } }),
+    // Play decision 10 B: alerts stop being kept forever. Before this they went only when the child was
+    // erased, which is not a retention policy a data-safety form can describe.
+    prisma.alert.deleteMany({ where: { createdAt: { lt: alertCutoff } } }),
   ]);
-  return { activityEvents: a.count, webVisits: w.count, socialEvents: s.count, locationPings: l.count, usageDays: u.count };
+  // Issue #672 review (Fable B2, ADR-0028 decision 5): a child's coordinates must not outlive the 30-day
+  // location window by riding inside an alert kept for up to a year — the privacy notice and the store
+  // data-safety answers both say 30 days. The alert stays (a parent must not lose the record of an SOS);
+  // the five keys come off. The scan is bounded by the alert year and costs one read per row that still
+  // has a location, on a nightly job.
+  const stale = (await prisma.alert.findMany({
+    where: { createdAt: { lt: locationCutoff } },
+    select: { id: true, metadata: true },
+  })) ?? [];
+  let alertLocations = 0;
+  for (const alert of stale) {
+    const stripped = stripAlertLocation((alert as { metadata?: unknown }).metadata);
+    if (stripped === null) continue;
+    // Prisma types a JSON column as InputJsonValue; the value is the same bag with five keys removed.
+    await prisma.alert.update({
+      where: { id: (alert as { id: string }).id },
+      data: { metadata: stripped as Prisma.InputJsonValue },
+    });
+    alertLocations += 1;
+  }
+  return {
+    activityEvents: a.count,
+    webVisits: w.count,
+    socialEvents: s.count,
+    locationPings: l.count,
+    usageDays: u.count,
+    alerts: al.count,
+    alertLocations,
+  };
 }
 
 /** Every child-scoped table, in an order that respects the foreign keys. Exported so a test can assert the list. */

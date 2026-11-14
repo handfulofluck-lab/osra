@@ -2,6 +2,7 @@
   {
     "kind": "check",
     "name": "E4 signed-request replay rejected",
+    "renamedTo": "E4/J2 byte-identical signed request replayed -> 401 replay (nonce consumed)",
     "reason": "Renamed and strengthened in TR-07 (#65): the assertion is now 'E4/J2 byte-identical signed request replayed -> 401 replay (nonce consumed)', which additionally requires reason === \"replay\" and that the first call was accepted. Verified by Kimi on 2026-10-17 at 085b438->921452d: probe 108/0 with the new name gating, and the old body-only behaviour is refused (J2 closed).",
     "acknowledgedBy": "Kimi Code",
     "date": "2026-10-17"
@@ -9,6 +10,7 @@
   {
     "kind": "check",
     "name": "J5 global secret cannot sign as a device that has its own secret",
+    "renamedTo": "J5 bare global secret (v1, or v2 without a caller) cannot sign as a device that has its own secret",
     "reason": "Renamed and strengthened in TR-07 (#65): now 'J5 bare global secret (v1, or v2 without a caller) cannot sign as a device that has its own secret', which asserts 401 for BOTH signer shapes (v1 and v2-without-caller) instead of one. Verified by Kimi 2026-10-17: 'v1=401 v2nocaller=401'.",
     "acknowledgedBy": "Kimi Code",
     "date": "2026-10-17"
@@ -30,6 +32,7 @@
   {
     "kind": "check",
     "name": "J7 legacy v1 device signatures refused (INTERNAL_SIGNING_ALLOW_V1=0)",
+    "renamedTo": "J7 legacy v1 device signatures refused by default (opt in with INTERNAL_SIGNING_ALLOW_V1=1)",
     "reason": "Label only; the condition is unchanged (401 with reason legacy_signature_disabled when v1 is refused). Renamed because TR-09 made INTERNAL_SIGNING_ALLOW_V1 opt-in: the refusal now happens by default, so '=0' is no longer the trigger and the old label told a reader that setting =0 was required. Verified by Kimi on 2026-10-17 (main@7f019d6) against TR-09's two configurations: 109/0 with 0 targets by default, 108/0 with 1 target when =1.",
     "acknowledgedBy": "Kimi Code",
     "date": "2026-10-17"
@@ -37,6 +40,7 @@
   {
     "kind": "check",
     "name": "G19 password-reset purpose token refused as a bearer credential (/mfa/enroll and /logout-all -> 401)",
+    "renamedTo": "G19 a password-reset purpose token is refused as a reset (no store record) and as a bearer credential (/mfa/enroll and /logout-all -> 401)",
     "reason": "Renamed and strengthened in #167 (single-use reset tokens): the assertion is now 'G19 a password-reset purpose token is refused as a reset (no store record) and as a bearer credential (/mfa/enroll and /logout-all -> 401)', which additionally requires the token to be refused at /reset/confirm because a hand-signed JWT carries no reset:<jti> record. The old name asserted confirm=200, which was the defect (#167): a token not minted through the route could set a password. Probe run not yet executed against a live stack on this branch, so the green state of the new assertion is the reviewer's to confirm.",
     "acknowledgedBy": "Kimi Code",
     "date": "2026-10-21"
@@ -86,6 +90,7 @@
   {
     "kind": "target",
     "name": "Q6 a guardian with no permissions is refused on every permission-, owner- and device-only route",
+    "renamedTo": "Q6 a guardian with no permissions is refused (no live guardian session)",
     "reason": "Renamed, not removed (#338, fixing a defect #329 introduced). This was the fallback target() printed only when the O-section guardian has no live session, and it shared its exact name with the gating check() of the same id. check-probe-integrity keys names per severity, so the shared name read as both 'promoted target -> check' and 'DEMOTED check -> target' and failed the gate on main itself (main vs main exits 1). The fallback is now 'Q6 a guardian with no permissions is refused (no live guardian session)'; the gating check keeps its name and is unchanged.",
     "acknowledgedBy": "Ahmed (security + testing)",
     "date": "2026-10-23"
@@ -93,8 +98,17 @@
   {
     "kind": "target",
     "name": "Q6b a co-parent with no permissions is refused on every permission-, owner- and device-only route",
+    "renamedTo": "Q6b a co-parent with no permissions is refused (no live co-parent session)",
     "reason": "Renamed, not removed (#338, fixing a defect #329 introduced). This was the fallback target() printed only when the O-section co-parent has no live session, and it shared its exact name with the gating check() of the same id. check-probe-integrity keys names per severity, so the shared name read as both 'promoted target -> check' and 'DEMOTED check -> target' and failed the gate on main itself (main vs main exits 1). The fallback is now 'Q6b a co-parent with no permissions is refused (no live co-parent session)'; the gating check keeps its name and is unchanged.",
     "acknowledgedBy": "Ahmed (security + testing)",
     "date": "2026-10-23"
+  },
+  {
+    "kind": "check",
+    "name": "G25 installed apps: the parent reads version 1 with package+label+system only",
+    "renamedTo": "G25 installed apps: the parent reads version 1 with package+label+system+essential",
+    "reason": "Label only; the condition is unchanged and was already strengthened by #644: the check now expects the four-key shape essential,isSystem,label,packageId and pins essential:true for com.android.settings and essential:false for com.example.game. #644 added the essential key/value assertions without weakening the check (the isSystem assertion is kept). Renamed because the old label said 'package+label+system only' while the parent read also returns the display-only essential field (issue #199).",
+    "acknowledgedBy": "K31",
+    "date": "2026-11-12"
   }
 ]

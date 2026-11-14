@@ -98,7 +98,7 @@ describe("family routes", () => {
       createdAt: new Date().toISOString(),
       parents: [{
         id: "parent-1",
-        email: "demo@familyshield.dev",
+        email: "demo@osratech.com",
         passwordHash: "argon2$secret",
         mfaSecret: "mfa",
         // ADR-0023: a joined batch must never reach a response, even though the relation is not
@@ -121,6 +121,64 @@ describe("family routes", () => {
     expect(JSON.stringify(body)).not.toContain("passwordHash");
     expect(JSON.stringify(body)).not.toContain("codeHash");
     expect(JSON.stringify(body)).not.toContain("mfaRecoveryCodes");
+    await app.close();
+  });
+
+  it("carries each device's setup projection on /me, the read the parent app's device cards use (#601)", async () => {
+    const app = await buildApp(familyRoutes, "/v1/family");
+    const reportedAt = new Date(Date.now() - 60_000);
+    prismaMock.family.findUnique.mockResolvedValue({
+      id: FAMILY.id,
+      name: "Demo",
+      region: "US",
+      createdAt: new Date().toISOString(),
+      parents: [],
+      children: [
+        {
+          id: CHILD_ID,
+          displayName: "Alex",
+          ruleSet: null,
+          consents: [],
+          geofences: [],
+          devices: [
+            {
+              id: "dev-1",
+              childId: CHILD_ID,
+              platform: "ios",
+              model: "iPhone 15",
+              osVersion: "18.1",
+              status: "online",
+              lastSeen: new Date(),
+              capabilities: {
+                client: { app: "child-ios", version: "0.1.0", build: 1, flavour: "full" },
+                grants: { accessibility: "granted", overlay: "missing" },
+                features: { lock_screen: "ready", app_blocking: "ready" },
+              },
+              capabilitiesReportedAt: reportedAt,
+            },
+            // Never reported: the projection still arrives, with `reportedAt: null` inside it.
+            { id: "dev-2", childId: CHILD_ID, status: "offline", lastSeen: null, capabilities: null, capabilitiesReportedAt: null },
+          ],
+        },
+      ],
+    });
+
+    const res = await app.inject({ method: "GET", url: "/v1/family/me", headers: authHeader(app) });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.devices[0].setup.reportedAt).toBe(reportedAt.toISOString());
+    expect(body.devices[0].setup.features.lock_screen).toBe("ready");
+    expect(body.devices[0].setup.missing).toContain("overlay");
+    expect(body.devices[1].setup).toEqual({
+      reportedAt: null,
+      stale: true,
+      features: {},
+      missing: [],
+      profiles: null,
+      groups: null,
+    });
+    // Both copies of the device carry it: the nested child list and the flat list the app reads.
+    expect(body.children[0].devices[0].setup).toEqual(body.devices[0].setup);
     await app.close();
   });
 
@@ -201,7 +259,7 @@ describe("family routes", () => {
       name: "Demo",
       region: "US",
       createdAt: new Date(),
-      parents: [{ id: "parent-1", email: "demo@familyshield.dev", passwordHash: "x" }],
+      parents: [{ id: "parent-1", email: "demo@osratech.com", passwordHash: "x" }],
       children: [
         {
           id: CHILD_ID,
@@ -518,7 +576,7 @@ describe("family routes", () => {
       parents: [
         {
           id: "parent-1",
-          email: "demo@familyshield.dev",
+          email: "demo@osratech.com",
           passwordHash: "argon2$secret",
           mfaSecret: "JBSWY3DPEHPK3PXP",
           mfaEnabled: true,
@@ -534,12 +592,12 @@ describe("family routes", () => {
     const res = await app.inject({ method: "GET", url: "/v1/family/export", headers: authHeader(app) });
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-disposition"]).toContain("attachment");
-    expect(res.headers["content-disposition"]).toContain(`familyshield-export-${FAMILY.id}.json`);
+    expect(res.headers["content-disposition"]).toContain(`osra-export-${FAMILY.id}.json`);
     const body = res.json();
     expect(body.exportedAt).toBeTruthy();
     expect(body.family.children).toHaveLength(1);
     expect(body.family.parents).toHaveLength(1);
-    expect(body.family.parents[0].email).toBe("demo@familyshield.dev");
+    expect(body.family.parents[0].email).toBe("demo@osratech.com");
     // Credential material must never leave the API — including in exports.
     const raw = JSON.stringify(body);
     expect(raw).not.toContain("passwordHash");
@@ -567,7 +625,7 @@ describe("family routes", () => {
       id: FAMILY.id,
       name: "Demo",
       region: "US",
-      parents: [{ id: "parent-1", email: "demo@familyshield.dev" }],
+      parents: [{ id: "parent-1", email: "demo@osratech.com" }],
       children: [{ id: CHILD_ID, displayName: "Alex", devices: [], consents: [] }],
     });
 

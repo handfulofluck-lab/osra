@@ -2,7 +2,7 @@ name: Child Android
 
 # The child agent (Android JVM unit tests, no emulator). Until 2026-10-24 this was the `child-android` job of
 # ci.yml and ran on every pull request; now it runs when the agent changes, on main when it changes, and
-# nightly on main whatever changed. `scripts/check-merged-manifest-gate.mjs` runs from the repository root in
+# weekly on main whatever changed. `scripts/check-merged-manifest-gate.mjs` runs from the repository root in
 # this job, so a change to it runs the job too. `scripts/check-ci-paths.mjs` keeps the two lists identical,
 # makes sure they name this file, and fails if a `node scripts/…` step here is not covered by them.
 on:
@@ -18,12 +18,16 @@ on:
       - "scripts/check-merged-manifest-gate.mjs"
       - ".github/workflows/child-android.yml"
   schedule:
-    - cron: "11 2 * * *"
+    - cron: "11 2 * * 1"
   workflow_dispatch:
 
 concurrency:
   group: child-android-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
+
+# **Do not rename this file.** Play's versionCode comes from this workflow's `run_number`; renaming or
+# recreating the workflow restarts the counter at 1, and Play then refuses every upload until the new count
+# passes the old one again. See the `OSRA_VERSION_CODE` line on the build step.
 
 jobs:
   child-android:
@@ -41,6 +45,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
       # Plan 1.8: same upload keystore as the parent app, materialised from the secret when present.
       # The build refuses a signed release without google-services.json (#409), and refuses a half-configured
       # one (any of the four OSRA_UPLOAD_* variables without the rest). So the keystore and its three passwords
@@ -90,6 +95,9 @@ jobs:
           # one the parent app reads, so one setting describes a deployment for both apps. Unset keeps today's
           # behaviour (the child types an address); set it to the production https URL before a store build.
           OSRA_API_BASE: ${{ vars.OSRA_API_BASE }}
+          # Play refuses a versionCode it already has, so the number rises with every run. The workflow's own
+          # run number only ever increases, and each app is published by one workflow.
+          OSRA_VERSION_CODE: ${{ github.run_number }}
         # assembleRelease proves the shrunk (R8), release-signed configuration builds; signing material
         # comes from the keystore step above when it is complete and falls back to the debug key. Both release flavours
         # are built because #170's gate asserts `android:testOnly` is absent from each release merge.
@@ -140,6 +148,18 @@ jobs:
             BADGING=$("$AAPT" dump badging "$APK")
             grep -q "targetSdkVersion:'35'" <<<"$BADGING" || { echo "::error::$APK does not target 35"; exit 1; }
             echo "$FLAVOUR release: targetSdk 35"
+            # ADR-0039 R1: each flavour must carry its own application id. A Full APK with the Play id would be
+            # refused by the store, and a Play APK with the Full id would install beside it on a child's phone.
+            if [ "$FLAVOUR" = "full" ]; then WANT_PKG="com.osratech.child.full"; else WANT_PKG="com.osratech.child"; fi
+            grep -q "package: name='$WANT_PKG'" <<<"$BADGING"               || { echo "::error::$APK is $(grep -o "package: name='[^']*'" <<<"$BADGING"), not $WANT_PKG"; exit 1; }
+            echo "$FLAVOUR release: package $WANT_PKG"
+            # Play 5.2: the number Play receives must be this run's, or a second upload is refused. Asserting
+            # it on the built artefact is the only way CI can prove the wiring, rather than trusting Gradle.
+            # `aapt2 dump badging` prints the code on the `package:` line as `versionCode='528'` — with an
+            # equals sign. The colon form belongs to lines like `targetSdkVersion:'35'`, so a colon pattern
+            # here can never match and the job goes red on a correct build (#591 review).
+            grep -q "versionCode='${{ github.run_number }}'" <<<"$BADGING"               || { echo "::error::$APK carries $(grep -o "versionCode='[0-9]*'" <<<"$BADGING"), not ${{ github.run_number }}"; exit 1; }
+            echo "$FLAVOUR release: versionCode ${{ github.run_number }}"
           done
           # The release config is the one in src/main (src/debug overrides it for the debug build only).
           grep -q 'cleartextTrafficPermitted="false"' app/src/main/res/xml/network_security_config.xml \
@@ -165,3 +185,39 @@ jobs:
           path: apps/child-android/app/build/outputs/bundle/playRelease/app-play-release.aab
           retention-days: 14
           if-no-files-found: error
+
+      # ADR-0039 D2: the key is chosen on the FLAVOUR, and a `signingConfig` on the build type silently
+      # overrides it — that is how Full once shipped on the store key while the flavour block looked right
+      # (#659). A key-less assertion cannot catch it: with no keys both flavours resolve to debug. Two
+      # throwaway keys made in the job tell the two policies apart and never leave the runner.
+      #
+      # LAST STEP ON PURPOSE (Claude on #659): this step rebuilds the release APKs, and a rebuild without
+      # OSRA_VERSION_CODE writes versionCode 2 over the artefacts that the versionCode assertion, the
+      # manifest gate and the upload above already read. Running it last means nothing downstream sees a
+      # throwaway-signed, mis-numbered APK.
+      # ADR-0039 D2: the key is chosen on the FLAVOUR, and a `signingConfig` on the build type silently
+      # overrides it — that is how Full once shipped on the store key while the flavour block looked right
+      # (#659). A key-less assertion cannot catch it: with no keys both flavours resolve to debug. Two
+      # throwaway keys made in the job tell the two policies apart and never leave the runner — each is
+      # valid for a day and readable only by this run. Passwords are six characters or more because
+      # keytool refuses shorter ones, which is the trap in the first version of this step.
+      - name: Each flavour signs with its own key (ADR-0039 D2, throwaway CI keys)
+        run: |
+          # A release build with a keystore refuses to configure without google-services.json (see the
+          # materialise step), so this check runs only where that file exists: on this repository's CI it
+          # does; on a fork it does not, and a red step there would say "Firebase config missing", not
+          # "signing is wrong". The durable guard for the real keys is full-release.yml (PR C).
+          if [ ! -f app/google-services.json ]; then
+            echo "::warning::no google-services.json, so the throwaway-key signing check is skipped; the real-key guard is full-release.yml"
+            exit 0
+          fi
+          T="$RUNNER_TEMP/d2"; mkdir -p "$T"
+          keytool -genkeypair -keystore "$T/up.jks" -storetype PKCS12 -storepass ci-upload -keypass ci-upload -alias up -dname "CN=CI-upload" -keyalg RSA -keysize 2048 -validity 1
+          keytool -genkeypair -keystore "$T/full.jks" -storetype PKCS12 -storepass ci-full-key -keypass ci-full-key -alias full -dname "CN=CI-full" -keyalg RSA -keysize 2048 -validity 1
+          export OSRA_UPLOAD_KEYSTORE="$T/up.jks" OSRA_UPLOAD_KEYSTORE_PASSWORD=ci-upload OSRA_UPLOAD_KEY_ALIAS=up OSRA_UPLOAD_KEY_PASSWORD=ci-upload
+          export OSRA_FULL_KEYSTORE="$T/full.jks" OSRA_FULL_KEYSTORE_PASSWORD=ci-full-key OSRA_FULL_KEY_ALIAS=full OSRA_FULL_KEY_PASSWORD=ci-full-key
+          ./gradlew assemblePlayRelease assembleFullRelease --console=plain
+          AS="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
+          "$AS" verify --print-certs app/build/outputs/apk/full/release/app-full-release.apk | grep -q 'CN=CI-full' || { echo "::error::the Full release is not signed with the Full key (ADR-0039 D2)"; exit 1; }
+          "$AS" verify --print-certs app/build/outputs/apk/play/release/app-play-release.apk | grep -q 'CN=CI-upload' || { echo "::error::the Play release is not signed with the upload key (ADR-0039 D2)"; exit 1; }
+          echo "each flavour signed with its own key"

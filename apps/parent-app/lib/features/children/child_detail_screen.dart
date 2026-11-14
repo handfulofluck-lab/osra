@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import 'command_messages.dart';
 import '../../providers/auth_provider.dart';
@@ -14,10 +15,11 @@ import '../../providers/family_provider.dart';
 import '../rules/rules_behind_banner.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
-import '../dashboard/dashboard_screen.dart' show formatLastSeen, isDeviceOnline;
+import '../dashboard/dashboard_screen.dart' show formatLastSeen;
 import '../pairing/pair_qr_screen.dart';
 import '../rules/active_window.dart';
 import '../social/social_screen.dart' show SocialSectionsView;
+import 'app_groups_section.dart';
 import 'phone_setup_section.dart';
 import 'command_history_screen.dart' show formatCommandTime;
 import '../../api/permission_errors.dart';
@@ -178,6 +180,8 @@ class _OverviewTab extends ConsumerWidget {
                   ),
                   // ADR-0034 decision 3: what this phone says it can do, and what is missing.
                   PhoneSetupSection(device: d),
+                  // ADR-0037 PR B3c: the iPhone's app groups, each with a Block switch.
+                  AppGroupsSection(device: d),
                   // Plan 3.6: the latest command's real state, straight from the
                   // durable queue. An unacked command is never described as sent.
                   Padding(
@@ -256,9 +260,9 @@ class _OverviewTab extends ConsumerWidget {
     );
   }
 
-  /// Online when the device checked in within [kDeviceOnlineWindow].
+  /// The server's judgement (`Device.status`), never a clock rule on this phone (#601).
   static String _statusLabel(BuildContext context, Device d) =>
-      isDeviceOnline(d.lastSeen) ? context.l10n.statusOnline : context.l10n.statusOffline;
+      d.isOnline ? context.l10n.statusOnline : context.l10n.statusOffline;
 }
 
 /// Compact latest-command line on a device card. It reports the durable
@@ -379,7 +383,7 @@ class _BonusTimeCardState extends ConsumerState<_BonusTimeCard> {
                 for (final minutes in const [15, 30, 60])
                   OutlinedButton(
                     onPressed: _granting ? null : () => _grant(minutes),
-                    child: Text('+$minutes'),
+                    child: Text(ltrIsolate('+$minutes')),
                   ),
               ],
             ),
@@ -633,7 +637,7 @@ class _LocationTab extends ConsumerWidget {
             Card(
               child: ListTile(
                 leading: const Icon(Icons.location_on),
-                title: Text('${p.lat.toStringAsFixed(6)}, ${p.lng.toStringAsFixed(6)}'),
+                title: Text(ltrIsolate('${p.lat.toStringAsFixed(6)}, ${p.lng.toStringAsFixed(6)}')),
                 subtitle: Text(l10n.accuracyLabel(
                   p.accuracyM.round(),
                   p.timestamp == null
@@ -749,10 +753,10 @@ class _HistoryScrubberState extends ConsumerState<_HistoryScrubber> {
                     Expanded(
                       child: Text(
                         ts == null
-                            ? '${ping.lat.toStringAsFixed(5)}, ${ping.lng.toStringAsFixed(5)} · ${l10n.accuracyUnknown}'
+                            ? '${ltrIsolate('${ping.lat.toStringAsFixed(5)}, ${ping.lng.toStringAsFixed(5)}')} · ${l10n.accuracyUnknown}'
                             : '${DateFormat.Hm(context.localeName).format(ts.toLocal())} · '
-                                '${ping.lat.toStringAsFixed(5)}, ${ping.lng.toStringAsFixed(5)} · '
-                                '±${ping.accuracyM.round()} m',
+                                '${ltrIsolate('${ping.lat.toStringAsFixed(5)}, ${ping.lng.toStringAsFixed(5)}')} · '
+                                '${l10n.accuracyShort(ping.accuracyM.round())}',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ),

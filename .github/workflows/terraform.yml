@@ -36,3 +36,8 @@ jobs:
         run: |
           terraform -chdir=env init -backend=false -input=false
           terraform -chdir=env validate
+
+      - name: site — init (no backend) and validate
+        run: |
+          terraform -chdir=site init -backend=false -input=false
+          terraform -chdir=site validate
