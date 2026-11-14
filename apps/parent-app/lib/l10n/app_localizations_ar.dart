@@ -3139,7 +3139,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get phoneSetupOtherSpaceClone =>
-      'في هذا الهاتف مساحة ثانية لنسخ التطبيقات (Dual Messenger).';
+      'هذا الهاتف يحتوي على مساحة أخرى مؤمنة، ربما تتيح هذه المساحة تشغيل أكثر من نسخة من نفس التطبيق، وقد لا يتمكن هذا التطبيق من مراقبتها طالما لم يتم إلغاء هذه الخاصية من قسم الإعدادات الخاصة بالهاتف.';
 
   @override
   String get phoneSetupOtherSpaceWork => 'في هذا الهاتف ملف عمل.';
