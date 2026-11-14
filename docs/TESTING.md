@@ -484,7 +484,7 @@ hotkey as part of this build gate. The unsigned artifact has **not yet been inst
 clean Windows machine**. Claude owns the isolated Windows Server 2025 Standard/admin and cross-session
 pipe rows; acceptance still requires the roadmap's clean Windows 11 run.
 
-The W1 suite is **312 tests in each configuration**. It pins the launched PID and co-located image,
+The W1 suite is **316 tests in each configuration**. It pins the launched PID and co-located image,
 SYSTEM server-token verification, NETWORK denial and token-derived session SIDs. It also replays the
 current lock/pause/wind-down on reconnect, checks the 20-second fallback and one-alert episode through a
 fake WTS seam, retains post-connect writes, limits SOS to one POST per 60 seconds per device, and requires
@@ -493,6 +493,15 @@ source and rejects others without changing existing non-desktop reports. Removin
 state replay, fallback, rate limit or source must turn its corresponding test red. Foreground usage is
 self-reported by the tray until W2's service-side sampling; these tests do not prove publisher signing or
 eliminate same-user code injection into a user-mode tray.
+
+`tests/run-windows-service-pipe.ps1` is a separate CI-only boundary row. It builds a small probe that hosts
+the production pipe in a CI-created SYSTEM service, verifies the client and typed lock, and performs two
+real restriction-store writes and a reload before removing the service and temporary files. It is never run
+on the development PC, and its helper is excluded from the uploaded artifact. The session-0 check does not
+open a SYSTEM process or token; the service's actual `File.Replace` is tested rather than a memory substitute.
+Device restrictions persist in a SYSTEM/admin-only JSON store and re-arm every 20-second grace period while
+no verified tray is connected, including a session that had no slot. The CI run proves the real Windows
+boundary; a green local suite alone does not prove it.
 
 W1b's salted PIN hashing and W3's installed-directory ACLs, MSI/service recovery and signing are required
 before a build reaches outsiders. W2 DNS/firewall/browser-policy replacement and W4's signed updater are
