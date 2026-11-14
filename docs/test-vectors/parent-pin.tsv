@@ -12,7 +12,7 @@ validate	<empty>	PIN must be at least 4 digits.
 validate	472947294	PIN must be at most 8 digits.
 validate	47a9	PIN must be digits only.
 # #771: plain spaces are stripped before validation on every platform.
-validate	47 9	ok
+validate	47 9	PIN must be at least 4 digits.
 validate	7777	Choose a PIN that is not all the same digit.
 validate	00000000	Choose a PIN that is not all the same digit.
 validate	1234	Choose a less predictable PIN.
