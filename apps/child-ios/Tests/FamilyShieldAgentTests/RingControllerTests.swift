@@ -363,3 +363,36 @@ extension RingControllerTests {
         XCTAssertNil(controller.state?.stopSource)
     }
 }
+
+
+@MainActor
+extension RingControllerTests {
+    func testEnglishFallbacksFollowTheBureau() async throws {
+        let defaults = UserDefaults(suiteName: AgentIdentityStore.suiteName)
+        XCTAssertTrue(AgentIdentityStore.save(AgentIdentity(
+            apiBaseURL: URL(string: "https://api.example.invalid")!, deviceToken: "device-jwt", deviceId: "dev-1",
+            childId: "child-1", familyId: "fam-1", hmacSecret: "hmac")))
+        var bodies: [[String: Any]] = []
+        let reporter = RingAlertReporter(
+            defaults: defaults,
+            reporter: AlertReporter(apiBaseURL: URL(string: "https://api.example.invalid")!, hmacSecret: "hmac"),
+            sender: { request in
+                bodies.append(try JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as! [String: Any])
+                return (201, Data())
+            })
+        let cases: [(RingEventState, Int, String)] = [
+            (.childDismissed, 1, "The ring alert was dismissed on the phone. It is ringing again."),
+            (.childDismissed, 2, "The ring alert was dismissed on the phone 2 times. It is still ringing."),
+            (.pinStopped, 0, "The ring was stopped on the phone with the parent PIN."),
+            (.parentStopped, 0, "A parent stopped the ring from the OSRA app."),
+            (.timedOut, 0, "The ring ended by itself after 5 minutes."),
+        ]
+        for (state, count, expected) in cases {
+            let delivered = await reporter.report(state: state, ringId: id, dismissalCount: count)
+            XCTAssertTrue(delivered)
+            let body = try XCTUnwrap(bodies.last)
+            XCTAssertEqual(body["title"] as? String, "Phone ring")
+            XCTAssertEqual(body["body"] as? String, expected)
+        }
+    }
+}

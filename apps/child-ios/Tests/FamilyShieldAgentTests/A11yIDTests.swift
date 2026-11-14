@@ -5,7 +5,7 @@ import XCTest
 /// XCUITest driver runs the same script in English and in Arabic.
 final class A11yIDTests: XCTestCase {
 
-    private static let views = ["PairingView.swift", "ParentPinViews.swift", "AppGroupsView.swift"]
+    private static let views = ["PairingView.swift", "ParentPinViews.swift", "AppGroupsView.swift", "RingView.swift"]
     /// A control starts a line as `Button(`, `Button {`, `Menu(` and so on. Both call shapes count, so a control
     /// written with a `label:` closure is seen too.
     private static let controlPattern = try! NSRegularExpression(
@@ -86,7 +86,7 @@ final class A11yIDTests: XCTestCase {
                      "statusPaired", "statusChildName", "statusServer", "statusLastSynced", "statusSyncNow",
                      "statusSyncFailed", "statusScreenTime", "statusScreenTimeButton", "statusLocation",
                      "statusLocationButton", "statusGroups", "statusRepair", "statusTechnicalDetails",
-                     "pinSetReason", "pinNew", "pinRepeat", "pinSetError", "pinSave", "pinGate", "pinGateMessage", "pinContinue",
+                     "pinSetReason", "pinNew", "pinRepeat", "pinSetError", "pinSave", "pinGate", "pinGateMessage", "pinContinue", "ringView",
                      "groupsNewName", "groupsNewChoose", "groupsNewChosen", "groupsNewAdd", "groupsError"]
         XCTAssertEqual(names.count, A11yID.all.count, "every identifier in A11yID.all is listed here")
         for name in names {
