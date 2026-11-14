@@ -641,3 +641,14 @@ run "production_requires_cors_origin" {
 
   expect_failures = [terraform_data.production_guard]
 }
+
+run "environment_must_be_staging_or_production" {
+  command = plan
+
+  variables {
+    environment = "prod"
+    api_image   = "example/api:test"
+  }
+
+  expect_failures = [var.environment]
+}

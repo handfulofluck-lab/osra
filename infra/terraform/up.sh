@@ -70,7 +70,7 @@ if [ "$OSRA_ENV" = production ]; then
     echo "==> production base: plan -> base/production.tfplan"
     init_stack base
     rc=0
-    terraform -chdir="$HERE/base" plan -input=false -detailed-exitcode -var-file=production.tfvars -out=production.tfplan || rc=$?
+    terraform -chdir="$HERE/base" plan -input=false -detailed-exitcode -var-file=production.tfvars -var environment=production -out=production.tfplan || rc=$?
     case $rc in
       0) rm -f "$HERE/base/production.tfplan"; echo "    base: no changes" ;;
       2) echo; echo "base has changes. Review them, apply with OSRA_PROD_APPLY=yes, then plan again for env"
@@ -89,7 +89,7 @@ if [ "$OSRA_ENV" = production ]; then
     else
       set --
     fi
-    terraform -chdir="$HERE/env" plan -input=false -var-file=production.tfvars "$@" -out=production.tfplan
+    terraform -chdir="$HERE/env" plan -input=false -var-file=production.tfvars -var environment=production "$@" -out=production.tfplan
     printf '%s\n' "$phase" >"$HERE/env/production.tfplan.phase"
     echo
     echo "Saved env/production.tfplan ($phase). Read it (terraform -chdir=infra/terraform/env show production.tfplan),"

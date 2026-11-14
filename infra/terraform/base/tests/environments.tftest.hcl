@@ -339,3 +339,13 @@ run "production_requires_log_retention_days" {
 
   expect_failures = [terraform_data.production_guard]
 }
+
+run "environment_must_be_staging_or_production" {
+  command = plan
+
+  variables {
+    environment = "prod"
+  }
+
+  expect_failures = [var.environment]
+}

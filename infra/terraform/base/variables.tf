@@ -11,9 +11,15 @@ variable "project" {
 }
 
 variable "environment" {
-  description = "Deployment environment used in resource names and tags."
+  description = "Deployment environment used in resource names and tags. \"production\" arms production_guard.tf; up.sh passes it explicitly for production runs."
   type        = string
   default     = "staging"
+
+  # A misspelling ("prod") would otherwise skip the production guard entirely (Fable, #765 re-review).
+  validation {
+    condition     = contains(["staging", "production"], var.environment)
+    error_message = "environment must be exactly staging or production."
+  }
 }
 
 variable "domain_name" {
