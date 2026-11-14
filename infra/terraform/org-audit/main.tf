@@ -219,7 +219,11 @@ resource "aws_cloudtrail" "org" {
   include_global_service_events = true
   enable_log_file_validation    = true
 
-  depends_on = [aws_s3_bucket_policy.trail]
+  # A 90-day searchable copy that the access alarms read (access.tf).
+  cloud_watch_logs_group_arn = "${aws_cloudwatch_log_group.trail.arn}:*"
+  cloud_watch_logs_role_arn  = aws_iam_role.trail_to_logs.arn
+
+  depends_on = [aws_s3_bucket_policy.trail, aws_iam_role_policy.trail_to_logs]
 }
 
 output "trail_arn" {

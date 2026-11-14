@@ -594,6 +594,27 @@ forbids deleting it early. Once, in the management account:
 into a temporary private instance, waits until it is available, prints what it restored, and deletes it. Its
 log is the gate evidence. Run it once before go-live and after any change to the backup plan.
 
+### Access: people with MFA, agents with one permanent key (#766 item 7)
+
+Karim's decision (14 Nov 2026, 21:17 UAE, final; #637 comments 6881323682 and 6881341115):
+
+- **People** sign in through IAM Identity Center (`org-audit/identity_center.tf`): user, permission set
+  `OsraAdministrator` (8-hour sessions), assigned in the management account and osra-production. In the
+  console, once: Settings → Authentication → require MFA at every sign-in, and require registration of a device
+  at first sign-in. Check: `aws sso-admin list-account-assignments` shows both accounts, and a sign-in asks
+  for MFA.
+- **Agents** (Claude and Kimi, through the AWS MCP server and Terraform on Karim's PC) keep one permanent key
+  of `agent_user_name`, full rights, no MFA and no expiry, so they cannot be locked out. This is a written owner
+  exception to "no long-lived keys". In its place (`org-audit/access.tf`):
+  - the organisation trail also writes to the log group `/osra/org-trail` (90 days);
+  - alarm `osra-agent-key-unexpected-source` emails both alarm addresses when the key, or a session it
+    assumed into a member account, is used from outside `agent_trusted_ip_prefixes`. Nothing is blocked, so a
+    new home address means one email and a one-line tfvars change, not a lock-out;
+  - alarm `osra-agent-key-changed` fires whenever one of that user's keys is created, disabled or deleted;
+  - `rotate-agent-key.sh` replaces the key without a gap (new key first, proved, then the old one deleted).
+    Its first run retires the 22 Oct key (osra-security#27). Rotate every 90 days and after any unexpected
+    alarm.
+
 ### Production cost (estimate, on-demand list prices in `eu-central-1`, 730 h/month)
 
 | Item | Basis | US$/month |
