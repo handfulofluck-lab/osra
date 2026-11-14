@@ -247,9 +247,9 @@ void main() {
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
       // the real label is "+15", not "+15 min" — read, not guessed — and it sits below the fold
-      await tester.ensureVisible(find.text('+15'));
+      await tester.ensureVisible(find.text('\u2066+15\u2069'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('+15'));
+      await tester.tap(find.text('\u2066+15\u2069'));
       await tester.pumpAndSettle();
 
       expect(api.calls('POST', '/v1/controls/children/child-1/bonus'), hasLength(1));

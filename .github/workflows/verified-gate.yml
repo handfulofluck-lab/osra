@@ -126,13 +126,12 @@ jobs:
 
           # The policy (scripts/verified-gate-policy.mjs) parses the signatures and decides whether they are enough:
           # author from the branch prefix, model families, risk tier from labels and paths, Bureau lines. Taken from
-          # origin/main like the carry script, so a PR cannot loosen the policy that judges it. The one exception is
-          # bootstrap: before the policy reaches main, the PR's own copy is used and the log says so (to be removed
-          # in the first PR after #721 merges).
+          # origin/main like the carry script, so a PR cannot loosen the policy that judges it. No fallback to the
+          # PR's own copy: if main's policy cannot be read, the gate fails closed.
           policy="$RUNNER_TEMP/verified-gate-policy.mjs"
-          if ! git show origin/main:scripts/verified-gate-policy.mjs > "$policy" 2>/dev/null; then
-            echo "::warning::origin/main has no scripts/verified-gate-policy.mjs yet (bootstrap): using this PR's copy."
-            cp scripts/verified-gate-policy.mjs "$policy"
+          if ! git show origin/main:scripts/verified-gate-policy.mjs > "$policy" 2>/dev/null || [ ! -s "$policy" ]; then
+            echo "::error::Could not read scripts/verified-gate-policy.mjs from origin/main: failing closed."
+            exit 1
           fi
 
           # One JSON-encoded body per line, from SIGNER_LOGIN only. The policy's --parse turns each body into
@@ -183,8 +182,15 @@ jobs:
               files: ($files | split("\n") | map(select(length > 0))),
               signatures: ($valid | split("\n") | map(select(length > 0) | split("\t") | {kind: .[0], name: .[1]}))}' \
             > "$RUNNER_TEMP/policy-input.json"
-          if ! node "$policy" < "$RUNNER_TEMP/policy-input.json"; then
+          if ! node "$policy" < "$RUNNER_TEMP/policy-input.json" > "$RUNNER_TEMP/policy-out.txt"; then
+            cat "$RUNNER_TEMP/policy-out.txt"
             echo "::error::'state:verified' is set, but the signatures valid at head $HEAD_SHA do not meet the mesh policy (AGENTS.md §6.6). A push after verification needs a fresh signature unless it only merged main and left the PR's own change identical."
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/policy-out.txt"
+          # A policy that exits 0 without printing its decision (e.g. its CLI never ran) is not a pass.
+          if ! grep -q '^OK: counted ' "$RUNNER_TEMP/policy-out.txt"; then
+            echo "::error::The policy printed no decision: failing closed."
             exit 1
           fi
           echo "OK — head $HEAD_SHA verified under the mesh policy."

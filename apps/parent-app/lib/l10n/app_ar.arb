@@ -164,6 +164,7 @@
   "locationLoadFailed": "تعذّر تحميل الموقع: {error}",
   "noLocationReported": "لم يُبلَّغ عن أي موقع بعد",
   "accuracyLabel": "الدقة ±{meters} م · {time}",
+  "accuracyShort": "الدقة ±{meters} م",
   "mapPreview": "معاينة الخريطة",
   "locationHistoryLoadFailed": "تعذّر تحميل السجل: {error}",
   "noLocationHistoryToday": "لا يوجد سجل مواقع لليوم",

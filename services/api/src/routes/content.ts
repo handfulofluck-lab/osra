@@ -165,6 +165,8 @@ export async function contentRoutes(app: FastifyInstance) {
         category: verdict.concernTypes.includes("self_harm") ? "self_harm" : "ai_concern",
         title: `Search query concern on ${engine}`,
         body: `A concerning search was conducted on ${engine}`,
+        bodyKey: "alertBodySearchFlagged",
+        params: { engine },
         metadata: { engine, concernTypes: verdict.concernTypes, url },
         childName: child.displayName,
       });
@@ -242,6 +244,8 @@ export async function contentRoutes(app: FastifyInstance) {
       category: "ai_concern",
       title: `YouTube video flagged: ${title.slice(0, 40)}`,
       body: `A video with sensitive content was opened on YouTube (${channel})`,
+      bodyKey: "alertBodyYouTubeFlagged",
+      params: { channel },
       metadata: { videoId, channel, concernTypes: verdict.concernTypes },
       childName: child.displayName,
     });

@@ -18,6 +18,7 @@ import {
 } from "../src/jobs/deviceSilence.js";
 import { deviceRoutes } from "../src/routes/devices.js";
 import { MockRedis, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
+import { expectKeyedAlertBody } from "./alertBody.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -66,6 +67,11 @@ describe("device-silence watch (plan 1.9 finding: a wiped agent cannot alert, th
       expect.objectContaining({
         data: expect.objectContaining({ category: "tamper", severity: "critical", deviceId: "dev-1", metadata: expect.objectContaining({ type: "device_silent" }) }),
       }),
+    );
+    expectKeyedAlertBody(
+      prismaMock.alert.create.mock.calls[0][0].data,
+      "alertBodyDeviceSilent",
+      { model: "SM-F721B", minutes: 45 },
     );
     expect(redis.set).toHaveBeenCalledWith(`jobs:device-silent:dev-1:${lastSeen.toISOString()}`, expect.any(String), "EX", 7 * 24 * 3600, "NX");
 

@@ -298,6 +298,12 @@
       "time": { "type": "String" }
     }
   },
+  "accuracyShort": "±{meters} m",
+  "@accuracyShort": {
+    "placeholders": {
+      "meters": { "type": "int" }
+    }
+  },
   "mapPreview": "Map preview",
   "locationHistoryLoadFailed": "Failed to load history: {error}",
   "@locationHistoryLoadFailed": {

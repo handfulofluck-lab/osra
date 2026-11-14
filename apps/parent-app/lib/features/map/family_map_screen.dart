@@ -8,6 +8,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
@@ -143,7 +144,7 @@ class ChildMapSheet extends ConsumerWidget {
           )),
           const SizedBox(height: AppSpace.xs),
           // NOTE: reverse geocoding is a non-goal; show raw coordinates as the address placeholder.
-          Text('${ping.lat.toStringAsFixed(6)}, ${ping.lng.toStringAsFixed(6)}'),
+          Text(ltrIsolate('${ping.lat.toStringAsFixed(6)}, ${ping.lng.toStringAsFixed(6)}')),
           if (device != null && device!.batteryPct > 0) ...[
             const SizedBox(height: AppSpace.xs),
             Text(context.l10n.familyMapBattery(device!.batteryPct)),

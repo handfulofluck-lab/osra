@@ -601,6 +601,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String accuracyShort(int meters) {
+    return '±$meters m';
+  }
+
+  @override
   String get mapPreview => 'Map preview';
 
   @override
