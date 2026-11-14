@@ -4,7 +4,9 @@
 # If anything fails before the new key is proven, a trap deletes the NEW key and restores the credentials
 # file, so the old key keeps working and the user is left with exactly one key.
 # No Python (on Windows Git Bash `python3` may be the Store stub). The new secret goes from the CLI's answer
-# into the credentials file through a private temporary file: never printed, never on a command line.
+# into the key store through a private temporary file: never printed, never on a command line.
+# Key store: if the profile uses agent-credential.ps1 (move-agent-key-to-store.sh, Ahmed control 4) the key is
+# written to the DPAPI store; otherwise to the credentials file, the pre-migration layout.
 #
 #   bash infra/terraform/rotate-agent-key.sh            # profile osra-staging, user osra-staging-deployer
 #   AGENT_PROFILE=x AGENT_USER=y bash infra/terraform/rotate-agent-key.sh
@@ -15,7 +17,14 @@ set -euo pipefail
 PROFILE="${AGENT_PROFILE:-osra-staging}"
 USER_NAME="${AGENT_USER:-osra-staging-deployer}"
 cred_file="${AWS_SHARED_CREDENTIALS_FILE:-$HOME/.aws/credentials}"
+config_file="${AWS_CONFIG_FILE:-$HOME/.aws/config}"
 export AWS_PAGER=""
+. "$(dirname "$0")/lib/agent-store.sh"
+if aws configure get credential_process --profile "$PROFILE" 2>/dev/null | grep -q 'agent-credential.ps1'; then
+  mode=store; key_file="$AGENT_STORE"
+else
+  mode=file; key_file="$cred_file"
+fi
 
 old_ids=$(aws iam list-access-keys --profile "$PROFILE" --user-name "$USER_NAME" \
   --query 'AccessKeyMetadata[].AccessKeyId' --output text)
@@ -28,15 +37,15 @@ old_id="$old_ids"
 
 umask 077
 tmp=$(mktemp -d)
-cp "$cred_file" "$tmp/credentials.before"
+cp "$key_file" "$tmp/key.before"
 new_id=""
 proven=false
 
 on_exit() {
   status=$?
   if [ "$proven" != true ] && [ -n "$new_id" ]; then
-    echo "Rotation failed before the new key was proven: restoring the credentials file and deleting the new key." >&2
-    cp "$tmp/credentials.before" "$cred_file"
+    echo "Rotation failed before the new key was proven: restoring the key $mode and deleting the new key." >&2
+    cp "$tmp/key.before" "$key_file"
     aws iam delete-access-key --profile "$PROFILE" --user-name "$USER_NAME" --access-key-id "$new_id" >/dev/null 2>&1 \
       || echo "WARNING: could not delete the new key ${new_id:0:4}…${new_id: -4}; delete it by hand." >&2
   fi
@@ -52,18 +61,23 @@ read -r new_id new_secret <"$tmp/new"
 rm -f "$tmp/new"
 [ -n "$new_id" ] && [ -n "${new_secret:-}" ] || { echo "create-access-key returned nothing usable" >&2; exit 1; }
 
-# Rewrite only this profile's two lines in the credentials file; everything else is kept as it was.
-# The secret reaches awk through its environment, not its arguments (arguments are visible in the process list).
-NEW_SECRET="$new_secret" awk -v p="[$PROFILE]" -v id="$new_id" '
-  /^\[/ { inside = ($0 == p) }
-  inside && /^[[:space:]]*aws_access_key_id[[:space:]]*=/ { print "aws_access_key_id = " id; next }
-  inside && /^[[:space:]]*aws_secret_access_key[[:space:]]*=/ { print "aws_secret_access_key = " ENVIRON["NEW_SECRET"]; next }
-  { print }
-' "$tmp/credentials.before" >"$tmp/credentials.new"
-unset new_secret
-grep -q "^aws_access_key_id = $new_id\$" "$tmp/credentials.new" \
-  || { echo "profile [$PROFILE] not found in $cred_file" >&2; exit 1; }
-cat "$tmp/credentials.new" >"$cred_file"
+if [ "$mode" = store ]; then
+  agent_store_write "$new_id" "$new_secret"
+  unset new_secret
+else
+  # Rewrite only this profile's two lines in the credentials file; everything else is kept as it was.
+  # The secret reaches awk through its environment, not its arguments (arguments are visible in the process list).
+  NEW_SECRET="$new_secret" awk -v p="[$PROFILE]" -v id="$new_id" '
+    /^\[/ { inside = ($0 == p) }
+    inside && /^[[:space:]]*aws_access_key_id[[:space:]]*=/ { print "aws_access_key_id = " id; next }
+    inside && /^[[:space:]]*aws_secret_access_key[[:space:]]*=/ { print "aws_secret_access_key = " ENVIRON["NEW_SECRET"]; next }
+    { print }
+  ' "$tmp/key.before" >"$tmp/credentials.new"
+  unset new_secret
+  grep -q "^aws_access_key_id = $new_id\$" "$tmp/credentials.new" \
+    || { echo "profile [$PROFILE] not found in $cred_file" >&2; exit 1; }
+  cat "$tmp/credentials.new" >"$cred_file"
+fi
 
 # A new key can take a few seconds to be accepted everywhere.
 for attempt in 1 2 3 4 5 6; do

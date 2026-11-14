@@ -67,7 +67,8 @@ resource "aws_cloudwatch_log_group" "trail" {
 }
 
 resource "aws_iam_role" "trail_to_logs" {
-  name = "osra-org-trail-to-logs"
+  name                 = "osra-org-trail-to-logs"
+  permissions_boundary = aws_iam_policy.role_boundary.arn
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -244,12 +245,24 @@ locals {
   watched_rule_arns = [
     aws_cloudwatch_event_rule.management_guardduty_high.arn,
     aws_cloudwatch_event_rule.management_guardduty_forward.arn,
+    aws_cloudwatch_event_rule.access_key_too_old.arn,
   ]
 }
 
-resource "aws_iam_user_policy" "agent_cannot_disable_watchers" {
-  name = "osra-cannot-disable-watchers"
-  user = var.agent_user_name
+# Three customer-managed policies, not one inline policy: an IAM user's inline policies are limited to 2,048
+# characters in total, and a managed policy to 6,144. Split by purpose.
+locals {
+  agent_deny_policy_arns = [
+    "arn:aws:iam::${local.account_id}:policy/osra-agent-keep-watchers",
+    "arn:aws:iam::${local.account_id}:policy/osra-agent-no-escalation",
+    "arn:aws:iam::${local.account_id}:policy/osra-agent-keep-backups-and-config",
+    "arn:aws:iam::${local.account_id}:policy/osra-management-role-boundary",
+  ]
+}
+
+resource "aws_iam_policy" "agent_keep_watchers" {
+  name        = "osra-agent-keep-watchers"
+  description = "The deployer user cannot switch off or erase the audit trail, its alarms or GuardDuty (Karim 14 Nov; Ahmed control 1)."
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -287,7 +300,7 @@ resource "aws_iam_user_policy" "agent_cannot_disable_watchers" {
         Sid      = "Keys"
         Effect   = "Deny"
         Action   = ["kms:ScheduleKeyDeletion", "kms:DisableKey", "kms:PutKeyPolicy", "kms:DisableKeyRotation"]
-        Resource = [aws_kms_key.trail.arn, aws_kms_key.access_alarms.arn]
+        Resource = [aws_kms_key.trail.arn, aws_kms_key.access_alarms.arn, aws_kms_key.backup_copy.arn]
       },
       {
         Sid      = "GuardDuty"
@@ -313,11 +326,98 @@ resource "aws_iam_user_policy" "agent_cannot_disable_watchers" {
         Action   = ["iam:DeleteRole", "iam:DeleteRolePolicy", "iam:PutRolePolicy", "iam:UpdateAssumeRolePolicy", "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:PutRolePermissionsBoundary"]
         Resource = aws_iam_role.trail_to_logs.arn
       },
+    ]
+  })
+}
+
+resource "aws_iam_policy" "agent_keep_backups" {
+  name        = "osra-agent-keep-backups-and-config"
+  description = "The deployer user cannot erase the off-site backup copies or switch off AWS Config (Ahmed control 1)."
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
       {
         Sid      = "CopyVault"
         Effect   = "Deny"
         Action   = ["backup:DeleteBackupVaultLockConfiguration", "backup:PutBackupVaultAccessPolicy", "backup:DeleteBackupVaultAccessPolicy", "backup:DeleteBackupVault"]
         Resource = aws_backup_vault.production_copy.arn
+      },
+      {
+        # Recovery points in the copy vault are RDS snapshots owned by this account.
+        Sid      = "CopyRecoveryPoints"
+        Effect   = "Deny"
+        Action   = ["backup:DeleteRecoveryPoint", "backup:UpdateRecoveryPointLifecycle", "backup:DisassociateRecoveryPoint", "rds:DeleteDBSnapshot", "rds:DeleteDBClusterSnapshot"]
+        Resource = "*"
+      },
+      {
+        Sid      = "ConfigRecorder"
+        Effect   = "Deny"
+        Action   = ["config:StopConfigurationRecorder", "config:DeleteConfigurationRecorder", "config:PutConfigurationRecorder", "config:DeleteDeliveryChannel", "config:PutDeliveryChannel", "config:DeleteConfigRule", "config:PutConfigRule"]
+        Resource = "*"
+      },
+      {
+        Sid      = "ConfigBucket"
+        Effect   = "Deny"
+        Action   = ["s3:DeleteBucket", "s3:DeleteObject", "s3:DeleteObjectVersion", "s3:PutBucketPolicy", "s3:DeleteBucketPolicy", "s3:PutLifecycleConfiguration"]
+        Resource = [aws_s3_bucket.config.arn, "${aws_s3_bucket.config.arn}/*"]
+      },
+      {
+        Sid      = "ConfigRole"
+        Effect   = "Deny"
+        Action   = ["iam:DeleteRole", "iam:DeleteRolePolicy", "iam:PutRolePolicy", "iam:UpdateAssumeRolePolicy", "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:PutRolePermissionsBoundary"]
+        Resource = aws_iam_role.config.arn
+      },
+    ]
+  })
+}
+
+resource "aws_iam_policy" "agent_no_escalation" {
+  name        = "osra-agent-no-escalation"
+  description = "The deployer user cannot widen its own rights, act through new identities or roles here, or detach the organisation's controls (Ahmed control 2)."
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        # The member-account half of the same rule (agent_guardrails.tf) stays attached and unchanged.
+        Sid      = "KeepTheServiceControlPolicy"
+        Effect   = "Deny"
+        Action   = ["organizations:DetachPolicy", "organizations:DeletePolicy", "organizations:UpdatePolicy"]
+        Resource = aws_organizations_policy.agent_cannot_erase_evidence.arn
+      },
+      {
+        Sid      = "KeepServiceControlPoliciesOn"
+        Effect   = "Deny"
+        Action   = "organizations:DisablePolicyType"
+        Resource = "*"
+      },
+      {
+        # Fable's two remaining variants (osra-security#27 comment 6883240283): a role trusted by an outside
+        # account, or handed to a service. Any role this user creates or gives a policy must carry the
+        # boundary (role_boundary.tf); the boundary stays; roles go only to the services this stack uses.
+        Sid       = "RolesCarryTheBoundary"
+        Effect    = "Deny"
+        Action    = ["iam:CreateRole", "iam:PutRolePolicy", "iam:AttachRolePolicy", "iam:PutRolePermissionsBoundary"]
+        Resource  = local.management_roles
+        Condition = { StringNotEquals = { "iam:PermissionsBoundary" = local.boundary_arn } }
+      },
+      {
+        Sid      = "BoundaryStays"
+        Effect   = "Deny"
+        Action   = "iam:DeleteRolePermissionsBoundary"
+        Resource = "*"
+      },
+      {
+        Sid       = "PassRoleOnlyToThisStacksServices"
+        Effect    = "Deny"
+        Action    = "iam:PassRole"
+        Resource  = local.management_roles
+        Condition = { StringNotEquals = { "iam:PassedToService" = ["cloudtrail.amazonaws.com", "events.amazonaws.com", "backup.amazonaws.com", "config.amazonaws.com"] } }
+      },
+      {
+        Sid      = "DrillRoleTrust"
+        Effect   = "Deny"
+        Action   = ["iam:UpdateAssumeRolePolicy", "iam:DeleteRole"]
+        Resource = aws_iam_role.restore_drill.arn
       },
       {
         # The indirect route (#784 review): a new role or user is not this user, so none of the denies above
@@ -338,7 +438,7 @@ resource "aws_iam_user_policy" "agent_cannot_disable_watchers" {
       {
         Sid         = "NoKeysForOthers"
         Effect      = "Deny"
-        Action      = "iam:CreateAccessKey"
+        Action      = ["iam:CreateAccessKey", "iam:DeleteAccessKey", "iam:UpdateAccessKey"]
         NotResource = local.agent_user_arn
       },
       {
@@ -354,8 +454,30 @@ resource "aws_iam_user_policy" "agent_cannot_disable_watchers" {
         Action   = ["iam:PutUserPolicy", "iam:DeleteUserPolicy", "iam:AttachUserPolicy", "iam:DetachUserPolicy", "iam:PutUserPermissionsBoundary", "iam:DeleteUserPermissionsBoundary", "iam:AddUserToGroup", "iam:RemoveUserFromGroup"]
         Resource = local.agent_user_arn
       },
+      {
+        # Both deny policies stay as written: no new version, no deletion (detaching is OwnPolicies).
+        Sid      = "OwnManagedPolicies"
+        Effect   = "Deny"
+        Action   = ["iam:CreatePolicyVersion", "iam:SetDefaultPolicyVersion", "iam:DeletePolicyVersion", "iam:DeletePolicy", "iam:TagPolicy", "iam:UntagPolicy"]
+        Resource = local.agent_deny_policy_arns
+      },
     ]
   })
+}
+
+resource "aws_iam_user_policy_attachment" "agent_keep_watchers" {
+  user       = var.agent_user_name
+  policy_arn = aws_iam_policy.agent_keep_watchers.arn
+}
+
+resource "aws_iam_user_policy_attachment" "agent_keep_backups" {
+  user       = var.agent_user_name
+  policy_arn = aws_iam_policy.agent_keep_backups.arn
+}
+
+resource "aws_iam_user_policy_attachment" "agent_no_escalation" {
+  user       = var.agent_user_name
+  policy_arn = aws_iam_policy.agent_no_escalation.arn
 }
 
 output "access_alarms_topic_arn" {

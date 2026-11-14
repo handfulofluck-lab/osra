@@ -23,7 +23,8 @@ resource "aws_cloudwatch_event_target" "management_guardduty_high" {
 }
 
 resource "aws_iam_role" "guardduty_forward" {
-  name = "osra-guardduty-forward"
+  name                 = "osra-guardduty-forward"
+  permissions_boundary = aws_iam_policy.role_boundary.arn
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
