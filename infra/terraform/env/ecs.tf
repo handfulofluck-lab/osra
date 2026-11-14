@@ -52,10 +52,17 @@ resource "aws_ecs_task_definition" "api" {
           # appends, so every rate limit keys on the client, not on the balancer. A hop count, never `true`
           # (that trusts the entry the caller writes). A CDN in front of the ALB would make this 2.
           { name = "TRUST_PROXY", value = "1" },
-          # The API fail-closes parent sessions when Redis is unreachable, so this must point at
-          # the ElastiCache node from elasticache.tf, never localhost.
-          { name = "REDIS_URL", value = local.redis_url },
         ],
+        # The API fail-closes parent sessions when Redis is unreachable, so this must point at the ElastiCache
+        # node from elasticache.tf, never localhost. Production's URL carries the AUTH token, so it arrives as
+        # a secrets entry instead (below).
+        var.secrets_out_of_band ? [] : [{ name = "REDIS_URL", value = local.redis_url }],
+        # The API refuses to boot when this is set and DATABASE_URL does not verify the server certificate
+        # (#777): production's URL is written with Prisma's strict form by production-secrets.sh.
+        var.secrets_out_of_band ? [{ name = "DATABASE_TLS_VERIFY", value = "required" }] : [],
+        var.app_public_url != "" ? [{ name = "APP_PUBLIC_URL", value = var.app_public_url }] : [],
+        var.email_provider != "" ? [{ name = "EMAIL_PROVIDER", value = var.email_provider }] : [],
+        var.email_from != "" ? [{ name = "EMAIL_FROM", value = var.email_from }] : [],
         # Empty cors_origin = the API's permissive default, which it now refuses under NODE_ENV=production
         # unless told it is deliberate (#765). Production can never get here: its guard requires cors_origin.
         var.cors_origin != "" ? [{ name = "CORS_ORIGIN", value = var.cors_origin }] : [{ name = "CORS_ALLOW_ANY_ORIGIN", value = "1" }],
@@ -87,6 +94,9 @@ resource "aws_ecs_task_definition" "api" {
         ] : [],
         # Production's service credential (#714): a `secrets` entry, never `environment`, so the value is in
         # no task definition. try(): a staging base from before this change has no such output.
+        var.secrets_out_of_band ? [
+          { name = "REDIS_URL", valueFrom = data.terraform_remote_state.base.outputs.redis_url_secret_arn },
+        ] : [],
         try(data.terraform_remote_state.base.outputs.internal_hmac_secret_arn, "") != "" ? [
           { name = "INTERNAL_HMAC_SECRET", valueFrom = data.terraform_remote_state.base.outputs.internal_hmac_secret_arn },
         ] : [],
@@ -125,6 +135,9 @@ resource "aws_lb" "main" {
   # On-demand staging: `down` must not need a console step. Production protects it.
   enable_deletion_protection = var.alb_deletion_protection
   drop_invalid_header_fields = true
+
+  # No ALB access logs (#782 review): they record the full request line, query string included, and the
+  # WebSocket ticket travels in the query string. WAF logs (query string redacted) cover who called what.
 
   tags = {
     Name = "${local.name_prefix}-alb"

@@ -34,6 +34,7 @@ import { AUTH_RATE_LIMIT, registerRateLimits, trustProxyFromEnv } from "./lib/ra
 import { getRedis } from "./redis.js";
 import { LOGGER_SERIALIZERS } from "./lib/logRedaction.js";
 import { assertCorsConfigured } from "./lib/corsConfig.js";
+import { assertDatabaseTls } from "./lib/databaseTls.js";
 
 // Review 3.7: fail fast on missing/known-dev secrets instead of booting insecurely.
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -46,6 +47,10 @@ if (!JWT_SECRET || JWT_SECRET === "dev-secret-change-me" || JWT_SECRET === "e2e-
 if (!process.env.VAULT_KEY && process.env.NODE_ENV === "production") {
   throw new Error("VAULT_KEY must be set in production (snippet vault encryption key)");
 }
+
+// #766 item 3 / gate #637: with DATABASE_TLS_VERIFY=required, refuse a database URL that would not check the
+// server's certificate. It runs before the first connection below, so the password is never sent unverified.
+assertDatabaseTls(process.env);
 
 import { prisma } from "./db.js";
 import { assertPrismaClientInSync } from "./lib/schemaSync.js";
