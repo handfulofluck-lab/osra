@@ -13,6 +13,7 @@
  *
  *   node scripts/check-production-taskdef.mjs --file taskdef.json            # launch configuration
  *   node scripts/check-production-taskdef.mjs --file taskdef.json --pre-launch
+ *   node scripts/check-production-taskdef.mjs --file taskdef.json --account <12 digits>   # and it is this account
  *   node scripts/check-production-taskdef.mjs --source                       # every variable the API reads is classified
  *   node scripts/check-production-taskdef.mjs --selftest                     # one fixture per rule
  *
@@ -38,7 +39,9 @@ const SECRET_ONLY = ['FCM_SERVICE_ACCOUNT_JSON', 'APNS_KEY_P8', 'RESEND_API_KEY'
 /** Must be present with a value that passes its rule. A rule returns a reason, or null. */
 const REQUIRED_SECURITY = {
   NODE_ENV: (v) => (v === 'production' ? null : 'must be "production"'),
-  TRUST_PROXY: (v) => (/^[1-9]\d*$/.test(v) ? null : 'must be a hop count (1 behind the load balancer), never "true" or 0'),
+  // One load balancer stands in front of the task, so exactly one hop is trusted. A larger number trusts an
+  // address the caller wrote into X-Forwarded-For, which is what rate limits and the audit log read.
+  TRUST_PROXY: (v) => (v === '1' ? null : 'must be exactly 1 (one load balancer in front), never "true", 0 or a larger hop count'),
   CORS_ORIGIN: (v) => {
     const origins = v.split(',').map((o) => o.trim()).filter(Boolean);
     if (origins.length === 0) return 'must name at least one origin';
@@ -75,6 +78,7 @@ const FORBIDDEN = {
   INTERNAL_SIGNING_ALLOW_V1: 'honours the legacy internal signature',
   FCM_SERVICE_ACCOUNT_FILE: 'a credential read from a file in the image; production uses the secret entry',
   CLIENT_POLICY: 'set only by a reviewed change; a stray policy locks clients out or lets old ones in',
+  DEVICE_SILENT_ALLOW_TIGHT: 'test-only override of the device-silence floor (services/api/src/jobs/deviceSilence.ts, #166)',
 };
 
 /** Allowed, optional, plain. A value rule where a wrong value matters. */
@@ -93,6 +97,7 @@ const OPTIONAL = {
   ROLLUP_HOUR_UTC: null,
   PUSH_MIN_SEVERITY: null,
   DEVICE_SILENT_MINUTES: null,
+  DEVICE_SILENT_MINUTES_APPLE: null,
   // Retention is a promise in the privacy policy. Longer than the promise is a finding; shorter is a choice.
   LOCATION_RETENTION_DAYS: (v) => (Number(v) >= 1 && Number(v) <= 30 ? null : 'location history is kept 30 days at most (ADR-0028 decision 5)'),
   RETENTION_DAYS: (v) => (Number(v) >= 1 && Number(v) <= 90 ? null : 'activity is kept 90 days at most (privacy policy)'),
@@ -105,11 +110,13 @@ const KNOWN = new Set([
   ...Object.keys(REQUIRED_SECURITY), ...Object.keys(REQUIRED_LAUNCH), ...Object.keys(FORBIDDEN), ...Object.keys(OPTIONAL),
 ]);
 const MUST_BE_SECRET = new Set([...REQUIRED_SECRETS, ...SECRET_ONLY]);
+/** The only names that may be a `secrets` entry. Everything else is a setting, and a setting must be readable here. */
+const MAY_BE_SECRET = new Set([...MUST_BE_SECRET, 'REDIS_URL']);
 
 // ── The check ────────────────────────────────────────────────────────────────────────────────────────────
 
 /** @returns {{findings: string[], pending: string[]}} */
-export function checkTaskDefinition(doc, { preLaunch = false } = {}) {
+export function checkTaskDefinition(doc, { preLaunch = false, account = null } = {}) {
   const findings = [];
   const pending = [];
   const task = doc?.taskDefinition ?? doc;
@@ -121,11 +128,26 @@ export function checkTaskDefinition(doc, { preLaunch = false } = {}) {
   if (!api) return { findings: ['no container named "api"'], pending };
   if (containers.length > 1) findings.push(`${containers.length} containers; production's task has one, "api"`);
 
+  // Which account this is. AWS writes it into the task definition's own ARN; `--account` pins it from outside,
+  // so a file taken from the wrong account is caught as well. The image, every secret and the execution role
+  // must live in that one account: a reference into another account is something nobody here reviewed.
+  const arn = /^arn:aws:ecs:([a-z0-9-]+):(\d{12}):task-definition\//.exec(String(task.taskDefinitionArn ?? ''));
+  if (!arn) findings.push('taskDefinitionArn: missing or not an ECS task definition ARN, so the account cannot be read (use what describe-task-definition printed, unedited)');
+  else if (arn[1] !== 'eu-central-1') findings.push('taskDefinitionArn: not in eu-central-1 (ADR-0030)');
+  if (arn && account && arn[2] !== account) findings.push('taskDefinitionArn: not in the account given with --account');
+  const home = account ?? arn?.[2] ?? null;
+  const elsewhere = (value) => {
+    const m = /^(?:arn:aws:[a-z0-9-]+:[a-z0-9-]*:)?(\d{12})[:.]/.exec(String(value ?? ''));
+    return home !== null && m !== null && m[1] !== home;
+  };
+
   // Image: an immutable reference in the production repository, so what runs is what was reviewed.
   const image = String(api.image ?? '');
   const ref = image.includes('@') ? image.split('@')[1] : image.split(':').pop();
   if (!/^\d{12}\.dkr\.ecr\.eu-central-1\.amazonaws\.com\/osra-production\/api[:@]/.test(image)) {
     findings.push('image: not from the osra-production/api repository in eu-central-1');
+  } else if (elsewhere(image)) {
+    findings.push('image: from a different AWS account than the task definition');
   }
   // api-publish.yml tags with the 12-character commit sha (`git rev-parse --short=12`); the repository's tags are
   // immutable, so that names one image for good. A digest or the full sha is accepted too; a word is not.
@@ -137,6 +159,17 @@ export function checkTaskDefinition(doc, { preLaunch = false } = {}) {
   if (api.user !== undefined && /^(0|root)(:|$)/.test(String(api.user))) findings.push('container: runs as root');
   if (api.logConfiguration?.logDriver !== 'awslogs') findings.push('logConfiguration: not awslogs, so the API log is not kept');
   if (api.command || api.entryPoint) findings.push('container: command or entryPoint overrides the image (the service runs the image as built)');
+  if (api.essential === false) findings.push('container: essential is false, so the task stays "running" after the API has died');
+  if ((api.linuxParameters?.capabilities?.add ?? []).length > 0) findings.push('container: Linux capabilities added; the API needs none');
+  // A file of variables in S3 is read by nobody here: it can hold every switch this script forbids.
+  if ((api.environmentFiles ?? []).length > 0) findings.push('environmentFiles: variables loaded from a file cannot be checked; production sets each one in the task definition');
+  // The image carries the CA bundle the database check relies on (/app/certs). A mount can replace it from outside.
+  if ((task.volumes ?? []).length > 0 || (api.mountPoints ?? []).length > 0 || (api.volumesFrom ?? []).length > 0) {
+    findings.push('volumes: a volume or mount point is present; production\'s task has none (a mount can replace files the image ships, such as /app/certs)');
+  }
+  // The application holds no AWS permission. A task role appearing is a new permission nobody reviewed here.
+  if (task.taskRoleArn) findings.push('taskRoleArn: the task has a role; production\'s API runs without one until a reviewed change adds it and this rule');
+  if (task.executionRoleArn && elsewhere(task.executionRoleArn)) findings.push('executionRoleArn: in a different AWS account than the task definition');
 
   const env = new Map();
   for (const e of api.environment ?? []) {
@@ -149,6 +182,8 @@ export function checkTaskDefinition(doc, { preLaunch = false } = {}) {
     secrets.add(s.name);
     if (!/^arn:aws:(secretsmanager|ssm):eu-central-1:\d{12}:/.test(String(s.valueFrom ?? ''))) {
       findings.push(`${s.name}: its secret is not a Secrets Manager or Parameter Store ARN in eu-central-1`);
+    } else if (elsewhere(s.valueFrom)) {
+      findings.push(`${s.name}: its secret is in a different AWS account than the task definition`);
     }
   }
   for (const name of env.keys()) if (secrets.has(name)) findings.push(`${name}: in both environment and secrets`);
@@ -160,10 +195,17 @@ export function checkTaskDefinition(doc, { preLaunch = false } = {}) {
   for (const name of MUST_BE_SECRET) {
     if (env.has(name)) findings.push(`${name}: is a plain environment value; it must be a secrets entry`);
   }
+  // A switch held in Secrets Manager is a switch nobody read: NODE_ENV, the TLS switch or the allowed origins
+  // would pass with any value. Only credentials may be secrets; forbidden and unknown names are reported above.
+  for (const name of secrets) {
+    if (KNOWN.has(name) && !FORBIDDEN[name] && !MAY_BE_SECRET.has(name)) {
+      findings.push(`${name}: is a secrets entry, so its value cannot be checked; a setting must be a plain environment value`);
+    }
+  }
   for (const name of REQUIRED_SECRETS) if (!secrets.has(name) && !env.has(name)) findings.push(`${name}: missing`);
 
   for (const [name, rule] of Object.entries(REQUIRED_SECURITY)) {
-    if (secrets.has(name)) continue; // a value held in Secrets Manager cannot be read here
+    if (secrets.has(name)) continue; // already a finding above: a setting may not be a secrets entry
     if (!env.has(name)) findings.push(`${name}: missing`);
     else {
       const reason = rule(env.get(name));
@@ -186,7 +228,7 @@ export function checkTaskDefinition(doc, { preLaunch = false } = {}) {
   }
 
   for (const name of [...Object.keys(REQUIRED_LAUNCH), ...LAUNCH_SECRETS]) {
-    if (env.has(name) || secrets.has(name)) continue;
+    if (env.has(name) || secrets.has(name)) continue; // present; a wrong place for it is a finding above
     (preLaunch ? pending : findings).push(`${name}: missing${preLaunch ? '' : ' (needed at launch; --pre-launch reports it as pending)'}`);
   }
   return { findings, pending };
@@ -199,6 +241,30 @@ function walk(dir) {
     const p = pathMod.join(dir, e.name);
     return e.isDirectory() ? walk(p) : p.endsWith('.ts') ? [p] : [];
   });
+}
+
+/** `const NAME_ENV = "VARIABLE"` declarations: the constants a bracket read may go through. */
+export function stringConstantsIn(sourceText) {
+  const constants = new Map();
+  for (const m of sourceText.matchAll(/\bconst\s+([A-Za-z_$][\w$]*)\s*(?::\s*string\s*)?=\s*(["'])([A-Z][A-Z0-9_]+)\2/g)) constants.set(m[1], m[3]);
+  return constants;
+}
+
+/**
+ * Bracket reads, `env["X"]` and `env[SOME_CONSTANT]`. A constant is resolved through `constants`; a read that
+ * cannot be resolved (a computed name, a constant this cannot find) is returned so `--source` fails on it
+ * instead of passing a variable it never saw.
+ */
+export function bracketReads(sourceText, constants = stringConstantsIn(sourceText)) {
+  const names = new Set();
+  const unresolved = [];
+  for (const m of sourceText.matchAll(/\b(?:process\.env|env|envVars)\s*\[\s*([^\]]*?)\s*\]/g)) {
+    const literal = /^(["'`])([A-Z][A-Z0-9_]+)\1$/.exec(m[1]);
+    if (literal) names.add(literal[2]);
+    else if (constants.has(m[1])) names.add(constants.get(m[1]));
+    else unresolved.push(m[0]);
+  }
+  return { names, unresolved };
 }
 
 /** Names read as `env.X`, `process.env.X`, `envVars.X` or destructured from one of those. */
@@ -216,9 +282,18 @@ export function variablesReadBy(sourceText) {
 
 function checkSource(root = 'services/api/src') {
   const read = new Set();
-  for (const file of walk(root)) for (const n of variablesReadBy(fs.readFileSync(file, 'utf8'))) read.add(n);
+  const unresolved = [];
+  const texts = walk(root).map((file) => [file, fs.readFileSync(file, 'utf8')]);
+  // A constant may be declared in one file and used in another, so they are collected across the tree first.
+  const constants = new Map(texts.flatMap(([, text]) => [...stringConstantsIn(text)]));
+  for (const [file, text] of texts) {
+    for (const n of variablesReadBy(text)) read.add(n);
+    const brackets = bracketReads(text, constants);
+    for (const n of brackets.names) read.add(n);
+    for (const u of brackets.unresolved) unresolved.push(`${pathMod.relative(root, file)}: ${u}`);
+  }
   const unclassified = [...read].filter((n) => !KNOWN.has(n)).sort();
-  return { read, unclassified };
+  return { read, unclassified, unresolved };
 }
 
 // ── --selftest ───────────────────────────────────────────────────────────────────────────────────────────
@@ -228,6 +303,8 @@ function goodTask() {
   return {
     taskDefinition: {
       family: 'osra-production-api',
+      taskDefinitionArn: 'arn:aws:ecs:eu-central-1:000000000000:task-definition/osra-production-api:1',
+      executionRoleArn: 'arn:aws:iam::000000000000:role/osra-production-api-execution',
       containerDefinitions: [{
         name: 'api',
         image: `000000000000.dkr.ecr.eu-central-1.amazonaws.com/osra-production/api:${'a'.repeat(40)}`,
@@ -274,7 +351,8 @@ function selftest() {
     ['legacy signature', (t) => setEnv(t, 'INTERNAL_SIGNING_ALLOW_V1', '0'), 'INTERNAL_SIGNING_ALLOW_V1: not allowed'],
     ['idle counter', (t) => setEnv(t, 'IDLE_BUDGET_COUNTING', '1'), 'IDLE_BUDGET_COUNTING: not allowed'],
     ['debug logging', (t) => setEnv(t, 'LOG_LEVEL', 'debug'), 'LOG_LEVEL: must be info'],
-    ['TRUST_PROXY=true', (t) => setEnv(t, 'TRUST_PROXY', 'true'), 'TRUST_PROXY: must be a hop count'],
+    ['TRUST_PROXY=true', (t) => setEnv(t, 'TRUST_PROXY', 'true'), 'TRUST_PROXY: must be exactly 1'],
+    ['TRUST_PROXY=9', (t) => setEnv(t, 'TRUST_PROXY', '9'), 'TRUST_PROXY: must be exactly 1'],
     ['database TLS switch missing', (t) => dropEnv(t, 'DATABASE_TLS_VERIFY'), 'DATABASE_TLS_VERIFY: missing'],
     ['database TLS switch misspelt', (t) => setEnv(t, 'DATABASE_TLS_VERIFY', 'require'), 'DATABASE_TLS_VERIFY: must be "required"'],
     ['plaintext cache', (t) => setEnv(t, 'REDIS_URL', 'redis://cache.example.internal:6379'), 'REDIS_URL: must be rediss://'],
@@ -299,6 +377,26 @@ function selftest() {
     ['root user', (t) => { api(t).user = '0'; }, 'runs as root'],
     ['no log driver', (t) => { delete api(t).logConfiguration; }, 'logConfiguration: not awslogs'],
     ['a second container', (t) => { t.taskDefinition.containerDefinitions.push({ name: 'sidecar' }); }, '2 containers'],
+    ...['NODE_ENV', 'DATABASE_TLS_VERIFY', 'CORS_ORIGIN', 'TRUST_PROXY', 'EMAIL_PROVIDER', 'LOG_LEVEL'].map((name) => [
+      `${name} moved into secrets`,
+      (t) => { dropEnv(t, name); api(t).secrets.push({ name, valueFrom: `${ARN}${name.toLowerCase()}` }); },
+      `${name}: is a secrets entry, so its value cannot be checked`,
+    ]),
+    ['a retention setting given as a secret', (t) => api(t).secrets.push({ name: 'RETENTION_DAYS', valueFrom: `${ARN}retention` }), 'RETENTION_DAYS: is a secrets entry'],
+    ['a launch setting given as a secret', (t) => { dropEnv(t, 'PLAY_PACKAGE_NAME'); api(t).secrets.push({ name: 'PLAY_PACKAGE_NAME', valueFrom: `${ARN}play` }); }, 'PLAY_PACKAGE_NAME: is a secrets entry'],
+    ['variables from a file in S3', (t) => { api(t).environmentFiles = [{ type: 's3', value: 'arn:aws:s3:::bucket/prod.env' }]; }, 'environmentFiles: variables loaded from a file'],
+    ['a volume over the certificates', (t) => { t.taskDefinition.volumes = [{ name: 'certs' }]; api(t).mountPoints = [{ sourceVolume: 'certs', containerPath: '/app/certs' }]; }, 'volumes: a volume or mount point'],
+    ['a mount point alone', (t) => { api(t).mountPoints = [{ sourceVolume: 'x', containerPath: '/app/certs' }]; }, 'volumes: a volume or mount point'],
+    ['volumes from another container', (t) => { api(t).volumesFrom = [{ sourceContainer: 'other' }]; }, 'volumes: a volume or mount point'],
+    ['a task role', (t) => { t.taskDefinition.taskRoleArn = 'arn:aws:iam::000000000000:role/anything'; }, 'taskRoleArn: the task has a role'],
+    ['a secret in another account', (t) => { api(t).secrets[1].valueFrom = api(t).secrets[1].valueFrom.replace('000000000000', '111111111111'); }, 'JWT_SECRET: its secret is in a different AWS account'],
+    ['an image from another account', (t) => { api(t).image = api(t).image.replace('000000000000', '111111111111'); }, 'image: from a different AWS account'],
+    ['an execution role in another account', (t) => { t.taskDefinition.executionRoleArn = 'arn:aws:iam::111111111111:role/x'; }, 'executionRoleArn: in a different AWS account'],
+    ['no task definition ARN', (t) => { delete t.taskDefinition.taskDefinitionArn; }, 'taskDefinitionArn: missing'],
+    ['a task definition in another region', (t) => { t.taskDefinition.taskDefinitionArn = t.taskDefinition.taskDefinitionArn.replace('eu-central-1', 'eu-north-1'); }, 'taskDefinitionArn: not in eu-central-1'],
+    ['added Linux capabilities', (t) => { api(t).linuxParameters = { capabilities: { add: ['SYS_PTRACE'] } }; }, 'Linux capabilities added'],
+    ['a non-essential only container', (t) => { api(t).essential = false; }, 'essential is false'],
+    ['the device-silence test override', (t) => setEnv(t, 'DEVICE_SILENT_ALLOW_TIGHT', '1'), 'DEVICE_SILENT_ALLOW_TIGHT: not allowed'],
     ['iPhone push key missing at launch', (t) => dropSecret(t, 'APNS_KEY_P8'), 'APNS_KEY_P8: missing (needed at launch'],
     ['Play package missing at launch', (t) => dropEnv(t, 'PLAY_PACKAGE_NAME'), 'PLAY_PACKAGE_NAME: missing (needed at launch'],
   ];
@@ -343,16 +441,29 @@ function selftest() {
   const seen = variablesReadBy('const a = process.env.ALPHA_ONE; f(env.BETA_TWO); const { GAMMA_3, DELTA: d } = env; g(envVars.EPSILON);');
   say(['ALPHA_ONE', 'BETA_TWO', 'GAMMA_3', 'DELTA', 'EPSILON'].every((n) => seen.has(n)) && seen.size === 5, 'the source scan finds dotted and destructured reads');
 
-  console.log(failed === 0 ? `selftest: ${cases.length + 6} checks pass` : `selftest: ${failed} check(s) FAILED`);
+  // ... and the bracket form, through a constant or a literal; a name it cannot resolve is reported, not skipped.
+  const br = bracketReads('export const TIGHT_ENV = "ZETA_SIX"; if (env[TIGHT_ENV] === "1") {} f(process.env["ETA_7"]); g(env[name]); h(process.env[`P_${x}`]);');
+  say(br.names.has('ZETA_SIX') && br.names.has('ETA_7') && br.names.size === 2, 'the source scan resolves a bracket read through a constant or a literal');
+  say(br.unresolved.length === 2, 'a bracket read it cannot resolve is reported');
+
+  // --account pins the account from outside the file.
+  const other = checkTaskDefinition(goodTask(), { account: '111111111111' }).findings;
+  say(other.some((f) => f.startsWith('taskDefinitionArn: not in the account given')) && other.some((f) => f.startsWith('image: from a different')),
+    '--account fails a task definition, and its image, from any other account');
+  say(checkTaskDefinition(goodTask(), { account: '000000000000' }).findings.length === 0, '--account accepts the matching account');
+
+  console.log(failed === 0 ? `selftest: ${cases.length + 10} checks pass` : `selftest: ${failed} check(s) FAILED`);
   process.exit(failed === 0 ? 0 : 1);
 }
 
 // ── main ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 const argv = process.argv.slice(2);
-const ALLOWED_FLAGS = new Set(['--file', '--pre-launch', '--source', '--selftest']);
+const ALLOWED_FLAGS = new Set(['--file', '--account', '--pre-launch', '--source', '--selftest']);
 const fileIndex = argv.indexOf('--file');
-const unknown = argv.filter((a, i) => !ALLOWED_FLAGS.has(a) && !(fileIndex !== -1 && i === fileIndex + 1));
+const accountIndex = argv.indexOf('--account');
+const isValue = (i) => (fileIndex !== -1 && i === fileIndex + 1) || (accountIndex !== -1 && i === accountIndex + 1);
+const unknown = argv.filter((a, i) => !ALLOWED_FLAGS.has(a) && !isValue(i));
 // A mistyped flag must not fall through to a run that checks nothing (docs/TESTING.md, `--self-test`).
 if (unknown.length > 0) {
   console.error(`check-production-taskdef: unknown argument(s): ${unknown.join(' ')}`);
@@ -362,7 +473,7 @@ if (unknown.length > 0) {
 if (argv.includes('--selftest')) {
   selftest();
 } else if (argv.includes('--source')) {
-  const { read, unclassified } = checkSource();
+  const { read, unclassified, unresolved } = checkSource();
   if (read.size === 0) {
     console.error('check-production-taskdef: found no environment reads under services/api/src; run from the repository root');
     process.exit(2);
@@ -372,11 +483,22 @@ if (argv.includes('--selftest')) {
     console.error('Decide for each whether production requires it, allows it or forbids it, and add it to the matching list.');
     process.exit(1);
   }
+  if (unresolved.length > 0) {
+    console.error(`check-production-taskdef: ${unresolved.length} environment read(s) by a name this script cannot resolve:`);
+    for (const u of unresolved) console.error(`  ${u}`);
+    console.error('Read the variable by its name, or through a `const X = "NAME"` this scan can follow, so it can be classified.');
+    process.exit(1);
+  }
   console.log(`check-production-taskdef: all ${read.size} variables the API reads are classified`);
 } else {
   const file = fileIndex === -1 ? null : argv[fileIndex + 1];
   if (!file) {
-    console.error('usage: node scripts/check-production-taskdef.mjs --file <describe-task-definition.json> [--pre-launch] | --source | --selftest');
+    console.error('usage: node scripts/check-production-taskdef.mjs --file <describe-task-definition.json> [--account <12 digits>] [--pre-launch] | --source | --selftest');
+    process.exit(2);
+  }
+  const account = accountIndex === -1 ? null : argv[accountIndex + 1];
+  if (account !== null && !/^\d{12}$/.test(account ?? '')) {
+    console.error('check-production-taskdef: --account takes the 12-digit AWS account number');
     process.exit(2);
   }
   let doc;
@@ -387,7 +509,7 @@ if (argv.includes('--selftest')) {
     process.exit(2);
   }
   const preLaunch = argv.includes('--pre-launch');
-  const { findings, pending } = checkTaskDefinition(doc, { preLaunch });
+  const { findings, pending } = checkTaskDefinition(doc, { preLaunch, account });
   const task = doc?.taskDefinition ?? doc;
   console.log(`task definition: ${task?.family ?? '?'}:${task?.revision ?? '?'}`);
   for (const p of pending) console.log(`PENDING  ${p}`);
