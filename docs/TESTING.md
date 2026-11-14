@@ -483,6 +483,19 @@ changes only when the package deliberately adds or removes tests.
 This is compile and unit-test evidence for the shared core only. No Mac application target or enforcement
 runtime exists in step (i), and the job proves nothing about Screen Time on a phone or a physical Mac.
 
+### Arabic dates and times (#758)
+
+Run from `apps/parent-app` with the Flutter SDK and Windows PowerShell on `PATH`:
+
+```bash
+flutter test test/arabic_date_format_test.dart
+flutter test test/alerts_dialog_test.dart
+flutter test test/social_screen_test.dart
+flutter test test/widget_screens_test.dart
+```
+
+`configureDateFormatting()` applies Western digits to Arabic `DateFormat` output and awaits locale-data initialization; app startup and the background notification isolate each call it once. The direct test exercises that background entry point with no session, no network and no alert posted. The alert and social widget rows cover the locale-native day headers and reject Arabic-Indic digits in the alert detail. English expectations use `DateFormat.yMMMMEEEEd` too, not the old abbreviated `EEEE, MMM d, yyyy` pattern. Existing Arabic copy and number/plural paths are unchanged.
+
 ### The parent app's iOS build (roadmap 3.9, 2026-10-24)
 
 The `parent-app-ios` job in `parent-app.yml` is the **only** evidence the iOS target builds. Nothing about it

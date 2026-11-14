@@ -69,6 +69,13 @@ generic, so server English never reaches an Arabic screen.
 5. If the language is RTL, it needs no code change beyond step 1 — the layout rules below are
    direction-agnostic.
 
+## Dates and numbers (R9)
+
+- Use Western digits for every date and time on every surface, including Arabic. Do not emit Arabic-Indic digits.
+- `lib/core/date_formatting.dart` applies `DateFormat.useNativeDigitsByDefaultFor('ar', false)` and awaits locale-data initialization. App startup and the background notification isolate each call it once before any `DateFormat` is created.
+- Day headers call `formatDayHeader(date, context.localeName)`, which uses `DateFormat.yMMMMEEEEd`: day, then month, then year, with the locale's own punctuation and order. Do not replace it with the English `EEEE, MMM d, yyyy` pattern.
+- `test/arabic_date_format_test.dart`, `alerts_dialog_test.dart` and `social_screen_test.dart` exercise the direct, background and Arabic widget paths and reject every Arabic-Indic digit. Existing Arabic copy and number/plural paths are not changed by that rule's implementation.
+
 ## Android child agent
 
 The child agent does not use ARB. Its strings are Android resources: `res/values/strings.xml` is
