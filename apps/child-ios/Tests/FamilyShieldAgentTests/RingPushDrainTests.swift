@@ -141,7 +141,11 @@ final class RingPushDrainTests: XCTestCase {
         XCTAssertTrue(text.contains("RingPushDrainer.drainNow"), "the extension answers the push through the reduced drain")
         XCTAssertTrue(text.contains(#"L10n.tr("ring_notification_title")"#), "the approved title, never OSRA text")
         XCTAssertTrue(text.contains(#"L10n.tr("ring_notification_body")"#), "the approved body, never OSRA text")
-        XCTAssertTrue(text.contains("defaultRingtone"), "the ring sound on iOS 26+")
+        XCTAssertTrue(text.contains("let outcome = await RingPushDrainer.drainNow()"))
+        XCTAssertTrue(text.contains("deliver(content, ringSound: outcome == .started)"))
+        XCTAssertTrue(text.contains("content.sound = ringSound ?"), "a started ring rings; the approved fallback keeps the default sound")
         XCTAssertTrue(text.contains("serviceExtensionTimeWillExpire"), "the timeout path still delivers")
+        XCTAssertTrue(text.contains("deliver(bestAttemptContent ?? UNMutableNotificationContent(), ringSound: false)"),
+                      "the deadline path is the approved default-sound fallback")
     }
 }
