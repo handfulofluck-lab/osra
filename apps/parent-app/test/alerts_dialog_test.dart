@@ -157,4 +157,19 @@ void main() {
 
     expect(find.textContaining('lat:'), findsOneWidget, reason: 'the rows are there when a parent asks');
   });
+
+  testWidgets('the location line reads as body text, not as a detail (#743 UI/UX)', (tester) async {
+    // The place is a sentence a parent reads, so it takes the dialog's default body style; only the
+    // accuracy under it is small and muted. The row fails if the line falls back to bodySmall.
+    await pumpAlerts(tester, children: [child('child-1')], alerts: [sosAlert()]);
+
+    await tester.tap(find.text('SOS pressed'));
+    await tester.pumpAndSettle();
+
+    final line = tester.widget<Text>(find.byKey(const ValueKey('alert-sos-location-line')));
+    final theme = Theme.of(tester.element(find.byKey(const ValueKey('alert-sos-location-line'))));
+    expect(line.style?.fontSize, isNot(theme.textTheme.bodySmall?.fontSize),
+        reason: 'the location line must not be the detail style');
+    expect(line.style, isNull, reason: 'no explicit style means the dialog default, which is the point');
+  });
 }

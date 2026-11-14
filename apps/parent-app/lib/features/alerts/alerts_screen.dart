@@ -148,14 +148,21 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                       key: const ValueKey('alert-sos-location'),
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // #743 UI/UX: the place is a sentence a parent reads, so it takes the dialog's
+                        // default body style — the same weight as the alert's own body. Only the accuracy
+                        // is a detail, and it stays small and muted under it.
                         Text(
                           text.locationLine(l10n, fix.isolatedCoords),
-                          style: Theme.of(dialogContext).textTheme.bodySmall,
+                          key: const ValueKey('alert-sos-location-line'),
                         ),
                         if (accuracy != null)
                           Text(accuracy,
-                              style:
-                                  Theme.of(dialogContext).textTheme.bodySmall),
+                              style: Theme.of(dialogContext)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(dialogContext).hintColor,
+                                  )),
                       ],
                     );
                   }),
