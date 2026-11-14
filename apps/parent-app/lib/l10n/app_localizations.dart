@@ -1070,6 +1070,12 @@ abstract class AppLocalizations {
   /// **'Accuracy ±{meters} m · {time}'**
   String accuracyLabel(int meters, String time);
 
+  /// No description provided for @accuracyShort.
+  ///
+  /// In en, this message translates to:
+  /// **'±{meters} m'**
+  String accuracyShort(int meters);
+
   /// No description provided for @mapPreview.
   ///
   /// In en, this message translates to:
