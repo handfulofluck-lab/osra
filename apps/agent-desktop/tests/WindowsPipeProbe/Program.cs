@@ -75,7 +75,7 @@ sealed class ProbeServer(ProbeSettings settings) : BackgroundService
         }
         catch (Exception ex)
         {
-            await File.WriteAllTextAsync(_resultPath, ex.GetType().FullName ?? ex.GetType().Name, CancellationToken.None);
+            await File.WriteAllTextAsync(_resultPath, ex.ToString(), CancellationToken.None);
             throw;
         }
     }
