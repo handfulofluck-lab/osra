@@ -16,6 +16,10 @@ import 'package:flutter/widgets.dart';
 /// + testing), one official source URL per number, recorded beside the row.
 /// Until a country is in the table it resolves through the region fallback
 /// below, which Claude authorised for the emergency number only.
+/// U+2066 (LRI) … U+2069 (PDI): a number inside a right-to-left sentence, kept in reading order.
+const String LRI = '\u2066';
+const String PDI = '\u2069';
+
 class LocalHelpNumbers {
   /// The number to call for immediate danger, e.g. `999`.
   final String? emergency;
@@ -33,25 +37,35 @@ class LocalHelpNumbers {
   bool get isEmpty =>
       emergency == null && childProtection == null && crisis == null;
 
-  /// "call 999", or "call your local emergency number" when nothing is known.
+  /// The number with direction isolates around it, in **every** language.
+  ///
+  /// Arabic Bureau, #727 review: in a right-to-left line the phone lays out the groups of `800 46342`
+  /// from the right, so a card in Arabic shows **46342 800** — and a parent in a crisis dials what the card
+  /// shows. A number with a space or a leading `+` is the case that breaks; the tests use both.
+  static String isolatedNumber(String number) => '$LRI$number$PDI';
+
+  /// "call emergency services on 999", or "call your country's emergency number" when nothing is known.
   String emergencyClause({required bool arabic}) => emergency == null
-      ? (arabic
-          ? 'اتصل برقم الطوارئ المحلي'
-          : 'call your local emergency number')
-      : (arabic ? 'اتصل بـ $emergency' : 'call $emergency');
+      ? (arabic ? 'اتصل برقم الطوارئ في بلدك' : "call your country's emergency number")
+      : (arabic
+          ? 'اتصل بالطوارئ على الرقم ${isolatedNumber(emergency!)}'
+          : 'call emergency services on ${isolatedNumber(emergency!)}');
 
-  /// "call 800 46342", or "call your local crisis line" when nothing is known.
+  /// "call the crisis line on 80046342", or "call the crisis line in your country".
   String crisisClause({required bool arabic}) => crisis == null
-      ? (arabic ? 'اتصل بخط الأزمات المحلي' : 'call your local crisis line')
-      : (arabic ? 'اتصل بـ $crisis' : 'call $crisis');
+      ? (arabic ? 'اتصل بخط الدعم النفسي في بلدك' : 'call the crisis line in your country')
+      : (arabic
+          ? 'اتصل بخط الدعم النفسي على الرقم ${isolatedNumber(crisis!)}'
+          : 'call the crisis line on ${isolatedNumber(crisis!)}');
 
-  /// "contact 116 111", or "contact your local child-protection service".
-  String childProtectionClause({required bool arabic}) =>
-      childProtection == null
-          ? (arabic
-              ? 'تواصل مع جهة حماية الطفل المحلية'
-              : 'contact your local child-protection service')
-          : (arabic ? 'تواصل مع $childProtection' : 'contact $childProtection');
+  /// "call the child-protection line on 116111", or "contact your country's child-protection service".
+  String childProtectionClause({required bool arabic}) => childProtection == null
+      ? (arabic
+          ? 'أبلغ جهة حماية الطفل في بلدك'
+          : "contact your country's child-protection service")
+      : (arabic
+          ? 'اتصل بخط حماية الطفل على الرقم ${isolatedNumber(childProtection!)}'
+          : 'call the child-protection line on ${isolatedNumber(childProtection!)}');
 
   @override
   bool operator ==(Object other) =>

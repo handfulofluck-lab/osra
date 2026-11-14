@@ -84,10 +84,11 @@ void main() {
     test('a known number reads as a clause in both languages', () {
       const n = LocalHelpNumbers(
           emergency: '999', childProtection: '116111', crisis: '116123');
-      expect(n.emergencyClause(arabic: false), 'call 999');
-      expect(n.crisisClause(arabic: false), 'call 116123');
-      expect(n.childProtectionClause(arabic: false), 'contact 116111');
-      expect(n.emergencyClause(arabic: true), 'اتصل بـ 999');
+      // The number is wrapped in LRI/PDI in every language: see the direction group below.
+      expect(n.emergencyClause(arabic: false), 'call emergency services on \u2066999\u2069');
+      expect(n.crisisClause(arabic: false), 'call the crisis line on \u2066116123\u2069');
+      expect(n.childProtectionClause(arabic: false), 'call the child-protection line on \u2066116111\u2069');
+      expect(n.emergencyClause(arabic: true), 'اتصل بالطوارئ على الرقم \u2066999\u2069');
     });
 
     test(
@@ -116,8 +117,8 @@ void main() {
           card.body, const LocalHelpNumbers(emergency: '999', crisis: '116123'),
           arabic: false);
       expect(filled.contains('{'), isFalse, reason: filled);
-      expect(filled, contains('call 999'));
-      expect(filled, contains('call 116123'));
+      expect(filled, contains('call emergency services on \u2066999\u2069'));
+      expect(filled, contains('call the crisis line on \u2066116123\u2069'));
     });
 
     test(
@@ -126,8 +127,8 @@ void main() {
       final card = _selfHarmCard();
       final filled =
           fillHelpNumbers(card.body, LocalHelpNumbers.none, arabic: false);
-      expect(filled, contains('call your local emergency number'));
-      expect(filled, contains('call your local crisis line'));
+      expect(filled, contains("call your country's emergency number"));
+      expect(filled, contains('call the crisis line in your country'));
       expect(filled.contains('[add local number]'), isFalse);
     });
 
@@ -183,7 +184,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-        find.textContaining('call your local emergency number'), findsWidgets);
+        find.textContaining("call your country's emergency number"), findsWidgets);
     expect(find.textContaining('[add local number]'), findsNothing);
   });
 
@@ -200,7 +201,31 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('coachLangToggle')));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('اتصل برقم الطوارئ المحلي'), findsWidgets);
+    expect(find.textContaining('اتصل برقم الطوارئ في بلدك'), findsWidgets);
+  });
+
+  group('direction of a number inside a sentence (#727 Arabic Bureau)', () {
+    // The Bureau's finding: `800 46342` in a right-to-left line is laid out from the right, so the card
+    // shows `46342 800` - and a parent in a crisis dials what the card shows. The isolate must wrap the
+    // WHOLE number, which is why the rows use a number with a space and one with a leading '+': an
+    // unbroken number would hide the bug, which is exactly why the earlier rows missed it.
+    test('a number with a space is isolated as a whole, so its groups keep their order', () {
+      const n = LocalHelpNumbers(crisis: '800 46342');
+      final clause = n.crisisClause(arabic: true);
+      expect(clause, contains('\u2066800 46342\u2069'));
+      expect(clause.indexOf('\u2066'), lessThan(clause.indexOf('800')));
+      expect(clause.indexOf('\u2069'), greaterThan(clause.indexOf('46342')));
+    });
+
+    test('a number that starts with + is isolated too', () {
+      const n = LocalHelpNumbers(emergency: '+44 999');
+      expect(n.emergencyClause(arabic: true), contains('\u2066+44 999\u2069'));
+    });
+
+    test('the English sentence isolates the number as well', () {
+      const n = LocalHelpNumbers(crisis: '800 46342');
+      expect(n.crisisClause(arabic: false), contains('\u2066800 46342\u2069'));
+    });
   });
 }
 
