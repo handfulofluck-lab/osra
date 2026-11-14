@@ -55,6 +55,24 @@ final class FakeRingBackend: RingBackend {
 }
 
 @MainActor
+private final class TrackingRingReporter: RingAlertReporting {
+    let base: RingAlertReporter
+    private(set) var outcomes: [RingReportOutcome] = []
+
+    init(base: RingAlertReporter) { self.base = base }
+
+    func report(state: RingEventState, ringId: UUID, dismissalCount: Int,
+                afterRestart: Bool) async -> RingReportOutcome {
+        let outcome = await base.report(state: state, ringId: ringId,
+                                        dismissalCount: dismissalCount, afterRestart: afterRestart)
+        outcomes.append(outcome)
+        return outcome
+    }
+
+    func pendingEvents() -> [RingPendingEvent] { base.pendingEvents() }
+}
+
+@MainActor
 final class RingControllerTests: XCTestCase {
     private let id = UUID(uuidString: "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6B")!
     private var backend: FakeRingBackend!
@@ -695,12 +713,17 @@ extension RingControllerTests {
                 requests.append(request)
                 return (statuses.removeFirst(), Data())
             })
-        let controller = controller(reporter: reporter)
+        let tracking = TrackingRingReporter(base: reporter)
+        let controller = controller(reporter: tracking)
         await controller.start(id)
         await controller.process(scheduledIDs: [])
         XCTAssertEqual(requests.count, 1)
+        XCTAssertEqual(tracking.outcomes, [.pending])
+        XCTAssertNil(defaults.stringArray(forKey: RingAlertReporter.deliveredKey))
         XCTAssertEqual(reporter.pendingEvents().map(\.dismissalCount), [1])
         await controller.process(scheduledIDs: [])
+        XCTAssertEqual(tracking.outcomes, [.pending, .pending])
+        XCTAssertEqual(reporter.pendingEvents().map(\.dismissalCount), [1, 2])
         await controller.process(scheduledIDs: [])
         XCTAssertEqual(requests.count, 3)
         XCTAssertEqual(defaults.array(forKey: RingAlertReporter.pendingKey)?.count, 3)
