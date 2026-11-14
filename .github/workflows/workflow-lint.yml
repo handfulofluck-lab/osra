@@ -234,7 +234,7 @@ jobs:
 
       - name: Mesh merge policy never lets an author, or the author's model family, verify alone (AGENTS.md §6.6)
         # Maintainer 2026-11-13 15:42Z (#617, #719): every PR needs a signer who is not the author and, from R2
-        # up, from another model family; R3 needs a second key (Ahmed or Fable); Bureau lines when the diff
+        # up, from another model family; R3 needs a second key (Ahmed, Fable or Antigravity); Bureau lines when the diff
         # needs them. Each rule has a case that fails without it, including a label trying to lower the tier.
         run: |
           node scripts/verified-gate-policy.mjs --selftest | tee /dev/stderr | grep -q '^verified-gate policy self-test: [0-9]* cases pass$'
