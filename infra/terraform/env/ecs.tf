@@ -6,7 +6,7 @@ resource "aws_ecs_cluster" "main" {
   # Container Insights has a per-metric charge; staging uses task logs and ALB metrics instead.
   setting {
     name  = "containerInsights"
-    value = "disabled"
+    value = var.container_insights ? "enabled" : "disabled"
   }
 
   tags = {
@@ -54,9 +54,11 @@ resource "aws_ecs_task_definition" "api" {
           { name = "TRUST_PROXY", value = "1" },
           # The API fail-closes parent sessions when Redis is unreachable, so this must point at
           # the ElastiCache node from elasticache.tf, never localhost.
-          { name = "REDIS_URL", value = "redis://${aws_elasticache_replication_group.main.primary_endpoint_address}:6379" },
+          { name = "REDIS_URL", value = local.redis_url },
         ],
-        var.cors_origin != "" ? [{ name = "CORS_ORIGIN", value = var.cors_origin }] : [],
+        # Empty cors_origin = the API's permissive default, which it now refuses under NODE_ENV=production
+        # unless told it is deliberate (#765). Production can never get here: its guard requires cors_origin.
+        var.cors_origin != "" ? [{ name = "CORS_ORIGIN", value = var.cors_origin }] : [{ name = "CORS_ALLOW_ANY_ORIGIN", value = "1" }],
         # Roadmap 5.8: count a device's request rate so "idle child phone <= 3 requests per 10 min" can be
         # measured. Staging only — production leaves it unset on purpose (#346 review): the counter keeps a
         # hash per device, and the durable-revocation fix pins this cache to `maxmemory-policy noeviction`, so
@@ -74,11 +76,19 @@ resource "aws_ecs_task_definition" "api" {
           { name = "DATABASE_URL", valueFrom = data.terraform_remote_state.base.outputs.database_url_secret_arn },
           { name = "JWT_SECRET", valueFrom = data.terraform_remote_state.base.outputs.jwt_secret_arn },
           { name = "VAULT_KEY", valueFrom = data.terraform_remote_state.base.outputs.vault_key_secret_arn },
-          # The seed refuses to run in production without it, and the image must not carry a default.
-          { name = "SEED_DEMO_PASSWORD", valueFrom = data.terraform_remote_state.base.outputs.demo_password_secret_arn },
         ],
+        # Staging's seed needs it. Production never seeds (up.sh migrates only), so its tasks do not get the
+        # demo password at all (Fable's review of #765).
+        var.environment != "production" ? [
+          { name = "SEED_DEMO_PASSWORD", valueFrom = data.terraform_remote_state.base.outputs.demo_password_secret_arn },
+        ] : [],
         var.push_enabled ? [
           { name = "FCM_SERVICE_ACCOUNT_JSON", valueFrom = data.terraform_remote_state.base.outputs.fcm_service_account_secret_arn },
+        ] : [],
+        # Production's service credential (#714): a `secrets` entry, never `environment`, so the value is in
+        # no task definition. try(): a staging base from before this change has no such output.
+        try(data.terraform_remote_state.base.outputs.internal_hmac_secret_arn, "") != "" ? [
+          { name = "INTERNAL_HMAC_SECRET", valueFrom = data.terraform_remote_state.base.outputs.internal_hmac_secret_arn },
         ] : [],
       )
 
@@ -112,8 +122,8 @@ resource "aws_lb" "main" {
   # WebSocket clients (parent live view) would be dropped by the 60 s default.
   idle_timeout = 300
 
-  # On-demand staging: `down` must not need a console step.
-  enable_deletion_protection = false
+  # On-demand staging: `down` must not need a console step. Production protects it.
+  enable_deletion_protection = var.alb_deletion_protection
   drop_invalid_header_fields = true
 
   tags = {
@@ -214,8 +224,9 @@ resource "aws_ecs_service" "api" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.api.arn
 
-  # ADR-0028's minimum: two copies so one task can die without an outage.
-  desired_count = 2
+  # ADR-0028's minimum: two copies so one task can die without an outage. Autoscaling owns the count
+  # afterwards, so a later apply must not reset it (ignore_changes below).
+  desired_count = var.api_min_count
   launch_type   = "FARGATE"
 
   # `up` must fail here rather than print a URL for a service whose tasks are crash-looping.
@@ -245,6 +256,10 @@ resource "aws_ecs_service" "api" {
     container_port   = 3000
   }
 
+  lifecycle {
+    ignore_changes = [desired_count]
+  }
+
   depends_on = [
     aws_db_instance.main,
     aws_elasticache_replication_group.main,
@@ -264,9 +279,9 @@ resource "aws_appautoscaling_target" "ecs" {
   scalable_dimension = "ecs:service:DesiredCount"
   resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.api[0].name}"
 
-  # ADR-0028: minimum two copies; four is enough for staging's expected traffic.
-  min_capacity = 2
-  max_capacity = 4
+  # ADR-0028: minimum two copies; staging tops out at four, production at six (#714).
+  min_capacity = var.api_min_count
+  max_capacity = var.api_max_count
 }
 
 resource "aws_appautoscaling_policy" "cpu" {

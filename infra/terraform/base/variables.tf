@@ -11,9 +11,15 @@ variable "project" {
 }
 
 variable "environment" {
-  description = "Deployment environment used in resource names and tags."
+  description = "Deployment environment used in resource names and tags. \"production\" arms production_guard.tf; up.sh passes it explicitly for production runs."
   type        = string
   default     = "staging"
+
+  # A misspelling ("prod") would otherwise skip the production guard entirely (Fable, #765 re-review).
+  validation {
+    condition     = contains(["staging", "production"], var.environment)
+    error_message = "environment must be exactly staging or production."
+  }
 }
 
 variable "domain_name" {
@@ -89,4 +95,78 @@ variable "certificate_arn" {
     condition     = var.certificate_arn == "" || can(regex("^arn:aws:acm:[a-z0-9-]+:[0-9]{12}:certificate/.+$", var.certificate_arn))
     error_message = "certificate_arn must be empty or a valid ACM certificate ARN."
   }
+}
+
+# --- Account wiring (issue #714). Staging leaves all of these at their defaults. ---
+
+variable "assume_role_arn" {
+  description = "Role the provider (and the backend file) assumes. Empty in staging; production names the deploy role inside osra-production."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.assume_role_arn == "" || can(regex("^arn:aws:iam::[0-9]{12}:role/.+$", var.assume_role_arn))
+    error_message = "assume_role_arn must be empty or an IAM role ARN."
+  }
+}
+
+variable "allowed_account_ids" {
+  description = "Account IDs this stack may touch. Empty = no check (staging). Production pins its own account so a wrong profile fails before planning."
+  type        = list(string)
+  default     = []
+}
+
+# --- Production settings (issue #714): every default is today's staging value. ---
+
+variable "create_hosted_zone" {
+  description = "Create hosted_zone_name as a new Route 53 zone in this account instead of looking it up. Production sets true (api.osratech.com is delegated from the management account's osratech.com zone)."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.create_hosted_zone || var.hosted_zone_name != ""
+    error_message = "create_hosted_zone needs hosted_zone_name (the zone to create, e.g. api.osratech.com)."
+  }
+}
+
+variable "log_retention_days" {
+  description = "CloudWatch retention for the API log group. 14 keeps staging inside its budget; production keeps 30."
+  type        = number
+  default     = 14
+}
+
+variable "secret_recovery_window_days" {
+  description = "Secrets Manager recovery window. 0 lets staging rebuild base on the same names at once; production keeps 7-30 days so a mistaken delete can be undone."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.secret_recovery_window_days == 0 || (var.secret_recovery_window_days >= 7 && var.secret_recovery_window_days <= 30)
+    error_message = "secret_recovery_window_days must be 0 or between 7 and 30 (the Secrets Manager limits)."
+  }
+}
+
+variable "bedrock_eval_role_enabled" {
+  description = "Create the ADR-0033 Bedrock evaluation role (needs the GitHub OIDC variables). Measuring models is a staging job; production leaves it off."
+  type        = bool
+  default     = true
+}
+
+variable "budget_limit_usd" {
+  description = "Monthly AWS Budgets limit for this account in USD; 0 creates no budget (staging's budget is managed outside Terraform)."
+  type        = number
+  default     = 0
+}
+
+variable "alarm_email" {
+  description = "Address that receives the budget alerts. Set it in the gitignored tfvars only; never commit an address."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "internal_hmac_secret_enabled" {
+  description = "Create INTERNAL_HMAC_SECRET (the ai-engine's service credential) as a fresh random value in Secrets Manager. Staging sets none today; production MUST be true so its value is never one that was exposed before (#714, osra-security#26)."
+  type        = bool
+  default     = false
 }
