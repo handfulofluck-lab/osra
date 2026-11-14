@@ -1,4 +1,4 @@
-#if canImport(SwiftUI)
+#if os(iOS)
 import OSLog
 import SwiftUI
 #if canImport(UIKit)
@@ -119,7 +119,11 @@ public struct AgentRootView: View {
     /// #602: when the rules were last synced, and the Sync now button's state.
     @State private var syncedAt: Date? = RuleStore.syncedAt()
     @State private var syncing = false
+    /// When the app last drained and synced, so a resume right after a launch does not do it twice.
+    @State private var lastRefresh: Date = .distantPast
     @State private var syncFailed = false
+    /// #661: the server address is for support, so it sits closed at the bottom of the screen.
+    @State private var showTechnicalDetails = false
     #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
     @StateObject private var screenTime = ScreenTimePermission(authorizer: FamilyControlsAuthorizer())
     #endif
@@ -142,8 +146,6 @@ public struct AgentRootView: View {
                             LabeledContent(L10n.tr("status_child_name"), value: name)
                                 .accessibilityIdentifier(A11yID.statusChildName)
                         }
-                        LabeledContent(L10n.tr("status_server"), value: identity.apiBaseURL.absoluteString)
-                            .accessibilityIdentifier(A11yID.statusServer)
                         TimelineView(.periodic(from: .now, by: 60)) { context in
                             let state = SyncStatus.state(syncedAt: syncedAt, now: context.date)
                             Text(SyncStatus.text(state, now: context.date))
@@ -215,6 +217,13 @@ public struct AgentRootView: View {
                         Button(L10n.tr("repair_button")) { askingRepairPin = true }
                             .accessibilityIdentifier(A11yID.statusRepair)
                     }
+                    Section {
+                        DisclosureGroup(L10n.tr("status_technical_details"), isExpanded: $showTechnicalDetails) {
+                            LabeledContent(L10n.tr("status_server"), value: identity.apiBaseURL.absoluteString)
+                                .accessibilityIdentifier(A11yID.statusServer)
+                        }
+                        .accessibilityIdentifier(A11yID.statusTechnicalDetails)
+                    }
                 }
                 .navigationTitle(L10n.tr("status_title"))
                 .sheet(isPresented: $askingRepairPin) {
@@ -257,6 +266,7 @@ public struct AgentRootView: View {
         // On open: drain the command queue, then fetch the rules (5.5 PR C, D). A failed sync keeps the last
         // stored rules in force. A wake push drains the queue the same way (`OSRAAgentAppDelegate`).
         .task {
+            lastRefresh = Date()
             let drained = await CommandDrainer.drainNow()
             if drained.consentWithdrawn { await LocationController.shared.stopForConsent() }
             let synced = await RuleSyncer.syncNow()
@@ -274,7 +284,17 @@ public struct AgentRootView: View {
             #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
             screenTime.refresh()
             #endif
+            // #690: iOS keeps a backgrounded app alive for hours, so the revocation check runs on resume too.
+            Task { await refreshAfterResume() }
         }
+    }
+
+    /// Coming back to the front does what an app open does: drain, sync, and leave if the parent removed this
+    /// phone (`device_revoked` unpairs it, then `leaveIfUnpaired` shows pairing).
+    private func refreshAfterResume() async {
+        guard ResumeRefresh.shouldRefresh(paired: identity != nil, syncing: syncing, last: lastRefresh, now: Date()) else { return }
+        lastRefresh = Date()
+        await syncNow()
     }
 
     /// #602 item 4: what an app open does, on demand (a push wake can take minutes in the background).

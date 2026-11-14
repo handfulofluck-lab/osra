@@ -28,7 +28,7 @@ object NetworkModule {
 
     // NOTE: placeholder build-time base (§14.2); DynamicBaseUrlInterceptor rewrites requests to the
     // tester-configured base URL from AgentSettings.
-    internal const val API_BASE_URL: String = "https://api.familyshield.dev/"
+    internal const val API_BASE_URL: String = "https://api.osratech.com/"
 
     /** Moshi instance with Kotlin data-class support. */
     @Provides

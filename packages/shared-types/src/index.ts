@@ -36,6 +36,21 @@ export interface LocationPing { deviceId: UUID; lat: number; lng: number;
   accuracyM: number; timestamp: ISODate; }
 export interface Geofence { id: UUID; childId: UUID; label: string; lat: number; lng: number;
   radiusM: number; notifyOnEnter: boolean; notifyOnExit: boolean; }
+/**
+ * The key names a sentence the PARENT APP owns, and the params fill its placeholders. An alert
+ * always carries the English `body` as a fallback for an app that does not know the key yet.
+ */
+export const ALERT_BODY_KEYS = [
+  "alertBodyDeviceSilent",
+  "alertBodyGeofenceEnter",
+  "alertBodyGeofenceExit",
+  "alertBodySearchFlagged",
+  "alertBodySocialConcern",
+  "alertBodyYouTubeFlagged",
+] as const;
+export type AlertBodyKey = typeof ALERT_BODY_KEYS[number];
+export type AlertBodyParams = Record<string, string | number>;
+
 export interface Alert { id: UUID; childId: UUID; deviceId?: UUID;
   severity: "info"|"warning"|"critical";
   category: "web_threat"|"app_blocked"|"screen_time_exceeded"|"geofence"|"sos"|

@@ -98,7 +98,7 @@ describe("family routes", () => {
       createdAt: new Date().toISOString(),
       parents: [{
         id: "parent-1",
-        email: "demo@familyshield.dev",
+        email: "demo@osratech.com",
         passwordHash: "argon2$secret",
         mfaSecret: "mfa",
         // ADR-0023: a joined batch must never reach a response, even though the relation is not
@@ -259,7 +259,7 @@ describe("family routes", () => {
       name: "Demo",
       region: "US",
       createdAt: new Date(),
-      parents: [{ id: "parent-1", email: "demo@familyshield.dev", passwordHash: "x" }],
+      parents: [{ id: "parent-1", email: "demo@osratech.com", passwordHash: "x" }],
       children: [
         {
           id: CHILD_ID,
@@ -576,7 +576,7 @@ describe("family routes", () => {
       parents: [
         {
           id: "parent-1",
-          email: "demo@familyshield.dev",
+          email: "demo@osratech.com",
           passwordHash: "argon2$secret",
           mfaSecret: "JBSWY3DPEHPK3PXP",
           mfaEnabled: true,
@@ -592,12 +592,12 @@ describe("family routes", () => {
     const res = await app.inject({ method: "GET", url: "/v1/family/export", headers: authHeader(app) });
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-disposition"]).toContain("attachment");
-    expect(res.headers["content-disposition"]).toContain(`familyshield-export-${FAMILY.id}.json`);
+    expect(res.headers["content-disposition"]).toContain(`osra-export-${FAMILY.id}.json`);
     const body = res.json();
     expect(body.exportedAt).toBeTruthy();
     expect(body.family.children).toHaveLength(1);
     expect(body.family.parents).toHaveLength(1);
-    expect(body.family.parents[0].email).toBe("demo@familyshield.dev");
+    expect(body.family.parents[0].email).toBe("demo@osratech.com");
     // Credential material must never leave the API — including in exports.
     const raw = JSON.stringify(body);
     expect(raw).not.toContain("passwordHash");
@@ -625,7 +625,7 @@ describe("family routes", () => {
       id: FAMILY.id,
       name: "Demo",
       region: "US",
-      parents: [{ id: "parent-1", email: "demo@familyshield.dev" }],
+      parents: [{ id: "parent-1", email: "demo@osratech.com" }],
       children: [{ id: CHILD_ID, displayName: "Alex", devices: [], consents: [] }],
     });
 

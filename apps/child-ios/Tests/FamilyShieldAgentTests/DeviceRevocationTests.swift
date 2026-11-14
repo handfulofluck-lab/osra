@@ -7,6 +7,7 @@ import XCTest
 final class DeviceRevocationTests: XCTestCase {
     private let store = InMemorySecretStore()
     private var shieldsCleared = 0
+    private var platformClearShields: (() -> Void)!
     private let identity = AgentIdentity(
         apiBaseURL: URL(string: "https://api.example.invalid")!,
         deviceToken: "device-jwt",
@@ -18,6 +19,7 @@ final class DeviceRevocationTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        platformClearShields = DeviceRevocation.clearShields
         AgentIdentityStore.secrets = store
         AgentIdentityStore.clear()
         LocationBuffer.clear()
@@ -27,6 +29,7 @@ final class DeviceRevocationTests: XCTestCase {
     }
 
     override func tearDown() {
+        DeviceRevocation.clearShields = platformClearShields
         AgentIdentityStore.clear()
         LocationBuffer.clear()
         StubProtocol.reset()
@@ -68,6 +71,15 @@ final class DeviceRevocationTests: XCTestCase {
         XCTAssertFalse(DeviceRevocation.isRevoked(status: 401, body: Data("device_revoked".utf8)))
         XCTAssertFalse(DeviceRevocation.isRevoked(status: 403, body: json(["error": "device_revoked"])))
     }
+
+    #if os(iOS)
+    func testDefaultShieldClearRemovesUnscheduledActivitiesOnIOS() {
+        RuleStore.recordUnscheduled(["bedtime.test"])
+        defer { RuleStore.recordUnscheduled([]) }
+        platformClearShields()
+        XCTAssertEqual(RuleStore.unscheduled(), [], "the real iOS clear must run, not a platform-empty closure")
+    }
+    #endif
 
     func testARuleSyncAnsweringDeviceRevokedUnpairs() async {
         pairWithRules()

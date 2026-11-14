@@ -9,7 +9,7 @@ final class A11yIDTests: XCTestCase {
     /// A control starts a line as `Button(`, `Button {`, `Menu(` and so on. Both call shapes count, so a control
     /// written with a `label:` closure is seen too.
     private static let controlPattern = try! NSRegularExpression(
-        pattern: #"^(Button|TextField|SecureField|NavigationLink|Toggle|Menu|Picker)\s*[({]"#)
+        pattern: #"^(Button|TextField|SecureField|NavigationLink|Toggle|Menu|Picker|DisclosureGroup)\s*[({]"#)
 
     func testTheIdentifiersAreUniqueStableAscii() {
         XCTAssertEqual(Set(A11yID.all).count, A11yID.all.count, "no two controls share an identifier")
@@ -85,12 +85,25 @@ final class A11yIDTests: XCTestCase {
         let names = ["pairServer", "pairCode", "pairName", "pairError", "pairButton",
                      "statusPaired", "statusChildName", "statusServer", "statusLastSynced", "statusSyncNow",
                      "statusSyncFailed", "statusScreenTime", "statusScreenTimeButton", "statusLocation",
-                     "statusLocationButton", "statusGroups", "statusRepair",
-                     "pinNew", "pinRepeat", "pinSetError", "pinSave", "pinGate", "pinGateMessage", "pinContinue",
+                     "statusLocationButton", "statusGroups", "statusRepair", "statusTechnicalDetails",
+                     "pinSetReason", "pinNew", "pinRepeat", "pinSetError", "pinSave", "pinGate", "pinGateMessage", "pinContinue",
                      "groupsNewName", "groupsNewChoose", "groupsNewChosen", "groupsNewAdd", "groupsError"]
         XCTAssertEqual(names.count, A11yID.all.count, "every identifier in A11yID.all is listed here")
         for name in names {
             XCTAssertTrue(sources.contains(".accessibilityIdentifier(A11yID.\(name))"), name)
         }
+    }
+
+    /// U11 (#696): the parent-PIN screen cannot be skipped, so its first line says why, in both languages.
+    func testThePinScreenSaysWhyFirst() throws {
+        XCTAssertEqual(L10n.tr("pin_set_reason", language: "en"),
+                       "Set a parent PIN so only a parent can change OSRA Kids or pair this phone again.")
+        XCTAssertNotEqual(L10n.tr("pin_set_reason", language: "ar"), "pin_set_reason", "the Bureau's Arabic is present")
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent/ParentPinViews.swift")
+        let text = try String(contentsOf: source, encoding: .utf8)
+        let reason = try XCTUnwrap(text.range(of: "Text(L10n.tr(\"pin_set_reason\"))"))
+        let field = try XCTUnwrap(text.range(of: "L10n.tr(\"pin_new_field\")"))
+        XCTAssertLessThan(reason.lowerBound, field.lowerBound, "the reason comes before the PIN fields")
     }
 }

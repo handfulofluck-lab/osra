@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "FamilyShieldAgent",
     defaultLocalization: "en",
-    platforms: [.iOS(.v16)],
+    platforms: [.iOS(.v16), .macOS(.v14)],
     products: [.library(name: "FamilyShieldAgent", targets: ["FamilyShieldAgent"])],
     dependencies: [],
     targets: [

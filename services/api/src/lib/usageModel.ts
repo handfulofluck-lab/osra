@@ -1,6 +1,8 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { getRedis } from "../redis.js";
 import { markDeviceRevoked } from "./deviceRevocation.js";
+import { stripAlertLocation } from "./alertLocation.js";
 
 /**
  * Phase 2c (ADR-0013): the durable usage model.
@@ -246,6 +248,11 @@ export interface RetentionResult {
   usageDays: number;
   /** Play decision 10 B: alerts older than `ALERT_RETENTION_DAYS` (365, never raised). */
   alerts: number;
+  /**
+   * Issue #672 review (Fable B2): alerts still inside the year but past the location window whose five
+   * location keys were removed. The rows stay; only the place goes.
+   */
+  alertLocations: number;
 }
 
 /**
@@ -270,6 +277,26 @@ export async function applyRetention(at: Date = new Date(), env: NodeJS.ProcessE
     // erased, which is not a retention policy a data-safety form can describe.
     prisma.alert.deleteMany({ where: { createdAt: { lt: alertCutoff } } }),
   ]);
+  // Issue #672 review (Fable B2, ADR-0028 decision 5): a child's coordinates must not outlive the 30-day
+  // location window by riding inside an alert kept for up to a year — the privacy notice and the store
+  // data-safety answers both say 30 days. The alert stays (a parent must not lose the record of an SOS);
+  // the five keys come off. The scan is bounded by the alert year and costs one read per row that still
+  // has a location, on a nightly job.
+  const stale = (await prisma.alert.findMany({
+    where: { createdAt: { lt: locationCutoff } },
+    select: { id: true, metadata: true },
+  })) ?? [];
+  let alertLocations = 0;
+  for (const alert of stale) {
+    const stripped = stripAlertLocation((alert as { metadata?: unknown }).metadata);
+    if (stripped === null) continue;
+    // Prisma types a JSON column as InputJsonValue; the value is the same bag with five keys removed.
+    await prisma.alert.update({
+      where: { id: (alert as { id: string }).id },
+      data: { metadata: stripped as Prisma.InputJsonValue },
+    });
+    alertLocations += 1;
+  }
   return {
     activityEvents: a.count,
     webVisits: w.count,
@@ -277,6 +304,7 @@ export async function applyRetention(at: Date = new Date(), env: NodeJS.ProcessE
     locationPings: l.count,
     usageDays: u.count,
     alerts: al.count,
+    alertLocations,
   };
 }
 
