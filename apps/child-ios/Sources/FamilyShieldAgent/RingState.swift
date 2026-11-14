@@ -36,7 +36,6 @@ public enum RingEventState: String, Codable {
 }
 
 public enum RingPINPresentation {
-    case setup
     case gate
 
     public static func resolve(isConfigured: Bool) -> RingPINPresentation {

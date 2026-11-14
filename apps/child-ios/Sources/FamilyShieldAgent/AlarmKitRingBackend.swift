@@ -1,9 +1,19 @@
 import Foundation
+import OSLog
 
 #if os(iOS)
 import AlarmKit
 import AppIntents
 import SwiftUI
+
+enum RingAlarmErrorLog {
+    private static let logger = Logger(subsystem: "com.osratech.child", category: "Ring")
+
+    static func error(_ operation: String, _ error: Error) {
+        let nsError = error as NSError
+        logger.error("\(operation, privacy: .public) failed type=\(String(describing: type(of: error)), privacy: .public) code=\(nsError.code, privacy: .public)")
+    }
+}
 
 @available(iOS 26.0, *)
 private struct RingAlarmMetadata: AlarmMetadata {}
@@ -33,7 +43,12 @@ public final class AlarmKitRingBackend: RingBackend {
     public func requestAuthorization() async -> Bool {
         #if os(iOS)
         if #available(iOS 26.0, *) {
-            return (try? await AlarmManager.shared.requestAuthorization()) == .authorized
+            do {
+                return try await AlarmManager.shared.requestAuthorization() == .authorized
+            } catch {
+                RingAlarmErrorLog.error("authorization", error)
+                return false
+            }
         }
         #endif
         return false
@@ -42,20 +57,25 @@ public final class AlarmKitRingBackend: RingBackend {
     public func schedule(_ id: UUID) async throws {
         #if os(iOS)
         guard #available(iOS 26.0, *) else { throw RingCommandError.unsupportedOS }
-        let alert = AlarmPresentation.Alert(
-            title: LocalizedStringResource("ring_alarm_title", table: "Localizable", bundle: .module),
-            stopButton: AlarmButton(text: LocalizedStringResource("ring_alert_ok", table: "Localizable", bundle: .module),
-                                    textColor: .white, systemImageName: "checkmark"),
-            secondaryButton: AlarmButton(text: LocalizedStringResource("ring_dismiss", table: "Localizable", bundle: .module),
-                                         textColor: .white, systemImageName: "arrow.up.forward.app"),
-            secondaryButtonBehavior: .custom)
-        let attributes = AlarmAttributes<RingAlarmMetadata>(
-            presentation: AlarmPresentation(alert: alert), metadata: RingAlarmMetadata(),
-            tintColor: Color(red: 11 / 255, green: 93 / 255, blue: 87 / 255))
-        let configuration: AlarmManager.AlarmConfiguration<RingAlarmMetadata> = .alarm(
-            schedule: .fixed(Date()), attributes: attributes,
-            secondaryIntent: OpenRingIntent(), sound: .default)
-        _ = try await AlarmManager.shared.schedule(id: id, configuration: configuration)
+        do {
+            let alert = AlarmPresentation.Alert(
+                title: LocalizedStringResource("ring_alarm_title", table: "Localizable", bundle: .module),
+                stopButton: AlarmButton(text: LocalizedStringResource("ring_alert_ok", table: "Localizable", bundle: .module),
+                                        textColor: .white, systemImageName: "checkmark"),
+                secondaryButton: AlarmButton(text: LocalizedStringResource("ring_dismiss", table: "Localizable", bundle: .module),
+                                             textColor: .white, systemImageName: "arrow.up.forward.app"),
+                secondaryButtonBehavior: .custom)
+            let attributes = AlarmAttributes<RingAlarmMetadata>(
+                presentation: AlarmPresentation(alert: alert), metadata: RingAlarmMetadata(),
+                tintColor: Color(red: 11 / 255, green: 93 / 255, blue: 87 / 255))
+            let configuration: AlarmManager.AlarmConfiguration<RingAlarmMetadata> = .alarm(
+                schedule: .fixed(Date().addingTimeInterval(1)), attributes: attributes,
+                secondaryIntent: OpenRingIntent(), sound: .default)
+            _ = try await AlarmManager.shared.schedule(id: id, configuration: configuration)
+        } catch {
+            RingAlarmErrorLog.error("schedule", error)
+            throw error
+        }
         #else
         throw RingCommandError.unsupportedOS
         #endif
@@ -64,7 +84,12 @@ public final class AlarmKitRingBackend: RingBackend {
     public func stop(_ id: UUID) async throws {
         #if os(iOS)
         if #available(iOS 26.0, *) {
-            try AlarmManager.shared.cancel(id: id)
+            do {
+                try AlarmManager.shared.cancel(id: id)
+            } catch {
+                RingAlarmErrorLog.error("cancel", error)
+                throw error
+            }
         }
         #endif
     }
@@ -72,7 +97,12 @@ public final class AlarmKitRingBackend: RingBackend {
     public func scheduledIDs() async throws -> Set<UUID> {
         #if os(iOS)
         if #available(iOS 26.0, *) {
-            return try Set(AlarmManager.shared.alarms.map(\.id))
+            do {
+                return try Set(AlarmManager.shared.alarms.map(\.id))
+            } catch {
+                RingAlarmErrorLog.error("scheduledIDs", error)
+                throw error
+            }
         }
         return []
         #else

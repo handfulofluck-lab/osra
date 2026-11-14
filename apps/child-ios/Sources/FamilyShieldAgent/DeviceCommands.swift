@@ -22,7 +22,8 @@ public struct DeviceCommand: Decodable, Equatable {
         id = try container.decode(String.self, forKey: .id)
         type = try container.decode(String.self, forKey: .type)
         guard container.contains(.payload) else { payload = nil; return }
-        payload = (try? container.decode([String: String].self, forKey: .payload)) ?? [:]
+        // A malformed payload is not an absent ring target.
+        payload = (try? container.decode([String: String].self, forKey: .payload)) ?? ["ringId": "\u{0}"]
     }
 }
 
@@ -144,9 +145,11 @@ public struct LiveRingCommands: RingCommandHandling {
     }
 
     public func stopRing(targetId: String?) async -> RingCommandError? {
-        let target = targetId.flatMap { UUID(uuidString: $0) }
-        if targetId != nil && target == nil { return .invalidCommand }
-        return await (controller ?? RingController.shared).stop(.parentCommand, commandId: target ?? nil)
+        guard let text = targetId?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+            return await (controller ?? RingController.shared).stop(.parentCommand)
+        }
+        guard let target = UUID(uuidString: text) else { return .invalidCommand }
+        return await (controller ?? RingController.shared).stop(.parentCommand, commandId: target)
     }
 }
 

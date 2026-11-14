@@ -3,14 +3,11 @@ import SwiftUI
 
 public struct RingView: View {
     @ObservedObject var controller: RingController
-    @State private var pinConfigured = ParentPinStore.isConfigured
-    var onPinConfigured: (() -> Void)?
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
 
-    public init(controller: RingController, onPinConfigured: (() -> Void)? = nil) {
+    public init(controller: RingController) {
         self.controller = controller
-        self.onPinConfigured = onPinConfigured
     }
 
     public var body: some View {
@@ -34,18 +31,11 @@ public struct RingView: View {
                         .font(.body)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
-                    Group {
-                        if RingPINPresentation.resolve(isConfigured: pinConfigured) == .setup {
-                            PinSetupView {
-                                pinConfigured = true
-                                onPinConfigured?()
-                            }
-                        } else {
-                            PinGateView(title: L10n.tr("ring_pin_title")) {
-                                Task {
-                                    await controller.stop(.pinVerified)
-                                    RingNotifier.cancel()
-                                }
+                    if RingPINPresentation.resolve(isConfigured: ParentPinStore.isConfigured) == .gate {
+                        PinGateView(title: L10n.tr("ring_pin_title")) {
+                            Task {
+                                await controller.stop(.pinVerified)
+                                RingNotifier.cancel()
                             }
                         }
                     }

@@ -255,7 +255,7 @@ public struct AgentRootView: View {
         }
         .fullScreenCover(isPresented: Binding(
             get: { ring.requiresPin }, set: { _ in })) {
-            RingView(controller: ring, onPinConfigured: { pinConfigured = true })
+            RingView(controller: ring)
         }
         .onAppear {
             identity = AgentIdentityStore.load()
