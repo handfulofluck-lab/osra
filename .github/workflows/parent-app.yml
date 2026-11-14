@@ -109,7 +109,7 @@ jobs:
           OSRA_UPLOAD_KEY_PASSWORD: ${{ secrets.OSRA_UPLOAD_KEY_PASSWORD }}
           # The server the store build talks to out of the box (server_provider.dart kDefaultServerUrl).
           # A repository variable, not code. A signed (store) build must have it: the built-in server is what
-          # locks the login screen's Server field (osra-security#8 F3), so a signed build without it fails here,
+          # hides the login screen's Server field outside debug (osra-security#8 F3), so a signed build without it fails here,
           # except on a pull request, whose bundle is never uploaded (a warning there). An unsigned build (forks)
           # may leave it unset and keeps the editable field. Never an
           # http:// URL: the release network config is HTTPS-only.

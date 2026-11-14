@@ -27,6 +27,7 @@ public enum A11yID {
     public static let statusTechnicalDetails = "status.technicalDetails"
 
     // Parent PIN (set after pairing, and the gate that asks the parent)
+    public static let pinSetReason = "pin.setReason"
     public static let pinNew = "pin.new"
     public static let pinRepeat = "pin.repeat"
     public static let pinSetError = "pin.setError"
@@ -55,7 +56,7 @@ public enum A11yID {
         statusPaired, statusChildName, statusServer, statusLastSynced, statusSyncNow, statusSyncFailed,
         statusScreenTime, statusScreenTimeButton, statusLocation, statusLocationButton, statusGroups, statusRepair,
         statusTechnicalDetails,
-        pinNew, pinRepeat, pinSetError, pinSave, pinGate, pinGateMessage, pinContinue,
+        pinSetReason, pinNew, pinRepeat, pinSetError, pinSave, pinGate, pinGateMessage, pinContinue,
         groupsNewName, groupsNewChoose, groupsNewChosen, groupsNewAdd, groupsError,
     ]
 }

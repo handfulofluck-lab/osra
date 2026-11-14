@@ -15,7 +15,7 @@ these gates exist, see `docs/adr/0005-adversarial-acceptance-gate.md` and
 | Android JVM | `cd apps/child-android && ./gradlew testPlayDebugUnitTest testFullDebugUnitTest` (ADR-0016: two flavors, both must stay green) | Rule engine, counters, monitored apps, HMAC signing logic, flavor manifest difference, **the merged manifest** of both flavours (ADR-0021) | Agent logic regressions, a Play build that gained the notification permission or any Play-forbidden permission **through a dependency's manifest** |
 | Windows (xunit) | `cd apps/agent-desktop && dotnet test tests/FamilyShield.Agent.Tests` | Proxy/process/screen-time/tamper logic | Agent logic regressions |
 | AI engine | `cd services/ai-engine && pytest tests -q` | Classifier + API smoke (skips what is absent) | Classification/API regressions |
-| iOS | `.github/workflows/ios-ci.yml` (macOS runner) | SwiftPM build + simulator build | Swift compile/behaviour regressions |
+| iOS + shared macOS core | `.github/workflows/ios-ci.yml` (macOS runner) | Native macOS SwiftPM build + test discovery + tests; iOS SwiftPM and simulator builds | Swift compile/behaviour regressions, or a portable test excluded from macOS |
 | **Hardware** (device) | section 5 | Crash-loop, FGS start, location upload, overlays | Anything the emulator cannot show |
 
 `test/demo-seed-cleanup.test.ts` runs against real PostgreSQL in CI, where
@@ -42,6 +42,13 @@ the gates on 2026-10-18), so a row below is the floor, not the gate:
 
 A change is not done on the strength of a locally green suite whose build step was never exercised: the
 release-assembly step is where a release-only failure lives.
+
+For composite numeric values in Arabic RTL, run `flutter test test/ltr_isolates_test.dart` from
+`apps/parent-app` (#751). It renders the real latest-location, location-history (with and without a
+timestamp), dashboard, map-sheet, call/SMS and bonus-time widgets with an Arabic `Locale` and
+`TextDirection.rtl`, and checks the exact LRI/PDI-delimited values plus the localized accuracy unit.
+Removing any one of the seven `ltrIsolate` calls must turn its corresponding row red. These are widget
+tests, not a phone run; no device claim or API access is used.
 
 ## 2. Prerequisites (dev machine)
 
@@ -342,7 +349,7 @@ off, the read route still answers but returns `counting: false` and `withinBudge
 | `agent-desktop.yml` | `apps/agent-desktop/**` | `dotnet test` of the desktop agent, on a Windows runner (billed above the Linux rate, about 1.67× at the 2026 rates) |
 | `ai-engine.yml` | `services/ai-engine/**` | `pytest`, then the evaluation banks, the generated-set check and the regex-scorer evaluation |
 | `ios-ci.yml` | six path patterns: `apps/child-ios/**`, `apps/parent-app/ios/**`, the workflow itself, and the three API contract files (`services/api/src/routes/devices.ts`, `services/api/src/routes/alerts.ts`, `services/api/src/lib/internalAuth.ts`); `push` runs on `main` only, plus weekly Monday 01:23 and `workflow_dispatch` | The **child** agent's iOS gate (SwiftPM build + `generic/platform=iOS Simulator`). Since 2026-10-24 it is no longer the only iOS gate: the parent app's Flutter iOS build is the `parent-app-ios` job in `parent-app.yml` |
-| `api-image.yml` | PRs touching what the image is built from: `services/api/**`, `packages/**`, the root package files, `.dockerignore` | Builds `services/api/Dockerfile` from the repo root (`docker/build-push-action`, `push: false`, `linux/arm64` on GitHub's arm64 runner) and runs `services/api/scripts/verify-image.sh` inside the result, then migrates, seeds twice and boots the image against Postgres and Redis. The Dockerfile has no `|| true`, so a failed install or build fails the PR, and a build that cannot migrate or seed fails it too. ECR stores images rather than building them; publishing needs an OIDC role scoped to the one repository (#258) |
+| `api-image.yml` | PRs touching what the image is built from: `services/api/**`, `packages/**`, the root package files, `.dockerignore` | Builds `services/api/Dockerfile` from the repo root (`docker/build-push-action`, `push: false`, `linux/arm64` on GitHub's arm64 runner) and runs `services/api/scripts/verify-image.sh` inside the result, then migrates, seeds twice and boots the image against Postgres and Redis. `verify-image.sh` also checks that the RDS CA bundle is at `/app/certs/rds-global-bundle.pem`, readable and not writable by the API's user, and that with `DATABASE_TLS_VERIFY=required` the image refuses to boot on a database URL that would not verify the server's certificate, without printing the URL (#766 item 3). The Dockerfile has no `|| true`, so a failed install or build fails the PR, and a build that cannot migrate or seed fails it too. ECR stores images rather than building them; publishing needs an OIDC role scoped to the one repository (#258) |
 | `workflow-lint.yml` | every PR | `scripts/check-workflows.mjs --strict` — a YAML file GitHub rejects means **zero jobs run**, so this is checked in its own file — and `scripts/check-docs-links.mjs` in the same job, with the self-tests of the other gates. Among them `scripts/check-verified-gate-signers.mjs` (2026-10-23): it fails if `verified-gate.yml` could read a verification from any account but the agent account, structurally and by running the gate's own jq filter over fixture comments (`--selftest` proves both layers fail on the pre-fix filter; without `jq` it runs the structural layer only, and in CI a missing `jq` is exit 2). Since 2026-10-24 also `scripts/check-ci-paths.mjs` (below) and `scripts/verified-gate-carry.mjs --selftest` (below). Since 2026-11-13 also `scripts/check-ci-cost-guardrails.mjs` (below). Since 2026-11-12 also `scripts/check-site-design.mjs` (roadmap 3.19): `site/style.css` must carry the values of `docs/design/tokens.json` under the same names in both themes, no colour outside those two blocks, nothing loaded from another site, `dir="rtl"` on an Arabic page and no physical side in the sheet; rules and fixtures in `docs/design/WEBSITE.md` §5. Since 2026-11-12 also `scripts/check-user-visible-brand.mjs` (issue #608): fails any tracked or untracked repo file carrying the pre-OSRA user-visible forms, with exact-path exemptions for the dated QA audit records and only the two named legacy demo-email migration constants; rules, fixtures and CLI wiring in `--selftest` |
 | `verified-gate.yml` | On every PR to `main`: `state:verified` **and** a `Verified-sha:` line at the head, in a comment written by the agent account `handfulofluck-lab` and signed by a verifier (`AGENTS.md` §6.4, §6.5 rule 6). A comment by any other account is never read: the run log prints how many were left out. Since 2026-10-24 the carry-forward decision is `scripts/verified-gate-carry.mjs <signed-sha> <head-sha>`, run from `origin/main` so a PR's edit to the script does not judge its own carry-forward (the workflow file still comes from the PR; see #359). It exits 0 when only clean merges of main followed the signature and the PR's own `-U0` patch is unchanged; 1 when that patch moved, or when a merge after the signature was not a clean merge of its parents (a conflict, a resolution, an evil merge, or a merge with other than two parents); 2 when it cannot decide (missing or unknown sha, not an ancestor, a non-merge commit after the signature, git older than 2.38 so a merge cannot be re-run). Context is ignored, so position is not compared — a line moved by a hand-edited merge is refused by the clean-merge rule, and the only remaining limit is a line moved by a clean merge, which is git's own result. `--selftest` runs seven cases on real git repositories. Local: `node scripts/check-verified-gate-signers.mjs --selftest` and `node scripts/verified-gate-carry.mjs --selftest`. Since 2026-10-31 the trigger list also carries **`edited`**: when a stacked PR's base branch is deleted GitHub retargets the PR to `main` and announces it only as `edited` (`changes.base`), so without that event the required check is never created at all and the PR cannot merge while every visible check is green (#501; measured on the scratch PR #503 — see §6) |
 | `terraform.yml` | On a PR touching `infra/terraform/**`: `terraform fmt -check -recursive` plus `init -backend=false` and `validate` in `base/` and `env/` (Terraform 1.13.4, no credentials, no `plan`). `plan` and `apply` stay human steps — see `infra/terraform/README.md` |
@@ -453,6 +460,28 @@ node scripts/check-ci-paths.mjs     # "7 suite workflow(s), … 0 problem(s)"
 node scripts/check-ci-cost-guardrails.mjs --selftest
 node scripts/check-ci-cost-guardrails.mjs   # the #613 cheaper-CI structural contracts
 ```
+
+### The shared Swift package on macOS (roadmap 5.9 step i, #653)
+
+The `macos-core` job in `ios-ci.yml` builds and tests `apps/child-ios` natively on `macos-26`, using the
+same workflow triggers, path filters and concurrency group as the iPhone jobs. On a Mac, the equivalent is:
+
+```bash
+cd apps/child-ios
+swift build
+swift test list
+swift test
+```
+
+The discovery step requires 211 macOS tests and names one case each from pairing, HMAC signing, rule
+interpretation and both localisation string suites. Five iOS-only authorization tests remain behind
+`#if os(iOS)` because `CLAuthorizationStatus.authorizedWhenInUse` is unavailable on macOS; the other location
+and client tests still run. Wrapping any additional portable source file in `#if os(iOS)` removes its tests and
+turns this step red; leaving an iOS-only framework user unguarded turns `swift build` red. The expected count
+changes only when the package deliberately adds or removes tests.
+
+This is compile and unit-test evidence for the shared core only. No Mac application target or enforcement
+runtime exists in step (i), and the job proves nothing about Screen Time on a phone or a physical Mac.
 
 ### The parent app's iOS build (roadmap 3.9, 2026-10-24)
 

@@ -3,6 +3,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../api/models.dart';
 import '../l10n/l10n.dart';
+import 'sos_fix_text.dart';
 
 /// The visible half of an alert: what the parent reads on the lock screen.
 ///
@@ -12,6 +13,12 @@ import '../l10n/l10n.dart';
 /// `Social concern in <app>` — so showing `alert.title` verbatim would leak a
 /// search query or a video title onto a locked screen, in English, to an Arabic
 /// family (#395 review).
+///
+/// **The one exception is an SOS with a fix (#672)**: "Location from 3 min ago. Tap to see it on the map."
+/// — from the app's own strings, because a parent who gets an SOS needs to know a place exists and the push
+/// payload carries no text by #410. **No coordinates on a lock screen** (#672 UI/UX review): the numbers are
+/// in the alert's detail, one tap away, where the parent opened it deliberately. [now] is a parameter so the
+/// age is testable, and it rounds up — a fix is never presented as fresher than it is.
 @immutable
 class VisibleAlert {
   final String alertId;
@@ -27,12 +34,19 @@ class VisibleAlert {
   /// app's own translated **category** title ([alertTitleFor]), never the
   /// server's text, and the body is one generic sentence: the details are one
   /// tap away in the app, where the content is already behind the parent's PIN.
-  factory VisibleAlert.from(Alert alert, {required AppLocalizations l10n, required bool isEnglish}) =>
-      VisibleAlert(
-        alertId: alert.id,
-        title: l10n.alertTitleFor(alert.category, alert.title, isEnglish: isEnglish),
-        body: l10n.alertPushBodyGeneric,
-      );
+  factory VisibleAlert.from(Alert alert, {required AppLocalizations l10n, required bool isEnglish, DateTime? now}) {
+    final fix = alert.category == 'sos' ? alert.location : null;
+    // #672 UI/UX review: the lock screen says a location exists and how old it is — **no coordinates**.
+    // The numbers are in the alert's detail, which the tap opens.
+    final body = fix == null
+        ? l10n.alertPushBodyGeneric
+        : SosFixText.of(alert, fix, now ?? DateTime.now()).notificationBody(l10n);
+    return VisibleAlert(
+      alertId: alert.id,
+      title: l10n.alertTitleFor(alert.category, alert.title, isEnglish: isEnglish),
+      body: body,
+    );
+  }
 }
 
 /// Posts a notification. A seam, so the wake's decisions are testable without a
