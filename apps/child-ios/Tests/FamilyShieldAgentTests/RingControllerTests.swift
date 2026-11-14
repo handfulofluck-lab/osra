@@ -135,7 +135,8 @@ final class RingControllerTests: XCTestCase {
         await controller.stop(.parentCommand)
         await controller.stop(.parentCommand)
         XCTAssertEqual(backend.stopCalls, [id])
-        XCTAssertEqual(store.load()?.stopSource, .parentCommand)
+        XCTAssertEqual(reporter.calls.map(\.state), [.parentStopped])
+        XCTAssertNil(store.load(), "a delivered parent stop clears its active state")
     }
 
     func testMissingAlarmIsRearmedBeforeTheCap() async {
@@ -313,14 +314,20 @@ extension RingControllerTests {
     func testReporterRetriesAnyStatusOtherThan200Or201() async {
         let defaults = UserDefaults(suiteName: AgentIdentityStore.suiteName)
         var statuses = [500, 200]
-        let reporter = RingAlertReporter(defaults: defaults, sender: { _ in (statuses.removeFirst(), Data()) })
+        var attempts: [Int] = []
+        let reporter = RingAlertReporter(defaults: defaults, sender: { _ in
+            let status = statuses.removeFirst()
+            attempts.append(status)
+            return (status, Data())
+        })
         XCTAssertTrue(AgentIdentityStore.save(AgentIdentity(
             apiBaseURL: URL(string: "https://api.example.invalid")!, deviceToken: "device-jwt", deviceId: "dev-1",
             childId: "child-1", familyId: "fam-1", hmacSecret: "hmac")))
         let first = await reporter.report(state: .timedOut, ringId: id, dismissalCount: 0)
         let second = await reporter.report(state: .timedOut, ringId: id, dismissalCount: 0)
         XCTAssertFalse(first)
-        XCTAssertTrue(second)
+        XCTAssertTrue(second, "delivery attempts: \(attempts)")
+        XCTAssertEqual(attempts, [500, 200])
     }
 }
 
@@ -339,7 +346,8 @@ extension RingControllerTests {
         await controller.stop(.parentCommand)
         let replayError = await controller.start(id)
         XCTAssertNil(replayError)
-        XCTAssertEqual(backend.scheduled, [id])
+        XCTAssertEqual(backend.scheduled, [], "the stopped alarm stays cancelled")
+        XCTAssertEqual(backend.stopCalls, [id])
         XCTAssertEqual(reporter.callCount, 1)
     }
 
