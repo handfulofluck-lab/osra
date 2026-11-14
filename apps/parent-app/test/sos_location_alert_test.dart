@@ -1,0 +1,303 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:familyshield_parent/features/alerts/sos_alert_actions.dart';
+import 'package:familyshield_parent/api/models.dart';
+import 'package:familyshield_parent/l10n/l10n.dart';
+import 'package:familyshield_parent/features/map/family_map_screen.dart' show MapFocus, initialCameraFor;
+import 'package:familyshield_parent/push/local_notifier.dart';
+import 'package:familyshield_parent/push/sos_fix_text.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
+
+/// Issue #672, second head: the two Bureaus' reviews and Fable's privacy points, as rows.
+///
+/// **UI/UX:** the lock screen says a location exists and how old it is — **no coordinates**; the numbers
+/// live in the alert's detail, where "Copy coordinates" puts five decimals on the clipboard.
+/// **Arabic Language Bureau:** one whole line per plural case, the coordinates isolated with LRI U+2066 …
+/// PDI U+2069 in code, and hours rounded **up** («about 2 hours» for 119 minutes).
+///
+/// The isolate is the safety bug this head fixes: in a right-to-left line `25.27690, 51.52110` used to
+/// draw longitude first, so a parent reading it aloud reached another country.
+///
+/// Mutants, one row each: remove the LRI/PDI wrap in [AlertFix.isolatedCoords] → [the Arabic location line
+/// isolates the coordinates]; stop rounding hours up → [119 minutes reads as about 2 hours, not 1]; put the
+/// coordinates back in the notification body → [the notification body carries no coordinates]; use
+/// `age.inHours` in [SosFixText] → the same hours row; six decimals in [AlertFix.copyText] →
+/// [Copy coordinates puts five decimals on the clipboard].
+void main() {
+  final en = lookupAppLocalizations(const Locale('en'));
+  final ar = lookupAppLocalizations(const Locale('ar'));
+
+  /// The alert's own time; every row below measures the fix against it unless it says otherwise.
+  final alertAt = DateTime.utc(2026, 11, 13, 19, 15, 52);
+
+  Alert sos({
+    Map<String, dynamic> metadata = const {},
+    String category = 'sos',
+    String? at = '2026-11-13T19:15:52.000Z',
+  }) =>
+      Alert.fromJson({
+        'id': 'a-sos',
+        'severity': 'critical',
+        'category': category,
+        'title': 'SOS from SM-F721B',
+        'body': 'Your child pressed the SOS button',
+        'metadata': metadata,
+        'createdAt': at,
+      });
+
+  Map<String, dynamic> fixAgo(int minutes) => {
+        'deviceId': 'dev-1',
+        'lat': 25.2769,
+        'lng': 51.5211,
+        'accuracyM': 20.0,
+        'takenAt': alertAt.subtract(Duration(minutes: minutes)).toIso8601String(),
+        'ageSeconds': minutes * 60,
+      };
+
+  group('AlertFix', () {
+    test('reads a stored fix', () {
+      final fix = AlertFix.fromMetadata(fixAgo(3))!;
+      expect(fix.lat, 25.2769);
+      expect(fix.lng, 51.5211);
+      expect(fix.accuracyM, 20.0);
+      expect(fix.coordsText, '25.27690, 51.52110');
+      // #743 UI/UX: one number, one place to change it. Six decimals in the sentence and five in the
+      // copy button meant a parent reading the screen aloud while someone pasted the copied text saw two
+      // different numbers for the same fix.
+      expect(fix.coordsText, fix.copyText);
+    });
+
+    test('Copy coordinates puts five decimals on the clipboard', () {
+      // One metre is five decimals; six is noise a parent reading it aloud cannot use (UI/UX review).
+      expect(AlertFix.fromMetadata(fixAgo(3))!.copyText, '25.27690, 51.52110');
+    });
+
+    test('the coordinates are isolated with LRI U+2066 and PDI U+2069, for every language', () {
+      final fix = AlertFix.fromMetadata(fixAgo(3))!;
+      expect(fix.isolatedCoords, '\u206625.27690, 51.52110\u2069');
+      expect(fix.isolatedCoords.codeUnits.first, 0x2066);
+      expect(fix.isolatedCoords.codeUnits.last, 0x2069);
+      // The marks are direction, not words: they are added in code, never in the ARB.
+      expect(ar.alertSosWhereMinutes(3, 'X'), isNot(contains('\u2066')));
+    });
+
+    test('a half fix or an impossible one is no fix', () {
+      expect(AlertFix.fromMetadata({'lat': 25.2769}), isNull);
+      expect(AlertFix.fromMetadata({'lng': 51.5211}), isNull);
+      expect(AlertFix.fromMetadata({'lat': 91.0, 'lng': 51.5211}), isNull);
+      expect(AlertFix.fromMetadata({'lat': 25.2769, 'lng': -181.0}), isNull);
+      expect(AlertFix.fromMetadata({'lat': 'north', 'lng': 'east'}), isNull);
+      expect(AlertFix.fromMetadata({'deviceId': 'dev-1'}), isNull);
+    });
+
+    test('the age is measured from the fix time when the alert has one', () {
+      final fix = AlertFix.fromMetadata(fixAgo(3))!;
+      final now = DateTime.utc(2026, 11, 13, 19, 25, 52); // ten minutes after the fix was taken
+      expect(fix.ageAt(now, alertCreatedAt: alertAt), const Duration(minutes: 13));
+    });
+
+    test('and from the phone-reported age when it has only that', () {
+      final fix = AlertFix.fromMetadata({'lat': 25.2769, 'lng': 51.5211, 'ageSeconds': 60})!;
+      final now = DateTime.utc(2026, 11, 13, 19, 25, 52);
+      expect(fix.ageAt(now, alertCreatedAt: alertAt), const Duration(minutes: 10, seconds: 60));
+    });
+  });
+
+  group('the notification body', () {
+    test('says a place exists and how old it is, and carries no coordinates', () {
+      final visible = VisibleAlert.from(sos(metadata: fixAgo(3)), l10n: en, isEnglish: true, now: alertAt);
+      expect(visible.body, 'Location from 3 min ago. Tap to see it on the map.');
+      expect(visible.body, isNot(contains('25.276')));
+      expect(visible.body, isNot(contains('51.521')));
+    });
+
+    test('the age grows with the time since the alert', () {
+      final visible = VisibleAlert.from(
+        sos(metadata: fixAgo(3)),
+        l10n: en,
+        isEnglish: true,
+        now: alertAt.add(const Duration(minutes: 10)),
+      );
+      expect(visible.body, 'Location from 13 min ago. Tap to see it on the map.');
+    });
+
+    test('hours round down and the line says more than: 60, 119, 120, 182, 239', () {
+      // Arabic Bureau #743: the word must be true of the number shown. Rounded down, 3 h 59 reads
+      // "more than 3 hours", true for every minute of that hour and never overstating freshness.
+      String body(int minutes) =>
+          VisibleAlert.from(sos(metadata: fixAgo(minutes)), l10n: en, isEnglish: true, now: alertAt).body;
+
+      expect(body(60), contains('more than 1 hour ago'));
+      expect(body(119), contains('more than 1 hour ago'), reason: '1 h 59 is still "more than 1 hour"');
+      expect(body(120), contains('more than 2 hours ago'));
+      expect(body(182), contains('more than 3 hours ago'));
+      expect(body(239), contains('more than 3 hours ago'), reason: '3 h 59, rounded down');
+    });
+
+    test('59 minutes stays in exact minutes', () {
+      final body = VisibleAlert.from(sos(metadata: fixAgo(59)), l10n: en, isEnglish: true, now: alertAt).body;
+      expect(body, contains('59 min ago'));
+      expect(body, isNot(contains('hour')));
+    });
+
+    test('a SOS without a fix keeps the generic body, and is still shown', () {
+      final visible = VisibleAlert.from(
+        sos(metadata: const {'deviceId': 'dev-1'}),
+        l10n: en,
+        isEnglish: true,
+        now: alertAt,
+      );
+      expect(visible.body, en.alertPushBodyGeneric);
+      expect(visible.title, en.alertTitleFor('sos', 'SOS from SM-F721B', isEnglish: true));
+    });
+
+    test('another category with a point keeps the generic body', () {
+      final visible = VisibleAlert.from(
+        sos(metadata: fixAgo(3), category: 'geofence'),
+        l10n: en,
+        isEnglish: true,
+        now: alertAt,
+      );
+      expect(visible.body, en.alertPushBodyGeneric);
+    });
+
+    test('Arabic says it in Arabic, whole line per plural case', () {
+      // Pinned whole, per the Arabic Language Bureau: 1, 2, 3 and 11 minutes, the four CLDR categories
+      // this app can meet. A change to any of these four is a decision, not a translation tweak.
+      String body(int minutes) =>
+          VisibleAlert.from(sos(metadata: fixAgo(minutes)), l10n: ar, isEnglish: false, now: alertAt).body;
+
+      expect(body(1), 'سُجّل آخر موقع قبل دقيقة. اضغط لعرضه.');
+      expect(body(2), 'سُجّل آخر موقع قبل دقيقتين. اضغط لعرضه.');
+      expect(body(3), 'سُجّل آخر موقع قبل 3 دقائق. اضغط لعرضه.');
+      expect(body(11), 'سُجّل آخر موقع قبل 11 دقيقة. اضغط لعرضه.');
+      // 60 minutes enters the hours branch, and it must say «أكثر من» (more than) like the detail beside it.
+      // The Bureau's list, on the notification: 60 and 119 both floor to one hour, 120 to two, and
+      // 182 (3 h 02) and 239 (3 h 59) both to three. The word is «أكثر من», true for every minute of the
+      // hour it names, so a parent is never told a place is fresher than it is.
+      expect(body(60), 'سُجّل آخر موقع قبل أكثر من ساعة. اضغط لعرضه.');
+      expect(body(119), 'سُجّل آخر موقع قبل أكثر من ساعة. اضغط لعرضه.');
+      expect(body(120), 'سُجّل آخر موقع قبل أكثر من ساعتين. اضغط لعرضه.');
+      expect(body(182), 'سُجّل آخر موقع قبل أكثر من 3 ساعات. اضغط لعرضه.');
+      expect(body(239), 'سُجّل آخر موقع قبل أكثر من 3 ساعات. اضغط لعرضه.');
+      expect(body(3), isNot(contains('25.276')));
+    });
+  });
+
+  group('the detail line', () {
+    test('the Arabic location line isolates the coordinates', () {
+      final alert = sos(metadata: fixAgo(3));
+      final line = SosFixText.of(alert, alert.location!, alertAt).locationLine(ar, alert.location!.isolatedCoords);
+      // The row the Arabic Bureau asked for, codepoint by codepoint.
+      expect(line, contains('\u206625.27690, 51.52110\u2069'));
+      expect(line.codeUnitAt(line.indexOf('\u2066')), 0x2066);
+      expect(line, contains('آخر موقع'));
+    });
+
+    test('the English location line names the place and the age', () {
+      final alert = sos(metadata: fixAgo(3));
+      final line = SosFixText.of(alert, alert.location!, alertAt).locationLine(en, alert.location!.isolatedCoords);
+      expect(line, 'Last location: \u206625.27690, 51.52110\u2069, 3 min ago');
+    });
+
+    test('the accuracy clause is said only when the fix carries one', () {
+      final withAccuracy = sos(metadata: fixAgo(3));
+      expect(
+        SosFixText.of(withAccuracy, withAccuracy.location!, alertAt).accuracyClause(en, withAccuracy.location!),
+        'accurate to about 20 m',
+      );
+      final without = sos(metadata: fixAgo(3)..remove('accuracyM'));
+      expect(SosFixText.of(without, without.location!, alertAt).accuracyClause(en, without.location!), isNull);
+    });
+
+    test('the pin caption says what it is and how old', () {
+      final alert = sos(metadata: fixAgo(3));
+      final caption = SosFixText.of(alert, alert.location!, alertAt).pinCaption(en, 'SOS');
+      expect(caption, 'SOS · 3m ago');
+    });
+
+    test('the Arabic detail line and the pin say the same "more than" as the notification', () {
+      // The Bureau asked for these two surfaces as well as the notification: the same number must read
+      // the same way wherever a parent meets it (120 -> «ساعتين», 239 -> «3 ساعات»).
+      String detail(int minutes) {
+        final a = sos(metadata: fixAgo(minutes));
+        return SosFixText.of(a, a.location!, alertAt).locationLine(ar, a.location!.isolatedCoords);
+      }
+
+      expect(detail(120), contains('قبل أكثر من ساعتين'));
+      expect(detail(239), contains('قبل أكثر من 3 ساعات'));
+
+      final a239 = sos(metadata: fixAgo(239));
+      expect(SosFixText.of(a239, a239.location!, alertAt).pinCaption(ar, 'استغاثة'),
+          contains('قبل أكثر من 3 ساعات'));
+      final a120 = sos(metadata: fixAgo(120));
+      expect(SosFixText.of(a120, a120.location!, alertAt).pinCaption(ar, 'استغاثة'),
+          contains('قبل أكثر من ساعتين'));
+    });
+  });
+
+  group('the map opens on the alert fix (#672)', () {
+    test('a focus is the camera, close in, with the accuracy it was given', () {
+      final focus = MapFocus.fromFix(AlertFix.fromMetadata(fixAgo(3))!, label: 'SOS · 3m ago');
+      final camera = initialCameraFor(focus, const LatLng(1, 2));
+      expect(camera.target.latitude, closeTo(25.2769, 1e-9));
+      expect(camera.target.longitude, closeTo(51.5211, 1e-9));
+      expect(camera.zoom, 16);
+      expect(focus.label, 'SOS · 3m ago');
+      expect(focus.accuracyM, 20.0);
+    });
+
+    test('without a focus the tab keeps its own rule', () {
+      expect(initialCameraFor(null, const LatLng(1, 2)).target, const LatLng(1, 2));
+      expect(initialCameraFor(null, null).zoom, 2);
+    });
+  });
+
+
+  group("the SOS detail's actions (#743 UI/UX review)", () {
+    Future<AppLocalizations> loaded() => AppLocalizations.delegate.load(const Locale('en'));
+
+    Future<void> pumpActions(WidgetTester tester, {required bool mapAvailable}) async {
+      final l10n = await loaded();
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Wrap(
+            children: sosAlertActions(
+              l10n: l10n,
+              mapAvailable: mapAvailable,
+              onShowOnMap: () {},
+              onOpenInMaps: () {},
+              onCopy: () {},
+            ),
+          ),
+        ),
+      ));
+    }
+
+    testWidgets('with no map key the filled button is Open in Maps, and Show on map is absent', (tester) async {
+      await pumpActions(tester, mapAvailable: false);
+
+      expect(find.byKey(const ValueKey('alert-open-in-maps')), findsOneWidget);
+      expect(find.byKey(const ValueKey('alert-show-on-map')), findsNothing);
+      final buttons = tester.widgetList<ButtonStyleButton>(
+        find.byWidgetPredicate((w) => w is ButtonStyleButton),
+      ).toList();
+      expect(buttons, hasLength(2));
+      expect(buttons.first, isA<FilledButton>(),
+          reason: 'the filled button must be the one that works, not the one that lands on "Not available"');
+      expect(buttons.last, isA<TextButton>(), reason: 'Copy coordinates is the quiet action');
+    });
+
+    testWidgets('with a map key Show on map is the filled button and Open in Maps is absent', (tester) async {
+      await pumpActions(tester, mapAvailable: true);
+
+      expect(find.byKey(const ValueKey('alert-show-on-map')), findsOneWidget);
+      expect(find.byKey(const ValueKey('alert-open-in-maps')), findsNothing);
+      final buttons = tester.widgetList<ButtonStyleButton>(
+        find.byWidgetPredicate((w) => w is ButtonStyleButton),
+      ).toList();
+      expect(buttons.first, isA<FilledButton>());
+      expect(buttons.last, isA<TextButton>());
+    });
+  });
+}

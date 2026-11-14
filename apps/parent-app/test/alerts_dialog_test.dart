@@ -51,6 +51,21 @@ void main() {
         'acknowledged': false,
       };
 
+  Map<String, dynamic> sosAlert() => {
+        ...alert('s1', 'child-1', 'SOS from SM-F721B'),
+        'category': 'sos',
+        'severity': 'critical',
+        'body': 'Your child pressed the SOS button',
+        'metadata': <String, dynamic>{
+          'deviceId': 'dev-1',
+          'lat': 25.2769,
+          'lng': 51.5211,
+          'accuracyM': 20,
+          'takenAt': DateTime.utc(2026, 10, 19, 11, 57).toIso8601String(),
+          'ageSeconds': 180,
+        },
+      };
+
   Future<void> pumpAlerts(
     WidgetTester tester, {
     required List<Map<String, dynamic>> children,
@@ -121,5 +136,40 @@ void main() {
     await tester.tap(find.text('Sam: Meet was blocked'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('rules-behind-banner')), findsOneWidget);
+  });
+
+  testWidgets('an SOS detail shows no raw lat: row until Technical details is opened (#743)', (tester) async {
+    // The old behaviour printed every metadata entry as `key: value` under the sentence, so an SOS showed
+    // `lat: 25.2769`, a machine timestamp and the device id in English developer words on an Arabic screen.
+    await pumpAlerts(tester, children: [child('child-1')], alerts: [sosAlert()]);
+
+    await tester.tap(find.text('SOS pressed'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('lat:'), findsNothing, reason: 'no developer row is shown by default');
+    final section = find.byKey(const ValueKey('alert-technical-details'));
+    expect(section, findsOneWidget);
+
+    await tester.ensureVisible(section);
+    await tester.pumpAndSettle();
+    await tester.tap(section);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('lat:'), findsOneWidget, reason: 'the rows are there when a parent asks');
+  });
+
+  testWidgets('the location line reads as body text, not as a detail (#743 UI/UX)', (tester) async {
+    // The place is a sentence a parent reads, so it takes the dialog's default body style; only the
+    // accuracy under it is small and muted. The row fails if the line falls back to bodySmall.
+    await pumpAlerts(tester, children: [child('child-1')], alerts: [sosAlert()]);
+
+    await tester.tap(find.text('SOS pressed'));
+    await tester.pumpAndSettle();
+
+    final line = tester.widget<Text>(find.byKey(const ValueKey('alert-sos-location-line')));
+    final theme = Theme.of(tester.element(find.byKey(const ValueKey('alert-sos-location-line'))));
+    expect(line.style?.fontSize, isNot(theme.textTheme.bodySmall?.fontSize),
+        reason: 'the location line must not be the detail style');
+    expect(line.style, isNull, reason: 'no explicit style means the dialog default, which is the point');
   });
 }
