@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../core/date_formatting.dart';
 import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
@@ -451,7 +452,7 @@ class CallsSmsSection extends ConsumerWidget {
     if (key == 'Unknown') return context.l10n.unknown;
     final d = DateTime.tryParse(key);
     if (d == null) return key;
-    return DateFormat('EEEE, MMM d, yyyy', context.localeName).format(d);
+    return formatDayHeader(d, context.localeName);
   }
 
   /// SMS previews are capped at 120 chars server-side; truncate defensively.

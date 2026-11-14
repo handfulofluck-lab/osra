@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/models.dart';
+import '../core/date_formatting.dart';
 import '../l10n/l10n.dart';
 import '../providers/locale_provider.dart' show kAppLocaleKey;
 import '../providers/server_provider.dart' show effectiveServerUrl, kDefaultServerUrl, kServerUrlKey;
@@ -172,6 +173,7 @@ String? resolveBackgroundBaseUrl(String? persisted, {String builtIn = kDefaultSe
 /// stop arriving in production while working perfectly in debug.
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await configureDateFormatting();
   WidgetsFlutterBinding.ensureInitialized();
   // Before any plugin is touched: the background isolate starts with no plugin
   // registrations, so secure storage and shared preferences would both fail.
