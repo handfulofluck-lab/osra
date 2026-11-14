@@ -7,9 +7,8 @@ namespace FamilyShield.Agent.Services;
 /// <summary>
 /// Feature #14 SOS hotkey: Shift+F11 posts a critical 'sos' alert to the parent and shows a
 /// short topmost confirmation. The hotkey lives on a message-only window (HWND_MESSAGE) whose
-/// thread runs a classic GetMessage loop. NOTE: RegisterHotKey is Windows-integration, so the
-/// service is only registered when FS_SOS_HOTKEY=1 — the same env-gate pattern as
-/// FS_HTTPS_INSPECT (Feature #3).
+/// thread runs a classic GetMessage loop in the per-user tray. Release always registers it;
+/// Debug honors FS_SOS_HOTKEY for local development.
 /// </summary>
 public sealed class SosHotkey : BackgroundService
 {
@@ -24,15 +23,13 @@ public sealed class SosHotkey : BackgroundService
     private static readonly IntPtr HwndMessage = new(-3); // HWND_MESSAGE
 
     private readonly ILogger<SosHotkey> _log;
-    private readonly ApiClient _api;
-    private readonly AgentConfig _config;
+    private readonly ITrayCommandSink? _sink;
 
     /// <summary>Creates the worker.</summary>
-    public SosHotkey(ILogger<SosHotkey> log, ApiClient api, AgentConfig config)
+    public SosHotkey(ILogger<SosHotkey> log, ITrayCommandSink? sink = null)
     {
         _log = log;
-        _api = api;
-        _config = config;
+        _sink = sink;
     }
 
     /// <summary>True when FS_SOS_HOTKEY=1.</summary>
@@ -81,25 +78,13 @@ public sealed class SosHotkey : BackgroundService
     {
         try
         {
-            _ = SendSosAsync();
+            if (_sink is not null) _ = _sink.SendAsync(new TrayMessage(TrayMessageKind.sos));
+            else _log.LogError("SOS alert was not sent: no service sink is registered.");
             SosToast.Show();
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "SOS hotkey handling failed");
-        }
-    }
-
-    private async Task SendSosAsync()
-    {
-        try
-        {
-            var ok = await _api.PostAlert(BuildAlert(_config));
-            _log.LogInformation("SOS alert posted to parent (accepted: {Accepted})", ok);
-        }
-        catch (Exception ex)
-        {
-            _log.LogError(ex, "Failed to post SOS alert");
         }
     }
 

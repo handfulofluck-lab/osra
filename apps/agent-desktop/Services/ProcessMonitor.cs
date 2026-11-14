@@ -16,19 +16,17 @@ public sealed class ProcessMonitor : BackgroundService
     private readonly AgentConfig _config;
     private readonly Dictionary<string, DateTime> _lastAlert = new();
     private readonly Dictionary<string, DateTime> _pauseKillThrottle = new();
-    private readonly Dictionary<string, double> _accumulatedSeconds = new();
-    private double _foregroundSeconds;
-
-    /// <summary>Process name of the current foreground window, resolved every tick; null when unknown (#29).</summary>
-    public string? LastForegroundProcess { get; private set; }
+    private readonly Func<Process, bool> _protectedProcess;
 
     /// <summary>Creates the monitor.</summary>
-    public ProcessMonitor(ILogger<ProcessMonitor> log, LocalRuleStore store, ApiClient api, AgentConfig config)
+    public ProcessMonitor(ILogger<ProcessMonitor> log, LocalRuleStore store, ApiClient api, AgentConfig config,
+        Func<Process, bool>? protectedProcess = null)
     {
         _log = log;
         _store = store;
         _api = api;
         _config = config;
+        _protectedProcess = protectedProcess ?? DefaultProtectedProcess;
     }
 
     /// <summary>Polls until the worker stops; individual tick failures are logged, never thrown.</summary>
@@ -62,10 +60,6 @@ public sealed class ProcessMonitor : BackgroundService
 
         // Tracked for reporting (e.g. alert metadata and trace logs).
         var foregroundTitle = GetForegroundWindowTitle();
-        // Feature #29: resolve the foreground PROCESS (not just the window title) so the live
-        // feed and app_usage activity events name the app; 'idle' when no window has focus.
-        LastForegroundProcess = GetForegroundProcessName();
-        AccumulateForegroundMinutes();
         var countedThisTick = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // Feature #9/#11: while the internet is paused, terminate every user process whose name
@@ -107,7 +101,7 @@ public sealed class ProcessMonitor : BackgroundService
             {
                 try
                 {
-                    if (process.Id == selfId || process.ProcessName.Length == 0) continue;
+                    if (_protectedProcess(process) || process.Id == selfId || process.ProcessName.Length == 0) continue;
                     if (routineAllowed.Contains(process.ProcessName)) continue;
                     if (process.SessionId == 0) continue; // system/services session
                     process.Kill(entireProcessTree: true);
@@ -199,7 +193,7 @@ public sealed class ProcessMonitor : BackgroundService
             {
                 try
                 {
-                    if (process.Id == selfId || process.ProcessName.Length == 0) continue;
+                    if (_protectedProcess(process) || process.Id == selfId || process.ProcessName.Length == 0) continue;
                     if (process.SessionId == 0) continue; // system/services session
                     var name = RuleSetMapper.NormalizeProcessName(process.ProcessName);
                     if (!ShouldKillWhenPaused(name, rules.AlwaysAllowedApps, paused: true)) continue;
@@ -247,7 +241,7 @@ public sealed class ProcessMonitor : BackgroundService
             {
                 try
                 {
-                    if (process.Id == selfId || process.ProcessName.Length == 0) continue;
+                    if (_protectedProcess(process) || process.Id == selfId || process.ProcessName.Length == 0) continue;
                     if (process.SessionId == 0) continue; // system/services session
                     var category = _store.LookupAppCategory(process.ProcessName);
                     if (category is null) continue;
@@ -275,8 +269,7 @@ public sealed class ProcessMonitor : BackgroundService
     private bool TimeLimitReached(AppRuleSnapshot rule)
     {
         if (rule.DailyLimitMinutes is not > 0) return false;
-        var used = _store.MinutesUsedToday(rule.ProcessName) +
-                   (int)(_accumulatedSeconds.GetValueOrDefault(rule.ProcessName) / 60);
+        var used = _store.MinutesUsedToday(rule.ProcessName);
         return used >= rule.DailyLimitMinutes.Value;
     }
 
@@ -371,10 +364,26 @@ public sealed class ProcessMonitor : BackgroundService
         }
     }
 
+    private static bool DefaultProtectedProcess(Process process)
+    {
+        if (process.Id == Environment.ProcessId) return true;
+        try
+        {
+            var file = process.MainModule?.FileName;
+            var tray = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "OSRA.exe"));
+            return file is not null && string.Equals(Path.GetFullPath(file), tray, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
     private void KillAll(IEnumerable<Process> processes, string processName)
     {
         foreach (var process in processes)
         {
+            if (_protectedProcess(process)) continue;
             try
             {
                 process.Kill(entireProcessTree: true);
@@ -422,53 +431,6 @@ public sealed class ProcessMonitor : BackgroundService
     /// <summary>Display label for the live foreground feed: the process name, or 'idle' when none (#29).</summary>
     internal static string ForegroundAppLabel(string? processName) =>
         string.IsNullOrEmpty(processName) ? "idle" : processName;
-
-    /// <summary>
-    /// Accumulates the 5 s foreground sample and flushes whole minutes to app_usage (WIN-03 & WIN-04).
-    /// Single accumulator per tick: only active foreground user applications accrue screen time.
-    /// Never accrues when idle or locked (idle/locked ticks accrue 0 minutes).
-    /// </summary>
-    private void AccumulateForegroundMinutes()
-    {
-        var fg = LastForegroundProcess;
-        var isIdleOrLocked = string.IsNullOrEmpty(fg) ||
-                             string.Equals(fg, "idle", StringComparison.OrdinalIgnoreCase) ||
-                             string.Equals(fg, "LockApp", StringComparison.OrdinalIgnoreCase) ||
-                             string.Equals(fg, "LogonUI", StringComparison.OrdinalIgnoreCase);
-
-        if (isIdleOrLocked || fg is null) return;
-
-        var seconds = _accumulatedSeconds.GetValueOrDefault(fg) + PollInterval.TotalSeconds;
-        if (seconds >= 60)
-        {
-            var minutes = (int)(seconds / 60);
-            _store.AddAppMinutes(fg, minutes);
-            seconds -= minutes * 60;
-        }
-        _accumulatedSeconds[fg] = seconds;
-    }
-
-    private static string? GetForegroundProcessName()
-    {
-        try
-        {
-            var handle = GetForegroundWindow();
-            if (handle == IntPtr.Zero) return null;
-            // NOTE: P/Invoke GetWindowThreadProcessId (not Process enumeration) maps the
-            // foreground hwnd to its owning pid; the process may exit before the name lookup.
-            _ = GetWindowThreadProcessId(handle, out var pid);
-            if (pid == 0) return null;
-            using var process = Process.GetProcessById((int)pid);
-            return process.ProcessName;
-        }
-        catch (Exception)
-        {
-            return null;
-        }
-    }
-
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 
     private static string? GetForegroundWindowTitle()
     {

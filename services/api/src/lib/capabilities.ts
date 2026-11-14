@@ -110,6 +110,8 @@ export const CapabilitiesSchema = z
     // parse error rather than a field the server quietly keeps.
     grants: z.record(z.enum(GRANT_KEYS), z.enum(GRANT_STATES)),
     features: z.record(z.enum(FEATURE_KEYS), z.enum(FEATURE_STATES)),
+    // Windows: the interactive tray supplied this report; it is not a service attestation.
+    source: z.literal("tray").optional(),
     // Optional: an agent that cannot read profiles omits it, and [withStoredProfiles] keeps the last value.
     profiles: ProfilesSchema.optional(),
     // ADR-0037: iPhone only; optional, and a report without it keeps the stored groups ([withStoredGroups]).
@@ -117,6 +119,12 @@ export const CapabilitiesSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
+    if (value.source !== undefined && value.client.app !== "agent-desktop") {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["source"], message: "tray provenance is a Windows desktop report" });
+    }
+    if (value.grants.child_account_admin !== undefined && value.client.app !== "agent-desktop") {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["grants", "child_account_admin"], message: "child account administrator is a Windows desktop report" });
+    }
     if (value.groups !== undefined && value.client.app !== "child-ios") {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["groups"], message: "app groups are an iPhone report" });
     }

@@ -1,0 +1,86 @@
+namespace FamilyShield.Agent.Services;
+
+/// <summary>Dependency registration for the two OSRA hosts, with UI confined to the tray.</summary>
+public static class DesktopRuntime
+{
+    public static void MigrateDataFolder() => DataFolder.MigrateOnce();
+
+    public static IServiceCollection AddServiceTransport(IServiceCollection services, AgentConfig config, TrayServerEvents? events = null)
+    {
+        AddRestrictionState(services);
+        services.AddSingleton(config);
+        services.AddHttpClient<ApiClient>(client => client.BaseAddress = new Uri(config.ApiBase ?? AgentConfig.ProductionApiBase));
+        services.AddSingleton<LocalRuleStore>();
+        services.AddSingleton<ForegroundActivityAccumulator>();
+        services.AddSingleton<DesktopCapabilitiesStore>();
+        if (events is not null) services.AddSingleton(events);
+        services.AddSingleton<ITrayServerFactory, TrayPipeServerFactory>();
+        services.AddSingleton<TrayServerWorker>();
+            services.AddSingleton<ITrayCommandSink>(provider => provider.GetRequiredService<TrayServerWorker>());
+        services.AddHostedService(provider => provider.GetRequiredService<TrayServerWorker>());
+        return services;
+    }
+
+    public static IServiceCollection AddService(IServiceCollection services, AgentConfig config,
+        ITrayCommandSink? transport = null, LocalRuleStore? store = null, DesktopCapabilitiesStore? capabilityStore = null)
+    {
+        AddRestrictionState(services);
+        services.AddSingleton(config);
+        services.AddHttpClient<ApiClient>(client => client.BaseAddress = new Uri(config.ApiBase ?? AgentConfig.ProductionApiBase));
+        if (store is null) services.AddSingleton<LocalRuleStore>();
+        else services.AddSingleton(store);
+        if (capabilityStore is null) services.AddSingleton<DesktopCapabilitiesStore>();
+        else services.AddSingleton(capabilityStore);
+        if (transport is null)
+        {
+            services.AddSingleton<ForegroundActivityAccumulator>();
+            services.AddSingleton(serviceProvider => new TrayServerEvents
+            {
+                Capabilities = (report, ct) =>
+                {
+                    serviceProvider.GetRequiredService<DesktopCapabilitiesStore>().Update(report);
+                    return Task.CompletedTask;
+                },
+            });
+            services.AddSingleton<ITrayServerFactory, TrayPipeServerFactory>();
+            services.AddSingleton<TrayServerWorker>();
+            services.AddSingleton<ITrayCommandSink>(provider => provider.GetRequiredService<TrayServerWorker>());
+            services.AddHostedService(provider => provider.GetRequiredService<TrayServerWorker>());
+        }
+        else
+        {
+            services.AddSingleton(transport);
+        }
+        services.AddHostedService<WebFilterProxy>();
+        services.AddHostedService<ProcessMonitor>();
+        services.AddHostedService<RuleSyncService>();
+        services.AddHostedService<TelemetryUploader>();
+        return services;
+    }
+
+    private static void AddRestrictionState(IServiceCollection services)
+    {
+        if (services.Any(descriptor => descriptor.ServiceType == typeof(IRestrictionStore))) return;
+        services.AddSingleton<IRestrictionStore, FileDesktopRestrictionStore>();
+        services.AddSingleton<DesktopRestrictionState>();
+    }
+
+    public static IServiceCollection AddTray(IServiceCollection services, AgentConfig config)
+    {
+        services.AddSingleton(config);
+        services.AddHttpClient<ApiClient>(client => client.BaseAddress = new Uri(config.ApiBase ?? AgentConfig.ProductionApiBase));
+        services.AddSingleton<LocalRuleStore>();
+        services.AddSingleton<TrayConnectionState>();
+        services.AddSingleton<TrayUserActions>();
+        services.AddSingleton<ITrayClient, TrayPipeClient>();
+        services.AddSingleton<TrayPipeClientWorker>();
+        services.AddSingleton<ITrayCommandSink>(provider => provider.GetRequiredService<TrayPipeClientWorker>());
+        services.AddHostedService(provider => provider.GetRequiredService<TrayPipeClientWorker>());
+        services.AddHostedService<ForegroundActivityReporter>();
+        services.AddHostedService<DesktopCapabilitiesReporter>();
+        services.AddHostedService<ScreenTimeEnforcer>();
+        if (!config.AllowEnvironmentOverrides || SosHotkey.IsEnabled)
+            services.AddHostedService<SosHotkey>();
+        return services;
+    }
+}

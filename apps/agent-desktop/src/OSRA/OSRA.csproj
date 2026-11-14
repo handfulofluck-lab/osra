@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>OSRA</AssemblyName>
+    <RootNamespace>OSRA</RootNamespace>
+    <Product>OSRA</Product>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\FamilyShield.Agent.csproj" />
+  </ItemGroup>
+</Project>

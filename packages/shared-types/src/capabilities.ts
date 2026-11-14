@@ -42,6 +42,7 @@ export const GRANT_KEYS = [
   "full_screen_intent",
   "family_controls",
   "background_refresh",
+  "child_account_admin",
 ] as const;
 export type GrantKey = (typeof GRANT_KEYS)[number];
 
@@ -145,6 +146,8 @@ export interface DeviceCapabilitiesV1 {
   profiles?: DeviceProfiles;
   /** ADR-0037, `child-ios` only and optional: a report without it keeps the stored groups. */
   groups?: AppGroupReport[];
+  /** Windows: the interactive tray supplied this report; it is not a service attestation. */
+  source?: "tray";
 }
 
 /** The largest serialized report the server accepts (A2). */

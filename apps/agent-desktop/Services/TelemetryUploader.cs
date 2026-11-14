@@ -9,14 +9,17 @@ public sealed class TelemetryUploader : BackgroundService
     private readonly LocalRuleStore _store;
     private readonly ApiClient _api;
     private readonly AgentConfig _config;
+    private readonly DesktopCapabilitiesStore? _capabilities;
 
     /// <summary>Creates the uploader.</summary>
-    public TelemetryUploader(ILogger<TelemetryUploader> log, LocalRuleStore store, ApiClient api, AgentConfig config)
+    public TelemetryUploader(ILogger<TelemetryUploader> log, LocalRuleStore store, ApiClient api, AgentConfig config,
+        DesktopCapabilitiesStore? capabilities = null)
     {
         _log = log;
         _store = store;
         _api = api;
         _config = config;
+        _capabilities = capabilities;
     }
 
     /// <summary>Uploads batches until the worker stops; failures are logged and retried next cycle.</summary>
@@ -54,6 +57,7 @@ public sealed class TelemetryUploader : BackgroundService
 
         var batch = _store.GetUnuploadedTelemetry();
         batch.BatteryPct = BatteryStatus.GetBatteryPercent();
+        batch.Capabilities = _capabilities?.Current();
         // Always POST: even with no buffered rows the battery field is the
         // device heartbeat that keeps lastSeen/battery fresh server-side.
         if (!await _api.PostTelemetry(deviceId, batch, ct))

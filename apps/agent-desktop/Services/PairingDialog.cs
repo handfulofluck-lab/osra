@@ -34,7 +34,6 @@ internal static class PairingDialog
 
     private sealed class PairingForm : Form
     {
-        private readonly TextBox _serverBox;
         private readonly TextBox _codeBox;
         private readonly TextBox _pinBox;
         private readonly TextBox _pinConfirmBox;
@@ -51,31 +50,23 @@ internal static class PairingDialog
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(400, 225);
+            ClientSize = new Size(400, 195);
 
-            var serverLabel = new Label { Text = "Server URL:", Location = new Point(12, 15), AutoSize = true };
-            // Intentionally blank: the server URL must always come from the parent running
-            // the test — never pre-filled with a built-in guess (localhost included).
-            _serverBox = new TextBox { Text = "", Location = new Point(100, 12), Width = 285 };
-            var codeLabel = new Label { Text = "Pairing code:", Location = new Point(12, 45), AutoSize = true };
-            _codeBox = new TextBox { Location = new Point(100, 42), Width = 120 };
-            // Desktop audit finding 1: there is no default PIN. The parent chooses the per-install
-            // PIN here; until one exists, lock/bedtime/screen-time refuse to arm.
-            var pinLabel = new Label { Text = "Parent PIN:", Location = new Point(12, 75), AutoSize = true };
-            _pinBox = new TextBox { Location = new Point(100, 72), Width = 120, PasswordChar = '*' };
-            var pinConfirmLabel = new Label { Text = "Repeat PIN:", Location = new Point(12, 105), AutoSize = true };
-            _pinConfirmBox = new TextBox { Location = new Point(100, 102), Width = 120, PasswordChar = '*' };
-            _status = new Label { Location = new Point(12, 135), Width = 375, ForeColor = Color.Firebrick, Text = "" };
-            _pairButton = new Button { Text = "Pair", Location = new Point(218, 165), Width = 80 };
-            var cancelButton = new Button { Text = "Cancel", Location = new Point(305, 165), Width = 80 };
+            var codeLabel = new Label { Text = "Pairing code:", Location = new Point(12, 15), AutoSize = true };
+            _codeBox = new TextBox { Location = new Point(100, 12), Width = 120 };
+            var pinLabel = new Label { Text = "Parent PIN:", Location = new Point(12, 45), AutoSize = true };
+            _pinBox = new TextBox { Location = new Point(100, 42), Width = 120, PasswordChar = '*' };
+            var pinConfirmLabel = new Label { Text = "Repeat PIN:", Location = new Point(12, 75), AutoSize = true };
+            _pinConfirmBox = new TextBox { Location = new Point(100, 72), Width = 120, PasswordChar = '*' };
+            _status = new Label { Location = new Point(12, 105), Width = 375, ForeColor = Color.Firebrick, Text = "" };
+            _pairButton = new Button { Text = "Pair", Location = new Point(218, 135), Width = 80 };
+            var cancelButton = new Button { Text = "Cancel", Location = new Point(305, 135), Width = 80 };
 
             _pairButton.Click += OnPair;
             cancelButton.Click += (_, __) => Close();
             AcceptButton = _pairButton;
             CancelButton = cancelButton;
 
-            Controls.Add(serverLabel);
-            Controls.Add(_serverBox);
             Controls.Add(codeLabel);
             Controls.Add(_codeBox);
             Controls.Add(pinLabel);
@@ -89,12 +80,11 @@ internal static class PairingDialog
 
         private async void OnPair(object? sender, EventArgs e)
         {
-            var apiBase = _serverBox.Text.Trim();
             var code = _codeBox.Text.Trim();
             var pin = ParentPinPolicy.Normalize(_pinBox.Text);
-            if (apiBase.Length == 0 || code.Length == 0)
+            if (code.Length == 0)
             {
-                _status.Text = "Enter the server URL and the 6-digit pairing code.";
+                _status.Text = "Enter the 6-digit pairing code.";
                 return;
             }
 
@@ -115,12 +105,12 @@ internal static class PairingDialog
             _status.Text = "Pairing…";
             try
             {
-                var config = await PairingService.ClaimAsync(apiBase, code, platform: "windows", parentPin: pin,
+                var config = await PairingService.ClaimAsync(AgentConfig.ProductionApiBase, code, platform: "windows", parentPin: pin,
                     onWaiting: () => _status.Text = "Waiting for your parent to tap Allow on their phone…");
                 if (config is null)
                 {
                     _status.ForeColor = Color.Firebrick;
-                    _status.Text = "Pairing rejected — check the code and server URL.";
+                    _status.Text = "Pairing rejected — check the code.";
                     return;
                 }
 
