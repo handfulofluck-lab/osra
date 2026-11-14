@@ -20,6 +20,14 @@ import 'package:flutter/widgets.dart';
 const String LRI = '\u2066';
 const String PDI = '\u2069';
 
+/// The 24-hour bracket, worded once by the Bureaus: `(open 24 hours)` is the UI/UX Bureau's
+/// (#727 6869971353), `(يعمل على مدار الساعة)` the Arabic Language Bureau's (6869947527).
+///
+/// A row carries it only where that line's source says it runs around the clock. A `null` hours
+/// field never turns into this string: "not stated" means unknown, never 24 hours (Claude, 6869832567).
+const String open24hEn = '(open 24 hours)';
+const String open24hAr = '(يعمل على مدار الساعة)';
+
 class LocalHelpNumbers {
   /// The number to call for immediate danger, e.g. `999`.
   final String? emergency;
@@ -32,18 +40,29 @@ class LocalHelpNumbers {
 
   /// How to reach the line before dialling the whole number: Qatar's `16000 (then option 4)` needs
   /// "and choose option 4" **before** the hours, so it is a step and not part of the number (#727 UI/UX).
+  /// It belongs to the crisis line; no row carries a step on its child-protection line.
   final String? stepEn;
   final String? stepAr;
 
-  /// The opening hours, as the whole bracket including its parentheses, in each language. The card never
-  /// works out whether a line is open (#727 UI/UX): a wrong "closed" stops a parent calling a line that
-  /// would have answered, and a wrong "open" is the 2 a.m. case. The parent reads the hours and decides;
-  /// what makes that safe is that the emergency number is always on the same card.
+  /// The opening hours, as the whole bracket including its parentheses, **per line**, in each
+  /// language. The card never works out whether a line is open (#727 UI/UX): a wrong "closed" stops a
+  /// parent calling a line that would have answered, and a wrong "open" is the 2 a.m. case. The parent
+  /// reads the hours and decides; what makes that safe is that the emergency number is always on the
+  /// same card.
   ///
-  /// `null` means the source does not state hours, and then **no bracket is shown at all**. A line open
-  /// around the clock carries the Bureaus' 24-hour bracket.
-  final String? hoursEn;
-  final String? hoursAr;
+  /// They are per line and not per row because a country's child-protection line and its crisis line
+  /// close at different times — Saudi Arabia's child line runs 07:00–23:00 and its crisis line
+  /// 08:00–20:00, plus Saturdays (#727 Arabic Bureau) — and a bracket printed after the wrong line is
+  /// exactly the 2 a.m. call this change exists to prevent.
+  ///
+  /// `null` means the source does not state hours for that line, and then **no bracket is shown at
+  /// all**. A line open around the clock carries [open24hEn] / [open24hAr] in the table.
+  final String? emergencyHoursEn;
+  final String? emergencyHoursAr;
+  final String? childProtectionHoursEn;
+  final String? childProtectionHoursAr;
+  final String? crisisHoursEn;
+  final String? crisisHoursAr;
 
   const LocalHelpNumbers({
     this.emergency,
@@ -51,8 +70,12 @@ class LocalHelpNumbers {
     this.crisis,
     this.stepEn,
     this.stepAr,
-    this.hoursEn,
-    this.hoursAr,
+    this.emergencyHoursEn,
+    this.emergencyHoursAr,
+    this.childProtectionHoursEn,
+    this.childProtectionHoursAr,
+    this.crisisHoursEn,
+    this.crisisHoursAr,
   });
 
   static const LocalHelpNumbers none = LocalHelpNumbers();
@@ -60,12 +83,19 @@ class LocalHelpNumbers {
   bool get isEmpty =>
       emergency == null && childProtection == null && crisis == null;
 
-  /// The number with direction isolates around it, in **every** language.
+  /// The number as the card shows it: direction isolates around it in **every** language, and
+  /// non-breaking spaces (U+00A0) where the number has ordinary ones.
   ///
   /// Arabic Bureau, #727 review: in a right-to-left line the phone lays out the groups of `800 46342`
   /// from the right, so a card in Arabic shows **46342 800** — and a parent in a crisis dials what the card
   /// shows. A number with a space or a leading `+` is the case that breaks; the tests use both.
-  static String isolatedNumber(String number) => '$LRI$number$PDI';
+  ///
+  /// UI/UX Bureau, #727 6869971353: a space inside a number is also where a narrow card breaks it,
+  /// `0808 800` on one line and `5000` on the next. U+00A0 keeps it on one line. This is the **shown**
+  /// form only: the field itself keeps ordinary digits and ordinary spaces, because that is what is
+  /// dialled or copied.
+  static String isolatedNumber(String number) =>
+      '$LRI${number.replaceAll(' ', '\u00A0')}$PDI';
 
   /// The number as a sentence reads it: the dialled number, then the step, then the hours bracket —
   /// `16000 and choose option 4 (open Saturday to Thursday 08:00–18:00)`.
@@ -87,8 +117,8 @@ class LocalHelpNumbers {
           ? 'اتصل برقم الطوارئ في بلدك'
           : "call your country's emergency number")
       : (arabic
-          ? 'اتصل بالطوارئ على الرقم ${_dial(emergency!, hours: hoursAr)}'
-          : 'call emergency services on ${_dial(emergency!, hours: hoursEn)}');
+          ? 'اتصل بالطوارئ على الرقم ${_dial(emergency!, hours: emergencyHoursAr)}'
+          : 'call emergency services on ${_dial(emergency!, hours: emergencyHoursEn)}');
 
   /// "call the crisis line on 80046342", or "call the crisis line in your country".
   String crisisClause({required bool arabic}) => crisis == null
@@ -97,9 +127,9 @@ class LocalHelpNumbers {
           : 'call the crisis line in your country')
       : (arabic
           ? 'اتصل بخط الدعم النفسي على الرقم '
-              '${_dial(crisis!, step: stepAr, hours: hoursAr)}'
+              '${_dial(crisis!, step: stepAr, hours: crisisHoursAr)}'
           : 'call the crisis line on '
-              '${_dial(crisis!, step: stepEn, hours: hoursEn)}');
+              '${_dial(crisis!, step: stepEn, hours: crisisHoursEn)}');
 
   /// "call the child-protection line on 116111", or "contact your country's child-protection service".
   String childProtectionClause({required bool arabic}) =>
@@ -109,33 +139,191 @@ class LocalHelpNumbers {
               : "contact your country's child-protection service")
           : (arabic
               ? 'اتصل بخط حماية الطفل على الرقم '
-                  '${_dial(childProtection!, step: stepAr, hours: hoursAr)}'
+                  '${_dial(childProtection!, hours: childProtectionHoursAr)}'
               : 'call the child-protection line on '
-                  '${_dial(childProtection!, step: stepEn, hours: hoursEn)}');
+                  '${_dial(childProtection!, hours: childProtectionHoursEn)}');
 
   @override
   bool operator ==(Object other) =>
       other is LocalHelpNumbers &&
       other.emergency == emergency &&
       other.childProtection == childProtection &&
-      other.crisis == crisis;
+      other.crisis == crisis &&
+      other.stepEn == stepEn &&
+      other.stepAr == stepAr &&
+      other.emergencyHoursEn == emergencyHoursEn &&
+      other.emergencyHoursAr == emergencyHoursAr &&
+      other.childProtectionHoursEn == childProtectionHoursEn &&
+      other.childProtectionHoursAr == childProtectionHoursAr &&
+      other.crisisHoursEn == crisisHoursEn &&
+      other.crisisHoursAr == crisisHoursAr;
 
   @override
-  int get hashCode => Object.hash(emergency, childProtection, crisis);
+  int get hashCode => Object.hash(
+        emergency,
+        childProtection,
+        crisis,
+        stepEn,
+        stepAr,
+        emergencyHoursEn,
+        emergencyHoursAr,
+        childProtectionHoursEn,
+        childProtectionHoursAr,
+        crisisHoursEn,
+        crisisHoursAr,
+      );
 
   @override
   String toString() =>
       'LocalHelpNumbers(emergency: $emergency, childProtection: $childProtection, crisis: $crisis)';
 }
 
-/// Country rows. Each row carries the source URL for each number in the comment
-/// above it. Empty on purpose until those sources arrive: a guessed number is
-/// not a number this app may print.
+/// Country rows, ISO 3166-1 alpha-2. Each row carries the source URL for each number in the comment
+/// above it, and the hours only where that number's own source states them.
+///
+/// Only the cells #723 marks *ship* are here; an *empty* or *hold* cell is `null`, which renders the
+/// sentence instead of a number. Hours are `null` unless the source states them: "not stated" means
+/// unknown, never 24 hours (Claude, #727 6869832567).
 const Map<String, LocalHelpNumbers> helpNumbersByCountry =
     <String, LocalHelpNumbers>{
-  // Rows land here from Claude (#723). Nothing is inferred from a country's
-  // neighbours or from its region — only the emergency number has a region
-  // fallback, and only for the three regions the family model carries.
+  // United Arab Emirates.
+  //   999      https://u.ae/en/information-and-services/justice-safety-and-the-law/handling-emergencies
+  //   116111   https://u.ae/en/information-and-services/justice-safety-and-the-law/children-safety/report-child-abuse
+  //            (the source states no hours, so the card shows none)
+  //   800 4673 https://hope.hw.gov.ae, the National Program for Happiness and Wellbeing mental
+  //            support line: daily 08:00-20:00, Ramadan 12:00-24:00 (#727 6869947527)
+  'AE': LocalHelpNumbers(
+    emergency: '999',
+    childProtection: '116111',
+    crisis: '800 4673',
+    crisisHoursEn: '(open daily 08:00–20:00; in Ramadan noon to midnight)',
+    crisisHoursAr:
+        '(يعمل يوميًا من 08:00 إلى 20:00، وفي رمضان من 12:00 إلى منتصف الليل)',
+  ),
+
+  // Saudi Arabia.
+  //   999      https://www.cst.gov.sa/en/about/Numbering (police; 997 is the ambulance). 911 works
+  //            in Riyadh, Makkah, Madinah and the Eastern Province only (spa.gov.sa/en/N2525906),
+  //            so 999 is the one number the field can carry for the whole Kingdom.
+  //   116111   https://childhelplineinternational.org/saudi-arabia-saudi-child-helpline-116111/
+  //            (Monday through Sunday, 07:00-23:00)
+  //   920033360 https://www.moh.gov.sa/en/ministry/information-and-services/pages/psychiatry.aspx
+  //            (08:00-20:00, and Saturdays 13:00-20:00; architect's ruling #727 6869989999)
+  'SA': LocalHelpNumbers(
+    emergency: '999',
+    childProtection: '116111',
+    crisis: '920033360',
+    childProtectionHoursEn: '(open daily 07:00–23:00)',
+    childProtectionHoursAr: '(يعمل يوميًا من 07:00 إلى 23:00)',
+    crisisHoursEn: '(open 08:00–20:00; Saturdays 13:00–20:00)',
+    crisisHoursAr: '(يعمل من 08:00 إلى 20:00، ويوم السبت من 13:00 إلى 20:00)',
+  ),
+
+  // Qatar.
+  //   999   Ministry of Interior, quoted at https://www.gulf-times.com/article/732466
+  //   919   https://childhelplineinternational.org/qatar-hotline-919/
+  //   16000 https://www.hamad.qa, the National Mental Health Helpline, then option 4
+  //         (Saturday to Thursday 08:00-18:00)
+  'QA': LocalHelpNumbers(
+    emergency: '999',
+    childProtection: '919',
+    crisis: '16000',
+    stepEn: 'and choose option 4',
+    stepAr: 'ثم اختر الرقم 4',
+    crisisHoursEn: '(open Saturday to Thursday 08:00–18:00)',
+    crisisHoursAr: '(يعمل من السبت إلى الخميس من 08:00 إلى 18:00)',
+  ),
+
+  // Kuwait.
+  //   112 https://www.e.gov.kw (Essential Services: Emergencies)
+  //   147 https://childhelplineinternational.org/kuwait-help-hotline-147/
+  //   crisis: held on #723 — 151 is the Ministry's general advice line, and only newspapers say it
+  //   offers psychological support.
+  'KW': LocalHelpNumbers(emergency: '112', childProtection: '147'),
+
+  // Bahrain.
+  //   999 https://www.bahrain.bh (Emergency Call Centre)
+  //   998 https://www.bahrain.bh (Child Protection Centre), answered around the clock (#723)
+  'BH': LocalHelpNumbers(
+    emergency: '999',
+    childProtection: '998',
+    childProtectionHoursEn: open24hEn,
+    childProtectionHoursAr: open24hAr,
+  ),
+
+  // Oman.
+  //   9999 https://www.omanobserver.om/article/75915 (Royal Oman Police) and the gov.uk Oman guidance
+  //   1100 https://www.unicef.org/oman/protection-children-violence (24 hours)
+  'OM': LocalHelpNumbers(
+    emergency: '9999',
+    childProtection: '1100',
+    childProtectionHoursEn: open24hEn,
+    childProtectionHoursAr: open24hAr,
+  ),
+
+  // Jordan.
+  //   911 https://form.jordan.gov.jo (Important Numbers)
+  //   110 https://childhelplineinternational.org/jordan-jrf-110-helpline/
+  //       (Sunday to Thursday 08:00-20:00, Friday and Saturday 09:00-17:00)
+  'JO': LocalHelpNumbers(
+    emergency: '911',
+    childProtection: '110',
+    childProtectionHoursEn:
+        '(open Sunday to Thursday 08:00–20:00, Friday and Saturday 09:00–17:00)',
+    childProtectionHoursAr:
+        '(يعمل من الأحد إلى الخميس من 08:00 إلى 20:00، ويومي الجمعة والسبت من 09:00 إلى 17:00)',
+  ),
+
+  // Egypt.
+  //   122   https://www.gov.uk/foreign-travel-advice/egypt/getting-help
+  //   16000 https://childhelplineinternational.org/egypt-child-helpline-egypt/ (24 hours)
+  //   crisis: 16328 held on #723 — the Ministry of Health page refuses automated reading.
+  'EG': LocalHelpNumbers(
+    emergency: '122',
+    childProtection: '16000',
+    childProtectionHoursEn: open24hEn,
+    childProtectionHoursAr: open24hAr,
+  ),
+
+  // Turkey.
+  //   112 Interior Ministry, Oct 2021 (https://www.milliyet.com.tr)
+  //   183 https://www.aile.gov.tr (ALO 183), 24 hours
+  //   crisis: Turkey has no state suicide line (#723).
+  'TR': LocalHelpNumbers(
+    emergency: '112',
+    childProtection: '183',
+    childProtectionHoursEn: open24hEn,
+    childProtectionHoursAr: open24hAr,
+  ),
+
+  // United States.
+  //   911            https://www.childwelfare.gov/topics/responding/reporting/
+  //   1-800-422-4453 https://www.childwelfare.gov/topics/responding/reporting/ (Childhelp, 24 hours)
+  //   988            https://www.samhsa.gov/find-support/in-crisis (24 hours)
+  'US': LocalHelpNumbers(
+    emergency: '911',
+    childProtection: '1-800-422-4453',
+    crisis: '988',
+    childProtectionHoursEn: open24hEn,
+    childProtectionHoursAr: open24hAr,
+    crisisHoursEn: open24hEn,
+    crisisHoursAr: open24hAr,
+  ),
+
+  // United Kingdom.
+  //   999            https://www.gov.uk/reportchildabuse
+  //   0808 800 5000  https://learning.nspcc.org.uk/services/nspcc-helpline
+  //                  NSPCC helpline, Monday to Friday 10:00-16:00 — the architect's ruling
+  //                  (#727 6869989999). The 08:00-22:00 hours with weekends in #723 are older and
+  //                  could not be confirmed on the day of the ruling.
+  //   116 123        https://www.nhs.uk (help for suicidal thoughts); the source states no hours
+  'GB': LocalHelpNumbers(
+    emergency: '999',
+    childProtection: '0808 800 5000',
+    crisis: '116 123',
+    childProtectionHoursEn: '(open Monday to Friday 10:00–16:00)',
+    childProtectionHoursAr: '(يعمل من الاثنين إلى الجمعة من 10:00 إلى 16:00)',
+  ),
 };
 
 /// Region to emergency number, the only field a region may fill. A region never
@@ -169,6 +357,14 @@ LocalHelpNumbers resolveHelpNumbers({
     emergency: emergency,
     childProtection: base.childProtection,
     crisis: base.crisis,
+    stepEn: base.stepEn,
+    stepAr: base.stepAr,
+    emergencyHoursEn: base.emergencyHoursEn,
+    emergencyHoursAr: base.emergencyHoursAr,
+    childProtectionHoursEn: base.childProtectionHoursEn,
+    childProtectionHoursAr: base.childProtectionHoursAr,
+    crisisHoursEn: base.crisisHoursEn,
+    crisisHoursAr: base.crisisHoursAr,
   );
 }
 

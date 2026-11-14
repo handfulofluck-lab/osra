@@ -212,19 +212,21 @@ void main() {
     test('a number with a space is isolated as a whole, so its groups keep their order', () {
       const n = LocalHelpNumbers(crisis: '800 46342');
       final clause = n.crisisClause(arabic: true);
-      expect(clause, contains('\u2066800 46342\u2069'));
+      // U+00A0 inside the isolate (#727 UI/UX): the groups are one unbreakable run, so they cannot
+      // land on two lines either.
+      expect(clause, contains('\u2066800\u00A046342\u2069'));
       expect(clause.indexOf('\u2066'), lessThan(clause.indexOf('800')));
       expect(clause.indexOf('\u2069'), greaterThan(clause.indexOf('46342')));
     });
 
     test('a number that starts with + is isolated too', () {
       const n = LocalHelpNumbers(emergency: '+44 999');
-      expect(n.emergencyClause(arabic: true), contains('\u2066+44 999\u2069'));
+      expect(n.emergencyClause(arabic: true), contains('\u2066+44\u00A0999\u2069'));
     });
 
     test('the English sentence isolates the number as well', () {
       const n = LocalHelpNumbers(crisis: '800 46342');
-      expect(n.crisisClause(arabic: false), contains('\u2066800 46342\u2069'));
+      expect(n.crisisClause(arabic: false), contains('\u2066800\u00A046342\u2069'));
     });
   });
 
@@ -233,16 +235,16 @@ void main() {
     // that would have answered. It shows the hours the Bureaus worded, inside the sentence, right after
     // the number, and the emergency number is always beside it.
     test('the hours sit in brackets directly after the number, in the same sentence', () {
-      const n = LocalHelpNumbers(crisis: '800 4673', hoursEn: '(open daily 08:00-20:00)');
+      const n = LocalHelpNumbers(crisis: '800 4673', crisisHoursEn: '(open daily 08:00-20:00)');
       expect(n.crisisClause(arabic: false),
-          'call the crisis line on \u2066800 4673\u2069 (open daily 08:00-20:00)');
+          'call the crisis line on \u2066800\u00A04673\u2069 (open daily 08:00-20:00)');
     });
 
     test('a step comes before the hours, and the number itself stays diallable', () {
       const n = LocalHelpNumbers(
         crisis: '16000',
         stepEn: 'and choose option 4',
-        hoursEn: '(open Saturday to Thursday 08:00-18:00)',
+        crisisHoursEn: '(open Saturday to Thursday 08:00-18:00)',
       );
       final clause = n.crisisClause(arabic: false);
       expect(clause, 'call the crisis line on \u206616000\u2069 and choose option 4 '
@@ -257,9 +259,110 @@ void main() {
     });
 
     test('the Arabic clause carries the Arabic bracket it is given', () {
-      const n = LocalHelpNumbers(emergency: '999', hoursAr: '(+ساعات)');
+      const n = LocalHelpNumbers(emergency: '999', emergencyHoursAr: '(+ساعات)');
       expect(n.emergencyClause(arabic: true), contains('(+ساعات)'));
       expect(n.emergencyClause(arabic: false), isNot(contains('+ساعات')), reason: 'the English card never borrows the Arabic bracket');
+    });
+  });
+
+  group('the country table (#723 rows, #727 hours)', () {
+    // The rows are Claude's from #723; the brackets are the two Bureaus' (6869947527 Arabic,
+    // 6869971353 UI/UX) and the architect's rulings (6869989999). Each row names the mutant it kills.
+
+    test('SA crisis renders its Saturday hours in the whole sentence, both languages', () {
+      final sa = helpNumbersByCountry['SA']!;
+      expect(sa.crisis, '920033360');
+      expect(sa.crisisHoursEn, '(open 08:00–20:00; Saturdays 13:00–20:00)',
+          reason: 'the Saturday hours are the architect ruling 6869989999');
+      expect(sa.crisisHoursAr, '(يعمل من 08:00 إلى 20:00، ويوم السبت من 13:00 إلى 20:00)');
+      expect(sa.crisisClause(arabic: true),
+          'اتصل بخط الدعم النفسي على الرقم \u2066920033360\u2069 '
+          '(يعمل من 08:00 إلى 20:00، ويوم السبت من 13:00 إلى 20:00)');
+      expect(sa.crisisClause(arabic: false),
+          'call the crisis line on \u2066920033360\u2069 '
+          '(open 08:00–20:00; Saturdays 13:00–20:00)');
+      expect(sa.emergencyClause(arabic: false), isNot(contains('(')),
+          reason: 'mutant: one hours pair per row would put the crisis bracket after 999');
+    });
+
+    test('Qatar: the step comes before the bracket, byte for byte', () {
+      final qa = helpNumbersByCountry['QA']!;
+      expect(qa.crisis, '16000', reason: 'the step is not part of the number');
+      final clause = qa.crisisClause(arabic: true);
+      expect(clause,
+          'اتصل بخط الدعم النفسي على الرقم \u206616000\u2069 ثم اختر الرقم 4 '
+          '(يعمل من السبت إلى الخميس من 08:00 إلى 18:00)');
+      expect(clause.indexOf('ثم اختر الرقم 4'), lessThan(clause.indexOf('(يعمل')));
+      expect(qa.crisisClause(arabic: false),
+          'call the crisis line on \u206616000\u2069 and choose option 4 '
+          '(open Saturday to Thursday 08:00–18:00)');
+      expect(qa.childProtectionClause(arabic: false), isNot(contains('option 4')),
+          reason: 'mutant: the step applied to the child-protection line too');
+    });
+
+    test('a 24-hour line carries the 24-hour bracket in both languages', () {
+      final bh = helpNumbersByCountry['BH']!;
+      expect(bh.childProtectionHoursEn, '(open 24 hours)');
+      expect(bh.childProtectionHoursAr, '(يعمل على مدار الساعة)');
+      expect(bh.childProtectionClause(arabic: false),
+          'call the child-protection line on \u2066998\u2069 (open 24 hours)');
+      expect(bh.childProtectionClause(arabic: true),
+          'اتصل بخط حماية الطفل على الرقم \u2066998\u2069 (يعمل على مدار الساعة)');
+    });
+
+    test('a line with no stated hours has no bracket at all, and null hours', () {
+      final ae = helpNumbersByCountry['AE']!;
+      expect(ae.childProtectionHoursEn, isNull);
+      expect(ae.childProtectionHoursAr, isNull);
+      final english = ae.childProtectionClause(arabic: false);
+      final arabic = ae.childProtectionClause(arabic: true);
+      expect(english, isNot(contains('(')));
+      expect(arabic, isNot(contains('(')));
+      expect(english, contains('\u2066116111\u2069'));
+      expect(arabic, contains('\u2066116111\u2069'));
+    });
+
+    test('the shown UK number has no U+0020; the dialled value keeps its spaces', () {
+      final gb = helpNumbersByCountry['GB']!;
+      expect(gb.childProtection, '0808 800 5000',
+          reason: 'mutant: the NBSP baked into the field instead of the shown form');
+      expect(gb.childProtection, contains('\u0020'));
+      final shown = LocalHelpNumbers.isolatedNumber(gb.childProtection!);
+      expect(shown, '\u20660808\u00A0800\u00A05000\u2069');
+      expect(shown.contains('\u0020'), isFalse);
+      expect(gb.childProtectionClause(arabic: false), contains(shown));
+      expect(gb.childProtectionClause(arabic: true), contains(shown));
+    });
+
+    test('the UK helpline is Mon-Fri 10:00-16:00, sourced from NSPCC Learning', () {
+      final gb = helpNumbersByCountry['GB']!;
+      expect(gb.childProtectionHoursEn, '(open Monday to Friday 10:00–16:00)');
+      expect(gb.childProtectionHoursAr, '(يعمل من الاثنين إلى الجمعة من 10:00 إلى 16:00)');
+
+      final lines = File('lib/features/coach/local_help_numbers.dart').readAsStringSync().split('\n');
+      final row = lines.indexWhere((l) => l.contains("'GB': LocalHelpNumbers("));
+      expect(row, greaterThan(0), reason: 'the GB row is in the table');
+      final comment = <String>[];
+      for (var i = row - 1; i >= 0 && lines[i].trimLeft().startsWith('//'); i--) {
+        comment.insert(0, lines[i]);
+      }
+      expect(comment.join('\n'),
+          contains('https://learning.nspcc.org.uk/services/nspcc-helpline'),
+          reason: 'the ruling puts the NSPCC Learning URL on the GB row');
+    });
+
+    test('a region-filled emergency number keeps the row hours and step', () {
+      const row = LocalHelpNumbers(
+        childProtection: '110',
+        stepEn: 'and choose option 4',
+        childProtectionHoursEn: '(open 24 hours)',
+      );
+      final n = resolveHelpNumbers(countryCode: 'ZZ', region: 'EU', table: {'ZZ': row});
+      expect(n.emergency, '112');
+      expect(n.stepEn, 'and choose option 4');
+      expect(n.childProtectionHoursEn, '(open 24 hours)');
+      expect(n.childProtectionClause(arabic: false),
+          'call the child-protection line on \u2066110\u2069 (open 24 hours)');
     });
   });
 }
