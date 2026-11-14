@@ -285,5 +285,5 @@ Claude ruled that all five areas in osra-security#22 belong in W1. Only service-
 - The process-protection test uses a cross-process gate so two verification lanes cannot terminate each other's disposable child while their pause/blocklist sweeps overlap.
 - The real SYSTEM probe covers both ordinary stale-temp recovery and a competing temp file created after stale cleanup. Production still creates the new file protected with `FileMode.CreateNew`; `Create` must fail the collision row.
 - [x] Add the first-frame row, process gate and post-cleanup collision seam; run both desktop configurations and compile the real probe.
-- [ ] On `verify/754-*` branches, plant each of t1 (owner), t2 (reparse), t3 (other writer) and t4 (`CreateNew` to `Create`) separately and link four red CI runs. Keep those branches out of the product PR and do not merge them.
-- [ ] Re-run the exact product head with all cleanup markers, update the PR/ledger and request independent R3 verification. Never claim readiness from the author's green runs alone.
+- [x] On `verify/754-*` branches, plant each of t1 (owner), t2 (reparse), t3 (other writer) and t4 (`CreateNew` to `Create`) separately and link four red CI runs. Keep those branches out of the product PR and do not merge them.
+- [x] Re-run the exact product head with all cleanup markers, update the PR/ledger and request independent R3 verification. Never claim readiness from the author's green runs alone.
