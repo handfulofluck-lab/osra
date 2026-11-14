@@ -51,10 +51,11 @@ jobs:
           terraform -chdir=bootstrap-state init -backend=false -input=false
           terraform -chdir=bootstrap-state validate
 
-      - name: org-audit — init (no backend) and validate
+      - name: org-audit — init (no backend), validate and test
         run: |
           terraform -chdir=org-audit init -backend=false -input=false
           terraform -chdir=org-audit validate
+          terraform -chdir=org-audit test
 
       - name: site — init (no backend) and validate
         run: |

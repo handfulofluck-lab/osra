@@ -53,11 +53,6 @@ mock_provider "aws" {
       arn = "arn:aws:kms:eu-central-1:000000000000:key/test"
     }
   }
-  mock_data "aws_elb_service_account" {
-    defaults = {
-      arn = "arn:aws:iam::054676820928:root"
-    }
-  }
   mock_data "aws_caller_identity" {
     defaults = {
       account_id = "000000000000"
@@ -307,8 +302,20 @@ run "production_settings" {
     error_message = "the db-admin task must read the master password from the RDS-managed secret"
   }
   assert {
-    condition     = length(aws_flow_log.vpc) == 1 && aws_lb.main.access_logs[0].enabled && length(aws_wafv2_web_acl_logging_configuration.api) == 1 && aws_db_instance.main.enabled_cloudwatch_logs_exports == toset(["postgresql"])
-    error_message = "production needs ALB, VPC flow, WAF and PostgreSQL logs (#766 item 2)"
+    condition     = length(aws_flow_log.vpc) == 1 && length(aws_wafv2_web_acl_logging_configuration.api) == 1 && aws_db_instance.main.enabled_cloudwatch_logs_exports == toset(["postgresql"])
+    error_message = "production needs VPC flow, WAF and PostgreSQL logs (#766 item 2)"
+  }
+  assert {
+    condition     = length(aws_lb.main.access_logs) == 0 || !anytrue([for l in aws_lb.main.access_logs : l.enabled])
+    error_message = "ALB access logs must stay off: they would store the WebSocket ticket from the query string (#782)"
+  }
+  assert {
+    condition     = length([for f in aws_wafv2_web_acl_logging_configuration.api[0].redacted_fields : f if length(f.query_string) == 1]) == 1 && toset(flatten([for f in aws_wafv2_web_acl_logging_configuration.api[0].redacted_fields : [for h in f.single_header : h.name]])) == toset(["authorization", "cookie", "x-familyshield-signature"])
+    error_message = "WAF logs must redact the query string, authorization, cookie and x-familyshield-signature (#782)"
+  }
+  assert {
+    condition     = strcontains(aws_kms_key.alarms[0].policy, "aws:SourceAccount")
+    error_message = "the alarm key's service statement must be limited to this account (#782)"
   }
   assert {
     condition     = aws_cloudwatch_log_group.waf[0].retention_in_days == 90 && aws_cloudwatch_log_group.postgresql[0].retention_in_days == 90 && one([for r in aws_s3_bucket_lifecycle_configuration.access_logs[0].rule : r.expiration[0].days]) == 90
