@@ -116,12 +116,6 @@ public sealed class FileDesktopRestrictionStore : IRestrictionStore
             foreach (var rule in security.GetAccessRules(true, false, typeof(SecurityIdentifier))
                          .Cast<FileSystemAccessRule>())
             {
-                if (rule.AccessControlType == AccessControlType.Allow &&
-                    rule.IdentityReference.Value != SystemSid && rule.IdentityReference.Value != AdministratorsSid &&
-                    (rule.FileSystemRights & WriteRights) != 0)
-                {
-                    throw new UnauthorizedAccessException("Another principal can write the restriction directory.");
-                }
             }
         }
         directory.SetAccessControl(ProtectedDirectory());
