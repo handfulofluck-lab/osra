@@ -42,6 +42,11 @@ describe("A2 — the schema is strict, enum-keyed and capped", () => {
     expect(CapabilitiesSchema.safeParse(report({ grants: { child_account_admin: "administrator" } })).success).toBe(false);
   });
 
+  it("accepts only the desktop tray as report provenance", () => {
+    expect(CapabilitiesSchema.safeParse(report({ source: "tray" })).success).toBe(true);
+    expect(CapabilitiesSchema.safeParse(report({ source: "service" })).success).toBe(false);
+  });
+
   it("accepts the shape the ADR describes", () => {
     expect(CapabilitiesSchema.safeParse(report()).success).toBe(true);
   });

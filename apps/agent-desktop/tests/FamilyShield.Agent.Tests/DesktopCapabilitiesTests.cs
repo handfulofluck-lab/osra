@@ -25,7 +25,8 @@ public sealed class DesktopCapabilitiesTests
         Assert.Equal("ready", report.GetProperty("features").GetProperty("app_blocking").GetString());
         Assert.Equal("degraded", report.GetProperty("features").GetProperty("web_filter").GetString());
         Assert.Equal("degraded", report.GetProperty("features").GetProperty("pause_internet").GetString());
-        Assert.Equal(3, report.EnumerateObject().Count());
+        Assert.Equal(4, report.EnumerateObject().Count());
+        Assert.Equal("tray", report.GetProperty("source").GetString());
         Assert.Equal(6, report.GetProperty("features").EnumerateObject().Count());
         Assert.DoesNotContain("not_supported", JsonSerializer.Serialize(report));
         Assert.DoesNotContain("pin", JsonSerializer.Serialize(report).ToLowerInvariant());
@@ -59,6 +60,29 @@ public sealed class DesktopCapabilitiesTests
             store.Dispose();
             try { Directory.Delete(dir, recursive: true); } catch (Exception) { }
         }
+    }
+
+    [Fact]
+    public void StoreRequiresTrayProvenance()
+    {
+        var report = DesktopCapabilities.Create(new TestAccountIdentity(false), Facts());
+        var withoutSource = JsonSerializer.SerializeToElement(new
+        {
+            client = report.GetProperty("client"),
+            grants = report.GetProperty("grants"),
+            features = report.GetProperty("features"),
+        });
+        var wrongSource = JsonSerializer.SerializeToElement(new
+        {
+            client = report.GetProperty("client"),
+            grants = report.GetProperty("grants"),
+            features = report.GetProperty("features"),
+            source = "service",
+        });
+        var store = new DesktopCapabilitiesStore();
+
+        Assert.Throws<InvalidDataException>(() => store.Update(withoutSource));
+        Assert.Throws<InvalidDataException>(() => store.Update(wrongSource));
     }
 
     private static RuntimeFacts Facts() => new(
