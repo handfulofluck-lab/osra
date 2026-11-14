@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../api/models.dart';
+import '../../core/digits.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
@@ -67,13 +68,20 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
       _error = null;
     });
     try {
-      final res = await ref.read(apiClientProvider).raw.post('/v1/family/children', data: {
+      final res = await ref
+          .read(apiClientProvider)
+          .raw
+          .post('/v1/family/children', data: {
         'displayName': name,
         'birthYear': year,
         'consent': {'method': _method, 'jurisdiction': _jurisdiction},
       });
-      final data = res.data is Map ? Map<String, dynamic>.from(res.data as Map) : const <String, dynamic>{};
-      final child = data['child'] is Map ? Map<String, dynamic>.from(data['child'] as Map) : const <String, dynamic>{};
+      final data = res.data is Map
+          ? Map<String, dynamic>.from(res.data as Map)
+          : const <String, dynamic>{};
+      final child = data['child'] is Map
+          ? Map<String, dynamic>.from(data['child'] as Map)
+          : const <String, dynamic>{};
       final childId = (child['id'] ?? data['id'])?.toString() ?? '';
       ref.invalidate(familyProvider);
       if (!mounted) return;
@@ -98,8 +106,12 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
         title: Text(l10n.onboardingLeaveTitle),
         content: Text(l10n.onboardingLeaveBody),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(l10n.onboardingLeaveStay)),
-          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: Text(l10n.onboardingLeaveConfirm)),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text(l10n.onboardingLeaveStay)),
+          FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text(l10n.onboardingLeaveConfirm)),
         ],
       ),
     );
@@ -133,11 +145,13 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
     );
   }
 
-  Widget _buildExisting(BuildContext context, AppLocalizations l10n, List<Child> children) {
+  Widget _buildExisting(
+      BuildContext context, AppLocalizations l10n, List<Child> children) {
     return ListView(
       padding: const EdgeInsets.all(AppSpace.lg),
       children: [
-        Text(l10n.onboardingExistingChildren, style: Theme.of(context).textTheme.bodyLarge),
+        Text(l10n.onboardingExistingChildren,
+            style: Theme.of(context).textTheme.bodyLarge),
         const SizedBox(height: AppSpace.md),
         for (final child in children)
           Card(
@@ -183,6 +197,7 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
           key: const ValueKey('onboardingBirthYear'),
           controller: _birthYear,
           keyboardType: TextInputType.number,
+          inputFormatters: [DigitInputFormatter()],
           textInputAction: TextInputAction.done,
           decoration: InputDecoration(
             labelText: l10n.birthYearLabel,
@@ -191,7 +206,8 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
           ),
         ),
         const SizedBox(height: AppSpace.xl),
-        Text(l10n.parentalConsent, style: Theme.of(context).textTheme.titleMedium),
+        Text(l10n.parentalConsent,
+            style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: AppSpace.xs),
         // TODO(#159): legal consent wording needs a product/legal decision
         // before it can be translated; it stays English, as on the dashboard.
@@ -201,30 +217,43 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
           key: const ValueKey('onboardingConsentMethod'),
           initialValue: _method,
           isExpanded: true,
-          decoration: InputDecoration(labelText: l10n.consentMethodLabel, border: const OutlineInputBorder()),
-          items: [for (final m in _methods) DropdownMenuItem(value: m, child: Text(l10n.consentMethod(m)))],
-          onChanged: _busy ? null : (v) => setState(() => _method = v ?? _methods.first),
+          decoration: InputDecoration(
+              labelText: l10n.consentMethodLabel,
+              border: const OutlineInputBorder()),
+          items: [
+            for (final m in _methods)
+              DropdownMenuItem(value: m, child: Text(l10n.consentMethod(m)))
+          ],
+          onChanged: _busy
+              ? null
+              : (v) => setState(() => _method = v ?? _methods.first),
         ),
         const SizedBox(height: AppSpace.md),
         DropdownButtonFormField<String>(
           key: const ValueKey('onboardingJurisdiction'),
           initialValue: _jurisdiction,
           isExpanded: true,
-          decoration: InputDecoration(labelText: l10n.jurisdictionLabel, border: const OutlineInputBorder()),
+          decoration: InputDecoration(
+              labelText: l10n.jurisdictionLabel,
+              border: const OutlineInputBorder()),
           items: [
             DropdownMenuItem(value: 'US', child: Text(l10n.regionUS)),
             DropdownMenuItem(value: 'EU', child: Text(l10n.regionEU)),
             DropdownMenuItem(value: 'UK', child: Text(l10n.regionUK)),
             DropdownMenuItem(value: 'OTHER', child: Text(l10n.regionOther)),
           ],
-          onChanged: _busy ? null : (v) => setState(() => _jurisdiction = v ?? 'US'),
+          onChanged:
+              _busy ? null : (v) => setState(() => _jurisdiction = v ?? 'US'),
         ),
         if (_error != null) ...[
           const SizedBox(height: AppSpace.md),
           Text(
             _error!,
             key: const ValueKey('onboardingChildError'),
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.danger),
+            style: Theme.of(context)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(color: tokens.danger),
           ),
         ],
         const SizedBox(height: AppSpace.lg),
@@ -232,14 +261,20 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
           key: const ValueKey('onboardingAddChild'),
           onPressed: _busy ? null : _createChild,
           child: _busy
-              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2))
               : Text(l10n.onboardingAddChildContinue),
         ),
         const SizedBox(height: AppSpace.md),
         Text(
           l10n.onboardingChildPrivacy,
           textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant),
+          style: Theme.of(context)
+              .textTheme
+              .bodySmall
+              ?.copyWith(color: tokens.onSurfaceVariant),
         ),
       ],
     );
@@ -264,7 +299,8 @@ class _LoadFailed extends StatelessWidget {
             const SizedBox(height: AppSpace.md),
             Text(message, textAlign: TextAlign.center),
             const SizedBox(height: AppSpace.md),
-            FilledButton.tonal(onPressed: onRetry, child: Text(context.l10n.tryAgain)),
+            FilledButton.tonal(
+                onPressed: onRetry, child: Text(context.l10n.tryAgain)),
           ],
         ),
       ),

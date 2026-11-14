@@ -39,6 +39,7 @@ import { currentSessionVersion, invalidateSessionsBefore, isBearerSession, isPar
 import { encryptSecret, isEncryptedSecret } from "../lib/secretVault.js";
 import { verifyTotpFresh } from "../lib/mfaVerify.js";
 import { AUTH_RATE_LIMIT } from "../lib/rateLimits.js";
+import { digitsSchema } from "../lib/digits.js";
 
 const RegisterSchema = z.object({
   email: z.string().email().transform((e) => e.trim().toLowerCase()),
@@ -66,7 +67,7 @@ const LoginSchema = z.object({
  */
 const MfaEnrollSchema = z.object({
   password: z.string().min(1).optional(),
-  code: z.string().regex(/^\d{6}$/).optional(),
+  code: digitsSchema(6).optional(),
 });
 
 /**
@@ -419,7 +420,7 @@ export async function authRoutes(app: FastifyInstance) {
    * destructive overwrite.
    */
   app.post("/mfa/verify", { preHandler: requireParentOrMfaRecovery, config: RL }, async (req, reply) => {
-    const parsed = z.object({ code: z.string().regex(/^\d{6}$/) }).safeParse(req.body);
+    const parsed = z.object({ code: digitsSchema(6) }).safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const user = req.user as { sub: string; purpose?: string; jti?: string };
     const parent = await prisma.parent.findUnique({ where: { id: user.sub } });
@@ -826,7 +827,7 @@ export async function authRoutes(app: FastifyInstance) {
    */
   app.post("/mfa/reset/witness", { config: RL }, async (req, reply) => {
     const parsed = z
-      .object({ requestId: z.string().min(1).max(64), code: z.string().regex(/^\d{8}$/) })
+      .object({ requestId: z.string().min(1).max(64), code: digitsSchema(8) })
       .safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const request = await prisma.mfaResetRequest.findUnique({ where: { id: parsed.data.requestId } });

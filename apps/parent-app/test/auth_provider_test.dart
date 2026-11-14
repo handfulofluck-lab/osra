@@ -9,7 +9,12 @@ import 'package:familyshield_parent/providers/auth_provider.dart';
 
 /// Canned GET /v1/family/me payload.
 const _familyMe = {
-  'family': {'id': 'fam-1', 'name': 'Demo Family', 'region': 'US', 'createdAt': '2026-09-14T00:00:00Z'},
+  'family': {
+    'id': 'fam-1',
+    'name': 'Demo Family',
+    'region': 'US',
+    'createdAt': '2026-09-14T00:00:00Z'
+  },
   'parent': {
     'id': 'par-1',
     'familyId': 'fam-1',
@@ -19,7 +24,13 @@ const _familyMe = {
     'mfaEnabled': false,
   },
   'children': [
-    {'id': 'child-1', 'familyId': 'fam-1', 'displayName': 'Alex', 'birthYear': 2013, 'screenTimeTodayMinutes': 45},
+    {
+      'id': 'child-1',
+      'familyId': 'fam-1',
+      'displayName': 'Alex',
+      'birthYear': 2013,
+      'screenTimeTodayMinutes': 45
+    },
   ],
   'devices': [
     {
@@ -47,27 +58,39 @@ class FakeApiClient extends ApiClient {
     final dio = Dio(BaseOptions(baseUrl: 'http://testserver'));
     dio.interceptors.add(InterceptorsWrapper(onRequest: (options, handler) {
       if (options.path == '/v1/auth/login') {
-        loginBody = Map<String, dynamic>.from((options.data as Map?) ?? const {});
+        loginBody =
+            Map<String, dynamic>.from((options.data as Map?) ?? const {});
         final password = loginBody!['password'];
         if (password == 'good-password') {
-          handler.resolve(Response(requestOptions: options, data: {'token': 'jwt-token', 'refreshToken': 'refresh-token'}));
+          handler.resolve(Response(
+              requestOptions: options,
+              data: {'token': 'jwt-token', 'refreshToken': 'refresh-token'}));
         } else if (password == 'mfa-password') {
           handler.reject(DioException(
             requestOptions: options,
-            response: Response(requestOptions: options, statusCode: 401, data: {'error': 'mfa_required'}),
+            response: Response(
+                requestOptions: options,
+                statusCode: 401,
+                data: {'error': 'mfa_required'}),
             type: DioExceptionType.badResponse,
           ));
         } else if (password == 'reenroll-password') {
           // #183: a recovered account whose new authenticator was never verified.
           handler.reject(DioException(
             requestOptions: options,
-            response: Response(requestOptions: options, statusCode: 401, data: {'error': 'mfa_reenroll_required'}),
+            response: Response(
+                requestOptions: options,
+                statusCode: 401,
+                data: {'error': 'mfa_reenroll_required'}),
             type: DioExceptionType.badResponse,
           ));
         } else {
           handler.reject(DioException(
             requestOptions: options,
-            response: Response(requestOptions: options, statusCode: 401, data: {'error': 'invalid_credentials'}),
+            response: Response(
+                requestOptions: options,
+                statusCode: 401,
+                data: {'error': 'invalid_credentials'}),
             type: DioExceptionType.badResponse,
           ));
         }
@@ -76,7 +99,10 @@ class FakeApiClient extends ApiClient {
       } else {
         handler.reject(DioException(
           requestOptions: options,
-          response: Response(requestOptions: options, statusCode: 401, data: {'error': 'invalid_credentials'}),
+          response: Response(
+              requestOptions: options,
+              statusCode: 401,
+              data: {'error': 'invalid_credentials'}),
           type: DioExceptionType.badResponse,
         ));
       }
@@ -96,7 +122,8 @@ void main() {
     // In-memory shared_preferences so ServerUrlNotifier.load() resolves fast.
     SharedPreferences.setMockInitialValues({});
     api = FakeApiClient();
-    container = ProviderContainer(overrides: [apiClientProvider.overrideWithValue(api)]);
+    container = ProviderContainer(
+        overrides: [apiClientProvider.overrideWithValue(api)]);
   });
 
   tearDown(() => container.dispose());
@@ -116,7 +143,9 @@ void main() {
   });
 
   test('successful login sets isAuthenticated and loads family', () async {
-    await container.read(authProvider.notifier).login('demo@osratech.com', 'good-password');
+    await container
+        .read(authProvider.notifier)
+        .login('demo@osratech.com', 'good-password');
     final state = container.read(authProvider);
     expect(state.isAuthenticated, isTrue);
     expect(state.loading, isFalse);
@@ -126,37 +155,67 @@ void main() {
   });
 
   test('failed login (401) sets error and stays logged out', () async {
-    await container.read(authProvider.notifier).login('demo@osratech.com', 'wrong-password');
+    await container
+        .read(authProvider.notifier)
+        .login('demo@osratech.com', 'wrong-password');
     final state = container.read(authProvider);
     expect(state.isAuthenticated, isFalse);
     expect(state.error, 'invalid_credentials');
   });
 
   test('successful login stores the refresh token for 401 retries', () async {
-    await container.read(authProvider.notifier).login('demo@osratech.com', 'good-password');
+    await container
+        .read(authProvider.notifier)
+        .login('demo@osratech.com', 'good-password');
     expect(container.read(authProvider).isAuthenticated, isTrue);
     final refresh = await const FlutterSecureStorage().read(key: 'refresh');
     expect(refresh, 'refresh-token');
   });
 
   test('login sends the MFA code only when non-empty', () async {
-    await container.read(authProvider.notifier).login('demo@osratech.com', 'good-password');
+    await container
+        .read(authProvider.notifier)
+        .login('demo@osratech.com', 'good-password');
     expect(api.loginBody, isNotNull);
     expect(api.loginBody!.containsKey('code'), isFalse);
 
-    await container.read(authProvider.notifier).login('demo@osratech.com', 'good-password', ' 123456 ');
+    await container
+        .read(authProvider.notifier)
+        .login('demo@osratech.com', 'good-password', ' 123456 ');
     expect(api.loginBody!['code'], '123456');
   });
 
+  test('login normalizes approved digit keyboards before the request',
+      () async {
+    await container
+        .read(authProvider.notifier)
+        .login('demo@osratech.com', 'good-password', '١٢٣٤٥٦');
+    expect(api.loginBody!['code'], '123456');
+    await container
+        .read(authProvider.notifier)
+        .login('demo@osratech.com', 'good-password', '۱۲۳۴۵۶');
+    expect(api.loginBody!['code'], '123456');
+    await container
+        .read(authProvider.notifier)
+        .login('demo@osratech.com', 'good-password', '１２３４５６');
+    expect(api.loginBody!['code'], isNot('123456'));
+  });
+
   test('401 with an mfa error shows Invalid authentication code', () async {
-    await container.read(authProvider.notifier).login('demo@osratech.com', 'mfa-password');
+    await container
+        .read(authProvider.notifier)
+        .login('demo@osratech.com', 'mfa-password');
     final state = container.read(authProvider);
     expect(state.isAuthenticated, isFalse);
     expect(state.error, 'Invalid authentication code');
   });
 
-  test('#183: mfa_reenroll_required is reported as a missing authenticator, not a wrong code', () async {
-    await container.read(authProvider.notifier).login('demo@osratech.com', 'reenroll-password');
+  test(
+      '#183: mfa_reenroll_required is reported as a missing authenticator, not a wrong code',
+      () async {
+    await container
+        .read(authProvider.notifier)
+        .login('demo@osratech.com', 'reenroll-password');
     final state = container.read(authProvider);
     expect(state.isAuthenticated, isFalse);
     expect(state.error, isNot('Invalid authentication code'));
@@ -183,7 +242,8 @@ void main() {
 
   test('bootstrap with a stored token restores the session', () async {
     FlutterSecureStorage.setMockInitialValues({'jwt': 'stored-token'});
-    final fresh = ProviderContainer(overrides: [apiClientProvider.overrideWithValue(FakeApiClient())]);
+    final fresh = ProviderContainer(
+        overrides: [apiClientProvider.overrideWithValue(FakeApiClient())]);
     addTearDown(fresh.dispose);
     // Reading the notifier triggers the provider factory (which kicks off
     // bootstrap()); then let the async storage-read + HTTP round-trip settle.

@@ -71,7 +71,8 @@ filter on the phone** (local DNS sinkhole: blocked domains/categories, SafeSearc
 pause-internet drops all traffic — ADR-0015) · usage
 reports with charts · wellbeing score · live activity chip · app insights · digest
 preferences · conversation coach (EN/عربي) · routines · geofences · ring/lock/unlock ·
-MFA (optional TOTP) · refresh-token rotation with reuse detection.
+MFA (optional TOTP) · refresh-token rotation with reuse detection. Numeric codes and PINs normalize
+ASCII, Arabic-Indic and Persian keyboard digits to ASCII; other digit sets remain rejected.
 
 ## Quickstart (development)
 

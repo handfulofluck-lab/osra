@@ -18,7 +18,9 @@ class ParentPinStore @Inject constructor(
 
     /** Constant-time check of [pin] against the stored hash. */
     fun verify(pin: String): Boolean =
-        ParentPin.verify(pin, secureStore.getString(SecureStore.KEY_PARENT_PIN))
+        ParentPin.verifyAndMigrate(pin, secureStore.getString(SecureStore.KEY_PARENT_PIN)) {
+            secureStore.putString(SecureStore.KEY_PARENT_PIN, it)
+        }
 
     /** Clears the PIN (used only when the server authorises an unpair). */
     fun clear() {

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/digits.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/mfa_provider.dart';
@@ -20,7 +21,8 @@ import 'mfa_recovery_screen.dart';
 /// to Welcome and names the causes a non-engineer can fix (wrong password,
 /// unreachable server) instead of showing the API's raw code.
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key, this.onboarding = false, this.debug, this.builtIn});
+  const LoginScreen(
+      {super.key, this.onboarding = false, this.debug, this.builtIn});
 
   final bool onboarding;
 
@@ -78,7 +80,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final builtIn = builtInServerUrl();
     if (builtIn != null) return builtIn;
     final url = normalizeServerUrl(_server.text);
-    setState(() => _serverError = url == null ? context.l10n.invalidServer : null);
+    setState(
+        () => _serverError = url == null ? context.l10n.invalidServer : null);
     if (url == null) return null;
     await ref.read(serverUrlProvider.notifier).setServerUrl(url);
     return url;
@@ -89,7 +92,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// non-engineer can fix, the plain screen shows the server's string).
   String? _authErrorText(AppLocalizations l10n, String? raw) {
     if (raw == null) return null;
-    if (raw.startsWith(kValidationFailedPrefix)) return authFieldError(l10n, raw);
+    if (raw.startsWith(kValidationFailedPrefix))
+      return authFieldError(l10n, raw);
     if (raw == 'email_taken') return l10n.registerEmailTaken;
     return widget.onboarding ? onboardingAuthError(l10n, raw) : raw;
   }
@@ -112,11 +116,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final tokens = context.tokens;
     final auth = ref.watch(authProvider);
     final serverUrl = ref.watch(serverUrlProvider);
-    final showMfaNotice = ref.watch(loginNoticeProvider) == kLoginNoticeMfaSessionEnded;
+    final showMfaNotice =
+        ref.watch(loginNoticeProvider) == kLoginNoticeMfaSessionEnded;
     final l10n = context.l10n;
     final onboarding = ref.watch(onboardingProvider);
     final canGoBack = widget.onboarding &&
-        (onboarding.step == OnboardingStep.signIn || onboarding.step == OnboardingStep.welcome);
+        (onboarding.step == OnboardingStep.signIn ||
+            onboarding.step == OnboardingStep.welcome);
     // Keep the field in sync with the persisted URL until the user edits it.
     if (!_serverTouched && _server.text != serverUrl) {
       _server.text = serverUrl;
@@ -124,7 +130,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final errorText = _formError ?? _authErrorText(l10n, auth.error);
     final builtIn = widget.builtIn ?? kDefaultServerUrl;
     final locked = isServerLocked(builtIn);
-    final showServer = showServerField(debug: widget.debug ?? kDebugMode, builtIn: builtIn);
+    final showServer =
+        showServerField(debug: widget.debug ?? kDebugMode, builtIn: builtIn);
     return Scaffold(
       appBar: widget.onboarding
           ? AppBar(
@@ -148,11 +155,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               children: [
                 const Icon(Icons.shield_outlined, size: 72),
                 const SizedBox(height: AppSpace.sm),
-                Text('OSRA', textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineMedium),
+                Text('OSRA',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.headlineMedium),
                 const SizedBox(height: AppSpace.xs),
                 Text(l10n.appTagline,
                     textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant)),
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: tokens.onSurfaceVariant)),
                 if (widget.onboarding) ...[
                   const SizedBox(height: AppSpace.sm),
                   Text(
@@ -167,7 +179,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 if (serverUrl.isNotEmpty) ...[
                   Text(l10n.serverShown(serverUrl),
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant)),
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: tokens.onSurfaceVariant)),
                   const SizedBox(height: AppSpace.xl),
                 ] else
                   const SizedBox(height: AppSpace.xl),
@@ -185,7 +200,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       labelText: l10n.serverLabel,
                       hintText: l10n.serverHint,
                       errorText: _serverError,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(AppRadius.sm)),
                     ),
                   ),
                   const SizedBox(height: AppSpace.md),
@@ -208,7 +224,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   autofillHints: const [AutofillHints.email],
                   decoration: InputDecoration(
                     labelText: l10n.emailLabel,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.sm)),
                   ),
                 ),
                 const SizedBox(height: AppSpace.md),
@@ -218,9 +235,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   autofillHints: const [AutofillHints.password],
                   decoration: InputDecoration(
                     labelText: l10n.passwordLabel,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.sm)),
                     suffixIcon: IconButton(
-                      icon: Icon(_obscured ? Icons.visibility : Icons.visibility_off),
+                      icon: Icon(
+                          _obscured ? Icons.visibility : Icons.visibility_off),
                       onPressed: () => setState(() => _obscured = !_obscured),
                     ),
                   ),
@@ -229,17 +248,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 TextField(
                   controller: _code,
                   keyboardType: TextInputType.number,
+                  inputFormatters: [DigitInputFormatter()],
                   autofillHints: const [AutofillHints.oneTimeCode],
                   decoration: InputDecoration(
                     labelText: l10n.mfaCodeLabel,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.sm)),
                   ),
                 ),
                 if (errorText != null && !_registering) ...[
                   const SizedBox(height: AppSpace.md),
                   Text(errorText,
                       key: const ValueKey('loginError'),
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.danger)),
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(color: tokens.danger)),
                 ],
                 const SizedBox(height: AppSpace.lg),
                 FilledButton.icon(
@@ -251,15 +275,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             _formError = null;
                           });
                           if (await _saveServer() == null) return;
-                          await _submit(() => ref.read(authProvider.notifier).login(_email.text.trim(), _password.text, _code.text));
+                          await _submit(() => ref
+                              .read(authProvider.notifier)
+                              .login(_email.text.trim(), _password.text,
+                                  _code.text));
                         },
-                  icon: auth.loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.login),
+                  icon: auth.loading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.login),
                   label: Text(l10n.signIn),
                 ),
                 const SizedBox(height: AppSpace.xs),
                 TextButton(
                   key: const ValueKey('lostAuthenticator'),
-                  onPressed: () => Navigator.of(context).push<void>(MaterialPageRoute(
+                  onPressed: () =>
+                      Navigator.of(context).push<void>(MaterialPageRoute(
                     builder: (_) => const MfaRecoveryScreen(),
                   )),
                   child: Text(l10n.mfaRecoveryLink),
@@ -267,21 +300,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 const SizedBox(height: AppSpace.sm),
                 ExpansionTile(
                   title: Text(l10n.createAccount),
-                  childrenPadding: const EdgeInsets.symmetric(horizontal: AppSpace.lg),
+                  childrenPadding:
+                      const EdgeInsets.symmetric(horizontal: AppSpace.lg),
                   children: [
                     // The section has no email or password of its own; say so, with the rule the
                     // server enforces, before the parent finds out from an error.
                     Text(
                       l10n.registerFieldsHint,
                       key: const ValueKey('registerFieldsHint'),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant),
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: tokens.onSurfaceVariant),
                     ),
                     const SizedBox(height: AppSpace.md),
                     TextField(
                       controller: _familyName,
                       decoration: InputDecoration(
                         labelText: l10n.familyNameLabel,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(AppRadius.sm)),
                       ),
                     ),
                     const SizedBox(height: AppSpace.md),
@@ -289,7 +327,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       controller: _displayName,
                       decoration: InputDecoration(
                         labelText: l10n.yourNameLabel,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(AppRadius.sm)),
                       ),
                     ),
                     const SizedBox(height: AppSpace.md),
@@ -298,13 +337,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       isExpanded: true,
                       decoration: InputDecoration(
                         labelText: l10n.regionLabel,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(AppRadius.sm)),
                       ),
                       items: [
-                        DropdownMenuItem(value: 'US', child: Text(l10n.regionUS)),
-                        DropdownMenuItem(value: 'EU', child: Text(l10n.regionEU)),
-                        DropdownMenuItem(value: 'UK', child: Text(l10n.regionUK)),
-                        DropdownMenuItem(value: 'OTHER', child: Text(l10n.regionOther)),
+                        DropdownMenuItem(
+                            value: 'US', child: Text(l10n.regionUS)),
+                        DropdownMenuItem(
+                            value: 'EU', child: Text(l10n.regionEU)),
+                        DropdownMenuItem(
+                            value: 'UK', child: Text(l10n.regionUK)),
+                        DropdownMenuItem(
+                            value: 'OTHER', child: Text(l10n.regionOther)),
                       ],
                       onChanged: (v) => setState(() => _region = v ?? 'US'),
                     ),
@@ -312,7 +356,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     if (errorText != null && _registering) ...[
                       Text(errorText,
                           key: const ValueKey('registerError'),
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.danger)),
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(color: tokens.danger)),
                       const SizedBox(height: AppSpace.md),
                     ],
                     OutlinedButton(
@@ -332,13 +379,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               });
                               if (problem != null) return;
                               if (await _saveServer() == null) return;
-                              await _submit(() => ref.read(authProvider.notifier).register(
-                                    email: _email.text.trim(),
-                                    password: _password.text,
-                                    displayName: _displayName.text.trim(),
-                                    familyName: _familyName.text.trim(),
-                                    region: _region,
-                                  ));
+                              await _submit(() =>
+                                  ref.read(authProvider.notifier).register(
+                                        email: _email.text.trim(),
+                                        password: _password.text,
+                                        displayName: _displayName.text.trim(),
+                                        familyName: _familyName.text.trim(),
+                                        region: _region,
+                                      ));
                             },
                       child: Text(l10n.register),
                     ),

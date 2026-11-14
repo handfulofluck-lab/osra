@@ -3,6 +3,7 @@ package com.familyshield.agent.setup
 import java.net.URI
 import java.net.URLDecoder
 import java.net.URLEncoder
+import com.familyshield.agent.security.normalizeDigits
 
 /**
  * Kotlin counterpart of the parent app's `PairQrPayload`
@@ -30,10 +31,11 @@ data class PairQrPayload(val code: String, val apiBaseUrl: String) {
 
     /** The documented v1 string; kept in step with the Dart encoder for the round-trip test. */
     fun encode(): String {
-        require(CODE_PATTERN.matches(code)) { "pairing code must be six digits" }
+        val normalizedCode = normalizeDigits(code)
+        require(normalizedCode != null && CODE_PATTERN.matches(normalizedCode)) { "pairing code must be six digits" }
         require(isApiBaseUrl(apiBaseUrl)) { "pairing host must be an http(s) URL: $apiBaseUrl" }
         val encodedHost = URLEncoder.encode(apiBaseUrl, Charsets.UTF_8.name())
-        return "$SCHEME://$AUTHORITY?v=$VERSION&code=$code&host=$encodedHost"
+        return "$SCHEME://$AUTHORITY?v=$VERSION&code=$normalizedCode&host=$encodedHost"
     }
 
     companion object {
@@ -44,7 +46,7 @@ data class PairQrPayload(val code: String, val apiBaseUrl: String) {
         /** The masked prefix in [maskedCode]; a bullet, not a digit. */
         const val MASK = "••••"
 
-        private val CODE_PATTERN = Regex("""\d{6}""")
+        private val CODE_PATTERN = Regex("""[0-9]{6}""")
 
         /**
          * Decodes [raw], throwing [PairQrFormatException] with a reason a person can act on.
@@ -74,7 +76,7 @@ data class PairQrPayload(val code: String, val apiBaseUrl: String) {
                     "unsupported pairing code version: ${version ?: "missing"}",
                 )
             }
-            val code = params["code"]
+            val code = normalizeDigits(params["code"].orEmpty())
             if (code == null || !CODE_PATTERN.matches(code)) {
                 throw PairQrFormatException("the pairing code is not six digits")
             }

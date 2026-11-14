@@ -50,6 +50,17 @@ timestamp), dashboard, map-sheet, call/SMS and bonus-time widgets with an Arabic
 Removing any one of the seven `ltrIsolate` calls must turn its corresponding row red. These are widget
 tests, not a phone run; no device claim or API access is used.
 
+For Arabic-Indic and Persian numeric input (#771), run
+`pnpm --filter @familyshield/api exec vitest run test/digit-normalization.test.ts`,
+`flutter test test/digit_normalization_test.dart` from `apps/parent-app`, and
+`./gradlew testPlayDebugUnitTest --tests com.familyshield.agent.security.DigitNormalizationTest --tests com.familyshield.agent.setup.PairQrPayloadTest`
+from `apps/child-android`. The tables accept only ASCII, U+0660–U+0669 and U+06F0–U+06F9, strip only plain
+spaces and LRM/RLM/ALM, and reject full-width/other-script digits. Widget rows type digits sequentially,
+check cursor offsets after removed marks and verify normalized MFA/pairing submissions. Android rows also
+prove that a pre-fix localized PIN hash is rewritten only after the exact legacy input verifies. Removing
+the Persian mapping, moving normalization after TOTP replay lookup, or restoring selection clamping must
+turn the relevant rows red. These are local tests; real keyboards still require the assigned device rows.
+
 ## 2. Prerequisites (dev machine)
 
 | Need | Where it lives here |

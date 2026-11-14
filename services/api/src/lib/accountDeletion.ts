@@ -5,6 +5,7 @@ import { getRedis } from "../redis.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 import { DEVICE_TOKEN_TTL_SECONDS } from "./deviceToken.js";
 import { verifyTotpFresh } from "./mfaVerify.js";
+import { digitsSchema } from "./digits.js";
 import { invalidateSessionsBefore, tombstoneParentSessions } from "./sessions.js";
 import { eraseChildData } from "./usageModel.js";
 
@@ -29,7 +30,7 @@ import { eraseChildData } from "./usageModel.js";
 /** What both deletions take: the password, and the authenticator code when MFA is on. */
 export const ReauthSchema = z.object({
   password: z.string().min(1).max(256),
-  mfaCode: z.string().regex(/^\d{6}$/).optional(),
+  mfaCode: digitsSchema(6).optional(),
 });
 
 type ParentForReauth = { id: string; passwordHash: string; mfaEnabled: boolean; mfaSecret: string | null };

@@ -5,8 +5,19 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Base64
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.PBEKeySpec
 
 class DigitNormalizationTest {
+    private fun legacyHash(pin: String): String {
+        val salt = ByteArray(16)
+        val spec = PBEKeySpec(pin.toCharArray(), salt, 120000, 256)
+        val hash = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
+        val encoder = Base64.getEncoder()
+        return "pbkdf2\$120000\$${encoder.encodeToString(salt)}\$${encoder.encodeToString(hash)}"
+    }
+
     @Test
     fun `maps approved digit sets mixed forms spaces and marks`() {
         assertEquals("0123456", normalizeDigits("٠١٢٣٤٥٦"))
@@ -37,7 +48,7 @@ class DigitNormalizationTest {
     @Test
     fun `legacy localized hash opens once and is replaced with normalized hash`() {
         var stored = legacyHash("٤٧٢٩")
-        assertTrue(ParentPin.verifyAndMigrate("4729", stored) { stored = it })
+        assertTrue(ParentPin.verifyAndMigrate("٤٧٢٩", stored) { stored = it })
         assertTrue(ParentPin.verify("٤٧٢٩", stored))
         assertTrue(ParentPin.verify("۴۷۲۹", stored))
         assertFalse(ParentPin.verify("4728", stored))

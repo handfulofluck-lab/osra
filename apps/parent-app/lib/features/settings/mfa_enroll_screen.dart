@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../api/mfa_api.dart';
+import '../../core/digits.dart';
 import '../../api/models.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
@@ -81,7 +82,9 @@ class _MfaEnrollScreenState extends ConsumerState<MfaEnrollScreen> {
       if (!mounted) return;
       // A replacement secret needs proof. Ask once, then either retry with it
       // or show the honest reason (the parent cancelled / the proof was wrong).
-      if (failure.kind == MfaFailureKind.reauthRequired && !_recoveryFlow && proof == null) {
+      if (failure.kind == MfaFailureKind.reauthRequired &&
+          !_recoveryFlow &&
+          proof == null) {
         setState(() => _starting = false);
         final next = await showReauthDialog(context);
         if (!mounted) return;
@@ -112,8 +115,8 @@ class _MfaEnrollScreenState extends ConsumerState<MfaEnrollScreen> {
   }
 
   Future<void> _verify() async {
-    final code = _code.text.trim();
-    if (!RegExp(r'^\d{6}$').hasMatch(code)) {
+    final code = normalizeDigits(_code.text.trim());
+    if (code == null || !RegExp(r'^\d{6}$').hasMatch(code)) {
       setState(() => _verifyError = MfaFailureKind.invalidCode);
       return;
     }
@@ -182,7 +185,8 @@ class _MfaEnrollScreenState extends ConsumerState<MfaEnrollScreen> {
           padding: const EdgeInsets.all(AppSpace.lg),
           children: [
             if (_recoveryFlow) ...[
-              Text(l10n.mfaEnrollAfterRecovery, style: theme.textTheme.titleMedium),
+              Text(l10n.mfaEnrollAfterRecovery,
+                  style: theme.textTheme.titleMedium),
               const SizedBox(height: AppSpace.lg),
             ],
             if (_starting)
@@ -209,9 +213,11 @@ class _MfaEnrollScreenState extends ConsumerState<MfaEnrollScreen> {
               ? l10n.mfaReauthRequired
               : _startError == MfaFailureKind.malformed
                   ? l10n.mfaEnrollError
-                  : mfaFailureText(l10n, _startError!, recoveryFlow: _recoveryFlow),
+                  : mfaFailureText(l10n, _startError!,
+                      recoveryFlow: _recoveryFlow),
           key: const ValueKey('mfaEnrollError'),
-          style: theme.textTheme.bodyMedium?.copyWith(color: context.tokens.danger),
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: context.tokens.danger),
         ),
         const SizedBox(height: AppSpace.md),
         FilledButton.tonal(
@@ -251,7 +257,8 @@ class _MfaEnrollScreenState extends ConsumerState<MfaEnrollScreen> {
             child: SelectableText(
               enrollment.secret,
               key: const ValueKey('mfaEnrollSecret'),
-              style: AppType.recoveryCode.copyWith(color: context.tokens.onSurface),
+              style: AppType.recoveryCode
+                  .copyWith(color: context.tokens.onSurface),
             ),
           ),
           IconButton(
@@ -267,6 +274,7 @@ class _MfaEnrollScreenState extends ConsumerState<MfaEnrollScreen> {
         key: const ValueKey('mfaEnrollCode'),
         controller: _code,
         keyboardType: TextInputType.number,
+        inputFormatters: [DigitInputFormatter()],
         autofillHints: const [AutofillHints.oneTimeCode],
         decoration: InputDecoration(
           labelText: l10n.mfaCodeFieldLabel,
@@ -281,7 +289,8 @@ class _MfaEnrollScreenState extends ConsumerState<MfaEnrollScreen> {
         Text(
           l10n.mfaNoRecoveryCodes,
           key: const ValueKey('mfaVerifyNoCodes'),
-          style: theme.textTheme.bodyMedium?.copyWith(color: context.tokens.danger),
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: context.tokens.danger),
         ),
       ],
       if (_verifyError != null) ...[
@@ -289,7 +298,8 @@ class _MfaEnrollScreenState extends ConsumerState<MfaEnrollScreen> {
         Text(
           mfaFailureText(l10n, _verifyError!, recoveryFlow: _recoveryFlow),
           key: const ValueKey('mfaVerifyError'),
-          style: theme.textTheme.bodyMedium?.copyWith(color: context.tokens.danger),
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: context.tokens.danger),
         ),
       ],
       const SizedBox(height: AppSpace.lg),
@@ -297,7 +307,10 @@ class _MfaEnrollScreenState extends ConsumerState<MfaEnrollScreen> {
         key: const ValueKey('mfaVerifyButton'),
         onPressed: _verifying ? null : _verify,
         icon: _verifying
-            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2))
             : const Icon(Icons.verified_user_outlined),
         label: Text(_verifying ? l10n.mfaVerifying : l10n.mfaVerify),
       ),
@@ -322,7 +335,8 @@ class MfaQr extends StatelessWidget {
         version: QrVersions.auto,
         size: 200,
         backgroundColor: Colors.white,
-        eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Colors.black),
+        eyeStyle:
+            const QrEyeStyle(eyeShape: QrEyeShape.square, color: Colors.black),
         dataModuleStyle: const QrDataModuleStyle(
           dataModuleShape: QrDataModuleShape.square,
           color: Colors.black,

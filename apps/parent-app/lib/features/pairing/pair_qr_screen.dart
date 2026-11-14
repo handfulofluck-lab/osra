@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../api/models.dart';
+import '../../core/digits.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
@@ -105,7 +106,7 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
         data: {'childId': widget.childId},
       );
       final data = Map<String, dynamic>.from(res.data as Map);
-      final code = data['code'] as String?;
+      final code = normalizeDigits(data['code'] as String? ?? '');
       final expiresAt = DateTime.tryParse(data['expiresAt'] as String? ?? '') ??
           _now.add(kPairCodeTtl);
       if (code == null || !RegExp(r'^\d{6}$').hasMatch(code)) {
@@ -198,10 +199,8 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
       _decisionFailed = false;
     });
     try {
-      await ref
-          .read(apiClientProvider)
-          .raw
-          .post('/v1/devices/pair/claims/$claimId/${allow ? 'approve' : 'deny'}');
+      await ref.read(apiClientProvider).raw.post(
+          '/v1/devices/pair/claims/$claimId/${allow ? 'approve' : 'deny'}');
       if (!mounted) return;
       setState(() {
         _deciding = false;
@@ -286,7 +285,8 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
           children: [
             if (widget.onboarding) ...[
               Text(
-                l10n.onboardingPairIntro(widget.childName ?? l10n.childFallback),
+                l10n.onboardingPairIntro(
+                    widget.childName ?? l10n.childFallback),
                 key: const ValueKey('onboardingPairIntro'),
                 style: Theme.of(context).textTheme.titleMedium,
               ),
@@ -359,10 +359,17 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
                 ),
               FilledButton(
                 key: const ValueKey('onboardingPairDone'),
-                onPressed: (_checking || _expired || _errorKind != null) ? null : _checkPairing,
+                onPressed: (_checking || _expired || _errorKind != null)
+                    ? null
+                    : _checkPairing,
                 child: _checking
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Text(paired ? l10n.continueLabel : l10n.onboardingPairConfirm),
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text(paired
+                        ? l10n.continueLabel
+                        : l10n.onboardingPairConfirm),
               ),
               TextButton(
                 key: const ValueKey('onboardingPairSkip'),
@@ -444,8 +451,7 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
       'denied' => Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(l10n.pairClaimDenied,
-                key: const ValueKey('pairClaimDenied')),
+            Text(l10n.pairClaimDenied, key: const ValueKey('pairClaimDenied')),
             const SizedBox(height: AppSpace.sm),
             FilledButton.tonalIcon(
               key: const ValueKey('pairClaimNewCode'),
@@ -533,8 +539,8 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
               child: Text(
                 code,
                 key: const ValueKey('pairingCode'),
-                style:
-                    AppType.pairingCode.copyWith(color: context.tokens.onSurface),
+                style: AppType.pairingCode
+                    .copyWith(color: context.tokens.onSurface),
               ),
             ),
           ),
