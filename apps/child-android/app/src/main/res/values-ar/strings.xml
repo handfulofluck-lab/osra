@@ -68,7 +68,8 @@
     <string name="unlinked_body">أُزيل OSRA من العائلة التي كانت تدير هذا الهاتف، لذلك توقّف عن المراقبة. يمكنك إلغاء تثبيته الآن.</string>
     <string name="unlinked_channel">إلغاء ربط الهاتف</string>
     <!-- #480: the system-facing lines (Accessibility list, device-admin sheet, wipe notice). Karim approved 2026-10-31 06:20Z.
-         app_name, app_name_ar and sos_tile_label are brand names and fall back to the default on purpose. -->
+         app_name and app_name_ar stay brand names and fall back to the default (#725: the Bureau withdrew the same
+         rule for sos_tile_label, whose Arabic is below; app_name's Arabic is its own PR). -->
     <string name="accessibility_service_label">إمكانية الوصول في OSRA</string>
     <string name="accessibility_description">يراقب OSRA استخدام التطبيقات لتطبيق قواعد وقت الشاشة التي وضعها والدك أو والدتك.</string>
     <string name="device_admin_label">الرقابة الأبوية من OSRA</string>
@@ -133,6 +134,12 @@
     <string name="status_protection_alert_only">⚠️ الحماية: بالتنبيه فقط. مسؤول الجهاز غير مفعّل</string>
     <string name="status_open_accessibility">افتح إعدادات إمكانية الوصول</string>
     <string name="status_missing_label">الناقص:</string>
+    <!-- #725 Bureau change 2: the missing-names line and the Arabic list comma, so the join reads
+         «الناقص: أ، ب» instead of carrying a Latin ", ". The template is the Bureau's; the value is quoted
+         because aapt2 trims a trailing space that is not — without the quotes the separator compiles to a
+         bare «،» and the joined names touch (checked with `aapt2 dump resources`). -->
+    <string name="status_missing">الناقص: %1$s</string>
+    <string name="list_separator">"، "</string>
     <string name="status_repair">أعد الإقران (رمز PIN للوالدين)</string>
     <string name="status_remove_protection">أزل الحماية (رمز PIN للوالدين)</string>
 
@@ -162,7 +169,9 @@
     <string name="onboarding_grant_web_filter_why">تحظر المواقع والفئات، وتفرض البحث الآمن، وتجعل إيقاف الإنترنت يعمل فعلًا.</string>
     <string name="onboarding_grant_location_title">الموقع (السماح دائمًا)</string>
     <string name="onboarding_grant_location_why">لتحديد موقع الجهاز ولتنبيهات الأماكن. الإذن في الخلفية يبقيهما يعملان والتطبيق مغلق.</string>
-    <string name="onboarding_grant_private_dns_title">DNS الخاص غير مضبوط على مزوّد</string>
+    <!-- #725 Bureau change 1 (13 Nov, comment 6861740969): the «إعداد » prefix keeps the line from starting
+         with a Latin word, which Android lays out left to right (#717's Flip4 pictures). -->
+    <string name="onboarding_grant_private_dns_title">إعداد DNS الخاص غير مضبوط على مزوّد</string>
     <string name="onboarding_grant_private_dns_why">تحديد مزوّد لـ DNS الخاص يتجاوز تصفية المواقع. اضبطه على «تلقائي» أو «إيقاف».</string>
     <string name="onboarding_grant_battery_title">البطارية: بدون قيود</string>
     <string name="onboarding_grant_battery_why">بدونه قد يوقف الهاتف تطبيق أسرة للأطفال في الخلفية، فتتأخر الأوامر.</string>
@@ -205,6 +214,16 @@
     <string name="sos_need_help">هل تحتاج إلى مساعدة الآن؟</string>
     <string name="sos_cancelled">أُلغيت الاستغاثة.</string>
     <string name="sos_close">إغلاق</string>
+    <!-- #725 Bureau section 9 (13 Nov, comment 6861740969): the SOS button and tile, and the lock/pause
+         overlays, which its first sweep did not cover. The lock lines drop the «· أسرة» tail, like the titles. -->
+    <string name="sos_button">استغاثة</string>
+    <string name="sos_tile_label">الاستغاثة</string>
+    <string name="lock_locked_title">قفل والدك أو والدتك هذا الجهاز</string>
+    <string name="lock_locked_body">سيُفتح القفل عندما يسمح والدك أو والدتك بذلك.</string>
+    <string name="lock_paused_title">أوقف والدك أو والدتك هذا الجهاز مؤقتًا</string>
+    <string name="lock_paused_body">سيعود إلى العمل عند انتهاء الإيقاف المؤقت.</string>
+    <string name="lock_paused_internet_title">أوقف والدك أو والدتك الإنترنت مؤقتًا</string>
+    <string name="lock_paused_internet_body">تظل التطبيقات التعليمية تعمل.</string>
 
     <string name="qr_permission_denied">رُفض إذن الكاميرا، لذلك لا يمكن تشغيل ماسح رمز QR. أدخل عنوان الخادم ورمز الإقران أدناه، أو اسمح بالكاميرا من الإعدادات وامسح مرة أخرى.</string>
     <string name="qr_preview_description">معاينة الكاميرا</string>
@@ -228,6 +247,7 @@
     <string name="location_action_start">شغّل خدمة الموقع</string>
 
     <string name="notification_channel_commands">أوامر الوالدين</string>
+    <string name="notification_channel_location">الموقع</string>
     <string name="notification_wind_down_title">وقت الشاشة يوشك على الانتهاء</string>
     <plurals name="notification_wind_down_text">
         <item quantity="zero">ستُقفل الشاشة بعد %1$d دقيقة</item>

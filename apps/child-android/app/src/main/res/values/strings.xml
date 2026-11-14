@@ -129,6 +129,12 @@
     <string name="status_protection_alert_only">⚠️ Protection: alert-only — device admin is not active</string>
     <string name="status_open_accessibility">Open accessibility settings</string>
     <string name="status_missing_label">Missing:</string>
+    <!-- #725 (Arabic Language Bureau, 13 Nov): the missing-names line and the list comma, so the join is one
+         resource per language rather than a Latin comma built in code. `status_missing_label` is unused since
+         `PairingActivity` reads `status_missing`; it stays until something else asks for it. The separator is
+         quoted because aapt2 trims an unquoted trailing space, and the English must read `Missing: a, b`. -->
+    <string name="status_missing">Missing: %1$s</string>
+    <string name="list_separator">", "</string>
     <string name="status_repair">Re-pair (parent PIN)</string>
     <string name="status_remove_protection">Remove protection (parent PIN)</string>
 
@@ -210,7 +216,7 @@
     <string name="sos_sent_title">Alert sent — stay where you are</string>
     <string name="sos_sent_body">Your parent has been notified.</string>
     <string name="sos_need_help">Need help right now?</string>
-    <!-- The button itself. Not in the sweep's Android list: English only, see `ChildScreenStringsTest`. -->
+    <!-- The button itself. Arabic arrived with #725's Bureau section 9. -->
     <string name="sos_button">SOS</string>
     <string name="sos_cancelled">SOS cancelled.</string>
     <string name="sos_close">Close</string>
@@ -247,13 +253,14 @@
     </plurals>
     <string name="notification_channel_command_checks">Command checks</string>
     <string name="notification_checking_commands">Checking for parent commands</string>
-    <!-- Not in the sweep's Android list: English only, see `ChildScreenStringsTest`. -->
+    <!-- Arabic arrived with #725's Bureau section 9. -->
     <string name="notification_channel_location">Location</string>
     <string name="notification_location_active">Location sharing is active</string>
     <string name="notification_channel_content_filter">Content filter</string>
     <string name="notification_content_filter_active">Content filter active</string>
 
-    <!-- LockActivity: the lock and pause overlays. Not in the sweep at all, so English only for now. -->
+    <!-- LockActivity: the lock and pause overlays. #725's Bureau section 9 supplied the Arabic; the English
+         bodies keep the `· أسرة` tail, which the Arabic drops, exactly as the titles do. -->
     <string name="lock_locked_title">This device is locked by your parent</string>
     <string name="lock_locked_body">It will unlock when your parent allows it. · أسرة</string>
     <string name="lock_paused_title">Device paused by your parent</string>

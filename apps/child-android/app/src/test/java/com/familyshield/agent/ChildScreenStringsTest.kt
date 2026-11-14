@@ -43,26 +43,16 @@ class ChildScreenStringsTest {
     private val arabic = res("values-ar/strings.xml")
 
     /**
-     * The lines the sweep does not give Arabic for. `app_name`, `app_name_ar` and `sos_tile_label` are
-     * brand names, and `ChildSystemStringsTest` holds the rule that they keep no Arabic override — the
-     * sweep offers «الاستغاثة» for the tile, so that one is the tile owner's call, not this test's.
-     * The rest arrived with #709: the sweep's Android list has no line for them.
+     * The lines that keep English only. `app_name` and `app_name_ar` are brand names, and
+     * `ChildSystemStringsTest` holds the rule that they keep no Arabic override; `app_name`'s Arabic is its
+     * own PR, because the name is also the notification title and the VPN session label. Everything else
+     * left this list with #725's Arabic Language Bureau review (13 Nov): its section 9 supplied the
+     * lock/pause overlays, the SOS button, the location channel name and `sos_tile_label` («الاستغاثة»),
+     * which the Bureau withdrew from the brand-name rule the same day.
      */
     private val englishOnly = setOf(
         "app_name",
         "app_name_ar",
-        "sos_tile_label",
-        // SosActivity's round button carries the bare word; the sweep has no line for it.
-        "sos_button",
-        // The lock and pause overlays: the sweep's Android section does not cover LockActivity at all.
-        "lock_locked_title",
-        "lock_locked_body",
-        "lock_paused_title",
-        "lock_paused_body",
-        "lock_paused_internet_title",
-        "lock_paused_internet_body",
-        // The foreground service's channel name in Settings; the sweep covers the other three channels.
-        "notification_channel_location",
     )
 
     @Test

@@ -901,8 +901,10 @@ class PairingActivity : ComponentActivity() {
                             if (missing.isEmpty()) {
                                 ""
                             } else {
-                                "\n" + getString(R.string.status_missing_label) + " " +
-                                    missing.joinToString { getString(it.titleRes) }
+                                "\n" + getString(
+                                    R.string.status_missing,
+                                    missing.joinToString(getString(R.string.list_separator)) { getString(it.titleRes) },
+                                )
                             },
                     ).apply {
                         setTextColor(if (missing.isEmpty()) 0xFF2E7D32.toInt() else 0xFFB00020.toInt())
