@@ -670,7 +670,7 @@ export async function deviceRoutes(app: FastifyInstance) {
       }
     }
     // ADR-0034 decision 3 (PR 1a): the capability report generalises the refusal above to every command
-    // whose effect is one of the ten features. A feature the build cannot do is refused at once whatever
+    // whose effect is one of the report's features. A feature the build cannot do is refused at once whatever
     // the report's age (A1); a fresh `unavailable` is refused with the feature's own reason; `degraded`
     // and anything stale are queued, so the phone answers and the server never contradicts it.
     const capabilityReason = commandRefusal(
