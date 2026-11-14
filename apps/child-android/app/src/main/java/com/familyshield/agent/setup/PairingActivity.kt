@@ -39,6 +39,7 @@ import com.familyshield.agent.security.ParentPinStore
 import com.familyshield.agent.security.ProtectionStatusNote
 import com.familyshield.agent.security.ProtectionTier
 import com.familyshield.agent.security.TamperGuardActivity
+import com.familyshield.agent.security.normalizeDigits
 import com.familyshield.agent.services.LocationService
 import com.familyshield.agent.services.LocationStartPolicy
 import dagger.hilt.android.AndroidEntryPoint
