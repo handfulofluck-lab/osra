@@ -548,15 +548,26 @@ without backups.
    from different accounts, or a repository not named `osra-production/api`. Name the published sha (12 characters)
    in `env/production.tfvars` as `api_image`.
 6b. **Secret values, once:** `AWS_PROFILE=<profile> ./infra/terraform/production-secrets.sh`. It writes JWT_SECRET,
-   VAULT_KEY, the osra_api password, the Redis AUTH token (set on the cache with ROTATE, then SET), REDIS_URL and
-   DATABASE_URL straight into Secrets Manager as the production role. Nothing is printed and nothing enters
-   Terraform state; a second run changes nothing. To rotate one value, delete its current version in Secrets
-   Manager (and, for Redis, run the script again) — never put a value in a tfvars file.
+   INTERNAL_HMAC_SECRET (printing only its 12-character fingerprint, for #637), VAULT_KEY, the osra_api password,
+   the Redis AUTH token (set on the cache with ROTATE, then SET; passed as `file://`, never on a command line),
+   REDIS_URL and DATABASE_URL straight into Secrets Manager as the production role. No value is printed and none
+   enters Terraform state; a second run changes nothing. Never put a value in a tfvars file.
+   **On the production stack applied 14 Nov 2026, the first run must be `production-secrets.sh --rotate-all`.**
+   That stack was applied before `secrets_out_of_band`: Terraform wrote the JWT secret, vault key, HMAC secret and
+   database URL, so those values sit in the state file and its older versions. Turning the switch on removes the
+   resources but not the values; `--rotate-all` replaces every one, which is free now (empty database, no token
+   issued). Then post `aws secretsmanager describe-secret` (version ids and dates only) for each, showing the
+   current versions were created by that run. The older state objects in the bucket still hold the retired values
+   until their 90-day expiry: they are worthless after the rotation, and **no one restores state from them**.
+   Rotating later (`--rotate-all`) signs every user out and orphans data sealed with the old vault key, so on a
+   stack with users it is a planned operation.
 7. **Schema phase:** plan again (env, `OSRA_PROD_PHASE=schema`, the default): the first time it creates everything but
    the service; on an upgrade it registers only the new task definition. Apply it with `OSRA_PROD_APPLY=yes`: after
    the apply, `up.sh` assumes the production role for its CLI calls, checks the account, takes a manual RDS snapshot
    and runs the **db-admin** task (`env/db_admin.tf`): `prisma migrate deploy` as the master user (password from the
-   RDS-managed secret), then it creates `osra_api` and grants it rows only — no DDL, no ownership. The API itself
+   RDS-managed secret), then it creates `osra_api`, sets its password as a SCRAM-SHA-256 verifier computed in the
+   task (the password itself never appears in SQL or a database log) and grants it rows only — no DDL, no
+   ownership. The task has its own execution role; the API's role cannot read the master or the osra_api password. The API itself
    connects as `osra_api` with `DATABASE_TLS_VERIFY=required` and Prisma's verifying TLS form.
 8. **Service phase:** `OSRA_PROD_PHASE=service`, plan, read, apply: creates the service or rolls it onto the new task
    definition.

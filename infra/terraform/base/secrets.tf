@@ -100,8 +100,10 @@ resource "aws_secretsmanager_secret" "fcm_service_account" {
 # (services/api/src/lib/internalAuth.ts). Generated here, fresh, so production can never inherit a value
 # that was ever pasted anywhere; its fingerprint goes into the #637 evidence, never the value. It reaches
 # the task only as a `secrets` entry (env/ecs.tf), never as a plain environment variable.
+# With secrets_out_of_band (production) the VALUE is written by production-secrets.sh instead, so it is never
+# in state; the container stays here so the task definition can name it.
 resource "random_password" "internal_hmac" {
-  count = var.internal_hmac_secret_enabled ? 1 : 0
+  count = var.internal_hmac_secret_enabled && !var.secrets_out_of_band ? 1 : 0
 
   length  = 64
   special = false
@@ -116,7 +118,7 @@ resource "aws_secretsmanager_secret" "internal_hmac_secret" {
 }
 
 resource "aws_secretsmanager_secret_version" "internal_hmac_secret" {
-  count = var.internal_hmac_secret_enabled ? 1 : 0
+  count = var.internal_hmac_secret_enabled && !var.secrets_out_of_band ? 1 : 0
 
   secret_id     = aws_secretsmanager_secret.internal_hmac_secret[0].id
   secret_string = random_password.internal_hmac[0].result

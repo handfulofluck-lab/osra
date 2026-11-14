@@ -82,6 +82,13 @@ mock_provider "aws" {
 
 mock_provider "random" {}
 
+# Every run gets the e-mail settings production requires (#781 review); runs override what they test.
+variables {
+  app_public_url = "https://app.example.test"
+  email_provider = "ses"
+  email_from     = "OSRA <no-reply@example.test>"
+}
+
 override_data {
   target = data.terraform_remote_state.base
   values = {
@@ -330,6 +337,18 @@ run "production_settings" {
   assert {
     condition     = length(aws_sns_topic_subscription.alarms_email_secondary) == 1
     error_message = "production alarms must reach a second address (#766 item 6)"
+  }
+  assert {
+    condition     = length(random_password.db) == 0
+    error_message = "a production plan must create no random value in env: every secret is generated out of band (#781 review B2)"
+  }
+  assert {
+    condition     = jsondecode(aws_ecs_task_definition.db_admin[0].container_definitions)[0] != null && aws_ecs_task_definition.db_admin[0].execution_role_arn == aws_iam_role.db_admin_execution[0].arn && aws_ecs_task_definition.db_admin[0].execution_role_arn != aws_ecs_task_definition.api.execution_role_arn && aws_iam_role_policy.db_admin_secrets[0].role == aws_iam_role.db_admin_execution[0].id
+    error_message = "the db-admin task must have its own execution role, separate from the API's (#781 review)"
+  }
+  assert {
+    condition     = strcontains(local.db_admin_script, "PASSWORD '$verifier'") && !strcontains(local.db_admin_script, "PASSWORD '$API_DB_PASSWORD'")
+    error_message = "osra_api's password must reach PostgreSQL only as a SCRAM verifier (#781 review B3)"
   }
 }
 
