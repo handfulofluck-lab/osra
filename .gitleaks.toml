@@ -7,6 +7,9 @@ useDefault = true
 [[allowlists]]
 description = "Reviewed test fixtures (osra-security#26)"
 condition = "AND"
+# Without targetRules an allowlist is a whole-file filter: every rule in these files would be skipped
+# (Antigravity, #767). With it, only generic-api-key matches on the listed fixture lines are allowed.
+targetRules = ["generic-api-key"]
 paths = [
   '''^scripts/hardware/scenario-family\.test\.mjs$''',
   '''^services/api/test/auth\.test\.ts$''',
