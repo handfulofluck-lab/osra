@@ -30,7 +30,7 @@
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>OSRA shares this device's location with your parents when it moves a noticeable distance, even when the app is closed, so their map and place alerts keep working.</string>
 	<key>NSAlarmKitUsageDescription</key>
-	<string>OSRA alerts you when your parent rings this phone, even in Silent mode, Focus, and at volume zero.</string>
+	<string>OSRA Kids rings this phone out loud when your parent rings it, even in Silent mode, in a Focus, or with the volume turned down.</string>
 	<key>OSRAAPIBase</key>
 	<string>$(OSRA_API_BASE)</string>
 	<key>LSRequiresIPhoneOS</key>

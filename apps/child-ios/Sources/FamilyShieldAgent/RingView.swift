@@ -4,6 +4,7 @@ import SwiftUI
 public struct RingView: View {
     @ObservedObject var controller: RingController
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
 
     public init(controller: RingController) {
         self.controller = controller
@@ -11,28 +12,39 @@ public struct RingView: View {
 
     public var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
-                Spacer()
-                Image(systemName: "bell.fill")
-                    .font(.system(size: 64))
-                    .foregroundStyle(.tint)
-                    .accessibilityHidden(true)
-                Text(L10n.tr("ring_title"))
-                    .font(.largeTitle.bold())
-                    .multilineTextAlignment(.center)
-                Text(L10n.tr("ring_explanation"))
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                PinGateView(title: L10n.tr("ring_pin_title")) {
-                    Task {
-                        await controller.stop(.pinVerified)
-                        RingNotifier.cancel()
+            ScrollView {
+                VStack(spacing: 24) {
+                    ZStack {
+                        Circle()
+                            .fill(color(0xEAF2F0, 0x1E2A31))
+                            .frame(width: 88, height: 88)
+                        Image(systemName: "bell.fill")
+                            .font(.system(size: 36))
+                            .foregroundStyle(color(0x0B5D57, 0x7DB4FF))
+                            .accessibilityHidden(true)
                     }
+                    .padding(.top, 24)
+                    Text(L10n.tr("ring_title"))
+                        .font(.system(size: 26, weight: .bold))
+                        .multilineTextAlignment(.center)
+                    Text(L10n.tr("ring_explanation"))
+                        .font(.body)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                    PinGateView(title: L10n.tr("ring_pin_title")) {
+                        Task {
+                            await controller.stop(.pinVerified)
+                            RingNotifier.cancel()
+                        }
+                    }
+                    .frame(minHeight: 240)
                 }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
             }
-            .padding()
-            .background(Color(.systemBackground).ignoresSafeArea())
+            .scrollDismissesKeyboard(.interactively)
+            .background(color(0xF1F5F4, 0x0E1417).ignoresSafeArea())
             .accessibilityIdentifier(A11yID.ringView)
             .interactiveDismissDisabled()
             .onChange(of: scenePhase) { phase in
@@ -41,6 +53,13 @@ public struct RingView: View {
                 }
             }
         }
+    }
+
+    private func color(_ light: UInt, _ dark: UInt) -> Color {
+        let hex = colorScheme == .dark ? dark : light
+        return Color(red: Double((hex >> 16) & 0xFF) / 255,
+                     green: Double((hex >> 8) & 0xFF) / 255,
+                     blue: Double(hex & 0xFF) / 255)
     }
 }
 #endif

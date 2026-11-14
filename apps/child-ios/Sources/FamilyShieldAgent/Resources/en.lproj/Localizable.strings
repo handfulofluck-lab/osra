@@ -98,10 +98,10 @@
 
 
 "ring_alarm_title" = "Your parent is ringing this phone";
-"ring_dismiss" = "Dismiss";
-"ring_title" = "Your parent is ringing";
-"ring_explanation" = "Only your parent can stop the ring with the OSRA Kids PIN or from their app. It stops automatically after 5 minutes.";
+"ring_dismiss" = "Open OSRA Kids";
+"ring_alert_ok" = "OK";
+"ring_title" = "Your parent is ringing this phone";
+"ring_explanation" = "Your parent is trying to find this phone or reach you. The ring stops when your parent stops it from their app or enters the parent PIN here. It stops by itself after 5 minutes.";
 "ring_pin_title" = "Parent PIN";
 "ring_notification_title" = "Your parent is ringing this phone";
-"ring_notification_body" = "Open OSRA Kids so your parent can enter the PIN.";
-"ring_alert_title" = "Phone ring";
+"ring_notification_body" = "Open OSRA Kids so your parent can enter the parent PIN.";
