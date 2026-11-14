@@ -676,7 +676,7 @@ void main() {
         expect(arTitle, isNot(ar.alertTitleGeneric), reason: 'ar "$category" fell through to the generic title');
         expect(arTitle, isNot('SERVER TITLE'), reason: 'ar "$category" leaked the server English title');
       }
-      expect(serverAlertCategories, hasLength(13));
+      expect(serverAlertCategories, hasLength(14));
     });
 
     /// `serverAlertCategories` is a copy of the server's enum, so it is checked

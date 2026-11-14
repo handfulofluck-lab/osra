@@ -112,7 +112,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 // dialog a parent opens later to ask "did my last change land?". The feed itself is
                 // family-wide, so it carries no line; the Block path already refetches the family.
                 RulesBehindBanner(childId: alert.childId),
-                if (alert.body.isNotEmpty) Text(alert.body),
+                if (alert.body.isNotEmpty) Text(alertBodyFor(alert, l10n)),
                 // #444: the agent cannot end another app's VoIP call, so this alert must say the call
                 // kept going rather than let the parent assume the block ended it. Only for the call
                 // layout: a split-screen or PiP bypass already reads correctly from the body.
@@ -133,7 +133,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                     '${l10n.severityLabel(l10n.severityName(alert.severity))}'),
                 if (alert.createdAt != null)
                   Text(l10n.timeLabel(DateFormat.yMMMd(dialogContext.localeName).add_Hms().format(alert.createdAt!.toLocal()))),
-                if (alert.metadata.isNotEmpty) ...[
+                if (alert.category != 'ring' && alert.metadata.isNotEmpty) ...[
                   const Divider(),
                   for (final entry in alert.metadata.entries)
                     Padding(

@@ -5113,6 +5113,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'On the iPhone, this app is hidden instead of showing the OSRA screen.'**
   String get appRuleHiddenOnIphone;
+
+  /// No description provided for @alertTitleRing.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone ring'**
+  String get alertTitleRing;
+
+  /// No description provided for @alertBodyRingChildDismissed.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{The ring alert was dismissed on the phone. It is ringing again.} other{The ring alert was dismissed on the phone {count} times. It is still ringing.}}'**
+  String alertBodyRingChildDismissed(int count);
+
+  /// No description provided for @alertBodyRingPinStopped.
+  ///
+  /// In en, this message translates to:
+  /// **'The ring was stopped on the phone with the parent PIN.'**
+  String get alertBodyRingPinStopped;
+
+  /// No description provided for @alertBodyRingParentStopped.
+  ///
+  /// In en, this message translates to:
+  /// **'A parent stopped the ring from the OSRA app.'**
+  String get alertBodyRingParentStopped;
+
+  /// No description provided for @alertBodyRingTimedOut.
+  ///
+  /// In en, this message translates to:
+  /// **'The ring ended by itself after 5 minutes.'**
+  String get alertBodyRingTimedOut;
+
+  /// No description provided for @commandRefusedRingUnsupportedOs.
+  ///
+  /// In en, this message translates to:
+  /// **'This iPhone cannot ring yet. It needs iOS 26 or later.'**
+  String get commandRefusedRingUnsupportedOs;
 }
 
 class _AppLocalizationsDelegate

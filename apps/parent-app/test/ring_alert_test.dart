@@ -3,7 +3,16 @@ import 'package:familyshield_parent/features/children/command_messages.dart';
 import 'package:familyshield_parent/l10n/l10n.dart';
 import 'package:familyshield_parent/l10n/app_localizations_en.dart';
 import 'package:familyshield_parent/l10n/app_localizations_ar.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:familyshield_parent/features/alerts/alerts_screen.dart';
+import 'package:familyshield_parent/providers/auth_provider.dart';
+
+import 'fake_api_client.dart';
+import 'test_app.dart';
 
 void main() {
   Alert ringAlert(String state, String bodyKey, Map<String, dynamic> params, String body) => Alert(
@@ -51,5 +60,38 @@ void main() {
   test('unsupported OS has a localized update reason in command history', () {
     expect(commandRefusalText(AppLocalizationsEn(), 'ring', 'iPhone', 'unsupported_os'),
         'This iPhone cannot ring yet. It needs iOS 26 or later.');
+  });
+
+  testWidgets('the Arabic dialog uses bodyKey and hides raw ring metadata', (tester) async {
+    FlutterSecureStorage.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({});
+    final api = FakeApiClient({
+      ...standardRoutes(alerts: [
+        {
+          'id': 'ring-alert-1', 'childId': 'child-1', 'deviceId': 'dev-1',
+          'severity': 'warning', 'category': 'ring', 'title': 'Phone ring',
+          'body': 'The ring alert was dismissed on the phone 2 times. It is still ringing.',
+          'metadata': {
+            'state': 'child_dismissed', 'ringId': 'ring-1',
+            'bodyKey': 'alertBodyRingChildDismissed',
+            'bodyParams': {'ringId': 'ring-1', 'dismissalCount': 2},
+          },
+          'createdAt': '2026-11-14T00:00:00Z', 'acknowledged': false,
+        },
+      ]),
+    });
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: localizedTestApp(const AlertsScreen(),
+          locale: const Locale('ar'), textDirection: TextDirection.rtl),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('رنين الهاتف'));
+    await tester.pumpAndSettle();
+    expect(find.text('أُغلق تنبيه الرنين على الهاتف مرتين. ما زال الهاتف يرنّ.'), findsOneWidget);
+    expect(find.textContaining('bodyKey'), findsNothing);
+    expect(find.textContaining('bodyParams'), findsNothing);
+    expect(find.textContaining('state:'), findsNothing);
+    expect(find.textContaining('ringId:'), findsNothing);
   });
 }
