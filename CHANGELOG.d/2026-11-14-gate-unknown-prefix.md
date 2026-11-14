@@ -4,5 +4,7 @@
   before 13 Nov). Fable's note on #788: a `gemini/` or `antigravity-fix/` branch must not pass as Kimi's.
 - The five unprefixed PRs open on 14 Nov (#615, #646, #657, #679, #702) are listed by exact branch name and keep the
   old reading until they merge; no name may be added.
+- AGENTS.md dates the end of the commit-email escape and the grandfathered list: by 1 Dec 2026 only a known
+  prefix counts (Fable's note on #795).
 - New self-test cases: unknown prefixes fail closed, the grandfathered names pass by exact match only, and K31 /
   K31-Mac work signed by Hydrogen counts (cross-family). 284 cases pass.
