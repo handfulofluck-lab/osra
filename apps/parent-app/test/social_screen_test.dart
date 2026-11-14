@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:familyshield_parent/core/date_formatting.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/social/social_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
@@ -275,8 +276,8 @@ void main() {
       // 200-char body is capped at 120 chars.
       expect(find.text('${'x' * 120}…'), findsOneWidget);
       // Day groups: today and yesterday headers.
-      final today = DateFormat('EEEE, MMM d, yyyy').format(DateTime(base.year, base.month, base.day));
-      final yesterday = DateFormat('EEEE, MMM d, yyyy').format(DateTime(base.year, base.month, base.day - 1));
+      final today = DateFormat.yMMMMEEEEd().format(DateTime(base.year, base.month, base.day));
+      final yesterday = DateFormat.yMMMMEEEEd().format(DateTime(base.year, base.month, base.day - 1));
       expect(find.text(today), findsOneWidget);
       await reveal(tester, find.text(yesterday));
       expect(find.text(yesterday), findsOneWidget);
@@ -354,6 +355,21 @@ void main() {
       expect(find.text('No concerns detected'), findsOneWidget);
       await reveal(tester, find.text('No phone calls or texts yet'));
       expect(find.text('No phone calls or texts yet'), findsOneWidget);
+    });
+  });
+
+  group('Arabic dates', () {
+    testWidgets('the day header follows the locale order with Western digits', (tester) async {
+      await configureDateFormatting();
+      final api = FakeApiClient(socialRoutes(calls: [callJson(at: DateTime.utc(2026, 11, 14, 12))]));
+      await tester.pumpWidget(ProviderScope(
+        overrides: [apiClientProvider.overrideWithValue(api)],
+        child: localizedTestApp(const SocialScreen(childId: 'child-1'), locale: const Locale('ar')),
+      ));
+      await tester.pumpAndSettle();
+      await flushFakeHttp(tester);
+
+      await reveal(tester, find.text('السبت، 14 نوفمبر 2026'));
     });
   });
 }
