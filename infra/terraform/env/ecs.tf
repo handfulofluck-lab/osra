@@ -80,6 +80,11 @@ resource "aws_ecs_task_definition" "api" {
         var.push_enabled ? [
           { name = "FCM_SERVICE_ACCOUNT_JSON", valueFrom = data.terraform_remote_state.base.outputs.fcm_service_account_secret_arn },
         ] : [],
+        # Production's service credential (#714): a `secrets` entry, never `environment`, so the value is in
+        # no task definition. try(): a staging base from before this change has no such output.
+        try(data.terraform_remote_state.base.outputs.internal_hmac_secret_arn, "") != "" ? [
+          { name = "INTERNAL_HMAC_SECRET", valueFrom = data.terraform_remote_state.base.outputs.internal_hmac_secret_arn },
+        ] : [],
       )
 
       logConfiguration = {

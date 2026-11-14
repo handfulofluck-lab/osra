@@ -69,3 +69,13 @@ output "hosted_zone_name_servers" {
   description = "Name servers of the zone created here (production). The parent zone needs an NS record for hosted_zone_name with these four values; empty when no zone is created."
   value       = var.create_hosted_zone ? aws_route53_zone.api[0].name_servers : []
 }
+
+output "internal_hmac_secret_arn" {
+  description = "Secret holding INTERNAL_HMAC_SECRET (production); empty when the stack creates none."
+  value       = var.internal_hmac_secret_enabled ? aws_secretsmanager_secret.internal_hmac_secret[0].arn : ""
+}
+
+output "internal_hmac_secret_fingerprint" {
+  description = "First 12 hex characters of SHA-256 of INTERNAL_HMAC_SECRET, for the #637 evidence (shows it differs from any exposed value without revealing it). 48 bits of a hash of a 64-character random value reveal nothing usable, hence nonsensitive()."
+  value       = var.internal_hmac_secret_enabled ? nonsensitive(substr(sha256(random_password.internal_hmac[0].result), 0, 12)) : ""
+}

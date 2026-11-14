@@ -504,6 +504,7 @@ assuming a role from the management-account deployer (no key inside the producti
 | Logs / secrets | 14 days / 0-day recovery | 30 days / 7-day recovery |
 | Seed | demo family | **migrations only** (`prisma migrate deploy`); no demo data in the real database |
 | GitHub OIDC | publish + Bedrock evaluation roles | publish role only |
+| `INTERNAL_HMAC_SECRET` | not set | generated fresh in Secrets Manager, passed as a `secrets` entry; `internal_hmac_secret_fingerprint` output (SHA-256 prefix) is the #637 evidence that it differs from any exposed value |
 
 ### Order of steps (plan first; every apply needs Karim's written go and Ahmed's #637 sign-off)
 

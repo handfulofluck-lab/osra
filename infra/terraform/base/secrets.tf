@@ -80,3 +80,29 @@ resource "aws_secretsmanager_secret" "fcm_service_account" {
   description             = "Firebase Cloud Messaging service account JSON for the OSRA staging API"
   recovery_window_in_days = var.secret_recovery_window_days # see database_url above
 }
+
+# INTERNAL_HMAC_SECRET (#714 requirement, 14 Nov): the global SERVICE credential the ai-engine signs with
+# (services/api/src/lib/internalAuth.ts). Generated here, fresh, so production can never inherit a value
+# that was ever pasted anywhere; its fingerprint goes into the #637 evidence, never the value. It reaches
+# the task only as a `secrets` entry (env/ecs.tf), never as a plain environment variable.
+resource "random_password" "internal_hmac" {
+  count = var.internal_hmac_secret_enabled ? 1 : 0
+
+  length  = 64
+  special = false
+}
+
+resource "aws_secretsmanager_secret" "internal_hmac_secret" {
+  count = var.internal_hmac_secret_enabled ? 1 : 0
+
+  name                    = "${local.name_prefix}/internal-hmac-secret"
+  description             = "INTERNAL_HMAC_SECRET (service credential) for the OSRA ${var.environment} API"
+  recovery_window_in_days = var.secret_recovery_window_days
+}
+
+resource "aws_secretsmanager_secret_version" "internal_hmac_secret" {
+  count = var.internal_hmac_secret_enabled ? 1 : 0
+
+  secret_id     = aws_secretsmanager_secret.internal_hmac_secret[0].id
+  secret_string = random_password.internal_hmac[0].result
+}

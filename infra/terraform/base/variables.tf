@@ -158,3 +158,9 @@ variable "alarm_email" {
   default     = ""
   sensitive   = true
 }
+
+variable "internal_hmac_secret_enabled" {
+  description = "Create INTERNAL_HMAC_SECRET (the ai-engine's service credential) as a fresh random value in Secrets Manager. Staging sets none today; production MUST be true so its value is never one that was exposed before (#714, osra-security#26)."
+  type        = bool
+  default     = false
+}

@@ -60,6 +60,7 @@ override_data {
       demo_password_secret_arn       = "arn:aws:secretsmanager:eu-central-1:000000000000:secret:demo"
       fcm_service_account_secret_arn = "arn:aws:secretsmanager:eu-central-1:000000000000:secret:fcm"
       log_group_name                 = "/ecs/test-api"
+      internal_hmac_secret_arn       = "arn:aws:secretsmanager:eu-central-1:000000000000:secret:hmac"
     }
   }
 }
@@ -189,6 +190,10 @@ run "production_settings" {
   assert {
     condition     = aws_lb.main.enable_deletion_protection
     error_message = "production ALB must be protected"
+  }
+  assert {
+    condition     = contains([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].secrets : x.name], "INTERNAL_HMAC_SECRET") && !contains([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.name], "INTERNAL_HMAC_SECRET")
+    error_message = "INTERNAL_HMAC_SECRET must reach the task as a secrets entry, never an environment variable"
   }
   assert {
     condition     = !strcontains(aws_ecs_task_definition.api.container_definitions, "IDLE_BUDGET_COUNTING")

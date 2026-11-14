@@ -99,25 +99,30 @@ run "staging_defaults_are_unchanged" {
     condition     = length(aws_budgets_budget.monthly) == 0
     error_message = "staging's budget is managed outside Terraform"
   }
+  assert {
+    condition     = length(aws_secretsmanager_secret.internal_hmac_secret) == 0
+    error_message = "staging sets no INTERNAL_HMAC_SECRET today"
+  }
 }
 
 run "production_settings" {
   command = plan
 
   variables {
-    environment                 = "production"
-    region                      = "eu-central-1"
-    domain_name                 = "api.example.test"
-    hosted_zone_name            = "api.example.test"
-    create_hosted_zone          = true
-    github_repo                 = "owner/repo"
-    github_owner_id             = "1"
-    github_repo_id              = "2"
-    bedrock_eval_role_enabled   = false
-    log_retention_days          = 30
-    secret_recovery_window_days = 7
-    budget_limit_usd            = 400
-    alarm_email                 = "alerts@example.test"
+    environment                  = "production"
+    region                       = "eu-central-1"
+    domain_name                  = "api.example.test"
+    hosted_zone_name             = "api.example.test"
+    create_hosted_zone           = true
+    github_repo                  = "owner/repo"
+    github_owner_id              = "1"
+    github_repo_id               = "2"
+    bedrock_eval_role_enabled    = false
+    log_retention_days           = 30
+    secret_recovery_window_days  = 7
+    budget_limit_usd             = 400
+    internal_hmac_secret_enabled = true
+    alarm_email                  = "alerts@example.test"
   }
 
   assert {
@@ -135,6 +140,10 @@ run "production_settings" {
   assert {
     condition     = length(aws_iam_role.bedrock_eval) == 0 && length(aws_iam_role.publish) == 1 && output.bedrock_eval_role_arn == ""
     error_message = "production publishes images over OIDC but has no Bedrock evaluation role"
+  }
+  assert {
+    condition     = length(aws_secretsmanager_secret_version.internal_hmac_secret) == 1 && length(random_password.internal_hmac) == 1
+    error_message = "production must generate a fresh INTERNAL_HMAC_SECRET in Secrets Manager"
   }
   assert {
     condition     = aws_budgets_budget.monthly[0].limit_amount == "400" && length(aws_budgets_budget.monthly[0].notification) == 3

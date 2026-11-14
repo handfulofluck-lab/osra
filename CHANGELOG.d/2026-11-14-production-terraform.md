@@ -7,4 +7,6 @@
   wrong profile fails before it plans. A new `bootstrap-state` stack creates production's state bucket.
 - `down.sh` refuses production; `up.sh` plans production and applies only with `OSRA_PROD_APPLY=yes`, and migrates
   production without the demo seed.
+- Production generates a fresh `INTERNAL_HMAC_SECRET` in Secrets Manager and hands it to the API only as a
+  `secrets` entry; base outputs a SHA-256 fingerprint for the security gate (#637), never the value.
 - `terraform test` checks with a mocked provider (no credentials) pin both environments' settings; CI runs them.
