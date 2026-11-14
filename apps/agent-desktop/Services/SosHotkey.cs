@@ -7,9 +7,8 @@ namespace FamilyShield.Agent.Services;
 /// <summary>
 /// Feature #14 SOS hotkey: Shift+F11 posts a critical 'sos' alert to the parent and shows a
 /// short topmost confirmation. The hotkey lives on a message-only window (HWND_MESSAGE) whose
-/// thread runs a classic GetMessage loop. NOTE: RegisterHotKey is Windows-integration, so the
-/// service is only registered when FS_SOS_HOTKEY=1 — the same env-gate pattern as
-/// FS_HTTPS_INSPECT (Feature #3).
+/// thread runs a classic GetMessage loop in the per-user tray. Release always registers it;
+/// Debug honors FS_SOS_HOTKEY for local development.
 /// </summary>
 public sealed class SosHotkey : BackgroundService
 {
