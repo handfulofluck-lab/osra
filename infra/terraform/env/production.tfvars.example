@@ -1,0 +1,63 @@
+# Production env, Frankfurt (#714). Copy to production.tfvars (gitignored) and fill the <...> values.
+# This stack is long-lived in production: down.sh refuses it, and RDS/ALB carry deletion protection.
+
+project     = "osra"
+environment = "production"
+region      = "eu-central-1"
+
+assume_role_arn     = "arn:aws:iam::<prod-account-id>:role/<deploy-role-name>"
+allowed_account_ids = ["<prod-account-id>"]
+
+# Where base's state lives (must match backend/production-base.hcl).
+state_bucket   = "osra-terraform-state-<prod-account-id>-eu-central-1"
+state_region   = "eu-central-1"
+base_state_key = "production/base/terraform.tfstate"
+
+# base's ecr_repository_url output, tagged with the git sha the release is built from.
+api_image = "<prod-account-id>.dkr.ecr.eu-central-1.amazonaws.com/osra-production/api:<git-sha>"
+
+# API: 1 vCPU / 2 GiB per task, 2 to 6 tasks.
+api_cpu       = 1024
+api_memory    = 2048
+api_min_count = 2
+api_max_count = 6
+
+# Network: one NAT gateway per AZ.
+nat_gateway_count = 2
+allowed_cidrs     = ["0.0.0.0/0"] # HTTPS only: base has a certificate, so port 80 just redirects
+
+# PostgreSQL 16, Multi-AZ, 14 days of point-in-time restore.
+db_instance_class        = "db.t4g.small"
+db_multi_az              = true
+db_allocated_storage     = 50
+db_max_allocated_storage = 200
+db_backup_retention_days = 14
+db_deletion_protection   = true
+db_skip_final_snapshot   = false
+db_performance_insights  = true
+db_backup_window         = "23:00-23:30"         # 03:00 UAE
+db_maintenance_window    = "fri:00:00-fri:01:00" # Friday 04:00 UAE
+
+# Cache: primary + replica in the other AZ, automatic failover, TLS (the API gets rediss://).
+redis_node_type          = "cache.t4g.micro"
+redis_num_nodes          = 2
+redis_failover           = true
+redis_transit_encryption = true
+
+container_insights      = false # per-metric charge; alarms below cover the basics
+alb_deletion_protection = true
+
+waf_enabled     = true
+waf_rate_limit  = 2000
+waf_rate_action = "count" # switch to "block" after two weeks of real traffic
+
+alarms_enabled = true
+alarm_email           = "<alerts-address>"
+alarm_email_secondary = "<second-alerts-address>" # required: a different inbox
+
+# Required in production (the guard refuses empty or "*"). No browser page uses the API yet; this names the
+# future parent web app's origin, so nothing else can call it with credentials from a browser.
+cors_origin = "https://app.osratech.com"
+
+# Only after put-secret-value has written the production FCM service account (README "Turning push on").
+push_enabled = false

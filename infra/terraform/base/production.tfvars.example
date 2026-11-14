@@ -1,0 +1,34 @@
+# Production base, Frankfurt (#714). Copy to production.tfvars (gitignored) and fill the <...> values.
+# Set EVERY variable here: up.sh refuses a production run while a staging terraform.tfvars sits in the
+# same directory, because Terraform would load it automatically and any value missing here would leak in.
+# No real account IDs, e-mail addresses or keys in the repository.
+
+project     = "osra"
+environment = "production"
+region      = "eu-central-1"
+
+assume_role_arn     = "arn:aws:iam::<prod-account-id>:role/<deploy-role-name>"
+allowed_account_ids = ["<prod-account-id>"]
+
+# api.osratech.com gets its own zone in osra-production; the management account's osratech.com zone
+# delegates to it with one NS record (README "Production", step 3).
+domain_name        = "api.osratech.com"
+hosted_zone_name   = "api.osratech.com"
+create_hosted_zone = true
+certificate_arn    = ""
+
+# Image publishing over GitHub OIDC, the same immutable subject as staging (main only).
+#   gh api repos/handfulofluck-lab/osra --jq ".owner.id, .id"
+github_repo     = "handfulofluck-lab/osra"
+github_owner_id = "<owner-id>"
+github_repo_id  = "<repo-id>"
+
+internal_hmac_secret_enabled = true  # fresh value; never reuse one from any file or chat
+bedrock_eval_role_enabled   = false # model measurement stays in staging (ADR-0033)
+log_retention_days          = 90
+secret_recovery_window_days = 7
+
+# Karim chose "Full from day one" (~US$315/month) with an alarm near US$400.
+budget_limit_usd = 400
+alarm_email           = "<alerts-address>"
+alarm_email_secondary = "<second-alerts-address>" # required: a different inbox

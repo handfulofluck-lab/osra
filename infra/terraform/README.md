@@ -1,4 +1,7 @@
-# OSRA staging infrastructure — AWS, Stockholm (`eu-north-1`)
+# OSRA infrastructure — staging in Stockholm (`eu-north-1`), production in Frankfurt (`eu-central-1`)
+
+The same `base/` and `env/` stacks serve both environments; every production setting is a variable whose
+default is staging's value. Production specifics are in **Production** below (#714).
 
 Terraform for the staging deployment of the API service, one independent regional stack as
 [ADR-0028](../../docs/adr/0028-hosting-regions-and-scaling.md) requires. The stack moved from the UAE
@@ -91,7 +94,14 @@ Do not edit state by hand; use `terraform state ...`. `down.sh` only touches `en
 | `env/dns.tf` | Route 53 alias from the API hostname to this session's ALB (release mode only) |
 | `env/secrets.tf` | Per-session `DATABASE_URL` version (RDS endpoint + password) |
 | `env/outputs.tf` | ALB DNS, `api_url`, cluster/service, seed-task inputs, RDS/cache hosts |
-| `*/terraform.tfvars.example` | Every value a human supplies |
+| `*/terraform.tfvars.example` | Every value a human supplies (staging) |
+| `*/production.tfvars.example` | Every production value (#714); copy to the gitignored `production.tfvars` |
+| `backend/*.hcl` | Backend settings per environment and stack; `production-*.hcl` is gitignored, built from its `.example` |
+| `bootstrap-state/` | Production's state bucket, created once with local state |
+| `base/budget.tf` | Production's monthly AWS Budget (off in staging) |
+| `env/waf.tf` | WAFv2 web ACL on the ALB (production) |
+| `env/alarms.tf` | SNS alarm topic and ALB/ECS/RDS alarms (production) |
+| `*/tests/*.tftest.hcl` | `terraform test` checks against a mocked provider; CI runs them |
 
 ## Prerequisites
 
@@ -473,7 +483,89 @@ family `valkey8`), and it costs nothing to try because `env` is destroyed and re
 **Production must recheck Valkey in Frankfurt (`eu-central-1`) before it matters** (ADR-0028 names
 Valkey, ADR-0030 decision 6 asks for one staging run in Frankfurt before go-live).
 
-## Cost
+## Production — Frankfurt (`eu-central-1`), account `osra-production` (#714)
+
+Production is the **same two stacks** with `production.tfvars`, in the member account `osra-production`, reached by
+assuming a role from the management-account deployer (no key inside the production account). It is long-lived:
+`down.sh` refuses it, and RDS and the ALB carry deletion protection.
+
+### What production changes
+
+| Setting | Staging | Production |
+|---|---|---|
+| API tasks | 0.5 vCPU / 1 GiB, 2-4 | 1 vCPU / 2 GiB, 2-6 |
+| NAT gateways | 1 | 2 (one per AZ) |
+| PostgreSQL 16 | `db.t4g.micro`, single-AZ, 20 GB, no backups, deletable | `db.t4g.small`, **Multi-AZ**, 50 GB growing to 200, **14 days point-in-time restore**, deletion protection, final snapshot, Performance Insights (7 days, free), changes wait for the window (03:00 UAE backups, Friday 04:00 UAE maintenance) |
+| Cache | 1 node, plaintext | primary + replica, automatic failover, **TLS** (`rediss://`, which ioredis handles on its own — `services/api/test/redis-url-tls.test.ts`) |
+| HTTPS | `api.staging.osratech.com` | `api.osratech.com`, TLS 1.2/1.3 policy, HTTP → HTTPS 301 |
+| WAF | none | AWS managed IP-reputation, known-bad-inputs and common rules; per-IP rate rule (2,000 / 5 min) in **count** mode for the first two weeks |
+| Alarms | Redis memory, no action | SNS topic `osra-production-alarms` (e-mail to **two different addresses**, `alarm_email` and `alarm_email_secondary`) for ALB 5xx, unhealthy targets, ECS CPU/memory, RDS CPU/storage/connections, Redis memory per node |
+| Budget | hand-made `osra-monthly` | `osra-production-monthly`, US$400: forecast 100%, actual 80% and 100%, to both alarm addresses |
+| Logs / secrets | 14 days / 0-day recovery | **exactly 90 days** (the privacy policy promises at most 90) / 7-day recovery |
+| Database TLS | `rds.force_ssl = 1` in `osra-staging-postgres16` | the same, pinned in `osra-production-postgres16` |
+| Task egress | 443 to anywhere; 5432/6379 to RDS/Redis only | the same |
+| Image repository | immutable tags, scan on push | the same, enforced by the guard, never force-deleted |
+| Seed | demo family | **migrations only** (`prisma migrate deploy`); no demo data and no demo-password secret |
+| GitHub OIDC | publish + Bedrock evaluation roles | publish role only |
+| `INTERNAL_HMAC_SECRET` | not set | generated fresh in Secrets Manager, passed as a `secrets` entry; `internal_hmac_secret_fingerprint` output (SHA-256 prefix) is the #637 evidence that it differs from any exposed value |
+
+### Order of steps (plan first; every apply needs Karim's written go and Ahmed's #637 sign-off)
+
+Run from a **separate worktree** that has only `production.tfvars` files: `up.sh` refuses production while a staging
+`terraform.tfvars` sits next to it, because Terraform would load it automatically.
+
+1. **State bucket.** `cp bootstrap-state/production.tfvars.example bootstrap-state/production.tfvars`, fill it, then
+   `terraform -chdir=bootstrap-state init` and `plan -var-file=production.tfvars`. Apply creates the versioned,
+   encrypted, TLS-only bucket `osra-terraform-state-<prod-account-id>-eu-central-1`.
+2. **Backend and variable files.** Copy `backend/production-{base,env}.hcl.example` and
+   `{base,env}/production.tfvars.example` to their gitignored names and fill the `<...>` values.
+3. **The API zone, then the delegation.** First apply only the zone:
+   `terraform -chdir=base apply -var-file=production.tfvars -target=aws_route53_zone.api`, read
+   `terraform -chdir=base output hosted_zone_name_servers`, and add one `NS` record `api.osratech.com` with those four
+   values to the `osratech.com` zone in the management account. Until that record exists the certificate cannot
+   validate and a full base apply would wait on it.
+Every production step is **plan to a file, read it, apply exactly that file** (`up.sh` never applies a plan nobody
+saw), and `AWS_PROFILE` must be named explicitly (it never falls back to the staging profile). With
+`environment = "production"` both stacks refuse to plan unless every protection in the table above is set
+(`*/production_guard.tf`), so a line missing from a hand-copied tfvars fails loudly instead of creating production
+without backups.
+
+4. **Plan base:** `OSRA_ENV=production AWS_PROFILE=<profile> ./infra/terraform/up.sh` saves `base/production.tfplan`
+   and stops when base has changes (env is only planned against an applied base).
+5. **Apply base:** the same command with `OSRA_PROD_APPLY=yes` applies that saved file and nothing else.
+6. **Publish the image** to the production repository over OIDC:
+   `gh workflow run api-publish.yml --ref main -f target=production`. Once, after base is applied, set the two
+   production variables from production base's outputs:
+   `gh variable set AWS_PRODUCTION_ECR_REPOSITORY --body "$(terraform -chdir=infra/terraform/base output -raw ecr_repository_url)"`
+   and the same for `AWS_PRODUCTION_PUBLISH_ROLE_ARN` (`publish_role_arn`). The workflow refuses a role and repository
+   from different accounts, or a repository not named `osra-production/api`. Name the published sha (12 characters)
+   in `env/production.tfvars` as `api_image`.
+7. **Schema phase:** plan again (env, `OSRA_PROD_PHASE=schema`, the default): the first time it creates everything but
+   the service; on an upgrade it registers only the new task definition. Apply it with `OSRA_PROD_APPLY=yes`: after
+   the apply, `up.sh` assumes the production role for its CLI calls, checks the account, takes a manual RDS snapshot
+   and runs `prisma migrate deploy` as a one-off task.
+8. **Service phase:** `OSRA_PROD_PHASE=service`, plan, read, apply: creates the service or rolls it onto the new task
+   definition.
+
+### Production cost (estimate, on-demand list prices in `eu-central-1`, 730 h/month)
+
+| Item | Basis | US$/month |
+|---|---|---:|
+| NAT gateways | 2 × hourly + light data processing | ~79 |
+| Fargate (ARM) | 2 tasks × (1 vCPU + 2 GiB) | ~66 |
+| RDS PostgreSQL | `db.t4g.small` Multi-AZ + 50 GB gp3 × 2 | ~68 |
+| ElastiCache | 2 × `cache.t4g.micro` | ~28 |
+| Load balancer | hourly + light LCU | ~26 |
+| Public IPv4 | 2 ALB + 2 NAT addresses | ~15 |
+| WAF | web ACL + 4 rules + requests | ~10 |
+| CloudWatch | 12 alarms + ~5 GB logs | ~5 |
+| Secrets, Route 53, ECR, S3 state | | ~4 |
+| **Total** | at minimum scale (2 tasks) | **~US$300** |
+
+Each extra API task adds ~US$33/month. Data out to the internet beyond 100 GB/month, taxes and AWS Support are
+excluded. **This is an estimate, not a quote**; the budget alarm at US$400 is the real check.
+
+## Cost (staging)
 
 Rough **US$0.19/hour** for `env` at the defaults, on-demand list prices in `eu-north-1` — about
 **US$1.55 for an 8-hour session** (the line items below add up to 0.194; `up.sh` prints 1.52 because

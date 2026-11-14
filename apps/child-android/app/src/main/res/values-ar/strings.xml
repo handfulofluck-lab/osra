@@ -77,7 +77,7 @@
     <string name="pairing_secure_store_failed">تعذّر على تطبيق أسرة للأطفال حفظ الإقران بأمان على هذا الهاتف، لذلك لم يصبح محميًا بعد. أعد تشغيله ثم أقرنه مرة أخرى. إذا تكرّرت المشكلة، راسلنا على support@osratech.com.</string>
     <!-- #473/#496: the block screen names the window holding the app. Karim approved 2026-10-31 15:30Z (Q10).
          %1$s is the window's name (or the family's own routine name, shown as typed); %2$s is the end time. -->
-    <string name="block_window_line">محجوب بسبب %1$s حتى %2$s</string>
+    <string name="block_window_line">محجوب بواسطة %1$s حتى %2$s</string>
     <string name="block_window_bedtime">وقت النوم</string>
     <string name="block_window_school">الساعات المدرسية</string>
     <!-- #506: Karim's approved Q12 wording (31 Oct 16:28Z) — the five lines this screen shows,
