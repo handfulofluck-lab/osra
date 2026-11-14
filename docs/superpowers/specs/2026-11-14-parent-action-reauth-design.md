@@ -4,7 +4,7 @@
 
 - **Status:** design for review, not an implementation or readiness claim.
 - **Issue:** #742, beta-A blocker, risk R3; parent app on Android and iPhone.
-- **Product/UI/UX:** #650 comments 6864489687 and 6864555778. The sixteen English and Arabic strings are final there and are copied byte for byte; this document does not create alternate wording.
+- **Product/UI/UX:** #650 comments 6864489687 and 6864555778, with later replacements at 6883943747, 6883983676 and 6884020211. Approved English and Arabic are copied byte for byte from the latest applicable comment; this document does not create alternate wording. State A2 (weak biometric available only for wording) awaits Ahmed's yes/no and the Arabic lines; it is not silently implemented.
 - **Security/API:** #742 comment 6879252992 approves `POST /v1/auth/reauth` with the existing `checkReauth` semantics. Password is required, plus current TOTP when MFA is enabled. Recovery codes are not accepted. The endpoint is a separate, independently reviewed commit in the same PR so Ahmed can read it alone.
 - **Ahmed's security rulings:** #742 comments 6879750562 and 6881463125. A successful TOTP consumes its time step exactly as login does, so a second use is refused. The newer biometric-only ruling supersedes the earlier device-credential allowance: Android permits only `BIOMETRIC_STRONG`, iOS only `deviceOwnerAuthenticationWithBiometrics`, never a device credential/passcode or weak biometric. The fallback is the OSRA password plus TOTP when MFA is enabled. Consent withdrawal always asks; pairing-code generation does not. Grace exists only in memory and never survives kill/relaunch, background, lock or unreadable state.
 - **Per-session fallback limit:** #742 comment 6881463125. In addition to the account-wide login lockout, five failed `/reauth` proofs in one session end that session and require a fresh sign-in. The endpoint keeps its uniform 401 failure response.
@@ -43,6 +43,8 @@ The production adapter does not accept the resolved `local_auth_android 2.3.0` d
 
 The adapter passes the localized reason and every customizable title/hint/cancel string exposed by the selected native path, so no English plugin default leaks into Arabic. Android uses the approved title only, with no subtitle/description. iOS uses the approved reason text and Arabic `NSFaceIDUsageDescription` in `InfoPlist.strings`. Platform setup is limited to what the selected native path documents; no custom PIN pad or biometric artwork is built.
 
+To stop a child using the known screen unlock code to enrol a new biometric and pass immediately, Android wraps the prompt in a Keystore `CryptoObject` whose key has `setUserAuthenticationRequired(true)` and `setInvalidatedByBiometricEnrollment(true)`. Success requires both `onAuthenticationSucceeded` and the key-backed cipher/signature operation succeeding. `KeyPermanentlyInvalidatedException` means no strong method: use the password/MFA fallback and recreate the key only after that fallback passes. iOS stores `LAContext.evaluatedPolicyDomainState` after a fallback-proven check, compares it on every check and treats a change as fallback-required, re-storing only after that proof. Pure policy tests pin both enrollment-change paths; ignoring invalidation is a planted fault. Authorized device rows add enrol-then-fallback evidence. A weak-biometric availability query, if Ahmed approves it for State A2 wording, never participates in passing or bypassing this proof.
+
 Test adapters never invoke a real biometric, passcode, system lock, account or device. Tests cover both success and failure/cancel, plugin exceptions and the no-method result. The current `MainActivity` is an empty `FlutterActivity` with no overrides or custom channels. Changing it to `FlutterFragmentActivity` must preserve the existing map/Firebase/plugin methods with a launch smoke test and a leased Flip4 launch after Karim's test slot.
 
 ### Fixed grace and lifecycle
@@ -52,7 +54,9 @@ Test adapters never invoke a real biometric, passcode, system lock, account or d
 - The grace ends at the earlier of two minutes from the initial check, app background/lock, logout, or a different parent session. Background does not preserve the proof. Platform prompts are not sticky across backgrounding.
 - No password, TOTP, biometric result, token or grace timestamp is persisted. No such value is logged. Password controllers are disposed/cleared and the API receives the proof only for the intended verification.
 
-The app root adds a lifecycle listener which invalidates the grace on inactive/paused/detached states. The listener does not prompt on resume or app open.
+The app root adds a lifecycle listener which invalidates the grace on inactive/paused/detached states. The listener does not prompt on resume or app open. Tests distinguish the biometric prompt's own inactive/resumed cycle, which must not cancel a grace it has just granted, from a later background/inactive event, which must clear it. Control Centre or a notification pull-down after a successful check is not treated as the prompt itself.
+
+Open architecture follow-ups before implementation: Claude decides whether protected server writes also require a minimum guarded app version, since older signed-in builds have no guard and a future second parent client needs the same boundary. The weak-availability wording option for State A2 waits for Ahmed's approval; the approved Arabic lines are already supplied at #650 comment 6884029962 if used.
 
 ### No strong biometric method
 
@@ -115,4 +119,4 @@ The PR includes an ADR entry for this security boundary, the implementation plan
 - No custom biometric/PIN UI and no password/TOTP persistence.
 - No alternate account recovery path and no password-only bypass of MFA.
 - No new session or token issuance, login-and-discard flow, destructive recovery-route reuse, AWS plan/apply, production changes, signing or store actions.
-- No claim that the local guard replaces server authorization or proves the human parent's identity beyond the platform's device-owner check.
+- No claim that the local guard replaces server authorization or proves the human parent's identity beyond the platform's strong biometric check and enrollment-state continuity.
