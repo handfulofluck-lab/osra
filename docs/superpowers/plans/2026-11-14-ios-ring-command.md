@@ -178,7 +178,7 @@ git commit -m "feat(ios): add the AlarmKit backend and ring lifecycle (#750)"
 
 **Interfaces:**
 - Consumes: Task 1's states/dedupe keys, Task 2's backend/controller, existing `AlertReporter.send`.
-- Produces: `RingAlertReporter.report(state:ringId:dismissalCount:) async -> Bool`, controller unpair/consent stop.
+- Produces: `RingReportOutcome` (`delivered`, `pending`, `resume(after:)`), `RingAlertReporter.report(state:ringId:dismissalCount:afterRestart:)`, controller unpair/consent stop. HTTP 200/201 are delivered unless an `afterRestart` timeout is still active; then `retryAfterSeconds` resumes the ring.
 
 - [ ] **Step 1: Add failing dismissal, clock and offline tests**
 
