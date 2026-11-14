@@ -473,7 +473,7 @@ swift test list
 swift test
 ```
 
-The discovery step requires 284 macOS tests and names one case each from pairing, HMAC signing, rule
+The discovery step requires 289 macOS tests and names one case each from pairing, HMAC signing, rule
 interpretation and both localisation string suites. Five iOS-only authorization tests remain behind
 `#if os(iOS)` because `CLAuthorizationStatus.authorizedWhenInUse` is unavailable on macOS; the other location
 and client tests still run. Wrapping any additional portable source file in `#if os(iOS)` removes its tests and
@@ -1000,11 +1000,15 @@ into a screenshot or test log. AlarmKit is used on iOS 26 and later; no Critical
   failed command with `unsupported_os` and schedules nothing; the parent sees the localized iOS-update reason.
 - **The only stops:** the parent PIN, the parent's `stop_ring`, or 300 seconds. A correct PIN reports `pin_stopped`;
   `stop_ring` records `parent_stopped` without another push; the cap reports `timed_out`. Five wrong PINs still lock
-  the PIN gate without stopping the alarm. Replaying a stopped `ring` command never schedules another alarm.
+  the PIN gate without stopping the alarm. Replaying a stopped `ring` command never schedules another alarm. Both
+  parent stop buttons include the latest ring UUID when known; an absent payload keeps its legacy meaning, and a
+  malformed target fails without stopping the current ring.
 - **§1 escape rows:** dismissing the system alert, Home/swipe-up, the app switcher, Notification Centre, Control
   Centre, the side button, force-quitting, rebooting and going offline are not stops. `alarmUpdates` re-arms a missing
   active UUID and records each dismissal once. "Open OSRA Kids" returns to the PIN gate; no notification accepts PIN
-  input. `shield.requestTimes` and the other request-throttle state must remain unchanged.
+  input. `shield.requestTimes` and the other request-throttle state must remain unchanged. For the force-quit row,
+  dismiss the system alert after force-quitting and record the elapsed seconds until it rings again or returns to the
+  app. If a push or opening the app is needed, record that mechanism and its actual delay rather than infer it here.
 - **Restart and trusted time:** while alive, the monotonic deadline alone ends the ring, in either wall-clock direction.
   After a reboot, wall-clock expiry alone never stops it: keep it pending with a fresh 300-second monotonic timeout and
   retry. Only a positive server answer can end it. The API compares the original command's timestamp with its own clock

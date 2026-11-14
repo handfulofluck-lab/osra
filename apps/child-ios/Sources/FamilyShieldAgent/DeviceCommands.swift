@@ -14,6 +14,16 @@ public struct DeviceCommand: Decodable, Equatable {
         self.type = type
         self.payload = payload
     }
+
+    private enum CodingKeys: String, CodingKey { case id, type, payload }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        type = try container.decode(String.self, forKey: .type)
+        guard container.contains(.payload) else { payload = nil; return }
+        payload = (try? container.decode([String: String].self, forKey: .payload)) ?? [:]
+    }
 }
 
 /// What the iOS agent does with a command. iOS enforces through Screen Time, so it handles what changes the
@@ -231,7 +241,8 @@ public enum CommandDrainer {
                     result.handled.append(command.type)
                 }
             case .stopRing:
-                if let error = await ring.stopRing(targetId: command.payload?["ringId"]) {
+                let targetId = command.payload.map { $0["ringId"] ?? "" }
+                if let error = await ring.stopRing(targetId: targetId) {
                     try? await client.ack(identity, commandId: command.id, ok: false,
                                           detail: ["reason": error.rawValue])
                     result.refused.append(command.type)

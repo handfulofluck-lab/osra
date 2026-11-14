@@ -5,8 +5,11 @@ import UserNotifications
 public enum RingNotifier {
     private static let returnIdentifier = "ring.return"
 
+    private static var available: Bool { Bundle.main.bundleURL.pathExtension == "app" }
+
     @discardableResult
     public static func showReturnNotification() async -> Bool {
+        guard available else { return false }
         let center = UNUserNotificationCenter.current()
         guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else { return false }
         let content = UNMutableNotificationContent()
@@ -23,6 +26,7 @@ public enum RingNotifier {
     }
 
     public static func cancel() {
+        guard available else { return }
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [returnIdentifier])
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [returnIdentifier])
     }

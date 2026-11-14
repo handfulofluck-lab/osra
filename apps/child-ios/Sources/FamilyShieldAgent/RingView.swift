@@ -61,7 +61,10 @@ public struct RingView: View {
             .interactiveDismissDisabled()
             .onChange(of: scenePhase) { phase in
                 if phase == .background {
-                    Task { await RingNotifier.showReturnNotification() }
+                    Task {
+                        await controller.enterBackground()
+                        await RingNotifier.showReturnNotification()
+                    }
                 }
             }
         }

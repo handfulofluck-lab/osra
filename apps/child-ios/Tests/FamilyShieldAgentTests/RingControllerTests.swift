@@ -669,6 +669,8 @@ extension RingControllerTests {
         await controller.process(scheduledIDs: [])
         await controller.process(scheduledIDs: [])
         await controller.process(scheduledIDs: [])
+        XCTAssertEqual(requests.count, 3)
+        XCTAssertEqual(defaults.array(forKey: RingAlertReporter.pendingKey)?.count, 3)
         XCTAssertEqual(reporter.pendingEvents().count, 3)
         await controller.resume()
         XCTAssertEqual(requests.count, 6)
