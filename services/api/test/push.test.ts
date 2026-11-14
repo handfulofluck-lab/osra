@@ -666,6 +666,18 @@ describe("ring dismissal push coalescing", () => {
     expect(pushTimes).toEqual([0, 30, 60, 90, 120]);
   });
 
+  it("releases the reservation when a provider throws", async () => {
+    provider = new FakeProvider(() => {
+      if (provider.sent.length === 1) throw new Error("provider failed");
+      return { ok: true };
+    });
+    setPushProviders([provider]);
+    await dismissal(0, 1);
+    expect(reservations.size).toBe(0);
+    await dismissal(10, 2);
+    expect(provider.sent).toHaveLength(2);
+  });
+
   it("does not delete a newer request's reservation after a failed send", async () => {
     let failFirst: (() => void) | undefined;
     provider = new FakeProvider(() => new Promise<PushResult>((resolve) => {

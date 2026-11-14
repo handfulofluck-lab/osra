@@ -49,7 +49,7 @@ final class RingCommandTests: XCTestCase {
 
     private func json(_ object: Any) -> Data { try! JSONSerialization.data(withJSONObject: object) }
 
-    private func respond(to commands: [[String: String]]) {
+    private func respond(to commands: [[String: Any]]) {
         StubProtocol.responder = { [json] request in
             request.url?.path.hasSuffix("/commands") == true ? (200, json(commands)) : (200, json([:]))
         }

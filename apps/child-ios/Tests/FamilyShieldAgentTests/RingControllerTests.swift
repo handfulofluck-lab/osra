@@ -708,7 +708,7 @@ extension RingControllerTests {
             let controller = controller(reporter: transportReporter(defaults, status: status, requests: &requests))
             await controller.start(id)
             await controller.process(scheduledIDs: [])
-            let recreated = controller(reporter: transportReporter(defaults, status: status, requests: &requests))
+            let recreated = self.controller(reporter: transportReporter(defaults, status: status, requests: &requests))
             await recreated.resume()
             XCTAssertEqual(requests.count, 1, "HTTP \(status) must not be sent again")
         }

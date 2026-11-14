@@ -175,7 +175,7 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
     const ringWindow = await reserveRingDismissalPush(familyId, alert);
     if (ringWindow.coalesced) return { ...outcome, skipped: "coalesced" };
     const dead: string[] = [];
-    await Promise.all(
+    const results = await Promise.allSettled(
       tokens.map(async (t) => {
         const provider = providerFor(t.platform as PushPlatform, providers);
         if (!provider) return;
@@ -187,6 +187,9 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
         else console.warn(`[push] delivery failed platform=${t.platform} reason=${result.reason}`);
       }),
     );
+    for (const result of results) {
+      if (result.status === "rejected") console.warn("[push] delivery failed");
+    }
     if (dead.length > 0) {
       await prisma.parentPushToken.deleteMany({ where: { id: { in: dead } } });
       outcome.pruned = dead.length;

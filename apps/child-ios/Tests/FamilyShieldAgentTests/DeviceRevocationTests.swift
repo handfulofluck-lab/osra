@@ -29,7 +29,7 @@ final class DeviceRevocationTests: XCTestCase {
         DeviceRevocation.clearShields = { [weak self] in self?.shieldsCleared += 1 }
     }
 
-    private var platformStopRing: (() -> Void)?
+    private var platformStopRing: (() -> Void)!
 
     override func tearDown() {
         DeviceRevocation.stopRing = platformStopRing

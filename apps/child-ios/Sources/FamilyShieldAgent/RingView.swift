@@ -34,16 +34,18 @@ public struct RingView: View {
                         .font(.body)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
-                    if RingPINPresentation.resolve(isConfigured: pinConfigured) == .setup {
-                        PinSetupView {
-                            pinConfigured = true
-                            onPinConfigured?()
-                        }
-                    } else {
-                        PinGateView(title: L10n.tr("ring_pin_title")) {
-                            Task {
-                                await controller.stop(.pinVerified)
-                                RingNotifier.cancel()
+                    Group {
+                        if RingPINPresentation.resolve(isConfigured: pinConfigured) == .setup {
+                            PinSetupView {
+                                pinConfigured = true
+                                onPinConfigured?()
+                            }
+                        } else {
+                            PinGateView(title: L10n.tr("ring_pin_title")) {
+                                Task {
+                                    await controller.stop(.pinVerified)
+                                    RingNotifier.cancel()
+                                }
                             }
                         }
                     }
