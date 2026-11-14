@@ -1,14 +1,7 @@
-# --- Production access (#766 item 7; Karim's decision, 14 Nov 2026, 21:17 UAE, final) -----------------
-# People sign in through IAM Identity Center with MFA. The agents (Claude and Kimi, through the AWS MCP
-# server and Terraform on Karim's PC) keep ONE permanent management-account credential with full rights,
-# no MFA and no expiry, so they are never locked out ("i dont want that you are locked out and need me to
-# help you get acess again"). This is a written owner exception to "no long-lived keys" (#637 comments
-# 6881323682 and 6881341115). What stands in for the expiry:
-#   1. every call the key makes, in any account of the organisation, reaches this trail's log group;
-#   2. an alarm emails both alarm addresses when the key, or a session it assumed, is used from an address
-#      outside `agent_trusted_ip_prefixes`, and whenever anyone creates, disables or deletes one of its keys;
-#   3. rotate-agent-key.sh replaces the key without a gap (new key first, old one deleted after the new one
-#      works), so rotation never needs Karim.
+# --- Access monitoring (#766 item 7) ---------------------------------------------------------------------
+# Alarms on use of the deployer user (or a session it assumed) from an unexpected address, on changes to its
+# keys, and on it creating new IAM principals; and an explicit deny that stops that user from switching any
+# of this monitoring off. Rationale and owner decision: osra-security#27.
 
 variable "agent_user_name" {
   description = "IAM user (management account) whose access key the agents use."
@@ -17,12 +10,12 @@ variable "agent_user_name" {
 }
 
 variable "agent_trusted_ip_prefixes" {
-  description = "Source-address prefixes the agent key is expected from (Karim's PC's ISP), e.g. [\"41.\"]. A call from anywhere else alarms; it is NOT blocked, so an address change never locks the agents out."
+  description = "Expected source-address prefixes for the deployer user (tfvars only). Use from elsewhere alarms; nothing is blocked."
   type        = list(string)
 
   validation {
     condition     = length(var.agent_trusted_ip_prefixes) > 0 && alltrue([for p in var.agent_trusted_ip_prefixes : can(regex("^[0-9]{1,3}\\.([0-9]{1,3}\\.){0,2}$", p))])
-    error_message = "Give at least one IPv4 prefix ending in a dot, e.g. \"41.\" or \"41.40.\"."
+    error_message = "Give at least one IPv4 prefix ending in a dot."
   }
 }
 
@@ -56,9 +49,12 @@ locals {
     ["($.sourceIPAddress != \"*.amazonaws.com\")", "($.sourceIPAddress != \"AWS Internal\")"],
   ))
 
-  # The user itself, or a session assumed into any member account's OrganizationAccountAccessRole (how the
-  # agents reach osra-production and staging).
+  # The user itself, or a session assumed into a member account's OrganizationAccountAccessRole.
   agent_principal_clause = "(($.userIdentity.arn = \"${local.agent_user_arn}\") || ($.userIdentity.arn = \"*:assumed-role/OrganizationAccountAccessRole/*\"))"
+
+  # New principals created by the deployer user itself: a way around the deny below, so it alarms. Expected
+  # during an org-audit apply that adds a role; anything else is an incident.
+  agent_new_principals = "($.userIdentity.arn = \"${local.agent_user_arn}\") && (($.eventName = \"CreateUser\") || ($.eventName = \"CreateRole\") || ($.eventName = \"CreateLoginProfile\") || ($.eventName = \"UpdateAssumeRolePolicy\") || (($.eventName = \"CreateAccessKey\") && ($.requestParameters.userName != \"${var.agent_user_name}\")))"
 
   agent_key_changes = "(($.eventName = \"CreateAccessKey\") || ($.eventName = \"UpdateAccessKey\") || ($.eventName = \"DeleteAccessKey\")) && ($.requestParameters.userName = \"${var.agent_user_name}\")"
 }
@@ -118,6 +114,7 @@ resource "aws_kms_key" "access_alarms" {
         Principal = { Service = "cloudwatch.amazonaws.com" }
         Action    = ["kms:Decrypt", "kms:GenerateDataKey*"]
         Resource  = "*"
+        Condition = { StringEquals = { "aws:SourceAccount" = local.account_id } }
       },
     ]
   })
@@ -165,7 +162,7 @@ resource "aws_cloudwatch_log_metric_filter" "agent_key_unexpected_source" {
 
 resource "aws_cloudwatch_metric_alarm" "agent_key_unexpected_source" {
   alarm_name          = "osra-agent-key-unexpected-source"
-  alarm_description   = "The agents' permanent key (or a session it assumed) was used from outside Karim's PC's network. Check the org trail log group /osra/org-trail for the source address; if it is not Karim's new address, rotate the key (rotate-agent-key.sh) at once."
+  alarm_description   = "The deployer user (or a session it assumed) was used from an unexpected address. Check /osra/org-trail; runbook: osra-security#27."
   namespace           = "OSRA/Access"
   metric_name         = "AgentKeyUnexpectedSource"
   statistic           = "Sum"
@@ -192,7 +189,7 @@ resource "aws_cloudwatch_log_metric_filter" "agent_key_changed" {
 
 resource "aws_cloudwatch_metric_alarm" "agent_key_changed" {
   alarm_name          = "osra-agent-key-changed"
-  alarm_description   = "A key of the agents' IAM user was created, disabled or deleted. Expected during rotate-agent-key.sh; anything else is an incident."
+  alarm_description   = "A key of the deployer user was created, disabled or deleted. Expected during rotate-agent-key.sh; anything else is an incident."
   namespace           = "OSRA/Access"
   metric_name         = "AgentKeyChanged"
   statistic           = "Sum"
@@ -202,6 +199,103 @@ resource "aws_cloudwatch_metric_alarm" "agent_key_changed" {
   comparison_operator = "GreaterThanOrEqualToThreshold"
   treat_missing_data  = "notBreaching"
   alarm_actions       = [aws_sns_topic.access_alarms.arn]
+}
+
+resource "aws_cloudwatch_log_metric_filter" "agent_new_principals" {
+  name           = "osra-agent-new-principals"
+  log_group_name = aws_cloudwatch_log_group.trail.name
+  pattern        = "{ ${local.agent_new_principals} }"
+
+  metric_transformation {
+    name          = "AgentNewPrincipals"
+    namespace     = "OSRA/Access"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "agent_new_principals" {
+  alarm_name          = "osra-agent-new-principals"
+  alarm_description   = "The deployer user created an IAM user, role, login profile or another user's key, or changed a role's trust. Expected only during an org-audit apply that adds a role."
+  namespace           = "OSRA/Access"
+  metric_name         = "AgentNewPrincipals"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.access_alarms.arn]
+}
+
+# --- The deployer user cannot switch its own watchers off (Karim, 14 Nov) ----------------------------------
+# Nothing else is narrowed. Changing any of these resources later is done signed in through Identity Center
+# with MFA; an apply of this stack by the deployer user that touches them fails by design.
+locals {
+  watched_alarm_arns = [
+    aws_cloudwatch_metric_alarm.agent_key_unexpected_source.arn,
+    aws_cloudwatch_metric_alarm.agent_key_changed.arn,
+    aws_cloudwatch_metric_alarm.agent_new_principals.arn,
+  ]
+}
+
+resource "aws_iam_user_policy" "agent_cannot_disable_watchers" {
+  name = "osra-cannot-disable-watchers"
+  user = var.agent_user_name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "Trail"
+        Effect   = "Deny"
+        Action   = ["cloudtrail:StopLogging", "cloudtrail:DeleteTrail", "cloudtrail:UpdateTrail", "cloudtrail:PutEventSelectors", "cloudtrail:PutInsightSelectors", "cloudtrail:RemoveTags"]
+        Resource = aws_cloudtrail.org.arn
+      },
+      {
+        Sid      = "TrailBucket"
+        Effect   = "Deny"
+        Action   = ["s3:DeleteObject", "s3:DeleteObjectVersion", "s3:DeleteBucket", "s3:PutBucketPolicy", "s3:DeleteBucketPolicy", "s3:PutLifecycleConfiguration", "s3:PutBucketVersioning", "s3:PutEncryptionConfiguration"]
+        Resource = [aws_s3_bucket.trail.arn, "${aws_s3_bucket.trail.arn}/*"]
+      },
+      {
+        Sid      = "TrailLogGroupAndFilters"
+        Effect   = "Deny"
+        Action   = ["logs:DeleteLogGroup", "logs:DeleteMetricFilter", "logs:PutMetricFilter", "logs:PutRetentionPolicy", "logs:DeleteRetentionPolicy", "logs:DisassociateKmsKey", "logs:DeleteLogStream"]
+        Resource = [aws_cloudwatch_log_group.trail.arn, "${aws_cloudwatch_log_group.trail.arn}:*"]
+      },
+      {
+        Sid      = "Alarms"
+        Effect   = "Deny"
+        Action   = ["cloudwatch:DeleteAlarms", "cloudwatch:DisableAlarmActions", "cloudwatch:PutMetricAlarm", "cloudwatch:SetAlarmState"]
+        Resource = local.watched_alarm_arns
+      },
+      {
+        Sid      = "AlarmTopic"
+        Effect   = "Deny"
+        Action   = ["sns:DeleteTopic", "sns:SetTopicAttributes", "sns:AddPermission", "sns:RemovePermission", "sns:Unsubscribe", "sns:SetSubscriptionAttributes", "sns:PutDataProtectionPolicy"]
+        Resource = [aws_sns_topic.access_alarms.arn, "${aws_sns_topic.access_alarms.arn}:*"]
+      },
+      {
+        Sid      = "Keys"
+        Effect   = "Deny"
+        Action   = ["kms:ScheduleKeyDeletion", "kms:DisableKey", "kms:PutKeyPolicy", "kms:DisableKeyRotation"]
+        Resource = [aws_kms_key.trail.arn, aws_kms_key.access_alarms.arn]
+      },
+      {
+        Sid      = "TrailRole"
+        Effect   = "Deny"
+        Action   = ["iam:DeleteRole", "iam:DeleteRolePolicy", "iam:PutRolePolicy", "iam:UpdateAssumeRolePolicy"]
+        Resource = aws_iam_role.trail_to_logs.arn
+      },
+      {
+        # Including this policy itself.
+        Sid      = "OwnPolicies"
+        Effect   = "Deny"
+        Action   = ["iam:PutUserPolicy", "iam:DeleteUserPolicy", "iam:AttachUserPolicy", "iam:DetachUserPolicy", "iam:PutUserPermissionsBoundary", "iam:DeleteUserPermissionsBoundary", "iam:AddUserToGroup", "iam:RemoveUserFromGroup"]
+        Resource = local.agent_user_arn
+      },
+    ]
+  })
 }
 
 output "access_alarms_topic_arn" {
