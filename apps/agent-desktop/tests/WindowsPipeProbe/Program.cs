@@ -77,6 +77,7 @@ sealed class ProbeServer(ProbeSettings settings) : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var result = "OSRA_SERVICE_STORE_PASS";
         try
         {
             await using var server = new TrayPipeServer(settings.SessionId, settings.UserSid, settings.ExpectedPid,
@@ -85,13 +86,35 @@ sealed class ProbeServer(ProbeSettings settings) : BackgroundService
             await TrayProtocol.WriteAsync(connection.Stream, new TrayMessage(TrayMessageKind.@lock),
                 TrayDirection.ToTray, stoppingToken);
             ProbeStore(settings.SessionId, settings.UserSid);
-            await File.WriteAllTextAsync(_resultPath, "OSRA_SERVICE_STORE_PASS", stoppingToken);
-            Console.WriteLine("OSRA_SERVICE_STORE_PASS");
         }
         catch (Exception ex)
         {
-            await File.WriteAllTextAsync(_resultPath, ex.ToString(), CancellationToken.None);
-            throw;
+            result = ex.ToString();
+        }
+        try
+        {
+            CleanupStoreFixtures();
+        }
+        catch (Exception ex)
+        {
+            result = result == "OSRA_SERVICE_STORE_PASS" ? ex.ToString() : result + Environment.NewLine + ex;
+        }
+        await File.WriteAllTextAsync(_resultPath, result, CancellationToken.None);
+        if (result == "OSRA_SERVICE_STORE_PASS") Console.WriteLine(result);
+    }
+
+    private static void CleanupStoreFixtures()
+    {
+        var reparse = Path.Combine(AppContext.BaseDirectory, "probe-reparse");
+        if (Directory.Exists(reparse)) Directory.Delete(reparse);
+        foreach (var name in new[]
+                 {
+                     "probe-reparse-target", "probe-store", "probe-temp", "probe-corrupt", "probe-unlock",
+                     "probe-untrusted-owner", "probe-other-writer", "probe-acl-rewrite",
+                 })
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, name);
+            if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
         }
     }
 
