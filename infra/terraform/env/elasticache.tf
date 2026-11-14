@@ -86,6 +86,12 @@ resource "aws_elasticache_replication_group" "main" {
   tags = {
     Name = "${local.name_prefix}-redis"
   }
+
+  # Production's AUTH token is set by production-secrets.sh (modify-replication-group --auth-token), so the
+  # token never enters state (#766 item 3). Terraform must not try to undo it.
+  lifecycle {
+    ignore_changes = [auth_token, auth_token_update_strategy]
+  }
 }
 
 # The rate limiter keeps its counters here under `rl:` (each expires with its one-minute window), so

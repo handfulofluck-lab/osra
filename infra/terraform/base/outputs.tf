@@ -77,5 +77,25 @@ output "internal_hmac_secret_arn" {
 
 output "internal_hmac_secret_fingerprint" {
   description = "First 12 hex characters of SHA-256 of INTERNAL_HMAC_SECRET, for the #637 evidence (shows it differs from any exposed value without revealing it). 48 bits of a hash of a 64-character random value reveal nothing usable, hence nonsensitive()."
-  value       = var.internal_hmac_secret_enabled ? nonsensitive(substr(sha256(random_password.internal_hmac[0].result), 0, 12)) : ""
+  value       = length(random_password.internal_hmac) == 1 ? nonsensitive(substr(sha256(random_password.internal_hmac[0].result), 0, 12)) : "" # out-of-band: production-secrets.sh prints it
+}
+
+output "execution_role_name" {
+  description = "Name of the API task execution role. The db-admin task has its own (env/db_admin.tf), so this one reads neither the master password nor the osra_api password."
+  value       = aws_iam_role.execution.name
+}
+
+output "api_db_password_secret_arn" {
+  description = "Secret holding the osra_api database password (null unless secrets_out_of_band)."
+  value       = one(aws_secretsmanager_secret.api_db_password[*].arn)
+}
+
+output "redis_auth_token_secret_arn" {
+  description = "Secret holding the ElastiCache AUTH token (null unless secrets_out_of_band)."
+  value       = one(aws_secretsmanager_secret.redis_auth_token[*].arn)
+}
+
+output "redis_url_secret_arn" {
+  description = "Secret holding REDIS_URL with the AUTH token (null unless secrets_out_of_band)."
+  value       = one(aws_secretsmanager_secret.redis_url[*].arn)
 }

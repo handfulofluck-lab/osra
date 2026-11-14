@@ -237,12 +237,19 @@ describe("senders", () => {
     expect(await withStatus(403).send(msg)).toMatchObject({ ok: false, retryable: false });
   });
 
-  it("console sender never prints the body in production", async () => {
+  // Gate #637. Mutant: put `to` or `message.subject` back into the production line.
+  it("console sender prints no body, recipient or subject in production", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    await new ConsoleEmailSender(true).send({ to: "p@x", subject: "Reset", html: "", text: "SECRET-LINK" });
+    await new ConsoleEmailSender(true).send({ to: ["parent@family.example", "second@family.example"], subject: "Weekly report for Layla", html: "", text: "SECRET-LINK" });
     expect(log).not.toHaveBeenCalled();
-    expect(warn.mock.calls[0][0]).not.toContain("SECRET-LINK");
+    expect(warn).toHaveBeenCalledTimes(1);
+    const line = warn.mock.calls.flat().join(" ");
+    expect(line).not.toContain("SECRET-LINK");
+    expect(line).not.toContain("family.example");
+    expect(line).not.toContain("Layla");
+    expect(line).toContain("EMAIL_PROVIDER");
+    warn.mockClear();
     await new ConsoleEmailSender(false).send({ to: "p@x", subject: "Reset", html: "", text: "DEV-LINK" });
     expect(log.mock.calls[0][0]).toContain("DEV-LINK");
     log.mockRestore();
