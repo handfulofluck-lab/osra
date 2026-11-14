@@ -6,9 +6,10 @@ using Xunit;
 
 namespace FamilyShield.Agent.Tests;
 
-public sealed class DirectorySecurityAndRecoveryTests
+public sealed class DirectorySecurityAndRecoveryTests : IDisposable
 {
     private static readonly DateTime Start = new(2026, 11, 14, 12, 0, 0, DateTimeKind.Utc);
+    private readonly List<string> _directories = [];
 
     [Fact]
     public void UntrustedDirectoryFailsClosedInsteadOfFreeingTheDevice()
@@ -77,6 +78,7 @@ public sealed class DirectorySecurityAndRecoveryTests
     {
         var root = NewDirectory();
         var directory = Path.Combine(root, "new");
+        _directories.Add(directory);
         var store = new FileDesktopRestrictionStore(Path.Combine(directory, "restrictions.json"),
             directoryIsTrusted: _ => true);
 
@@ -146,10 +148,26 @@ public sealed class DirectorySecurityAndRecoveryTests
         Assert.False(state.NeedsFallback(7, Start.AddSeconds(20)));
     }
 
-    private static string NewDirectory()
+    public void Dispose()
+    {
+        for (var index = _directories.Count - 1; index >= 0; index--)
+        {
+            var path = _directories[index];
+            if (!Directory.Exists(path)) continue;
+            var directory = new DirectoryInfo(path);
+            var security = directory.GetAccessControl();
+            security.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User!,
+                FileSystemRights.FullControl, AccessControlType.Allow));
+            directory.SetAccessControl(security);
+            Directory.Delete(path, recursive: true);
+        }
+    }
+
+    private string NewDirectory()
     {
         var path = Path.Combine(Path.GetTempPath(), "osra-store-security", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
+        _directories.Add(path);
         return path;
     }
 
