@@ -225,3 +225,29 @@ resource "aws_cloudwatch_event_target" "guardduty_high" {
   rule = aws_cloudwatch_event_rule.guardduty_high[0].name
   arn  = aws_sns_topic.alarms[0].arn
 }
+
+# --- The database key (#783 review) ------------------------------------------------------------------
+# Scheduling the deletion of, or disabling, the database's own key would make the database and every backup
+# under it unreadable once the 30-day window passes. Either call reaches both alarm addresses at once.
+resource "aws_cloudwatch_event_rule" "rds_key_danger" {
+  count = var.alarms_enabled && var.db_customer_kms_key ? 1 : 0
+
+  name        = "${local.name_prefix}-rds-key-danger"
+  description = "ScheduleKeyDeletion or DisableKey on the database's KMS key"
+  event_pattern = jsonencode({
+    source        = ["aws.kms"]
+    "detail-type" = ["AWS API Call via CloudTrail"]
+    detail = {
+      eventSource       = ["kms.amazonaws.com"]
+      eventName         = ["ScheduleKeyDeletion", "DisableKey"]
+      requestParameters = { keyId = [aws_kms_key.rds[0].arn, aws_kms_key.rds[0].key_id] }
+    }
+  })
+}
+
+resource "aws_cloudwatch_event_target" "rds_key_danger" {
+  count = var.alarms_enabled && var.db_customer_kms_key ? 1 : 0
+
+  rule = aws_cloudwatch_event_rule.rds_key_danger[0].name
+  arn  = aws_sns_topic.alarms[0].arn
+}
