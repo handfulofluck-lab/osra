@@ -33,7 +33,7 @@ class ChildSystemStringsTest {
         "device_admin_description" to "يتيح لـ OSRA قفل الجهاز، ويمنع إزالة التطبيق دون رمز PIN للوالدين.",
         "wipe_detected_notice" to "مُسحت بيانات OSRA على هذا الهاتف، لذلك لم يعد محميًا. اطلب من والدك أو والدتك إقرانه مرة أخرى.",
         // #473/#496, Q10 (Karim 2026-10-31 15:30Z): the block screen's window line.
-        "block_window_line" to "محجوب بسبب %1\$s حتى %2\$s",
+        "block_window_line" to "محجوب بواسطة %1\$s حتى %2\$s",
         "block_window_bedtime" to "وقت النوم",
         "block_window_school" to "الساعات المدرسية",
     )

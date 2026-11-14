@@ -1,4 +1,4 @@
-/* #511: Karim's approved wording (Q10 and Q12), the same as the Android agent's values-ar/strings.xml. */
+/* #511: Karim's approved wording (Q10 and Q12; «محجوب بواسطة» per Karim 2026-11-11), the same as the Android agent's values-ar/strings.xml. */
 "block_title_blocked" = "حجب والدك أو والدتك هذا التطبيق";
 "block_request_access" = "اطلب السماح";
 "block_exit_home" = "إغلاق التطبيق";
