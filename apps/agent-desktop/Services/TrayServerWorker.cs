@@ -50,6 +50,7 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         _events = events;
         _processRegistry = processRegistry;
         _restrictions = restrictions ?? new DesktopRestrictionState();
+        _restrictions.PersistenceFailed += ReportPersistenceFailure;
         _fallback = fallback ?? new WtsSessionFallback();
         _clock = clock ?? (() => DateTime.UtcNow);
     }
@@ -148,6 +149,9 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         }
     }
 
+    private void ReportPersistenceFailure() => _ = PostTamperAlert("restriction_store_write_failed",
+        "Restriction state could not be saved. OSRA Service is keeping the current state in memory and will retry.");
+
     private Task PostTamperAlert(string type, string body) => _api.PostAlert(new AlertDto
     {
         DeviceId = _config.DeviceId,
@@ -187,6 +191,7 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
 
     public override void Dispose()
     {
+        _restrictions.PersistenceFailed -= ReportPersistenceFailure;
         lock (_gate)
         {
             foreach (var slot in _slots.Values) slot.Dispose();

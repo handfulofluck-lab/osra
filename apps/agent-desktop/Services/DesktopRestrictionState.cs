@@ -7,11 +7,16 @@ public sealed class DesktopRestrictionState
     private static readonly TimeSpan OfflineGrace = TimeSpan.FromSeconds(20);
     private readonly Dictionary<int, Entry> _entries = new();
     private readonly IRestrictionStore? _store;
+    private readonly ILogger<DesktopRestrictionState>? _log;
     private readonly object _gate = new();
+    private bool _persistenceFailed;
 
-    public DesktopRestrictionState(IRestrictionStore? store = null)
+    internal event Action? PersistenceFailed;
+
+    public DesktopRestrictionState(IRestrictionStore? store = null, ILogger<DesktopRestrictionState>? log = null)
     {
         _store = store;
+        _log = log;
         if (_store is null) return;
         foreach (var saved in _store.Load())
         {
@@ -209,9 +214,14 @@ public sealed class DesktopRestrictionState
                 TamperAlerted = pair.Value.TamperAlerted,
                 Unreadable = pair.Value.Unreadable,
             }).ToArray());
+            _persistenceFailed = false;
         }
-        catch (SystemException)
+        catch (SystemException ex)
         {
+            if (_persistenceFailed) return;
+            _persistenceFailed = true;
+            _log?.LogError(ex, "Could not save desktop restriction state; keeping it in memory and retrying");
+            PersistenceFailed?.Invoke();
         }
     }
 
