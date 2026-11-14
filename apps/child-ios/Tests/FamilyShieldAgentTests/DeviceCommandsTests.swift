@@ -40,7 +40,9 @@ final class DeviceCommandsTests: XCTestCase {
         XCTAssertEqual(CommandAction.forType("rules_updated"), .syncRules)
         XCTAssertEqual(CommandAction.forType("consent_revoked"), .syncRules)
         XCTAssertEqual(CommandAction.forType("consent_granted"), .syncRules)
-        for type in ["lock", "unlock", "ring", "pause_internet", "show_reset_code", "something_new"] {
+        XCTAssertEqual(CommandAction.forType("ring"), .ring)
+        XCTAssertEqual(CommandAction.forType("stop_ring"), .stopRing)
+        for type in ["lock", "unlock", "pause_internet", "show_reset_code", "something_new"] {
             XCTAssertEqual(CommandAction.forType(type), .unsupported, type)
         }
     }

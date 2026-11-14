@@ -294,8 +294,10 @@ extension RingControllerTests {
             requests.append(request)
             return (201, Data())
         })
-        XCTAssertTrue(await reporter.report(state: .childDismissed, ringId: id, dismissalCount: 2))
-        XCTAssertTrue(await reporter.report(state: .childDismissed, ringId: id, dismissalCount: 2))
+        let first = await reporter.report(state: .childDismissed, ringId: id, dismissalCount: 2)
+        let second = await reporter.report(state: .childDismissed, ringId: id, dismissalCount: 2)
+        XCTAssertTrue(first)
+        XCTAssertTrue(second)
         XCTAssertEqual(requests.count, 1)
         let body = try XCTUnwrap(try JSONSerialization.jsonObject(with: XCTUnwrap(requests[0].httpBody)) as? [String: Any])
         XCTAssertEqual(body["category"] as? String, "ring")
@@ -315,8 +317,10 @@ extension RingControllerTests {
         XCTAssertTrue(AgentIdentityStore.save(AgentIdentity(
             apiBaseURL: URL(string: "https://api.example.invalid")!, deviceToken: "device-jwt", deviceId: "dev-1",
             childId: "child-1", familyId: "fam-1", hmacSecret: "hmac")))
-        XCTAssertFalse(await reporter.report(state: .timedOut, ringId: id, dismissalCount: 0))
-        XCTAssertTrue(await reporter.report(state: .timedOut, ringId: id, dismissalCount: 0))
+        let first = await reporter.report(state: .timedOut, ringId: id, dismissalCount: 0)
+        let second = await reporter.report(state: .timedOut, ringId: id, dismissalCount: 0)
+        XCTAssertFalse(first)
+        XCTAssertTrue(second)
     }
 }
 
