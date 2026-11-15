@@ -296,6 +296,7 @@ class ChildCard extends ConsumerWidget {
               ),
               const SizedBox(height: AppSpace.sm),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Icon(Icons.location_on_outlined, size: 14),
                   const SizedBox(width: AppSpace.xs),
@@ -308,7 +309,6 @@ class ChildCard extends ConsumerWidget {
                               ? l10n.noLocationYet
                               : ltrIsolate('${location.lat.toStringAsFixed(4)}, ${location.lng.toStringAsFixed(4)}'),
                       style: Theme.of(context).textTheme.bodySmall,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
@@ -320,15 +320,20 @@ class ChildCard extends ConsumerWidget {
                   Text(l10n.screenTime, style: Theme.of(context).textTheme.bodySmall),
                   // NOTE: flexible + ellipsis — narrow cards overflowed this row.
                   Flexible(
-                    child: Text(l10n.screenTimeValue(child.screenTimeTodayMinutes, dailyLimit > 0 ? dailyLimit : 0),
+                    child: Text(
+                        dailyLimit > 0
+                            ? l10n.screenTimeValue(child.screenTimeTodayMinutes, dailyLimit)
+                            : l10n.minutesShort(child.screenTimeTodayMinutes),
                         style: Theme.of(context).textTheme.bodySmall,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.end),
                   ),
                 ],
               ),
-              const SizedBox(height: AppSpace.xs),
-              LinearProgressIndicator(value: dailyLimit > 0 ? progress : null),
+              if (dailyLimit > 0) ...[
+                const SizedBox(height: AppSpace.xs),
+                LinearProgressIndicator(value: progress),
+              ],
               if (wellbeing != null) ...[
                 const SizedBox(height: AppSpace.sm),
                 WellbeingRow(score: wellbeing),
@@ -360,7 +365,6 @@ class LiveActivityChip extends StatelessWidget {
           '● ${context.l10n.liveActivityToday(activity.app, activity.minutesToday)}',
           key: ValueKey('liveChip-$childId'),
           style: Theme.of(context).textTheme.labelMedium?.copyWith(color: tokens.ok),
-          overflow: TextOverflow.ellipsis,
         ),
       ),
     );

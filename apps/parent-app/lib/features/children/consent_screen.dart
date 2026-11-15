@@ -10,6 +10,7 @@ import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart' show apiClientProvider;
 import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
+import '../../widgets/layout_helpers.dart';
 import 'consent_step.dart';
 
 /// Result of a completed withdrawal, carried back from the confirmation
@@ -601,6 +602,7 @@ class _WithdrawCard extends ConsumerWidget {
                 style: FilledButton.styleFrom(
                   backgroundColor: context.tokens.danger,
                   foregroundColor: context.tokens.onDanger,
+                  minimumSize: const Size.fromHeight(52),
                 ),
                 onPressed: () => _open(context, ref),
                 icon: const Icon(Icons.block, size: 18),
@@ -621,25 +623,13 @@ class _Detail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Aligned label/value pair: the label stays on the start side and the
-    // value wraps on the end side instead of truncating at narrow widths.
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpace.sm),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Text(label, style: Theme.of(context).textTheme.bodySmall),
-          ),
-          const SizedBox(width: AppSpace.md),
-          Expanded(
-            child: Text(
-              value,
-              style: Theme.of(context).textTheme.bodyMedium,
-              textAlign: TextAlign.end,
-            ),
-          ),
-        ],
+      child: LabelValueRow(
+        label: label,
+        value: value,
+        labelStyle: Theme.of(context).textTheme.bodySmall,
+        valueStyle: Theme.of(context).textTheme.bodyMedium,
       ),
     );
   }
@@ -855,7 +845,7 @@ class _ConsentRevokeScreenState extends ConsumerState<ConsentRevokeScreen> {
                   style: FilledButton.styleFrom(
                     backgroundColor: context.tokens.danger,
                     foregroundColor: context.tokens.onDanger,
-                    minimumSize: const Size.fromHeight(48),
+                    minimumSize: const Size.fromHeight(52),
                   ),
                   onPressed: (_busy || !_matches) ? null : _submit,
                   child: Text(_busy

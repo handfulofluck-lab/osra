@@ -110,6 +110,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       builder: (dialogContext) {
         final l10n = dialogContext.l10n;
         return AlertDialog(
+          scrollable: true,
           title: Row(
             children: [
               Icon(Icons.circle,
@@ -125,110 +126,107 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                       style: Theme.of(dialogContext).textTheme.titleMedium)),
             ],
           ),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Issue #475 follow-up (Claude's ruling): the line is scoped to THIS alert's child, in the
-                // dialog a parent opens later to ask "did my last change land?". The feed itself is
-                // family-wide, so it carries no line; the Block path already refetches the family.
-                RulesBehindBanner(childId: alert.childId),
-                if (alert.body.isNotEmpty) Text(alert.body),
-                // #672: where, in words and in the Bureau's sentence, in the alert the parent opened
-                // deliberately — the lock screen carries neither. The coordinates are isolated (LRI/PDI)
-                // so they keep their order in Arabic; the accuracy clause only when the fix has one.
-                if (alert.category == 'sos' && alert.location != null) ...[
-                  const SizedBox(height: AppSpace.sm),
-                  Builder(builder: (_) {
-                    final fix = alert.location!;
-                    final text = SosFixText.of(alert, fix, DateTime.now());
-                    final accuracy = text.accuracyClause(l10n, fix);
-                    return Column(
-                      key: const ValueKey('alert-sos-location'),
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // #743 UI/UX: the place is a sentence a parent reads, so it takes the dialog's
-                        // default body style — the same weight as the alert's own body. Only the accuracy
-                        // is a detail, and it stays small and muted under it.
-                        Text(
-                          text.locationLine(l10n, fix.isolatedCoords),
-                          key: const ValueKey('alert-sos-location-line'),
-                        ),
-                        if (accuracy != null)
-                          Text(accuracy,
-                              style: Theme.of(dialogContext)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(
-                                    color: Theme.of(dialogContext).hintColor,
-                                  )),
-                      ],
-                    );
-                  }),
-                ],
-                // #444: the agent cannot end another app's VoIP call, so this alert must say the call
-                // kept going rather than let the parent assume the block ended it. Only for the call
-                // layout: a split-screen or PiP bypass already reads correctly from the body.
-                if (alert.category == 'tamper' &&
-                    alert.metadata['type']?.toString() == 'block_bypass' &&
-                    alert.metadata['layout']?.toString() == 'call') ...[
-                  const SizedBox(height: AppSpace.sm),
-                  Text(
-                    l10n.alertCallBypassNote,
-                    key: const ValueKey('alert-call-bypass-note'),
-                    style:
-                        Theme.of(dialogContext).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(dialogContext).colorScheme.error,
-                            ),
-                  ),
-                ],
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Issue #475 follow-up (Claude's ruling): the line is scoped to THIS alert's child, in the
+              // dialog a parent opens later to ask "did my last change land?". The feed itself is
+              // family-wide, so it carries no line; the Block path already refetches the family.
+              RulesBehindBanner(childId: alert.childId),
+              if (alert.body.isNotEmpty) Text(alert.body),
+              // #672: where, in words and in the Bureau's sentence, in the alert the parent opened
+              // deliberately — the lock screen carries neither. The coordinates are isolated (LRI/PDI)
+              // so they keep their order in Arabic; the accuracy clause only when the fix has one.
+              if (alert.category == 'sos' && alert.location != null) ...[
+                const SizedBox(height: AppSpace.sm),
+                Builder(builder: (_) {
+                  final fix = alert.location!;
+                  final text = SosFixText.of(alert, fix, DateTime.now());
+                  final accuracy = text.accuracyClause(l10n, fix);
+                  return Column(
+                    key: const ValueKey('alert-sos-location'),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // #743 UI/UX: the place is a sentence a parent reads, so it takes the dialog's
+                      // default body style — the same weight as the alert's own body. Only the accuracy
+                      // is a detail, and it stays small and muted under it.
+                      Text(
+                        text.locationLine(l10n, fix.isolatedCoords),
+                        key: const ValueKey('alert-sos-location-line'),
+                      ),
+                      if (accuracy != null)
+                        Text(accuracy,
+                            style: Theme.of(dialogContext)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(dialogContext).hintColor,
+                                )),
+                    ],
+                  );
+                }),
+              ],
+              // #444: the agent cannot end another app's VoIP call, so this alert must say the call
+              // kept going rather than let the parent assume the block ended it. Only for the call
+              // layout: a split-screen or PiP bypass already reads correctly from the body.
+              if (alert.category == 'tamper' &&
+                  alert.metadata['type']?.toString() == 'block_bypass' &&
+                  alert.metadata['layout']?.toString() == 'call') ...[
                 const SizedBox(height: AppSpace.sm),
                 Text(
-                    '${l10n.categoryLabel(l10n.alertCategory(alert.category))} · '
-                    '${l10n.severityLabel(l10n.severityName(alert.severity))}'),
-                if (alert.createdAt != null)
-                  Text(l10n.timeLabel(DateFormat.yMMMd(dialogContext.localeName)
-                      .add_Hms()
-                      .format(alert.createdAt!.toLocal()))),
-                const Divider(),
-                CoachCardSection(card: coachCard),
-                // #743 UI/UX: no raw `key: value` row is shown to a parent by default, on any alert. On an
-                // SOS this PR would have put `lat: 25.2769`, a machine timestamp and the device id directly
-                // under the sentence, in English developer words on an Arabic screen and with the
-                // coordinates a second time at a different precision, in the middle of an emergency. The
-                // rows stay available, closed by default and last in the content, for the case that needs
-                // them (a support call). Values are drawn left to right in code, both languages, because a
-                // value can be an Arabic app name and would otherwise reorder its own parts.
-                if (alert.metadata.isNotEmpty) ...[
-                  const Divider(),
-                  ExpansionTile(
-                    key: const ValueKey('alert-technical-details'),
-                    tilePadding: EdgeInsets.zero,
-                    childrenPadding: EdgeInsets.zero,
-                    title: Text(
-                      l10n.alertTechnicalDetails,
-                      style: Theme.of(dialogContext)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(color: Theme.of(dialogContext).hintColor),
-                    ),
-                    children: [
-                      for (final entry in alert.metadata.entries)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: AppSpace.xxs),
-                          child: Text(
-                            '${entry.key}: ${entry.value}',
-                            textDirection: ui.TextDirection.ltr,
-                            style: Theme.of(dialogContext).textTheme.bodySmall,
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
+                  l10n.alertCallBypassNote,
+                  key: const ValueKey('alert-call-bypass-note'),
+                  style: Theme.of(dialogContext).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(dialogContext).colorScheme.error,
+                      ),
+                ),
               ],
-            ),
+              const SizedBox(height: AppSpace.sm),
+              Text(
+                  '${l10n.categoryLabel(l10n.alertCategory(alert.category))} · '
+                  '${l10n.severityLabel(l10n.severityName(alert.severity))}'),
+              if (alert.createdAt != null)
+                Text(l10n.timeLabel(DateFormat.yMMMd(dialogContext.localeName)
+                    .add_Hms()
+                    .format(alert.createdAt!.toLocal()))),
+              const Divider(),
+              CoachCardSection(card: coachCard),
+              // #743 UI/UX: no raw `key: value` row is shown to a parent by default, on any alert. On an
+              // SOS this PR would have put `lat: 25.2769`, a machine timestamp and the device id directly
+              // under the sentence, in English developer words on an Arabic screen and with the
+              // coordinates a second time at a different precision, in the middle of an emergency. The
+              // rows stay available, closed by default and last in the content, for the case that needs
+              // them (a support call). Values are drawn left to right in code, both languages, because a
+              // value can be an Arabic app name and would otherwise reorder its own parts.
+              if (alert.metadata.isNotEmpty) ...[
+                const Divider(),
+                ExpansionTile(
+                  key: const ValueKey('alert-technical-details'),
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: EdgeInsets.zero,
+                  title: Text(
+                    l10n.alertTechnicalDetails,
+                    style: Theme.of(dialogContext)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: Theme.of(dialogContext).hintColor),
+                  ),
+                  children: [
+                    for (final entry in alert.metadata.entries)
+                      Padding(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: AppSpace.xxs),
+                        child: Text(
+                          '${entry.key}: ${entry.value}',
+                          textDirection: ui.TextDirection.ltr,
+                          style: Theme.of(dialogContext).textTheme.bodySmall,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ],
           ),
           actions: [
             if (alert.category == 'install_request') ...[

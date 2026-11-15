@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +12,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import 'rules_behind_banner.dart';
 import '../../theme/app_tokens.dart';
+import '../../widgets/layout_helpers.dart';
 
 const _kCategories = ['pornography', 'gambling', 'violence', 'drugs', 'social_media', 'chat']; // legacy extras; the recommended 13 live in kRecommendedCategories (models.dart)
 
@@ -112,14 +115,42 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
 
   Future<TimeOfDay?> _pickTime(TimeOfDay initial) => showTimePicker(context: context, initialTime: initial);
 
+  bool _titleFitsInAppBar(BuildContext context, AppLocalizations l10n, double toolbarHeight) {
+    final textScaler = MediaQuery.textScalerOf(context);
+    final titleStyle = Theme.of(context).appBarTheme.titleTextStyle ??
+        Theme.of(context).textTheme.titleLarge ??
+        const TextStyle(fontSize: 22);
+    final savePainter = TextPainter(
+      text: TextSpan(text: l10n.save, style: Theme.of(context).textTheme.labelLarge),
+      textDirection: Directionality.of(context),
+      textScaler: textScaler,
+      maxLines: 1,
+    )..layout();
+    final saveAllowance = savePainter.width + AppSpace.xl * 2 + AppSpace.sm + AppSpace.lg;
+    const leadingAllowance = kToolbarHeight + AppSpace.lg;
+    final availableTitleWidth = math.max(0.0, MediaQuery.sizeOf(context).width - leadingAllowance - saveAllowance);
+    if (availableTitleWidth <= 0) return false;
+    final titlePainter = TextPainter(
+      text: TextSpan(text: l10n.editRules, style: titleStyle),
+      textDirection: Directionality.of(context),
+      textScaler: textScaler,
+      maxLines: 2,
+    )..layout(maxWidth: availableTitleWidth);
+    return !titlePainter.didExceedMaxLines && titlePainter.height <= toolbarHeight - AppSpace.sm;
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final rules = ref.watch(rulesProvider(widget.childId));
     ref.listen(rulesProvider(widget.childId), (_, next) => next.whenData(_applyLoaded));
+    final textScaler = MediaQuery.textScalerOf(context);
+    final toolbarHeight = math.max(kToolbarHeight, textScaler.scale(kToolbarHeight + AppSpace.sm));
+    final titleInAppBar = _titleFitsInAppBar(context, l10n, toolbarHeight);
     return Scaffold(
       appBar: AppBar(
-        title: Text(l10n.editRules),
+        toolbarHeight: toolbarHeight,
+        title: titleInAppBar ? Text(l10n.editRules, maxLines: 2, overflow: TextOverflow.ellipsis) : null,
         actions: [
           if (_saving)
             const Padding(padding: EdgeInsets.all(AppSpace.lg), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))
@@ -133,17 +164,29 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
         error: (e, _) => Center(child: Text(l10n.rulesLoadFailed('$e'))),
         data: (ruleSet) {
           _applyLoaded(ruleSet);
-          return _buildTabs(context);
+          return _buildTabs(context, showHeading: !titleInAppBar);
         },
       ),
     );
   }
 
-  Widget _buildTabs(BuildContext context) {
+  Widget _pageHeading(BuildContext context, AppLocalizations l10n) => Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.xs),
+        child: Semantics(
+          header: true,
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: Text(l10n.editRules, style: Theme.of(context).textTheme.titleLarge),
+          ),
+        ),
+      );
+
+  Widget _buildTabs(BuildContext context, {required bool showHeading}) {
     final l10n = context.l10n;
     if (_error != null) {
       return Column(
         children: [
+          if (showHeading) _pageHeading(context, l10n),
           MaterialBanner(
             content: Text(_error!),
             actions: [TextButton(onPressed: () => setState(() => _error = null), child: Text(l10n.dismiss))],
@@ -158,6 +201,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
     // The widget renders nothing when the child is current, so the column below is unconditional.
     return Column(
       children: [
+        if (showHeading) _pageHeading(context, l10n),
         RulesBehindBanner(childId: widget.childId),
         Expanded(child: _editorBody(l10n)),
       ],
@@ -169,14 +213,16 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
       length: 4,
       child: Column(
         children: [
-          TabBar(
-            isScrollable: true,
-            tabs: [
-              Tab(text: l10n.tabScreenTime),
-              Tab(text: l10n.tabWebFilter),
-              Tab(text: l10n.tabApps),
-              Tab(text: l10n.tabRoutines),
-            ],
+          FadingScrollableTabBar(
+            tabBar: TabBar(
+              isScrollable: true,
+              tabs: [
+                Tab(text: l10n.tabScreenTime),
+                Tab(text: l10n.tabWebFilter),
+                Tab(text: l10n.tabApps),
+                Tab(text: l10n.tabRoutines),
+              ],
+            ),
           ),
           Expanded(
             child: TabBarView(
@@ -196,14 +242,16 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
     void update(ScreenTimeRule Function(ScreenTimeRule) f) =>
         setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: f(st), webFilter: _draft.webFilter, appRules: _draft.appRules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
 
-    Widget timeTile(String label, String value, ValueChanged<TimeOfDay> onPicked) => ListTile(
-          title: Text(label),
-          trailing: TextButton(
-            onPressed: () async {
+    Widget timeTile(String label, String value, ValueChanged<TimeOfDay> onPicked) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: AppSpace.xxs),
+          child: LabelValueRow(
+            label: label,
+            value: value,
+            labelStyle: Theme.of(context).textTheme.bodyLarge,
+            onValueTap: () async {
               final t = await _pickTime(parseTime(value, const TimeOfDay(hour: 12, minute: 0)));
               if (t != null) onPicked(t);
             },
-            child: Text(value),
           ),
         );
 
@@ -211,10 +259,10 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
       padding: const EdgeInsets.all(AppSpace.lg),
       children: [
         Text(l10n.dailyLimit(st.dailyLimitMinutes), style: Theme.of(context).textTheme.titleMedium),
-        Slider(value: limitSliderPosition(st.dailyLimitMinutes), min: kLimitSliderMin, max: kLimitSliderMax, divisions: 39, label: l10n.minutesShort(st.dailyLimitMinutes), onChanged: (v) => update((s) => ScreenTimeRule(dailyLimitMinutes: v.round(), weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
+        Slider(value: limitSliderPosition(st.dailyLimitMinutes), min: kLimitSliderMin, max: kLimitSliderMax, divisions: 39, label: l10n.minutesShort(st.dailyLimitMinutes), semanticFormatterCallback: (v) => l10n.minutesShort(v.round()), onChanged: (v) => update((s) => ScreenTimeRule(dailyLimitMinutes: v.round(), weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
         const SizedBox(height: AppSpace.sm),
         Text(l10n.weekendLimit(st.weekendLimitMinutes), style: Theme.of(context).textTheme.titleMedium),
-        Slider(value: limitSliderPosition(st.weekendLimitMinutes), min: kLimitSliderMin, max: kLimitSliderMax, divisions: 39, label: l10n.minutesShort(st.weekendLimitMinutes), onChanged: (v) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: v.round(), bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
+        Slider(value: limitSliderPosition(st.weekendLimitMinutes), min: kLimitSliderMin, max: kLimitSliderMax, divisions: 39, label: l10n.minutesShort(st.weekendLimitMinutes), semanticFormatterCallback: (v) => l10n.minutesShort(v.round()), onChanged: (v) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: v.round(), bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
         const Divider(height: AppSpace.xxl),
         Text(l10n.bedtime, style: Theme.of(context).textTheme.titleMedium),
         timeTile(l10n.starts, st.bedtimeStart, (t) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: formatTime(t), bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),

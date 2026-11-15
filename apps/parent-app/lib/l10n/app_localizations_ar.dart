@@ -184,7 +184,11 @@ class AppLocalizationsAr extends AppLocalizations {
   String get passwordLabel => 'كلمة المرور';
 
   @override
-  String get mfaCodeLabel => 'رمز المصادقة (عند تفعيل المصادقة الثنائية)';
+  String get mfaCodeLabel => 'رمز تطبيق المصادقة';
+
+  @override
+  String get mfaCodeHelper =>
+      'مطلوب فقط إذا كان التحقق بخطوتين مفعّلًا في حسابك.';
 
   @override
   String get signIn => 'تسجيل الدخول';

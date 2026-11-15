@@ -389,8 +389,14 @@ abstract class AppLocalizations {
   /// No description provided for @mfaCodeLabel.
   ///
   /// In en, this message translates to:
-  /// **'Authentication code (if MFA is on)'**
+  /// **'Authenticator code'**
   String get mfaCodeLabel;
+
+  /// No description provided for @mfaCodeHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'Only if two-step verification is on for your account.'**
+  String get mfaCodeHelper;
 
   /// No description provided for @signIn.
   ///
@@ -4901,7 +4907,7 @@ abstract class AppLocalizations {
   /// Phone setup row (osra-security#6): the capability report's profiles.kinds holds clone. Arabic wording by Karim (2026-11-11).
   ///
   /// In en, this message translates to:
-  /// **'This phone has another secure space that may run cloned apps (more than one copy of the same app). OSRA may not be able to monitor it until it is turned off in the phone's Settings.'**
+  /// **'This phone has another secure space that may run cloned apps (more than one copy of the same app). OSRA may not be able to monitor it until it is turned off in the phone\'s Settings.'**
   String get phoneSetupOtherSpaceClone;
 
   /// Phone setup row (osra-security#6): profiles.kinds holds work. Arabic approved by Karim.

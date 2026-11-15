@@ -176,7 +176,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get passwordLabel => 'Password';
 
   @override
-  String get mfaCodeLabel => 'Authentication code (if MFA is on)';
+  String get mfaCodeLabel => 'Authenticator code';
+
+  @override
+  String get mfaCodeHelper =>
+      'Only if two-step verification is on for your account.';
 
   @override
   String get signIn => 'Sign in';

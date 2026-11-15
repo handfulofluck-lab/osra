@@ -15,6 +15,7 @@ import '../../providers/family_provider.dart';
 import '../rules/rules_behind_banner.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
+import '../../widgets/layout_helpers.dart';
 import '../dashboard/dashboard_screen.dart' show formatLastSeen;
 import '../pairing/pair_qr_screen.dart';
 import '../rules/active_window.dart';
@@ -40,15 +41,17 @@ class ChildDetailScreen extends ConsumerWidget {
         appBar: AppBar(
           title: Text(child?.displayName ?? l10n.childFallback),
           // NOTE: scrollable — five labels no longer fit at 320px width.
-          bottom: TabBar(
-            isScrollable: true,
-            tabs: [
-              Tab(text: l10n.tabOverview),
-              Tab(text: l10n.tabApps),
-              Tab(text: l10n.tabSocial),
-              Tab(text: l10n.tabLocation),
-              Tab(text: l10n.tabAlerts),
-            ],
+          bottom: FadingScrollableTabBar(
+            tabBar: TabBar(
+              isScrollable: true,
+              tabs: [
+                Tab(text: l10n.tabOverview),
+                Tab(text: l10n.tabApps),
+                Tab(text: l10n.tabSocial),
+                Tab(text: l10n.tabLocation),
+                Tab(text: l10n.tabAlerts),
+              ],
+            ),
           ),
           actions: [
             IconButton(
@@ -162,7 +165,7 @@ class _OverviewTab extends ConsumerWidget {
                       _ => Icons.devices_other,
                     }),
                     title: Text(d.model),
-                    subtitle: Text('${d.platform} ${d.osVersion} · ${_statusLabel(context, d)}'),
+                    subtitle: Text('${formatDevicePlatformLabel(d.platform, d.osVersion)} · ${_statusLabel(context, d)}'),
                     trailing: d.batteryPct > 0
                         ? Chip(
                             visualDensity: VisualDensity.compact,
@@ -891,7 +894,7 @@ class AlertTile extends StatelessWidget {
     return Card(
       child: ListTile(
         leading: Icon(Icons.circle, color: severityColor(alert.severity, context), size: 14),
-        title: Text(l10n.alertTitleFor(alert.category, alert.title, isEnglish: context.localeName.startsWith('en'), tamperType: alert.metadata['type']?.toString()), maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(l10n.alertTitleFor(alert.category, alert.title, isEnglish: context.localeName.startsWith('en'), tamperType: alert.metadata['type']?.toString()), maxLines: 2, overflow: TextOverflow.ellipsis),
         subtitle: Text('${l10n.alertCategory(alert.category)} · $when'),
         trailing: onAck == null ? null : IconButton(icon: const Icon(Icons.check), tooltip: l10n.acknowledgeTooltip, onPressed: onAck),
         onTap: onTap,
