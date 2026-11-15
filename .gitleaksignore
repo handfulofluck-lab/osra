@@ -1,0 +1,4 @@
+# Reviewed historical gitleaks findings (osra-security#26). One fingerprint per line: commit:file:rule:line.
+# Add a line only after a security review, never to silence a live secret.
+# A local-only value in a QA log, redacted on main since; it authenticates nothing anywhere we run.
+6dc9092c7e9aa1beffc525c0015cd87517a39689:docs/QA/DISCUSSION-LOG.md:generic-api-key:247
