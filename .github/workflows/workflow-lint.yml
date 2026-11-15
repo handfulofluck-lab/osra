@@ -168,7 +168,7 @@ jobs:
             "scripts/hardware/tests/Scenario.Run.Tests.ps1",
             "scripts/hardware/tests/Scenario.DryRun.Tests.ps1"
           ) -PassThru
-          if ($tests.TotalCount -lt 104 -or $tests.FailedCount -ne 0) { throw "scenario Pester: $($tests.PassedCount) passed, $($tests.FailedCount) failed, $($tests.TotalCount) total" }
+          if ($tests.TotalCount -lt 111 -or $tests.FailedCount -ne 0) { throw "scenario Pester: $($tests.PassedCount) passed, $($tests.FailedCount) failed, $($tests.TotalCount) total" }
           # The Pester rows remove the fake env between cases, so the CLI sets its own image here.
           $env:FAKE_SCREENSHOT = Join-Path $env:GITHUB_WORKSPACE "scripts/hardware/tests/fixtures/rgb.png"
           $out = Join-Path $env:RUNNER_TEMP "scenario-evidence"

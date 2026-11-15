@@ -138,7 +138,14 @@ Describe "Structural device and data refusals" {
         @{ name = "settings reset"; command = @("shell", "settings", "reset", "global") },
         @{ name = "install multiple"; command = @("install-multiple", "a.apk", "b.apk") },
         @{ name = "transport flag L"; command = @("-L", "5037", "shell", "getprop") },
-        @{ name = "backslash in a command"; command = @("shell", 'ro\product.model') }
+        @{ name = "backslash in a command"; command = @("shell", 'ro\product.model') },
+        @{ name = "semicolon in a settings value"; command = @("shell", "settings", "put", "system", "screen_off_timeout", "1500;reboot") },
+        @{ name = "pipe in a settings value"; command = @("shell", "settings", "put", "system", "screen_off_timeout", "1|reboot") },
+        @{ name = "backslash in a settings value"; command = @("shell", "settings", "put", "system", "screen_off_timeout", "15000\x") },
+        @{ name = "quote in a settings value"; command = @("shell", "settings", "put", "system", "screen_off_timeout", "1'0") },
+        @{ name = "dumpsys with a service the runner does not read"; command = @("shell", "dumpsys", "battery") },
+        @{ name = "dumpsys package with an extra argument"; command = @("shell", "dumpsys", "package", "com.osratech.child.test", "flags") },
+        @{ name = "logcat"; command = @("logcat", "-b", "events") }
     )
     It "refuses <name>, wrapped or not" -ForEach $cases {
         param($name, $command)
@@ -161,6 +168,8 @@ Describe "Structural device and data refusals" {
             @("shell", "appops", "get", "com.osratech.child.full", "SYSTEM_ALERT_WINDOW"),
             @("shell", "getprop", "ro.product.model"),
             @("shell", "dumpsys", "package", "com.osratech.child.test"),
+            @("shell", "dumpsys", "window"),
+            @("shell", "dumpsys", "trust"),
             @("shell", "pm", "list", "packages")
         )) { { Assert-ScenarioCommand -Command $command } | Should -Not -Throw }
     }

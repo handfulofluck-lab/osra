@@ -52,7 +52,7 @@ function Assert-ScenarioCommand {
     if ($start -ge $flat.Count) { throw "adb_command_not_allowed" }
     $verb = $flat[$start]
     if ($verb -match "/") { throw "adb_command_not_allowed" }
-    if ($verb -notin @("getprop", "setprop", "dumpsys", "settings", "appops", "dpm", "pm", "screencap", "input", "content", "logcat")) {
+    if ($verb -notin @("getprop", "setprop", "dumpsys", "settings", "appops", "dpm", "pm", "screencap", "input", "content")) {
         throw "adb_command_not_allowed"
     }
     $rest = @()
@@ -65,7 +65,15 @@ function Assert-ScenarioCommand {
             if ($rest.Count -ne 2 -or $rest[0] -ne "persist.sys.locale") { throw "adb_command_not_allowed" }
         }
         "dumpsys" {
+            # Only the three reads the runner makes: the focused window, the lock/trust state, and one
+            # package's flags. Any other service or argument is refused (#797 check-in, 13:01Z).
             if ($rest.Count -lt 1 -or @($rest | Where-Object { $_ -notmatch "^[a-z0-9._-]+$" }).Count -gt 0) { throw "adb_command_not_allowed" }
+            if ($rest[0] -in @("window", "trust")) {
+                if ($rest.Count -ne 1) { throw "adb_command_not_allowed" }
+            } elseif ($rest[0] -eq "package") {
+                if ($rest.Count -ne 2) { throw "adb_command_not_allowed" }
+                if ($Package -and $rest[1] -ne "$Package".ToLowerInvariant()) { throw "package_outside_scenario" }
+            } else { throw "adb_command_not_allowed" }
         }
         "screencap" {
             if ($rest.Count -ne 1 -or $rest[0] -ne "-p") { throw "adb_command_not_allowed" }
@@ -128,7 +136,6 @@ function Assert-ScenarioCommand {
         "content" {
             if ($rest.Count -lt 1 -or $rest[0] -ne "query") { throw "content_read_only" }
         }
-        "logcat" { }
     }
 }
 
@@ -371,7 +378,7 @@ function Invoke-ScenarioPreflight {
         default { throw "unknown_device_catalogue_serial" }
     }
     if ($model.Output.Trim() -ne $expectedModel) { throw "device_model_mismatch" }
-    $dump = Invoke-Adb -Command @("shell", "dumpsys", "package", $Manifest.package)
+    $dump = Invoke-Adb -Command @("shell", "dumpsys", "package", $Manifest.package) -Package $Manifest.package
     $build = Get-BuildKind -DumpsysText $dump.Output -Package $Manifest.package
     if ($build.Kind -ne "release") { throw "build_not_gate_evidence" }
     $health = Invoke-ScenarioHttp -Url $Manifest.apiHealthUrl
