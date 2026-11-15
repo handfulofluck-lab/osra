@@ -112,6 +112,7 @@ describe("DELETE /v1/family — the owner deletes the whole family", () => {
     // Every family-scoped and parent-scoped table, by name. Mutant: drop an entry from FAMILY_SCOPED_DELETES.
     const parentIds = { in: [OWNER.id, CO.id] };
     expect(prismaMock.familyInvite.deleteMany).toHaveBeenCalledWith({ where: { familyId: "fam-1" } });
+    expect(prismaMock.familyPurchase.deleteMany).toHaveBeenCalledWith({ where: { familyId: "fam-1" } });
     expect(prismaMock.digestRecipient.deleteMany).toHaveBeenCalledWith({ where: { familyId: "fam-1" } });
     expect(prismaMock.digestSend.deleteMany).toHaveBeenCalledWith({ where: { familyId: "fam-1" } });
     expect(prismaMock.digestPrefs.deleteMany).toHaveBeenCalledWith({ where: { familyId: "fam-1" } });
