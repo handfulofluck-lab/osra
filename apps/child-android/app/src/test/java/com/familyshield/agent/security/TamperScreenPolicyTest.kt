@@ -612,4 +612,57 @@ class TamperScreenPolicyTest {
             ),
         )
     }
+
+    /**
+     * Arabic Language Bureau, review of #817: the four phrase lists carried no Arabic row at all, so nothing failed if
+     * a phrase was wrong. Each row feeds the screen's own Arabic through `classify()`, and each phrase is Google's,
+     * taken from `platform/packages/apps/Settings` `values-ar` (12 to 16) and folded with `normalize()`.
+     *
+     * Mutant: change a letter of any phrase in the policy → the row that feeds the real screen text goes red.
+     */
+    @Test
+    fun `the Arabic phrases match the screens they were taken from`() {
+        fun classifyAr(address: Set<TamperScreenPolicy.SpecialAccess>, vararg texts: String) =
+            TamperScreenPolicy.classify(
+                "com.android.settings", texts.toList(), agent, admin, pkg,
+                ourAdminActive = true, ourSpecialAccess = address,
+            )
+        // 12–15 title and switch, 16 title
+        assertEquals(
+            "overlay 12-15 title",
+            TamperScreen.SPECIAL_ACCESS,
+            classifyAr(setOf(TamperScreenPolicy.SpecialAccess.OVERLAY), "OSRA", "إظهار فوق التطبيقات الأخرى", "مسموح"),
+        )
+        assertEquals(
+            "overlay 12-15 switch",
+            TamperScreen.SPECIAL_ACCESS,
+            classifyAr(setOf(TamperScreenPolicy.SpecialAccess.OVERLAY), "OSRA", "السماح بظهور التطبيق فوق التطبيقات الأخرى"),
+        )
+        assertEquals(
+            "overlay 16 title",
+            TamperScreen.SPECIAL_ACCESS,
+            classifyAr(setOf(TamperScreenPolicy.SpecialAccess.OVERLAY), "OSRA", "الظهور فوق التطبيقات الأخرى"),
+        )
+        // 12–15 usage access title
+        assertEquals(
+            "usage 12-15",
+            TamperScreen.SPECIAL_ACCESS,
+            classifyAr(setOf(TamperScreenPolicy.SpecialAccess.USAGE), "OSRA", "الوصول إلى بيانات الاستخدام"),
+        )
+    }
+
+    /** The Bureau's point about direction marks: Google's Arabic lines that name a Latin word carry U+200F first. */
+    @Test
+    fun `a direction mark does not break a phrase`() {
+        assertEquals(
+            TamperScreen.SPECIAL_ACCESS,
+            TamperScreenPolicy.classify(
+                "com.android.settings",
+                listOf<CharSequence>("OSRA", "‏" + "الظهور فوق التطبيقات الأخرى", "‏" + "مسموح"),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                ourSpecialAccess = setOf(TamperScreenPolicy.SpecialAccess.OVERLAY),
+            ),
+        )
+    }
 }

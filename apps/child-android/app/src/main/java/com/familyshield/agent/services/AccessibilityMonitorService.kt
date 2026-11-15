@@ -316,9 +316,16 @@ class AccessibilityMonitorService : AccessibilityService() {
             // #813 review (Claude): returning to OSRA ends any PermissionController visit, so a latch set during
             // onboarding must not survive it and hide the next real visit.
             permissionWindowLocationActive = null
-            // Antigravity's item 3: a jump straight back into OSRA ends the Settings visit too, so the latch must go
-            // with it — otherwise an empty set captured on the first visit hides a later grant.
-            specialAccessLatch = null
+            // Antigravity's item 3 / Claude's item 2: a jump straight back into OSRA ends the Settings visit, so the
+            // latch goes through the same rule the state change uses — that way the reset is covered by a row
+            // instead of a bare assignment nothing tests.
+            specialAccessLatch = com.familyshield.agent.receivers.AccessibilityOffPolicy.nextSpecialAccessLatch(
+                previous = specialAccessLatch,
+                packageName = packageName,
+                settingsPackage = "com.android.settings",
+                ourPackage = packageName,
+                heldNow = { specialAccessHeld() },
+            )
             restoreRingScreen(event, packageName)
             return
         }

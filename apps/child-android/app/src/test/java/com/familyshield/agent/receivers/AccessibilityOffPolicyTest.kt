@@ -103,7 +103,7 @@ class AccessibilityOffPolicyTest {
      * grant page produces.
      */
     @Test
-    fun `the special-access latch is captured on entry, held, and dropped on leaving`() {
+    fun `the special-access latch keeps what was held on entry, not what is held now`() {
         val heldNow = setOf(TamperScreenPolicy.SpecialAccess.OVERLAY)
         fun next(previous: Set<TamperScreenPolicy.SpecialAccess>?, pkg: String?) =
             AccessibilityOffPolicy.nextSpecialAccessLatch(
@@ -115,10 +115,31 @@ class AccessibilityOffPolicyTest {
             )
 
         assertEquals("captured on entry", heldNow, next(null, "com.android.settings"))
-        // Held for the whole visit: a grant made inside it does not change the decision.
-        assertEquals("held for the visit", heldNow, next(heldNow, "com.android.settings"))
-        assertEquals("an unnamed window keeps it", heldNow, next(heldNow, null))
-        assertNull("leaving Settings drops it", next(heldNow, "com.android.telephony"))
-        assertNull("and so does coming back to us after a grant", next(heldNow, "com.familyshield.agent"))
+        // The row that would pass if the latch never latched: a previous set that differs from what is held now must
+        // be what comes back. Claude's item 1 — `previous = heldNow` tested nothing.
+        val heldBefore = setOf(TamperScreenPolicy.SpecialAccess.USAGE)
+        assertEquals("held for the visit, even if the grant changes", heldBefore, next(heldBefore, "com.android.settings"))
+        assertEquals("an unnamed window keeps it", heldBefore, next(heldBefore, null))
+        assertNull("leaving Settings drops it", next(heldBefore, "com.android.telephony"))
     }
+
+    /**
+     * Claude's item 2: the reset that a Back-from-the-grant-page needs. The own-package branch calls the function
+     * now, so deleting that call fails here rather than passing quietly.
+     */
+    @Test
+    fun `coming back to our own package resets the latch`() {
+        val heldBefore = setOf(TamperScreenPolicy.SpecialAccess.OVERLAY)
+        assertNull(
+            "our own window after Settings ends the visit",
+            AccessibilityOffPolicy.nextSpecialAccessLatch(
+                previous = heldBefore,
+                packageName = "com.familyshield.agent",
+                settingsPackage = "com.android.settings",
+                ourPackage = "com.familyshield.agent",
+                heldNow = { heldBefore },
+            ),
+        )
+    }
+}
 }

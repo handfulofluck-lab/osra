@@ -90,24 +90,33 @@ object TamperScreenPolicy {
     enum class SpecialAccess { OVERLAY, USAGE, NOTIFICATIONS, VPN }
 
     private val SPECIAL_ACCESS_WORDS: Map<SpecialAccess, List<String>> = mapOf(
+        // Arabic here is Google's own, taken from platform/packages/apps/Settings `values-ar` on the branches
+        // android12-release to android16-release and folded with `normalize()` (Arabic Language Bureau, review of
+        // #817). A phrase that could not be sourced from a published string was **removed** rather than guessed: the
+        // Flip4 dump will decide what Samsung says, and that is owed.
         SpecialAccess.OVERLAY to listOf(
             "display over other apps", "draw over other apps", "appear on top",
-            "الظهور فوق التطبيقات الاخرى", "الرسم فوق التطبيقات الاخرى", "الظهور في اعلى الشاشة",
+            // 12–15 title and switch, 16 title
+            "اظهار فوق التطبيقات الاخرى",
+            "السماح بظهور التطبيق فوق التطبيقات الاخرى",
+            "الظهور فوق التطبيقات الاخرى",
         ),
         SpecialAccess.USAGE to listOf(
             "usage access", "usage data access",
-            "الوصول الى بيانات الاستخدام", "الوصول لبيانات الاستخدام",
+            // 16 renamed the page and its switch
+            "app usage data", "permit access to app usage data",
+            // 12–15 title
+            "الوصول الى بيانات الاستخدام",
         ),
         SpecialAccess.NOTIFICATIONS to listOf(
-            "notification access", "device and app notifications",
-            "الوصول الى الاشعارات", "الوصول لاشعارات الجهاز والتطبيقات",
+            "notification access",
+            // 12–14 title carries an ampersand, 15 renamed it
+            "device & app notifications", "notification read, reply & control",
         ),
-        // Review of osra-security#29 (Antigravity): bare "vpn" matched any Settings page where a third-party VPN
-        // app scrolled into view, or a Connection page showing a VPN summary row. Only phrases that name the
-        // *management* action count.
         SpecialAccess.VPN to listOf(
+            // Review of osra-security#29: bare "vpn" matched any Settings page where a third-party VPN app
+            // scrolled into view, so only the management actions count.
             "always-on vpn", "forget vpn", "delete vpn", "vpn profile", "disconnect vpn",
-            "شبكة افتراضية خاصة", "الشبكة الافتراضية الخاصة", "اتصال vpn دائم",
         ),
     )
 
@@ -157,6 +166,10 @@ object TamperScreenPolicy {
         for (ch in s.lowercase()) {
             when (ch) {
                 in '\u064B'..'\u0652', '\u0640' -> Unit
+                // Arabic Language Bureau, review of #817: direction marks are formatting, not text. Google's Arabic
+                // strings that carry a Latin word begin with U+200F, and a mark inside a phrase would break
+                // `contains`. Dropping the Cf marks removes the risk rather than relying on where they sit.
+                '\u200E', '\u200F', in '\u202A'..'\u202E', in '\u2066'..'\u2069' -> Unit
                 '\u0623', '\u0625', '\u0622' -> out.append('\u0627')
                 '\u0624' -> out.append('\u0648')
                 else -> out.append(ch)

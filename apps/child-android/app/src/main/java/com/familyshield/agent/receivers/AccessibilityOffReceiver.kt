@@ -102,11 +102,6 @@ object AccessibilityOffPolicy {
         paired && nowMs >= graceUntilMs
 
     /**
-     * The grant latch for a PermissionController visit (osra-security#30 review): latched from the grant when a
-     * PermissionController window is entered, cleared when any other window is entered, and left alone when the
-     * window cannot be named.
-     */
-    /**
      * Part 2's latch (osra-security#29 review, Antigravity's item 3): the special-access set is captured on
      * **entering** Settings and dropped on leaving it — including when a window of our own package opens, which is
      * what happens when a parent finishes granting and presses Back into OSRA.
@@ -124,6 +119,11 @@ object AccessibilityOffPolicy {
         else -> null
     }
 
+    /**
+     * The grant latch for a PermissionController visit (osra-security#30 review): latched from the grant when a
+     * PermissionController window is entered, cleared when any other window is entered, and left alone when the
+     * window cannot be named.
+     */
     fun nextLatch(previous: Boolean?, packageName: String?, grantedNow: () -> Boolean): Boolean? = when {
         packageName == null -> previous
         packageName.contains("permissioncontroller") -> previous ?: grantedNow()
