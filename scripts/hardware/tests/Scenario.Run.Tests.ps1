@@ -19,6 +19,7 @@ if (-not $script:TestsDir) {
     throw "tests_dir_not_found: root=[$PSScriptRoot] cmd=[$PSCommandPath] pwd=[$($PWD.Path)] loc=[$((Get-Location).Path)] ws=[$env:GITHUB_WORKSPACE]"
 }
 $script:RunnerPath = Join-Path $script:TestsDir "../scenario.ps1"
+if (-not (Test-Path -LiteralPath $script:RunnerPath)) { throw "runner_not_found: dir=[$script:TestsDir] path=[$script:RunnerPath]" }
 . $script:RunnerPath
 $script:DryRun = $true
 

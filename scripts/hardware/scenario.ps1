@@ -18,6 +18,24 @@ $script:Serial = $Serial
 $script:Package = $Package
 $script:ApiBase = $ApiBase
 $script:LeaseStore = $LeaseStore
+$script:RunnerDir = $PSScriptRoot
+if (-not $script:RunnerDir) {
+    # Dot-sourced under Pester on the Linux runner, $PSScriptRoot arrives empty, so the files this
+    # script loads must be found from the invocation directory instead (#667).
+    $anchors = @($env:GITHUB_WORKSPACE, (Get-Location).Path, $PWD.Path) | Where-Object { $_ }
+    foreach ($start in $anchors) {
+        $dir = $start
+        while ($dir -and -not (Test-Path -LiteralPath (Join-Path $dir "scripts/hardware/scenario.ps1"))) {
+            $parent = Split-Path -Parent $dir
+            if (-not $parent -or $parent -eq $dir) { $dir = $null; break }
+            $dir = $parent
+        }
+        if ($dir) { $script:RunnerDir = Join-Path $dir "scripts/hardware"; break }
+    }
+}
+if (-not $script:RunnerDir) {
+    throw "runner_dir_not_found: root=[$PSScriptRoot] loc=[$((Get-Location).Path)] ws=[$env:GITHUB_WORKSPACE]"
+}
 $script:RestoredSettingsKeys = @(
     "enabled_accessibility_services", "accessibility_enabled", "stay_on_while_plugged_in",
     "accelerometer_rotation", "user_rotation", "screen_off_timeout", "zen_mode"
@@ -146,7 +164,7 @@ function Assert-ManifestShape {
 
 function Read-ScenarioManifest {
     param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)][string]$Out)
-    $scenarioRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "scenarios"))
+    $scenarioRoot = [IO.Path]::GetFullPath((Join-Path $script:RunnerDir "scenarios"))
     $outRoot = [IO.Path]::GetFullPath($Out)
     $candidate = $Path
     if (-not [IO.Path]::IsPathRooted($candidate)) {
@@ -216,7 +234,7 @@ function Invoke-ScenarioProcess {
 }
 
 
-. (Join-Path $PSScriptRoot "classify-build.ps1")
+. (Join-Path $script:RunnerDir "classify-build.ps1")
 
 function Invoke-ScenarioLease {
     param(
@@ -231,7 +249,7 @@ function Invoke-ScenarioLease {
         }
         if ($script:LeaseStore) { $lease.Store = $script:LeaseStore }
         if ($Action -eq "Release") { $lease.LeftState = $LeftState; $lease.Note = $Note }
-        & (Join-Path $PSScriptRoot "phone-claim.ps1") @lease
+        & (Join-Path $script:RunnerDir "phone-claim.ps1") @lease
         if ($LASTEXITCODE -ne 0) { throw "phone_lease_$Action_failed" }
     }
     $record = [pscustomobject]@{ Action = $Action; LeftState = $LeftState; Note = $Note }
@@ -334,7 +352,7 @@ function Invoke-ScenarioManualStep {
 
 
 if (-not ("ScenarioPng" -as [type])) {
-    Add-Type -Path (Join-Path $PSScriptRoot "scenario-png.cs")
+    Add-Type -Path (Join-Path $script:RunnerDir "scenario-png.cs")
 }
 
 function Crop-ScenarioPng {
