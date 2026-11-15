@@ -18,7 +18,7 @@ class DigitsTest {
 
     @Test
     fun `leaves anything that is not a digit alone`() {
-        assertEquals("a-٥.b", Digits.normalize("a-٥.b"))
+        assertEquals("a-ب.b،c", Digits.normalize("a-ب.b،c"))
     }
 
     @Test
