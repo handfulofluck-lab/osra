@@ -131,16 +131,36 @@ class TamperScreenPolicyTest {
         )
     }
 
-    /** Fable's B2: our package in PermissionController is a permission page for us, whatever its class. */
+    /**
+     * osra-security#30 review (Antigravity B2): PermissionController hosts both the management pages **and** the
+     * runtime permission dialog, and onboarding opens the management page itself when the parent grants background
+     * location. So the package alone is not enough: the management classes are guarded, the runtime prompt is
+     * never a screen, and neither is the all-services accessibility list (gating it would block TalkBack).
+     */
     @Test
-    fun `any permissioncontroller window that names us is guarded`() {
+    fun `the permission management pages are guarded, the runtime prompt and the lists are not`() {
         assertEquals(
             TamperScreen.PROTECTION_SETTINGS,
-            classifyWindow("com.android.permissioncontroller", "SomeUnknownHost", "OSRA", "Location", "Don't allow"),
+            classifyWindow("com.samsung.android.permissioncontroller", "ManagePermissionsActivity", "OSRA", "Location", "Don't allow"),
         )
         assertEquals(
+            TamperScreen.PROTECTION_SETTINGS,
+            classifyWindow("com.android.permissioncontroller", "AppPermissionsActivity", "OSRA", "Camera", "Allow"),
+        )
+        assertEquals(
+            "the runtime prompt is not a protection screen",
             TamperScreen.NONE,
-            classifyWindow("com.android.permissioncontroller", "SomeUnknownHost", "Camera", "Photos", "Don't allow"),
+            classifyWindow("com.android.permissioncontroller", "GrantPermissionsActivity", "Allow OSRA to access this device's location?", "While using the app"),
+        )
+        assertEquals(
+            "the accessibility list of every service is not a protection screen",
+            TamperScreen.NONE,
+            classifyWindow("com.android.settings", "SecAccessibilityInstalledAppsActivity", "Installed apps", "OSRA", "TalkBack"),
+        )
+        assertEquals(
+            "and neither is the accessibility settings hub",
+            TamperScreen.NONE,
+            classifyWindow("com.android.settings", "AccessibilitySettingsActivity", "Accessibility", "OSRA", "TalkBack"),
         )
     }
 

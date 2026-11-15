@@ -68,9 +68,25 @@ object TamperScreenPolicy {
     private val ADMIN_CLASSES = setOf("DeviceAdminAdd", "SecDeviceAdminAdd")
     // The admin LIST is never a protection screen; in Arabic its intro text carries «إلغاء تفعيل» and the list
     // names us, so the word path would misfire without this.
-    private val NEVER_CLASSES = setOf("DeviceAdminSettingsActivity")
+    private val NEVER_CLASSES = setOf(
+        "DeviceAdminSettingsActivity",
+        // osra-security#29 / #30 review (Antigravity B1, B2): the accessibility *list* of every installed service
+        // and the runtime permission dialog. Gating the list would block access to TalkBack and every other
+        // accessibility tool (ADR-0021), and `GrantPermissionsActivity` is the OS prompt a parent answers while
+        // setting the phone up — slamming the PIN gate over it would block onboarding itself.
+        "SecAccessibilityInstalledAppsActivity",
+        "AccessibilitySettingsActivity",
+        "GrantPermissionsActivity",
+    )
     private val UNINSTALL_CLASSES = setOf("UninstallerActivity")
     private val APP_INFO_CLASSES = setOf("InstalledAppDetails", "InstalledAppDetailsTop", "AppInfoDashboardActivity")
+
+    /** The permission *management* pages. Never the runtime prompt — see NEVER_CLASSES. */
+    private val PERMISSION_MANAGEMENT_CLASSES = setOf(
+        "ManagePermissionsActivity",
+        "AppPermissionsActivity",
+        "PermissionDetailsActivity",
+    )
 
     /**
      * osra-security#29 and #30 (Flip4 AS02, and the Permission manager row): the pages that switch off the
@@ -184,9 +200,13 @@ object TamperScreenPolicy {
             val description = normalize(agentServiceDescription).takeIf { it.length >= 24 }
             if (description != null && joinedAll.contains(description)) return TamperScreen.PROTECTION_SETTINGS
         }
-        // Fable's B2, second half: everything PermissionController shows for our package is a permission page for
-        // us, so that package plus our name is enough and the class list is only a second opinion there.
-        if (packageName.contains("permissioncontroller")) return TamperScreen.PROTECTION_SETTINGS
+        // Fable's B2, second half, corrected by Antigravity's B2: PermissionController also hosts the runtime
+        // permission prompt, and the management pages are opened by onboarding itself when the parent grants
+        // background location. So this is **not** the whole package — it is the management classes, and the
+        // runtime dialog is never a screen (NEVER_CLASSES).
+        if (packageName.contains("permissioncontroller") && simpleName(windowClass) in PERMISSION_MANAGEMENT_CLASSES) {
+            return TamperScreen.PROTECTION_SETTINGS
+        }
 
         when (simpleName(windowClass)) {
             in NEVER_CLASSES -> return TamperScreen.NONE
