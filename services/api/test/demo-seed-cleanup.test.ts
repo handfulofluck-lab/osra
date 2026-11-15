@@ -164,4 +164,34 @@ describeDatabase("demo seed and cleanup against real Postgres", () => {
     expect(await childNames()).toEqual(["Alex", "Review Child"]);
     expect(await sql("SELECT count(*) FROM \"Parent\"")).toBe("2");
   }, 60_000);
+
+  it("uses timezone-aware columns for every entitlement timestamp", async () => {
+    expect(await sql(`SELECT column_name || '|' || data_type FROM information_schema.columns
+      WHERE table_name = 'family_purchases'
+        AND column_name IN ('expires_at', 'last_verified_at', 'created_at', 'ended_at') ORDER BY column_name`))
+      .toBe([
+        "created_at|timestamp with time zone",
+        "ended_at|timestamp with time zone",
+        "expires_at|timestamp with time zone",
+        "last_verified_at|timestamp with time zone",
+      ].join("\n"));
+  }, 60_000);
+
+  it("keeps one stable random account id through concurrent first-use calls", async () => {
+    await family("concurrent-family", "Concurrent Test Family");
+    process.env.DATABASE_URL = databaseUrl;
+    const { prisma } = await import("../src/db.js");
+    const { storeAccountIdFor } = await import("../src/lib/entitlement.js");
+    try {
+      const ids = await Promise.all(Array.from({ length: 8 }, () => storeAccountIdFor("concurrent-family")));
+      expect(new Set(ids).size).toBe(1);
+      expect(ids[0]).toMatch(/^[0-9a-f]{32}$/);
+      const stored = await prisma.family.findUnique({ where: { id: "concurrent-family" }, select: { storeAccountId: true } });
+      expect(stored?.storeAccountId).toBe(ids[0]);
+      await family("other-concurrent-family", "Other Concurrent Test Family");
+      expect(await storeAccountIdFor("other-concurrent-family")).not.toBe(ids[0]);
+    } finally {
+      await prisma.$disconnect();
+    }
+  }, 60_000);
 });

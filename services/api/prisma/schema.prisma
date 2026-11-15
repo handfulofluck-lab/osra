@@ -18,8 +18,34 @@ model Family {
   /// device at registration/login) or `parent` (chosen explicitly and never overwritten).
   timezoneSource String @default("default")
   createdAt DateTime @default(now())
+  /// ADR-0041 D1: opaque random purchase-account identifier, created on first owner purchase use.
+  storeAccountId String? @unique @map("store_account_id") @db.Char(32)
   parents   Parent[]
   children  Child[]
+  purchases FamilyPurchase[]
+}
+
+/// ADR-0041 D1: the server's record of a family's finite plan. The raw store reference never reaches
+/// this table; store_ref contains its SHA-256 hash. Nullable expiry is rejected by entitlement().
+model FamilyPurchase {
+  id             String   @id @default(uuid())
+  familyId       String   @map("family_id")
+  source         String
+  productId      String   @map("product_id")
+  storeRefHash   String   @map("store_ref") @db.Char(64)
+  status         String
+  expiresAt      DateTime? @map("expires_at") @db.Timestamptz(3)
+  /// The first transition into a revoking state. Re-verification never moves this end forward.
+  endedAt        DateTime? @map("ended_at") @db.Timestamptz(3)
+  autoRenews     Boolean  @map("auto_renews")
+  lastVerifiedAt DateTime @map("last_verified_at") @db.Timestamptz(3)
+  cause          String
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  family         Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@unique([source, storeRefHash])
+  @@index([familyId])
+  @@map("family_purchases")
 }
 
 /// ADR-0017: one row per (family, kind, period) that was sent, so a restart, a duplicate scheduler or

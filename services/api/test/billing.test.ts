@@ -17,7 +17,6 @@ import {
   grantEntitlement,
   hashStoreRef,
   setEntitlementStore,
-  storeAccountIdFor,
   type EntitlementGrant,
   type EntitlementRevocation,
   type EntitlementStore,
@@ -148,7 +147,7 @@ beforeEach(() => {
 });
 
 describe("entitlement seam (the only way billing reaches the plan)", () => {
-  it("records a grant and answers the purchase's family", async () => {
+  it("persists a grant and answers the purchase's family from that row", async () => {
     await grantEntitlement({
       familyId: "fam-1",
       source: "google_play",
@@ -160,6 +159,10 @@ describe("entitlement seam (the only way billing reaches the plan)", () => {
       effectiveAt: "2026-11-13T00:00:00Z",
       cause: "verify",
     });
+    expect(prismaMock.familyPurchase.create).toHaveBeenCalledTimes(1);
+    prismaMock.familyPurchase.findUnique.mockImplementation(async ({ where }: { where: { source_storeRefHash: { source: string } } }) =>
+      where.source_storeRefHash.source === "google_play" ? { familyId: "fam-1" } : null,
+    );
     expect(await findFamilyForPurchase("google_play", TOKEN)).toBe("fam-1");
     // The binding is per source: the same reference means nothing on another store.
     expect(await findFamilyForPurchase("app_store", TOKEN)).toBeNull();
@@ -172,20 +175,14 @@ describe("entitlement seam (the only way billing reaches the plan)", () => {
     expect(hashStoreRef(TOKEN)).toBe(hash);
   });
 
-  it("forgets the old store when a new one is set", async () => {
+  it("restores the Prisma store when the injected store is removed", async () => {
     await grantEntitlement({ familyId: "fam-1", source: "google_play", state: "active", productId: PRODUCT, expiresAt: "2026-12-13T00:00:00Z", autoRenews: true, storeRef: TOKEN, effectiveAt: "2026-11-13T00:00:00Z", cause: "verify" });
     setEntitlementStore(null);
     expect(await findFamilyForPurchase("google_play", TOKEN)).toBeNull();
+    expect(prismaMock.familyPurchase.findUnique).toHaveBeenCalled();
   });
 
-  it("hands out one opaque account id per family, created on first use", async () => {
-    const first = await storeAccountIdFor("fam-1");
-    expect(first).toMatch(/^[0-9a-f]{32}$/);
-    expect(await storeAccountIdFor("fam-1")).toBe(first);
-    expect(await storeAccountIdFor("fam-2")).not.toBe(first);
-    // Opaque: nothing in the id says which family it belongs to.
-    expect(first).not.toContain("fam-1");
-  });
+  // Durable random/stable/distinct ids are exercised against Prisma in entitlement.test.ts.
 });
 
 describe("POST /v1/billing/google/verify", () => {
