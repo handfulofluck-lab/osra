@@ -44,13 +44,21 @@ A change is not done on the strength of a locally green suite whose build step w
 release-assembly step is where a release-only failure lives.
 
 For localized invitation and digest emails (#796), run `pnpm --filter @familyshield/api exec vitest run
-test/email-localization.test.ts test/email.test.ts --maxWorkers=1 --minWorkers=1`. The 49 tests cover four
+test/email-localization.test.ts test/email.test.ts --maxWorkers=1 --minWorkers=1`. The 52 tests cover four
 inviter/family-name combinations, whole-sentence roles, a missing display name, HTML `<bdi>` and text
-LRI/PDI isolation, Arabic plural rows for 0/1/2/5/11/100 minutes and digest periods, zero-activity and busy
-children, and real English singular/plural forms. The route test proves missing rows never become "A parent"
-or "the your". Plant the raw role, the old family fallback, a broken plural row and missing isolation; each
-owning test must fail before restoration. No live mail is sent. Mail-client/RTL picture evidence is separate
-from these unit and route tests and is not implied by them.
+LRI/PDI isolation, Arabic plural rows for 0/1/2/5/11/100 minutes and digest periods, whole-word app-minute
+forms for 0/1/2 minutes, zero-activity and busy children, and real English singular/plural forms. The route
+test proves missing rows never become "A parent" or "the your". Plant the raw role, the old family fallback,
+a broken plural row and missing isolation; each owning test must fail before restoration. No live mail is
+sent. Mail-client/RTL picture evidence is separate from these unit and route tests and is not implied by them.
+
+For bedtime/school-hours overlap validation (#642), run `pnpm --filter @familyshield/api test --
+test/rules-overlap.test.ts test/rules.test.ts`. The five focused fixtures plus the existing rules suite
+prove that 21:00–06:30 does not meet 08:00–15:00 on weekdays; 09:00–10:00 against weekend school hours is
+refused with `schedule_overlap` and both windows; PUT and PATCH share the typed error; `days: []` means no
+school days and saves; and legacy `allowOverlap` compatibility remains. Plant `if (schoolHours.days.length >
+0) return null` to skip every nonempty schedule: the weekend refusal must go red, then restore the guard.
+The parent-facing message is separate follow-up #801; this API suite adds no user-facing text.
 
 For composite numeric values in Arabic RTL, run `flutter test test/ltr_isolates_test.dart` from
 `apps/parent-app` (#751). It renders the real latest-location, location-history (with and without a
