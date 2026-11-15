@@ -289,12 +289,12 @@ data class PairingCopy(
  * `strings.xml` verbatim, so a translator changing a line changes it in one place.
  */
 fun pairingCopyFrom(context: android.content.Context): PairingCopy = PairingCopy(
-    title = context.getString(com.familyshield.agent.R.string.pair_title),
-    subtitle = context.getString(com.familyshield.agent.R.string.pair_intro),
+    title = context.getString(com.familyshield.agent.R.string.pair_new_title),
+    subtitle = context.getString(com.familyshield.agent.R.string.pair_new_intro),
     scanButton = context.getString(com.familyshield.agent.R.string.pair_scan_button),
-    orTypeIt = context.getString(com.familyshield.agent.R.string.pair_or_type_code),
+    orTypeIt = context.getString(com.familyshield.agent.R.string.pair_new_or_type_code),
     nameLabel = context.getString(com.familyshield.agent.R.string.pair_name_hint),
     submit = context.getString(com.familyshield.agent.R.string.pair_button),
-    waiting = context.getString(com.familyshield.agent.R.string.pair_button_waiting_allow),
-    reassurance = context.getString(com.familyshield.agent.R.string.pair_reassurance),
+    waiting = context.getString(com.familyshield.agent.R.string.pair_new_button_waiting_allow),
+    reassurance = context.getString(com.familyshield.agent.R.string.pair_new_reassurance),
 )
