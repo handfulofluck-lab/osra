@@ -46,13 +46,13 @@ object OsraTokens {
     )
 
     /** Corner radii. They differ per theme on purpose: dark surfaces read larger, so the design shrinks them. */
-    data class Radii(val card: Dp, control: Dp, sheet: Dp, bar: Dp)
+    data class Radii(val card: Dp, val control: Dp, val sheet: Dp, val bar: Dp)
 
     /** Spacing steps. */
-    data class Spaces(val xxs: Dp, xs: Dp, sm: Dp, md: Dp, lg: Dp, xl: Dp, xxl: Dp)
+    data class Spaces(val xxs: Dp, val xs: Dp, val sm: Dp, val md: Dp, val lg: Dp, val xl: Dp, val xxl: Dp)
 
     /** Fixed sizes the screens share. */
-    data class Sizes(val touchTargetMin: Dp, primaryButtonHeight: Dp, actionButtonHeight: Dp, bottomBarHeight: Dp, avatar: Dp)
+    data class Sizes(val touchTargetMin: Dp, val primaryButtonHeight: Dp, val actionButtonHeight: Dp, val bottomBarHeight: Dp, val avatar: Dp)
 
     /** One step of the type scale: size, line height and weight, as the design file states them. */
     data class TypeStyle(val sizeSp: Int, val lineSp: Int, val weight: Int)

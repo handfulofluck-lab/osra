@@ -74,13 +74,13 @@ ${paletteFields}
     )
 
     /** Corner radii. They differ per theme on purpose: dark surfaces read larger, so the design shrinks them. */
-    data class Radii(val ${radii.map(([k]) => camel(k) + ": Dp").join(", ")})
+    data class Radii(${radii.map(([k]) => "val " + camel(k) + ": Dp").join(", ")})
 
     /** Spacing steps. */
-    data class Spaces(val ${spaces.map(([k]) => camel(k) + ": Dp").join(", ")})
+    data class Spaces(${spaces.map(([k]) => "val " + camel(k) + ": Dp").join(", ")})
 
     /** Fixed sizes the screens share. */
-    data class Sizes(val ${sizes.map(([k]) => camel(k) + ": Dp").join(", ")})
+    data class Sizes(${sizes.map(([k]) => "val " + camel(k) + ": Dp").join(", ")})
 
     /** One step of the type scale: size, line height and weight, as the design file states them. */
     data class TypeStyle(val sizeSp: Int, val lineSp: Int, val weight: Int)
@@ -119,8 +119,28 @@ ${scale
 `;
 }
 
+/**
+ * The Kotlin has to compile, not merely match: a data class whose parameters lost their `val` still matches the
+ * design file's values and still fails the build (#807 caught exactly that). This is the cheap half — every field
+ * of the three dimension classes is declared `val`.
+ */
+function assertDeclarations(kotlin) {
+  for (const name of ["Radii", "Spaces", "Sizes"]) {
+    const marker = `data class ${name}(`;
+    const at = kotlin.indexOf(marker);
+    if (at < 0) throw new Error(`gen-android-tokens: data class ${name} not found in the output`);
+    const params = kotlin.slice(at + marker.length, kotlin.indexOf(")", at + marker.length))
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+    const bad = params.filter((p) => !p.startsWith("val "));
+    if (bad.length > 0) throw new Error(`gen-android-tokens: ${name} has parameters without val: ${bad.join(", ")}`);
+  }
+}
+
 const tokens = JSON.parse(readFileSync(TOKENS, "utf8"));
 const wanted = render(tokens);
+assertDeclarations(wanted);
 
 if (process.argv.includes("--check")) {
   let current = "";
