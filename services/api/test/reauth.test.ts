@@ -345,6 +345,25 @@ describe("the atomic per-session failure limit", () => {
     expect(argon2.verify).toHaveBeenCalledTimes(5);
   });
 
+  it("retries revocation after the first revoke throws", async () => {
+    const { app } = await makeApp();
+    vi.mocked(argon2.verify).mockResolvedValue(false);
+    prismaMock.revokedToken.upsert.mockRejectedValueOnce(new Error("synthetic revocation failure"));
+    const token = sessionToken(app);
+
+    for (let failure = 1; failure <= 4; failure++) {
+      expect((await reauth(app, token)).statusCode).toBe(401);
+    }
+    expect((await reauth(app, token)).statusCode).toBe(500);
+    expect(prismaMock.revokedToken.upsert).toHaveBeenCalledTimes(1);
+
+    const sixth = await reauth(app, token);
+    expect(sixth.statusCode).toBe(401);
+    expect(sixth.json()).toEqual({ error: "reauth_failed" });
+    expect(prismaMock.revokedToken.upsert).toHaveBeenCalledTimes(2);
+    expect(store.get("revoked:token:jti-current")).toBe("1");
+  });
+
   it("allows exactly one revocation for five concurrent wrong proofs", async () => {
     const { app } = await makeApp();
     vi.mocked(argon2.verify).mockResolvedValue(false);
