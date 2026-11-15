@@ -77,41 +77,54 @@ List<MatrixConfig> generateMatrix() {
 }
 
 Future<bool> _loadSdkRobotoFont() async {
-  Directory? dir = Directory(Platform.resolvedExecutable).parent;
+  final sep = Platform.pathSeparator;
+  final candidates = <Directory>[
+    Directory('test${sep}fonts'),
+    Directory('apps${sep}parent-app${sep}test${sep}fonts'),
+  ];
   Directory? fontsDir;
-  for (var i = 0; i < 8 && dir != null; i++) {
-    final candidate = Directory('${dir.path}${Platform.pathSeparator}bin${Platform.pathSeparator}cache${Platform.pathSeparator}artifacts${Platform.pathSeparator}material_fonts');
-    if (candidate.existsSync()) {
-      fontsDir = candidate;
+  for (final c in candidates) {
+    if (c.existsSync()) {
+      fontsDir = c;
       break;
     }
-    final directCandidate = Directory('${dir.path}${Platform.pathSeparator}material_fonts');
-    if (directCandidate.existsSync()) {
-      fontsDir = directCandidate;
-      break;
-    }
-    final parent = dir.parent;
-    if (parent.path == dir.path) break;
-    dir = parent;
   }
-  final envRoot = Platform.environment['FLUTTER_ROOT'];
-  if (fontsDir == null && envRoot != null && envRoot.isNotEmpty) {
-    final envCandidate = Directory('$envRoot${Platform.pathSeparator}bin${Platform.pathSeparator}cache${Platform.pathSeparator}artifacts${Platform.pathSeparator}material_fonts');
-    if (envCandidate.existsSync()) fontsDir = envCandidate;
+  if (fontsDir == null) {
+    Directory? dir = Directory(Platform.resolvedExecutable).parent;
+    for (var i = 0; i < 8 && dir != null; i++) {
+      final candidate = Directory('${dir.path}${sep}bin${sep}cache${sep}artifacts${sep}material_fonts');
+      if (candidate.existsSync()) {
+        fontsDir = candidate;
+        break;
+      }
+      final directCandidate = Directory('${dir.path}${sep}material_fonts');
+      if (directCandidate.existsSync()) {
+        fontsDir = directCandidate;
+        break;
+      }
+      final parent = dir.parent;
+      if (parent.path == dir.path) break;
+      dir = parent;
+    }
+    final envRoot = Platform.environment['FLUTTER_ROOT'];
+    if (fontsDir == null && envRoot != null && envRoot.isNotEmpty) {
+      final envCandidate = Directory('$envRoot${sep}bin${sep}cache${sep}artifacts${sep}material_fonts');
+      if (envCandidate.existsSync()) fontsDir = envCandidate;
+    }
   }
   if (fontsDir == null) return false;
 
   final loader = FontLoader('Roboto');
-  var loadedAny = false;
+  var loadedCount = 0;
   for (final name in ['roboto-regular.ttf', 'roboto-medium.ttf', 'roboto-bold.ttf']) {
-    final file = File('${fontsDir.path}${Platform.pathSeparator}$name');
+    final file = File('${fontsDir.path}$sep$name');
     if (file.existsSync()) {
       final bytes = await file.readAsBytes();
       loader.addFont(Future.value(ByteData.sublistView(bytes)));
-      loadedAny = true;
+      loadedCount++;
     }
   }
-  if (!loadedAny) return false;
+  if (loadedCount != 3) return false;
   await loader.load();
   return true;
 }
