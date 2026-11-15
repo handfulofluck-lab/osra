@@ -1,3 +1,3 @@
-/* #760: يُحدد هذا الامتداد كمحدد بالعربية، لتُعطي iOS لغة الهاتف للامتداد وتتبعها إشارة الرنين.
-   جملة استخدام AlarmKit مطابقة تمامًا لملف App/Info.plist. */
+/* #760: marks this extension as localized in Arabic, so iOS gives it the phone's language and the
+   ring notification follows it. The AlarmKit usage sentence matches App/ar.lproj/InfoPlist.strings exactly. */
 "NSAlarmKitUsageDescription" = "يُصدر تطبيق أسرة للأطفال رنينًا مسموعًا على هذا الهاتف عندما يطلب والدك أو والدتك ذلك، حتى في النمط الصامت، أو عند تشغيل تركيز، أو عند خفض مستوى الصوت.";
