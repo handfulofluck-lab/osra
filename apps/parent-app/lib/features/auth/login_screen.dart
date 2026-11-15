@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/digits.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/mfa_provider.dart';
@@ -251,7 +252,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             _formError = null;
                           });
                           if (await _saveServer() == null) return;
-                          await _submit(() => ref.read(authProvider.notifier).login(_email.text.trim(), _password.text, _code.text));
+                          await _submit(() => ref.read(authProvider.notifier).login(_email.text.trim(), _password.text, normalizeDigits(_code.text)));
                         },
                   icon: auth.loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.login),
                   label: Text(l10n.signIn),
