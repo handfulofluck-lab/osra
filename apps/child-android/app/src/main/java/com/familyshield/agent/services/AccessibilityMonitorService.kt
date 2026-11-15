@@ -28,6 +28,9 @@ import com.familyshield.agent.enforcement.RetryDecision
 import com.familyshield.agent.enforcement.VisibleBlockStep
 import com.familyshield.agent.enforcement.VisibleWindow
 import com.familyshield.agent.enforcement.WindowBounds
+import com.familyshield.agent.commands.RingActivity
+import com.familyshield.agent.commands.RingReentryPolicy
+import com.familyshield.agent.commands.Ringer
 import com.familyshield.agent.enforcement.WindowLayout
 import com.familyshield.agent.enforcement.WindowSnapshot
 import com.familyshield.agent.security.GuardAttemptWindow
@@ -63,6 +66,9 @@ class AccessibilityMonitorService : AccessibilityService() {
 
     private var lastLocationCheckMs = 0L
     private var lastGuardMs = 0L
+
+    /** #734: when the ring screen was last brought back, for [RingReentryPolicy]'s debounce. */
+    private var lastRingRestoreMs = 0L
 
     /** osra-security#7: the window the gate was last opened over; a state change from any other is a new screen. */
     private var guardedWindowId = -1
@@ -201,6 +207,9 @@ class AccessibilityMonitorService : AccessibilityService() {
         // ADR-0010 §3: the protection guard runs even while consent is paused — a paused agent is
         // still an installed one, and the parent must still hear about an uninstall attempt.
         guardProtectionScreens(event, foreground)
+        // #734: Home is not a way out of a ring. While the ring runs, anything that is not our own window
+        // brings the ring screen back — its only exit is the parent PIN, and the alarm has no other stop.
+        restoreRingScreen(event, foreground)
         // The lock is the safe direction: when the window in front cannot be named, the event package
         // is the only hint and the overlay must still come back (LockEnforcementPolicy decides).
         enforceLockState(snapshot, foreground ?: eventPkg)
@@ -510,6 +519,34 @@ class AccessibilityMonitorService : AccessibilityService() {
 
     private fun granted(permission: String): Boolean =
         ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+
+    /**
+     * #734 (Flip4, 13 Nov): while [Ringer.isRinging], bring the ring screen back in front of whatever the
+     * child opened. Home cannot be swallowed by an activity, and #731 put the screen in its own hidden task,
+     * so without this the alarm rings with no way to stop it on the phone.
+     *
+     * The decision is [RingReentryPolicy]'s — not our own window, debounced, and never when the clock has
+     * gone backwards. Only a window change is considered: a content change inside an app is not a screen.
+     */
+    private fun restoreRingScreen(event: AccessibilityEvent, foreground: String?) {
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        val now = System.currentTimeMillis()
+        if (!RingReentryPolicy.shouldRestore(
+                isRinging = Ringer.isRinging,
+                foreground = foreground,
+                ownPackage = packageName,
+                nowMs = now,
+                lastRestoreMs = lastRingRestoreMs,
+            )
+        ) return
+        lastRingRestoreMs = now
+        runCatching {
+            startActivity(
+                Intent(this, RingActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),
+            )
+        }.onFailure { Log.w(TAG, "could not bring the ring screen back (#734)", it) }
+    }
 
     /**
      * ADR-0010 §3: when the foreground window is the OS screen that would strip protection
