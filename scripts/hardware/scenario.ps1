@@ -18,48 +18,78 @@ $script:Serial = $Serial
 $script:Package = $Package
 $script:ApiBase = $ApiBase
 $script:LeaseStore = $LeaseStore
-$script:RestoredSettingsKeys = @(
-    "enabled_accessibility_services", "accessibility_enabled", "stay_on_while_plugged_in",
-    "accelerometer_rotation", "user_rotation", "screen_off_timeout", "zen_mode"
-)
+# Each restored key lives in its own settings table; writing all of them to `global` restores nothing
+# for the accessibility (secure) and rotation/timeout (system) keys (#797 item 3).
+$script:RestoredSettingsTables = [ordered]@{
+    enabled_accessibility_services = "secure"
+    accessibility_enabled = "secure"
+    stay_on_while_plugged_in = "global"
+    accelerometer_rotation = "system"
+    user_rotation = "system"
+    screen_off_timeout = "system"
+    zen_mode = "global"
+}
+$script:RestoredSettingsKeys = @($script:RestoredSettingsTables.Keys)
 $script:SafeContentColumns = @("_id", "count", "date", "timestamp", "type", "blocked", "category", "duration")
 
 function Assert-ScenarioCommand {
     param([Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Command, [string]$Package)
     if ($Command.Count -eq 0) { throw "empty_adb_command" }
     $c = @($Command | ForEach-Object { "$_".ToLowerInvariant() })
-    if ($c -contains "-s") { throw "manifest_serial_not_allowed" }
-    foreach ($verb in @("connect", "disconnect", "tcpip", "usb", "kill-server", "reconnect", "date", "reboot", "svc", "cmd", "uiautomator")) {
-        if ($c -contains $verb) { throw "device_connection_or_clock_change_refused" }
+    # adb joins the `shell` arguments into one command line and the phone's sh parses that line again,
+    # so checking the array alone is bypassed by one element like "dpm remove-active-admin ...".
+    # Every element is split on whitespace before checking, and shell metacharacters are refused (#797 item 2).
+    $flat = @(foreach ($element in $c) { @([regex]::Split($element, "\s+") | Where-Object { $_ }) })
+    foreach ($element in $Command) {
+        if ("$element" -match '[;&|$`<>]') { throw "shell_metacharacter_refused" }
     }
-    if (($c -contains "sh" -or $c -contains "bash" -or $c -contains "cmd") -and $c -contains "-c") { throw "shell_evaluation_refused" }
-    if ($c -contains "dpm" -and $c -notcontains "list-owners") { throw "device_admin_change_refused" }
-    if ($c -contains "wm") { throw "unrestored_window_change_refused" }
-    if ($c -contains "am" -and $c -contains "broadcast" -and @($c | Where-Object { $_ -like "*airplane_mode*" }).Count) {
-        throw "radio_change_refused"
+    if ($flat -contains "-s") { throw "manifest_serial_not_allowed" }
+    if ($flat -ccontains "-t") { throw "transport_flag_refused" }
+    foreach ($element in $Command) { if ("$element" -cin @("-H", "-P")) { throw "transport_flag_refused" } }
+    foreach ($verb in @("connect", "disconnect", "tcpip", "usb", "kill-server", "reconnect", "date", "reboot", "reboot-bootloader", "root", "remount", "sideload", "svc", "cmd", "uiautomator")) {
+        if ($flat -contains $verb) { throw "device_connection_or_clock_change_refused" }
     }
-    if ($c -contains "settings") {
-        $put = [Array]::IndexOf($c, "put")
-        if ($put -ge 0) {
-            if ($put + 2 -ge $c.Count) { throw "malformed_settings_change" }
-            $key = $c[$put + 2]
-            if ($key -in @("auto_time", "auto_time_zone", "time_zone", "airplane_mode_on")) { throw "clock_or_radio_change_refused" }
-            if ($key -notin $script:RestoredSettingsKeys) { throw "setting_not_in_restore_set" }
+    for ($i = 0; $i -lt $flat.Count; $i++) {
+        if ($flat[$i] -in @("install", "uninstall") -and ($i -eq 0 -or $flat[$i - 1] -ne "pm")) {
+            throw "package_install_or_removal_refused"
         }
     }
-    $input = [Array]::IndexOf($c, "input")
-    if ($input -ge 0 -and $input + 2 -lt $c.Count -and $c[$input + 1] -eq "text") {
-        if (($Command[($input + 2)..($Command.Count - 1)] -join " ") -match "\d{4,}") { throw "pin_input_refused" }
+    if (($flat -contains "sh" -or $flat -contains "bash" -or $flat -contains "cmd") -and $flat -contains "-c") { throw "shell_evaluation_refused" }
+    $dpm = [Array]::IndexOf($flat, "dpm")
+    if ($dpm -ge 0 -and ($dpm + 1 -ge $flat.Count -or $flat[$dpm + 1] -ne "list-owners")) { throw "device_admin_change_refused" }
+    if ($flat -contains "wm") { throw "unrestored_window_change_refused" }
+    if ($flat -contains "am" -and $flat -contains "broadcast" -and @($flat | Where-Object { $_ -like "*airplane_mode*" }).Count) {
+        throw "radio_change_refused"
     }
-    if ($input -ge 0 -and $input + 2 -lt $c.Count -and $c[$input + 1] -eq "keyevent") {
-        $keys = $c[($input + 2)..($c.Count - 1)]
-        if ($keys -contains "111") { throw "escape_key_refused" }
-        $digitKeys = @($keys | Where-Object { ($_ -match "^(?:[7-9]|1[0-6])$") -or ($_ -match "^keycode_[0-9]$") })
-        if ($keys.Count -gt 0 -and $digitKeys.Count -eq $keys.Count) { throw "pin_key_sequence_refused" }
+    if ($flat -contains "settings") {
+        $put = [Array]::IndexOf($flat, "put")
+        if ($put -ge 0) {
+            if ($put + 2 -ge $flat.Count) { throw "malformed_settings_change" }
+            $table = $flat[$put + 1]
+            $key = $flat[$put + 2]
+            if ($key -in @("auto_time", "auto_time_zone", "time_zone", "airplane_mode_on")) { throw "clock_or_radio_change_refused" }
+            if ($table -notin @("global", "secure", "system")) { throw "setting_table_refused" }
+            if ($key -notin $script:RestoredSettingsKeys) { throw "setting_not_in_restore_set" }
+            if ($table -ne $script:RestoredSettingsTables[$key]) { throw "setting_table_not_restored" }
+        }
     }
-    $pm = [Array]::IndexOf($c, "pm")
-    if ($pm -ge 0 -and $pm + 2 -lt $c.Count -and $c[$pm + 1] -in @("uninstall", "clear")) {
-        if ($c.Count -ne $pm + 3 -or -not $Package -or $c[$pm + 2] -ne $Package) { throw "package_removal_outside_scenario" }
+    $inputIndex = [Array]::IndexOf($flat, "input")
+    if ($inputIndex -ge 0 -and $inputIndex + 1 -lt $flat.Count -and $flat[$inputIndex + 1] -eq "text") {
+        $typed = @()
+        if ($inputIndex + 2 -lt $flat.Count) { $typed = @($flat[($inputIndex + 2)..($flat.Count - 1)]) }
+        if ((($typed -join " ") -match "\d{4,}") -or (($typed -join "") -match "\d{4,}")) { throw "pin_input_refused" }
+    }
+    if ($inputIndex -ge 0 -and $inputIndex + 1 -lt $flat.Count -and $flat[$inputIndex + 1] -eq "keyevent") {
+        $keys = @()
+        if ($inputIndex + 2 -lt $flat.Count) { $keys = @($flat[($inputIndex + 2)..($flat.Count - 1)]) }
+        if ($keys -contains "111" -or $keys -contains "keycode_escape") { throw "escape_key_refused" }
+        $digitKeys = @($keys | Where-Object { $_ -match "^(?:[7-9]|1[0-6]|keycode_[0-9])$" })
+        $otherKeys = @($keys | Where-Object { $_ -notmatch "^(?:[7-9]|1[0-6]|keycode_[0-9])$" -and $_ -notmatch "^(?:66|keycode_enter)$" })
+        if ($digitKeys.Count -ge 2 -and $otherKeys.Count -eq 0) { throw "pin_key_sequence_refused" }
+    }
+    $pm = [Array]::IndexOf($flat, "pm")
+    if ($pm -ge 0 -and $pm + 2 -lt $flat.Count -and $flat[$pm + 1] -in @("uninstall", "clear")) {
+        if ($flat.Count -ne $pm + 3 -or -not $Package -or $flat[$pm + 2] -ne $Package) { throw "package_removal_outside_scenario" }
     }
 }
 
@@ -171,6 +201,15 @@ function Resolve-ScenarioAdb {
         $candidates | Where-Object { $_.Source -match "\.(?:cmd|exe)$" } | Select-Object -First 1 -ExpandProperty Source
     } else { $candidates[0].Source }
     if (-not $resolved) { throw "adb_not_found" }
+    if ($script:DryRun) {
+        # A dry run on a PC with the phone attached must not drive the real device with no lease
+        # (#797 item 4): only the fixture binary is allowed.
+        $fakeDir = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "tests/fixtures/bin"))
+        $prefix = $fakeDir.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+        if (-not [IO.Path]::GetFullPath($resolved).StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "dry_run_requires_fake_adb"
+        }
+    }
     return $resolved
 }
 
@@ -232,7 +271,7 @@ function Invoke-ScenarioLease {
         if ($script:LeaseStore) { $lease.Store = $script:LeaseStore }
         if ($Action -eq "Release") { $lease.LeftState = $LeftState; $lease.Note = $Note }
         & (Join-Path $PSScriptRoot "phone-claim.ps1") @lease
-        if ($LASTEXITCODE -ne 0) { throw "phone_lease_$Action_failed" }
+        if ($LASTEXITCODE -ne 0) { throw "phone_lease_${Action}_failed" }
     }
     $record = [pscustomobject]@{ Action = $Action; LeftState = $LeftState; Note = $Note }
     $script:LeaseCalls += $record
@@ -308,7 +347,8 @@ function Get-ScenarioBeforeState {
     $values.SYSTEM_ALERT_WINDOW = (Invoke-Adb -Command @("shell", "appops", "get", $script:Package, "SYSTEM_ALERT_WINDOW")).Output.Trim()
     $values.locale = (Invoke-Adb -Command @("shell", "getprop", "persist.sys.locale")).Output.Trim()
     foreach ($key in $script:RestoredSettingsKeys) {
-        $values[$key] = (Invoke-Adb -Command @("shell", "settings", "get", "global", $key)).Output.Trim()
+        $table = $script:RestoredSettingsTables[$key]
+        $values[$key] = (Invoke-Adb -Command @("shell", "settings", "get", $table, $key)).Output.Trim()
     }
     return [pscustomobject]@{ lockState = (Get-ScenarioLockState); values = $values }
 }
@@ -413,6 +453,10 @@ function Invoke-ScenarioSteps {
     $captures = [ordered]@{}
     $records = @()
     for ($i = 0; $i -lt $Steps.Count; $i++) {
+        if ($script:Deadline -and [DateTime]::UtcNow -gt $script:Deadline) {
+            return [pscustomobject]@{ completed = $false; captures = $captures; steps = $records; error = "scenario_timeout" }
+        }
+        Invoke-ScenarioLease -Action Heartbeat | Out-Null
         $step = $Steps[$i]
         try {
             Assert-ScenarioStep -Step $step -Package $script:Package
@@ -519,7 +563,8 @@ function Restore-ScenarioState {
         catch { $failures += "locale" }
     }
     foreach ($key in $script:RestoredSettingsKeys) {
-        try { Invoke-Adb -Command @("shell", "settings", "put", "global", $key, "$($values[$key])") | Out-Null }
+        $table = $script:RestoredSettingsTables[$key]
+        try { Invoke-Adb -Command @("shell", "settings", "put", $table, $key, "$($values[$key])") | Out-Null }
         catch { $failures += $key }
     }
     $after = Get-ScenarioBeforeState
@@ -549,6 +594,8 @@ function Invoke-ScenarioRun {
     if ($PSBoundParameters.ContainsKey("DryRun")) { $script:DryRun = [bool]$DryRun }
     $script:ActiveManifest = $Manifest
     $script:Package = $Manifest.package
+    if ($script:ApiBase) { Assert-HealthUrl -Url $script:ApiBase }
+    $script:Deadline = if ($Manifest.PSObject.Properties.Name -contains "timeoutSeconds") { [DateTime]::UtcNow.AddSeconds([int]$Manifest.timeoutSeconds) } else { $null }
     $before = $null; $folder = $null; $eventProcess = $null; $restore = $null; $preflight = $null
     $stepResult = [pscustomobject]@{ completed = $false; captures = [ordered]@{}; steps = @(); error = "not_started" }
     try {

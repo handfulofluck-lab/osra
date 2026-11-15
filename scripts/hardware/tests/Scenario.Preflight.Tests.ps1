@@ -100,4 +100,33 @@ function Get-FakeCalls {
         { Invoke-Adb -Command @("shell", "wm", "density", "440") } | Should -Throw
         ((Get-FakeCalls | ConvertTo-Json -Compress) -match '"put"|"wm"') | Should -Be $false
     }
+
+    It "reads and restores every setting in its own table (#797 item 3)" {
+        $before = Get-ScenarioBeforeState
+        $restore = Restore-ScenarioState -Before $before
+        $restore.clean | Should -Be $true
+        $log = Get-Content -LiteralPath $env:FAKE_ADB_LOG -Raw
+        $log | Should -Match '"settings","get","secure","accessibility_enabled"'
+        $log | Should -Match '"settings","get","system","screen_off_timeout"'
+        $log | Should -Match '"settings","put","secure","accessibility_enabled"'
+        $log | Should -Match '"settings","put","system","screen_off_timeout"'
+        $log | Should -Match '"settings","put","global","zen_mode"'
+    }
+
+    It "refuses a dry run whose adb is not the fixture (#797 item 4)" {
+        $stub = Join-Path $TestDrive "not-fake"
+        New-Item -ItemType Directory -Path $stub -Force | Out-Null
+        if ($env:OS -eq "Windows_NT") {
+            Set-Content -LiteralPath (Join-Path $stub "adb.cmd") -Value "@echo off`nexit /b 0"
+        } else {
+            $path = Join-Path $stub "adb"
+            Set-Content -LiteralPath $path -Value "#!/bin/sh`nexit 0"
+            if ($IsLinux) { & /bin/chmod +x $path }
+        }
+        $env:PATH = "$stub$([IO.Path]::PathSeparator)$env:PATH"
+        $thrown = $null
+        try { Invoke-Adb -Command @("shell", "getprop", "ro.product.model") | Out-Null }
+        catch { $thrown = [string]$_.Exception.Message }
+        $thrown | Should -Be "dry_run_requires_fake_adb"
+    }
 }

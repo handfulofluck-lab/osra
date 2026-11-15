@@ -91,4 +91,22 @@ function Initialize-RunFake {
         ($log | Select-String -SimpleMatch '"settings","put","global","zen_mode","0"').Count | Should -Be 1
         ($log | Select-String -SimpleMatch '"settings","put","global","zen_mode"').Count | Should -Be 2
     }
+
+    It "heartbeats the lease before a step (#797)" {
+        $script:LeaseCalls = @()
+        $script:Deadline = $null
+        $result = Invoke-ScenarioSteps -Steps @([pscustomobject]@{ type = "wait"; seconds = 0 }) -Evidence $TestDrive -LockState $false
+        $result.completed | Should -Be $true
+        @($script:LeaseCalls | Where-Object { $_.Action -eq "Heartbeat" }).Count | Should -Be 1
+    }
+
+    It "stops at the manifest timeout instead of outlasting the lease (#797)" {
+        $script:LeaseCalls = @()
+        $script:Deadline = [DateTime]::UtcNow.AddSeconds(-1)
+        try {
+            $result = Invoke-ScenarioSteps -Steps @([pscustomobject]@{ type = "wait"; seconds = 0 }) -Evidence $TestDrive -LockState $false
+        } finally { $script:Deadline = $null }
+        $result.completed | Should -Be $false
+        $result.error | Should -Be "scenario_timeout"
+    }
 }

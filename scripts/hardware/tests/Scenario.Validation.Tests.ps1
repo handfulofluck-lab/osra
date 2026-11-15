@@ -57,50 +57,87 @@ Describe "Scenario manifest shape and URL validation" {
         { Assert-ScenarioStep -Step ([pscustomobject]@{ type = "adb"; command = "shell getprop" }) } | Should -Throw
         { Assert-ScenarioStep -Step ([pscustomobject]@{ type = "screencap"; name = "../other.png" }) } | Should -Throw
     }
+
+    It "refuses an ApiBase outside the allowlist (#797)" {
+        $old = $script:ApiBase
+        try {
+            $script:ApiBase = "https://example.com"
+            { Invoke-ScenarioRun -Manifest (New-Manifest) -Out $TestDrive -DryRun } | Should -Throw
+        } finally { $script:ApiBase = $old }
+    }
 }
 
 Describe "Structural device and data refusals" {
     $cases = @(
-        @{ name = "clock date"; args = @("shell", "date") },
-        @{ name = "alarm clock"; args = @("shell", "cmd", "alarm", "set-time", "12:00") },
-        @{ name = "auto time"; args = @("shell", "settings", "put", "global", "auto_time", "1") },
-        @{ name = "auto timezone"; args = @("shell", "settings", "put", "global", "auto_time_zone", "1") },
-        @{ name = "explicit timezone"; args = @("shell", "settings", "put", "global", "time_zone", "UTC") },
-        @{ name = "airplane setting"; args = @("shell", "settings", "put", "global", "airplane_mode_on", "1") },
-        @{ name = "admin removal"; args = @("shell", "dpm", "remove-active-admin", "test/.Admin") },
-        @{ name = "UI dump"; args = @("shell", "uiautomator", "dump") },
-        @{ name = "reboot"; args = @("shell", "reboot") },
-        @{ name = "digit text"; args = @("shell", "input", "text", "1234") },
-        @{ name = "embedded digit run"; args = @("shell", "input", "text", "safe1234text") },
-        @{ name = "escape key"; args = @("shell", "input", "keyevent", "111") },
-        @{ name = "numeric key sequence"; args = @("shell", "input", "keyevent", "7", "16") },
-        @{ name = "named key sequence"; args = @("shell", "input", "keyevent", "KEYCODE_0", "KEYCODE_9") },
-        @{ name = "serial override"; args = @("shell", "-s", "another-serial", "getprop") },
-        @{ name = "connect"; args = @("connect", "192.0.2.1:5555") },
-        @{ name = "disconnect"; args = @("disconnect") },
-        @{ name = "tcpip"; args = @("tcpip", "5555") },
-        @{ name = "usb"; args = @("usb") },
-        @{ name = "kill server"; args = @("kill-server") },
-        @{ name = "reconnect"; args = @("reconnect") },
-        @{ name = "wifi service"; args = @("shell", "svc", "wifi", "disable") },
-        @{ name = "data service"; args = @("shell", "svc", "data", "disable") },
-        @{ name = "bluetooth service"; args = @("shell", "svc", "bluetooth", "disable") },
-        @{ name = "cmd wifi"; args = @("shell", "cmd", "wifi", "scan") },
-        @{ name = "cmd connectivity"; args = @("shell", "cmd", "connectivity", "check") },
-        @{ name = "airplane broadcast"; args = @("shell", "am", "broadcast", "-a", "android.intent.action.AIRPLANE_MODE") },
-        @{ name = "unsaved setting"; args = @("shell", "settings", "put", "global", "volume_music", "1") },
-        @{ name = "window size"; args = @("shell", "wm", "size", "1080x2400") },
-        @{ name = "window density"; args = @("shell", "wm", "density", "440") }
+        @{ name = "clock date"; command = @("shell", "date") },
+        @{ name = "alarm clock"; command = @("shell", "cmd", "alarm", "set-time", "12:00") },
+        @{ name = "auto time"; command = @("shell", "settings", "put", "global", "auto_time", "1") },
+        @{ name = "auto timezone"; command = @("shell", "settings", "put", "global", "auto_time_zone", "1") },
+        @{ name = "explicit timezone"; command = @("shell", "settings", "put", "global", "time_zone", "UTC") },
+        @{ name = "airplane setting"; command = @("shell", "settings", "put", "global", "airplane_mode_on", "1") },
+        @{ name = "admin removal"; command = @("shell", "dpm", "remove-active-admin", "test/.Admin") },
+        @{ name = "admin verb other than list-owners"; command = @("shell", "dpm", "set-active-admin", "test/.Admin") },
+        @{ name = "UI dump"; command = @("shell", "uiautomator", "dump") },
+        @{ name = "reboot"; command = @("shell", "reboot") },
+        @{ name = "reboot bootloader"; command = @("reboot-bootloader") },
+        @{ name = "root"; command = @("root") },
+        @{ name = "remount"; command = @("remount") },
+        @{ name = "install"; command = @("install", "/data/local/tmp/app.apk") },
+        @{ name = "top-level uninstall"; command = @("uninstall", "com.osratech.child.full") },
+        @{ name = "digit text"; command = @("shell", "input", "text", "1234") },
+        @{ name = "embedded digit run"; command = @("shell", "input", "text", "safe1234text") },
+        @{ name = "digits split by spaces"; command = @("shell", "input", "text", "1", "2", "3", "4") },
+        @{ name = "escape key"; command = @("shell", "input", "keyevent", "111") },
+        @{ name = "named escape key"; command = @("shell", "input", "keyevent", "KEYCODE_ESCAPE") },
+        @{ name = "numeric key sequence"; command = @("shell", "input", "keyevent", "7", "16") },
+        @{ name = "pin then enter"; command = @("shell", "input", "keyevent", "7", "8", "9", "10", "66") },
+        @{ name = "named key sequence"; command = @("shell", "input", "keyevent", "KEYCODE_0", "KEYCODE_9") },
+        @{ name = "one-element admin removal"; command = @("shell", "dpm remove-active-admin test/.Admin") },
+        @{ name = "one-element escape key"; command = @("shell", "input keyevent 111") },
+        @{ name = "one-element auto time"; command = @("shell", "settings put global auto_time 0") },
+        @{ name = "semicolon chain"; command = @("shell", "echo x;reboot") },
+        @{ name = "pipe chain"; command = @("shell", "getprop | reboot") },
+        @{ name = "ampersand chain"; command = @("shell", "getprop & reboot") },
+        @{ name = "substitution"; command = @("shell", 'echo $(reboot)') },
+        @{ name = "backtick substitution"; command = @("shell", 'echo `reboot`') },
+        @{ name = "serial override"; command = @("shell", "-s", "another-serial", "getprop") },
+        @{ name = "transport flag t"; command = @("-t", "1", "shell", "getprop") },
+        @{ name = "transport flag H"; command = @("-H", "127.0.0.1", "shell", "getprop") },
+        @{ name = "transport flag P"; command = @("-P", "5037", "shell", "getprop") },
+        @{ name = "connect"; command = @("connect", "192.0.2.1:5555") },
+        @{ name = "disconnect"; command = @("disconnect") },
+        @{ name = "tcpip"; command = @("tcpip", "5555") },
+        @{ name = "usb"; command = @("usb") },
+        @{ name = "kill server"; command = @("kill-server") },
+        @{ name = "reconnect"; command = @("reconnect") },
+        @{ name = "wifi service"; command = @("shell", "svc", "wifi", "disable") },
+        @{ name = "data service"; command = @("shell", "svc", "data", "disable") },
+        @{ name = "bluetooth service"; command = @("shell", "svc", "bluetooth", "disable") },
+        @{ name = "cmd wifi"; command = @("shell", "cmd", "wifi", "scan") },
+        @{ name = "cmd connectivity"; command = @("shell", "cmd", "connectivity", "check") },
+        @{ name = "airplane broadcast"; command = @("shell", "am", "broadcast", "-a", "android.intent.action.AIRPLANE_MODE") },
+        @{ name = "unsaved setting"; command = @("shell", "settings", "put", "global", "volume_music", "1") },
+        @{ name = "restored key in the wrong table"; command = @("shell", "settings", "put", "global", "screen_off_timeout", "15000") },
+        @{ name = "window size"; command = @("shell", "wm", "size", "1080x2400") },
+        @{ name = "window density"; command = @("shell", "wm", "density", "440") }
     )
-    foreach ($case in $cases) {
-        It "refuses $($case.name), including a nested wrapper" {
-            { Assert-ScenarioCommand -Command $case.args } | Should -Throw
-            { Assert-ScenarioCommand -Command (@("exec-out") + $case.args) } | Should -Throw
-        }
+    It "refuses <name>, wrapped or not" -ForEach $cases {
+        param($name, $command)
+        { Assert-ScenarioCommand -Command $command } | Should -Throw
+        { Assert-ScenarioCommand -Command (@("exec-out") + $command) } | Should -Throw
     }
 
-    It "permits a read-only settings get" {
-        { Assert-ScenarioCommand -Command @("shell", "settings", "get", "global", "auto_time") } | Should -Not -Throw
+    It "permits read-only commands, the screenshot flag and every restored key in its own table" {
+        foreach ($command in @(
+            @("shell", "dpm", "list-owners"),
+            @("shell", "settings", "get", "global", "auto_time"),
+            @("exec-out", "screencap", "-p"),
+            @("shell", "settings", "put", "system", "screen_off_timeout", "15000"),
+            @("shell", "settings", "put", "secure", "accessibility_enabled", "1"),
+            @("shell", "settings put system screen_off_timeout 15000"),
+            @("shell", "input", "text", "hello"),
+            @("shell", "input", "keyevent", "7")
+        )) { { Assert-ScenarioCommand -Command $command } | Should -Not -Throw }
     }
 
     It "requires nonpersonal content and a safe projection" {
