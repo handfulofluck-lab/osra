@@ -100,6 +100,8 @@ Describe "Structural device and data refusals" {
         @{ name = "ampersand chain"; command = @("shell", "getprop & reboot") },
         @{ name = "substitution"; command = @("shell", 'echo $(reboot)') },
         @{ name = "backtick substitution"; command = @("shell", 'echo `reboot`') },
+        @{ name = "newline inside an element"; command = @("shell", "getprop`nreboot") },
+        @{ name = "tab inside an element"; command = @("shell", "getprop`treboot") },
         @{ name = "serial override"; command = @("shell", "-s", "another-serial", "getprop") },
         @{ name = "transport flag t"; command = @("-t", "1", "shell", "getprop") },
         @{ name = "transport flag H"; command = @("-H", "127.0.0.1", "shell", "getprop") },

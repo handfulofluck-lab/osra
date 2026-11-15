@@ -42,6 +42,7 @@ function Assert-ScenarioCommand {
     $flat = @(foreach ($element in $c) { @([regex]::Split($element, "\s+") | Where-Object { $_ }) })
     foreach ($element in $Command) {
         if ("$element" -match '[;&|$`<>]') { throw "shell_metacharacter_refused" }
+        if (@($element.ToCharArray() | Where-Object { [char]::IsControl($_) }).Count -gt 0) { throw "control_character_refused" }
     }
     if ($flat -contains "-s") { throw "manifest_serial_not_allowed" }
     if ($flat -ccontains "-t") { throw "transport_flag_refused" }
