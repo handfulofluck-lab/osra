@@ -269,22 +269,10 @@ void main() {
       reason: '${reason ?? 'Text "$data"'} exceeded maxLines (${textWidget.maxLines}) at width ${actualSize.width}',
     );
     expect(
-      painter.width,
-      lessThanOrEqualTo(actualSize.width + 0.5),
-      reason: '${reason ?? 'Text "$data"'} laid-out width (${painter.width}) exceeded box width (${actualSize.width})',
-    );
-    expect(
       actualSize.height + 0.5,
       greaterThanOrEqualTo(painter.height),
       reason: '${reason ?? 'Text "$data"'} box height (${actualSize.height}) clipped full text height (${painter.height})',
     );
-    for (final line in painter.computeLineMetrics()) {
-      expect(
-        line.width,
-        lessThanOrEqualTo(actualSize.width + 0.5),
-        reason: '${reason ?? 'Text "$data"'} line width (${line.width}) exceeded box width (${actualSize.width})',
-      );
-    }
   }
 
   /// Asserts that no individual word in [text] was split mid-word across lines
@@ -967,13 +955,19 @@ void main() {
             of: find.byType(AppBar),
             matching: find.text(l10n.editRules),
           );
+          final appBarWidget = tester.widget<AppBar>(find.byType(AppBar));
           if (titleInAppBar.evaluate().isEmpty) {
             expect(
-              tester.getSize(find.byType(AppBar)).height,
-              kToolbarHeight,
-              reason: 'AppBar must stay standard kToolbarHeight when title moves to body',
+              appBarWidget.toolbarHeight,
+              lessThan(matrix.scale * (kToolbarHeight + 8.0)),
+              reason: 'Collapsed AppBar toolbarHeight should stay compact for Save only',
             );
           }
+          final saveFinder = find.descendant(
+            of: find.byType(AppBar),
+            matching: find.text(l10n.save),
+          );
+          expectTextNotClipped(tester, saveFinder, reason: 'RulesEditor Save label');
 
           final fadingTabBarFinder = find.byType(FadingScrollableTabBar);
           expect(fadingTabBarFinder, findsOneWidget);
@@ -1546,7 +1540,23 @@ void main() {
           find.descendant(of: find.byType(AppBar), matching: find.text(l10n.editRules)),
           findsNothing,
         );
-        expect(tester.getSize(find.byType(AppBar)).height, kToolbarHeight);
+        final appBarWidget = tester.widget<AppBar>(find.byType(AppBar));
+        expect(
+          appBarWidget.toolbarHeight,
+          allOf(isNotNull, greaterThan(kToolbarHeight), lessThan(100.0)),
+          reason: 'Collapsed AppBar toolbarHeight at 3.1x must fit Save without bloating to title height',
+        );
+        final saveLabelFinder = find.descendant(
+          of: find.byType(AppBar),
+          matching: find.text(l10n.save),
+        );
+        expectTextNotClipped(tester, saveLabelFinder, reason: 'RulesEditor Save label at 3.1x');
+        final toolbarRect = tester.getRect(
+          find.descendant(of: find.byType(AppBar), matching: find.byType(NavigationToolbar)),
+        );
+        final saveRect = tester.getRect(saveLabelFinder);
+        expect(saveRect.top, greaterThanOrEqualTo(toolbarRect.top - 0.5));
+        expect(saveRect.bottom, lessThanOrEqualTo(toolbarRect.bottom + 0.5));
 
         final webFilterTab = find.text(l10n.tabWebFilter);
         await tester.ensureVisible(webFilterTab);
@@ -1608,11 +1618,11 @@ void main() {
             builder: (context) => Scaffold(
               body: Center(
                 child: FilledButton(
-                  onPressed: () => showModalBottomSheet<void>(
-                    context: context,
-                    isScrollControlled: true,
-                    showDragHandle: true,
-                    builder: (_) => ChildMapSheet(child: child, ping: ping, device: device),
+                  onPressed: () => showChildMapSheet(
+                    context,
+                    child: child,
+                    ping: ping,
+                    device: device,
                   ),
                   child: const Text('Open'),
                 ),

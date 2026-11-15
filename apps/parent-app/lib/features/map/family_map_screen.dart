@@ -386,14 +386,24 @@ class _MapBodyState extends ConsumerState<_MapBody> {
 
   void _showChildSheet(BuildContext context, WidgetRef ref, Child child, LocationPing ping) {
     final device = widget.overview.devicesFor(child.id).firstOrNull;
-    showModalBottomSheet(
+    showChildMapSheet(context, child: child, ping: ping, device: device);
+  }
+}
+
+/// Opens the child location marker bottom sheet using the production sheet
+/// configuration (`isScrollControlled: true`, drag handle).
+Future<void> showChildMapSheet(
+  BuildContext context, {
+  required Child child,
+  required LocationPing ping,
+  Device? device,
+}) =>
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (sheetContext) => ChildMapSheet(child: child, ping: ping, device: device),
+      builder: (_) => ChildMapSheet(child: child, ping: ping, device: device),
     );
-  }
-}
 
 /// Feature #21: fit the camera so all [points] are visible. No-ops without a
 /// controller or with fewer than two points; animateCamera failures are

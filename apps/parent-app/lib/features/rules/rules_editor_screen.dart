@@ -116,18 +116,27 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
 
   Future<TimeOfDay?> _pickTime(TimeOfDay initial) => showTimePicker(context: context, initialTime: initial);
 
-  bool _titleFitsInAppBar(BuildContext context, AppLocalizations l10n, double toolbarHeight) {
+  Size _measureSaveLabel(BuildContext context, AppLocalizations l10n) {
+    final painter = TextPainter(
+      text: TextSpan(text: l10n.save, style: Theme.of(context).textTheme.labelLarge),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    return painter.size;
+  }
+
+  bool _titleFitsInAppBar(
+    BuildContext context,
+    AppLocalizations l10n,
+    double toolbarHeight,
+    double saveWidth,
+  ) {
     final textScaler = MediaQuery.textScalerOf(context);
     final titleStyle = Theme.of(context).appBarTheme.titleTextStyle ??
         Theme.of(context).textTheme.titleLarge ??
         const TextStyle(fontSize: 22);
-    final savePainter = TextPainter(
-      text: TextSpan(text: l10n.save, style: Theme.of(context).textTheme.labelLarge),
-      textDirection: Directionality.of(context),
-      textScaler: textScaler,
-      maxLines: 1,
-    )..layout();
-    final saveAllowance = savePainter.width + AppSpace.xl * 2 + AppSpace.sm + AppSpace.lg;
+    final saveAllowance = saveWidth + AppSpace.xl * 2 + AppSpace.sm + AppSpace.lg;
     const leadingAllowance = kToolbarHeight + AppSpace.lg;
     final availableTitleWidth = math.max(0.0, MediaQuery.sizeOf(context).width - leadingAllowance - saveAllowance);
     if (availableTitleWidth <= 0) return false;
@@ -146,11 +155,13 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
     final rules = ref.watch(rulesProvider(widget.childId));
     ref.listen(rulesProvider(widget.childId), (_, next) => next.whenData(_applyLoaded));
     final textScaler = MediaQuery.textScalerOf(context);
-    final toolbarHeight = math.max(kToolbarHeight, textScaler.scale(kToolbarHeight + AppSpace.sm));
-    final titleInAppBar = _titleFitsInAppBar(context, l10n, toolbarHeight);
+    final saveSize = _measureSaveLabel(context, l10n);
+    final expandedToolbarHeight = math.max(kToolbarHeight, textScaler.scale(kToolbarHeight + AppSpace.sm));
+    final titleInAppBar = _titleFitsInAppBar(context, l10n, expandedToolbarHeight, saveSize.width);
+    final collapsedToolbarHeight = math.max(kToolbarHeight, saveSize.height + AppSpace.lg).ceilToDouble();
     return Scaffold(
       appBar: AppBar(
-        toolbarHeight: titleInAppBar ? toolbarHeight : null,
+        toolbarHeight: titleInAppBar ? expandedToolbarHeight : collapsedToolbarHeight,
         title: titleInAppBar ? Text(l10n.editRules, maxLines: 2, overflow: TextOverflow.ellipsis) : null,
         actions: [
           if (_saving)
