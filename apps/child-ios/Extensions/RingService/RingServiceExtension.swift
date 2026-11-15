@@ -4,8 +4,8 @@ import UserNotifications
 /// #760 redesign: the notification service extension for the ring push. A physical-device row proved
 /// a priority-5 background push cannot wake a locked/suspended/force-quit iPhone, so the server sends
 /// a visible time-sensitive alert with a bundled sound (`ring.wav`). This extension only ensures the
-/// title and body are localized and that the sound is preserved; it does **not** call AlarmKit or
-/// poll the command channel. The full AlarmKit ring starts only when the app process launches.
+/// title and body are localized and that the sound is preserved; it does **not** call the ring backend or
+/// poll the command channel. The full ring alarm starts only when the app process launches.
 final class RingServiceExtension: UNNotificationServiceExtension {
     private var contentHandler: ((UNNotificationContent) -> Void)?
     private var bestAttemptContent: UNMutableNotificationContent?
