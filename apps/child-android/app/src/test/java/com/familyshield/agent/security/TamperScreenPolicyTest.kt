@@ -667,6 +667,24 @@ class TamperScreenPolicyTest {
         )
     }
 
+    /**
+     * And U+061C, the Arabic letter mark, which `normalize()` drops for the same reason. The mark sits inside the
+     * phrase, so the row fails if the strip is removed.
+     */
+    @Test
+    fun `the Arabic letter mark does not break a phrase`() {
+        assertEquals(
+            TamperScreen.SPECIAL_ACCESS,
+            TamperScreenPolicy.classify(
+                "com.android.settings",
+                listOf<CharSequence>("OSRA", "الوصول إلى بيانات\u061C استخدام التطبيق", "مسموح"),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                ourSpecialAccess = setOf(TamperScreenPolicy.SpecialAccess.USAGE),
+            ),
+        )
+    }
+
     /** Each phrase the Arabic Language Bureau confirmed, fed through `classify()` as the screen shows it. */
     @Test
     fun `every confirmed Arabic phrase is guarded`() {
@@ -705,6 +723,44 @@ class TamperScreenPolicyTest {
         }
         for (phrase in listOf("Device & app notifications", "Notification read, reply & control")) {
             assertEquals(phrase, TamperScreen.SPECIAL_ACCESS, en(TamperScreenPolicy.SpecialAccess.NOTIFICATIONS, "OSRA", phrase))
+        }
+    }
+
+    /**
+     * The VPN management pages, one row per phrase the Bureau quoted (private note on osra-security#29, 2026-11-15).
+     * Each row feeds the string as the page renders it, so removing or misspelling that phrase in the policy turns the
+     * row red — which is what "the phrase is listed" has to mean if it is to mean anything.
+     *
+     * Mutant: delete `نسيان شبكة vpn` from the policy → the "forget network" row goes NONE.
+     */
+    @Test
+    fun `each Arabic VPN management phrase is guarded`() {
+        fun vpn(vararg texts: String) =
+            TamperScreenPolicy.classify(
+                "com.android.settings", texts.toList(), agent, admin, pkg,
+                ourAdminActive = true, ourSpecialAccess = setOf(TamperScreenPolicy.SpecialAccess.VPN),
+            )
+        val phrases = listOf(
+            "always-on, 12" to "شبكة VPN قيد التشغيل دائمًا",
+            "always-on, short form" to "VPN) قيد التشغيل دائمًا",
+            "always-on, 14-16" to "VPN) دائمة التفعيل",
+            "forget, 12-14" to "نسيان شبكة VPN",
+            "forget, 15-16" to "نسيان الشبكة الافتراضية الخاصة",
+            "profile, 12-14" to "ملف شبكة VPN",
+            "profile, 15-16" to "ملف الشبكة الافتراضية الخاصة",
+            "stay connected, all" to "متابعة الاتصال بشبكة VPN في جميع الأوقات",
+        )
+        for ((label, phrase) in phrases) {
+            assertEquals(label, TamperScreen.SPECIAL_ACCESS, vpn("OSRA", phrase, "مسموح"))
+            // The same page for an access we do not hold is the grant, not the tamper.
+            assertEquals(
+                "$label, not held yet",
+                TamperScreen.NONE,
+                TamperScreenPolicy.classify(
+                    "com.android.settings", listOf<CharSequence>("OSRA", phrase, "مسموح"), agent, admin, pkg,
+                    ourAdminActive = true, ourSpecialAccess = emptySet(),
+                ),
+            )
         }
     }
 }

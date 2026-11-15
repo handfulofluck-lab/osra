@@ -103,8 +103,11 @@ object TamperScreenPolicy {
         ),
         SpecialAccess.USAGE to listOf(
             "usage access", "usage data access",
-            // 16 renamed the page and its switch
-            "app usage data", "permit access to app usage data",
+            // 16 renamed the page and its switch. The switch's own label is "Permit access to app usage data", which
+            // contains this phrase, so it is not listed twice: a duplicate entry here would make its test row pass
+            // even after the entry it claims to cover was removed. `every new English phrase is guarded` feeds the
+            // longer label and shows it is matched by the shorter phrase.
+            "app usage data",
             // 12–15 title, and the 16 title and switch
             "الوصول الى بيانات الاستخدام",
             "الوصول الى بيانات استخدام التطبيق",
@@ -117,12 +120,21 @@ object TamperScreenPolicy {
             "device & app notifications", "notification read, reply & control",
         ),
         SpecialAccess.VPN to listOf(
-            // No Arabic here yet, and that is deliberate: the Bureau described its per-version phrases by meaning
-            // (always-on, forget, edit profile, stay always connected) without quoting the strings, and inventing
-            // them is how the last five went wrong. They land with the Flip4 dump.
             // Review of osra-security#29: bare "vpn" matched any Settings page where a third-party VPN app
-            // scrolled into view, so only the management actions count.
+            // scrolled into view, so only the management actions count, and each phrase names one.
             "always-on vpn", "forget vpn", "delete vpn", "vpn profile", "disconnect vpn",
+            // The per-version management phrases, quoted verbatim from Google's `values-ar` (12 to 16) by the Arabic
+            // Language Bureau and folded with `normalize()` — which is why "VPN" reads "vpn" and the tanween is gone.
+            // Always-on (12, 13, 14–16, and the short form), forget (12–14, 15–16), profile (12–14, 15–16), and
+            // stay-connected (all). Two keep the closing bracket the quoted string carries.
+            "شبكة vpn قيد التشغيل دائما",
+            "vpn) قيد التشغيل دائما",
+            "vpn) دائمة التفعيل",
+            "نسيان شبكة vpn",
+            "نسيان الشبكة الافتراضية الخاصة",
+            "ملف شبكة vpn",
+            "ملف الشبكة الافتراضية الخاصة",
+            "متابعة الاتصال بشبكة vpn في جميع الاوقات",
         ),
     )
 
