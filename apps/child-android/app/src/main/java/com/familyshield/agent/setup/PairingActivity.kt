@@ -33,6 +33,7 @@ import com.familyshield.agent.network.ServerUrls
 import com.familyshield.agent.security.AdminEnrolmentMessages
 import com.familyshield.agent.security.AdminEnrolmentPolicy
 import com.familyshield.agent.security.DeviceAdminManager
+import com.familyshield.agent.security.Digits
 import com.familyshield.agent.security.EnrolmentOutcome
 import com.familyshield.agent.security.ParentPin
 import com.familyshield.agent.security.ParentPinStore
@@ -460,7 +461,7 @@ class PairingActivity : ComponentActivity() {
             error.visibility = View.VISIBLE
             return
         }
-        val code = enteredCode.trim()
+        val code = Digits.normalize(enteredCode.trim())
         if (!code.matches(Regex("\\d{6}"))) {
             error.text = getString(R.string.pair_error_code)
             error.visibility = View.VISIBLE
@@ -524,8 +525,8 @@ class PairingActivity : ComponentActivity() {
                 Button(this@PairingActivity).apply {
                     text = getString(R.string.pair_pin_save)
                     setOnClickListener {
-                        val p = pin.text.toString()
-                        val reason = ParentPin.validationError(p) ?: if (p != again.text.toString()) getString(R.string.pair_pin_mismatch) else null
+                        val p = Digits.normalize(pin.text.toString())
+                        val reason = ParentPin.validationError(p) ?: if (p != Digits.normalize(again.text.toString())) getString(R.string.pair_pin_mismatch) else null
                         if (reason != null) {
                             error.text = reason
                             error.visibility = View.VISIBLE
