@@ -43,17 +43,17 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
         val childId = settings.childId() ?: return Result.success() // not paired: nobody to tell
         val deviceId = settings.deviceId()
         val guardWindow = guardWindow()
-        val dedupeKey = when (type) {
-            TYPE_ADMIN_REMOVED -> TamperAlertDedupe.adminRemovalKey(deviceId, eventTimestamp())
-            TYPE_GUARD_TRIGGERED -> guardWindow?.let {
-                TamperAlertDedupe.guardAggregateKey(deviceId, it.windowStartMs)
-            }
-            // Not eventTimestamp(): its fallback stamps the admin-disable time, which is not this event's.
-            TYPE_BLOCK_BYPASS -> TamperAlertDedupe.blockBypassKey(deviceId, app, layout, inputData.getLong(KEY_EVENT_AT_MS, 0L))
-            // U1 (Antigravity): without this the key was computed nowhere, so the unbind alert had no dedupe.
-            TYPE_ACCESSIBILITY_OFF -> TamperAlertDedupe.accessibilityOffKey(deviceId, inputData.getLong(KEY_EVENT_AT_MS, 0L))
-            else -> null
-        }
+        val dedupeKey = dedupeKeyFor(
+            type = type,
+            deviceId = deviceId,
+            guardWindow = guardWindow,
+            app = app,
+            layout = layout,
+            // The block-bypass and unbind keys use the event's own time, never eventTimestamp(): its fallback
+            // stamps the admin-disable time, which is not this event's.
+            eventAtMs = inputData.getLong(KEY_EVENT_AT_MS, 0L),
+            adminRemovedAtMs = eventTimestamp(),
+        )
         // The window key is stable across attempts; the local key adds the count so attempt N+1 is
         // posted and a WorkManager retry of attempt N is not.
         val postKey = if (type == TYPE_GUARD_TRIGGERED && guardWindow != null) {
@@ -96,7 +96,7 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             // osra-security#29 review (Claude): the unbind alert never gives up. The poll cannot take over — the
             // state is written before the POST — so a capped retry would mean an offline phone tells nobody. The
             // dedupe key makes a repeat safe.
-            if (runAttemptCount < 5 || type == TYPE_ACCESSIBILITY_OFF) Result.retry() else Result.failure()
+            if (shouldRetry(type, runAttemptCount)) Result.retry() else Result.failure()
         }
     }
 
@@ -185,6 +185,37 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
          * therefore unique per window: REPLACE still coalesces inside a window (newest count wins),
          * and a new window no longer cancels the old one. Every other type keeps the old name.
          */
+        /**
+         * #813 review (Claude): the dedupe key as a pure function, so a test can drive it. It used to be computed
+         * inline, and a row that only read the source could not tell a deleted branch from a wired one — the two
+         * types below were exactly that mistake.
+         */
+        internal fun dedupeKeyFor(
+            type: String,
+            deviceId: String?,
+            guardWindow: GuardAttemptWindow.State?,
+            app: String,
+            layout: String,
+            eventAtMs: Long,
+            adminRemovedAtMs: Long,
+        ): String? = when (type) {
+            TYPE_ADMIN_REMOVED -> TamperAlertDedupe.adminRemovalKey(deviceId, adminRemovedAtMs)
+            TYPE_GUARD_TRIGGERED -> guardWindow?.let { TamperAlertDedupe.guardAggregateKey(deviceId, it.windowStartMs) }
+            TYPE_BLOCK_BYPASS -> TamperAlertDedupe.blockBypassKey(deviceId, app, layout, eventAtMs)
+            TYPE_ACCESSIBILITY_OFF -> TamperAlertDedupe.accessibilityOffKey(deviceId, eventAtMs)
+            else -> null
+        }
+
+        /**
+         * Whether failing attempt N is worth another try. The unbind alert never gives up: the poll reads the state
+         * this worker writes, so a capped retry would leave an offline phone telling nobody.
+         */
+        internal fun shouldRetry(type: String, runAttemptCount: Int): Boolean =
+            type == TYPE_ACCESSIBILITY_OFF || runAttemptCount < MAX_ATTEMPTS_PER_ALERT
+
+        /** How many times an ordinary tamper alert retries before giving up. */
+        internal const val MAX_ATTEMPTS_PER_ALERT = 5
+
         internal fun uniqueWorkName(type: String, windowStartMs: Long, app: String = ""): String = when {
             type == TYPE_GUARD_TRIGGERED && windowStartMs > 0L -> "tamper_alert_${type}_$windowStartMs"
             // Issue #175: one bypass per episode; a second app's episode must not cancel the first's retry.

@@ -1,0 +1,69 @@
+package com.familyshield.agent.security
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * #813 review (Claude): the worker's two decisions as pure functions.
+ *
+ * They were inline before, and the rows that covered them only read the source — deleting the `TYPE_ACCESSIBILITY_OFF`
+ * branch or the uncapped retry failed no test. These do.
+ *
+ * Mutants: drop the unbind branch from [TamperAlertWorker.dedupeKeyFor] → [the unbind key is the moment of the
+ * unbind]; use `eventTimestamp()` for it → same row; drop the unbind exemption from [TamperAlertWorker.shouldRetry]
+ * → [the unbind alert never gives up]; make it always true → [an ordinary alert still gives up after five tries].
+ */
+class TamperAlertWorkerPolicyTest {
+
+    private fun key(type: String, eventAtMs: Long = 5_000L, window: GuardAttemptWindow.State? = null) =
+        TamperAlertWorker.dedupeKeyFor(
+            type = type,
+            deviceId = "dev-1",
+            guardWindow = window,
+            app = "com.whatsapp",
+            layout = "split",
+            eventAtMs = eventAtMs,
+            adminRemovedAtMs = 9_999L,
+        )
+
+    @Test
+    fun `the unbind key is the moment of the unbind`() {
+        val first = key(TamperAlertWorker.TYPE_ACCESSIBILITY_OFF, eventAtMs = 5_000L)
+        val second = key(TamperAlertWorker.TYPE_ACCESSIBILITY_OFF, eventAtMs = 65_000L)
+        assertTrue("the device is in it", first!!.contains("dev-1"))
+        assertTrue("the type is in it", first.contains(TamperAlertWorker.TYPE_ACCESSIBILITY_OFF))
+        assertEquals("two unbinds are two keys", false, first == second)
+    }
+
+    @Test
+    fun `the guard window keys on its start, not on the attempt`() {
+        val window = GuardAttemptWindow.State(windowStartMs = 1_000L, count = 3)
+        assertEquals(key(TamperAlertWorker.TYPE_GUARD_TRIGGERED, window = window), key(TamperAlertWorker.TYPE_GUARD_TRIGGERED, window = window))
+        assertNull("no window, no key", key(TamperAlertWorker.TYPE_GUARD_TRIGGERED, window = null))
+    }
+
+    @Test
+    fun `an admin removal keys on when it happened`() {
+        assertTrue(key(TamperAlertWorker.TYPE_ADMIN_REMOVED)!!.contains("9999"))
+    }
+
+    @Test
+    fun `a type with no dedupe has no key`() {
+        assertNull(key(TamperAlertWorker.TYPE_VPN_REVOKED))
+    }
+
+    @Test
+    fun `the unbind alert never gives up`() {
+        assertTrue(TamperAlertWorker.shouldRetry(TamperAlertWorker.TYPE_ACCESSIBILITY_OFF, runAttemptCount = 0))
+        assertTrue("not even after twenty tries", TamperAlertWorker.shouldRetry(TamperAlertWorker.TYPE_ACCESSIBILITY_OFF, 20))
+    }
+
+    @Test
+    fun `an ordinary alert still gives up after five tries`() {
+        assertTrue(TamperAlertWorker.shouldRetry(TamperAlertWorker.TYPE_ADMIN_REMOVED, 4))
+        assertFalse(TamperAlertWorker.shouldRetry(TamperAlertWorker.TYPE_ADMIN_REMOVED, 5))
+    }
+}
