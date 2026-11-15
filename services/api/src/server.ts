@@ -26,6 +26,7 @@ import { startUsageRollupScheduler } from "./jobs/usageRollup.js";
 import { startDeviceSilenceScheduler } from "./jobs/deviceSilence.js";
 import { startMfaResetExpiryScheduler } from "./jobs/mfaResetExpiry.js";
 import { startRevokedTokenPruneScheduler } from "./jobs/revokedTokenPrune.js";
+import { startRingRepushScheduler } from "./jobs/ringRepush.js";
 import { sessionGuardHook } from "./middleware/sessionGuard.js";
 import { healthRoutes } from "./routes/health.js";
 import { registerErrorHandler } from "./lib/errorHandler.js";
@@ -161,3 +162,6 @@ startDeviceSilenceScheduler();
 startMfaResetExpiryScheduler();
 // ADR-0032: single-logout records are pruned once the token they revoked could no longer be shown.
 startRevokedTokenPruneScheduler();
+// #760 redesign: re-push an un-acked ring command every 30 s so a locked/suspended iPhone keeps
+// receiving time-sensitive alerts until the app wakes or the command expires.
+startRingRepushScheduler();
