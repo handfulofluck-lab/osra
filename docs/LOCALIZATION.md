@@ -473,7 +473,8 @@ A row here is final unless he says otherwise; if he does, the row moves to "Kari
 | Computer | «كمبيوتر», «أجهزة الكمبيوتر» | «حاسوب» | B (the word Google, Apple and Microsoft use in Arabic) |
 | Family plan (the subscription) | «خطة عائلية» | | B |
 | The parent app | «تطبيق الوالدين» | | K (#439) |
-| Tagline | «أسرة — رقابة أبوية لعائلتك» | | K (screen 01) |
+| Tagline | «أسرة — رقابة أبوية لعائلتك» | | K (screen 01). Kept on 15 Nov when the English lost its opening word (UI/UX row U26): the logo above it is in Latin letters, so this line is where the name is read in Arabic |
+| Text message plus confirmation (a consent method; was "SMS +") | «رسالة نصية مع تأكيد» | «رسالة نصية +» | B 15 Nov (UI/UX row U26, #650 comment 6888661876): a noun phrase like the other methods, no sign |
 | The family (account) | «العائلة» | «الأسرة» | K |
 | Parent or guardian | «وليّ الأمر», plural «أولياء الأمور» | «الآباء» alone; «الوصي» outside legal text | K 28 Oct |
 | Your parent (to a child) | «والدك أو والدتك» | «والديك» for one parent; «أبوك» | K 29 Oct |
