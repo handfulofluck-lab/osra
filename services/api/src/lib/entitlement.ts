@@ -69,9 +69,11 @@ class PrismaEntitlementStore implements EntitlementStore {
           if (existing && existing.lastVerifiedAt >= effectiveAt) return;
           // An undated revocation must not erase the expiry the store previously reported.
           const expiresAt = change.expiresAt === null ? existing?.expiresAt ?? null : new Date(change.expiresAt);
-          const firstEnd = isRevoking(change.state)
-            ? existing && isRevoking(existing.status as EntitlementState) ? existing.endedAt ?? existing.lastVerifiedAt : effectiveAt
-            : null;
+          const firstEnd = !isRevoking(change.state)
+            ? null
+            : change.state === "expired"
+              ? new Date(Math.min(expiresAt?.getTime() ?? effectiveAt.getTime(), effectiveAt.getTime()))
+              : existing && isRevoking(existing.status as EntitlementState) ? existing.endedAt ?? existing.lastVerifiedAt : effectiveAt;
           const data = {
             familyId: change.familyId,
             source: change.source,

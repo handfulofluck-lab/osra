@@ -70,6 +70,17 @@ describe("R3 review: immutable end of eligibility", () => {
     expect(await hasEnforcingPlan("fam-1", new Date("2026-11-15T10:01:00.000Z"))).toBe(false);
   });
 
+  it("uses the earlier store expiry when the first recorded state is already expired", async () => {
+    await revokeEntitlement({ ...base, state: "expired", expiresAt: "2026-10-01T00:00:00.000Z", effectiveAt: "2026-11-15T10:00:00.000Z" });
+    expect(prismaMock.familyPurchase.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        status: "expired",
+        endedAt: new Date("2026-10-01T00:00:00.000Z"),
+        lastVerifiedAt: new Date("2026-11-15T10:00:00.000Z"),
+      }),
+    });
+  });
+
   it.each(["P2002", "P2034"])("retries one %s conflict inside the store boundary", async (code) => {
     const transaction = prismaMock.$transaction.getMockImplementation()!;
     prismaMock.$transaction.mockRejectedValueOnce(Object.assign(new Error("synthetic conflict"), { code })).mockImplementation(transaction);
