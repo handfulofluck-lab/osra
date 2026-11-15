@@ -117,7 +117,9 @@ class ParentPinTest {
         val legacy = ParentPin.hashAsTyped("٤٧٢٩")
         assertEquals(ParentPin.Match.LEGACY_FORM, ParentPin.verifyMatch("٤٧٢٩", legacy))
         assertTrue(ParentPin.verify("٤٧٢٩", legacy))
-        assertTrue(ParentPin.verify("4729", legacy))
+        // A legacy hash is of the Arabic string: Western input has no as-typed form to try, so it
+        // matches only after the PIN has been typed the same way once (and the store upgrades it).
+        assertEquals(ParentPin.Match.NONE, ParentPin.verifyMatch("4729", legacy))
 
         val upgraded = ParentPin.upgradedStoredHashOnUse(ParentPin.Match.LEGACY_FORM, "٤٧٢٩")
         assertTrue(upgraded != null)
