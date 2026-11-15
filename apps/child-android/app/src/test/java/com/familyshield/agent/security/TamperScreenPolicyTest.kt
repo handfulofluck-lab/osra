@@ -137,6 +137,40 @@ class TamperScreenPolicyTest {
      * location. So the package alone is not enough: the management classes are guarded, the runtime prompt is
      * never a screen, and neither is the all-services accessibility list (gating it would block TalkBack).
      */
+    /**
+     * Antigravity's R2: onboarding opens this very page to grant background location, after the PIN is set. With no
+     * grant yet there is nothing to protect, and gating it would block the parent's own setup.
+     */
+    @Test
+    fun `the permission page is only guarded while we hold a location grant`() {
+        fun classifyWithGrant(granted: Boolean) = TamperScreenPolicy.classify(
+            "com.android.permissioncontroller",
+            listOf<CharSequence>("OSRA", "Location", "Allow all the time"),
+            agent, admin, pkg,
+            ourAdminActive = true,
+            windowClass = "ManagePermissionsActivity",
+            ourLocationActive = granted,
+        )
+        assertEquals("nothing to protect yet", TamperScreen.NONE, classifyWithGrant(false))
+        assertEquals("the grant is ours to protect", TamperScreen.PROTECTION_SETTINGS, classifyWithGrant(true))
+    }
+
+    /** Antigravity's R1: the never-list wins over the description text, not after it. */
+    @Test
+    fun `the list stays NONE even when the description is on screen`() {
+        assertEquals(
+            TamperScreen.NONE,
+            TamperScreenPolicy.classify(
+                "com.android.settings",
+                listOf<CharSequence>("Installed apps", "OSRA", "OSRA monitors app usage to enforce your parent's screen-time rules."),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                windowClass = "SecAccessibilityInstalledAppsActivity",
+                agentServiceDescription = "OSRA monitors app usage to enforce your parent's screen-time rules.",
+            ),
+        )
+    }
+
     @Test
     fun `the permission management pages are guarded, the runtime prompt and the lists are not`() {
         assertEquals(
