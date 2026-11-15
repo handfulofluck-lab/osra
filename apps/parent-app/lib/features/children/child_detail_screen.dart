@@ -38,7 +38,12 @@ class ChildDetailScreen extends ConsumerWidget {
       length: 5,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(child?.displayName ?? l10n.childFallback),
+          toolbarHeight: MediaQuery.textScalerOf(context).scale(kToolbarHeight + AppSpace.lg),
+          title: Text(
+            child?.displayName ?? l10n.childFallback,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
           // NOTE: scrollable — five labels no longer fit at 320px width.
           bottom: TabBar(
             isScrollable: true,
@@ -62,28 +67,16 @@ class ChildDetailScreen extends ConsumerWidget {
               icon: const Icon(Icons.saved_search_outlined),
               onPressed: () => context.push('/child/$childId/searches'),
             ),
-            // NOTE: the label clips at the left edge under about 360px (review
-            // render 03, 320px Arabic), so the narrow bar keeps the same action
-            // as a tooltipped icon -- the shape the other two actions use.
-            // The key stays on both so a test reaches the action at any width.
-            if (MediaQuery.sizeOf(context).width < 360)
-              IconButton(
-                key: const ValueKey('editRulesButton'),
-                tooltip: l10n.editRules,
-                icon: const Icon(Icons.rule),
-                onPressed: () => context.push('/child/$childId/rules'),
-              )
-            else
-              TextButton.icon(
-                key: const ValueKey('editRulesButton'),
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  visualDensity: VisualDensity.compact,
-                ),
-                onPressed: () => context.push('/child/$childId/rules'),
-                icon: const Icon(Icons.rule, size: 18),
-                label: Text(l10n.editRules),
+            IconButton(
+              key: const ValueKey('editRulesButton'),
+              tooltip: l10n.editRules,
+              icon: const Icon(Icons.rule),
+              constraints: const BoxConstraints(
+                minWidth: kMinInteractiveDimension,
+                minHeight: kMinInteractiveDimension,
               ),
+              onPressed: () => context.push('/child/$childId/rules'),
+            ),
           ],
         ),
         body: TabBarView(
@@ -112,17 +105,26 @@ class _OverviewTab extends ConsumerWidget {
     final devices = overview?.devicesFor(childId) ?? const <Device>[];
     final internetPaused = ref.watch(internetPausedProvider(childId)).valueOrNull ?? false;
     if (overview == null) return const Center(child: CircularProgressIndicator());
-    return ListView(
-      padding: const EdgeInsets.all(AppSpace.lg),
-      children: [
-        if (child != null)
-          Card(
-            child: ListTile(
-              leading: CircleAvatar(child: Text(child.initials)),
-              title: Text(child.displayName),
-              subtitle: Text(l10n.bornYear(child.birthYear)),
+    return SingleChildScrollView(
+      padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (child != null) ...[
+            Card(
+              child: ListTile(
+                leading: CircleAvatar(child: Text(child.initials)),
+                title: Text(child.displayName),
+                subtitle: Text(l10n.bornYear(child.birthYear)),
+              ),
             ),
-          ),
+            const SizedBox(height: AppSpace.sm),
+            FilledButton.tonal(
+              key: const ValueKey('overviewEditRulesButton'),
+              onPressed: () => context.push('/child/$childId/rules'),
+              child: Text(l10n.editRules),
+            ),
+          ],
         // NOTE: simplest entry — the chevron jumps to the Social tab instead
         // of pushing the standalone /child/:id/social route.
         Card(
@@ -257,7 +259,8 @@ class _OverviewTab extends ConsumerWidget {
           ),
         ),
       ],
-    );
+    ),
+  );
   }
 
   /// The server's judgement (`Device.status`), never a clock rule on this phone (#601).

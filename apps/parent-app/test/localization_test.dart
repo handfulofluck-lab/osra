@@ -798,11 +798,13 @@ void main() {
     });
 
     for (final width in <double>[360, 375, 411]) {
-      testWidgets('${width.toInt()}px: the label shows in full and opens the rules editor', (tester) async {
+      testWidgets('${width.toInt()}px: top bar has tooltipped icon and overview tab has tonal button', (tester) async {
         await pumpChildDetail(tester, width);
         final action = find.byKey(const ValueKey('editRulesButton'));
         expect(action, findsOneWidget);
-        expect(find.widgetWithText(TextButton, 'تعديل القواعد'), findsOneWidget);
+        expect(tester.widget<IconButton>(action).tooltip, 'تعديل القواعد');
+        expect(find.widgetWithText(TextButton, 'تعديل القواعد'), findsNothing);
+        expect(find.widgetWithText(FilledButton, 'تعديل القواعد'), findsOneWidget);
         expectInsideAppBar(tester, action);
         expect(drainExceptions(tester), isEmpty);
 
