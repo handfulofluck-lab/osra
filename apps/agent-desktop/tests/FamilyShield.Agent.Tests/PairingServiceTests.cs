@@ -43,7 +43,8 @@ public sealed class PairingServiceTests
 
         Assert.NotNull(config);
         Assert.Contains("\"code\":\"123456\"", handler.Bodies[0]);
-        Assert.DoesNotContain("١", handler.Bodies[0]);
+        // Ordinal: xUnit v3's DoesNotContain is culture-aware and treats the Arabic-Indic digit as 1.
+        Assert.False(handler.Bodies[0].Contains("١", StringComparison.Ordinal));
     }
 
     [Fact]
