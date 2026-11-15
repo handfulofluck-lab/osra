@@ -824,3 +824,34 @@ and are deleted explicitly in the GDPR erasure cascade.
 - `dotnet build` + xunit tests green.
 - Live re-run of scripts/e2e.mjs (backend up) still 32/32, plus a manual pairing
   round-trip: pair → claim with curl (device JWT) → GET rules with that token (200).
+
+
+## §15 Family plan entitlement (ADR-0041 D1/D3, #619)
+
+`family_purchases` stores a purchase's family, source, product, SHA-256 store-reference hash, status,
+finite expiry, renewal flag, last effective verification and cause. `(source, store_ref)` is unique;
+the raw store reference is never persisted or logged. Store changes are idempotent by effective time
+and cannot rebind a purchase to another family. `Family.storeAccountId` is random 128-bit hex, created
+on first use, stable, and removed with the family and its purchase rows on erasure.
+
+```
+GET /v1/family/entitlement        (parent JWT; current family membership checked)
+  → { plan, until, source, manage_on }
+  owner only: also { store_account_id }
+
+No plan: { plan: null, until: null, source: null, manage_on: null }.
+Eligible: plan "family"; manage_on is the store, or null for a finite grant.
+```
+
+`active` is eligible only before expiry. `grace` and `on_hold` remain eligible while the store keeps
+that state, including after expiry. `expired`, `revoked` and `refunded` end eligibility at their
+effective time. Among eligible rows, latest expiry wins, then latest verification. A null expiry is
+ineligible and logged without a store reference: there is no lifetime plan. When eligibility ends,
+`requirePlan` and the agent rule projection wait until the next family-local 10:00 before refusing
+premium enforcement; the response still reports the store's expiry. A premium route answers exactly
+`402 { error: "plan_required" }`.
+
+`PREMIUM_FEATURES` is the sole feature table and starts empty until maintainer decision M3. Agent rule
+reads, rule-sync publication and parent-write fan-out omit listed fields when enforcement has lapsed;
+the parent's stored rules and response remain intact. The local grant script requires a finite expiry
+and has no public route. Its AWS CLI and SQL boundaries are fake-tested; no agent makes an AWS call.
