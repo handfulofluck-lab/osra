@@ -2,15 +2,21 @@ Describe "OSRA-only evidence and PNG crops" {
     BeforeAll {
 $script:TestsDir = $PSScriptRoot
 if (-not $script:TestsDir) {
-    # Pester 5 does not guarantee $PSScriptRoot inside BeforeAll on every platform (the Linux runner
-    # leaves it null), so fall back to the repository this suite was invoked from.
-    $root = $PWD.Path
-    while (-not (Test-Path -LiteralPath (Join-Path $root "scripts/hardware/scenario.ps1"))) {
-        $parent = Split-Path -Parent $root
-        if ($parent -eq $root) { throw "tests_dir_not_found" }
-        $root = $parent
+    # Pester 5 does not guarantee $PSScriptRoot or $PWD inside BeforeAll on every platform (the Linux
+    # runner leaves both null), so anchor on the directory the suite was invoked from.
+    $anchors = @($env:GITHUB_WORKSPACE, (Get-Location).Path, $PWD.Path) | Where-Object { $_ }
+    foreach ($anchor in $anchors) {
+        $root = $anchor
+        while ($root -and -not (Test-Path -LiteralPath (Join-Path $root "scripts/hardware/scenario.ps1"))) {
+            $parent = Split-Path -Parent $root
+            if (-not $parent -or $parent -eq $root) { $root = $null; break }
+            $root = $parent
+        }
+        if ($root) { $script:TestsDir = Join-Path $root "scripts/hardware/tests"; break }
     }
-    $script:TestsDir = Join-Path $root "scripts/hardware/tests"
+}
+if (-not $script:TestsDir) {
+    throw "tests_dir_not_found: root=[$PSScriptRoot] cmd=[$PSCommandPath] pwd=[$($PWD.Path)] loc=[$((Get-Location).Path)] ws=[$env:GITHUB_WORKSPACE]"
 }
 $script:RunnerPath = Join-Path $script:TestsDir "../scenario.ps1"
 . $script:RunnerPath
