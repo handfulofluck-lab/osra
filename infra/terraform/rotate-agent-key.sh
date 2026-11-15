@@ -20,10 +20,16 @@ cred_file="${AWS_SHARED_CREDENTIALS_FILE:-$HOME/.aws/credentials}"
 config_file="${AWS_CONFIG_FILE:-$HOME/.aws/config}"
 export AWS_PAGER=""
 . "$(dirname "$0")/lib/agent-store.sh"
-# Store mode when the profile runs the helper: the installed copy (osra-agent-credential.ps1) or, for a
-# profile moved before #821, the in-repo agent-credential.ps1. The pattern covers both names.
-if aws configure get credential_process --profile "$PROFILE" 2>/dev/null | grep -q "$AGENT_HELPER_PATTERN"; then
+# Store mode when the profile has a credential_process and no key lines, whatever the helper's path is
+# spelled as (#821 Fable B2). Store mode reads the key back through the installed helper, so stop before any
+# key is created if that helper is not installed yet (Fable B3).
+if [ -z "$(aws configure get aws_access_key_id --profile "$PROFILE" 2>/dev/null)" ] \
+   && [ -n "$(aws configure get credential_process --profile "$PROFILE" 2>/dev/null)" ]; then
   mode=store; key_file="$AGENT_STORE"
+  if [ ! -f "$AGENT_HELPER" ] || ! aws configure get credential_process --profile "$PROFILE" | grep -qi "$AGENT_HELPER_PATTERN"; then
+    echo "Profile $PROFILE does not run the installed helper $AGENT_HELPER yet: run move-agent-key-to-store.sh first to install it and repoint the profile. No key was created." >&2
+    exit 1
+  fi
 else
   mode=file; key_file="$cred_file"
 fi

@@ -26,10 +26,11 @@ helper_before=""
 [ -f "$AGENT_HELPER" ] && helper_before=$(mktemp) && cp "$AGENT_HELPER" "$helper_before"
 process=$(agent_helper_install "$here/agent-credential.ps1")
 
-# A profile already moved (no key lines left, credential_process on a helper): only repoint it at the
-# installed copy. This is how a profile moved before #821 (helper inside the checkout) is brought over.
+# A profile already moved (no key lines left, a credential_process set): only repoint it at the installed
+# copy. Recognised by shape, not by the helper's file name, so a profile edited by hand to any spelling of
+# the old path (long, 8.3 short) is brought over too (#821 Fable B2). The checks below prove the result.
 if [ -z "$(aws configure get aws_access_key_id --profile "$PROFILE" 2>/dev/null)" ] \
-   && aws configure get credential_process --profile "$PROFILE" 2>/dev/null | grep -q "$AGENT_HELPER_PATTERN"; then
+   && [ -n "$(aws configure get credential_process --profile "$PROFILE" 2>/dev/null)" ]; then
   previous=$(aws configure get credential_process --profile "$PROFILE")
   aws configure set credential_process "$process" --profile "$PROFILE"
   if [ "$(aws sts get-caller-identity --profile "$PROFILE" --query Account --output text 2>/dev/null)" = "" ] \
@@ -39,6 +40,7 @@ if [ -z "$(aws configure get aws_access_key_id --profile "$PROFILE" 2>/dev/null)
     echo "repoint failed: profile $PROFILE restored to its previous credential_process" >&2
     exit 1
   fi
+  if [ -n "$helper_before" ]; then rm -f "$helper_before"; fi
   echo "Repointed: profile $PROFILE now runs $(cygpath -w "$AGENT_HELPER"); the key stays in the store."
   exit 0
 fi
@@ -64,6 +66,7 @@ on_exit() {
     if [ -n "$helper_before" ]; then cp "$helper_before" "$AGENT_HELPER"; else rm -f "$AGENT_HELPER"; fi
   fi
   rm -rf "$tmp"
+  if [ -n "$helper_before" ]; then rm -f "$helper_before"; fi
   exit "$status"
 }
 trap on_exit EXIT INT TERM
