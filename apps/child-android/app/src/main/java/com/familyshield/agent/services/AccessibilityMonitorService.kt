@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -67,8 +68,12 @@ class AccessibilityMonitorService : AccessibilityService() {
     private var lastLocationCheckMs = 0L
     private var lastGuardMs = 0L
 
-    /** #734: when the ring screen was last brought back, for [RingReentryPolicy]'s debounce. */
+    /** #734: when the ring screen was last brought back, on the monotonic clock (#802, Claude's V1). */
     private var lastRingRestoreMs = 0L
+
+    /** #734 / #802 V2: the one delayed re-check at the end of the debounce, if one is pending. */
+    private var ringRecheck: Runnable? = null
+    private val ringRecheckHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     /** osra-security#7: the window the gate was last opened over; a state change from any other is a new screen. */
     private var guardedWindowId = -1
@@ -530,22 +535,56 @@ class AccessibilityMonitorService : AccessibilityService() {
      */
     private fun restoreRingScreen(event: AccessibilityEvent, foreground: String?) {
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
-        val now = System.currentTimeMillis()
-        if (!RingReentryPolicy.shouldRestore(
-                isRinging = Ringer.isRinging,
-                foreground = foreground,
-                ownPackage = packageName,
-                nowMs = now,
-                lastRestoreMs = lastRingRestoreMs,
-            )
-        ) return
-        lastRingRestoreMs = now
+        // Claude's V1 on #802: the monotonic clock, as #792 uses — a wall-clock change must not delay the
+        // screen coming back.
+        val now = SystemClock.elapsedRealtime()
+        val classOfForeground = lastWindowClass?.takeIf { lastWindowClassPkg != null && lastWindowClassPkg == foreground }
+        when (RingReentryPolicy.decide(
+            isRinging = Ringer.isRinging,
+            foreground = foreground,
+            foregroundClass = classOfForeground,
+            ownPackage = packageName,
+            nowElapsedMs = now,
+            lastRestoreElapsedMs = lastRingRestoreMs,
+        )) {
+            RingReentryPolicy.Reentry.RESTORE -> {
+                lastRingRestoreMs = now
+                raiseRingScreen()
+            }
+            // Claude's V2 on #802: declined only because of the debounce is not "nothing to do" — the child
+            // pressed Home a moment after the last launch, and without this the launcher stays in front until
+            // something else opens.
+            RingReentryPolicy.Reentry.DEFER -> scheduleRingRecheck()
+            RingReentryPolicy.Reentry.IGNORE -> Unit
+        }
+    }
+
+    /** Brings the ring screen to the front, in the task #731 gave it. */
+    private fun raiseRingScreen() {
         runCatching {
             startActivity(
                 Intent(this, RingActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),
             )
         }.onFailure { Log.w(TAG, "could not bring the ring screen back (#734)", it) }
+    }
+
+    /** One delayed re-check at the end of the debounce; it does nothing if the ring has stopped by then. */
+    private fun scheduleRingRecheck() {
+        if (ringRecheck != null) return
+        val task = Runnable {
+            ringRecheck = null
+            if (!Ringer.isRinging) return@Runnable
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastRingRestoreMs < RingReentryPolicy.DEBOUNCE_MS) {
+                scheduleRingRecheck()
+                return@Runnable
+            }
+            lastRingRestoreMs = now
+            raiseRingScreen()
+        }
+        ringRecheck = task
+        ringRecheckHandler.postDelayed(task, RingReentryPolicy.DEBOUNCE_MS)
     }
 
     /**
