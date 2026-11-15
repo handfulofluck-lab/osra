@@ -28,7 +28,7 @@ class OsraThemeTokensTest {
     @Test
     fun `every Material slot comes from the palette`() {
         for (palette in listOf(OsraTokens.light, OsraTokens.dark)) {
-            val scheme = OsraTheme.colors(palette)
+            val scheme = OsraTheme.colors(palette, dark = palette === OsraTokens.dark)
             assertEquals("primary", palette.primary, scheme.primary)
             assertEquals("onPrimary", palette.onPrimary, scheme.onPrimary)
             assertEquals("background", palette.page, scheme.background)

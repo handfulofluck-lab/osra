@@ -2,6 +2,8 @@ package com.familyshield.agent.ui.theme
 
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
@@ -33,36 +35,49 @@ import androidx.compose.ui.unit.sp
  */
 object OsraTheme {
 
-    /** The Material 3 scheme for one palette. Pure: no Android type, so a JVM test can read every slot. */
-    fun colors(palette: OsraTokens.Palette): ColorScheme = ColorScheme(
-        primary = palette.primary,
-        onPrimary = palette.onPrimary,
-        primaryContainer = palette.tint,
-        onPrimaryContainer = palette.ink,
-        inversePrimary = palette.primary,
-        secondary = palette.raised,
-        onSecondary = palette.ink,
-        secondaryContainer = palette.tint,
-        onSecondaryContainer = palette.ink,
-        tertiary = palette.ok,
-        onTertiary = palette.onPrimary,
-        background = palette.page,
-        onBackground = palette.ink,
-        surface = palette.card,
-        onSurface = palette.ink,
-        surfaceVariant = palette.tint,
-        onSurfaceVariant = palette.muted,
-        surfaceTint = palette.primary,
-        inverseSurface = palette.ink,
-        inverseOnSurface = palette.page,
-        error = palette.danger,
-        onError = palette.onDanger,
-        errorContainer = palette.warnContainer,
-        onErrorContainer = palette.onWarnContainer,
-        outline = palette.border,
-        outlineVariant = palette.line,
-        scrim = palette.scrim,
-    )
+    /**
+     * The Material 3 scheme for one palette.
+     *
+     * Built through `lightColorScheme`/`darkColorScheme` rather than the `ColorScheme` constructor: the constructor
+     * gains parameters between Compose versions, and a theme that stops compiling on a version bump is a worse
+     * outcome than one leaving a slot at its default. Every slot the design file names is set below; the rest stay
+     * at Material's value and no screen reads them.
+     */
+    fun colors(palette: OsraTokens.Palette, dark: Boolean): ColorScheme = if (dark) {
+        darkColorScheme(
+            primary = palette.primary, onPrimary = palette.onPrimary,
+            primaryContainer = palette.tint, onPrimaryContainer = palette.ink,
+            secondary = palette.raised, onSecondary = palette.ink,
+            secondaryContainer = palette.tint, onSecondaryContainer = palette.ink,
+            tertiary = palette.ok, onTertiary = palette.onPrimary,
+            background = palette.page, onBackground = palette.ink,
+            surface = palette.card, onSurface = palette.ink,
+            surfaceVariant = palette.tint, onSurfaceVariant = palette.muted,
+            surfaceTint = palette.primary,
+            inverseSurface = palette.ink, inverseOnSurface = palette.page,
+            error = palette.danger, onError = palette.onDanger,
+            errorContainer = palette.warnContainer, onErrorContainer = palette.onWarnContainer,
+            outline = palette.border, outlineVariant = palette.line,
+            scrim = palette.scrim,
+        )
+    } else {
+        lightColorScheme(
+            primary = palette.primary, onPrimary = palette.onPrimary,
+            primaryContainer = palette.tint, onPrimaryContainer = palette.ink,
+            secondary = palette.raised, onSecondary = palette.ink,
+            secondaryContainer = palette.tint, onSecondaryContainer = palette.ink,
+            tertiary = palette.ok, onTertiary = palette.onPrimary,
+            background = palette.page, onBackground = palette.ink,
+            surface = palette.card, onSurface = palette.ink,
+            surfaceVariant = palette.tint, onSurfaceVariant = palette.muted,
+            surfaceTint = palette.primary,
+            inverseSurface = palette.ink, inverseOnSurface = palette.page,
+            error = palette.danger, onError = palette.onDanger,
+            errorContainer = palette.warnContainer, onErrorContainer = palette.onWarnContainer,
+            outline = palette.border, outlineVariant = palette.line,
+            scrim = palette.scrim,
+        )
+    }
 
     /**
      * The nine steps of the design file, placed on the Material slots a screen actually reaches for. The
@@ -119,7 +134,7 @@ object OsraTheme {
         val palette = if (darkTheme) OsraTokens.dark else OsraTokens.light
         val radii = if (darkTheme) OsraTokens.darkRadii else OsraTokens.lightRadii
         MaterialTheme(
-            colorScheme = colors(palette),
+            colorScheme = colors(palette, darkTheme),
             typography = typography(),
             shapes = shapes(radii),
             content = content,
