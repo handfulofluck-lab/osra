@@ -575,11 +575,12 @@ describe("ring alert intake", () => {
       rows.push(row);
       return row;
     });
-    async function postRing(state: string, dismissalCount: number | string = 0, extraMetadata: Record<string, unknown> = {}) {
-      const dedupeKey = state === "child_dismissed"
+    async function postRing(state: string, dismissalCount: number | string = 0, extraMetadata: Record<string, unknown> = {}, overrideDedupeKey?: string | null) {
+      const computedDedupeKey = state === "child_dismissed"
         ? `ring:${ringId}:child_dismissed:${dismissalCount}`
         : `ring:${ringId}:${state}`;
-      const payload = {
+      const dedupeKey = overrideDedupeKey === null ? undefined : (overrideDedupeKey ?? computedDedupeKey);
+      const payload: Record<string, unknown> = {
         childId: CHILD.id, deviceId: "dev-1", severity: state === "child_dismissed" ? "warning" : "info",
         category: "ring", title: "Phone ring",
         body: state === "child_dismissed" && dismissalCount !== 1
@@ -587,9 +588,9 @@ describe("ring alert intake", () => {
           : state === "timed_out" && extraMetadata.afterRestart === true
             ? "The ring ended after the phone was restarted."
             : fallback[state],
-        dedupeKey,
         metadata: { state, ringId, ...extraMetadata },
       };
+      if (dedupeKey !== undefined) payload.dedupeKey = dedupeKey;
       const raw = JSON.stringify(payload);
       return app.inject({
         method: "POST", url: "/v1/alerts/internal",
@@ -765,6 +766,22 @@ describe("ring alert intake", () => {
       const other = ringAlertFields("ring", { state: "child_dismissed", ringId },
         "ring:00000000-0000-0000-0000-000000000000:child_dismissed:2");
       expect(other.bodyKey).toBeUndefined();
+    } finally { await app.close(); }
+  });
+
+  it("drops localization for a wrong or missing dedupe key on non-dismissal ring states", async () => {
+    const { app, postRing } = await fixture();
+    try {
+      for (const state of ["pin_stopped", "parent_stopped", "timed_out"]) {
+        const wrong = await postRing(state, 0, {}, `ring:not-this-ring:${state}`);
+        expect(wrong.statusCode).toBe(201);
+        expect(wrong.json().alert.metadata.bodyKey).toBeUndefined();
+        expect(wrong.json().alert.metadata.bodyParams).toBeUndefined();
+      }
+      const missing = await postRing("pin_stopped", 0, {}, null);
+      expect(missing.statusCode).toBe(201);
+      expect(missing.json().alert.metadata.bodyKey).toBeUndefined();
+      expect(missing.json().alert.metadata.bodyParams).toBeUndefined();
     } finally { await app.close(); }
   });
 });
