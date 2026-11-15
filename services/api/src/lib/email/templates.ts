@@ -207,6 +207,11 @@ function screenAr(value: number): string {
   }
 }
 
+/** An app in the list was used, so zero rounded minutes is "less than a minute", never "nothing". Whole words, no unit letter (R3). */
+function appMinutesAr(value: number): string {
+  return value === 0 ? "أقل من دقيقة" : screenAr(value);
+}
+
 function periodAr(days: number, familyName: string): TextPart {
   const category = new Intl.PluralRules("ar").select(days);
   const suffix = days === 1 ? "اليوم"
@@ -227,8 +232,8 @@ export function digestEmail(to: string | string[], opts: { familyName: string; d
     `${clip(c.displayName)}: ${countEn(c.totalAppMinutes, "min", "min")} on screen; top apps ${c.topApps.map((a) => `${a.name} ${a.minutes}m`).join(", ") || "none"}; ${countEn(c.urlVisits, "site")} visited, ${c.topBlockedDomains.length} blocked; ${countEn(c.socialConcerns, "social concern")}; ${countEn(c.calls, "call")}, ${countEn(c.sms, "SMS", "SMS")}.`;
   const lineAr = (c: DigestChild): TextPart => {
     const apps = c.topApps.map((app) => ({
-      text: `${textName(app.name)} ${app.minutes} د`,
-      html: `${htmlName(app.name)} ${app.minutes} د`,
+      text: `${textName(app.name)} ${appMinutesAr(app.minutes)}`,
+      html: `${htmlName(app.name)} ${appMinutesAr(app.minutes)}`,
     }));
     const appsText = apps.length
       ? { text: apps.map((app) => app.text).join("، "), html: apps.map((app) => app.html).join("، ") }

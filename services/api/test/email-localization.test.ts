@@ -93,6 +93,18 @@ describe("localized digest text", () => {
   });
 
   it.each([
+    [0, "أقل من دقيقة"],
+    [1, "دقيقة واحدة"],
+    [2, "دقيقتان"],
+  ])("uses whole words for an app's %i minutes", (minutes, expected) => {
+    const message = digestEmail("parent@example.invalid", {
+      familyName: "Demo", days: 1, link,
+      children: [{ ...child(0), topApps: [{ name: "YouTube", minutes }] }],
+    }, "ar");
+    expect(noBidi(message.text)).toContain(`YouTube ${expected}`);
+  });
+
+  it.each([
     [1, "ملخّص عائلة Demo من تطبيق أسرة: اليوم"],
     [2, "ملخّص عائلة Demo من تطبيق أسرة: آخر يومين"],
     [7, "ملخّص عائلة Demo من تطبيق أسرة: آخر 7 أيام"],
@@ -128,7 +140,7 @@ describe("localized digest text", () => {
       }],
     }, "ar");
     expect(noBidi(message.text)).toContain(
-      "Alex — وقت الشاشة: 5 دقائق؛ أكثر التطبيقات استخدامًا: YouTube 45 د؛ المواقع التي فُتحت: 44؛ المواقع المحجوبة: 1؛ تنبيهات وسائل التواصل الاجتماعي: 2؛ المكالمات: 3؛ الرسائل النصية: 4.",
+      "Alex — وقت الشاشة: 5 دقائق؛ أكثر التطبيقات استخدامًا: YouTube 45 دقيقة؛ المواقع التي فُتحت: 44؛ المواقع المحجوبة: 1؛ تنبيهات وسائل التواصل الاجتماعي: 2؛ المكالمات: 3؛ الرسائل النصية: 4.",
     );
     expect(message.html).toContain("<bdi>Alex</bdi>");
     expect(message.html).toContain("<bdi>YouTube</bdi>");
