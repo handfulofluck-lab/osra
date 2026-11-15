@@ -10,6 +10,7 @@ param(
     [switch]$DryRun
 )
 
+$script:DryRun = [bool]$DryRun
 $script:RestoredSettingsKeys = @(
     "enabled_accessibility_services", "accessibility_enabled", "stay_on_while_plugged_in",
     "accelerometer_rotation", "user_rotation", "screen_off_timeout", "zen_mode"
@@ -217,7 +218,7 @@ function Invoke-ScenarioLease {
         [string]$Note = ""
     )
     if (-not $script:LeaseCalls) { $script:LeaseCalls = @() }
-    if (-not $DryRun) {
+    if (-not $script:DryRun) {
         $lease = @{
             Action = $Action; Owner = $Owner; Serial = $Serial; Purpose = "scenario:$Scenario"
         }
@@ -233,7 +234,7 @@ function Invoke-ScenarioLease {
 
 function Invoke-ScenarioHttp {
     param([Parameter(Mandatory = $true)][string]$Url, [string]$Method = "GET")
-    if ($DryRun) {
+    if ($script:DryRun) {
         if ($env:FAKE_HTTP_STATUS -and [int]$env:FAKE_HTTP_STATUS -ge 400) { throw "backend_unhealthy" }
         return [pscustomobject]@{ StatusCode = 200 }
     }
@@ -261,7 +262,9 @@ function Invoke-Adb {
     if (-not $SkipAdminCheck -and $pm -ge 0 -and $pm + 1 -lt $normalized.Count -and $normalized[$pm + 1] -in @("uninstall", "clear")) {
         if (-not (Test-AdminPackageRemoval -Package $Package)) { throw "active_device_admin_package" }
     }
-    return Invoke-ScenarioProcess -Exe "adb" -Args (@("-s", $Serial) + $Command) -RawBytes:$RawBytes
+    $process = Invoke-ScenarioProcess -Exe "adb" -Args (@("-s", $Serial) + $Command) -RawBytes:$RawBytes
+    if ($process.ExitCode -ne 0) { throw "adb_command_failed" }
+    return $process
 }
 
 function Get-ScenarioLockState {
@@ -316,7 +319,7 @@ function New-ScenarioEvidence {
 function Invoke-ScenarioManualStep {
     param([Parameter(Mandatory = $true)][bool]$LockState, [string]$Instruction = "Confirm the synthetic screen")
     if ($LockState) { return [pscustomobject]@{ status = "NOT RUN"; reason = "phone locked" } }
-    if ($DryRun) { return [pscustomobject]@{ status = "NOT RUN"; reason = "manual confirmation required" } }
+    if ($script:DryRun) { return [pscustomobject]@{ status = "NOT RUN"; reason = "manual confirmation required" } }
     [Console]::Out.WriteLine($Instruction)
     Read-Host "Press Enter to continue" | Out-Null
     return [pscustomobject]@{ status = "DONE"; reason = "manual confirmation recorded" }
@@ -394,4 +397,181 @@ function Stop-ScenarioEventLog {
         $Process.Kill()
         $Process.WaitForExit()
     }
+}
+
+
+function Invoke-ScenarioSteps {
+    param([Parameter(Mandatory = $true)]$Steps, [Parameter(Mandatory = $true)][string]$Evidence, [Parameter(Mandatory = $true)][bool]$LockState)
+    $captures = [ordered]@{}
+    $records = @()
+    for ($i = 0; $i -lt $Steps.Count; $i++) {
+        $step = $Steps[$i]
+        try {
+            Assert-ScenarioStep -Step $step -Package $script:Package
+            switch ($step.type) {
+                "adb" {
+                    $process = Invoke-Adb -Command ([string[]]$step.command) -Package $script:Package
+                    $captures["adb.$i.exitCode"] = $process.ExitCode
+                }
+                "wait" {
+                    if ($step.seconds -gt 0) { Start-Sleep -Seconds ([int]$step.seconds) }
+                    $captures["wait.$i.seconds"] = [int]$step.seconds
+                }
+                "http" {
+                    $base = if ($script:ActiveManifest) {
+                        $uri = [Uri]$script:ActiveManifest.apiHealthUrl
+                        $uri.GetLeftPart([UriPartial]::Authority)
+                    } else { "http://127.0.0.1:3000" }
+                    $response = Invoke-ScenarioHttp -Url ($base.TrimEnd("/") + $step.path) -Method $step.method
+                    $captures["http.$i.status"] = $response.StatusCode
+                }
+                "screencap" {
+                    $shot = Save-ScenarioScreenshot -Evidence $Evidence -Name $step.name -LockState $LockState
+                    if ($shot.status -ne "DONE") {
+                        $records += [pscustomobject]@{ index = $i; type = "screencap"; status = "NOT RUN" }
+                        return [pscustomobject]@{ completed = $false; captures = $captures; steps = $records; error = $shot.reason }
+                    }
+                    $captures["screencap.$i.width"] = $shot.width
+                    $captures["screencap.$i.height"] = $shot.height
+                }
+                "manual" {
+                    $manual = Invoke-ScenarioManualStep -LockState $LockState -Instruction $step.instruction
+                    if ($manual.status -ne "DONE") {
+                        $records += [pscustomobject]@{ index = $i; type = "manual"; status = "NOT RUN" }
+                        return [pscustomobject]@{ completed = $false; captures = $captures; steps = $records; error = $manual.reason }
+                    }
+                    $captures["manual.$i.confirmed"] = $true
+                }
+            }
+            $records += [pscustomobject]@{ index = $i; type = $step.type; status = "DONE" }
+        } catch {
+            $records += [pscustomobject]@{ index = $i; type = $step.type; status = "FAIL" }
+            return [pscustomobject]@{ completed = $false; captures = $captures; steps = $records; error = "step_failed" }
+        }
+    }
+    return [pscustomobject]@{ completed = $true; captures = $captures; steps = $records; error = $null }
+}
+
+function Get-ScenarioOutcome {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()]$Measurements,
+        [Parameter(Mandatory = $true)]$Captures,
+        [Parameter(Mandatory = $true)][bool]$StepsCompleted,
+        [Parameter(Mandatory = $true)][bool]$RestoreClean
+    )
+    $rows = @()
+    if (-not $StepsCompleted -or -not $RestoreClean) { return [pscustomobject]@{ status = "FAIL"; measurements = $rows } }
+    if ($Measurements.Count -eq 0) { return [pscustomobject]@{ status = "NOT RUN"; measurements = $rows } }
+    $status = "PASS"
+    foreach ($measurement in $Measurements) {
+        $actualName = "$($measurement.actual)"
+        if (-not $Captures.Contains($actualName) -or $null -eq $Captures[$actualName]) {
+            if ($status -eq "PASS") { $status = "NOT RUN" }
+            $rows += [pscustomobject]@{ name = $measurement.name; result = "NOT RUN"; value = $null; comparator = $measurement.comparator; limit = $measurement.limit }
+            continue
+        }
+        $value = $Captures[$actualName]
+        $ok = $false
+        $numeric = 0.0
+        $isNumber = [double]::TryParse([string]$value, [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$numeric)
+        switch ($measurement.comparator) {
+            "present" { $ok = $null -ne $value -and "$value" -ne "" -and @($value).Count -gt 0 }
+            "empty" { $ok = $null -eq $value -or "$value" -eq "" -or @($value).Count -eq 0 -or ($isNumber -and $numeric -eq 0) }
+            default {
+                if ($isNumber) {
+                    switch ($measurement.comparator) {
+                        "eq" { $ok = $numeric -eq [double]$measurement.limit }
+                        "lte" { $ok = $numeric -le [double]$measurement.limit }
+                        "gte" { $ok = $numeric -ge [double]$measurement.limit }
+                        "lt" { $ok = $numeric -lt [double]$measurement.limit }
+                        "gt" { $ok = $numeric -gt [double]$measurement.limit }
+                    }
+                }
+            }
+        }
+        $rowResult = if ($ok) { "PASS" } else { "FAIL" }
+        if (-not $ok) { $status = "FAIL" }
+        $rows += [pscustomobject]@{ name = $measurement.name; result = $rowResult; value = $value; comparator = $measurement.comparator; limit = $measurement.limit }
+    }
+    return [pscustomobject]@{ status = $status; measurements = $rows }
+}
+
+function Restore-ScenarioState {
+    param([Parameter(Mandatory = $true)]$Before)
+    $failures = @()
+    $values = $Before.values
+    if ($values.SYSTEM_ALERT_WINDOW -match "SYSTEM_ALERT_WINDOW:\s*(\S+)") {
+        try { Invoke-Adb -Command @("shell", "appops", "set", $script:Package, "SYSTEM_ALERT_WINDOW", $Matches[1]) | Out-Null }
+        catch { $failures += "SYSTEM_ALERT_WINDOW" }
+    }
+    if ($values.locale) {
+        try { Invoke-Adb -Command @("shell", "setprop", "persist.sys.locale", $values.locale) | Out-Null }
+        catch { $failures += "locale" }
+    }
+    foreach ($key in $script:RestoredSettingsKeys) {
+        try { Invoke-Adb -Command @("shell", "settings", "put", "global", $key, "$($values[$key])") | Out-Null }
+        catch { $failures += $key }
+    }
+    $after = Get-ScenarioBeforeState
+    $diff = [ordered]@{}
+    foreach ($key in $values.Keys) {
+        if ("$($after.values[$key])" -ne "$($values[$key])") { $diff[$key] = $true }
+    }
+    return [pscustomobject]@{ clean = ($failures.Count -eq 0 -and $diff.Count -eq 0); failures = $failures; diffCount = $diff.Count }
+}
+
+function Write-ScenarioResult {
+    param([Parameter(Mandatory = $true)][string]$Evidence, [Parameter(Mandatory = $true)]$Result)
+    $json = $Result | ConvertTo-Json -Depth 6
+    [IO.File]::WriteAllText((Join-Path $Evidence "result.json"), $json, (New-Object System.Text.UTF8Encoding($false)))
+    $lines = @(
+        "# Scenario $($Result.id)",
+        "",
+        "| Result | Build | Restore | Evidence |",
+        "|---|---|---|---|",
+        "| $($Result.status) | $($Result.buildKind) | $(if ($Result.restore.clean) { 'clean' } else { 'FAIL' }) | $Evidence |"
+    )
+    [IO.File]::WriteAllText((Join-Path $Evidence "result.md"), ($lines -join "`n") + "`n", (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Invoke-ScenarioRun {
+    param([Parameter(Mandatory = $true)]$Manifest, [Parameter(Mandatory = $true)][string]$Out, [switch]$DryRun)
+    if ($PSBoundParameters.ContainsKey("DryRun")) { $script:DryRun = [bool]$DryRun }
+    $script:ActiveManifest = $Manifest
+    $before = $null; $folder = $null; $eventProcess = $null; $restore = $null
+    $stepResult = [pscustomobject]@{ completed = $false; captures = [ordered]@{}; steps = @(); error = "not_started" }
+    try {
+        $preflight = Invoke-ScenarioPreflight -Manifest $Manifest
+        $before = Get-ScenarioBeforeState
+        $folder = New-ScenarioEvidence -ScenarioId $Manifest.id -Out $Out -Before $before
+        Write-ScenarioLog -Evidence $folder -Stage "start"
+        $eventProcess = Start-ScenarioEventLog -Evidence $folder
+        $stepResult = Invoke-ScenarioSteps -Steps $Manifest.steps -Evidence $folder -LockState ([bool]$preflight.lockState)
+    } catch {
+        $stepResult = [pscustomobject]@{ completed = $false; captures = [ordered]@{}; steps = @(); error = "run_failed" }
+    } finally {
+        if ($before) {
+            try { $restore = Restore-ScenarioState -Before $before }
+            catch { $restore = [pscustomobject]@{ clean = $false; failures = @("restore_exception"); diffCount = 1 } }
+        }
+        if ($eventProcess) { Stop-ScenarioEventLog -Process $eventProcess }
+        $claimed = @($script:LeaseCalls | Where-Object { $_.Action -eq "Claim" }).Count -gt 0
+        $released = @($script:LeaseCalls | Where-Object { $_.Action -eq "Release" }).Count -gt 0
+        if ($claimed -and -not $released) {
+            $leftState = if (-not $restore) { "Unknown" } elseif ($restore.clean) { "Clean" } else { "Locked" }
+            Invoke-ScenarioLease -Action Release -LeftState $leftState -Note "scenario runner cleanup" | Out-Null
+        }
+    }
+    if (-not $restore) { $restore = [pscustomobject]@{ clean = $false; failures = @("preflight_failed"); diffCount = 1 } }
+    $captures = $stepResult.captures
+    $captures["restore.diffCount"] = $restore.diffCount
+    $outcome = Get-ScenarioOutcome -Measurements @($Manifest.measurements) -Captures $captures -StepsCompleted $stepResult.completed -RestoreClean $restore.clean
+    $status = $outcome.status
+    if ($script:DryRun -and $status -eq "PASS") { $status = "PASS (DRY RUN)" }
+    $result = [pscustomobject]@{
+        id = $Manifest.id; status = $status; buildKind = "unknown"; restore = $restore
+        steps = $stepResult.steps; measurements = $outcome.measurements; dryRun = [bool]$script:DryRun
+    }
+    if ($folder) { Write-ScenarioResult -Evidence $folder -Result $result }
+    return $result
 }

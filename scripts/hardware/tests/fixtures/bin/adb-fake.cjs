@@ -1,7 +1,13 @@
-const { appendFileSync, readFileSync } = require("node:fs");
+const { appendFileSync, existsSync, readFileSync, writeFileSync } = require("node:fs");
 
 const args = process.argv.slice(2);
+const joined = args.join(" ");
 if (process.env.FAKE_ADB_LOG) appendFileSync(process.env.FAKE_ADB_LOG, `${JSON.stringify(args)}\n`);
+if (process.env.FAKE_ADB_FAIL_MATCH && joined.includes(process.env.FAKE_ADB_FAIL_MATCH)) process.exit(1);
+if (process.env.FAKE_ADB_FAIL_ONCE && joined.includes(process.env.FAKE_ADB_FAIL_ONCE) && process.env.FAKE_ADB_FAILED_MARKER && !existsSync(process.env.FAKE_ADB_FAILED_MARKER)) {
+  writeFileSync(process.env.FAKE_ADB_FAILED_MARKER, "used");
+  process.exit(1);
+}
 if (process.env.FAKE_ADB_EXIT) process.exit(Number(process.env.FAKE_ADB_EXIT));
 if (args.includes("screencap") && process.env.FAKE_SCREENSHOT) {
   process.stdout.write(readFileSync(process.env.FAKE_SCREENSHOT));
