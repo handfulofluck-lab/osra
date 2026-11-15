@@ -63,10 +63,20 @@ describe("localized invitation text", () => {
     expect(message.text).toContain("\u2068Haddad\u2069");
   });
 
+  it.each(["en", "ar"] as const)("escapes markup in every invitation name (%s)", (locale) => {
+    const hostile = '<b>Tom & "Jerry" <i>x</i><img src=x>';
+    const message = inviteEmail("parent@example.invalid", {
+      inviterName: hostile, familyName: hostile, role: "co-parent", link,
+    }, locale);
+    expect(message.html).toContain("&lt;b&gt;Tom &amp; &quot;Jerry&quot; &lt;i&gt;x&lt;/i&gt;&lt;img src=x&gt;");
+    for (const raw of ["<b>", "<i>", "<img"]) expect(message.html).not.toContain(raw);
+    expect(message.html).not.toContain("&amp;lt;");
+  });
+
   it("uses the whole Arabic guardian sentence with no Latin role wire value", () => {
     const message = invite("Sara", "Haddad", "guardian");
     const roleLine = message.text.split("\n").find((line) => line.startsWith("تمت دعوتك"));
-    expect(roleLine).toBe("تمت دعوتك بصفة ولي أمر. اقبل الدعوة لمتابعة الأطفال والتنبيهات وأدوات التحكم من حسابك.");
+    expect(roleLine).toBe("تمت دعوتك بصفة وليّ أمر. اقبل الدعوة لمتابعة الأطفال والتنبيهات وأدوات التحكم من حسابك.");
     expect(roleLine).not.toMatch(/[A-Za-z]/);
   });
 
@@ -146,6 +156,19 @@ describe("localized digest text", () => {
     expect(message.html).toContain("<bdi>YouTube</bdi>");
     expect(message.text).toContain("\u2068Alex\u2069");
     expect(message.text).toContain("\u2068YouTube\u2069");
+  });
+
+  it.each(["en", "ar"] as const)("escapes markup in digest family, child and app names (%s)", (locale) => {
+    const hostile = '<b>Tom & "Jerry" <i>x</i><img src=x>';
+    const message = digestEmail("parent@example.invalid", {
+      familyName: hostile,
+      days: 1,
+      link,
+      children: [{ ...child(5), displayName: hostile, topApps: [{ name: hostile, minutes: 5 }] }],
+    }, locale);
+    expect(message.html).toContain("&lt;b&gt;Tom &amp; &quot;Jerry&quot; &lt;i&gt;x&lt;/i&gt;&lt;img src=x&gt;");
+    for (const raw of ["<b>", "<i>", "<img"]) expect(message.html).not.toContain(raw);
+    expect(message.html).not.toContain("&amp;lt;");
   });
 
   it("uses real English singular and plural forms without concern(s)", () => {
