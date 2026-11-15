@@ -82,6 +82,13 @@ class AccessibilityMonitorService : AccessibilityService() {
     private var lastWindowClassPkg: String? = null
 
     /**
+     * #802 V5 (Claude): the class of the last state change **per package**. A single pair was overwritten by
+     * whichever package spoke last — the keyboard when a parent taps the PIN field — after which
+     * `isRingScreen` saw a foreign class, and the ring screen was raised over the PIN gate it must never cover.
+     */
+    private val lastClassByPkg = HashMap<String, String>()
+
+    /**
      * Issue #175: bounded re-raises of the lock overlay for a PiP / split screen state the platform may
      * refuse to change; resets when the visible window state changes (see [WindowSnapshot.signature]).
      */
@@ -205,6 +212,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             lastWindowClass = event.className?.toString()
             lastWindowClassPkg = eventPkg
+            event.className?.toString()?.let { lastClassByPkg[eventPkg] = it }
         }
         if (eventPkg == packageName) {
             // Issue #284: our own block screen is in front and this stream never records our package, so
@@ -551,7 +559,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         // Claude's V1 on #802: the monotonic clock, as #792 uses — a wall-clock change must not delay the
         // screen coming back.
         val now = SystemClock.elapsedRealtime()
-        val classOfForeground = lastWindowClass?.takeIf { lastWindowClassPkg != null && lastWindowClassPkg == foreground }
+        val classOfForeground = foreground?.let { lastClassByPkg[it] }
         when (RingReentryPolicy.decide(
             isRinging = Ringer.isRinging,
             foreground = foreground,
@@ -591,8 +599,16 @@ class AccessibilityMonitorService : AccessibilityService() {
             // #802 V4 (Claude): decide again on the window that is in front **now**. The screen it deferred
             // over may have become the PIN gate in the meantime, and raising the ring screen over a parent
             // typing their PIN is the one thing the exemption exists to prevent.
-            val inFront = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
-            val clsNow = lastWindowClass?.takeIf { inFront != null && lastWindowClassPkg == inFront }
+            // Hydrogen's item 2 (#802): the node is a native allocation; recycle it like windowSnapshot() does.
+            val inFront = runCatching {
+                val root = rootInActiveWindow ?: return@runCatching null
+                try {
+                    root.packageName?.toString()
+                } finally {
+                    runCatching { root.recycle() }
+                }
+            }.getOrNull()
+            val clsNow = inFront?.let { lastClassByPkg[it] }
             val now = SystemClock.elapsedRealtime()
             when (RingReentryPolicy.decide(
                 isRinging = true,
@@ -631,6 +647,8 @@ class AccessibilityMonitorService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             lastWindowClass = event.className?.toString()
             lastWindowClassPkg = event.packageName?.toString()
+            val pkgOfEvent = event.packageName?.toString()
+            if (pkgOfEvent != null) event.className?.toString()?.let { lastClassByPkg[pkgOfEvent] = it }
         }
         if (!settings.isPairedSync()) return
         val now = System.currentTimeMillis()

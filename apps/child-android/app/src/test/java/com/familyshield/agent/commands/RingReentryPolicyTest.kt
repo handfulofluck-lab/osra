@@ -165,6 +165,41 @@ class RingReentryPolicyTest {
         assertTrue("and our own gate is left alone", recheck.contains("Reentry.IGNORE -> Unit"))
     }
 
+    /**
+     * #802 V5 (Claude): the class map is per package, so the keyboard's state change cannot make the PIN gate
+     * look like a foreign window. A single "last class" pair was overwritten by whichever package spoke last —
+     * the IME, the moment a parent tapped the PIN field — and the ring screen was then raised over the gate.
+     */
+    @Test
+    fun `a keyboard state change does not make the PIN gate look foreign`() {
+        assertTrue("the class map is written per package", service.contains("lastClassByPkg[eventPkg] = it"))
+        assertTrue("and read per package", service.contains("foreground?.let { lastClassByPkg[it] }"))
+        assertFalse(
+            "the single pair must not decide the class any more",
+            service.contains("lastWindowClass?.takeIf { lastWindowClassPkg != null && lastWindowClassPkg == foreground }"),
+        )
+        // The decision itself, for the window the parent is on while the keyboard is up.
+        assertEquals(
+            RingReentryPolicy.Reentry.IGNORE,
+            RingReentryPolicy.decide(
+                isRinging = true,
+                foreground = ours,
+                foregroundClass = pinGate,
+                ownPackage = ours,
+                nowElapsedMs = 10_000L,
+                lastRestoreElapsedMs = 0L,
+            ),
+        )
+    }
+
+    @Test
+    fun `the re-check recycles the active-window node`() {
+        val recheck = service.substringAfter("private fun scheduleRingRecheck()", missingDelimiterValue = "")
+            .lines().takeWhile { it != "    }" }.joinToString("\n")
+        assertTrue("the node is read", recheck.contains("rootInActiveWindow"))
+        assertTrue("and recycled in a finally", recheck.contains("recycle()"))
+    }
+
     /** #802 item 4: the ring screen may not share the display or become a thumbnail. */
     @Test
     fun `the ring screen owns the display`() {
