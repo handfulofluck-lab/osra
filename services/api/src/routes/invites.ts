@@ -167,7 +167,10 @@ export async function inviteRoutes(app: FastifyInstance) {
     // An unknown invite answers 404 before the caller's own row is judged, as it always has.
     const result = await acceptInvite(id, parent, "unauthorized");
     if (!result.ok) return reply.code(result.status).send({ error: result.error });
-    const family = await prisma.family.findUnique({ where: { id: result.familyId } });
+    const family = await prisma.family.findUnique({
+      where: { id: result.familyId },
+      select: { id: true, name: true, region: true, timezone: true, timezoneSource: true, createdAt: true },
+    });
     // Issue a fresh access token bound to the new family ID (BUG-006 / API-05)
     // ADR-0014: the JWT `role` is always "parent" (it selects the parent surface — `requireParent`
     // used to reject the "co-parent"/"guardian" tokens minted here, locking invitees out until they

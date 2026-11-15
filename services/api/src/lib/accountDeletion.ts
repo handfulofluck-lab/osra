@@ -63,6 +63,7 @@ type DeleteMany = (args: { where: unknown }) => Promise<{ count: number }>;
  */
 export const FAMILY_SCOPED_DELETES: Record<string, (s: FamilyScope) => unknown> = {
   familyInvite: (s) => ({ familyId: s.familyId }),
+  familyPurchase: (s) => ({ familyId: s.familyId }),
   digestRecipient: (s) => ({ familyId: s.familyId }),
   digestSend: (s) => ({ familyId: s.familyId }),
   digestPrefs: (s) => ({ familyId: s.familyId }),
