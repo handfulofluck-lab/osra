@@ -489,4 +489,53 @@ class TamperScreenPolicyTest {
         assertTrue(TamperScreenPolicy.shouldGuard(TamperScreen.SPACE_SETUP, pinConfigured = true, graceUntilMs = 0L, nowMs = 1L))
         assertFalse(TamperScreenPolicy.shouldGuard(TamperScreen.SPACE_SETUP, pinConfigured = true, graceUntilMs = 2L, nowMs = 1L))
     }
+
+    /**
+     * Part 2 of osra-security#29: the sibling special-access pages. Each names us and carries its own phrase; each is
+     * a protection screen **only while we hold that access**, because onboarding opens the same page to grant it.
+     */
+    @Test
+    fun `a special-access page we already hold is guarded`() {
+        fun classify(access: Set<TamperScreenPolicy.SpecialAccess>, vararg texts: String) =
+            TamperScreenPolicy.classify(
+                "com.android.settings",
+                texts.toList(),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                ourSpecialAccess = access,
+            )
+        val cases = mapOf(
+            TamperScreenPolicy.SpecialAccess.OVERLAY to "Display over other apps",
+            TamperScreenPolicy.SpecialAccess.USAGE to "Usage access",
+            TamperScreenPolicy.SpecialAccess.NOTIFICATIONS to "Notification access",
+            TamperScreenPolicy.SpecialAccess.VPN to "VPN",
+        )
+        for ((access, phrase) in cases) {
+            assertEquals(
+                "$access",
+                TamperScreen.SPECIAL_ACCESS,
+                classify(setOf(access), "OSRA", phrase, "Allowed"),
+            )
+            assertEquals(
+                "$access, not held yet — this is the grant",
+                TamperScreen.NONE,
+                classify(emptySet(), "OSRA", phrase, "Allowed"),
+            )
+        }
+    }
+
+    /** A page for an access we do not hold is the parent granting it, whatever else the screen says. */
+    @Test
+    fun `a special-access page naming another app stays NONE`() {
+        assertEquals(
+            TamperScreen.NONE,
+            TamperScreenPolicy.classify(
+                "com.android.settings",
+                listOf<CharSequence>("Chrome", "Display over other apps", "Allowed"),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                ourSpecialAccess = setOf(TamperScreenPolicy.SpecialAccess.OVERLAY),
+            ),
+        )
+    }
 }

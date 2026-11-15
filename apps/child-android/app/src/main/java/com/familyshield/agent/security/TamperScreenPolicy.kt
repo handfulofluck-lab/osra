@@ -13,7 +13,7 @@ package com.familyshield.agent.security
  * verb in English or Arabic second. A Settings page that merely lists apps, or the admin list without
  * our row expanded, is not a tamper screen.
  */
-enum class TamperScreen { NONE, DEACTIVATE_ADMIN, UNINSTALL, APP_INFO, PROTECTION_SETTINGS, PRIVATE_DNS, SPACE_SETUP }
+enum class TamperScreen { NONE, DEACTIVATE_ADMIN, UNINSTALL, APP_INFO, PROTECTION_SETTINGS, SPECIAL_ACCESS, PRIVATE_DNS, SPACE_SETUP }
 
 object TamperScreenPolicy {
 
@@ -80,6 +80,33 @@ object TamperScreenPolicy {
     )
     private val UNINSTALL_CLASSES = setOf("UninstallerActivity")
     private val APP_INFO_CLASSES = setOf("InstalledAppDetails", "InstalledAppDetailsTop", "AppInfoDashboardActivity")
+
+    /**
+     * osra-security#29, Part 2 (Antigravity's scope, agreed on #813): the *other* system surfaces that decide what
+     * the agent may do — drawing over other apps, reading usage, reading notifications, and the VPN entry. Each is a
+     * page that names us and carries one of these phrases; the class names are fragments inside `SubSettings` on
+     * current builds, so the words are the reliable signal here, exactly as the accessibility page needed.
+     */
+    enum class SpecialAccess { OVERLAY, USAGE, NOTIFICATIONS, VPN }
+
+    private val SPECIAL_ACCESS_WORDS: Map<SpecialAccess, List<String>> = mapOf(
+        SpecialAccess.OVERLAY to listOf(
+            "display over other apps", "draw over other apps", "appear on top",
+            "الظهور فوق التطبيقات الاخرى", "الرسم فوق التطبيقات الاخرى", "الظهور في اعلى الشاشة",
+        ),
+        SpecialAccess.USAGE to listOf(
+            "usage access", "usage data access",
+            "الوصول الى بيانات الاستخدام", "الوصول لبيانات الاستخدام",
+        ),
+        SpecialAccess.NOTIFICATIONS to listOf(
+            "notification access", "device and app notifications",
+            "الوصول الى الاشعارات", "الوصول لاشعارات الجهاز والتطبيقات",
+        ),
+        SpecialAccess.VPN to listOf(
+            "vpn", "virtual private network",
+            "شبكة افتراضية خاصة", "الشبكة الافتراضية الخاصة",
+        ),
+    )
 
     /** The permission *management* pages. Never the runtime prompt — see NEVER_CLASSES. */
     private val PERMISSION_MANAGEMENT_CLASSES = setOf(
@@ -173,6 +200,12 @@ object TamperScreenPolicy {
         agentServiceDescription: String = "",
         /** Whether the agent holds a location grant right now; the permission page is only ours to protect then. */
         ourLocationActive: Boolean = false,
+        /**
+         * Part 2 of osra-security#29: which special accesses we hold **right now**. A page for one we do not hold is
+         * the parent granting it (onboarding does exactly that), so it is never a protection screen — the same shape
+         * as [ourAdminActive] and [ourLocationActive].
+         */
+        ourSpecialAccess: Set<SpecialAccess> = emptySet(),
     ): TamperScreen {
         if (packageName != null && (packageName to simpleName(windowClass)) in SPACE_SETUP_SCREENS) {
             return TamperScreen.SPACE_SETUP
@@ -194,6 +227,13 @@ object TamperScreenPolicy {
         // accessibility list, the settings hub and the runtime prompt cannot be caught by the description text or
         // by the permission-management branch further down.
         if (simpleName(windowClass) in NEVER_CLASSES) return TamperScreen.NONE
+
+        // Part 2: a special-access page that names us, while we already hold that access, is a protection screen —
+        // switching it off is the same loss as switching a permission off.
+        val holds = SPECIAL_ACCESS_WORDS.filterKeys { it in ourSpecialAccess }
+        if (holds.any { (_, words) -> words.any { joinedAll.contains(normalize(it)) } }) {
+            return TamperScreen.SPECIAL_ACCESS
+        }
 
         // Fable's B2 on #813: our own accessibility description is proof that this is *our* service page, whatever
         // the host activity is called, and it is a Settings screen by then.
