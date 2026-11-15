@@ -27,6 +27,7 @@ object TamperScreenPolicy {
         // osra-security#30: the Permission manager lives in its own package on Android 11 and later.
         "com.android.permissioncontroller",
         "com.google.android.permissioncontroller",
+        "com.samsung.android.permissioncontroller",
     )
 
     // Secondary signal: the words on the screen, in every language the agent ships (English as before,
