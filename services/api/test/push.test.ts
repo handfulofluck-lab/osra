@@ -530,7 +530,7 @@ describe("the iOS ring alert (#750)", () => {
    * Mutants that fail here: a `w` wake marker or any id in `data`, a literal title/body, priority
    * "normal", the `osra-wake` collapse key, or a missing time-sensitive interruption level.
    */
-  it("builds an alert from loc-keys with empty data, the osra-ring collapse, high priority and time-sensitive interruption — and nothing else", () => {
+  it("builds an alert from loc-keys with empty data, the osra-ring collapse, high priority, time-sensitive interruption and bundled sound — and nothing else", () => {
     const message = buildDeviceRingMessage();
     expect(message).toEqual({
       data: {},
@@ -540,6 +540,7 @@ describe("the iOS ring alert (#750)", () => {
       collapseKey: "osra-ring",
       interruptionLevel: "time-sensitive",
       deviceTarget: true,
+      sound: "ring.wav",
     });
     // The exact toEqual above is the assertion that no command id, child id, wake marker or OSRA
     // text exists; these spell out why for the reader.
@@ -552,9 +553,10 @@ describe("the iOS ring alert (#750)", () => {
   /**
    * The wire shape Claude ruled for #750. Mutants: parent topic, push-type background, priority 5,
    * collapse "wake"/"osra-wake", missing interruption-level, missing mutable-content, a literal
-   * alert, or no sound (the extension-failure path must not be silent).
+   * alert, no bundled sound, or missing content-available (the locked-phone wake must not be silent
+   * or deferred).
    */
-  it("sends the ring as an alert push at priority 10 to the child topic: time-sensitive, mutable, loc-key alert, sound default, collapse osra-ring", async () => {
+  it("sends the ring as an alert push at priority 10 to the child topic: time-sensitive, mutable, loc-key alert, bundled sound, content-available, collapse osra-ring", async () => {
     const calls: Array<{ path: string; headers: Record<string, string>; body: string }> = [];
     const transport = async (_host: string, path: string, headers: Record<string, string>, body: string) => {
       calls.push({ path, headers, body });
@@ -582,10 +584,11 @@ describe("the iOS ring alert (#750)", () => {
     expect(payload).toEqual({
       aps: {
         alert: { "title-loc-key": "ring_notification_title", "loc-key": "ring_notification_body" },
-        sound: "default",
+        sound: "ring.wav",
         "thread-id": "osra-ring",
         "mutable-content": 1,
         "interruption-level": "time-sensitive",
+        "content-available": 1,
       },
     });
     // The wake path beside it is untouched: still background, priority 5, content-available only.

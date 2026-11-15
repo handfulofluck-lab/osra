@@ -265,6 +265,9 @@ export function buildDeviceRingMessage(): PushMessage {
     collapseKey: DEVICE_RING_COLLAPSE_KEY,
     interruptionLevel: "time-sensitive",
     deviceTarget: true,
+    // #760 redesign: the bundled `ring.wav` is shipped in the iOS app bundle and played by the
+    // time-sensitive notification, so the alert is audible even before the app opens.
+    sound: "ring.wav",
   };
 }
 

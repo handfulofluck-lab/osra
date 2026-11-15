@@ -38,6 +38,11 @@ export interface PushMessage {
    */
   interruptionLevel?: "passive" | "active" | "time-sensitive" | "critical";
   /**
+   * iOS bundled notification sound file name (#760 redesign). When set, APNs plays the file from the
+   * app bundle instead of the default sound. The iPhone ring uses `ring.wav`.
+   */
+  sound?: string;
+  /**
    * True → the message targets a child device under its own APNs topic (`deviceBundleId`), not the
    * parent app's — the iOS ring alert (#750). The device wake marks itself with `dataOnly` instead;
    * this is its alert-shaped sibling, so the APNs provider needs the same child-topic routing and
