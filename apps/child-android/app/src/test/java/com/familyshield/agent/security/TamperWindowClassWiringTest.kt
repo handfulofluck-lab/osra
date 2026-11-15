@@ -11,9 +11,15 @@ import org.junit.Test
  * TYPE_WINDOW_STATE_CHANGED and passes it only while that same package is in front. Source-text rows, the
  * `UnlinkedRefreshWiringTest` shape: the service cannot be started on the JVM.
  *
- * Mutants: drop the package check from the `windowClass =` argument → [the kept class is passed only for
- * the same package] goes red; take the class from every event type → [the class is kept from window-state
- * changes only] goes red.
+ * osra-security#29 (#817, Antigravity's Flip4 pass): "the last state change's class" was one global pair, so the
+ * search keyboard's state change erased Settings' class and the access pages lost their identity mid-search. The
+ * class is now kept per package ([lastClassByPkg]) and read back by the foreground package. The rows follow that:
+ * they assert the per-package map is written on a state change and read by package at both classify sites, and that
+ * no global pair is back.
+ *
+ * Mutants: read `lastClassByPkg` from the event's package instead of the foreground one → [the class is read for the
+ * package in front] goes red; take the class from every event type → [the class is kept from window-state changes
+ * only] goes red.
  */
 class TamperWindowClassWiringTest {
 
@@ -23,24 +29,31 @@ class TamperWindowClassWiringTest {
     @Test
     fun `the class is kept from window-state changes only`() {
         // missingDelimiterValue = "": without it, a guard with no state-change test would hand back the whole
-        // guard here, which still contains both assignments, and the row would pass.
+        // guard here, which still contains the assignment, and the row would pass.
         val kept = guard.substringAfter(
             "if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {",
             missingDelimiterValue = "",
         ).substringBefore("}")
-        assertTrue("the class comes from a state change", kept.contains("lastWindowClass = event.className?.toString()"))
-        assertTrue("with its package", kept.contains("lastWindowClassPkg = event.packageName?.toString()"))
+        assertTrue(
+            "the class is kept per package, from a state change",
+            kept.contains("lastClassByPkg[") && kept.contains("event.className?.toString()"),
+        )
         assertFalse(
-            "nowhere else in the guard is the class overwritten",
-            guard.substringAfter(kept).contains("lastWindowClass = "),
+            "the single global pair that the keyboard used to overwrite is not back",
+            guard.contains("lastWindowClass = ") || guard.contains("lastWindowClassPkg = "),
         )
     }
 
     @Test
-    fun `the kept class is passed only for the same package`() {
+    fun `the class is read for the package in front`() {
         assertTrue(
-            "a class from another package must not classify this window",
-            guard.contains("windowClass = lastWindowClass.takeIf { lastWindowClassPkg != null && lastWindowClassPkg == pkg }"),
+            "the guard passes the foreground package's own class, so an IME state change cannot erase it",
+            guard.contains("windowClass = pkg?.let { lastClassByPkg[it] }"),
+        )
+        // The cover path reads it the same way, still gated on the pane being the active one.
+        assertTrue(
+            "and the multi-window path does too",
+            service.contains("pkg?.let { lastClassByPkg[it] }"),
         )
     }
 
