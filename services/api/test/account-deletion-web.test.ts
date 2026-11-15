@@ -260,7 +260,7 @@ describe("GET /v1/account/delete and the confirm page", () => {
     expect(res.body).not.toContain("أعلى اليمين");
     expect(res.body).toContain('action="/v1/account/deletion-request"');
     expect(res.body).toContain('lang="ar" dir="rtl"');
-    expect(res.body).toContain("حذف حسابك في أسرة");
+    expect(res.body).toContain("حذف حسابك في تطبيق أسرة");
   });
 
   it("W8 the confirm page spends nothing, is never cached or sent as a referrer, and holds no account secret", async () => {

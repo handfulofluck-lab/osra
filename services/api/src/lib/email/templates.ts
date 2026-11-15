@@ -70,8 +70,8 @@ export function passwordResetEmail(to: string, link: string, locale: Locale = "b
         cta: { label: "Choose a new password", href: link },
       },
       ar: {
-        title: "إعادة تعيين كلمة مرور أسرة",
-        body: ["وصلنا طلب لإعادة تعيين كلمة المرور لهذا الحساب. الرابط أدناه صالح لمدة 15 دقيقة.", "إذا لم تطلب ذلك، تجاهل هذه الرسالة ولن تتغير كلمة المرور."],
+        title: "إعادة تعيين كلمة مرور حسابك في تطبيق أسرة",
+        body: ["وصلنا طلب لإعادة تعيين كلمة المرور لهذا الحساب. الرابط أدناه صالح لمدة 15 دقيقة.", "إذا لم تطلب ذلك، فتجاهل هذه الرسالة، ولن تتغيّر كلمة المرور."],
         cta: { label: "اختيار كلمة مرور جديدة", href: link },
       },
     },
@@ -97,11 +97,11 @@ export function mfaRecoveredEmail(to: string, locale: Locale = "both"): EmailMes
         ],
       },
       ar: {
-        title: "تم استخدام رمز استرداد على حسابك في أسرة",
+        title: "تم استخدام رمز استرداد لحسابك في تطبيق أسرة",
         body: [
-          "استخدم شخص ما أحد رموز الاسترداد لإعادة تعيين عامل التحقق الثاني. تمت إزالة تطبيق المصادقة، ولم تعد رموز الاسترداد صالحة، وتم تسجيل الخروج من كل الجلسات.",
-          "إذا كنت أنت من فعل ذلك، فسجّل الدخول بكلمة المرور وأعد إعداد تطبيق مصادقة جديد؛ وستحصل على مجموعة رموز استرداد جديدة.",
-          "إذا لم تكن أنت، فغيّر كلمة المرور فوراً — فمن فعل ذلك كان يعرف كلمة المرور أيضاً.",
+          "استُخدم أحد رموز الاسترداد الخاصة بحسابك لإيقاف التحقق بخطوتين. أُزيل تطبيق المصادقة من الحساب، ولم تعد رموز الاسترداد صالحة، وسُجّل الخروج من كل الأجهزة.",
+          "إذا كنت أنت من فعل ذلك، فسجّل الدخول بكلمة المرور وأعد إعداد تطبيق مصادقة جديد، وستحصل على مجموعة جديدة من رموز الاسترداد.",
+          "إذا لم تكن أنت، فغيّر كلمة المرور فورًا، فمن فعل ذلك يعرف كلمة مرورك أيضًا.",
         ],
       },
     },
@@ -175,7 +175,7 @@ export function inviteEmail(to: string, opts: { inviterName: string | null; fami
   );
   return {
     to,
-    subject: familyName ? `Invitation to ${textName(familyName)} on OSRA · دعوة إلى أسرة` : "Invitation to a family on OSRA · دعوة إلى أسرة",
+    subject: familyName ? `Invitation to ${textName(familyName)} on OSRA · دعوة إلى عائلة في تطبيق أسرة` : "Invitation to a family on OSRA · دعوة إلى عائلة في تطبيق أسرة",
     html,
     text,
     idempotencyKey: `invite:${opts.link}`,
@@ -246,11 +246,11 @@ export function digestEmail(to: string | string[], opts: { familyName: string; d
   const { html, text } = shell(
     {
       en: { title: `OSRA digest for ${familyName} — ${periodEn}`, body: opts.children.length ? opts.children.map(lineEn) : ["No activity was recorded."], cta: { label: "Open the dashboard", href: opts.link } },
-      ar: { title: periodAr(opts.days, familyName), body: opts.children.length ? opts.children.map(lineAr) : ["لم يُسجَّل أي نشاط."], cta: { label: "فتح لوحة المتابعة", href: opts.link } },
+      ar: { title: periodAr(opts.days, familyName), body: opts.children.length ? opts.children.map(lineAr) : ["لم يُسجَّل أي نشاط."], cta: { label: "فتح لوحة التحكم", href: opts.link } },
     },
     locale,
   );
-  return { to, subject: `OSRA digest · ملخص أسرة — ${textName(familyName)}`, html, text };
+  return { to, subject: `OSRA digest · ملخّص تطبيق أسرة — ${textName(familyName)}`, html, text };
 }
 
 /**
@@ -273,9 +273,9 @@ export function digestConfirmEmail(to: string, opts: { link: string }, locale: L
         cta: { label: "Confirm this address", href: opts.link },
       },
       ar: {
-        title: "تأكيد ملخّص عائلة في أسرة",
+        title: "تأكيد استلام ملخّص عائلة من تطبيق أسرة",
         body: [
-          "أضاف أحد الوالدين هذا العنوان إلى ملخّص عائلة أسرة. لن يُرسَل شيء إلى هنا حتى تؤكّد، ويمكنك تجاهل هذه الرسالة إن لم ترغب في استلامه.",
+          "أضاف أحد الوالدين هذا العنوان إلى قائمة مستلمي ملخّص العائلة في تطبيق أسرة. لن يُرسَل إليه شيء حتى تؤكّد ذلك، ويمكنك تجاهل هذه الرسالة إن لم ترغب في استلام الملخّص.",
           "الرابط صالح لمرة واحدة وتنتهي صلاحيته خلال 24 ساعة.",
         ],
         cta: { label: "تأكيد هذا العنوان", href: opts.link },
@@ -283,7 +283,7 @@ export function digestConfirmEmail(to: string, opts: { link: string }, locale: L
     },
     locale,
   );
-  return { to, subject: `Confirm your OSRA digest · تأكيد ملخّص أسرة`, html, text };
+  return { to, subject: `Confirm your OSRA digest · تأكيد استلام ملخّص من تطبيق أسرة`, html, text };
 }
 
 /**
@@ -306,15 +306,15 @@ export function accountDeletionEmail(to: string, opts: { link: string }, locale:
         cta: { label: "Delete my account", href: opts.link },
       },
       ar: {
-        title: "حذف حسابك في أسرة",
+        title: "حذف حسابك في تطبيق أسرة",
         body: [
-          "طلب أحدهم حذف حساب أسرة الذي يستخدم هذا العنوان. إن كنت أنت، افتح الرابط وأدخل كلمة المرور للتأكيد. لن يُحذف شيء قبل ذلك.",
-          "الرابط صالح لمرة واحدة وتنتهي صلاحيته خلال 30 دقيقة. إن لم تطلب ذلك، تجاهل هذه الرسالة وسيبقى حسابك كما هو.",
+          "وصلنا طلب لحذف الحساب الذي يستخدم هذا العنوان في تطبيق أسرة. إن كنت أنت من طلب ذلك، فافتح الرابط وأدخل كلمة المرور للتأكيد. لن يُحذف شيء قبل ذلك.",
+          "الرابط صالح لمرة واحدة وتنتهي صلاحيته خلال 30 دقيقة. إن لم تطلب ذلك، فتجاهل هذه الرسالة، وسيبقى حسابك كما هو.",
         ],
         cta: { label: "حذف حسابي", href: opts.link },
       },
     },
     locale,
   );
-  return { to, subject: "Delete your OSRA account · حذف حسابك في أسرة", html, text };
+  return { to, subject: "Delete your OSRA account · حذف حسابك في تطبيق أسرة", html, text };
 }
