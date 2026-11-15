@@ -374,7 +374,7 @@ class ChildCard extends ConsumerWidget {
                       );
                       final screenWidth = MediaQuery.sizeOf(context).width;
                       final isWide = screenWidth >= 600;
-                      // Card margin (8) + ListView padding (32 or 48 split/2) + Card internal padding (32).
+                      // ListView horizontal padding (AppSpace.md * 2, plus AppSpace.md col gap on wide) + Card default margin (8) + Card padding (AppSpace.md * 2).
                       final maxContentWidth = isWide
                           ? (screenWidth - AppSpace.md * 3) / 2 - AppSpace.md * 2 - 8
                           : screenWidth - AppSpace.md * 4 - 8;
@@ -400,7 +400,7 @@ class ChildCard extends ConsumerWidget {
                         return Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Flexible(child: Text(l10n.screenTime, style: style)),
+                            Text(l10n.screenTime, style: style),
                             const SizedBox(width: AppSpace.sm),
                             Flexible(child: Text(valueText, style: style, textAlign: TextAlign.end)),
                           ],

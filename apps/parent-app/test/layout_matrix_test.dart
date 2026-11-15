@@ -16,7 +16,6 @@ import 'package:familyshield_parent/l10n/l10n.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/providers/onboarding_provider.dart';
 import 'package:familyshield_parent/theme/app_theme.dart';
-import 'package:familyshield_parent/theme/app_tokens.dart';
 
 import 'fake_api_client.dart';
 
@@ -123,6 +122,7 @@ void main() {
   var hasRoboto = false;
   setUpAll(() async {
     hasRoboto = await _loadSdkRobotoFont();
+    expect(hasRoboto, isTrue, reason: 'SDK Roboto font must load so font metrics match device rendering');
   });
 
   setUp(() {
@@ -145,13 +145,17 @@ void main() {
     }
   }
 
-  const testChildName = 'Muhammed Mustafa Çağrı';
+  const testChildNameEn = 'Muhammed Mustafa Çağrı';
+  const testChildNameAr = 'محمد مصطفى كاظم العلي';
 
-  FakeApiClient buildTestApi() {
+  String childNameFor(Locale locale) =>
+      locale.languageCode == 'ar' ? testChildNameAr : testChildNameEn;
+
+  FakeApiClient buildTestApi({Locale locale = const Locale('en')}) {
     return FakeApiClient({
       ...standardRoutes(
         familyMe: familyMeTwoChildren(
-          alexName: testChildName,
+          alexName: childNameFor(locale),
           alexModel: 'Pixel 7a',
         ),
       ),
@@ -218,7 +222,8 @@ void main() {
           tester.view.resetDevicePixelRatio();
         });
 
-        final api = buildTestApi();
+        final childName = childNameFor(config.locale);
+        final api = buildTestApi(locale: config.locale);
         final dashboardRouter = GoRouter(
           initialLocation: '/',
           routes: [
@@ -246,7 +251,7 @@ void main() {
         expect(exceptions, isEmpty, reason: 'Dashboard had layout overflow: ${exceptions.join("\n")}');
 
         // 2. Full child name present in widget tree on dashboard card
-        final dashboardNameFinder = find.text(testChildName);
+        final dashboardNameFinder = find.text(childName);
         expect(dashboardNameFinder, findsOneWidget, reason: 'Child name must be present in widget tree on dashboard card');
 
         // 3. Child name wraps up to 2 lines without truncation at standard scale (1.0)
@@ -268,6 +273,15 @@ void main() {
             paragraph.didExceedMaxLines,
             isFalse,
             reason: 'Screen time label must not truncate with ellipsis at ${config.id}',
+          );
+        }
+        if (config.size.width == 320 && config.textScale == 2.0) {
+          final labelRect = tester.getRect(find.text(l10n.screenTime).first);
+          final valueRect = tester.getRect(find.text(l10n.screenTimeValue(45, 120)));
+          expect(
+            valueRect.top,
+            greaterThanOrEqualTo(labelRect.bottom),
+            reason: 'Screen-time value must stack below the label at 320 / 2.0 (${config.id})',
           );
         }
         // Card 1 sits at the top of the list; verify it before scrolling down to card 2.
@@ -311,7 +325,8 @@ void main() {
           tester.view.resetDevicePixelRatio();
         });
 
-        final api = buildTestApi();
+        final childName = childNameFor(config.locale);
+        final api = buildTestApi(locale: config.locale);
         final childRouter = GoRouter(
           initialLocation: '/',
           routes: [
@@ -339,13 +354,19 @@ void main() {
         final exceptions = drainExceptions(tester);
         expect(exceptions, isEmpty, reason: 'Child Detail screen had layout overflow: ${exceptions.join("\n")}');
 
-        // 2. Full child name present in widget tree on top bar; zero truncation at scale 1.0 across all widths
+        // 2. Full child name present in AppBar semantics & widget tree; zero truncation at scale 1.0 across all widths;
+        // Overview card displays full child name with no line limit at every scale (including 320 / 2.0).
         final topBarNameFinder = find.descendant(
           of: find.byType(AppBar),
-          matching: find.text(testChildName),
+          matching: find.text(childName),
         );
         expect(topBarNameFinder, findsOneWidget, reason: 'Child name must be present in AppBar title widget tree');
-        if (config.textScale == 1.0 && hasRoboto) {
+        expect(
+          tester.getSemantics(topBarNameFinder).label,
+          contains(childName),
+          reason: 'AppBar title semantics must preserve the full child name (${config.id})',
+        );
+        if (config.textScale == 1.0) {
           final topBarParagraph = tester.renderObject<RenderParagraph>(topBarNameFinder);
           expect(
             topBarParagraph.didExceedMaxLines,
@@ -353,6 +374,21 @@ void main() {
             reason: 'Child name in AppBar must wrap up to 2 lines without truncation at scale 1.0 (${config.id})',
           );
         }
+        final overviewCardNameFinder = find.descendant(
+          of: find.byType(Card).first,
+          matching: find.text(childName),
+        );
+        expect(overviewCardNameFinder, findsOneWidget, reason: 'Overview card must render full child name (${config.id})');
+        expect(
+          tester.widget<Text>(overviewCardNameFinder).maxLines,
+          isNull,
+          reason: 'Overview card child name must have no maxLines cap (${config.id})',
+        );
+        expect(
+          tester.renderObject<RenderParagraph>(overviewCardNameFinder).didExceedMaxLines,
+          isFalse,
+          reason: 'Overview card child name must wrap freely without truncation (${config.id})',
+        );
 
         // 3. AppBar actions: below 360dp folded into 48dp overflow menu; >=360dp keeps direct 48dp IconButtons
         if (config.size.width < 360) {
@@ -390,256 +426,5 @@ void main() {
         expect(overviewBtnFinder, findsOneWidget, reason: 'overviewEditRulesButton must exist in Overview tab');
       });
     }
-  });
-
-  group('Planted Fault Verification (Intentional Failures on Regression)', () {
-    testWidgets('Planted fault: maxLines: 1 causes premature truncation on long name', (tester) async {
-      tester.view.physicalSize = const Size(320, 568);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
-
-      // Render with maxLines: 1 under scale 1.0
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: hasRoboto
-              ? ThemeData(textTheme: AppType.textTheme.apply(fontFamily: 'Roboto'))
-              : ThemeData(textTheme: AppType.textTheme),
-          home: Scaffold(
-            body: MediaQuery(
-              data: const MediaQueryData(
-                textScaler: TextScaler.linear(1.0),
-                size: Size(320, 568),
-              ),
-              child: SizedBox(
-                width: 150,
-                child: Text(
-                  testChildName,
-                  style: AppType.textTheme.titleMedium,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-
-      final paragraph = tester.renderObject<RenderParagraph>(find.text(testChildName));
-      // Planted fault assertion: with maxLines: 1, long name exceeds max lines (truncates prematurely)
-      expect(paragraph.didExceedMaxLines, isTrue, reason: 'Regression to maxLines: 1 correctly detected as truncating');
-    });
-
-    testWidgets('Planted fault: fixed-height card container causes layout overflow at scale 2.0', (tester) async {
-      tester.view.physicalSize = const Size(320, 568);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
-
-      // Wrap a large card in an artificially constrained 80 dp box
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: MediaQuery(
-              data: const MediaQueryData(
-                textScaler: TextScaler.linear(2.0),
-                size: Size(320, 568),
-              ),
-              child: SizedBox(
-                height: 80,
-                child: Column(
-                  children: [
-                    const Text(testChildName),
-                    const SizedBox(height: 20),
-                    const Text('Status Online Battery 55%'),
-                    const SizedBox(height: 20),
-                    const Text('Screen time 45m / 60m'),
-                    const SizedBox(height: 20),
-                    Container(height: 50, color: Colors.blue),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-
-      final exceptions = drainExceptions(tester);
-      // Planted fault assertion: fixed height causes overflow exception
-      expect(
-        exceptions.any((e) => e.toString().contains('overflowed')),
-        isTrue,
-        reason: 'Regression to fixed height containers correctly detected as layout overflow',
-      );
-    });
-
-    testWidgets('Planted fault: undersized touch target (<48 dp) fails minimum size requirement', (tester) async {
-      tester.view.physicalSize = const Size(320, 568);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
-
-      // Render an undersized button (36x36)
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 36,
-              height: 36,
-              child: IconButton(
-                key: const ValueKey('undersizedButton'),
-                padding: EdgeInsets.zero,
-                iconSize: 18,
-                icon: const Icon(Icons.rule),
-                onPressed: () {},
-              ),
-            ),
-          ),
-        ),
-      );
-
-      final size = tester.getSize(find.byKey(const ValueKey('undersizedButton')));
-      // Planted fault assertion: undersized button fails 48 dp threshold
-      expect(size.width < 48.0 || size.height < 48.0, isTrue, reason: 'Undersized button correctly fails 48 dp check');
-    });
-
-    testWidgets('Planted fault: 2-column cards without stretch have mismatched heights', (tester) async {
-      tester.view.physicalSize = const Size(800, 600);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
-
-      // Row without CrossAxisAlignment.stretch and without IntrinsicHeight
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Card(
-                    key: ValueKey('shortCard'),
-                    child: SizedBox(height: 100),
-                  ),
-                ),
-                Expanded(
-                  child: Card(
-                    key: ValueKey('tallCard'),
-                    child: SizedBox(height: 200),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-
-      final shortSize = tester.getSize(find.byKey(const ValueKey('shortCard')));
-      final tallSize = tester.getSize(find.byKey(const ValueKey('tallCard')));
-      expect(shortSize.height != tallSize.height, isTrue, reason: 'Without stretch, card heights differ');
-    });
-
-    testWidgets('Planted fault: 3 AppBar actions at 320dp force scale 1.0 child name truncation', (tester) async {
-      tester.view.physicalSize = const Size(320, 568);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
-
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: hasRoboto
-              ? ThemeData(textTheme: AppType.textTheme.apply(fontFamily: 'Roboto'))
-              : ThemeData(textTheme: AppType.textTheme),
-          home: MediaQuery(
-            data: const MediaQueryData(
-              textScaler: TextScaler.linear(1.0),
-              size: Size(320, 568),
-            ),
-            child: Scaffold(
-              appBar: AppBar(
-                leading: const BackButton(),
-                title: const Text(
-                  testChildName,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                actions: [
-                  IconButton(icon: const Icon(Icons.insights), onPressed: () {}),
-                  IconButton(icon: const Icon(Icons.saved_search_outlined), onPressed: () {}),
-                  IconButton(icon: const Icon(Icons.rule), onPressed: () {}),
-                ],
-              ),
-              body: const SizedBox.shrink(),
-            ),
-          ),
-        ),
-      );
-
-      final titleParagraph = tester.renderObject<RenderParagraph>(find.text(testChildName));
-      expect(
-        titleParagraph.didExceedMaxLines,
-        isTrue,
-        reason: 'Regression to three direct AppBar icons at 320dp truncates child name at scale 1.0',
-      );
-    });
-
-    testWidgets('Planted fault: single-row Flexible ellipsis truncates screen time at 320dp scale 2.0', (tester) async {
-      tester.view.physicalSize = const Size(320, 568);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MediaQuery(
-            data: const MediaQueryData(
-              textScaler: TextScaler.linear(2.0),
-              size: Size(320, 568),
-            ),
-            child: const Scaffold(
-              body: Padding(
-                padding: EdgeInsets.all(32),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Flexible(
-                      child: Text('Screen time', overflow: TextOverflow.ellipsis),
-                    ),
-                    SizedBox(width: 4),
-                    Flexible(
-                      child: Text(
-                        '45m / 120m',
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.end,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-
-      final labelParagraph = tester.renderObject<RenderParagraph>(find.text('Screen time'));
-      final valueParagraph = tester.renderObject<RenderParagraph>(find.text('45m / 120m'));
-      expect(
-        labelParagraph.didExceedMaxLines || valueParagraph.didExceedMaxLines,
-        isTrue,
-        reason: 'Regression to single-row Flexible ellipsis truncates screen-time text at 320dp scale 2.0',
-      );
-    });
   });
 }
