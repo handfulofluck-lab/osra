@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars (gitignored) and fill in. No real account ID in the repo.
+allowed_account_ids = ["<prod-account-id>"]
+assume_role_arn     = "arn:aws:iam::<prod-account-id>:role/<deploy-role-name>"
+
+# The deploy role above, plus the role that uploads training files and starts the job.
+operator_role_arns = [
+  "arn:aws:iam::<prod-account-id>:role/<deploy-role-name>",
+]
+
+budget_alert_emails = []
