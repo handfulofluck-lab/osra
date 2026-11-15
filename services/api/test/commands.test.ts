@@ -134,6 +134,19 @@ describe("durable command queue (Phase 2b)", () => {
     expect(await ackDeviceCommand("dev-1", "nope", "ok")).toBeNull();
   });
 
+  it("a ring already acked by a device report stays acked when the device acks it (#760 review)", async () => {
+    // A ring report may mark the command acked before the agent's own /ack arrives. Idempotency keeps the
+    // route from returning a 404 and lets the parent see the command as settled.
+    prismaMock.deviceCommand.updateMany.mockResolvedValueOnce({ count: 0 });
+    prismaMock.deviceCommand.findUnique.mockResolvedValueOnce({ id: "c-ring", deviceId: "dev-1", type: "ring", status: "acked" });
+    expect(await ackDeviceCommand("dev-1", "c-ring", "ok")).toEqual({ id: "c-ring", deviceId: "dev-1", type: "ring", status: "acked" });
+    expect(prismaMock.deviceCommand.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "c-ring", deviceId: "dev-1", status: "delivered" },
+      }),
+    );
+  });
+
   it("history reports an unswept pending-but-expired row as expired", async () => {
     prismaMock.deviceCommand.findMany.mockResolvedValue([
       { id: "x", status: "pending", expiresAt: new Date(Date.now() - 1000), createdAt: new Date() },

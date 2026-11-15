@@ -33,6 +33,7 @@ export async function runRingRepush(now: Date = new Date()): Promise<RingRepushR
       ackedAt: null,
       expiresAt: { gt: now },
       createdAt: { gt: cap },
+      device: { platform: "ios" },
     },
     select: { id: true, deviceId: true },
   });

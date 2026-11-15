@@ -105,17 +105,19 @@ extension L10nTests {
     }
 
     /// #760: if the notification service extension does not run, iOS falls back to the keys in the
-    /// app's own bundle. Keep those two keys identical to the package's approved strings.
+    /// app's own bundle. Keep those two keys identical to the package's Bureau-approved strings.
     func testRingNotificationStringsAreAlsoInTheAppBundle() throws {
         let app = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("App")
-        let en = try XCTUnwrap(NSDictionary(contentsOfFile: app.appendingPathComponent("en.lproj/Localizable.strings").path) as? [String: String])
-        let ar = try XCTUnwrap(NSDictionary(contentsOfFile: app.appendingPathComponent("ar.lproj/Localizable.strings").path) as? [String: String])
-        XCTAssertEqual(en["ring_notification_title"], "Your parent is ringing this phone")
-        XCTAssertEqual(en["ring_notification_body"], "Open OSRA Kids so your parent can enter the parent PIN.")
-        XCTAssertEqual(ar["ring_notification_title"], "هذا الهاتف يرنّ بطلب من والدك أو والدتك")
-        XCTAssertEqual(ar["ring_notification_body"], "افتح تطبيق أسرة للأطفال ليُدخل والدك أو والدتك رمز PIN للوالدين.")
+        let appEn = try XCTUnwrap(NSDictionary(contentsOfFile: app.appendingPathComponent("en.lproj/Localizable.strings").path) as? [String: String])
+        let appAr = try XCTUnwrap(NSDictionary(contentsOfFile: app.appendingPathComponent("ar.lproj/Localizable.strings").path) as? [String: String])
+        let packageEn = try table("en")
+        let packageAr = try table("ar")
+        for key in ["ring_notification_title", "ring_notification_body"] {
+            XCTAssertEqual(appEn[key], packageEn[key], "en app bundle drift for \(key)")
+            XCTAssertEqual(appAr[key], packageAr[key], "ar app bundle drift for \(key)")
+        }
     }
 
     /// #760 device row: the notification service extension schedules AlarmKit in its own process, so iOS

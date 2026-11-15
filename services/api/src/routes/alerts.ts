@@ -140,8 +140,6 @@ export async function alertsRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: "invalid_ring_command" });
       }
       acceptedMetadata = { ...metadata, ringId };
-      // #760: the first ring report from the device proves the phone is ringing, so stop re-pushing.
-      await ackRingCommandOnReport(command.deviceId, ringId, String(metadata?.state ?? ""));
       if (metadata?.state === "timed_out" && metadata.afterRestart === true) {
         // Queue age is not ringing time: the first successful acknowledgement proves the alarm was applied.
         const appliedAt = command.status === "acked" ? command.ackedAt : null;
@@ -153,6 +151,10 @@ export async function alertsRoutes(app: FastifyInstance) {
         }
         acceptedMetadata.afterRestart = true;
       }
+      // #760: the first ring report from the device proves the phone is ringing, so stop re-pushing.
+      // For an after-restart timeout that is still within the 5-minute cap we return early above; the
+      // command stays delivered so the re-push job keeps trying and the parent /ack can settle it.
+      await ackRingCommandOnReport(command.deviceId, ringId, String(metadata?.state ?? ""));
     }
 
     // Phase 2a: one path creates the row, publishes the WS event and pushes to the parents' phones.

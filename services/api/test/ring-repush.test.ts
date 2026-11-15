@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getRedis } from "../src/redis.js";
 import { MockRedis, prismaMock, resetPrismaMock } from "./helpers.js";
 import { runRingRepush, startRingRepushScheduler, stopRingRepushScheduler } from "../src/jobs/ringRepush.js";
+import { enqueueDeviceCommand } from "../src/lib/deviceCommands.js";
 
 const wakes: Array<{ deviceId: string; type?: string }> = [];
 
@@ -45,7 +46,14 @@ describe("ring re-push job (#760 redesign)", () => {
     ]);
     expect(redis.set).toHaveBeenCalledTimes(2);
     const query = prismaMock.deviceCommand.findMany.mock.calls[0][0];
-    expect(query.where.createdAt).toEqual({ gt: new Date(now.getTime() - 300_000) });
+    expect(query.where).toEqual({
+      type: "ring",
+      status: { in: ["pending", "delivered"] },
+      ackedAt: null,
+      expiresAt: { gt: now },
+      createdAt: { gt: new Date(now.getTime() - 300_000) },
+      device: { platform: "ios" },
+    });
   });
 
   it("skips commands that are acked, failed, expired or not ring commands", async () => {
@@ -76,7 +84,14 @@ describe("ring re-push job (#760 redesign)", () => {
 
     await runRingRepush(now);
     const query = prismaMock.deviceCommand.findMany.mock.calls[0][0];
-    expect(query.where.createdAt).toEqual({ gt: new Date(now.getTime() - 300_000) });
+    expect(query.where).toEqual({
+      type: "ring",
+      status: { in: ["pending", "delivered"] },
+      ackedAt: null,
+      expiresAt: { gt: now },
+      createdAt: { gt: new Date(now.getTime() - 300_000) },
+      device: { platform: "ios" },
+    });
   });
 
   it("uses a Redis claim TTL just under the 30-second tick", async () => {
@@ -104,5 +119,39 @@ describe("ring re-push job (#760 redesign)", () => {
     startRingRepushScheduler({ NODE_ENV: "production", JOBS_ENABLED: "0" });
     // No timer was created, so stopping is harmless and the test simply completes.
     stopRingRepushScheduler();
+  });
+
+  it("stops re-pushing when a stop_ring command is enqueued", async () => {
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.deviceCommand.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+      id: "stop-1", createdAt: new Date(), status: "pending", attempts: 0, ...data,
+    }));
+
+    await enqueueDeviceCommand("dev-1", "stop_ring", {}, { requestedBy: "parent-1" });
+    expect(prismaMock.deviceCommand.updateMany).toHaveBeenCalledWith({
+      where: { deviceId: "dev-1", type: "ring", status: { in: ["pending", "delivered"] } },
+      data: { status: "expired" },
+    });
+
+    prismaMock.deviceCommand.findMany.mockResolvedValue([]);
+    const run = await runRingRepush(now);
+    expect(run).toEqual({ checked: 0, repushed: [] });
+  });
+
+  it("stops re-pushing when consent is revoked", async () => {
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.deviceCommand.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+      id: "revoke-1", createdAt: new Date(), status: "pending", attempts: 0, ...data,
+    }));
+
+    await enqueueDeviceCommand("dev-1", "consent_revoked", {}, { requestedBy: "system" });
+    expect(prismaMock.deviceCommand.updateMany).toHaveBeenCalledWith({
+      where: { deviceId: "dev-1", type: "ring", status: { in: ["pending", "delivered"] } },
+      data: { status: "expired" },
+    });
+
+    prismaMock.deviceCommand.findMany.mockResolvedValue([]);
+    const run = await runRingRepush(now);
+    expect(run).toEqual({ checked: 0, repushed: [] });
   });
 });

@@ -134,7 +134,7 @@ export async function enqueueDeviceCommand(
       return message;
     }
   }
-  if (type === "stop_ring") {
+  if (type === "stop_ring" || type === "consent_revoked") {
     await expireOpenRingCommands(deviceId);
   }
   const ttl = opts.ttlSeconds ?? ttlFor(type);
@@ -278,7 +278,15 @@ export async function ackDeviceCommand(
       result: (detail ?? {}) as Prisma.InputJsonValue,
     },
   });
-  if (result.count === 0) return null;
+  if (result.count === 0) {
+    // #760 review: a ring report may mark the command acked before the agent's own /ack arrives.
+    // The agent's ack must be idempotent so the route does not return `no_delivered_command`.
+    const existing = await prisma.deviceCommand.findUnique({ where: { id: commandId } });
+    if (existing && existing.deviceId === deviceId && existing.type === "ring" && existing.status === "acked") {
+      return existing;
+    }
+    return null;
+  }
   // ADR-0031 claim 6: a `show_reset_code` row holds the plaintext 8-digit code, and the acknowledgement
   // is one of the two moments it must stop existing (the other is expiry, swept by the job). Clearing
   // is unconditional on the outcome and leaves the status/ack fields above untouched.

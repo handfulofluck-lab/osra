@@ -384,6 +384,12 @@ describe("the child device wake (#319)", () => {
     expect(ApnsProvider.buildPayload(buildDeviceWakeMessage()).aps).toEqual({ "content-available": 1 });
   });
 
+  it("APNs: a parent alert is a visible alert only and omits content-available (#760 review)", () => {
+    const payload = ApnsProvider.buildPayload(buildParentAlertMessage("ios"));
+    expect(payload.aps.alert).toEqual({ "title-loc-key": "PUSH_ALERT_TITLE", "loc-key": "PUSH_ALERT_BODY" });
+    expect(payload.aps["content-available"]).toBeUndefined();
+  });
+
   it("wakes the device row's own token, and a dead token is cleared from the row", async () => {
     const provider = new FakeProvider((token) => (token === "dead" ? { ok: false, invalidToken: true, reason: "UNREGISTERED" } : { ok: true }));
     setPushProviders([provider]);
