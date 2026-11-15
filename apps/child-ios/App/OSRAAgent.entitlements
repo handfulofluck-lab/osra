@@ -6,6 +6,9 @@
 	<string>development</string>
 	<key>com.apple.developer.family-controls</key>
 	<true/>
+	<!-- #760 redesign: time-sensitive interruption so the ring alert breaks through Focus/DND. -->
+	<key>com.apple.developer.usernotifications.time-sensitive</key>
+	<true/>
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>group.com.osratech.child</string>

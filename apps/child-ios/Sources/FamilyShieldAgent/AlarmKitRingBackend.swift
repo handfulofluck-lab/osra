@@ -6,8 +6,12 @@ import AlarmKit
 import AppIntents
 import SwiftUI
 
-enum RingAlarmErrorLog {
+enum RingAlarmLog {
     private static let logger = Logger(subsystem: "com.osratech.child", category: "Ring")
+
+    static func info(_ message: String) {
+        logger.info("\(message, privacy: .public)")
+    }
 
     static func error(_ operation: String, _ error: Error) {
         let nsError = error as NSError
@@ -31,7 +35,13 @@ struct OpenRingIntent: LiveActivityIntent {
 
 @MainActor
 public final class AlarmKitRingBackend: RingBackend {
-    public init() {}
+    private let leadTime: TimeInterval
+    private let now: () -> Date
+
+    public init(leadTime: TimeInterval = 5, now: @escaping () -> Date = Date.init) {
+        self.leadTime = leadTime
+        self.now = now
+    }
 
     public var available: Bool {
         #if os(iOS)
@@ -44,9 +54,11 @@ public final class AlarmKitRingBackend: RingBackend {
         #if os(iOS)
         if #available(iOS 26.0, *) {
             do {
-                return try await AlarmManager.shared.requestAuthorization() == .authorized
+                let state = try await AlarmManager.shared.requestAuthorization()
+                RingAlarmLog.info("authorization state=\(String(describing: state))")
+                return state == .authorized
             } catch {
-                RingAlarmErrorLog.error("authorization", error)
+                RingAlarmLog.error("authorization", error)
                 return false
             }
         }
@@ -58,6 +70,8 @@ public final class AlarmKitRingBackend: RingBackend {
         #if os(iOS)
         guard #available(iOS 26.0, *) else { throw RingCommandError.unsupportedOS }
         do {
+            let fireDate = now().addingTimeInterval(leadTime)
+            RingAlarmLog.info("schedule fireDate=\(fireDate.timeIntervalSince1970, privacy: .public) leadTime=\(leadTime, privacy: .public)")
             let alert = AlarmPresentation.Alert(
                 title: LocalizedStringResource("ring_alarm_title", table: "Localizable", bundle: .module),
                 stopButton: AlarmButton(text: LocalizedStringResource("ring_alert_ok", table: "Localizable", bundle: .module),
@@ -69,11 +83,11 @@ public final class AlarmKitRingBackend: RingBackend {
                 presentation: AlarmPresentation(alert: alert), metadata: RingAlarmMetadata(),
                 tintColor: Color(red: 11 / 255, green: 93 / 255, blue: 87 / 255))
             let configuration: AlarmManager.AlarmConfiguration<RingAlarmMetadata> = .alarm(
-                schedule: .fixed(Date().addingTimeInterval(1)), attributes: attributes,
+                schedule: .fixed(fireDate), attributes: attributes,
                 secondaryIntent: OpenRingIntent(), sound: .default)
             _ = try await AlarmManager.shared.schedule(id: id, configuration: configuration)
         } catch {
-            RingAlarmErrorLog.error("schedule", error)
+            RingAlarmLog.error("schedule", error)
             throw error
         }
         #else
@@ -87,7 +101,7 @@ public final class AlarmKitRingBackend: RingBackend {
             do {
                 try AlarmManager.shared.cancel(id: id)
             } catch {
-                RingAlarmErrorLog.error("cancel", error)
+                RingAlarmLog.error("cancel", error)
                 throw error
             }
         }
@@ -100,7 +114,7 @@ public final class AlarmKitRingBackend: RingBackend {
             do {
                 return try Set(AlarmManager.shared.alarms.map(\.id))
             } catch {
-                RingAlarmErrorLog.error("scheduledIDs", error)
+                RingAlarmLog.error("scheduledIDs", error)
                 throw error
             }
         }

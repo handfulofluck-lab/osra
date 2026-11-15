@@ -110,9 +110,10 @@ targets:
     dependencies:
       - package: FamilyShieldAgent
 
-  # #760: answers the server's visible ring push. A physical-device row proved a priority-5 background
-  # push cannot wake a locked/suspended/force-quit iPhone, so the ring push is a time-sensitive alert
-  # and this service extension runs the reduced drain (RingPushDrainer) before it is shown. App-group
+  # #760 redesign: answers the server's visible ring push. A physical-device row proved a priority-5
+  # background push cannot wake a locked/suspended/force-quit iPhone, so the ring push is a
+  # time-sensitive alert with a bundled sound; this service extension localizes the title/body and
+  # preserves the sound, but does not call AlarmKit or poll the command channel. App-group
   # entitlements only: it touches no Screen Time API, so it holds no family-controls entitlement.
   OSRAAgentRingService:
     type: app-extension

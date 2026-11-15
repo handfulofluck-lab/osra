@@ -125,13 +125,36 @@ final class RingRecoveryTests: XCTestCase {
         XCTAssertTrue(backend.stopCalls.isEmpty)
     }
 
-    func testAlarmKitUsesNearFutureScheduleAndSafeErrorLogging() throws {
+    func testAlarmKitUsesLongerLeadTimeAndSafeErrorLogging() throws {
         let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent/AlarmKitRingBackend.swift")
         let backend = try String(contentsOf: source, encoding: .utf8)
-        XCTAssertTrue(backend.contains(".fixed(Date().addingTimeInterval(1))"))
-        XCTAssertTrue(backend.contains("RingAlarmErrorLog"))
+        // #760 redesign: a lead time longer than 2 s avoids the re-ring-after-dismiss race where
+        // AlarmKit dropped a schedule whose fire date was already in the past.
+        XCTAssertTrue(backend.contains(".fixed(fireDate)"))
+        XCTAssertTrue(backend.contains("leadTime: TimeInterval = 5"))
+        XCTAssertTrue(backend.contains("RingAlarmLog"))
         XCTAssertTrue(backend.contains("type(of: error)"))
+        XCTAssertTrue(backend.contains("authorization state="))
+        XCTAssertTrue(backend.contains("schedule fireDate="))
+    }
+
+    func testRingServiceExtensionDoesNotCallAlarmKitOrDrainer() throws {
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Extensions/RingService/RingServiceExtension.swift")
+        let extensionSource = try String(contentsOf: source, encoding: .utf8)
+        XCTAssertFalse(extensionSource.contains("RingPushDrainer"))
+        XCTAssertFalse(extensionSource.contains("AlarmKit"))
+        XCTAssertFalse(extensionSource.contains("AlarmManager"))
+        XCTAssertTrue(extensionSource.contains("L10n.tr(\"ring_notification_title\")"))
+        XCTAssertTrue(extensionSource.contains("L10n.tr(\"ring_notification_body\")"))
+    }
+
+    func testAppEntitlementsIncludeTimeSensitiveCapability() throws {
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("App/OSRAAgent.entitlements")
+        let entitlements = try String(contentsOf: source, encoding: .utf8)
+        XCTAssertTrue(entitlements.contains("com.apple.developer.usernotifications.time-sensitive"))
     }
 
     func testFailedReplacementSchedulingRestoresAlarmAndDeadline() async {
