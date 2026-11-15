@@ -73,6 +73,9 @@ unset AWS_PROFILE
 umask 077
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+# aws.exe on Windows cannot open a Git Bash path (/tmp/...) given as file://; use the mixed form C:/...
+# (15 Nov rotation failed at jwt until TMPDIR pointed at a Windows folder). No-op on Linux and macOS.
+if command -v cygpath >/dev/null 2>&1; then tmp=$(cygpath -m "$tmp"); fi
 
 # keep <arn>: true when the secret already has a value and this run must leave it alone.
 keep() {

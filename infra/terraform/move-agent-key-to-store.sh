@@ -19,8 +19,12 @@ here="$(cd "$(dirname "$0")" && pwd)"
 . "$here/lib/agent-store.sh"
 export AWS_PAGER=""
 
-helper=$(cygpath -w "$here/agent-credential.ps1")
-process="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"$helper\""
+# No quotes around the path: Terraform's AWS SDK (Go) passes them to PowerShell literally, which fails with
+# "Illegal characters in path" (seen 15 Nov on the production plan; the AWS CLI accepted either form). The
+# 8.3 short form keeps the path free of spaces, so it needs no quotes.
+helper=$(cygpath -w -s "$here/agent-credential.ps1")
+case "$helper" in *" "*) echo "helper path has a space: $helper" >&2; exit 1 ;; esac
+process="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $helper"
 
 id=$(aws configure get aws_access_key_id --profile "$PROFILE")
 secret=$(aws configure get aws_secret_access_key --profile "$PROFILE")
