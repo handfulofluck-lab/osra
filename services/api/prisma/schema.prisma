@@ -35,6 +35,8 @@ model FamilyPurchase {
   storeRefHash   String   @map("store_ref") @db.Char(64)
   status         String
   expiresAt      DateTime? @map("expires_at") @db.Timestamptz(3)
+  /// The first transition into a revoking state. Re-verification never moves this end forward.
+  endedAt        DateTime? @map("ended_at") @db.Timestamptz(3)
   autoRenews     Boolean  @map("auto_renews")
   lastVerifiedAt DateTime @map("last_verified_at") @db.Timestamptz(3)
   cause          String

@@ -47,9 +47,10 @@ describe("R3 review: immutable end of eligibility", () => {
 
   it("sets ended_at on the first revocation and preserves it on later verification", async () => {
     prismaMock.familyPurchase.findUnique.mockResolvedValue(purchase());
-    await revokeEntitlement({ ...base, state: "refunded", expiresAt: null });
+    const effectiveAt = "2026-11-15T10:00:00.000Z";
+    await revokeEntitlement({ ...base, state: "refunded", effectiveAt, expiresAt: null });
     expect(prismaMock.familyPurchase.update).toHaveBeenLastCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ endedAt: new Date(base.effectiveAt) }),
+      data: expect.objectContaining({ endedAt: new Date(effectiveAt) }),
     }));
 
     const firstEnd = new Date("2026-10-01T00:00:00.000Z");

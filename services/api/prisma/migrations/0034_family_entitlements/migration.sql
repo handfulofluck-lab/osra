@@ -9,11 +9,13 @@ CREATE TABLE "family_purchases" (
   "product_id" TEXT NOT NULL,
   "store_ref" CHAR(64) NOT NULL,
   "status" TEXT NOT NULL,
-  "expires_at" TIMESTAMP(3),
+  "expires_at" TIMESTAMPTZ(3),
+  -- First end of eligibility, never advanced by a later verification of the same revoked state.
+  "ended_at" TIMESTAMPTZ(3),
   "auto_renews" BOOLEAN NOT NULL,
-  "last_verified_at" TIMESTAMP(3) NOT NULL,
+  "last_verified_at" TIMESTAMPTZ(3) NOT NULL,
   "cause" TEXT NOT NULL,
-  "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "created_at" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "family_purchases_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "family_purchases_family_id_fkey"
     FOREIGN KEY ("family_id") REFERENCES "Family"("id") ON DELETE CASCADE ON UPDATE CASCADE

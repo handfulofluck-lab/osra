@@ -55,6 +55,8 @@ VALUES
 export async function runGrant(input, deps = {}) {
   const expiresMs = typeof input.expiresAt === "string" ? Date.parse(input.expiresAt) : NaN;
   if (!Number.isFinite(expiresMs)) throw new Error("expires_at_required_finite_iso8601");
+  const now = (deps.now?.() ?? new Date()).getTime();
+  if (expiresMs <= now || expiresMs > now + 366 * 24 * 60 * 60 * 1000) throw new Error("expires_at_must_be_future_within_366_days");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.familyId ?? "")) throw new Error("family_id_required_uuid");
   if (typeof input.secretName !== "string" || !input.secretName.trim()) throw new Error("database_secret_name_required");
   if (typeof input.reason !== "string" || !input.reason.trim() || input.reason.length > 500) throw new Error("grant_reason_required");

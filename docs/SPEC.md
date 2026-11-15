@@ -843,7 +843,9 @@ and are deleted explicitly in the GDPR erasure cascade.
 `family_purchases` stores a purchase's family, source, product, SHA-256 store-reference hash, status,
 finite expiry, renewal flag, last effective verification and cause. `(source, store_ref)` is unique;
 the raw store reference is never persisted or logged. Store changes are idempotent by effective time
-and cannot rebind a purchase to another family. `Family.storeAccountId` is random 128-bit hex, created
+and cannot rebind a purchase to another family. `ended_at` records only the first transition into a
+revoking state; later verification cannot move that end forward. Serialization conflicts retry once.
+`Family.storeAccountId` is random 128-bit hex, created
 on first use, stable, and removed with the family and its purchase rows on erasure.
 
 ```
@@ -865,5 +867,5 @@ premium enforcement; the response still reports the store's expiry. A premium ro
 
 `PREMIUM_FEATURES` is the sole feature table and starts empty until maintainer decision M3. Agent rule
 reads, rule-sync publication and parent-write fan-out omit listed fields when enforcement has lapsed;
-the parent's stored rules and response remain intact. The local grant script requires a finite expiry
-and has no public route. Its AWS CLI and SQL boundaries are fake-tested; no agent makes an AWS call.
+the parent's stored rules and response remain intact. The local grant script requires a future expiry
+no more than 366 days away and has no public route. Its AWS CLI and SQL boundaries are fake-tested; no agent makes an AWS call.

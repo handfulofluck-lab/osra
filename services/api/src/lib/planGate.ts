@@ -27,7 +27,7 @@ export async function hasEnforcingPlan(familyId: string, now = new Date()): Prom
     prisma.familyPurchase.findMany({ where: { familyId } }),
   ]);
   const endings = rows.flatMap((row) => {
-    const endedAt = row.status === "active" ? row.expiresAt : row.status === "grace" || row.status === "on_hold" ? null : row.lastVerifiedAt;
+    const endedAt = row.status === "active" ? row.expiresAt : row.status === "grace" || row.status === "on_hold" ? null : row.endedAt ?? row.lastVerifiedAt;
     return endedAt && endedAt <= now ? [endedAt.getTime()] : [];
   });
   if (!endings.length) return false;

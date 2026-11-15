@@ -60,27 +60,39 @@ class PrismaEntitlementStore implements EntitlementStore {
   private async apply(change: EntitlementChange): Promise<void> {
     const effectiveAt = new Date(change.effectiveAt);
     const storeRefHash = hashStoreRef(change.storeRef);
-    await prisma.$transaction(async (tx) => {
-      const where = { source_storeRefHash: { source: change.source, storeRefHash } };
-      const existing = await tx.familyPurchase.findUnique({ where });
-      if (existing && existing.familyId !== change.familyId) throw new Error("purchase_already_bound");
-      if (existing && existing.lastVerifiedAt >= effectiveAt) return;
-      // An undated revocation must not erase the expiry the store previously reported.
-      const expiresAt = change.expiresAt === null ? existing?.expiresAt ?? null : new Date(change.expiresAt);
-      const data = {
-        familyId: change.familyId,
-        source: change.source,
-        productId: change.productId,
-        storeRefHash,
-        status: change.state,
-        expiresAt,
-        autoRenews: change.autoRenews,
-        lastVerifiedAt: effectiveAt,
-        cause: change.cause,
-      };
-      if (existing) await tx.familyPurchase.update({ where, data });
-      else await tx.familyPurchase.create({ data });
-    }, { isolationLevel: "Serializable" });
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await prisma.$transaction(async (tx) => {
+          const where = { source_storeRefHash: { source: change.source, storeRefHash } };
+          const existing = await tx.familyPurchase.findUnique({ where });
+          if (existing && existing.familyId !== change.familyId) throw new Error("purchase_already_bound");
+          if (existing && existing.lastVerifiedAt >= effectiveAt) return;
+          // An undated revocation must not erase the expiry the store previously reported.
+          const expiresAt = change.expiresAt === null ? existing?.expiresAt ?? null : new Date(change.expiresAt);
+          const firstEnd = isRevoking(change.state)
+            ? existing && isRevoking(existing.status as EntitlementState) ? existing.endedAt ?? existing.lastVerifiedAt : effectiveAt
+            : null;
+          const data = {
+            familyId: change.familyId,
+            source: change.source,
+            productId: change.productId,
+            storeRefHash,
+            status: change.state,
+            expiresAt,
+            autoRenews: change.autoRenews,
+            lastVerifiedAt: effectiveAt,
+            endedAt: firstEnd,
+            cause: change.cause,
+          };
+          if (existing) await tx.familyPurchase.update({ where, data });
+          else await tx.familyPurchase.create({ data });
+        }, { isolationLevel: "Serializable" });
+        return;
+      } catch (error) {
+        const code = (error as { code?: unknown }).code;
+        if (attempt > 0 || (code !== "P2002" && code !== "P2034")) throw error;
+      }
+    }
   }
 
   async findFamily(source: EntitlementSource, storeRef: string): Promise<string | null> {
