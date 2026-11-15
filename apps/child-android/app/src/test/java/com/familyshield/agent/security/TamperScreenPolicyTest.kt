@@ -685,6 +685,120 @@ class TamperScreenPolicyTest {
         )
     }
 
+    /**
+     * Antigravity's Flip4 pass at `e131c080` (One UI 8.0, ar-AE): the four special-access lists each have a **Search
+     * apps** bar, and opening it replaces the toolbar title with "Search apps", so the phrase that identified the page
+     * was gone and the child could toggle us off with no PIN. The five list pages have their own activity classes, so
+     * the class identifies them whatever the toolbar says and in any language — the texts here match **no** phrase in
+     * `SPECIAL_ACCESS_WORDS`, which is the whole point.
+     *
+     * Mutant: drop `SPECIAL_ACCESS_CLASSES` from `classify()` → every row below returns NONE.
+     */
+    @Test
+    fun `a special-access page is identified by its class while the search bar hides the title`() {
+        fun byClass(cls: String, access: TamperScreenPolicy.SpecialAccess) =
+            TamperScreenPolicy.classify(
+                "com.android.settings",
+                // what the screen shows while "Search apps" has replaced the title: our name in the result row and
+                // nothing else that any word list knows
+                listOf<CharSequence>("OSRA", "Search apps", "Apps"),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                ourSpecialAccess = setOf(access),
+                windowClass = cls,
+            )
+        val cases = mapOf(
+            "com.android.settings.Settings\$OverlaySettingsActivity" to TamperScreenPolicy.SpecialAccess.OVERLAY,
+            "com.android.settings.Settings\$UsageAccessSettingsActivity" to TamperScreenPolicy.SpecialAccess.USAGE,
+            "com.android.settings.Settings\$AppUsageAccessSettingsActivity" to TamperScreenPolicy.SpecialAccess.USAGE,
+            "com.android.settings.Settings\$NotificationAccessSettingsActivity" to TamperScreenPolicy.SpecialAccess.NOTIFICATIONS,
+            "com.android.settings.Settings\$NotificationAccessDetailsActivity" to TamperScreenPolicy.SpecialAccess.NOTIFICATIONS,
+        )
+        for ((cls, access) in cases) {
+            assertEquals("$access by class", TamperScreen.SPECIAL_ACCESS, byClass(cls, access))
+        }
+        // An access we do not hold is the parent granting it, whatever the class says.
+        assertEquals(
+            "the grant, not the tamper",
+            TamperScreen.NONE,
+            TamperScreenPolicy.classify(
+                "com.android.settings",
+                listOf<CharSequence>("OSRA", "Search apps", "Apps"),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                ourSpecialAccess = emptySet(),
+                windowClass = "com.android.settings.Settings\$OverlaySettingsActivity",
+            ),
+        )
+        // And the same class in another package is not a Settings page.
+        assertEquals(
+            "not a Settings screen",
+            TamperScreen.NONE,
+            TamperScreenPolicy.classify(
+                "com.example.other",
+                listOf<CharSequence>("OSRA", "Search apps", "Apps"),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                ourSpecialAccess = setOf(TamperScreenPolicy.SpecialAccess.OVERLAY),
+                windowClass = "com.android.settings.Settings\$OverlaySettingsActivity",
+            ),
+        )
+    }
+
+    /**
+     * The same pass's other half: the VPN gear page is `SubSettings` and split-screen passes a null class, so those
+     * still depend on words — the ones Antigravity quoted from the dump, told apart by the fact that they name a
+     * management action.
+     */
+    @Test
+    fun `the Flip4 VPN gear page and search results are guarded by their own words`() {
+        fun words(access: TamperScreenPolicy.SpecialAccess, vararg texts: String) =
+            TamperScreenPolicy.classify(
+                "com.android.settings", texts.toList(), agent, admin, pkg,
+                ourAdminActive = true, ourSpecialAccess = setOf(access),
+                windowClass = "com.android.settings.SubSettings",
+            )
+        // English gear page: the switch that keeps the filter on
+        assertEquals(TamperScreen.SPECIAL_ACCESS, words(TamperScreenPolicy.SpecialAccess.VPN, "OSRA", "Always-on VPN", "Block connections without VPN"))
+        // ar-AE gear page: the switch, the block row, and the delete row that opens the confirm sheet
+        for (phrase in listOf("تشغيل VPN دائمًا", "حظر الاتصالات من دون VPN", "حذف ملف تعريف VPN")) {
+            assertEquals(phrase, TamperScreen.SPECIAL_ACCESS, words(TamperScreenPolicy.SpecialAccess.VPN, "OSRA", phrase))
+        }
+        // Search results, English: the row's function description, with the page title replaced by "Search apps"
+        assertEquals(
+            "overlay search row",
+            TamperScreen.SPECIAL_ACCESS,
+            words(TamperScreenPolicy.SpecialAccess.OVERLAY, "OSRA", "Search apps", "Show things on top of other apps"),
+        )
+        assertEquals(
+            "usage search row",
+            TamperScreen.SPECIAL_ACCESS,
+            words(TamperScreenPolicy.SpecialAccess.USAGE, "OSRA", "Search apps", "Monitor which other apps you use"),
+        )
+        // and the same two rows in ar-AE, with the wording the dump shows
+        assertEquals(
+            "overlay search row, Arabic",
+            TamperScreen.SPECIAL_ACCESS,
+            words(TamperScreenPolicy.SpecialAccess.OVERLAY, "OSRA", "عرض المحتويات فوق تطبيقات أخرى"),
+        )
+        assertEquals(
+            "usage search row, Arabic",
+            TamperScreen.SPECIAL_ACCESS,
+            words(TamperScreenPolicy.SpecialAccess.USAGE, "OSRA", "بمراقبة التطبيقات الأخرى التي تستخدمها"),
+        )
+        // One UI 8.0's own list titles, which omit «إلى» and say «الأعلى» rather than «فوق»
+        assertEquals(
+            "overlay title, One UI",
+            TamperScreen.SPECIAL_ACCESS,
+            words(TamperScreenPolicy.SpecialAccess.OVERLAY, "OSRA", "الظهور في الأعلى"),
+        )
+        assertEquals(
+            "usage title, One UI",
+            TamperScreen.SPECIAL_ACCESS,
+            words(TamperScreenPolicy.SpecialAccess.USAGE, "OSRA", "وصول بيانات الاستخدام"),
+        )
+    }
+
     /** Each phrase the Arabic Language Bureau confirmed, fed through `classify()` as the screen shows it. */
     @Test
     fun `every confirmed Arabic phrase is guarded`() {

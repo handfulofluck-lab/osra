@@ -118,6 +118,15 @@ object AccessibilityOffPolicy {
     }
 
     /**
+     * osra-security#29 (#817, Antigravity's Flip4 pass): the package whose window a latch should read. A soft
+     * keyboard's state change arrives with the IME's package while Settings is still the page in front, and reading
+     * the event's own package cleared [nextSpecialAccessLatch] — turning an access we hold into "the parent is
+     * granting it" — and reset [nextLatch] the same way. The foreground application package wins whenever it is
+     * known; the event's package is the fallback for a window with no application behind it.
+     */
+    fun latchPackage(foregroundPkg: String?, eventPkg: String?): String? = foregroundPkg ?: eventPkg
+
+    /**
      * The grant latch for a PermissionController visit (osra-security#30 review): latched from the grant when a
      * PermissionController window is entered, cleared when any other window is entered, and left alone when the
      * window cannot be named.

@@ -140,14 +140,14 @@ class AccessibilityMonitorService : AccessibilityService() {
 
     /** osra-security#7: the window the gate was last opened over; a state change from any other is a new screen. */
     private var guardedWindowId = -1
-    /** osra-security#5: class and package of the last TYPE_WINDOW_STATE_CHANGED, for [TamperScreenPolicy.classify]. */
-    private var lastWindowClass: String? = null
-    private var lastWindowClassPkg: String? = null
-
     /**
      * #802 V5 (Claude): the class of the last state change **per package**. A single pair was overwritten by
      * whichever package spoke last — the keyboard when a parent taps the PIN field — after which
      * `isRingScreen` saw a foreign class, and the ring screen was raised over the PIN gate it must never cover.
+     *
+     * Antigravity's Flip4 pass (#817) closed the same hole on the special-access pages: a global pair was also
+     * erased by the search keyboard, so `classify()` saw no class at all while the child typed in Search. This is
+     * now the only copy, and `classify()` reads it by the foreground package.
      */
     private val lastClassByPkg = HashMap<String, String>()
 
@@ -305,8 +305,6 @@ class AccessibilityMonitorService : AccessibilityService() {
         // launcher activity is the osra-security#31 escape, and RingActivity/the PIN gate are the two classes
         // the policy must recognise — and the return used to skip both.
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            lastWindowClass = event.className?.toString()
-            lastWindowClassPkg = eventPkg
             event.className?.toString()?.let { lastClassByPkg[eventPkg] = it }
         }
         if (eventPkg == packageName) {
@@ -748,21 +746,25 @@ class AccessibilityMonitorService : AccessibilityService() {
         // carries the activity or dialog class; a content change carries a view class, so the last state
         // change's class is kept and used only while the same package is in front.
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            lastWindowClass = event.className?.toString()
-            lastWindowClassPkg = event.packageName?.toString()
             val pkgOfEvent = event.packageName?.toString()
             if (pkgOfEvent != null) event.className?.toString()?.let { lastClassByPkg[pkgOfEvent] = it }
+            // Antigravity's Flip4 pass (#817): a soft keyboard's state change arrives with the IME's package, so
+            // `pkgOfEvent` is the IME — not the page under it. Taking the latch package from the event meant an IME
+            // window popping up inside Settings cleared `specialAccessLatch` (turning a held grant back into "the
+            // parent is granting it") and reset the location latch the same way. The foreground application package
+            // is the one whose page is in front, so it is what the latches read.
+            val latchPkg = com.familyshield.agent.receivers.AccessibilityOffPolicy.latchPackage(pkg, pkgOfEvent)
             // R2 (Antigravity's re-review): latch the grant on ENTERING a PermissionController window and clear it
             // on entering any other window, so a grant made inside that page cannot trip the gate on the content
             // change that follows the tap. The field was declared and read but never written before this.
             permissionWindowLocationActive = com.familyshield.agent.receivers.AccessibilityOffPolicy.nextLatch(
                 previous = permissionWindowLocationActive,
-                packageName = pkgOfEvent,
+                packageName = latchPkg,
                 grantedNow = { locationGrantedNow() },
             )
             specialAccessLatch = com.familyshield.agent.receivers.AccessibilityOffPolicy.nextSpecialAccessLatch(
                 previous = specialAccessLatch,
-                packageName = pkgOfEvent,
+                packageName = latchPkg,
                 settingsPackage = "com.android.settings",
                 heldNow = { specialAccessHeld() },
             )
@@ -794,7 +796,8 @@ class AccessibilityMonitorService : AccessibilityService() {
             adminLabel = getString(com.familyshield.agent.R.string.device_admin_label),
             agentPackage = packageName,
             ourAdminActive = deviceAdmin.isAdminActive(),
-            windowClass = lastWindowClass.takeIf { lastWindowClassPkg != null && lastWindowClassPkg == pkg },
+            // Antigravity's Flip4 pass (#817): per package, so the keyboard's state change cannot erase Settings'.
+            windowClass = pkg?.let { lastClassByPkg[it] },
             // Fable's B2 on #813: our own accessibility description, which no other app's page carries.
             agentServiceDescription = getString(com.familyshield.agent.R.string.accessibility_description),
             ourLocationActive = permissionWindowLocationActive ?: locationGrantedNow(),
@@ -870,9 +873,13 @@ class AccessibilityMonitorService : AccessibilityService() {
                             adminLabel = getString(com.familyshield.agent.R.string.device_admin_label),
                             agentPackage = packageName,
                             ourAdminActive = deviceAdmin.isAdminActive(),
-                            // The last state change's class belongs to the active window only.
-                            windowClass = lastWindowClass.takeIf {
-                                runCatching { window.isActive }.getOrDefault(false) && lastWindowClassPkg == pkg
+                            // The class of the window's own package, kept per package: the last state change may have
+                            // been the soft keyboard's (Antigravity's Flip4 pass, #817), which must not erase this.
+                            // `isActive` still gates it: an inactive pane does not borrow the active window's class.
+                            windowClass = if (runCatching { window.isActive }.getOrDefault(false)) {
+                                pkg?.let { lastClassByPkg[it] }
+                            } else {
+                                null
                             },
                             // R3: without this the cover path never saw the description and every split-screen
                             // pane of our accessibility page stayed unclassified.

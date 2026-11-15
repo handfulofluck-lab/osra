@@ -122,4 +122,43 @@ class AccessibilityOffPolicyTest {
         assertNull("leaving Settings drops it", next(heldBefore, "com.android.telephony"))
     }
 
+    /**
+     * Antigravity's Flip4 pass (#817): the sequence that turned a held grant into "the parent is granting it". The
+     * child opens the usage page, taps **Search apps**, and the soft keyboard emits a state change with the *IME's*
+     * package. Read from the event, that window cleared the latch; the foreground application package keeps it.
+     *
+     * The second assertion is the old behaviour on purpose: it is why the first one matters.
+     */
+    @Test
+    fun `a keyboard state change does not clear the special-access latch`() {
+        val held = setOf(TamperScreenPolicy.SpecialAccess.USAGE)
+        val latchPkg = AccessibilityOffPolicy.latchPackage("com.android.settings", "com.samsung.android.honeyboard")
+        assertEquals("the page in front, not the keyboard", "com.android.settings", latchPkg)
+        assertEquals(
+            "a held grant stays a held grant",
+            held,
+            AccessibilityOffPolicy.nextSpecialAccessLatch(
+                previous = held,
+                packageName = latchPkg,
+                settingsPackage = "com.android.settings",
+                heldNow = { held },
+            ),
+        )
+        assertNull(
+            "and read from the event, as it was, the latch is cleared — the bug this row locks",
+            AccessibilityOffPolicy.nextSpecialAccessLatch(
+                previous = held,
+                packageName = "com.samsung.android.honeyboard",
+                settingsPackage = "com.android.settings",
+                heldNow = { held },
+            ),
+        )
+        // A window with no application behind it still falls back to the event's own package.
+        assertEquals(
+            "the fallback is the event's package",
+            "com.android.settings",
+            AccessibilityOffPolicy.latchPackage(null, "com.android.settings"),
+        )
+    }
+
 }

@@ -86,20 +86,45 @@ object TamperScreenPolicy {
      * the agent may do — drawing over other apps, reading usage, reading notifications, and the VPN entry. Each is a
      * page that names us and carries one of these phrases; the class names are fragments inside `SubSettings` on
      * current builds, so the words are the reliable signal here, exactly as the accessibility page needed.
+     *
+     * Antigravity's Flip4 pass at `e131c080` found that words alone are not enough: the lists have a **Search apps**
+     * bar, and while it is open the toolbar title is replaced by "Search apps", so the one phrase that identified the
+     * page is gone and the child can toggle us off with no PIN. The five list pages do have their own top-level
+     * `Settings$*` activity classes (One UI 8.0 and AOSP), so [SPECIAL_ACCESS_CLASSES] identifies them
+     * language-independently and whatever the toolbar says. The VPN gear page is `SubSettings` and split-screen
+     * passes a null class, so the words still carry those.
      */
     enum class SpecialAccess { OVERLAY, USAGE, NOTIFICATIONS, VPN }
 
+    /**
+     * The five pages whose activity class names the access, from the Flip4 pass (One UI 8.0, SDK 36) and AOSP. A class
+     * match is language-independent and survives the Search bar, which is exactly what the words could not do.
+     */
+    private val SPECIAL_ACCESS_CLASSES: Map<String, SpecialAccess> = mapOf(
+        "OverlaySettingsActivity" to SpecialAccess.OVERLAY,
+        "UsageAccessSettingsActivity" to SpecialAccess.USAGE,
+        "AppUsageAccessSettingsActivity" to SpecialAccess.USAGE,
+        "NotificationAccessSettingsActivity" to SpecialAccess.NOTIFICATIONS,
+        "NotificationAccessDetailsActivity" to SpecialAccess.NOTIFICATIONS,
+    )
+
     private val SPECIAL_ACCESS_WORDS: Map<SpecialAccess, List<String>> = mapOf(
         // Arabic here is Google's own, taken from platform/packages/apps/Settings `values-ar` on the branches
-        // android12-release to android16-release and folded with `normalize()` (Arabic Language Bureau, review of
-        // #817). A phrase that could not be sourced from a published string was **removed** rather than guessed: the
-        // Flip4 dump will decide what Samsung says, and that is owed.
+        // android12-release to android16-release, plus the One UI 8.0 strings from Antigravity's Flip4 dump of
+        // 15 Nov (quoted from the raw `uiautomator` XML), all folded with `normalize()`. A phrase that could not be
+        // sourced from either was **removed** rather than guessed: five invented ones went wrong exactly that way.
         SpecialAccess.OVERLAY to listOf(
             "display over other apps", "draw over other apps", "appear on top",
+            // Flip4 (One UI 8.0): the Search Apps results' function description, which is what the row says while the
+            // page title is replaced by "Search apps"
+            "show things on top of other apps",
             // 12–15 title, the switch on 12–16 (the shorter form also covers the longer one), 16 title
             "اظهار فوق التطبيقات الاخرى",
             "بظهور التطبيق فوق التطبيقات الاخرى",
             "الظهور فوق التطبيقات الاخرى",
+            // One UI 8.0 in ar-AE: its own title and the row's function description, quoted from the raw dump
+            "الظهور في الاعلى",
+            "عرض المحتويات فوق تطبيقات اخرى",
         ),
         SpecialAccess.USAGE to listOf(
             "usage access", "usage data access",
@@ -108,9 +133,14 @@ object TamperScreenPolicy {
             // even after the entry it claims to cover was removed. `every new English phrase is guarded` feeds the
             // longer label and shows it is matched by the shorter phrase.
             "app usage data",
+            // Flip4 (One UI 8.0): the Search Apps results' function description
+            "monitor which other apps you use",
             // 12–15 title, and the 16 title and switch
             "الوصول الى بيانات الاستخدام",
             "الوصول الى بيانات استخدام التطبيق",
+            // One UI 8.0 in ar-AE: its title drops «إلى», and the row's function description
+            "وصول بيانات الاستخدام",
+            "بمراقبة التطبيقات الاخرى التي تستخدمها",
         ),
         SpecialAccess.NOTIFICATIONS to listOf(
             // 12–16 switch (Arabic Language Bureau, review of #817); folded
@@ -135,6 +165,12 @@ object TamperScreenPolicy {
             "ملف شبكة vpn",
             "ملف الشبكة الافتراضية الخاصة",
             "متابعة الاتصال بشبكة vpn في جميع الاوقات",
+            // Flip4 (One UI 8.0): the gear page is `SubSettings`, so it is matched by words. Its English switch and
+            // its ar-AE switch and delete row, quoted from the raw dump
+            "block connections without vpn",
+            "تشغيل vpn دائما",
+            "حظر الاتصالات من دون vpn",
+            "حذف ملف تعريف vpn",
         ),
     )
 
@@ -292,6 +328,10 @@ object TamperScreenPolicy {
         // other apps" summary row, so a word-first check reclassified it from APP_INFO to SPECIAL_ACCESS. A screen
         // identified by its class keeps that identity; only the fragment-hosted pages fall through to here.
         if (packageName == "com.android.settings") {
+            // Antigravity's Flip4 pass: the access pages themselves are identified by class, so the Search bar (which
+            // replaces the page title) cannot hide them. Held → protected; not held → this is the parent granting it.
+            val byClass = simpleName(windowClass)?.let { SPECIAL_ACCESS_CLASSES[it] }
+            if (byClass != null) return if (byClass in ourSpecialAccess) TamperScreen.SPECIAL_ACCESS else TamperScreen.NONE
             val holds = SPECIAL_ACCESS_WORDS.filterKeys { it in ourSpecialAccess }
             if (holds.any { (_, words) -> words.any { joinedAll.contains(normalize(it)) } }) {
                 return TamperScreen.SPECIAL_ACCESS
