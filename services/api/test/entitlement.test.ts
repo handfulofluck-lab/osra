@@ -82,7 +82,7 @@ describe("durable entitlement store", () => {
     const ids = new Map<string, string>();
     prismaMock.family.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => ({ id: where.id, storeAccountId: ids.get(where.id) ?? null }));
     prismaMock.family.updateMany.mockImplementation(async ({ where, data }: { where: { id: string }; data: { storeAccountId: string } }) => {
-      if (!ids.has(where.id)) ids.set(where.id, data.storeAccountId);
+      ids.set(where.id, data.storeAccountId);
       return { count: 1 };
     });
     const first = await storeAccountIdFor("fam-1");
@@ -91,6 +91,7 @@ describe("durable entitlement store", () => {
     expect(await storeAccountIdFor("fam-1")).toBe(first);
     expect(await storeAccountIdFor("fam-2")).not.toBe(first);
     expect(prismaMock.family.updateMany).toHaveBeenCalledTimes(2);
+    // The real concurrent first-use race is covered against PostgreSQL in demo-seed-cleanup.test.ts.
   });
 });
 
