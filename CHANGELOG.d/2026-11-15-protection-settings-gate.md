@@ -22,8 +22,3 @@
   setting the phone up, and a gate there would block onboarding itself.
 - **Other system surfaces of the same kind are not covered by this change**; they are tracked privately and are
   the Part 2 of that work.
-- **Part 2 (osra-security#29): the sibling special-access pages.** Display over other apps, usage access, notification
-  access and the VPN entry are protection screens when the page names the agent **and we already hold that access** —
-  the same shape as the admin and location gates, because onboarding opens those very pages to grant them. The
-  class names are fragment hosts on current builds, so the page's own words are the signal, as they had to be for
-  the accessibility page. Not wired to a device yet; the Flip4 rows are owed.
