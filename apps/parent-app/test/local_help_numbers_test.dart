@@ -139,6 +139,33 @@ void main() {
     });
   });
 
+  // Arabic Language Bureau (6899383505) and UI/UX Bureau (6899386994), item 1 of 6899250238: the grooming card ends on
+  // the same emergency sentence the self-harm card already carries, in both languages, and the Arabic sets the urgent
+  // case apart with «أما إذا … فـ» rather than a second «وإذا» — report for the one, call now for the other.
+  test('the grooming card ends on the emergency sentence, in both languages', () {
+    final card = coachCardFor('grooming');
+    expect(card.body,
+        endsWith('contact the police. If there is immediate danger, {emergency}.'));
+    expect(
+        card.tips[4],
+        'If requests were sexual or threatening, {childProtection} or contact '
+        'the police. If there is immediate danger, {emergency}.');
+    expect(card.bodyAr,
+        endsWith('أو تواصل مع الشرطة. أما إذا كان هناك خطر داهم ف{emergency}.'));
+    expect(
+        card.tipsAr[4],
+        'إذا كانت الطلبات جنسية أو تهديدية ف{childProtection} أو تواصل مع الشرطة. '
+        'أما إذا كان هناك خطر داهم ف{emergency}.');
+  });
+
+  // The Bureau's own correction: a command that answers «إذا» takes «فـ». The tip read «… داهم، ابقَ …» since 13 Nov.
+  test('the self-harm tip puts فـ before the command, not a comma', () {
+    final card = coachCardFor('self_harm');
+    expect(card.tipsAr[3], 'إذا كان هناك خطر داهم فابقَ معه و{emergency}.');
+    expect(card.tipsAr[3].contains('،'), isFalse,
+        reason: 'a command answering «إذا» takes «فـ», not a comma');
+  });
+
   test(
       'the coaching cards, and every Dart file under lib/, carry no number placeholder',
       () {

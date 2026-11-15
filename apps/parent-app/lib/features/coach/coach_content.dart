@@ -52,7 +52,7 @@ const _selfHarm = CoachCard(
     'ابقَ هادئًا واختر لحظة هادئة وخاصة.',
     'اسأل بشكل مباشر — فالأسئلة المفتوحة تشجّع على الصراحة.',
     'استمع دون إصدار أحكام أو التقليل من مشاعره.',
-    "إذا كان هناك خطر داهم، ابقَ معه و{emergency}.",
+    'إذا كان هناك خطر داهم فابقَ معه و{emergency}.',
     'تابع مع مرشد أو طبيب خلال أيام، لا أسابيع.',
   ],
 );
@@ -64,25 +64,25 @@ const _grooming = CoachCard(
       'Online groomers build trust slowly: compliments, gifts, "jokes", then secrets and moving '
       'the chat to private channels. Your child is a victim, not at fault — never blame them for '
       'the contact. Keep the evidence: take screenshots and do not delete the conversation. Report '
-      'and block the account; if there were threats or sexual requests, {childProtection} or contact the police.',
+      'and block the account; if there were threats or sexual requests, {childProtection} or contact the police. If there is immediate danger, {emergency}.',
   bodyAr:
       'يمارس المستغلون الإلكترونيون الإغواء تدريجيًا: الإطراء ثم الهدايا ثم «الأسرار» ونقل المحادثة '
       'إلى قنوات خاصة. طفلك ضحية وليس المخطئ — لا تُلامه أبدًا على هذا التواصل. احتفظ بالأدلة: التقط '
       'لقطات شاشة ولا تحذف المحادثة. أبلغ عن الحساب واحظره، وإذا وُجدت تهديدات أو طلبات جنسية ف{childProtection} '
-      'أو تواصل مع الشرطة.',
+      'أو تواصل مع الشرطة. أما إذا كان هناك خطر داهم ف{emergency}.',
   tips: [
     'Reassure your child: "You are not in trouble — I am glad you told me."',
     'Save screenshots; do not delete chats or block before preserving evidence.',
     'Report the account to the platform and block it.',
     'Watch for secrecy, gifts, and requests to move to private apps.',
-    'If requests were sexual or threatening, {childProtection} or contact the police.',
+    'If requests were sexual or threatening, {childProtection} or contact the police. If there is immediate danger, {emergency}.',
   ],
   tipsAr: [
     'اطمئن طفلك: «أنت لست في مشكلة — وسعيد أنك أخبرتني».',
     'احفظ لقطات الشاشة؛ لا تحذف المحادثات ولا تحظر قبل حفظ الأدلة.',
     'أبلغ عن الحساب إلى المنصة ثم احظره.',
     'انتبه للأسرارية والهدايا وطلبات الانتقال إلى تطبيقات خاصة.',
-    'إذا كانت الطلبات جنسية أو تهديدية ف{childProtection} أو تواصل مع الشرطة.',
+    'إذا كانت الطلبات جنسية أو تهديدية ف{childProtection} أو تواصل مع الشرطة. أما إذا كان هناك خطر داهم ف{emergency}.',
   ],
 );
 
