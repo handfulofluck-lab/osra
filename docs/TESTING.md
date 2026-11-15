@@ -44,11 +44,12 @@ A change is not done on the strength of a locally green suite whose build step w
 release-assembly step is where a release-only failure lives.
 
 For the parent reauthentication API (#742), run `pnpm --filter @familyshield/api exec vitest run
-test/reauth.test.ts --maxWorkers=1 --minWorkers=1`. The 14 tests use the real route, TOTP and rate-limit
+test/reauth.test.ts --maxWorkers=1 --minWorkers=1`. The 15 tests use the real route, TOTP and rate-limit
 boundaries with mocked password hashing, map-backed Redis and captured logs. They cover 204 without session
 mutation, uniform 401, replay refusal, revoked/expired sessions, redacted/failing audit calls, and the shared
 limiter's uniform refusal. Two rows prove that five wrong proofs revoke once and delete only that session's
-refresh record, including five concurrent calls. Counter mutants must prove `INCR`+TTL in one `MULTI`:
+refresh record, including five concurrent calls. A retry row proves a failed fifth revocation is retried on
+the sixth failure. Counter mutants must prove `INCR`+TTL in one `MULTI`:
 missing TTL and non-atomic read/write both go red. Also plant replay acceptance, early revocation and skipped
 refresh deletion; each owning row must fail before the implementation is restored. No real credential or live
 Redis/database is used. Arabic-digit integration waits for #787, and the client/biometric tests are separate

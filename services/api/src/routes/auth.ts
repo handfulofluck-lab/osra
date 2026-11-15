@@ -321,7 +321,7 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     const count = await registerReauthFailure(getRedis(), user.jti, ttlSeconds);
-    if (count === 5) {
+    if (count >= 5) {
       await removeReauthRefreshRecords(getRedis(), user.sub, user.jti);
       await revokeTokenOnce(user.jti, user.sub);
     }
