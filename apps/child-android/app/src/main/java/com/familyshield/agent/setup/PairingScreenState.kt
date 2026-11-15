@@ -38,7 +38,7 @@ data class PairingScreenState(
      */
     fun onPaste(text: String): PairingScreenState {
         if (waiting) return this
-        val digitsOnly = text.mapNotNull { westernDigit(it) }.take(CODE_LENGTH)
+        val digitsOnly = text.mapNotNull { westernDigit(it) }.take(CODE_LENGTH).joinToString("")
         if (digitsOnly.length != CODE_LENGTH) return this
         return copy(digits = digitsOnly, error = null)
     }
