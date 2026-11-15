@@ -69,4 +69,30 @@ class AccessibilityOffPolicyTest {
     fun `an unnamed window leaves the latch alone`() {
         assertEquals(true, AccessibilityOffPolicy.nextLatch(previous = true, packageName = null) { false })
     }
+
+    /**
+     * Claude's row: a switch-off stamped **inside** the grace window, and a poll that lands **after** it. The decision
+     * reads the stamped moment, not the clock, so the parent is not paged for their own switch-off — and the row goes
+     * red if `eventTimeMs` ignores the stamp.
+     */
+    @Test
+    fun `a switch-off stamped inside grace is still inside grace when the poll runs later`() {
+        val stampedAt = 1_000L
+        val nowAfterGrace = 10_000L
+        val graceUntil = 5_000L
+        val eventAt = AccessibilityOffPolicy.eventTimeMs(stampedAt, nowAfterGrace)
+        assertEquals("the stamped moment wins", stampedAt, eventAt)
+        assertFalse(
+            "and the parent is not paged after the window for their own switch-off",
+            AccessibilityOffPolicy.shouldTellParent(paired = true, graceUntilMs = graceUntil, nowMs = eventAt),
+        )
+        // The same poll with no stamp reads the clock and does page: that is the case the stamp exists for.
+        assertTrue(
+            AccessibilityOffPolicy.shouldTellParent(
+                paired = true,
+                graceUntilMs = graceUntil,
+                nowMs = AccessibilityOffPolicy.eventTimeMs(0L, nowAfterGrace),
+            ),
+        )
+    }
 }

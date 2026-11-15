@@ -226,12 +226,6 @@ class AccessibilityMonitorService : AccessibilityService() {
                     eventAtMs = unboundAt,
                 )
             }.onFailure { Log.w(TAG, "could not enqueue the accessibility-off alert (#29)", it) }
-        } else {
-            // Claude's point on #813: the parent's own switch-off (or an unpaired phone) is recorded, not paged —
-            // and it has to be recorded, or the next poll lands after the grace window, sees "on", and pages.
-            serviceScope.launch {
-                runCatching { settings.recordAccessibilityEnabled(false) }
-            }
         }
         return super.onUnbind(intent)
     }

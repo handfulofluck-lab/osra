@@ -38,18 +38,15 @@ class AccessibilityOffReceiver {
         // osra-security#29 review (Claude): this poll is the *other* reporter of the same event. A parent who turned
         // the service off inside the PIN's grace window, and a phone that was never paired, must be recorded without
         // paging — which is what the unbind alert already does.
-        // Antigravity's note on the gate: the moment the switch-off happened is read once, here, and reused by the
-        // dedupe key below — and an observation while unpaired or in grace records what was **seen**, on or off.
-        // Recording "off" unconditionally turned a service that was switched back on into a stale "off".
-        val eventAtMs = TamperState.accessibilityDisabledAtMs(context).takeIf { it > 0L } ?: nowMs
-        if (!AccessibilityOffPolicy.shouldTellParent(settings.isPairedSync(), TamperState.graceUntil(context), nowMs)) {
-            if (AccessibilityOffPolicy.shouldAlertOnObservation(settings.accessibilityWasEnabled(), enabledNow)) {
-                settings.recordAccessibilityEnabled(enabledNow)
-            }
-            return
-        }
+        // Antigravity's exact replacement: the observation check first (so an "on" observation is recorded as on),
+        // then the switch-off moment, then the decision — which reads that moment, not the clock.
         if (!AccessibilityOffPolicy.shouldAlertOnObservation(settings.accessibilityWasEnabled(), enabledNow)) {
             settings.recordAccessibilityEnabled(enabledNow)
+            return
+        }
+        val eventAtMs = AccessibilityOffPolicy.eventTimeMs(TamperState.accessibilityDisabledAtMs(context), nowMs)
+        if (!AccessibilityOffPolicy.shouldTellParent(settings.isPairedSync(), TamperState.graceUntil(context), eventAtMs)) {
+            settings.recordAccessibilityEnabled(false)
             return
         }
         // The edge is real. If the type is throttled, record it off: this event was already reported
@@ -95,6 +92,12 @@ object AccessibilityOffPolicy {
      * that trains a family to ignore the one alert that matters. Pure, because this is the decision a test has to
      * be able to drive.
      */
+    /**
+     * The moment of the switch-off, as one pure function: the stamped time when the service has one, and "now"
+     * otherwise. Both reporters and the grace decision use it, and a row goes red if the stamp is ignored.
+     */
+    fun eventTimeMs(disabledAtMs: Long, nowMs: Long): Long = if (disabledAtMs > 0L) disabledAtMs else nowMs
+
     fun shouldTellParent(paired: Boolean, graceUntilMs: Long, nowMs: Long): Boolean =
         paired && nowMs >= graceUntilMs
 
