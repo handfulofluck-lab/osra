@@ -392,6 +392,7 @@ function Start-ScenarioEventLog {
 }
 
 function Stop-ScenarioEventLog {
+    [CmdletBinding()]
     param([Parameter(Mandatory = $true)]$Process)
     if (-not $Process.HasExited) {
         $Process.Kill()
@@ -418,7 +419,9 @@ function Invoke-ScenarioSteps {
                     $captures["wait.$i.seconds"] = [int]$step.seconds
                 }
                 "http" {
-                    $base = if ($script:ActiveManifest) {
+                    $base = if ($script:ApiBase) {
+                        $script:ApiBase
+                    } elseif ($script:ActiveManifest) {
                         $uri = [Uri]$script:ActiveManifest.apiHealthUrl
                         $uri.GetLeftPart([UriPartial]::Authority)
                     } else { "http://127.0.0.1:3000" }
@@ -538,7 +541,8 @@ function Invoke-ScenarioRun {
     param([Parameter(Mandatory = $true)]$Manifest, [Parameter(Mandatory = $true)][string]$Out, [switch]$DryRun)
     if ($PSBoundParameters.ContainsKey("DryRun")) { $script:DryRun = [bool]$DryRun }
     $script:ActiveManifest = $Manifest
-    $before = $null; $folder = $null; $eventProcess = $null; $restore = $null
+    $script:Package = $Manifest.package
+    $before = $null; $folder = $null; $eventProcess = $null; $restore = $null; $preflight = $null
     $stepResult = [pscustomobject]@{ completed = $false; captures = [ordered]@{}; steps = @(); error = "not_started" }
     try {
         $preflight = Invoke-ScenarioPreflight -Manifest $Manifest
@@ -554,12 +558,21 @@ function Invoke-ScenarioRun {
             try { $restore = Restore-ScenarioState -Before $before }
             catch { $restore = [pscustomobject]@{ clean = $false; failures = @("restore_exception"); diffCount = 1 } }
         }
-        if ($eventProcess) { Stop-ScenarioEventLog -Process $eventProcess }
+        if ($eventProcess) { Stop-ScenarioEventLog -Process $eventProcess -ErrorAction SilentlyContinue }
         $claimed = @($script:LeaseCalls | Where-Object { $_.Action -eq "Claim" }).Count -gt 0
         $released = @($script:LeaseCalls | Where-Object { $_.Action -eq "Release" }).Count -gt 0
         if ($claimed -and -not $released) {
             $leftState = if (-not $restore) { "Unknown" } elseif ($restore.clean) { "Clean" } else { "Locked" }
-            Invoke-ScenarioLease -Action Release -LeftState $leftState -Note "scenario runner cleanup" | Out-Null
+            try { Invoke-ScenarioLease -Action Release -LeftState $leftState -Note "scenario runner cleanup" | Out-Null }
+            catch {
+                if ($restore) {
+                    $restore.failures = @($restore.failures) + "lease_release"
+                    $restore.diffCount = [int]$restore.diffCount + 1
+                    $restore.clean = $false
+                } else {
+                    $restore = [pscustomobject]@{ clean = $false; failures = @("lease_release"); diffCount = 1 }
+                }
+            }
         }
     }
     if (-not $restore) { $restore = [pscustomobject]@{ clean = $false; failures = @("preflight_failed"); diffCount = 1 } }
@@ -569,9 +582,25 @@ function Invoke-ScenarioRun {
     $status = $outcome.status
     if ($script:DryRun -and $status -eq "PASS") { $status = "PASS (DRY RUN)" }
     $result = [pscustomobject]@{
-        id = $Manifest.id; status = $status; buildKind = "unknown"; restore = $restore
+        id = $Manifest.id; status = $status; buildKind = $(if ($preflight) { $preflight.buildKind } else { "unknown" }); restore = $restore
         steps = $stepResult.steps; measurements = $outcome.measurements; dryRun = [bool]$script:DryRun
     }
     if ($folder) { Write-ScenarioResult -Evidence $folder -Result $result }
     return $result
+}
+
+
+if ($MyInvocation.InvocationName -ne ".") {
+    try {
+        $manifest = Read-ScenarioManifest -Path $Scenario -Out $Out
+        $result = Invoke-ScenarioRun -Manifest $manifest -Out $Out -DryRun:$DryRun
+        $result | Select-Object id, status, buildKind, dryRun | Format-Table -AutoSize | Out-String | Write-Output
+        if ($result.status -like "PASS*") { exit 0 }
+        exit 1
+    } catch {
+        $message = [string]$_.Exception.Message
+        $safe = if ($message -match "^[a-z0-9_]{1,80}$") { $message } else { "scenario_failed" }
+        [Console]::Error.WriteLine($safe)
+        exit 2
+    }
 }

@@ -1196,6 +1196,22 @@ node scripts/hardware/scenario-family.mjs delete --base-url http://localhost:300
   (§2). Nothing in CI counts rows with `psql`: `delete`'s counts come from the parent routes, as above, and
   the row-level count is still `e2e.mjs`'s with `DATABASE_URL`.
 
+### Manifest-driven scenario runner (#667, `scripts/hardware/scenario.ps1`)
+
+Run the five Pester suites with `scripts/hardware/tests/Scenario.*.Tests.ps1`; `workflow-lint` requires
+at least 57 cases, zero failures, and a real `SC-0.1` dry-run table with a `result.md`. The dry run puts
+the fake `adb` directory first on `PATH` and touches no lease, backend or device. It still refuses:
+manifest serial injection, connection/radio/airplane commands, clock and timezone changes, PIN text or
+keycodes, UI dumps, reboots, window-size/density changes, unlisted settings, active-admin package removal,
+and unsafe personal-content queries. Every ADB call receives `-s <serial>` from the runner.
+
+The runner saves nine before-values plus lock state, captures `exec-out screencap -p` into memory, writes
+only an OSRA-window crop with status bar/notification shade excluded, runs argument-array steps, and
+restores/re-reads every value and releases the lease in `finally`. Missing measurements are `NOT RUN`;
+empty diff, restore failure, or an empty test/result set never yields PASS. Dry-run output is explicitly
+`PASS (DRY RUN)` and is not physical-device evidence. A real run requires Claude's authorized device lease;
+K31's CI only exercises the fake boundary.
+
 
 ## 6. Traps that have cost real time here
 

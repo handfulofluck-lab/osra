@@ -1,0 +1,17 @@
+{
+  "id": "SC-0.1",
+  "title": "Preflight, evidence and restore",
+  "pair": "A",
+  "package": "com.osratech.child.full",
+  "apiHealthUrl": "http://127.0.0.1:3000/health",
+  "timeoutSeconds": 120,
+  "steps": [
+    { "type": "adb", "command": ["shell", "getprop", "ro.product.model"] },
+    { "type": "screencap", "name": "preflight.png" }
+  ],
+  "measurements": [
+    { "name": "phone reports its model", "actual": "adb.0.exitCode", "comparator": "eq", "limit": 0 },
+    { "name": "OSRA-only screenshot has height", "actual": "screencap.1.height", "comparator": "gte", "limit": 1 },
+    { "name": "before and after values match", "actual": "restore.diffCount", "comparator": "empty" }
+  ]
+}
