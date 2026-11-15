@@ -171,7 +171,13 @@ jobs:
           if ($tests.TotalCount -lt 57 -or $tests.FailedCount -ne 0) { throw "scenario Pester: $($tests.PassedCount) passed, $($tests.FailedCount) failed, $($tests.TotalCount) total" }
           $out = Join-Path $env:RUNNER_TEMP "scenario-evidence"
           $printed = & pwsh -NoProfile -File ./scripts/hardware/scenario.ps1 -DryRun -Scenario SC-0.1 -Out $out 2>&1 | Out-String
-          if ($LASTEXITCODE -ne 0) { throw "scenario dry run exited $LASTEXITCODE" }
+          $code = $LASTEXITCODE
+          Write-Host $printed
+          if ($code -ne 0) {
+            Get-ChildItem -Path $out -Recurse -Filter result.json |
+              ForEach-Object { Write-Host (Get-Content -LiteralPath $_.FullName -Raw) }
+            throw "scenario dry run exited $code"
+          }
           if ($printed -notmatch "PASS \(DRY RUN\)" -or $printed -notmatch "SC-0.1") { throw "scenario dry run printed no PASS (DRY RUN) table" }
           if (-not (Get-ChildItem -Path $out -Recurse -Filter result.md)) { throw "scenario dry run wrote no result.md" }
 
