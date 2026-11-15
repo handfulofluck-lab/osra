@@ -136,7 +136,8 @@ resource "aws_security_group" "restore_drill" {
 }
 
 resource "aws_iam_role" "restore_drill" {
-  name = "osra-backup-restore-drill"
+  name                 = "osra-backup-restore-drill"
+  permissions_boundary = aws_iam_policy.role_boundary.arn
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{

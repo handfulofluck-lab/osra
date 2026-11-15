@@ -334,7 +334,7 @@ variable "email_from" {
 }
 
 variable "audit_logs_enabled" {
-  description = "ALB access logs, VPC flow logs, WAF logs and PostgreSQL log export, each kept exactly 90 days (#766 item 2). Production MUST be true; staging leaves them off."
+  description = "VPC flow logs, WAF logs (credentials and query strings redacted) and PostgreSQL log export, each kept exactly 90 days (#766 item 2); ALB access logs stay off because the WebSocket ticket is in the query string. Production MUST be true; staging leaves them off."
   type        = bool
   default     = false
 }
