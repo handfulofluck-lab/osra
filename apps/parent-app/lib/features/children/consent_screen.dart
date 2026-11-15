@@ -488,36 +488,35 @@ class _GrantDialogState extends ConsumerState<_GrantDialog> {
     final l10n = context.l10n;
     final title = widget.renewal ? l10n.consentRenewTitle : l10n.consentGrantTitle;
     return AlertDialog(
+      scrollable: true,
       title: Text(title),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ConsentStep(
-              method: _method,
-              onMethodChanged: (m) => setState(() => _method = m),
-              // The add-child notice says "before you add a child", which is false
-              // on this screen: the child exists and already has a record. The
-              // override is the neutral line; the legal wording stays English.
-              notice: l10n.consentRegrantNotice,
-            ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ConsentStep(
+            method: _method,
+            onMethodChanged: (m) => setState(() => _method = m),
+            // The add-child notice says "before you add a child", which is false
+            // on this screen: the child exists and already has a record. The
+            // override is the neutral line; the legal wording stays English.
+            notice: l10n.consentRegrantNotice,
+          ),
+          const SizedBox(height: AppSpace.md),
+          Text(l10n.consentGrantRegion(regionLabel(l10n, widget.jurisdiction)),
+              style: Theme.of(context).textTheme.bodySmall),
+          if (_error != null) ...[
             const SizedBox(height: AppSpace.md),
-            Text(l10n.consentGrantRegion(regionLabel(l10n, widget.jurisdiction)),
-                style: Theme.of(context).textTheme.bodySmall),
-            if (_error != null) ...[
-              const SizedBox(height: AppSpace.md),
-              Text(
-                _error!,
-                key: const ValueKey('consentGrantError'),
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(color: context.tokens.danger),
-              ),
-            ],
+            Text(
+              _error!,
+              key: const ValueKey('consentGrantError'),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(color: context.tokens.danger),
+            ),
           ],
-        ),
+        ],
       ),
       actions: [
         TextButton(

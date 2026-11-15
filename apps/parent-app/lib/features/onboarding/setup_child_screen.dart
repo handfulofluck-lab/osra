@@ -95,6 +95,7 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
     final leave = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: Text(l10n.onboardingLeaveTitle),
         content: Text(l10n.onboardingLeaveBody),
         actions: [

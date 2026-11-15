@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -91,6 +93,36 @@ class FadingScrollableTabBar extends StatefulWidget
     super.key,
     required this.tabBar,
   });
+
+  /// Computes a [Tab] height from the scaled tab label metrics so tabs never
+  /// clip vertically at large accessibility text scales (e.g. 200%–310%).
+  static double tabHeightFor(BuildContext context, Iterable<String> labels) {
+    final theme = Theme.of(context);
+    final labelStyle =
+        theme.tabBarTheme.labelStyle ?? theme.textTheme.titleSmall;
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
+    double maxTextHeight = 0;
+    for (final label in labels) {
+      final painter = TextPainter(
+        text: TextSpan(text: label, style: labelStyle),
+        maxLines: 1,
+        textDirection: direction,
+        textScaler: scaler,
+      )..layout();
+      if (painter.height > maxTextHeight) {
+        maxTextHeight = painter.height;
+      }
+      painter.dispose();
+    }
+    return math.max(46.0, maxTextHeight + AppSpace.md).ceilToDouble();
+  }
+
+  /// Builds [Tab] widgets sized cleanly for the current [MediaQuery.textScalerOf].
+  static List<Widget> scaledTabs(BuildContext context, List<String> labels) {
+    final height = tabHeightFor(context, labels);
+    return [for (final label in labels) Tab(height: height, text: label)];
+  }
 
   final TabBar tabBar;
 

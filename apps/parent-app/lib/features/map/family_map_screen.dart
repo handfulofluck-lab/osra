@@ -501,44 +501,43 @@ class _GeofenceCreateDialogState extends ConsumerState<GeofenceCreateDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      scrollable: true,
       title: Text(context.l10n.familyMapAddGeofence),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (widget.children.length > 1)
-              Padding(
-                padding: const EdgeInsets.only(bottom: AppSpace.md),
-                child: DropdownButtonFormField<String>(
-                  initialValue: _childId,
-                  decoration: InputDecoration(labelText: context.l10n.familyMapChild, border: const OutlineInputBorder()),
-                  items: [for (final c in widget.children) DropdownMenuItem(value: c.id, child: Text(c.displayName))],
-                  onChanged: (v) => setState(() => _childId = v ?? widget.children.first.id),
-                ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.children.length > 1)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpace.md),
+              child: DropdownButtonFormField<String>(
+                initialValue: _childId,
+                decoration: InputDecoration(labelText: context.l10n.familyMapChild, border: const OutlineInputBorder()),
+                items: [for (final c in widget.children) DropdownMenuItem(value: c.id, child: Text(c.displayName))],
+                onChanged: (v) => setState(() => _childId = v ?? widget.children.first.id),
               ),
-            TextField(
-              controller: _label,
-              decoration: InputDecoration(labelText: context.l10n.familyMapLabelField, border: const OutlineInputBorder()),
             ),
-            const SizedBox(height: AppSpace.md),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(context.l10n.familyMapRadius(_radiusM.round())),
-            ),
-            Slider(
-              value: _radiusM,
-              min: 100,
-              max: 1000,
-              divisions: 18,
-              label: context.l10n.familyMapMeters(_radiusM.round()),
-              onChanged: (v) => setState(() => _radiusM = v),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: AppSpace.sm),
-              Text(_error!, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.tokens.danger)),
-            ],
+          TextField(
+            controller: _label,
+            decoration: InputDecoration(labelText: context.l10n.familyMapLabelField, border: const OutlineInputBorder()),
+          ),
+          const SizedBox(height: AppSpace.md),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: Text(context.l10n.familyMapRadius(_radiusM.round())),
+          ),
+          Slider(
+            value: _radiusM,
+            min: 100,
+            max: 1000,
+            divisions: 18,
+            label: context.l10n.familyMapMeters(_radiusM.round()),
+            onChanged: (v) => setState(() => _radiusM = v),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: AppSpace.sm),
+            Text(_error!, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.tokens.danger)),
           ],
-        ),
+        ],
       ),
       actions: [
         TextButton(onPressed: _saving ? null : () => Navigator.of(context).pop(), child: Text(context.l10n.cancel)),

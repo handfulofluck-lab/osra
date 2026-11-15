@@ -216,12 +216,12 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
           FadingScrollableTabBar(
             tabBar: TabBar(
               isScrollable: true,
-              tabs: [
-                Tab(text: l10n.tabScreenTime),
-                Tab(text: l10n.tabWebFilter),
-                Tab(text: l10n.tabApps),
-                Tab(text: l10n.tabRoutines),
-              ],
+              tabs: FadingScrollableTabBar.scaledTabs(context, [
+                l10n.tabScreenTime,
+                l10n.tabWebFilter,
+                l10n.tabApps,
+                l10n.tabRoutines,
+              ]),
             ),
           ),
           Expanded(
@@ -309,6 +309,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: Text(l10n.recommendedProtection),
         content: Text(l10n.disablingRecommended),
         actions: [
@@ -690,6 +691,7 @@ class _AddAppRuleDialogState extends State<_AddAppRuleDialog> {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     return AlertDialog(
+      scrollable: true,
       title: Text(l10n.addAppRule),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -914,6 +916,7 @@ class _AddAlwaysAllowedDialogState extends State<_AddAlwaysAllowedDialog> {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     return AlertDialog(
+      scrollable: true,
       title: Text(l10n.addAlwaysAllowedTitle),
       content: TextField(
         controller: _packageId,
@@ -970,38 +973,38 @@ class _RoutineDialogState extends State<_RoutineDialog> {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     return AlertDialog(
+      scrollable: true,
       title: Text(widget.existing == null ? l10n.addRoutine : l10n.editRoutine),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: _name, decoration: InputDecoration(labelText: l10n.nameLabel, border: const OutlineInputBorder())),
-            const SizedBox(height: AppSpace.md),
-            Row(
-              children: [
-                Expanded(child: OutlinedButton(onPressed: () => _pick(true), child: Text(l10n.startTimeButton(formatTime(_start))))),
-                const SizedBox(width: AppSpace.sm),
-                Expanded(child: OutlinedButton(onPressed: () => _pick(false), child: Text(l10n.endTimeButton(formatTime(_end))))),
-              ],
-            ),
-            const SizedBox(height: AppSpace.md),
-            Wrap(
-              spacing: AppSpace.sm,
-              children: [
-                for (var i = 1; i <= 7; i++)
-                  FilterChip(
-                    label: Text(l10n.weekdayShort(i)),
-                    selected: _days.contains(i),
-                    onSelected: (sel) => setState(() => sel ? _days.add(i) : _days.remove(i)),
-                  ),
-              ],
-            ),
-            const SizedBox(height: AppSpace.md),
-            TextField(controller: _blocked, decoration: InputDecoration(labelText: l10n.blockedAppsLabel, border: const OutlineInputBorder())),
-            const SizedBox(height: AppSpace.md),
-            TextField(controller: _allowed, decoration: InputDecoration(labelText: l10n.allowedAppsLabel, border: const OutlineInputBorder())),
-          ],
-        ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(controller: _name, decoration: InputDecoration(labelText: l10n.nameLabel, border: const OutlineInputBorder())),
+          const SizedBox(height: AppSpace.md),
+          Wrap(
+            spacing: AppSpace.sm,
+            runSpacing: AppSpace.sm,
+            children: [
+              OutlinedButton(onPressed: () => _pick(true), child: Text(l10n.startTimeButton(formatTime(_start)))),
+              OutlinedButton(onPressed: () => _pick(false), child: Text(l10n.endTimeButton(formatTime(_end)))),
+            ],
+          ),
+          const SizedBox(height: AppSpace.md),
+          Wrap(
+            spacing: AppSpace.sm,
+            children: [
+              for (var i = 1; i <= 7; i++)
+                FilterChip(
+                  label: Text(l10n.weekdayShort(i)),
+                  selected: _days.contains(i),
+                  onSelected: (sel) => setState(() => sel ? _days.add(i) : _days.remove(i)),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.md),
+          TextField(controller: _blocked, decoration: InputDecoration(labelText: l10n.blockedAppsLabel, border: const OutlineInputBorder())),
+          const SizedBox(height: AppSpace.md),
+          TextField(controller: _allowed, decoration: InputDecoration(labelText: l10n.allowedAppsLabel, border: const OutlineInputBorder())),
+        ],
       ),
       actions: [
         TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(l10n.cancel)),

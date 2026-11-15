@@ -227,7 +227,7 @@ void main() {
       await pumpScreen(tester, const DashboardScreen(), api);
       expect(api.calls('GET', '/v1/family/me'), hasLength(1));
 
-      await tester.fling(find.byType(GridView), const Offset(0, 400), 900);
+      await tester.fling(find.byType(ListView).first, const Offset(0, 400), 900);
       await tester.pump();
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
@@ -540,6 +540,8 @@ void main() {
       final api = pausedApi(startPaused: false);
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
+      await tester.ensureVisible(find.text('Pause net'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Pause net'));
       await flushFakeHttp(tester);
 

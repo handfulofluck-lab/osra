@@ -406,44 +406,41 @@ void main() {
     }
 
     for (final matrix in _kFullMatrix) {
-      final isNarrowScale2 = matrix.size.width <= 320 && matrix.scale >= 2.0;
-      if (!isNarrowScale2) {
-        testWidgets('DashboardScreen no-limit child [${_caseLabel(matrix)}]', (tester) async {
-          final l10n = lookupAppLocalizations(matrix.locale);
-          final api = dashboardApi(includeDevice: matrix.size.width >= 393);
-          await pumpMatrix(
-            tester,
-            const DashboardScreen(),
-            matrix: matrix,
-            api: api,
-            overrides: [
-              liveActivityProvider.overrideWith(
-                (ref) => {
-                  'child-1': LiveActivity(
-                    childId: 'child-1',
-                    app: 'YouTube Kids Learning Videos',
-                    minutesToday: 45,
-                    ts: DateTime.now(),
-                  ),
-                },
-              ),
-            ],
-          );
+      testWidgets('DashboardScreen no-limit child [${_caseLabel(matrix)}]', (tester) async {
+        final l10n = lookupAppLocalizations(matrix.locale);
+        final api = dashboardApi(includeDevice: true);
+        await pumpMatrix(
+          tester,
+          const DashboardScreen(),
+          matrix: matrix,
+          api: api,
+          overrides: [
+            liveActivityProvider.overrideWith(
+              (ref) => {
+                'child-1': LiveActivity(
+                  childId: 'child-1',
+                  app: 'YouTube Kids Learning Videos',
+                  minutesToday: 45,
+                  ts: DateTime.now(),
+                ),
+              },
+            ),
+          ],
+        );
 
-          expect(find.text(l10n.readPermissionRequired), findsOneWidget);
-          expect(find.byKey(const ValueKey('liveChip-child-1')), findsOneWidget);
-          expect(find.textContaining('YouTube Kids Learning Videos'), findsOneWidget);
+        expect(find.text(l10n.readPermissionRequired), findsOneWidget);
+        expect(find.byKey(const ValueKey('liveChip-child-1')), findsOneWidget);
+        expect(find.textContaining('YouTube Kids Learning Videos'), findsOneWidget);
 
-          final screenTimeFinder = find.text(l10n.minutesShort(45));
-          expect(screenTimeFinder, findsOneWidget);
-          final screenTimeText = tester.widget<Text>(screenTimeFinder).data!;
-          expect(screenTimeText, isNot(contains('—')));
-          expect(screenTimeText, isNot(contains('/')));
+        final screenTimeFinder = find.text(l10n.minutesShort(45));
+        expect(screenTimeFinder, findsOneWidget);
+        final screenTimeText = tester.widget<Text>(screenTimeFinder).data!;
+        expect(screenTimeText, isNot(contains('—')));
+        expect(screenTimeText, isNot(contains('/')));
 
-          expect(find.byType(LinearProgressIndicator), findsNothing);
-          expectNoOverflow(tester, contextLabel: 'DashboardScreen [${_caseLabel(matrix)}]');
-        });
-      }
+        expect(find.byType(LinearProgressIndicator), findsNothing);
+        expectNoOverflow(tester, contextLabel: 'DashboardScreen [${_caseLabel(matrix)}]');
+      });
     }
 
     for (final matrix in _kNarrowScale2Cases) {
@@ -1169,6 +1166,271 @@ void main() {
         expect(titleText.maxLines, 2);
 
         expectNoOverflow(tester, contextLabel: 'ChildDetailScreen [${_caseLabel(matrix)}]');
+      });
+    }
+  });
+
+  group('6. UI/UX Bureau B1-B4 & B7 at 310% max accessibility scale (320x568)', () {
+    final maxScaleCases = [
+      for (final locale in _kMatrixLocales)
+        (
+          size: const Size(320, 568),
+          scale: 3.1,
+          locale: locale,
+          brightness: Brightness.light,
+        ),
+    ];
+
+    FakeApiClient bureauApi({
+      required Locale locale,
+      int unreadAlerts = 0,
+      int childCount = 1,
+    }) {
+      final now = DateTime.now().toUtc();
+      final longName = locale.languageCode == 'ar'
+          ? 'محمد مصطفى كاظم العلي'
+          : 'Mohammed Mustafa Abdullah Al-Mansoor';
+      final children = [
+        for (var i = 0; i < childCount; i++)
+          {
+            'id': 'child-${i + 1}',
+            'familyId': 'fam-1',
+            'displayName': i == 0 ? longName : 'Nadia $i',
+            'birthYear': 2013,
+            'screenTimeTodayMinutes': 45,
+          },
+      ];
+      final alerts = [
+        for (var i = 0; i < unreadAlerts; i++)
+          {
+            'id': 'a-$i',
+            'childId': 'child-1',
+            'severity': 'warning',
+            'category': 'tamper',
+            'title': 'Alert $i',
+            'body': 'Alert body $i',
+            'metadata': <String, dynamic>{},
+            'createdAt': now.toIso8601String(),
+            'acknowledged': false,
+          },
+      ];
+      return FakeApiClient({
+        ...standardRoutes(
+          familyMe: {
+            'family': {
+              'id': 'fam-1',
+              'name': 'QA Family',
+              'region': 'US',
+              'createdAt': now.toIso8601String(),
+            },
+            'parent': {
+              'id': 'par-1',
+              'familyId': 'fam-1',
+              'email': 'qa@osratech.com',
+              'displayName': 'QA Parent',
+              'role': 'owner',
+              'mfaEnabled': false,
+            },
+            'children': children,
+            'devices': [
+              {
+                'id': 'dev-1',
+                'childId': 'child-1',
+                'platform': 'android',
+                'model': 'Pixel 9',
+                'osVersion': '16',
+                'status': 'online',
+                'batteryPct': 80,
+                'lastSeen': now.toIso8601String(),
+              },
+            ],
+          },
+          alerts: alerts,
+        ),
+        'GET /v1/alerts': (_) => {
+              'items': alerts,
+              'meta': {'total': unreadAlerts, 'page': 1, 'limit': 1},
+            },
+      });
+    }
+
+    for (final matrix in maxScaleCases) {
+      testWidgets('B1 Pause internet confirm dialog scrolls with reachable buttons [${_caseLabel(matrix)}]', (tester) async {
+        final l10n = lookupAppLocalizations(matrix.locale);
+        await pumpMatrix(
+          tester,
+          const DashboardScreen(),
+          matrix: matrix,
+          api: bureauApi(locale: matrix.locale),
+        );
+
+        final pillFinder = find.byType(InternetPill).first;
+        await tester.scrollUntilVisible(pillFinder, 120);
+        await tester.pumpAndSettle();
+        await tester.tap(pillFinder);
+        await tester.pumpAndSettle();
+
+        final dialogFinder = find.byType(AlertDialog);
+        expect(dialogFinder, findsOneWidget);
+        expect(tester.widget<AlertDialog>(dialogFinder).scrollable, isTrue);
+        expect(
+          find.descendant(of: dialogFinder, matching: find.byType(SingleChildScrollView)),
+          findsOneWidget,
+        );
+
+        final cancelFinder = find.widgetWithText(TextButton, l10n.cancel);
+        final pauseFinder = find.widgetWithText(FilledButton, l10n.pause);
+        expect(cancelFinder, findsOneWidget);
+        expect(pauseFinder, findsOneWidget);
+
+        for (final btn in [cancelFinder, pauseFinder]) {
+          final rect = tester.getRect(btn);
+          expect(rect.top, greaterThanOrEqualTo(0));
+          expect(
+            rect.bottom,
+            lessThanOrEqualTo(matrix.size.height),
+            reason: 'B1 action button pushed off-screen ($rect)',
+          );
+        }
+
+        expectNoOverflow(tester, contextLabel: 'B1 Pause confirm dialog [${_caseLabel(matrix)}]');
+
+        await tester.tap(cancelFinder);
+        await tester.pumpAndSettle();
+        expect(find.byType(AlertDialog), findsNothing);
+      });
+
+      testWidgets('B2 card name unlimited & B3 fixed bell badge at 3.1x [${_caseLabel(matrix)}]', (tester) async {
+        final expectedName = matrix.locale.languageCode == 'ar'
+            ? 'محمد مصطفى كاظم العلي'
+            : 'Mohammed Mustafa Abdullah Al-Mansoor';
+        await pumpMatrix(
+          tester,
+          const DashboardScreen(),
+          matrix: matrix,
+          api: bureauApi(locale: matrix.locale, unreadAlerts: 12),
+        );
+
+        // B2: card child name has no line limit or ellipsis.
+        final nameFinder = find.descendant(
+          of: find.byType(Card).first,
+          matching: find.text(expectedName),
+        );
+        expect(nameFinder, findsOneWidget);
+        final nameWidget = tester.widget<Text>(nameFinder);
+        expect(nameWidget.maxLines, isNull);
+        expect(nameWidget.overflow, isNull);
+
+        // B3: bell Badge keeps a fixed unscaled size and never overlaps adjacent AppBar icons.
+        final badgeFinder = find.byType(Badge);
+        expect(badgeFinder, findsOneWidget);
+        final badgeLabelFinder = find.descendant(
+          of: badgeFinder,
+          matching: find.text('12'),
+        );
+        expect(badgeLabelFinder, findsOneWidget);
+        final labelSize = tester.getSize(badgeLabelFinder);
+        expect(
+          labelSize.height,
+          lessThanOrEqualTo(24.0),
+          reason: 'Badge count text scaled unexpectedly (${labelSize.height})',
+        );
+        final badgeRect = tester.getRect(badgeFinder);
+        final mapBtnRect = tester.getRect(find.byIcon(Icons.map_outlined));
+        final signOutBtnRect = tester.getRect(find.byIcon(Icons.logout));
+        expect(badgeRect.overlaps(mapBtnRect), isFalse);
+        expect(badgeRect.overlaps(signOutBtnRect), isFalse);
+
+        expectNoOverflow(tester, contextLabel: 'B2/B3 Dashboard [${_caseLabel(matrix)}]');
+      });
+
+      testWidgets('B7 Dashboard scrolled to bottom clears Add Child FAB [${_caseLabel(matrix)}]', (tester) async {
+        await pumpMatrix(
+          tester,
+          const DashboardScreen(),
+          matrix: matrix,
+          api: bureauApi(locale: matrix.locale, childCount: 3),
+        );
+
+        final scrollable = find.byWidgetPredicate(
+          (w) => w is Scrollable && w.axis == Axis.vertical,
+        ).first;
+        await tester.drag(scrollable, const Offset(0, -1500));
+        await tester.pumpAndSettle();
+
+        final fabFinder = find.byType(FloatingActionButton);
+        expect(fabFinder, findsOneWidget);
+        final fabRect = tester.getRect(fabFinder);
+        final lastCardRect = tester.getRect(find.byType(Card).last);
+        expect(
+          lastCardRect.bottom,
+          lessThanOrEqualTo(fabRect.top + 0.5),
+          reason: 'Last card (${lastCardRect.bottom}) did not clear FAB (${fabRect.top})',
+        );
+        expectNoOverflow(tester, contextLabel: 'B7 Dashboard end scroll [${_caseLabel(matrix)}]');
+      });
+
+      testWidgets('B4 ChildDetail & RulesEditor tabs scale height cleanly at 3.1x [${_caseLabel(matrix)}]', (tester) async {
+        final l10n = lookupAppLocalizations(matrix.locale);
+        await pumpMatrix(
+          tester,
+          const ChildDetailScreen(childId: 'child-1'),
+          matrix: matrix,
+          api: bureauApi(locale: matrix.locale),
+        );
+
+        final fadingBar = find.byType(FadingScrollableTabBar);
+        expect(fadingBar, findsOneWidget);
+        final fadingWidget = tester.widget<FadingScrollableTabBar>(fadingBar);
+        expect(
+          fadingWidget.preferredSize.height,
+          greaterThan(54.0),
+          reason: 'ChildDetail tab bar height (${fadingWidget.preferredSize.height}) must scale with 3.1x text',
+        );
+        final barRect = tester.getRect(fadingBar);
+        final overviewTextRect = tester.getRect(find.text(l10n.tabOverview));
+        expect(overviewTextRect.top, greaterThanOrEqualTo(barRect.top - 0.5));
+        expect(overviewTextRect.bottom, lessThanOrEqualTo(barRect.bottom + 0.5));
+        expectNoOverflow(tester, contextLabel: 'B4 ChildDetail tabs [${_caseLabel(matrix)}]');
+
+        await pumpMatrix(
+          tester,
+          const RulesEditorScreen(childId: 'child-1'),
+          matrix: matrix,
+          api: bureauApi(locale: matrix.locale),
+        );
+        final rulesBar = find.byType(FadingScrollableTabBar);
+        expect(rulesBar, findsOneWidget);
+        final rulesWidget = tester.widget<FadingScrollableTabBar>(rulesBar);
+        expect(rulesWidget.preferredSize.height, greaterThan(54.0));
+        final rulesBarRect = tester.getRect(rulesBar);
+        final screenTimeTabRect = tester.getRect(find.text(l10n.tabScreenTime));
+        expect(screenTimeTabRect.top, greaterThanOrEqualTo(rulesBarRect.top - 0.5));
+        expect(screenTimeTabRect.bottom, lessThanOrEqualTo(rulesBarRect.bottom + 0.5));
+        expectNoOverflow(tester, contextLabel: 'B4 RulesEditor tabs [${_caseLabel(matrix)}]');
+      });
+
+      testWidgets('B1 SetupChild leave & RulesEditor disable-recommended confirm dialogs [${_caseLabel(matrix)}]', (tester) async {
+        final l10n = lookupAppLocalizations(matrix.locale);
+        // SetupChild leave confirm dialog.
+        await pumpMatrix(
+          tester,
+          const SetupChildScreen(),
+          matrix: matrix,
+          api: bureauApi(locale: matrix.locale),
+        );
+        await tester.tap(find.byType(BackButton));
+        await tester.pumpAndSettle();
+        final leaveDialog = find.byType(AlertDialog);
+        expect(leaveDialog, findsOneWidget);
+        expect(tester.widget<AlertDialog>(leaveDialog).scrollable, isTrue);
+        expect(
+          tester.getRect(find.widgetWithText(FilledButton, l10n.onboardingLeaveConfirm)).bottom,
+          lessThanOrEqualTo(matrix.size.height),
+        );
+        expectNoOverflow(tester, contextLabel: 'B1 SetupChild leave dialog [${_caseLabel(matrix)}]');
+        await tester.tap(find.widgetWithText(TextButton, l10n.onboardingLeaveStay));
+        await tester.pumpAndSettle();
       });
     }
   });

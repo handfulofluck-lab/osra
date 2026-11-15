@@ -170,12 +170,11 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
+          scrollable: true,
           title: Text(context.l10n.digestPrefsTestTitle),
-          content: SingleChildScrollView(
-            child: SelectableText(
-              buffer.toString().trim().isEmpty ? ctx.l10n.digestPrefsNoDigests : buffer.toString().trim(),
-              key: const ValueKey('digestMarkdown'),
-            ),
+          content: SelectableText(
+            buffer.toString().trim().isEmpty ? ctx.l10n.digestPrefsNoDigests : buffer.toString().trim(),
+            key: const ValueKey('digestMarkdown'),
           ),
           actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: Text(ctx.l10n.digestPrefsClose))],
         ),
