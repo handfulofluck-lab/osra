@@ -643,11 +643,37 @@ Owner decision, rationale and runbook: osra-security#27 (private).
   switching any of that monitoring off (trail, its bucket and its Object Lock, log group and filters, alarms,
   topic, keys, the management account's GuardDuty detectors and their alert rules, and its own policies).
   Management-account GuardDuty findings of severity 7+ reach the same two addresses (`guardduty_alerts.tf`;
-  us-east-1 findings are forwarded to the home region's event bus first). The same policy closes the indirect route: the user
+  us-east-1 findings are forwarded to the home region's event bus first). The same policies narrow the indirect route (not close it; the "new principals" alarm covers the rest, and roles it makes carry a boundary, see role_boundary.tf): the user
   cannot assume any management-account role, create users, sign-in passwords or other users' keys, detach the
   trail at the organisation level, or remove the off-site copy vault's lock or policy. Nothing the agents do needs
   those; production and staging are reached through roles in the member accounts. Changing those resources later is done through Identity Center with MFA; an apply of this
   stack by the deployer user that touches them fails by design.
+- **Ahmed's six conditions for the access exception** (#637 comment 6881460052; Karim's OK 14 Nov 23:54 UAE):
+  1. *No erasing evidence or backups:* the user's three managed deny policies here, and in osra-production the
+     service control policy `osra-agent-cannot-erase-evidence` (`org-audit/agent_guardrails.tf`), which binds
+     every principal there except Karim's Identity Center roles, so a role the agents create there is bound too.
+     AWS Backup's own role may still expire recovery points, and no one but Karim may change it or create a role
+     under `aws-reserved/`. The policy type must be enabled on the organisation root (checked 15 Nov: enabled).
+     RDS deletion protection has no IAM condition key, so deleting the instance, snapshots, automated backups
+     and recovery points is denied instead; only the restore drill's `*-restore-drill-*` instance stays deletable.
+  2. *No self-escalation:* own keys only, no changes to its own policies, and every role it creates or changes
+     here carries `osra-management-role-boundary` (`org-audit/role_boundary.tf`); roles are passed only to
+     CloudTrail, EventBridge, Backup and Config; no new identity providers, no new accounts or delegated
+     administrators, and no Identity Center writes at all (`sso-directory:*`, every `sso:`/`identitystore:` write
+     verb), so the key cannot reset Karim's password or MFA.
+  3. *Key age:* AWS Config rule `osra-access-keys-rotated` (100 days) mails both alarm addresses. Claude rotates
+     monthly.
+  4. *Key store:* `move-agent-key-to-store.sh` (once) moves the key into a Windows DPAPI store under Karim's
+     Windows user; the profile reads it through `agent-credential.ps1` (`credential_process`), and
+     `rotate-agent-key.sh` writes new keys there and reads the store back, refusing to go on unless it holds the
+     new key id. The key is never put in a repository, a CI secret, a cloud
+     agent session or a chat.
+  5. *Use from outside Karim's network* raises an alarm and blocks nothing.
+  6. *Root:* osra-production has no root password, keys or MFA (centralised root management, recovery through
+     the management account); the management root has MFA and no access keys. Evidence on #637.
+  **Apply order:** org-audit is applied once, at the head that carries all of this (not batch E first: its deny
+  would stop this apply adding the boundary to the roles E created). The RDS replacement in batch D is applied
+  before, because the policy forbids deleting the old instance afterwards.
 - `rotate-agent-key.sh` replaces the key without a gap: new key, written to the credentials file, proved,
   then the old one deleted; on any failure before that, the new key is deleted and the file restored.
 
@@ -669,6 +695,7 @@ Owner decision, rationale and runbook: osra-security#27 (private).
 | KMS keys | ~6 customer keys × US$1 + requests | ~6–7 |
 | CloudTrail copy in CloudWatch | organisation trail management events to the access-alarm log group (batch E) | ~2–4 |
 | Backups | daily RDS backups + copy to the management account's vault (batch D) | ~5–8 |
+| AWS Config | management account, IAM users only, one rule | <1 |
 | **Total** | at minimum scale (2 tasks) | **~US$330–340** |
 
 Each extra API task adds ~US$33/month. Data out to the internet beyond 100 GB/month, taxes and AWS Support are

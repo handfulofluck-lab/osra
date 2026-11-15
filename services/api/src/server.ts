@@ -15,6 +15,7 @@ import { digestRoutes } from "./routes/digests.js";
 import { socialRoutes } from "./routes/social.js";
 import { contentRoutes } from "./routes/content.js";
 import { inviteRoutes } from "./routes/invites.js";
+import { linkPageRoutes } from "./routes/linkPages.js";
 import { insightsRoutes } from "./routes/insights.js";
 import { meRoutes } from "./routes/me.js";
 import { accountRoutes } from "./routes/account.js";
@@ -139,6 +140,9 @@ await app.register(meRoutes, { prefix: "/v1/me" });
 // #442 PR 3: the public account-deletion pages (Play's web link). No session; the two POSTs carry
 // AUTH_RATE_LIMIT themselves.
 await app.register(accountRoutes, { prefix: "/v1/account" });
+// #789: the pages the mailed links open (/reset, /mfa/reset/confirm, /mfa/reset/cancel, /invite/accept,
+// /dashboard). Outside /v1 because the mails carry APP_PUBLIC_URL + these paths. A GET changes nothing.
+await app.register(linkPageRoutes);
 // ADR-0041 D2 / #620: Play purchase verification (a parent session) and the Pub/Sub push (its own OIDC
 // token). Both write the plan only through `lib/entitlement.ts`.
 await app.register(billingRoutes, { prefix: "/v1/billing" });

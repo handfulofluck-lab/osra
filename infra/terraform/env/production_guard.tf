@@ -44,7 +44,7 @@ resource "terraform_data" "production_guard" {
     }
     precondition {
       condition     = var.audit_logs_enabled
-      error_message = "production: audit_logs_enabled must be true (ALB, VPC flow, WAF and PostgreSQL logs; #766 item 2)."
+      error_message = "production: audit_logs_enabled must be true (VPC flow, WAF and PostgreSQL logs; #766 item 2)."
     }
     precondition {
       condition     = var.secrets_out_of_band && var.redis_transit_encryption

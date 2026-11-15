@@ -71,7 +71,7 @@ app_public_url = "https://app.osratech.com"
 email_provider = ""
 email_from     = ""
 
-# ALB access logs, VPC flow logs, WAF logs and PostgreSQL logs, each kept exactly 90 days (#766 item 2).
+# VPC flow logs, WAF logs and PostgreSQL logs, each kept exactly 90 days (#766 item 2). ALB access logs stay off (the WebSocket ticket is in the query string).
 audit_logs_enabled = true
 
 # Database on its own KMS key, daily AWS Backup with a copy in the MANAGEMENT account in another EU region
