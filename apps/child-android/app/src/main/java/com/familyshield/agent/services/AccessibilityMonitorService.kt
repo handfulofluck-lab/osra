@@ -210,7 +210,6 @@ class AccessibilityMonitorService : AccessibilityService() {
             // Issue #284: our own block screen is in front and this stream never records our package, so
             // the blocked app's interval would stay open and the next real event would charge it the stay.
             usage.recordOwnWindow(System.currentTimeMillis())
-            restoreRingScreen(event, packageName)
             return
         }
         // Issue #175: read every visible application window once per event. The active window alone
