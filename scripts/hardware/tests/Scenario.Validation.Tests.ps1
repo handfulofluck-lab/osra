@@ -100,8 +100,8 @@ Describe "Structural device and data refusals" {
         @{ name = "ampersand chain"; command = @("shell", "getprop & reboot") },
         @{ name = "substitution"; command = @("shell", 'echo $(reboot)') },
         @{ name = "backtick substitution"; command = @("shell", 'echo `reboot`') },
-        @{ name = "newline inside an element"; command = @("shell", "getprop`nreboot") },
-        @{ name = "tab inside an element"; command = @("shell", "getprop`treboot") },
+        @{ name = "newline inside an element"; command = @("shell", "getprop`nro.product.model") },
+        @{ name = "tab inside an element"; command = @("shell", "getprop`tro.product.model") },
         @{ name = "serial override"; command = @("shell", "-s", "another-serial", "getprop") },
         @{ name = "transport flag t"; command = @("-t", "1", "shell", "getprop") },
         @{ name = "transport flag H"; command = @("-H", "127.0.0.1", "shell", "getprop") },
@@ -121,7 +121,24 @@ Describe "Structural device and data refusals" {
         @{ name = "unsaved setting"; command = @("shell", "settings", "put", "global", "volume_music", "1") },
         @{ name = "restored key in the wrong table"; command = @("shell", "settings", "put", "global", "screen_off_timeout", "15000") },
         @{ name = "window size"; command = @("shell", "wm", "size", "1080x2400") },
-        @{ name = "window density"; command = @("shell", "wm", "density", "440") }
+        @{ name = "window density"; command = @("shell", "wm", "density", "440") },
+        @{ name = "full-path dpm"; command = @("shell", "/system/bin/dpm", "remove-active-admin", "test/.Admin") },
+        @{ name = "full-path input"; command = @("shell", "/system/bin/input", "keyevent", "111") },
+        @{ name = "full-path reboot"; command = @("shell", "/system/bin/reboot") },
+        @{ name = "quote-split verb"; command = @("shell", "d''pm", "list-owners") },
+        @{ name = "quote-split digits"; command = @("shell", "input", "text", "1'2'34") },
+        @{ name = "input with a source"; command = @("shell", "input", "keyboard", "keyevent", "111") },
+        @{ name = "input with a display"; command = @("shell", "input", "-d", "0", "text", "1234") },
+        @{ name = "one digit key"; command = @("shell", "input", "keyevent", "7") },
+        @{ name = "numpad keycode"; command = @("shell", "input", "keyevent", "keycode_numpad_1") },
+        @{ name = "two digit keys"; command = @("shell", "input", "keyevent", "3", "4") },
+        @{ name = "two digit text"; command = @("shell", "input", "text", "12") },
+        @{ name = "content insert"; command = @("shell", "content", "insert", "--uri", "content://settings/global") },
+        @{ name = "settings delete"; command = @("shell", "settings", "delete", "global", "zen_mode") },
+        @{ name = "settings reset"; command = @("shell", "settings", "reset", "global") },
+        @{ name = "install multiple"; command = @("install-multiple", "a.apk", "b.apk") },
+        @{ name = "transport flag L"; command = @("-L", "5037", "shell", "getprop") },
+        @{ name = "backslash in a command"; command = @("shell", 'ro\product.model') }
     )
     It "refuses <name>, wrapped or not" -ForEach $cases {
         param($name, $command)
@@ -138,7 +155,13 @@ Describe "Structural device and data refusals" {
             @("shell", "settings", "put", "secure", "accessibility_enabled", "1"),
             @("shell", "settings put system screen_off_timeout 15000"),
             @("shell", "input", "text", "hello"),
-            @("shell", "input", "keyevent", "7")
+            @("shell", "input", "keyevent", "4"),
+            @("shell", "input", "tap", "540", "1200"),
+            @("shell", "input", "swipe", "540", "1600", "540", "400", "300"),
+            @("shell", "appops", "get", "com.osratech.child.full", "SYSTEM_ALERT_WINDOW"),
+            @("shell", "getprop", "ro.product.model"),
+            @("shell", "dumpsys", "package", "com.osratech.child.test"),
+            @("shell", "pm", "list", "packages")
         )) { { Assert-ScenarioCommand -Command $command } | Should -Not -Throw }
     }
 

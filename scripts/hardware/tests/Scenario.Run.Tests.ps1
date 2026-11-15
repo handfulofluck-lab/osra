@@ -109,4 +109,14 @@ function Initialize-RunFake {
         $result.completed | Should -Be $false
         $result.error | Should -Be "scenario_timeout"
     }
+
+    It "refuses a wait that would run past the deadline (#797)" {
+        $script:LeaseCalls = @()
+        $script:Deadline = [DateTime]::UtcNow.AddSeconds(3)
+        try {
+            $result = Invoke-ScenarioSteps -Steps @([pscustomobject]@{ type = "wait"; seconds = 30 }) -Evidence $TestDrive -LockState $false
+        } finally { $script:Deadline = $null }
+        $result.completed | Should -Be $false
+        $result.error | Should -Be "scenario_timeout"
+    }
 }
