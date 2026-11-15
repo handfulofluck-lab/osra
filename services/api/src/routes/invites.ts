@@ -142,7 +142,7 @@ export async function inviteRoutes(app: FastifyInstance) {
     ]);
     const link = `${appPublicUrl()}/invite/accept?token=${secret}`;
     const sent = await getEmailSender().send(
-      inviteEmail(normalizedEmail, { inviterName: inviter?.displayName ?? "A parent", familyName: family?.name ?? "your", role, link }),
+      inviteEmail(normalizedEmail, { inviterName: inviter?.displayName ?? null, familyName: family?.name ?? null, role, link }),
     );
     if (!sent.ok) req.log.error({ reason: sent.reason }, "invite email failed");
     const echoToken = !emailConfigured() && process.env.NODE_ENV !== "production";
