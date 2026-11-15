@@ -52,7 +52,6 @@ resource "aws_cloudwatch_metric_alarm" "family_plan" {
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "notBreaching"
   alarm_actions       = local.alarm_actions
-  ok_actions          = local.alarm_actions
 
   tags = {
     Name = "${local.name_prefix}-${each.key}"
