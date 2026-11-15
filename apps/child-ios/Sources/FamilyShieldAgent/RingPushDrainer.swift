@@ -15,8 +15,8 @@ public enum RingPushDrainer {
     public enum Outcome: Equatable {
         /// A `ring` command was acked `ok` after the schedule succeeded.
         case started
-        /// Everything else: not paired, the poll failed or held no ring, or the schedule failed (then
-        /// the command is acked `failed` with the typed reason). The notification still shows.
+        /// Everything else: not paired, the poll failed or held no ring, or the schedule failed. The
+        /// notification still shows; a failed schedule is left un-acked so the app's full drain can retry.
         case fallback
     }
 
@@ -41,8 +41,10 @@ public enum RingPushDrainer {
         guard let command = commands.first(where: { CommandAction.forType($0.type) == .ring }) else {
             return .fallback
         }
-        if let error = await ring.startRing(id: command.id) {
-            try? await client.ack(identity, commandId: command.id, ok: false, detail: ["reason": error.rawValue])
+        if await ring.startRing(id: command.id) != nil {
+            // The extension must never mark the ring command as failed: a failed AlarmKit schedule
+            // here leaves the command for the app's full drain, so the app can ring when it wakes.
+            // The localized notification is still delivered as the fallback surface.
             return .fallback
         }
         try? await client.ack(identity, commandId: command.id, ok: true)

@@ -96,17 +96,14 @@ final class RingPushDrainTests: XCTestCase {
 
     // MARK: - Every failure answers fallback
 
-    func testAScheduleFailureFallsBackAndAcksFailed() async throws {
+    func testAScheduleFailureFallsBackWithoutAcks() async {
         pair()
         respond(to: [["id": ringId, "type": "ring"]])
         let ring = FakeRingCommands()
         ring.error = .unsupportedOS
         let outcome = await RingPushDrainer.drainNow(client: CommandClient(session: StubProtocol.session), ring: ring)
         XCTAssertEqual(outcome, .fallback, "a failed schedule never suppresses the localized notification")
-        let ack = try XCTUnwrap(acks().first)
-        let body = try JSONSerialization.jsonObject(with: ack.body) as? [String: Any]
-        XCTAssertEqual(body?["status"] as? String, "failed")
-        XCTAssertEqual((body?["detail"] as? [String: String])?["reason"], "unsupported_os")
+        XCTAssertTrue(acks().isEmpty, "the extension must never mark the ring command as failed; the app's full drain handles it")
     }
 
     func testAPollFailureFallsBackWithoutAcks() async {

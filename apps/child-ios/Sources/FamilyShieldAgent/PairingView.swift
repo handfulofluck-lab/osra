@@ -243,6 +243,10 @@ public struct AgentRootView: View {
                         showRepair = false
                         pinConfigured = ParentPinStore.isConfigured
                         Task {
+                            // Ask for notification authorization at pairing. Without this, a background
+                            // ring push is silently dropped because OSRA Kids has no Notifications row
+                            // in Settings (#760 device row).
+                            await RingNotifier.requestPermission()
                             let synced = await RuleSyncer.syncNow()
                             await LocationController.shared.apply(synced)
                             await LocationController.shared.reportGrant()

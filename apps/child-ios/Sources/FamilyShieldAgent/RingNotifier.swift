@@ -7,6 +7,15 @@ public enum RingNotifier {
 
     private static var available: Bool { Bundle.main.bundleURL.pathExtension == "app" }
 
+    /// Requests the notification authorization the ring push needs. Called at pairing so a background
+    /// ring is not silently dropped before the child has ever seen the ring screen (#760 device row).
+    @discardableResult
+    public static func requestPermission() async -> Bool {
+        guard available else { return false }
+        let center = UNUserNotificationCenter.current()
+        return (try? await center.requestAuthorization(options: [.alert, .sound])) == true
+    }
+
     @discardableResult
     public static func showReturnNotification() async -> Bool {
         guard available else { return false }
