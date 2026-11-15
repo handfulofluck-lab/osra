@@ -594,6 +594,7 @@ class AccessibilityMonitorService : AccessibilityService() {
             val inFront = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
             val clsNow = lastWindowClass?.takeIf { inFront != null && lastWindowClassPkg == inFront }
             val now = SystemClock.elapsedRealtime()
+            if (lastRingRestoreMs > 0L) { raiseRingScreen(); return }
             when (RingReentryPolicy.decide(
                 isRinging = true,
                 foreground = inFront,
