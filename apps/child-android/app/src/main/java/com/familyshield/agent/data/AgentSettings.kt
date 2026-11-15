@@ -28,6 +28,8 @@ private val Context.familyShieldDataStore: DataStore<Preferences> by preferences
 class AgentSettings @Inject constructor(
     @ApplicationContext private val context: Context,
     private val secure: com.familyshield.agent.security.SecureStore,
+    /** osra-security#24: the wrong-PIN count, cleared with the pairing that owned it (#792, Antigravity B2). */
+    private val pinAttempts: com.familyshield.agent.security.PinAttemptStore,
 ) {
     private val store = context.familyShieldDataStore
 
@@ -243,6 +245,10 @@ class AgentSettings @Inject constructor(
         }
         // Issue #227: a re-pair is a new device enrolment; its first guard attempt opens a new window.
         TamperState.clearGuardAttemptWindow(context)
+        // osra-security#24 / #792 (Antigravity B2): and a new enrolment inherits no wrong-PIN debt. Left
+        // behind, eight tries from the previous PIN would refuse the new one during the old window and lock
+        // for an hour on the first typo afterwards.
+        pinAttempts.clear()
         baseUrlCache = null
         tokenCache = null
         deviceIdCache = null

@@ -183,12 +183,18 @@ class PinLockoutTest {
         repeat(5) {
             firstOpen.write(PinLockout.recordFailure(firstOpen.read(), wall, elapsedAfter(0), boot))
         }
+        // The parent was told about this lockout; that fact has to outlive the activity as well.
+        firstOpen.write(PinLockout.markedAlerted(firstOpen.read()))
 
         // A brand-new store on the same storage: this is the screen being reopened.
         val secondOpen = PinAttemptStore(storage)
         val state = secondOpen.read()
         assertEquals(5, state.failures)
         assertEquals(boot, state.lastFailureBootCount)
+        // #792 (Antigravity S2): the alerted count must survive too, or the parent is told again for the same
+        // lockout after a restart. Dropping the KEY_ALERTED_AT write leaves every other row green.
+        assertEquals("the alerted count is persisted with the rest", 5, state.alertedAt)
+        assertFalse("one alert for this lockout, even across instances", PinLockout.shouldAlert(state))
         assertTrue("reopening the screen must not hand back a fresh set of tries", PinLockout.isLocked(state, elapsedAfter(1_000L)))
     }
 

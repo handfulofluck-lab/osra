@@ -85,7 +85,7 @@ object PinLockout {
      * a comparison against it is what lets a changed clock open the gate early or hold it shut forever.
      */
     fun isLocked(state: State, nowElapsedMs: Long): Boolean {
-        if (state.failures < MAX_ATTEMPTS || state.lastFailureMs == 0L) return false
+        if (state.failures < MAX_ATTEMPTS) return false
         return nowElapsedMs - state.lastFailureElapsedMs < lockWindowMs(state.failures)
     }
 

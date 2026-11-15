@@ -50,6 +50,7 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             }
             // Not eventTimestamp(): its fallback stamps the admin-disable time, which is not this event's.
             TYPE_BLOCK_BYPASS -> TamperAlertDedupe.blockBypassKey(deviceId, app, layout, inputData.getLong(KEY_EVENT_AT_MS, 0L))
+            TYPE_PIN_LOCKOUT -> TamperAlertDedupe.pinLockoutKey(deviceId, inputData.getLong(KEY_EVENT_AT_MS, 0L), inputData.getInt(KEY_ATTEMPT_COUNT, 0))
             else -> null
         }
         // The window key is stable across attempts; the local key adds the count so attempt N+1 is
@@ -75,7 +76,11 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
                         body = bodyFor(type, detail, guardWindow),
                         metadata = metadataFor(type, app, layout),
                         dedupeKey = dedupeKey,
-                        attemptCount = if (type == TYPE_GUARD_TRIGGERED) guardWindow?.count else null,
+                        attemptCount = when (type) {
+                            TYPE_GUARD_TRIGGERED -> guardWindow?.count
+                            TYPE_PIN_LOCKOUT -> inputData.getInt(KEY_ATTEMPT_COUNT, 0).takeIf { it > 0 }
+                            else -> null
+                        },
                     ),
                 )
             }
@@ -101,11 +106,6 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
     }
 
     /** The first attempt keeps the specific screen detail; later ones give the count and every screen tried. */
-    private fun bodyFor(type: String, detail: String, window: GuardAttemptWindow.State?): String = when {
-        type == TYPE_GUARD_TRIGGERED && window != null && window.count > 1 ->
-            GuardAttemptWindow.body(window.count, window.screens, detail)
-        else -> detail.ifBlank { BODIES[type] ?: "" }
-    }
 
     /**
      * The disable timestamp the receiver recorded. The work-input copy is the authority so a
@@ -125,6 +125,12 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
     companion object {
         const val TYPE_ADMIN_REMOVED = "device_admin_removed"
         const val TYPE_GUARD_TRIGGERED = "protection_screen_opened"
+        /**
+         * osra-security#24 / #792, Antigravity B1: a PIN lockout is its own alert, not a protection-screen
+         * attempt. Sharing [TYPE_GUARD_TRIGGERED] made [bodyFor] replace the lockout sentence with the
+         * five-attempt aggregation whenever the count reached five, so the parent never read the duration.
+         */
+        const val TYPE_PIN_LOCKOUT = "parent_pin_locked"
         const val TYPE_VPN_REVOKED = "content_filter_disconnected"
         const val TYPE_BLOCK_BYPASS = "block_bypass"
         private const val KEY_TYPE = "type"
@@ -142,6 +148,7 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             TYPE_GUARD_TRIGGERED to "Someone tried to remove protection",
             TYPE_VPN_REVOKED to "Content filter was disconnected",
             TYPE_BLOCK_BYPASS to "A blocked app stayed on screen",
+            TYPE_PIN_LOCKOUT to "Too many wrong parent-PIN tries",
         )
         private val BODIES = mapOf(
             TYPE_ADMIN_REMOVED to "OSRA's device-admin rights were turned off on this device. Uninstall is no longer blocked.",
@@ -167,10 +174,23 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
          * therefore unique per window: REPLACE still coalesces inside a window (newest count wins),
          * and a new window no longer cancels the old one. Every other type keeps the old name.
          */
+        /**
+         * The sentence the parent reads. #792 (Antigravity B1): a \`TYPE_PIN_LOCKOUT\` never reaches
+         * [GuardAttemptWindow.body], which ignores the detail above a count of one and would replace the
+         * lockout sentence with the protection-screen aggregation.
+         */
+        internal fun bodyFor(type: String, detail: String, window: GuardAttemptWindow.State?): String = when {
+            type == TYPE_GUARD_TRIGGERED && window != null && window.count > 1 ->
+                GuardAttemptWindow.body(window.count, window.screens, detail)
+            else -> detail.ifBlank { BODIES[type] ?: "" }
+        }
+
         internal fun uniqueWorkName(type: String, windowStartMs: Long, app: String = ""): String = when {
             type == TYPE_GUARD_TRIGGERED && windowStartMs > 0L -> "tamper_alert_${type}_$windowStartMs"
             // Issue #175: one bypass per episode; a second app's episode must not cancel the first's retry.
             type == TYPE_BLOCK_BYPASS -> "tamper_alert_${type}_${app}_$windowStartMs"
+            // #792 B1: eventAtMs arrives as windowStartMs for this type; one work item per lockout.
+            type == TYPE_PIN_LOCKOUT && windowStartMs > 0L -> "tamper_alert_${type}_$windowStartMs"
             else -> "tamper_alert_$type"
         }
 

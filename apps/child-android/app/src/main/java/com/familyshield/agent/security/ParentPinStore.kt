@@ -11,17 +11,35 @@ class ParentPinStore @Inject constructor(
     /** True once a parent PIN has been set on this device. */
     fun isConfigured(): Boolean = !secureStore.getString(SecureStore.KEY_PARENT_PIN).isNullOrBlank()
 
+    /**
+     * osra-security#24 / #792 (Antigravity B2): a new PIN starts with no wrong-try debt. Left behind, a
+     * count of eight from the previous PIN would lock the *new* one for an hour on the first typo.
+     */
     /** Stores [pin] as a fresh PBKDF2 hash. Caller validates with [ParentPin.validationError] first. */
     fun set(pin: String) {
         secureStore.putString(SecureStore.KEY_PARENT_PIN, ParentPin.hash(pin))
+        clearAttempts(secureStore)
     }
 
     /** Constant-time check of [pin] against the stored hash. */
     fun verify(pin: String): Boolean =
         ParentPin.verify(pin, secureStore.getString(SecureStore.KEY_PARENT_PIN))
 
-    /** Clears the PIN (used only when the server authorises an unpair). */
+    /** Clears the PIN (used only when the server authorises an unpair), and the debt that belonged to it. */
     fun clear() {
         secureStore.putString(SecureStore.KEY_PARENT_PIN, null)
+        clearAttempts(secureStore)
+    }
+
+    /**
+     * #792 (Antigravity B2): the keys [PinAttemptStore] owns, cleared here without taking a dependency on the
+     * injected store — this class may be needed before Hilt is up (the gate opens from a service).
+     */
+    private fun clearAttempts(store: SecureStore) {
+        store.putString(PinAttemptStore.KEY_FAILURES, null)
+        store.putString(PinAttemptStore.KEY_LAST_FAILURE, null)
+        store.putString(PinAttemptStore.KEY_LAST_FAILURE_ELAPSED, null)
+        store.putString(PinAttemptStore.KEY_LAST_FAILURE_BOOT, null)
+        store.putString(PinAttemptStore.KEY_ALERTED_AT, null)
     }
 }

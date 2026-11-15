@@ -40,6 +40,12 @@ open class TamperGuardActivity : ComponentActivity() {
     /** osra-security#24: the wrong-PIN count is persisted, so reopening this screen does not reset it. */
     @Inject lateinit var attemptStore: PinAttemptStore
 
+    /** The banner under the field; a field so [refreshLockoutUi] can refresh it on a `singleTask` re-entry. */
+    private lateinit var errorView: TextView
+
+    /** [syncUnlockEnabled] is local to `onCreate`; [refreshLockoutUi] calls it through this on resume. */
+    private var syncUnlockEnabledRef: (() -> Unit)? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
@@ -58,7 +64,7 @@ open class TamperGuardActivity : ComponentActivity() {
             textSize = 24f
             gravity = Gravity.CENTER
         }
-        val error = TextView(this).apply { setTextColor(0xFFB00020.toInt()); textSize = 16f }
+        errorView = TextView(this).apply { setTextColor(0xFFB00020.toInt()); textSize = 16f }
         val unlock = Button(this).apply { text = "Continue" }
         val back = Button(this).apply { text = "Go back" }
 
@@ -77,8 +83,10 @@ open class TamperGuardActivity : ComponentActivity() {
         // There is also no IME submit path: the field sets `inputType` and a length filter and nothing
         // else, so the keyboard's Done only hides the keyboard and the button is the only way in.
         fun syncUnlockEnabled() {
-            unlock.isEnabled =
-                pin.text.length in ParentPin.MIN_LENGTH..ParentPin.MAX_LENGTH
+            // #792 (Antigravity S1): the length was the only condition, so typing four digits re-enabled
+            // Continue during a lockout — the tap was still refused, but the button contradicted the notice.
+            val longEnough = pin.text.length in ParentPin.MIN_LENGTH..ParentPin.MAX_LENGTH
+            unlock.isEnabled = longEnough && !PinLockout.isLocked(lockedState(), SystemClock.elapsedRealtime())
         }
         pin.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -88,6 +96,7 @@ open class TamperGuardActivity : ComponentActivity() {
             override fun afterTextChanged(s: android.text.Editable?) = Unit
         })
         syncUnlockEnabled()
+        syncUnlockEnabledRef = { syncUnlockEnabled() }
 
         // osra-security#24: reopening the screen must not hand back a fresh set of tries. The notice is
         // shown immediately, and Continue stays off for as long as the lockout lasts.
@@ -95,29 +104,8 @@ open class TamperGuardActivity : ComponentActivity() {
         // Two clocks, and only one of them decides: a window is measured on `elapsedRealtime`, which a
         // changed wall clock cannot move. A reboot restarts it, so `anchored` re-anchors the window to a full
         // one from this read — a reboot costs a window, never more than one.
-        fun bootCount(): Int = runCatching {
-            Settings.Global.getInt(contentResolver, Settings.Global.BOOT_COUNT, PinLockout.NO_BOOT)
-        }.getOrDefault(PinLockout.NO_BOOT)
-
-        fun lockedState(): PinLockout.State {
-            val stored = attemptStore.read()
-            val state = PinLockout.anchored(
-                stored,
-                System.currentTimeMillis(),
-                SystemClock.elapsedRealtime(),
-                bootCount(),
-            )
-            if (state != stored) attemptStore.write(state)
-            return state
-        }
-
-        fun notice(): String {
-            val minutes = PinLockout.remainingMinutes(lockedState(), SystemClock.elapsedRealtime())
-            return resources.getQuantityString(R.plurals.pin_locked_notice, minutes, minutes)
-        }
-
         if (PinLockout.isLocked(lockedState(), SystemClock.elapsedRealtime())) {
-            error.text = notice()
+            errorView.text = noticeText()
             unlock.isEnabled = false
         }
 
@@ -130,7 +118,7 @@ open class TamperGuardActivity : ComponentActivity() {
             val state = lockedState()
             if (PinLockout.isLocked(state, elapsed)) {
                 pin.text.clear()
-                error.text = notice()
+                errorView.text = noticeText()
                 return@setOnClickListener
             }
             val entered = pin.text.toString()
@@ -148,10 +136,13 @@ open class TamperGuardActivity : ComponentActivity() {
                     attemptStore.write(PinLockout.markedAlerted(failed))
                     TamperAlertWorker.enqueue(
                         this,
-                        TamperAlertWorker.TYPE_GUARD_TRIGGERED,
+                        // #792 (Antigravity B1): the lockout has its own type. Sent as TYPE_GUARD_TRIGGERED it
+                        // carried a window of 5+ and TamperAlertWorker.bodyFor replaced this sentence with the
+                        // five-attempt aggregation, so the parent never read the lock duration.
+                        TamperAlertWorker.TYPE_PIN_LOCKOUT,
                         detail = "Parent PIN locked for ${PinLockout.lockWindowMs(failed.failures) / 60_000} minute(s) " +
                             "after ${failed.failures} wrong tries.",
-                        windowStartMs = failed.lastFailureMs,
+                        eventAtMs = failed.lastFailureMs,
                         attemptCount = failed.failures,
                     )
                 } else {
@@ -161,8 +152,8 @@ open class TamperGuardActivity : ComponentActivity() {
                 val attempts = failed.failures
                 // #484: the fifth wrong PIN still lands Home. The lockout is what the next open reports.
                 if (attempts >= MAX_ATTEMPTS) goHome()
-                error.text = if (PinLockout.isLocked(failed, SystemClock.elapsedRealtime())) {
-                    notice()
+                errorView.text = if (PinLockout.isLocked(failed, SystemClock.elapsedRealtime())) {
+                    noticeText()
                 } else {
                     "Wrong PIN."
                 }
@@ -199,7 +190,7 @@ open class TamperGuardActivity : ComponentActivity() {
                     },
                 )
                 addView(pin)
-                addView(error)
+                addView(errorView)
                 addView(unlock)
                 addView(back)
             },
@@ -209,11 +200,43 @@ open class TamperGuardActivity : ComponentActivity() {
     // #533 review: the guard's debounce reads these — it may skip a protection screen only while the gate is in
     // front. onPause completes before the next activity resumes, so a screen that comes back over a paused gate
     // is always judged.
+    //
+    // #792 (Antigravity S1): both guard activities are `singleTask`, so a re-entry through Recents or
+    // `onNewIntent` never re-runs `onCreate`. A lockout that expired while the screen was backgrounded left its
+    // banner up with Continue disabled, and a live one kept the button in whatever state the field last set.
+    // Both are refreshed from the stored state on every resume.
     override fun onResume() {
         super.onResume()
         GuardGateState.lastResumedMs = System.currentTimeMillis()
         GuardGateState.showing = true
         onSharingChanged(isInMultiWindowMode)
+        refreshLockoutUi()
+    }
+
+    /** The banner and the button, from the stored state — see [onResume] (#792, Antigravity S1). */
+    private fun refreshLockoutUi() {
+        if (!::errorView.isInitialized) return
+        val elapsed = SystemClock.elapsedRealtime()
+        val locked = PinLockout.isLocked(lockedState(), elapsed)
+        errorView.text = if (locked) noticeText() else ""
+        syncUnlockEnabledRef?.invoke()
+    }
+
+    private fun bootCount(): Int = runCatching {
+        Settings.Global.getInt(contentResolver, Settings.Global.BOOT_COUNT, PinLockout.NO_BOOT)
+    }.getOrDefault(PinLockout.NO_BOOT)
+
+    /** The stored state with a window carried across a reboot re-anchored to now (#792, Claude's condition). */
+    private fun lockedState(): PinLockout.State {
+        val stored = attemptStore.read()
+        val state = PinLockout.anchored(stored, System.currentTimeMillis(), SystemClock.elapsedRealtime(), bootCount())
+        if (state != stored) attemptStore.write(state)
+        return state
+    }
+
+    private fun noticeText(): String {
+        val minutes = PinLockout.remainingMinutes(lockedState(), SystemClock.elapsedRealtime())
+        return resources.getQuantityString(R.plurals.pin_locked_notice, minutes, minutes)
     }
 
     override fun onPause() {

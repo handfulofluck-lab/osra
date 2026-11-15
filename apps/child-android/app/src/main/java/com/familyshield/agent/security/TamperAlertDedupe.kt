@@ -40,6 +40,13 @@ object TamperAlertDedupe {
      */
     fun blockBypassKey(deviceId: String?, app: String, layout: String, episodeStartMs: Long): String =
         "${deviceId ?: "unknown"}|${TamperAlertWorker.TYPE_BLOCK_BYPASS}|$app|$layout|$episodeStartMs"
+
+    /**
+     * #792 (Antigravity B1): one parent alert per lockout. The identity is the failure that opened it and the
+     * count at that moment, so a retry of the same work is a no-op and the next lockout is a new row.
+     */
+    fun pinLockoutKey(deviceId: String?, lastFailureMs: Long, failures: Int): String =
+        "${deviceId ?: "unknown"}|${TamperAlertWorker.TYPE_PIN_LOCKOUT}|$lastFailureMs|$failures"
 }
 
 /**
