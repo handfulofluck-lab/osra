@@ -8,15 +8,15 @@
 
 **Tech Stack:** PowerShell/Pester, JSON Schema draft 2020-12, existing `phone-claim.ps1` and `classify-build.ps1`, Node built-ins only where needed by the fake, .NET built-in compression APIs for PNG cropping. No new package dependency.
 
-**Spec:** `docs/superpowers/specs/2026-11-15-scenario-runner-design.md`, #667, `docs/QA/SCENARIO-SUITE.md` §2/§4 step 2, and Claude's five required additions in PR #797 comment at 2026-11-14 21:24Z. Native inline execution by K31 is already selected in the approved design; product code waits for Claude's approval of this plan.
+**Spec:** `docs/superpowers/specs/2026-11-15-scenario-runner-design.md`, #667, `docs/QA/SCENARIO-SUITE.md` §2/§4 step 2, Claude's five design additions at 2026-11-14 21:24Z and four implementation additions at 2026-11-15 05:01Z in PR #797. Native inline execution by K31 is selected in the approved design; the plan is approved at `36ccb97b` with these four additions folded in.
 
 ## Global Constraints
 
 - No physical phone, lease, real account, production, store, credential or real-family data is used in implementation or tests. Never merge or enable auto-merge.
-- The runner always injects `adb -s <serial>` itself. Refuse `-s`, `connect`, `disconnect`, `tcpip`, `usb`, `kill-server` and `reconnect`, including nested `shell`/`exec-out` forms. Never drop the wireless link.
-- Refuse clock/timezone changes, `dpm remove-active-admin`, `uiautomator dump`, `reboot`, digits-only `input text`, `input keyevent 111`, any digit-keycode sequence 7–16, and `pm uninstall`/`pm clear` of an active admin package. Check admin ownership through read-only `dpm list-owners` or `dumpsys device_policy` immediately before allowing a removal.
+- The runner always injects `adb -s <serial>` itself. Refuse `-s`, `connect`, `disconnect`, `tcpip`, `usb`, `kill-server`, `reconnect`, `svc wifi|data|bluetooth`, `cmd wifi`, `cmd connectivity`, `settings put global airplane_mode_on` and `am broadcast … AIRPLANE_MODE`, including nested `shell`/`exec-out` forms. Never drop the wireless link.
+- Refuse `date`, `cmd alarm set-time`, the `settings` keys `auto_time`, `auto_time_zone` and `time_zone`, `dpm remove-active-admin`, `uiautomator dump`, `reboot`, `input text` containing a run of 4+ digits, `input keyevent 111`, digit-keycode sequences 7–16 or `KEYCODE_0`…`KEYCODE_9`, and `pm uninstall`/`pm clear` of an active admin package. Check admin ownership through read-only `dpm list-owners` or `dumpsys device_policy` immediately before allowing a removal.
 - Read `dumpsys window`/`trust` during preflight and save lock state. A manual step requiring an unlocked phone stops `NOT RUN`; never type or request an unlock code.
-- Screenshots crop to the OSRA window, excluding status bar and notification shade. Missing safe bounds is `NOT RUN`, never permission to capture the whole screen.
+- Capture only `exec-out screencap -p` bytes in memory, never an on-device path. Crop to the OSRA window, excluding status bar and notification shade. Uncropped bytes never reach disk on either side; missing safe bounds is `NOT RUN`, never permission to capture the whole screen.
 - Save and restore all nine values: the original seven plus `screen_off_timeout` and `zen_mode`. Restore in `finally` on every exit path, including refusal/error/Ctrl-C, and release with truthful `Clean`/`Locked`/`Unknown`.
 - Raw command output and HTTP bodies do not enter logs. `content query` requires `nonPersonal: true` and an explicit safe projection allowlist; phone numbers/message bodies are never permitted.
 - Missing measurements are `NOT RUN`; an empty diff alone is not PASS. Restore failure overrides PASS. Dry-run evidence is marked as such.
@@ -39,9 +39,9 @@
 
 **Interfaces:** `Read-ScenarioManifest(path)` returns a validated manifest. `Invoke-ScenarioProcess(exe, args)` accepts only an executable and argument array. ADB steps contain `command: string[]`, optional `nonPersonal` and `projection: string[]`.
 
-- [ ] Write fail-first schema tests for unknown fields/types, invalid paths/URLs and all five step shapes. Add a table driving every forbidden operation, including nested wrappers, digit keycode sequences and all connection-changing verbs. Name the single check removed for each row.
+- [ ] Write fail-first schema tests for unknown fields/types, invalid paths/URLs and all five step shapes. Add a table driving every forbidden operation, including nested wrappers, digit keycode sequences/names, 4+-digit text runs, clock keys, `wm size`/`wm density`, and all connection-changing verbs (`svc`, `cmd wifi`/`connectivity`, and airplane-mode commands included). Name the single check removed for each row.
 - [ ] Run `Invoke-Pester scripts/hardware/tests/Scenario.Validation.Tests.ps1 -Output Detailed`; expect failures because the entry point/schema rules do not exist.
-- [ ] Implement validation before any lease/ADB call, with schema `additionalProperties: false` throughout. Use exact argument-array invocation; never `Invoke-Expression`, `cmd /c`, `sh -c` or a manifest script. Validate safe `content query` declarations and discard all other raw output.
+- [ ] Implement validation before any lease/ADB call, with schema `additionalProperties: false` throughout. Use exact argument-array invocation; never `Invoke-Expression`, `cmd /c`, `sh -c` or a manifest script. Validate safe `content query` declarations and discard all other raw output. Allow `settings put` only for one of the nine saved keys.
 - [ ] Implement the fake `adb` launchers with exact argument logging, canned safe values, controlled failures and no real ADB fallback.
 - [ ] Rerun validation tests green. Commit the tested slice with the K31 trailer.
 
@@ -54,7 +54,7 @@
 **Interfaces:** `Invoke-ScenarioPreflight` calls the real lease helper, checks serial/model/build/health and lock state. `Get-ScenarioBeforeState` records the nine named settings verbatim. `Test-AdminPackageRemoval` reads current admin ownership before a removal.
 
 - [ ] Write fail-first tests proving every ADB call starts with injected `-s <serial>`, manifests cannot inject their own, health bodies are discarded, test-only/debuggable builds are not gate evidence, and the lock state is in `before.json`.
-- [ ] Test a locked phone with an unlocked-only manual step: result `NOT RUN`, no unlock/input command and no image. Test an active-admin `pm uninstall`/`pm clear`, including ownership changing after manifest validation; both are refused without removal.
+- [ ] Test a locked phone with an unlocked-only manual step: result `NOT RUN`, no unlock/input command and no image. Test an active-admin `pm uninstall`/`pm clear`, including ownership changing after manifest validation; both are refused without removal. Test an unlisted `settings put` key and both `wm` mutations, proving nothing changes that is not restored.
 - [ ] Implement lease claim/heartbeat/release calls, exact serial/model checks, build classification, URL health checking and read-only `dumpsys window`/`trust` parsing through the fake boundary.
 - [ ] Save app-ops overlay, accessibility services/enabled, locale, stay-awake, accelerometer/user rotation, `screen_off_timeout` and `zen_mode` before steps. Evaluate admin ownership immediately before any permitted test-package removal.
 - [ ] Run preflight and validation suites green. Commit with the K31 trailer.
@@ -66,10 +66,10 @@
 - Create: `scripts/hardware/tests/Scenario.Evidence.Tests.ps1`
 - Create: `scripts/hardware/tests/fixtures/*.png` (small synthetic binary fixtures)
 
-**Interfaces:** `New-ScenarioEvidence` creates the timestamped evidence folder and sanitized runner log. `Save-ScenarioScreenshot` accepts only safe bounds and an evidence-safe name, writing a cropped PNG and dimensions. No full-screen fallback exists.
+**Interfaces:** `New-ScenarioEvidence` creates the timestamped evidence folder and sanitized runner log. `Save-ScenarioScreenshot` accepts only safe bounds and an evidence-safe name, writing a cropped PNG and dimensions. No full-screen fallback or on-device screenshot file exists.
 
-- [ ] Write fail-first tests for path traversal, log redaction and missing/locked bounds. Using fixed non-interlaced RGB/RGBA PNGs, assert exact cropped width, height and known pixels; status-bar and shade rows must not survive. A skipped-crop mutant must make the height assertion red.
-- [ ] Implement private PNG crop functions using .NET compression APIs only: parse supported Android-style PNGs, defilter/filter scanlines correctly, crop safe OSRA bounds, and reject interlaced/unsupported/corrupt images as `NOT RUN`. Do not introduce an image package or Windows-only drawing dependency.
+- [ ] Write fail-first tests for path traversal, log redaction and missing/locked bounds. Using fixed non-interlaced RGB/RGBA PNGs, assert exact cropped width, height and known pixels; status-bar and shade rows must not survive. A skipped-crop mutant must make the height assertion red. Assert the fake `adb` log contains no on-device screenshot path.
+- [ ] Implement private PNG crop functions using .NET compression APIs only: capture `exec-out screencap -p` into memory, parse supported Android-style PNGs, defilter/filter scanlines correctly, crop safe OSRA bounds, and reject interlaced/unsupported/corrupt images as `NOT RUN`. Never write uncropped bytes to disk on either side. Do not introduce an image package or Windows-only drawing dependency.
 - [ ] Start/stop `logcat -b events` through the same process boundary; keep raw output out of `runner.log`. Create `before.json`, `events.log`, `result.json` and `result.md` only in the evidence folder.
 - [ ] Run evidence tests plus prior suites green. Commit with the K31 trailer.
 
