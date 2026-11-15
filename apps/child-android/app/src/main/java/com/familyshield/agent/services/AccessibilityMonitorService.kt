@@ -273,6 +273,9 @@ class AccessibilityMonitorService : AccessibilityService() {
             // Issue #284: our own block screen is in front and this stream never records our package, so
             // the blocked app's interval would stay open and the next real event would charge it the stay.
             usage.recordOwnWindow(System.currentTimeMillis())
+            // #813 review (Claude): returning to OSRA ends any PermissionController visit, so a latch set during
+            // onboarding must not survive it and hide the next real visit.
+            permissionWindowLocationActive = null
             restoreRingScreen(event, packageName)
             return
         }

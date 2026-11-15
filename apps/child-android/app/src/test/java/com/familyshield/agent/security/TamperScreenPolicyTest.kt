@@ -40,10 +40,9 @@ class TamperScreenPolicyTest {
     }
 
     /**
-     * osra-security#29 (AS02 on the Flip4): a child turned our accessibility service off from
-     * Settings → Accessibility → Installed apps → OSRA with no PIN, and blocking stopped at once. The page is
-     * a switch and says nothing about uninstalling, so no word path reached it — and until this row it was
-     * classified NONE.
+     * osra-security#29 (AS02 on the Flip4): the accessibility service could be switched off with no PIN and
+     * blocking stopped at once. The page is a switch and says nothing about uninstalling, so no word path reached
+     * it — and until this row it was classified NONE.
      */
     @Test
     fun `our accessibility detail page is a protection screen`() {
@@ -61,8 +60,8 @@ class TamperScreenPolicyTest {
     }
 
     /**
-     * osra-security#30: Permission manager → Location → OSRA, in its own package. The location grant is a
-     * protection the parent gave; switching it off stops live location and geofence alerts with no PIN.
+     * osra-security#30: the location grant is a protection the parent gave; switching it off stops live location
+     * and geofence alerts, with no PIN, from its own package.
      */
     @Test
     fun `our permissions page is a protection screen`() {

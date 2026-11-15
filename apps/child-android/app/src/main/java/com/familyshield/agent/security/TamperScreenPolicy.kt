@@ -96,7 +96,7 @@ object TamperScreenPolicy {
      * every app on the phone. The reproduction and the exact navigation stay in the private reports.
      */
     private val PROTECTION_SETTINGS_CLASSES = setOf(
-        // Accessibility → Installed apps → our service: AOSP, Google and Samsung wording of the same page.
+        // Our service's accessibility detail page: AOSP, Google and Samsung wording of the same page.
         "AccessibilityDetails",
         "AccessibilityServiceDetails",
         "SecAccessibilityDetailsActivity",

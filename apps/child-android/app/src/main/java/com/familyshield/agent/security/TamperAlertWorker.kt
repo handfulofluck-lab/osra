@@ -68,7 +68,7 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
         return try {
             // U2b (Antigravity): written here, before the POST, so the 60-second poll reads the same event as
             // already reported. Doing it in onUnbind raced a scope that onDestroy cancels.
-            if (type == TYPE_ACCESSIBILITY_OFF) {
+            if (type == TYPE_ACCESSIBILITY_OFF && runAttemptCount == 0) {
                 runCatching {
                     settings.recordAccessibilityEnabled(false)
                     settings.recordTamperAlert(com.familyshield.agent.receivers.AccessibilityOffPolicy.TYPE, inputData.getLong(KEY_EVENT_AT_MS, 0L))
@@ -93,7 +93,10 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             Result.success()
         } catch (e: Exception) {
             Log.w(TAG, "tamper alert '$type' failed; retrying", e)
-            if (runAttemptCount < 5) Result.retry() else Result.failure()
+            // osra-security#29 review (Claude): the unbind alert never gives up. The poll cannot take over — the
+            // state is written before the POST — so a capped retry would mean an offline phone tells nobody. The
+            // dedupe key makes a repeat safe.
+            if (runAttemptCount < 5 || type == TYPE_ACCESSIBILITY_OFF) Result.retry() else Result.failure()
         }
     }
 

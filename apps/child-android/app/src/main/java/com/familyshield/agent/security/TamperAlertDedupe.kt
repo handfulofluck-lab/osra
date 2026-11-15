@@ -34,16 +34,17 @@ object TamperAlertDedupe {
         "${guardAggregateKey(deviceId, window.windowStartMs)}|${window.count}"
 
     /**
-     * Issue #175: one blocked app that stayed visible in picture-in-picture or split screen after the
-     * agent's raises. The episode (package + layout + when it began) is the identity, so the parent
-     * hears once per episode and a WorkManager retry is a no-op.
-     */
-    /**
      * osra-security#29, second half: one alert per unbind. The moment the service was unbound is the identity, so
      * turning accessibility off, on and off again is two alerts and a WorkManager retry of one is a no-op.
      */
     fun accessibilityOffKey(deviceId: String?, unboundAtMs: Long): String =
         "${deviceId ?: "unknown"}|${TamperAlertWorker.TYPE_ACCESSIBILITY_OFF}|$unboundAtMs"
+
+    /**
+     * Issue #175: one blocked app that stayed visible in picture-in-picture or split screen after the
+     * agent's raises. The episode (package + layout + when it began) is the identity, so the parent
+     * hears once per episode and a WorkManager retry is a no-op.
+     */
 
     fun blockBypassKey(deviceId: String?, app: String, layout: String, episodeStartMs: Long): String =
         "${deviceId ?: "unknown"}|${TamperAlertWorker.TYPE_BLOCK_BYPASS}|$app|$layout|$episodeStartMs"

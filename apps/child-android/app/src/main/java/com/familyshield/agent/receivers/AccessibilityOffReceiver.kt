@@ -7,6 +7,7 @@ import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.AlertDto
 import com.familyshield.agent.security.AccessibilityServiceListPolicy
+import com.familyshield.agent.security.TamperState
 import com.familyshield.agent.security.PermissionObservationPolicy
 import com.familyshield.agent.services.AccessibilityMonitorService
 
@@ -33,6 +34,16 @@ class AccessibilityOffReceiver {
         val services = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
         val component = ComponentName(context, AccessibilityMonitorService::class.java).flattenToString()
         val enabledNow = AccessibilityOffPolicy.isEffectivelyEnabled(enabled, services, component)
+        // osra-security#29 review (Claude): this poll is the *other* reporter of the same event. A parent who turned
+        // the service off inside the PIN's grace window, and a phone that was never paired, must be recorded without
+        // paging — which is what the unbind alert already does.
+        val parentDidThis = TamperState.graceUntil(context) > nowMs
+        if (!settings.isPairedSync() || parentDidThis) {
+            if (AccessibilityOffPolicy.shouldAlertOnObservation(settings.accessibilityWasEnabled(), enabledNow)) {
+                settings.recordAccessibilityEnabled(false)
+            }
+            return
+        }
         if (!AccessibilityOffPolicy.shouldAlertOnObservation(settings.accessibilityWasEnabled(), enabledNow)) {
             settings.recordAccessibilityEnabled(enabledNow)
             return
