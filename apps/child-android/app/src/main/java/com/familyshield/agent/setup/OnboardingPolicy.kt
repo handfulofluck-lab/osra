@@ -1,5 +1,8 @@
 package com.familyshield.agent.setup
 
+import androidx.annotation.StringRes
+import com.familyshield.agent.R
+
 /**
  * Plan item 1.6 — guided, verified onboarding. The pure half: which grants the agent needs, which of
  * them are *required* before pairing may be called complete, the one-line reason the parent sees,
@@ -14,23 +17,30 @@ package com.familyshield.agent.setup
  * listener (2.6) are recommended: without them the agent is slower, not absent. USB debugging off
  * (#81) is recommended too: a phone with it on can have OSRA's data cleared from any computer, but
  * families switch it on for real reasons, so it warns rather than blocks.
+ *
+ * #709: the title and the reason are **resource ids**, resolved by the screen, so an Arabic phone reads
+ * Arabic. The OEM hint is not: it quotes the phone maker's own menu, and the Arabic Language Bureau holds
+ * those lines until they can be read off an Arabic handset, so it stays English on purpose.
  */
 object OnboardingPolicy {
 
-    enum class Grant(val title: String, val why: String, val required: Boolean) {
-        ACCESSIBILITY("Accessibility service", "Blocks apps, enforces limits and guards the uninstall screens. Nothing works without it.", true),
-        USAGE_ACCESS("Usage access", "Counts screen time per app so daily limits and reports are right.", true),
-        OVERLAY("Display over other apps", "Shows the lock, pause and PIN screens on top of whatever is open.", true),
-        DEVICE_ADMIN("Device admin", "Stops the app being uninstalled without the parent PIN; lets the parent lock the device.", true),
-        WEB_FILTER("Web filter (VPN consent)", "Blocks sites and categories, forces SafeSearch, and makes pause-internet real.", true),
-        LOCATION("Location (allow all the time)", "Locate the device and geofence alerts; background access keeps it working with the app closed.", true),
-        PRIVATE_DNS("Private DNS not set to a provider", "A named Private DNS provider bypasses the web filter. Set it to Automatic or Off.", true),
-        BATTERY("Battery: unrestricted", "Without it the phone may pause the agent in the background and commands arrive late.", false),
-        USB_DEBUGGING("USB debugging off", "With USB debugging on, anyone with a computer can clear OSRA's data on this phone. Turn it off in Developer options.", false),
-        NOTIFICATION_LISTENER("Notification access", "Reads notifications from monitored apps for the safety scan (Phase 2.6).", false),
+    enum class Grant(@StringRes val titleRes: Int, @StringRes val whyRes: Int, val required: Boolean) {
+        ACCESSIBILITY(R.string.onboarding_grant_accessibility_title, R.string.onboarding_grant_accessibility_why, true),
+        USAGE_ACCESS(R.string.onboarding_grant_usage_title, R.string.onboarding_grant_usage_why, true),
+        OVERLAY(R.string.onboarding_grant_overlay_title, R.string.onboarding_grant_overlay_why, true),
+        DEVICE_ADMIN(R.string.onboarding_grant_device_admin_title, R.string.onboarding_grant_device_admin_why, true),
+        WEB_FILTER(R.string.onboarding_grant_web_filter_title, R.string.onboarding_grant_web_filter_why, true),
+        LOCATION(R.string.onboarding_grant_location_title, R.string.onboarding_grant_location_why, true),
+        PRIVATE_DNS(R.string.onboarding_grant_private_dns_title, R.string.onboarding_grant_private_dns_why, true),
+        BATTERY(R.string.onboarding_grant_battery_title, R.string.onboarding_grant_battery_why, false),
+        USB_DEBUGGING(R.string.onboarding_grant_usb_title, R.string.onboarding_grant_usb_why, false),
+        NOTIFICATION_LISTENER(R.string.onboarding_grant_notification_title, R.string.onboarding_grant_notification_why, false),
     }
 
     data class Row(val grant: Grant, val granted: Boolean)
+
+    /** The progress line's resource and its two numbers, so the screen can format it in its own language. */
+    data class ProgressLine(@StringRes val textRes: Int, val done: Int, val total: Int)
 
     /**
      * The rows in the order the parent should grant them (cheapest and most important first).
@@ -52,9 +62,26 @@ object OnboardingPolicy {
 
     /** Short progress line for the header: "5 of 7 required grants done". */
     fun progressLine(rows: List<Row>): String {
-        val req = rows.filter { it.grant.required }
-        val done = req.count { it.granted }
-        return "$done of ${req.size} required grants done" + if (done == req.size) " — protection is complete" else ""
+        val counts = counts(rows)
+        return "${counts.done} of ${counts.total} required grants done" +
+            if (counts.done == counts.total) " — protection is complete" else ""
+    }
+
+    /** The same line as a resource, for a screen that must render it in the phone's language. */
+    fun progressLineRes(rows: List<Row>): ProgressLine = counts(rows).let { counts ->
+        ProgressLine(
+            textRes = if (counts.done == counts.total) R.string.onboarding_progress_complete else R.string.onboarding_progress,
+            done = counts.done,
+            total = counts.total,
+        )
+    }
+
+    /** Required grants done / required grants in total. The one place the screen's two numbers come from. */
+    private data class Counts(val done: Int, val total: Int)
+
+    private fun counts(rows: List<Row>): Counts {
+        val required = rows.filter { it.grant.required }
+        return Counts(done = required.count { it.granted }, total = required.size)
     }
 
     /**
@@ -103,12 +130,32 @@ object OnboardingPolicy {
      * every capture path, so the caller renders nothing.
      */
     fun captureNotice(notificationCaptureAvailable: Boolean, callSmsCaptureAvailable: Boolean): String? {
-        val missing = buildList {
-            if (!notificationCaptureAvailable) add("notification")
-            if (!callSmsCaptureAvailable) add("call and SMS")
-        }
-        if (missing.isEmpty()) return null
-        val what = missing.joinToString(" and ")
+        val missing = missingCaptures(notificationCaptureAvailable, callSmsCaptureAvailable)
+        if (!missing.notifications && !missing.callSms) return null
+        val what = buildList {
+            if (missing.notifications) add("notification")
+            if (missing.callSms) add("call and SMS")
+        }.joinToString(" and ")
         return "This build captures messages from the screen only. The sideloaded Full build adds $what capture."
     }
+
+    /**
+     * The same notice as a resource, one whole line per case. The sweep forbids joining "notification",
+     * "call and SMS" and "and" in code: an Arabic sentence cannot be assembled from English pieces.
+     */
+    @StringRes
+    fun captureNoticeRes(notificationCaptureAvailable: Boolean, callSmsCaptureAvailable: Boolean): Int? {
+        val missing = missingCaptures(notificationCaptureAvailable, callSmsCaptureAvailable)
+        return when {
+            missing.notifications && missing.callSms -> R.string.onboarding_capture_both
+            missing.notifications -> R.string.onboarding_capture_notifications
+            missing.callSms -> R.string.onboarding_capture_call_sms
+            else -> null
+        }
+    }
+
+    private data class MissingCaptures(val notifications: Boolean, val callSms: Boolean)
+
+    private fun missingCaptures(notificationCaptureAvailable: Boolean, callSmsCaptureAvailable: Boolean) =
+        MissingCaptures(notifications = !notificationCaptureAvailable, callSms = !callSmsCaptureAvailable)
 }

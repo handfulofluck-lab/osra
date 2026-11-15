@@ -14,8 +14,9 @@ import org.w3c.dom.Element
  * (`arabic-review/2026-10-31-child-system-strings`, Q1–Q5; the block screen's window line, Q10, 15:30Z). Each line is pinned as a literal, so a
  * changed or missing translation turns this red.
  *
- * `app_name`, `app_name_ar` and `sos_tile_label` are brand names: they keep no Arabic override on
- * purpose, and the last row holds that.
+ * `app_name` and `app_name_ar` are brand names: they keep no Arabic override on purpose, and the last row
+ * holds that. `sos_tile_label` left that list on 13 Nov 2026 (#725): Karim's rule of 12 Nov replaced the
+ * 31 Oct one the Bureau wrote, so «الاستغاثة» is its Arabic from that head on.
  *
  * As in `PairingStringsTest`, the resource merger is not on the JVM test classpath, so this reads the
  * two source files. How the sheets render on a phone needs a device.
@@ -64,7 +65,7 @@ class ChildSystemStringsTest {
 
     @Test
     fun `the brand names keep the default value`() {
-        listOf("app_name", "app_name_ar", "sos_tile_label").forEach { key ->
+        listOf("app_name", "app_name_ar").forEach { key ->
             assertFalse("'$key' is a brand name and should not be overridden in Arabic", arabic.containsKey(key))
         }
     }
