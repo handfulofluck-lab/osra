@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { prisma } from "../db.js";
 import { ReauthSchema, checkReauth } from "../lib/accountDeletion.js";
-import { BUTTON, INPUT, err, esc, h, p, page, sendPage } from "../lib/htmlPage.js";
+import { BUTTON, INPUT, PRIMARY, err, esc, h, p, page, sendPage } from "../lib/htmlPage.js";
 import { AUTH_RATE_LIMIT } from "../lib/rateLimits.js";
 import { acceptInvite, findOpenInvite } from "./invites.js";
 
@@ -45,7 +45,9 @@ const queryToken = (req: FastifyRequest) => str((req.query as { token?: unknown 
 const bodyOf = (req: FastifyRequest) => (req.body ?? {}) as Record<string, unknown>;
 
 const hidden = (token: string) => `<input type="hidden" name="token" value="${esc(token)}">`;
-const submit = (label: string, colour = "#3949ab") => `<button type="submit" style="${BUTTON};background:${colour}">${label}</button>`;
+// One colour for every button here. None of these pages destroys anything: cancelling an MFA reset is
+// the safe action, so it is not red (UI/UX Bureau, #804).
+const submit = (label: string) => `<button type="submit" style="${BUTTON};background:${PRIMARY}">${label}</button>`;
 
 const COMMON = {
   unavailable: {
@@ -103,9 +105,9 @@ const resetExpiredPage = () =>
 function mfaConfirmPage(token: string, error?: Copy): string {
   const form = (en: boolean) => `<form method="post" action="/mfa/reset/confirm">${hidden(token)}${submit(en ? "Yes, continue the reset" : "نعم، تابع إعادة التعيين")}</form>`;
   return page(
-    h("Confirm the two-step sign-in reset") +
+    h("Confirm the two-step verification reset") +
       err(error?.en) +
-      p("We received a request to reset two-step sign-in for your OSRA account. If that was you, press the button to continue. The next steps are in the OSRA app.") +
+      p("We received a request to reset two-step verification for your OSRA account. If that was you, press the button to continue. The next steps are in the OSRA app.") +
       p("If it was not you, do not press it. Use the cancel link in the same email.") +
       form(true),
     h("تأكيد إعادة تعيين التحقق بخطوتين") +
@@ -129,7 +131,7 @@ const mfaConfirmedPage = (witness: "device" | "parent") =>
 
 const mfaExpiredPage = () =>
   page(
-    h("This link has expired or was already used") + p("Nothing was changed by this link. To reset two-step sign-in, start again in the OSRA app."),
+    h("This link has expired or was already used") + p("Nothing was changed by this link. To reset two-step verification, start again in the OSRA app."),
     h("انتهت صلاحية هذا الرابط أو سبق استخدامه") + p("لم يغيّر هذا الرابط شيئاً. لإعادة تعيين التحقق بخطوتين، ابدأ من جديد في تطبيق أسرة."),
   );
 
@@ -147,11 +149,11 @@ const mfaFailedPage = () =>
   );
 
 function mfaCancelPage(token: string, error?: Copy): string {
-  const form = (en: boolean) => `<form method="post" action="/mfa/reset/cancel">${hidden(token)}${submit(en ? "Cancel the reset" : "إلغاء إعادة التعيين", "#b3261e")}</form>`;
+  const form = (en: boolean) => `<form method="post" action="/mfa/reset/cancel">${hidden(token)}${submit(en ? "Cancel the reset" : "إلغاء إعادة التعيين")}</form>`;
   return page(
-    h("Cancel the two-step sign-in reset") +
+    h("Cancel the two-step verification reset") +
       err(error?.en) +
-      p("Press the button to stop the reset. Your two-step sign-in stays exactly as it is.") +
+      p("Press the button to stop the reset. Your two-step verification stays exactly as it is.") +
       p("If you did not ask for the reset, someone knows your password. Change it in the OSRA app.") +
       form(true),
     h("إلغاء إعادة تعيين التحقق بخطوتين") +
@@ -164,7 +166,7 @@ function mfaCancelPage(token: string, error?: Copy): string {
 
 const mfaCancelledPage = () =>
   page(
-    h("The reset was cancelled") + p("Two-step sign-in stays as it was. If you did not ask for the reset, change your password in the OSRA app."),
+    h("The reset was cancelled") + p("Two-step verification stays as it was. If you did not ask for the reset, change your password in the OSRA app."),
     h("أُلغيت إعادة التعيين") + p("يبقى التحقق بخطوتين كما كان. إن لم تكن أنت من طلب إعادة التعيين، فغيّر كلمة مرورك من تطبيق أسرة."),
   );
 
@@ -183,7 +185,7 @@ const INVITE_ERRORS = {
     ar: "كلمة المرور أو رمز المصادقة غير صحيح. لم يتغير شيء.",
   },
   mfa_reenroll_required: {
-    en: "Two-step sign-in is on for this account, but no authenticator is set up. Sign in to the app and set one up first. Nothing was changed.",
+    en: "Two-step verification is on for this account, but no authenticator is set up. Sign in to the app and set one up first. Nothing was changed.",
     ar: "التحقق بخطوتين مفعّل لهذا الحساب، لكن لا يوجد تطبيق مصادقة مُعدّ. سجّل الدخول إلى التطبيق وأعدّ واحداً أولاً. لم يتغير شيء.",
   },
   password_required: { en: "Enter your password.", ar: "أدخل كلمة المرور." },

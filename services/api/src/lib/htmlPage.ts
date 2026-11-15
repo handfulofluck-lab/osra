@@ -10,16 +10,23 @@ export function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-export const CARD = "background:#fff;border-radius:8px;padding:24px;margin-top:16px";
-export const BUTTON = "border:0;padding:12px 18px;border-radius:8px;font-size:16px;color:#fff";
-export const INPUT = "display:block;width:100%;box-sizing:border-box;padding:10px;margin:4px 0 12px;font-size:16px;border:1px solid #c5c9d6;border-radius:6px";
+// ADR-0038 light values, copied from docs/design/tokens.json (UI/UX Bureau, #804). The fonts stay the
+// system stack: these pages load nothing from another origin.
+/** The primary action. Also the safe one: cancelling an MFA reset keeps the account as it is. */
+export const PRIMARY = "#0B5D57";
+/** Destructive actions only (delete account). */
+export const DANGER = "#A3242B";
+export const CARD = "background:#fff;border-radius:18px;padding:24px;margin-top:16px";
+export const BUTTON = "border:0;padding:12px 18px;min-height:52px;border-radius:12px;font-family:inherit;font-size:16px;color:#fff";
+export const INPUT = "display:block;width:100%;box-sizing:border-box;padding:10px;margin:4px 0 12px;font-family:inherit;font-size:16px;border:1px solid #C9D6D3;border-radius:12px";
 
 export function page(en: string, ar: string): string {
   return `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>OSRA · أسرة</title></head>
-<body style="margin:0;background:#f6f7fb;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1f2430">
+<body style="margin:0;background:#F1F5F4;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#12211F">
   <div style="max-width:560px;margin:0 auto;padding:8px 16px 24px">
+    <p style="margin:16px 4px 0;font-size:17px;font-weight:700;color:${PRIMARY}">OSRA · أسرة</p>
     <div lang="en" dir="ltr" style="${CARD}">${en}</div>
     <div lang="ar" dir="rtl" style="${CARD}">${ar}</div>
   </div>

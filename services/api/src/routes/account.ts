@@ -17,7 +17,7 @@ import {
 } from "../lib/accountDeletionLink.js";
 import { appPublicUrl, getEmailSender } from "../lib/email/index.js";
 import { accountDeletionEmail } from "../lib/email/templates.js";
-import { BUTTON, INPUT, err, esc, h, p, page, sendPage } from "../lib/htmlPage.js";
+import { BUTTON, DANGER, INPUT, PRIMARY, err, esc, h, p, page, sendPage } from "../lib/htmlPage.js";
 import { AUTH_RATE_LIMIT } from "../lib/rateLimits.js";
 
 /**
@@ -91,13 +91,13 @@ function publicPage(error?: Copy): string {
     const button = lang === "en" ? "Email me a deletion link" : "أرسل لي رابط الحذف";
     return `<form method="post" action="/v1/account/deletion-request">
       <label style="display:block">${label}<input type="email" name="email" required maxlength="320" autocomplete="email" style="${INPUT}"></label>
-      <button type="submit" style="${BUTTON};background:#3949ab">${button}</button>
+      <button type="submit" style="${BUTTON};background:${PRIMARY}">${button}</button>
     </form>`;
   };
   const en = [
     h("Delete your OSRA account"),
     err(error?.en),
-    p("<strong>In the app:</strong> open OSRA and, on the dashboard, tap the <strong>⋮</strong> menu at the top right, then <strong>Delete account</strong>. Enter your password, and your authenticator code if two-step sign-in is on, and confirm."),
+    p("<strong>In the app:</strong> open OSRA and, on the dashboard, tap the <strong>⋮</strong> menu at the top right, then <strong>Delete account</strong>. Enter your password, and your authenticator code if two-step verification is on, and confirm."),
     p("<strong>If you created the family</strong> (the owner), this deletes the whole family: every child's activity, locations, alerts, rules and linked phones, and every other parent's and guardian's access. <strong>If you joined someone else's family</strong>, it deletes only your own account; the family and the children stay."),
     p("<strong>What is kept:</strong> the IDs of signed-out sessions until those sessions would have expired (at most 8 days), encrypted database backups until they rotate out, and server logs, which hold IDs but no messages or content, until their retention ends. Everything else is deleted at once. There is no undo."),
     p("<strong>Without the app:</strong> enter your account's email. If an account uses it, we send a link that works once, for 30 minutes. The link asks for your password (and authenticator code) before anything is deleted."),
@@ -141,7 +141,7 @@ const CONFIRM_ERRORS = {
     ar: "كلمة المرور أو رمز المصادقة غير صحيح. لم يُحذف شيء.",
   },
   mfa_reenroll_required: {
-    en: "Two-step sign-in is on for this account, but no authenticator is set up. Sign in to the app and set one up first. Nothing was deleted.",
+    en: "Two-step verification is on for this account, but no authenticator is set up. Sign in to the app and set one up first. Nothing was deleted.",
     ar: "التحقق بخطوتين مفعّل لهذا الحساب، لكن لا يوجد تطبيق مصادقة مُعدّ. سجّل الدخول إلى التطبيق وأعدّ واحداً أولاً. لم يُحذف شيء.",
   },
   password_required: { en: "Enter your password.", ar: "أدخل كلمة المرور." },
@@ -166,7 +166,7 @@ function confirmPage(token: string, who: { owner: boolean; mfa: boolean }, error
       <input type="hidden" name="token" value="${esc(token)}">
       <label style="display:block">${en ? "Password" : "كلمة المرور"}<input type="password" name="password" required maxlength="256" autocomplete="current-password" style="${INPUT}"></label>
       ${mfa}
-      <button type="submit" style="${BUTTON};background:#b3261e">${button}</button>
+      <button type="submit" style="${BUTTON};background:${DANGER}">${button}</button>
     </form>`;
   };
   const copy = error ? CONFIRM_ERRORS[error] : undefined;

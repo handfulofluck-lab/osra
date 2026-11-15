@@ -6,6 +6,7 @@ import argon2 from "argon2";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authRoutes } from "../src/routes/auth.js";
 import { linkPageRoutes } from "../src/routes/linkPages.js";
+import { DANGER, PRIMARY } from "../src/lib/htmlPage.js";
 import { setEmailSender, type EmailMessage } from "../src/lib/email/index.js";
 import { verifyTotpFresh } from "../src/lib/mfaVerify.js";
 import { AUTH_RATE_LIMIT, registerRateLimits } from "../src/lib/rateLimits.js";
@@ -256,6 +257,9 @@ describe("MFA reset pages (ADR-0031)", () => {
     expect(get.body).toContain('<form method="post" action="/mfa/reset/cancel">');
     expect(state.state).toBe("requested");
     expectNoWrites();
+    // UI/UX Bureau (#804): cancelling is the safe action, so its button is the primary colour, not red.
+    expect(get.body).toContain(`background:${PRIMARY}">Cancel the reset</button>`);
+    expect(get.body).not.toContain(DANGER);
 
     const post = await app.inject({ method: "POST", url: "/mfa/reset/cancel", ...form({ token }) });
     expect(post.statusCode).toBe(200);
@@ -445,7 +449,7 @@ describe("family invite page", () => {
     expect(empty.body).toContain("Enter your password.");
   });
 
-  it("L17 an account with two-step sign-in must give its code too", async () => {
+  it("L17 an account with two-step verification must give its code too", async () => {
     // Mutant: pass `{ password }` to `checkReauth` and ignore MFA.
     prismaMock.parent.findUnique.mockResolvedValue({ ...PARENT, mfaEnabled: true, mfaSecret: "enc:secret" });
     const a = await app();
