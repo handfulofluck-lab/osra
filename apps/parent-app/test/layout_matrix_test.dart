@@ -270,34 +270,34 @@ void main() {
             reason: 'Screen time label must not truncate with ellipsis at ${config.id}',
           );
         }
-        for (final minutes in [45, 10]) {
-          final valueFinder = find.text(l10n.screenTimeValue(minutes, 120));
-          await tester.scrollUntilVisible(
-            valueFinder,
-            150,
-            scrollable: find.byType(Scrollable).first,
-          );
-          await tester.pumpAndSettle();
-          final valueParagraph = tester.renderObject<RenderParagraph>(valueFinder);
+        // Card 1 sits at the top of the list; verify it before scrolling down to card 2.
+        for (final finder in [
+          find.text(l10n.screenTimeValue(45, 120)),
+          find.text(l10n.wellbeingScore(85)),
+        ]) {
+          final paragraph = tester.renderObject<RenderParagraph>(finder);
           expect(
-            valueParagraph.didExceedMaxLines,
+            paragraph.didExceedMaxLines,
             isFalse,
-            reason: 'Screen time value must not truncate with ellipsis at ${config.id}',
+            reason: 'Card 1 metrics must not truncate with ellipsis at ${config.id}',
           );
         }
-        for (final score in [85, 40]) {
-          final wellbeingFinder = find.text(l10n.wellbeingScore(score));
+        // Scroll downward to card 2 and verify both its screen-time value and wellbeing row.
+        for (final finder in [
+          find.text(l10n.screenTimeValue(10, 120)),
+          find.text(l10n.wellbeingScore(40)),
+        ]) {
           await tester.scrollUntilVisible(
-            wellbeingFinder,
+            finder,
             150,
             scrollable: find.byType(Scrollable).first,
           );
           await tester.pumpAndSettle();
-          final wellbeingParagraph = tester.renderObject<RenderParagraph>(wellbeingFinder);
+          final paragraph = tester.renderObject<RenderParagraph>(finder);
           expect(
-            wellbeingParagraph.didExceedMaxLines,
+            paragraph.didExceedMaxLines,
             isFalse,
-            reason: 'Wellbeing row text must not truncate or overflow at ${config.id}',
+            reason: 'Card 2 metrics must not truncate with ellipsis at ${config.id}',
           );
         }
         expect(drainExceptions(tester), isEmpty, reason: 'Dashboard overflowed after scroll (${config.id})');
