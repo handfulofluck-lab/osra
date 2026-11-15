@@ -58,6 +58,31 @@ export function ttlFor(type: string): number {
   return COMMAND_TTL_SECONDS[type] ?? DEFAULT_COMMAND_TTL_SECONDS;
 }
 
+/** The ring command is only useful while it is still ringing. Expire any open ring rows for this device. */
+export async function expireOpenRingCommands(deviceId: string): Promise<number> {
+  const result = await prisma.deviceCommand.updateMany({
+    where: { deviceId, type: "ring", status: { in: ["pending", "delivered"] } },
+    data: { status: "expired" },
+  });
+  return result.count;
+}
+
+/**
+ * Device-side ring report (dismissal, PIN stop, timeout, etc.). Marks the matching ring command as
+ * acked so the re-push job stops; the parent still receives the per-state alert that carried the
+ * report. Idempotent: a second report for the same command is ignored.
+ */
+export async function ackRingCommandOnReport(
+  deviceId: string,
+  ringId: string,
+  state: string,
+): Promise<void> {
+  await prisma.deviceCommand.updateMany({
+    where: { id: ringId, deviceId, type: "ring", status: { in: ["pending", "delivered"] } },
+    data: { status: "acked", ackedAt: new Date(), result: { state } },
+  });
+}
+
 type Row = {
   id: string;
   deviceId: string;
@@ -108,6 +133,9 @@ export async function enqueueDeviceCommand(
       wakeDeviceDetached(deviceId, type);
       return message;
     }
+  }
+  if (type === "stop_ring") {
+    await expireOpenRingCommands(deviceId);
   }
   const ttl = opts.ttlSeconds ?? ttlFor(type);
   const row = await prisma.deviceCommand.create({

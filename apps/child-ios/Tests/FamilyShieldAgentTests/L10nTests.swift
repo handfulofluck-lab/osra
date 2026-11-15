@@ -104,6 +104,20 @@ extension L10nTests {
                        "يُصدر تطبيق أسرة للأطفال رنينًا مسموعًا على هذا الهاتف عندما يطلب والدك أو والدتك ذلك، حتى في النمط الصامت، أو عند تشغيل تركيز، أو عند خفض مستوى الصوت.")
     }
 
+    /// #760: if the notification service extension does not run, iOS falls back to the keys in the
+    /// app's own bundle. Keep those two keys identical to the package's approved strings.
+    func testRingNotificationStringsAreAlsoInTheAppBundle() throws {
+        let app = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("App")
+        let en = try XCTUnwrap(NSDictionary(contentsOfFile: app.appendingPathComponent("en.lproj/Localizable.strings").path) as? [String: String])
+        let ar = try XCTUnwrap(NSDictionary(contentsOfFile: app.appendingPathComponent("ar.lproj/Localizable.strings").path) as? [String: String])
+        XCTAssertEqual(en["ring_notification_title"], "Your parent is ringing this phone")
+        XCTAssertEqual(en["ring_notification_body"], "Open OSRA Kids so your parent can enter the parent PIN.")
+        XCTAssertEqual(ar["ring_notification_title"], "هذا الهاتف يرنّ بطلب من والدك أو والدتك")
+        XCTAssertEqual(ar["ring_notification_body"], "افتح تطبيق أسرة للأطفال ليُدخل والدك أو والدتك رمز PIN للوالدين.")
+    }
+
     /// #760 device row: the notification service extension schedules AlarmKit in its own process, so iOS
     /// requires the usage description in the extension's Info.plist and localized InfoPlist.strings too.
     func testAlarmPermissionIsAlsoInTheRingServiceExtension() throws {

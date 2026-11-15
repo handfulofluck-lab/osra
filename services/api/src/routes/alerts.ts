@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { raiseAlertOnce, ringAlertFields } from "../lib/alerts.js";
+import { ackRingCommandOnReport } from "../lib/deviceCommands.js";
 import { sanitizeAlertMetadata, withoutAlertLocation } from "../lib/alertLocation.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
 import { guardianPermissions, requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
@@ -139,6 +140,8 @@ export async function alertsRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: "invalid_ring_command" });
       }
       acceptedMetadata = { ...metadata, ringId };
+      // #760: the first ring report from the device proves the phone is ringing, so stop re-pushing.
+      await ackRingCommandOnReport(command.deviceId, ringId, String(metadata?.state ?? ""));
       if (metadata?.state === "timed_out" && metadata.afterRestart === true) {
         // Queue age is not ringing time: the first successful acknowledgement proves the alarm was applied.
         const appliedAt = command.status === "acked" ? command.ackedAt : null;

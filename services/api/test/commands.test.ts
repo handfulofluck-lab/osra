@@ -17,9 +17,11 @@ vi.mock("../src/redis.js", async () => {
 
 import {
   ackDeviceCommand,
+  ackRingCommandOnReport,
   claimDeviceCommand,
   claimPendingCommands,
   enqueueDeviceCommand,
+  expireOpenRingCommands,
   listDeviceCommands,
   peekPendingCommands,
   ttlFor,
@@ -435,9 +437,41 @@ describe("stop_ring targeting", () => {
   beforeEach(() => resetPrismaMock());
 
   it("preserves an optional target ring id in the durable command payload", async () => {
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 0 });
     const ringId = "6f1c2b8e-3d4a-4e5f-9a0b-1c2d3e4f5a6b";
     const command = await enqueueDeviceCommand("dev-1", "stop_ring", { ringId }, { requestedBy: "parent-1" });
     expect(command.type).toBe("stop_ring");
     expect(command.payload).toEqual({ ringId });
+  });
+
+  it("expires any open ring row for the same device when stop_ring is enqueued", async () => {
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 2 });
+    await enqueueDeviceCommand("dev-1", "stop_ring", {}, { requestedBy: "parent-1" });
+    expect(prismaMock.deviceCommand.updateMany).toHaveBeenCalledWith({
+      where: { deviceId: "dev-1", type: "ring", status: { in: ["pending", "delivered"] } },
+      data: { status: "expired" },
+    });
+  });
+});
+
+describe("ring command lifecycle (#760)", () => {
+  beforeEach(() => resetPrismaMock());
+
+  it("expires only the device's own open ring rows", async () => {
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
+    await expireOpenRingCommands("dev-1");
+    expect(prismaMock.deviceCommand.updateMany).toHaveBeenCalledWith({
+      where: { deviceId: "dev-1", type: "ring", status: { in: ["pending", "delivered"] } },
+      data: { status: "expired" },
+    });
+  });
+
+  it("acks the ring command when the device first reports any ring state", async () => {
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
+    await ackRingCommandOnReport("dev-1", "ring-cmd-1", "child_dismissed");
+    expect(prismaMock.deviceCommand.updateMany).toHaveBeenCalledWith({
+      where: { id: "ring-cmd-1", deviceId: "dev-1", type: "ring", status: { in: ["pending", "delivered"] } },
+      data: { status: "acked", ackedAt: expect.any(Date), result: { state: "child_dismissed" } },
+    });
   });
 });

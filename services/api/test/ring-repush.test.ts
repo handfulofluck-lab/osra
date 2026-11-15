@@ -44,6 +44,8 @@ describe("ring re-push job (#760 redesign)", () => {
       { deviceId: "dev-2", type: "ring" },
     ]);
     expect(redis.set).toHaveBeenCalledTimes(2);
+    const query = prismaMock.deviceCommand.findMany.mock.calls[0][0];
+    expect(query.where.createdAt).toEqual({ gt: new Date(now.getTime() - 300_000) });
   });
 
   it("skips commands that are acked, failed, expired or not ring commands", async () => {
@@ -65,6 +67,25 @@ describe("ring re-push job (#760 redesign)", () => {
     const second = await runRingRepush(now);
     expect(second).toEqual({ checked: 1, repushed: [] });
     expect(wakes).toHaveLength(1);
+  });
+
+  it("does not re-push ring commands older than the 5-minute cap", async () => {
+    prismaMock.deviceCommand.findMany.mockResolvedValue([]);
+    const redis = getRedis() as unknown as MockRedis;
+    redis.set.mockResolvedValue("OK");
+
+    await runRingRepush(now);
+    const query = prismaMock.deviceCommand.findMany.mock.calls[0][0];
+    expect(query.where.createdAt).toEqual({ gt: new Date(now.getTime() - 300_000) });
+  });
+
+  it("uses a Redis claim TTL just under the 30-second tick", async () => {
+    prismaMock.deviceCommand.findMany.mockResolvedValue([{ id: "cmd-1", deviceId: "dev-1" }]);
+    const redis = getRedis() as unknown as MockRedis;
+    redis.set.mockResolvedValue("OK");
+
+    await runRingRepush(now);
+    expect(redis.set).toHaveBeenCalledWith(expect.stringContaining("jobs:ring-repush:"), expect.any(String), "EX", 25, "NX");
   });
 
   it("does not re-push when Redis is unreachable (fail closed to avoid flooding)", async () => {
