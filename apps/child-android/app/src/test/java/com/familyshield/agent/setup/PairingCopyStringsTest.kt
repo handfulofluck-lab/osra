@@ -37,6 +37,7 @@ class PairingCopyStringsTest {
     fun `the English is the Bureau's, line by line`() {
         val en = strings("values/strings.xml")
         assertEquals("Pair this device with your family", en["pair_new_title"])
+        // aapt2 strips the escaping apostrophe, so the resource reads as written here.
         assertEquals(
             "Open OSRA on a parent's phone, choose Pair a device, then scan the code it shows.",
             en["pair_new_intro"],

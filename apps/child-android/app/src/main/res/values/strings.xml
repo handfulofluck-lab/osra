@@ -40,7 +40,7 @@
          Bureau's words (6861943604). These five are the lines that did not exist yet; the rest are the approved
          pair_* strings already in this file. -->
     <string name="pair_new_title">Pair this device with your family</string>
-    <string name="pair_new_intro">Open OSRA on a parent's phone, choose Pair a device, then scan the code it shows.</string>
+    <string name="pair_new_intro">Open OSRA on a parent\'s phone, choose Pair a device, then scan the code it shows.</string>
     <string name="pair_new_or_type_code">or type the pairing code</string>
     <string name="pair_new_button_waiting_allow">Waiting for Allow…</string>
     <string name="pair_new_reassurance">Monitoring starts only after a parent allows this device in the OSRA app.</string>
