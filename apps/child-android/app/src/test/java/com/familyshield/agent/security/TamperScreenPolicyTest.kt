@@ -509,7 +509,8 @@ class TamperScreenPolicyTest {
             TamperScreenPolicy.SpecialAccess.OVERLAY to "Display over other apps",
             TamperScreenPolicy.SpecialAccess.USAGE to "Usage access",
             TamperScreenPolicy.SpecialAccess.NOTIFICATIONS to "Notification access",
-            TamperScreenPolicy.SpecialAccess.VPN to "VPN",
+            // the management phrase, not the three letters: bare "vpn" was tightened out on Antigravity's note
+            TamperScreenPolicy.SpecialAccess.VPN to "Always-on VPN",
         )
         for ((access, phrase) in cases) {
             assertEquals(
