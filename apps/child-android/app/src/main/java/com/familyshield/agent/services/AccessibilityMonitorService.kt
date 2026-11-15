@@ -574,6 +574,15 @@ class AccessibilityMonitorService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             lastWindowClass = event.className?.toString()
             lastWindowClassPkg = event.packageName?.toString()
+            // R2 (Antigravity's re-review): latch the grant on ENTERING a PermissionController window and clear it
+            // on entering any other window, so a grant made inside that page cannot trip the gate on the content
+            // change that follows the tap. The field was declared and read but never written before this.
+            val pkgOfEvent = event.packageName?.toString()
+            permissionWindowLocationActive = when {
+                pkgOfEvent == null -> permissionWindowLocationActive
+                pkgOfEvent.contains("permissioncontroller") -> permissionWindowLocationActive ?: locationGrantedNow()
+                else -> null
+            }
         }
         if (!settings.isPairedSync()) return
         val now = System.currentTimeMillis()

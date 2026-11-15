@@ -98,4 +98,33 @@ class TamperAlertWorkNameTest {
         org.junit.Assert.assertEquals("a WorkManager retry is a no-op", first, retry)
         org.junit.Assert.assertNotEquals("a second unbind is a new alert", first, second)
     }
+
+    /**
+     * R2 (Antigravity's re-review of #813): the latch must be **written**, not only declared. A field that is read
+     * and never assigned always falls back to the live grant, which is the behaviour the latch exists to avoid.
+     *
+     * Mutant: delete the assignment in the state-change branch → this row goes red and the gate can trip on the
+     * content change that follows a grant.
+     */
+    @Test
+    fun `the grant latch is written on a window change`() {
+        val source = java.io.File(System.getProperty("user.dir") ?: ".").let { wd ->
+            listOf(
+                java.io.File(wd, "src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt"),
+                java.io.File(wd, "app/src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt"),
+            ).firstOrNull { it.isFile }?.readText() ?: error("service source not found")
+        }
+        org.junit.Assert.assertTrue(
+            "the latch is assigned, not only declared",
+            source.contains("permissionWindowLocationActive = when {"),
+        )
+        org.junit.Assert.assertTrue(
+            "and cleared when a non-PermissionController window opens",
+            source.contains("else -> null"),
+        )
+        org.junit.Assert.assertTrue(
+            "it is read where the screen is classified",
+            source.contains("ourLocationActive = permissionWindowLocationActive ?: locationGrantedNow()"),
+        )
+    }
 }
