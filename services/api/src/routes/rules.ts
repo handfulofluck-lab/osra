@@ -7,7 +7,7 @@ import { requireConsent } from "../middleware/requireConsent.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
 import { DEFAULT_RULESET } from "../lib/defaultRules.js";
-import { toApiRuleSet } from "../lib/ruleSync.js";
+import { filterAgentRules, toApiRuleSet } from "../lib/ruleSync.js";
 import { touchAgentLastSeen } from "../lib/pollCadence.js";
 import { APP_GROUPS_MAX } from "@familyshield/shared-types";
 
@@ -189,7 +189,8 @@ export async function rulesRoutes(app: FastifyInstance) {
     // the phone is alive — `lastSeen` moves here too, not only on the heartbeat. Parent reads are skipped.
     await touchAgentLastSeen(user);
     const row = await prisma.ruleSet.findUnique({ where: { childId } });
-    return row ? toApiRuleSet(row as unknown as Record<string, unknown>) : { childId, ...DEFAULT_RULESET };
+    const rules = row ? toApiRuleSet(row as unknown as Record<string, unknown>) : { childId, ...DEFAULT_RULESET };
+    return user?.role === "device" ? filterAgentRules(childId, rules) : rules;
   });
 
   /** Full validated upsert of a child's ruleset; publishes the ruleset to Redis. */
@@ -207,7 +208,7 @@ export async function rulesRoutes(app: FastifyInstance) {
       update: { ...toRow(parsed.data, childId), rulesVersion: { increment: 1 } },
     });
     const api = toApiRuleSet(row as unknown as Record<string, unknown>);
-    await publishJson(`child:${childId}:rules`, api);
+    await publishJson(`child:${childId}:rules`, await filterAgentRules(childId, api));
     await notifyDevices(childId);
     return api;
   });
@@ -250,7 +251,7 @@ export async function rulesRoutes(app: FastifyInstance) {
       update: { ...toRow(validated.data, childId), rulesVersion: { increment: 1 } },
     });
     const api = toApiRuleSet(row as unknown as Record<string, unknown>);
-    await publishJson(`child:${childId}:rules`, api);
+    await publishJson(`child:${childId}:rules`, await filterAgentRules(childId, api));
     await notifyDevices(childId);
     return api;
   });
