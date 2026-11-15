@@ -249,12 +249,13 @@ locals {
   ]
 }
 
-# Three customer-managed policies, not one inline policy: an IAM user's inline policies are limited to 2,048
+# Four customer-managed policies, not one inline policy: an IAM user's inline policies are limited to 2,048
 # characters in total, and a managed policy to 6,144. Split by purpose.
 locals {
   agent_deny_policy_arns = [
     "arn:aws:iam::${local.account_id}:policy/osra-agent-keep-watchers",
     "arn:aws:iam::${local.account_id}:policy/osra-agent-no-escalation",
+    "arn:aws:iam::${local.account_id}:policy/osra-agent-identity-center-stays",
     "arn:aws:iam::${local.account_id}:policy/osra-agent-keep-backups-and-config",
     "arn:aws:iam::${local.account_id}:policy/osra-management-role-boundary",
   ]
@@ -408,22 +409,6 @@ resource "aws_iam_policy" "agent_no_escalation" {
         Resource = "*"
       },
       {
-        # Fable seat 2, E6: Identity Center is Karim's way in; after the first apply only he changes it, with MFA.
-        # Every write in the three Identity Center namespaces, by verb (Fable B2 on #793): the deployer user must
-        # not be able to reset Karim's password, remove his MFA or change his permission set. Reads stay, so
-        # Terraform can still refresh. Verbs checked against the AWS service reference, 15 Nov 2026.
-        Sid    = "IdentityCenterStays"
-        Effect = "Deny"
-        Action = [
-          "sso-directory:*",
-          "sso:Add*", "sso:Associate*", "sso:Attach*", "sso:Create*", "sso:Delete*", "sso:Detach*", "sso:Disassociate*",
-          "sso:Import*", "sso:Provision*", "sso:Put*", "sso:Remove*", "sso:Start*", "sso:Update*",
-          "identitystore:Add*", "identitystore:Create*", "identitystore:Delete*", "identitystore:Remove*",
-          "identitystore:Reserve*", "identitystore:Update*",
-        ]
-        Resource = "*"
-      },
-      {
         Sid      = "NoNewAccountsOrDelegates"
         Effect   = "Deny"
         Action   = ["organizations:RegisterDelegatedAdministrator", "organizations:CreateAccount", "organizations:CreateGovCloudAccount", "organizations:InviteAccountToOrganization"]
@@ -494,6 +479,32 @@ resource "aws_iam_policy" "agent_no_escalation" {
   })
 }
 
+resource "aws_iam_policy" "agent_identity_center_stays" {
+  name        = "osra-agent-identity-center-stays"
+  description = "The deployer user cannot change Identity Center, Karim's way in (Fable seat 2, E6). Split from osra-agent-no-escalation (Fable on #637) so the rest of that policy is attached without waiting for Identity Center."
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        # Fable seat 2, E6: Identity Center is Karim's way in; after the first apply only he changes it, with MFA.
+        # Every write in the three Identity Center namespaces, by verb (Fable B2 on #793): the deployer user must
+        # not be able to reset Karim's password, remove his MFA or change his permission set. Reads stay, so
+        # Terraform can still refresh. Verbs checked against the AWS service reference, 15 Nov 2026.
+        Sid    = "IdentityCenterStays"
+        Effect = "Deny"
+        Action = [
+          "sso-directory:*",
+          "sso:Add*", "sso:Associate*", "sso:Attach*", "sso:Create*", "sso:Delete*", "sso:Detach*", "sso:Disassociate*",
+          "sso:Import*", "sso:Provision*", "sso:Put*", "sso:Remove*", "sso:Start*", "sso:Update*",
+          "identitystore:Add*", "identitystore:Create*", "identitystore:Delete*", "identitystore:Remove*",
+          "identitystore:Reserve*", "identitystore:Update*",
+        ]
+        Resource = "*"
+      },
+    ]
+  })
+}
+
 resource "aws_iam_user_policy_attachment" "agent_keep_watchers" {
   user       = var.agent_user_name
   policy_arn = aws_iam_policy.agent_keep_watchers.arn
@@ -507,8 +518,13 @@ resource "aws_iam_user_policy_attachment" "agent_keep_backups" {
 resource "aws_iam_user_policy_attachment" "agent_no_escalation" {
   user       = var.agent_user_name
   policy_arn = aws_iam_policy.agent_no_escalation.arn
+}
 
-  # Identity Center is set up by this same apply, before this policy takes it away (IdentityCenterStays).
+resource "aws_iam_user_policy_attachment" "agent_identity_center_stays" {
+  user       = var.agent_user_name
+  policy_arn = aws_iam_policy.agent_identity_center_stays.arn
+
+  # Identity Center is set up by this same apply, before this policy takes it away.
   depends_on = [aws_ssoadmin_account_assignment.owner, aws_ssoadmin_managed_policy_attachment.admin]
 }
 

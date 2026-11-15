@@ -218,7 +218,7 @@ run "ahmed_controls_fit_and_reach_production" {
 
   assert {
     # Managed policies are capped at 6,144 characters; leave room for real ARNs, longer than the mocks.
-    condition     = alltrue([for p in [aws_iam_policy.agent_keep_watchers.policy, aws_iam_policy.agent_no_escalation.policy, aws_iam_policy.agent_keep_backups.policy, aws_iam_policy.role_boundary.policy] : length(p) < 4500])
+    condition     = alltrue([for p in [aws_iam_policy.agent_keep_watchers.policy, aws_iam_policy.agent_no_escalation.policy, aws_iam_policy.agent_keep_backups.policy, aws_iam_policy.agent_identity_center_stays.policy, aws_iam_policy.role_boundary.policy] : length(p) < 4500])
     error_message = "each deny policy must stay well under the 6,144-character managed-policy limit (real ARNs add ~700 characters to the mocks)"
   }
   assert {
@@ -260,8 +260,12 @@ run "roles_carry_the_boundary" {
     error_message = "every role this stack makes in the management account must carry the boundary"
   }
   assert {
-    condition     = alltrue([for a in ["iam:PermissionsBoundary", "iam:PassedToService", "iam:DeleteRolePermissionsBoundary", "osra-management-role-boundary", "iam:CreateOpenIDConnectProvider", "iam:CreateSAMLProvider", "sso-directory:*", "sso:Create*", "sso:Delete*", "sso:Put*", "sso:Update*", "identitystore:Delete*", "identitystore:Update*", "organizations:RegisterDelegatedAdministrator"] : strcontains(aws_iam_policy.agent_no_escalation.policy, a)])
-    error_message = "the deployer user must be held to the boundary when it creates or changes roles, pass roles only to this stack's services, and register no identity provider or Identity Center access (Fable E4-E6)"
+    condition     = alltrue([for a in ["iam:PermissionsBoundary", "iam:PassedToService", "iam:DeleteRolePermissionsBoundary", "osra-management-role-boundary", "iam:CreateOpenIDConnectProvider", "iam:CreateSAMLProvider", "organizations:RegisterDelegatedAdministrator"] : strcontains(aws_iam_policy.agent_no_escalation.policy, a)])
+    error_message = "the deployer user must be held to the boundary when it creates or changes roles, pass roles only to this stack's services, and register no identity provider (Fable E4-E5)"
+  }
+  assert {
+    condition     = alltrue([for a in ["sso-directory:*", "sso:Create*", "sso:Delete*", "sso:Put*", "sso:Update*", "identitystore:Delete*", "identitystore:Update*"] : strcontains(aws_iam_policy.agent_identity_center_stays.policy, a)]) && !strcontains(aws_iam_policy.agent_no_escalation.policy, "sso:")
+    error_message = "Identity Center writes must be denied in their own policy, so osra-agent-no-escalation can be attached without waiting for Identity Center (Fable E6, #637)"
   }
   assert {
     condition     = alltrue([for a in ["cloudtrail:StopLogging", "s3:BypassGovernanceRetention", "backup:DeleteRecoveryPoint", "iam:CreateAccessKey", "organizations:DetachPolicy", "sso-directory:*", "identitystore:Delete*", "organizations:RegisterDelegatedAdministrator"] : strcontains(aws_iam_policy.role_boundary.policy, a)])
