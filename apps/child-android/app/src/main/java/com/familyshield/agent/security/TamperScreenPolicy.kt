@@ -102,9 +102,12 @@ object TamperScreenPolicy {
             "notification access", "device and app notifications",
             "الوصول الى الاشعارات", "الوصول لاشعارات الجهاز والتطبيقات",
         ),
+        // Review of osra-security#29 (Antigravity): bare "vpn" matched any Settings page where a third-party VPN
+        // app scrolled into view, or a Connection page showing a VPN summary row. Only phrases that name the
+        // *management* action count.
         SpecialAccess.VPN to listOf(
-            "vpn", "virtual private network",
-            "شبكة افتراضية خاصة", "الشبكة الافتراضية الخاصة",
+            "always-on vpn", "forget vpn", "delete vpn", "vpn profile", "disconnect vpn",
+            "شبكة افتراضية خاصة", "الشبكة الافتراضية الخاصة", "اتصال vpn دائم",
         ),
     )
 
@@ -229,10 +232,13 @@ object TamperScreenPolicy {
         if (simpleName(windowClass) in NEVER_CLASSES) return TamperScreen.NONE
 
         // Part 2: a special-access page that names us, while we already hold that access, is a protection screen —
-        // switching it off is the same loss as switching a permission off.
-        val holds = SPECIAL_ACCESS_WORDS.filterKeys { it in ourSpecialAccess }
-        if (holds.any { (_, words) -> words.any { joinedAll.contains(normalize(it)) } }) {
-            return TamperScreen.SPECIAL_ACCESS
+        // switching it off is the same loss as switching a permission off. Scoped to Settings, because the words
+        // alone appear on pages that protect nothing (Antigravity's second note on osra-security#29).
+        if (packageName == "com.android.settings") {
+            val holds = SPECIAL_ACCESS_WORDS.filterKeys { it in ourSpecialAccess }
+            if (holds.any { (_, words) -> words.any { joinedAll.contains(normalize(it)) } }) {
+                return TamperScreen.SPECIAL_ACCESS
+            }
         }
 
         // Fable's B2 on #813: our own accessibility description is proof that this is *our* service page, whatever

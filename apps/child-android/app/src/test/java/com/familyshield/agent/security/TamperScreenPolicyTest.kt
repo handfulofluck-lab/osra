@@ -538,4 +538,44 @@ class TamperScreenPolicyTest {
             ),
         )
     }
+
+    /**
+     * Antigravity's second note on Part 2: the SPECIAL_ACCESS branch is scoped to Settings, and the VPN words name
+     * the management actions rather than the letters.
+     */
+    @Test
+    fun `a third-party VPN on a Settings page is not our protection screen`() {
+        assertNotEquals(
+            TamperScreen.SPECIAL_ACCESS,
+            TamperScreenPolicy.classify(
+                "com.android.settings",
+                listOf<CharSequence>("OSRA", "ProtonVPN", "OpenVPN", "VPN"),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                ourSpecialAccess = setOf(TamperScreenPolicy.SpecialAccess.VPN),
+            ),
+        )
+        // The management action does count.
+        assertEquals(
+            TamperScreen.SPECIAL_ACCESS,
+            TamperScreenPolicy.classify(
+                "com.android.settings",
+                listOf<CharSequence>("OSRA", "Always-on VPN", "Forget VPN"),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                ourSpecialAccess = setOf(TamperScreenPolicy.SpecialAccess.VPN),
+            ),
+        )
+        // And the branch never fires outside Settings.
+        assertEquals(
+            TamperScreen.NONE,
+            TamperScreenPolicy.classify(
+                "com.android.permissioncontroller",
+                listOf<CharSequence>("OSRA", "Usage access"),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                ourSpecialAccess = setOf(TamperScreenPolicy.SpecialAccess.USAGE),
+            ),
+        )
+    }
 }

@@ -87,6 +87,14 @@ class AccessibilityMonitorService : AccessibilityService() {
     private var permissionWindowLocationActive: Boolean? = null
 
     /**
+     * Antigravity's first note on Part 2: the special-access pages carry an inline toggle, so the moment a parent
+     * flips it on during onboarding the grants change and a content change fires on the same window — which would
+     * slam the gate over the parent's own setup. The set is latched on **entering** Settings and cleared on leaving,
+     * so the visit is judged by what we held when it began.
+     */
+    private var specialAccessLatch: Set<TamperScreenPolicy.SpecialAccess>? = null
+
+    /**
      * The location grant right now, in the same sense `GrantChecks.locationGranted()` uses: fine or coarse, **and**
      * background on Android 10 and later. Onboarding grants fine first and then opens this very page for
      * background, so a check that stopped at fine would say "we hold the grant" and slam the gate over setup
@@ -747,6 +755,11 @@ class AccessibilityMonitorService : AccessibilityService() {
                 packageName = pkgOfEvent,
                 grantedNow = { locationGrantedNow() },
             )
+            specialAccessLatch = when {
+                pkgOfEvent == null -> specialAccessLatch
+                pkgOfEvent == "com.android.settings" -> specialAccessLatch ?: specialAccessHeld()
+                else -> null
+            }
         }
         if (!settings.isPairedSync()) return
         val now = System.currentTimeMillis()
@@ -779,7 +792,7 @@ class AccessibilityMonitorService : AccessibilityService() {
             // Fable's B2 on #813: our own accessibility description, which no other app's page carries.
             agentServiceDescription = getString(com.familyshield.agent.R.string.accessibility_description),
             ourLocationActive = permissionWindowLocationActive ?: locationGrantedNow(),
-            ourSpecialAccess = specialAccessHeld(),
+            ourSpecialAccess = specialAccessLatch ?: specialAccessHeld(),
         )
         if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) return // no filter to bypass yet
         if (!TamperScreenPolicy.shouldGuard(screen, pinStore.isConfigured(), TamperState.graceUntil(this), now)) return
@@ -859,7 +872,7 @@ class AccessibilityMonitorService : AccessibilityService() {
                             // pane of our accessibility page stayed unclassified.
                             agentServiceDescription = getString(com.familyshield.agent.R.string.accessibility_description),
                             ourLocationActive = permissionWindowLocationActive ?: locationGrantedNow(),
-                            ourSpecialAccess = specialAccessHeld(),
+                            ourSpecialAccess = specialAccessLatch ?: specialAccessHeld(),
                         )
                         if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) {
                             screen = TamperScreen.NONE
