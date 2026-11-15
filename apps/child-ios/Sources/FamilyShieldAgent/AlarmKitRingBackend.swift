@@ -71,7 +71,7 @@ public final class AlarmKitRingBackend: RingBackend {
         guard #available(iOS 26.0, *) else { throw RingCommandError.unsupportedOS }
         do {
             let fireDate = now().addingTimeInterval(leadTime)
-            RingAlarmLog.info("schedule fireDate=\(fireDate.timeIntervalSince1970, privacy: .public) leadTime=\(leadTime, privacy: .public)")
+            RingAlarmLog.info("schedule fireDate=\(fireDate.timeIntervalSince1970) leadTime=\(leadTime)")
             let alert = AlarmPresentation.Alert(
                 title: LocalizedStringResource("ring_alarm_title", table: "Localizable", bundle: .module),
                 stopButton: AlarmButton(text: LocalizedStringResource("ring_alert_ok", table: "Localizable", bundle: .module),
