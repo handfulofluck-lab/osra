@@ -152,6 +152,20 @@ class RingReentryPolicyTest {
         assertTrue("the class is tracked before that branch", tracking in 1 until ownReturn)
     }
 
+    /** #802 V4 (Claude): the deferred re-check decides again instead of raising the screen blindly. */
+    @Test
+    fun `the deferred re-check asks the policy again`() {
+        val recheck = service.substringAfter("private fun scheduleRingRecheck()", missingDelimiterValue = "")
+            .substringBefore("
+    }
+", missingDelimiterValue = "")
+        assertTrue("it re-reads the window in front", recheck.contains("rootInActiveWindow"))
+        assertTrue("and decides on it", recheck.contains("RingReentryPolicy.decide("))
+        assertTrue("only RESTORE raises the screen", recheck.contains("Reentry.RESTORE ->"))
+        assertTrue("a still-too-soon window is deferred again", recheck.contains("Reentry.DEFER -> scheduleRingRecheck()"))
+        assertTrue("and our own gate is left alone", recheck.contains("Reentry.IGNORE -> Unit"))
+    }
+
     /** #802 item 4: the ring screen may not share the display or become a thumbnail. */
     @Test
     fun `the ring screen owns the display`() {
