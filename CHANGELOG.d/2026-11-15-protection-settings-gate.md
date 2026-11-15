@@ -12,3 +12,13 @@
   service off, and when it is unbound the guard is gone with it. The immediate-unbind alert is a separate change.
 - Verified by JVM tests only (`TamperScreenPolicyTest`'s three new rows). **Not verified on a handset**: both
   pages on the Flip4 under the lease.
+- **Two signals, not one (Fable's review).** The accessibility page is guarded when the screen carries our own
+  `accessibility_description`, in whatever language the phone is in — that survives OEM renames and the fragment
+  hosts current Settings builds use — and the PermissionController pages are guarded on the package plus our name
+  alone. The class list stays as a second opinion, not as the gate.
+- **The list pages are guarded too, deliberately.** Accessibility → Installed apps and Permission manager →
+  Location both list several apps; a screen there that names OSRA opens the gate even when the parent is
+  managing another app. That is fail-safe and it is a cost: it is recorded here so it is a decision, not a
+  surprise.
+- **Other doors, tracked on osra-security#29 rather than here:** usage access, display over other apps,
+  notification access and the VPN entry are the same class of screen and are not covered by this change.
