@@ -6,6 +6,8 @@
   `verify` normalise before the check, the hash and the comparison; the pairing form and the QR decoder
   normalise before validation and before the claim. The PIN confirmation compares normalised values, so
   the two fields may be typed with different keyboards.
-- A PIN stored **before** this change from Arabic digits was hashed as typed. There are no outside users
-  yet; such a PIN must be set again. `DigitsTest`, `ParentPinTest` and `PairQrPayloadTest` pin the
+- A PIN stored **before** this change from Arabic digits was hashed as typed. It still opens: `verify`
+  accepts that exact stored form as a second path, and `ParentPinStore` re-hashes the normalised PIN on
+  the first successful use, so the legacy value disappears without a reset. `DigitsTest`,
+  `ParentPinTest` (including the legacy hash and its upgrade) and `PairQrPayloadTest` pin the
   round-trips in both directions.

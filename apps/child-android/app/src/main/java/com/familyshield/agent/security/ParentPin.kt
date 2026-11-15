@@ -70,24 +70,59 @@ object ParentPin {
      * `false` too, for the wrong reason. The two rows in `ParentPinTest` use a throwing KDF and a
      * recording one, which is the only way to pin the guard and the catch on this side of the device.
      */
+    /** Which form a stored value matched, so a legacy value can be upgraded on first use. */
+    enum class Match { NONE, NORMALIZED, LEGACY_FORM }
+
     internal fun verify(
         pin: String,
         stored: String?,
         kdf: (String, ByteArray, Int) -> ByteArray = ::pbkdf2,
-    ): Boolean {
-        if (stored.isNullOrBlank()) return false
+    ): Boolean = verifyMatch(pin, stored, kdf) != Match.NONE
+
+    /**
+     * The check with a report. `NORMALIZED` is every PIN set from #771 on. `LEGACY_FORM` is a PIN that was
+     * stored before #771 from an Arabic keyboard: `validationError` accepted those digits, so `hash` wrote
+     * the PBKDF2 of the string **as typed**. The second path accepts only that exact string, so it weakens
+     * nothing; [ParentPinStore] re-hashes the normalised PIN when it sees this match, and the legacy value
+     * is gone on first use (Fable, R3 on #797/#818).
+     */
+    internal fun verifyMatch(
+        pin: String,
+        stored: String?,
+        kdf: (String, ByteArray, Int) -> ByteArray = ::pbkdf2,
+    ): Match {
+        if (stored.isNullOrBlank()) return Match.NONE
         val normalized = Digits.normalize(pin)
         // A PIN outside the accepted length cannot match one that was hashed, and PBKDF2 refuses some
         // of those inputs outright. Reject before the KDF rather than after it throws.
-        if (!hasAcceptedLength(normalized)) return false
+        if (!hasAcceptedLength(normalized)) return Match.NONE
         val parts = stored.split("$")
-        if (parts.size != 4 || parts[0] != "pbkdf2") return false
-        val iterations = parts[1].toIntOrNull() ?: return false
-        val salt = runCatching { unb64(parts[2]) }.getOrNull() ?: return false
-        val expected = runCatching { unb64(parts[3]) }.getOrNull() ?: return false
-        val actual = runCatching { kdf(normalized, salt, iterations) }.getOrNull() ?: return false
-        return constantTimeEquals(expected, actual)
+        if (parts.size != 4 || parts[0] != "pbkdf2") return Match.NONE
+        val iterations = parts[1].toIntOrNull() ?: return Match.NONE
+        val salt = runCatching { unb64(parts[2]) }.getOrNull() ?: return Match.NONE
+        val expected = runCatching { unb64(parts[3]) }.getOrNull() ?: return Match.NONE
+        fun matches(candidate: String): Boolean {
+            val actual = runCatching { kdf(candidate, salt, iterations) }.getOrNull() ?: return false
+            return constantTimeEquals(expected, actual)
+        }
+        if (matches(normalized)) return Match.NORMALIZED
+        if (pin != normalized && matches(pin)) return Match.LEGACY_FORM
+        return Match.NONE
     }
+
+    /**
+     * The pre-#771 writer, which hashed the string exactly as typed. Kept so a test can build the value an
+     * Arabic-keyboard install stored; production only reads such a value, never writes a new one.
+     */
+    internal fun hashAsTyped(pin: String, random: SecureRandom = SecureRandom()): String {
+        val salt = ByteArray(SALT_BYTES).also { random.nextBytes(it) }
+        val hash = pbkdf2(pin, salt, ITERATIONS)
+        return "pbkdf2\$$ITERATIONS\$${b64(salt)}\$${b64(hash)}"
+    }
+
+    /** The hash that replaces a legacy value on first successful use, or null when no upgrade is due. */
+    internal fun upgradedStoredHashOnUse(match: Match, pin: String): String? =
+        if (match == Match.LEGACY_FORM) hash(pin) else null
 
     private fun pbkdf2(pin: String, salt: ByteArray, iterations: Int): ByteArray {
         val spec = PBEKeySpec(pin.toCharArray(), salt, iterations, KEY_BITS)

@@ -113,6 +113,27 @@ class ParentPinTest {
     }
 
     @Test
+    fun `a PIN stored before the change from Arabic digits still opens and is upgraded (#771)`() {
+        val legacy = ParentPin.hashAsTyped("٤٧٢٩")
+        assertEquals(ParentPin.Match.LEGACY_FORM, ParentPin.verifyMatch("٤٧٢٩", legacy))
+        assertTrue(ParentPin.verify("٤٧٢٩", legacy))
+        assertTrue(ParentPin.verify("4729", legacy))
+
+        val upgraded = ParentPin.upgradedStoredHashOnUse(ParentPin.Match.LEGACY_FORM, "٤٧٢٩")
+        assertTrue(upgraded != null)
+        assertEquals(ParentPin.Match.NORMALIZED, ParentPin.verifyMatch("4729", upgraded))
+        assertTrue(ParentPin.verify("٤٧٢٩", upgraded))
+        assertNull(ParentPin.upgradedStoredHashOnUse(ParentPin.Match.NORMALIZED, "4729"))
+    }
+
+    @Test
+    fun `a wrong PIN fails both paths in one call (#771)`() {
+        val legacy = ParentPin.hashAsTyped("٤٧٢٩")
+        assertEquals(ParentPin.Match.NONE, ParentPin.verifyMatch("٤٧٢٨", legacy))
+        assertEquals(ParentPin.Match.NONE, ParentPin.verifyMatch("9999", legacy))
+    }
+
+    @Test
     fun `validation accepts Arabic digits and still refuses a weak PIN typed with them (#771)`() {
         assertNull(ParentPin.validationError("٤٧٢٩"))
         assertNull(ParentPin.validationError("۴۷۲۹"))
