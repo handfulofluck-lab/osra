@@ -10,6 +10,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
+import com.familyshield.agent.R
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
@@ -59,12 +60,16 @@ class CommandPollWorker(
         val context = applicationContext
         context.getSystemService(NotificationManager::class.java)
             ?.createNotificationChannel(
-                NotificationChannel(WAKE_CHANNEL, "Command checks", NotificationManager.IMPORTANCE_LOW),
+                NotificationChannel(
+                    WAKE_CHANNEL,
+                    context.getString(R.string.notification_channel_command_checks),
+                    NotificationManager.IMPORTANCE_LOW,
+                ),
             )
         val notification = NotificationCompat.Builder(context, WAKE_CHANNEL)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("OSRA")
-            .setContentText("Checking for parent commands")
+            .setContentTitle(context.getString(R.string.app_name))
+            .setContentText(context.getString(R.string.notification_checking_commands))
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .build()
