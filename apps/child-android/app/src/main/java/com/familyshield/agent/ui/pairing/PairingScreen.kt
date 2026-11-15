@@ -282,19 +282,3 @@ data class PairingCopy(
     val waiting: String,
     val reassurance: String,
 )
-
-/**
- * The screen's words, read from the approved resources. Nothing here is typed into this file: the English is the
- * UI/UX Bureau's and the Arabic is the Arabic Language Bureau's (comment 6861943604), both copied into
- * `strings.xml` verbatim, so a translator changing a line changes it in one place.
- */
-fun pairingCopyFrom(context: android.content.Context): PairingCopy = PairingCopy(
-    title = context.getString(com.familyshield.agent.R.string.pair_title),
-    subtitle = context.getString(com.familyshield.agent.R.string.pair_intro),
-    scanButton = context.getString(com.familyshield.agent.R.string.pair_scan_button),
-    orTypeIt = context.getString(com.familyshield.agent.R.string.pair_or_type_code),
-    nameLabel = context.getString(com.familyshield.agent.R.string.pair_name_hint),
-    submit = context.getString(com.familyshield.agent.R.string.pair_button),
-    waiting = context.getString(com.familyshield.agent.R.string.pair_button_waiting_allow),
-    reassurance = context.getString(com.familyshield.agent.R.string.pair_reassurance),
-)

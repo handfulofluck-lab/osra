@@ -32,13 +32,6 @@
     <string name="pair_name_hint">اسم الجهاز (اختياري)</string>
     <string name="pair_button">أقرن هذا الجهاز</string>
     <string name="pair_scan_button">امسح رمز QR</string>
-    <!-- #728: the Arabic Language Bureau's lines for the new pairing screen (6861943604), byte for byte. -->
-    <string name="pair_title">أقرن هذا الجهاز بعائلتك</string>
-    <string name="pair_intro">افتح تطبيق أسرة على هاتف أحد الوالدين، واختر «إقران جهاز»، ثم امسح الرمز الذي يظهر.</string>
-    <string name="pair_or_type_code">أو اكتب رمز الإقران</string>
-    <string name="pair_button_waiting_allow">بانتظار السماح…</string>
-    <string name="pair_reassurance">لا تبدأ المراقبة إلا بعد أن يسمح أحد الوالدين بهذا الجهاز في تطبيق أسرة.</string>
-    <string name="pair_use_own_server">استخدم خادمك الخاص</string>
     <string name="pair_scan_description">امسح رمز QR للإقران من تطبيق الوالدين</string>
     <string name="pair_scanned_title">تفاصيل الإقران الممسوحة</string>
     <string name="pair_scanned_server">الخادم: %1$s</string>
