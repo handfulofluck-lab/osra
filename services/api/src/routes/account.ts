@@ -1,4 +1,4 @@
-import type { FastifyBaseLogger, FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import {
@@ -17,6 +17,7 @@ import {
 } from "../lib/accountDeletionLink.js";
 import { appPublicUrl, getEmailSender } from "../lib/email/index.js";
 import { accountDeletionEmail } from "../lib/email/templates.js";
+import { BUTTON, DANGER, INPUT, PRIMARY, err, esc, h, p, page, sendPage } from "../lib/htmlPage.js";
 import { AUTH_RATE_LIMIT } from "../lib/rateLimits.js";
 
 /**
@@ -78,50 +79,6 @@ async function mailDeletionLink(email: string, log: FastifyBaseLogger): Promise<
 // is checked against DELETION_TOKEN_PATTERN (hex) first and escaped anyway.
 // ---------------------------------------------------------------------------------------------------
 
-function esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-const CARD = "background:#fff;border-radius:8px;padding:24px;margin-top:16px";
-const BUTTON = "border:0;padding:12px 18px;border-radius:8px;font-size:16px;color:#fff";
-const INPUT = "display:block;width:100%;box-sizing:border-box;padding:10px;margin:4px 0 12px;font-size:16px;border:1px solid #c5c9d6;border-radius:6px";
-
-function page(en: string, ar: string): string {
-  return `<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>OSRA · أسرة</title></head>
-<body style="margin:0;background:#f6f7fb;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1f2430">
-  <div style="max-width:560px;margin:0 auto;padding:8px 16px 24px">
-    <div lang="en" dir="ltr" style="${CARD}">${en}</div>
-    <div lang="ar" dir="rtl" style="${CARD}">${ar}</div>
-  </div>
-</body>
-</html>`;
-}
-
-const h = (text: string) => `<h2 style="margin:0 0 12px;font-size:20px">${text}</h2>`;
-const p = (text: string) => `<p style="margin:0 0 12px;line-height:1.5">${text}</p>`;
-const err = (text: string | undefined) =>
-  text ? `<p role="alert" style="margin:0 0 12px;padding:10px;border-radius:6px;background:#fdecea;color:#8a1c12;line-height:1.5">${text}</p>` : "";
-
-/**
- * Every page: never cached (the confirm page holds the token in its form), never sent as a referrer,
- * never framed (a framed delete button is a clickjacking target), and no script at all.
- */
-function sendPage(reply: FastifyReply, status: number, html: string): FastifyReply {
-  return reply
-    .code(status)
-    .type("text/html; charset=utf-8")
-    .header("cache-control", "no-store")
-    .header("referrer-policy", "no-referrer")
-    .header("x-content-type-options", "nosniff")
-    .header(
-      "content-security-policy",
-      "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
-    )
-    .send(html);
-}
-
 type Copy = { en: string; ar: string };
 
 const REQUEST_ERRORS = {
@@ -131,28 +88,28 @@ const REQUEST_ERRORS = {
 function publicPage(error?: Copy): string {
   const form = (lang: "en" | "ar") => {
     const label = lang === "en" ? "Your account's email" : "البريد الإلكتروني لحسابك";
-    const button = lang === "en" ? "Email me a deletion link" : "أرسل لي رابط الحذف";
+    const button = lang === "en" ? "Email me a deletion link" : "إرسال رابط الحذف";
     return `<form method="post" action="/v1/account/deletion-request">
       <label style="display:block">${label}<input type="email" name="email" required maxlength="320" autocomplete="email" style="${INPUT}"></label>
-      <button type="submit" style="${BUTTON};background:#3949ab">${button}</button>
+      <button type="submit" style="${BUTTON};background:${PRIMARY}">${button}</button>
     </form>`;
   };
   const en = [
     h("Delete your OSRA account"),
     err(error?.en),
-    p("<strong>In the app:</strong> open OSRA and, on the dashboard, tap the <strong>⋮</strong> menu at the top right, then <strong>Delete account</strong>. Enter your password, and your authenticator code if two-step sign-in is on, and confirm."),
+    p("<strong>In the app:</strong> open OSRA and, on the dashboard, tap the <strong>⋮</strong> menu at the top right, then <strong>Delete account</strong>. Enter your password, and your authenticator code if two-step verification is on, and confirm."),
     p("<strong>If you created the family</strong> (the owner), this deletes the whole family: every child's activity, locations, alerts, rules and linked phones, and every other parent's and guardian's access. <strong>If you joined someone else's family</strong>, it deletes only your own account; the family and the children stay."),
     p("<strong>What is kept:</strong> the IDs of signed-out sessions until those sessions would have expired (at most 8 days), encrypted database backups until they rotate out, and server logs, which hold IDs but no messages or content, until their retention ends. Everything else is deleted at once. There is no undo."),
     p("<strong>Without the app:</strong> enter your account's email. If an account uses it, we send a link that works once, for 30 minutes. The link asks for your password (and authenticator code) before anything is deleted."),
     form("en"),
   ].join("");
   const ar = [
-    h("حذف حسابك في أسرة"),
+    h("حذف حسابك في تطبيق أسرة"),
     err(error?.ar),
-    p("<strong>من التطبيق:</strong> افتح تطبيق أسرة، ثم اضغط على قائمة ⋮ أعلى اليسار في لوحة التحكم، ثم اختر حذف الحساب. أدخل كلمة المرور، ورمز تطبيق المصادقة إذا كان التحقق بخطوتين مفعّلًا، ثم أكّد الحذف."),
-    p("<strong>إن كنت أنت من أنشأ العائلة</strong> (المالك)، فسيُحذف كل شيء في العائلة: نشاط كل طفل ومواقعه وتنبيهاته وقواعده والهواتف المرتبطة، ووصول كل والد أو وصيّ آخر. <strong>وإن كنت قد انضممت إلى عائلة غيرك</strong>، فسيُحذف حسابك أنت فقط، وتبقى العائلة والأطفال."),
-    p("<strong>ما يُحتفظ به:</strong> معرّفات الجلسات التي سُجّل الخروج منها حتى ينتهي وقتها (8 أيام على الأكثر)، والنسخ الاحتياطية المشفّرة لقاعدة البيانات حتى تُستبدل، وسجلات الخادم التي تحوي معرّفات دون أي رسائل أو محتوى حتى تنتهي مدة حفظها. ويُحذف كل ما عدا ذلك فوراً، ولا يمكن التراجع."),
-    p("<strong>من دون التطبيق:</strong> أدخل البريد الإلكتروني لحسابك. إن كان هناك حساب يستخدمه، نرسل إليه رابطاً صالحاً لمرة واحدة ولمدة 30 دقيقة. يطلب الرابط كلمة المرور (ورمز المصادقة) قبل حذف أي شيء."),
+    p("<strong>من التطبيق:</strong> افتح تطبيق أسرة، ثم اضغط على قائمة ⋮ أعلى اليسار في لوحة التحكم، ثم اختر «حذف الحساب». أدخل كلمة المرور، ورمز تطبيق المصادقة إذا كان التحقق بخطوتين مفعّلًا، ثم أكّد الحذف."),
+    p("<strong>إن كنت أنت من أنشأ العائلة</strong> (مدير العائلة)، فسيُحذف كل شيء في العائلة: نشاط كل طفل ومواقعه وتنبيهاته وقواعده والهواتف المقترنة، ووصول كل والد أو وليّ أمر آخر. <strong>وإن كنت قد انضممت إلى عائلة غيرك</strong>، فسيُحذف حسابك أنت فقط، وتبقى العائلة والأطفال."),
+    p("<strong>ما يُحتفظ به:</strong> معرّفات الجلسات التي سُجّل الخروج منها حتى ينتهي وقتها (8 أيام على الأكثر)، والنسخ الاحتياطية المشفّرة لقاعدة البيانات حتى تُستبدل، وسجلات الخادم التي تحوي معرّفات دون أي رسائل أو محتوى حتى تنتهي مدة حفظها. ويُحذف كل ما عدا ذلك فورًا، ولا يمكن التراجع عن ذلك."),
+    p("<strong>من دون التطبيق:</strong> أدخل البريد الإلكتروني لحسابك. إن كان هناك حساب يستخدمه، فسنرسل إليه رابطًا صالحًا لمرة واحدة ولمدة 30 دقيقة. ستُطلب منك كلمة المرور (ورمز تطبيق المصادقة) قبل حذف أي شيء."),
     form("ar"),
   ].join("");
   return page(en, ar);
@@ -164,7 +121,7 @@ function requestAcceptedPage(): string {
     h("Check your email") +
       p("If an OSRA account uses that address, we have sent it a link. It works once and expires in 30 minutes. If nothing arrives, check your spam folder, or ask again in a minute."),
     h("تحقّق من بريدك الإلكتروني") +
-      p("إن كان هناك حساب في أسرة يستخدم هذا العنوان، فقد أرسلنا إليه رابطاً. الرابط صالح لمرة واحدة وتنتهي صلاحيته خلال 30 دقيقة. إن لم يصلك شيء، تحقّق من مجلد الرسائل غير المرغوب فيها، أو أعد الطلب بعد دقيقة."),
+      p("إن كان هناك حساب في تطبيق أسرة يستخدم هذا العنوان، فقد أرسلنا إليه رابطًا. الرابط صالح لمرة واحدة وتنتهي صلاحيته خلال 30 دقيقة. إن لم يصلك شيء، فتحقّق من مجلد الرسائل غير المرغوب فيها، أو أعد الطلب بعد دقيقة."),
   );
 }
 
@@ -174,23 +131,23 @@ function expiredPage(): string {
     h("This link has expired or was already used") +
       p('Nothing was deleted. <a href="/v1/account/delete">Ask for a new link</a>.'),
     h("انتهت صلاحية هذا الرابط أو سبق استخدامه") +
-      p('لم يُحذف شيء. <a href="/v1/account/delete">اطلب رابطاً جديداً</a>.'),
+      p('لم يُحذف شيء. <a href="/v1/account/delete">اطلب رابطًا جديدًا</a>.'),
   );
 }
 
 const CONFIRM_ERRORS = {
   reauth_failed: {
     en: "That password or authenticator code is not right. Nothing was deleted.",
-    ar: "كلمة المرور أو رمز المصادقة غير صحيح. لم يُحذف شيء.",
+    ar: "كلمة المرور أو رمز تطبيق المصادقة غير صحيح. لم يُحذف شيء.",
   },
   mfa_reenroll_required: {
-    en: "Two-step sign-in is on for this account, but no authenticator is set up. Sign in to the app and set one up first. Nothing was deleted.",
-    ar: "التحقق بخطوتين مفعّل لهذا الحساب، لكن لا يوجد تطبيق مصادقة مُعدّ. سجّل الدخول إلى التطبيق وأعدّ واحداً أولاً. لم يُحذف شيء.",
+    en: "Two-step verification is on for this account, but no authenticator is set up. Sign in to the app and set one up first. Nothing was deleted.",
+    ar: "التحقق بخطوتين مفعّل في هذا الحساب، لكن لم يتم إعداد تطبيق مصادقة. سجّل الدخول إلى تطبيق أسرة أولًا لإعداد تطبيق مصادقة. لم يُحذف شيء.",
   },
   password_required: { en: "Enter your password.", ar: "أدخل كلمة المرور." },
   consent_records_held: {
     en: "This account still holds a parental consent record for a child in another family. Withdraw it in the app first. Nothing was deleted.",
-    ar: "ما زال هذا الحساب يحمل سجلّ موافقة أبوية لطفل في عائلة أخرى. اسحبه من التطبيق أولاً. لم يُحذف شيء.",
+    ar: "ما زال في هذا الحساب سجل موافقة الوالدين لطفل في عائلة أخرى. اسحب الموافقة من تطبيق أسرة أولًا. لم يُحذف شيء.",
   },
 } satisfies Record<string, Copy>;
 
@@ -209,7 +166,7 @@ function confirmPage(token: string, who: { owner: boolean; mfa: boolean }, error
       <input type="hidden" name="token" value="${esc(token)}">
       <label style="display:block">${en ? "Password" : "كلمة المرور"}<input type="password" name="password" required maxlength="256" autocomplete="current-password" style="${INPUT}"></label>
       ${mfa}
-      <button type="submit" style="${BUTTON};background:#b3261e">${button}</button>
+      <button type="submit" style="${BUTTON};background:${DANGER}">${button}</button>
     </form>`;
   };
   const copy = error ? CONFIRM_ERRORS[error] : undefined;
@@ -225,12 +182,12 @@ function confirmPage(token: string, who: { owner: boolean; mfa: boolean }, error
     form("en"),
   ].join("");
   const ar = [
-    h(who.owner ? "حذف العائلة وكل بياناتها" : "حذف حسابك في أسرة"),
+    h(who.owner ? "حذف العائلة وكل بياناتها" : "حذف حسابك في تطبيق أسرة"),
     err(copy?.ar),
     p(
       who.owner
-        ? "أنت مالك هذه العائلة، لذا سيُحذف كل شيء فيها: نشاط كل طفل ومواقعه وتنبيهاته وقواعده والهواتف المرتبطة، ووصول كل والد أو وصيّ آخر. ويُفصل كل هاتف مرتبط."
-        : "سيُحذف حسابك أنت فقط. تبقى العائلة وأطفالها والوالدان الآخران.",
+        ? "أنت مدير هذه العائلة، لذا سيُحذف كل شيء فيها: نشاط كل طفل ومواقعه وتنبيهاته وقواعده والهواتف المقترنة، ووصول كل والد أو وليّ أمر آخر. ويُلغى إقران كل هاتف مقترن."
+        : "سيُحذف حسابك أنت فقط. تبقى العائلة وأطفالها وبقية أفرادها.",
     ),
     p("لا يمكن التراجع عن ذلك. أدخل كلمة المرور للتأكيد."),
     form("ar"),
@@ -247,9 +204,9 @@ function deletedPage(family: boolean): string {
       p("You can uninstall the app."),
     h("تم الحذف") +
       p(family
-        ? "حُذفت العائلة وكل بياناتها، وسُجّل خروج كل والد ووصيّ."
+        ? "حُذفت العائلة وكل بياناتها، وسُجّل خروج كل والد ووليّ أمر."
         : "حُذف حسابك وسُجّل خروجك من كل الأجهزة. تبقى العائلة وأطفالها.") +
-      p("يمكنك الآن إزالة التطبيق."),
+      p("يمكنك الآن إلغاء تثبيت التطبيق."),
   );
 }
 
@@ -259,7 +216,7 @@ function failedPage(): string {
     h("The deletion did not finish") +
       p('Something went wrong on our side. <a href="/v1/account/delete">Ask for a new link</a> and try again; the deletion picks up where it stopped.'),
     h("لم يكتمل الحذف") +
-      p('حدث خطأ من جهتنا. <a href="/v1/account/delete">اطلب رابطاً جديداً</a> وحاول مرة أخرى، وسيُكمل الحذف من حيث توقف.'),
+      p('حدث خطأ من جهتنا. <a href="/v1/account/delete">اطلب رابطًا جديدًا</a> وحاول مرة أخرى، وسيُستكمل الحذف من حيث توقّف.'),
   );
 }
 

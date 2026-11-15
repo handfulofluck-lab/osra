@@ -58,15 +58,15 @@ open class TamperGuardActivity : ComponentActivity() {
         }
 
         val pin = EditText(this).apply {
-            hint = "Parent PIN"
+            hint = getString(R.string.pin_gate_hint)
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
             filters = arrayOf(InputFilter.LengthFilter(ParentPin.MAX_LENGTH))
             textSize = 24f
             gravity = Gravity.CENTER
         }
         errorView = TextView(this).apply { setTextColor(0xFFB00020.toInt()); textSize = 16f }
-        val unlock = Button(this).apply { text = "Continue" }
-        val back = Button(this).apply { text = "Go back" }
+        val unlock = Button(this).apply { text = getString(R.string.pin_gate_continue) }
+        val back = Button(this).apply { text = getString(R.string.pin_gate_back) }
 
         // osra-security#17: Continue stays disabled until the field holds a length the PIN can have, so
         // an empty submit never reaches the verifier at all. The verifier fails closed on its own now;
@@ -152,10 +152,12 @@ open class TamperGuardActivity : ComponentActivity() {
                 val attempts = failed.failures
                 // #484: the fifth wrong PIN still lands Home. The lockout is what the next open reports.
                 if (attempts >= MAX_ATTEMPTS) goHome()
-                errorView.text = if (PinLockout.isLocked(failed, SystemClock.elapsedRealtime())) {
-                    noticeText()
-                } else {
-                    "Wrong PIN."
+                // #792's notice first: while the gate is shut, the child is told how long, not just "too many".
+                // The two sentences below are main's (#725's Arabic campaign) and are kept as they are.
+                errorView.text = when {
+                    PinLockout.isLocked(failed, SystemClock.elapsedRealtime()) -> noticeText()
+                    attempts >= MAX_ATTEMPTS -> getString(R.string.pin_gate_too_many)
+                    else -> getString(R.string.pin_gate_wrong)
                 }
             }
         }
@@ -169,7 +171,7 @@ open class TamperGuardActivity : ComponentActivity() {
                 setPadding(64, 64, 64, 64)
                 addView(
                     TextView(this@TamperGuardActivity).apply {
-                        text = "Protected by OSRA · أسرة"
+                        text = getString(R.string.pin_gate_title)
                         setTextColor(0xFFFFFFFF.toInt())
                         textSize = 26f
                         gravity = Gravity.CENTER
@@ -177,12 +179,14 @@ open class TamperGuardActivity : ComponentActivity() {
                 )
                 addView(
                     TextView(this@TamperGuardActivity).apply {
-                        text = when (reason) {
-                            REASON_REPAIR -> "Re-pairing this device needs your parent's PIN."
-                            REASON_REMOVE -> "Removing protection needs your parent's PIN."
-                            REASON_RING -> "Stopping the ring needs your parent's PIN."
-                            else -> "Changing this setting needs your parent's PIN.\nYour parent has been notified."
-                        }
+                        text = getString(
+                            when (reason) {
+                                REASON_REPAIR -> R.string.pin_gate_reason_repair
+                                REASON_REMOVE -> R.string.pin_gate_reason_remove
+                                REASON_RING -> R.string.pin_gate_reason_ring
+                                else -> R.string.pin_gate_reason_settings
+                            },
+                        )
                         setTextColor(0xFFAEB0B8.toInt())
                         textSize = 16f
                         gravity = Gravity.CENTER

@@ -39,6 +39,26 @@ resource "terraform_data" "production_guard" {
       error_message = "production: alarms_enabled must be true with an alarm_email."
     }
     precondition {
+      condition     = var.db_customer_kms_key && var.backup_copy_vault_arn != "" && var.backup_copy_account_id != "" && !strcontains(var.backup_copy_vault_arn, ":${var.region}:") && strcontains(var.backup_copy_vault_arn, ":${var.backup_copy_account_id}:") && !contains(var.allowed_account_ids, var.backup_copy_account_id)
+      error_message = "production: database on its own KMS key, with a daily backup copied to a vault in ANOTHER account and ANOTHER region (#766 item 5)."
+    }
+    precondition {
+      condition     = var.audit_logs_enabled
+      error_message = "production: audit_logs_enabled must be true (VPC flow, WAF and PostgreSQL logs; #766 item 2)."
+    }
+    precondition {
+      condition     = var.secrets_out_of_band && var.redis_transit_encryption
+      error_message = "production: secrets_out_of_band must be true (RDS-managed master password, osra_api role, Redis AUTH, verifying database TLS; #766 items 1 and 3)."
+    }
+    precondition {
+      condition     = var.alarm_email_secondary != "" && var.alarm_email_secondary != var.alarm_email
+      error_message = "production: alarm_email_secondary must be set and differ from alarm_email (#766 item 6)."
+    }
+    precondition {
+      condition     = var.app_public_url != "" && var.email_provider != "" && var.email_from != ""
+      error_message = "production: app_public_url, email_provider and email_from must be set (#778's container-definition checker requires them)."
+    }
+    precondition {
       condition     = var.alb_deletion_protection
       error_message = "production: alb_deletion_protection must be true."
     }

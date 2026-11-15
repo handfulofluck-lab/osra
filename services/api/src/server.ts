@@ -15,6 +15,7 @@ import { digestRoutes } from "./routes/digests.js";
 import { socialRoutes } from "./routes/social.js";
 import { contentRoutes } from "./routes/content.js";
 import { inviteRoutes } from "./routes/invites.js";
+import { linkPageRoutes } from "./routes/linkPages.js";
 import { insightsRoutes } from "./routes/insights.js";
 import { meRoutes } from "./routes/me.js";
 import { accountRoutes } from "./routes/account.js";
@@ -34,6 +35,7 @@ import { AUTH_RATE_LIMIT, registerRateLimits, trustProxyFromEnv } from "./lib/ra
 import { getRedis } from "./redis.js";
 import { LOGGER_SERIALIZERS } from "./lib/logRedaction.js";
 import { assertCorsConfigured } from "./lib/corsConfig.js";
+import { assertDatabaseTls } from "./lib/databaseTls.js";
 
 // Review 3.7: fail fast on missing/known-dev secrets instead of booting insecurely.
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -46,6 +48,10 @@ if (!JWT_SECRET || JWT_SECRET === "dev-secret-change-me" || JWT_SECRET === "e2e-
 if (!process.env.VAULT_KEY && process.env.NODE_ENV === "production") {
   throw new Error("VAULT_KEY must be set in production (snippet vault encryption key)");
 }
+
+// #766 item 3 / gate #637: with DATABASE_TLS_VERIFY=required, refuse a database URL that would not check the
+// server's certificate. It runs before the first connection below, so the password is never sent unverified.
+assertDatabaseTls(process.env);
 
 import { prisma } from "./db.js";
 import { assertPrismaClientInSync } from "./lib/schemaSync.js";
@@ -134,6 +140,9 @@ await app.register(meRoutes, { prefix: "/v1/me" });
 // #442 PR 3: the public account-deletion pages (Play's web link). No session; the two POSTs carry
 // AUTH_RATE_LIMIT themselves.
 await app.register(accountRoutes, { prefix: "/v1/account" });
+// #789: the pages the mailed links open (/reset, /mfa/reset/confirm, /mfa/reset/cancel, /invite/accept,
+// /dashboard). Outside /v1 because the mails carry APP_PUBLIC_URL + these paths. A GET changes nothing.
+await app.register(linkPageRoutes);
 // ADR-0041 D2 / #620: Play purchase verification (a parent session) and the Pub/Sub push (its own OIDC
 // token). Both write the plan only through `lib/entitlement.ts`.
 await app.register(billingRoutes, { prefix: "/v1/billing" });

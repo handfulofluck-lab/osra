@@ -28,7 +28,9 @@ HOURLY_COST_USD="${HOURLY_COST_USD:-0.194}"
 
 # Production never falls back to the staging profile (#765, Fable B3): the caller names the profile.
 profile_given="${AWS_PROFILE:-}"
-: "${AWS_PROFILE:=osra-staging}"
+# One source of truth for the default's name, because production refuses it by name below (osra#768).
+staging_profile=osra-staging
+: "${AWS_PROFILE:=$staging_profile}"
 : "${AWS_REGION:=$default_region}"
 export AWS_PROFILE AWS_REGION
 
@@ -52,6 +54,13 @@ if [ "$OSRA_ENV" = production ]; then
   # definition on an upgrade, and the apply then snapshots the database and migrates. OSRA_PROD_PHASE=service
   # plans everything else (creating the service, or rolling it onto the new task definition).
   [ -n "$profile_given" ] || { echo "production: set AWS_PROFILE explicitly; it never defaults to the staging profile." >&2; exit 1; }
+  # osra#768: the profile must not only be given, it must not be the staging one by name. #765 refuses an
+  # unset profile; `OSRA_ENV=production AWS_PROFILE=osra-staging` would still name the credential that
+  # belongs to the other environment. A production run names its own credential, or it does not run.
+  if [ "$AWS_PROFILE" = "$staging_profile" ]; then
+    echo "production: AWS_PROFILE is the staging profile ($staging_profile); name the production profile instead." >&2
+    exit 1
+  fi
   phase="${OSRA_PROD_PHASE:-schema}"
   case "$phase" in schema|service) ;; *) echo "OSRA_PROD_PHASE must be schema or service" >&2; exit 1 ;; esac
 
@@ -147,8 +156,14 @@ EOC
   aws rds create-db-snapshot --db-instance-identifier "$db_id" --db-snapshot-identifier "$snap" >/dev/null
   aws rds wait db-snapshot-available --db-snapshot-identifier "$snap"
 
-  # Production migrates only: no demo family in the real database.
-  migrate_command='["node_modules/.bin/prisma","migrate","deploy"]'
+  # Production migrates only: no demo family in the real database. The db-admin task (env/db_admin.tf)
+  # runs the migration as the master user and grants the osra_api role the API connects as (#766 item 3).
+  db_admin_taskdef=$(terraform -chdir="$HERE/env" output -raw db_admin_task_definition_arn 2>/dev/null || true)
+  if [ -z "$db_admin_taskdef" ] || [ "$db_admin_taskdef" = null ]; then
+    echo "refusing: production has no db-admin task definition (secrets_out_of_band must be true)." >&2
+    exit 1
+  fi
+  migrate_command=""
 else
 
 # Issue #337: base state is shared in S3, and most of base is `count`-gated on variables that live in a
@@ -236,14 +251,25 @@ read_env_outputs() {
 
 # Same task definition, one-off command. The image must carry prisma, tsx and scripts/seed.ts
 # (services/api/Dockerfile installs devDependencies and copies the service).
-task_arn=$(aws ecs run-task \
-  --cluster "$cluster" \
-  --task-definition "$taskdef" \
-  --launch-type FARGATE \
-  --started-by osra-up-seed \
-  --network-configuration "awsvpcConfiguration={subnets=[$subnets],securityGroups=[$sg],assignPublicIp=DISABLED}" \
-  --overrides "{\"containerOverrides\":[{\"name\":\"api\",\"command\":$migrate_command}]}" \
-  --query 'tasks[0].taskArn' --output text)
+if [ -n "${db_admin_taskdef:-}" ]; then
+  # Production: the db-admin task carries its own command; no override, so nothing can swap it for another.
+  task_arn=$(aws ecs run-task \
+    --cluster "$cluster" \
+    --task-definition "$db_admin_taskdef" \
+    --launch-type FARGATE \
+    --started-by osra-up-migrate \
+    --network-configuration "awsvpcConfiguration={subnets=[$subnets],securityGroups=[$sg],assignPublicIp=DISABLED}" \
+    --query 'tasks[0].taskArn' --output text)
+else
+  task_arn=$(aws ecs run-task \
+    --cluster "$cluster" \
+    --task-definition "$taskdef" \
+    --launch-type FARGATE \
+    --started-by osra-up-seed \
+    --network-configuration "awsvpcConfiguration={subnets=[$subnets],securityGroups=[$sg],assignPublicIp=DISABLED}" \
+    --overrides "{\"containerOverrides\":[{\"name\":\"api\",\"command\":$migrate_command}]}" \
+    --query 'tasks[0].taskArn' --output text)
+fi
 
 echo "    seed task: $task_arn"
 aws ecs wait tasks-stopped --cluster "$cluster" --tasks "$task_arn"

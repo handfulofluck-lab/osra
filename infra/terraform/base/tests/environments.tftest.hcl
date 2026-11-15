@@ -103,6 +103,14 @@ run "staging_defaults_are_unchanged" {
     condition     = length(aws_secretsmanager_secret.internal_hmac_secret) == 0
     error_message = "staging sets no INTERNAL_HMAC_SECRET today"
   }
+  assert {
+    condition     = length(aws_secretsmanager_secret.demo_password) == 1
+    error_message = "staging's seed still needs the demo password"
+  }
+  assert {
+    condition     = length(aws_secretsmanager_secret_version.jwt_secret) == 1 && length(aws_secretsmanager_secret.api_db_password) == 0
+    error_message = "staging keeps Terraform-generated JWT and vault values"
+  }
 }
 
 run "production_settings" {
@@ -118,11 +126,14 @@ run "production_settings" {
     github_owner_id              = "1"
     github_repo_id               = "2"
     bedrock_eval_role_enabled    = false
-    log_retention_days           = 30
+    log_retention_days           = 90
     secret_recovery_window_days  = 7
     budget_limit_usd             = 400
     internal_hmac_secret_enabled = true
     alarm_email                  = "alerts@example.test"
+    alarm_email_secondary        = "oncall@example.test"
+    secrets_out_of_band          = true
+    guardduty_enabled            = true
     allowed_account_ids          = ["000000000000"]
     assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
   }
@@ -136,7 +147,7 @@ run "production_settings" {
     error_message = "the certificate must validate in the production zone"
   }
   assert {
-    condition     = aws_cloudwatch_log_group.api.retention_in_days == 30 && aws_secretsmanager_secret.vault_key.recovery_window_in_days == 7
+    condition     = aws_cloudwatch_log_group.api.retention_in_days == 90 && aws_secretsmanager_secret.vault_key.recovery_window_in_days == 7
     error_message = "production log retention or recovery window wrong"
   }
   assert {
@@ -144,12 +155,36 @@ run "production_settings" {
     error_message = "production publishes images over OIDC but has no Bedrock evaluation role"
   }
   assert {
-    condition     = length(aws_secretsmanager_secret_version.internal_hmac_secret) == 1 && length(random_password.internal_hmac) == 1
-    error_message = "production must generate a fresh INTERNAL_HMAC_SECRET in Secrets Manager"
+    condition     = length(aws_secretsmanager_secret.internal_hmac_secret) == 1 && length(aws_secretsmanager_secret_version.internal_hmac_secret) == 0 && length(random_password.internal_hmac) == 0 && output.internal_hmac_secret_fingerprint == ""
+    error_message = "production needs the INTERNAL_HMAC_SECRET container, with its value written out of band, never in state (#781 review B2)"
   }
   assert {
     condition     = aws_budgets_budget.monthly[0].limit_amount == "400" && length(aws_budgets_budget.monthly[0].notification) == 3
     error_message = "production budget must be US$400 with three notifications"
+  }
+  assert {
+    condition     = length(aws_secretsmanager_secret.demo_password) == 0 && length(random_password.demo) == 0 && output.demo_password_secret_arn == null
+    error_message = "production must have no demo password (#766 item 6)"
+  }
+  assert {
+    condition     = length(random_password.jwt) == 0 && length(random_id.vault_key) == 0 && length(aws_secretsmanager_secret_version.jwt_secret) == 0 && length(aws_secretsmanager_secret_version.vault_key) == 0
+    error_message = "production keeps JWT_SECRET and VAULT_KEY out of state (#766 item 1)"
+  }
+  assert {
+    condition     = length(random_password.jwt) + length(random_id.vault_key) + length(random_password.demo) + length(random_password.internal_hmac) == 0
+    error_message = "a production plan must create no random value in base: every secret is generated out of band (#781 review B2)"
+  }
+  assert {
+    condition     = length(aws_secretsmanager_secret.api_db_password) == 1 && length(aws_secretsmanager_secret.redis_url) == 1 && length(aws_secretsmanager_secret.redis_auth_token) == 1
+    error_message = "production needs the containers production-secrets.sh fills"
+  }
+  assert {
+    condition     = length(aws_guardduty_detector.main) == 1 && length(aws_guardduty_detector_feature.rds_login) == 1
+    error_message = "production needs GuardDuty with RDS login monitoring (#766 item 2)"
+  }
+  assert {
+    condition     = aws_ecr_repository.api.image_tag_mutability == "IMMUTABLE" && aws_ecr_repository.api.image_scanning_configuration[0].scan_on_push && !aws_ecr_repository.api.force_delete
+    error_message = "production's image repository must be immutable, scanned on push and never force-deleted (#766 item 12)"
   }
 }
 
@@ -178,11 +213,14 @@ run "production_requires_secret_recovery_window_days" {
     github_owner_id              = "1"
     github_repo_id               = "2"
     bedrock_eval_role_enabled    = false
-    log_retention_days           = 30
+    log_retention_days           = 90
     secret_recovery_window_days  = 0
     budget_limit_usd             = 400
     internal_hmac_secret_enabled = true
     alarm_email                  = "alerts@example.test"
+    alarm_email_secondary        = "oncall@example.test"
+    secrets_out_of_band          = true
+    guardduty_enabled            = true
     allowed_account_ids          = ["000000000000"]
     assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
   }
@@ -203,11 +241,14 @@ run "production_requires_budget_limit_usd" {
     github_owner_id              = "1"
     github_repo_id               = "2"
     bedrock_eval_role_enabled    = false
-    log_retention_days           = 30
+    log_retention_days           = 90
     secret_recovery_window_days  = 7
     budget_limit_usd             = 0
     internal_hmac_secret_enabled = true
     alarm_email                  = "alerts@example.test"
+    alarm_email_secondary        = "oncall@example.test"
+    secrets_out_of_band          = true
+    guardduty_enabled            = true
     allowed_account_ids          = ["000000000000"]
     assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
   }
@@ -228,11 +269,14 @@ run "production_requires_bedrock_eval_role_enabled" {
     github_owner_id              = "1"
     github_repo_id               = "2"
     bedrock_eval_role_enabled    = true
-    log_retention_days           = 30
+    log_retention_days           = 90
     secret_recovery_window_days  = 7
     budget_limit_usd             = 400
     internal_hmac_secret_enabled = true
     alarm_email                  = "alerts@example.test"
+    alarm_email_secondary        = "oncall@example.test"
+    secrets_out_of_band          = true
+    guardduty_enabled            = true
     allowed_account_ids          = ["000000000000"]
     assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
   }
@@ -253,11 +297,14 @@ run "production_requires_internal_hmac_secret_enabled" {
     github_owner_id              = "1"
     github_repo_id               = "2"
     bedrock_eval_role_enabled    = false
-    log_retention_days           = 30
+    log_retention_days           = 90
     secret_recovery_window_days  = 7
     budget_limit_usd             = 400
     internal_hmac_secret_enabled = false
     alarm_email                  = "alerts@example.test"
+    alarm_email_secondary        = "oncall@example.test"
+    secrets_out_of_band          = true
+    guardduty_enabled            = true
     allowed_account_ids          = ["000000000000"]
     assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
   }
@@ -278,11 +325,14 @@ run "production_requires_region" {
     github_owner_id              = "1"
     github_repo_id               = "2"
     bedrock_eval_role_enabled    = false
-    log_retention_days           = 30
+    log_retention_days           = 90
     secret_recovery_window_days  = 7
     budget_limit_usd             = 400
     internal_hmac_secret_enabled = true
     alarm_email                  = "alerts@example.test"
+    alarm_email_secondary        = "oncall@example.test"
+    secrets_out_of_band          = true
+    guardduty_enabled            = true
     allowed_account_ids          = ["000000000000"]
     assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
   }
@@ -303,11 +353,14 @@ run "production_requires_assume_role_arn" {
     github_owner_id              = "1"
     github_repo_id               = "2"
     bedrock_eval_role_enabled    = false
-    log_retention_days           = 30
+    log_retention_days           = 90
     secret_recovery_window_days  = 7
     budget_limit_usd             = 400
     internal_hmac_secret_enabled = true
     alarm_email                  = "alerts@example.test"
+    alarm_email_secondary        = "oncall@example.test"
+    secrets_out_of_band          = true
+    guardduty_enabled            = true
     allowed_account_ids          = ["000000000000"]
     assume_role_arn              = ""
   }
@@ -328,11 +381,148 @@ run "production_requires_log_retention_days" {
     github_owner_id              = "1"
     github_repo_id               = "2"
     bedrock_eval_role_enabled    = false
-    log_retention_days           = 14
+    log_retention_days           = 30
     secret_recovery_window_days  = 7
     budget_limit_usd             = 400
     internal_hmac_secret_enabled = true
     alarm_email                  = "alerts@example.test"
+    alarm_email_secondary        = "oncall@example.test"
+    secrets_out_of_band          = true
+    guardduty_enabled            = true
+    allowed_account_ids          = ["000000000000"]
+    assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_keeps_logs_at_most_90_days" {
+  command = plan
+
+  variables {
+    environment                  = "production"
+    region                       = "eu-central-1"
+    domain_name                  = "api.example.test"
+    hosted_zone_name             = "api.example.test"
+    create_hosted_zone           = true
+    github_repo                  = "owner/repo"
+    github_owner_id              = "1"
+    github_repo_id               = "2"
+    bedrock_eval_role_enabled    = false
+    log_retention_days           = 365
+    secret_recovery_window_days  = 7
+    budget_limit_usd             = 400
+    internal_hmac_secret_enabled = true
+    alarm_email                  = "alerts@example.test"
+    alarm_email_secondary        = "oncall@example.test"
+    secrets_out_of_band          = true
+    guardduty_enabled            = true
+    allowed_account_ids          = ["000000000000"]
+    assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_alarm_email_secondary" {
+  command = plan
+
+  variables {
+    environment                  = "production"
+    region                       = "eu-central-1"
+    domain_name                  = "api.example.test"
+    hosted_zone_name             = "api.example.test"
+    create_hosted_zone           = true
+    github_repo                  = "owner/repo"
+    github_owner_id              = "1"
+    github_repo_id               = "2"
+    bedrock_eval_role_enabled    = false
+    log_retention_days           = 90
+    secret_recovery_window_days  = 7
+    budget_limit_usd             = 400
+    internal_hmac_secret_enabled = true
+    alarm_email                  = "alerts@example.test"
+    allowed_account_ids          = ["000000000000"]
+    assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_secrets_out_of_band" {
+  command = plan
+
+  variables {
+    environment                  = "production"
+    region                       = "eu-central-1"
+    domain_name                  = "api.example.test"
+    hosted_zone_name             = "api.example.test"
+    create_hosted_zone           = true
+    github_repo                  = "owner/repo"
+    github_owner_id              = "1"
+    github_repo_id               = "2"
+    bedrock_eval_role_enabled    = false
+    log_retention_days           = 90
+    secret_recovery_window_days  = 7
+    budget_limit_usd             = 400
+    internal_hmac_secret_enabled = true
+    alarm_email                  = "alerts@example.test"
+    alarm_email_secondary        = "oncall@example.test"
+    allowed_account_ids          = ["000000000000"]
+    assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_guardduty_enabled" {
+  command = plan
+
+  variables {
+    environment                  = "production"
+    region                       = "eu-central-1"
+    domain_name                  = "api.example.test"
+    hosted_zone_name             = "api.example.test"
+    create_hosted_zone           = true
+    github_repo                  = "owner/repo"
+    github_owner_id              = "1"
+    github_repo_id               = "2"
+    bedrock_eval_role_enabled    = false
+    log_retention_days           = 90
+    secret_recovery_window_days  = 7
+    budget_limit_usd             = 400
+    internal_hmac_secret_enabled = true
+    alarm_email                  = "alerts@example.test"
+    alarm_email_secondary        = "oncall@example.test"
+    secrets_out_of_band          = true
+    allowed_account_ids          = ["000000000000"]
+    assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_a_different_secondary_address" {
+  command = plan
+
+  variables {
+    environment                  = "production"
+    region                       = "eu-central-1"
+    domain_name                  = "api.example.test"
+    hosted_zone_name             = "api.example.test"
+    create_hosted_zone           = true
+    github_repo                  = "owner/repo"
+    github_owner_id              = "1"
+    github_repo_id               = "2"
+    bedrock_eval_role_enabled    = false
+    log_retention_days           = 90
+    secret_recovery_window_days  = 7
+    budget_limit_usd             = 400
+    internal_hmac_secret_enabled = true
+    alarm_email                  = "alerts@example.test"
+    alarm_email_secondary        = "alerts@example.test"
+    secrets_out_of_band          = true
+    guardduty_enabled            = true
     allowed_account_ids          = ["000000000000"]
     assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
   }

@@ -94,9 +94,9 @@ jobs:
           missing = sorted(required - tests)
           if missing:
               print("Portable tests missing on macOS:", *missing, sep="\n", file=sys.stderr)
-          if len(tests) != 223:
-              print(f"macOS test count changed: expected 223, discovered {len(tests)}", file=sys.stderr)
-          if missing or len(tests) != 223:
+          if len(tests) != 225:
+              print(f"macOS test count changed: expected 225, discovered {len(tests)}", file=sys.stderr)
+          if missing or len(tests) != 225:
               print("Discovered macOS test identifiers:", *sorted(tests), sep="\n", file=sys.stderr)
               sys.exit(1)
           print(f"macOS portable tests discovered: {len(tests)}; pairing, signer, rules and strings present")
@@ -104,6 +104,19 @@ jobs:
 
       - name: Test the shared package on macOS
         working-directory: apps/child-ios
+        run: swift test
+
+      # Mac step (ii), #775: the OSRA Agent daemon, its own package inside this folder (`MacAgent/`). Same job,
+      # same path lists (`apps/child-ios/**` covers it), same concurrency group: no new runner and no new trigger.
+      - name: Check the launchd job description
+        run: plutil -lint apps/child-ios/MacAgent/launchd/com.osratech.agent.plist
+
+      - name: Build the Mac agent
+        working-directory: apps/child-ios/MacAgent
+        run: swift build
+
+      - name: Test the Mac agent
+        working-directory: apps/child-ios/MacAgent
         run: swift test
 
   test-ios:
