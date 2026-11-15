@@ -71,10 +71,9 @@ object TamperScreenPolicy {
     // names us, so the word path would misfire without this.
     private val NEVER_CLASSES = setOf(
         "DeviceAdminSettingsActivity",
-        // osra-security#29 / #30 review (Antigravity B1, B2): the accessibility *list* of every installed service
-        // and the runtime permission dialog. Gating the list would block access to TalkBack and every other
-        // accessibility tool (ADR-0021), and `GrantPermissionsActivity` is the OS prompt a parent answers while
-        // setting the phone up — slamming the PIN gate over it would block onboarding itself.
+        // Review of osra-security#29/#30: the list of every installed service and the runtime permission dialog.
+        // Gating the list would block access to assistive tools (ADR-0021), and the runtime prompt is what a
+        // parent answers while setting the phone up — a gate there would block onboarding itself.
         "SecAccessibilityInstalledAppsActivity",
         "AccessibilitySettingsActivity",
         "GrantPermissionsActivity",
@@ -90,12 +89,11 @@ object TamperScreenPolicy {
     )
 
     /**
-     * osra-security#29 and #30 (Flip4 AS02, and the Permission manager row): the pages that switch off the
-     * agent's own permissions are protection screens too. They do not read as "app info" — the accessibility
-     * detail page carries a switch, and PermissionController's page carries per-permission rows — but from
-     * them a child turns off the accessibility service or the location grant with no PIN, which is the same
-     * loss of protection by another door. Guarded only when the screen names the agent, like every other class
-     * here: the same pages exist for every app on the phone.
+     * osra-security#29 and osra-security#30: the pages that change the agent's own permissions are protection
+     * screens too. They do not read as "app info" — one carries a switch, the other per-permission rows — and
+     * without them the permission can be changed with no PIN, which is the same loss of protection by another
+     * route. Guarded only when the screen names the agent, like every other class here: the same pages exist for
+     * every app on the phone. The reproduction and the exact navigation stay in the private reports.
      */
     private val PROTECTION_SETTINGS_CLASSES = setOf(
         // Accessibility → Installed apps → our service: AOSP, Google and Samsung wording of the same page.
