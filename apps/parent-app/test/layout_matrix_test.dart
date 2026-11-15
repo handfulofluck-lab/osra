@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -13,6 +16,7 @@ import 'package:familyshield_parent/l10n/l10n.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/providers/onboarding_provider.dart';
 import 'package:familyshield_parent/theme/app_theme.dart';
+import 'package:familyshield_parent/theme/app_tokens.dart';
 
 import 'fake_api_client.dart';
 
@@ -73,8 +77,53 @@ List<MatrixConfig> generateMatrix() {
   return matrix;
 }
 
+Future<bool> _loadSdkRobotoFont() async {
+  Directory? dir = Directory(Platform.resolvedExecutable).parent;
+  Directory? fontsDir;
+  for (var i = 0; i < 8 && dir != null; i++) {
+    final candidate = Directory('${dir.path}${Platform.pathSeparator}bin${Platform.pathSeparator}cache${Platform.pathSeparator}artifacts${Platform.pathSeparator}material_fonts');
+    if (candidate.existsSync()) {
+      fontsDir = candidate;
+      break;
+    }
+    final directCandidate = Directory('${dir.path}${Platform.pathSeparator}material_fonts');
+    if (directCandidate.existsSync()) {
+      fontsDir = directCandidate;
+      break;
+    }
+    final parent = dir.parent;
+    if (parent.path == dir.path) break;
+    dir = parent;
+  }
+  final envRoot = Platform.environment['FLUTTER_ROOT'];
+  if (fontsDir == null && envRoot != null && envRoot.isNotEmpty) {
+    final envCandidate = Directory('$envRoot${Platform.pathSeparator}bin${Platform.pathSeparator}cache${Platform.pathSeparator}artifacts${Platform.pathSeparator}material_fonts');
+    if (envCandidate.existsSync()) fontsDir = envCandidate;
+  }
+  if (fontsDir == null) return false;
+
+  final loader = FontLoader('Roboto');
+  var loadedAny = false;
+  for (final name in ['roboto-regular.ttf', 'roboto-medium.ttf', 'roboto-bold.ttf']) {
+    final file = File('${fontsDir.path}${Platform.pathSeparator}$name');
+    if (file.existsSync()) {
+      final bytes = await file.readAsBytes();
+      loader.addFont(Future.value(ByteData.sublistView(bytes)));
+      loadedAny = true;
+    }
+  }
+  if (!loadedAny) return false;
+  await loader.load();
+  return true;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  var hasRoboto = false;
+  setUpAll(() async {
+    hasRoboto = await _loadSdkRobotoFont();
+  });
 
   setUp(() {
     FlutterSecureStorage.setMockInitialValues({});
@@ -99,12 +148,26 @@ void main() {
   const testChildName = 'Muhammed Mustafa Çağrı';
 
   FakeApiClient buildTestApi() {
-    return FakeApiClient(standardRoutes(
-      familyMe: familyMeTwoChildren(
-        alexName: testChildName,
-        alexModel: 'Pixel 7a',
+    return FakeApiClient({
+      ...standardRoutes(
+        familyMe: familyMeTwoChildren(
+          alexName: testChildName,
+          alexModel: 'Pixel 7a',
+        ),
       ),
-    ));
+      'GET /v1/reports/wellbeing/child-1': (_) => {
+            'childId': 'child-1',
+            'week': '2026-W37',
+            'score': 85,
+            'breakdown': {'usage': 90, 'social': 80, 'safety': 85},
+          },
+      'GET /v1/reports/wellbeing/child-2': (_) => {
+            'childId': 'child-2',
+            'week': '2026-W37',
+            'score': 40,
+            'breakdown': {'usage': 45, 'social': 40, 'safety': 35},
+          },
+    });
   }
 
   Widget buildApp({
@@ -121,7 +184,11 @@ void main() {
         locale: config.locale,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        theme: config.theme,
+        theme: hasRoboto
+            ? config.theme.copyWith(
+                textTheme: config.theme.textTheme.apply(fontFamily: 'Roboto'),
+              )
+            : config.theme,
         builder: (context, child) {
           return MediaQuery(
             data: MediaQuery.of(context).copyWith(
@@ -191,6 +258,49 @@ void main() {
             reason: 'Child name on dashboard card must wrap up to 2 lines without truncation at scale 1.0',
           );
         }
+
+        // 4. Screen-time label/value and wellbeing score never truncate at 320 wide, scale 2.0 (EN/AR)
+        final l10n = AppLocalizations.of(tester.element(find.byType(DashboardScreen)));
+        final screenTimeLabels = tester.renderObjectList<RenderParagraph>(find.text(l10n.screenTime));
+        expect(screenTimeLabels, isNotEmpty);
+        for (final paragraph in screenTimeLabels) {
+          expect(
+            paragraph.didExceedMaxLines,
+            isFalse,
+            reason: 'Screen time label must not truncate with ellipsis at ${config.id}',
+          );
+        }
+        for (final minutes in [45, 10]) {
+          final valueFinder = find.text(l10n.screenTimeValue(minutes, 120));
+          await tester.scrollUntilVisible(
+            valueFinder,
+            150,
+            scrollable: find.byType(Scrollable).first,
+          );
+          await tester.pumpAndSettle();
+          final valueParagraph = tester.renderObject<RenderParagraph>(valueFinder);
+          expect(
+            valueParagraph.didExceedMaxLines,
+            isFalse,
+            reason: 'Screen time value must not truncate with ellipsis at ${config.id}',
+          );
+        }
+        for (final score in [85, 40]) {
+          final wellbeingFinder = find.text(l10n.wellbeingScore(score));
+          await tester.scrollUntilVisible(
+            wellbeingFinder,
+            150,
+            scrollable: find.byType(Scrollable).first,
+          );
+          await tester.pumpAndSettle();
+          final wellbeingParagraph = tester.renderObject<RenderParagraph>(wellbeingFinder);
+          expect(
+            wellbeingParagraph.didExceedMaxLines,
+            isFalse,
+            reason: 'Wellbeing row text must not truncate or overflow at ${config.id}',
+          );
+        }
+        expect(drainExceptions(tester), isEmpty, reason: 'Dashboard overflowed after scroll (${config.id})');
       });
 
       testWidgets('Child Page Matrix Case: ${config.id}', (tester) async {
@@ -203,8 +313,12 @@ void main() {
 
         final api = buildTestApi();
         final childRouter = GoRouter(
-          initialLocation: '/child/child-1',
+          initialLocation: '/',
           routes: [
+            GoRoute(
+              path: '/',
+              builder: (_, __) => const SizedBox.shrink(),
+            ),
             GoRoute(
               path: '/child/:id',
               builder: (_, state) => ChildDetailScreen(childId: state.pathParameters['id']!),
@@ -217,6 +331,7 @@ void main() {
         );
 
         await tester.pumpWidget(buildApp(config: config, api: api, router: childRouter));
+        childRouter.push('/child/child-1');
         await flushFakeHttp(tester);
         await tester.pumpAndSettle();
 
@@ -224,28 +339,51 @@ void main() {
         final exceptions = drainExceptions(tester);
         expect(exceptions, isEmpty, reason: 'Child Detail screen had layout overflow: ${exceptions.join("\n")}');
 
-        // 2. Full child name present in widget tree on top bar
+        // 2. Full child name present in widget tree on top bar; zero truncation at scale 1.0 across all widths
         final topBarNameFinder = find.descendant(
           of: find.byType(AppBar),
           matching: find.text(testChildName),
         );
         expect(topBarNameFinder, findsOneWidget, reason: 'Child name must be present in AppBar title widget tree');
+        if (config.textScale == 1.0 && hasRoboto) {
+          final topBarParagraph = tester.renderObject<RenderParagraph>(topBarNameFinder);
+          expect(
+            topBarParagraph.didExceedMaxLines,
+            isFalse,
+            reason: 'Child name in AppBar must wrap up to 2 lines without truncation at scale 1.0 (${config.id})',
+          );
+        }
 
-        // 3. Edit Rules Icon Button minimum 48 dp touch target assertion
-        final iconBtnFinder = find.byKey(const ValueKey('editRulesButton'));
-        expect(iconBtnFinder, findsOneWidget, reason: 'editRulesButton IconButton must exist in AppBar actions');
+        // 3. AppBar actions: below 360dp folded into 48dp overflow menu; >=360dp keeps direct 48dp IconButtons
+        if (config.size.width < 360) {
+          final menuBtnFinder = find.byKey(const ValueKey('childActionsMenu'));
+          expect(menuBtnFinder, findsOneWidget, reason: 'childActionsMenu overflow button must exist below 360dp');
+          final menuBtnSize = tester.getSize(menuBtnFinder);
+          expect(menuBtnSize.width, greaterThanOrEqualTo(48.0), reason: 'childActionsMenu width >= 48 dp');
+          expect(menuBtnSize.height, greaterThanOrEqualTo(48.0), reason: 'childActionsMenu height >= 48 dp');
+          await tester.tap(menuBtnFinder);
+          await tester.pumpAndSettle();
+          final l10n = AppLocalizations.of(tester.element(find.byType(ChildDetailScreen)));
+          expect(find.descendant(of: find.byType(PopupMenuItem<String>), matching: find.text(l10n.reportsTooltip)), findsOneWidget);
+          expect(find.descendant(of: find.byType(PopupMenuItem<String>), matching: find.text(l10n.searchSafetyTooltip)), findsOneWidget);
+          expect(find.descendant(of: find.byType(PopupMenuItem<String>), matching: find.text(l10n.editRules)), findsOneWidget);
+          expect(drainExceptions(tester), isEmpty, reason: 'Child actions popup menu must not overflow at ${config.id}');
+        } else {
+          final iconBtnFinder = find.byKey(const ValueKey('editRulesButton'));
+          expect(iconBtnFinder, findsOneWidget, reason: 'editRulesButton IconButton must exist in AppBar actions');
 
-        final iconBtnSize = tester.getSize(iconBtnFinder);
-        expect(
-          iconBtnSize.width,
-          greaterThanOrEqualTo(48.0),
-          reason: 'editRulesButton width ${iconBtnSize.width} must be at least 48 dp',
-        );
-        expect(
-          iconBtnSize.height,
-          greaterThanOrEqualTo(48.0),
-          reason: 'editRulesButton height ${iconBtnSize.height} must be at least 48 dp',
-        );
+          final iconBtnSize = tester.getSize(iconBtnFinder);
+          expect(
+            iconBtnSize.width,
+            greaterThanOrEqualTo(48.0),
+            reason: 'editRulesButton width ${iconBtnSize.width} must be at least 48 dp',
+          );
+          expect(
+            iconBtnSize.height,
+            greaterThanOrEqualTo(48.0),
+            reason: 'editRulesButton height ${iconBtnSize.height} must be at least 48 dp',
+          );
+        }
 
         // 4. Overview Tab full-width tonal button assertion
         final overviewBtnFinder = find.byKey(const ValueKey('overviewEditRulesButton'));
@@ -266,16 +404,20 @@ void main() {
       // Render with maxLines: 1 under scale 1.0
       await tester.pumpWidget(
         MaterialApp(
+          theme: hasRoboto
+              ? ThemeData(textTheme: AppType.textTheme.apply(fontFamily: 'Roboto'))
+              : ThemeData(textTheme: AppType.textTheme),
           home: Scaffold(
             body: MediaQuery(
               data: const MediaQueryData(
                 textScaler: TextScaler.linear(1.0),
                 size: Size(320, 568),
               ),
-              child: const SizedBox(
-                width: 200,
+              child: SizedBox(
+                width: 150,
                 child: Text(
                   testChildName,
+                  style: AppType.textTheme.titleMedium,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -403,6 +545,101 @@ void main() {
       final shortSize = tester.getSize(find.byKey(const ValueKey('shortCard')));
       final tallSize = tester.getSize(find.byKey(const ValueKey('tallCard')));
       expect(shortSize.height != tallSize.height, isTrue, reason: 'Without stretch, card heights differ');
+    });
+
+    testWidgets('Planted fault: 3 AppBar actions at 320dp force scale 1.0 child name truncation', (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: hasRoboto
+              ? ThemeData(textTheme: AppType.textTheme.apply(fontFamily: 'Roboto'))
+              : ThemeData(textTheme: AppType.textTheme),
+          home: MediaQuery(
+            data: const MediaQueryData(
+              textScaler: TextScaler.linear(1.0),
+              size: Size(320, 568),
+            ),
+            child: Scaffold(
+              appBar: AppBar(
+                leading: const BackButton(),
+                title: const Text(
+                  testChildName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                actions: [
+                  IconButton(icon: const Icon(Icons.insights), onPressed: () {}),
+                  IconButton(icon: const Icon(Icons.saved_search_outlined), onPressed: () {}),
+                  IconButton(icon: const Icon(Icons.rule), onPressed: () {}),
+                ],
+              ),
+              body: const SizedBox.shrink(),
+            ),
+          ),
+        ),
+      );
+
+      final titleParagraph = tester.renderObject<RenderParagraph>(find.text(testChildName));
+      expect(
+        titleParagraph.didExceedMaxLines,
+        isTrue,
+        reason: 'Regression to three direct AppBar icons at 320dp truncates child name at scale 1.0',
+      );
+    });
+
+    testWidgets('Planted fault: single-row Flexible ellipsis truncates screen time at 320dp scale 2.0', (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(
+              textScaler: TextScaler.linear(2.0),
+              size: Size(320, 568),
+            ),
+            child: const Scaffold(
+              body: Padding(
+                padding: EdgeInsets.all(32),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Flexible(
+                      child: Text('Screen time', overflow: TextOverflow.ellipsis),
+                    ),
+                    SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        '45m / 120m',
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.end,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final labelParagraph = tester.renderObject<RenderParagraph>(find.text('Screen time'));
+      final valueParagraph = tester.renderObject<RenderParagraph>(find.text('45m / 120m'));
+      expect(
+        labelParagraph.didExceedMaxLines || valueParagraph.didExceedMaxLines,
+        isTrue,
+        reason: 'Regression to single-row Flexible ellipsis truncates screen-time text at 320dp scale 2.0',
+      );
     });
   });
 }

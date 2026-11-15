@@ -781,18 +781,20 @@ void main() {
       expect(rect.width, greaterThan(0));
     }
 
-    testWidgets('320x568: the action is a tooltipped icon and still opens the rules editor', (tester) async {
+    testWidgets('320x568: actions fold into the overflow menu and still open the rules editor', (tester) async {
       await pumpChildDetail(tester, 320);
-      final action = find.byKey(const ValueKey('editRulesButton'));
-      expect(action, findsOneWidget);
-      // The compact shape: an icon with the label as its tooltip, not a text
-      // button that runs out of room.
-      expect(tester.widget<IconButton>(action).tooltip, 'تعديل القواعد');
+      final menu = find.byKey(const ValueKey('childActionsMenu'));
+      expect(menu, findsOneWidget);
       expect(find.widgetWithText(TextButton, 'تعديل القواعد'), findsNothing);
-      expectInsideAppBar(tester, action);
+      expectInsideAppBar(tester, menu);
       expect(drainExceptions(tester), isEmpty);
 
-      await tester.tap(action);
+      await tester.tap(menu);
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(
+        of: find.byType(PopupMenuItem<String>),
+        matching: find.text('تعديل القواعد'),
+      ));
       await tester.pumpAndSettle();
       expect(find.byType(RulesEditorScreen), findsOneWidget);
     });

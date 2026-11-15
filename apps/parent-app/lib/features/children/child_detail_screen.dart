@@ -39,6 +39,7 @@ class ChildDetailScreen extends ConsumerWidget {
       child: Scaffold(
         appBar: AppBar(
           toolbarHeight: MediaQuery.textScalerOf(context).scale(kToolbarHeight + AppSpace.lg),
+          // NOTE: ellipsis at 1.35/2.0 text scale is accepted here because the full name stands in Overview directly below.
           title: Text(
             child?.displayName ?? l10n.childFallback,
             maxLines: 2,
@@ -56,27 +57,70 @@ class ChildDetailScreen extends ConsumerWidget {
             ],
           ),
           actions: [
-            IconButton(
-              tooltip: l10n.reportsTooltip,
-              icon: const Icon(Icons.insights),
-              onPressed: () => context.push('/child/$childId/reports'),
-            ),
-            IconButton(
-              key: const ValueKey('searchSafetyButton'),
-              tooltip: l10n.searchSafetyTooltip,
-              icon: const Icon(Icons.saved_search_outlined),
-              onPressed: () => context.push('/child/$childId/searches'),
-            ),
-            IconButton(
-              key: const ValueKey('editRulesButton'),
-              tooltip: l10n.editRules,
-              icon: const Icon(Icons.rule),
-              constraints: const BoxConstraints(
-                minWidth: kMinInteractiveDimension,
-                minHeight: kMinInteractiveDimension,
+            // NOTE: below 360px fold the three actions into one overflow menu so scale 1.0 fits the child name without truncation.
+            if (MediaQuery.sizeOf(context).width < 360)
+              PopupMenuButton<String>(
+                key: const ValueKey('childActionsMenu'),
+                onSelected: (v) => context.push('/child/$childId/$v'),
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: 'reports',
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.insights),
+                        const SizedBox(width: AppSpace.sm),
+                        Flexible(child: Text(l10n.reportsTooltip)),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'searches',
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.saved_search_outlined),
+                        const SizedBox(width: AppSpace.sm),
+                        Flexible(child: Text(l10n.searchSafetyTooltip)),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'rules',
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.rule),
+                        const SizedBox(width: AppSpace.sm),
+                        Flexible(child: Text(l10n.editRules)),
+                      ],
+                    ),
+                  ),
+                ],
+              )
+            else ...[
+              IconButton(
+                tooltip: l10n.reportsTooltip,
+                icon: const Icon(Icons.insights),
+                onPressed: () => context.push('/child/$childId/reports'),
               ),
-              onPressed: () => context.push('/child/$childId/rules'),
-            ),
+              IconButton(
+                key: const ValueKey('searchSafetyButton'),
+                tooltip: l10n.searchSafetyTooltip,
+                icon: const Icon(Icons.saved_search_outlined),
+                onPressed: () => context.push('/child/$childId/searches'),
+              ),
+              IconButton(
+                key: const ValueKey('editRulesButton'),
+                tooltip: l10n.editRules,
+                icon: const Icon(Icons.rule),
+                constraints: const BoxConstraints(
+                  minWidth: kMinInteractiveDimension,
+                  minHeight: kMinInteractiveDimension,
+                ),
+                onPressed: () => context.push('/child/$childId/rules'),
+              ),
+            ],
           ],
         ),
         body: TabBarView(

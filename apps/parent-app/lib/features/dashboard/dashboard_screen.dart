@@ -365,26 +365,58 @@ class ChildCard extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          l10n.screenTime,
-                          style: Theme.of(context).textTheme.bodySmall,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: AppSpace.xs),
-                      Flexible(
-                        child: Text(
-                          l10n.screenTimeValue(child.screenTimeTodayMinutes, dailyLimit > 0 ? dailyLimit : 0),
-                          style: Theme.of(context).textTheme.bodySmall,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.end,
-                        ),
-                      ),
-                    ],
+                  Builder(
+                    builder: (context) {
+                      final style = Theme.of(context).textTheme.bodySmall;
+                      final valueText = l10n.screenTimeValue(
+                        child.screenTimeTodayMinutes,
+                        dailyLimit > 0 ? dailyLimit : 0,
+                      );
+                      final screenWidth = MediaQuery.sizeOf(context).width;
+                      final isWide = screenWidth >= 600;
+                      // Card margin (8) + ListView padding (32 or 48 split/2) + Card internal padding (32).
+                      final maxContentWidth = isWide
+                          ? (screenWidth - AppSpace.md * 3) / 2 - AppSpace.md * 2 - 8
+                          : screenWidth - AppSpace.md * 4 - 8;
+                      final scaler = MediaQuery.textScalerOf(context);
+                      final direction = Directionality.of(context);
+                      final labelPainter = TextPainter(
+                        text: TextSpan(text: l10n.screenTime, style: style),
+                        maxLines: 1,
+                        textDirection: direction,
+                        textScaler: scaler,
+                      )..layout();
+                      final labelWidth = labelPainter.width;
+                      labelPainter.dispose();
+                      final valuePainter = TextPainter(
+                        text: TextSpan(text: valueText, style: style),
+                        maxLines: 1,
+                        textDirection: direction,
+                        textScaler: scaler,
+                      )..layout();
+                      final valueWidth = valuePainter.width;
+                      valuePainter.dispose();
+                      if (labelWidth + AppSpace.sm + valueWidth <= maxContentWidth) {
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Flexible(child: Text(l10n.screenTime, style: style)),
+                            const SizedBox(width: AppSpace.sm),
+                            Flexible(child: Text(valueText, style: style, textAlign: TextAlign.end)),
+                          ],
+                        );
+                      }
+                      // NOTE: stack end-aligned when tight so neither label nor value truncates with ellipsis at 2.0 scale.
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(l10n.screenTime, style: style),
+                          const SizedBox(height: AppSpace.xs),
+                          Text(valueText, style: style, textAlign: TextAlign.end),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: AppSpace.xs),
                   LinearProgressIndicator(value: dailyLimit > 0 ? progress : null),
@@ -477,8 +509,8 @@ class WellbeingRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: AppSpace.sm),
-          // NOTE: flexible — the row overflowed 320px-wide cards.
-          Flexible(child: Text(l10n.wellbeingScore(score.score), style: Theme.of(context).textTheme.bodySmall, overflow: TextOverflow.ellipsis)),
+          // NOTE: flexible without ellipsis — wraps cleanly on 320px cards at 2.0 scale.
+          Flexible(child: Text(l10n.wellbeingScore(score.score), style: Theme.of(context).textTheme.bodySmall)),
         ],
       ),
     );
