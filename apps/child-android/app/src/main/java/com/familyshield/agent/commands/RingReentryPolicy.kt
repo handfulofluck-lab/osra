@@ -39,9 +39,9 @@ object RingReentryPolicy {
      * while the alarm kept ringing.
      */
     private val RING_SCREEN_CLASSES = listOf(
-        "RingActivity",
-        "TamperGuardActivity",
-        "TamperGuardTaskActivity",
+        "com.familyshield.agent.commands.RingActivity",
+        "com.familyshield.agent.security.TamperGuardActivity",
+        "com.familyshield.agent.security.TamperGuardTaskActivity",
     )
 
     /**
@@ -70,12 +70,18 @@ object RingReentryPolicy {
         return Reentry.RESTORE
     }
 
-    /** True only for the ring screen and the PIN gate it opens — not for the rest of our package. */
+    /**
+     * True only for the ring screen and the PIN gate it opens — not for the rest of our package.
+     *
+     * The comparison is against the **fully-qualified class names** and never against the application id.
+     * They differ on a real build (Hydogen's item 2 on #802): `applicationId` is `com.osratech.child` while
+     * the classes stay `com.familyshield.agent.*` (the `namespace`), so a prefix test against the application
+     * id is false for every window and the exemption silently stops working — which would relaunch the ring
+     * screen over the PIN gate a parent is typing into.
+     */
     fun isRingScreen(foreground: String, foregroundClass: String?, ownPackage: String): Boolean {
         if (foreground != ownPackage) return false
         val cls = foregroundClass ?: return false
-        if (!cls.startsWith("$ownPackage.")) return false
-        val simple = cls.substringAfterLast('.')
-        return RING_SCREEN_CLASSES.any { it == simple }
+        return RING_SCREEN_CLASSES.any { it == cls }
     }
 }

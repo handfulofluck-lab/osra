@@ -198,10 +198,19 @@ class AccessibilityMonitorService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
             TamperScreenPolicy.mayHostProtectionScreen(eventPkg)
         ) coverSharedProtectionScreens()
-        // Issue #284: our own block screen is in front and this stream never records our package, so
-        // the blocked app's interval would stay open and the next real event would charge it the stay.
+        // #802 item 3 (Hydrogen): the window class is tracked and the ring check runs **before** the
+        // own-package return below. Our own windows are exactly the case that matters — the child app's
+        // launcher activity is the osra-security#31 escape, and RingActivity/the PIN gate are the two classes
+        // the policy must recognise — and the return used to skip both.
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            lastWindowClass = event.className?.toString()
+            lastWindowClassPkg = eventPkg
+        }
         if (eventPkg == packageName) {
+            // Issue #284: our own block screen is in front and this stream never records our package, so
+            // the blocked app's interval would stay open and the next real event would charge it the stay.
             usage.recordOwnWindow(System.currentTimeMillis())
+            restoreRingScreen(event, packageName)
             return
         }
         // Issue #175: read every visible application window once per event. The active window alone
@@ -579,13 +588,27 @@ class AccessibilityMonitorService : AccessibilityService() {
         val task = Runnable {
             ringRecheck = null
             if (!Ringer.isRinging) return@Runnable
+            // #802 V4 (Claude): decide again on the window that is in front **now**. The screen it deferred
+            // over may have become the PIN gate in the meantime, and raising the ring screen over a parent
+            // typing their PIN is the one thing the exemption exists to prevent.
+            val inFront = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
+            val clsNow = lastWindowClass?.takeIf { inFront != null && lastWindowClassPkg == inFront }
             val now = SystemClock.elapsedRealtime()
-            if (now - lastRingRestoreMs < RingReentryPolicy.DEBOUNCE_MS) {
-                scheduleRingRecheck()
-                return@Runnable
+            when (RingReentryPolicy.decide(
+                isRinging = true,
+                foreground = inFront,
+                foregroundClass = clsNow,
+                ownPackage = packageName,
+                nowElapsedMs = now,
+                lastRestoreElapsedMs = lastRingRestoreMs,
+            )) {
+                RingReentryPolicy.Reentry.RESTORE -> {
+                    lastRingRestoreMs = now
+                    raiseRingScreen()
+                }
+                RingReentryPolicy.Reentry.DEFER -> scheduleRingRecheck()
+                RingReentryPolicy.Reentry.IGNORE -> Unit
             }
-            lastRingRestoreMs = now
-            raiseRingScreen()
         }
         ringRecheck = task
         ringRecheckHandler.postDelayed(task, RingReentryPolicy.DEBOUNCE_MS)

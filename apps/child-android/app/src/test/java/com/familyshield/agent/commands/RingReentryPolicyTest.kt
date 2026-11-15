@@ -21,12 +21,19 @@ import org.junit.Test
  */
 class RingReentryPolicyTest {
 
-    private val ours = "com.familyshield.agent"
+    /**
+     * The application id, which is what `AccessibilityService.packageName` returns at run time — **not** the
+     * Kotlin namespace. Hydrogen's item 2 on #802: they differ (`com.osratech.child` vs
+     * `com.familyshield.agent`), and a test that uses the namespace makes a broken prefix test look green.
+     */
+    private val ours = "com.osratech.child"
     private val launcher = "com.android.launcher3"
     private val childApp = "com.whatsapp"
-    private val ringScreen = "$ours.commands.RingActivity"
-    private val pinGate = "$ours.security.TamperGuardActivity"
-    private val ownLauncher = "$ours.ui.LauncherActivity"
+    // The classes keep the namespace package, which is exactly why the comparison is by full name.
+    private val ringScreen = "com.familyshield.agent.commands.RingActivity"
+    private val pinGate = "com.familyshield.agent.security.TamperGuardActivity"
+    private val guardTask = "com.familyshield.agent.security.TamperGuardTaskActivity"
+    private val ownLauncher = "com.familyshield.agent.ui.LauncherActivity"
 
     private fun decide(
         ringing: Boolean = true,
@@ -72,7 +79,7 @@ class RingReentryPolicyTest {
         assertTrue(RingReentryPolicy.isRingScreen(ours, ringScreen, ours))
         assertTrue(RingReentryPolicy.isRingScreen(ours, pinGate, ours))
         // The task variant the guard service launches (#484) is the same screen.
-        assertTrue(RingReentryPolicy.isRingScreen(ours, "$ours.security.TamperGuardTaskActivity", ours))
+        assertTrue(RingReentryPolicy.isRingScreen(ours, guardTask, ours))
     }
 
     /** An unnamed window is not proof the ring screen is gone; and a foreign class cannot be our screen. */
@@ -128,6 +135,31 @@ class RingReentryPolicyTest {
         assertTrue("in its own task, reordered", service.contains("FLAG_ACTIVITY_REORDER_TO_FRONT"))
         assertTrue("a deferred change is scheduled, not dropped (#802 V2)", service.contains("scheduleRingRecheck()"))
         assertTrue("and the re-check is cancelled when the service goes", service.contains("ringRecheckHandler.removeCallbacks"))
+    }
+
+    /**
+     * #802 item 3 (Hydrogen): `onAccessibilityEvent` returned on our own package **before** the class was
+     * tracked and before the ring check ran, so our own launcher activity (the osra-security#31 escape) was
+     * never judged, and the ring screen and PIN gate never updated the class the policy reads.
+     */
+    @Test
+    fun `our own windows are judged, not skipped`() {
+        val ownReturn = service.indexOf("restoreRingScreen(event, packageName)")
+        val snapshot = service.indexOf("val snapshot = windowSnapshot()")
+        assertTrue("the own-package branch calls the ring check", ownReturn > 0)
+        assertTrue("and it does so before the rest of the event handling", ownReturn < snapshot)
+        val tracking = service.indexOf("lastWindowClass = event.className?.toString()")
+        assertTrue("the class is tracked before that branch", tracking in 1 until ownReturn)
+    }
+
+    /** #802 item 4: the ring screen may not share the display or become a thumbnail. */
+    @Test
+    fun `the ring screen owns the display`() {
+        val manifest = sourceFile("src/main/AndroidManifest.xml")
+        val ringEntry = manifest.substringAfter("android:name=\".commands.RingActivity\"", missingDelimiterValue = "")
+            .substringBefore("/>", missingDelimiterValue = "")
+        assertTrue("not resizeable", ringEntry.contains("android:resizeableActivity=\"false\""))
+        assertTrue("no picture-in-picture", ringEntry.contains("android:supportsPictureInPicture=\"false\""))
     }
 
     @Test
