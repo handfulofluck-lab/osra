@@ -858,9 +858,12 @@ Eligible: plan "family"; manage_on is the store, or null for a finite grant.
 ```
 
 `active` is eligible only before expiry. `grace` and `on_hold` remain eligible while the store keeps
-that state, including after expiry. `expired`, `revoked` and `refunded` end eligibility at their
-effective time. Among eligible rows, latest expiry wins, then latest verification. A null expiry is
-ineligible and logged without a store reference: there is no lifetime plan. When eligibility ends,
+that state, including after expiry, but only until `expires_at + 67 days`: the stores' documented
+60-day recovery limit plus 7 days for a late push. Past that lost-push ceiling the row is ineligible
+and one structured warning carries family id, source and hashed reference, never the raw token.
+`expired`, `revoked` and `refunded` end eligibility at their effective time. Among eligible rows,
+latest expiry wins, then latest verification. A null expiry is ineligible and logged without a store
+reference: there is no lifetime plan. When eligibility ends,
 `requirePlan` and the agent rule projection wait until the next family-local 10:00 before refusing
 premium enforcement; the response still reports the store's expiry. A premium route answers exactly
 `402 { error: "plan_required" }`.

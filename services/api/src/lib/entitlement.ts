@@ -42,7 +42,17 @@ export interface EntitlementResponse {
   manage_on: Exclude<EntitlementSource, "grant"> | null;
 }
 
-export type EntitlementWarning = (fields: { familyId: string }, message: string) => void;
+export type EntitlementWarning = (
+  fields: { familyId: string; source?: EntitlementSource; storeRefHash?: string },
+  message: string,
+) => void;
+
+/**
+ * Lost-push backstop for grace/account hold: Google's default grace+hold recovery basis is 60 days
+ * (https://support.google.com/googleplay/android-developer/answer/12154973) and Apple retries billing for
+ * 60 days (https://developer.apple.com/app-store/subscriptions/), plus 7 days for a late push.
+ */
+export const STORE_MAX_RECOVERY_DAYS = 67;
 
 export function hashStoreRef(storeRef: string): string {
   return createHash("sha256").update(storeRef, "utf8").digest("hex");
@@ -140,7 +150,7 @@ export async function storeAccountIdFor(familyId: string): Promise<string> {
   return store.storeAccountId(familyId);
 }
 
-/** Only the server computes this. Grace and account hold follow the store, even beyond expires_at. */
+/** Only the server computes this. Grace/hold follow the store only until the lost-push ceiling. */
 export async function entitlement(
   familyId: string,
   now = new Date(),
@@ -153,7 +163,18 @@ export async function entitlement(
       warn({ familyId }, "family_plan_missing_expiry");
       return false;
     }
-    return row.status === "grace" || row.status === "on_hold" || (row.status === "active" && now < row.expiresAt);
+    if (row.status === "grace" || row.status === "on_hold") {
+      const recoveryEndsAt = row.expiresAt.getTime() + STORE_MAX_RECOVERY_DAYS * 24 * 60 * 60 * 1000;
+      if (now.getTime() >= recoveryEndsAt) {
+        warn(
+          { familyId, source: row.source as EntitlementSource, storeRefHash: row.storeRefHash },
+          "family_plan_recovery_ceiling",
+        );
+        return false;
+      }
+      return true;
+    }
+    return row.status === "active" && now < row.expiresAt;
   });
   eligible.sort((a, b) =>
     b.expiresAt!.getTime() - a.expiresAt!.getTime() || b.lastVerifiedAt.getTime() - a.lastVerifiedAt.getTime(),

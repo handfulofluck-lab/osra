@@ -1,6 +1,6 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { prisma } from "../db.js";
-import { entitlement } from "./entitlement.js";
+import { entitlement, STORE_MAX_RECOVERY_DAYS } from "./entitlement.js";
 import { isValidTimeZone, localParts, utcOffsetMinutes } from "./digestSchedule.js";
 
 /** M3 decides which fields are premium. Until then this table deliberately gates nothing. */
@@ -27,7 +27,14 @@ export async function hasEnforcingPlan(familyId: string, now = new Date()): Prom
     prisma.familyPurchase.findMany({ where: { familyId } }),
   ]);
   const endings = rows.flatMap((row) => {
-    const endedAt = row.status === "active" ? row.expiresAt : row.status === "grace" || row.status === "on_hold" ? null : row.endedAt ?? row.lastVerifiedAt;
+    let endedAt;
+    if (row.status === "active") {
+      endedAt = row.expiresAt;
+    } else if (row.status === "grace" || row.status === "on_hold") {
+      endedAt = row.expiresAt && new Date(row.expiresAt.getTime() + STORE_MAX_RECOVERY_DAYS * 24 * 60 * 60 * 1000);
+    } else {
+      endedAt = row.endedAt ?? row.lastVerifiedAt;
+    }
     return endedAt && endedAt <= now ? [endedAt.getTime()] : [];
   });
   if (!endings.length) return false;

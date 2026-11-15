@@ -4,7 +4,7 @@ import { authHeader, buildApp, MockRedis, prismaMock, resetPrismaMock } from "./
 vi.mock("../src/db.js", () => ({ prisma: prismaMock }));
 vi.mock("ioredis", async () => ({ Redis: (await import("./helpers.js")).MockRedis }));
 
-import { grantEntitlement, revokeEntitlement, type EntitlementGrant } from "../src/lib/entitlement.js";
+import { entitlement, grantEntitlement, revokeEntitlement, type EntitlementGrant } from "../src/lib/entitlement.js";
 import { hasEnforcingPlan } from "../src/lib/planGate.js";
 import { PREMIUM_FEATURES } from "../src/lib/planGate.js";
 import { inviteRoutes } from "../src/routes/invites.js";
@@ -68,6 +68,29 @@ describe("R3 review: immutable end of eligibility", () => {
     })]);
     prismaMock.family.findUnique.mockResolvedValue({ id: "fam-1", timezone: "Asia/Dubai" });
     expect(await hasEnforcingPlan("fam-1", new Date("2026-11-15T10:01:00.000Z"))).toBe(false);
+  });
+
+  it("bounds grace and hold at 67 days and enforces at the next local 10:00", async () => {
+    const expiresAt = new Date("2026-09-08T23:00:00.000Z");
+    const held = purchase({ status: "on_hold", expiresAt, endedAt: null, lastVerifiedAt: new Date("2026-09-09T00:00:00.000Z") });
+    prismaMock.familyPurchase.findMany.mockResolvedValue([held]);
+    const warn = vi.fn();
+    expect(await entitlement("fam-1", new Date("2026-11-14T22:00:00.000Z"), warn)).toEqual({
+      plan: "family", until: expiresAt.toISOString(), source: "google_play", manage_on: "google_play",
+    });
+    expect(warn).not.toHaveBeenCalled();
+
+    expect(await entitlement("fam-1", new Date("2026-11-15T00:00:00.000Z"), warn)).toEqual({
+      plan: null, until: null, source: null, manage_on: null,
+    });
+    expect(warn).toHaveBeenCalledWith(
+      { familyId: "fam-1", source: "google_play", storeRefHash: "a".repeat(64) },
+      "family_plan_recovery_ceiling",
+    );
+
+    prismaMock.family.findUnique.mockResolvedValue({ id: "fam-1", timezone: "UTC" });
+    expect(await hasEnforcingPlan("fam-1", new Date("2026-11-15T00:00:00.000Z"))).toBe(true);
+    expect(await hasEnforcingPlan("fam-1", new Date("2026-11-15T10:00:00.000Z"))).toBe(false);
   });
 
   it("uses the earlier store expiry when the first recorded state is already expired", async () => {
