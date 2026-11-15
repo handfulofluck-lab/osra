@@ -20,6 +20,10 @@ $script:ApiBase = $ApiBase
 $script:LeaseStore = $LeaseStore
 # Each restored key lives in its own settings table; writing all of them to `global` restores nothing
 # for the accessibility (secure) and rotation/timeout (system) keys (#797 item 3).
+# The only packages a manifest may name (Ahmed, R3 on #797): the Play build, the sideloaded Full build and
+# the parent app. A typo or a copy-paste must not let `pm clear`/`pm uninstall` reach a personal app.
+$script:ScenarioPackages = @("com.osratech.child", "com.osratech.child.full", "com.osratech.parent")
+
 $script:RestoredSettingsTables = [ordered]@{
     enabled_accessibility_services = "secure"
     accessibility_enabled = "secure"
@@ -139,6 +143,13 @@ function Assert-ScenarioCommand {
         }
         "content" {
             if ($rest.Count -lt 1 -or $rest[0] -ne "query") { throw "content_read_only" }
+            # The projection columns are safe, but the authority decides what they are a record of:
+            # content://call_log/calls with `date` is the owner's call history (Ahmed, R3 on #797).
+            $uriAt = [Array]::IndexOf($rest, "--uri")
+            if ($uriAt -lt 0 -or $uriAt + 1 -ge $rest.Count) { throw "content_uri_required" }
+            if ($rest[$uriAt + 1] -notmatch "^content://com\.osratech\.[a-z0-9._-]+(/[a-z0-9._-]+)*/?$") {
+                throw "content_uri_not_allowed"
+            }
         }
     }
 }
@@ -206,7 +217,7 @@ function Assert-ManifestShape {
     if ("$($Manifest.id)" -notmatch "^SC-[A-Za-z0-9.-]{1,60}$" -or "$($Manifest.id)".Contains("..")) { throw "invalid_scenario_id" }
     if ([string]::IsNullOrWhiteSpace([string]$Manifest.title) -or ([string]$Manifest.title).Length -gt 120) { throw "invalid_title" }
     if ([string]::IsNullOrWhiteSpace([string]$Manifest.pair) -or ([string]$Manifest.pair).Length -gt 32) { throw "invalid_pair" }
-    if ("$($Manifest.package)" -notmatch "^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$") { throw "invalid_package" }
+    if ("$($Manifest.package)" -notin $script:ScenarioPackages) { throw "package_not_in_allowlist" }
     Assert-HealthUrl -Url $Manifest.apiHealthUrl
     if ($Manifest.PSObject.Properties.Name -contains "timeoutSeconds") {
         if (($Manifest.timeoutSeconds -isnot [int] -and $Manifest.timeoutSeconds -isnot [long]) -or $Manifest.timeoutSeconds -lt 1 -or $Manifest.timeoutSeconds -gt 3600) { throw "invalid_timeout" }
@@ -651,6 +662,7 @@ function Write-ScenarioResult {
 function Invoke-ScenarioRun {
     param([Parameter(Mandatory = $true)]$Manifest, [Parameter(Mandatory = $true)][string]$Out, [switch]$DryRun)
     if ($PSBoundParameters.ContainsKey("DryRun")) { $script:DryRun = [bool]$DryRun }
+    Assert-ManifestShape -Manifest $Manifest
     $script:ActiveManifest = $Manifest
     $script:Package = $Manifest.package
     if ($script:ApiBase) { Assert-HealthUrl -Url $script:ApiBase }

@@ -8,7 +8,7 @@ $script:DryRun = $true
 function New-RunManifest($steps, $measurements = @()) {
     return [pscustomobject]@{
         id = "SC-0.1"; title = "Synthetic run"; pair = "A"; package = "com.osratech.child.full"
-        apiHealthUrl = "http://127.0.0.1:3000/health"; timeoutSeconds = 60
+        apiHealthUrl = "http://127.0.0.1:3000/health"; timeoutSeconds = 3600
         steps = $steps; measurements = $measurements
     }
 }

@@ -9,7 +9,7 @@ function New-Manifest {
         id = "SC-0.1"
         title = "Synthetic preflight"
         pair = "A"
-        package = "com.osratech.child.test"
+        package = "com.osratech.child.full"
         apiHealthUrl = "http://127.0.0.1:3000/health"
         timeoutSeconds = 60
         steps = @([pscustomobject]@{ type = "adb"; command = @("shell", "getprop", "ro.product.model") })
@@ -56,6 +56,16 @@ Describe "Scenario manifest shape and URL validation" {
         foreach ($step in $shapes) { { Assert-ScenarioStep -Step $step } | Should -Not -Throw }
         { Assert-ScenarioStep -Step ([pscustomobject]@{ type = "adb"; command = "shell getprop" }) } | Should -Throw
         { Assert-ScenarioStep -Step ([pscustomobject]@{ type = "screencap"; name = "../other.png" }) } | Should -Throw
+    }
+
+    It "refuses a manifest that names any package outside the scenario allowlist (#797, Ahmed B1)" {
+        $manifest = New-Manifest
+        $manifest.package = "com.whatsapp"
+        $path = Join-Path $TestDrive "SC-0.1.json"
+        $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $path -Encoding UTF8
+        $thrown = $null
+        try { Read-ScenarioManifest -Path $path -Out $TestDrive | Out-Null } catch { $thrown = [string]$_.Exception.Message }
+        $thrown | Should -Be "package_not_in_allowlist"
     }
 
     It "refuses an ApiBase outside the allowlist (#797)" {
@@ -144,10 +154,13 @@ Describe "Structural device and data refusals" {
         @{ name = "backslash in a settings value"; command = @("shell", "settings", "put", "system", "screen_off_timeout", "15000\x") },
         @{ name = "quote in a settings value"; command = @("shell", "settings", "put", "system", "screen_off_timeout", "1'0") },
         @{ name = "dumpsys with a service the runner does not read"; command = @("shell", "dumpsys", "battery") },
-        @{ name = "dumpsys package with an extra argument"; command = @("shell", "dumpsys", "package", "com.osratech.child.test", "flags") },
+        @{ name = "dumpsys package with an extra argument"; command = @("shell", "dumpsys", "package", "com.osratech.child.full", "flags") },
         @{ name = "logcat"; command = @("logcat", "-b", "events") },
         @{ name = "settings put with a fifth token"; command = @("shell", "settings", "put", "system", "screen_off_timeout", "15000", "default") },
-        @{ name = "appops set on an op restore does not cover"; command = @("shell", "appops", "set", "com.osratech.child.test", "CAMERA", "allow") }
+        @{ name = "appops set on an op restore does not cover"; command = @("shell", "appops", "set", "com.osratech.child.full", "CAMERA", "allow") },
+        @{ name = "content query on the call log"; command = @("shell", "content", "query", "--uri", "content://call_log/calls", "--projection", "date") },
+        @{ name = "content query on the SMS store"; command = @("shell", "content", "query", "--uri", "content://sms", "--projection", "type") },
+        @{ name = "content query without a uri"; command = @("shell", "content", "query", "--projection", "count") }
     )
     It "refuses <name>, wrapped or not" -ForEach $cases {
         param($name, $command)
@@ -170,7 +183,7 @@ Describe "Structural device and data refusals" {
             @("shell", "appops", "get", "com.osratech.child.full", "SYSTEM_ALERT_WINDOW"),
             @("shell", "appops", "set", "com.osratech.child.full", "SYSTEM_ALERT_WINDOW", "allow"),
             @("shell", "getprop", "ro.product.model"),
-            @("shell", "dumpsys", "package", "com.osratech.child.test"),
+            @("shell", "dumpsys", "package", "com.osratech.child.full"),
             @("shell", "dumpsys", "window"),
             @("shell", "dumpsys", "trust"),
             @("shell", "pm", "list", "packages")
@@ -178,7 +191,7 @@ Describe "Structural device and data refusals" {
     }
 
     It "requires nonpersonal content and a safe projection" {
-        $query = @("shell", "content", "query", "--uri", "content://synthetic")
+        $query = @("shell", "content", "query", "--uri", "content://com.osratech.child.synthetic")
         { Assert-ScenarioStep -Step ([pscustomobject]@{ type = "adb"; command = $query }) } | Should -Throw
         { Assert-ScenarioStep -Step ([pscustomobject]@{ type = "adb"; command = $query; nonPersonal = $true; projection = @("phone", "body") }) } | Should -Throw
         { Assert-ScenarioStep -Step ([pscustomobject]@{ type = "adb"; command = $query; nonPersonal = $true; projection = @("count") }) } | Should -Not -Throw

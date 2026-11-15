@@ -6,7 +6,7 @@ if (-not (Test-Path -LiteralPath $script:RunnerPath)) { throw "runner_not_found:
 
 function New-TestManifest {
     return [pscustomobject]@{
-        id = "SC-0.1"; title = "Synthetic preflight"; pair = "A"; package = "com.osratech.child.test"
+        id = "SC-0.1"; title = "Synthetic preflight"; pair = "A"; package = "com.osratech.child.full"
         apiHealthUrl = "http://127.0.0.1:3000/health"; timeoutSeconds = 60
         steps = @([pscustomobject]@{ type = "screencap"; name = "safe.png" })
         measurements = @()
@@ -87,9 +87,9 @@ function Get-FakeCalls {
     }
 
     It "refuses pm uninstall and pm clear of a current device admin before executing them" {
-        $env:FAKE_ADMIN_PACKAGE = "com.osratech.child.test"
+        $env:FAKE_ADMIN_PACKAGE = "com.osratech.child.full"
         foreach ($operation in @("uninstall", "clear")) {
-            { Invoke-Adb -Command @("shell", "pm", $operation, "com.osratech.child.test") -Package "com.osratech.child.test" } | Should -Throw
+            { Invoke-Adb -Command @("shell", "pm", $operation, "com.osratech.child.full") -Package "com.osratech.child.full" } | Should -Throw
         }
         ((Get-FakeCalls | ConvertTo-Json -Compress) -match "pm.*(uninstall|clear)") | Should -Be $false
     }

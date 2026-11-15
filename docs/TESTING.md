@@ -1199,7 +1199,7 @@ node scripts/hardware/scenario-family.mjs delete --base-url http://localhost:300
 ### Manifest-driven scenario runner (#667, `scripts/hardware/scenario.ps1`)
 
 Run the five Pester suites with `scripts/hardware/tests/Scenario.*.Tests.ps1`; `workflow-lint` requires
-at least 113 cases, zero failures, and a real `SC-0.1` dry-run table with a `result.md`. The dry run puts
+at least 117 cases, zero failures, and a real `SC-0.1` dry-run table with a `result.md`. The dry run puts
 the fake `adb` directory first on `PATH` and touches no lease, backend or device; it refuses any `adb`
 outside that directory, so a PC with the phone attached cannot drive it.
 
