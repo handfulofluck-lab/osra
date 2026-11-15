@@ -82,6 +82,6 @@ object RingReentryPolicy {
     fun isRingScreen(foreground: String, foregroundClass: String?, ownPackage: String): Boolean {
         if (foreground != ownPackage) return false
         val cls = foregroundClass ?: return false
-        return RING_SCREEN_CLASSES.any { it == cls }
+        return RING_SCREEN_CLASSES.any { it.substringAfterLast(".") == cls.substringAfterLast(".") }
     }
 }
