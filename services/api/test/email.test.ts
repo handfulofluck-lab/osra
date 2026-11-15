@@ -306,7 +306,9 @@ describe("routes use the email sender", () => {
     const dev = await app.inject({ method: "POST", url: "/v1/family/invites", headers: authHeader(app), payload: { email: "co@example.com", role: "co-parent" } });
     expect(dev.statusCode).toBe(201);
     expect(dev.json()).toMatchObject({ acceptToken: "inv-1", emailed: false });
-    expect(capture.sent[0].text).toContain("https://app.osra.family/invite/accept?token=inv-1");
+    // #804 (Ahmed's B1): the mailed link carries its own secret, never the invite id the inviter can see.
+    expect(capture.sent[0].text).toMatch(/https:\/\/app\.osra\.family\/invite\/accept\?token=[0-9a-f]{64}(\s|$)/);
+    expect(capture.sent[0].text).not.toContain("token=inv-1");
     expect(capture.sent[0].text).toContain("Sara invited you to the Haddad family");
 
     process.env.RESEND_API_KEY = "re_x";
