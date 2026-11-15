@@ -52,11 +52,11 @@ const submit = (label: string) => `<button type="submit" style="${BUTTON};backgr
 const COMMON = {
   unavailable: {
     en: "Something went wrong on our side. Nothing was changed. Try again in a minute.",
-    ar: "حدث خطأ من جهتنا. لم يتغير شيء. حاول مرة أخرى بعد دقيقة.",
+    ar: "حدث خطأ من جهتنا. لم يتغيّر شيء. حاول مرة أخرى بعد دقيقة.",
   },
   too_many: {
     en: "Too many attempts. Wait a minute and try again.",
-    ar: "محاولات كثيرة. انتظر دقيقة ثم حاول مرة أخرى.",
+    ar: "محاولات كثيرة جدًا. انتظر دقيقة ثم حاول مجددًا.",
   },
 } satisfies Record<string, Copy>;
 
@@ -64,7 +64,7 @@ const COMMON = {
 
 const RESET_ERRORS = {
   mismatch: { en: "The two passwords are not the same.", ar: "كلمتا المرور غير متطابقتين." },
-  too_short: { en: "The password must be at least 12 characters.", ar: "يجب ألا تقل كلمة المرور عن 12 حرفاً." },
+  too_short: { en: "The password must be at least 12 characters.", ar: "يجب أن تتكون كلمة المرور من 12 حرفًا على الأقل." },
   ...COMMON,
 } satisfies Record<string, Copy>;
 
@@ -82,7 +82,7 @@ function resetPage(token: string, error?: Copy): string {
       form(true),
     h("اختيار كلمة مرور جديدة") +
       err(error?.ar) +
-      p("استخدم 12 حرفاً على الأقل. عند تغييرها يُسجَّل الخروج من كل الأجهزة، ثم تسجّل الدخول بكلمة المرور الجديدة.") +
+      p("استخدم 12 حرفًا على الأقل. عند تغيير كلمة المرور يُسجَّل خروجك من كل الأجهزة، ثم تسجّل الدخول بكلمة المرور الجديدة.") +
       form(false),
   );
 }
@@ -97,13 +97,13 @@ const resetDonePage = () =>
 const resetExpiredPage = () =>
   page(
     h("This link has expired or was already used") + p("Nothing was changed. Open the OSRA app and ask for a new link."),
-    h("انتهت صلاحية هذا الرابط أو سبق استخدامه") + p("لم يتغير شيء. افتح تطبيق أسرة واطلب رابطاً جديداً."),
+    h("انتهت صلاحية هذا الرابط أو سبق استخدامه") + p("لم يتغيّر شيء. افتح تطبيق أسرة واطلب رابطًا جديدًا."),
   );
 
 // --- MFA reset (ADR-0031): the mailbox step and the cancel link --------------------------------------
 
 function mfaConfirmPage(token: string, error?: Copy): string {
-  const form = (en: boolean) => `<form method="post" action="/mfa/reset/confirm">${hidden(token)}${submit(en ? "Yes, continue the reset" : "نعم، تابع إعادة التعيين")}</form>`;
+  const form = (en: boolean) => `<form method="post" action="/mfa/reset/confirm">${hidden(token)}${submit(en ? "Yes, continue the reset" : "نعم، متابعة إعادة التعيين")}</form>`;
   return page(
     h("Confirm the two-step verification reset") +
       err(error?.en) +
@@ -112,8 +112,8 @@ function mfaConfirmPage(token: string, error?: Copy): string {
       form(true),
     h("تأكيد إعادة تعيين التحقق بخطوتين") +
       err(error?.ar) +
-      p("وصلنا طلب لإعادة تعيين التحقق بخطوتين لحسابك في أسرة. إن كنت أنت صاحب الطلب، فاضغط الزر للمتابعة. الخطوات التالية في تطبيق أسرة.") +
-      p("إن لم تكن أنت، فلا تضغط الزر، واستخدم رابط الإلغاء في الرسالة نفسها.") +
+      p("وصلنا طلب لإعادة تعيين التحقق بخطوتين لحسابك في تطبيق أسرة. إن كنت أنت من طلب ذلك، فاضغط على الزر للمتابعة. الخطوات التالية في التطبيق.") +
+      p("إن لم تكن أنت، فلا تضغط على الزر، واستخدم رابط الإلغاء في الرسالة نفسها.") +
       form(false),
   );
 }
@@ -126,19 +126,19 @@ const mfaConfirmedPage = (witness: "device" | "parent") =>
       )
     : page(
         h("Confirmed") + p("Another parent in your family must now approve the reset in their OSRA app."),
-        h("تم التأكيد") + p("على والد آخر في عائلتك أن يوافق الآن على إعادة التعيين من تطبيق أسرة لديه."),
+        h("تم التأكيد") + p("يجب الآن أن يوافق والد آخر في عائلتك على إعادة التعيين من تطبيق أسرة على هاتفه."),
       );
 
 const mfaExpiredPage = () =>
   page(
     h("This link has expired or was already used") + p("Nothing was changed by this link. To reset two-step verification, start again in the OSRA app."),
-    h("انتهت صلاحية هذا الرابط أو سبق استخدامه") + p("لم يغيّر هذا الرابط شيئاً. لإعادة تعيين التحقق بخطوتين، ابدأ من جديد في تطبيق أسرة."),
+    h("انتهت صلاحية هذا الرابط أو سبق استخدامه") + p("لم يغيّر هذا الرابط شيئًا. لإعادة تعيين التحقق بخطوتين، ابدأ من جديد في تطبيق أسرة."),
   );
 
 const mfaNotOpenPage = () =>
   page(
     h("This request is no longer open") + p("Nothing was changed by this link."),
-    h("هذا الطلب لم يعد مفتوحاً") + p("لم يغيّر هذا الرابط شيئاً."),
+    h("لم يعد هذا الطلب قائمًا") + p("لم يغيّر هذا الرابط شيئًا."),
   );
 
 /** The mailbox step was spent but no phone could be told to show the code; the request ends by itself. */
@@ -158,7 +158,7 @@ function mfaCancelPage(token: string, error?: Copy): string {
       form(true),
     h("إلغاء إعادة تعيين التحقق بخطوتين") +
       err(error?.ar) +
-      p("اضغط الزر لإيقاف إعادة التعيين. يبقى التحقق بخطوتين كما هو تماماً.") +
+      p("اضغط على الزر لإيقاف إعادة التعيين. يبقى التحقق بخطوتين كما هو تمامًا.") +
       p("إن لم تكن أنت من طلب إعادة التعيين، فهناك من يعرف كلمة مرورك. غيّرها من تطبيق أسرة.") +
       form(false),
   );
@@ -174,7 +174,7 @@ const mfaCancelledPage = () =>
 const mfaAlreadyClosedPage = () =>
   page(
     h("This request is already closed") + p("This link did not cancel it. If you did not ask for the reset, change your password in the OSRA app now."),
-    h("هذا الطلب مغلق بالفعل") + p("لم يُلغَ بهذا الرابط. إن لم تكن أنت من طلب إعادة التعيين، فغيّر كلمة مرورك من تطبيق أسرة الآن."),
+    h("سبق أن انتهى هذا الطلب") + p("لم يُلغِه هذا الرابط. إن لم تكن أنت من طلب إعادة التعيين، فغيّر كلمة مرورك من تطبيق أسرة الآن."),
   );
 
 // --- Family invite -----------------------------------------------------------------------------------
@@ -182,11 +182,11 @@ const mfaAlreadyClosedPage = () =>
 const INVITE_ERRORS = {
   reauth_failed: {
     en: "That password or authenticator code is not right. Nothing was changed.",
-    ar: "كلمة المرور أو رمز المصادقة غير صحيح. لم يتغير شيء.",
+    ar: "كلمة المرور أو رمز تطبيق المصادقة غير صحيح. لم يتغيّر شيء.",
   },
   mfa_reenroll_required: {
     en: "Two-step verification is on for this account, but no authenticator is set up. Sign in to the app and set one up first. Nothing was changed.",
-    ar: "التحقق بخطوتين مفعّل لهذا الحساب، لكن لا يوجد تطبيق مصادقة مُعدّ. سجّل الدخول إلى التطبيق وأعدّ واحداً أولاً. لم يتغير شيء.",
+    ar: "التحقق بخطوتين مفعّل في هذا الحساب، لكن لم يتم إعداد تطبيق مصادقة. سجّل الدخول إلى تطبيق أسرة أولًا لإعداد تطبيق مصادقة. لم يتغيّر شيء.",
   },
   password_required: { en: "Enter your password.", ar: "أدخل كلمة المرور." },
 } satisfies Record<string, Copy>;
@@ -199,8 +199,8 @@ const inviteNoAccountPage = () =>
     h("You are invited to a family on OSRA") +
       p("First create your account: install the OSRA app and sign up with the email address this invitation was sent to.") +
       p("Then open this link again to join the family. The invitation is valid for 7 days."),
-    h("دُعيت للانضمام إلى عائلة في أسرة") +
-      p("أنشئ حسابك أولاً: ثبّت تطبيق أسرة وسجّل بالبريد الإلكتروني الذي وصلتك عليه هذه الدعوة.") +
+    h("دعوة للانضمام إلى عائلة في تطبيق أسرة") +
+      p("أولًا، ثبّت تطبيق أسرة وأنشئ فيه حسابًا بالبريد الإلكتروني الذي وصلتك عليه هذه الدعوة.") +
       p("ثم افتح هذا الرابط مرة أخرى للانضمام إلى العائلة. الدعوة صالحة لمدة 7 أيام."),
   );
 
@@ -223,10 +223,10 @@ function invitePage(token: string, mfa: boolean, error?: InviteError): string {
       p("Enter your OSRA password to join the family.") +
       p("Your account moves to this family. If you set up a family of your own in OSRA, you will no longer see it.") +
       form(true),
-    h("دُعيت للانضمام إلى عائلة في أسرة") +
+    h("دعوة للانضمام إلى عائلة في تطبيق أسرة") +
       err(copy?.ar) +
-      p("أدخل كلمة مرورك في أسرة للانضمام إلى العائلة.") +
-      p("سينتقل حسابك إلى هذه العائلة. وإن كنت قد أنشأت عائلة خاصة بك في أسرة، فلن تراها بعد ذلك.") +
+      p("أدخل كلمة مرور حسابك في تطبيق أسرة للانضمام إلى العائلة.") +
+      p("سينتقل حسابك إلى هذه العائلة. وإن كنت قد أنشأت عائلة خاصة بك في تطبيق أسرة، فلن تراها بعد ذلك.") +
       form(false),
   );
 }
@@ -241,7 +241,7 @@ const inviteDonePage = () =>
 const inviteExpiredPage = () =>
   page(
     h("This invitation has expired or was already used") + p("Nothing was changed. Ask the person who invited you to send a new one."),
-    h("انتهت صلاحية هذه الدعوة أو سبق استخدامها") + p("لم يتغير شيء. اطلب ممن دعاك أن يرسل دعوة جديدة."),
+    h("انتهت صلاحية هذه الدعوة أو سبق استخدامها") + p("لم يتغيّر شيء. اطلب من الشخص الذي دعاك إرسال دعوة جديدة."),
   );
 
 // --- Dashboard ---------------------------------------------------------------------------------------
@@ -249,7 +249,7 @@ const inviteExpiredPage = () =>
 const dashboardPage = () =>
   page(
     h("Open the OSRA app") + p("Your family's dashboard is in the OSRA app on your phone. Open the app to see it."),
-    h("افتح تطبيق أسرة") + p("لوحة المتابعة الخاصة بعائلتك موجودة في تطبيق أسرة على هاتفك. افتح التطبيق لتراها."),
+    h("افتح تطبيق أسرة") + p("لوحة التحكم الخاصة بعائلتك موجودة في تطبيق أسرة على هاتفك. افتح التطبيق لتراها."),
   );
 
 // -----------------------------------------------------------------------------------------------------
