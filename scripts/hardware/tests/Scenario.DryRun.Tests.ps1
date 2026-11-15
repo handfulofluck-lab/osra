@@ -1,8 +1,10 @@
+Describe "Committed scenario manifests and dry-run CLI" {
+    BeforeAll {
 $script:RunnerPath = Join-Path $PSScriptRoot "../scenario.ps1"
 . $script:RunnerPath
 $script:DryRun = $true
 
-Describe "Committed scenario manifests and dry-run CLI" {
+    }
     BeforeEach {
         $script:DryRun = $true
         $script:OldPath = $env:PATH
@@ -20,7 +22,7 @@ Describe "Committed scenario manifests and dry-run CLI" {
     It "validates both committed manifests" {
         foreach ($id in @("SC-0.1", "SC-1.1")) {
             $manifest = Read-ScenarioManifest -Path $id -Out $TestDrive
-            $manifest.id | Should Be $id
+            $manifest.id | Should -Be $id
         }
     }
 
@@ -28,10 +30,10 @@ Describe "Committed scenario manifests and dry-run CLI" {
         $out = Join-Path $TestDrive "out"
         $hostExe = (Get-Process -Id $PID).Path
         $output = & $hostExe -NoProfile -ExecutionPolicy Bypass -File $script:RunnerPath -DryRun -Scenario SC-0.1 -Out $out 2>&1 | Out-String
-        $LASTEXITCODE | Should Be 0
-        $output | Should Match "PASS \(DRY RUN\)"
+        $LASTEXITCODE | Should -Be 0
+        $output | Should -Match "PASS \(DRY RUN\)"
         $result = Get-ChildItem -Path $out -Recurse -Filter result.md
-        $result.Count | Should Be 1
-        (Get-Content -LiteralPath $result[0].FullName -Raw) | Should Match "PASS \(DRY RUN\)"
+        $result.Count | Should -Be 1
+        (Get-Content -LiteralPath $result[0].FullName -Raw) | Should -Match "PASS \(DRY RUN\)"
     }
 }

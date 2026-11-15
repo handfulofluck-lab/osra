@@ -1,3 +1,5 @@
+Describe "Scenario validation suite" {
+    BeforeAll {
 $script:RunnerPath = Join-Path $PSScriptRoot "../scenario.ps1"
 . $script:RunnerPath
 
@@ -14,11 +16,13 @@ function New-Manifest {
     }
 }
 
+    }
+
 Describe "Scenario manifest shape and URL validation" {
     It "accepts a minimal valid manifest" {
         $path = Join-Path $TestDrive "SC-0.1.json"
         New-Manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $path -Encoding UTF8
-        (Read-ScenarioManifest -Path $path -Out $TestDrive).id | Should Be "SC-0.1"
+        (Read-ScenarioManifest -Path $path -Out $TestDrive).id | Should -Be "SC-0.1"
     }
 
     It "rejects unknown fields" {
@@ -26,11 +30,11 @@ Describe "Scenario manifest shape and URL validation" {
         $manifest | Add-Member -NotePropertyName unexpected -NotePropertyValue $true
         $path = Join-Path $TestDrive "SC-0.1.json"
         $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $path -Encoding UTF8
-        { Read-ScenarioManifest -Path $path -Out $TestDrive } | Should Throw
+        { Read-ScenarioManifest -Path $path -Out $TestDrive } | Should -Throw
     }
 
     It "rejects a path outside the scenario or output roots" {
-        { Read-ScenarioManifest -Path (Join-Path $PSScriptRoot "../scenarios/../outside.json") -Out $TestDrive } | Should Throw
+        { Read-ScenarioManifest -Path (Join-Path $PSScriptRoot "../scenarios/../outside.json") -Out $TestDrive } | Should -Throw
     }
 
     It "rejects a non-loopback, non-staging health URL" {
@@ -38,7 +42,7 @@ Describe "Scenario manifest shape and URL validation" {
         $manifest.apiHealthUrl = "https://example.com/health"
         $path = Join-Path $TestDrive "SC-0.1.json"
         $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $path -Encoding UTF8
-        { Read-ScenarioManifest -Path $path -Out $TestDrive } | Should Throw
+        { Read-ScenarioManifest -Path $path -Out $TestDrive } | Should -Throw
     }
 
     It "accepts every step shape without arbitrary shell strings" {
@@ -48,9 +52,9 @@ Describe "Scenario manifest shape and URL validation" {
             [pscustomobject]@{ type = "http"; method = "GET"; path = "/health" },
             [pscustomobject]@{ type = "manual"; instruction = "Observe the synthetic screen and press Enter" }
         )
-        foreach ($step in $shapes) { { Assert-ScenarioStep -Step $step } | Should Not Throw }
-        { Assert-ScenarioStep -Step ([pscustomobject]@{ type = "adb"; command = "shell getprop" }) } | Should Throw
-        { Assert-ScenarioStep -Step ([pscustomobject]@{ type = "screencap"; name = "../other.png" }) } | Should Throw
+        foreach ($step in $shapes) { { Assert-ScenarioStep -Step $step } | Should -Not -Throw }
+        { Assert-ScenarioStep -Step ([pscustomobject]@{ type = "adb"; command = "shell getprop" }) } | Should -Throw
+        { Assert-ScenarioStep -Step ([pscustomobject]@{ type = "screencap"; name = "../other.png" }) } | Should -Throw
     }
 }
 
@@ -89,20 +93,20 @@ Describe "Structural device and data refusals" {
     )
     foreach ($case in $cases) {
         It "refuses $($case.name), including a nested wrapper" {
-            { Assert-ScenarioCommand -Command $case.args } | Should Throw
-            { Assert-ScenarioCommand -Command (@("exec-out") + $case.args) } | Should Throw
+            { Assert-ScenarioCommand -Command $case.args } | Should -Throw
+            { Assert-ScenarioCommand -Command (@("exec-out") + $case.args) } | Should -Throw
         }
     }
 
     It "permits a read-only settings get" {
-        { Assert-ScenarioCommand -Command @("shell", "settings", "get", "global", "auto_time") } | Should Not Throw
+        { Assert-ScenarioCommand -Command @("shell", "settings", "get", "global", "auto_time") } | Should -Not -Throw
     }
 
     It "requires nonpersonal content and a safe projection" {
         $query = @("shell", "content", "query", "--uri", "content://synthetic")
-        { Assert-ScenarioStep -Step ([pscustomobject]@{ type = "adb"; command = $query }) } | Should Throw
-        { Assert-ScenarioStep -Step ([pscustomobject]@{ type = "adb"; command = $query; nonPersonal = $true; projection = @("phone", "body") }) } | Should Throw
-        { Assert-ScenarioStep -Step ([pscustomobject]@{ type = "adb"; command = $query; nonPersonal = $true; projection = @("count") }) } | Should Not Throw
+        { Assert-ScenarioStep -Step ([pscustomobject]@{ type = "adb"; command = $query }) } | Should -Throw
+        { Assert-ScenarioStep -Step ([pscustomobject]@{ type = "adb"; command = $query; nonPersonal = $true; projection = @("phone", "body") }) } | Should -Throw
+        { Assert-ScenarioStep -Step ([pscustomobject]@{ type = "adb"; command = $query; nonPersonal = $true; projection = @("count") }) } | Should -Not -Throw
     }
 }
 
@@ -114,12 +118,13 @@ Describe "Fake adb argument-array boundary" {
         try {
             $env:PATH = "$bin$([IO.Path]::PathSeparator)$oldPath"
             $result = Invoke-ScenarioProcess -Exe "adb" -Args @("shell", "getprop", "literal;not-a-command")
-            $result.ExitCode | Should Be 0
+            $result.ExitCode | Should -Be 0
             $logged = Get-Content -LiteralPath $env:FAKE_ADB_LOG -Raw | ConvertFrom-Json
-            $logged[2] | Should Be "literal;not-a-command"
+            $logged[2] | Should -Be "literal;not-a-command"
         } finally {
             $env:PATH = $oldPath
             Remove-Item Env:FAKE_ADB_LOG -ErrorAction SilentlyContinue
         }
     }
+}
 }

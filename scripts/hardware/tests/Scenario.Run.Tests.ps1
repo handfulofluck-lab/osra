@@ -1,3 +1,5 @@
+Describe "Scenario steps, measurements and restore" {
+    BeforeAll {
 $script:RunnerPath = Join-Path $PSScriptRoot "../scenario.ps1"
 . $script:RunnerPath
 $script:DryRun = $true
@@ -19,7 +21,7 @@ function Initialize-RunFake {
     $env:FAKE_SCREENSHOT = Join-Path $PSScriptRoot "fixtures/rgb.png"
 }
 
-Describe "Scenario steps, measurements and restore" {
+    }
     BeforeEach {
         Initialize-RunFake
         if (-not (Get-Command Invoke-ScenarioRun -ErrorAction SilentlyContinue)) { throw "run_not_implemented" }
@@ -41,26 +43,26 @@ Describe "Scenario steps, measurements and restore" {
             [pscustomobject]@{ type = "screencap"; name = "shot.png" }
         )
         $result = Invoke-ScenarioSteps -Steps $steps -Evidence $folder -LockState $false
-        $result.completed | Should Be $true
-        $result.captures["adb.0.exitCode"] | Should Be 0
-        $result.captures["http.2.status"] | Should Be 200
-        $result.captures["screencap.3.height"] | Should Be 2
+        $result.completed | Should -Be $true
+        $result.captures["adb.0.exitCode"] | Should -Be 0
+        $result.captures["http.2.status"] | Should -Be 200
+        $result.captures["screencap.3.height"] | Should -Be 2
     }
 
     It "never turns missing data or an empty diff alone into PASS" {
         $missing = Get-ScenarioOutcome -Measurements @([pscustomobject]@{ name = "missing"; actual = "no.such.value"; comparator = "eq"; limit = 1 }) -Captures @{} -StepsCompleted $true -RestoreClean $true
-        $missing.status | Should Be "NOT RUN"
+        $missing.status | Should -Be "NOT RUN"
         $empty = Get-ScenarioOutcome -Measurements @() -Captures @{} -StepsCompleted $true -RestoreClean $true
-        $empty.status | Should Be "NOT RUN"
+        $empty.status | Should -Be "NOT RUN"
         $pass = Get-ScenarioOutcome -Measurements @(
             [pscustomobject]@{ name = "status"; actual = "http.0.status"; comparator = "eq"; limit = 200 },
             [pscustomobject]@{ name = "diff"; actual = "restore.diffCount"; comparator = "empty" }
         ) -Captures @{ "http.0.status" = 200; "restore.diffCount" = 0 } -StepsCompleted $true -RestoreClean $true
-        $pass.status | Should Be "PASS"
+        $pass.status | Should -Be "PASS"
         $failed = Get-ScenarioOutcome -Measurements @([pscustomobject]@{ name = "status"; actual = "http.0.status"; comparator = "eq"; limit = 201 }) -Captures @{ "http.0.status" = 200 } -StepsCompleted $true -RestoreClean $true
-        $failed.status | Should Be "FAIL"
+        $failed.status | Should -Be "FAIL"
         $unclean = Get-ScenarioOutcome -Measurements @([pscustomobject]@{ name = "diff"; actual = "restore.diffCount"; comparator = "empty" }) -Captures @{ "restore.diffCount" = 0 } -StepsCompleted $true -RestoreClean $false
-        $unclean.status | Should Be "FAIL"
+        $unclean.status | Should -Be "FAIL"
     }
 
     It "attempts every restore after one fails and reports the diff" {
@@ -68,11 +70,11 @@ Describe "Scenario steps, measurements and restore" {
         $env:FAKE_ADB_FAIL_ONCE = "settings put global zen_mode"
         $env:FAKE_ADB_FAILED_MARKER = Join-Path $TestDrive "once.marker"
         $restore = Restore-ScenarioState -Before $before
-        $restore.clean | Should Be $false
-        $restore.failures.Count | Should Be 1
+        $restore.clean | Should -Be $false
+        $restore.failures.Count | Should -Be 1
         $logged = Get-Content -LiteralPath $env:FAKE_ADB_LOG -Raw
-        $logged | Should Match "screen_off_timeout"
-        $logged | Should Match "zen_mode"
+        $logged | Should -Match "screen_off_timeout"
+        $logged | Should -Match "zen_mode"
     }
 
     It "restores and releases in finally when a step throws, preserving FAIL" {
@@ -81,11 +83,11 @@ Describe "Scenario steps, measurements and restore" {
         Remove-Item -LiteralPath $env:FAKE_ADB_FAILED_MARKER -ErrorAction SilentlyContinue
         $manifest = New-RunManifest @([pscustomobject]@{ type = "adb"; command = @("shell", "settings", "put", "global", "zen_mode", "0") })
         $result = Invoke-ScenarioRun -Manifest $manifest -Out $TestDrive
-        $result.status | Should Be "FAIL"
-        $result.restore.clean | Should Be $true
-        ($script:LeaseCalls[-1].Action) | Should Be "Release"
+        $result.status | Should -Be "FAIL"
+        $result.restore.clean | Should -Be $true
+        ($script:LeaseCalls[-1].Action) | Should -Be "Release"
         $log = Get-Content -LiteralPath $env:FAKE_ADB_LOG
-        ($log | Select-String -SimpleMatch '"settings","put","global","zen_mode","0"').Count | Should Be 1
-        ($log | Select-String -SimpleMatch '"settings","put","global","zen_mode"').Count | Should Be 2
+        ($log | Select-String -SimpleMatch '"settings","put","global","zen_mode","0"').Count | Should -Be 1
+        ($log | Select-String -SimpleMatch '"settings","put","global","zen_mode"').Count | Should -Be 2
     }
 }

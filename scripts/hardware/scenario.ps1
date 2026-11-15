@@ -11,6 +11,13 @@ param(
 )
 
 $script:DryRun = [bool]$DryRun
+$script:Scenario = $Scenario
+$script:Out = $Out
+$script:Owner = $Owner
+$script:Serial = $Serial
+$script:Package = $Package
+$script:ApiBase = $ApiBase
+$script:LeaseStore = $LeaseStore
 $script:RestoredSettingsKeys = @(
     "enabled_accessibility_services", "accessibility_enabled", "stay_on_while_plugged_in",
     "accelerometer_rotation", "user_rotation", "screen_off_timeout", "zen_mode"
@@ -220,9 +227,9 @@ function Invoke-ScenarioLease {
     if (-not $script:LeaseCalls) { $script:LeaseCalls = @() }
     if (-not $script:DryRun) {
         $lease = @{
-            Action = $Action; Owner = $Owner; Serial = $Serial; Purpose = "scenario:$Scenario"
+            Action = $Action; Owner = $script:Owner; Serial = $script:Serial; Purpose = "scenario:$script:Scenario"
         }
-        if ($LeaseStore) { $lease.Store = $LeaseStore }
+        if ($script:LeaseStore) { $lease.Store = $script:LeaseStore }
         if ($Action -eq "Release") { $lease.LeftState = $LeftState; $lease.Note = $Note }
         & (Join-Path $PSScriptRoot "phone-claim.ps1") @lease
         if ($LASTEXITCODE -ne 0) { throw "phone_lease_$Action_failed" }
@@ -262,7 +269,7 @@ function Invoke-Adb {
     if (-not $SkipAdminCheck -and $pm -ge 0 -and $pm + 1 -lt $normalized.Count -and $normalized[$pm + 1] -in @("uninstall", "clear")) {
         if (-not (Test-AdminPackageRemoval -Package $Package)) { throw "active_device_admin_package" }
     }
-    $process = Invoke-ScenarioProcess -Exe "adb" -Args (@("-s", $Serial) + $Command) -RawBytes:$RawBytes
+    $process = Invoke-ScenarioProcess -Exe "adb" -Args (@("-s", $script:Serial) + $Command) -RawBytes:$RawBytes
     if ($process.ExitCode -ne 0) { throw "adb_command_failed" }
     return $process
 }
@@ -281,7 +288,7 @@ function Invoke-ScenarioPreflight {
     $script:LeaseCalls = @()
     Invoke-ScenarioLease -Action Claim | Out-Null
     $model = Invoke-Adb -Command @("shell", "getprop", "ro.product.model")
-    $expectedModel = switch ($Serial) {
+    $expectedModel = switch ($script:Serial) {
         "R5CW116Y6GF" { "SM-F711B" }
         default { throw "unknown_device_catalogue_serial" }
     }
@@ -298,7 +305,7 @@ function Invoke-ScenarioPreflight {
 
 function Get-ScenarioBeforeState {
     $values = [ordered]@{}
-    $values.SYSTEM_ALERT_WINDOW = (Invoke-Adb -Command @("shell", "appops", "get", $Package, "SYSTEM_ALERT_WINDOW")).Output.Trim()
+    $values.SYSTEM_ALERT_WINDOW = (Invoke-Adb -Command @("shell", "appops", "get", $script:Package, "SYSTEM_ALERT_WINDOW")).Output.Trim()
     $values.locale = (Invoke-Adb -Command @("shell", "getprop", "persist.sys.locale")).Output.Trim()
     foreach ($key in $script:RestoredSettingsKeys) {
         $values[$key] = (Invoke-Adb -Command @("shell", "settings", "get", "global", $key)).Output.Trim()
@@ -387,7 +394,7 @@ function Start-ScenarioEventLog {
     param([Parameter(Mandatory = $true)][string]$Evidence)
     $resolved = Resolve-ScenarioAdb
     $path = Join-Path ([IO.Path]::GetFullPath($Evidence)) "events.log"
-    $argumentLine = @("-s", $Serial, "logcat", "-b", "events") | ForEach-Object { ConvertTo-ScenarioProcessArgument $_ }
+    $argumentLine = @("-s", $script:Serial, "logcat", "-b", "events") | ForEach-Object { ConvertTo-ScenarioProcessArgument $_ }
     return Start-Process -FilePath $resolved -ArgumentList $argumentLine -RedirectStandardOutput $path -RedirectStandardError (Join-Path $Evidence "events.err.log") -NoNewWindow -PassThru
 }
 
@@ -592,8 +599,8 @@ function Invoke-ScenarioRun {
 
 if ($MyInvocation.InvocationName -ne ".") {
     try {
-        $manifest = Read-ScenarioManifest -Path $Scenario -Out $Out
-        $result = Invoke-ScenarioRun -Manifest $manifest -Out $Out -DryRun:$DryRun
+        $manifest = Read-ScenarioManifest -Path $script:Scenario -Out $script:Out
+        $result = Invoke-ScenarioRun -Manifest $manifest -Out $script:Out -DryRun:$script:DryRun
         $result | Select-Object id, status, buildKind, dryRun | Format-Table -AutoSize | Out-String | Write-Output
         if ($result.status -like "PASS*") { exit 0 }
         exit 1
