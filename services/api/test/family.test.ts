@@ -680,4 +680,20 @@ describe("GET /v1/family/entitlement (ADR-0041 D1)", () => {
     expect(prismaMock.family.updateMany).not.toHaveBeenCalled();
     await app.close();
   });
+
+  it("does not expose the purchase-account id through the broad family envelope", async () => {
+    const app = await buildApp(familyRoutes, "/v1/family");
+    prismaMock.parent.findUnique.mockResolvedValue({
+      id: "parent-1", familyId: "fam-1", role: "guardian", permissions: [], email: "guardian@example.com",
+    });
+    prismaMock.family.findUnique.mockResolvedValue({
+      id: "fam-1", name: "Demo", region: "US", timezone: "UTC", timezoneSource: "default",
+      storeAccountId: "b".repeat(32), parents: [], children: [],
+    });
+    const res = await app.inject({ method: "GET", url: "/v1/family/me", headers: authHeader(app) });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).not.toContain("storeAccountId");
+    expect(res.body).not.toContain("b".repeat(32));
+    await app.close();
+  });
 });

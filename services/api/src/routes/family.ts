@@ -126,7 +126,8 @@ export async function familyRoutes(app: FastifyInstance) {
       }),
     );
     const devices = children.flatMap((c) => c.devices);
-    const { parents: _parents, ...familyRest } = family;
+    // The purchase-account id has exactly one read: the owner's entitlement response above.
+    const { parents: _parents, storeAccountId: _storeAccountId, ...familyRest } = family;
     // ADR-0014 amendment, decision 2: a guardian without `location` must not receive the family's
     // geofences through this broad read after the narrow `GET /v1/location/geofences/:childId`
     // refuses them. Owners, co-parents and device tokens are unwithheld (`guardianPermissions` is
