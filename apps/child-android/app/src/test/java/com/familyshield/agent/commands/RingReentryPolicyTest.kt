@@ -102,7 +102,7 @@ class RingReentryPolicyTest {
     @Test
     fun `the policy never reads a wall clock`() {
         val source = sourceFile("src/main/java/com/familyshield/agent/commands/RingReentryPolicy.kt")
-            .replace(Regex("/\*[\s\S]*?\*/"), "").replace(Regex("//[^\n]*"), "")
+            // No comment stripping: the policy file names no clock API in its prose either.
         assertFalse(
             "no System.currentTimeMillis in the rule: a changed wall clock must not delay the screen (#802 V1)",
             source.contains("System.currentTimeMillis"),
