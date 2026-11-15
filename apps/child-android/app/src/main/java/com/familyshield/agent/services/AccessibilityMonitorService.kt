@@ -557,6 +557,8 @@ class AccessibilityMonitorService : AccessibilityService() {
             agentPackage = packageName,
             ourAdminActive = deviceAdmin.isAdminActive(),
             windowClass = lastWindowClass.takeIf { lastWindowClassPkg != null && lastWindowClassPkg == pkg },
+            // Fable's B2 on #813: our own accessibility description, which no other app's page carries.
+            agentServiceDescription = getString(com.familyshield.agent.R.string.accessibility_description),
         )
         if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) return // no filter to bypass yet
         if (!TamperScreenPolicy.shouldGuard(screen, pinStore.isConfigured(), TamperState.graceUntil(this), now)) return

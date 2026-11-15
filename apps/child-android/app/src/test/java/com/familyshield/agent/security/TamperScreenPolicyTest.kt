@@ -90,7 +90,57 @@ class TamperScreenPolicyTest {
         )
         assertEquals(
             TamperScreen.NONE,
-            classifyWindow("com.android.permissioncontroller", "ManagePermissionsActivity", "Camera", "Photos", "Don't allow"),
+            classifyWindow("com.android.permissioncontroller", "Camera", "Photos", "Don't allow"),
+        )
+    }
+
+    /**
+     * Fable's B1 on #813: the rows above feed in the class names the code lists, so they pass by construction —
+     * and on current Settings builds the accessibility page is often a fragment in a generic host, whose class
+     * matches nothing. These rows are the non-tautological half: an **unknown** class and **our description
+     * text** is still guarded, which is what survives an OEM rename or a fragment host.
+     */
+    @Test
+    fun `our accessibility description is guarded whatever the window class is`() {
+        val description = "OSRA monitors app usage to enforce your parent's screen-time rules."
+        for (cls in listOf(null, "Settings", "com.android.settings.MainSettings", "com.android.settings.SubSettings")) {
+            assertEquals(
+                "class=$cls",
+                TamperScreen.PROTECTION_SETTINGS,
+                TamperScreenPolicy.classify(
+                    "com.android.settings",
+                    listOf<CharSequence>("OSRA accessibility", "Allowed", description),
+                    agent, admin, pkg,
+                    ourAdminActive = true,
+                    windowClass = cls,
+                    agentServiceDescription = description,
+                ),
+            )
+        }
+        // Another app's page carries none of it.
+        assertEquals(
+            TamperScreen.NONE,
+            TamperScreenPolicy.classify(
+                "com.android.settings",
+                listOf<CharSequence>("Chrome accessibility", "Allowed", "Use Chrome to observe what is on screen"),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                windowClass = "Settings",
+                agentServiceDescription = description,
+            ),
+        )
+    }
+
+    /** Fable's B2: our package in PermissionController is a permission page for us, whatever its class. */
+    @Test
+    fun `any permissioncontroller window that names us is guarded`() {
+        assertEquals(
+            TamperScreen.PROTECTION_SETTINGS,
+            classifyWindow("com.android.permissioncontroller", "SomeUnknownHost", "OSRA", "Location", "Don't allow"),
+        )
+        assertEquals(
+            TamperScreen.NONE,
+            classifyWindow("com.android.permissioncontroller", "SomeUnknownHost", "Camera", "Photos", "Don't allow"),
         )
     }
 

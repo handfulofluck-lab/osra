@@ -154,6 +154,13 @@ object TamperScreenPolicy {
         agentPackage: String,
         ourAdminActive: Boolean,
         windowClass: String? = null,
+        /**
+         * Fable's B2 on #813: the accessibility page shows **our own description text**, in the phone's
+         * language, and no other app's does. It is the one signal that does not depend on a class name — which
+         * matters because current Settings builds often host that page in a generic fragment host, and the
+         * window event then carries the host's class.
+         */
+        agentServiceDescription: String = "",
     ): TamperScreen {
         if (packageName != null && (packageName to simpleName(windowClass)) in SPACE_SETUP_SCREENS) {
             return TamperScreen.SPACE_SETUP
@@ -170,6 +177,16 @@ object TamperScreenPolicy {
         val names = listOf(agentLabel, adminLabel, agentPackage).map { normalize(it) }.filter { it.isNotEmpty() }
         val namesUs = lower.any { t -> names.any { t.contains(it) } }
         if (!namesUs) return TamperScreen.NONE
+
+        // Fable's B2 on #813: our own accessibility description is proof that this is *our* service page, whatever
+        // the host activity is called, and it is a Settings screen by then.
+        if (packageName == "com.android.settings") {
+            val description = normalize(agentServiceDescription).takeIf { it.length >= 24 }
+            if (description != null && joinedAll.contains(description)) return TamperScreen.PROTECTION_SETTINGS
+        }
+        // Fable's B2, second half: everything PermissionController shows for our package is a permission page for
+        // us, so that package plus our name is enough and the class list is only a second opinion there.
+        if (packageName.contains("permissioncontroller")) return TamperScreen.PROTECTION_SETTINGS
 
         when (simpleName(windowClass)) {
             in NEVER_CLASSES -> return TamperScreen.NONE
