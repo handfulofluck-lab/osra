@@ -69,6 +69,16 @@ generic, so server English never reaches an Arabic screen.
 5. If the language is RTL, it needs no code change beyond step 1 — the layout rules below are
    direction-agnostic.
 
+## Email localization (#796)
+
+- Invitation roles use a whole sentence selected per language, never a wire value inserted into a sentence.
+  Inviter and family names have separate known/missing cases in English and Arabic; no generic name is
+  invented. Names are wrapped in `<bdi>` for HTML and LRI/PDI for plain text, not embedded as markup in the
+  source template.
+- Digest period labels and screen-time minutes use `Intl.PluralRules`. Other Arabic counts use the Bureau's
+  label/number shape with no noun after the number. App names and child names are isolated the same way as
+  inviter/family names. The Arabic Language Bureau supplies the exact strings; K31 does not author them.
+
 ## Android child agent
 
 The child agent does not use ARB. Its strings are Android resources: `res/values/strings.xml` is

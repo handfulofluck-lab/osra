@@ -572,6 +572,111 @@ without backups.
 8. **Service phase:** `OSRA_PROD_PHASE=service`, plan, read, apply: creates the service or rolls it onto the new task
    definition.
 
+### Load balancer to task: plain HTTP inside the VPC (#766 item 4, proposed acceptance)
+
+TLS ends at the ALB (`ELBSecurityPolicy-TLS13-1-2-2021-06`). From the ALB to a task, traffic is HTTP on
+port 3000 inside the VPC. **Proposed for acceptance by Ahmed (gate #637) and Karim**, for these reasons:
+- The path never leaves the VPC: the tasks are in private subnets with no public address, and the task
+  security group accepts port 3000 **only** from the ALB's security group (`env/network.tf`, `api_from_alb`).
+  No other host in any network can open that port.
+- The ALB does not validate a target's certificate. TLS to the task would add encryption against that same
+  in-VPC observer, but not identity. It would also need a certificate inside the image and a code change in
+  the API, which the gate's schedule does not allow before the beta.
+- **What crosses this hop in clear** (said plainly, #783 review): every request body and response the API
+  handles: a child's message text sent for scoring, searches, locations, a parent's password at sign-in,
+  tokens. Nothing on this hop is end-to-end encrypted; ADR-0006's vault encrypts excerpts **at rest on the
+  server**, not in transit. Reading it would take a foothold inside the VPC on the ALB-to-task path, which the
+  two points above are there to prevent.
+- Proposed scope: accepted **for the closed beta only**. HTTPS to the task stays on the list as a
+  **before-public-launch** item (#637 follow-up).
+
+Revisit when any of these changes: a second service joins the VPC, the ALB is replaced by something that
+validates targets, or a reviewer asks for it. Changing it then means an HTTPS listener in the API, the target
+group on `HTTPS`, and the security group rule on the new port.
+
+### Backups outside the account (#766 item 5)
+
+Production's database uses its own KMS key (`db_customer_kms_key`), because a backup encrypted with the
+AWS-managed `aws/rds` key cannot be copied to another account. AWS Backup takes a daily backup at 05:00 UAE,
+keeps it 30 days in production's vault, and copies it to `osra-production-copy` in the **management account**
+in **eu-west-1** (`org-audit/backup_vault.tf`). The copy is deleted after 90 days, and the vault policy
+forbids deleting it early. Once, in the management account:
+`aws organizations enable-aws-service-access --service-principal backup.amazonaws.com` and
+`aws backup update-global-settings --global-settings isCrossAccountBackupEnabled=true`.
+
+**Moving the database to its own key replaces it** (`kms_key_id` cannot change in place). Today it is empty, so
+that is free, but deletion protection is on and the final snapshot has a fixed name. With Karim's written OK:
+(1) `aws rds modify-db-instance --db-instance-identifier osra-production-postgres --no-deletion-protection
+--apply-immediately`; (2) plan and apply env from a saved plan that shows exactly one replacement,
+`aws_db_instance.main`; Terraform takes the final snapshot `osra-production-postgres-final`; (3) the new
+instance comes up with `deletion_protection = true` from the code. Afterwards that snapshot exists, so the
+next deliberate destroy would collide with its name: delete it (empty database) or rename it first. The endpoint name
+stays the same (same identifier), so DATABASE_URL is unchanged; run the db-admin task again, because the new
+database has no `osra_api` role yet.
+
+A scheduled deletion or a disable of this key reaches both alarm addresses (EventBridge rule
+`<prefix>-rds-key-danger`), because losing it makes the database and every backup under it unreadable.
+
+**Restore drill:** `AWS_PROFILE=<profile> ./infra/terraform/restore-drill.sh` restores the newest recovery point
+into a temporary private instance, waits until it is available, prints what it restored, and deletes it. Its
+log is the gate evidence. Run it once before go-live and after any change to the backup plan. A trap deletes
+the temporary instance on any exit once the restore job has started, and every wait has a ceiling.
+`--from-copy` (run with the **management** account's profile) restores the newest off-site copy in
+`osra-production-copy` inside the management account, into the isolated drill network `org-audit` creates
+there: it is the path that matters if the production account is lost, and the proof that the KMS and vault
+policies let a copy be made and read back. Both runs' logs go on #637. The copy vault carries an AWS Backup **Vault Lock in governance mode**
+(1 to 90 days), so retention is enforced beyond the vault policy; switching it to compliance mode would make it
+permanent after the cooling-off period, so that is Karim's call, not a default.
+
+### Access (#766 item 7)
+
+Owner decision, rationale and runbook: osra-security#27 (private).
+
+- **People** sign in through IAM Identity Center (`org-audit/identity_center.tf`): user, permission set
+  `OsraAdministrator` (8-hour sessions), assigned in the management account and osra-production.
+  **Order matters:** first, in the console, Settings → Authentication → require MFA at every sign-in and
+  require a device to be registered at first sign-in, and post evidence of that setting on #637; **then** apply.
+  Without that setting the new user would be an administrator with a password only.
+- **The deployer user** (`org-audit/access.tf`): the organisation trail also writes to `/osra/org-trail`
+  (90 days); three alarms reach both alarm addresses: use from an unexpected address, any change to that
+  user's keys, and that user creating a new IAM principal. An explicit deny stops the deployer user from
+  switching any of that monitoring off (trail, its bucket and its Object Lock, log group and filters, alarms,
+  topic, keys, the management account's GuardDuty detectors and their alert rules, and its own policies).
+  Management-account GuardDuty findings of severity 7+ reach the same two addresses (`guardduty_alerts.tf`;
+  us-east-1 findings are forwarded to the home region's event bus first). The same policies narrow the indirect route (not close it; the "new principals" alarm covers the rest, and roles it makes carry a boundary, see role_boundary.tf): the user
+  cannot assume any management-account role, create users, sign-in passwords or other users' keys, detach the
+  trail at the organisation level, or remove the off-site copy vault's lock or policy. Nothing the agents do needs
+  those; production and staging are reached through roles in the member accounts. Changing those resources later is done through Identity Center with MFA; an apply of this
+  stack by the deployer user that touches them fails by design.
+- **Ahmed's six conditions for the access exception** (#637 comment 6881460052; Karim's OK 14 Nov 23:54 UAE):
+  1. *No erasing evidence or backups:* the user's three managed deny policies here, and in osra-production the
+     service control policy `osra-agent-cannot-erase-evidence` (`org-audit/agent_guardrails.tf`), which binds
+     every principal there except Karim's Identity Center roles, so a role the agents create there is bound too.
+     AWS Backup's own role may still expire recovery points, and no one but Karim may change it or create a role
+     under `aws-reserved/`. The policy type must be enabled on the organisation root (checked 15 Nov: enabled).
+     RDS deletion protection has no IAM condition key, so deleting the instance, snapshots, automated backups
+     and recovery points is denied instead; only the restore drill's `*-restore-drill-*` instance stays deletable.
+  2. *No self-escalation:* own keys only, no changes to its own policies, and every role it creates or changes
+     here carries `osra-management-role-boundary` (`org-audit/role_boundary.tf`); roles are passed only to
+     CloudTrail, EventBridge, Backup and Config; no new identity providers, no new accounts or delegated
+     administrators, and no Identity Center writes at all (`sso-directory:*`, every `sso:`/`identitystore:` write
+     verb), so the key cannot reset Karim's password or MFA.
+  3. *Key age:* AWS Config rule `osra-access-keys-rotated` (100 days) mails both alarm addresses. Claude rotates
+     monthly.
+  4. *Key store:* `move-agent-key-to-store.sh` (once) moves the key into a Windows DPAPI store under Karim's
+     Windows user; the profile reads it through `agent-credential.ps1` (`credential_process`), and
+     `rotate-agent-key.sh` writes new keys there and reads the store back, refusing to go on unless it holds the
+     new key id. The key is never put in a repository, a CI secret, a cloud
+     agent session or a chat.
+  5. *Use from outside Karim's network* raises an alarm and blocks nothing.
+  6. *Root:* osra-production has no root password, keys or MFA (centralised root management, recovery through
+     the management account); the management root has MFA and no access keys. Evidence on #637.
+  **Apply order:** org-audit is applied once, at the head that carries all of this (not batch E first: its deny
+  would stop this apply adding the boundary to the roles E created). The RDS replacement in batch D is applied
+  before, because the policy forbids deleting the old instance afterwards.
+- `rotate-agent-key.sh` replaces the key without a gap: new key, written to the credentials file, proved,
+  then the old one deleted; on any failure before that, the new key is deleted and the file restored.
+
 ### Production cost (estimate, on-demand list prices in `eu-central-1`, 730 h/month)
 
 | Item | Basis | US$/month |
@@ -590,6 +695,7 @@ without backups.
 | KMS keys | ~6 customer keys × US$1 + requests | ~6–7 |
 | CloudTrail copy in CloudWatch | organisation trail management events to the access-alarm log group (batch E) | ~2–4 |
 | Backups | daily RDS backups + copy to the management account's vault (batch D) | ~5–8 |
+| AWS Config | management account, IAM users only, one rule | <1 |
 | **Total** | at minimum scale (2 tasks) | **~US$330–340** |
 
 Each extra API task adds ~US$33/month. Data out to the internet beyond 100 GB/month, taxes and AWS Support are

@@ -58,9 +58,14 @@ mock_provider "aws" {
       account_id = "000000000000"
     }
   }
+  mock_resource "aws_db_instance" {
+    defaults = {
+      arn = "arn:aws:rds:eu-central-1:000000000000:db:test"
+    }
+  }
   mock_resource "aws_iam_role" {
     defaults = {
-      arn = "arn:aws:iam::000000000000:role/test-role"
+      arn = "arn:aws:iam::000000000000:role/test"
     }
   }
   mock_resource "aws_ecs_task_definition" {
@@ -126,6 +131,11 @@ run "staging_defaults_are_unchanged" {
 
   variables {
     api_image = "example/api:test"
+  }
+
+  assert {
+    condition     = length(aws_cloudwatch_log_metric_filter.family_plan) == 0 && length(aws_cloudwatch_metric_alarm.family_plan) == 0
+    error_message = "with alarms_enabled false there are no family plan filters or alarms (#816)"
   }
 
   assert {
@@ -212,6 +222,9 @@ run "production_settings" {
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
     audit_logs_enabled       = true
+    db_customer_kms_key      = true
+    backup_copy_account_id   = "111111111111"
+    backup_copy_vault_arn    = "arn:aws:backup:eu-west-1:111111111111:backup-vault:osra-production-copy"
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -326,6 +339,18 @@ run "production_settings" {
     error_message = "the alarm topic must use a key CloudWatch and EventBridge can use, and GuardDuty high findings must reach it"
   }
   assert {
+    condition     = aws_db_instance.main.kms_key_id == aws_kms_key.rds[0].arn && length(aws_backup_selection.rds) == 1
+    error_message = "production's database must use its own key and be in the daily backup plan (#766 item 5)"
+  }
+  assert {
+    condition     = one([for r in aws_backup_plan.main[0].rule : one([for c in r.copy_action : c.lifecycle[0].delete_after])]) == 90 && one([for r in aws_backup_plan.main[0].rule : r.lifecycle[0].delete_after]) <= 90
+    error_message = "backups and their off-site copies are deleted within 90 days (privacy policy)"
+  }
+  assert {
+    condition     = length(aws_cloudwatch_event_target.rds_key_danger) == 1 && strcontains(aws_cloudwatch_event_rule.rds_key_danger[0].event_pattern, "ScheduleKeyDeletion")
+    error_message = "a deletion or disable of the database key must alarm (#783 review)"
+  }
+  assert {
     condition     = length(aws_sns_topic_subscription.alarms_email_secondary) == 1
     error_message = "production alarms must reach a second address (#766 item 6)"
   }
@@ -340,6 +365,14 @@ run "production_settings" {
   assert {
     condition     = strcontains(local.db_admin_script, "PASSWORD '$verifier'") && !strcontains(local.db_admin_script, "PASSWORD '$API_DB_PASSWORD'")
     error_message = "osra_api's password must reach PostgreSQL only as a SCRAM verifier (#781 review B3)"
+  }
+  assert {
+    condition     = length(aws_cloudwatch_log_metric_filter.family_plan) == 2 && length(aws_cloudwatch_metric_alarm.family_plan) == 2 && aws_cloudwatch_log_metric_filter.family_plan["family-plan-recovery-ceiling"].pattern == "{ $.event = \"family_plan_recovery_ceiling\" }" && aws_cloudwatch_log_metric_filter.family_plan["family-plan-missing-expiry"].pattern == "{ $.event = \"family_plan_missing_expiry\" }"
+    error_message = "production must alarm on both family plan entitlement warnings (#811, #816)"
+  }
+  assert {
+    condition     = alltrue([for a in aws_cloudwatch_metric_alarm.family_plan : length(a.alarm_actions) == 1 && length(coalesce(a.ok_actions, [])) == 0])
+    error_message = "family plan alarms mail on ALARM only, not on every return to OK (#816 R3)"
   }
 }
 
@@ -387,6 +420,9 @@ run "production_requires_db_multi_az" {
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
     audit_logs_enabled       = true
+    db_customer_kms_key      = true
+    backup_copy_account_id   = "111111111111"
+    backup_copy_vault_arn    = "arn:aws:backup:eu-west-1:111111111111:backup-vault:osra-production-copy"
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -425,6 +461,9 @@ run "production_requires_db_backup_retention_days" {
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
     audit_logs_enabled       = true
+    db_customer_kms_key      = true
+    backup_copy_account_id   = "111111111111"
+    backup_copy_vault_arn    = "arn:aws:backup:eu-west-1:111111111111:backup-vault:osra-production-copy"
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -463,6 +502,9 @@ run "production_requires_db_deletion_protection" {
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
     audit_logs_enabled       = true
+    db_customer_kms_key      = true
+    backup_copy_account_id   = "111111111111"
+    backup_copy_vault_arn    = "arn:aws:backup:eu-west-1:111111111111:backup-vault:osra-production-copy"
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -501,6 +543,9 @@ run "production_requires_db_skip_final_snapshot" {
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
     audit_logs_enabled       = true
+    db_customer_kms_key      = true
+    backup_copy_account_id   = "111111111111"
+    backup_copy_vault_arn    = "arn:aws:backup:eu-west-1:111111111111:backup-vault:osra-production-copy"
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -539,6 +584,9 @@ run "production_requires_redis_transit_encryption" {
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
     audit_logs_enabled       = true
+    db_customer_kms_key      = true
+    backup_copy_account_id   = "111111111111"
+    backup_copy_vault_arn    = "arn:aws:backup:eu-west-1:111111111111:backup-vault:osra-production-copy"
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -577,6 +625,9 @@ run "production_requires_nat_gateway_count" {
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
     audit_logs_enabled       = true
+    db_customer_kms_key      = true
+    backup_copy_account_id   = "111111111111"
+    backup_copy_vault_arn    = "arn:aws:backup:eu-west-1:111111111111:backup-vault:osra-production-copy"
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -615,6 +666,9 @@ run "production_requires_waf_enabled" {
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
     audit_logs_enabled       = true
+    db_customer_kms_key      = true
+    backup_copy_account_id   = "111111111111"
+    backup_copy_vault_arn    = "arn:aws:backup:eu-west-1:111111111111:backup-vault:osra-production-copy"
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -653,6 +707,9 @@ run "production_requires_alarms_enabled" {
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
     audit_logs_enabled       = true
+    db_customer_kms_key      = true
+    backup_copy_account_id   = "111111111111"
+    backup_copy_vault_arn    = "arn:aws:backup:eu-west-1:111111111111:backup-vault:osra-production-copy"
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -691,6 +748,9 @@ run "production_requires_alb_deletion_protection" {
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
     audit_logs_enabled       = true
+    db_customer_kms_key      = true
+    backup_copy_account_id   = "111111111111"
+    backup_copy_vault_arn    = "arn:aws:backup:eu-west-1:111111111111:backup-vault:osra-production-copy"
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -729,6 +789,9 @@ run "production_requires_region" {
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
     audit_logs_enabled       = true
+    db_customer_kms_key      = true
+    backup_copy_account_id   = "111111111111"
+    backup_copy_vault_arn    = "arn:aws:backup:eu-west-1:111111111111:backup-vault:osra-production-copy"
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -767,6 +830,9 @@ run "production_requires_assume_role_arn" {
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
     audit_logs_enabled       = true
+    db_customer_kms_key      = true
+    backup_copy_account_id   = "111111111111"
+    backup_copy_vault_arn    = "arn:aws:backup:eu-west-1:111111111111:backup-vault:osra-production-copy"
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = ""
@@ -805,6 +871,9 @@ run "production_requires_cors_origin" {
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
     audit_logs_enabled       = true
+    db_customer_kms_key      = true
+    backup_copy_account_id   = "111111111111"
+    backup_copy_vault_arn    = "arn:aws:backup:eu-west-1:111111111111:backup-vault:osra-production-copy"
     cors_origin              = ""
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
@@ -913,6 +982,47 @@ run "production_requires_audit_logs_enabled" {
     alarm_email              = "alerts@example.test"
     alarm_email_secondary    = "oncall@example.test"
     secrets_out_of_band      = true
+    cors_origin              = "https://app.example.test"
+    allowed_account_ids      = ["000000000000"]
+    assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_offsite_backup_copy" {
+  command = plan
+
+  variables {
+    environment              = "production"
+    region                   = "eu-central-1"
+    api_image                = "example/api:test"
+    api_cpu                  = 1024
+    api_memory               = 2048
+    api_min_count            = 2
+    api_max_count            = 6
+    nat_gateway_count        = 2
+    db_instance_class        = "db.t4g.small"
+    db_multi_az              = true
+    db_allocated_storage     = 50
+    db_max_allocated_storage = 200
+    db_backup_retention_days = 14
+    db_deletion_protection   = true
+    db_skip_final_snapshot   = false
+    db_performance_insights  = true
+    redis_num_nodes          = 2
+    redis_failover           = true
+    redis_transit_encryption = true
+    alb_deletion_protection  = true
+    waf_enabled              = true
+    alarms_enabled           = true
+    alarm_email              = "alerts@example.test"
+    alarm_email_secondary    = "oncall@example.test"
+    secrets_out_of_band      = true
+    audit_logs_enabled       = true
+    db_customer_kms_key      = true
+    backup_copy_account_id   = "111111111111"
+    backup_copy_vault_arn    = "arn:aws:backup:eu-central-1:111111111111:backup-vault:same-region"
     cors_origin              = "https://app.example.test"
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"

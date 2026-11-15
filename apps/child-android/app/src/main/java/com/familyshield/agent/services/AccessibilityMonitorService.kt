@@ -7,11 +7,17 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
@@ -28,6 +34,9 @@ import com.familyshield.agent.enforcement.RetryDecision
 import com.familyshield.agent.enforcement.VisibleBlockStep
 import com.familyshield.agent.enforcement.VisibleWindow
 import com.familyshield.agent.enforcement.WindowBounds
+import com.familyshield.agent.commands.RingActivity
+import com.familyshield.agent.commands.RingReentryPolicy
+import com.familyshield.agent.commands.Ringer
 import com.familyshield.agent.enforcement.WindowLayout
 import com.familyshield.agent.enforcement.WindowSnapshot
 import com.familyshield.agent.security.GuardAttemptWindow
@@ -64,11 +73,52 @@ class AccessibilityMonitorService : AccessibilityService() {
     private var lastLocationCheckMs = 0L
     private var lastGuardMs = 0L
 
+    /**
+     * osra-security#29: the unbind handler writes two settings rows and both setters suspend. A service has no
+     * lifecycle scope, and those writes must outlive the immediate unbind, so it gets its own.
+     */
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /**
+     * Antigravity's R2 on #813: whether we held a location grant when the current PermissionController window was
+     * entered. Latched on entry and cleared on leaving, so a parent granting "Allow all the time" during setup does
+     * not trip the gate 50 ms later on the content change that follows the tap.
+     */
+    private var permissionWindowLocationActive: Boolean? = null
+
+    /**
+     * The location grant right now, in the same sense `GrantChecks.locationGranted()` uses: fine or coarse, **and**
+     * background on Android 10 and later. Onboarding grants fine first and then opens this very page for
+     * background, so a check that stopped at fine would say "we hold the grant" and slam the gate over setup
+     * (Antigravity's re-review of #813).
+     */
+    private fun locationGrantedNow(): Boolean {
+        val fine = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val coarse = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (!fine && !coarse) return false
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return true
+        return ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /** #734: when the ring screen was last brought back, on the monotonic clock (#802, Claude's V1). */
+    private var lastRingRestoreMs = 0L
+
+    /** #734 / #802 V2: the one delayed re-check at the end of the debounce, if one is pending. */
+    private var ringRecheck: Runnable? = null
+    private val ringRecheckHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
     /** osra-security#7: the window the gate was last opened over; a state change from any other is a new screen. */
     private var guardedWindowId = -1
     /** osra-security#5: class and package of the last TYPE_WINDOW_STATE_CHANGED, for [TamperScreenPolicy.classify]. */
     private var lastWindowClass: String? = null
     private var lastWindowClassPkg: String? = null
+
+    /**
+     * #802 V5 (Claude): the class of the last state change **per package**. A single pair was overwritten by
+     * whichever package spoke last — the keyboard when a parent taps the PIN field — after which
+     * `isRingScreen` saw a foreign class, and the ring screen was raised over the PIN gate it must never cover.
+     */
+    private val lastClassByPkg = HashMap<String, String>()
 
     /**
      * Issue #175: bounded re-raises of the lock overlay for a PiP / split screen state the platform may
@@ -130,6 +180,11 @@ class AccessibilityMonitorService : AccessibilityService() {
         // is the authoritative "accessibility is running" for EnforceabilityPolicy — not the
         // ENABLED_ACCESSIBILITY_SERVICES setting, which stays true while the service is not alive.
         isRunning = true
+        // Back on: the shared moment is cleared, the next switch-off starts a new alert.
+        TamperState.setAccessibilityDisabledAt(this, 0L)
+        // U2b: the poll compares the last observation with the current one, so a bind has to record "on" — without
+        // it a re-enable never clears the state and the next unbind is silent.
+        serviceScope.launch { runCatching { settings.recordAccessibilityEnabled(true) } }
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED)
             addAction(Intent.ACTION_PACKAGE_REPLACED)
@@ -146,11 +201,42 @@ class AccessibilityMonitorService : AccessibilityService() {
         // Called when the system is about to unbind (the user turned the service off, or it was
         // replaced); onDestroy follows, but the command poll must see the service as gone at once.
         isRunning = false
+        // osra-security#29, second half (the Flip4 AS02 row): the poll hears about this in up to 60 s, and not at
+        // all when the location grant is off — which is exactly the phone where the child turned accessibility
+        // off to stop blocking. Tell the parent now, through the worker so it retries offline.
+        val unboundAt = System.currentTimeMillis()
+        // Antigravity's fix on osra-security#29: stamp the moment synchronously, so the poll (which may run first on
+        // reconnect) and this alert share one dedupe key instead of paging twice.
+        TamperState.setAccessibilityDisabledAt(this, unboundAt)
+        // U2a (Antigravity): a parent who turned accessibility off inside the PIN's grace window, or a phone that
+        // was never paired, must not produce a critical alert — that is the parent's own action.
+        if (com.familyshield.agent.receivers.AccessibilityOffPolicy.shouldTellParent(
+                paired = settings.isPairedSync(),
+                graceUntilMs = TamperState.graceUntil(this),
+                nowMs = unboundAt,
+            )
+        ) {
+            // U2b: the state the poll reads is now written inside the worker, before its POST. Doing it here on a
+            // scope that onDestroy() cancels was a race that could drop both writes and let the poll repeat it.
+            runCatching {
+                TamperAlertWorker.enqueue(
+                    this,
+                    TamperAlertWorker.TYPE_ACCESSIBILITY_OFF,
+                    detail = "The OSRA accessibility service was turned off on this device",
+                    eventAtMs = unboundAt,
+                )
+            }.onFailure { Log.w(TAG, "could not enqueue the accessibility-off alert (#29)", it) }
+        }
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
         isRunning = false
+        serviceScope.cancel()
+        // #802 V2: no re-check outlives the service; a pending one would try to raise a screen from a dead
+        // component.
+        ringRecheck?.let { ringRecheckHandler.removeCallbacks(it) }
+        ringRecheck = null
         calls.onDestroy()
         media.onDestroy()
         rules.removeRulesChangedListener(rulesChanged)
@@ -183,10 +269,23 @@ class AccessibilityMonitorService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
             TamperScreenPolicy.mayHostProtectionScreen(eventPkg)
         ) coverSharedProtectionScreens()
-        // Issue #284: our own block screen is in front and this stream never records our package, so
-        // the blocked app's interval would stay open and the next real event would charge it the stay.
+        // #802 item 3 (Hydrogen): the window class is tracked and the ring check runs **before** the
+        // own-package return below. Our own windows are exactly the case that matters — the child app's
+        // launcher activity is the osra-security#31 escape, and RingActivity/the PIN gate are the two classes
+        // the policy must recognise — and the return used to skip both.
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            lastWindowClass = event.className?.toString()
+            lastWindowClassPkg = eventPkg
+            event.className?.toString()?.let { lastClassByPkg[eventPkg] = it }
+        }
         if (eventPkg == packageName) {
+            // Issue #284: our own block screen is in front and this stream never records our package, so
+            // the blocked app's interval would stay open and the next real event would charge it the stay.
             usage.recordOwnWindow(System.currentTimeMillis())
+            // #813 review (Claude): returning to OSRA ends any PermissionController visit, so a latch set during
+            // onboarding must not survive it and hide the next real visit.
+            permissionWindowLocationActive = null
+            restoreRingScreen(event, packageName)
             return
         }
         // Issue #175: read every visible application window once per event. The active window alone
@@ -201,6 +300,9 @@ class AccessibilityMonitorService : AccessibilityService() {
         // ADR-0010 §3: the protection guard runs even while consent is paused — a paused agent is
         // still an installed one, and the parent must still hear about an uninstall attempt.
         guardProtectionScreens(event, foreground)
+        // #734: Home is not a way out of a ring. While the ring runs, anything that is not our own window
+        // brings the ring screen back — its only exit is the parent PIN, and the alarm has no other stop.
+        restoreRingScreen(event, foreground)
         // The lock is the safe direction: when the window in front cannot be named, the event package
         // is the only hint and the overlay must still come back (LockEnforcementPolicy decides).
         enforceLockState(snapshot, foreground ?: eventPkg)
@@ -512,6 +614,90 @@ class AccessibilityMonitorService : AccessibilityService() {
         ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 
     /**
+     * #734 (Flip4, 13 Nov): while [Ringer.isRinging], bring the ring screen back in front of whatever the
+     * child opened. Home cannot be swallowed by an activity, and #731 put the screen in its own hidden task,
+     * so without this the alarm rings with no way to stop it on the phone.
+     *
+     * The decision is [RingReentryPolicy]'s — not our own window, debounced, and never when the clock has
+     * gone backwards. Only a window change is considered: a content change inside an app is not a screen.
+     */
+    private fun restoreRingScreen(event: AccessibilityEvent, foreground: String?) {
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        // Claude's V1 on #802: the monotonic clock, as #792 uses — a wall-clock change must not delay the
+        // screen coming back.
+        val now = SystemClock.elapsedRealtime()
+        val classOfForeground = foreground?.let { lastClassByPkg[it] }
+        when (RingReentryPolicy.decide(
+            isRinging = Ringer.isRinging,
+            foreground = foreground,
+            foregroundClass = classOfForeground,
+            ownPackage = packageName,
+            nowElapsedMs = now,
+            lastRestoreElapsedMs = lastRingRestoreMs,
+        )) {
+            RingReentryPolicy.Reentry.RESTORE -> {
+                lastRingRestoreMs = now
+                raiseRingScreen()
+            }
+            // Claude's V2 on #802: declined only because of the debounce is not "nothing to do" — the child
+            // pressed Home a moment after the last launch, and without this the launcher stays in front until
+            // something else opens.
+            RingReentryPolicy.Reentry.DEFER -> scheduleRingRecheck()
+            RingReentryPolicy.Reentry.IGNORE -> Unit
+        }
+    }
+
+    /** Brings the ring screen to the front, in the task #731 gave it. */
+    private fun raiseRingScreen() {
+        runCatching {
+            startActivity(
+                Intent(this, RingActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),
+            )
+        }.onFailure { Log.w(TAG, "could not bring the ring screen back (#734)", it) }
+    }
+
+    /** One delayed re-check at the end of the debounce; it does nothing if the ring has stopped by then. */
+    private fun scheduleRingRecheck() {
+        if (ringRecheck != null) return
+        val task = Runnable {
+            ringRecheck = null
+            if (!Ringer.isRinging) return@Runnable
+            // #802 V4 (Claude): decide again on the window that is in front **now**. The screen it deferred
+            // over may have become the PIN gate in the meantime, and raising the ring screen over a parent
+            // typing their PIN is the one thing the exemption exists to prevent.
+            // Hydrogen's item 2 (#802): the node is a native allocation; recycle it like windowSnapshot() does.
+            val inFront = runCatching {
+                val root = rootInActiveWindow ?: return@runCatching null
+                try {
+                    root.packageName?.toString()
+                } finally {
+                    runCatching { root.recycle() }
+                }
+            }.getOrNull()
+            val clsNow = inFront?.let { lastClassByPkg[it] }
+            val now = SystemClock.elapsedRealtime()
+            when (RingReentryPolicy.decide(
+                isRinging = true,
+                foreground = inFront,
+                foregroundClass = clsNow,
+                ownPackage = packageName,
+                nowElapsedMs = now,
+                lastRestoreElapsedMs = lastRingRestoreMs,
+            )) {
+                RingReentryPolicy.Reentry.RESTORE -> {
+                    lastRingRestoreMs = now
+                    raiseRingScreen()
+                }
+                RingReentryPolicy.Reentry.DEFER -> scheduleRingRecheck()
+                RingReentryPolicy.Reentry.IGNORE -> Unit
+            }
+        }
+        ringRecheck = task
+        ringRecheckHandler.postDelayed(task, RingReentryPolicy.DEBOUNCE_MS)
+    }
+
+    /**
      * ADR-0010 §3: when the foreground window is the OS screen that would strip protection
      * (deactivate admin / uninstall / app-info for this package), step in front of it with the
      * parent-PIN gate and tell the parent. Cheap by construction: only window-change events from
@@ -528,6 +714,16 @@ class AccessibilityMonitorService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             lastWindowClass = event.className?.toString()
             lastWindowClassPkg = event.packageName?.toString()
+            val pkgOfEvent = event.packageName?.toString()
+            if (pkgOfEvent != null) event.className?.toString()?.let { lastClassByPkg[pkgOfEvent] = it }
+            // R2 (Antigravity's re-review): latch the grant on ENTERING a PermissionController window and clear it
+            // on entering any other window, so a grant made inside that page cannot trip the gate on the content
+            // change that follows the tap. The field was declared and read but never written before this.
+            permissionWindowLocationActive = com.familyshield.agent.receivers.AccessibilityOffPolicy.nextLatch(
+                previous = permissionWindowLocationActive,
+                packageName = pkgOfEvent,
+                grantedNow = { locationGrantedNow() },
+            )
         }
         if (!settings.isPairedSync()) return
         val now = System.currentTimeMillis()
@@ -557,6 +753,9 @@ class AccessibilityMonitorService : AccessibilityService() {
             agentPackage = packageName,
             ourAdminActive = deviceAdmin.isAdminActive(),
             windowClass = lastWindowClass.takeIf { lastWindowClassPkg != null && lastWindowClassPkg == pkg },
+            // Fable's B2 on #813: our own accessibility description, which no other app's page carries.
+            agentServiceDescription = getString(com.familyshield.agent.R.string.accessibility_description),
+            ourLocationActive = permissionWindowLocationActive ?: locationGrantedNow(),
         )
         if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) return // no filter to bypass yet
         if (!TamperScreenPolicy.shouldGuard(screen, pinStore.isConfigured(), TamperState.graceUntil(this), now)) return
@@ -632,6 +831,10 @@ class AccessibilityMonitorService : AccessibilityService() {
                             windowClass = lastWindowClass.takeIf {
                                 runCatching { window.isActive }.getOrDefault(false) && lastWindowClassPkg == pkg
                             },
+                            // R3: without this the cover path never saw the description and every split-screen
+                            // pane of our accessibility page stayed unclassified.
+                            agentServiceDescription = getString(com.familyshield.agent.R.string.accessibility_description),
+                            ourLocationActive = permissionWindowLocationActive ?: locationGrantedNow(),
                         )
                         if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) {
                             screen = TamperScreen.NONE

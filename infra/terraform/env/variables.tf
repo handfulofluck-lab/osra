@@ -334,7 +334,30 @@ variable "email_from" {
 }
 
 variable "audit_logs_enabled" {
-  description = "ALB access logs, VPC flow logs, WAF logs and PostgreSQL log export, each kept exactly 90 days (#766 item 2). Production MUST be true; staging leaves them off."
+  description = "VPC flow logs, WAF logs (credentials and query strings redacted) and PostgreSQL log export, each kept exactly 90 days (#766 item 2); ALB access logs stay off because the WebSocket ticket is in the query string. Production MUST be true; staging leaves them off."
   type        = bool
   default     = false
+}
+
+variable "db_customer_kms_key" {
+  description = "Encrypt PostgreSQL with this stack's own KMS key instead of aws/rds, so its backups can be copied to another account (#766 item 5). Changing it REPLACES the instance. Production MUST be true."
+  type        = bool
+  default     = false
+}
+
+variable "backup_copy_account_id" {
+  description = "Account that holds the off-site backup copy (the management account). Empty = no copy."
+  type        = string
+  default     = ""
+}
+
+variable "backup_copy_vault_arn" {
+  description = "Backup vault in another account and region that receives a copy of each daily backup (org-audit output backup_copy_vault_arn). Empty = no AWS Backup plan."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.backup_copy_vault_arn == "" || can(regex("^arn:aws:backup:eu-[a-z]+-[0-9]:[0-9]{12}:backup-vault:", var.backup_copy_vault_arn))
+    error_message = "backup_copy_vault_arn must be a backup vault ARN in an EU region."
+  }
 }
