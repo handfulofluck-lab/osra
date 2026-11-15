@@ -12,6 +12,11 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
@@ -63,6 +68,12 @@ class AccessibilityMonitorService : AccessibilityService() {
 
     private var lastLocationCheckMs = 0L
     private var lastGuardMs = 0L
+
+    /**
+     * osra-security#29: the unbind handler writes two settings rows and both setters suspend. A service has no
+     * lifecycle scope, and those writes must outlive the immediate unbind, so it gets its own.
+     */
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** osra-security#7: the window the gate was last opened over; a state change from any other is a new screen. */
     private var guardedWindowId = -1
@@ -146,11 +157,32 @@ class AccessibilityMonitorService : AccessibilityService() {
         // Called when the system is about to unbind (the user turned the service off, or it was
         // replaced); onDestroy follows, but the command poll must see the service as gone at once.
         isRunning = false
+        // osra-security#29, second half (the Flip4 AS02 row): the poll hears about this in up to 60 s, and not at
+        // all when the location grant is off — which is exactly the phone where the child turned accessibility
+        // off to stop blocking. Tell the parent now, through the worker so it retries offline.
+        val unboundAt = System.currentTimeMillis()
+        runCatching {
+            TamperAlertWorker.enqueue(
+                this,
+                TamperAlertWorker.TYPE_ACCESSIBILITY_OFF,
+                detail = "The OSRA accessibility service was turned off on this device",
+                eventAtMs = unboundAt,
+            )
+        }.onFailure { Log.w(TAG, "could not enqueue the accessibility-off alert (#29)", it) }
+        // The poll must not repeat it: record the state and the throttle stamp the poll reads, before the POST can
+        // fail — the same order the guard uses for its own alerts.
+        runCatching {
+            serviceScope.launch {
+                settings.recordAccessibilityEnabled(false)
+                settings.recordTamperAlert(com.familyshield.agent.receivers.AccessibilityOffPolicy.TYPE, unboundAt)
+            }
+        }
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
         isRunning = false
+        serviceScope.cancel()
         calls.onDestroy()
         media.onDestroy()
         rules.removeRulesChangedListener(rulesChanged)

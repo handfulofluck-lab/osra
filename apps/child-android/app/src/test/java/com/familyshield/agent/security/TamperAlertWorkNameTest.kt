@@ -58,4 +58,38 @@ class TamperAlertWorkNameTest {
             TamperAlertWorker.uniqueWorkName(TamperAlertWorker.TYPE_GUARD_TRIGGERED, 0L),
         )
     }
+
+    /**
+     * osra-security#29, second half: the unbind alert is raised from the service itself, so the parent does not wait
+     * for the 60-second poll — and hears at all on a phone where the location grant is off and the poll never runs.
+     *
+     * Mutant: drop the `enqueue(... TYPE_ACCESSIBILITY_OFF ...)` from `onUnbind` → [the unbind raises its own alert
+     * at once] goes red, and nothing else does.
+     */
+    @Test
+    fun `the unbind raises its own alert at once`() {
+        val source = java.io.File(System.getProperty("user.dir") ?: ".").let { wd ->
+            listOf(
+                java.io.File(wd, "src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt"),
+                java.io.File(wd, "app/src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt"),
+            ).firstOrNull { it.isFile }?.readText() ?: error("service source not found below ${wd.path}")
+        }
+        val unbind = source.substringAfter("override fun onUnbind(", missingDelimiterValue = "")
+            .lines().takeWhile { it != "    }" }.joinToString("
+")
+        org.junit.Assert.assertTrue("the worker is told", unbind.contains("TYPE_ACCESSIBILITY_OFF"))
+        org.junit.Assert.assertTrue("with the moment it happened", unbind.contains("eventAtMs = unboundAt"))
+        org.junit.Assert.assertTrue("and the poll is silenced", unbind.contains("recordAccessibilityEnabled(false)"))
+        org.junit.Assert.assertTrue("through the same throttle key the poll reads", unbind.contains("AccessibilityOffPolicy.TYPE"))
+    }
+
+    /** One alert per unbind, and two unbinds are two alerts. */
+    @Test
+    fun `the unbind alert is deduped by its own moment`() {
+        val first = TamperAlertDedupe.accessibilityOffKey("dev", 1_000L)
+        val retry = TamperAlertDedupe.accessibilityOffKey("dev", 1_000L)
+        val second = TamperAlertDedupe.accessibilityOffKey("dev", 61_000L)
+        org.junit.Assert.assertEquals("a WorkManager retry is a no-op", first, retry)
+        org.junit.Assert.assertNotEquals("a second unbind is a new alert", first, second)
+    }
 }

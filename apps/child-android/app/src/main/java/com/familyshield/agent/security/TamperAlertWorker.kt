@@ -126,6 +126,9 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
         const val TYPE_ADMIN_REMOVED = "device_admin_removed"
         const val TYPE_GUARD_TRIGGERED = "protection_screen_opened"
         const val TYPE_VPN_REVOKED = "content_filter_disconnected"
+
+        /** osra-security#29, second half: the accessibility service was unbound while paired. */
+        const val TYPE_ACCESSIBILITY_OFF = "accessibility_off"
         const val TYPE_BLOCK_BYPASS = "block_bypass"
         private const val KEY_TYPE = "type"
         private const val KEY_DETAIL = "detail"
@@ -141,6 +144,7 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             TYPE_ADMIN_REMOVED to "Device admin was removed",
             TYPE_GUARD_TRIGGERED to "Someone tried to remove protection",
             TYPE_VPN_REVOKED to "Content filter was disconnected",
+            TYPE_ACCESSIBILITY_OFF to "Protection was disabled",
             TYPE_BLOCK_BYPASS to "A blocked app stayed on screen",
         )
         private val BODIES = mapOf(
