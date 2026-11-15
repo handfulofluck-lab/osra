@@ -43,6 +43,14 @@ the gates on 2026-10-18), so a row below is the floor, not the gate:
 A change is not done on the strength of a locally green suite whose build step was never exercised: the
 release-assembly step is where a release-only failure lives.
 
+For bedtime/school-hours overlap validation (#642), run `pnpm --filter @familyshield/api test --
+test/rules-overlap.test.ts test/rules.test.ts`. The five focused fixtures plus the existing rules suite
+prove that 21:00–06:30 does not meet 08:00–15:00 on weekdays; 09:00–10:00 against weekend school hours is
+refused with `schedule_overlap` and both windows; PUT and PATCH share the typed error; `days: []` means no
+school days and saves; and legacy `allowOverlap` compatibility remains. Plant `if (schoolHours.days.length >
+0) return null` to skip every nonempty schedule: the weekend refusal must go red, then restore the guard.
+The parent-facing message is separate follow-up #801; this API suite adds no user-facing text.
+
 For composite numeric values in Arabic RTL, run `flutter test test/ltr_isolates_test.dart` from
 `apps/parent-app` (#751). It renders the real latest-location, location-history (with and without a
 timestamp), dashboard, map-sheet, call/SMS and bonus-time widgets with an Arabic `Locale` and
@@ -374,7 +382,26 @@ node scripts/check-user-visible-brand.mjs          # no old user-visible brandin
 node scripts/check-user-visible-brand.mjs --selftest  # 60 cases: each rule fires, and the CLI wires it
 node scripts/check-redis-durability.mjs        # ElastiCache must not be able to lose revocation state
 node scripts/check-redis-durability.mjs --selftest   # 6 cases, one per rule and per way to fake it
+node scripts/check-production-taskdef.mjs --selftest  # 71 checks: a release task definition, one fixture per rule (gate #637)
+node scripts/check-production-taskdef.mjs --source    # every variable the API reads is required, allowed or forbidden in production
 ```
+
+**The production task definition check (gate #637, box 3).** CI runs only `--selftest` and `--source`: they prove
+the rules fire and that every variable the API reads (dotted, destructured, or `env[CONSTANT]`) is classified. The
+evidence for the gate is a third run, on what AWS holds. Claude (server gate) runs it from the maintainer's PC with
+the production profile, once per candidate build, and again after any change to the task definition:
+
+```bash
+aws ecs describe-task-definition --task-definition osra-production-api --region eu-central-1 > taskdef.json
+node scripts/check-production-taskdef.mjs --file taskdef.json --account <production account number>   # add --pre-launch before the store credentials exist
+```
+
+The whole output (it names variables and never prints a value) is posted on #637 as "Row 3 evidence", with the task
+definition revision and the image tag. `taskdef.json` is not committed and not posted. A finding is fixed in
+Terraform, never by editing the file. What the check refuses besides switches and misplaced secrets: a setting held
+as a `secrets` entry (its value cannot be read, so it was not checked), `environmentFiles`, any volume or mount
+point, a task role, an image, secret or execution role in another account, added Linux capabilities, a
+non-essential container, and `TRUST_PROXY` other than `1`.
 
 **The user-visible brand gate (issue #608).** `scripts/check-user-visible-brand.mjs` fails on any
 tracked or untracked-but-not-ignored repo file carrying the pre-OSRA user-visible surfaces — the old
@@ -473,12 +500,30 @@ swift test list
 swift test
 ```
 
-The discovery step requires 211 macOS tests and names one case each from pairing, HMAC signing, rule
+The discovery step requires 225 macOS tests and names one case each from pairing, HMAC signing, rule
 interpretation and both localisation string suites. Five iOS-only authorization tests remain behind
 `#if os(iOS)` because `CLAuthorizationStatus.authorizedWhenInUse` is unavailable on macOS; the other location
 and client tests still run. Wrapping any additional portable source file in `#if os(iOS)` removes its tests and
 turns this step red; leaving an iOS-only framework user unguarded turns `swift build` red. The expected count
 changes only when the package deliberately adds or removes tests.
+
+### The Mac agent daemon (roadmap 5.9 step ii, #775)
+
+The same `macos-core` job then lints `apps/child-ios/MacAgent/launchd/com.osratech.agent.plist` and builds and
+tests the daemon's own package, which is nested in the shared package's folder so the path filters do not
+change. On a Mac:
+
+```bash
+cd apps/child-ios/MacAgent
+swift build
+swift test
+```
+
+The unit tests fake the network, the clock and the keychain's owner, and one suite runs the keychain store
+against a throwaway file-based keychain. What needs a real Mac and staging (pairing, a rule change arriving, the
+heartbeat showing "online", launchd restarting a killed daemon, a wrong HMAC key, the secret being unreadable
+by a standard user) is the row table in `apps/child-ios/MacAgent/README.md`, run with
+`sudo ./scripts/install-dev.sh` on the test Mac.
 
 This is compile and unit-test evidence for the shared core only. No Mac application target or enforcement
 runtime exists in step (i), and the job proves nothing about Screen Time on a phone or a physical Mac.

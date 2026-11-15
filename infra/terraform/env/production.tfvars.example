@@ -61,3 +61,22 @@ cors_origin = "https://app.osratech.com"
 
 # Only after put-secret-value has written the production FCM service account (README "Turning push on").
 push_enabled = false
+
+# No secret value in state (#766 items 1, 3): RDS manages the master password, the API connects as osra_api,
+# Redis requires AUTH, and the database URL verifies the server certificate. production-secrets.sh fills them.
+secrets_out_of_band = true
+
+# Item 13: settings the API needs for e-mail links and sending (SES setup is tracked in #766).
+app_public_url = "https://app.osratech.com"
+email_provider = ""
+email_from     = ""
+
+# VPC flow logs, WAF logs and PostgreSQL logs, each kept exactly 90 days (#766 item 2). ALB access logs stay off (the WebSocket ticket is in the query string).
+audit_logs_enabled = true
+
+# Database on its own KMS key, daily AWS Backup with a copy in the MANAGEMENT account in another EU region
+# (org-audit output backup_copy_vault_arn), deleted after 90 days (#766 item 5). Turning the key on replaces
+# the database instance: do it while it is empty.
+db_customer_kms_key    = true
+backup_copy_account_id = "<management-account-id>"
+backup_copy_vault_arn  = "arn:aws:backup:eu-west-1:<management-account-id>:backup-vault:osra-production-copy"

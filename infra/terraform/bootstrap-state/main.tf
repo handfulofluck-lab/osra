@@ -39,6 +39,16 @@ variable "allowed_account_ids" {
   }
 }
 
+variable "state_principal_arns" {
+  description = "IAM principals (role ARNs) allowed to touch the state bucket at all (#766 item 1). Empty = only assume_role_arn. Everyone else, account administrators included, is denied by the bucket policy; the account root user can still repair the policy."
+  type        = list(string)
+  default     = []
+}
+
+locals {
+  state_principals = distinct(concat([var.assume_role_arn], var.state_principal_arns))
+}
+
 provider "aws" {
   region              = var.region
   allowed_account_ids = var.allowed_account_ids
@@ -78,13 +88,33 @@ resource "aws_s3_bucket_versioning" "state" {
   }
 }
 
+# A customer-managed key (#766 item 1): reading state now needs kms:Decrypt on this key as well as
+# s3:GetObject, and every use is a CloudTrail event. Objects written before this change stay AES256
+# until their next write, which every apply does.
+resource "aws_kms_key" "state" {
+  description             = "OSRA production Terraform state"
+  enable_key_rotation     = true
+  deletion_window_in_days = 30
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "aws_kms_alias" "state" {
+  name          = "alias/osra-terraform-state"
+  target_key_id = aws_kms_key.state.key_id
+}
+
 resource "aws_s3_bucket_server_side_encryption_configuration" "state" {
   bucket = aws_s3_bucket.state.id
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.state.arn
     }
+    bucket_key_enabled = true
   }
 }
 
@@ -105,7 +135,7 @@ resource "aws_s3_bucket_ownership_controls" "state" {
   }
 }
 
-# State holds generated secrets (database password, JWT secret), so refuse any request not over TLS.
+# State may hold resource details worth protecting, so refuse any request not over TLS.
 data "aws_iam_policy_document" "state" {
   statement {
     sid     = "DenyInsecureTransport"
@@ -129,9 +159,35 @@ data "aws_iam_policy_document" "state" {
   }
 }
 
+# Only the deploy role (and any principal named in state_principal_arns) may use the bucket at all.
+data "aws_iam_policy_document" "state_principals" {
+  source_policy_documents = [data.aws_iam_policy_document.state.json]
+
+  statement {
+    sid     = "DenyAllButStatePrincipals"
+    effect  = "Deny"
+    actions = ["s3:*"]
+    resources = [
+      aws_s3_bucket.state.arn,
+      "${aws_s3_bucket.state.arn}/*",
+    ]
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    condition {
+      test     = "ArnNotEquals"
+      variable = "aws:PrincipalArn"
+      values   = concat(local.state_principals, ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"])
+    }
+  }
+}
+
 resource "aws_s3_bucket_policy" "state" {
   bucket = aws_s3_bucket.state.id
-  policy = data.aws_iam_policy_document.state.json
+  policy = data.aws_iam_policy_document.state_principals.json
 
   depends_on = [aws_s3_bucket_public_access_block.state]
 }
@@ -155,4 +211,9 @@ resource "aws_s3_bucket_lifecycle_configuration" "state" {
 output "state_bucket" {
   description = "Bucket name for backend/production-*.hcl and env's state_bucket."
   value       = aws_s3_bucket.state.bucket
+}
+
+output "kms_key_arn" {
+  description = "Key the state is encrypted with; set it as kms_key_id in backend/production-*.hcl."
+  value       = aws_kms_key.state.arn
 }

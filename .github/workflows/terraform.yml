@@ -26,6 +26,10 @@ jobs:
       - name: terraform fmt -check -recursive
         run: terraform fmt -check -recursive
 
+      # production-secrets.sh's generators, under its own `set -euo pipefail` (#781 review B1). No AWS call.
+      - name: secret generators
+        run: bash tests/secret-gen.sh
+
       # -backend=false skips the S3 backend, so this needs no AWS credentials and no base state.
       # `terraform test` runs each stack's tests/*.tftest.hcl against a MOCKED AWS provider (#714): no
       # credentials, nothing created. They pin staging's settings and production's (Multi-AZ, backups, TLS,
@@ -46,6 +50,12 @@ jobs:
         run: |
           terraform -chdir=bootstrap-state init -backend=false -input=false
           terraform -chdir=bootstrap-state validate
+
+      - name: org-audit — init (no backend), validate and test
+        run: |
+          terraform -chdir=org-audit init -backend=false -input=false
+          terraform -chdir=org-audit validate
+          terraform -chdir=org-audit test
 
       - name: site — init (no backend) and validate
         run: |

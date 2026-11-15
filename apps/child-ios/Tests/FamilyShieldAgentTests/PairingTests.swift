@@ -38,6 +38,32 @@ final class PairingTests: XCTestCase {
         XCTAssertNil(PairingClient.normalizeServerURL("not a url at all"))
     }
 
+    // MARK: - claimPayload (#775)
+
+    // Mutant: sending the Mac's platform, or any capabilities, from the default claim. The iPhone's body must stay
+    // exactly the four fields it has sent since 5.5.
+    func testTheDefaultClaimIsTheIPhonesUnchanged() {
+        let payload = PairingClient.claimPayload(code: "123456", deviceName: "  Sara's iPhone ", device: .thisPhone())
+        XCTAssertEqual(payload["platform"] as? String, "ios")
+        XCTAssertEqual(payload["code"] as? String, "123456")
+        XCTAssertEqual(payload["deviceName"] as? String, "Sara's iPhone")
+        XCTAssertEqual(Set(payload.keys), ["code", "platform", "model", "osVersion", "deviceName"])
+        XCTAssertNil(PairingClient.ClaimDevice.thisPhone().clientHeader)
+    }
+
+    // Mutant: dropping `device.platform` (hard-coding "ios") or the capability report from the body.
+    func testAClaimCarriesTheDeviceItIsGiven() {
+        let mac = PairingClient.ClaimDevice(platform: "macos", model: "Mac14,2", osVersion: "27.2.0",
+                                            capabilities: ["client": ["app": "agent-macos"]],
+                                            clientHeader: "agent-macos/0.1.0+1 (dev)")
+        let payload = PairingClient.claimPayload(code: "654321", deviceName: "   ", device: mac)
+        XCTAssertEqual(payload["platform"] as? String, "macos")
+        XCTAssertEqual(payload["model"] as? String, "Mac14,2")
+        XCTAssertEqual(payload["osVersion"] as? String, "27.2.0")
+        XCTAssertNil(payload["deviceName"], "a blank name is left out")
+        XCTAssertEqual((payload["capabilities"] as? [String: [String: String]])?["client"]?["app"], "agent-macos")
+    }
+
     // MARK: - parseClaimResponse
 
     private func json(_ obj: [String: Any]) -> Data {

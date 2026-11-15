@@ -144,7 +144,7 @@ describe("decision 3 + A1 — when a command is refused instead of queued", () =
   });
 
   it("commands with no feature behind them are always queued", () => {
-    // `ring` and `unlock` have no entry in the ten features, so nothing can honestly refuse them.
+    // `ring` and `unlock` have no feature behind them, so nothing can honestly refuse them.
     const r = report({ features: { ...report().features, lock_screen: "unavailable" } });
     expect(commandRefusal({ capabilities: r, capabilitiesReportedAt: new Date(NOW) }, "ring", NOW)).toBeNull();
     expect(commandRefusal({ capabilities: r, capabilitiesReportedAt: new Date(NOW) }, "unlock", NOW)).toBeNull();

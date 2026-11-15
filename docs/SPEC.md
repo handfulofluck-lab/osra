@@ -121,6 +121,18 @@ anyone else only their own account (`DELETE /v1/me`'s `eraseParentAccount`). An 
 malformed link gets one "expired" page. Both POSTs carry `AUTH_RATE_LIMIT` (20 a minute, fails closed).
 Every page is `Cache-Control: no-store`, `Referrer-Policy: no-referrer` and never framed, and the request
 log redacts `?token=` and `?ticket=` values (`lib/logRedaction.ts`).
+**Mailed links (#789).** Every mail carries `APP_PUBLIC_URL` + a path, and the API serves the page behind each one
+(`routes/linkPages.ts`, outside `/v1`): `GET /reset`, `GET /mfa/reset/confirm`, `GET /mfa/reset/cancel`,
+`GET /invite/accept` and `GET /dashboard`. A `GET` changes nothing; each change is a `POST` to the same path from a
+button on the page. The reset and MFA reset POSTs call the `/v1/auth` routes in-process and show the answer as a page.
+The invitation link carries its own secret (256 random bits, only its SHA-256 kept, in Redis for the invite's 7
+days), never `invite.id`: the inviter sees the id, and the page behind the link takes a password.
+`POST /invite/accept` asks for the invited account's password (and authenticator code when MFA is on) with
+`checkReauth`, then runs `acceptInvite`, the function `POST /v1/family/invites/:id/accept` also runs. The page is
+the same for every live invitation, whether or not the address has an account or uses MFA, and every refusal (no
+account, wrong password, wrong or missing code) is one page with one status, after one password verification. The
+pages follow the same header rules as the deletion pages above (plus `X-Frame-Options: DENY`), and render nothing a
+user supplied.
 Alerts carry **no coordinates**: a geofence alert names the fence (`metadata.geofenceId` and `label`),
 because alert rows sit outside the retention job and exact positions there would outlive the 30-day
 location window. Migration `0022` scrubs the coordinates written before #242.
