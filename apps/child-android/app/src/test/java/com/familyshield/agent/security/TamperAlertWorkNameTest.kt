@@ -100,14 +100,13 @@ class TamperAlertWorkNameTest {
     }
 
     /**
-     * R2 (Antigravity's re-review of #813): the latch must be **written**, not only declared. A field that is read
-     * and never assigned always falls back to the live grant, which is the behaviour the latch exists to avoid.
+     * R2's wiring: the latch is delegated to the pure rule, and it is read where the screen is classified.
      *
-     * Mutant: delete the assignment in the state-change branch → this row goes red and the gate can trip on the
-     * content change that follows a grant.
+     * The **decision** is driven by `AccessibilityOffPolicyTest` now — this row only proves the service asks it,
+     * which is all a source row can honestly prove after the extraction.
      */
     @Test
-    fun `the grant latch is written on a window change`() {
+    fun `the grant latch is delegated and read`() {
         val source = java.io.File(System.getProperty("user.dir") ?: ".").let { wd ->
             listOf(
                 java.io.File(wd, "src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt"),
@@ -115,16 +114,16 @@ class TamperAlertWorkNameTest {
             ).firstOrNull { it.isFile }?.readText() ?: error("service source not found")
         }
         org.junit.Assert.assertTrue(
-            "the latch is assigned, not only declared",
-            source.contains("permissionWindowLocationActive = when {"),
+            "the pure rule owns the latch",
+            source.contains("AccessibilityOffPolicy.nextLatch("),
         )
         org.junit.Assert.assertTrue(
-            "and cleared when a non-PermissionController window opens",
-            source.contains("else -> null"),
-        )
-        org.junit.Assert.assertTrue(
-            "it is read where the screen is classified",
+            "and the value is read where the screen is classified",
             source.contains("ourLocationActive = permissionWindowLocationActive ?: locationGrantedNow()"),
+        )
+        org.junit.Assert.assertTrue(
+            "and cleared when one of our own windows opens",
+            source.contains("permissionWindowLocationActive = null"),
         )
     }
 
