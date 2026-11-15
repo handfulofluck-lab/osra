@@ -374,7 +374,7 @@ node scripts/check-user-visible-brand.mjs          # no old user-visible brandin
 node scripts/check-user-visible-brand.mjs --selftest  # 60 cases: each rule fires, and the CLI wires it
 node scripts/check-redis-durability.mjs        # ElastiCache must not be able to lose revocation state
 node scripts/check-redis-durability.mjs --selftest   # 6 cases, one per rule and per way to fake it
-node scripts/check-production-taskdef.mjs --selftest  # 68 checks: a release task definition, one fixture per rule (gate #637)
+node scripts/check-production-taskdef.mjs --selftest  # 71 checks: a release task definition, one fixture per rule (gate #637)
 node scripts/check-production-taskdef.mjs --source    # every variable the API reads is required, allowed or forbidden in production
 ```
 
