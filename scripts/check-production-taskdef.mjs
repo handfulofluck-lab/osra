@@ -101,8 +101,10 @@ const OPTIONAL = {
   // Retention is a promise in the privacy policy. Longer than the promise is a finding; shorter is a choice.
   LOCATION_RETENTION_DAYS: (v) => (Number(v) >= 1 && Number(v) <= 30 ? null : 'location history is kept 30 days at most (ADR-0028 decision 5)'),
   RETENTION_DAYS: (v) => (Number(v) >= 1 && Number(v) <= 90 ? null : 'activity is kept 90 days at most (privacy policy)'),
-  ALERT_RETENTION_DAYS: null,
-  ROLLUP_RETENTION_DAYS: null,
+  // The code caps alerts at 365 by itself (usageModel.ts); the rule keeps a too-large value from reading as intended.
+  ALERT_RETENTION_DAYS: (v) => (Number.isInteger(Number(v)) && Number(v) >= 7 && Number(v) <= 365 ? null : 'alerts are kept 12 months at most (privacy policy); 7 to 365'),
+  // The code accepts any number at or above the event window, so nothing but this rule stops 1000 days.
+  ROLLUP_RETENTION_DAYS: (v) => (Number.isInteger(Number(v)) && Number(v) >= 90 && Number(v) <= 365 ? null : 'daily totals are kept 365 days at most (privacy policy); 90 to 365'),
 };
 
 const KNOWN = new Set([
@@ -368,6 +370,9 @@ function selftest() {
     ['sandbox push', (t) => setEnv(t, 'APNS_ENV', 'sandbox'), 'APNS_ENV: must be "production"'],
     ['public scorer address', (t) => setEnv(t, 'AI_ENGINE_URL', 'https://api.example.com'), 'AI_ENGINE_URL: must be the private'],
     ['location kept too long', (t) => setEnv(t, 'LOCATION_RETENTION_DAYS', '365'), 'LOCATION_RETENTION_DAYS: location history'],
+    ['daily totals kept too long', (t) => setEnv(t, 'ROLLUP_RETENTION_DAYS', '1000'), 'ROLLUP_RETENTION_DAYS: daily totals'],
+    ['alerts kept too long', (t) => setEnv(t, 'ALERT_RETENTION_DAYS', '730'), 'ALERT_RETENTION_DAYS: alerts are kept'],
+    ['activity kept too long', (t) => setEnv(t, 'RETENTION_DAYS', '180'), 'RETENTION_DAYS: activity is kept'],
     ['unknown variable', (t) => setEnv(t, 'DEBUG', '*'), 'DEBUG: unknown variable'],
     ['moving image tag', (t) => { api(t).image = api(t).image.replace(/:[0-9a-f]{40}$/, ':latest'); }, 'image: not pinned'],
     ['version-shaped tag', (t) => { api(t).image = api(t).image.replace(/:[0-9a-f]{40}$/, ':1.4.0'); }, 'image: not pinned'],
