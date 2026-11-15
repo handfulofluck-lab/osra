@@ -580,4 +580,36 @@ class TamperScreenPolicyTest {
             ),
         )
     }
+
+    /**
+     * Antigravity's item 4: OSRA's App Info screen carries a "Display over other apps" summary row, so a word-first
+     * special-access check reclassified it from APP_INFO to SPECIAL_ACCESS and the parent's alert said "special
+     * access" for an page that was app info. A class-identified screen keeps its identity.
+     */
+    @Test
+    fun `App info with an overlay row is still APP_INFO`() {
+        assertEquals(
+            TamperScreen.APP_INFO,
+            TamperScreenPolicy.classify(
+                "com.android.settings",
+                listOf<CharSequence>("OSRA", "Appear on top", "Uninstall", "Force stop"),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                windowClass = "AppInfoDashboardActivity",
+                ourSpecialAccess = setOf(TamperScreenPolicy.SpecialAccess.OVERLAY),
+            ),
+        )
+        // And the fragment-hosted page, with no class to name it, still falls through to SPECIAL_ACCESS.
+        assertEquals(
+            TamperScreen.SPECIAL_ACCESS,
+            TamperScreenPolicy.classify(
+                "com.android.settings",
+                listOf<CharSequence>("OSRA", "Display over other apps", "Allowed"),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                windowClass = "SubSettings",
+                ourSpecialAccess = setOf(TamperScreenPolicy.SpecialAccess.OVERLAY),
+            ),
+        )
+    }
 }

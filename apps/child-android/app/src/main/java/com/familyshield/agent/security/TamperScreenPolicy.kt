@@ -231,15 +231,6 @@ object TamperScreenPolicy {
         // by the permission-management branch further down.
         if (simpleName(windowClass) in NEVER_CLASSES) return TamperScreen.NONE
 
-        // Part 2: a special-access page that names us, while we already hold that access, is a protection screen —
-        // switching it off is the same loss as switching a permission off. Scoped to Settings, because the words
-        // alone appear on pages that protect nothing (Antigravity's second note on osra-security#29).
-        if (packageName == "com.android.settings") {
-            val holds = SPECIAL_ACCESS_WORDS.filterKeys { it in ourSpecialAccess }
-            if (holds.any { (_, words) -> words.any { joinedAll.contains(normalize(it)) } }) {
-                return TamperScreen.SPECIAL_ACCESS
-            }
-        }
 
         // Fable's B2 on #813: our own accessibility description is proof that this is *our* service page, whatever
         // the host activity is called, and it is a Settings screen by then.
@@ -264,6 +255,16 @@ object TamperScreenPolicy {
             in UNINSTALL_CLASSES -> return TamperScreen.UNINSTALL
             in APP_INFO_CLASSES -> return TamperScreen.APP_INFO
             in PROTECTION_SETTINGS_CLASSES -> return TamperScreen.PROTECTION_SETTINGS
+        }
+
+        // Part 2 runs **after** the class match (Antigravity's item 4): OSRA's App Info screen carries a "Display over
+        // other apps" summary row, so a word-first check reclassified it from APP_INFO to SPECIAL_ACCESS. A screen
+        // identified by its class keeps that identity; only the fragment-hosted pages fall through to here.
+        if (packageName == "com.android.settings") {
+            val holds = SPECIAL_ACCESS_WORDS.filterKeys { it in ourSpecialAccess }
+            if (holds.any { (_, words) -> words.any { joinedAll.contains(normalize(it)) } }) {
+                return TamperScreen.SPECIAL_ACCESS
+            }
         }
 
         val joined = joinedAll

@@ -95,4 +95,29 @@ class AccessibilityOffPolicyTest {
             ),
         )
     }
+
+    /**
+     * Antigravity's item 3: the special-access latch is captured on entering Settings, held for the visit, and
+     * dropped when Settings is left — **including** when the next window is our own, which is what a Back from the
+     * grant page produces.
+     */
+    @Test
+    fun `the special-access latch is captured on entry, held, and dropped on leaving`() {
+        val heldNow = setOf(TamperScreenPolicy.SpecialAccess.OVERLAY)
+        fun next(previous: Set<TamperScreenPolicy.SpecialAccess>?, pkg: String?) =
+            AccessibilityOffPolicy.nextSpecialAccessLatch(
+                previous = previous,
+                packageName = pkg,
+                settingsPackage = "com.android.settings",
+                ourPackage = "com.familyshield.agent",
+                heldNow = { heldNow },
+            )
+
+        assertEquals("captured on entry", heldNow, next(null, "com.android.settings"))
+        // Held for the whole visit: a grant made inside it does not change the decision.
+        assertEquals("held for the visit", heldNow, next(heldNow, "com.android.settings"))
+        assertEquals("an unnamed window keeps it", heldNow, next(heldNow, null))
+        assertNull("leaving Settings drops it", next(heldNow, "com.android.telephony"))
+        assertNull("and so does coming back to us after a grant", next(heldNow, "com.familyshield.agent"))
+    }
 }
