@@ -101,4 +101,23 @@ class ParentPinTest {
         ParentPin.verify("4729", stored, recording)
         assertEquals(1, calls)
     }
+
+    @Test
+    fun `a PIN set with Arabic digits opens with Western digits and the other way round (#771)`() {
+        val storedArabic = ParentPin.hash("١٢٣٤")
+        assertTrue(ParentPin.verify("1234", storedArabic))
+        assertTrue(ParentPin.verify("١٢٣٤", storedArabic))
+        val storedWestern = ParentPin.hash("4729")
+        assertTrue(ParentPin.verify("٤٧٢٩", storedWestern))
+        assertTrue(ParentPin.verify("۴۷۲۹", storedWestern))
+    }
+
+    @Test
+    fun `validation accepts Arabic digits and still refuses a weak PIN typed with them (#771)`() {
+        assertNull(ParentPin.validationError("٤٧٢٩"))
+        assertNull(ParentPin.validationError("۴۷۲۹"))
+        assertTrue(ParentPin.validationError("١٢٣٤") != null) // 1234 is a known weak PIN
+        assertTrue(ParentPin.validationError("٠٠٠٠") != null) // all the same digit
+        assertTrue(ParentPin.validationError("٤٧٢") != null) // too short
+    }
 }

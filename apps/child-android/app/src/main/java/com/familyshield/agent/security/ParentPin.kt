@@ -20,14 +20,23 @@ object ParentPin {
     const val MIN_LENGTH = 4
     const val MAX_LENGTH = 8
 
-    /** A PIN is 4–8 digits. Returns null when acceptable, else a human-readable reason. */
-    fun validationError(pin: String): String? = when {
-        pin.length < MIN_LENGTH -> "PIN must be at least $MIN_LENGTH digits."
-        pin.length > MAX_LENGTH -> "PIN must be at most $MAX_LENGTH digits."
-        !pin.all { it.isDigit() } -> "PIN must be digits only."
-        pin.toSet().size == 1 -> "Choose a PIN that is not all the same digit."
-        pin in WEAK_PINS -> "Choose a less predictable PIN."
-        else -> null
+    /**
+     * A PIN is 4–8 digits. Returns null when acceptable, else a human-readable reason.
+     *
+     * `٠–٩` and `۰–۹` are accepted as the digits they are (#771): the value is normalised before the
+     * length, digit and weak-PIN checks, and [hash]/[verify] normalise the same way, so a PIN typed on
+     * an Arabic keyboard is the same PIN typed on any other.
+     */
+    fun validationError(pin: String): String? {
+        val normalized = Digits.normalize(pin)
+        return when {
+            normalized.length < MIN_LENGTH -> "PIN must be at least $MIN_LENGTH digits."
+            normalized.length > MAX_LENGTH -> "PIN must be at most $MAX_LENGTH digits."
+            !Digits.isAsciiDigits(normalized) -> "PIN must be digits only."
+            normalized.toSet().size == 1 -> "Choose a PIN that is not all the same digit."
+            normalized in WEAK_PINS -> "Choose a less predictable PIN."
+            else -> null
+        }
     }
 
     /**
@@ -36,12 +45,12 @@ object ParentPin {
      * JDK's computes a hash, so a unit test that only calls [verify] passes for the wrong reason — the
      * hash simply does not match. osra-security#17 is the device half of that difference.
      */
-    fun hasAcceptedLength(pin: String): Boolean = pin.length in MIN_LENGTH..MAX_LENGTH
+    fun hasAcceptedLength(pin: String): Boolean = Digits.normalize(pin).length in MIN_LENGTH..MAX_LENGTH
 
     /** Hashes [pin] with a fresh random salt into the storable string. */
     fun hash(pin: String, random: SecureRandom = SecureRandom()): String {
         val salt = ByteArray(SALT_BYTES).also { random.nextBytes(it) }
-        val hash = pbkdf2(pin, salt, ITERATIONS)
+        val hash = pbkdf2(Digits.normalize(pin), salt, ITERATIONS)
         return "pbkdf2\$$ITERATIONS\$${b64(salt)}\$${b64(hash)}"
     }
 
@@ -67,15 +76,16 @@ object ParentPin {
         kdf: (String, ByteArray, Int) -> ByteArray = ::pbkdf2,
     ): Boolean {
         if (stored.isNullOrBlank()) return false
+        val normalized = Digits.normalize(pin)
         // A PIN outside the accepted length cannot match one that was hashed, and PBKDF2 refuses some
         // of those inputs outright. Reject before the KDF rather than after it throws.
-        if (!hasAcceptedLength(pin)) return false
+        if (!hasAcceptedLength(normalized)) return false
         val parts = stored.split("$")
         if (parts.size != 4 || parts[0] != "pbkdf2") return false
         val iterations = parts[1].toIntOrNull() ?: return false
         val salt = runCatching { unb64(parts[2]) }.getOrNull() ?: return false
         val expected = runCatching { unb64(parts[3]) }.getOrNull() ?: return false
-        val actual = runCatching { kdf(pin, salt, iterations) }.getOrNull() ?: return false
+        val actual = runCatching { kdf(normalized, salt, iterations) }.getOrNull() ?: return false
         return constantTimeEquals(expected, actual)
     }
 
