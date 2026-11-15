@@ -2,8 +2,10 @@ package com.familyshield.agent.security
 
 import android.content.Context
 import android.util.Log
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
@@ -174,18 +176,6 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             else mapOf("type" to type)
 
         /**
-         * Enqueues one expedited alert of [type]; a second enqueue of the same type replaces the
-         * first. For [TYPE_GUARD_TRIGGERED], [windowStartMs] and [attemptCount] identify the
-         * per-window aggregate row and its count (issue #227).
-         */
-        /**
-         * Issue #227 D1 (Claude's review): one unique name per type meant a new window's enqueue
-         * **cancelled the previous window's pending retry**, so attempts made while the phone was
-         * offline were dropped as soon as the child tried again in the next window. Guard alerts are
-         * therefore unique per window: REPLACE still coalesces inside a window (newest count wins),
-         * and a new window no longer cancels the old one. Every other type keeps the old name.
-         */
-        /**
          * #813 review (Claude): the dedupe key as a pure function, so a test can drive it. It used to be computed
          * inline, and a row that only read the source could not tell a deleted branch from a wired one — the two
          * types below were exactly that mistake.
@@ -216,6 +206,13 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
         /** How many times an ordinary tamper alert retries before giving up. */
         internal const val MAX_ATTEMPTS_PER_ALERT = 5
 
+        /**
+         * Issue #227 D1 (Claude's review): one unique name per type meant a new window's enqueue
+         * **cancelled the previous window's pending retry**, so attempts made while the phone was
+         * offline were dropped as soon as the child tried again in the next window. Guard alerts are
+         * therefore unique per window: REPLACE still coalesces inside a window (newest count wins),
+         * and a new window no longer cancels the old one. Every other type keeps the old name.
+         */
         internal fun uniqueWorkName(type: String, windowStartMs: Long, app: String = ""): String = when {
             type == TYPE_GUARD_TRIGGERED && windowStartMs > 0L -> "tamper_alert_${type}_$windowStartMs"
             // Issue #175: one bypass per episode; a second app's episode must not cancel the first's retry.
@@ -225,6 +222,11 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             else -> "tamper_alert_$type"
         }
 
+        /**
+         * Enqueues one expedited alert of [type]; a second enqueue of the same type replaces the
+         * first. For [TYPE_GUARD_TRIGGERED], [windowStartMs] and [attemptCount] identify the
+         * per-window aggregate row and its count (issue #227).
+         */
         fun enqueue(
             context: Context,
             type: String,
@@ -237,6 +239,10 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             layout: String = "",
         ) {
             val request = OneTimeWorkRequestBuilder<TamperAlertWorker>()
+                // Review of osra-security#29 (Claude): without this the worker keeps failing while the phone is
+                // offline, and with the capped exponential backoff the first successful attempt can land hours
+                // after reconnect. A constraint makes WorkManager wait for the network instead of burning retries.
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .setInputData(
                     workDataOf(

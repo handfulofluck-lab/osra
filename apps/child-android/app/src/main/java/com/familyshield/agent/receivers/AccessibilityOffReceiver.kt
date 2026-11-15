@@ -7,6 +7,7 @@ import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.AlertDto
 import com.familyshield.agent.security.AccessibilityServiceListPolicy
+import com.familyshield.agent.security.TamperAlertDedupe
 import com.familyshield.agent.security.TamperState
 import com.familyshield.agent.security.PermissionObservationPolicy
 import com.familyshield.agent.services.AccessibilityMonitorService
@@ -64,6 +65,12 @@ class AccessibilityOffReceiver {
                     title = "Protection was disabled",
                     body = "The OSRA accessibility service was turned off on this device",
                     metadata = mapOf("type" to AccessibilityOffPolicy.TYPE),
+                    // Antigravity's fix: the same key the unbind alert uses for this switch-off, so the server sees
+                    // one alert rather than one keyed and one unkeyed page.
+                    dedupeKey = TamperAlertDedupe.accessibilityOffKey(
+                        settings.deviceId(),
+                        TamperState.accessibilityDisabledAtMs(context).takeIf { it > 0L } ?: nowMs,
+                    ),
                 ),
             )
         }.onSuccess {

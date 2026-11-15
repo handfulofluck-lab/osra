@@ -180,6 +180,8 @@ class AccessibilityMonitorService : AccessibilityService() {
         // is the authoritative "accessibility is running" for EnforceabilityPolicy — not the
         // ENABLED_ACCESSIBILITY_SERVICES setting, which stays true while the service is not alive.
         isRunning = true
+        // Back on: the shared moment is cleared, the next switch-off starts a new alert.
+        TamperState.setAccessibilityDisabledAt(this, 0L)
         // U2b: the poll compares the last observation with the current one, so a bind has to record "on" — without
         // it a re-enable never clears the state and the next unbind is silent.
         serviceScope.launch { runCatching { settings.recordAccessibilityEnabled(true) } }
@@ -203,6 +205,9 @@ class AccessibilityMonitorService : AccessibilityService() {
         // all when the location grant is off — which is exactly the phone where the child turned accessibility
         // off to stop blocking. Tell the parent now, through the worker so it retries offline.
         val unboundAt = System.currentTimeMillis()
+        // Antigravity's fix on osra-security#29: stamp the moment synchronously, so the poll (which may run first on
+        // reconnect) and this alert share one dedupe key instead of paging twice.
+        TamperState.setAccessibilityDisabledAt(this, unboundAt)
         // U2a (Antigravity): a parent who turned accessibility off inside the PIN's grace window, or a phone that
         // was never paired, must not produce a critical alert — that is the parent's own action.
         if (com.familyshield.agent.receivers.AccessibilityOffPolicy.shouldTellParent(
@@ -221,6 +226,12 @@ class AccessibilityMonitorService : AccessibilityService() {
                     eventAtMs = unboundAt,
                 )
             }.onFailure { Log.w(TAG, "could not enqueue the accessibility-off alert (#29)", it) }
+        } else {
+            // Claude's point on #813: the parent's own switch-off (or an unpaired phone) is recorded, not paged —
+            // and it has to be recorded, or the next poll lands after the grace window, sees "on", and pages.
+            serviceScope.launch {
+                runCatching { settings.recordAccessibilityEnabled(false) }
+            }
         }
         return super.onUnbind(intent)
     }

@@ -66,4 +66,25 @@ class TamperAlertWorkerPolicyTest {
         assertTrue(TamperAlertWorker.shouldRetry(TamperAlertWorker.TYPE_ADMIN_REMOVED, 4))
         assertFalse(TamperAlertWorker.shouldRetry(TamperAlertWorker.TYPE_ADMIN_REMOVED, 5))
     }
+
+    /**
+     * osra-security#29 review (Antigravity): both reporters of one switch-off stamp the same moment, so the server
+     * dedupes on one key instead of paging twice — one alert with a key and one poll without it was two pages.
+     */
+    @Test
+    fun `the poll and the unbind alert agree on the key for one switch-off`() {
+        val at = 1_700_000_000_000L
+        val fromUnbind = TamperAlertWorker.dedupeKeyFor(
+            type = TamperAlertWorker.TYPE_ACCESSIBILITY_OFF,
+            deviceId = "dev-9",
+            guardWindow = null,
+            app = "",
+            layout = "",
+            eventAtMs = at,
+            adminRemovedAtMs = 0L,
+        )
+        // The poll reads the moment the service stamped, and builds the key with the same function.
+        val fromPoll = TamperAlertDedupe.accessibilityOffKey("dev-9", at)
+        assertEquals("one switch-off, one key, whichever reporter asks", fromPoll, fromUnbind)
+    }
 }
