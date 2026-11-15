@@ -71,7 +71,15 @@ class TamperScreenPolicyTest {
                 assertEquals(
                     "$pkg/$cls",
                     TamperScreen.PROTECTION_SETTINGS,
-                    classifyWindow(pkg, cls, "OSRA", "Location", "Don't allow", "Allow all the time"),
+                    TamperScreenPolicy.classify(
+                        pkg,
+                        listOf<CharSequence>("OSRA", "Location", "Don't allow", "Allow all the time"),
+                        agent, admin, pkg,
+                        ourAdminActive = true,
+                        windowClass = cls,
+                        // R2: the page is ours to protect only while we hold the grant it manages.
+                        ourLocationActive = true,
+                    ),
                 )
             }
         }
@@ -175,11 +183,21 @@ class TamperScreenPolicyTest {
     fun `the permission management pages are guarded, the runtime prompt and the lists are not`() {
         assertEquals(
             TamperScreen.PROTECTION_SETTINGS,
-            classifyWindow("com.samsung.android.permissioncontroller", "ManagePermissionsActivity", "OSRA", "Location", "Don't allow"),
+            TamperScreenPolicy.classify(
+                "com.samsung.android.permissioncontroller",
+                listOf<CharSequence>("OSRA", "Location", "Don't allow"),
+                agent, admin, pkg, ourAdminActive = true,
+                windowClass = "ManagePermissionsActivity", ourLocationActive = true,
+            ),
         )
         assertEquals(
             TamperScreen.PROTECTION_SETTINGS,
-            classifyWindow("com.android.permissioncontroller", "AppPermissionsActivity", "OSRA", "Camera", "Allow"),
+            TamperScreenPolicy.classify(
+                "com.android.permissioncontroller",
+                listOf<CharSequence>("OSRA", "Camera", "Allow"),
+                agent, admin, pkg, ourAdminActive = true,
+                windowClass = "AppPermissionsActivity", ourLocationActive = true,
+            ),
         )
         assertEquals(
             "the runtime prompt is not a protection screen",

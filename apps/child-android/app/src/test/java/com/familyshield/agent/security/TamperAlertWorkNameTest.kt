@@ -78,8 +78,15 @@ class TamperAlertWorkNameTest {
             .lines().takeWhile { it != "    }" }.joinToString(separator = " ")
         org.junit.Assert.assertTrue("the worker is told", unbind.contains("TYPE_ACCESSIBILITY_OFF"))
         org.junit.Assert.assertTrue("with the moment it happened", unbind.contains("eventAtMs = unboundAt"))
-        org.junit.Assert.assertTrue("and the poll is silenced", unbind.contains("recordAccessibilityEnabled(false)"))
-        org.junit.Assert.assertTrue("through the same throttle key the poll reads", unbind.contains("AccessibilityOffPolicy.TYPE"))
+        // U2b: the poll is silenced inside the worker, before its POST — not in a scope onDestroy cancels.
+        val worker = java.io.File(System.getProperty("user.dir") ?: ".").let { wd ->
+            listOf(
+                java.io.File(wd, "src/main/java/com/familyshield/agent/security/TamperAlertWorker.kt"),
+                java.io.File(wd, "app/src/main/java/com/familyshield/agent/security/TamperAlertWorker.kt"),
+            ).firstOrNull { it.isFile }?.readText() ?: error("worker source not found")
+        }
+        org.junit.Assert.assertTrue("the worker records the off state", worker.contains("recordAccessibilityEnabled(false)"))
+        org.junit.Assert.assertTrue("through the same throttle key the poll reads", worker.contains("AccessibilityOffPolicy.TYPE"))
     }
 
     /** One alert per unbind, and two unbinds are two alerts. */
