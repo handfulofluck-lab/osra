@@ -169,3 +169,119 @@ function Invoke-ScenarioProcess {
     $text = & $resolved @Args | Out-String
     return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $text }
 }
+
+
+. (Join-Path $PSScriptRoot "classify-build.ps1")
+
+function Invoke-ScenarioLease {
+    param(
+        [Parameter(Mandatory = $true)][ValidateSet("Claim", "Release", "Heartbeat")][string]$Action,
+        [ValidateSet("Clean", "Locked", "Unknown")][string]$LeftState = "Unknown",
+        [string]$Note = ""
+    )
+    if (-not $script:LeaseCalls) { $script:LeaseCalls = @() }
+    if (-not $DryRun) {
+        $lease = @{
+            Action = $Action; Owner = $Owner; Serial = $Serial; Purpose = "scenario:$Scenario"
+        }
+        if ($LeaseStore) { $lease.Store = $LeaseStore }
+        if ($Action -eq "Release") { $lease.LeftState = $LeftState; $lease.Note = $Note }
+        & (Join-Path $PSScriptRoot "phone-claim.ps1") @lease
+        if ($LASTEXITCODE -ne 0) { throw "phone_lease_$Action_failed" }
+    }
+    $record = [pscustomobject]@{ Action = $Action; LeftState = $LeftState; Note = $Note }
+    $script:LeaseCalls += $record
+    return $record
+}
+
+function Invoke-ScenarioHttp {
+    param([Parameter(Mandatory = $true)][string]$Url, [string]$Method = "GET")
+    if ($DryRun) {
+        if ($env:FAKE_HTTP_STATUS -and [int]$env:FAKE_HTTP_STATUS -ge 400) { throw "backend_unhealthy" }
+        return [pscustomobject]@{ StatusCode = 200 }
+    }
+    $response = Invoke-WebRequest -UseBasicParsing -Uri $Url -Method $Method -TimeoutSec 20
+    if ([int]$response.StatusCode -lt 200 -or [int]$response.StatusCode -ge 300) { throw "backend_unhealthy" }
+    return [pscustomobject]@{ StatusCode = [int]$response.StatusCode }
+}
+
+function Test-AdminPackageRemoval {
+    param([Parameter(Mandatory = $true)][string]$Package)
+    $owners = Invoke-Adb -Command @("shell", "dpm", "list-owners") -SkipAdminCheck
+    return $owners.Output -notmatch [regex]::Escape($Package)
+}
+
+function Invoke-Adb {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Command,
+        [string]$Package,
+        [switch]$SkipAdminCheck,
+        [switch]$RawBytes
+    )
+    Assert-ScenarioCommand -Command $Command -Package $Package
+    $normalized = @($Command | ForEach-Object { "$_".ToLowerInvariant() })
+    $pm = [Array]::IndexOf($normalized, "pm")
+    if (-not $SkipAdminCheck -and $pm -ge 0 -and $pm + 1 -lt $normalized.Count -and $normalized[$pm + 1] -in @("uninstall", "clear")) {
+        if (-not (Test-AdminPackageRemoval -Package $Package)) { throw "active_device_admin_package" }
+    }
+    if ($RawBytes) { throw "raw_capture_not_implemented" }
+    return Invoke-ScenarioProcess -Exe "adb" -Args (@("-s", $Serial) + $Command)
+}
+
+function Get-ScenarioLockState {
+    $window = Invoke-Adb -Command @("shell", "dumpsys", "window")
+    if ($window.Output -match "mDreamingLockscreen=(true|false)") { return $Matches[1] -eq "true" }
+    if ($window.Output -match "mShowingDream=(true|false)") { return $Matches[1] -eq "true" }
+    $trust = Invoke-Adb -Command @("shell", "dumpsys", "trust")
+    return $trust.Output -match "device is secure"
+}
+
+function Invoke-ScenarioPreflight {
+    param([Parameter(Mandatory = $true)]$Manifest)
+    Assert-ManifestShape -Manifest $Manifest
+    $script:LeaseCalls = @()
+    Invoke-ScenarioLease -Action Claim | Out-Null
+    $model = Invoke-Adb -Command @("shell", "getprop", "ro.product.model")
+    $expectedModel = switch ($Serial) {
+        "R5CW116Y6GF" { "SM-F711B" }
+        default { throw "unknown_device_catalogue_serial" }
+    }
+    if ($model.Output.Trim() -ne $expectedModel) { throw "device_model_mismatch" }
+    $dump = Invoke-Adb -Command @("shell", "dumpsys", "package", $Manifest.package)
+    $build = Get-BuildKind -DumpsysText $dump.Output -Package $Manifest.package
+    if ($build.Kind -ne "release") { throw "build_not_gate_evidence" }
+    $health = Invoke-ScenarioHttp -Url $Manifest.apiHealthUrl
+    $lockState = Get-ScenarioLockState
+    return [pscustomobject]@{
+        buildKind = $build.Kind; lockState = $lockState; health = $health; model = $model.Output.Trim()
+    }
+}
+
+function Get-ScenarioBeforeState {
+    $values = [ordered]@{}
+    $values.SYSTEM_ALERT_WINDOW = (Invoke-Adb -Command @("shell", "appops", "get", $Package, "SYSTEM_ALERT_WINDOW")).Output.Trim()
+    $values.locale = (Invoke-Adb -Command @("shell", "getprop", "persist.sys.locale")).Output.Trim()
+    foreach ($key in $script:RestoredSettingsKeys) {
+        $values[$key] = (Invoke-Adb -Command @("shell", "settings", "get", "global", $key)).Output.Trim()
+    }
+    return [pscustomobject]@{ lockState = (Get-ScenarioLockState); values = $values }
+}
+
+function New-ScenarioEvidence {
+    param([Parameter(Mandatory = $true)][string]$ScenarioId, [Parameter(Mandatory = $true)][string]$Out, [Parameter(Mandatory = $true)]$Before)
+    if ($ScenarioId -notmatch "^SC-[A-Za-z0-9.-]{1,60}$" -or $ScenarioId.Contains("..")) { throw "invalid_scenario_id" }
+    $root = [IO.Path]::GetFullPath($Out)
+    $folder = Join-Path $root ("{0}-{1}" -f [DateTime]::UtcNow.ToString("yyyyMMddTHHmmssZ"), $ScenarioId)
+    New-Item -ItemType Directory -Path $folder -Force | Out-Null
+    $Before | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $folder "before.json") -Encoding UTF8
+    return $folder
+}
+
+function Invoke-ScenarioManualStep {
+    param([Parameter(Mandatory = $true)][bool]$LockState, [string]$Instruction = "Confirm the synthetic screen")
+    if ($LockState) { return [pscustomobject]@{ status = "NOT RUN"; reason = "phone locked" } }
+    if ($DryRun) { return [pscustomobject]@{ status = "NOT RUN"; reason = "manual confirmation required" } }
+    [Console]::Out.WriteLine($Instruction)
+    Read-Host "Press Enter to continue" | Out-Null
+    return [pscustomobject]@{ status = "DONE"; reason = "manual confirmation recorded" }
+}
