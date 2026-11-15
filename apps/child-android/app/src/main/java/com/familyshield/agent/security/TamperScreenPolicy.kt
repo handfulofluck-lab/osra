@@ -102,7 +102,6 @@ object TamperScreenPolicy {
         "AccessibilityDetails",
         "AccessibilityServiceDetails",
         "SecAccessibilityDetailsActivity",
-        "SecAccessibilityInstalledAppsActivity",
         // Permission manager → Location → our app (osra-security#30), AOSP PermissionController.
         "ManagePermissionsActivity",
         "AppPermissionsActivity",
@@ -178,6 +177,8 @@ object TamperScreenPolicy {
          * window event then carries the host's class.
          */
         agentServiceDescription: String = "",
+        /** Whether the agent holds a location grant right now; the permission page is only ours to protect then. */
+        ourLocationActive: Boolean = false,
     ): TamperScreen {
         if (packageName != null && (packageName to simpleName(windowClass)) in SPACE_SETUP_SCREENS) {
             return TamperScreen.SPACE_SETUP
@@ -195,6 +196,11 @@ object TamperScreenPolicy {
         val namesUs = lower.any { t -> names.any { t.contains(it) } }
         if (!namesUs) return TamperScreen.NONE
 
+        // Antigravity's R1 on #813: NEVER_CLASSES is checked here, before every protection rule below, so the
+        // accessibility list, the settings hub and the runtime prompt cannot be caught by the description text or
+        // by the permission-management branch further down.
+        if (simpleName(windowClass) in NEVER_CLASSES) return TamperScreen.NONE
+
         // Fable's B2 on #813: our own accessibility description is proof that this is *our* service page, whatever
         // the host activity is called, and it is a Settings screen by then.
         if (packageName == "com.android.settings") {
@@ -206,7 +212,10 @@ object TamperScreenPolicy {
         // background location. So this is **not** the whole package — it is the management classes, and the
         // runtime dialog is never a screen (NEVER_CLASSES).
         if (packageName.contains("permissioncontroller") && simpleName(windowClass) in PERMISSION_MANAGEMENT_CLASSES) {
-            return TamperScreen.PROTECTION_SETTINGS
+            // Antigravity's R2 on #813: onboarding opens this very page to grant background location, after the
+            // parent has set the PIN. With no location grant yet there is nothing to protect, and gating it blocks
+            // the parent's own setup; the same shape as ADMIN_CLASSES above, which only counts while our admin is on.
+            return if (ourLocationActive) TamperScreen.PROTECTION_SETTINGS else TamperScreen.NONE
         }
 
         when (simpleName(windowClass)) {

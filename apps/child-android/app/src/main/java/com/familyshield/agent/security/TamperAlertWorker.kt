@@ -50,6 +50,8 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             }
             // Not eventTimestamp(): its fallback stamps the admin-disable time, which is not this event's.
             TYPE_BLOCK_BYPASS -> TamperAlertDedupe.blockBypassKey(deviceId, app, layout, inputData.getLong(KEY_EVENT_AT_MS, 0L))
+            // U1 (Antigravity): without this the key was computed nowhere, so the unbind alert had no dedupe.
+            TYPE_ACCESSIBILITY_OFF -> TamperAlertDedupe.accessibilityOffKey(deviceId, inputData.getLong(KEY_EVENT_AT_MS, 0L))
             else -> null
         }
         // The window key is stable across attempts; the local key adds the count so attempt N+1 is
@@ -64,6 +66,14 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             recordPosted = { TamperState.markTamperAlertPosted(applicationContext, it) },
         )
         return try {
+            // U2b (Antigravity): written here, before the POST, so the 60-second poll reads the same event as
+            // already reported. Doing it in onUnbind raced a scope that onDestroy cancels.
+            if (type == TYPE_ACCESSIBILITY_OFF) {
+                runCatching {
+                    settings.recordAccessibilityEnabled(false)
+                    settings.recordTamperAlert(com.familyshield.agent.receivers.AccessibilityOffPolicy.TYPE, inputData.getLong(KEY_EVENT_AT_MS, 0L))
+                }
+            }
             dispatcher.dispatch(postKey) {
                 entry.apiService().postInternalAlert(
                     AlertDto(
@@ -148,6 +158,7 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             TYPE_BLOCK_BYPASS to "A blocked app stayed on screen",
         )
         private val BODIES = mapOf(
+            TYPE_ACCESSIBILITY_OFF to "The OSRA accessibility service was turned off on this device",
             TYPE_ADMIN_REMOVED to "OSRA's device-admin rights were turned off on this device. Uninstall is no longer blocked.",
             TYPE_GUARD_TRIGGERED to "A protection-removal screen was opened on this device and the PIN was asked for.",
             TYPE_VPN_REVOKED to "OSRA's web filter (VPN) was disconnected on this device — another VPN app took over or it was turned off in Settings. Web filtering is off until it is reconnected.",
@@ -175,6 +186,8 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             type == TYPE_GUARD_TRIGGERED && windowStartMs > 0L -> "tamper_alert_${type}_$windowStartMs"
             // Issue #175: one bypass per episode; a second app's episode must not cancel the first's retry.
             type == TYPE_BLOCK_BYPASS -> "tamper_alert_${type}_${app}_$windowStartMs"
+            // U1: one work item per unbind, so a second one cannot cancel the first one's retry.
+            type == TYPE_ACCESSIBILITY_OFF && windowStartMs > 0L -> "tamper_alert_${type}_$windowStartMs"
             else -> "tamper_alert_$type"
         }
 

@@ -75,6 +75,18 @@ class AccessibilityMonitorService : AccessibilityService() {
      */
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /**
+     * Antigravity's R2 on #813: whether we held a location grant when the current PermissionController window was
+     * entered. Latched on entry and cleared on leaving, so a parent granting "Allow all the time" during setup does
+     * not trip the gate 50 ms later on the content change that follows the tap.
+     */
+    private var permissionWindowLocationActive: Boolean? = null
+
+    /** The location grant right now — fine or coarse, which is all "we hold a location permission" means here. */
+    private fun locationGrantedNow(): Boolean =
+        ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
     /** osra-security#7: the window the gate was last opened over; a state change from any other is a new screen. */
     private var guardedWindowId = -1
     /** osra-security#5: class and package of the last TYPE_WINDOW_STATE_CHANGED, for [TamperScreenPolicy.classify]. */
@@ -141,6 +153,9 @@ class AccessibilityMonitorService : AccessibilityService() {
         // is the authoritative "accessibility is running" for EnforceabilityPolicy — not the
         // ENABLED_ACCESSIBILITY_SERVICES setting, which stays true while the service is not alive.
         isRunning = true
+        // U2b: the poll compares the last observation with the current one, so a bind has to record "on" — without
+        // it a re-enable never clears the state and the next unbind is silent.
+        serviceScope.launch { runCatching { settings.recordAccessibilityEnabled(true) } }
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED)
             addAction(Intent.ACTION_PACKAGE_REPLACED)
@@ -161,21 +176,20 @@ class AccessibilityMonitorService : AccessibilityService() {
         // all when the location grant is off — which is exactly the phone where the child turned accessibility
         // off to stop blocking. Tell the parent now, through the worker so it retries offline.
         val unboundAt = System.currentTimeMillis()
-        runCatching {
-            TamperAlertWorker.enqueue(
-                this,
-                TamperAlertWorker.TYPE_ACCESSIBILITY_OFF,
-                detail = "The OSRA accessibility service was turned off on this device",
-                eventAtMs = unboundAt,
-            )
-        }.onFailure { Log.w(TAG, "could not enqueue the accessibility-off alert (#29)", it) }
-        // The poll must not repeat it: record the state and the throttle stamp the poll reads, before the POST can
-        // fail — the same order the guard uses for its own alerts.
-        runCatching {
-            serviceScope.launch {
-                settings.recordAccessibilityEnabled(false)
-                settings.recordTamperAlert(com.familyshield.agent.receivers.AccessibilityOffPolicy.TYPE, unboundAt)
-            }
+        // U2a (Antigravity): a parent who turned accessibility off inside the PIN's grace window, or a phone that
+        // was never paired, must not produce a critical alert — that is the parent's own action.
+        val parentDidThis = TamperState.graceUntil(this) > unboundAt
+        if (settings.isPairedSync() && !parentDidThis) {
+            // U2b: the state the poll reads is now written inside the worker, before its POST. Doing it here on a
+            // scope that onDestroy() cancels was a race that could drop both writes and let the poll repeat it.
+            runCatching {
+                TamperAlertWorker.enqueue(
+                    this,
+                    TamperAlertWorker.TYPE_ACCESSIBILITY_OFF,
+                    detail = "The OSRA accessibility service was turned off on this device",
+                    eventAtMs = unboundAt,
+                )
+            }.onFailure { Log.w(TAG, "could not enqueue the accessibility-off alert (#29)", it) }
         }
         return super.onUnbind(intent)
     }
@@ -591,6 +605,7 @@ class AccessibilityMonitorService : AccessibilityService() {
             windowClass = lastWindowClass.takeIf { lastWindowClassPkg != null && lastWindowClassPkg == pkg },
             // Fable's B2 on #813: our own accessibility description, which no other app's page carries.
             agentServiceDescription = getString(com.familyshield.agent.R.string.accessibility_description),
+            ourLocationActive = permissionWindowLocationActive ?: locationGrantedNow(),
         )
         if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) return // no filter to bypass yet
         if (!TamperScreenPolicy.shouldGuard(screen, pinStore.isConfigured(), TamperState.graceUntil(this), now)) return
@@ -666,6 +681,10 @@ class AccessibilityMonitorService : AccessibilityService() {
                             windowClass = lastWindowClass.takeIf {
                                 runCatching { window.isActive }.getOrDefault(false) && lastWindowClassPkg == pkg
                             },
+                            // R3: without this the cover path never saw the description and every split-screen
+                            // pane of our accessibility page stayed unclassified.
+                            agentServiceDescription = getString(com.familyshield.agent.R.string.accessibility_description),
+                            ourLocationActive = permissionWindowLocationActive ?: locationGrantedNow(),
                         )
                         if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) {
                             screen = TamperScreen.NONE
