@@ -147,7 +147,7 @@
   "childDetails": "Child details",
   "consentNotice": "Before you add a child, we need to confirm that you are their parent or guardian.",
   "consentMethodLabel": "Consent method",
-  "consentMethodSmsPlus": "SMS +",
+  "consentMethodSmsPlus": "Text message plus confirmation",
   "consentMethodKba": "Knowledge-based questions",
   "consentMethodFaceMatch": "Face match",
   "consentMethodCreditCard": "Credit card",

@@ -44,10 +44,12 @@ class DashboardScreen extends ConsumerWidget {
           IconButton(
             tooltip: l10n.alertsTooltip,
             onPressed: () => context.push('/alerts'),
-            // B3: count badge stays fixed size across accessibility text scales
-            // so digits do not overlap the bell or neighbouring AppBar icons.
+            // B3: count badge follows accessibility text scale up to 1.3x so
+            // digits stay legible without overlapping the bell or neighbouring AppBar icons.
             icon: MediaQuery(
-              data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
+              data: MediaQuery.of(context).copyWith(
+                textScaler: MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.3),
+              ),
               child: Badge(
                 isLabelVisible: unread.hasValue && (unread.value ?? 0) > 0,
                 label: Text('${unread.value ?? 0}'),

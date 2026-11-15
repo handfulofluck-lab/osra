@@ -373,7 +373,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get consentMethodLabel => 'طريقة الموافقة';
 
   @override
-  String get consentMethodSmsPlus => 'رسالة نصية +';
+  String get consentMethodSmsPlus => 'رسالة نصية مع تأكيد';
 
   @override
   String get consentMethodKba => 'أسئلة معرفية';

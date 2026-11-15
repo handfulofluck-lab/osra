@@ -149,7 +149,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
     final titleInAppBar = _titleFitsInAppBar(context, l10n, toolbarHeight);
     return Scaffold(
       appBar: AppBar(
-        toolbarHeight: toolbarHeight,
+        toolbarHeight: titleInAppBar ? toolbarHeight : null,
         title: titleInAppBar ? Text(l10n.editRules, maxLines: 2, overflow: TextOverflow.ellipsis) : null,
         actions: [
           if (_saving)

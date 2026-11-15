@@ -211,7 +211,10 @@ class _OverviewTab extends ConsumerWidget {
                       _ => Icons.devices_other,
                     }),
                     title: Text(d.model),
-                    subtitle: Text('${formatDevicePlatformLabel(d.platform, d.osVersion)} · ${_statusLabel(context, d)}'),
+                    subtitle: Text(switch (formatDevicePlatformLabel(d.platform, d.osVersion)) {
+                      '' => _statusLabel(context, d),
+                      final platformLabel => '$platformLabel · ${_statusLabel(context, d)}',
+                    }),
                     trailing: d.batteryPct > 0
                         ? Chip(
                             visualDensity: VisualDensity.compact,

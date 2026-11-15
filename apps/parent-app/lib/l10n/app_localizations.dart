@@ -689,7 +689,7 @@ abstract class AppLocalizations {
   /// No description provided for @consentMethodSmsPlus.
   ///
   /// In en, this message translates to:
-  /// **'SMS +'**
+  /// **'Text message plus confirmation'**
   String get consentMethodSmsPlus;
 
   /// No description provided for @consentMethodKba.

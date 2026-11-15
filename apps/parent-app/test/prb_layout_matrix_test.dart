@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -14,6 +14,7 @@ import 'package:familyshield_parent/features/auth/login_screen.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/children/consent_screen.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
+import 'package:familyshield_parent/features/map/family_map_screen.dart';
 import 'package:familyshield_parent/features/onboarding/setup_child_screen.dart';
 import 'package:familyshield_parent/features/onboarding/setup_done_screen.dart';
 import 'package:familyshield_parent/features/onboarding/setup_monitoring_screen.dart';
@@ -245,20 +246,45 @@ void main() {
     expect(finder, findsOneWidget, reason: reason);
     final element = tester.element(finder);
     final textWidget = tester.widget<Text>(finder);
+    final renderObject = tester.renderObject(finder);
+    final actualSize = tester.getSize(finder);
+    if (renderObject is RenderParagraph) {
+      expect(
+        renderObject.didExceedMaxLines,
+        isFalse,
+        reason: '${reason ?? 'Text "${textWidget.data}"'} exceeded maxLines in RenderParagraph',
+      );
+    }
     final data = textWidget.data ?? textWidget.textSpan?.toPlainText() ?? '';
-    final maxWidth = tester.getSize(finder).width;
     final resolvedStyle = DefaultTextStyle.of(element).style.merge(textWidget.style);
     final painter = TextPainter(
       text: TextSpan(text: data, style: resolvedStyle),
       textDirection: Directionality.of(element),
       textScaler: MediaQuery.textScalerOf(element),
       maxLines: textWidget.maxLines,
-    )..layout(maxWidth: maxWidth);
+    )..layout(maxWidth: actualSize.width);
     expect(
       painter.didExceedMaxLines,
       isFalse,
-      reason: '${reason ?? 'Text "$data"'} exceeded maxLines (${textWidget.maxLines}) at width $maxWidth',
+      reason: '${reason ?? 'Text "$data"'} exceeded maxLines (${textWidget.maxLines}) at width ${actualSize.width}',
     );
+    expect(
+      painter.width,
+      lessThanOrEqualTo(actualSize.width + 0.5),
+      reason: '${reason ?? 'Text "$data"'} laid-out width (${painter.width}) exceeded box width (${actualSize.width})',
+    );
+    expect(
+      actualSize.height + 0.5,
+      greaterThanOrEqualTo(painter.height),
+      reason: '${reason ?? 'Text "$data"'} box height (${actualSize.height}) clipped full text height (${painter.height})',
+    );
+    for (final line in painter.computeLineMetrics()) {
+      expect(
+        line.width,
+        lessThanOrEqualTo(actualSize.width + 0.5),
+        reason: '${reason ?? 'Text "$data"'} line width (${line.width}) exceeded box width (${actualSize.width})',
+      );
+    }
   }
 
   /// Asserts that no individual word in [text] was split mid-word across lines
@@ -592,6 +618,9 @@ void main() {
           matching: find.text(expectedCopyLabel),
         );
         expectTextNotClipped(tester, copyTextFinder, reason: 'Copy coordinates wrap');
+        final copyRect = tester.getRect(copyFinder);
+        expect(copyRect.left, greaterThanOrEqualTo(-0.5));
+        expect(copyRect.right, lessThanOrEqualTo(matrix.size.width + 0.5));
 
         final locationFinder = find.byKey(const ValueKey('alert-sos-location'));
         final bodyFinder = find.text(
@@ -898,6 +927,12 @@ void main() {
           }
         }
 
+        final expectedSmsPlus = matrix.locale.languageCode == 'ar'
+            ? 'رسالة نصية مع تأكيد'
+            : 'Text message plus confirmation';
+        expect(l10n.consentMethodSmsPlus, expectedSmsPlus);
+        expect(find.text(expectedSmsPlus), findsOneWidget);
+
         final revokeFinder = find.byKey(const ValueKey('consentRevokeButton'));
         await tester.scrollUntilVisible(revokeFinder, 200);
         await tester.pumpAndSettle();
@@ -928,6 +963,17 @@ void main() {
           final titleFinder = find.text(l10n.editRules);
           expect(titleFinder, findsOneWidget);
           expectTextNotClipped(tester, titleFinder, reason: 'RulesEditor editRules title');
+          final titleInAppBar = find.descendant(
+            of: find.byType(AppBar),
+            matching: find.text(l10n.editRules),
+          );
+          if (titleInAppBar.evaluate().isEmpty) {
+            expect(
+              tester.getSize(find.byType(AppBar)).height,
+              kToolbarHeight,
+              reason: 'AppBar must stay standard kToolbarHeight when title moves to body',
+            );
+          }
 
           final fadingTabBarFinder = find.byType(FadingScrollableTabBar);
           expect(fadingTabBarFinder, findsOneWidget);
@@ -1098,6 +1144,12 @@ void main() {
 
         expect(formatDevicePlatformLabel('android', '16'), 'Android 16');
         expect(formatDevicePlatformLabel('ios', '18'), 'iPhone 18');
+        expect(formatDevicePlatformLabel('', '16'), '16');
+        expect(formatDevicePlatformLabel('  ', ''), '');
+        expect(formatDevicePlatformLabel('android', ''), 'Android');
+        expect(formatDevicePlatformLabel('ios', ''), 'iPhone');
+        expect(find.text('Device'), findsNothing);
+        expect(find.textContaining('Device ·'), findsNothing);
 
         final fadingTabBarFinder = find.byType(FadingScrollableTabBar);
         expect(fadingTabBarFinder, findsOneWidget);
@@ -1168,6 +1220,50 @@ void main() {
         expectNoOverflow(tester, contextLabel: 'ChildDetailScreen [${_caseLabel(matrix)}]');
       });
     }
+
+    testWidgets('ChildDetailScreen omits empty platform without Device fallback or leading separator', (tester) async {
+      final now = DateTime.now().toUtc();
+      for (final locale in _kMatrixLocales) {
+        final l10n = lookupAppLocalizations(locale);
+        final api = FakeApiClient({
+          ...standardRoutes(
+            familyMe: {
+              'parent': {'id': 'p-1', 'email': 'parent@example.com', 'role': 'owner', 'mfaEnabled': false},
+              'children': [
+                {'id': 'child-1', 'familyId': 'fam-1', 'displayName': 'Alex', 'birthYear': 2013, 'screenTimeTodayMinutes': 45},
+              ],
+              'devices': [
+                {
+                  'id': 'dev-blank',
+                  'childId': 'child-1',
+                  'platform': '',
+                  'model': 'Mystery Phone',
+                  'osVersion': '',
+                  'status': 'online',
+                  'batteryPct': 50,
+                  'lastSeen': now.toIso8601String(),
+                },
+              ],
+            },
+          ),
+        });
+        await pumpMatrix(
+          tester,
+          const ChildDetailScreen(childId: 'child-1'),
+          matrix: (size: const Size(320, 568), scale: 1.0, locale: locale, brightness: Brightness.light),
+          api: api,
+        );
+        final deviceCard = find.ancestor(
+          of: find.text('Mystery Phone'),
+          matching: find.byType(Card),
+        );
+        expect(deviceCard, findsOneWidget);
+        expect(find.descendant(of: deviceCard, matching: find.textContaining('Device')), findsNothing);
+        expect(find.descendant(of: deviceCard, matching: find.text(l10n.statusOnline)), findsOneWidget);
+        expect(find.descendant(of: deviceCard, matching: find.textContaining('· ${l10n.statusOnline}')), findsNothing);
+        expectNoOverflow(tester, contextLabel: 'ChildDetailScreen blank platform ${locale.languageCode}');
+      }
+    });
   });
 
   group('6. UI/UX Bureau B1-B4 & B7 at 310% max accessibility scale (320x568)', () {
@@ -1185,6 +1281,7 @@ void main() {
       required Locale locale,
       int unreadAlerts = 0,
       int childCount = 1,
+      List<String>? blockedCategories,
     }) {
       final now = DateTime.now().toUtc();
       final longName = locale.languageCode == 'ar'
@@ -1246,6 +1343,7 @@ void main() {
             ],
           },
           alerts: alerts,
+          blockedCategories: blockedCategories,
         ),
         'GET /v1/alerts': (_) => {
               'items': alerts,
@@ -1300,7 +1398,7 @@ void main() {
         expect(find.byType(AlertDialog), findsNothing);
       });
 
-      testWidgets('B2 card name unlimited & B3 fixed bell badge at 3.1x [${_caseLabel(matrix)}]', (tester) async {
+      testWidgets('B2 card name unlimited & B3 bell badge capped at 1.3x at 3.1x [${_caseLabel(matrix)}]', (tester) async {
         final expectedName = matrix.locale.languageCode == 'ar'
             ? 'محمد مصطفى كاظم العلي'
             : 'Mohammed Mustafa Abdullah Al-Mansoor';
@@ -1321,7 +1419,7 @@ void main() {
         expect(nameWidget.maxLines, isNull);
         expect(nameWidget.overflow, isNull);
 
-        // B3: bell Badge keeps a fixed unscaled size and never overlaps adjacent AppBar icons.
+        // B3: bell Badge follows accessibility text scale up to 1.3x and never overlaps adjacent AppBar icons.
         final badgeFinder = find.byType(Badge);
         expect(badgeFinder, findsOneWidget);
         final badgeLabelFinder = find.descendant(
@@ -1329,6 +1427,8 @@ void main() {
           matching: find.text('12'),
         );
         expect(badgeLabelFinder, findsOneWidget);
+        final badgeScaler = MediaQuery.textScalerOf(tester.element(badgeLabelFinder));
+        expect(badgeScaler.scale(10.0), closeTo(13.0, 0.01));
         final labelSize = tester.getSize(badgeLabelFinder);
         expect(
           labelSize.height,
@@ -1431,6 +1531,118 @@ void main() {
         expectNoOverflow(tester, contextLabel: 'B1 SetupChild leave dialog [${_caseLabel(matrix)}]');
         await tester.tap(find.widgetWithText(TextButton, l10n.onboardingLeaveStay));
         await tester.pumpAndSettle();
+
+        // RulesEditor disable-recommended confirm dialog & collapsed AppBar fallback height.
+        await pumpMatrix(
+          tester,
+          const RulesEditorScreen(childId: 'child-1'),
+          matrix: matrix,
+          api: bureauApi(
+            locale: matrix.locale,
+            blockedCategories: kRecommendedCategories,
+          ),
+        );
+        expect(
+          find.descendant(of: find.byType(AppBar), matching: find.text(l10n.editRules)),
+          findsNothing,
+        );
+        expect(tester.getSize(find.byType(AppBar)).height, kToolbarHeight);
+
+        final webFilterTab = find.text(l10n.tabWebFilter);
+        await tester.ensureVisible(webFilterTab);
+        await tester.pumpAndSettle();
+        await tester.tap(webFilterTab);
+        await tester.pumpAndSettle();
+        final recSwitch = find.descendant(
+          of: find.widgetWithText(SwitchListTile, l10n.recommendedProtection),
+          matching: find.byType(Switch),
+        );
+        await tester.ensureVisible(recSwitch);
+        await tester.pumpAndSettle();
+        await tester.tap(recSwitch);
+        await tester.pumpAndSettle();
+
+        final recDialog = find.byType(AlertDialog);
+        expect(recDialog, findsOneWidget);
+        expect(tester.widget<AlertDialog>(recDialog).scrollable, isTrue);
+        expect(find.text(l10n.disablingRecommended), findsOneWidget);
+        expect(
+          tester.getRect(find.widgetWithText(FilledButton, l10n.continueLabel)).bottom,
+          lessThanOrEqualTo(matrix.size.height),
+        );
+        expectNoOverflow(tester, contextLabel: 'B1 RulesEditor disable-recommended dialog [${_caseLabel(matrix)}]');
+        await tester.tap(find.widgetWithText(TextButton, l10n.cancel));
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('ChildMapSheet wraps Ring/Lock and scrolls inside modal bottom sheet [${_caseLabel(matrix)}]', (tester) async {
+        final l10n = lookupAppLocalizations(matrix.locale);
+        final now = DateTime.now().toUtc();
+        final child = Child(
+          id: 'child-1',
+          familyId: 'fam-1',
+          displayName: matrix.locale.languageCode == 'ar' ? 'ليلى' : 'Layla',
+          birthYear: 2014,
+          screenTimeTodayMinutes: 30,
+        );
+        final device = Device(
+          id: 'dev-1',
+          childId: 'child-1',
+          platform: 'android',
+          model: 'Pixel 9',
+          osVersion: '16',
+          status: 'online',
+          batteryPct: 80,
+          lastSeen: now,
+        );
+        final ping = LocationPing(
+          deviceId: 'dev-1',
+          lat: 25.276900,
+          lng: 51.521100,
+          timestamp: now,
+        );
+
+        await pumpMatrix(
+          tester,
+          Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: FilledButton(
+                  onPressed: () => showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    showDragHandle: true,
+                    builder: (_) => ChildMapSheet(child: child, ping: ping, device: device),
+                  ),
+                  child: const Text('Open'),
+                ),
+              ),
+            ),
+          ),
+          matrix: matrix,
+        );
+
+        await tester.tap(find.text('Open'));
+        await tester.pumpAndSettle();
+
+        final sheetFinder = find.byType(ChildMapSheet);
+        expect(sheetFinder, findsOneWidget);
+        expect(
+          find.descendant(of: sheetFinder, matching: find.byType(SingleChildScrollView)),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: sheetFinder, matching: find.byType(Wrap)),
+          findsOneWidget,
+        );
+        for (final label in [l10n.familyMapRing, l10n.familyMapLock]) {
+          final btn = find.descendant(of: sheetFinder, matching: find.text(label));
+          expect(btn, findsOneWidget);
+          final rect = tester.getRect(btn);
+          expect(rect.left, greaterThanOrEqualTo(-0.5));
+          expect(rect.right, lessThanOrEqualTo(matrix.size.width + 0.5));
+        }
+        expectNoOverflow(tester, contextLabel: 'ChildMapSheet [${_caseLabel(matrix)}]');
       });
     }
   });

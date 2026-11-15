@@ -129,43 +129,46 @@ class ChildMapSheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(AppSpace.xl, 0, AppSpace.xl, AppSpace.xl),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(child.displayName, style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: AppSpace.sm),
-          Text(context.l10n.familyMapLastUpdate(
-            ping.timestamp == null
-                ? context.l10n.familyMapLastUpdateUnknown
-                : DateFormat.yMMMd(context.localeName).add_Hms().format(ping.timestamp!.toLocal()),
-          )),
-          const SizedBox(height: AppSpace.xs),
-          // NOTE: reverse geocoding is a non-goal; show raw coordinates as the address placeholder.
-          Text(ltrIsolate('${ping.lat.toStringAsFixed(6)}, ${ping.lng.toStringAsFixed(6)}')),
-          if (device != null && device!.batteryPct > 0) ...[
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(AppSpace.xl, 0, AppSpace.xl, AppSpace.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(child.displayName, style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: AppSpace.sm),
+            Text(context.l10n.familyMapLastUpdate(
+              ping.timestamp == null
+                  ? context.l10n.familyMapLastUpdateUnknown
+                  : DateFormat.yMMMd(context.localeName).add_Hms().format(ping.timestamp!.toLocal()),
+            )),
             const SizedBox(height: AppSpace.xs),
-            Text(context.l10n.familyMapBattery(device!.batteryPct)),
-          ],
-          const SizedBox(height: AppSpace.lg),
-          Row(
-            children: [
-              FilledButton.tonalIcon(
-                icon: const Icon(Icons.volume_up),
-                label: Text(context.l10n.familyMapRing),
-                onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'ring'),
-              ),
-              const SizedBox(width: AppSpace.md),
-              FilledButton.tonalIcon(
-                icon: const Icon(Icons.lock),
-                label: Text(context.l10n.familyMapLock),
-                onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'lock'),
-              ),
+            // NOTE: reverse geocoding is a non-goal; show raw coordinates as the address placeholder.
+            Text(ltrIsolate('${ping.lat.toStringAsFixed(6)}, ${ping.lng.toStringAsFixed(6)}')),
+            if (device != null && device!.batteryPct > 0) ...[
+              const SizedBox(height: AppSpace.xs),
+              Text(context.l10n.familyMapBattery(device!.batteryPct)),
             ],
-          ),
-        ],
+            const SizedBox(height: AppSpace.lg),
+            Wrap(
+              spacing: AppSpace.md,
+              runSpacing: AppSpace.sm,
+              children: [
+                FilledButton.tonalIcon(
+                  icon: const Icon(Icons.volume_up),
+                  label: Text(context.l10n.familyMapRing),
+                  onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'ring'),
+                ),
+                FilledButton.tonalIcon(
+                  icon: const Icon(Icons.lock),
+                  label: Text(context.l10n.familyMapLock),
+                  onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'lock'),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -385,6 +388,7 @@ class _MapBodyState extends ConsumerState<_MapBody> {
     final device = widget.overview.devicesFor(child.id).firstOrNull;
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
       builder: (sheetContext) => ChildMapSheet(child: child, ping: ping, device: device),
     );

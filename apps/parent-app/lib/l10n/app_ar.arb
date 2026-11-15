@@ -100,7 +100,7 @@
   "childDetails": "بيانات الطفل",
   "consentNotice": "قبل إضافة طفل، نحتاج إلى التأكّد من أنك وليّ أمره.",
   "consentMethodLabel": "طريقة الموافقة",
-  "consentMethodSmsPlus": "رسالة نصية +",
+  "consentMethodSmsPlus": "رسالة نصية مع تأكيد",
   "consentMethodKba": "أسئلة معرفية",
   "consentMethodFaceMatch": "مطابقة الوجه",
   "consentMethodCreditCard": "بطاقة ائتمان",

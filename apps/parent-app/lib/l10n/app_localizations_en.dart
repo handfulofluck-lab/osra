@@ -352,7 +352,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get consentMethodLabel => 'Consent method';
 
   @override
-  String get consentMethodSmsPlus => 'SMS +';
+  String get consentMethodSmsPlus => 'Text message plus confirmation';
 
   @override
   String get consentMethodKba => 'Knowledge-based questions';

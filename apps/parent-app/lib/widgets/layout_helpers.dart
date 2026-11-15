@@ -7,6 +7,8 @@ import '../theme/app_tokens.dart';
 
 /// Formats a device's platform and optional OS version into a clean,
 /// human-readable label (for example `Android 14` or `iPhone 17.4`).
+/// Returns the version alone or an empty string when [platform] is blank so no
+/// untranslated fallback word is introduced in code.
 String formatDevicePlatformLabel(String platform, String osVersion) {
   final trimmedPlatform = platform.trim();
   final normalized = trimmedPlatform.toLowerCase();
@@ -15,17 +17,18 @@ String formatDevicePlatformLabel(String platform, String osVersion) {
     base = 'Android';
   } else if (normalized == 'ios') {
     base = 'iPhone';
-  } else if (trimmedPlatform.isNotEmpty) {
-    base = trimmedPlatform;
   } else {
-    base = 'Device';
+    base = trimmedPlatform;
   }
 
   final trimmedVersion = osVersion.trim();
-  if (trimmedVersion.isNotEmpty) {
+  if (base.isNotEmpty && trimmedVersion.isNotEmpty) {
     return '$base $trimmedVersion';
   }
-  return base;
+  if (base.isNotEmpty) {
+    return base;
+  }
+  return trimmedVersion;
 }
 
 /// A label/value pair that keeps [label] intact and lays [value] out beside
