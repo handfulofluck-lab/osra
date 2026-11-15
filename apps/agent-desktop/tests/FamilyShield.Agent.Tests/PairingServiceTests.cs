@@ -36,6 +36,17 @@ public sealed class PairingServiceTests
     private static readonly Func<TimeSpan, CancellationToken, Task> NoDelay = (_, _) => Task.CompletedTask;
 
     [Fact]
+    public async Task A_pairing_code_typed_with_Arabic_digits_is_sent_as_Western_digits()
+    {
+        var handler = new ScriptedHandler((202, Ticket), (201, Paired));
+        var config = await PairingService.ClaimAsync(Api, "١٢٣٤٥٦", parentPin: Pin, handler: handler, delay: NoDelay);
+
+        Assert.NotNull(config);
+        Assert.Contains("\"code\":\"123456\"", handler.Bodies[0]);
+        Assert.DoesNotContain("١", handler.Bodies[0]);
+    }
+
+    [Fact]
     public async Task Waits_for_the_parent_then_maps_the_polled_token_to_a_config()
     {
         var handler = new ScriptedHandler((202, Ticket), (202, """{"status":"pending"}"""), (201, Paired));

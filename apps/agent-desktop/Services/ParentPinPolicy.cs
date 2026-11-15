@@ -85,6 +85,17 @@ internal static class ParentPinPolicy
             Encoding.UTF8.GetBytes(expected), Encoding.UTF8.GetBytes(enteredDigits));
     }
 
+    /// <summary>
+    /// True when both entries are the same PIN in any accepted digit form. The pairing dialog uses it
+    /// so a PIN chosen with an Arabic keyboard matches the repeat box typed either way (#771).
+    /// </summary>
+    public static bool SamePin(string? first, string? second)
+    {
+        var a = Normalize(first);
+        var b = Normalize(second);
+        return a is not null && string.Equals(a, b, StringComparison.Ordinal);
+    }
+
     /// <summary>Generates a random 6-digit PIN for the pair-and-show-once path.</summary>
     public static string Generate() =>
         RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");

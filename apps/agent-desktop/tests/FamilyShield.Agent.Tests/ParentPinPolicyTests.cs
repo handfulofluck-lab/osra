@@ -35,6 +35,14 @@ public sealed class ParentPinPolicyTests
         Assert.False(ParentPinPolicy.Matches(ParentPinPolicy.LegacyDefault, ParentPinPolicy.LegacyDefault));
     }
 
+    [Theory]
+    [InlineData("1٢3۴", "1234")]
+    [InlineData("1ب2", "1ب2")]
+    [InlineData("٠٠٠٠", "0000")]
+    [InlineData("۰۱۲", "012")]
+    public void NormalizeDigitsMapsBothFamiliesAndLeavesTheRest(string input, string expected) =>
+        Assert.Equal(expected, ParentPinPolicy.NormalizeDigits(input));
+
     [Fact]
     public void ArabicDigitsAreTheSamePin()
     {
@@ -43,6 +51,15 @@ public sealed class ParentPinPolicyTests
         Assert.True(ParentPinPolicy.Matches("1234", "١٢٣٤"));
         Assert.True(ParentPinPolicy.Matches("١٢٣٤", "1234"));
         Assert.True(ParentPinPolicy.Matches("1234", "۱۲۳۴"));
+    }
+
+    [Fact]
+    public void TheConfirmBoxMatchesInEitherDigitForm()
+    {
+        Assert.True(ParentPinPolicy.SamePin("1234", "١٢٣٤"));
+        Assert.True(ParentPinPolicy.SamePin("١٢٣٤", "1234"));
+        Assert.False(ParentPinPolicy.SamePin("1234", "1235"));
+        Assert.False(ParentPinPolicy.SamePin("1234", null));
     }
 
     [Fact]
