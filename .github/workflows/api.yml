@@ -9,6 +9,8 @@ name: API
 # WorkScheduler.kt and LocationService.kt are read by `services/api/test/device-silence.test.ts` (#166),
 # which pins the server's silence window to the agent's reporting cadence; IdleCadence.kt is read by
 # `services/api/test/poll-cadence.test.ts` (#353), which pins X-Poll-After to the agent's clamps.
+# family_plan_alarms.tf is read by `services/api/test/family-plan-alarms.test.ts` (#816), which pins the
+# production alarm patterns to the events entitlement.ts writes.
 on:
   push:
     branches: [main]
@@ -22,6 +24,7 @@ on:
       - "apps/child-android/app/src/main/java/com/familyshield/agent/data/WorkScheduler.kt"
       - "apps/child-android/app/src/main/java/com/familyshield/agent/services/LocationService.kt"
       - "apps/child-android/app/src/main/java/com/familyshield/agent/services/IdleCadence.kt"
+      - "infra/terraform/env/family_plan_alarms.tf"
       - ".github/workflows/api.yml"
   pull_request:
     paths:
@@ -34,6 +37,7 @@ on:
       - "apps/child-android/app/src/main/java/com/familyshield/agent/data/WorkScheduler.kt"
       - "apps/child-android/app/src/main/java/com/familyshield/agent/services/LocationService.kt"
       - "apps/child-android/app/src/main/java/com/familyshield/agent/services/IdleCadence.kt"
+      - "infra/terraform/env/family_plan_alarms.tf"
       - ".github/workflows/api.yml"
   schedule:
     - cron: "11 2 * * 1"

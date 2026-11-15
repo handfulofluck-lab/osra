@@ -655,3 +655,67 @@ describe("the rules fetch refreshes lastSeen (#601)", () => {
     await app.close();
   });
 });
+
+
+describe("agent rule reads with no enforceable plan", () => {
+  beforeEach(() => resetPrismaMock());
+
+  it("omits a configured premium field from the device, not from the parent's stored rule", async () => {
+    const { PREMIUM_FEATURES } = await import("../src/lib/planGate.js");
+    PREMIUM_FEATURES.socialMonitoring = true;
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    try {
+      const stored = { id: "rs-1", childId: CHILD_ID, socialMonitoring: { enabled: true }, appRules: [{ packageId: "keep" }] };
+      prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
+      prismaMock.ruleSet.findUnique.mockResolvedValue(stored);
+      prismaMock.familyPurchase.findMany.mockResolvedValue([]);
+      prismaMock.family.findUnique.mockResolvedValue({ id: "fam-1", timezone: "UTC" });
+      const agent = await app.inject({ method: "GET", url: `/v1/rules/${CHILD_ID}`, headers: deviceHeader(app) });
+      expect(agent.statusCode).toBe(200);
+      expect(agent.json().socialMonitoring).toBeUndefined();
+      expect(agent.json().appRules).toEqual([{ packageId: "keep" }]);
+      const parent = await app.inject({ method: "GET", url: `/v1/rules/${CHILD_ID}`, headers: authHeader(app) });
+      expect(parent.json().socialMonitoring).toEqual({ enabled: true });
+      expect(stored.socialMonitoring).toEqual({ enabled: true });
+    } finally {
+      delete PREMIUM_FEATURES.socialMonitoring;
+      await app.close();
+    }
+  });
+});
+
+
+describe("parent rule-write fan-out with no enforceable plan", () => {
+  beforeEach(() => resetPrismaMock());
+
+  it("filters the published agent copy on both PUT and PATCH, not the parent response", async () => {
+    const { PREMIUM_FEATURES } = await import("../src/lib/planGate.js");
+    PREMIUM_FEATURES.socialMonitoring = true;
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    try {
+      prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
+      prismaMock.ruleSet.upsert.mockResolvedValue({ id: "rs-1", childId: CHILD_ID, socialMonitoring: { enabled: true }, appRules: [] });
+      prismaMock.familyPurchase.findMany.mockResolvedValue([]);
+      prismaMock.family.findUnique.mockResolvedValue({ id: "fam-1", timezone: "UTC" });
+      const { getRedis } = await import("../src/redis.js");
+      const redis = getRedis() as unknown as MockRedis;
+      redis.publish.mockClear();
+      for (const method of ["PUT", "PATCH"] as const) {
+        const res = await app.inject({
+          method,
+          url: `/v1/rules/${CHILD_ID}`,
+          headers: authHeader(app),
+          payload: method === "PUT" ? { ...validRuleSet, socialMonitoring: { enabled: true } } : { socialMonitoring: { enabled: true } },
+        });
+        expect(res.statusCode).toBe(200);
+        expect(res.json().socialMonitoring).toEqual({ enabled: true });
+        const [channel, message] = redis.publish.mock.calls.at(-1)!;
+        expect(channel).toBe(`child:${CHILD_ID}:rules`);
+        expect(JSON.parse(message).socialMonitoring).toBeUndefined();
+      }
+    } finally {
+      delete PREMIUM_FEATURES.socialMonitoring;
+      await app.close();
+    }
+  });
+});

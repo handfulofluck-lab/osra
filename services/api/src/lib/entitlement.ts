@@ -1,171 +1,208 @@
 /**
- * The one seam between billing and the family plan (ADR-0041 D1/D2, issue #620).
- *
- * Billing routes describe the outcome of a store purchase as an [EntitlementChange] and hand it to
- * [grantEntitlement] / [revokeEntitlement]. Nothing on the billing side knows how a plan is stored:
- * #619 (K31) owns the `family_purchases` table and `entitlement(family)`, and replaces the store below
- * with a Prisma-backed one behind the same calls. A route must never read or write that table.
- *
- * Why a seam rather than a direct table write: the Play and Apple integrations (B2/B3) land before the
- * entitlement model (B1), and two lanes writing one table from two sides is how a schema argument turns
- * into a merge conflict. The interface is the agreement; the table is B1's to shape.
- *
- * The split between granting and revoking states is in the **types**: [grantEntitlement] cannot be
- * handed `expired` and [revokeEntitlement] cannot be handed `active`, so a caller cannot express the
- * wrong intent at all.
+ * ADR-0041 D1/D2: the billing routes describe a verified store outcome; this module owns its durable
+ * family-plan representation. A raw purchase reference is hashed before persistence and never logged.
  */
-import { createHash, createHmac } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+import { prisma } from "../db.js";
 
-/** `grant` is an admin-created period (ADR-0041 D1), not a store purchase. */
+/** `grant` is an admin-created finite period, not a store purchase. */
 export type EntitlementSource = "google_play" | "app_store" | "web" | "grant";
-
-/** A state in which the family holds the plan. */
 export type GrantingState = "active" | "grace" | "on_hold";
-
-/** A state in which it no longer does. */
 export type RevokingState = "expired" | "revoked" | "refunded";
-
 export type EntitlementState = GrantingState | RevokingState;
 
 interface EntitlementChangeCore {
   familyId: string;
-  /** The store's product (Play subscription id, Apple product id), or the grant's own label. */
   productId: string;
-  /**
-   * The store's expiry, ISO 8601. `null` only when there is no store expiry to report — an admin grant,
-   * or a revocation the store did not date. The stand-in stores it as sent; B1 decides what a null means
-   * for `entitlement(family)`.
-   */
+  /** The store's finite expiry. Null is retained defensively but is never a lifetime plan. */
   expiresAt: string | null;
   autoRenews: boolean;
-  /**
-   * The store's reference: the Play purchase token, or Apple's `originalTransactionId`.
-   *
-   * This is the one value in here that is a credential-shaped secret. It is hashed by the store before
-   * anything is persisted ([hashStoreRef]) and it is never written to a log line.
-   */
+  /** The raw store reference exists only at this boundary; its SHA-256 is what is persisted. */
   storeRef: string;
-  /**
-   * When the change took effect, ISO 8601: **the server's clock, unless the store's own time is
-   * earlier** — a delayed push records when the store acted, a push whose store time is ahead of us
-   * records our own clock rather than the future.
-   */
+  /** The earlier of the server's clock and the store's effective time, supplied by the caller. */
   effectiveAt: string;
-  /** Why the state moved: `verify`, or the Play notification type that carried it (`renewed`, `canceled`). */
   cause: string;
 }
 
 export type EntitlementGrant = EntitlementChangeCore & { source: EntitlementSource; state: GrantingState };
-
 export type EntitlementRevocation = EntitlementChangeCore & { source: EntitlementSource; state: RevokingState };
-
-/** Either half — for logging or a store that wants to see the stream. Callers pass the narrow half. */
 export type EntitlementChange = EntitlementGrant | EntitlementRevocation;
 
 export interface EntitlementStore {
   grant(change: EntitlementGrant): Promise<void>;
   revoke(change: EntitlementRevocation): Promise<void>;
-  /**
-   * The family a purchase already belongs to, or `null` when we have never stored it. The store hashes
-   * `storeRef` with [hashStoreRef] and matches on that; the raw ref is never the index.
-   */
   findFamily(source: EntitlementSource, storeRef: string): Promise<string | null>;
-  /**
-   * The family's opaque store account id — the value the parent app passes as Play's
-   * `obfuscatedAccountId`. B1 stores a random 128-bit value per family, created on first use and
-   * returned by `GET /v1/family/entitlement`, so there is no key to rotate and nothing to derive.
-   */
   storeAccountId(familyId: string): Promise<string>;
 }
 
+export interface EntitlementResponse {
+  plan: "family" | null;
+  until: string | null;
+  source: EntitlementSource | null;
+  manage_on: Exclude<EntitlementSource, "grant"> | null;
+}
+
+export type EntitlementWarning = (
+  fields: { familyId: string; source?: EntitlementSource; storeRefHash?: string },
+  message: string,
+) => void;
+
+/** One JSON object per line so CloudWatch can count the stable `event` field. */
+export function defaultEntitlementWarning(
+  fields: { familyId: string; source?: EntitlementSource; storeRefHash?: string },
+  message: string,
+): void {
+  console.warn(JSON.stringify({ event: message, ...fields }));
+}
+
 /**
- * The value the seam persists instead of the store's reference: SHA-256 hex of the purchase token.
- *
- * A purchase token is a bearer-ish secret — anything holding it can query the purchase — so it is not
- * kept, and an unkeyed hash is enough: the input is high-entropy, so there is nothing to brute-force.
- * B1 indexes the hash; [EntitlementStore.findFamily] is the only thing that has to agree with it.
+ * Lost-push backstop for grace/account hold: Google's default grace+hold recovery basis is 60 days
+ * (https://support.google.com/googleplay/android-developer/answer/12154973) and Apple retries billing for
+ * 60 days (https://developer.apple.com/app-store/subscriptions/), plus 7 days for a late push.
  */
+export const STORE_MAX_RECOVERY_DAYS = 67;
+
 export function hashStoreRef(storeRef: string): string {
   return createHash("sha256").update(storeRef, "utf8").digest("hex");
 }
 
-/**
- * The stand-in B1 replaces: purchases kept in process memory, so a restart forgets them.
- *
- * It exists so the billing routes and their tests have a working default without a table, a migration
- * or a schema decision taken in this lane. It is not persistence and must not reach production as the
- * real answer — B1's Prisma-backed store replaces it through [setEntitlementStore].
- *
- * Its account id is the one derivation here: an HMAC of the family id, because an in-memory store has
- * nowhere to keep a random value. No deploy needs a key for it — it borrows whatever secret the process
- * already holds — and B1 deletes it in favour of the stored column.
- */
-class InMemoryEntitlementStore implements EntitlementStore {
-  /** `source:hash` → familyId, the binding the push path resolves against. */
-  private readonly bindings = new Map<string, string>();
-  private readonly accountIds = new Map<string, string>();
-
-  async grant(change: EntitlementGrant): Promise<void> {
-    this.bind(change);
+class PrismaEntitlementStore implements EntitlementStore {
+  grant(change: EntitlementGrant): Promise<void> {
+    return this.apply(change);
   }
 
-  async revoke(change: EntitlementRevocation): Promise<void> {
-    this.bind(change);
+  revoke(change: EntitlementRevocation): Promise<void> {
+    return this.apply(change);
+  }
+
+  private async apply(change: EntitlementChange): Promise<void> {
+    const effectiveAt = new Date(change.effectiveAt);
+    const storeRefHash = hashStoreRef(change.storeRef);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await prisma.$transaction(async (tx) => {
+          const where = { source_storeRefHash: { source: change.source, storeRefHash } };
+          const existing = await tx.familyPurchase.findUnique({ where });
+          if (existing && existing.familyId !== change.familyId) throw new Error("purchase_already_bound");
+          if (existing && existing.lastVerifiedAt >= effectiveAt) return;
+          // An undated revocation must not erase the expiry the store previously reported.
+          const expiresAt = change.expiresAt === null ? existing?.expiresAt ?? null : new Date(change.expiresAt);
+          const recoveryDays = existing?.status === "grace" || existing?.status === "on_hold"
+            || (!existing && (change.state === "grace" || change.state === "on_hold"))
+            ? STORE_MAX_RECOVERY_DAYS : 0;
+          const naturalEnd = expiresAt ? new Date(expiresAt.getTime() + recoveryDays * 24 * 60 * 60 * 1000) : null;
+          const calculatedEnd = naturalEnd && naturalEnd < effectiveAt ? naturalEnd : effectiveAt;
+          const firstEnd = !isRevoking(change.state)
+            ? null
+            : existing && isRevoking(existing.status as EntitlementState)
+              ? existing.endedAt ?? calculatedEnd
+              : calculatedEnd;
+          const data = {
+            familyId: change.familyId,
+            source: change.source,
+            productId: change.productId,
+            storeRefHash,
+            status: change.state,
+            expiresAt,
+            autoRenews: change.autoRenews,
+            lastVerifiedAt: effectiveAt,
+            endedAt: firstEnd,
+            cause: change.cause,
+          };
+          if (existing) await tx.familyPurchase.update({ where, data });
+          else await tx.familyPurchase.create({ data });
+        }, { isolationLevel: "Serializable" });
+        return;
+      } catch (error) {
+        const code = (error as { code?: unknown }).code;
+        if (attempt > 0 || (code !== "P2002" && code !== "P2034")) throw error;
+      }
+    }
   }
 
   async findFamily(source: EntitlementSource, storeRef: string): Promise<string | null> {
-    return this.bindings.get(`${source}:${hashStoreRef(storeRef)}`) ?? null;
+    const row = await prisma.familyPurchase.findUnique({
+      where: { source_storeRefHash: { source, storeRefHash: hashStoreRef(storeRef) } },
+      select: { familyId: true },
+    });
+    return row?.familyId ?? null;
   }
 
   async storeAccountId(familyId: string): Promise<string> {
-    const existing = this.accountIds.get(familyId);
-    if (existing) return existing;
-    const key = process.env.JWT_SECRET ?? "dev-insecure-store-account-id";
-    const created = createHmac("sha256", key).update(`osra:play:family:${familyId}`).digest("hex").slice(0, 32);
-    this.accountIds.set(familyId, created);
-    return created;
-  }
-
-  private bind(change: EntitlementChange): void {
-    this.bindings.set(`${change.source}:${hashStoreRef(change.storeRef)}`, change.familyId);
+    const existing = await prisma.family.findUnique({ where: { id: familyId }, select: { storeAccountId: true } });
+    if (existing?.storeAccountId) return existing.storeAccountId;
+    const created = randomBytes(16).toString("hex");
+    // Another concurrent request may win. Re-read the winner rather than returning an id we did not store.
+    await prisma.family.updateMany({ where: { id: familyId, storeAccountId: null }, data: { storeAccountId: created } });
+    const stored = await prisma.family.findUnique({ where: { id: familyId }, select: { storeAccountId: true } });
+    if (!stored?.storeAccountId) throw new Error("family_not_found");
+    return stored.storeAccountId;
   }
 }
 
-let store: EntitlementStore = new InMemoryEntitlementStore();
+let store: EntitlementStore = new PrismaEntitlementStore();
 
-/**
- * Swap the store. `null` restores a fresh in-memory one — the reset a test uses between cases, and the
- * only way to prove a route wrote through the seam rather than around it.
- */
+/** A test can inject the B2 fake. Null restores the production Prisma store, not shared process memory. */
 export function setEntitlementStore(next: EntitlementStore | null): void {
-  store = next ?? new InMemoryEntitlementStore();
+  store = next ?? new PrismaEntitlementStore();
 }
 
-/** Record that a family holds a plan. One call per verified event; the store makes it idempotent. */
 export async function grantEntitlement(change: EntitlementGrant): Promise<void> {
   await store.grant(change);
 }
 
-/** Record that a family no longer holds a plan: `expired`, `revoked` or `refunded`. */
 export async function revokeEntitlement(change: EntitlementRevocation): Promise<void> {
   await store.revoke(change);
 }
 
-/** The family a stored purchase belongs to — the push path's only read (see [EntitlementStore]). */
 export async function findFamilyForPurchase(source: EntitlementSource, storeRef: string): Promise<string | null> {
   return store.findFamily(source, storeRef);
 }
 
-/** The family's opaque store account id — what the app sends as `obfuscatedAccountId`. */
 export async function storeAccountIdFor(familyId: string): Promise<string> {
   return store.storeAccountId(familyId);
 }
 
-/**
- * Whether a state means "the family no longer holds a plan", so it goes to [revokeEntitlement].
- * `grace` and `on_hold` deliberately do **not**: ADR-0041 D3 counts both as active, so a family in
- * either keeps the plan while the store is still trying to collect.
- */
+/** Only the server computes this. Grace/hold follow the store only until the lost-push ceiling. */
+export async function entitlement(
+  familyId: string,
+  now = new Date(),
+  warn: EntitlementWarning = defaultEntitlementWarning,
+): Promise<EntitlementResponse> {
+  const rows = await prisma.familyPurchase.findMany({ where: { familyId } });
+  const eligible = rows.filter((row) => {
+    if (isRevoking(row.status as EntitlementState)) return false;
+    if (!row.expiresAt) {
+      warn({ familyId }, "family_plan_missing_expiry");
+      return false;
+    }
+    if (row.status === "grace" || row.status === "on_hold") {
+      const recoveryEndsAt = row.expiresAt.getTime() + STORE_MAX_RECOVERY_DAYS * 24 * 60 * 60 * 1000;
+      if (now.getTime() >= recoveryEndsAt) {
+        warn(
+          { familyId, source: row.source as EntitlementSource, storeRefHash: row.storeRefHash },
+          "family_plan_recovery_ceiling",
+        );
+        return false;
+      }
+      return true;
+    }
+    return row.status === "active" && now < row.expiresAt;
+  });
+  eligible.sort((a, b) =>
+    b.expiresAt!.getTime() - a.expiresAt!.getTime() || b.lastVerifiedAt.getTime() - a.lastVerifiedAt.getTime(),
+  );
+  const best = eligible[0];
+  if (!best) return { plan: null, until: null, source: null, manage_on: null };
+  const source = best.source as EntitlementSource;
+  return {
+    plan: "family",
+    until: best.expiresAt!.toISOString(),
+    source,
+    manage_on: source === "grant" ? null : source,
+  };
+}
+
 export function isRevoking(state: EntitlementState): state is RevokingState {
   return state === "revoked" || state === "expired" || state === "refunded";
 }
