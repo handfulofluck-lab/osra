@@ -127,4 +127,23 @@ class TamperAlertWorkNameTest {
             source.contains("ourLocationActive = permissionWindowLocationActive ?: locationGrantedNow()"),
         )
     }
+
+    /** U1 (Antigravity's re-review): the unbind type gets its own work name, keyed by when it happened. */
+    @Test
+    fun `the unbind work name carries its moment`() {
+        val first = TamperAlertWorker.uniqueWorkName(TamperAlertWorker.TYPE_ACCESSIBILITY_OFF, 1_000L)
+        val second = TamperAlertWorker.uniqueWorkName(TamperAlertWorker.TYPE_ACCESSIBILITY_OFF, 61_000L)
+        org.junit.Assert.assertTrue("the moment is in the name", first.contains("1000"))
+        org.junit.Assert.assertNotEquals("two unbinds do not collapse onto one name", first, second)
+        val source = java.io.File(System.getProperty("user.dir") ?: ".").let { wd ->
+            listOf(
+                java.io.File(wd, "src/main/java/com/familyshield/agent/security/TamperAlertWorker.kt"),
+                java.io.File(wd, "app/src/main/java/com/familyshield/agent/security/TamperAlertWorker.kt"),
+            ).firstOrNull { it.isFile }?.readText() ?: error("worker source not found")
+        }
+        org.junit.Assert.assertTrue(
+            "and enqueue passes the event time for it",
+            source.contains("type == TYPE_BLOCK_BYPASS || type == TYPE_ACCESSIBILITY_OFF) eventAtMs"),
+        )
+    }
 }

@@ -100,10 +100,6 @@ object TamperScreenPolicy {
         "AccessibilityDetails",
         "AccessibilityServiceDetails",
         "SecAccessibilityDetailsActivity",
-        // Permission manager → Location → our app (osra-security#30), AOSP PermissionController.
-        "ManagePermissionsActivity",
-        "AppPermissionsActivity",
-        "PermissionDetailsActivity",
     )
 
     /**

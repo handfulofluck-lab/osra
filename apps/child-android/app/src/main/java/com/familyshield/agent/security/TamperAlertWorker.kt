@@ -217,7 +217,17 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
                     ),
                 )
                 .build()
-            WorkManager.getInstance(context).enqueueUniqueWork(uniqueWorkName(type, if (type == TYPE_BLOCK_BYPASS) eventAtMs else windowStartMs, app), ExistingWorkPolicy.REPLACE, request)
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                uniqueWorkName(
+                    type,
+                    // U1 (Antigravity): without this the unbind type always passed 0L and every unbind collapsed
+                    // onto one static work name, cancelling the previous one's retry.
+                    if (type == TYPE_BLOCK_BYPASS || type == TYPE_ACCESSIBILITY_OFF) eventAtMs else windowStartMs,
+                    app,
+                ),
+                ExistingWorkPolicy.REPLACE,
+                request,
+            )
         }
     }
 }

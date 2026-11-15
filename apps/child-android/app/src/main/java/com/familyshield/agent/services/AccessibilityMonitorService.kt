@@ -82,10 +82,19 @@ class AccessibilityMonitorService : AccessibilityService() {
      */
     private var permissionWindowLocationActive: Boolean? = null
 
-    /** The location grant right now — fine or coarse, which is all "we hold a location permission" means here. */
-    private fun locationGrantedNow(): Boolean =
-        ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-            ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    /**
+     * The location grant right now, in the same sense `GrantChecks.locationGranted()` uses: fine or coarse, **and**
+     * background on Android 10 and later. Onboarding grants fine first and then opens this very page for
+     * background, so a check that stopped at fine would say "we hold the grant" and slam the gate over setup
+     * (Antigravity's re-review of #813).
+     */
+    private fun locationGrantedNow(): Boolean {
+        val fine = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val coarse = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (!fine && !coarse) return false
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return true
+        return ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
+    }
 
     /** osra-security#7: the window the gate was last opened over; a state change from any other is a new screen. */
     private var guardedWindowId = -1
