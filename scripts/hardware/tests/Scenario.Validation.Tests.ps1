@@ -145,7 +145,9 @@ Describe "Structural device and data refusals" {
         @{ name = "quote in a settings value"; command = @("shell", "settings", "put", "system", "screen_off_timeout", "1'0") },
         @{ name = "dumpsys with a service the runner does not read"; command = @("shell", "dumpsys", "battery") },
         @{ name = "dumpsys package with an extra argument"; command = @("shell", "dumpsys", "package", "com.osratech.child.test", "flags") },
-        @{ name = "logcat"; command = @("logcat", "-b", "events") }
+        @{ name = "logcat"; command = @("logcat", "-b", "events") },
+        @{ name = "settings put with a fifth token"; command = @("shell", "settings", "put", "system", "screen_off_timeout", "15000", "default") },
+        @{ name = "appops set on an op restore does not cover"; command = @("shell", "appops", "set", "com.osratech.child.test", "CAMERA", "allow") }
     )
     It "refuses <name>, wrapped or not" -ForEach $cases {
         param($name, $command)
@@ -166,6 +168,7 @@ Describe "Structural device and data refusals" {
             @("shell", "input", "tap", "540", "1200"),
             @("shell", "input", "swipe", "540", "1600", "540", "400", "300"),
             @("shell", "appops", "get", "com.osratech.child.full", "SYSTEM_ALERT_WINDOW"),
+            @("shell", "appops", "set", "com.osratech.child.full", "SYSTEM_ALERT_WINDOW", "allow"),
             @("shell", "getprop", "ro.product.model"),
             @("shell", "dumpsys", "package", "com.osratech.child.test"),
             @("shell", "dumpsys", "window"),

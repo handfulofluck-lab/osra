@@ -83,7 +83,9 @@ function Assert-ScenarioCommand {
             if ($rest[0] -eq "get") {
                 if ($rest.Count -ne 3 -or $rest[1] -notin @("global", "secure", "system")) { throw "adb_command_not_allowed" }
             } elseif ($rest[0] -eq "put") {
-                if ($rest.Count -lt 4) { throw "malformed_settings_change" }
+                # Exactly `put <table> <key> <value>`: a 5th token is `default` or `tag`, which rewrites
+                # the stored default and is not restored (#797 sign-off note).
+                if ($rest.Count -ne 4) { throw "malformed_settings_change" }
                 $table = $rest[1]
                 $key = $rest[2]
                 if ($key -in @("auto_time", "auto_time_zone", "time_zone", "airplane_mode_on")) { throw "clock_or_radio_change_refused" }
@@ -98,7 +100,9 @@ function Assert-ScenarioCommand {
             if ($Package -and $rest[1] -ne "$Package".ToLowerInvariant()) { throw "package_outside_scenario" }
             if ($rest[2] -notmatch "^[a-z0-9._]+$") { throw "adb_command_not_allowed" }
             if ($rest[0] -eq "set") {
-                if ($rest.Count -ne 4 -or $rest[3] -notin @("allow", "deny", "ignore", "default", "foreground")) { throw "appops_mode_refused" }
+                # Restore only puts SYSTEM_ALERT_WINDOW back, so no other op may be set (#797 sign-off note).
+                if ($rest.Count -ne 4 -or $rest[2] -ne "system_alert_window") { throw "appops_op_not_restored" }
+                if ($rest[3] -notin @("allow", "deny", "ignore", "default", "foreground")) { throw "appops_mode_refused" }
             } elseif ($rest.Count -ne 3) { throw "adb_command_not_allowed" }
         }
         "dpm" {
