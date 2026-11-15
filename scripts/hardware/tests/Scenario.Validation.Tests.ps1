@@ -1,6 +1,18 @@
 Describe "Scenario validation suite" {
     BeforeAll {
-$script:RunnerPath = Join-Path $PSScriptRoot "../scenario.ps1"
+$script:TestsDir = $PSScriptRoot
+if (-not $script:TestsDir) {
+    # Pester 5 does not guarantee $PSScriptRoot inside BeforeAll on every platform (the Linux runner
+    # leaves it null), so fall back to the repository this suite was invoked from.
+    $root = $PWD.Path
+    while (-not (Test-Path -LiteralPath (Join-Path $root "scripts/hardware/scenario.ps1"))) {
+        $parent = Split-Path -Parent $root
+        if ($parent -eq $root) { throw "tests_dir_not_found" }
+        $root = $parent
+    }
+    $script:TestsDir = Join-Path $root "scripts/hardware/tests"
+}
+$script:RunnerPath = Join-Path $script:TestsDir "../scenario.ps1"
 . $script:RunnerPath
 
 function New-Manifest {
@@ -34,7 +46,7 @@ Describe "Scenario manifest shape and URL validation" {
     }
 
     It "rejects a path outside the scenario or output roots" {
-        { Read-ScenarioManifest -Path (Join-Path $PSScriptRoot "../scenarios/../outside.json") -Out $TestDrive } | Should -Throw
+        { Read-ScenarioManifest -Path (Join-Path $script:TestsDir "../scenarios/../outside.json") -Out $TestDrive } | Should -Throw
     }
 
     It "rejects a non-loopback, non-staging health URL" {
@@ -112,7 +124,7 @@ Describe "Structural device and data refusals" {
 
 Describe "Fake adb argument-array boundary" {
     It "records literal arguments without executing a command string" {
-        $bin = Join-Path $PSScriptRoot "fixtures/bin"
+        $bin = Join-Path $script:TestsDir "fixtures/bin"
         $env:FAKE_ADB_LOG = Join-Path $TestDrive "adb-calls.jsonl"
         $oldPath = $env:PATH
         try {

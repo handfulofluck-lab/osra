@@ -1,16 +1,28 @@
 Describe "OSRA-only evidence and PNG crops" {
     BeforeAll {
-$script:RunnerPath = Join-Path $PSScriptRoot "../scenario.ps1"
+$script:TestsDir = $PSScriptRoot
+if (-not $script:TestsDir) {
+    # Pester 5 does not guarantee $PSScriptRoot inside BeforeAll on every platform (the Linux runner
+    # leaves it null), so fall back to the repository this suite was invoked from.
+    $root = $PWD.Path
+    while (-not (Test-Path -LiteralPath (Join-Path $root "scripts/hardware/scenario.ps1"))) {
+        $parent = Split-Path -Parent $root
+        if ($parent -eq $root) { throw "tests_dir_not_found" }
+        $root = $parent
+    }
+    $script:TestsDir = Join-Path $root "scripts/hardware/tests"
+}
+$script:RunnerPath = Join-Path $script:TestsDir "../scenario.ps1"
 . $script:RunnerPath
 $script:DryRun = $true
 
     }
     BeforeEach {
         $script:OldPath = $env:PATH
-        $bin = Join-Path $PSScriptRoot "fixtures/bin"
+        $bin = Join-Path $script:TestsDir "fixtures/bin"
         $env:PATH = "$bin$([IO.Path]::PathSeparator)$script:OldPath"
         $env:FAKE_ADB_LOG = Join-Path $TestDrive "adb-calls.jsonl"
-        $env:FAKE_SCREENSHOT = Join-Path $PSScriptRoot "fixtures/rgb.png"
+        $env:FAKE_SCREENSHOT = Join-Path $script:TestsDir "fixtures/rgb.png"
         $env:FAKE_WINDOW_BOUNDS = "valid"
         if (-not (Get-Command Save-ScenarioScreenshot -ErrorAction SilentlyContinue)) { throw "evidence_not_implemented" }
     }
@@ -21,7 +33,7 @@ $script:DryRun = $true
 
     It "crops RGB and RGBA with exact dimensions and known pixels" {
         foreach ($kind in @("rgb", "rgba")) {
-            $bytes = [IO.File]::ReadAllBytes((Join-Path $PSScriptRoot "fixtures/$kind.png"))
+            $bytes = [IO.File]::ReadAllBytes((Join-Path $script:TestsDir "fixtures/$kind.png"))
             $crop = Crop-ScenarioPng -Bytes $bytes -X 1 -Y 1 -Width 2 -Height 2
             $image = [ScenarioPng]::Decode($crop)
             $image.Width | Should -Be 2

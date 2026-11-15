@@ -1,6 +1,18 @@
 Describe "Scenario steps, measurements and restore" {
     BeforeAll {
-$script:RunnerPath = Join-Path $PSScriptRoot "../scenario.ps1"
+$script:TestsDir = $PSScriptRoot
+if (-not $script:TestsDir) {
+    # Pester 5 does not guarantee $PSScriptRoot inside BeforeAll on every platform (the Linux runner
+    # leaves it null), so fall back to the repository this suite was invoked from.
+    $root = $PWD.Path
+    while (-not (Test-Path -LiteralPath (Join-Path $root "scripts/hardware/scenario.ps1"))) {
+        $parent = Split-Path -Parent $root
+        if ($parent -eq $root) { throw "tests_dir_not_found" }
+        $root = $parent
+    }
+    $script:TestsDir = Join-Path $root "scripts/hardware/tests"
+}
+$script:RunnerPath = Join-Path $script:TestsDir "../scenario.ps1"
 . $script:RunnerPath
 $script:DryRun = $true
 
@@ -14,11 +26,11 @@ function New-RunManifest($steps, $measurements = @()) {
 function Initialize-RunFake {
     $script:DryRun = $true
     $script:OldPath = $env:PATH
-    $bin = Join-Path $PSScriptRoot "fixtures/bin"
+    $bin = Join-Path $script:TestsDir "fixtures/bin"
     $env:PATH = "$bin$([IO.Path]::PathSeparator)$script:OldPath"
     $env:FAKE_ADB_LOG = Join-Path $TestDrive "adb-calls.jsonl"
     Remove-Item -LiteralPath $env:FAKE_ADB_LOG -ErrorAction SilentlyContinue
-    $env:FAKE_SCREENSHOT = Join-Path $PSScriptRoot "fixtures/rgb.png"
+    $env:FAKE_SCREENSHOT = Join-Path $script:TestsDir "fixtures/rgb.png"
 }
 
     }
