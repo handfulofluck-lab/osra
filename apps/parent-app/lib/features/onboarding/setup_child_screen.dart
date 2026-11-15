@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../api/models.dart';
+import '../../core/digits.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
@@ -183,6 +184,7 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
           key: const ValueKey('onboardingBirthYear'),
           controller: _birthYear,
           keyboardType: TextInputType.number,
+          inputFormatters: [DigitInputFormatter()],
           textInputAction: TextInputAction.done,
           decoration: InputDecoration(
             labelText: l10n.birthYearLabel,

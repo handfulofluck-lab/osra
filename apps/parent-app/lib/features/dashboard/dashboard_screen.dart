@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../core/digits.dart';
 import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
@@ -604,6 +605,7 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
               TextField(
                 controller: _birthYear,
                 keyboardType: TextInputType.number,
+                inputFormatters: [DigitInputFormatter()],
                 decoration: InputDecoration(
                   labelText: l10n.birthYearLabel,
                   border: const OutlineInputBorder(),

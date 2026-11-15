@@ -981,14 +981,26 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
     });
 
-    testWidgets('the field keeps digits only and stops at eight', (tester) async {
+    testWidgets('the field rejects other characters and stops at eight', (tester) async {
       final api = FakeApiClient(resetRoutes());
       await pumpScreen(tester, const MfaResetWitnessScreen(requestId: 'req-1'), api);
 
       await tester.enterText(find.byKey(const ValueKey('mfaResetWitnessCode')), '1a2b34567890');
       final field = tester.widget<TextField>(find.byKey(const ValueKey('mfaResetWitnessCode')));
+      expect(field.controller!.text, isEmpty);
+      await tester.enterText(find.byKey(const ValueKey('mfaResetWitnessCode')), '1234567890');
       expect(field.controller!.text, '12345678');
       expect(field.keyboardType, TextInputType.number);
+    });
+
+    testWidgets('approved digit keyboards submit the ASCII witness code', (tester) async {
+      final api = FakeApiClient(resetRoutes());
+      await pumpScreen(tester, const MfaResetWitnessScreen(requestId: 'req-1'), api);
+      await tester.enterText(find.byKey(const ValueKey('mfaResetWitnessCode')), '۱۲۳۴۵۶۷۸');
+      await tester.tap(find.byKey(const ValueKey('mfaResetWitnessSubmit')));
+      await flush(tester);
+      await tester.pumpAndSettle();
+      expect(api.calls('POST', '/v1/auth/mfa/reset/witness').single.body['code'], '12345678');
     });
 
     testWidgets('a wrong code shows the server attempts left, still naming no cause', (tester) async {

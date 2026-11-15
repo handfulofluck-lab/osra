@@ -256,6 +256,16 @@ void main() {
       expect(api.calls('POST', '/v1/auth/mfa/verify').single.body['code'], '123456');
     });
 
+    testWidgets('approved digit keyboards verify with the ASCII code', (tester) async {
+      final api = FakeApiClient(mfaRoutes());
+      await pumpScreen(tester, const MfaEnrollScreen(), api);
+      await tester.enterText(find.byKey(const ValueKey('mfaEnrollCode')), '١٢٣٤٥٦');
+      await tester.tap(find.byKey(const ValueKey('mfaVerifyButton')));
+      await flush(tester);
+      await tester.pumpAndSettle();
+      expect(api.calls('POST', '/v1/auth/mfa/verify').single.body['code'], '123456');
+    });
+
     testWidgets('an invalid code keeps the parent on the setup screen', (tester) async {
       final api = FakeApiClient(mfaRoutes(
         verify: (_) => const FakeHttpError(401, {'error': 'invalid_code'}),

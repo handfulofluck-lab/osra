@@ -89,6 +89,15 @@ void main() {
     await unmount(tester);
   });
 
+  testWidgets('an approved localized code is normalized for display and QR', (tester) async {
+    final api = pairingApi(codes: const ['٤٨٢٩١٦']);
+    await pumpScreen(tester, api);
+    expect(find.text('482916'), findsOneWidget);
+    final qr = tester.widget<PairingQr>(find.byKey(const ValueKey('pairingQr')));
+    expect(PairQrPayload.decode(qr.data).code, '482916');
+    await unmount(tester);
+  });
+
   testWidgets('the countdown reaches zero and disables the QR, code and copy',
       (tester) async {
     final api = pairingApi();

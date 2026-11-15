@@ -1,0 +1,4 @@
+### Codes and PINs accept Arabic-Indic and Persian keyboard digits (#787)
+- The API, Flutter parent app and Android child normalize U+0660–U+0669 and U+06F0–U+06F9 to ASCII before validation, comparison, hashing, replay protection and requests. Only plain spaces and LRM/RLM/ALM are stripped; other digit sets and characters remain rejected, with no wording changes.
+- Flutter numeric fields preserve the cursor across removed marks. Android PINs hashed in an approved localized form before this fix are rehashed in ASCII after one successful legacy-form verification.
+- Author verification covers focused normalization and submit-path tests; full-suite, independent security and native-device results are recorded on the PR before readiness. No AWS, production, signing or real credential use is claimed.

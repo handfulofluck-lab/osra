@@ -148,6 +148,20 @@ void main() {
     expect(api.loginBody!['code'], '123456');
   });
 
+  test('login normalizes approved digit keyboards before the request', () async {
+    await container.read(authProvider.notifier).login('demo@osratech.com', 'good-password', '١٢٣٤٥٦');
+    expect(api.loginBody!['code'], '123456');
+    await container.read(authProvider.notifier).login('demo@osratech.com', 'good-password', '۱۲۳۴۵۶');
+    expect(api.loginBody!['code'], '123456');
+    await container.read(authProvider.notifier).login('demo@osratech.com', 'good-password', '１２３４５６');
+    expect(api.loginBody!['code'], isNot('123456'));
+  });
+
+  test('login does not trim unapproved whitespace around a code', () async {
+    await container.read(authProvider.notifier).login('demo@osratech.com', 'good-password', '\t123456\n');
+    expect(api.loginBody!['code'], '\t123456\n');
+  });
+
   test('401 with an mfa error shows Invalid authentication code', () async {
     await container.read(authProvider.notifier).login('demo@osratech.com', 'mfa-password');
     final state = container.read(authProvider);

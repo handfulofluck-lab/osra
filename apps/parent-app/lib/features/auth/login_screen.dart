@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/digits.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/mfa_provider.dart';
@@ -229,6 +230,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 TextField(
                   controller: _code,
                   keyboardType: TextInputType.number,
+                  inputFormatters: [DigitInputFormatter()],
                   autofillHints: const [AutofillHints.oneTimeCode],
                   decoration: InputDecoration(
                     labelText: l10n.mfaCodeLabel,

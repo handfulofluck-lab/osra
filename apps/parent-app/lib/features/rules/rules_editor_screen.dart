@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../api/models.dart';
+import '../../core/digits.dart';
 import '../../l10n/l10n.dart';
 
 import '../../api/permission_errors.dart';
@@ -608,6 +609,7 @@ class _AppRuleTileState extends State<_AppRuleTile> {
               TextField(
                 controller: _minutes,
                 keyboardType: TextInputType.number,
+                inputFormatters: [DigitInputFormatter()],
                 decoration: InputDecoration(labelText: l10n.limitPerDayLabel, border: const OutlineInputBorder(), isDense: true),
                 onChanged: (v) => widget.onChanged(AppRule(packageId: r.packageId, appName: r.appName, action: r.action, dailyLimitMinutes: int.tryParse(v))),
               ),

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../api/models.dart';
+import '../../core/digits.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
@@ -105,7 +106,7 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
         data: {'childId': widget.childId},
       );
       final data = Map<String, dynamic>.from(res.data as Map);
-      final code = data['code'] as String?;
+      final code = normalizeDigits(data['code'] as String? ?? '');
       final expiresAt = DateTime.tryParse(data['expiresAt'] as String? ?? '') ??
           _now.add(kPairCodeTtl);
       if (code == null || !RegExp(r'^\d{6}$').hasMatch(code)) {

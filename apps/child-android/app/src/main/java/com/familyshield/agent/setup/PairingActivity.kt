@@ -39,6 +39,7 @@ import com.familyshield.agent.security.ParentPinStore
 import com.familyshield.agent.security.ProtectionStatusNote
 import com.familyshield.agent.security.ProtectionTier
 import com.familyshield.agent.security.TamperGuardActivity
+import com.familyshield.agent.security.normalizeDigits
 import com.familyshield.agent.services.LocationService
 import com.familyshield.agent.services.LocationStartPolicy
 import dagger.hilt.android.AndroidEntryPoint
@@ -460,8 +461,8 @@ class PairingActivity : ComponentActivity() {
             error.visibility = View.VISIBLE
             return
         }
-        val code = enteredCode.trim()
-        if (!code.matches(Regex("\\d{6}"))) {
+        val code = normalizePairingCode(enteredCode)
+        if (code == null) {
             error.text = getString(R.string.pair_error_code)
             error.visibility = View.VISIBLE
             return
@@ -524,8 +525,8 @@ class PairingActivity : ComponentActivity() {
                 Button(this@PairingActivity).apply {
                     text = getString(R.string.pair_pin_save)
                     setOnClickListener {
-                        val p = pin.text.toString()
-                        val reason = ParentPin.validationError(p) ?: if (p != again.text.toString()) getString(R.string.pair_pin_mismatch) else null
+                        val p = normalizeDigits(pin.text.toString()).orEmpty()
+                        val reason = ParentPin.validationError(p) ?: if (p != normalizeDigits(again.text.toString())) getString(R.string.pair_pin_mismatch) else null
                         if (reason != null) {
                             error.text = reason
                             error.visibility = View.VISIBLE

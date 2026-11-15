@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart' hide Family;
 import '../api/client.dart';
 import '../api/models.dart';
 import '../api/push_api.dart';
+import '../core/digits.dart';
 import '../push/push_registration.dart';
 import '../push/fcm_push_token_source.dart';
 import 'server_provider.dart';
@@ -122,8 +123,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// non-empty (MFA) it is included in the request body as `code`.
   Future<void> login(String email, String password, [String? code]) => _authenticate(() {
         final body = <String, dynamic>{'email': email, 'password': password};
-        final trimmed = code?.trim();
-        if (trimmed != null && trimmed.isNotEmpty) body['code'] = trimmed;
+        if (code != null && code.isNotEmpty) body['code'] = normalizeDigits(code) ?? code;
         return _api.raw.post('/v1/auth/login', data: body);
       });
 

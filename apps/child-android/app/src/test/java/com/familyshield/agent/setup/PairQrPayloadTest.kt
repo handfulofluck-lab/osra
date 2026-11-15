@@ -68,6 +68,16 @@ class PairQrPayloadTest {
     }
 
     @Test
+    fun `normalizes approved pairing digits and rejects other scripts`() {
+        assertEquals("482916", PairQrPayload(code = "٤٨٢٩١٦", apiBaseUrl = "http://192.168.1.5:3000").encode().substringAfter("code=").substringBefore("&"))
+        assertEquals("482916", PairQrPayload(code = "۴۸۲۹۱۶", apiBaseUrl = "http://192.168.1.5:3000").encode().substringAfter("code=").substringBefore("&"))
+        assertEquals("482916", PairQrPayload.decode("osra://pair?v=1&code=٤٨٢٩١٦&host=http%3A%2F%2F192.168.1.5%3A3000").code)
+        assertThrows(PairQrFormatException::class.java) {
+            PairQrPayload.decode("osra://pair?v=1&code=４８２９１６&host=http%3A%2F%2F192.168.1.5%3A3000")
+        }
+    }
+
+    @Test
     fun `refuses a missing, non-http or malformed host`() {
         for (raw in listOf(
             "osra://pair?v=1&code=482916",
