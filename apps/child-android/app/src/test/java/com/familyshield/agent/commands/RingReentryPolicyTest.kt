@@ -155,10 +155,9 @@ class RingReentryPolicyTest {
     /** #802 V4 (Claude): the deferred re-check decides again instead of raising the screen blindly. */
     @Test
     fun `the deferred re-check asks the policy again`() {
+        // Bounded by the method's closing line rather than a multi-line delimiter, so the anchor is readable.
         val recheck = service.substringAfter("private fun scheduleRingRecheck()", missingDelimiterValue = "")
-            .substringBefore("
-    }
-", missingDelimiterValue = "")
+            .lines().takeWhile { it != "    }" }.joinToString("\n")
         assertTrue("it re-reads the window in front", recheck.contains("rootInActiveWindow"))
         assertTrue("and decides on it", recheck.contains("RingReentryPolicy.decide("))
         assertTrue("only RESTORE raises the screen", recheck.contains("Reentry.RESTORE ->"))
