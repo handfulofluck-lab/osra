@@ -860,8 +860,11 @@ Eligible: plan "family"; manage_on is the store, or null for a finite grant.
 `active` is eligible only before expiry. `grace` and `on_hold` remain eligible while the store keeps
 that state, including after expiry, but only until `expires_at + 67 days`: the stores' documented
 60-day recovery limit plus 7 days for a late push. Past that lost-push ceiling the row is ineligible
-and one structured warning carries family id, source and hashed reference, never the raw token.
-`expired`, `revoked` and `refunded` end eligibility at their effective time. Among eligible rows,
+and one structured warning carries family id, source and hashed reference, never the raw token. The
+warning is emitted per `entitlement()` read past the ceiling, so the metric counts reads, not unique rows;
+once-per-row alerting belongs to #815. `expired` ends eligibility at the earlier of store expiry and the
+effective verification time; `revoked` and `refunded` end at their effective time. Once `ended_at` exists
+it only ever moves earlier. Among eligible rows,
 latest expiry wins, then latest verification. A null expiry is ineligible and logged without a store
 reference: there is no lifetime plan. When eligibility ends,
 `requirePlan` and the agent rule projection wait until the next family-local 10:00 before refusing

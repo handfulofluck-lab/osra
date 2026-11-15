@@ -61,6 +61,57 @@ describe("R3 review: immutable end of eligibility", () => {
     }));
   });
 
+  it("never moves ended_at forward when a revoking row changes revoking state", async () => {
+    const firstEnd = new Date("2026-11-01T00:00:00.000Z");
+    prismaMock.familyPurchase.findUnique.mockResolvedValue(purchase({
+      status: "refunded", endedAt: firstEnd, expiresAt: new Date("2026-12-01T00:00:00.000Z"),
+    }));
+    await revokeEntitlement({ ...base, state: "expired", effectiveAt: "2026-11-15T10:00:00.000Z", expiresAt: "2026-12-01T00:00:00.000Z" });
+    expect(prismaMock.familyPurchase.update).toHaveBeenLastCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ endedAt: firstEnd }),
+    }));
+  });
+
+  it.each([
+    ["active", "2026-11-01T00:00:00.000Z", "2026-11-01T00:00:00.000Z"],
+    ["on_hold", "2026-09-08T23:00:00.000Z", "2026-11-14T23:00:00.000Z"],
+  ])("uses the historical lapse date when a %s row is refunded later", async (status, expiresAt, naturalEnd) => {
+    prismaMock.familyPurchase.findUnique.mockResolvedValue(purchase({
+      status, endedAt: null, expiresAt: new Date(expiresAt), lastVerifiedAt: new Date("2026-09-09T00:00:00.000Z"),
+    }));
+    await revokeEntitlement({ ...base, state: "refunded", effectiveAt: "2026-11-20T10:00:00.000Z", expiresAt });
+    expect(prismaMock.familyPurchase.update).toHaveBeenLastCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ endedAt: new Date(naturalEnd) }),
+    }));
+  });
+
+  it.each(["grace", "on_hold"])("treats a %s row with no expiry as ineligible and warns", async (status) => {
+    const warn = vi.fn();
+    prismaMock.familyPurchase.findMany.mockResolvedValue([purchase({ status, expiresAt: null })]);
+    expect(await entitlement("fam-1", new Date("2026-11-15T00:00:00.000Z"), warn)).toEqual({
+      plan: null, until: null, source: null, manage_on: null,
+    });
+    expect(warn).toHaveBeenCalledWith({ familyId: "fam-1" }, "family_plan_missing_expiry");
+  });
+
+  it("emits one-line JSON warning events suitable for metric filters", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      prismaMock.familyPurchase.findMany.mockResolvedValue([
+        purchase({ status: "active", expiresAt: null }),
+        purchase({ status: "on_hold", expiresAt: new Date("2026-01-01T00:00:00.000Z") }),
+      ]);
+      await entitlement("fam-1", new Date("2026-11-15T00:00:00.000Z"));
+      expect(warning).toHaveBeenCalledTimes(2);
+      for (const [line] of warning.mock.calls) {
+        expect(line).not.toContain("\n");
+        expect(JSON.parse(line as string).event).toMatch(/^family_plan_/);
+      }
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
   it("does not re-arm an old expired plan by verifying it again today", async () => {
     prismaMock.familyPurchase.findMany.mockResolvedValue([purchase({
       status: "expired", expiresAt: new Date("2026-10-01T00:00:00.000Z"),

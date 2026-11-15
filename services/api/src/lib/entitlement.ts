@@ -47,6 +47,14 @@ export type EntitlementWarning = (
   message: string,
 ) => void;
 
+/** One JSON object per line so CloudWatch can count the stable `event` field. */
+export function defaultEntitlementWarning(
+  fields: { familyId: string; source?: EntitlementSource; storeRefHash?: string },
+  message: string,
+): void {
+  console.warn(JSON.stringify({ event: message, ...fields }));
+}
+
 /**
  * Lost-push backstop for grace/account hold: Google's default grace+hold recovery basis is 60 days
  * (https://support.google.com/googleplay/android-developer/answer/12154973) and Apple retries billing for
@@ -79,11 +87,16 @@ class PrismaEntitlementStore implements EntitlementStore {
           if (existing && existing.lastVerifiedAt >= effectiveAt) return;
           // An undated revocation must not erase the expiry the store previously reported.
           const expiresAt = change.expiresAt === null ? existing?.expiresAt ?? null : new Date(change.expiresAt);
+          const recoveryDays = existing?.status === "grace" || existing?.status === "on_hold"
+            || (!existing && (change.state === "grace" || change.state === "on_hold"))
+            ? STORE_MAX_RECOVERY_DAYS : 0;
+          const naturalEnd = expiresAt ? new Date(expiresAt.getTime() + recoveryDays * 24 * 60 * 60 * 1000) : null;
+          const calculatedEnd = naturalEnd && naturalEnd < effectiveAt ? naturalEnd : effectiveAt;
           const firstEnd = !isRevoking(change.state)
             ? null
-            : change.state === "expired"
-              ? new Date(Math.min(expiresAt?.getTime() ?? effectiveAt.getTime(), effectiveAt.getTime()))
-              : existing && isRevoking(existing.status as EntitlementState) ? existing.endedAt ?? existing.lastVerifiedAt : effectiveAt;
+            : existing && isRevoking(existing.status as EntitlementState)
+              ? existing.endedAt ?? calculatedEnd
+              : calculatedEnd;
           const data = {
             familyId: change.familyId,
             source: change.source,
@@ -154,7 +167,7 @@ export async function storeAccountIdFor(familyId: string): Promise<string> {
 export async function entitlement(
   familyId: string,
   now = new Date(),
-  warn: EntitlementWarning = console.warn,
+  warn: EntitlementWarning = defaultEntitlementWarning,
 ): Promise<EntitlementResponse> {
   const rows = await prisma.familyPurchase.findMany({ where: { familyId } });
   const eligible = rows.filter((row) => {
