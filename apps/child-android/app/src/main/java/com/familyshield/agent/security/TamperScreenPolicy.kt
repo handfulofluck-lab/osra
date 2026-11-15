@@ -13,7 +13,7 @@ package com.familyshield.agent.security
  * verb in English or Arabic second. A Settings page that merely lists apps, or the admin list without
  * our row expanded, is not a tamper screen.
  */
-enum class TamperScreen { NONE, DEACTIVATE_ADMIN, UNINSTALL, APP_INFO, PRIVATE_DNS, SPACE_SETUP }
+enum class TamperScreen { NONE, DEACTIVATE_ADMIN, UNINSTALL, APP_INFO, PROTECTION_SETTINGS, PRIVATE_DNS, SPACE_SETUP }
 
 object TamperScreenPolicy {
 
@@ -24,6 +24,9 @@ object TamperScreenPolicy {
         "com.google.android.packageinstaller",
         "com.samsung.android.packageinstaller",
         "com.miui.securitycenter",
+        // osra-security#30: the Permission manager lives in its own package on Android 11 and later.
+        "com.android.permissioncontroller",
+        "com.google.android.permissioncontroller",
     )
 
     // Secondary signal: the words on the screen, in every language the agent ships (English as before,
@@ -68,6 +71,26 @@ object TamperScreenPolicy {
     private val NEVER_CLASSES = setOf("DeviceAdminSettingsActivity")
     private val UNINSTALL_CLASSES = setOf("UninstallerActivity")
     private val APP_INFO_CLASSES = setOf("InstalledAppDetails", "InstalledAppDetailsTop", "AppInfoDashboardActivity")
+
+    /**
+     * osra-security#29 and #30 (Flip4 AS02, and the Permission manager row): the pages that switch off the
+     * agent's own permissions are protection screens too. They do not read as "app info" — the accessibility
+     * detail page carries a switch, and PermissionController's page carries per-permission rows — but from
+     * them a child turns off the accessibility service or the location grant with no PIN, which is the same
+     * loss of protection by another door. Guarded only when the screen names the agent, like every other class
+     * here: the same pages exist for every app on the phone.
+     */
+    private val PROTECTION_SETTINGS_CLASSES = setOf(
+        // Accessibility → Installed apps → our service: AOSP, Google and Samsung wording of the same page.
+        "AccessibilityDetails",
+        "AccessibilityServiceDetails",
+        "SecAccessibilityDetailsActivity",
+        "SecAccessibilityInstalledAppsActivity",
+        // Permission manager → Location → our app (osra-security#30), AOSP PermissionController.
+        "ManagePermissionsActivity",
+        "AppPermissionsActivity",
+        "PermissionDetailsActivity",
+    )
 
     /**
      * osra-security#6 item 3: the screens that create a second space on the phone — Samsung Dual Messenger's
@@ -153,6 +176,7 @@ object TamperScreenPolicy {
             in ADMIN_CLASSES -> return if (ourAdminActive) TamperScreen.DEACTIVATE_ADMIN else TamperScreen.NONE
             in UNINSTALL_CLASSES -> return TamperScreen.UNINSTALL
             in APP_INFO_CLASSES -> return TamperScreen.APP_INFO
+            in PROTECTION_SETTINGS_CLASSES -> return TamperScreen.PROTECTION_SETTINGS
         }
 
         val joined = joinedAll

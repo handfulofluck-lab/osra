@@ -39,6 +39,61 @@ class TamperScreenPolicyTest {
         assertEquals(TamperScreen.APP_INFO, classify("com.android.settings", "OSRA", "com.familyshield.agent", "Clear data", "Clear cache"))
     }
 
+    /**
+     * osra-security#29 (AS02 on the Flip4): a child turned our accessibility service off from
+     * Settings → Accessibility → Installed apps → OSRA with no PIN, and blocking stopped at once. The page is
+     * a switch and says nothing about uninstalling, so no word path reached it — and until this row it was
+     * classified NONE.
+     */
+    @Test
+    fun `our accessibility detail page is a protection screen`() {
+        for (cls in listOf(
+            "com.android.settings.accessibility.AccessibilityDetails",
+            "com.android.settings.accessibility.AccessibilityServiceDetails",
+            "com.samsung.android.settings.accessibility.SecAccessibilityDetailsActivity",
+        )) {
+            assertEquals(
+                cls,
+                TamperScreen.PROTECTION_SETTINGS,
+                classifyWindow("com.android.settings", cls, "OSRA accessibility", "Allowed", "Use OSRA to observe what is on screen"),
+            )
+        }
+    }
+
+    /**
+     * osra-security#30: Permission manager → Location → OSRA, in its own package. The location grant is a
+     * protection the parent gave; switching it off stops live location and geofence alerts with no PIN.
+     */
+    @Test
+    fun `our permissions page is a protection screen`() {
+        for (pkg in listOf("com.android.permissioncontroller", "com.google.android.permissioncontroller")) {
+            for (cls in listOf("ManagePermissionsActivity", "AppPermissionsActivity", "PermissionDetailsActivity")) {
+                assertEquals(
+                    "$pkg/$cls",
+                    TamperScreen.PROTECTION_SETTINGS,
+                    classifyWindow(pkg, cls, "OSRA", "Location", "Don't allow", "Allow all the time"),
+                )
+            }
+        }
+    }
+
+    /** The same two pages exist for every app on the phone; only ours is a protection screen. */
+    @Test
+    fun `another app's accessibility and permission pages stay NONE`() {
+        assertEquals(
+            TamperScreen.NONE,
+            classifyWindow(
+                "com.android.settings",
+                "com.android.settings.accessibility.AccessibilityDetails",
+                "Chrome accessibility", "Allowed", "Use Chrome to observe what is on screen",
+            ),
+        )
+        assertEquals(
+            TamperScreen.NONE,
+            classifyWindow("com.android.permissioncontroller", "ManagePermissionsActivity", "Camera", "Photos", "Don't allow"),
+        )
+    }
+
     @Test
     fun `screens that do not name us, or are not system packages, are NONE`() {
         assertEquals(TamperScreen.NONE, classify("com.android.settings", "Device admin apps", "Find My Device", "Deactivate"))
@@ -74,6 +129,10 @@ class TamperScreenPolicyTest {
     // On an Arabic phone our labels resolve to Arabic too: the launcher label stays the brand ("OSRA"),
     // the device-admin label is the Arabic string from values-ar.
     private val adminAr = "الرقابة الأبوية من OSRA"
+
+    /** The class matters for the rows below: these pages say nothing that a word list would catch. */
+    private fun classifyWindow(packageName: String?, windowClass: String?, vararg texts: String) =
+        TamperScreenPolicy.classify(packageName, texts.toList(), agent, admin, pkg, ourAdminActive = true, windowClass = windowClass)
 
     private fun classifyAr(packageName: String?, windowClass: String?, vararg texts: String) =
         TamperScreenPolicy.classify(packageName, texts.toList(), agent, adminAr, pkg, ourAdminActive = true, windowClass = windowClass)
