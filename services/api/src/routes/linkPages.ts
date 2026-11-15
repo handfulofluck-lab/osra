@@ -1,9 +1,11 @@
+import { randomBytes } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import argon2 from "argon2";
 import { prisma } from "../db.js";
-import { ReauthSchema, checkReauth } from "../lib/accountDeletion.js";
+import { checkReauth } from "../lib/accountDeletion.js";
 import { BUTTON, INPUT, PRIMARY, err, esc, h, p, page, sendPage } from "../lib/htmlPage.js";
 import { AUTH_RATE_LIMIT } from "../lib/rateLimits.js";
-import { acceptInvite, findOpenInvite } from "./invites.js";
+import { acceptInvite, findOpenInvite, inviteIdForSecret } from "./invites.js";
 
 /**
  * #789: the pages the mailed links open. Every mail the API sends carries `APP_PUBLIC_URL` + a path, and
@@ -13,7 +15,8 @@ import { acceptInvite, findOpenInvite } from "./invites.js";
  *  - `GET /reset?token=`              the new-password form        → `POST /reset`
  *  - `GET /mfa/reset/confirm?token=`  one button                   → `POST /mfa/reset/confirm`
  *  - `GET /mfa/reset/cancel?token=`   one button                   → `POST /mfa/reset/cancel`
- *  - `GET /invite/accept?token=`      the password form            → `POST /invite/accept`
+ *  - `GET /invite/accept?token=`      the password form            → `POST /invite/accept` (the token is the
+ *                                     mail's own secret, not the invite id the inviter can see)
  *  - `GET /dashboard`                 "open the app"
  *
  * Rules every route here keeps:
@@ -36,8 +39,6 @@ type Copy = { en: string; ar: string };
 
 /** A signed token as `@fastify/jwt` writes it: three base64url parts. */
 const JWT_PATTERN = /^[A-Za-z0-9_-]{1,1024}\.[A-Za-z0-9_-]{1,2048}\.[A-Za-z0-9_-]{1,1024}$/;
-/** `FamilyInvite.id` is a uuid (schema.prisma). */
-const INVITE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MIN_PASSWORD = 12; // `POST /v1/auth/reset/confirm` and `/register` both require 12
 
 const str = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
@@ -178,55 +179,42 @@ const mfaAlreadyClosedPage = () =>
   );
 
 // --- Family invite -----------------------------------------------------------------------------------
+//
+// One page shape (#804, Ahmed's B1). The form looks the same whether or not the invited address has an
+// account and whether or not that account uses two-step verification, and every refusal after a
+// password was typed is the same sentence. So the page tells nobody, the mailbox's reader included,
+// whether an OSRA account exists for an address or how it is protected.
 
 const INVITE_ERRORS = {
   reauth_failed: {
     en: "That password or authenticator code is not right. Nothing was changed.",
     ar: "كلمة المرور أو رمز تطبيق المصادقة غير صحيح. لم يتغيّر شيء.",
   },
-  mfa_reenroll_required: {
-    en: "Two-step verification is on for this account, but no authenticator is set up. Sign in to the app and set one up first. Nothing was changed.",
-    ar: "التحقق بخطوتين مفعّل في هذا الحساب، لكن لم يتم إعداد تطبيق مصادقة. سجّل الدخول إلى تطبيق أسرة أولًا لإعداد تطبيق مصادقة. لم يتغيّر شيء.",
-  },
   password_required: { en: "Enter your password.", ar: "أدخل كلمة المرور." },
 } satisfies Record<string, Copy>;
 
 type InviteError = keyof typeof INVITE_ERRORS;
 
-/** The invited address has no account yet: the app creates it, then this same link finishes the job. */
-const inviteNoAccountPage = () =>
-  page(
-    h("You are invited to a family on OSRA") +
-      p("First create your account: install the OSRA app and sign up with the email address this invitation was sent to.") +
-      p("Then open this link again to join the family. The invitation is valid for 7 days."),
-    h("دعوة للانضمام إلى عائلة في تطبيق أسرة") +
-      p("أولًا، ثبّت تطبيق أسرة وأنشئ فيه حسابًا بالبريد الإلكتروني الذي وصلتك عليه هذه الدعوة.") +
-      p("ثم افتح هذا الرابط مرة أخرى للانضمام إلى العائلة. الدعوة صالحة لمدة 7 أيام."),
-  );
-
-function invitePage(token: string, mfa: boolean, error?: InviteError): string {
+function invitePage(token: string, error?: InviteError): string {
   const copy = error ? INVITE_ERRORS[error] : undefined;
-  const form = (en: boolean) => {
-    const code = mfa
-      ? `<label style="display:block">${en ? "Authenticator code" : "رمز تطبيق المصادقة"}<input name="mfaCode" required inputmode="numeric" pattern="[0-9 ]{6,7}" maxlength="7" autocomplete="one-time-code" style="${INPUT}"></label>`
-      : "";
-    return `<form method="post" action="/invite/accept">
+  const form = (en: boolean) => `<form method="post" action="/invite/accept">
       ${hidden(token)}
       <label style="display:block">${en ? "Password" : "كلمة المرور"}<input type="password" name="password" required maxlength="256" autocomplete="current-password" style="${INPUT}"></label>
-      ${code}
+      <label style="display:block">${en ? "Authenticator code (if you use one)" : "رمز تطبيق المصادقة (إن كنت تستخدمه)"}<input name="mfaCode" inputmode="numeric" pattern="[0-9 ]{6,7}" maxlength="7" autocomplete="one-time-code" style="${INPUT}"></label>
       ${submit(en ? "Join the family" : "الانضمام إلى العائلة")}
     </form>`;
-  };
   return page(
     h("You are invited to a family on OSRA") +
       err(copy?.en) +
       p("Enter your OSRA password to join the family.") +
       p("Your account moves to this family. If you set up a family of your own in OSRA, you will no longer see it.") +
+      p("No OSRA account yet? First install the OSRA app and create an account with the email address this invitation was sent to. Then open this link again to join the family. The invitation is valid for 7 days.") +
       form(true),
     h("دعوة للانضمام إلى عائلة في تطبيق أسرة") +
       err(copy?.ar) +
       p("أدخل كلمة مرور حسابك في تطبيق أسرة للانضمام إلى العائلة.") +
       p("سينتقل حسابك إلى هذه العائلة. وإن كنت قد أنشأت عائلة خاصة بك في تطبيق أسرة، فلن تراها بعد ذلك.") +
+      p("ليس لديك حساب بعد؟ أولًا، ثبّت تطبيق أسرة وأنشئ فيه حسابًا بالبريد الإلكتروني الذي وصلتك عليه هذه الدعوة. ثم افتح هذا الرابط مرة أخرى للانضمام إلى العائلة. الدعوة صالحة لمدة 7 أيام.") +
       form(false),
   );
 }
@@ -369,47 +357,64 @@ export async function linkPageRoutes(app: FastifyInstance) {
 
   // --- family invite ---
 
-  /** The invitation and the account it is addressed to, read fresh on both the GET and the POST. */
-  const inviteFor = async (token: string) => {
-    if (!INVITE_PATTERN.test(token)) return null;
-    const invite = await findOpenInvite(token);
-    if (!invite) return null;
-    return { parent: await prisma.parent.findUnique({ where: { email: invite.email.toLowerCase() } }) };
+  /**
+   * The live invitation a mailed secret stands for. The link carries the secret, never `invite.id`,
+   * which the inviter knows (`routes/invites.ts`).
+   */
+  const inviteFor = async (secret: string) => {
+    const id = await inviteIdForSecret(secret);
+    if (!id) return null;
+    const invite = await findOpenInvite(id);
+    return invite ? { id, email: invite.email } : null;
   };
 
+  /** A real argon2 hash to verify against when no account exists, so that case takes as long as a wrong password. */
+  let dummyHash: Promise<string> | undefined;
+  const burnPasswordCheck = async (password: string) => {
+    dummyHash ??= argon2.hash(randomBytes(16).toString("hex"));
+    await argon2.verify(await dummyHash, password).catch(() => false);
+  };
+
+  /** Reads the invitation only, never the account: the page is the same for every live invitation. */
   app.get("/invite/accept", async (req, reply) => {
     const token = queryToken(req);
-    const found = await inviteFor(token);
-    if (!found) return sendPage(reply, 404, inviteExpiredPage());
-    if (!found.parent) return sendPage(reply, 200, inviteNoAccountPage());
-    return sendPage(reply, 200, invitePage(token, found.parent.mfaEnabled));
+    if (!(await inviteFor(token))) return sendPage(reply, 404, inviteExpiredPage());
+    return sendPage(reply, 200, invitePage(token));
   });
 
   /**
    * Join. No session exists on a web page, so the proof is the account's password, and the
    * authenticator code when MFA is on: `checkReauth`, the check the web deletion uses. Holding the
-   * mail alone moves nobody. A wrong password leaves the invitation usable, and the route's own auth
-   * rate limit (fails closed) makes the form no faster a password oracle than `/login`.
+   * mail alone moves nobody. Every refusal is one answer: no account for the address, a wrong password,
+   * a wrong or missing code and an account with no authenticator bound all show the same page with the
+   * same status, and the invitation stays usable. The route's own auth rate limit (fails closed) makes
+   * the form no faster a password oracle than `/login`.
    */
   app.post("/invite/accept", { config: { rateLimit: AUTH_RATE_LIMIT } }, async (req, reply) => {
     const body = bodyOf(req);
     const token = str(body.token) ?? "";
     const found = await inviteFor(token);
     if (!found) return sendPage(reply, 404, inviteExpiredPage());
-    const parent = found.parent;
-    if (!parent) return sendPage(reply, 200, inviteNoAccountPage());
 
-    // A browser sends an empty field for an unused input, and people type a code as "123 456".
-    const mfaCode = str(body.mfaCode)?.replace(/\s+/g, "") || undefined;
-    const reauth = ReauthSchema.safeParse({ password: str(body.password) ?? "", mfaCode });
-    if (!reauth.success) {
-      const error: InviteError = reauth.error.issues.some((i) => i.path[0] === "password") ? "password_required" : "reauth_failed";
-      return sendPage(reply, 400, invitePage(token, parent.mfaEnabled, error));
+    // Judged before any account is looked up, so it says nothing about one.
+    const password = (str(body.password) ?? "").slice(0, 256);
+    if (!password) return sendPage(reply, 400, invitePage(token, "password_required"));
+    // A browser sends an empty field for an unused input, and people type a code as "123 456". A code
+    // that is not six digits is treated as no code: it then fails exactly where a wrong one does.
+    const typed = str(body.mfaCode)?.replace(/\s+/g, "") ?? "";
+    const mfaCode = /^\d{6}$/.test(typed) ? typed : undefined;
+
+    const parent = await prisma.parent.findUnique({ where: { email: found.email.toLowerCase() } });
+    let refused: boolean;
+    if (parent) {
+      refused = (await checkReauth(parent, { password, mfaCode })) !== null;
+    } else {
+      await burnPasswordCheck(password);
+      refused = true;
     }
-    const refusal = await checkReauth(parent, reauth.data);
-    if (refusal) return sendPage(reply, 401, invitePage(token, parent.mfaEnabled, refusal));
+    if (refused || !parent) return sendPage(reply, 401, invitePage(token, "reauth_failed"));
 
-    const result = await acceptInvite(token, parent);
+    const result = await acceptInvite(found.id, parent);
     if (!result.ok) return sendPage(reply, 404, inviteExpiredPage());
     return sendPage(reply, 200, inviteDonePage());
   });

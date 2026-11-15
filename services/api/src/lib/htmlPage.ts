@@ -50,6 +50,8 @@ export function sendPage(reply: FastifyReply, status: number, html: string): Fas
     .header("cache-control", "no-store")
     .header("referrer-policy", "no-referrer")
     .header("x-content-type-options", "nosniff")
+    // Both forms of "never framed": `frame-ancestors` for current browsers, the older header for the rest.
+    .header("x-frame-options", "DENY")
     .header(
       "content-security-policy",
       "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",

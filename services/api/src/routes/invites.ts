@@ -1,9 +1,10 @@
+import { createHash, randomBytes } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { appPublicUrl, emailConfigured, getEmailSender } from "../lib/email/index.js";
 import { inviteEmail } from "../lib/email/templates.js";
-import { getJson, setJson } from "../redis.js";
+import { getJson, getRedis, setJson } from "../redis.js";
 import { requireAuth, requireOwner, requireParent } from "../middleware/requireFamily.js";
 import { invalidateSessionsBefore, signParentToken } from "../lib/sessions.js";
 
@@ -34,6 +35,23 @@ type InviteToken = { familyId: string; email: string; role: string; permissions:
 /** Redis key holding the accept token payload for an invite. */
 function inviteKey(id: string): string {
   return `invite:${id}`;
+}
+
+/**
+ * The mailed link's secret (#804, Ahmed's B1). The inviter sees `invite.id` (the create response, the
+ * list, the revoke URL), so the id cannot be what opens the web accept page: that page takes a password,
+ * and it must be reachable only by whoever reads the invited mailbox. The link carries 256 random bits
+ * instead; Redis holds only their SHA-256, pointing at the invite, for the invite's own lifetime. The
+ * secret is in the mail and nowhere else: not in a response, not in a log, not in the database.
+ */
+export const INVITE_SECRET_PATTERN = /^[0-9a-f]{64}$/;
+const hashInviteSecret = (secret: string) => createHash("sha256").update(secret).digest("hex");
+const inviteSecretKey = (secret: string) => `invite:accept:${hashInviteSecret(secret)}`;
+
+/** The invite id a mailed secret stands for, or null. Reads only. */
+export async function inviteIdForSecret(secret: string): Promise<string | null> {
+  if (!INVITE_SECRET_PATTERN.test(secret)) return null;
+  return getRedis().get(inviteSecretKey(secret));
 }
 
 /** Strip credential material from a parent row before it leaves the API. */
@@ -111,6 +129,9 @@ export async function inviteRoutes(app: FastifyInstance) {
     const invite = await prisma.familyInvite.create({
       data: { familyId: user.familyId, email: normalizedEmail, role, permissions, status: "pending" },
     });
+    // The mailed link's secret, written first: without the invite record below it opens nothing.
+    const secret = randomBytes(32).toString("hex");
+    await getRedis().set(inviteSecretKey(secret), invite.id, "EX", INVITE_TTL_SECONDS);
     const token: InviteToken = { familyId: user.familyId, email: normalizedEmail, role, permissions };
     await setJson(inviteKey(invite.id), token, INVITE_TTL_SECONDS);
     // Phase 2a: the invitee gets a link by email. The accept token is echoed in the response only
@@ -119,7 +140,7 @@ export async function inviteRoutes(app: FastifyInstance) {
       prisma.parent.findUnique({ where: { id: user.sub } }),
       prisma.family.findUnique({ where: { id: user.familyId } }),
     ]);
-    const link = `${appPublicUrl()}/invite/accept?token=${encodeURIComponent(invite.id)}`;
+    const link = `${appPublicUrl()}/invite/accept?token=${secret}`;
     const sent = await getEmailSender().send(
       inviteEmail(normalizedEmail, { inviterName: inviter?.displayName ?? "A parent", familyName: family?.name ?? "your", role, link }),
     );

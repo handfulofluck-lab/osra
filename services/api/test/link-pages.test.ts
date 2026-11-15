@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -5,13 +6,14 @@ import fastifyJwt from "@fastify/jwt";
 import argon2 from "argon2";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authRoutes } from "../src/routes/auth.js";
+import { inviteRoutes } from "../src/routes/invites.js";
 import { linkPageRoutes } from "../src/routes/linkPages.js";
 import { DANGER, PRIMARY } from "../src/lib/htmlPage.js";
 import { setEmailSender, type EmailMessage } from "../src/lib/email/index.js";
 import { verifyTotpFresh } from "../src/lib/mfaVerify.js";
 import { AUTH_RATE_LIMIT, registerRateLimits } from "../src/lib/rateLimits.js";
 import { getRedis } from "../src/redis.js";
-import { FakeRateLimitRedis, MockRedis, buildApp, prismaMock, resetPrismaMock } from "./helpers.js";
+import { FakeRateLimitRedis, MockRedis, authHeader, buildApp, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -92,6 +94,8 @@ function expectPageHeaders(res: { headers: Record<string, unknown> }) {
   expect(res.headers["referrer-policy"]).toBe("no-referrer");
   expect(String(res.headers["content-security-policy"])).toContain("default-src 'none'");
   expect(String(res.headers["content-security-policy"])).toContain("frame-ancestors 'none'");
+  // Ahmed's B2: never framed, said both ways. The one-button pages are what a clickjacking frame targets.
+  expect(res.headers["x-frame-options"]).toBe("DENY");
 }
 
 let store: Map<string, string>;
@@ -376,9 +380,13 @@ describe("how the pages read the JSON routes' answers", () => {
 describe("family invite page", () => {
   const TOKEN = { familyId: "fam-inviting", email: PARENT.email, role: "co-parent", permissions: ["alerts"] };
   const invite = { id: INVITE_ID, familyId: TOKEN.familyId, email: PARENT.email, role: "co-parent", permissions: ["alerts"], status: "pending" };
+  /** What the mail carries: 256 random bits. Redis holds only its SHA-256, pointing at the invite. */
+  const SECRET = "5e".repeat(32);
+  const secretKey = (secret: string) => `invite:accept:${createHash("sha256").update(secret).digest("hex")}`;
 
   beforeEach(() => {
     store.set(`invite:${INVITE_ID}`, JSON.stringify(TOKEN));
+    store.set(secretKey(SECRET), INVITE_ID);
     invite.status = "pending";
     prismaMock.familyInvite.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => (where.id === INVITE_ID ? { ...invite } : null));
     prismaMock.familyInvite.update.mockImplementation(async ({ data }: { data: { status: string } }) => {
@@ -388,37 +396,40 @@ describe("family invite page", () => {
   });
 
   const app = () => buildApp(linkPageRoutes, "");
+  const withMfa = () => prismaMock.parent.findUnique.mockResolvedValue({ ...PARENT, mfaEnabled: true, mfaSecret: "enc:secret" });
+  const noAccount = () => prismaMock.parent.findUnique.mockResolvedValue(null);
 
-  it("L13 the link opens the password form for an existing account, and opening it changes nothing", async () => {
-    // Mutant: accept on GET.
-    const res = await (await app()).inject({ method: "GET", url: `/invite/accept?token=${INVITE_ID}` });
+  it("L13 the mailed secret opens the password form; opening it changes nothing and reads no account", async () => {
+    // Mutants: accept on GET; look the account up on GET.
+    const res = await (await app()).inject({ method: "GET", url: `/invite/accept?token=${SECRET}` });
     expect(res.statusCode).toBe(200);
     expectPageHeaders(res);
     expect(res.body).toContain('<form method="post" action="/invite/accept">');
-    expect(res.body).toContain(`name="token" value="${INVITE_ID}"`);
-    expect(res.body).not.toContain('name="mfaCode"');
+    expect(res.body).toContain(`name="token" value="${SECRET}"`);
     expect(res.body).not.toContain(PARENT.email);
+    expect(res.body).not.toContain(INVITE_ID);
+    expect(prismaMock.parent.findUnique).not.toHaveBeenCalled();
     expect(invite.status).toBe("pending");
     expectNoWrites();
   });
 
-  it("L14 an invited address with no account is told to create one first, and the form is not shown", async () => {
-    // Mutant: show the password form when no account uses the invited address.
-    prismaMock.parent.findUnique.mockResolvedValue(null);
+  it("L14 the invite id, which the inviter can see, opens nothing (Ahmed's B1)", async () => {
+    // Mutant: accept `invite.id` as the link's token, as the first version did.
     const a = await app();
-    const res = await a.inject({ method: "GET", url: `/invite/accept?token=${INVITE_ID}` });
-    expect(res.statusCode).toBe(200);
-    expect(res.body).toContain("First create your account");
-    expect(res.body).not.toContain("<form");
+    const get = await a.inject({ method: "GET", url: `/invite/accept?token=${INVITE_ID}` });
+    expect(get.statusCode).toBe(404);
+    expect(get.body).toContain("expired or was already used");
+    expect(get.body).not.toContain("<form");
     const post = await a.inject({ method: "POST", url: "/invite/accept", ...form({ token: INVITE_ID, password: PASSWORD }) });
-    expect(post.body).toContain("First create your account");
+    expect(post.statusCode).toBe(404);
+    expect(argon2.verify).not.toHaveBeenCalled();
     expectNoWrites();
   });
 
   it("L15 the right password moves the account into the inviting family and spends the invitation", async () => {
     // Mutant: skip `acceptInvite` and answer the done page.
     const a = await app();
-    const res = await a.inject({ method: "POST", url: "/invite/accept", ...form({ token: INVITE_ID, password: PASSWORD }) });
+    const res = await a.inject({ method: "POST", url: "/invite/accept", ...form({ token: SECRET, password: PASSWORD, mfaCode: "" }) });
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain("You have joined the family");
     expect(argon2.verify).toHaveBeenCalledWith(PARENT.passwordHash, PASSWORD);
@@ -429,7 +440,7 @@ describe("family invite page", () => {
     // Every session minted in the previous family dies with the move (#117).
     expect(prismaMock.parent.update).toHaveBeenCalledWith({ where: { id: PARENT.id }, data: { sessionVersion: { increment: 1 } } });
     expect(invite.status).toBe("accepted");
-    const again = await a.inject({ method: "POST", url: "/invite/accept", ...form({ token: INVITE_ID, password: PASSWORD }) });
+    const again = await a.inject({ method: "POST", url: "/invite/accept", ...form({ token: SECRET, password: PASSWORD }) });
     expect(again.statusCode).toBe(404);
     expect(again.body).toContain("expired or was already used");
   });
@@ -438,45 +449,47 @@ describe("family invite page", () => {
     // Mutant: drop the `checkReauth` call.
     vi.mocked(argon2.verify).mockResolvedValue(false);
     const a = await app();
-    const res = await a.inject({ method: "POST", url: "/invite/accept", ...form({ token: INVITE_ID, password: "wrong-password" }) });
+    const res = await a.inject({ method: "POST", url: "/invite/accept", ...form({ token: SECRET, password: "wrong-password" }) });
     expect(res.statusCode).toBe(401);
     expect(res.body).toContain("is not right");
-    expect(res.body).toContain(`name="token" value="${INVITE_ID}"`);
+    expect(res.body).toContain(`name="token" value="${SECRET}"`);
     expect(invite.status).toBe("pending");
     expectNoWrites();
-    const empty = await a.inject({ method: "POST", url: "/invite/accept", ...form({ token: INVITE_ID, password: "" }) });
+    const empty = await a.inject({ method: "POST", url: "/invite/accept", ...form({ token: SECRET, password: "" }) });
     expect(empty.statusCode).toBe(400);
     expect(empty.body).toContain("Enter your password.");
+    // The empty-password answer is given before any account is read, so it cannot depend on one.
+    expect(prismaMock.parent.findUnique).toHaveBeenCalledTimes(1);
   });
 
   it("L17 an account with two-step verification must give its code too", async () => {
     // Mutant: pass `{ password }` to `checkReauth` and ignore MFA.
-    prismaMock.parent.findUnique.mockResolvedValue({ ...PARENT, mfaEnabled: true, mfaSecret: "enc:secret" });
+    withMfa();
     const a = await app();
-    const get = await a.inject({ method: "GET", url: `/invite/accept?token=${INVITE_ID}` });
-    expect(get.body).toContain('name="mfaCode"');
-    const noCode = await a.inject({ method: "POST", url: "/invite/accept", ...form({ token: INVITE_ID, password: PASSWORD, mfaCode: "" }) });
-    expect(noCode.statusCode).toBe(401);
-    const wrong = await a.inject({ method: "POST", url: "/invite/accept", ...form({ token: INVITE_ID, password: PASSWORD, mfaCode: "000000" }) });
-    expect(wrong.statusCode).toBe(401);
+    for (const mfaCode of ["", "000000", "12345", "abcdef"]) {
+      const res = await a.inject({ method: "POST", url: "/invite/accept", ...form({ token: SECRET, password: PASSWORD, mfaCode }) });
+      expect(res.statusCode).toBe(401);
+    }
     expectNoWrites();
     vi.mocked(verifyTotpFresh).mockResolvedValue(true);
-    const ok = await a.inject({ method: "POST", url: "/invite/accept", ...form({ token: INVITE_ID, password: PASSWORD, mfaCode: "123 456" }) });
+    const ok = await a.inject({ method: "POST", url: "/invite/accept", ...form({ token: SECRET, password: PASSWORD, mfaCode: "123 456" }) });
     expect(ok.statusCode).toBe(200);
     expect(verifyTotpFresh).toHaveBeenLastCalledWith(PARENT.id, "enc:secret", "123456");
     expect(invite.status).toBe("accepted");
   });
 
-  it("L18 unknown, revoked and malformed invitations get one page; the POST carries the auth rate limit", async () => {
+  it("L18 unknown, revoked and malformed links get one page; the POST carries the auth rate limit", async () => {
     // Mutants: render for a non-pending invite; drop `config: { rateLimit: AUTH_RATE_LIMIT }`.
     const a = await app();
     const bodies = new Set<string>();
-    invite.status = "revoked";
-    bodies.add((await a.inject({ method: "GET", url: `/invite/accept?token=${INVITE_ID}` })).body);
-    bodies.add((await a.inject({ method: "GET", url: "/invite/accept?token=11111111-2222-3333-4444-555555555555" })).body);
+    bodies.add((await a.inject({ method: "GET", url: `/invite/accept?token=${"0f".repeat(32)}` })).body);
     const bad = await a.inject({ method: "GET", url: `/invite/accept?token=${encodeURIComponent('"><script>x</script>')}` });
     expect(bad.statusCode).toBe(404);
     bodies.add(bad.body);
+    invite.status = "revoked";
+    const revoked = await a.inject({ method: "GET", url: `/invite/accept?token=${SECRET}` });
+    expect(revoked.statusCode).toBe(404);
+    bodies.add(revoked.body);
     expect(bodies.size).toBe(1);
     expect([...bodies][0]).not.toContain("<script");
 
@@ -489,6 +502,84 @@ describe("family invite page", () => {
     await f.register(linkPageRoutes);
     await f.ready();
     expect(seen.get("/invite/accept")).toBe(AUTH_RATE_LIMIT);
+  });
+
+  it("L20 the page is byte-identical whether the address has an account, has none, or uses two-step verification", async () => {
+    // Mutants: show the code field only for an MFA account; show a "create your account" page when none exists.
+    const a = await app();
+    const get = async () => (await a.inject({ method: "GET", url: `/invite/accept?token=${SECRET}` })).body;
+    const existing = await get();
+    withMfa();
+    const mfa = await get();
+    noAccount();
+    const missing = await get();
+    expect(mfa).toBe(existing);
+    expect(missing).toBe(existing);
+    expect(existing).toContain('name="mfaCode"');
+    expect(existing).not.toContain('name="mfaCode" required');
+    expect(existing).toContain("No OSRA account yet?");
+  });
+
+  it("L21 every refusal is one answer: no account, wrong password, missing code, no authenticator bound", async () => {
+    // Mutants: a separate page or status for a missing account; skip the password check when none exists
+    // (it would answer faster); a separate message for `mfa_reenroll_required`.
+    const a = await app();
+    const refuse = (fields: Record<string, string>) => a.inject({ method: "POST", url: "/invite/accept", ...form({ token: SECRET, ...fields }) });
+
+    vi.mocked(argon2.verify).mockResolvedValue(false);
+    const wrong = await refuse({ password: "wrong-password" });
+    vi.mocked(argon2.verify).mockResolvedValue(true);
+
+    noAccount();
+    vi.mocked(argon2.verify).mockClear();
+    const missing = await refuse({ password: PASSWORD });
+    // A real argon2 verification ran although there is no account to check against.
+    expect(argon2.verify).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(argon2.verify).mock.calls[0][1]).toBe(PASSWORD);
+
+    withMfa();
+    const noCode = await refuse({ password: PASSWORD, mfaCode: "" });
+    prismaMock.parent.findUnique.mockResolvedValue({ ...PARENT, mfaEnabled: true, mfaSecret: null });
+    const unbound = await refuse({ password: PASSWORD, mfaCode: "123456" });
+
+    for (const res of [wrong, missing, noCode, unbound]) {
+      expect(res.statusCode).toBe(401);
+      expect(res.body).toBe(wrong.body);
+    }
+    expect(invite.status).toBe("pending");
+    expectNoWrites();
+  });
+
+  it("L22 creating an invite mails a secret the inviter never sees, and only that secret opens the page", async () => {
+    // Mutants: build the link from `invite.id`; return the secret in the create response; store it unhashed.
+    const a = await buildApp(async (f) => {
+      await f.register(inviteRoutes, { prefix: "/v1/family" });
+      await f.register(linkPageRoutes);
+    }, "");
+    prismaMock.parent.findUnique.mockResolvedValue({ ...PARENT, id: "owner-1", familyId: "fam-inviting", email: "owner@example.com" });
+    prismaMock.familyInvite.count.mockResolvedValue(0);
+    prismaMock.familyInvite.create.mockResolvedValue({ ...invite });
+    prismaMock.family.findUnique.mockResolvedValue({ id: "fam-inviting", name: "Haddad" });
+    store.delete(secretKey(SECRET));
+
+    const created = await a.inject({
+      method: "POST",
+      url: "/v1/family/invites",
+      headers: authHeader(a, "fam-inviting", "owner-1"),
+      payload: { email: PARENT.email, role: "co-parent", permissions: ["alerts"] },
+    });
+    expect(created.statusCode).toBe(201);
+    const mailed = sent.at(-1)!.text.match(/\/invite\/accept\?token=([^\s"'<]+)/)![1];
+    expect(mailed).toMatch(/^[0-9a-f]{64}$/);
+    expect(mailed).not.toContain(INVITE_ID);
+    // Not in the answer the inviter gets, and not in the store in the clear.
+    expect(created.body).not.toContain(mailed);
+    for (const [key, value] of store) expect(`${key} ${value}`).not.toContain(mailed);
+    expect(store.get(secretKey(mailed))).toBe(INVITE_ID);
+
+    prismaMock.parent.findUnique.mockImplementation(async ({ where }: { where: { email?: string } }) => (where.email === PARENT.email ? { ...PARENT } : null));
+    expect((await a.inject({ method: "GET", url: `/invite/accept?token=${mailed}` })).statusCode).toBe(200);
+    expect((await a.inject({ method: "GET", url: `/invite/accept?token=${INVITE_ID}` })).statusCode).toBe(404);
   });
 });
 
