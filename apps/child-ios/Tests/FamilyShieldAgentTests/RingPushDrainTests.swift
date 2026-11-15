@@ -43,6 +43,10 @@ final class RingPushDrainTests: XCTestCase {
         StubProtocol.requests.filter { $0.request.url?.path.hasSuffix("/ack") == true }
     }
 
+    private func claims() -> [(request: URLRequest, body: Data)] {
+        StubProtocol.requests.filter { $0.request.url?.path.hasSuffix("/claim") == true }
+    }
+
     // MARK: - Only ring, with a short poll
 
     func testARingCommandStartsAndAcksOk() async throws {
@@ -52,25 +56,35 @@ final class RingPushDrainTests: XCTestCase {
         let outcome = await RingPushDrainer.drainNow(client: CommandClient(session: StubProtocol.session), ring: ring)
         XCTAssertEqual(outcome, .started)
         XCTAssertEqual(ring.startedIds, [ringId])
+        XCTAssertEqual(claims().count, 1, "the extension claims the ring before acking it")
+        let claim = try XCTUnwrap(claims().first)
+        XCTAssertEqual(claim.request.url?.path, "/v1/devices/dev-1/commands/\(ringId)/claim")
+        XCTAssertEqual(claim.request.httpMethod, "POST")
         let ack = try XCTUnwrap(acks().first)
         XCTAssertEqual(ack.request.url?.path, "/v1/devices/dev-1/commands/\(ringId)/ack")
         XCTAssertEqual((try JSONSerialization.jsonObject(with: ack.body) as? [String: Any])?["status"] as? String, "ok")
     }
 
-    func testThePollUsesTheShortTimeout() async throws {
+    func testThePollUsesTheShortTimeoutAndPeeks() async throws {
         pair()
         StubProtocol.response = (200, json([]))
         _ = await RingPushDrainer.drainNow(client: CommandClient(session: StubProtocol.session), ring: FakeRingCommands())
         let poll = try XCTUnwrap(StubProtocol.requests.first { $0.request.url?.path.hasSuffix("/commands") == true })
         XCTAssertEqual(poll.request.timeoutInterval, RingPushDrainer.pollTimeoutSeconds)
         XCTAssertLessThan(poll.request.timeoutInterval, 30, "the NSE budget is far under the app's 30-second wake deadline")
+        let components = URLComponents(url: poll.request.url!, resolvingAgainstBaseURL: false)
+        XCTAssertTrue(components?.queryItems?.contains(URLQueryItem(name: "peek", value: "1")) == true, "the extension peeks without claiming")
+        XCTAssertTrue(components?.queryItems?.contains(URLQueryItem(name: "ack", value: "1")) == true)
     }
 
-    func testTheDefaultPollTimeoutRemainsThirty() async throws {
+    func testTheDefaultPollClaimsAndDoesNotPeek() async throws {
         pair()
         StubProtocol.response = (200, json([]))
         _ = try await CommandClient(session: StubProtocol.session).poll(try XCTUnwrap(AgentIdentityStore.load()))
         XCTAssertEqual(StubProtocol.lastRequest?.timeoutInterval, 30, "CommandClient stays additive: existing callers keep the 30 s deadline")
+        let components = URLComponents(url: try XCTUnwrap(StubProtocol.lastRequest?.url), resolvingAgainstBaseURL: false)
+        XCTAssertTrue(components?.queryItems?.contains(URLQueryItem(name: "ack", value: "1")) == true)
+        XCTAssertFalse(components?.queryItems?.contains(URLQueryItem(name: "peek", value: "1")) == true, "the default poll claims, it does not peek")
     }
 
     // MARK: - Everything else is left alone
@@ -80,6 +94,7 @@ final class RingPushDrainTests: XCTestCase {
         respond(to: [["id": "c1", "type": "rules_updated"], ["id": "c2", "type": "locate_now"]])
         let outcome = await RingPushDrainer.drainNow(client: CommandClient(session: StubProtocol.session), ring: FakeRingCommands())
         XCTAssertEqual(outcome, .fallback)
+        XCTAssertTrue(claims().isEmpty, "non-ring commands are not claimed either")
         XCTAssertTrue(acks().isEmpty, "non-ring commands stay un-acked for the app's full drain")
     }
 
@@ -90,20 +105,41 @@ final class RingPushDrainTests: XCTestCase {
         let outcome = await RingPushDrainer.drainNow(client: CommandClient(session: StubProtocol.session), ring: ring)
         XCTAssertEqual(outcome, .started)
         XCTAssertEqual(ring.startedIds, [ringId])
+        XCTAssertEqual(claims().count, 1, "exactly the ring is claimed")
+        XCTAssertEqual(claims().first?.request.url?.path, "/v1/devices/dev-1/commands/\(ringId)/claim")
         XCTAssertEqual(acks().count, 1, "exactly the ring is acked")
         XCTAssertEqual(acks().first?.request.url?.path, "/v1/devices/dev-1/commands/\(ringId)/ack")
     }
 
     // MARK: - Every failure answers fallback
 
-    func testAScheduleFailureFallsBackWithoutAcks() async {
+    func testAScheduleFailureFallsBackWithoutClaimsOrAcks() async {
         pair()
         respond(to: [["id": ringId, "type": "ring"]])
         let ring = FakeRingCommands()
         ring.error = .unsupportedOS
         let outcome = await RingPushDrainer.drainNow(client: CommandClient(session: StubProtocol.session), ring: ring)
         XCTAssertEqual(outcome, .fallback, "a failed schedule never suppresses the localized notification")
+        XCTAssertTrue(claims().isEmpty, "a failed schedule must not claim the row")
         XCTAssertTrue(acks().isEmpty, "the extension must never mark the ring command as failed; the app's full drain handles it")
+    }
+
+    func testAFailedAckAfterAClaimStillFallsBack() async {
+        pair()
+        let ringId = self.ringId
+        StubProtocol.responder = { [json] request in
+            if request.url?.path.hasSuffix("/commands") == true {
+                return (200, json([["id": ringId, "type": "ring"]]))
+            }
+            if request.url?.path.hasSuffix("/ack") == true {
+                return (500, Data())
+            }
+            return (200, json([:]))
+        }
+        let outcome = await RingPushDrainer.drainNow(client: CommandClient(session: StubProtocol.session), ring: FakeRingCommands())
+        XCTAssertEqual(outcome, .fallback, "if the ack cannot be recorded the notification stays the fallback sound")
+        XCTAssertEqual(claims().count, 1, "the row was claimed so the app does not redeliver immediately")
+        XCTAssertEqual(acks().count, 1)
     }
 
     func testAPollFailureFallsBackWithoutAcks() async {

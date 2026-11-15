@@ -103,4 +103,21 @@ extension L10nTests {
         XCTAssertEqual(ar["NSAlarmKitUsageDescription"],
                        "يُصدر تطبيق أسرة للأطفال رنينًا مسموعًا على هذا الهاتف عندما يطلب والدك أو والدتك ذلك، حتى في النمط الصامت، أو عند تشغيل تركيز، أو عند خفض مستوى الصوت.")
     }
+
+    /// #760 device row: the notification service extension schedules AlarmKit in its own process, so iOS
+    /// requires the usage description in the extension's Info.plist and localized InfoPlist.strings too.
+    func testAlarmPermissionIsAlsoInTheRingServiceExtension() throws {
+        let ext = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Extensions/RingService")
+        let info = try XCTUnwrap(NSDictionary(contentsOfFile: ext.appendingPathComponent("Info.plist").path) as? [String: Any])
+        XCTAssertEqual(info["NSAlarmKitUsageDescription"] as? String,
+                       "OSRA Kids rings this phone out loud when your parent rings it, even in Silent mode, in a Focus, or with the volume turned down.")
+        let en = try XCTUnwrap(NSDictionary(contentsOfFile: ext.appendingPathComponent("en.lproj/InfoPlist.strings").path) as? [String: String])
+        let ar = try XCTUnwrap(NSDictionary(contentsOfFile: ext.appendingPathComponent("ar.lproj/InfoPlist.strings").path) as? [String: String])
+        XCTAssertEqual(en["NSAlarmKitUsageDescription"],
+                       "OSRA Kids rings this phone out loud when your parent rings it, even in Silent mode, in a Focus, or with the volume turned down.")
+        XCTAssertEqual(ar["NSAlarmKitUsageDescription"],
+                       "يُصدر تطبيق أسرة للأطفال رنينًا مسموعًا على هذا الهاتف عندما يطلب والدك أو والدتك ذلك، حتى في النمط الصامت، أو عند تشغيل تركيز، أو عند خفض مستوى الصوت.")
+    }
 }

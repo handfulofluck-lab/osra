@@ -33,7 +33,9 @@ public enum RingPushDrainer {
         guard let identity = AgentIdentityStore.load() else { return .fallback }
         let commands: [DeviceCommand]
         do {
-            commands = try await client.poll(identity, timeout: pollTimeoutSeconds).commands
+            // #760 device row: peek first. A failed AlarmKit start must leave the row `pending`
+            // for the app's full drain, not `delivered` and stuck in the 120 s redelivery window.
+            commands = try await client.poll(identity, claim: false, timeout: pollTimeoutSeconds).commands
         } catch {
             logger.error("ring push poll failed: \(String(describing: error), privacy: .public)")
             return .fallback
@@ -47,7 +49,21 @@ public enum RingPushDrainer {
             // The localized notification is still delivered as the fallback surface.
             return .fallback
         }
-        try? await client.ack(identity, commandId: command.id, ok: true)
-        return .started
+        do {
+            // Claim the row and ack it `ok` only after AlarmKit started. Either call can fail because
+            // the app's full drain claimed the row first; in that case the ring is still going and we
+            // still want the ringing notification, so we fall back to the default sound only when the
+            // ack could not be recorded at all.
+            try await client.claim(identity, commandId: command.id)
+        } catch {
+            logger.error("ring claim failed: \(String(describing: error), privacy: .public)")
+        }
+        do {
+            try await client.ack(identity, commandId: command.id, ok: true)
+            return .started
+        } catch {
+            logger.error("ring ack failed: \(String(describing: error), privacy: .public)")
+            return .fallback
+        }
     }
 }

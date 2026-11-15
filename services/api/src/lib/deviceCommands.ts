@@ -164,6 +164,40 @@ export async function enqueueFailedDeviceCommand(
 }
 
 /**
+ * Read pending rows without changing status or attempts.
+ *
+ * #760 device row: the notification service extension peeks before it tries AlarmKit, so a failed
+ * schedule leaves the row `pending` for the app's full drain instead of stuck in the 120 s redelivery
+ * window of a `delivered` row.
+ */
+export async function peekPendingCommands(deviceId: string): Promise<DeviceCommandMessage[]> {
+  const now = new Date();
+  const rows = await prisma.deviceCommand.findMany({
+    where: { deviceId, status: "pending", expiresAt: { gt: now } },
+    orderBy: { createdAt: "asc" },
+  });
+  return rows.map(toMessage);
+}
+
+/**
+ * Atomically claim one specific pending row for a device. Returns the row when the UPDATE matched,
+ * or `null` when the row is missing, expired, already claimed, or belongs to another device.
+ */
+export async function claimDeviceCommand(deviceId: string, commandId: string): Promise<DeviceCommandMessage | null> {
+  const now = new Date();
+  const row = await prisma.deviceCommand.findUnique({ where: { id: commandId } });
+  if (!row || row.deviceId !== deviceId || row.status !== "pending" || row.expiresAt <= now) {
+    return null;
+  }
+  const result = await prisma.deviceCommand.updateMany({
+    where: { id: commandId, deviceId, status: "pending", expiresAt: { gt: now } },
+    data: { status: "delivered", deliveredAt: now, attempts: { increment: 1 } },
+  });
+  if (result.count === 0) return null;
+  return toMessage(row as Row);
+}
+
+/**
  * Atomically claim everything the device should act on now, oldest first:
  *  - every `pending` row that has not expired (→ `delivered`, attempts+1);
  *  - for ack-capable agents only, `delivered` rows older than `REDELIVER_AFTER_SECONDS` that were

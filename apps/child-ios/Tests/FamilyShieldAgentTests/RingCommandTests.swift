@@ -160,6 +160,16 @@ final class RingCommandTests: XCTestCase {
         XCTAssertTrue(view.contains("await RingNotifier.showReturnNotification()"))
     }
 
+    func testAgentRootViewShowsRingViewAsRootDuringAlarm() throws {
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent/PairingView.swift")
+        let view = try String(contentsOf: source, encoding: .utf8)
+        XCTAssertTrue(view.contains("if ring.requiresPin"), "the root switches on the alarm state")
+        XCTAssertTrue(view.contains("RingView(controller: ring)"), "the ring screen is the root view while an alarm is active")
+        XCTAssertFalse(view.contains(".fullScreenCover(isPresented: Binding("), "the full-screen cover is replaced by the root switch")
+        XCTAssertFalse(view.contains("get: { ring.requiresPin }"), "the old cover binding is gone")
+    }
+
     func testHomeOrBackgroundDoesNotStop() async {
         let backend = FakeRingBackend()
         let controller = RingController(backend: backend, store: InMemoryRingStore(),

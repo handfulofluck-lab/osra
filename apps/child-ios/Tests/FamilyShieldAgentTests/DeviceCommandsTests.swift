@@ -235,6 +235,27 @@ final class DeviceCommandsTests: XCTestCase {
         XCTAssertTrue(StubProtocol.requests.isEmpty)
     }
 
+    // MARK: - Peek and single-command claim (#760 device row)
+
+    func testAPeekPollAddsThePeekQueryItem() async throws {
+        pair()
+        StubProtocol.response = (200, json([]))
+        _ = try await CommandClient(session: StubProtocol.session).poll(try XCTUnwrap(AgentIdentityStore.load()), claim: false)
+        let components = URLComponents(url: try XCTUnwrap(StubProtocol.lastRequest?.url), resolvingAgainstBaseURL: false)
+        XCTAssertTrue(components?.queryItems?.contains(URLQueryItem(name: "ack", value: "1")) == true)
+        XCTAssertTrue(components?.queryItems?.contains(URLQueryItem(name: "peek", value: "1")) == true)
+    }
+
+    func testClaimPostsToTheCommandClaimPath() async throws {
+        pair()
+        StubProtocol.response = (200, json(["command": ["id": "c1", "type": "ring"]]))
+        try await CommandClient(session: StubProtocol.session).claim(try XCTUnwrap(AgentIdentityStore.load()), commandId: "c1")
+        let request = try XCTUnwrap(StubProtocol.lastRequest)
+        XCTAssertEqual(request.url?.path, "/v1/devices/dev-1/commands/c1/claim")
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer device-jwt")
+    }
+
     // MARK: - The wake deadline
 
     func testTheWakeDrainAnswersByTheDeadline() async {

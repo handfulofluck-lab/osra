@@ -132,134 +132,138 @@ public struct AgentRootView: View {
     public init() {}
 
     public var body: some View {
-        NavigationStack {
-            if identity != nil, !showRepair, !pinConfigured {
-                // ADR-0037: a parent PIN is set right after pairing, and once on a phone paired before this build.
-                PinSetupView { pinConfigured = true }
-            } else if let identity, !showRepair {
-                Form {
-                    Section(header: Text(L10n.tr("pair_section_title"))) {
-                        Label(L10n.tr("status_paired"), systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .accessibilityIdentifier(A11yID.statusPaired)
-                        // #602: the child's name, never a raw id; the device id is not shown at all.
-                        if let name = identity.childName {
-                            LabeledContent(L10n.tr("status_child_name"), value: name)
-                                .accessibilityIdentifier(A11yID.statusChildName)
-                        }
-                        TimelineView(.periodic(from: .now, by: 60)) { context in
-                            let state = SyncStatus.state(syncedAt: syncedAt, now: context.date)
-                            Text(SyncStatus.text(state, now: context.date))
-                                .foregroundStyle(stale(state) ? Color.orange : Color.secondary)
-                                .accessibilityIdentifier(A11yID.statusLastSynced)
-                        }
-                    }
-                    Section {
-                        Button(syncing ? L10n.tr("status_syncing") : L10n.tr("status_sync_now")) {
-                            Task { await syncNow() }
-                        }
-                        .disabled(syncing)
-                        .accessibilityIdentifier(A11yID.statusSyncNow)
-                        if syncFailed {
-                            Text(L10n.tr("status_sync_failed")).foregroundStyle(.red)
-                                .accessibilityIdentifier(A11yID.statusSyncFailed)
-                        }
-                    } footer: {
-                        Text(L10n.tr("status_sync_note"))
-                    }
-                    #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
-                    Section {
-                        LabeledContent(L10n.tr("screen_time"), value: screenTime.row.value)
-                            .accessibilityIdentifier(A11yID.statusScreenTime)
-                        if screenTime.row.showsButton {
-                            Button(ScreenTimeRow.buttonTitle) {
-                                Task {
-                                    // Approved: fetch and apply the parent's rules now, not at the next open.
-                                    if await screenTime.request() { _ = await RuleSyncer.syncNow() }
-                                    await LocationController.shared.reportGrant()
+        Group {
+            if ring.requiresPin {
+                // #760 device row: reopening the app during an active alarm must show the ring/PIN
+                // screen, not the Status screen behind a full-screen cover that may not re-present.
+                RingView(controller: ring)
+            } else {
+                NavigationStack {
+                    if identity != nil, !showRepair, !pinConfigured {
+                        // ADR-0037: a parent PIN is set right after pairing, and once on a phone paired before this build.
+                        PinSetupView { pinConfigured = true }
+                    } else if let identity, !showRepair {
+                        Form {
+                            Section(header: Text(L10n.tr("pair_section_title"))) {
+                                Label(L10n.tr("status_paired"), systemImage: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                                    .accessibilityIdentifier(A11yID.statusPaired)
+                                // #602: the child's name, never a raw id; the device id is not shown at all.
+                                if let name = identity.childName {
+                                    LabeledContent(L10n.tr("status_child_name"), value: name)
+                                        .accessibilityIdentifier(A11yID.statusChildName)
+                                }
+                                TimelineView(.periodic(from: .now, by: 60)) { context in
+                                    let state = SyncStatus.state(syncedAt: syncedAt, now: context.date)
+                                    Text(SyncStatus.text(state, now: context.date))
+                                        .foregroundStyle(stale(state) ? Color.orange : Color.secondary)
+                                        .accessibilityIdentifier(A11yID.statusLastSynced)
                                 }
                             }
-                            .accessibilityIdentifier(A11yID.statusScreenTimeButton)
-                        }
-                        if let error = screenTime.errorMessage {
-                            Text(error).foregroundStyle(.red)
-                        }
-                    } header: {
-                        Text(L10n.tr("screen_time"))
-                    } footer: {
-                        Text(screenTime.row.footer)
-                    }
-                    #endif
-                    Section {
-                        LabeledContent(L10n.tr("location"), value: Self.label(locationGrant))
-                            .accessibilityIdentifier(A11yID.statusLocation)
-                        if let title = locationAction.buttonTitle {
-                            Button(title) {
-                                LocationController.shared.requestPermission()
-                                locationAction = LocationController.shared.permissionAction
+                            Section {
+                                Button(syncing ? L10n.tr("status_syncing") : L10n.tr("status_sync_now")) {
+                                    Task { await syncNow() }
+                                }
+                                .disabled(syncing)
+                                .accessibilityIdentifier(A11yID.statusSyncNow)
+                                if syncFailed {
+                                    Text(L10n.tr("status_sync_failed")).foregroundStyle(.red)
+                                        .accessibilityIdentifier(A11yID.statusSyncFailed)
+                                }
+                            } footer: {
+                                Text(L10n.tr("status_sync_note"))
                             }
-                            .accessibilityIdentifier(A11yID.statusLocationButton)
+                            #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+                            Section {
+                                LabeledContent(L10n.tr("screen_time"), value: screenTime.row.value)
+                                    .accessibilityIdentifier(A11yID.statusScreenTime)
+                                if screenTime.row.showsButton {
+                                    Button(ScreenTimeRow.buttonTitle) {
+                                        Task {
+                                            // Approved: fetch and apply the parent's rules now, not at the next open.
+                                            if await screenTime.request() { _ = await RuleSyncer.syncNow() }
+                                            await LocationController.shared.reportGrant()
+                                        }
+                                    }
+                                    .accessibilityIdentifier(A11yID.statusScreenTimeButton)
+                                }
+                                if let error = screenTime.errorMessage {
+                                    Text(error).foregroundStyle(.red)
+                                }
+                            } header: {
+                                Text(L10n.tr("screen_time"))
+                            } footer: {
+                                Text(screenTime.row.footer)
+                            }
+                            #endif
+                            Section {
+                                LabeledContent(L10n.tr("location"), value: Self.label(locationGrant))
+                                    .accessibilityIdentifier(A11yID.statusLocation)
+                                if let title = locationAction.buttonTitle {
+                                    Button(title) {
+                                        LocationController.shared.requestPermission()
+                                        locationAction = LocationController.shared.permissionAction
+                                    }
+                                    .accessibilityIdentifier(A11yID.statusLocationButton)
+                                }
+                            } header: {
+                                Text(L10n.tr("location"))
+                            } footer: {
+                                Text(L10n.tr("location_footer"))
+                            }
+                            #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+                            Section {
+                                NavigationLink(L10n.tr("groups")) { AppGroupsEntry() }
+                                    .accessibilityIdentifier(A11yID.statusGroups)
+                            } footer: {
+                                Text(L10n.tr("groups_status_footer"))
+                            }
+                            #endif
+                            Section {
+                                // ADR-0037, as on Android: re-pairing needs the parent PIN.
+                                Button(L10n.tr("repair_button")) { askingRepairPin = true }
+                                    .accessibilityIdentifier(A11yID.statusRepair)
+                            }
+                            Section {
+                                DisclosureGroup(L10n.tr("status_technical_details"), isExpanded: $showTechnicalDetails) {
+                                    LabeledContent(L10n.tr("status_server"), value: identity.apiBaseURL.absoluteString)
+                                        .accessibilityIdentifier(A11yID.statusServer)
+                                }
+                                .accessibilityIdentifier(A11yID.statusTechnicalDetails)
+                            }
                         }
-                    } header: {
-                        Text(L10n.tr("location"))
-                    } footer: {
-                        Text(L10n.tr("location_footer"))
-                    }
-                    #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
-                    Section {
-                        NavigationLink(L10n.tr("groups")) { AppGroupsEntry() }
-                            .accessibilityIdentifier(A11yID.statusGroups)
-                    } footer: {
-                        Text(L10n.tr("groups_status_footer"))
-                    }
-                    #endif
-                    Section {
-                        // ADR-0037, as on Android: re-pairing needs the parent PIN.
-                        Button(L10n.tr("repair_button")) { askingRepairPin = true }
-                            .accessibilityIdentifier(A11yID.statusRepair)
-                    }
-                    Section {
-                        DisclosureGroup(L10n.tr("status_technical_details"), isExpanded: $showTechnicalDetails) {
-                            LabeledContent(L10n.tr("status_server"), value: identity.apiBaseURL.absoluteString)
-                                .accessibilityIdentifier(A11yID.statusServer)
+                        .navigationTitle(L10n.tr("status_title"))
+                        .sheet(isPresented: $askingRepairPin) {
+                            NavigationStack {
+                                PinGateView(title: L10n.tr("repair_title")) {
+                                    askingRepairPin = false
+                                    showRepair = true
+                                }
+                            }
                         }
-                        .accessibilityIdentifier(A11yID.statusTechnicalDetails)
+                    } else {
+                        PairingView(
+                            defaultServer: identity?.apiBaseURL.absoluteString ?? "",
+                            onPaired: { newIdentity in
+                                identity = newIdentity
+                                showRepair = false
+                                pinConfigured = ParentPinStore.isConfigured
+                                Task {
+                                    // Ask for notification authorization at pairing. Without this, a background
+                                    // ring push is silently dropped because OSRA Kids has no Notifications row
+                                    // in Settings (#760 device row).
+                                    await RingNotifier.requestPermission()
+                                    let synced = await RuleSyncer.syncNow()
+                                    await LocationController.shared.apply(synced)
+                                    await LocationController.shared.reportGrant()
+                                }
+                                // A new device id: ask iOS for the token again so it is uploaded for this pairing.
+                                UIApplication.shared.registerForRemoteNotifications()
+                            }
+                        )
                     }
                 }
-                .navigationTitle(L10n.tr("status_title"))
-                .sheet(isPresented: $askingRepairPin) {
-                    NavigationStack {
-                        PinGateView(title: L10n.tr("repair_title")) {
-                            askingRepairPin = false
-                            showRepair = true
-                        }
-                    }
-                }
-            } else {
-                PairingView(
-                    defaultServer: identity?.apiBaseURL.absoluteString ?? "",
-                    onPaired: { newIdentity in
-                        identity = newIdentity
-                        showRepair = false
-                        pinConfigured = ParentPinStore.isConfigured
-                        Task {
-                            // Ask for notification authorization at pairing. Without this, a background
-                            // ring push is silently dropped because OSRA Kids has no Notifications row
-                            // in Settings (#760 device row).
-                            await RingNotifier.requestPermission()
-                            let synced = await RuleSyncer.syncNow()
-                            await LocationController.shared.apply(synced)
-                            await LocationController.shared.reportGrant()
-                        }
-                        // A new device id: ask iOS for the token again so it is uploaded for this pairing.
-                        UIApplication.shared.registerForRemoteNotifications()
-                    }
-                )
             }
-        }
-        .fullScreenCover(isPresented: Binding(
-            get: { ring.requiresPin }, set: { _ in })) {
-            RingView(controller: ring)
         }
         .onAppear {
             identity = AgentIdentityStore.load()

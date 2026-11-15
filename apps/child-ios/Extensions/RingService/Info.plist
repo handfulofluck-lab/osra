@@ -27,6 +27,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>OSRAAPIBase</key>
 	<string>$(OSRA_API_BASE)</string>
+	<key>NSAlarmKitUsageDescription</key>
+	<string>OSRA Kids rings this phone out loud when your parent rings it, even in Silent mode, in a Focus, or with the volume turned down.</string>
 	<key>NSExtension</key>
 	<dict>
 		<key>NSExtensionPointIdentifier</key>

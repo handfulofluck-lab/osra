@@ -77,13 +77,17 @@ public struct CommandClient {
         case deviceRevoked
     }
 
-    /// Claims the pending commands (`ack=1`: they come back until acked, as Android's ack-capable poll).
+    /// Claims the pending commands by default (`ack=1`: they come back until acked, as Android's
+    /// ack-capable poll). Pass `claim: false` for a true peek: rows are read but left `pending`
+    /// (#760 device row: the notification service extension peeks before it tries AlarmKit).
     /// `timeout` is per request: the app drains keep the 30-second default, and the ring service
     /// extension's reduced drain passes its short NSE budget (#760).
-    public func poll(_ identity: AgentIdentity, timeout: TimeInterval = 30) async throws -> CommandPoll {
+    public func poll(_ identity: AgentIdentity, claim: Bool = true, timeout: TimeInterval = 30) async throws -> CommandPoll {
         var components = URLComponents(url: devicesURL(identity).appendingPathComponent("commands"),
                                        resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "ack", value: "1")]
+        var queryItems = [URLQueryItem(name: "ack", value: "1")]
+        if !claim { queryItems.append(URLQueryItem(name: "peek", value: "1")) }
+        components?.queryItems = queryItems
         guard let url = components?.url else { throw CommandError.unusableResponse }
         var request = URLRequest(url: url)
         request.setValue("Bearer \(identity.deviceToken)", forHTTPHeaderField: "Authorization")
@@ -97,6 +101,18 @@ public struct CommandClient {
         }
         let pushToken = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "X-Push-Token")
         return CommandPoll(commands: commands, serverHasPushToken: pushToken != "none")
+    }
+
+    /// Claims one specific pending command so it can be acked. Returns `.httpError(status: 404)`
+    /// when the row is no longer pending or does not belong to this device.
+    public func claim(_ identity: AgentIdentity, commandId: String) async throws {
+        var request = URLRequest(url: devicesURL(identity).appendingPathComponent("commands")
+            .appendingPathComponent(commandId).appendingPathComponent("claim"))
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(identity.deviceToken)", forHTTPHeaderField: "Authorization")
+        let (_, response) = try await session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 else { throw CommandError.httpError(status: status) }
     }
 
     /// Reports a command's outcome; `detail` says why when it failed.

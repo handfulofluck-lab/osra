@@ -17,9 +17,11 @@ vi.mock("../src/redis.js", async () => {
 
 import {
   ackDeviceCommand,
+  claimDeviceCommand,
   claimPendingCommands,
   enqueueDeviceCommand,
   listDeviceCommands,
+  peekPendingCommands,
   ttlFor,
   MAX_ATTEMPTS,
   REDELIVER_AFTER_SECONDS,
@@ -139,6 +141,61 @@ describe("durable command queue (Phase 2b)", () => {
     const items = await listDeviceCommands("dev-1", 500);
     expect(items.map((i) => i.status)).toEqual(["expired", "pending", "acked"]);
     expect(prismaMock.deviceCommand.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 100 }));
+  });
+});
+
+describe("peek and single-command claim (#760 device row)", () => {
+  beforeEach(() => resetPrismaMock());
+
+  it("peeks pending rows without writing anything", async () => {
+    const t0 = new Date("2026-10-16T10:00:00Z");
+    const t1 = new Date("2026-10-16T10:01:00Z");
+    prismaMock.deviceCommand.findMany.mockResolvedValue([
+      { id: "a", deviceId: "dev-1", type: "ring", payload: {}, status: "pending", createdAt: t0, expiresAt: t1, attempts: 0 },
+      { id: "b", deviceId: "dev-1", type: "lock", payload: {}, status: "pending", createdAt: t1, expiresAt: t1, attempts: 0 },
+    ]);
+    const out = await peekPendingCommands("dev-1");
+    expect(out.map((c) => c.id)).toEqual(["a", "b"]);
+    expect(prismaMock.deviceCommand.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { deviceId: "dev-1", status: "pending", expiresAt: { gt: expect.any(Date) } },
+        orderBy: { createdAt: "asc" },
+      }),
+    );
+    expect(prismaMock.$queryRaw).not.toHaveBeenCalled();
+    expect(prismaMock.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it("claims a specific pending row and increments attempts", async () => {
+    const expiresAt = new Date(Date.now() + 60_000);
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: "c1", deviceId: "dev-1", type: "ring", payload: {}, status: "pending", createdAt: new Date(), expiresAt, attempts: 0,
+    });
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
+    const out = await claimDeviceCommand("dev-1", "c1");
+    expect(out).not.toBeNull();
+    expect(out?.id).toBe("c1");
+    expect(prismaMock.deviceCommand.updateMany).toHaveBeenCalledWith({
+      where: { id: "c1", deviceId: "dev-1", status: "pending", expiresAt: { gt: expect.any(Date) } },
+      data: { status: "delivered", deliveredAt: expect.any(Date), attempts: { increment: 1 } },
+    });
+  });
+
+  it("claim returns null for a missing, expired, or already-claimed row", async () => {
+    const expiresAt = new Date(Date.now() - 60_000);
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: "c1", deviceId: "dev-1", type: "ring", payload: {}, status: "pending", createdAt: new Date(), expiresAt, attempts: 0,
+    });
+    expect(await claimDeviceCommand("dev-1", "c1")).toBeNull();
+    expect(prismaMock.deviceCommand.updateMany).not.toHaveBeenCalled();
+
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: "c2", deviceId: "dev-1", type: "ring", payload: {}, status: "delivered", createdAt: new Date(), expiresAt: new Date(Date.now() + 60_000), attempts: 1,
+    });
+    expect(await claimDeviceCommand("dev-1", "c2")).toBeNull();
+
+    prismaMock.deviceCommand.findUnique.mockResolvedValue(null);
+    expect(await claimDeviceCommand("dev-1", "c3")).toBeNull();
   });
 });
 
@@ -324,6 +381,51 @@ describe("command routes (Phase 2b)", () => {
     const drain = await app.inject({ method: "GET", url: "/v1/devices/dev-1/commands?ack=1", headers: deviceHeader(app) });
     expect(drain.statusCode).toBe(200);
     expect(prismaMock.$queryRaw.mock.calls[0][0].join("?")).toContain("\"ackedAt\" IS NULL");
+    await app.close();
+  });
+
+  it("`?peek=1` returns pending rows without calling the claiming UPDATE", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.deviceCommand.findMany.mockResolvedValue([{ id: "c1", type: "ring", status: "pending", expiresAt: new Date(Date.now() + 1000), createdAt: new Date(), attempts: 0 }]);
+
+    const peek = await app.inject({ method: "GET", url: "/v1/devices/dev-1/commands?peek=1", headers: deviceHeader(app) });
+    expect(peek.statusCode).toBe(200);
+    expect(peek.json()).toEqual([expect.objectContaining({ id: "c1", type: "ring" })]);
+    expect(prismaMock.deviceCommand.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { deviceId: "dev-1", status: "pending", expiresAt: { gt: expect.any(Date) } } }),
+    );
+    expect(prismaMock.$queryRaw).not.toHaveBeenCalled();
+    expect(prismaMock.$executeRaw).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("device claims its pending command; parents, other devices, and missing rows cannot", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: "c1", deviceId: "dev-1", type: "ring", payload: {}, status: "pending", createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 1000), attempts: 0,
+    });
+    prismaMock.deviceCommand.updateMany.mockResolvedValueOnce({ count: 1 });
+
+    const ok = await app.inject({ method: "POST", url: "/v1/devices/dev-1/commands/c1/claim", headers: deviceHeader(app) });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().command).toMatchObject({ id: "c1", type: "ring" });
+    expect(prismaMock.deviceCommand.updateMany).toHaveBeenCalledWith({
+      where: { id: "c1", deviceId: "dev-1", status: "pending", expiresAt: { gt: expect.any(Date) } },
+      data: { status: "delivered", deliveredAt: expect.any(Date), attempts: { increment: 1 } },
+    });
+
+    const parent = await app.inject({ method: "POST", url: "/v1/devices/dev-1/commands/c1/claim", headers: authHeader(app) });
+    expect(parent.statusCode).toBe(403);
+    const other = await app.inject({ method: "POST", url: "/v1/devices/dev-1/commands/c1/claim", headers: deviceHeader(app, { deviceId: "dev-2", childId: "child-1", familyId: "fam-1" }) });
+    expect(other.statusCode).toBe(403);
+
+    prismaMock.deviceCommand.updateMany.mockResolvedValueOnce({ count: 0 });
+    const gone = await app.inject({ method: "POST", url: "/v1/devices/dev-1/commands/c9/claim", headers: deviceHeader(app) });
+    expect(gone.statusCode).toBe(404);
+    expect(gone.json()).toEqual({ error: "no_pending_command" });
     await app.close();
   });
 });
