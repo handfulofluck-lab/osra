@@ -99,11 +99,16 @@ the live probe (`services/api/scripts/qa-probe.mjs`). "#766 n" is an item of the
 |---|---|---|
 | Using an old or already-used link | A password reset token lives 15 minutes, is single use, and a newer request supersedes it. An invitation lives 7 days, is bound to the invited address (403 on a mismatch) and answers 409 once it is no longer pending. A digest confirmation is single use and lives 24 hours | `src/routes/auth.ts` (reset), `src/routes/invites.ts` (`INVITE_TTL_SECONDS`), `src/routes/digests.ts`; `test/invites.test.ts`, `test/digests-abuse.test.ts` |
 | Using our mail to pester a stranger | Invitations and digest recipients are limited per family per day; a digest goes to a non-parent address only after that address confirms; at most five recipients | `test/invites.test.ts`, `test/digests-abuse.test.ts` |
-| A mail scanner that follows links confirming something | A link that changes state opens a page with a button; the change is a POST | `test/digests-abuse.test.ts` ("the confirmation button works from a browser"); `test/account-deletion-web.test.ts` |
+| A mail scanner that follows links confirming something | A link that changes state opens a page with a button; the change is a POST. This holds for all six mailed links: deletion, digest confirmation, password reset, MFA reset confirm and cancel, invitation | `test/digests-abuse.test.ts` ("the confirmation button works from a browser"); `test/account-deletion-web.test.ts`; `test/link-pages.test.ts` (L1, L6, L7, L13) |
+| Someone who can read the invited mailbox joining the family with the link alone | The invitation page asks for the account's password, and the authenticator code when two-step sign-in is on, before anyone is moved. A wrong password leaves the invitation usable and counts against the auth rate limit | `src/routes/linkPages.ts` (`POST /invite/accept`); `test/link-pages.test.ts` (L16, L17, L18) |
+| A token in a link leaking through the log, the referrer or a cached page | The request log drops `?token=`; every page is `no-store`, `no-referrer`, loads nothing from another origin and runs no script; the token moves to a hidden form field on the first POST; nothing user-supplied is rendered | `src/lib/logRedaction.ts`, `src/lib/htmlPage.ts` (`sendPage`); `test/link-pages.test.ts` (L1, L5) |
 | Learning from the reset form whether an address has an account, or flooding a parent with reset mail | A reset request answers the same for a known and an unknown address, and one link per address per minute is issued, claimed before the account is looked up | `test/auth.test.ts` ("reset/request never reveals whether the email exists", "#167") |
 
-Four mailed links (reset, invitation, MFA reset, digest "open") have no page that serves them yet: #789. That is a
-missing function, not a weakness, and it is listed in §5 because a recovery path that does not work is a risk of its own.
+The API serves the page behind every mailed link itself (`src/routes/linkPages.ts`, #789; deletion and the digest
+confirmation already did), so the links work wherever `APP_PUBLIC_URL` points at the API. The pages add no second
+implementation of a state change: the reset and MFA reset pages call the existing JSON routes in-process, with the
+caller's address passed on so the auth rate limit counts the person, and the invitation page calls the same
+`acceptInvite` the JSON route calls.
 
 ### 4.3b Subscription state (A10; T1, T2, T4)
 
@@ -177,7 +182,7 @@ Each is tracked where its detail may be written. This page gives the number only
 | Item | State on 2026-11-14 | Needed for sign-off |
 |---|---|---|
 | osra-security#27 (who can deploy to production, and how) | Decided by Karim 2026-11-14; controls being built (#784) | #784 applied and its evidence posted on #637 |
-| #789 (four mailed links open no page) | Open | Ahmed's word on whether it blocks this gate; fixed before real families either way |
+| #789 (four mailed links opened no page) | Pages built (`src/routes/linkPages.ts`); in review | Merged, and the pages reviewed by the UI/UX Bureau and the Arabic Language Bureau |
 | osra-security#14, #15, #20, #26 | Open; Ahmed to say which belong to this gate | Triage, then closed or accepted |
 | #766 items 1 to 13 | Batches A to D, 15 to 17 Nov | Merged and applied before the service phase |
 | #777 | Merged 2026-11-14 | Done |

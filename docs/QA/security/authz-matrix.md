@@ -194,6 +194,13 @@ The digest row is keyed by **family**, not by parent, so since #354 writing it a
 | `POST /v1/account/deletion-request` (#442 PR 3) | account 288 | 202 with one body for every well-formed address, known or not, answered before the lookup; 400 for a malformed one. `AUTH_RATE_LIMIT` |
 | `GET /v1/account/delete/confirm?token=` (#442 PR 3) | account 305 | 200 password page for a live token, and nothing is spent; 404 page for an unknown, expired or used one; 400 page for a malformed one |
 | `POST /v1/account/delete/confirm` (#442 PR 3) | account 323 | 200 for a live token **and** the right password (and MFA code): spends it and erases (owner: the family; anyone else: themselves); 401 page on a wrong password or code, the token not spent; 409 `consent_records_held`, not spent; 404/400 page for a dead or malformed token. `AUTH_RATE_LIMIT` |
+| `GET /reset?token=` (#789) | linkPages | 200 new-password form for a token this API signed for `password_reset`, and nothing is spent; 404 page otherwise |
+| `POST /reset` (#789) | linkPages | Calls `POST /v1/auth/reset/confirm` in-process with the caller's address: 200 page once; 404 page for a spent, superseded or expired link; 400 page (link not spent) for a short password or two different ones; 503 page with the link still usable. The inner route's `AUTH_RATE_LIMIT` applies |
+| `GET /mfa/reset/confirm?token=`, `GET /mfa/reset/cancel?token=` (#789) | linkPages | 200 one-button page for a token of that purpose, and nothing changes; 404 page otherwise |
+| `POST /mfa/reset/confirm`, `POST /mfa/reset/cancel` (#789) | linkPages | Call the `/v1/auth/mfa/reset/...` route of the same name in-process: its outcome as a page. Cancel reports "cancelled" only for a cancelled state. The inner route's `AUTH_RATE_LIMIT` applies |
+| `GET /invite/accept?token=` (#789) | linkPages | 200 password form when the invited address has an account, 200 "create your account first" when it has none, and nothing changes; 404 page for an unknown, used, revoked or malformed invitation |
+| `POST /invite/accept` (#789) | linkPages | 200 for a live invitation **and** the invited account's password (and MFA code): moves the account, ends its sessions, spends the invitation; 401 page on a wrong password or code, nothing changed; 404 page for a dead invitation. `AUTH_RATE_LIMIT` |
+| `GET /dashboard` (#789) | linkPages | 200 page ("open the app"); reads nothing |
 
 The two confirmation routes (#354) take no session: the token in the mailed link is the credential, and
 the answers say nothing about which addresses are on a list. Covered by t:digests-abuse.test.ts:497 (GET
