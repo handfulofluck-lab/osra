@@ -28,11 +28,29 @@ internal static class ParentPinPolicy
     /// <summary>Longest accepted PIN (inclusive).</summary>
     public const int MaxLength = 8;
 
-    /// <summary>True when <paramref name="pin"/> is 4–8 ASCII digits.</summary>
-    public static bool IsWellFormed(string? pin) =>
-        pin is not null &&
-        pin.Length is >= MinLength and <= MaxLength &&
-        pin.All(char.IsAsciiDigit);
+    /// <summary>
+    /// Maps Arabic-Indic (U+0660–U+0669) and Extended Arabic-Indic (U+06F0–U+06F9) digits to ASCII
+    /// digits (#771). Every other character is unchanged.
+    /// </summary>
+    public static string NormalizeDigits(string value)
+    {
+        var chars = value.ToCharArray();
+        for (var i = 0; i < chars.Length; i++)
+        {
+            var c = chars[i];
+            if (c is >= '٠' and <= '٩') chars[i] = (char)('0' + (c - '٠'));
+            else if (c is >= '۰' and <= '۹') chars[i] = (char)('0' + (c - '۰'));
+        }
+        return new string(chars);
+    }
+
+    /// <summary>True when <paramref name="pin"/> is 4–8 digits after <see cref="NormalizeDigits"/>.</summary>
+    public static bool IsWellFormed(string? pin)
+    {
+        if (pin is null) return false;
+        var digits = NormalizeDigits(pin);
+        return digits.Length is >= MinLength and <= MaxLength && digits.All(char.IsAsciiDigit);
+    }
 
     /// <summary>
     /// Returns the PIN that may be used, or null when none is configured. Blank values, malformed
@@ -42,8 +60,9 @@ internal static class ParentPinPolicy
     {
         var pin = candidate?.Trim();
         if (string.IsNullOrEmpty(pin)) return null;
-        if (string.Equals(pin, LegacyDefault, StringComparison.Ordinal)) return null;
-        return IsWellFormed(pin) ? pin : null;
+        var digits = NormalizeDigits(pin);
+        if (string.Equals(digits, LegacyDefault, StringComparison.Ordinal)) return null;
+        return IsWellFormed(digits) ? digits : null;
     }
 
     /// <summary>
@@ -61,8 +80,9 @@ internal static class ParentPinPolicy
     {
         var expected = Normalize(configuredPin);
         if (expected is null || entered is null) return false;
+        var enteredDigits = NormalizeDigits(entered.Trim());
         return CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(expected), Encoding.UTF8.GetBytes(entered));
+            Encoding.UTF8.GetBytes(expected), Encoding.UTF8.GetBytes(enteredDigits));
     }
 
     /// <summary>Generates a random 6-digit PIN for the pair-and-show-once path.</summary>

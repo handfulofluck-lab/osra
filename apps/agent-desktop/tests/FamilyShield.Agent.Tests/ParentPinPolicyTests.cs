@@ -21,6 +21,10 @@ public sealed class ParentPinPolicyTests
     [InlineData("123456789", false)]
     [InlineData("12 34", false)]
     [InlineData("abcd", false)]
+    [InlineData("١٢٣٤", true)]
+    [InlineData("۱۲۳۴", true)]
+    [InlineData("١٢٣", false)]
+    [InlineData("١٢٣٤٥٦٧٨٩", false)]
     public void WellFormedIsFourToEightAsciiDigits(string? pin, bool expected) =>
         Assert.Equal(expected, ParentPinPolicy.IsWellFormed(pin));
 
@@ -29,6 +33,23 @@ public sealed class ParentPinPolicyTests
     {
         Assert.Null(ParentPinPolicy.Normalize(ParentPinPolicy.LegacyDefault));
         Assert.False(ParentPinPolicy.Matches(ParentPinPolicy.LegacyDefault, ParentPinPolicy.LegacyDefault));
+    }
+
+    [Fact]
+    public void ArabicDigitsAreTheSamePin()
+    {
+        Assert.Equal("1234", ParentPinPolicy.Normalize("١٢٣٤"));
+        Assert.Equal("4729", ParentPinPolicy.Normalize("٤٧٢٩"));
+        Assert.True(ParentPinPolicy.Matches("1234", "١٢٣٤"));
+        Assert.True(ParentPinPolicy.Matches("١٢٣٤", "1234"));
+        Assert.True(ParentPinPolicy.Matches("1234", "۱۲۳۴"));
+    }
+
+    [Fact]
+    public void TheLegacyDefaultIsRefusedInEitherDigitForm()
+    {
+        Assert.Null(ParentPinPolicy.Normalize("٠٠٠٠"));
+        Assert.Null(ParentPinPolicy.Normalize("۰۰۰۰"));
     }
 
     [Fact]
