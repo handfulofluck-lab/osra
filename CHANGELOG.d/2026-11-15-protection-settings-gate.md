@@ -22,3 +22,7 @@
   surprise.
 - **Other doors, tracked on osra-security#29 rather than here:** usage access, display over other apps,
   notification access and the VPN entry are the same class of screen and are not covered by this change.
+- **The parent hears about an unbind at once (second half of #29).** `onUnbind` raises its own alert
+  (`accessibility_off`, deduped by the moment it happened) instead of leaving it to the 60-second poll — and on a
+  phone where the location grant is off, that poll never runs, so this was the only report of a protection that
+  had been switched off. The state the poll reads is written with it, so the poll does not repeat the same event.
