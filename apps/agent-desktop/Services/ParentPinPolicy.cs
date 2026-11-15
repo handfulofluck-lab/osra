@@ -80,7 +80,7 @@ internal static class ParentPinPolicy
     {
         var expected = Normalize(configuredPin);
         if (expected is null || entered is null) return false;
-        var enteredDigits = NormalizeDigits(entered.Trim());
+        var enteredDigits = NormalizeDigits(entered);
         return CryptographicOperations.FixedTimeEquals(
             Encoding.UTF8.GetBytes(expected), Encoding.UTF8.GetBytes(enteredDigits));
     }
