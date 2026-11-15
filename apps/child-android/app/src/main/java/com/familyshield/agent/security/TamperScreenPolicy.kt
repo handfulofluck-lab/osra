@@ -96,24 +96,30 @@ object TamperScreenPolicy {
         // Flip4 dump will decide what Samsung says, and that is owed.
         SpecialAccess.OVERLAY to listOf(
             "display over other apps", "draw over other apps", "appear on top",
-            // 12–15 title and switch, 16 title
+            // 12–15 title, the switch on 12–16 (the shorter form also covers the longer one), 16 title
             "اظهار فوق التطبيقات الاخرى",
-            "السماح بظهور التطبيق فوق التطبيقات الاخرى",
+            "بظهور التطبيق فوق التطبيقات الاخرى",
             "الظهور فوق التطبيقات الاخرى",
         ),
         SpecialAccess.USAGE to listOf(
             "usage access", "usage data access",
             // 16 renamed the page and its switch
             "app usage data", "permit access to app usage data",
-            // 12–15 title
+            // 12–15 title, and the 16 title and switch
             "الوصول الى بيانات الاستخدام",
+            "الوصول الى بيانات استخدام التطبيق",
         ),
         SpecialAccess.NOTIFICATIONS to listOf(
+            // 12–16 switch (Arabic Language Bureau, review of #817); folded
+            "الوصول الى الاشعارات",
             "notification access",
             // 12–14 title carries an ampersand, 15 renamed it
             "device & app notifications", "notification read, reply & control",
         ),
         SpecialAccess.VPN to listOf(
+            // No Arabic here yet, and that is deliberate: the Bureau described its per-version phrases by meaning
+            // (always-on, forget, edit profile, stay always connected) without quoting the strings, and inventing
+            // them is how the last five went wrong. They land with the Flip4 dump.
             // Review of osra-security#29: bare "vpn" matched any Settings page where a third-party VPN app
             // scrolled into view, so only the management actions count.
             "always-on vpn", "forget vpn", "delete vpn", "vpn profile", "disconnect vpn",
@@ -169,7 +175,7 @@ object TamperScreenPolicy {
                 // Arabic Language Bureau, review of #817: direction marks are formatting, not text. Google's Arabic
                 // strings that carry a Latin word begin with U+200F, and a mark inside a phrase would break
                 // `contains`. Dropping the Cf marks removes the risk rather than relying on where they sit.
-                '\u200E', '\u200F', in '\u202A'..'\u202E', in '\u2066'..'\u2069' -> Unit
+                '\u061C', '\u200E', '\u200F', in '\u202A'..'\u202E', in '\u2066'..'\u2069' -> Unit
                 '\u0623', '\u0625', '\u0622' -> out.append('\u0627')
                 '\u0624' -> out.append('\u0648')
                 else -> out.append(ch)

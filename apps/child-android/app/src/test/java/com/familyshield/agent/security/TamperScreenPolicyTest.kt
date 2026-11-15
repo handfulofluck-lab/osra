@@ -658,11 +658,53 @@ class TamperScreenPolicyTest {
             TamperScreen.SPECIAL_ACCESS,
             TamperScreenPolicy.classify(
                 "com.android.settings",
-                listOf<CharSequence>("OSRA", "‏" + "الظهور فوق التطبيقات الأخرى", "‏" + "مسموح"),
+                // the mark is INSIDE the phrase: with it only at the start, `contains` would match anyway
+                listOf<CharSequence>("OSRA", "الظهور فوق‏ التطبيقات الأخرى", "مسموح"),
                 agent, admin, pkg,
                 ourAdminActive = true,
                 ourSpecialAccess = setOf(TamperScreenPolicy.SpecialAccess.OVERLAY),
             ),
         )
+    }
+
+    /** Each phrase the Arabic Language Bureau confirmed, fed through `classify()` as the screen shows it. */
+    @Test
+    fun `every confirmed Arabic phrase is guarded`() {
+        fun ar(access: TamperScreenPolicy.SpecialAccess, vararg texts: String) =
+            TamperScreenPolicy.classify(
+                "com.android.settings", texts.toList(), agent, admin, pkg,
+                ourAdminActive = true, ourSpecialAccess = setOf(access),
+            )
+        // notifications: the switch, 12–16
+        assertEquals(
+            TamperScreen.SPECIAL_ACCESS,
+            ar(TamperScreenPolicy.SpecialAccess.NOTIFICATIONS, "OSRA", "الوصول إلى الإشعارات", "مسموح"),
+        )
+        // usage: 16 title and switch
+        assertEquals(
+            TamperScreen.SPECIAL_ACCESS,
+            ar(TamperScreenPolicy.SpecialAccess.USAGE, "OSRA", "الوصول إلى بيانات استخدام التطبيق"),
+        )
+        // overlay: the 12–16 switch form
+        assertEquals(
+            TamperScreen.SPECIAL_ACCESS,
+            ar(TamperScreenPolicy.SpecialAccess.OVERLAY, "OSRA", "بظهور التطبيق فوق التطبيقات الأخرى"),
+        )
+    }
+
+    /** And each new English phrase, in the spelling the screens use. */
+    @Test
+    fun `every new English phrase is guarded`() {
+        fun en(access: TamperScreenPolicy.SpecialAccess, vararg texts: String) =
+            TamperScreenPolicy.classify(
+                "com.android.settings", texts.toList(), agent, admin, pkg,
+                ourAdminActive = true, ourSpecialAccess = setOf(access),
+            )
+        for (phrase in listOf("App usage data", "Permit access to app usage data")) {
+            assertEquals(phrase, TamperScreen.SPECIAL_ACCESS, en(TamperScreenPolicy.SpecialAccess.USAGE, "OSRA", phrase))
+        }
+        for (phrase in listOf("Device & app notifications", "Notification read, reply & control")) {
+            assertEquals(phrase, TamperScreen.SPECIAL_ACCESS, en(TamperScreenPolicy.SpecialAccess.NOTIFICATIONS, "OSRA", phrase))
+        }
     }
 }

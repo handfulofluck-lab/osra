@@ -110,7 +110,6 @@ class AccessibilityOffPolicyTest {
                 previous = previous,
                 packageName = pkg,
                 settingsPackage = "com.android.settings",
-                ourPackage = "com.familyshield.agent",
                 heldNow = { heldNow },
             )
 
@@ -123,22 +122,4 @@ class AccessibilityOffPolicyTest {
         assertNull("leaving Settings drops it", next(heldBefore, "com.android.telephony"))
     }
 
-    /**
-     * Claude's item 2: the reset that a Back-from-the-grant-page needs. The own-package branch calls the function
-     * now, so deleting that call fails here rather than passing quietly.
-     */
-    @Test
-    fun `coming back to our own package resets the latch`() {
-        val heldBefore = setOf(TamperScreenPolicy.SpecialAccess.OVERLAY)
-        assertNull(
-            "our own window after Settings ends the visit",
-            AccessibilityOffPolicy.nextSpecialAccessLatch(
-                previous = heldBefore,
-                packageName = "com.familyshield.agent",
-                settingsPackage = "com.android.settings",
-                ourPackage = "com.familyshield.agent",
-                heldNow = { heldBefore },
-            ),
-        )
-    }
 }

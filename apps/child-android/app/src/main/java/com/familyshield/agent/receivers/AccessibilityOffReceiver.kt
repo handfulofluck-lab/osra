@@ -110,12 +110,10 @@ object AccessibilityOffPolicy {
         previous: Set<com.familyshield.agent.security.TamperScreenPolicy.SpecialAccess>?,
         packageName: String?,
         settingsPackage: String,
-        ourPackage: String,
         heldNow: () -> Set<com.familyshield.agent.security.TamperScreenPolicy.SpecialAccess>,
     ): Set<com.familyshield.agent.security.TamperScreenPolicy.SpecialAccess>? = when {
         packageName == null -> previous
         packageName == settingsPackage -> previous ?: heldNow()
-        packageName == ourPackage -> null
         else -> null
     }
 
