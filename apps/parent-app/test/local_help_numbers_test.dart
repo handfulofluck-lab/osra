@@ -391,6 +391,160 @@ void main() {
       expect(n.childProtectionClause(arabic: false),
           'call the child-protection line on \u2066110\u2069 (open 24 hours)');
     });
+
+    // Hydrogen's item 4 (#727 review): the three-field assertions above cannot see a field the region branch drops.
+    // The row already had value equality; the test simply never used it. A row is now compared whole, `crisisHoursAr`
+    // included.
+    test('the region branch returns the whole row, every field', () {
+      const row = LocalHelpNumbers(
+        childProtection: '110',
+        crisis: '16000',
+        stepEn: 'and choose option 4',
+        stepAr: 'ثم اختر الرقم 4',
+        childProtectionHoursEn: open24hEn,
+        childProtectionHoursAr: open24hAr,
+        crisisHoursEn: '(open Saturday to Thursday 08:00–18:00)',
+        crisisHoursAr: '(يعمل من السبت إلى الخميس من 08:00 إلى 18:00)',
+      );
+      final filled = resolveHelpNumbers(countryCode: 'ZZ', region: 'EU', table: {'ZZ': row});
+      expect(
+        filled,
+        const LocalHelpNumbers(
+          emergency: '112',
+          childProtection: '110',
+          crisis: '16000',
+          stepEn: 'and choose option 4',
+          stepAr: 'ثم اختر الرقم 4',
+          childProtectionHoursEn: open24hEn,
+          childProtectionHoursAr: open24hAr,
+          crisisHoursEn: '(open Saturday to Thursday 08:00–18:00)',
+          crisisHoursAr: '(يعمل من السبت إلى الخميس من 08:00 إلى 18:00)',
+        ),
+        reason: 'a region fill changes the emergency number and nothing else',
+      );
+      // A row that already has an emergency number is returned untouched, not rebuilt.
+      const complete = LocalHelpNumbers(emergency: '999', childProtection: '110');
+      expect(resolveHelpNumbers(countryCode: 'ZZ', region: 'EU', table: {'ZZ': complete}), complete);
+    });
+  });
+
+  // Hydrogen's blocking item 2 (#727 review). The table is the product: a wrong number is worse than none, and until
+  // these rows existed a mutation of `AE` crisis or `KW` childProtection left every test green. Each `String?` here is
+  // the cell itself, so a changed digit fails the row that names the country.
+  group('the shipped rows are pinned cell by cell', () {
+    test('every country row prints the numbers the table gives it, exactly', () {
+      const expected = <String, List<String?>>{
+        'AE': ['999', '116111', '800 4673'],
+        'SA': ['999', '116111', '920033360'],
+        'QA': ['999', '919', '16000'],
+        'KW': ['112', '147', null],
+        'BH': ['999', '998', null],
+        'OM': ['9999', '1100', null],
+        'JO': ['911', '110', null],
+        'EG': ['122', '16000', null],
+        'TR': ['112', '183', null],
+        'US': ['911', '1-800-422-4453', '988'],
+        'GB': ['999', '0808 800 5000', '116 123'],
+      };
+      expect(helpNumbersByCountry.keys.toSet(), expected.keys.toSet(),
+          reason: 'a country was added or removed without a pin');
+      for (final entry in expected.entries) {
+        final row = helpNumbersByCountry[entry.key]!;
+        expect(
+          [row.emergency, row.childProtection, row.crisis],
+          entry.value,
+          reason: '${entry.key}: emergency, child-protection, crisis',
+        );
+      }
+    });
+
+    test('the hours and steps named in the review are pinned, per line and per language', () {
+      final ae = helpNumbersByCountry['AE']!;
+      expect(ae.crisisHoursEn, '(open daily 08:00–20:00; in Ramadan noon to midnight)');
+      expect(ae.crisisHoursAr,
+          '(يعمل يوميًا من 08:00 إلى 20:00، وفي رمضان من 12:00 إلى منتصف الليل)');
+      expect(ae.childProtectionHoursEn, isNull, reason: 'the source states no hours');
+
+      final sa = helpNumbersByCountry['SA']!;
+      expect(sa.childProtectionHoursEn, '(open daily 07:00–23:00)');
+      expect(sa.childProtectionHoursAr, '(يعمل يوميًا من 07:00 إلى 23:00)');
+      expect(sa.crisisHoursEn, '(open 08:00–20:00; Saturdays 13:00–20:00)');
+
+      final qa = helpNumbersByCountry['QA']!;
+      expect([qa.stepEn, qa.stepAr], ['and choose option 4', 'ثم اختر الرقم 4']);
+      expect(qa.crisisHoursEn, '(open Saturday to Thursday 08:00–18:00)');
+
+      final gb = helpNumbersByCountry['GB']!;
+      expect(gb.childProtectionHoursEn, '(open Monday to Friday 10:00–16:00)');
+      expect(gb.crisisHoursEn, isNull, reason: 'the NHS page states no hours');
+
+      final jo = helpNumbersByCountry['JO']!;
+      expect(jo.childProtectionHoursEn,
+          '(open Sunday to Thursday 08:00–20:00, Friday and Saturday 09:00–17:00)');
+    });
+
+    // Hydrogen's item 3: the 24-hour bracket is one sentence, and the two languages travel together.
+    test('the 24-hour bracket is one sentence in each language, and they are never split', () {
+      final fields = <String, List<String?>>{
+        for (final entry in helpNumbersByCountry.entries)
+          entry.key: [
+            entry.value.emergencyHoursEn,
+            entry.value.emergencyHoursAr,
+            entry.value.childProtectionHoursEn,
+            entry.value.childProtectionHoursAr,
+            entry.value.crisisHoursEn,
+            entry.value.crisisHoursAr,
+          ],
+      };
+      for (final entry in fields.entries) {
+        final f = entry.value;
+        for (var pair = 0; pair < 6; pair += 2) {
+          expect(f[pair] == null, f[pair + 1] == null,
+              reason: '${entry.key}: a bracket in one language and not the other');
+          if (f[pair] == open24hEn || f[pair + 1] == open24hAr) {
+            expect(f[pair], open24hEn, reason: '${entry.key}: no second English spelling');
+            expect(f[pair + 1], open24hAr, reason: '${entry.key}: no second Arabic spelling');
+          }
+        }
+        // Nothing may say "24 hours" in prose: the bracket is the constant or it is absent.
+        for (final text in f.whereType<String>()) {
+          if (text.contains('24') || text.contains('على مدار')) {
+            expect(text, anyOf(open24hEn, open24hAr),
+                reason: '${entry.key}: a second spelling of the 24-hour bracket');
+          }
+        }
+      }
+    });
+  });
+
+  // Hydrogen's item 1: the sentence that makes the card safe is the emergency one, so no card may name a crisis or
+  // child-protection line without saying what to do when the danger is immediate.
+  group('every card that names a help line says what to do in immediate danger', () {
+    test('the list of cards is the whole file, not a subset someone remembered', () {
+      final source = File('lib/features/coach/coach_content.dart').readAsStringSync();
+      final declared = RegExp(r'const _\w+ = CoachCard\(').allMatches(source).length;
+      expect(allCoachCards.length, declared,
+          reason: 'a card was added to the file without being added to allCoachCards');
+    });
+
+    test('each card that mentions {crisis} or {childProtection} also mentions {emergency}', () {
+      for (final card in allCoachCards) {
+        final texts = <String>[
+          card.title,
+          card.titleAr,
+          card.body,
+          card.bodyAr,
+          ...card.tips,
+          ...card.tipsAr,
+        ];
+        for (final text in texts) {
+          final namesLine = text.contains('{crisis}') || text.contains('{childProtection}');
+          if (!namesLine) continue;
+          expect(text.contains('{emergency}'), isTrue,
+              reason: 'this sentence names a help line but not the emergency number: $text');
+        }
+      }
+    });
   });
 }
 

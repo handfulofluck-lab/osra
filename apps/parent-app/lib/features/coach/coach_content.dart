@@ -332,11 +332,26 @@ const _concernCards = <String, CoachCard>{
   'hate_speech': _hateSpeech,
 };
 
+/// Every card, once, for the invariant rows (#727 review, Hydrogen's item 1): a card that tells a parent to call a
+/// crisis or child-protection line must also say what to do in immediate danger. A test checks this list against the
+/// source, so a card added without being added here is caught rather than silently unchecked.
+const List<CoachCard> allCoachCards = <CoachCard>[
+  _selfHarm,
+  _grooming,
+  _cyberbullying,
+  _sexualContent,
+  _violence,
+  _hateSpeech,
+  _socialConcern,
+  _screenTime,
+  _gamingChat,
+  _default,
+];
+
 /// Returns the coaching card for [category]; `social_concern` alerts resolve
 /// through [concernTypes] first, and anything unknown gets the generic card.
 CoachCard coachCardFor(String category,
-    [List<String> concernTypes = const []]) {
-  final cat = category.trim().toLowerCase();
+    [List<String> concernTypes = const []]) {  final cat = category.trim().toLowerCase();
   if (cat == 'social_concern') {
     for (final t in concernTypes) {
       final card = _concernCards[t.trim().toLowerCase()];
