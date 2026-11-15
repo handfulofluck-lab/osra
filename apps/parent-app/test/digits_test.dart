@@ -11,7 +11,7 @@ void main() {
     });
 
     test('leaves anything that is not a digit alone', () {
-      expect(normalizeDigits('a-٥.b'), 'a-٥.b');
+      expect(normalizeDigits('a-ب.b،c'), 'a-ب.b،c');
       expect(normalizeDigits(''), '');
     });
   });
