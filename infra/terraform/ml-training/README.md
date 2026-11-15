@@ -16,7 +16,7 @@ is public research datasets and made-up messages only. No real child data is eve
 | S3 bucket `osra-ml-training-<account>-eu-central-1` | `input/` training text, `output/` model files, `checkpoints/`. Private, KMS-encrypted, no versioning, everything expires after `expire_after_days` (30). |
 | KMS key `alias/osra-ml-training` | Encrypts the bucket, the job volume and the job output. |
 | IAM role `osra-ml-training` | What a SageMaker training job runs as. |
-| AWS Budget `osra-ml-training` | Alert at US$30 a month on the tag `Purpose=ml-training`. |
+| AWS Budget `osra-ml-training` | Alert at US$100 a month on the tag `Purpose=ml-training`. |
 
 It creates no compute. Nothing here costs money while no job runs, apart from the KMS key
 (about US$1 a month) and stored bytes.

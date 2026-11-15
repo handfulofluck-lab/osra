@@ -55,7 +55,7 @@ variable "expire_after_days" {
 variable "monthly_budget_usd" {
   description = "Monthly cost budget for resources tagged Purpose=ml-training. An alert, not a cap: the cap is each job's MaxRuntimeInSeconds."
   type        = number
-  default     = 30
+  default     = 100
 }
 
 variable "budget_alert_emails" {
