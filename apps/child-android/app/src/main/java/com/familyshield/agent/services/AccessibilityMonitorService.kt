@@ -92,6 +92,29 @@ class AccessibilityMonitorService : AccessibilityService() {
      * background, so a check that stopped at fine would say "we hold the grant" and slam the gate over setup
      * (Antigravity's re-review of #813).
      */
+    /**
+     * Part 2 of osra-security#29: which of the sibling special accesses we hold **right now**. A page for one we do
+     * not hold is the parent granting it, so it is never a protection screen — this is the reader behind
+     * `TamperScreenPolicy.ourSpecialAccess`.
+     */
+    private fun specialAccessHeld(): Set<TamperScreenPolicy.SpecialAccess> {
+        val held = mutableSetOf<TamperScreenPolicy.SpecialAccess>()
+        if (android.provider.Settings.canDrawOverlays(this)) held += TamperScreenPolicy.SpecialAccess.OVERLAY
+        val appOps = getSystemService(android.app.AppOpsManager::class.java)
+        if (appOps != null) {
+            val mode = appOps.checkOpNoThrow(
+                android.app.AppOpsManager.OPSTR_GET_USAGE_STATS,
+                android.os.Process.myUid(),
+                packageName,
+            )
+            if (mode == android.app.AppOpsManager.MODE_ALLOWED) held += TamperScreenPolicy.SpecialAccess.USAGE
+        }
+        val listeners = androidx.core.app.NotificationManagerCompat.getEnabledListenerPackages(this)
+        if (listeners.contains(packageName)) held += TamperScreenPolicy.SpecialAccess.NOTIFICATIONS
+        if (com.familyshield.agent.vpn.VpnState.isEnabled(this)) held += TamperScreenPolicy.SpecialAccess.VPN
+        return held
+    }
+
     private fun locationGrantedNow(): Boolean {
         val fine = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         val coarse = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -756,6 +779,7 @@ class AccessibilityMonitorService : AccessibilityService() {
             // Fable's B2 on #813: our own accessibility description, which no other app's page carries.
             agentServiceDescription = getString(com.familyshield.agent.R.string.accessibility_description),
             ourLocationActive = permissionWindowLocationActive ?: locationGrantedNow(),
+            ourSpecialAccess = specialAccessHeld(),
         )
         if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) return // no filter to bypass yet
         if (!TamperScreenPolicy.shouldGuard(screen, pinStore.isConfigured(), TamperState.graceUntil(this), now)) return
@@ -835,6 +859,7 @@ class AccessibilityMonitorService : AccessibilityService() {
                             // pane of our accessibility page stayed unclassified.
                             agentServiceDescription = getString(com.familyshield.agent.R.string.accessibility_description),
                             ourLocationActive = permissionWindowLocationActive ?: locationGrantedNow(),
+                            ourSpecialAccess = specialAccessHeld(),
                         )
                         if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) {
                             screen = TamperScreen.NONE
