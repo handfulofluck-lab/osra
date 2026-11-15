@@ -32,9 +32,12 @@ process=$(agent_helper_install "$here/agent-credential.ps1")
 if [ -z "$(aws configure get aws_access_key_id --profile "$PROFILE" 2>/dev/null)" ] \
    && [ -n "$(aws configure get credential_process --profile "$PROFILE" 2>/dev/null)" ]; then
   previous=$(aws configure get credential_process --profile "$PROFILE")
+  # Same identity before and after (Fable on #821): never swap another credential source for ours.
+  want=$(aws sts get-caller-identity --profile "$PROFILE" --query Arn --output text 2>/dev/null || true)
+  [ -n "$want" ] || { echo "profile $PROFILE gives no identity before the repoint; nothing changed" >&2; exit 1; }
   aws configure set credential_process "$process" --profile "$PROFILE"
-  if [ "$(aws sts get-caller-identity --profile "$PROFILE" --query Account --output text 2>/dev/null)" = "" ] \
-     || [ "$(agent_store_id)" = "" ]; then
+  got=$(aws sts get-caller-identity --profile "$PROFILE" --query Arn --output text 2>/dev/null || true)
+  if [ "$got" != "$want" ] || [ "$(agent_store_id)" = "" ]; then
     aws configure set credential_process "$previous" --profile "$PROFILE"
     if [ -n "$helper_before" ]; then cp "$helper_before" "$AGENT_HELPER"; fi
     echo "repoint failed: profile $PROFILE restored to its previous credential_process" >&2

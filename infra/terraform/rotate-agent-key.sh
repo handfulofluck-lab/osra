@@ -7,6 +7,7 @@
 # into the key store through a private temporary file: never printed, never on a command line.
 # Key store: if the profile uses agent-credential.ps1 (move-agent-key-to-store.sh, Ahmed control 4) the key is
 # written to the DPAPI store; otherwise to the credentials file, the pre-migration layout.
+# --check prints which mode the profile is in and exits before any key is created.
 #
 #   bash infra/terraform/rotate-agent-key.sh            # profile osra-staging, user osra-staging-deployer
 #   AGENT_PROFILE=x AGENT_USER=y bash infra/terraform/rotate-agent-key.sh
@@ -32,6 +33,12 @@ if [ -z "$(aws configure get aws_access_key_id --profile "$PROFILE" 2>/dev/null)
   fi
 else
   mode=file; key_file="$cred_file"
+fi
+
+if [ "${1:-}" = "--check" ]; then
+  # Prints the mode and stops before anything is created (Fable on #821).
+  echo "Check: profile $PROFILE is in $mode mode ($key_file); no key was created."
+  exit 0
 fi
 
 old_ids=$(aws iam list-access-keys --profile "$PROFILE" --user-name "$USER_NAME" \
