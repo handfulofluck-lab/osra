@@ -162,6 +162,10 @@ class AccessibilityMonitorService : AccessibilityService() {
 
     override fun onDestroy() {
         isRunning = false
+        // #802 V2: no re-check outlives the service; a pending one would try to raise a screen from a dead
+        // component.
+        ringRecheck?.let { ringRecheckHandler.removeCallbacks(it) }
+        ringRecheck = null
         calls.onDestroy()
         media.onDestroy()
         rules.removeRulesChangedListener(rulesChanged)

@@ -73,7 +73,9 @@ object RingReentryPolicy {
     /** True only for the ring screen and the PIN gate it opens — not for the rest of our package. */
     fun isRingScreen(foreground: String, foregroundClass: String?, ownPackage: String): Boolean {
         if (foreground != ownPackage) return false
-        val simple = foregroundClass?.substringAfterLast('.') ?: return false
+        val classInOurPackage = foregroundClass?.startsWith("$ownPackage.") == true
+        if (!classInOurPackage) return false
+        val simple = foregroundClass.substringAfterLast('.')
         return RING_SCREEN_CLASSES.any { it == simple }
     }
 }
