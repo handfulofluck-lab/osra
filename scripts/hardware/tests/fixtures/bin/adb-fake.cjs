@@ -7,6 +7,10 @@ if (args.includes("screencap") && process.env.FAKE_SCREENSHOT) {
   process.stdout.write(readFileSync(process.env.FAKE_SCREENSHOT));
 } else if (args.includes("dumpsys") && args.includes("window")) {
   process.stdout.write(`mDreamingLockscreen=${process.env.FAKE_LOCKED === "1" ? "true" : "false"}\n`);
+  if (process.env.FAKE_WINDOW_BOUNDS !== "missing") {
+    process.stdout.write("mCurrentFocus=Window{1 u0 com.osratech.child.full/com.osratech.child.MainActivity}\n");
+    process.stdout.write("mStatusBarHeight=1\nmFrame=Rect(1, 0 - 3, 3)\n");
+  }
 } else if (args.includes("trust")) {
   process.stdout.write(`device is ${process.env.FAKE_LOCKED === "1" ? "secure" : "not secure"}\n`);
 } else if (args.includes("dumpsys") && args.includes("package")) {

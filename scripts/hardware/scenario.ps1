@@ -157,17 +157,54 @@ function Read-ScenarioManifest {
     return $manifest
 }
 
-function Invoke-ScenarioProcess {
-    param([Parameter(Mandatory = $true)][string]$Exe, [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Args)
-    $name = [IO.Path]::GetFileNameWithoutExtension($Exe).ToLowerInvariant()
-    if ($name -notin @("adb")) { throw "process_not_allowed" }
-    $candidates = @(Get-Command $Exe -CommandType Application -ErrorAction Stop)
+function Resolve-ScenarioAdb {
+    $candidates = @(Get-Command "adb" -CommandType Application -ErrorAction Stop)
     $resolved = if ($env:OS -eq "Windows_NT") {
         $candidates | Where-Object { $_.Source -match "\.(?:cmd|exe)$" } | Select-Object -First 1 -ExpandProperty Source
     } else { $candidates[0].Source }
     if (-not $resolved) { throw "adb_not_found" }
-    $text = & $resolved @Args | Out-String
-    return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $text }
+    return $resolved
+}
+
+function ConvertTo-ScenarioProcessArgument {
+    param([string]$Value)
+    if ($Value.Length -eq 0) { return '""' }
+    if ($Value -notmatch '[\s"]') { return $Value }
+    $escaped = $Value -replace '(\\*)"', '$1$1\"'
+    $escaped = $escaped -replace '(\\+)$', '$1$1'
+    return '"' + $escaped + '"'
+}
+
+function Invoke-ScenarioProcess {
+    param([Parameter(Mandatory = $true)][string]$Exe, [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Args, [switch]$RawBytes)
+    $name = [IO.Path]::GetFileNameWithoutExtension($Exe).ToLowerInvariant()
+    if ($name -notin @("adb")) { throw "process_not_allowed" }
+    $resolved = Resolve-ScenarioAdb
+    if (-not $RawBytes) {
+        $text = & $resolved @Args | Out-String
+        return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $text }
+    }
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $quoted = @($Args | ForEach-Object { ConvertTo-ScenarioProcessArgument $_ }) -join " "
+    if ([IO.Path]::GetExtension($resolved) -eq ".cmd") {
+        $psi.FileName = $env:ComSpec
+        $psi.Arguments = '/d /s /c ""' + $resolved + '" ' + $quoted + '"'
+    } else {
+        $psi.FileName = $resolved
+        $psi.Arguments = $quoted
+    }
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+    if (-not $process.Start()) { throw "process_start_failed" }
+    $memory = New-Object System.IO.MemoryStream
+    $process.StandardOutput.BaseStream.CopyTo($memory)
+    $process.StandardError.ReadToEnd() | Out-Null
+    $process.WaitForExit()
+    return [pscustomobject]@{ ExitCode = $process.ExitCode; Bytes = $memory.ToArray() }
 }
 
 
@@ -224,8 +261,7 @@ function Invoke-Adb {
     if (-not $SkipAdminCheck -and $pm -ge 0 -and $pm + 1 -lt $normalized.Count -and $normalized[$pm + 1] -in @("uninstall", "clear")) {
         if (-not (Test-AdminPackageRemoval -Package $Package)) { throw "active_device_admin_package" }
     }
-    if ($RawBytes) { throw "raw_capture_not_implemented" }
-    return Invoke-ScenarioProcess -Exe "adb" -Args (@("-s", $Serial) + $Command)
+    return Invoke-ScenarioProcess -Exe "adb" -Args (@("-s", $Serial) + $Command) -RawBytes:$RawBytes
 }
 
 function Get-ScenarioLockState {
@@ -284,4 +320,78 @@ function Invoke-ScenarioManualStep {
     [Console]::Out.WriteLine($Instruction)
     Read-Host "Press Enter to continue" | Out-Null
     return [pscustomobject]@{ status = "DONE"; reason = "manual confirmation recorded" }
+}
+
+
+if (-not ("ScenarioPng" -as [type])) {
+    Add-Type -Path (Join-Path $PSScriptRoot "scenario-png.cs")
+}
+
+function Crop-ScenarioPng {
+    param([Parameter(Mandatory = $true)][byte[]]$Bytes, [Parameter(Mandatory = $true)][int]$X, [Parameter(Mandatory = $true)][int]$Y, [Parameter(Mandatory = $true)][int]$Width, [Parameter(Mandatory = $true)][int]$Height)
+    try {
+        return [ScenarioPng]::Crop($Bytes, $X, $Y, $Width, $Height)
+    } catch {
+        throw "unsupported_or_corrupt_png"
+    }
+}
+
+function Get-ScenarioSafeBounds {
+    $window = (Invoke-Adb -Command @("shell", "dumpsys", "window")).Output
+    if ($window -notmatch [regex]::Escape("com.osratech.child")) { throw "osra_window_not_focused" }
+    if ($window -notmatch "mStatusBarHeight=(\d+)") { throw "status_bar_bounds_unknown" }
+    $statusHeight = [int]$Matches[1]
+    if ($window -notmatch "mFrame=Rect\((\d+), (\d+) - (\d+), (\d+)\)") { throw "osra_window_bounds_unknown" }
+    $left = [int]$Matches[1]; $top = [Math]::Max([int]$Matches[2], $statusHeight)
+    $right = [int]$Matches[3]; $bottom = [int]$Matches[4]
+    if ($right -le $left -or $bottom -le $top) { throw "osra_window_bounds_invalid" }
+    return [pscustomobject]@{ X = $left; Y = $top; Width = $right - $left; Height = $bottom - $top }
+}
+
+function Save-ScenarioScreenshot {
+    param([Parameter(Mandatory = $true)][string]$Evidence, [Parameter(Mandatory = $true)][string]$Name, [Parameter(Mandatory = $true)][bool]$LockState)
+    if ($LockState) { throw "phone_locked_no_screenshot" }
+    if ($Name -notmatch "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$" -or $Name.Contains("..")) { throw "unsafe_evidence_name" }
+    $bounds = Get-ScenarioSafeBounds
+    $capture = Invoke-Adb -Command @("exec-out", "screencap", "-p") -RawBytes
+    if ($capture.ExitCode -ne 0) { throw "screenshot_capture_failed" }
+    try {
+        $cropped = Crop-ScenarioPng -Bytes $capture.Bytes -X $bounds.X -Y $bounds.Y -Width $bounds.Width -Height $bounds.Height
+    } catch {
+        return [pscustomobject]@{ status = "NOT RUN"; reason = "unsupported image" }
+    }
+    $root = [IO.Path]::GetFullPath($Evidence)
+    $path = [IO.Path]::GetFullPath((Join-Path $root $Name))
+    if (-not $path.StartsWith($root.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw "unsafe_evidence_path" }
+    [IO.File]::WriteAllBytes($path, $cropped)
+    $image = [ScenarioPng]::Decode($cropped)
+    return [pscustomobject]@{ status = "DONE"; width = $image.Width; height = $image.Height }
+}
+
+$script:AllowedLogStages = @(
+    "start", "dry-run", "preflight", "before-values", "step-start", "step-end",
+    "screenshot", "restore", "lease-release", "result", "refused"
+)
+
+function Write-ScenarioLog {
+    param([Parameter(Mandatory = $true)][string]$Evidence, [Parameter(Mandatory = $true)][string]$Stage)
+    if ($Stage -notin $script:AllowedLogStages) { throw "unsafe_log_stage" }
+    $path = Join-Path ([IO.Path]::GetFullPath($Evidence)) "runner.log"
+    [IO.File]::AppendAllText($path, "$Stage`n", (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Start-ScenarioEventLog {
+    param([Parameter(Mandatory = $true)][string]$Evidence)
+    $resolved = Resolve-ScenarioAdb
+    $path = Join-Path ([IO.Path]::GetFullPath($Evidence)) "events.log"
+    $argumentLine = @("-s", $Serial, "logcat", "-b", "events") | ForEach-Object { ConvertTo-ScenarioProcessArgument $_ }
+    return Start-Process -FilePath $resolved -ArgumentList $argumentLine -RedirectStandardOutput $path -RedirectStandardError (Join-Path $Evidence "events.err.log") -NoNewWindow -PassThru
+}
+
+function Stop-ScenarioEventLog {
+    param([Parameter(Mandatory = $true)]$Process)
+    if (-not $Process.HasExited) {
+        $Process.Kill()
+        $Process.WaitForExit()
+    }
 }
