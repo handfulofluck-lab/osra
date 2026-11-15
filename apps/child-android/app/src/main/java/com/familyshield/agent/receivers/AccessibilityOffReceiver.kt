@@ -37,8 +37,7 @@ class AccessibilityOffReceiver {
         // osra-security#29 review (Claude): this poll is the *other* reporter of the same event. A parent who turned
         // the service off inside the PIN's grace window, and a phone that was never paired, must be recorded without
         // paging — which is what the unbind alert already does.
-        val parentDidThis = TamperState.graceUntil(context) > nowMs
-        if (!settings.isPairedSync() || parentDidThis) {
+        if (!AccessibilityOffPolicy.shouldTellParent(settings.isPairedSync(), TamperState.graceUntil(context), nowMs)) {
             if (AccessibilityOffPolicy.shouldAlertOnObservation(settings.accessibilityWasEnabled(), enabledNow)) {
                 settings.recordAccessibilityEnabled(false)
             }
@@ -79,6 +78,28 @@ object AccessibilityOffPolicy {
 
     /** Detection type; doubles as the per-type throttle key segment. */
     const val TYPE: String = "accessibility"
+
+    /**
+     * osra-security#29 review (Claude): whether an unbind or a poll observation should reach the parent at all.
+     *
+     * Not on a phone that was never paired — nobody to tell — and not inside the PIN grace window: a parent who
+     * turned the service off after entering the PIN did what they meant to do, and paging them for it is noise
+     * that trains a family to ignore the one alert that matters. Pure, because this is the decision a test has to
+     * be able to drive.
+     */
+    fun shouldTellParent(paired: Boolean, graceUntilMs: Long, nowMs: Long): Boolean =
+        paired && nowMs >= graceUntilMs
+
+    /**
+     * The grant latch for a PermissionController visit (osra-security#30 review): latched from the grant when a
+     * PermissionController window is entered, cleared when any other window is entered, and left alone when the
+     * window cannot be named.
+     */
+    fun nextLatch(previous: Boolean?, packageName: String?, grantedNow: () -> Boolean): Boolean? = when {
+        packageName == null -> previous
+        packageName.contains("permissioncontroller") -> previous ?: grantedNow()
+        else -> null
+    }
 
     /**
      * True when the service identified by flattened [component] appears in the

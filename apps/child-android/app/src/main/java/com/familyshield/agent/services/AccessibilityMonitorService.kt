@@ -205,8 +205,12 @@ class AccessibilityMonitorService : AccessibilityService() {
         val unboundAt = System.currentTimeMillis()
         // U2a (Antigravity): a parent who turned accessibility off inside the PIN's grace window, or a phone that
         // was never paired, must not produce a critical alert — that is the parent's own action.
-        val parentDidThis = TamperState.graceUntil(this) > unboundAt
-        if (settings.isPairedSync() && !parentDidThis) {
+        if (com.familyshield.agent.receivers.AccessibilityOffPolicy.shouldTellParent(
+                paired = settings.isPairedSync(),
+                graceUntilMs = TamperState.graceUntil(this),
+                nowMs = unboundAt,
+            )
+        ) {
             // U2b: the state the poll reads is now written inside the worker, before its POST. Doing it here on a
             // scope that onDestroy() cancels was a race that could drop both writes and let the poll repeat it.
             runCatching {
@@ -710,11 +714,11 @@ class AccessibilityMonitorService : AccessibilityService() {
             // R2 (Antigravity's re-review): latch the grant on ENTERING a PermissionController window and clear it
             // on entering any other window, so a grant made inside that page cannot trip the gate on the content
             // change that follows the tap. The field was declared and read but never written before this.
-            permissionWindowLocationActive = when {
-                pkgOfEvent == null -> permissionWindowLocationActive
-                pkgOfEvent.contains("permissioncontroller") -> permissionWindowLocationActive ?: locationGrantedNow()
-                else -> null
-            }
+            permissionWindowLocationActive = com.familyshield.agent.receivers.AccessibilityOffPolicy.nextLatch(
+                previous = permissionWindowLocationActive,
+                packageName = pkgOfEvent,
+                grantedNow = { locationGrantedNow() },
+            )
         }
         if (!settings.isPairedSync()) return
         val now = System.currentTimeMillis()
