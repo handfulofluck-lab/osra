@@ -58,4 +58,91 @@ class TamperAlertWorkNameTest {
             TamperAlertWorker.uniqueWorkName(TamperAlertWorker.TYPE_GUARD_TRIGGERED, 0L),
         )
     }
+
+    /**
+     * osra-security#29, second half: the unbind alert is raised from the service itself, so the parent does not wait
+     * for the 60-second poll — and hears at all on a phone where the location grant is off and the poll never runs.
+     *
+     * Mutant: drop the `enqueue(... TYPE_ACCESSIBILITY_OFF ...)` from `onUnbind` → [the unbind raises its own alert
+     * at once] goes red, and nothing else does.
+     */
+    @Test
+    fun `the unbind raises its own alert at once`() {
+        val source = java.io.File(System.getProperty("user.dir") ?: ".").let { wd ->
+            listOf(
+                java.io.File(wd, "src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt"),
+                java.io.File(wd, "app/src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt"),
+            ).firstOrNull { it.isFile }?.readText() ?: error("service source not found below ${wd.path}")
+        }
+        val unbind = source.substringAfter("override fun onUnbind(", missingDelimiterValue = "")
+            .lines().takeWhile { it != "    }" }.joinToString(separator = " ")
+        org.junit.Assert.assertTrue("the worker is told", unbind.contains("TYPE_ACCESSIBILITY_OFF"))
+        org.junit.Assert.assertTrue("with the moment it happened", unbind.contains("eventAtMs = unboundAt"))
+        // U2b: the poll is silenced inside the worker, before its POST — not in a scope onDestroy cancels.
+        val worker = java.io.File(System.getProperty("user.dir") ?: ".").let { wd ->
+            listOf(
+                java.io.File(wd, "src/main/java/com/familyshield/agent/security/TamperAlertWorker.kt"),
+                java.io.File(wd, "app/src/main/java/com/familyshield/agent/security/TamperAlertWorker.kt"),
+            ).firstOrNull { it.isFile }?.readText() ?: error("worker source not found")
+        }
+        org.junit.Assert.assertTrue("the worker records the off state", worker.contains("recordAccessibilityEnabled(false)"))
+        org.junit.Assert.assertTrue("through the same throttle key the poll reads", worker.contains("AccessibilityOffPolicy.TYPE"))
+    }
+
+    /** One alert per unbind, and two unbinds are two alerts. */
+    @Test
+    fun `the unbind alert is deduped by its own moment`() {
+        val first = TamperAlertDedupe.accessibilityOffKey("dev", 1_000L)
+        val retry = TamperAlertDedupe.accessibilityOffKey("dev", 1_000L)
+        val second = TamperAlertDedupe.accessibilityOffKey("dev", 61_000L)
+        org.junit.Assert.assertEquals("a WorkManager retry is a no-op", first, retry)
+        org.junit.Assert.assertNotEquals("a second unbind is a new alert", first, second)
+    }
+
+    /**
+     * R2's wiring: the latch is delegated to the pure rule, and it is read where the screen is classified.
+     *
+     * The **decision** is driven by `AccessibilityOffPolicyTest` now — this row only proves the service asks it,
+     * which is all a source row can honestly prove after the extraction.
+     */
+    @Test
+    fun `the grant latch is delegated and read`() {
+        val source = java.io.File(System.getProperty("user.dir") ?: ".").let { wd ->
+            listOf(
+                java.io.File(wd, "src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt"),
+                java.io.File(wd, "app/src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt"),
+            ).firstOrNull { it.isFile }?.readText() ?: error("service source not found")
+        }
+        org.junit.Assert.assertTrue(
+            "the pure rule owns the latch",
+            source.contains("AccessibilityOffPolicy.nextLatch("),
+        )
+        org.junit.Assert.assertTrue(
+            "and the value is read where the screen is classified",
+            source.contains("ourLocationActive = permissionWindowLocationActive ?: locationGrantedNow()"),
+        )
+        org.junit.Assert.assertTrue(
+            "and cleared when one of our own windows opens",
+            source.contains("permissionWindowLocationActive = null"),
+        )
+    }
+
+    /** U1 (Antigravity's re-review): the unbind type gets its own work name, keyed by when it happened. */
+    @Test
+    fun `the unbind work name carries its moment`() {
+        val first = TamperAlertWorker.uniqueWorkName(TamperAlertWorker.TYPE_ACCESSIBILITY_OFF, 1_000L)
+        val second = TamperAlertWorker.uniqueWorkName(TamperAlertWorker.TYPE_ACCESSIBILITY_OFF, 61_000L)
+        org.junit.Assert.assertTrue("the moment is in the name", first.contains("1000"))
+        org.junit.Assert.assertNotEquals("two unbinds do not collapse onto one name", first, second)
+        val source = java.io.File(System.getProperty("user.dir") ?: ".").let { wd ->
+            listOf(
+                java.io.File(wd, "src/main/java/com/familyshield/agent/security/TamperAlertWorker.kt"),
+                java.io.File(wd, "app/src/main/java/com/familyshield/agent/security/TamperAlertWorker.kt"),
+            ).firstOrNull { it.isFile }?.readText() ?: error("worker source not found")
+        }
+        org.junit.Assert.assertTrue(
+            "and enqueue passes the event time for it",
+            source.contains("type == TYPE_BLOCK_BYPASS || type == TYPE_ACCESSIBILITY_OFF) eventAtMs"),
+        )
+    }
 }

@@ -39,6 +39,182 @@ class TamperScreenPolicyTest {
         assertEquals(TamperScreen.APP_INFO, classify("com.android.settings", "OSRA", "com.familyshield.agent", "Clear data", "Clear cache"))
     }
 
+    /**
+     * osra-security#29 (AS02 on the Flip4): the accessibility service could be switched off with no PIN and
+     * blocking stopped at once. The page is a switch and says nothing about uninstalling, so no word path reached
+     * it — and until this row it was classified NONE.
+     */
+    @Test
+    fun `our accessibility detail page is a protection screen`() {
+        for (cls in listOf(
+            "com.android.settings.accessibility.AccessibilityDetails",
+            "com.android.settings.accessibility.AccessibilityServiceDetails",
+            "com.samsung.android.settings.accessibility.SecAccessibilityDetailsActivity",
+        )) {
+            assertEquals(
+                cls,
+                TamperScreen.PROTECTION_SETTINGS,
+                classifyWindow("com.android.settings", cls, "OSRA accessibility", "Allowed", "Use OSRA to observe what is on screen"),
+            )
+        }
+    }
+
+    /**
+     * osra-security#30: the location grant is a protection the parent gave; switching it off stops live location
+     * and geofence alerts, with no PIN, from its own package.
+     */
+    @Test
+    fun `our permissions page is a protection screen`() {
+        for (pkg in listOf("com.android.permissioncontroller", "com.google.android.permissioncontroller")) {
+            for (cls in listOf("ManagePermissionsActivity", "AppPermissionsActivity", "PermissionDetailsActivity")) {
+                assertEquals(
+                    "$pkg/$cls",
+                    TamperScreen.PROTECTION_SETTINGS,
+                    TamperScreenPolicy.classify(
+                        pkg,
+                        listOf<CharSequence>("OSRA", "Location", "Don't allow", "Allow all the time"),
+                        agent, admin, pkg,
+                        ourAdminActive = true,
+                        windowClass = cls,
+                        // R2: the page is ours to protect only while we hold the grant it manages.
+                        ourLocationActive = true,
+                    ),
+                )
+            }
+        }
+    }
+
+    /** The same two pages exist for every app on the phone; only ours is a protection screen. */
+    @Test
+    fun `another app's accessibility and permission pages stay NONE`() {
+        assertEquals(
+            TamperScreen.NONE,
+            classifyWindow(
+                "com.android.settings",
+                "com.android.settings.accessibility.AccessibilityDetails",
+                "Chrome accessibility", "Allowed", "Use Chrome to observe what is on screen",
+            ),
+        )
+        assertEquals(
+            TamperScreen.NONE,
+            classifyWindow("com.android.permissioncontroller", "Camera", "Photos", "Don't allow"),
+        )
+    }
+
+    /**
+     * Fable's B1 on #813: the rows above feed in the class names the code lists, so they pass by construction —
+     * and on current Settings builds the accessibility page is often a fragment in a generic host, whose class
+     * matches nothing. These rows are the non-tautological half: an **unknown** class and **our description
+     * text** is still guarded, which is what survives an OEM rename or a fragment host.
+     */
+    @Test
+    fun `our accessibility description is guarded whatever the window class is`() {
+        val description = "OSRA monitors app usage to enforce your parent's screen-time rules."
+        for (cls in listOf(null, "Settings", "com.android.settings.MainSettings", "com.android.settings.SubSettings")) {
+            assertEquals(
+                "class=$cls",
+                TamperScreen.PROTECTION_SETTINGS,
+                TamperScreenPolicy.classify(
+                    "com.android.settings",
+                    listOf<CharSequence>("OSRA accessibility", "Allowed", description),
+                    agent, admin, pkg,
+                    ourAdminActive = true,
+                    windowClass = cls,
+                    agentServiceDescription = description,
+                ),
+            )
+        }
+        // Another app's page carries none of it.
+        assertEquals(
+            TamperScreen.NONE,
+            TamperScreenPolicy.classify(
+                "com.android.settings",
+                listOf<CharSequence>("Chrome accessibility", "Allowed", "Use Chrome to observe what is on screen"),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                windowClass = "Settings",
+                agentServiceDescription = description,
+            ),
+        )
+    }
+
+    /**
+     * osra-security#30 review (Antigravity B2): PermissionController hosts both the management pages **and** the
+     * runtime permission dialog, and onboarding opens the management page itself when the parent grants background
+     * location. So the package alone is not enough: the management classes are guarded, the runtime prompt is
+     * never a screen, and neither is the all-services accessibility list (gating it would block TalkBack).
+     */
+    /**
+     * Antigravity's R2: onboarding opens this very page to grant background location, after the PIN is set. With no
+     * grant yet there is nothing to protect, and gating it would block the parent's own setup.
+     */
+    @Test
+    fun `the permission page is only guarded while we hold a location grant`() {
+        fun classifyWithGrant(granted: Boolean) = TamperScreenPolicy.classify(
+            "com.android.permissioncontroller",
+            listOf<CharSequence>("OSRA", "Location", "Allow all the time"),
+            agent, admin, pkg,
+            ourAdminActive = true,
+            windowClass = "ManagePermissionsActivity",
+            ourLocationActive = granted,
+        )
+        assertEquals("nothing to protect yet", TamperScreen.NONE, classifyWithGrant(false))
+        assertEquals("the grant is ours to protect", TamperScreen.PROTECTION_SETTINGS, classifyWithGrant(true))
+    }
+
+    /** Antigravity's R1: the never-list wins over the description text, not after it. */
+    @Test
+    fun `the list stays NONE even when the description is on screen`() {
+        assertEquals(
+            TamperScreen.NONE,
+            TamperScreenPolicy.classify(
+                "com.android.settings",
+                listOf<CharSequence>("Installed apps", "OSRA", "OSRA monitors app usage to enforce your parent's screen-time rules."),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                windowClass = "SecAccessibilityInstalledAppsActivity",
+                agentServiceDescription = "OSRA monitors app usage to enforce your parent's screen-time rules.",
+            ),
+        )
+    }
+
+    @Test
+    fun `the permission management pages are guarded, the runtime prompt and the lists are not`() {
+        assertEquals(
+            TamperScreen.PROTECTION_SETTINGS,
+            TamperScreenPolicy.classify(
+                "com.samsung.android.permissioncontroller",
+                listOf<CharSequence>("OSRA", "Location", "Don't allow"),
+                agent, admin, pkg, ourAdminActive = true,
+                windowClass = "ManagePermissionsActivity", ourLocationActive = true,
+            ),
+        )
+        assertEquals(
+            TamperScreen.PROTECTION_SETTINGS,
+            TamperScreenPolicy.classify(
+                "com.android.permissioncontroller",
+                listOf<CharSequence>("OSRA", "Camera", "Allow"),
+                agent, admin, pkg, ourAdminActive = true,
+                windowClass = "AppPermissionsActivity", ourLocationActive = true,
+            ),
+        )
+        assertEquals(
+            "the runtime prompt is not a protection screen",
+            TamperScreen.NONE,
+            classifyWindow("com.android.permissioncontroller", "GrantPermissionsActivity", "Allow OSRA to access this device's location?", "While using the app"),
+        )
+        assertEquals(
+            "the accessibility list of every service is not a protection screen",
+            TamperScreen.NONE,
+            classifyWindow("com.android.settings", "SecAccessibilityInstalledAppsActivity", "Installed apps", "OSRA", "TalkBack"),
+        )
+        assertEquals(
+            "and neither is the accessibility settings hub",
+            TamperScreen.NONE,
+            classifyWindow("com.android.settings", "AccessibilitySettingsActivity", "Accessibility", "OSRA", "TalkBack"),
+        )
+    }
+
     @Test
     fun `screens that do not name us, or are not system packages, are NONE`() {
         assertEquals(TamperScreen.NONE, classify("com.android.settings", "Device admin apps", "Find My Device", "Deactivate"))
@@ -74,6 +250,10 @@ class TamperScreenPolicyTest {
     // On an Arabic phone our labels resolve to Arabic too: the launcher label stays the brand ("OSRA"),
     // the device-admin label is the Arabic string from values-ar.
     private val adminAr = "الرقابة الأبوية من OSRA"
+
+    /** The class matters for the rows below: these pages say nothing that a word list would catch. */
+    private fun classifyWindow(packageName: String?, windowClass: String?, vararg texts: String) =
+        TamperScreenPolicy.classify(packageName, texts.toList(), agent, admin, pkg, ourAdminActive = true, windowClass = windowClass)
 
     private fun classifyAr(packageName: String?, windowClass: String?, vararg texts: String) =
         TamperScreenPolicy.classify(packageName, texts.toList(), agent, adminAr, pkg, ourAdminActive = true, windowClass = windowClass)

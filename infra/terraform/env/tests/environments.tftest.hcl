@@ -134,6 +134,11 @@ run "staging_defaults_are_unchanged" {
   }
 
   assert {
+    condition     = length(aws_cloudwatch_log_metric_filter.family_plan) == 0 && length(aws_cloudwatch_metric_alarm.family_plan) == 0
+    error_message = "with alarms_enabled false there are no family plan filters or alarms (#816)"
+  }
+
+  assert {
     condition     = length(aws_nat_gateway.main) == 1 && length(aws_route_table.private) == 1
     error_message = "staging must keep one NAT gateway and one private route table"
   }
@@ -360,6 +365,14 @@ run "production_settings" {
   assert {
     condition     = strcontains(local.db_admin_script, "PASSWORD '$verifier'") && !strcontains(local.db_admin_script, "PASSWORD '$API_DB_PASSWORD'")
     error_message = "osra_api's password must reach PostgreSQL only as a SCRAM verifier (#781 review B3)"
+  }
+  assert {
+    condition     = length(aws_cloudwatch_log_metric_filter.family_plan) == 2 && length(aws_cloudwatch_metric_alarm.family_plan) == 2 && aws_cloudwatch_log_metric_filter.family_plan["family-plan-recovery-ceiling"].pattern == "{ $.event = \"family_plan_recovery_ceiling\" }" && aws_cloudwatch_log_metric_filter.family_plan["family-plan-missing-expiry"].pattern == "{ $.event = \"family_plan_missing_expiry\" }"
+    error_message = "production must alarm on both family plan entitlement warnings (#811, #816)"
+  }
+  assert {
+    condition     = alltrue([for a in aws_cloudwatch_metric_alarm.family_plan : length(a.alarm_actions) == 1 && length(coalesce(a.ok_actions, [])) == 0])
+    error_message = "family plan alarms mail on ALARM only, not on every return to OK (#816 R3)"
   }
 }
 
