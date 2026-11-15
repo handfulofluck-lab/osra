@@ -75,8 +75,7 @@ class TamperAlertWorkNameTest {
             ).firstOrNull { it.isFile }?.readText() ?: error("service source not found below ${wd.path}")
         }
         val unbind = source.substringAfter("override fun onUnbind(", missingDelimiterValue = "")
-            .lines().takeWhile { it != "    }" }.joinToString("
-")
+            .lines().takeWhile { it != "    }" }.joinToString(separator = " ")
         org.junit.Assert.assertTrue("the worker is told", unbind.contains("TYPE_ACCESSIBILITY_OFF"))
         org.junit.Assert.assertTrue("with the moment it happened", unbind.contains("eventAtMs = unboundAt"))
         org.junit.Assert.assertTrue("and the poll is silenced", unbind.contains("recordAccessibilityEnabled(false)"))
