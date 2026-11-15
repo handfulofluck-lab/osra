@@ -38,9 +38,13 @@ class AccessibilityOffReceiver {
         // osra-security#29 review (Claude): this poll is the *other* reporter of the same event. A parent who turned
         // the service off inside the PIN's grace window, and a phone that was never paired, must be recorded without
         // paging — which is what the unbind alert already does.
+        // Antigravity's note on the gate: the moment the switch-off happened is read once, here, and reused by the
+        // dedupe key below — and an observation while unpaired or in grace records what was **seen**, on or off.
+        // Recording "off" unconditionally turned a service that was switched back on into a stale "off".
+        val eventAtMs = TamperState.accessibilityDisabledAtMs(context).takeIf { it > 0L } ?: nowMs
         if (!AccessibilityOffPolicy.shouldTellParent(settings.isPairedSync(), TamperState.graceUntil(context), nowMs)) {
             if (AccessibilityOffPolicy.shouldAlertOnObservation(settings.accessibilityWasEnabled(), enabledNow)) {
-                settings.recordAccessibilityEnabled(false)
+                settings.recordAccessibilityEnabled(enabledNow)
             }
             return
         }
@@ -67,10 +71,7 @@ class AccessibilityOffReceiver {
                     metadata = mapOf("type" to AccessibilityOffPolicy.TYPE),
                     // Antigravity's fix: the same key the unbind alert uses for this switch-off, so the server sees
                     // one alert rather than one keyed and one unkeyed page.
-                    dedupeKey = TamperAlertDedupe.accessibilityOffKey(
-                        settings.deviceId(),
-                        TamperState.accessibilityDisabledAtMs(context).takeIf { it > 0L } ?: nowMs,
-                    ),
+                    dedupeKey = TamperAlertDedupe.accessibilityOffKey(settings.deviceId(), eventAtMs),
                 ),
             )
         }.onSuccess {
