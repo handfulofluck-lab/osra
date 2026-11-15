@@ -336,6 +336,20 @@ void main() {
       expect(api.calls('POST', '/v1/auth/mfa/reset/witness').single.body['requestId'], 'req-1');
     });
 
+    testWidgets('an Arabic-digit witness code is sent as Western digits (#771)', (tester) async {
+      final api = FakeApiClient(resetRoutes());
+      await pumpScreen(tester, MfaResetWaitingScreen(progress: mailboxStage()), api);
+
+      await tester.tap(find.byKey(const ValueKey('mfaResetHaveCode')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('mfaResetWitnessCode')), '١٢٣٤٥٦٧٨');
+      await tester.tap(find.byKey(const ValueKey('mfaResetWitnessSubmit')));
+      await flush(tester);
+      await tester.pumpAndSettle();
+
+      expect(api.calls('POST', '/v1/auth/mfa/reset/witness').single.body['code'], '12345678');
+    });
+
     // The parent on this screen is the one being reset and has no session, so
     // the real `/cancel` answers `401 unauthorized` (or `session_revoked` once
     // the window starts). A cancel button here could only ever fail; the screen
