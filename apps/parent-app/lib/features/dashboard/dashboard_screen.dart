@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/digits.dart';
 import '../../api/permission_errors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -647,7 +648,7 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
     try {
       await ref.read(apiClientProvider).raw.post('/v1/family/children', data: {
         'displayName': _name.text.trim(),
-        'birthYear': int.tryParse(_birthYear.text.trim()) ?? DateTime.now().year,
+        'birthYear': int.tryParse(normalizeDigits(_birthYear.text.trim())) ?? DateTime.now().year,
         'consent': {'method': _method, 'jurisdiction': _jurisdiction},
       });
       ref.invalidate(familyProvider);

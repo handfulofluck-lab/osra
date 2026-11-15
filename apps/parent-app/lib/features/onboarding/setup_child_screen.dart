@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/digits.dart';
 import '../../api/models.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
@@ -56,7 +57,7 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
       setState(() => _error = l10n.onboardingChildNameRequired);
       return;
     }
-    final year = int.tryParse(_birthYear.text.trim());
+    final year = int.tryParse(normalizeDigits(_birthYear.text.trim()));
     final thisYear = DateTime.now().year;
     if (year == null || year < 1900 || year > thisYear) {
       setState(() => _error = l10n.onboardingBirthYearInvalid);

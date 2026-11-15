@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/digits.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/app_tokens.dart';
 
@@ -46,7 +47,8 @@ class _ReauthDialogState extends State<ReauthDialog> {
   }
 
   void _submit() {
-    final proof = ReauthProof(password: _password.text, code: _code.text.trim());
+    final proof = ReauthProof(
+        password: _password.text, code: normalizeDigits(_code.text.trim()));
     if (proof.isEmpty) {
       setState(() => _error = context.l10n.mfaReauthRequired);
       return;
