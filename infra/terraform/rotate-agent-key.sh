@@ -20,7 +20,9 @@ cred_file="${AWS_SHARED_CREDENTIALS_FILE:-$HOME/.aws/credentials}"
 config_file="${AWS_CONFIG_FILE:-$HOME/.aws/config}"
 export AWS_PAGER=""
 . "$(dirname "$0")/lib/agent-store.sh"
-if aws configure get credential_process --profile "$PROFILE" 2>/dev/null | grep -q 'agent-credential.ps1'; then
+# Store mode when the profile runs the helper: the installed copy (osra-agent-credential.ps1) or, for a
+# profile moved before #821, the in-repo agent-credential.ps1. The pattern covers both names.
+if aws configure get credential_process --profile "$PROFILE" 2>/dev/null | grep -q "$AGENT_HELPER_PATTERN"; then
   mode=store; key_file="$AGENT_STORE"
 else
   mode=file; key_file="$cred_file"

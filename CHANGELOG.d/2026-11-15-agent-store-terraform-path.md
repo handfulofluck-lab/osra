@@ -1,6 +1,10 @@
 ### Infrastructure — the stored agent key works for Terraform, and secrets rotation works on Windows (#766)
-- `move-agent-key-to-store.sh` writes the helper path into `credential_process` without quotes, in its 8.3 short
-  form. Terraform's AWS SDK passed the quotes to PowerShell literally ("Illegal characters in path"), so every
-  production plan failed after the move, while the AWS CLI still worked.
+- `move-agent-key-to-store.sh` installs the key helper beside the DPAPI store
+  (`%USERPROFILE%\.aws\osra-agent-credential.ps1`) and points `credential_process` at that copy, without quotes.
+  Quotes made Terraform's AWS SDK fail every production plan after the move ("Illegal characters in path"), and
+  the helper no longer runs from inside a git checkout, whose checked-out branch decided the script (Fable on
+  #821). The installer refuses a path with a space. A profile moved before this change is repointed on a re-run,
+  and the script checks that the profile runs the installed copy and that it reads the stored key.
+- `rotate-agent-key.sh` recognises store mode by either helper name.
 - `production-secrets.sh` converts its temporary folder with `cygpath -m` on Windows, so `aws.exe` can read the
   `file://` values. The 15 Nov rotation needed a hand-set `TMPDIR` for this.

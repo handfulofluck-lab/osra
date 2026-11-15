@@ -19,12 +19,29 @@ here="$(cd "$(dirname "$0")" && pwd)"
 . "$here/lib/agent-store.sh"
 export AWS_PAGER=""
 
-# No quotes around the path: Terraform's AWS SDK (Go) passes them to PowerShell literally, which fails with
-# "Illegal characters in path" (seen 15 Nov on the production plan; the AWS CLI accepted either form). The
-# 8.3 short form keeps the path free of spaces, so it needs no quotes.
-helper=$(cygpath -w -s "$here/agent-credential.ps1")
-case "$helper" in *" "*) echo "helper path has a space: $helper" >&2; exit 1 ;; esac
-process="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $helper"
+# The profile runs an installed copy of the helper ($AGENT_HELPER, beside the store), never the file in this
+# checkout, and names it without quotes: Terraform's AWS SDK (Go) passes quotes to PowerShell literally and
+# fails with "Illegal characters in path" (15 Nov production plan; the AWS CLI accepted either form).
+helper_before=""
+[ -f "$AGENT_HELPER" ] && helper_before=$(mktemp) && cp "$AGENT_HELPER" "$helper_before"
+process=$(agent_helper_install "$here/agent-credential.ps1")
+
+# A profile already moved (no key lines left, credential_process on a helper): only repoint it at the
+# installed copy. This is how a profile moved before #821 (helper inside the checkout) is brought over.
+if [ -z "$(aws configure get aws_access_key_id --profile "$PROFILE" 2>/dev/null)" ] \
+   && aws configure get credential_process --profile "$PROFILE" 2>/dev/null | grep -q "$AGENT_HELPER_PATTERN"; then
+  previous=$(aws configure get credential_process --profile "$PROFILE")
+  aws configure set credential_process "$process" --profile "$PROFILE"
+  if [ "$(aws sts get-caller-identity --profile "$PROFILE" --query Account --output text 2>/dev/null)" = "" ] \
+     || [ "$(agent_store_id)" = "" ]; then
+    aws configure set credential_process "$previous" --profile "$PROFILE"
+    if [ -n "$helper_before" ]; then cp "$helper_before" "$AGENT_HELPER"; fi
+    echo "repoint failed: profile $PROFILE restored to its previous credential_process" >&2
+    exit 1
+  fi
+  echo "Repointed: profile $PROFILE now runs $(cygpath -w "$AGENT_HELPER"); the key stays in the store."
+  exit 0
+fi
 
 id=$(aws configure get aws_access_key_id --profile "$PROFILE")
 secret=$(aws configure get aws_secret_access_key --profile "$PROFILE")
@@ -44,6 +61,7 @@ on_exit() {
     cp "$tmp/credentials.before" "$cred_file"
     cp "$tmp/config.before" "$config_file"
     if [ -f "$tmp/store.before" ]; then cp "$tmp/store.before" "$AGENT_STORE"; else rm -f "$AGENT_STORE"; fi
+    if [ -n "$helper_before" ]; then cp "$helper_before" "$AGENT_HELPER"; else rm -f "$AGENT_HELPER"; fi
   fi
   rm -rf "$tmp"
   exit "$status"
@@ -70,6 +88,9 @@ cat "$tmp/credentials.new" >"$cred_file"
 
 got=$(aws sts get-caller-identity --profile "$PROFILE" --query Arn --output text)
 [ "$got" = "$want" ] || { echo "the profile does not work after the switch" >&2; exit 1; }
+aws configure get credential_process --profile "$PROFILE" | grep -q 'osra-agent-credential\.ps1' \
+  || { echo "the profile does not run the installed helper" >&2; exit 1; }
+[ "$(agent_store_id)" = "$id" ] || { echo "the installed helper does not read the stored key" >&2; exit 1; }
 if grep -q "${id}" "$cred_file"; then echo "the key id is still in $cred_file" >&2; exit 1; fi
 done=true
 echo "Moved: profile $PROFILE now reads its key from the DPAPI store ($AGENT_STORE); $cred_file no longer holds it."
