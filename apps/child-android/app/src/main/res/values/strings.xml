@@ -39,12 +39,12 @@
     <!-- #728, the pairing screen the UI/UX Bureau designed (comment 6861894747) with the Arabic Language
          Bureau's words (6861943604). These five are the lines that did not exist yet; the rest are the approved
          pair_* strings already in this file. -->
-    <string name="pair_new_title">Pair this device with your family</string>
-    <string name="pair_new_intro">Open OSRA on a parent's phone, choose Pair a device, then scan the code it shows.</string>
-    <string name="pair_new_or_type_code">or type the pairing code</string>
-    <string name="pair_new_button_waiting_allow">Waiting for Allow…</string>
-    <string name="pair_new_reassurance">Monitoring starts only after a parent allows this device in the OSRA app.</string>
-    <string name="pair_new_use_own_server">Use your own server</string>
+    <string name="pair_title">Pair this device with your family</string>
+    <string name="pair_intro">Open OSRA on a parent's phone, choose Pair a device, then scan the code it shows.</string>
+    <string name="pair_or_type_code">or type the pairing code</string>
+    <string name="pair_button_waiting_allow">Waiting for Allow…</string>
+    <string name="pair_reassurance">Monitoring starts only after a parent allows this device in the OSRA app.</string>
+    <string name="pair_use_own_server">Use your own server</string>
     <string name="pair_scan_description">Scan the pairing QR code from the parent app</string>
     <string name="pair_scanned_title">Scanned pairing details</string>
     <string name="pair_scanned_server">Server: %1$s</string>
