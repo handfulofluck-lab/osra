@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../api/mfa_api.dart';
+import '../../core/digits.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/mfa_provider.dart';
 import '../../theme/app_tokens.dart';
@@ -40,7 +41,7 @@ class _MfaRecoveryScreenState extends ConsumerState<MfaRecoveryScreen> {
   Future<void> _submit() async {
     final email = _email.text.trim();
     final password = _password.text;
-    final code = _code.text.trim();
+    final code = normalizeDigits(_code.text.trim());
     if (email.isEmpty || password.isEmpty || code.isEmpty) {
       setState(() => _error = null);
       ScaffoldMessenger.of(context)
