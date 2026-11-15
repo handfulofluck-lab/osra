@@ -43,6 +43,18 @@ the gates on 2026-10-18), so a row below is the floor, not the gate:
 A change is not done on the strength of a locally green suite whose build step was never exercised: the
 release-assembly step is where a release-only failure lives.
 
+For the parent reauthentication API (#742), run `pnpm --filter @familyshield/api exec vitest run
+test/reauth.test.ts --maxWorkers=1 --minWorkers=1`. The 15 tests use the real route, TOTP and rate-limit
+boundaries with mocked password hashing, map-backed Redis and captured logs. They cover 204 without session
+mutation, uniform 401, replay refusal, revoked/expired sessions, redacted/failing audit calls, and the shared
+limiter's uniform refusal. Two rows prove that five wrong proofs revoke once and delete only that session's
+refresh record, including five concurrent calls. A retry row proves a failed fifth revocation is retried on
+the sixth failure. Counter mutants must prove `INCR`+TTL in one `MULTI`:
+missing TTL and non-atomic read/write both go red. Also plant replay acceptance, early revocation and skipped
+refresh deletion; each owning row must fail before the implementation is restored. No real credential or live
+Redis/database is used. Arabic-digit integration waits for #787, and the client/biometric tests are separate
+tasks, not covered by this API suite.
+
 For composite numeric values in Arabic RTL, run `flutter test test/ltr_isolates_test.dart` from
 `apps/parent-app` (#751). It renders the real latest-location, location-history (with and without a
 timestamp), dashboard, map-sheet, call/SMS and bonus-time widgets with an Arabic `Locale` and

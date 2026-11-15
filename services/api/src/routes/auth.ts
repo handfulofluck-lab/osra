@@ -39,6 +39,11 @@ import { currentSessionVersion, invalidateSessionsBefore, isBearerSession, isPar
 import { encryptSecret, isEncryptedSecret } from "../lib/secretVault.js";
 import { verifyTotpFresh } from "../lib/mfaVerify.js";
 import { AUTH_RATE_LIMIT } from "../lib/rateLimits.js";
+import { requireParent } from "../middleware/requireFamily.js";
+import { ReauthSchema } from "../lib/accountDeletion.js";
+import { verifyReauthProof } from "../lib/reauthProof.js";
+import { logParentReauth } from "../lib/reauthAudit.js";
+import { registerReauthFailure, removeReauthRefreshRecords } from "../lib/reauthSessionLimit.js";
 
 const RegisterSchema = z.object({
   email: z.string().email().transform((e) => e.trim().toLowerCase()),
@@ -285,6 +290,45 @@ export async function authRoutes(app: FastifyInstance) {
       await reply.code(401).send({ error: "session_revoked" });
     }
   };
+
+  app.post("/reauth", {
+    preHandler: requireParent,
+    config: {
+      rateLimit: {
+        ...AUTH_RATE_LIMIT,
+        hook: "preHandler",
+        onExceeded: (req) => {
+          const user = req.user as { sub?: string };
+          if (user.sub) logParentReauth(req.log, user.sub, false, "rate_limited");
+        },
+        errorResponseBuilder: () => Object.assign(new Error("reauth_failed"), { statusCode: 401 }),
+      },
+    },
+  }, async (req, reply) => {
+    const user = req.user as { sub?: string; jti?: string; exp?: number };
+    const ttlSeconds = typeof user.exp === "number" ? Math.ceil(user.exp - Date.now() / 1000) : 0;
+    if (!user.sub || !user.jti || ttlSeconds <= 0) {
+      return reply.code(401).send({ error: "reauth_failed" });
+    }
+    const parent = await prisma.parent.findUnique({ where: { id: user.sub } });
+    if (!parent) return reply.code(401).send({ error: "reauth_failed" });
+
+    const parsed = ReauthSchema.safeParse(req.body);
+    const result = parsed.success ? await verifyReauthProof(parent, parsed.data) : "malformed";
+    if (result === null) {
+      logParentReauth(req.log, user.sub, true);
+      return reply.code(204).send();
+    }
+
+    const count = await registerReauthFailure(getRedis(), user.jti, ttlSeconds);
+    if (count >= 5) {
+      await removeReauthRefreshRecords(getRedis(), user.sub, user.jti);
+      await revokeTokenOnce(user.jti, user.sub);
+    }
+    const reason = result === "bad_password" || result === "bad_totp" || result === "totp_replay" ? result : undefined;
+    logParentReauth(req.log, user.sub, false, reason);
+    return reply.code(401).send({ error: "reauth_failed" });
+  });
 
   // --- ADR-0023: one-time MFA recovery codes ---------------------------------------------------
   // The recovery token is NOT a session. It is minted only by `/mfa/recover`, lives 15 minutes in

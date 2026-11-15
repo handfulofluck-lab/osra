@@ -13,6 +13,9 @@ import type { FastifyInstance } from "fastify";
  */
 export function registerErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((error, req, reply) => {
+    if (error?.message === "reauth_failed") {
+      return reply.code(401).send({ error: "reauth_failed" });
+    }
     const errStr = String(error?.message ?? "") + String(error?.stack ?? "");
     if (/prisma|invocation|P2020|P2002|P2003/i.test(errStr) || error.name === "PrismaClientKnownRequestError") {
       req.log.error(error);

@@ -9,7 +9,7 @@ import { DELETION_REQUEST_ACCEPTED, accountRoutes, settleDeletionRequests } from
 import { FAMILY_SCOPED_DELETES } from "../src/lib/accountDeletion.js";
 import { ACCOUNT_DELETION_TTL_MS, hashDeletionToken } from "../src/lib/accountDeletionLink.js";
 import { setEmailSender, type EmailMessage } from "../src/lib/email/index.js";
-import { verifyTotpFresh } from "../src/lib/mfaVerify.js";
+import { verifyTotpDetailed } from "../src/lib/mfaVerify.js";
 import { AUTH_RATE_LIMIT } from "../src/lib/rateLimits.js";
 import { LOGGER_SERIALIZERS, redactUrl } from "../src/lib/logRedaction.js";
 import { CHILD_SCOPED_DELETE_ORDER } from "../src/lib/usageModel.js";
@@ -27,7 +27,7 @@ vi.mock("ioredis", async () => {
 vi.mock("argon2", () => ({
   default: { verify: vi.fn(async () => true), hash: vi.fn(async () => "argon2$stub") },
 }));
-vi.mock("../src/lib/mfaVerify.js", () => ({ verifyTotpFresh: vi.fn(async () => false) }));
+vi.mock("../src/lib/mfaVerify.js", () => ({ verifyTotpDetailed: vi.fn(async () => "invalid" as const) }));
 
 /**
  * #442 PR 3: account deletion from the web link (design §7, comment 6495864112). The erase itself is
@@ -131,7 +131,7 @@ let rows: TokenRow[];
 beforeEach(() => {
   resetPrismaMock();
   vi.mocked(argon2.verify).mockReset().mockResolvedValue(true);
-  vi.mocked(verifyTotpFresh).mockReset().mockResolvedValue(false);
+  vi.mocked(verifyTotpDetailed).mockReset().mockResolvedValue("invalid");
   sent.length = 0;
   setEmailSender({ name: "test", send: async (m) => { sent.push(m); return { ok: true }; } });
   rows = wireTokenTable();
@@ -375,10 +375,10 @@ describe("POST /v1/account/delete/confirm — the same erase as the app, after t
     const noCode = await confirm(a, { token, password: PASSWORD, mfaCode: "" });
     expect(noCode.statusCode).toBe(401);
     expect(prismaMock.family.delete).not.toHaveBeenCalled();
-    vi.mocked(verifyTotpFresh).mockResolvedValue(true);
+    vi.mocked(verifyTotpDetailed).mockResolvedValue("valid");
     const ok = await confirm(a, { token, password: PASSWORD, mfaCode: "123 456" });
     expect(ok.statusCode).toBe(200);
-    expect(verifyTotpFresh).toHaveBeenCalledWith(OWNER.id, "enc:secret", "123456");
+    expect(verifyTotpDetailed).toHaveBeenCalledWith(OWNER.id, "enc:secret", "123456");
   });
 
   it("W15 a link deletes once: a used link is the expired page, even when the erase failed after spending it", async () => {
