@@ -1199,11 +1199,17 @@ node scripts/hardware/scenario-family.mjs delete --base-url http://localhost:300
 ### Manifest-driven scenario runner (#667, `scripts/hardware/scenario.ps1`)
 
 Run the five Pester suites with `scripts/hardware/tests/Scenario.*.Tests.ps1`; `workflow-lint` requires
-at least 57 cases, zero failures, and a real `SC-0.1` dry-run table with a `result.md`. The dry run puts
-the fake `adb` directory first on `PATH` and touches no lease, backend or device. It still refuses:
-manifest serial injection, connection/radio/airplane commands, clock and timezone changes, PIN text or
-keycodes, UI dumps, reboots, window-size/density changes, unlisted settings, active-admin package removal,
-and unsafe personal-content queries. Every ADB call receives `-s <serial>` from the runner.
+at least 104 cases, zero failures, and a real `SC-0.1` dry-run table with a `result.md`. The dry run puts
+the fake `adb` directory first on `PATH` and touches no lease, backend or device; it refuses any `adb`
+outside that directory, so a PC with the phone attached cannot drive it.
+
+ADB steps are an allowlist of fixed shapes — `getprop`, `setprop persist.sys.locale`, `dumpsys`,
+`settings get|put`, `appops get|set`, `dpm list-owners`, `pm list|uninstall|clear`, `screencap -p`,
+`input tap|swipe|keyevent|text`, `content query`, `logcat` — with no path in the verb and no quote,
+backslash, control character or shell metacharacter in any element; everything else is refused. Inside
+those shapes, `settings put` is limited to the nine restored keys in their own table, `input keyevent` to
+HOME/BACK/ENTER, and `input text` may not contain a digit. Every ADB call receives `-s <serial>` from the
+runner.
 
 The runner saves nine before-values plus lock state, captures `exec-out screencap -p` into memory, writes
 only an OSRA-window crop with status bar/notification shade excluded, runs argument-array steps, and
