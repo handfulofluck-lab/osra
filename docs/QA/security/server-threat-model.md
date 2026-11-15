@@ -193,8 +193,8 @@ Each is tracked where its detail may be written. This page gives the number only
 |---|---|
 | Location history: 30 days | `LOCATION_RETENTION_DAYS` unset (default 30) or at most 30 |
 | Activity events and stored message excerpts: 90 days | `RETENTION_DAYS` unset or at most 90 |
-| Daily app-use totals: 365 days | `ROLLUP_RETENTION_DAYS` unset (default 365). The code accepts a larger number, so production must leave it unset or at most 365; a rule for this in `check-production-taskdef.mjs` follows #778 |
-| Alerts: 12 months, or until the child or the account is deleted | `ALERT_RETENTION_DAYS` unset (default 365); the code caps it at 365 (`src/lib/usageModel.ts`) |
+| Daily app-use totals: 365 days | `ROLLUP_RETENTION_DAYS` unset (default 365). The code accepts a larger number, so production must leave it unset or at most 365; `check-production-taskdef.mjs` fails a larger value |
+| Alerts: 12 months, or until the child or the account is deleted | `ALERT_RETENTION_DAYS` unset (default 365); the code caps it at 365 (`src/lib/usageModel.ts`) and `check-production-taskdef.mjs` fails a larger value |
 | Records of a reset of two-step sign-in: 12 months after the reset ends | The nightly job in `src/jobs/mfaResetExpiry.ts`; `test/mfa-reset-expiry.test.ts`. No setting changes it |
 | Each encrypted database backup is deleted within 90 days | Point-in-time restore is 14 days. A backup copy outside the account (#766 5) must expire within 90 days |
 | Server logs hold identifiers and no messages or content, for at most 90 days | `test/log-hygiene.test.ts`; log retention of **exactly 90 days** satisfies both this ceiling and the security floor asked for in #766 11 |
