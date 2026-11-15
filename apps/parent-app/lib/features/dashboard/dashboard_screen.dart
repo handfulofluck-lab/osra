@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/digits.dart';
 import '../../api/permission_errors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -85,6 +86,14 @@ class DashboardScreen extends ConsumerWidget {
             if (pendingResets.isNotEmpty) _pendingApprovalBanner(context, pendingResets),
             if (setupBanner != null) setupBanner,
           ];
+          final isWide = MediaQuery.sizeOf(context).width >= 600;
+          const listPadding = EdgeInsetsDirectional.only(
+            start: AppSpace.md,
+            end: AppSpace.md,
+            top: AppSpace.md,
+            bottom: AppSpace.xxl * 3, // 96 dp clearance for floating "add child" button
+          );
+
           final content = overview.children.isEmpty
               ? ListView(
                   children: [
@@ -92,15 +101,40 @@ class DashboardScreen extends ConsumerWidget {
                     Center(child: Text(l10n.noChildrenYet)),
                   ],
                 )
-              : GridView.count(
-                  // NOTE: one column under 400px — two 110px-wide cards made
-                  // the card content overflow on 320px-wide screens.
-                  crossAxisCount: MediaQuery.sizeOf(context).width < 400 ? 1 : 2,
-                  padding: const EdgeInsets.all(AppSpace.md),
-                  mainAxisSpacing: AppSpace.md,
-                  crossAxisSpacing: AppSpace.md,
-                  children: [for (final child in overview.children) ChildCard(child: child)],
-                );
+              : !isWide
+                  ? ListView.separated(
+                      key: const ValueKey('dashboardCardsList'),
+                      padding: listPadding,
+                      itemCount: overview.children.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: AppSpace.md),
+                      itemBuilder: (_, i) => ChildCard(child: overview.children[i]),
+                    )
+                  : ListView.separated(
+                      key: const ValueKey('dashboardCardsList'),
+                      padding: listPadding,
+                      itemCount: (overview.children.length + 1) ~/ 2,
+                      separatorBuilder: (_, __) => const SizedBox(height: AppSpace.md),
+                      itemBuilder: (_, rowIndex) {
+                        final children = overview.children;
+                        final first = children[rowIndex * 2];
+                        final secondIndex = rowIndex * 2 + 1;
+                        final second = secondIndex < children.length ? children[secondIndex] : null;
+                        return IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(child: ChildCard(child: first)),
+                              const SizedBox(width: AppSpace.md),
+                              Expanded(
+                                child: second != null
+                                    ? ChildCard(child: second)
+                                    : const SizedBox.shrink(),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
           return RefreshIndicator(
             onRefresh: () async {
               ref.invalidate(familyProvider);
@@ -135,7 +169,7 @@ class DashboardScreen extends ConsumerWidget {
     final name = first.requesterName.trim().isEmpty ? l10n.mfaResetRoleFamilyMember : first.requesterName;
     final role = mfaResetRoleName(l10n, first.requesterRole);
     return Card(
-      margin: const EdgeInsets.fromLTRB(AppSpace.md, AppSpace.md, AppSpace.md, 0),
+      margin: const EdgeInsetsDirectional.fromSTEB(AppSpace.md, AppSpace.md, AppSpace.md, 0),
       child: ListTile(
         key: const ValueKey('mfaResetPendingBanner'),
         leading: const Icon(Icons.lock_reset),
@@ -184,7 +218,7 @@ class DashboardScreen extends ConsumerWidget {
       margin: const EdgeInsetsDirectional.fromSTEB(AppSpace.md, AppSpace.md, AppSpace.md, 0),
       color: tokens.surfaceVariant,
       child: Padding(
-        padding: const EdgeInsets.all(AppSpace.md),
+        padding: const EdgeInsetsDirectional.all(AppSpace.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -255,84 +289,144 @@ class ChildCard extends ConsumerWidget {
       child: InkWell(
         onTap: () => context.push('/child/${child.id}'),
         child: Padding(
-          padding: const EdgeInsets.all(AppSpace.md),
+          padding: const EdgeInsetsDirectional.all(AppSpace.md),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  CircleAvatar(child: Text(child.initials)),
-                  const SizedBox(width: AppSpace.sm),
-                  Expanded(child: Text(child.displayName, style: Theme.of(context).textTheme.titleMedium, overflow: TextOverflow.ellipsis)),
-                ],
-              ),
-              if (live != null && live.isFresh()) ...[
-                const SizedBox(height: AppSpace.xs),
-                LiveActivityChip(childId: child.id, activity: live),
-              ],
-              const SizedBox(height: AppSpace.sm),
-              Wrap(
-                spacing: AppSpace.sm,
-                runSpacing: AppSpace.xs,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  if (device != null)
-                    Chip(
-                      visualDensity: VisualDensity.compact,
-                      avatar: Icon(Icons.circle, size: 10, color: _statusColor(tokens, device.status)),
-                      // #601: the server's word, not a local clock rule. There is no string for
-                      // `locked`/`sos` (nothing in the API writes them today), so a value that is not
-                      // `online` reads as `offline`.
-                      label: Text(device.isOnline ? l10n.statusOnline : l10n.statusOffline),
-                    ),
-                  if (device != null && device.batteryPct > 0)
-                    Chip(
-                      visualDensity: VisualDensity.compact,
-                      avatar: Icon(device.batteryPct <= 20 ? Icons.battery_alert : Icons.battery_std, size: 14),
-                      label: Text('${device.batteryPct}%'),
-                    ),
-                  InternetPill(child: child),
-                ],
-              ),
-              const SizedBox(height: AppSpace.sm),
-              Row(
-                children: [
-                  const Icon(Icons.location_on_outlined, size: 14),
-                  const SizedBox(width: AppSpace.xs),
-                  Expanded(
-                    child: Text(
-                      // #406: a refusal names the owner; "no location yet" would read as a normal state.
-                      locationRefused
-                          ? l10n.readPermissionRequired
-                          : location == null
-                              ? l10n.noLocationYet
-                              : ltrIsolate('${location.lat.toStringAsFixed(4)}, ${location.lng.toStringAsFixed(4)}'),
-                      style: Theme.of(context).textTheme.bodySmall,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                  Row(
+                    children: [
+                      CircleAvatar(child: Text(child.initials)),
+                      const SizedBox(width: AppSpace.sm),
+                      Expanded(
+                        child: Text(
+                          child.displayName,
+                          style: Theme.of(context).textTheme.titleMedium,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (live != null && live.isFresh()) ...[
+                    const SizedBox(height: AppSpace.xs),
+                    LiveActivityChip(childId: child.id, activity: live),
+                  ],
+                  const SizedBox(height: AppSpace.sm),
+                  Wrap(
+                    spacing: AppSpace.sm,
+                    runSpacing: AppSpace.xs,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (device != null)
+                        Chip(
+                          visualDensity: VisualDensity.compact,
+                          avatar: Icon(Icons.circle, size: 10, color: _statusColor(tokens, device.status)),
+                          // #601: the server's word, not a local clock rule. There is no string for
+                          // `locked`/`sos` (nothing in the API writes them today), so a value that is not
+                          // `online` reads as `offline`.
+                          label: Text(device.isOnline ? l10n.statusOnline : l10n.statusOffline),
+                        ),
+                      if (device != null && device.batteryPct > 0)
+                        Chip(
+                          visualDensity: VisualDensity.compact,
+                          avatar: Icon(device.batteryPct <= 20 ? Icons.battery_alert : Icons.battery_std, size: 14),
+                          label: Text('${device.batteryPct}%'),
+                        ),
+                      InternetPill(child: child),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpace.sm),
+                  Row(
+                    children: [
+                      const Icon(Icons.location_on_outlined, size: 14),
+                      const SizedBox(width: AppSpace.xs),
+                      Expanded(
+                        child: Text(
+                          // #406: a refusal names the owner; "no location yet" would read as a normal state.
+                          locationRefused
+                              ? l10n.readPermissionRequired
+                              : location == null
+                                  ? l10n.noLocationYet
+                                  : ltrIsolate('${location.lat.toStringAsFixed(4)}, ${location.lng.toStringAsFixed(4)}'),
+                          style: Theme.of(context).textTheme.bodySmall,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-              const Spacer(),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              const SizedBox(height: AppSpace.md),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(l10n.screenTime, style: Theme.of(context).textTheme.bodySmall),
-                  // NOTE: flexible + ellipsis — narrow cards overflowed this row.
-                  Flexible(
-                    child: Text(l10n.screenTimeValue(child.screenTimeTodayMinutes, dailyLimit > 0 ? dailyLimit : 0),
-                        style: Theme.of(context).textTheme.bodySmall,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.end),
+                  Builder(
+                    builder: (context) {
+                      final style = Theme.of(context).textTheme.bodySmall;
+                      final valueText = l10n.screenTimeValue(
+                        child.screenTimeTodayMinutes,
+                        dailyLimit > 0 ? dailyLimit : 0,
+                      );
+                      final screenWidth = MediaQuery.sizeOf(context).width;
+                      final isWide = screenWidth >= 600;
+                      // ListView horizontal padding (AppSpace.md * 2, plus AppSpace.md col gap on wide) + Card default margin (8) + Card padding (AppSpace.md * 2).
+                      final maxContentWidth = isWide
+                          ? (screenWidth - AppSpace.md * 3) / 2 - AppSpace.md * 2 - 8
+                          : screenWidth - AppSpace.md * 4 - 8;
+                      final scaler = MediaQuery.textScalerOf(context);
+                      final direction = Directionality.of(context);
+                      final labelPainter = TextPainter(
+                        text: TextSpan(text: l10n.screenTime, style: style),
+                        maxLines: 1,
+                        textDirection: direction,
+                        textScaler: scaler,
+                      )..layout();
+                      final labelWidth = labelPainter.width;
+                      labelPainter.dispose();
+                      final valuePainter = TextPainter(
+                        text: TextSpan(text: valueText, style: style),
+                        maxLines: 1,
+                        textDirection: direction,
+                        textScaler: scaler,
+                      )..layout();
+                      final valueWidth = valuePainter.width;
+                      valuePainter.dispose();
+                      if (labelWidth + AppSpace.sm + valueWidth <= maxContentWidth) {
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(l10n.screenTime, style: style),
+                            const SizedBox(width: AppSpace.sm),
+                            Flexible(child: Text(valueText, style: style, textAlign: TextAlign.end)),
+                          ],
+                        );
+                      }
+                      // NOTE: stack end-aligned when tight so neither label nor value truncates with ellipsis at 2.0 scale.
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(l10n.screenTime, style: style),
+                          const SizedBox(height: AppSpace.xs),
+                          Text(valueText, style: style, textAlign: TextAlign.end),
+                        ],
+                      );
+                    },
                   ),
+                  const SizedBox(height: AppSpace.xs),
+                  LinearProgressIndicator(value: dailyLimit > 0 ? progress : null),
+                  if (wellbeing != null) ...[
+                    const SizedBox(height: AppSpace.sm),
+                    WellbeingRow(score: wellbeing),
+                  ],
                 ],
               ),
-              const SizedBox(height: AppSpace.xs),
-              LinearProgressIndicator(value: dailyLimit > 0 ? progress : null),
-              if (wellbeing != null) ...[
-                const SizedBox(height: AppSpace.sm),
-                WellbeingRow(score: wellbeing),
-              ],
             ],
           ),
         ),
@@ -416,8 +510,8 @@ class WellbeingRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: AppSpace.sm),
-          // NOTE: flexible — the row overflowed 320px-wide cards.
-          Flexible(child: Text(l10n.wellbeingScore(score.score), style: Theme.of(context).textTheme.bodySmall, overflow: TextOverflow.ellipsis)),
+          // NOTE: flexible without ellipsis — wraps cleanly on 320px cards at 2.0 scale.
+          Flexible(child: Text(l10n.wellbeingScore(score.score), style: Theme.of(context).textTheme.bodySmall)),
         ],
       ),
     );
@@ -547,7 +641,7 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
     try {
       await ref.read(apiClientProvider).raw.post('/v1/family/children', data: {
         'displayName': _name.text.trim(),
-        'birthYear': int.tryParse(_birthYear.text.trim()) ?? DateTime.now().year,
+        'birthYear': int.tryParse(normalizeDigits(_birthYear.text.trim())) ?? DateTime.now().year,
         'consent': {'method': _method, 'jurisdiction': _jurisdiction},
       });
       ref.invalidate(familyProvider);

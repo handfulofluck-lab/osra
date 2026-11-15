@@ -342,6 +342,24 @@ describe("digest prefs (#5)", () => {
     await app.close();
   });
 
+  it("rejects a digest recipient containing a direction mark", async () => {
+    const app = await buildApp(digestRoutes, "/v1/digests");
+    const res = await app.inject({
+      method: "PUT",
+      url: "/v1/digests/prefs",
+      headers: authHeader(app),
+      payload: {
+        dailyEmail: true,
+        weeklyEmail: false,
+        pushEnabled: true,
+        emails: ["dad@example.com\u{200F}"],
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(prismaMock.digestPrefs.upsert).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it("rejects 401 without a token and 403 with a device token", async () => {
     const app = await buildApp(digestRoutes, "/v1/digests");
 

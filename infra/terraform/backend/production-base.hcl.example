@@ -4,6 +4,8 @@
 bucket = "osra-terraform-state-<prod-account-id>-eu-central-1"
 key    = "production/base/terraform.tfstate"
 region = "eu-central-1"
+# bootstrap-state output kms_key_arn: new state objects are written with this key (#766 item 1).
+kms_key_id = "arn:aws:kms:eu-central-1:<prod-account-id>:key/<key-id>"
 
 assume_role = {
   role_arn = "arn:aws:iam::<prod-account-id>:role/<deploy-role-name>"

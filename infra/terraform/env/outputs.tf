@@ -72,3 +72,23 @@ output "log_group_name" {
   description = "CloudWatch log group of the API container (base's, passed through for up.sh)."
   value       = data.terraform_remote_state.base.outputs.log_group_name
 }
+
+output "db_admin_task_definition_arn" {
+  description = "One-off task that migrates as the master user and grants osra_api (production; empty otherwise)."
+  value       = one(aws_ecs_task_definition.db_admin[*].arn)
+}
+
+output "redis_replication_group_id" {
+  description = "ElastiCache replication group id (production-secrets.sh sets its AUTH token)."
+  value       = aws_elasticache_replication_group.main.replication_group_id
+}
+
+output "redis_primary_endpoint" {
+  description = "ElastiCache primary endpoint (production-secrets.sh writes it into the REDIS_URL secret)."
+  value       = aws_elasticache_replication_group.main.primary_endpoint_address
+}
+
+output "region" {
+  description = "Region of this stack."
+  value       = var.region
+}
