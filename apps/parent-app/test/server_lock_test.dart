@@ -34,6 +34,13 @@ void main() {
     test('a test build has no built-in server, so nothing here changes local testing', () {
       expect(isServerLocked(), isFalse);
     });
+
+    test('the server field is hidden in a locked build outside debug, shown in debug and when unlocked', () {
+      expect(showServerField(debug: false, builtIn: builtIn), isFalse);
+      expect(showServerField(debug: true, builtIn: builtIn), isTrue);
+      expect(showServerField(debug: false, builtIn: ''), isTrue);
+      expect(showServerField(debug: true, builtIn: ''), isTrue);
+    });
   });
 
   group('the notifier', () {
@@ -73,11 +80,12 @@ void main() {
     expect(resolveBackgroundBaseUrl(other, builtIn: ''), other);
   });
 
-  test('the login field is locked, and a locked build never reads it', () {
+  test('the login field is locked, hidden outside debug, and a locked build never reads it', () {
     final src = File('lib/features/auth/login_screen.dart').readAsStringSync();
     final field = src.substring(src.indexOf("key: const ValueKey('loginServerField')"));
-    expect(field.substring(0, 400), contains('readOnly: isServerLocked(),'));
-    expect(field.substring(0, 400), contains('enabled: !isServerLocked(),'));
+    expect(field.substring(0, 400), contains('readOnly: locked,'));
+    expect(field.substring(0, 400), contains('enabled: !locked,'));
+    expect(src, contains('if (showServer) ...['), reason: 'the field and its trailing spacing are hidden outside debug');
     final save = src.substring(src.indexOf('Future<String?> _saveServer() async {'));
     final builtInReturn = save.indexOf('if (builtIn != null) return builtIn;');
     expect(builtInReturn, greaterThan(0));

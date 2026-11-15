@@ -8,6 +8,7 @@ import { reportsRoutes } from "../src/routes/reports.js";
 import { rulesRoutes } from "../src/routes/rules.js";
 import { getRedis } from "../src/redis.js";
 import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
+import { expectKeyedAlertBody } from "./alertBody.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -119,14 +120,39 @@ describe("social routes", () => {
     const payload = JSON.parse(cipher.data.previewCipher) as Parameters<typeof decryptForFamily>[0];
     expect(decryptForFamily(payload, VAULT_KEY)).toBe(FLAGGED_TEXT);
 
-    // The alert metadata carries app/contact/concernTypes only — no snippet.
+    // The alert metadata carries app/contact/concernTypes and localization values — no snippet.
     const alertData = prismaMock.alert.create.mock.calls[0][0] as { data: Record<string, unknown> };
     expect(alertData.data.category).toBe("social_concern");
-    expect(alertData.data.metadata).toEqual({ app: "whatsapp", contact: "bully-1", concernTypes: ["self_harm"] });
+    expect(alertData.data.metadata).toEqual({
+      app: "whatsapp",
+      contact: "bully-1",
+      concernTypes: ["self_harm"],
+      bodyKey: "alertBodySocialConcern",
+      bodyParams: { app: "whatsapp", contact: "bully-1" },
+    });
+    expectKeyedAlertBody(alertData.data, "alertBodySocialConcern", { app: "whatsapp", contact: "bully-1" });
     expect(alertData.data.metadata).not.toHaveProperty("preview");
 
     // The family realtime channel received the alert.
     expect(familyAlertPublishes().length).toBe(1);
+    await app.close();
+  });
+
+  it("a scan with no contact carries no contact param, so the app never renders a placeholder (Fable n4)", async () => {
+    // The English body says "A contact"; the PARAM must not. If the producer filled the param with the
+    // English placeholder, a parent reading Arabic would see an English sentence fragment inside it.
+    const app = await buildApp(socialRoutes, "/v1/social");
+    vi.stubGlobal("fetch", aiOk({ flagged: true, severity: "warning", categories: { self_harm: 0.9 } }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.socialEvent.create.mockResolvedValue({ id: "event-nc" });
+    prismaMock.alert.create.mockResolvedValue({ id: "a-nc" });
+
+    const res = await postScan(app, scanBody({ contact: "" }));
+    expect(res.statusCode).toBe(200);
+
+    const alertData = (prismaMock.alert.create.mock.calls[0][0] as { data: Record<string, unknown> }).data;
+    expect((alertData.metadata as { bodyParams: unknown }).bodyParams).toEqual({ app: "whatsapp" });
+    expect((alertData.metadata as { bodyParams: Record<string, unknown> }).bodyParams).not.toHaveProperty("contact");
     await app.close();
   });
 

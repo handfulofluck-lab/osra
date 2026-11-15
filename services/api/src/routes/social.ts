@@ -154,6 +154,8 @@ async function scanOne(input: unknown, device: ScanDevice): Promise<ScanItemResu
       category,
       title: `Social concern in ${appName}`,
       body: `${contact || "A contact"} sent a flagged message on ${appName}`,
+      bodyKey: "alertBodySocialConcern",
+      params: { app: appName, ...(contact ? { contact } : {}) },
       metadata: { app: appName, contact, concernTypes: verdict.concernTypes },
       childName: child.displayName,
     });

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../core/digits.dart';
 import '../../api/mfa_api.dart';
 import '../../api/models.dart';
 import '../../l10n/l10n.dart';
@@ -112,7 +113,7 @@ class _MfaEnrollScreenState extends ConsumerState<MfaEnrollScreen> {
   }
 
   Future<void> _verify() async {
-    final code = _code.text.trim();
+    final code = normalizeDigits(_code.text.trim());
     if (!RegExp(r'^\d{6}$').hasMatch(code)) {
       setState(() => _verifyError = MfaFailureKind.invalidCode);
       return;

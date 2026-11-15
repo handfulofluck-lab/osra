@@ -16,7 +16,7 @@ public enum DeviceRevocation {
     /// Lifts the shields the removed family's rules applied. The app's default reaches ManagedSettings; the
     /// package tests replace it.
     public static var clearShields: () -> Void = {
-        #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+        #if os(iOS)
         ScreenTimeController().clearRules()
         #endif
     }

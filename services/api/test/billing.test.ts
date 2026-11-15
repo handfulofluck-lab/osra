@@ -17,7 +17,6 @@ import {
   grantEntitlement,
   hashStoreRef,
   setEntitlementStore,
-  storeAccountIdFor,
   type EntitlementGrant,
   type EntitlementRevocation,
   type EntitlementStore,
@@ -148,7 +147,7 @@ beforeEach(() => {
 });
 
 describe("entitlement seam (the only way billing reaches the plan)", () => {
-  it("records a grant and answers the purchase's family", async () => {
+  it("persists a grant and answers the purchase's family from that row", async () => {
     await grantEntitlement({
       familyId: "fam-1",
       source: "google_play",
@@ -160,6 +159,10 @@ describe("entitlement seam (the only way billing reaches the plan)", () => {
       effectiveAt: "2026-11-13T00:00:00Z",
       cause: "verify",
     });
+    expect(prismaMock.familyPurchase.create).toHaveBeenCalledTimes(1);
+    prismaMock.familyPurchase.findUnique.mockImplementation(async ({ where }: { where: { source_storeRefHash: { source: string } } }) =>
+      where.source_storeRefHash.source === "google_play" ? { familyId: "fam-1" } : null,
+    );
     expect(await findFamilyForPurchase("google_play", TOKEN)).toBe("fam-1");
     // The binding is per source: the same reference means nothing on another store.
     expect(await findFamilyForPurchase("app_store", TOKEN)).toBeNull();
@@ -172,20 +175,14 @@ describe("entitlement seam (the only way billing reaches the plan)", () => {
     expect(hashStoreRef(TOKEN)).toBe(hash);
   });
 
-  it("forgets the old store when a new one is set", async () => {
+  it("restores the Prisma store when the injected store is removed", async () => {
     await grantEntitlement({ familyId: "fam-1", source: "google_play", state: "active", productId: PRODUCT, expiresAt: "2026-12-13T00:00:00Z", autoRenews: true, storeRef: TOKEN, effectiveAt: "2026-11-13T00:00:00Z", cause: "verify" });
     setEntitlementStore(null);
     expect(await findFamilyForPurchase("google_play", TOKEN)).toBeNull();
+    expect(prismaMock.familyPurchase.findUnique).toHaveBeenCalled();
   });
 
-  it("hands out one opaque account id per family, created on first use", async () => {
-    const first = await storeAccountIdFor("fam-1");
-    expect(first).toMatch(/^[0-9a-f]{32}$/);
-    expect(await storeAccountIdFor("fam-1")).toBe(first);
-    expect(await storeAccountIdFor("fam-2")).not.toBe(first);
-    // Opaque: nothing in the id says which family it belongs to.
-    expect(first).not.toContain("fam-1");
-  });
+  // Durable random/stable/distinct ids are exercised against Prisma in entitlement.test.ts.
 });
 
 describe("POST /v1/billing/google/verify", () => {
@@ -571,6 +568,51 @@ describe("POST /v1/billing/google/rtdn", () => {
     expect(res.statusCode).toBe(204);
     expect(store.revoke).not.toHaveBeenCalled();
     expect(play.verifySubscription).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("revokes rather than activates an expired purchase restored after an unknown refund (#700)", async () => {
+    const store = recordingStore();
+    setEntitlementStore(store as unknown as EntitlementStore);
+    const play = fakePlay({
+      verifySubscription: vi.fn(async () => verified({
+        state: "expired",
+        expiryTime: "2026-11-01T00:00:00.000Z",
+        autoRenews: false,
+        acknowledgementState: "acknowledged",
+      })),
+    });
+    const log = vi.fn();
+    const app = await buildApp((a) => billingRoutes(a, deps({ play, log })), "/v1/billing");
+
+    const refunded = await app.inject({
+      method: "POST",
+      url: "/v1/billing/google/rtdn",
+      ...pushPayload(voidedNotification(), "msg-refund-before-restore"),
+    });
+    expect(refunded.statusCode).toBe(204);
+    expect(log).toHaveBeenCalledWith("billing.rtdn.unknown_refund", { messageId: "msg-refund-before-restore" });
+    expect(store.revoke).not.toHaveBeenCalled();
+    expect(play.verifySubscription).not.toHaveBeenCalled();
+
+    const restored = await app.inject({
+      method: "POST",
+      url: "/v1/billing/google/verify",
+      headers: authHeader(app),
+      payload: { purchaseToken: TOKEN, productId: PRODUCT },
+    });
+    expect(restored.statusCode).toBe(200);
+    expect(restored.json()).toMatchObject({ state: "expired", source: "google_play", productId: PRODUCT });
+    // applyPurchase sends an expired restore through revokeEntitlement, binding it without an active grant.
+    // Mutant: treating EXPIRED as active here calls grant instead and fails both assertions below.
+    expect(store.grant).not.toHaveBeenCalled();
+    expect(store.revoke).toHaveBeenCalledTimes(1);
+    expect(store.revoke.mock.calls[0][0]).toMatchObject({
+      familyId: "fam-1",
+      state: "expired",
+      storeRef: TOKEN,
+      cause: "verify",
+    });
     await app.close();
   });
 

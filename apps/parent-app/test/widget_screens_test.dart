@@ -14,6 +14,7 @@ import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/providers/onboarding_provider.dart';
+import 'package:familyshield_parent/providers/server_provider.dart';
 
 import 'fake_api_client.dart';
 import 'test_app.dart';
@@ -149,6 +150,42 @@ void main() {
       expect(find.text('Alex'), findsOneWidget);
       expect(find.text('Sam'), findsOneWidget);
     });
+
+    testWidgets('a locked build hides the server field outside debug', (tester) async {
+      const builtIn = 'https://api.osratech.com';
+      final api = FakeApiClient(standardRoutes());
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          serverUrlProvider.overrideWith((_) => ServerUrlNotifier(api, builtIn: builtIn)),
+        ],
+        child: localizedTestApp(const LoginScreen(debug: false, builtIn: builtIn)),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('loginServerField')), findsNothing);
+      expect(find.text('Server'), findsNothing);
+      // The read-only caption stays: the built-in server is shown, not editable/redirectable.
+      expect(find.text('Server: https://api.osratech.com'), findsOneWidget);
+    });
+
+    testWidgets('debug keeps the server field visible and locked to the built-in value', (tester) async {
+      const builtIn = 'https://api.osratech.com';
+      final api = FakeApiClient(standardRoutes());
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          serverUrlProvider.overrideWith((_) => ServerUrlNotifier(api, builtIn: builtIn)),
+        ],
+        child: localizedTestApp(const LoginScreen(debug: true, builtIn: builtIn)),
+      ));
+      await tester.pumpAndSettle();
+
+      final field = tester.widget<TextField>(find.byKey(const ValueKey('loginServerField')));
+      expect(field.readOnly, isTrue);
+      expect(field.enabled, isFalse);
+      expect(field.controller!.text, builtIn);
+    });
   });
 
   group('DashboardScreen', () {
@@ -189,7 +226,7 @@ void main() {
       await pumpScreen(tester, const DashboardScreen(), api);
       expect(api.calls('GET', '/v1/family/me'), hasLength(1));
 
-      await tester.fling(find.byType(GridView), const Offset(0, 400), 900);
+      await tester.fling(find.byType(ListView).first, const Offset(0, 400), 900);
       await tester.pump();
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
@@ -502,6 +539,8 @@ void main() {
       final api = pausedApi(startPaused: false);
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
+      await tester.ensureVisible(find.text('Pause net'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Pause net'));
       await flushFakeHttp(tester);
 

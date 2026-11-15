@@ -6,17 +6,21 @@
  * PR's current head (a sha prefix of the head, or carried forward by scripts/verified-gate-carry.mjs). This script
  * then decides whether those signatures are ENOUGH for this PR:
  *
- *   - Author: read from the head branch prefix (kimi/ claude/ qa/ verify/ fable/ ahmed/ k31/ k31mac/). A branch with
- *     no known prefix is Kimi's (the convention before 13 Nov). Kimi-authored non-merge commits (commit email) add
- *     Kimi as a co-author whatever the prefix.
+ *   - Author: read from the head branch prefix (kimi/ claude/ qa/ verify/ fable/ ahmed/ k31/ k31mac/ antigravity/
+ *     hydrogen/). A branch with no known prefix is Kimi's ONLY when it carries a Kimi-authored commit (Kimi's
+ *     convention before 13 Nov) or is one of the five LEGACY_UNPREFIXED branches open on 14 Nov; otherwise the gate fails closed (Fable's note on #788: an `antigravity-fix/` or
+ *     `gemini/` branch must not pass as Kimi's). Kimi-authored non-merge commits (commit email) add Kimi as a
+ *     co-author whatever the prefix.
  *   - Model families: anthropic = Claude, Fable, Ahmed (his tool is Claude Code); deepseek = Kimi Code;
- *     moonshot = K31, K31-Mac; google = Antigravity.
+ *     moonshot = K31, K31-Mac; google-carbon = Antigravity (Gemini 4 Carbon); google-hydrogen = Hydrogen (Gemini 4
+ *     Hydrogen). The maintainer ruled 2026-11-14 17:58Z that Carbon and Hydrogen are different models, so they may
+ *     sign each other's work (allowed, not preferred: Team collaboration sync picks another family first).
  *   - Risk tier: the higher of the `risk:R1/R2/R3` label and the tier computed from the changed paths. A label can
  *     raise the tier, never lower it.
  *       R1: one signer who is not an author.
  *       R2: one signer from a family that is not an author's family.
  *       R3: two different signers, neither an author; at least one from a non-author family; and one of the two is
- *           the security key, Ahmed or Fable.
+ *           a security key: Ahmed, Fable or Antigravity (maintainer 2026-11-14 18:01Z).
  *   - Bureaus: a diff touching user-visible paths (or labelled `needs:uiux`) also needs `UIUX-Bureau: reviewed <sha>`
  *     valid at the head; a diff touching Arabic text (or labelled `needs:arabic`) needs `Arabic-Bureau: reviewed <sha>`.
  *
@@ -45,9 +49,12 @@ export const FAMILY = {
   'Kimi Code': 'deepseek',
   K31: 'moonshot',
   'K31-Mac': 'moonshot',
-  Antigravity: 'google',
+  // Two Google models, two families (maintainer 2026-11-14 17:58Z): cross-signing allowed, not preferred.
+  Antigravity: 'google-carbon',
+  Hydrogen: 'google-hydrogen',
 };
-export const SECURITY_KEYS = ['Ahmed', 'Fable'];
+// Antigravity (Gemini 4 Carbon) is a security key from 2026-11-14 18:01Z (maintainer's decision card, #617).
+export const SECURITY_KEYS = ['Ahmed', 'Fable', 'Antigravity'];
 
 const PREFIXES = [
   [/^(claude|qa|verify)\//, 'Claude'],
@@ -56,12 +63,16 @@ const PREFIXES = [
   [/^k31-?mac\//, 'K31-Mac'],
   [/^k31\//, 'K31'],
   [/^kimi\//, 'Kimi Code'],
+  [/^antigravity\//, 'Antigravity'],
+  [/^hydrogen\//, 'Hydrogen'],
 ];
+
+const PREFIX_LIST = 'kimi/ claude/ qa/ verify/ fable/ ahmed/ k31/ k31mac/ antigravity/ hydrogen/';
 
 export function authorFromRef(ref) {
   const r = String(ref).toLowerCase();
   for (const [re, name] of PREFIXES) if (re.test(r)) return name;
-  return 'Kimi Code';
+  return null;
 }
 
 // R3: security, money, children's data and location, infrastructure, signing, and the merge gate itself.
@@ -88,14 +99,58 @@ const R1_PATHS = [
   /_test\.(dart|go|py)$/,
   /Tests?\.(kt|swift)$/,
 ];
-// Anything a family sees: UI/UX Bureau.
+// Test files, which never need the UI/UX line on their own (this does not change their risk tier). Only a test
+// directory or a JS/TS `.test.`/`.spec.` file counts, and never under a shipping root: "any screen" means a screen
+// does not leave the Bureau's view because of its name (Fable's review of #730, B2).
+const TEST_PATHS = [
+  /(^|\/)(test|tests|Tests|__tests__|androidTest|testFixtures)\//,
+  /\.(test|spec)\.[cm]?[jt]sx?$/,
+];
+// Code that ships to a family's device or browser, whatever a file there is called.
+const SHIPPING_ROOTS = [
+  /^apps\/[^/]+\/lib\//, // Flutter apps
+  /^apps\/.*\/src\/(main|full|play|debug|release)\//, // Android source sets
+  /^apps\/parent-app\/ios\/Runner\//,
+  /^apps\/child-ios\/(Sources|App|Extensions)\//,
+  /^apps\/agent-(desktop|macos)\/(?!tests\/|Tests\/)/,
+  /^site\//,
+  /^scripts\/site\//,
+  /^docs\/(store|design)\//,
+];
+export const isTestFile = (f) => TEST_PATHS.some((re) => re.test(f)) && !SHIPPING_ROOTS.some((re) => re.test(f));
+// Anything a family sees: UI/UX Bureau. Maintainer 2026-11-13 18:44Z: "any screen should have the UI/UX Bureau OK
+// before it goes" (AGENTS.md §6.6). Path list agreed with the Bureau; it errs toward asking.
 const UIUX_PATHS = [
+  /^apps\/parent-app\/lib\//, // the whole Flutter parent app
   /^apps\/[^/]+\/lib\/(features|theme|l10n)\//,
+  // Every Android resource and manifest in every source set (main, full, play, debug): strings, layouts, drawables,
+  // icons, colours, themes, app label.
+  /\/src\/(?!test\/|androidTest\/)[^/]+\/res\//,
+  /\/src\/(?!test\/|androidTest\/)[^/]+\/AndroidManifest\.xml$/,
+  // Kotlin that draws a screen or holds its words (block screen copy, quick-settings tile).
+  /^apps\/.*\/src\/(?!test\/|androidTest\/)[^/]+\/(java|kotlin)\/.*(Activity|Screen|Screens|Overlay|Dialog|View|Theme|Compose|Composable|Copy|Tile)[^/]*\.kt$/,
+  // Android UI package (Compose screens land under ui/, #728).
+  /^apps\/.*\/src\/(?!test\/|androidTest\/)[^/]+\/(java|kotlin)\/.*\/ui\//,
+  // Parent app iOS shell: launch screen, icons, display name (Info.plist).
+  /^apps\/parent-app\/ios\/Runner\//,
+  // Android code that builds a notification or a cover in code (UI/UX Bureau, #730 comment 6862247266).
+  /^apps\/child-android\/app\/src\/main\/java\/.*\/(CommandDispatcher|CommandPollWorker|UnlinkedNotice|CallEnforcer|LocationService|FilterVpnService)\.kt$/,
+  // Server words a family reads: email templates, and which push alert (loc keys) a parent sees.
+  /^services\/api\/src\/lib\/email\//,
+  /^services\/api\/src\/lib\/push\/notify\.ts$/,
+  /^apps\/child-ios\/(App|Extensions)\//, // app shell, icons, shield screens, extension strings
+  /^apps\/child-ios\/Sources\/[^/]+\/(Resources\/|L10n\.swift$|Shield[^/]*\.swift$)/,
+  /Views?\.swift$/,
+  // Desktop agents: the lock overlay, dialogs, the SOS prompt and the web block page the proxy serves.
+  /^apps\/agent-(desktop|macos)\/(?!tests\/).*(Overlay|Dialog|Alert|Window|Form|View|Tray|Notification|Sos|WebFilterProxy)[^/]*\.cs$/,
+  /^apps\/agent-(desktop|macos)\/(?!tests\/)(.*\/)?Resources\//, // strings, icons
+  /\.xaml$/,
+  /(^|\/)Assets\.xcassets\//,
+  /\.lproj\//,
+  /\.(storyboard|xib)$/,
   /\.arb$/,
-  /\.strings$/,
+  /\.strings(dict)?$/,
   /\.xcstrings$/,
-  /\/res\/(values[^/]*\/strings\.xml|layout[^/]*\/|drawable[^/]*\/|mipmap[^/]*\/)/,
-  /View\.swift$/,
   /^site\//,
   /^scripts\/site\//,
   /^docs\/(store|design)\//,
@@ -119,14 +174,31 @@ export function pathTier(files) {
   return 2;
 }
 
+// PRs that were open with an unprefixed branch when this rule landed (14 Nov 2026) and carry no Kimi-email commit.
+// They keep the old reading (Kimi Code) so nothing in flight goes red; remove each name once its PR merges or closes.
+// No new name may be added: a new branch uses its author's prefix.
+export const LEGACY_UNPREFIXED = [
+  'docs/release-readiness-2026-11-13', // #702
+  'feat/663-child-account-admin', // #679
+  'feat/627-add-a-computer', // #657
+  'store/play-arabic-bureau', // #646
+  'feat/39b-full-updater-policy', // #615
+];
+
 export function decide({ headRef = '', kimiCommits = 0, labels = [], files = [], signatures = [] }) {
   const reasons = [];
   if (!files.length) {
     // The files call returned nothing: never fall through to a lower tier (fail closed).
-    return { ok: false, author: authorFromRef(headRef), tier: 'R?', signers: [], counted: [], needUiux: false, needArabic: false,
+    return { ok: false, author: authorFromRef(headRef) ?? 'unknown', tier: 'R?', signers: [], counted: [], needUiux: false, needArabic: false,
       reasons: ['no changed files were read for this PR: failing closed'] };
   }
-  const author = authorFromRef(headRef);
+  const prefixAuthor = authorFromRef(headRef);
+  if (!prefixAuthor && kimiCommits === 0 && !LEGACY_UNPREFIXED.includes(headRef)) {
+    // No known prefix and no Kimi commit: nobody can say who wrote it, so nobody can say who may verify it.
+    return { ok: false, author: 'unknown', tier: 'R?', signers: [], counted: [], needUiux: false, needArabic: false,
+      reasons: [`branch '${headRef}' has no known author prefix (${PREFIX_LIST}) and no Kimi-authored commit: rename the branch with your prefix`] };
+  }
+  const author = prefixAuthor ?? 'Kimi Code';
   const authors = new Set([author]);
   if (kimiCommits > 0) authors.add('Kimi Code');
   const authorFamilies = new Set([...authors].map((a) => FAMILY[a]));
@@ -150,16 +222,26 @@ export function decide({ headRef = '', kimiCommits = 0, labels = [], files = [],
     ok = keys.some((k) => crossFamily.some((c) => c !== k));
     if (!ok) {
       reasons.push(
-        'R3 needs two different signers who are not the author: one from a family other than the author\'s, and one security key (Ahmed or Fable)'
+        'R3 needs two different signers who are not the author: one from a family other than the author\'s, and one security key (Ahmed, Fable or Antigravity)'
       );
     }
   }
 
-  const needUiux = labels.includes('needs:uiux') || any(files, UIUX_PATHS);
+  const uiuxLabel = labels.includes('needs:uiux');
+  // A test of a screen is not the screen: test files never trigger the UI/UX line on their own.
+  const notTests = files.filter((f) => !isTestFile(f));
+  const needUiux = uiuxLabel || any(notTests, UIUX_PATHS);
   const needArabic = labels.includes('needs:arabic') || any(files, ARABIC_PATHS);
-  if (needUiux && !signatures.some((s) => s.kind === 'uiux')) {
+  // The Bureau's waiver (`UIUX-Bureau: not user-visible <sha>`) answers a path match only: when someone asked for a
+  // review with the needs:uiux label, only a review answers it.
+  const uiuxOk = signatures.some((s) => s.kind === 'uiux' || (!uiuxLabel && s.kind === 'uiux-waiver'));
+  if (needUiux && !uiuxOk) {
     ok = false;
-    reasons.push('user-visible change: needs `UIUX-Bureau: reviewed <head sha>`');
+    reasons.push(
+      uiuxLabel
+        ? 'labelled needs:uiux: needs `UIUX-Bureau: reviewed <head sha>`'
+        : "user-visible path: needs `UIUX-Bureau: reviewed <head sha>` (or the Bureau's `UIUX-Bureau: not user-visible <head sha>`)"
+    );
   }
   if (needArabic && !signatures.some((s) => s.kind === 'arabic')) {
     ok = false;
@@ -179,10 +261,11 @@ export function decide({ headRef = '', kimiCommits = 0, labels = [], files = [],
 }
 
 // The signer is the LAST line that starts with "— <Name>" (a footer such as "_Generated by …_" may follow it).
-const SIGNER_RE = /^\s*— (Antigravity|Claude|Fable|Kimi Code|K31-Mac|K31|Ahmed)(?![\w-])/;
+const SIGNER_RE = /^\s*— (Antigravity|Hydrogen|Claude|Fable|Kimi Code|K31-Mac|K31|Ahmed)(?![\w-])/;
 const KEYWORD = {
   verify: /^\s*[*_]*Verified-sha:[*_]*\s*`?([0-9a-fA-F]{7,40})(?![0-9a-fA-F])/,
   uiux: /^\s*[*_]*UIUX-Bureau:[*_]*\s*reviewed\s*`?([0-9a-fA-F]{7,40})(?![0-9a-fA-F])/,
+  uiuxWaiver: /^\s*[*_]*UIUX-Bureau:[*_]*\s*not user-visible\s*`?([0-9a-fA-F]{7,40})(?![0-9a-fA-F])/,
   arabic: /^\s*[*_]*Arabic-Bureau:[*_]*\s*reviewed\s*`?([0-9a-fA-F]{7,40})(?![0-9a-fA-F])/,
 };
 
@@ -206,7 +289,10 @@ export function parseSignatures(body) {
   const shas = (re) => lines.map((l) => re.exec(l)?.[1]).filter(Boolean).map((s) => s.toLowerCase());
   const out = [];
   if (name) for (const sha of shas(KEYWORD.verify)) out.push({ kind: 'verify', name, sha });
-  if (/UI\/UX Bureau/.test(signerLine)) for (const sha of shas(KEYWORD.uiux)) out.push({ kind: 'uiux', name: '-', sha });
+  if (/UI\/UX Bureau/.test(signerLine)) {
+    for (const sha of shas(KEYWORD.uiux)) out.push({ kind: 'uiux', name: '-', sha });
+    for (const sha of shas(KEYWORD.uiuxWaiver)) out.push({ kind: 'uiux-waiver', name: '-', sha });
+  }
   if (/Arabic (Language )?Bureau/.test(signerLine)) for (const sha of shas(KEYWORD.arabic)) out.push({ kind: 'arabic', name: '-', sha });
   return out;
 }
@@ -215,7 +301,7 @@ function selftest() {
   const v = (...names) => names.map((name) => ({ kind: 'verify', name }));
   const cases = [
     // [description, input, expected ok]
-    ['Kimi R2 signed by Claude', { headRef: 'fix/643-x', files: ['services/api/src/routes/foo.ts'], signatures: v('Claude') }, true],
+    ['Kimi R2 signed by Claude', { headRef: 'fix/643-x', kimiCommits: 1, files: ['services/api/src/routes/foo.ts'], signatures: v('Claude') }, true],
     ['Kimi R2 signed only by Kimi', { headRef: 'kimi/x', files: ['services/api/src/routes/foo.ts'], signatures: v('Kimi Code') }, false],
     ['Claude R2 signed by Claude (self)', { headRef: 'claude/x', files: ['apps/child-android/app/src/main/java/A.kt'], signatures: v('Claude') }, false],
     ['Claude R2 signed by Fable (same family)', { headRef: 'claude/x', files: ['apps/child-android/app/src/main/java/A.kt'], signatures: v('Fable') }, false],
@@ -242,7 +328,30 @@ function selftest() {
     ['Arabic change with UI/UX line only', { headRef: 'kimi/x', files: ['apps/parent-app/lib/l10n/app_ar.arb'], signatures: [...v('Claude'), { kind: 'uiux' }] }, false],
     ['Arabic change with both lines', { headRef: 'kimi/x', files: ['apps/parent-app/lib/l10n/app_ar.arb'], signatures: [...v('Claude'), { kind: 'uiux' }, { kind: 'arabic' }] }, true],
     ['needs:arabic label forces the Arabic line', { headRef: 'kimi/x', labels: ['needs:arabic'], files: ['a/b.ts'], signatures: v('Claude') }, false],
+    // Unknown prefix fails closed unless Kimi's own commit is on it (Fable's notes on #788).
+    ['unknown prefix, no Kimi commit, signed by Antigravity', { headRef: 'gemini/x', files: ['a/b.ts'], signatures: v('Antigravity') }, false],
+    ['near-miss prefix antigravity-fix/ is unknown', { headRef: 'antigravity-fix/x', files: ['a/b.ts'], signatures: v('Claude') }, false],
+    ['unknown prefix fails closed even on docs', { headRef: 'docs/x', files: ['docs/x.md'], signatures: v('Claude', 'K31') }, false],
+    ['legacy Kimi branch (feat/) with a Kimi commit, signed by Claude', { headRef: 'feat/x', kimiCommits: 2, files: ['a/b.ts'], signatures: v('Claude') }, true],
+    ['grandfathered open branch, no Kimi commit, signed by Claude', { headRef: 'feat/39b-full-updater-policy', kimiCommits: 0, files: ['a/b.ts'], signatures: v('Claude') }, true],
+    ['grandfathered open branch, no Kimi commit, signed by Kimi', { headRef: 'feat/39b-full-updater-policy', kimiCommits: 0, files: ['a/b.ts'], signatures: v('Kimi Code') }, false],
+    ['near-miss of a grandfathered name fails closed', { headRef: 'feat/39b-full-updater-policy-2', kimiCommits: 0, files: ['a/b.ts'], signatures: v('Claude') }, false],
+    ['legacy Kimi branch (feat/) with a Kimi commit, signed by Kimi', { headRef: 'feat/x', kimiCommits: 2, files: ['a/b.ts'], signatures: v('Kimi Code') }, false],
+    ['k31/ R2 signed by Hydrogen (Hydrogen is not Moonshot)', { headRef: 'k31/x', files: ['a/b.ts'], signatures: v('Hydrogen') }, true],
+    ['k31mac/ R2 signed by Hydrogen', { headRef: 'k31mac/x', files: ['a/b.ts'], signatures: v('Hydrogen') }, true],
     ['unknown signer name ignored', { headRef: 'kimi/x', files: ['a/b.ts'], signatures: v('Mallory') }, false],
+    // New members 2026-11-14 (#785, #786): prefixes, two Google families, Antigravity as a security key.
+    ['antigravity/ prefix names Antigravity: self-signed', { headRef: 'antigravity/x', files: ['a/b.ts'], signatures: v('Antigravity') }, false],
+    ['antigravity/ R2 signed by Claude', { headRef: 'antigravity/x', files: ['a/b.ts'], signatures: v('Claude') }, true],
+    ['antigravity/ is not Kimi: Kimi may sign it', { headRef: 'antigravity/x', files: ['a/b.ts'], signatures: v('Kimi Code') }, true],
+    ['hydrogen/ prefix names Hydrogen: self-signed', { headRef: 'hydrogen/x', files: ['a/b.ts'], signatures: v('Hydrogen') }, false],
+    ['hydrogen/ R2 signed by Antigravity (different families, allowed)', { headRef: 'hydrogen/x', files: ['a/b.ts'], signatures: v('Antigravity') }, true],
+    ['Claude R2 signed by Hydrogen', { headRef: 'claude/x', files: ['apps/child-android/app/src/main/java/A.kt'], signatures: v('Hydrogen') }, true],
+    ['Kimi R3 signed by Antigravity alone (key is not also its own partner)', { headRef: 'kimi/x', files: ['services/api/src/auth/jwt.ts'], signatures: v('Antigravity') }, false],
+    ['Kimi R3 signed by Antigravity + Hydrogen', { headRef: 'kimi/x', files: ['services/api/src/auth/jwt.ts'], signatures: v('Antigravity', 'Hydrogen') }, true],
+    ['Fable R3 signed by Antigravity + K31', { headRef: 'fable/x', files: ['infra/terraform/main.tf'], signatures: v('Antigravity', 'K31') }, true],
+    ['Hydrogen is not a security key: Kimi R3 Claude + Hydrogen', { headRef: 'kimi/x', files: ['services/api/src/auth/jwt.ts'], signatures: v('Claude', 'Hydrogen') }, false],
+    ['antigravity/ R3 signed by Antigravity + Claude (author is the key)', { headRef: 'antigravity/x', files: ['infra/terraform/main.tf'], signatures: v('Antigravity', 'Claude') }, false],
     // Added for Fable's review of #721 (B2): each case pins one rule that a planted fault could otherwise remove.
     ['Kimi R3 signed by Ahmed alone (key is not also cross-family partner)', { headRef: 'kimi/x', files: ['services/api/src/auth/jwt.ts'], signatures: v('Ahmed') }, false],
     ['Kimi R3 signed by Fable alone', { headRef: 'kimi/x', files: ['services/api/src/auth/jwt.ts'], signatures: v('Fable') }, false],
@@ -259,8 +368,44 @@ function selftest() {
     ['UI .arb outside l10n needs the UI/UX line', { headRef: 'kimi/x', files: ['apps/child-android/lib/x.arb'], signatures: v('Claude') }, false],
     ['values-ar strings need the Arabic line', { headRef: 'kimi/x', files: ['apps/child-android/app/src/main/res/values-ar/strings.xml'], signatures: [...v('Claude'), { kind: 'uiux' }] }, false],
     ['email templates need the Arabic line', { headRef: 'kimi/x', files: ['services/api/src/lib/email/templates.ts'], signatures: v('Claude') }, false],
-    ['email templates with the Arabic line', { headRef: 'kimi/x', files: ['services/api/src/lib/email/templates.ts'], signatures: [...v('Claude'), { kind: 'arabic' }] }, true],
+    // UI/UX Bureau waiver (maintainer 2026-11-13 18:44Z rule; the Bureau's only waiver).
+    ['UI path with the Bureau waiver', { headRef: 'kimi/x', files: ['apps/parent-app/lib/providers/x.dart'], signatures: [...v('Claude'), { kind: 'uiux-waiver' }] }, true],
+    ['needs:uiux label is not answered by a waiver', { headRef: 'kimi/x', labels: ['needs:uiux'], files: ['a/b.ts'], signatures: [...v('Claude'), { kind: 'uiux-waiver' }] }, false],
+    ['needs:uiux label with a review', { headRef: 'kimi/x', labels: ['needs:uiux'], files: ['a/b.ts'], signatures: [...v('Claude'), { kind: 'uiux' }] }, true],
+    ['non-UI Kotlin service needs no UI/UX line', { headRef: 'kimi/x', files: ['apps/child-android/app/src/main/java/com/osra/child/sync/SyncWorker.kt'], signatures: v('Claude') }, true],
+    ['push transport (fcm.ts) needs no UI/UX line', { headRef: 'kimi/x', files: ['services/api/src/lib/push/fcm.ts'], signatures: v('Claude') }, true],
+    ['CommandDispatcher test only needs no UI/UX line', { headRef: 'kimi/x', files: ['apps/child-android/app/src/test/java/com/familyshield/agent/CommandDispatcherAckTest.kt'], signatures: v('Claude') }, true],
+    ['non-UI Swift needs no UI/UX line', { headRef: 'kimi/x', files: ['apps/child-ios/Sources/OSRAKidsCore/Heartbeat.swift'], signatures: v('Claude') }, true],
+    ['a test of a screen needs no UI/UX line', { headRef: 'kimi/x', files: ['apps/child-android/app/src/test/java/com/familyshield/agent/enforcement/LockScreenPolicyTest.kt'], signatures: v('Claude') }, true],
+    ['an iOS shield-text test needs no UI/UX line', { headRef: 'kimi/x', files: ['apps/child-ios/Tests/FamilyShieldAgentTests/ShieldTextTests.swift'], signatures: v('Claude') }, true],
+    ['a desktop test needs no UI/UX line', { headRef: 'kimi/x', files: ['apps/agent-desktop/tests/FamilyShield.Agent.Tests/SosHotkeyTests.cs'], signatures: v('Claude') }, true],
+    ['a screen plus its test still needs the line', { headRef: 'kimi/x', files: ['apps/agent-desktop/Services/LockOverlay.cs', 'apps/agent-desktop/tests/FamilyShield.Agent.Tests/LockOverlayTests.cs'], signatures: v('Claude') }, false],
+    ['server code needs no UI/UX line', { headRef: 'kimi/x', files: ['services/api/src/routes/foo.ts'], signatures: v('Claude') }, true],
+    ['email templates with the Arabic line', { headRef: 'kimi/x', files: ['services/api/src/lib/email/templates.ts'], signatures: [...v('Claude'), { kind: 'arabic' }, { kind: 'uiux' }] }, true],
+    // Fable's review of #730. B3: the UI/UX waiver never answers the Arabic Bureau.
+    ['Arabic path with a waiver only', { headRef: 'kimi/x', files: ['apps/child-android/app/src/main/res/values-ar/strings.xml'], signatures: [...v('Claude'), { kind: 'uiux-waiver' }] }, false],
+    // B2: a test file under a UI path needs no line (each TEST_PATHS entry pinned by a sample only it excuses)...
+    ['email template test with the Arabic line needs no UI/UX line', { headRef: 'kimi/x', files: ['services/api/src/lib/email/templates.test.ts'], signatures: [...v('Claude'), { kind: 'arabic' }] }, true],
+    ['iOS test fixture strings need no UI/UX line', { headRef: 'kimi/x', files: ['apps/child-ios/Tests/Fixtures/Localizable.strings'], signatures: v('Claude') }, true],
   ];
+  // ...and a real screen with a test-like name or folder under a shipping root still needs it.
+  const testNamedScreens = [
+    'apps/parent-app/lib/features/settings/connection_test.dart',
+    'apps/parent-app/lib/features/test/home_screen.dart',
+    'apps/child-android/app/src/main/java/com/familyshield/agent/ui/SelfTest.kt',
+    'apps/child-android/app/src/main/res/test/strings.xml',
+    'apps/child-ios/Sources/OSRAKids/Tests/PairingView.swift',
+    'apps/agent-desktop/Services/test/LockOverlay.cs',
+    'apps/parent-app/ios/Runner/test/Info.plist',
+    'site/tests/index.html',
+    'site/app.test.js',
+    'scripts/site/test/build.mjs',
+    'docs/design/test/tokens.json',
+  ];
+  for (const f of testNamedScreens) {
+    cases.push([`test-like name under a shipping root ${f}: no UI/UX line`, { headRef: 'kimi/x', files: [f], signatures: [...v('Claude', 'Fable'), { kind: 'arabic' }] }, false]);
+    cases.push([`test-like name under a shipping root ${f}: with the UI/UX line`, { headRef: 'kimi/x', files: [f], signatures: [...v('Claude', 'Fable'), { kind: 'arabic' }, { kind: 'uiux' }] }, true]);
+  }
   // R3 by path: one cross-family signer alone must NOT pass (it would at R2). One case per R3 entry Fable listed.
   const r3Paths = [
     'services/api/prisma/migrations/20261113_x/migration.sql',
@@ -290,6 +435,93 @@ function selftest() {
     'scripts/check-verified-gate-signers.mjs',
     'AGENTS.md',
   ];
+  // Every screen needs the UI/UX Bureau (maintainer 2026-11-13 18:44Z). One case per path family the Bureau listed.
+  const uiPaths = [
+    'apps/parent-app/lib/providers/x.dart',
+    'apps/parent-app/lib/api/client.dart',
+    'apps/child-android/app/src/main/res/values/colors.xml',
+    'apps/child-android/app/src/main/res/drawable/ic_shield.xml',
+    'apps/child-android/app/src/main/AndroidManifest.xml',
+    'apps/child-android/app/src/main/java/com/osra/child/lock/LockActivity.kt',
+    'apps/child-android/app/src/main/java/com/osra/child/pip/PipCoverOverlay.kt',
+    'apps/child-android/app/src/main/java/com/osra/child/ui/VisibleScreens.kt',
+    'apps/child-ios/Sources/OSRAKids/ParentPinViews.swift',
+    'apps/child-ios/Sources/OSRAKids/PairingView.swift',
+    'apps/child-ios/Sources/OSRAKidsCore/L10n.swift',
+    'apps/child-ios/Sources/OSRAKids/Resources/en.lproj/Localizable.strings',
+    'apps/child-ios/Sources/OSRAKids/Resources/ar.lproj/Localizable.stringsdict',
+    'apps/child-ios/App/Assets.xcassets/AppIcon.appiconset/Contents.json',
+    'apps/child-ios/Extensions/ShieldConfiguration/ShieldConfiguration.swift',
+    'apps/child-ios/Extensions/ShieldAction/en.lproj/InfoPlist.strings',
+    'apps/parent-app/ios/Runner/Base.lproj/LaunchScreen.storyboard',
+    'apps/agent-desktop/Services/LockOverlay.cs',
+    'apps/agent-desktop/Services/PairingDialog.cs',
+    'apps/agent-desktop/Services/ProxyStartupAlert.cs',
+    'apps/agent-desktop/Services/SosHotkey.cs',
+    'apps/agent-desktop/Services/WebFilterProxy.cs',
+    'apps/child-android/app/src/main/java/com/familyshield/agent/enforcement/BlockWindowCopy.kt',
+    'apps/child-android/app/src/main/java/com/familyshield/agent/sos/SosTileService.kt',
+    'apps/child-android/app/src/full/res/values/ic_app_colors.xml',
+    'apps/child-android/app/src/full/AndroidManifest.xml',
+    'apps/child-ios/Sources/FamilyShieldAgent/ShieldText.swift',
+    'apps/parent-app/android/app/src/main/kotlin/dev/familyshield/familyshield_parent/MainActivity.kt',
+    'apps/child-android/app/src/main/java/com/familyshield/agent/ui/pairing/PairingContent.kt',
+    'apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingComposables.kt',
+    'apps/parent-app/ios/Runner/Info.plist',
+    'apps/parent-app/android/app/src/main/res/mipmap-hdpi/ic_launcher.png',
+    'apps/agent-desktop/Resources/Strings.resx',
+    'apps/agent-desktop/Views/MainWindow.xaml',
+    'apps/agent-macos/Sources/StatusView.swift',
+    'apps/agent-macos/Assets.xcassets/AppIcon.appiconset/Contents.json',
+    'apps/agent-macos/Resources/Localizable.xcstrings',
+    'docs/design/tokens.json',
+    'apps/child-android/app/src/main/java/com/familyshield/agent/commands/CommandDispatcher.kt',
+    'apps/child-android/app/src/main/java/com/familyshield/agent/commands/CommandPollWorker.kt',
+    'apps/child-android/app/src/main/java/com/familyshield/agent/network/UnlinkedNotice.kt',
+    'apps/child-android/app/src/main/java/com/familyshield/agent/services/CallEnforcer.kt',
+    'apps/child-android/app/src/main/java/com/familyshield/agent/services/LocationService.kt',
+    'apps/child-android/app/src/main/java/com/familyshield/agent/vpn/FilterVpnService.kt',
+    'services/api/src/lib/email/templates.ts',
+    'services/api/src/lib/email/index.ts',
+    'services/api/src/lib/push/notify.ts',
+    // B1: one sample per entry that no other entry matches.
+    'apps/kids-flutter/lib/theme/colors.dart',
+    'apps/agent-macos/Sources/Base.lproj/Main.plist',
+    'apps/agent-macos/Sources/Main.storyboard',
+    'apps/agent-macos/Sources/Panel.xib',
+    'apps/agent-macos/Sources/Localizable.strings',
+    'apps/agent-macos/Sources/Localizable.stringsdict',
+    'apps/agent-macos/Sources/Catalog.xcstrings',
+    'apps/agent-macos/Sources/Main.arb',
+    'site/index.html',
+    'scripts/site/build.mjs',
+    'docs/design/brand/export/logo.svg',
+    'docs/store/play/listing-en.md',
+  ];
+  // Each path fails for the UI/UX reason alone: the Arabic line and enough signers for any tier are present, and the
+  // same input with the UI/UX line passes (Fable's review of #730, B1).
+  const enough = [...v('Claude', 'Fable'), { kind: 'arabic' }];
+  for (const f of uiPaths) {
+    cases.push([`UI path ${f}: no UI/UX line`, { headRef: 'kimi/x', files: [f], signatures: enough }, false]);
+    cases.push([`UI path ${f}: with the UI/UX line`, { headRef: 'kimi/x', files: [f], signatures: [...enough, { kind: 'uiux' }] }, true]);
+  }
+
+  // Each Arabic path entry has a sample only it matches, failing for the Arabic reason alone.
+  const arabicPaths = [
+    'apps/parent-app/lib/l10n/app_ar.arb',
+    'apps/child-android/app/src/main/res/values-ar/strings.xml',
+    'apps/agent-macos/Sources/ar.lproj/Main.plist',
+    'site/ar/index.html',
+    'docs/legal/terms.ar.md',
+    'docs/customer/faq.md',
+    'services/api/src/lib/email/templates.ts',
+  ];
+  const allButArabic = [...v('Claude', 'Fable'), { kind: 'uiux' }];
+  for (const f of arabicPaths) {
+    cases.push([`Arabic path ${f}: no Arabic line`, { headRef: 'kimi/x', files: [f], signatures: allButArabic }, false]);
+    cases.push([`Arabic path ${f}: with the Arabic line`, { headRef: 'kimi/x', files: [f], signatures: [...allButArabic, { kind: 'arabic' }] }, true]);
+  }
+
   for (const f of r3Paths) {
     cases.push([`R3 path ${f}: K31 alone on a Claude PR`, { headRef: 'claude/x', files: [f], signatures: v('K31') }, false]);
   }
@@ -309,6 +541,8 @@ function selftest() {
   const FOOT = '\n\n---\n_Generated by [Claude Code](https://claude.ai/code)_';
   const parseCases = [
     ['a real signature with the footer', `Checked.\n\nVerified-sha: ${H}\n— Claude (architecture + testing), team coordinator${FOOT}`, [`verify:Claude:${H}`]],
+    ['Hydrogen signs by name', `Verified-sha: ${H}\n— Hydrogen`, [`verify:Hydrogen:${H}`]],
+    ['Antigravity signs by name', `Verified-sha: ${H}\n— Antigravity (security key)`, [`verify:Antigravity:${H}`]],
     ['Kimi signature', `Verified-sha: ${H.slice(0, 8)}\n— Kimi Code (development lead)`, [`verify:Kimi Code:${H.slice(0, 8)}`]],
     ['K31-Mac is not read as K31', `Verified-sha: ${H}\n— K31-Mac`, [`verify:K31-Mac:${H}`]],
     ['inline request quoting a line is not a signature', `Fable, please post \`Verified-sha: ${H}\` — Fable`, []],
@@ -318,6 +552,11 @@ function selftest() {
     ['a body with no signer line yields nothing', `Verified-sha: ${H}`, []],
     ['the LAST signer line wins', `— Fable said this was fine.\nVerified-sha: ${H}\n— K31`, [`verify:K31:${H}`]],
     ['UI/UX line signed by the Bureau', `UIUX-Bureau: reviewed ${H}\n— Claude (UI/UX Bureau)${FOOT}`, [`uiux:-:${H}`]],
+    ['waiver signed by the Bureau', `UIUX-Bureau: not user-visible ${H}\n— Claude (UI/UX Bureau)${FOOT}`, [`uiux-waiver:-:${H}`]],
+    ['waiver signed by the coordinator is not the Bureau', `UIUX-Bureau: not user-visible ${H}\n— Claude (architecture + testing), team coordinator`, []],
+    ['waiver inline in a request is not a waiver', `Bureau, please post \`UIUX-Bureau: not user-visible ${H}\`.\n— Claude (UI/UX Bureau)`, []],
+    ['waiver in a code block is not a waiver', `Post:\n\`\`\`\nUIUX-Bureau: not user-visible ${H}\n\`\`\`\n— Claude (UI/UX Bureau)`, []],
+    ['a review and a waiver in one Bureau comment', `UIUX-Bureau: reviewed ${H}\nUIUX-Bureau: not user-visible ${H}\n— Claude (UI/UX Bureau)`, [`uiux:-:${H}`, `uiux-waiver:-:${H}`]],
     ['UI/UX line signed by the coordinator is not the Bureau', `UIUX-Bureau: reviewed ${H}\n— Claude (architecture + testing), team coordinator`, []],
     ['Arabic line signed by the Bureau', `Arabic-Bureau: reviewed ${H}\n— Claude (Arabic Language Bureau)`, [`arabic:-:${H}`]],
     ['Arabic line signed by the coordinator is not the Bureau', `Arabic-Bureau: reviewed ${H}\n— Claude (architecture + testing), team coordinator`, []],

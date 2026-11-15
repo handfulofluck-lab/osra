@@ -54,7 +54,9 @@ final class LocationTests: XCTestCase {
 
     func testTheGrantMapsAlwaysToBackgroundWhenInUseToWhileInUseAndTheRestToNone() {
         XCTAssertEqual(LocationGrant.from(.authorizedAlways), .background)
+        #if os(iOS)
         XCTAssertEqual(LocationGrant.from(.authorizedWhenInUse), .whileInUse)
+        #endif
         for status: CLAuthorizationStatus in [.notDetermined, .restricted, .denied] {
             XCTAssertEqual(LocationGrant.from(status), .noAccess, "\(status.rawValue)")
         }
@@ -63,6 +65,7 @@ final class LocationTests: XCTestCase {
         XCTAssertEqual(LocationGrant.noAccess.rawValue, "none")
     }
 
+    #if os(iOS)
     func testTheTelemetryUploadCarriesTheGrant() async throws {
         pair()
         source.authorizationStatus = .authorizedWhenInUse
@@ -86,6 +89,7 @@ final class LocationTests: XCTestCase {
         for _ in 0..<100 where StubProtocol.requests.isEmpty { try await Task.sleep(nanoseconds: 10_000_000) }
         XCTAssertEqual(body(of: StubProtocol.requests.first)?["locationGrant"] as? String, "while_in_use")
     }
+    #endif
 
     // MARK: - Upload
 
@@ -93,8 +97,10 @@ final class LocationTests: XCTestCase {
 
     func testTheButtonActionForEachStatus() {
         XCTAssertEqual(LocationPermissionAction.of(.notDetermined, alwaysPromptUsed: false), .askWhenInUse)
+        #if os(iOS)
         XCTAssertEqual(LocationPermissionAction.of(.authorizedWhenInUse, alwaysPromptUsed: false), .askAlways)
         XCTAssertEqual(LocationPermissionAction.of(.authorizedWhenInUse, alwaysPromptUsed: true), .openSettings)
+        #endif
         XCTAssertEqual(LocationPermissionAction.of(.denied, alwaysPromptUsed: false), .openSettings)
         XCTAssertEqual(LocationPermissionAction.of(.restricted, alwaysPromptUsed: false), .openSettings)
         XCTAssertEqual(LocationPermissionAction.of(.authorizedAlways, alwaysPromptUsed: true), .hidden)
@@ -125,6 +131,7 @@ final class LocationTests: XCTestCase {
         XCTAssertEqual(opened, 0)
     }
 
+    #if os(iOS)
     func testTheAlwaysPromptIsAskedOnceThenTheButtonOpensSettings() {
         var opened = 0
         controller.openSettings = { opened += 1 }
@@ -146,6 +153,7 @@ final class LocationTests: XCTestCase {
         XCTAssertEqual(source.alwaysRequests, 1, "a later change does not ask again")
         XCTAssertEqual(controller.permissionAction, .openSettings)
     }
+    #endif
 
     func testTheBodyIsTheEnvelopeWithISOTimestampsAndAccuracy() async throws {
         pair()
@@ -364,6 +372,7 @@ final class LocationTests: XCTestCase {
         oneShot.resolve(location(ageSeconds: 0)) // nothing waiting: ignored, no double resume
     }
 
+    #if os(iOS)
     func testLocateNowRefusesWithTheAndroidReasons() async {
         pair()
         source.nextFix = location(ageSeconds: 0)
@@ -381,6 +390,7 @@ final class LocationTests: XCTestCase {
         XCTAssertEqual(source.fixRequests, 0)
         XCTAssertTrue(StubProtocol.requests.isEmpty)
     }
+    #endif
 
     // MARK: - locate_now in the drain
 
