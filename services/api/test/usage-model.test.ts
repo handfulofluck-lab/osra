@@ -47,18 +47,21 @@ describe("usage model — bucketing (Phase 2c, ADR-0013)", () => {
     expect(visits).toEqual([]);
   });
 
-  it("turns url events into WebVisit rows, deriving the domain from the url when absent", () => {
+  it("#830: a full URL from a client is reduced to its host, and a value with no host is not a row", () => {
     const { visits } = bucketEvents([
-      { ts: "2026-10-15T10:00:00Z", type: "url", payload: { url: "https://Example.COM/a?b=1", blocked: true, category: "games" } },
+      { ts: "2026-10-15T10:00:00Z", type: "url", payload: { url: "https://Example.COM/a?b=1#frag", blocked: true, category: "games" } },
       { ts: "2026-10-15T10:01:00Z", type: "url", payload: { domain: "News.Site" } },
       { ts: "2026-10-15T10:02:00Z", type: "url", payload: { url: "not a url" } },
       { ts: "garbage", type: "url", payload: { domain: "dropped.invalid-ts" } },
+      { ts: "2026-10-15T10:03:00Z", type: "url", payload: { url: "www.Example.org/path" } },
     ]);
     expect(visits.map((v) => [v.domain, v.blocked, v.category, v.url])).toEqual([
-      ["example.com", true, "games", "https://Example.COM/a?b=1"],
-      ["news.site", false, "", ""],
-      ["unknown", false, "", "not a url"],
+      // Host only: no path, query or fragment reaches the table.
+      ["example.com", true, "games", "example.com"],
+      ["news.site", false, "", "news.site"],
+      ["www.example.org", false, "", "www.example.org"],
     ]);
+    expect(visits.every((v) => !v.url.includes("/"))).toBe(true);
   });
 
   it("utcDay is the UTC calendar day regardless of the process time zone", () => {
@@ -313,7 +316,7 @@ describe("usage model — ingestion hooks and routes", () => {
       headers: deviceHeader(app),
       payload: { events: [
         { ts: "2026-10-15T10:00:00Z", type: "app_usage", payload: { app: "YouTube", minutes: 12 } },
-        { ts: "2026-10-15T10:01:00Z", type: "url", payload: { url: "https://example.com/x", blocked: true } },
+        { ts: "2026-10-15T10:01:00Z", type: "url", payload: { url: "example.com", blocked: true } },
         { ts: "2026-10-15T10:02:00Z", type: "app_usage", payload: { app: "YouTube", minutes: 1, live: true } },
       ] },
     });
@@ -324,7 +327,7 @@ describe("usage model — ingestion hooks and routes", () => {
       update: { minutes: { increment: 12 } },
     });
     expect(prismaMock.webVisit.createMany).toHaveBeenCalledWith({
-      data: [{ childId: "child-1", deviceId: "dev-1", ts: new Date("2026-10-15T10:01:00Z"), domain: "example.com", url: "https://example.com/x", blocked: true, category: "" }],
+      data: [{ childId: "child-1", deviceId: "dev-1", ts: new Date("2026-10-15T10:01:00Z"), domain: "example.com", url: "example.com", blocked: true, category: "" }],
     });
 
     prismaMock.appUsageDaily.upsert.mockRejectedValueOnce(new Error("db down"));
