@@ -421,6 +421,14 @@ void main() {
       expect(Theme.of(tester.element(find.byType(LoginScreen))).brightness, Brightness.dark);
 
       final scrollable = find.byType(Scrollable).first;
+      // The page now saves the server before it opens (as Sign in does), so an empty field would stop the
+      // navigation; the fake's base URL is what a dev build accepts.
+      final serverField = find.ancestor(of: find.text('Server'), matching: find.byType(TextField));
+      if (serverField.evaluate().isNotEmpty) {
+        await tester.scrollUntilVisible(serverField.first, -100, scrollable: scrollable);
+        await tester.enterText(serverField.first, 'http://testserver');
+        await tester.pumpAndSettle();
+      }
       await tester.scrollUntilVisible(find.text('Create account'), 100, scrollable: scrollable);
       await tester.tap(find.text('Create account'));
       await tester.pumpAndSettle();
