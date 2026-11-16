@@ -349,9 +349,13 @@ const List<CoachCard> allCoachCards = <CoachCard>[
 ];
 
 /// Returns the coaching card for [category]; `social_concern` alerts resolve
-/// through [concernTypes] first, and anything unknown gets the generic card.
-CoachCard coachCardFor(String category,
-    [List<String> concernTypes = const []]) {  final cat = category.trim().toLowerCase();
+/// through [concernTypes] first. Unknown categories return `null` unless
+/// [fallback] is `true`, so a new alert category does not silently inherit the
+/// generic card (UI/UX Bureau, #760). Ring alerts never show a coach card.
+CoachCard? coachCardFor(String category,
+    {List<String> concernTypes = const [], bool fallback = false}) {
+  final cat = category.trim().toLowerCase();
+  if (cat == 'ring') return null;
   if (cat == 'social_concern') {
     for (final t in concernTypes) {
       final card = _concernCards[t.trim().toLowerCase()];
@@ -359,5 +363,5 @@ CoachCard coachCardFor(String category,
     }
     return _socialConcern;
   }
-  return _categoryCards[cat] ?? _default;
+  return _categoryCards[cat] ?? (fallback ? _default : null);
 }

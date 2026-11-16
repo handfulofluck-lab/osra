@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:familyshield_parent/features/alerts/alerts_screen.dart';
+import 'package:familyshield_parent/features/children/child_detail_screen.dart' show AlertTile;
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
 import 'fake_api_client.dart';
@@ -101,5 +102,76 @@ void main() {
     expect(find.textContaining('bodyParams'), findsNothing);
     expect(find.textContaining('state:'), findsNothing);
     expect(find.textContaining('ringId:'), findsNothing);
+  });
+
+  testWidgets('ring alert detail hides the rules-behind banner', (tester) async {
+    FlutterSecureStorage.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({});
+    final api = FakeApiClient({
+      ...standardRoutes(alerts: [
+        {
+          'id': 'ring-alert-2', 'childId': 'child-1', 'deviceId': 'dev-1',
+          'severity': 'info', 'category': 'ring', 'title': 'Phone ring',
+          'body': 'The ring ended by itself after 5 minutes.',
+          'metadata': {
+            'state': 'timed_out', 'ringId': 'ring-1',
+            'bodyKey': 'alertBodyRingTimedOut',
+            'bodyParams': {'ringId': 'ring-1'},
+          },
+          'createdAt': '2026-11-14T00:00:00Z', 'acknowledged': false,
+        },
+      ]),
+    });
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: localizedTestApp(const AlertsScreen()),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Phone ring'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('rules-behind-banner')), findsNothing);
+  });
+
+  testWidgets('ring alert detail hides the coach card', (tester) async {
+    FlutterSecureStorage.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({});
+    final api = FakeApiClient({
+      ...standardRoutes(alerts: [
+        {
+          'id': 'ring-alert-3', 'childId': 'child-1', 'deviceId': 'dev-1',
+          'severity': 'info', 'category': 'ring', 'title': 'Phone ring',
+          'body': 'The ring ended by itself after 5 minutes.',
+          'metadata': {
+            'state': 'timed_out', 'ringId': 'ring-1',
+            'bodyKey': 'alertBodyRingTimedOut',
+            'bodyParams': {'ringId': 'ring-1'},
+          },
+          'createdAt': '2026-11-14T00:00:00Z', 'acknowledged': false,
+        },
+      ]),
+    });
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: localizedTestApp(const AlertsScreen()),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Phone ring'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('How to talk about this'), findsNothing);
+  });
+
+  testWidgets('ring AlertTile subtitle shows the localized body sentence', (tester) async {
+    final alert = ringAlert('timed_out', 'alertBodyRingTimedOut',
+        {'ringId': 'ring-1'}, 'English fallback');
+    await tester.pumpWidget(localizedTestApp(
+      Scaffold(body: AlertTile(alert: alert)),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('The ring ended by itself after 5 minutes.'), findsOneWidget);
+    // The old category-based subtitle would have shown nothing but the timestamp,
+    // so the body sentence appearing is the Bureau's requested change.
   });
 }

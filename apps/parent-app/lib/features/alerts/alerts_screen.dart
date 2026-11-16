@@ -104,7 +104,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   /// appRule to the child's ruleset) and Allow (just dismiss) actions.
   void _showDetail(Alert alert) {
     // Feature #16: conversation-coach card for AI/social alert categories.
-    final coachCard = coachCardFor(alert.category, _concernTypesOf(alert));
+    // UI/UX Bureau (#760): no coach card for ring alerts; fallback is opt-in.
+    final coachCard = coachCardFor(alert.category, concernTypes: _concernTypesOf(alert));
     showDialog(
       context: context,
       builder: (dialogContext) {
@@ -133,7 +134,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 // Issue #475 follow-up (Claude's ruling): the line is scoped to THIS alert's child, in the
                 // dialog a parent opens later to ask "did my last change land?". The feed itself is
                 // family-wide, so it carries no line; the Block path already refetches the family.
-                RulesBehindBanner(childId: alert.childId),
+                // UI/UX Bureau (#760): a ring alert is not a rules-sync event, so the banner reads as a false failure.
+                if (alert.category != 'ring') RulesBehindBanner(childId: alert.childId),
                 if (alert.body.isNotEmpty) Text(alertBodyFor(alert, l10n)),
                 // #672: where, in words and in the Bureau's sentence, in the alert the parent opened
                 // deliberately — the lock screen carries neither. The coordinates are isolated (LRI/PDI)
@@ -192,7 +194,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                       .add_Hms()
                       .format(alert.createdAt!.toLocal()))),
                 const Divider(),
-                CoachCardSection(card: coachCard),
+                if (coachCard != null) CoachCardSection(card: coachCard),
                 // #743 UI/UX: no raw `key: value` row is shown to a parent by default, on any alert. On an
                 // SOS this PR would have put `lat: 25.2769`, a machine timestamp and the device id directly
                 // under the sentence, in English developer words on an Arabic screen and with the

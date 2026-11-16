@@ -58,7 +58,7 @@ void main() {
 
     test('every mapped category returns non-empty EN+AR title, body and tips', () {
       for (final cat in mappedCategories) {
-        final card = coachCardFor(cat);
+        final card = coachCardFor(cat)!;
         expect(card.title, isNotEmpty, reason: '$cat title');
         expect(card.titleAr, isNotEmpty, reason: '$cat titleAr');
         expect(card.body, isNotEmpty, reason: '$cat body');
@@ -72,31 +72,37 @@ void main() {
       }
     });
 
-    test('unknown categories fall back to the generic card', () {
-      final card = coachCardFor('totally_new_category');
-      expect(card.title, coachCardFor('another_unknown').title);
+    test('unknown categories fall back to the generic card when fallback is true', () {
+      final card = coachCardFor('totally_new_category', fallback: true);
+      expect(card!.title, coachCardFor('another_unknown', fallback: true)!.title);
       expect(card.title, 'A calm first conversation');
     });
 
+    test('unknown categories and ring return null without fallback', () {
+      expect(coachCardFor('totally_new_category'), isNull);
+      expect(coachCardFor('ring'), isNull);
+      expect(coachCardFor('ring', concernTypes: ['grooming_risk']), isNull);
+    });
+
     test('social_concern resolves through concernTypes before falling back', () {
-      expect(coachCardFor('social_concern', const ['grooming_risk']).title, contains('grooming'));
-      expect(coachCardFor('social_concern', const ['self_harm']).title, contains('hurting'));
+      expect(coachCardFor('social_concern', concernTypes: const ['grooming_risk'])!.title, contains('grooming'));
+      expect(coachCardFor('social_concern', concernTypes: const ['self_harm'])!.title, contains('hurting'));
       expect(
-        coachCardFor('social_concern', const ['late_night', 'grooming']).title,
+        coachCardFor('social_concern', concernTypes: const ['late_night', 'grooming'])!.title,
         contains('grooming'),
       );
-      expect(coachCardFor('social_concern', const ['late_night']).title, coachCardFor('social_concern').title);
+      expect(coachCardFor('social_concern', concernTypes: const ['late_night'])!.title, coachCardFor('social_concern')!.title);
     });
 
     test('screen_time alerts get the collaboration card', () {
-      expect(coachCardFor('screen_time').title, contains('screen-time'));
-      expect(coachCardFor('screen_time_exceeded').title, coachCardFor('screen_time').title);
+      expect(coachCardFor('screen_time')!.title, contains('screen-time'));
+      expect(coachCardFor('screen_time_exceeded')!.title, coachCardFor('screen_time')!.title);
     });
   });
 
   group('CoachCardSection widget', () {
     testWidgets('shows EN body by default and switches to AR on toggle', (tester) async {
-      final card = coachCardFor('self_harm');
+      final card = coachCardFor('self_harm')!;
       await tester.pumpWidget(localizedTestApp(Scaffold(body: CoachCardSection(card: card))));
       await expandCoachSection(tester);
 
@@ -130,7 +136,7 @@ void main() {
 
       expect(find.text('How to talk about this'), findsOneWidget);
       await expandCoachSection(tester);
-      final card = coachCardFor('self_harm');
+      final card = coachCardFor('self_harm')!;
       expect(find.textContaining('Take every sign seriously'), findsOneWidget);
       expect(find.text(card.tips.first), findsOneWidget);
       expect(find.text(card.tips.last), findsOneWidget);
@@ -172,13 +178,29 @@ void main() {
       expect(find.textContaining('collaboration, not punishment'), findsOneWidget);
     });
 
-    testWidgets('an unknown category shows the generic card', (tester) async {
+    testWidgets('an unknown category shows no coach card by default', (tester) async {
       final now = DateTime.now();
       final api = FakeApiClient(standardRoutes(alerts: [
         alertJson('c1', 'info', 'brand_new_alert_type', 'Something unusual', now),
       ]));
       // An unknown category: English keeps the server's own title (#344 review).
       await openDetail(tester, api, 'Something unusual');
+
+      expect(find.text('How to talk about this'), findsNothing);
+    });
+
+    testWidgets('an unknown category with fallback shows the generic card', (tester) async {
+      final now = DateTime.now();
+      final api = FakeApiClient(standardRoutes(alerts: [
+        alertJson('c1', 'info', 'brand_new_alert_type', 'Something unusual', now),
+      ]));
+      await openDetail(tester, api, 'Something unusual');
+      // The fallback path is exercised by a direct lookup, not the AlertsScreen,
+      // because production UI does not opt into fallback for unknown categories (#760).
+      await tester.pumpWidget(localizedTestApp(
+        Scaffold(body: CoachCardSection(card: coachCardFor('brand_new_alert_type', fallback: true)!)),
+      ));
+      await tester.pumpAndSettle();
       await expandCoachSection(tester);
 
       expect(find.text('A calm first conversation'), findsOneWidget);

@@ -951,11 +951,23 @@ class AlertTile extends StatelessWidget {
     final when = alert.createdAt == null
         ? ''
         : DateFormat.MMMd(context.localeName).add_Hm().format(alert.createdAt!.toLocal());
+    // UI/UX Bureau (#760): ring alerts show their own sentence in the subtitle so a parent can scan the list.
+    final String subtitleText;
+    if (alert.category == 'ring') {
+      final body = alertBodyFor(alert, l10n);
+      subtitleText = body.isEmpty || when.isEmpty
+          ? (body.isEmpty ? when : body)
+          : '$body · $when';
+    } else {
+      subtitleText = when.isEmpty
+          ? l10n.alertCategory(alert.category)
+          : '${l10n.alertCategory(alert.category)} · $when';
+    }
     return Card(
       child: ListTile(
         leading: Icon(Icons.circle, color: severityColor(alert.severity, context), size: 14),
         title: Text(l10n.alertTitleFor(alert.category, alert.title, isEnglish: context.localeName.startsWith('en'), tamperType: alert.metadata['type']?.toString()), maxLines: 2, overflow: TextOverflow.ellipsis),
-        subtitle: Text('${l10n.alertCategory(alert.category)} · $when'),
+        subtitle: Text(subtitleText, maxLines: 1, overflow: TextOverflow.ellipsis),
         trailing: onAck == null ? null : IconButton(icon: const Icon(Icons.check), tooltip: l10n.acknowledgeTooltip, onPressed: onAck),
         onTap: onTap,
       ),

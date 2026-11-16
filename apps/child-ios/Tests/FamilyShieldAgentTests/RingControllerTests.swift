@@ -478,6 +478,9 @@ extension RingControllerTests {
         wall = wall.addingTimeInterval(600)
         uptime = 0
         bootSession = 2
+        // Alarms do not survive a reboot, so the backend reports no scheduled ids.
+        backend.scheduled.removeAll()
+        backend.scheduleUntil.removeAll()
         await controller.resume()
         XCTAssertEqual(controller.state?.endAt, wall.addingTimeInterval(100))
         XCTAssertEqual(backend.scheduleUntil[id], wall.addingTimeInterval(100))

@@ -80,6 +80,14 @@ public struct PinGateView: View {
             }
         }
         .navigationTitle(title)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button(L10n.tr("pin_continue")) { check() }
+                    .foregroundStyle(Color(red: 11 / 255, green: 93 / 255, blue: 87 / 255))
+                    .accessibilityIdentifier(A11yID.pinContinue)
+            }
+        }
     }
 
     private func check() {

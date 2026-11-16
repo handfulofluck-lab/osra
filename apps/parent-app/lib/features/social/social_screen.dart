@@ -355,9 +355,13 @@ class ConcernsSection extends ConsumerWidget {
                             ),
                             // Feature #16: same coaching card as alert details,
                             // keyed off the AI concern types.
-                            CoachCardSection(
-                                card: coachCardFor(
-                                    'social_concern', e.concernTypes)),
+                            Builder(builder: (_) {
+                              final card = coachCardFor('social_concern',
+                                  concernTypes: e.concernTypes);
+                              return card == null
+                                  ? const SizedBox.shrink()
+                                  : CoachCardSection(card: card);
+                            }),
                           ],
                         ),
                       ),
