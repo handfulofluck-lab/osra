@@ -218,6 +218,12 @@ jobs:
         working-directory: apps/parent-app
     steps:
       - uses: actions/checkout@v4
+      # #558: parent iPhone push needs aps-environment in Runner.entitlements, CODE_SIGN_ENTITLEMENTS on every
+      # Runner configuration, and the optional Firebase config copy phase, with GoogleService-Info.plist kept out
+      # of git. Build 8 shipped with none of it; this fails the job, with the reason, if any piece goes missing.
+      - name: Parent iOS push wiring (#558)
+        working-directory: .
+        run: node scripts/check-parent-ios-push.mjs
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
