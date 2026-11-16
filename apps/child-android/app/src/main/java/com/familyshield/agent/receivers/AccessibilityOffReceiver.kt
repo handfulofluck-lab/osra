@@ -102,6 +102,43 @@ object AccessibilityOffPolicy {
         paired && nowMs >= graceUntilMs
 
     /**
+     * Part 2's latch (osra-security#29 review, Antigravity's item 3): the special-access set is captured on
+     * **entering** Settings and dropped on leaving it — including when a window of our own package opens, which is
+     * what happens when a parent finishes granting and presses Back into OSRA.
+     */
+    fun nextSpecialAccessLatch(
+        previous: Set<com.familyshield.agent.security.TamperScreenPolicy.SpecialAccess>?,
+        packageName: String?,
+        settingsPackage: String,
+        heldNow: () -> Set<com.familyshield.agent.security.TamperScreenPolicy.SpecialAccess>,
+    ): Set<com.familyshield.agent.security.TamperScreenPolicy.SpecialAccess>? = when {
+        packageName == null -> previous
+        packageName == settingsPackage -> previous ?: heldNow()
+        else -> null
+    }
+
+    /**
+     * osra-security#29 (#817, Antigravity's Flip4 pass): the package whose window a latch should read. A soft
+     * keyboard's state change arrives with the IME's package while Settings is still the page in front, and reading
+     * the event's own package cleared [nextSpecialAccessLatch] — turning an access we hold into "the parent is
+     * granting it" — and reset [nextLatch] the same way. The foreground application package wins whenever it is
+     * known; the event's package is the fallback for a window with no application behind it.
+     */
+    fun latchPackage(foregroundPkg: String?, eventPkg: String?): String? = when {
+        eventPkg == null -> foregroundPkg
+        // Claude's osra-security#29 item 1 on #817: the *entry* event into Settings can arrive while our own window is
+        // still the foreground one — then reading the foreground leaves the latch empty, and a grant the parent makes
+        // during onboarding fires the PIN gate mid-flow. The old code could not do that, so it would be a regression
+        // introduced by the IME fix. When the event itself is a Settings or PermissionController window, that IS the
+        // page in front; the foreground package answers every other case (a keyboard inside Settings, a popup).
+        eventPkg == SETTINGS_PACKAGE || eventPkg.contains("permissioncontroller") -> eventPkg
+        else -> foregroundPkg ?: eventPkg
+    }
+
+    /** The package whose special-access pages the latch is about; shared with the service's own calls. */
+    const val SETTINGS_PACKAGE = "com.android.settings"
+
+    /**
      * The grant latch for a PermissionController visit (osra-security#30 review): latched from the grant when a
      * PermissionController window is entered, cleared when any other window is entered, and left alone when the
      * window cannot be named.

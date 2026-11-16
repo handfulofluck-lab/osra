@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import com.familyshield.agent.security.TamperScreenPolicy
 import org.junit.Test
 
 /**
@@ -95,4 +96,98 @@ class AccessibilityOffPolicyTest {
             ),
         )
     }
+
+    /**
+     * Antigravity's item 3: the special-access latch is captured on entering Settings, held for the visit, and
+     * dropped when Settings is left — **including** when the next window is our own, which is what a Back from the
+     * grant page produces.
+     */
+    @Test
+    fun `the special-access latch keeps what was held on entry, not what is held now`() {
+        val heldNow = setOf(TamperScreenPolicy.SpecialAccess.OVERLAY)
+        fun next(previous: Set<TamperScreenPolicy.SpecialAccess>?, pkg: String?) =
+            AccessibilityOffPolicy.nextSpecialAccessLatch(
+                previous = previous,
+                packageName = pkg,
+                settingsPackage = "com.android.settings",
+                heldNow = { heldNow },
+            )
+
+        assertEquals("captured on entry", heldNow, next(null, "com.android.settings"))
+        // The row that would pass if the latch never latched: a previous set that differs from what is held now must
+        // be what comes back. Claude's item 1 — `previous = heldNow` tested nothing.
+        val heldBefore = setOf(TamperScreenPolicy.SpecialAccess.USAGE)
+        assertEquals("held for the visit, even if the grant changes", heldBefore, next(heldBefore, "com.android.settings"))
+        assertEquals("an unnamed window keeps it", heldBefore, next(heldBefore, null))
+        assertNull("leaving Settings drops it", next(heldBefore, "com.android.telephony"))
+    }
+
+    /**
+     * Antigravity's Flip4 pass (#817): the sequence that turned a held grant into "the parent is granting it". The
+     * child opens the usage page, taps **Search apps**, and the soft keyboard emits a state change with the *IME's*
+     * package. Read from the event, that window cleared the latch; the foreground application package keeps it.
+     *
+     * The second assertion is the old behaviour on purpose: it is why the first one matters.
+     */
+    @Test
+    fun `a keyboard state change does not clear the special-access latch`() {
+        val held = setOf(TamperScreenPolicy.SpecialAccess.USAGE)
+        val latchPkg = AccessibilityOffPolicy.latchPackage("com.android.settings", "com.samsung.android.honeyboard")
+        assertEquals("the page in front, not the keyboard", "com.android.settings", latchPkg)
+        assertEquals(
+            "a held grant stays a held grant",
+            held,
+            AccessibilityOffPolicy.nextSpecialAccessLatch(
+                previous = held,
+                packageName = latchPkg,
+                settingsPackage = "com.android.settings",
+                heldNow = { held },
+            ),
+        )
+        assertNull(
+            "and read from the event, as it was, the latch is cleared — the bug this row locks",
+            AccessibilityOffPolicy.nextSpecialAccessLatch(
+                previous = held,
+                packageName = "com.samsung.android.honeyboard",
+                settingsPackage = "com.android.settings",
+                heldNow = { held },
+            ),
+        )
+        // A window with no application behind it still falls back to the event's own package.
+        assertEquals(
+            "the fallback is the event's package",
+            "com.android.settings",
+            AccessibilityOffPolicy.latchPackage(null, "com.android.settings"),
+        )
+    }
+
+    /**
+     * Claude's osra-security#29 item 1 on #817: the *entry* event into Settings can arrive while our own window is
+     * still the foreground one. Reading the foreground there leaves the latch empty, and a grant the parent makes
+     * during onboarding then fires the PIN gate mid-flow — a regression the old code could not have.
+     */
+    @Test
+    fun `entering Settings from our own screen still latches the visit`() {
+        assertEquals(
+            "the event's own package wins when the event IS the Settings page",
+            "com.android.settings",
+            AccessibilityOffPolicy.latchPackage("com.osratech.child", "com.android.settings"),
+        )
+        assertEquals(
+            "and the same for the permission controller",
+            "com.android.permissioncontroller",
+            AccessibilityOffPolicy.latchPackage("com.osratech.child", "com.android.permissioncontroller"),
+        )
+        assertEquals(
+            "a keyboard inside Settings does not change the answer",
+            "com.android.settings",
+            AccessibilityOffPolicy.latchPackage("com.android.settings", "com.samsung.android.honeyboard"),
+        )
+        assertEquals(
+            "an unrelated window still reads the foreground package",
+            "com.whatsapp",
+            AccessibilityOffPolicy.latchPackage("com.whatsapp", "com.samsung.android.honeyboard"),
+        )
+    }
+
 }
