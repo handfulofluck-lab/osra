@@ -35,26 +35,32 @@ void main() {
   });
 
   /**
-   * #762 / #760: the alert list and the social timeline grouped by `DateFormat('yyyy-MM-dd')`, which uses
-   * the ambient locale — in Arabic that is `٢٠٢٦-١١-١٤`, and `DateTime.tryParse` rejects it, so the header
-   * fell back to the raw key and a parent read an ISO date instead of the locale's order. `dayKey` is
-   * locale-independent, so the label parses back and renders as the Arabic long form.
+   * #762 / #760: the alert list and the social timeline grouped by `DateFormat('yyyy-MM-dd')`, which
+   * consults the ambient locale **and** the native-digit setting — in the state #760 was seen in that key
+   * was `٢٠٢٦-١١-١٤`, `DateTime.tryParse` rejects it, and the header fell back to the raw key. `dayKey`
+   * ignores both settings, so the label always parses back and renders in the locale's order.
    */
-  test('the grouping key survives an Arabic ambient locale', () async {
+  test('the grouping key is independent of the ambient locale and the digit setting', () async {
     await configureDateFormatting();
     Intl.defaultLocale = 'ar';
-    addTearDown(() => Intl.defaultLocale = null);
+    addTearDown(() async {
+      Intl.defaultLocale = null;
+      await configureDateFormatting(); // puts Western digits back for ar
+    });
     final day = DateTime(2026, 11, 14);
 
-    // The old key, and why it failed: Arabic digits, and tryParse returns null.
+    // The state the bug was reported in: native digits on, so the old key could not be parsed back.
+    DateFormat.useNativeDigitsByDefaultFor('ar', true);
     final oldKey = DateFormat('yyyy-MM-dd').format(day);
     expect(oldKey, contains(arabicIndicDigits));
     expect(DateTime.tryParse(oldKey), isNull);
 
-    // The key that ships.
+    // The key that ships does not consult either setting.
     final key = dayKey(day);
     expect(key, '2026-11-14');
     expect(DateTime.tryParse(key), day);
+
+    DateFormat.useNativeDigitsByDefaultFor('ar', false);
     expect(formatDayHeader(DateTime.tryParse(key)!, 'ar'), 'السبت، 14 نوفمبر 2026');
   });
 
