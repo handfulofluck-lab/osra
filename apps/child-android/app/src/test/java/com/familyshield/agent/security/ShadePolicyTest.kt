@@ -19,6 +19,14 @@ class ShadePolicyTest {
     }
 
     @Test
+    fun `an unnamed systemui window is still collapsed, a named other one is not`() {
+        // Kimi's review: a system window with a null class on some OEM builds must not switch the guard
+        // off silently. Named systemui windows that are not the shade stay excluded.
+        assertTrue(ShadePolicy.shouldCollapse(true, "com.android.systemui", null, 34))
+        assertFalse(ShadePolicy.shouldCollapse(true, "com.android.systemui", "com.android.systemui.volume.VolumeDialog", 34))
+    }
+
+    @Test
     fun `without a lock the shade is left alone`() {
         assertFalse(ShadePolicy.shouldCollapse(false, "com.android.systemui", "com.android.systemui.shade.NotificationShadeWindowView", 34))
     }
@@ -29,9 +37,8 @@ class ShadePolicyTest {
     }
 
     @Test
-    fun `another package or an unnamed class is never collapsed`() {
+    fun `another package is never collapsed`() {
         assertFalse(ShadePolicy.shouldCollapse(true, "com.whatsapp", "com.whatsapp.Conversation", 34))
-        assertFalse(ShadePolicy.shouldCollapse(true, "com.android.systemui", null, 34))
         assertFalse(ShadePolicy.shouldCollapse(true, "com.android.systemui", "com.android.systemui.volume.VolumeDialog", 34))
     }
 

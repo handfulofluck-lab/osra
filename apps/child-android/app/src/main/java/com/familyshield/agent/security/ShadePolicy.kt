@@ -37,7 +37,11 @@ object ShadePolicy {
         // answered call the shade is locked again, so a call cannot be used to browse notifications.
         if (callRinging) return false
         if (packageName != SHADE_PACKAGE) return false
-        val name = className?.lowercase() ?: return false
+        // Kimi's review: some OEM builds report a system window with a null class. With the systemui
+        // package already narrow, a null class is treated as the shade — a guard that silently switches
+        // itself off for an unnamed window is a bypass with no trace. Named systemui windows that are not
+        // the shade (the volume dialog) are still excluded by the list.
+        val name = className?.lowercase() ?: return true
         return SHADE_CLASSES.any { name.contains(it) }
     }
 }

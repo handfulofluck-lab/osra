@@ -11,7 +11,11 @@
   content; it only sends the collapse.
 - Below API 31 there is no such action, so the service does nothing there; that limit is stated in the
   code and held by a row rather than implied.
-- Tests: the pure classifier (lock on, systemui unit names and class names, no lock, another package, an
-  unnamed window, API 30) and a source row pinning that the service wires the policy to `LockState` and the
-  dismiss action. The catalogue probe row (lock → open shade → inline reply refused within 1 s) is device
-  evidence for the Flip4 run, not JVM evidence.
+- Tests: the pure classifier (lock on, systemui unit names and class names, an unnamed systemui window,
+  no lock, another package, a named non-shade systemui window, API 30) and a source row pinning that the
+  service wires the policy to `LockState`, `CallEnforcer.isRinging()` and the dismiss action.
+- **Honest limit (Kimi's review):** the collapse is reactive. The shade is drawn for at least one frame
+  before the accessibility event lands, so what this guarantees is that the shade closes before it can be
+  used deliberately; it does not prove that a tap landing inside the first frame cannot register. The
+  catalogue probe row (lock → open shade → inline reply refused within 1 s) is the evidence for that
+  claim and is owed on the Flip4, not JVM evidence.
