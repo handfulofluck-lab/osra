@@ -118,6 +118,20 @@ void main() {
       );
     });
 
+    testWidgets('allowed domains drop a leading direction mark before saving', (tester) async {
+      final api = FakeApiClient(standardRoutes());
+      await openWebFilter(tester, api);
+
+      await saveWebFilterDomains(
+        tester,
+        api,
+        label: arabic.allowedDomainsLabel,
+        field: 'allowedDomains',
+        input: '\u200Fa.com',
+        expected: ['a.com'],
+      );
+    });
+
     testWidgets('blocked domains save Arabic and Latin comma-separated items', (tester) async {
       final api = FakeApiClient(standardRoutes());
       await openWebFilter(tester, api);
