@@ -189,16 +189,13 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  TextField(
-                    controller: _familyName,
-                    decoration: InputDecoration(
-                      labelText: l10n.familyNameLabel,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
-                    ),
-                  ),
-                  const SizedBox(height: AppSpace.md),
+                  // UI/UX: identity first, then the family — the order a parent expects to type in. The
+                  // keyboard walks down with Next and Done submits; autofill names each field for the
+                  // phone's password manager.
                   TextField(
                     controller: _displayName,
+                    autofillHints: const [AutofillHints.name],
+                    textInputAction: TextInputAction.next,
                     decoration: InputDecoration(
                       labelText: l10n.yourNameLabel,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
@@ -208,6 +205,8 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                   TextField(
                     controller: _email,
                     keyboardType: TextInputType.emailAddress,
+                    autofillHints: const [AutofillHints.email],
+                    textInputAction: TextInputAction.next,
                     decoration: InputDecoration(
                       labelText: l10n.emailLabel,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
@@ -217,8 +216,20 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                   TextField(
                     controller: _password,
                     obscureText: true,
+                    autofillHints: const [AutofillHints.newPassword],
+                    textInputAction: TextInputAction.next,
                     decoration: InputDecoration(
                       labelText: l10n.passwordLabel,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpace.md),
+                  TextField(
+                    controller: _familyName,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _submit(data, purpose),
+                    decoration: InputDecoration(
+                      labelText: l10n.familyNameLabel,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                     ),
                   ),
