@@ -279,7 +279,7 @@ void main() {
       expect(find.textContaining('Showing the latest 100 visits'), findsNothing);
     });
 
-    testWidgets('empty history keeps the screen's existing empty state (#830)', (tester) async {
+    testWidgets("empty history keeps the screen's existing empty state (#830)", (tester) async {
       final api = trendApi(visits: const []);
       await pumpScreen(tester, const UsageHistoryScreen(childId: 'child-1'), api);
 
