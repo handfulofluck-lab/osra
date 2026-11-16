@@ -136,6 +136,9 @@ class TamperGuardLandsHomeWiringTest {
             if (candidate.isFile) return candidate.readText()
             dir = dir.parentFile
         }
+        throw AssertionError("could not find $relative from ${System.getProperty("user.dir")}")
+    }
+
     /**
      * Claude's blocking item on #792: the activity's wiring had no row, so both mutants he named would survive —
      * putting the count back in a field, and checking `isLocked` *after* `verify`. Nothing read the click handler.
