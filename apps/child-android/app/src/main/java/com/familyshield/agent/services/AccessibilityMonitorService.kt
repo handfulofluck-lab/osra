@@ -306,6 +306,7 @@ class AccessibilityMonitorService : AccessibilityService() {
                 packageName = eventPkg,
                 className = event.className?.toString(),
                 apiLevel = android.os.Build.VERSION.SDK_INT,
+                callActive = calls.isRingingOrInCall(),
             )
         ) {
             performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)

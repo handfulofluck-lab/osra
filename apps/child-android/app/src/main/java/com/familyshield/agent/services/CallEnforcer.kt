@@ -170,6 +170,14 @@ class CallEnforcer(
 
     private fun currentMode(): CallAudioMode = map(runCatching { audio?.mode }.getOrNull() ?: AudioManager.MODE_NORMAL)
 
+    /**
+     * #828 (UI/UX Bureau): an incoming call while the child phone is locked and the screen is on arrives
+     * as a heads-up in systemui, not as a full-screen intent. The guard must not collapse it, so the
+     * service skips the shade collapse while the audio mode says ringing or in a call — one signal for
+     * both the screen-off and heads-up forms.
+     */
+    fun isRingingOrInCall(): Boolean = currentMode() != CallAudioMode.NORMAL
+
     private fun map(mode: Int): CallAudioMode = when (mode) {
         AudioManager.MODE_NORMAL -> CallAudioMode.NORMAL
         AudioManager.MODE_RINGTONE -> CallAudioMode.RINGTONE

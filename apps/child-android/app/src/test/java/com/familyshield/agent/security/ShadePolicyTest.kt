@@ -36,10 +36,18 @@ class ShadePolicyTest {
     }
 
     @Test
-    fun `the service wires the policy to the lock state and the dismiss action`() {
+    fun `an incoming call is never collapsed, however the call is drawn`() {
+        // UI/UX Bureau: with the screen on, a call is a heads-up in systemui, not a full-screen intent.
+        assertFalse(ShadePolicy.shouldCollapse(true, "com.android.systemui", "com.android.systemui.statusbar.phone.StatusBarWindowView", 34, callActive = true))
+        assertFalse(ShadePolicy.shouldCollapse(true, "com.android.systemui", "com.android.systemui.shade.NotificationShadeWindowView", 34, callActive = true))
+    }
+
+    @Test
+    fun `the service wires the policy to the lock state, the call state and the dismiss action`() {
         val source = source("apps/child-android/app/src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt")
         assertTrue(source.contains("ShadePolicy.shouldCollapse("))
         assertTrue(source.contains("locked = LockState.isActive(this)"))
+        assertTrue(source.contains("callActive = calls.isRingingOrInCall()"))
         assertTrue(source.contains("performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)"))
     }
 
