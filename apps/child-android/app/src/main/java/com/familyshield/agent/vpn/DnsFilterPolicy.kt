@@ -8,10 +8,12 @@ package com.familyshield.agent.vpn
  * Precedence, highest first:
  *  1. pause-internet → every name is sunk (the VPN also sinks non-DNS traffic in that mode);
  *  2. an explicit allowed domain (or a subdomain of one) → forwarded untouched, whatever else says;
- *  3. SafeSearch / YouTube Restricted → the engine's own enforcement host (a CNAME-style rewrite
+ *  3. an explicit blocked domain, or a domain in a blocked category → sunk. A parent's block must
+ *     beat a rewrite: rewriting a blocked `youtube.com` to `restrict.youtube.com` would leave the site
+ *     reachable, which is #825 on the Flip4;
+ *  4. SafeSearch / YouTube Restricted → the engine's own enforcement host (a CNAME-style rewrite
  *     the vendors document for exactly this purpose: `forcesafesearch.google.com`,
  *     `strict.bing.com`, `safe.duckduckgo.com`, `restrict.youtube.com`);
- *  4. an explicit blocked domain, or a domain in a blocked category → sunk;
  *  5. otherwise forwarded to the upstream resolver.
  *
  * Matching is by DNS label suffix: `blocked.example` covers `www.blocked.example` but not
@@ -68,6 +70,10 @@ object DnsFilterPolicy {
         if (name in ENFORCEMENT_HOSTS) return Decision.FORWARD
         if (config.allowed.any { matches(name, it) }) return Decision.FORWARD
 
+        // #825: a parent's block beats any rewrite; only an explicit allow outranks it.
+        config.blocked.firstOrNull { matches(name, it) }?.let { return Decision(Action.SINK, reason = "blocked_domain:$it") }
+        config.categories.entries.firstOrNull { matches(name, it.key) }?.let { return Decision(Action.SINK, reason = "category:${it.value}") }
+
         if (config.safeSearch) {
             if (isGoogleSearchHost(name)) return Decision(Action.REWRITE, GOOGLE_SAFE, "safesearch")
             if (BING_HOSTS.any { name == it }) return Decision(Action.REWRITE, BING_SAFE, "safesearch")
@@ -78,8 +84,6 @@ object DnsFilterPolicy {
             "moderate" -> if (YOUTUBE_HOSTS.any { name == it }) return Decision(Action.REWRITE, YT_MODERATE, "youtube_moderate")
         }
 
-        config.blocked.firstOrNull { matches(name, it) }?.let { return Decision(Action.SINK, reason = "blocked_domain:$it") }
-        config.categories.entries.firstOrNull { matches(name, it.key) }?.let { return Decision(Action.SINK, reason = "category:${it.value}") }
         return Decision.FORWARD
     }
 

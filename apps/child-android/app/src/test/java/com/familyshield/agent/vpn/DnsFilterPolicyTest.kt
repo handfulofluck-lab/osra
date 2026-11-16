@@ -84,6 +84,23 @@ class DnsFilterPolicyTest {
     }
 
     @Test
+    fun `an explicit blocked domain sinks before the youtube or safesearch rewrite (#825)`() {
+        val c = Config(
+            safeSearch = true,
+            youtubeMode = "strict",
+            blockedDomains = listOf("youtube.com", "google.com", "bing.com"),
+        )
+        assertEquals(Action.SINK, DnsFilterPolicy.decide("www.youtube.com", c).action)
+        assertEquals(Action.SINK, DnsFilterPolicy.decide("m.youtube.com", c).action)
+        assertEquals("blocked_domain:youtube.com", DnsFilterPolicy.decide("www.youtube.com", c).reason)
+        assertEquals(Action.SINK, DnsFilterPolicy.decide("www.google.com", c).action)
+        assertEquals(Action.SINK, DnsFilterPolicy.decide("www.bing.com", c).action)
+        // The rest of the rewrite still works for everything the parent did not block.
+        assertEquals("restrict.youtube.com", DnsFilterPolicy.decide("youtubei.googleapis.com", c).target)
+        assertEquals("forcesafesearch.google.com", DnsFilterPolicy.decide("google.ae", c).target)
+    }
+
+    @Test
     fun `safesearch off leaves the engines alone even with youtube strict`() {
         val c = Config(safeSearch = false, youtubeMode = "strict")
         assertEquals(Action.FORWARD, DnsFilterPolicy.decide("www.google.com", c).action)
