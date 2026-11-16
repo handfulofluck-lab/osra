@@ -166,8 +166,9 @@ regulator. Question L4 asks the lawyer whether to keep this proof at all and for
 
 The maintainer's phrase "sharing usage feedback" is softer than what box 2 actually allows. The AI plan
 records the rule that the opt-in's first sentence must say plainly that messages are kept, so the draft opens
-with it. All Arabic goes through the Arabic Language Bureau; the Bureau's earlier title for this choice is
-«ساعد في تحسين تنبيهات السلامة» (draft, not signed).
+with it. All Arabic goes through the Arabic Language Bureau; its draft for every line above is on #846 and in
+the Bureau's sheet `2026-11-16-signup-consent-ar.md`. Box 2 has no heading; if one is added, its English goes
+to the Bureau first.
 
 ## Questions for the lawyer
 
