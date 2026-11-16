@@ -1596,7 +1596,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get vaultTrustCopy =>
-      'Snippets are encrypted with your family key before leaving the device and stored encrypted on your server.';
+      'Excerpts travel over an encrypted connection and are stored encrypted on OSRA\'s servers.';
 
   @override
   String get noConcernsDetected => 'No concerns detected';
