@@ -34,7 +34,13 @@ export interface PushMessage {
 }
 
 export type PushResult =
-  | { ok: true }
+  /**
+   * `messageId` is the transport's own handle for the message when it reports one — FCM's
+   * `projects/<p>/messages/<id>` (#673). The wake log prints it because that id is the only thing an
+   * operator can take to the provider's log to see whether, and when, the push was delivered; a
+   * provider that reports nothing (APNs here) omits it, and so does a body that does not parse.
+   */
+  | { ok: true; messageId?: string }
   /** The token is dead (unregistered / 410): the caller must delete it. */
   | { ok: false; invalidToken: true; reason: string }
   /** Transient or configuration failure; token stays. */

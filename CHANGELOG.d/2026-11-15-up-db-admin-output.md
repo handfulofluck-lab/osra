@@ -1,0 +1,2 @@
+### Infra — production migrate step finds the db-admin task (#766)
+- `up.sh` reads `db_admin_task_definition_arn` before it switches the CLI to the production role. Read after the switch, Terraform could no longer reach its state, so the output came back empty. The first production schema run on 15 Nov then stopped after the snapshot with "refusing: production has no db-admin task definition", so no migration ran and nothing was changed in the database.
