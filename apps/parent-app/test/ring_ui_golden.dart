@@ -7,12 +7,29 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/features/alerts/alerts_screen.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart' show AlertTile;
-import 'package:familyshield_parent/l10n/l10n.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/theme/app_theme.dart';
 
 import 'fake_api_client.dart';
 import 'test_app.dart';
+
+Map<String, dynamic> _ringAlertJson(DateTime at) => {
+      'id': 'ring-1',
+      'childId': 'child-1',
+      'deviceId': 'dev-1',
+      'severity': 'info',
+      'category': 'ring',
+      'title': 'Phone ring',
+      'body': 'The ring ended by itself after 5 minutes.',
+      'metadata': {
+        'state': 'timed_out',
+        'ringId': 'ring-1',
+        'bodyKey': 'alertBodyRingTimedOut',
+        'bodyParams': {'ringId': 'ring-1'},
+      },
+      'createdAt': at.toUtc().toIso8601String(),
+      'acknowledged': false,
+    };
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -38,7 +55,11 @@ void main() {
       tester.view.resetDevicePixelRatio();
     });
     await tester.pumpWidget(ProviderScope(
-      overrides: [apiClientProvider.overrideWithValue(FakeApiClient(standardRoutes()))],
+      overrides: [
+        apiClientProvider.overrideWithValue(FakeApiClient(standardRoutes(
+          alerts: [_ringAlertJson(DateTime.utc(2026, 11, 16, 10, 0, 0))],
+        )))
+      ],
       child: localizedTestApp(
         home,
         locale: locale,
