@@ -4,7 +4,7 @@ import { MockRedis, prismaMock, resetPrismaMock } from "./helpers.js";
 import { runRingRepush, startRingRepushScheduler, stopRingRepushScheduler } from "../src/jobs/ringRepush.js";
 import { enqueueDeviceCommand } from "../src/lib/deviceCommands.js";
 
-const wakes: Array<{ deviceId: string; type?: string }> = [];
+const wakes: Array<{ deviceId: string; commandId?: string; commandType?: string }> = [];
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -15,8 +15,8 @@ vi.mock("ioredis", async () => {
   return { Redis: MockRedis };
 });
 vi.mock("../src/lib/push/notify.js", () => ({
-  wakeDeviceDetached: vi.fn((deviceId: string, type?: string) => {
-    wakes.push({ deviceId, type });
+  wakeDeviceDetached: vi.fn((deviceId: string, commandId?: string, commandType?: string) => {
+    wakes.push({ deviceId, commandId, commandType });
   }),
 }));
 
@@ -41,8 +41,8 @@ describe("ring re-push job (#760 redesign)", () => {
     const run = await runRingRepush(now);
     expect(run).toEqual({ checked: 2, repushed: ["cmd-pending", "cmd-delivered"] });
     expect(wakes).toEqual([
-      { deviceId: "dev-1", type: "ring" },
-      { deviceId: "dev-2", type: "ring" },
+      { deviceId: "dev-1", commandId: "cmd-pending", commandType: "ring" },
+      { deviceId: "dev-2", commandId: "cmd-delivered", commandType: "ring" },
     ]);
     expect(redis.set).toHaveBeenCalledTimes(2);
     const query = prismaMock.deviceCommand.findMany.mock.calls[0][0];

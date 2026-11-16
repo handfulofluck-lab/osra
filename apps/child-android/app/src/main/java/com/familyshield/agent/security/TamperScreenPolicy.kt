@@ -13,7 +13,7 @@ package com.familyshield.agent.security
  * verb in English or Arabic second. A Settings page that merely lists apps, or the admin list without
  * our row expanded, is not a tamper screen.
  */
-enum class TamperScreen { NONE, DEACTIVATE_ADMIN, UNINSTALL, APP_INFO, PRIVATE_DNS, SPACE_SETUP }
+enum class TamperScreen { NONE, DEACTIVATE_ADMIN, UNINSTALL, APP_INFO, PROTECTION_SETTINGS, PRIVATE_DNS, SPACE_SETUP }
 
 object TamperScreenPolicy {
 
@@ -24,6 +24,10 @@ object TamperScreenPolicy {
         "com.google.android.packageinstaller",
         "com.samsung.android.packageinstaller",
         "com.miui.securitycenter",
+        // osra-security#30: the Permission manager lives in its own package on Android 11 and later.
+        "com.android.permissioncontroller",
+        "com.google.android.permissioncontroller",
+        "com.samsung.android.permissioncontroller",
     )
 
     // Secondary signal: the words on the screen, in every language the agent ships (English as before,
@@ -65,9 +69,38 @@ object TamperScreenPolicy {
     private val ADMIN_CLASSES = setOf("DeviceAdminAdd", "SecDeviceAdminAdd")
     // The admin LIST is never a protection screen; in Arabic its intro text carries «إلغاء تفعيل» and the list
     // names us, so the word path would misfire without this.
-    private val NEVER_CLASSES = setOf("DeviceAdminSettingsActivity")
+    private val NEVER_CLASSES = setOf(
+        "DeviceAdminSettingsActivity",
+        // Review of osra-security#29/#30: the list of every installed service and the runtime permission dialog.
+        // Gating the list would block access to assistive tools (ADR-0021), and the runtime prompt is what a
+        // parent answers while setting the phone up — a gate there would block onboarding itself.
+        "SecAccessibilityInstalledAppsActivity",
+        "AccessibilitySettingsActivity",
+        "GrantPermissionsActivity",
+    )
     private val UNINSTALL_CLASSES = setOf("UninstallerActivity")
     private val APP_INFO_CLASSES = setOf("InstalledAppDetails", "InstalledAppDetailsTop", "AppInfoDashboardActivity")
+
+    /** The permission *management* pages. Never the runtime prompt — see NEVER_CLASSES. */
+    private val PERMISSION_MANAGEMENT_CLASSES = setOf(
+        "ManagePermissionsActivity",
+        "AppPermissionsActivity",
+        "PermissionDetailsActivity",
+    )
+
+    /**
+     * osra-security#29 and osra-security#30: the pages that change the agent's own permissions are protection
+     * screens too. They do not read as "app info" — one carries a switch, the other per-permission rows — and
+     * without them the permission can be changed with no PIN, which is the same loss of protection by another
+     * route. Guarded only when the screen names the agent, like every other class here: the same pages exist for
+     * every app on the phone. The reproduction and the exact navigation stay in the private reports.
+     */
+    private val PROTECTION_SETTINGS_CLASSES = setOf(
+        // Our service's accessibility detail page: AOSP, Google and Samsung wording of the same page.
+        "AccessibilityDetails",
+        "AccessibilityServiceDetails",
+        "SecAccessibilityDetailsActivity",
+    )
 
     /**
      * osra-security#6 item 3: the screens that create a second space on the phone — Samsung Dual Messenger's
@@ -131,6 +164,15 @@ object TamperScreenPolicy {
         agentPackage: String,
         ourAdminActive: Boolean,
         windowClass: String? = null,
+        /**
+         * Fable's B2 on #813: the accessibility page shows **our own description text**, in the phone's
+         * language, and no other app's does. It is the one signal that does not depend on a class name — which
+         * matters because current Settings builds often host that page in a generic fragment host, and the
+         * window event then carries the host's class.
+         */
+        agentServiceDescription: String = "",
+        /** Whether the agent holds a location grant right now; the permission page is only ours to protect then. */
+        ourLocationActive: Boolean = false,
     ): TamperScreen {
         if (packageName != null && (packageName to simpleName(windowClass)) in SPACE_SETUP_SCREENS) {
             return TamperScreen.SPACE_SETUP
@@ -148,11 +190,34 @@ object TamperScreenPolicy {
         val namesUs = lower.any { t -> names.any { t.contains(it) } }
         if (!namesUs) return TamperScreen.NONE
 
+        // Antigravity's R1 on #813: NEVER_CLASSES is checked here, before every protection rule below, so the
+        // accessibility list, the settings hub and the runtime prompt cannot be caught by the description text or
+        // by the permission-management branch further down.
+        if (simpleName(windowClass) in NEVER_CLASSES) return TamperScreen.NONE
+
+        // Fable's B2 on #813: our own accessibility description is proof that this is *our* service page, whatever
+        // the host activity is called, and it is a Settings screen by then.
+        if (packageName == "com.android.settings") {
+            val description = normalize(agentServiceDescription).takeIf { it.length >= 24 }
+            if (description != null && joinedAll.contains(description)) return TamperScreen.PROTECTION_SETTINGS
+        }
+        // Fable's B2, second half, corrected by Antigravity's B2: PermissionController also hosts the runtime
+        // permission prompt, and the management pages are opened by onboarding itself when the parent grants
+        // background location. So this is **not** the whole package — it is the management classes, and the
+        // runtime dialog is never a screen (NEVER_CLASSES).
+        if (packageName.contains("permissioncontroller") && simpleName(windowClass) in PERMISSION_MANAGEMENT_CLASSES) {
+            // Antigravity's R2 on #813: onboarding opens this very page to grant background location, after the
+            // parent has set the PIN. With no location grant yet there is nothing to protect, and gating it blocks
+            // the parent's own setup; the same shape as ADMIN_CLASSES above, which only counts while our admin is on.
+            return if (ourLocationActive) TamperScreen.PROTECTION_SETTINGS else TamperScreen.NONE
+        }
+
         when (simpleName(windowClass)) {
             in NEVER_CLASSES -> return TamperScreen.NONE
             in ADMIN_CLASSES -> return if (ourAdminActive) TamperScreen.DEACTIVATE_ADMIN else TamperScreen.NONE
             in UNINSTALL_CLASSES -> return TamperScreen.UNINSTALL
             in APP_INFO_CLASSES -> return TamperScreen.APP_INFO
+            in PROTECTION_SETTINGS_CLASSES -> return TamperScreen.PROTECTION_SETTINGS
         }
 
         val joined = joinedAll

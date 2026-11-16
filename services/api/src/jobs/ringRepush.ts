@@ -45,7 +45,7 @@ export async function runRingRepush(now: Date = new Date()): Promise<RingRepushR
       .set(key, now.toISOString(), "EX", CLAIM_TTL_SECONDS, "NX")
       .catch(() => null);
     if (claim !== "OK") continue;
-    wakeDeviceDetached(command.deviceId, "ring");
+    wakeDeviceDetached(command.deviceId, command.id, "ring");
     repushed.push(command.id);
   }
   return { checked: commands.length, repushed };

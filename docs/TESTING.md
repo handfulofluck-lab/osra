@@ -43,6 +43,15 @@ the gates on 2026-10-18), so a row below is the floor, not the gate:
 A change is not done on the strength of a locally green suite whose build step was never exercised: the
 release-assembly step is where a release-only failure lives.
 
+For localized invitation and digest emails (#796), run `pnpm --filter @familyshield/api exec vitest run
+test/email-localization.test.ts test/email.test.ts --maxWorkers=1 --minWorkers=1`. The 52 tests cover four
+inviter/family-name combinations, whole-sentence roles, a missing display name, HTML `<bdi>` and text
+LRI/PDI isolation, Arabic plural rows for 0/1/2/5/11/100 minutes and digest periods, whole-word app-minute
+forms for 0/1/2 minutes, zero-activity and busy children, and real English singular/plural forms. The route
+test proves missing rows never become "A parent" or "the your". Plant the raw role, the old family fallback,
+a broken plural row and missing isolation; each owning test must fail before restoration. No live mail is
+sent. Mail-client/RTL picture evidence is separate from these unit and route tests and is not implied by them.
+
 For bedtime/school-hours overlap validation (#642), run `pnpm --filter @familyshield/api test --
 test/rules-overlap.test.ts test/rules.test.ts`. The five focused fixtures plus the existing rules suite
 prove that 21:00–06:30 does not meet 08:00–15:00 on weekdays; 09:00–10:00 against weekend school hours is
@@ -61,6 +70,16 @@ timestamp), dashboard, map-sheet, call/SMS and bonus-time widgets with an Arabic
 `TextDirection.rtl`, and checks the exact LRI/PDI-delimited values plus the localized accuracy unit.
 Removing any one of the seven `ltrIsolate` calls must turn its corresponding row red. These are widget
 tests, not a phone run; no device claim or API access is used.
+
+For Arabic and Latin list separators, run `flutter test test/localized_list_test.dart` from
+`apps/parent-app` (#794). Its nine tests cover the shared splitter and real Arabic-locale widgets for
+allowed/blocked domains, routine blocked/allowed apps and digest recipients. Each field saves both
+`a.com، b.com` as two items and `a.com, b.com،c.com` as three; the helper also covers both semicolon
+families, line breaks, empty items and direction marks. Replacing any one of the five field calls with a
+raw Latin `.split(',')` must turn its owning row red with `['a.com، b.com']` instead of two items.
+Disabling direction-mark removal on blocked domains must turn its dedicated row red. The real API Zod
+validation row is in `services/api/test/reports.test.ts`: a digest recipient containing RLM gets 400 and
+no preferences write. These are network-free widget tests and an injected API test, not a phone run.
 
 ## 2. Prerequisites (dev machine)
 

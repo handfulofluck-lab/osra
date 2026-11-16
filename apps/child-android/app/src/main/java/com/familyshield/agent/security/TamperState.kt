@@ -13,6 +13,13 @@ object TamperState {
     private const val KEY_ADMIN_DISABLED_AT_MS = "admin_disabled_at_ms"
     private const val KEY_ADMIN_ALERTS_POSTED = "admin_alerts_posted"
     private const val KEY_GRACE_UNTIL = "guard_grace_until_ms"
+
+    /**
+     * osra-security#29 review (Antigravity): when the accessibility service was last seen off. Both reporters — the
+     * unbind alert and the 60-second poll — stamp their alert with this moment, so the server sees one dedupe key
+     * for one switch-off instead of two pages.
+     */
+    private const val KEY_ACCESSIBILITY_DISABLED_AT = "accessibility_disabled_at_ms"
     private const val KEY_LAST_TIER = "last_tier"
     private const val KEY_SANCTIONED_UNTIL = "sanctioned_removal_until_ms"
     private const val KEY_ADMIN_REMOVED_BY_PARENT = "admin_removed_by_parent"
@@ -58,6 +65,14 @@ object TamperState {
     }
 
     fun graceUntil(context: Context): Long = prefs(context).getLong(KEY_GRACE_UNTIL, 0L)
+
+    /** Records when the service was last seen off; `0` means it is on (or was never off). */
+    fun setAccessibilityDisabledAt(context: Context, atMs: Long) {
+        prefs(context).edit().putLong(KEY_ACCESSIBILITY_DISABLED_AT, atMs).apply()
+    }
+
+    fun accessibilityDisabledAtMs(context: Context): Long =
+        prefs(context).getLong(KEY_ACCESSIBILITY_DISABLED_AT, 0L)
 
     /** The parent (PIN verified) is removing admin on purpose: no tamper alert for the next minute. */
     fun markSanctionedRemoval(context: Context, untilMs: Long) {

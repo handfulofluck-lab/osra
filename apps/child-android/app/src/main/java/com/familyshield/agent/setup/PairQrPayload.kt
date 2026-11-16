@@ -1,5 +1,6 @@
 package com.familyshield.agent.setup
 
+import com.familyshield.agent.security.Digits
 import java.net.URI
 import java.net.URLDecoder
 import java.net.URLEncoder
@@ -30,10 +31,11 @@ data class PairQrPayload(val code: String, val apiBaseUrl: String) {
 
     /** The documented v1 string; kept in step with the Dart encoder for the round-trip test. */
     fun encode(): String {
-        require(CODE_PATTERN.matches(code)) { "pairing code must be six digits" }
+        val normalized = Digits.normalize(code)
+        require(CODE_PATTERN.matches(normalized)) { "pairing code must be six digits" }
         require(isApiBaseUrl(apiBaseUrl)) { "pairing host must be an http(s) URL: $apiBaseUrl" }
         val encodedHost = URLEncoder.encode(apiBaseUrl, Charsets.UTF_8.name())
-        return "$SCHEME://$AUTHORITY?v=$VERSION&code=$code&host=$encodedHost"
+        return "$SCHEME://$AUTHORITY?v=$VERSION&code=$normalized&host=$encodedHost"
     }
 
     companion object {
@@ -74,7 +76,7 @@ data class PairQrPayload(val code: String, val apiBaseUrl: String) {
                     "unsupported pairing code version: ${version ?: "missing"}",
                 )
             }
-            val code = params["code"]
+            val code = params["code"]?.let(Digits::normalize)
             if (code == null || !CODE_PATTERN.matches(code)) {
                 throw PairQrFormatException("the pairing code is not six digits")
             }

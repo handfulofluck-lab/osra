@@ -110,6 +110,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       builder: (dialogContext) {
         final l10n = dialogContext.l10n;
         return AlertDialog(
+          scrollable: true,
           title: Row(
             children: [
               Icon(Icons.circle,
