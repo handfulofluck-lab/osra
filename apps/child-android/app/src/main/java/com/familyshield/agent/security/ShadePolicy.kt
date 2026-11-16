@@ -28,13 +28,14 @@ object ShadePolicy {
         packageName: String?,
         className: String?,
         apiLevel: Int,
-        callActive: Boolean = false,
+        callRinging: Boolean = false,
     ): Boolean {
         if (!locked) return false
         if (apiLevel < MIN_API) return false
         // #828 (UI/UX Bureau): with the screen on, an incoming call is a heads-up in systemui. Collapsing
-        // it would hide Answer, so a ringing or in-call phone is left entirely alone.
-        if (callActive) return false
+        // it would hide Answer. Only the ringing phase is exempt (Fable's review): during a placed or
+        // answered call the shade is locked again, so a call cannot be used to browse notifications.
+        if (callRinging) return false
         if (packageName != SHADE_PACKAGE) return false
         val name = className?.lowercase() ?: return false
         return SHADE_CLASSES.any { name.contains(it) }
