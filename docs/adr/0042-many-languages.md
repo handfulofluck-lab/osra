@@ -138,7 +138,7 @@ reviewer work on. No hosted translation service for now (see Alternatives).
   inside TypeScript. No sentence is glued from pieces: counts use plural forms, lists use the language's
   own separator (`Intl.ListFormat`), a role or other wire value is mapped to a phrase, and punctuation
   around a link (French's no-break space before the colon) is part of the translated line. The subject is
-  in one language. The key layout is the one the Language Bureaus drafted (37 lines for the six emails,
+  in one language. The key layout is the one the Language Bureaus drafted (41 lines for the six emails as of `main@77a5e4f9`,
   `language-bureaus/outside/en/emails.en.json`). Faults this exposed in English and Arabic today are
   #796.
 - **Text is written on the device where it is read, in that reader's language.** An alert carries a
