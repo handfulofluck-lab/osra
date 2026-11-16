@@ -126,11 +126,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                       style: Theme.of(dialogContext).textTheme.titleMedium)),
             ],
           ),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
                 // Issue #475 follow-up (Claude's ruling): the line is scoped to THIS alert's child, in the
                 // dialog a parent opens later to ask "did my last change land?". The feed itself is
                 // family-wide, so it carries no line; the Block path already refetches the family.
@@ -231,7 +230,6 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 ],
               ],
             ),
-          ),
           actions: [
             if (alert.category == 'install_request') ...[
               OutlinedButton(
