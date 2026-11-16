@@ -1,7 +1,12 @@
 # ADR-0042 — Ready for many languages: one language registry, a translation pipeline with gates, a language-neutral scorer with a per-language eval gate, and country packs for web blocking
 
-- **Status:** proposed (2026-11-13). Architecture is Claude's call. The items marked **M1–M4** are the
-  maintainer's (money, legal, launch scope). **No next language is chosen by this ADR.**
+- **Status:** proposed (2026-11-13), amended 2026-11-16. Architecture is Claude's call. The items marked
+  **M1–M4** are the maintainer's (money, legal, launch scope).
+- **Amendment 2026-11-16:** the maintainer decided *"we will launch with all"*: Public 1 (12 Jan 2027)
+  ships English and Arabic plus **Turkish, Indonesian, Malay, French and Urdu**, each country switched on
+  only after its lawyer clears it. Beta A (2 Dec) stays English and Arabic; the five reach beta testers
+  about 15 Dec; text freezes 5 Jan. So rows 4–7 below move before Public 1, and D1 gains a testers-only
+  switch that does not depend on a separate build (D1a). See *Launch sequence* after the change table.
 - **Date:** 2026-11-13
 - **Deciders:** Claude (architecture, QA); Karim (money, legal, which language and when). Built by Kimi and
   K31; Ahmed for iPhone, Mac and the security review of the blocklist pipeline.
@@ -114,6 +119,28 @@ the seven clients, email, site, store, and the scorer.
 
 A check fails when a build offers a language the registry does not allow for that client and build type. Pickers, parity tests and the site builder read the
 registry instead of naming `en` and `ar`.
+
+### D1a. The testers-only switch is served, not compiled
+
+A beta language must reach named testers and nobody else, on the **same build** that later goes to
+production (Play and TestFlight promote a tested build; rebuilding per audience would test one binary and
+ship another). So:
+
+- Every client compiles in all catalogs it has, but offers a language only if it is in its **enabled
+  list**. The compiled-in default is the `released` languages only.
+- The API serves the enabled list per family (`GET /v1/me` for the parent app, the rule-sync payload for
+  child clients): `released` languages for everyone, plus `beta` languages for families flagged as
+  testers. A tester flag is set by an operator, never by the family.
+- A device whose language is not enabled shows the base language's fallback (D4), never a half-enabled
+  screen. The parent app's picker and `supportedLocales` read the enabled list; Android and iPhone child
+  apps choose their strings from it in code rather than trusting the system locale alone.
+- Emails use the same list: a parent's `locale` that is not enabled for their family sends English
+  (or English + Arabic as today).
+- The website's language menu and the store listings are not gated by this switch: a page or listing in a
+  language is published only when that language is `released` for site or store.
+
+This replaces "a `draft` ARB lives outside `lib/l10n/`" for the five launch languages: their catalogs can
+land on `main` as soon as the switch exists, which also lets the CI gates (D5) run on them.
 
 ### D2. Each platform keeps its native catalog; nothing user-visible is a literal
 
@@ -259,16 +286,35 @@ where the law asks for them; store listing through the renderer; a support answe
 | 1 | Android child: move the English literals to resources, add the missing Arabic key, `supportsRtl` | Kimi/K31 | 2–3 days | **Before closed beta A.** These are Arabic defects today |
 | 2 | Windows agent: `.resx` resources, Arabic catalog, RTL dialogs | K31 | 1 week | **Before the Windows closed beta (22 Jan).** Same reason |
 | 3 | Alerts carry type + parameters, from the server (#711) and from every child client (#722); the parent app renders the body | Kimi (server, Android, parent app), Ahmed (iPhone), K31 (Windows) | about 1 week | Before Public 1 if it fits, else first after |
-| 4 | `Parent.locale`; emails per language | Kimi | 3–4 days | After Public 1 |
-| 5 | Registry (D1), pickers and tests read it; site builder takes N languages | Kimi/K31 | 1 week | After Public 1 |
-| 6 | `tools/l10n` export/import, glossary JSON, Android-source term pull, CI gates incl. pseudo-language | K31, Claude verifies | 1–1.5 weeks | After Public 1 |
-| 7 | Eval harness per language; neutral prompt; re-run both gates; Arabizi rows | K31 authors, Claude labels blind | 1 week + rows | After Public 1 |
+| 4 | `Parent.locale`; emails per language from the D3 catalog | Kimi | 3–4 days | **By 12 Dec** (amended 16 Nov) |
+| 5 | Registry (D1) and the served testers-only switch (D1a); pickers and tests read it; site builder and language menu take N languages | K31 (clients), Kimi (API) | 1–1.5 weeks | **By 5 Dec** (amended 16 Nov): the 15 Dec tester date depends on it |
+| 6 | CI gates for every catalog (key and placeholder parity, plural categories, glossary terms, RTL and tall-script overflow) first, built from the Bureaus' `build-pack.mjs`; export/import and pseudo-language after | K31, Claude verifies | 1 week for the gates | **Gates by 12 Dec** (amended 16 Nov); the rest after Public 1 |
+| 7 | Eval harness per language; neutral prompt; per-language gate for tr, id, ms, fr, ur; Arabizi rows | the AI scoring thread (own model and Bedrock runs already cover the five), K31 authors | 1 week + rows | **Gate result per language by 5 Jan** (amended 16 Nov) |
 | 8 | Pack v2 pipeline and on-device format (spike first) | Kimi, Ahmed reviews | 2 weeks | After Public 1; needed for EN/AR quality too |
 | 9 | Mac agent on `L10n` from the start | Ahmed | no extra cost | With the Mac build |
+| 10 | Coach cards move from `coach_content.dart` (EN/AR in code) to a per-language catalog the Bureaus can write | Kimi | 2–3 days | By 12 Dec (added 16 Nov) |
+| 11 | Fonts: Turkish needs Latin Extended in every bundled face (site's IBM Plex subset is `latin` only); Urdu needs Noto Nastaliq Urdu and the per-script line height (D6) on all clients | K31, UI/UX Bureau picks faces | 3–4 days + a layout round | By 12 Dec (added 16 Nov) |
 
 Rows 1–3 are not "many languages" work: they are places where the first launch language, Arabic, still
 shows English. Rows 4–8 are about 5–7 team-weeks, once. Rows 1–3 are on the release-readiness list by
 the maintainer's decision (**M1**); rows 4–8 move no date in the 13 November re-plan.
+
+### Launch sequence (amended 16 Nov)
+
+| Date | What must be true |
+|---|---|
+| 2 Dec | Beta A, English and Arabic only. Rows 1 and 3 on track |
+| 5 Dec | Row 5: the served switch works on the parent app and both phone child apps; the five catalogs can land on `main` behind it |
+| 12 Dec | Rows 4, 6 (gates), 10, 11; the five catalogs on `main` and green in CI |
+| ~15 Dec | Tester families flagged; the five languages reach them only |
+| 5 Jan | Text freeze; row 7 gate result per language; lawyer sign-off per country |
+| 12 Jan | Public 1: each language `released` per surface **only** with its native review, its country's legal text and its scorer result |
+
+**What a missed gate means.** If a language's scorer gate (D7) has not passed by 5 Jan, the app can still
+ship in that language, but OSRA must not claim message-safety in it: the store listing and site in that
+language say so, and `EVAL.md` shows it unmeasured. If a country's lawyer has not cleared it, that country
+is left out of the store's availability list; the language can still serve that language's speakers
+elsewhere. Neither case needs a code change, only the registry's per-surface status.
 
 After that, a new language is: catalogs drafted and reviewed (D5), eval set authored and gate passed (D7),
 country pack and app registry checked (D8), legal and store (D9). For a Latin-script language that is about
