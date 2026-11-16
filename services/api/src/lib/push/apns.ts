@@ -179,6 +179,8 @@ export class ApnsProvider implements PushProvider {
       ...(message.threadId ? { "apns-collapse-id": message.threadId.slice(0, 64) } : {}),
     };
     const isRetryableConnectionError = (err: unknown): boolean => {
+      const code = (err as NodeJS.ErrnoException).code ?? "";
+      if (["ECONNRESET", "EPIPE", "ETIMEDOUT"].includes(code)) return true;
       const msg = (err as Error).message ?? "";
       return ["ECONNRESET", "EPIPE", "ETIMEDOUT", "GOAWAY", "NGHTTP2", "closed session", "Connection reset"].some((pattern) =>
         msg.includes(pattern),
