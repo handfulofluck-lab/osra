@@ -44,7 +44,7 @@ export default {
   features: {
     kicker: "Everything in one app",
     h2: "Protection that fits real family life",
-    lede: "Set the rules once from your phone. OSRA applies them on every device your child uses, and tells you when something needs you.",
+    lede: "Set the rules once from your phone. OSRA applies them on each of your child's devices, as far as each device allows, and tells you when something needs you.",
     items: [
       { icon: "clock", title: "Screen time", text: "Daily and weekend limits, bedtime and school hours, and routines that allow or block apps at set times." },
       { icon: "apps", title: "App limits", text: "Block an app or give it its own daily limit. Your child can ask for access from the block screen." },
@@ -64,7 +64,7 @@ export default {
     steps: [
       { title: "Install two apps", text: "OSRA on your phone. OSRA Kids on each phone or tablet your child uses." },
       { title: "Pair with a code", text: "Scan the QR code from your app with your child's phone, then tap Allow when your app asks." },
-      { title: "Set the rules once", text: "Limits, bedtime, apps and web filter apply to every device of that child. Change them any time." },
+      { title: "Set the rules once", text: "Limits, bedtime, apps and web filter follow the child to each of their devices, as far as each device allows. Change them any time." },
     ],
     link: "Read the full guide",
   },
