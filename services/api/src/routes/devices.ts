@@ -21,7 +21,7 @@ import {
   type PolledDevice,
 } from "../lib/pollCadence.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
-import { recordActivityUsage, recordAppUsage, recordDeviceTotal } from "../lib/usageModel.js";
+import { gateActivityEvents, recordActivityUsage, recordAppUsage, recordDeviceTotal } from "../lib/usageModel.js";
 import { siteNamesEnabled } from "../lib/siteNames.js";
 
 import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
@@ -940,9 +940,15 @@ export async function deviceRoutes(app: FastifyInstance) {
     const device = (req as unknown as { device: { id: string; childId: string } }).device;
     // ADR-0008 §2b: withdrawal of consent stops collection.
     if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
-    // Filter out live-activity heartbeat snapshots from persistent historical log (BUG-002)
-    const persistentEvents = parsed.data.events.filter(
-      (e) => !(e.type === "app_usage" && (e.payload as Record<string, unknown>)?.live === true),
+    // Filter out live-activity heartbeat snapshots from persistent historical log (BUG-002), then apply
+    // the site-name gate before anything is stored: a `url` event that may not be kept is dropped here,
+    // and a kept one carries only its host, so the raw log never holds a path or query (#841 Fable B1).
+    const siteNames = siteNamesEnabled();
+    const persistentEvents = gateActivityEvents(
+      parsed.data.events.filter(
+        (e) => !(e.type === "app_usage" && (e.payload as Record<string, unknown>)?.live === true),
+      ) as Array<{ ts?: string; type: string; payload: Record<string, unknown> }>,
+      siteNames,
     );
     if (persistentEvents.length > 0) {
       await prisma.activityEvent.createMany({
@@ -957,7 +963,7 @@ export async function deviceRoutes(app: FastifyInstance) {
       // Phase 2c: fold the batch into AppUsageDaily / WebVisit. A failure here must not reject the
       // batch (the raw log is the source of truth; the nightly rollup reconciles from it).
       try {
-        await recordActivityUsage(device.childId, id, persistentEvents as Array<{ ts?: string; type: string; payload: Record<string, unknown> }>, { siteNames: siteNamesEnabled() });
+        await recordActivityUsage(device.childId, id, persistentEvents, { siteNames });
       } catch (err) {
         req.log.warn({ err }, "usage rollup write failed (activity)");
       }

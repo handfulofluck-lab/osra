@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { deviceRoutes } from "../src/routes/devices.js";
+import { reportsRoutes } from "../src/routes/reports.js";
 import { toApiRuleSet } from "../src/lib/ruleSync.js";
 import { isExcludedSiteHost, siteNamesEnabled, siteVisitRetentionDays } from "../src/lib/siteNames.js";
-import { buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
+import { authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -100,6 +101,13 @@ describe("#830 site names — the activity route while the flag is off", () => {
         expect.objectContaining({ childId: "child-1", deviceId: "dev-1", domain: "bad.example", url: "bad.example", blocked: true }),
       ],
     });
+    // The raw log is a second table the same rule must cover (#841, Fable B1): only the blocked row is
+    // stored, and it carries the host, never the path the phone sent.
+    expect(prismaMock.activityEvent.createMany).toHaveBeenCalledTimes(1);
+    const raw = prismaMock.activityEvent.createMany.mock.calls[0][0].data as Array<{ type: string; payload: Record<string, unknown> }>;
+    expect(raw).toHaveLength(1);
+    expect(raw[0].type).toBe("url");
+    expect(raw[0].payload).toEqual({ url: "bad.example", domain: "bad.example", blocked: true });
   });
 
   it("writes no row at all when every name in the batch was unblocked", async () => {
@@ -108,6 +116,27 @@ describe("#830 site names — the activity route while the flag is off", () => {
     });
     expect(res.statusCode).toBe(202);
     expect(prismaMock.webVisit.createMany).not.toHaveBeenCalled();
+    expect(prismaMock.activityEvent.createMany).not.toHaveBeenCalled();
+  });
+
+  it("reduces a blocked event's full address to its host before the raw insert", async () => {
+    const res = await postActivity({
+      events: [
+        { ts: "2026-10-15T10:00:00Z", type: "url", payload: { url: "https://Bad.example/secret?a=1", blocked: true, category: "gambling" } },
+      ],
+    });
+    expect(res.statusCode).toBe(202);
+    const raw = prismaMock.activityEvent.createMany.mock.calls[0][0].data as Array<{ payload: Record<string, unknown> }>;
+    expect(raw[0].payload).toEqual({ url: "bad.example", domain: "bad.example", blocked: true, category: "gambling" });
+  });
+
+  it("stores an app_usage event untouched, so the gate only covers url events", async () => {
+    const res = await postActivity({
+      events: [{ ts: "2026-10-15T10:00:00Z", type: "app_usage", payload: { app: "YouTube", minutes: 3 } }],
+    });
+    expect(res.statusCode).toBe(202);
+    const raw = prismaMock.activityEvent.createMany.mock.calls[0][0].data as Array<{ payload: Record<string, unknown> }>;
+    expect(raw[0].payload).toEqual({ app: "YouTube", minutes: 3 });
   });
 });
 
@@ -126,7 +155,7 @@ describe("#830 site names — the activity route with the flag on", () => {
     });
   });
 
-  it("still drops an excluded host", async () => {
+  it("still drops an excluded host, from both tables", async () => {
     const res = await postActivity({
       events: [
         { ts: "2026-10-15T10:00:00Z", type: "url", payload: { url: "api.osratech.com", blocked: false } },
@@ -137,5 +166,41 @@ describe("#830 site names — the activity route with the flag on", () => {
     expect(res.statusCode).toBe(202);
     const data = prismaMock.webVisit.createMany.mock.calls[0][0].data as Array<{ domain: string }>;
     expect(data.map((row) => row.domain)).toEqual(["example.com"]);
+    const raw = prismaMock.activityEvent.createMany.mock.calls[0][0].data as Array<{ payload: Record<string, unknown> }>;
+    expect(raw.map((row) => row.payload.domain)).toEqual(["example.com"]);
+  });
+});
+
+describe("#830 site names — the read side", () => {
+  it("the web report shows blocked attempts only while the flag is off", async () => {
+    const app = await buildApp(reportsRoutes, "/v1/reports");
+    prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", familyId: "fam-1", displayName: "Laila", birthYear: 2012 });
+    prismaMock.webVisit.findMany.mockResolvedValue([]);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/reports/web?childId=child-1",
+      headers: authHeader(app),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(prismaMock.webVisit.findMany.mock.calls[0][0].where).toMatchObject({ childId: "child-1", blocked: true });
+    await app.close();
+  });
+
+  it("the activity report excludes unblocked url rows while the flag is off", async () => {
+    const app = await buildApp(reportsRoutes, "/v1/reports");
+    prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", familyId: "fam-1", displayName: "Laila", birthYear: 2012 });
+    prismaMock.activityEvent.findMany.mockResolvedValue([]);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/reports/activity?childId=child-1&type=url",
+      headers: authHeader(app),
+    });
+    expect(res.statusCode).toBe(200);
+    const where = prismaMock.activityEvent.findMany.mock.calls[0][0].where as Record<string, unknown>;
+    expect(where.OR).toEqual([
+      { type: { not: "url" } },
+      { payload: { path: ["blocked"], equals: true } },
+    ]);
+    await app.close();
   });
 });

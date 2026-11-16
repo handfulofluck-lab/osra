@@ -288,17 +288,20 @@ class FilterVpnService : VpnService() {
      * itself and is not behind the switch.
      */
     private fun recordSiteVisit(host: String, blocked: Boolean) {
-        if (host.isEmpty()) return
-        if (!SiteVisitGate.shouldUpload(config.siteNamesEnabled, blocked)) return
+        // One normalised name for the quiet window, the batch and the exclusion check: `q.name` arrives
+        // with its DNS casing and a trailing dot, and two spellings of one host split the maps (#841).
+        val name = DnsFilterPolicy.normalize(host)
+        if (name.isEmpty()) return
+        if (!SiteVisitGate.shouldUpload(config.siteNamesEnabled, blocked, SiteVisitGate.isExcludedHost(name))) return
         val now = System.currentTimeMillis()
-        val last = lastSiteVisit[host]
+        val last = lastSiteVisit[name]
         if (!com.familyshield.agent.enforcement.AlertKeys.siteAlertDue(last, now, SITE_VISIT_QUIET_MS)) return
         if (lastSiteVisit.size > 512) {
             lastSiteVisit.entries.removeIf { now - it.value > SITE_VISIT_QUIET_MS }
         }
-        lastSiteVisit[host] = now
+        lastSiteVisit[name] = now
         val flushNow = synchronized(pendingVisitsLock) {
-            pendingVisits[host] = blocked
+            pendingVisits[name] = blocked
             pendingVisits.size >= SITE_VISIT_BATCH_MAX
         }
         startVisitFlusher()

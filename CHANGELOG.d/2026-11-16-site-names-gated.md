@@ -8,8 +8,13 @@
 - **The phone does not send while it is off:** the rule projection carries `siteNames`, the agent stores
   it with the rest of its rules, and `SiteVisitGate` keeps an unblocked name on the phone until the flag
   arrives as true.
+- **The raw log is gated too:** the same rule runs before `ActivityEvent` stores a `url` event, so with
+  the flag off an unblocked name is dropped there as well (not only from `WebVisit`), a kept event carries
+  the host and never the path or query, and excluded hosts are dropped. `url` rows leave the raw log at 90
+  days too, and while the flag is off the web report returns blocked attempts only.
 - **Exclusions, one list:** our API host and its subdomains, the search-enforcement hosts the filter
-  forces, and the Android/OS connectivity and time checks are dropped on the server.
+  forces, and the Android/OS connectivity and time checks are dropped on the server; the phone drops the
+  same names before they reach the batch.
 - **Host only, 90 days:** the row keeps the host (never path, query or fragment), and the cleanup job
   deletes site names at 90 days even when `RETENTION_DAYS` is raised.
 - **Batched:** the filter queues names and posts one request per 20 names or per minute, not one per

@@ -19,6 +19,10 @@ class Reporting830WiringTest {
         val vpn = source("apps/child-android/app/src/main/java/com/familyshield/agent/vpn/FilterVpnService.kt")
         assertTrue(vpn.contains("reportBlockedSite(q.name"))
         assertTrue(vpn.contains("AlertKeys.blockedSite"))
+        // #841: the exclusion check must be at the call site, not only inside the helper, and the name
+        // must be normalised once so two spellings of a host cannot split the maps.
+        assertTrue(vpn.contains("SiteVisitGate.shouldUpload(config.siteNamesEnabled, blocked, SiteVisitGate.isExcludedHost(name))"))
+        assertTrue(vpn.contains("DnsFilterPolicy.normalize(host)"))
 
         val dispatcher = source("apps/child-android/app/src/main/java/com/familyshield/agent/commands/CommandDispatcher.kt")
         assertTrue(dispatcher.contains("LockPeriodTracker.start(context, LockActivity.MODE_LOCKED"))

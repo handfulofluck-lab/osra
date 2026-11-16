@@ -127,7 +127,9 @@ describe("usage model — reads and rollup", () => {
     }
     const now = new Date("2026-10-16T02:00:00Z");
     const out = await applyRetention(now, { RETENTION_DAYS: "90", ROLLUP_RETENTION_DAYS: "365" } as NodeJS.ProcessEnv);
-    expect(out).toEqual({ activityEvents: 2, webVisits: 2, socialEvents: 2, locationPings: 2, usageDays: 2, alerts: 2, alertLocations: expect.any(Number) });
+    // #841: the url rows are deleted a second time against the 90-day site-name window; both counts
+    // add into `activityEvents`, so the mock's 2 + 2 is reported as 4.
+    expect(out).toEqual({ activityEvents: 4, webVisits: 2, socialEvents: 2, locationPings: 2, usageDays: 2, alerts: 2, alertLocations: expect.any(Number) });
     const rawCutoff = new Date(now.getTime() - 90 * 86_400_000);
     // ADR-0028 decision 5 (#238): location history stops at 30 days even when the raw window is 90.
     // This assertion used to expect `rawCutoff` for locationPing; that was the old decision, so the
@@ -140,8 +142,9 @@ describe("usage model — reads and rollup", () => {
     expect(prismaMock.appUsageDaily.deleteMany).toHaveBeenCalledWith({ where: { day: { lt: new Date("2025-10-16T00:00:00.000Z") } } });
     // A too-short window is refused (never below 7 days), and rollups never outlive-less than raw.
     const guard = await applyRetention(now, { RETENTION_DAYS: "1", ROLLUP_RETENTION_DAYS: "3" } as NodeJS.ProcessEnv);
-    expect(guard.activityEvents).toBe(2);
-    expect(prismaMock.activityEvent.deleteMany).toHaveBeenLastCalledWith({ where: { ts: { lt: rawCutoff } } });
+    expect(guard.activityEvents).toBe(4);
+    expect(prismaMock.activityEvent.deleteMany).toHaveBeenCalledWith({ where: { ts: { lt: rawCutoff } } });
+    expect(prismaMock.activityEvent.deleteMany).toHaveBeenCalledWith({ where: { type: "url", ts: { lt: rawCutoff } } });
   });
 
   it("applyRetention keeps site names to 90 days even when RETENTION_DAYS is raised (#830, Fable B1)", async () => {
@@ -156,6 +159,10 @@ describe("usage model — reads and rollup", () => {
     // The other raw rows keep the configured year, so the two windows are not interchangeable.
     expect(prismaMock.activityEvent.deleteMany).toHaveBeenCalledWith({
       where: { ts: { lt: new Date(now.getTime() - 365 * day) } },
+    });
+    // #841: url rows in the raw log are site names too, so they follow the 90-day window.
+    expect(prismaMock.activityEvent.deleteMany).toHaveBeenCalledWith({
+      where: { type: "url", ts: { lt: siteCutoff } },
     });
   });
 
@@ -338,8 +345,9 @@ describe("usage model — ingestion hooks and routes", () => {
       create: { childId: "child-1", deviceId: "dev-1", day: DAY, app: "YouTube", minutes: 12 },
       update: { minutes: { increment: 12 } },
     });
+    // #841: the raw event is scrubbed before the rollup too, so the visit row keeps the host, not the path.
     expect(prismaMock.webVisit.createMany).toHaveBeenCalledWith({
-      data: [{ childId: "child-1", deviceId: "dev-1", ts: new Date("2026-10-15T10:01:00Z"), domain: "example.com", url: "https://example.com/x", blocked: true, category: "" }],
+      data: [{ childId: "child-1", deviceId: "dev-1", ts: new Date("2026-10-15T10:01:00Z"), domain: "example.com", url: "example.com", blocked: true, category: "" }],
     });
 
     prismaMock.appUsageDaily.upsert.mockRejectedValueOnce(new Error("db down"));

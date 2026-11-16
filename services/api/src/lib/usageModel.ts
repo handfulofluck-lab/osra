@@ -3,7 +3,7 @@ import { prisma } from "../db.js";
 import { getRedis } from "../redis.js";
 import { markDeviceRevoked } from "./deviceRevocation.js";
 import { stripAlertLocation } from "./alertLocation.js";
-import { isExcludedSiteHost, siteVisitRetentionDays } from "./siteNames.js";
+import { hostOf, isExcludedSiteHost, siteVisitRetentionDays } from "./siteNames.js";
 
 /**
  * Phase 2c (ADR-0013): the durable usage model.
@@ -124,6 +124,34 @@ async function addMinutes(childId: string, deviceId: string, day: Date, app: str
   });
 }
 
+/**
+ * #830 gating for the raw log: the same rule the `WebVisit` write uses, applied before
+ * `ActivityEvent` stores anything. Returns the events that may be kept, with a `url` event's payload
+ * reduced to the host — so a full address with a path or query never lands in the table a parent reads
+ * through `GET /v1/reports/activity?type=url`. While the flag is off an unblocked name is dropped
+ * here, not only at the rollup; a blocked attempt stays because it is the parent's rule reporting
+ * itself. Excluded hosts are dropped in both states.
+ */
+export function gateActivityEvents<T extends { type: string; payload: Record<string, unknown> }>(events: T[], siteNames: boolean): T[] {
+  const kept: T[] = [];
+  for (const event of events) {
+    if (event.type !== "url") {
+      kept.push(event);
+      continue;
+    }
+    const p = event.payload ?? {};
+    const raw = typeof p.url === "string" && p.url ? p.url : typeof p.domain === "string" ? p.domain : "";
+    const host = hostOf(raw).slice(0, 253);
+    if (!host || isExcludedSiteHost(host)) continue;
+    const blocked = p.blocked === true;
+    if (!blocked && !siteNames) continue;
+    const payload: Record<string, unknown> = { url: host, domain: host, blocked };
+    if (typeof p.category === "string" && p.category) payload.category = p.category.slice(0, 64);
+    kept.push({ ...event, payload });
+  }
+  return kept;
+}
+
 /** Ingestion hook: fold a device's activity batch into the rollup tables. Best-effort per row. */
 export async function recordActivityUsage(
   childId: string,
@@ -138,7 +166,7 @@ export async function recordActivityUsage(
   // history (it is the parent's own rule reporting itself), so it stays. The exclusion list applies in
   // both states: our API, the enforcement hosts and the OS connectivity checks are not sites the child
   // visited.
-  const keep = visits.filter((v) => !isExcludedSiteHost(v.domain) && (options.siteNames === true || v.blocked));
+  const keep = visits.filter((v) => v.domain !== "unknown" && !isExcludedSiteHost(v.domain) && (options.siteNames === true || v.blocked));
   if (keep.length > 0) {
     await prisma.webVisit.createMany({ data: keep.map((v) => ({ childId, deviceId, ...v })) });
   }
@@ -302,8 +330,11 @@ export async function applyRetention(at: Date = new Date(), env: NodeJS.ProcessE
   const locationCutoff = new Date(at.getTime() - locationRetentionDays(env) * MS_PER_DAY);
   const rollupCutoff = utcDay(new Date(at.getTime() - rollupRetentionDays(env) * MS_PER_DAY));
   const alertCutoff = new Date(at.getTime() - alertRetentionDays(env) * MS_PER_DAY);
-  const [a, w, s, l, u, al] = await Promise.all([
+  const [a, url, w, s, l, u, al] = await Promise.all([
     prisma.activityEvent.deleteMany({ where: { ts: { lt: rawCutoff } } }),
+    // #830: `url` rows in the raw log are site names too, so they leave at the 90-day window rather
+    // than the raw one. Gating at ingestion stops new ones; this removes the older rows.
+    prisma.activityEvent.deleteMany({ where: { type: "url", ts: { lt: visitCutoff } } }),
     prisma.webVisit.deleteMany({ where: { ts: { lt: visitCutoff } } }),
     prisma.socialEvent.deleteMany({ where: { createdAt: { lt: rawCutoff } } }),
     prisma.locationPing.deleteMany({ where: { timestamp: { lt: locationCutoff } } }),
@@ -333,7 +364,7 @@ export async function applyRetention(at: Date = new Date(), env: NodeJS.ProcessE
     alertLocations += 1;
   }
   return {
-    activityEvents: a.count,
+    activityEvents: a.count + url.count,
     webVisits: w.count,
     socialEvents: s.count,
     locationPings: l.count,

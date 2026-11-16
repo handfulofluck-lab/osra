@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { guardianPermissions, requireFamily, requireGuardianRead, requireParent } from "../middleware/requireFamily.js";
 import { computeWellbeingScore, currentIsoWeek, summarizeChildActivity } from "../lib/activitySummary.js";
 import { usageSeries, webHistory } from "../lib/usageModel.js";
+import { siteNamesEnabled } from "../lib/siteNames.js";
 
 const ActivityReportQuerySchema = z.object({
   childId: z.string().min(1),
@@ -41,10 +42,15 @@ export async function reportsRoutes(app: FastifyInstance) {
     const parsed = ActivityReportQuerySchema.safeParse(req.query ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const q = parsed.data;
+    const siteNames = siteNamesEnabled();
     const rows = await prisma.activityEvent.findMany({
       where: {
         childId: q.childId,
         ...(q.type ? { type: q.type } : {}),
+        // #830: while the flag is off, a `url` row is returned only when it is a blocked attempt.
+        ...(siteNames
+          ? {}
+          : { OR: [{ type: { not: "url" } }, { payload: { path: ["blocked"], equals: true } }] }),
         ...(q.from || q.to
           ? { ts: { ...(q.from ? { gte: new Date(q.from) } : {}), ...(q.to ? { lte: new Date(q.to) } : {}) } }
           : {}),
@@ -90,7 +96,13 @@ export async function reportsRoutes(app: FastifyInstance) {
     const parsed = WebQuerySchema.safeParse(req.query ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const q = parsed.data;
-    const items = await webHistory(q.childId, q.days, q.limit, { blockedOnly: q.blocked === "true", domain: q.domain });
+    // #830: while the site-name flag is off, the web report shows blocked attempts only. The gate at
+    // ingestion already stops new unblocked rows; this keeps a read from exposing a row written before
+    // the gate (or by a client that ignored it).
+    const items = await webHistory(q.childId, q.days, q.limit, {
+      blockedOnly: !siteNamesEnabled() || q.blocked === "true",
+      domain: q.domain,
+    });
     return { childId: q.childId, days: q.days, items };
   });
 

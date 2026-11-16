@@ -44,6 +44,18 @@ export function isExcludedSiteHost(host: string): boolean {
   return h === "osratech.com" || h.endsWith(".osratech.com");
 }
 
+/** The host name of a URL or bare host; empty when the value has none. */
+export function hostOf(value: string): string {
+  const trimmed = value.trim().replace(/^\*?\./, "");
+  if (!trimmed) return "";
+  try {
+    const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    return new URL(withScheme).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
 /**
  * Site names are kept for 90 days, and never longer than the other raw rows. The privacy notice and the
  * store form name that period, so the cleanup job must not inherit a raised `RETENTION_DAYS` silently.

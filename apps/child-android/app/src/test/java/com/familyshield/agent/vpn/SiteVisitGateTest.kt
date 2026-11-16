@@ -30,4 +30,29 @@ class SiteVisitGateTest {
     fun `an excluded host never uploads`() {
         assertFalse(SiteVisitGate.shouldUpload(siteNamesEnabled = true, blocked = true, excludedHost = true))
     }
+
+    @Test
+    fun `the phone drops the same hosts the server drops`() {
+        for (host in listOf(
+            "api.osratech.com",
+            "osratech.com",
+            "forcesafesearch.google.com",
+            "strict.bing.com",
+            "restrict.youtube.com",
+            "connectivitycheck.gstatic.com",
+            "time.android.com",
+            "",
+        )) {
+            assertTrue("$host should be excluded", SiteVisitGate.isExcludedHost(host))
+        }
+        for (host in listOf("example.com", "notosratech.com", "youtube.com")) {
+            assertFalse("$host should not be excluded", SiteVisitGate.isExcludedHost(host))
+        }
+    }
+
+    @Test
+    fun `a DNS name is matched after its trailing dot and case are normalised`() {
+        assertTrue(SiteVisitGate.isExcludedHost("API.OSRATECH.COM."))
+        assertFalse(SiteVisitGate.isExcludedHost("Example.COM."))
+    }
 }
