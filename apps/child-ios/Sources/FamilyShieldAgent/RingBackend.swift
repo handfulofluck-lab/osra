@@ -9,14 +9,6 @@ public protocol RingBackend {
     func stop(_ id: UUID) async throws
     func scheduledIDs() async throws -> Set<UUID>
     func updates() async -> AsyncStream<Set<UUID>>
-    /// All alarm IDs the backend would schedule for a command, including any sentinel IDs,
-    /// up to the supplied wall-clock cap. The controller uses this to tell a natural chain
-    /// progression from a lock-screen stop.
-    func alarmIDs(for commandId: UUID, until: Date?) -> Set<UUID>
-}
-
-public extension RingBackend {
-    func alarmIDs(for commandId: UUID, until: Date? = nil) -> Set<UUID> { [commandId] }
 }
 
 public protocol RingStore {

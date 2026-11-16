@@ -15,7 +15,7 @@ public enum RingPolicy {
         case .pinVerified: return .pinStopped
         case .parentCommand: return .parentStopped
         case .timeout: return .timedOut
-        case .childDismissed: return .childDismissed
+        case .childDismissed: return nil
         }
     }
 
@@ -24,7 +24,7 @@ public enum RingPolicy {
         case .pinVerified: return .pinVerified
         case .parentCommand: return .parentCommand
         case .timeout: return .timeout
-        case .childDismissed: return .childDismissed
+        case .childDismissed: return nil
         }
     }
 

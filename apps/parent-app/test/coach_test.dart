@@ -185,23 +185,29 @@ void main() {
       expect(find.textContaining('collaboration, not punishment'), findsOneWidget);
     });
 
-    testWidgets('sos, geofence, install_request and ring show no coach card', (tester) async {
-      final now = DateTime.now();
-      final l10n = AppLocalizationsEn();
-      final cases = {
-        'sos': l10n.alertTitleSos,
-        'geofence': l10n.alertTitleGeofence,
-        'install_request': l10n.alertTitleInstallRequest,
-        'ring': l10n.alertTitleRing,
-      };
-      for (final entry in cases.entries) {
-        final api = FakeApiClient(standardRoutes(alerts: [
-          alertJson('c1', 'info', entry.key, 'Test alert', now),
-        ]));
-        await openDetail(tester, api, entry.value);
-        expect(find.text('How to talk about this'), findsNothing,
-            reason: '${entry.key} should not show a coach card');
-      }
+    Future<void> assertNoCoachCard(WidgetTester tester, String category, String alertTitle) async {
+      final api = FakeApiClient(standardRoutes(alerts: [
+        alertJson('c1', 'info', category, 'Test alert', DateTime.now()),
+      ]));
+      await openDetail(tester, api, alertTitle);
+      expect(find.text('How to talk about this'), findsNothing,
+          reason: '$category should not show a coach card');
+    }
+
+    testWidgets('sos shows no coach card', (tester) async {
+      await assertNoCoachCard(tester, 'sos', AppLocalizationsEn().alertTitleSos);
+    });
+
+    testWidgets('geofence shows no coach card', (tester) async {
+      await assertNoCoachCard(tester, 'geofence', AppLocalizationsEn().alertTitleGeofence);
+    });
+
+    testWidgets('install_request shows no coach card', (tester) async {
+      await assertNoCoachCard(tester, 'install_request', AppLocalizationsEn().alertTitleInstallRequest);
+    });
+
+    testWidgets('ring shows no coach card', (tester) async {
+      await assertNoCoachCard(tester, 'ring', AppLocalizationsEn().alertTitleRing);
     });
 
     testWidgets('an unknown category shows the generic card by default', (tester) async {

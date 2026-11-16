@@ -24,8 +24,7 @@ public final class RingController: ObservableObject {
     private var deadlineGeneration = 0
     private var operationGeneration = 0
     private let audioPlayer: RingAudioPlaying
-    private let lockScreenDismissed: () -> Bool
-    private let clearLockScreenDismissed: () -> Void
+    private var schedulingCommandId: UUID?
 
     public init(backend: RingBackend? = nil, store: RingStore = UserDefaultsRingStore(),
                 history: RingHistory = UserDefaultsRingHistory(), reporter: RingAlertReporting? = nil,
@@ -35,12 +34,6 @@ public final class RingController: ObservableObject {
                 bootSession: @escaping () -> TimeInterval? = { RingBootSession.current() },
                 sleep: @escaping (TimeInterval) async throws -> Void = { seconds in
                     try await ContinuousClock().sleep(for: .seconds(seconds))
-                },
-                lockScreenDismissed: @escaping () -> Bool = {
-                    UserDefaults(suiteName: AgentIdentityStore.suiteName)?.bool(forKey: "ring.lockScreenDismissed") == true
-                },
-                clearLockScreenDismissed: @escaping () -> Void = {
-                    UserDefaults(suiteName: AgentIdentityStore.suiteName)?.removeObject(forKey: "ring.lockScreenDismissed")
                 }) {
         self.backend = backend ?? AlarmKitRingBackend()
         self.store = store
@@ -51,8 +44,6 @@ public final class RingController: ObservableObject {
         self.monotonic = monotonic
         self.bootSession = bootSession
         self.sleep = sleep
-        self.lockScreenDismissed = lockScreenDismissed
-        self.clearLockScreenDismissed = clearLockScreenDismissed
         observationTask = Task { [weak self] in
             guard let self else { return }
             let updates = await self.backend.updates()
@@ -74,7 +65,6 @@ public final class RingController: ObservableObject {
     }
 
     public func start(_ id: UUID) async -> RingCommandError? {
-        clearLockScreenDismissed()
         await drainReports()
         guard !history.contains(id) else { return nil }
         if let current = state ?? store.load(), current.commandId == id, current.stopSource == nil {
@@ -96,6 +86,8 @@ public final class RingController: ObservableObject {
             await audioPlayer.stop()
             guard generation == operationGeneration else { return nil }
         }
+        schedulingCommandId = id
+        defer { schedulingCommandId = nil }
         do {
             try await backend.schedule(id, until: nil)
         } catch {
@@ -138,6 +130,8 @@ public final class RingController: ObservableObject {
         if restored.stopSource == nil {
             do {
                 if try await !backend.scheduledIDs().contains(restored.commandId) {
+                    schedulingCommandId = restored.commandId
+                    defer { schedulingCommandId = nil }
                     try await backend.schedule(restored.commandId, until: restored.endAt)
                 }
                 guard generation == operationGeneration, state?.commandId == restored.commandId else {
@@ -249,10 +243,6 @@ public final class RingController: ObservableObject {
         }
         state = restored
         restarted = restored.bootSession.map { $0 != bootSession() } ?? (monotonic() < restored.monotonicStart)
-        if lockScreenDismissed(), restored.stopSource == nil {
-            clearLockScreenDismissed()
-            return await stop(.childDismissed, commandId: restored.commandId)
-        }
         if let source = restored.stopSource {
             let event = event(for: source)
             if history.contains(restored.commandId) {
@@ -291,12 +281,16 @@ public final class RingController: ObservableObject {
             }
             return nil
         }
-        await audioPlayer.start()
-        armDeadline()
-        await drainReports()
-        do {
-            await process(scheduledIDs: try await backend.scheduledIDs())
-        } catch { }
+        if restarted {
+            await timeoutAfterRestart(restored)
+        } else {
+            await audioPlayer.start()
+            armDeadline()
+            await drainReports()
+            do {
+                await process(scheduledIDs: try await backend.scheduledIDs())
+            } catch { }
+        }
         return nil
     }
 
@@ -305,7 +299,6 @@ public final class RingController: ObservableObject {
         case .pinVerified: return .pinStopped
         case .parentCommand: return .parentStopped
         case .timeout: return .timedOut
-        case .childDismissed: return .childDismissed
         }
     }
 
@@ -314,7 +307,7 @@ public final class RingController: ObservableObject {
         case .pinStopped: return .pinVerified
         case .parentStopped: return .parentCommand
         case .timedOut: return .timeout
-        case .childDismissed: return .childDismissed
+        case .childDismissed: return nil
         }
     }
 
@@ -357,10 +350,22 @@ public final class RingController: ObservableObject {
 
     private func applyResume(_ current: RingState, seconds: Int, generation: Int) async {
         guard generation == operationGeneration, state?.commandId == current.commandId else { return }
+        let cappedEndAt = RingPolicy.capEndAt(now().addingTimeInterval(TimeInterval(seconds)), startedAt: current.startedAt)
+        guard cappedEndAt > now() else {
+            // The server asked us to resume, but the original 5-minute cap has already passed.
+            cancelDeadline()
+            try? await backend.stop(current.commandId)
+            history.record(current.commandId)
+            store.save(nil)
+            state = nil
+            lastScheduledIDs = []
+            await audioPlayer.stop()
+            return
+        }
         history.remove(current.commandId)
         var resumed = current
         resumed.stopSource = nil
-        resumed.endAt = RingPolicy.capEndAt(now().addingTimeInterval(TimeInterval(seconds)), startedAt: current.startedAt)
+        resumed.endAt = cappedEndAt
         resumed.monotonicStart = monotonic() - (RingPolicy.duration - TimeInterval(seconds))
         store.save(resumed)
         state = resumed
@@ -369,6 +374,8 @@ public final class RingController: ObservableObject {
         armDeadline()
         do {
             if try await !backend.scheduledIDs().contains(current.commandId) {
+                schedulingCommandId = current.commandId
+                defer { schedulingCommandId = nil }
                 try await backend.schedule(current.commandId, until: resumed.endAt)
             }
             guard generation == operationGeneration, state?.commandId == current.commandId else {
@@ -442,8 +449,6 @@ public final class RingController: ObservableObject {
 
     public func process(scheduledIDs: Set<UUID>) async {
         let generation = operationGeneration
-        let dismissedFromLockScreen = lockScreenDismissed()
-        if dismissedFromLockScreen { clearLockScreenDismissed() }
         defer {
             if generation == operationGeneration { lastScheduledIDs = scheduledIDs }
         }
@@ -457,15 +462,18 @@ public final class RingController: ObservableObject {
             }
             return
         }
-        let expectedAlarmIDs = backend.alarmIDs(for: current.commandId, until: current.endAt)
-        let scheduledForCommand = scheduledIDs.intersection(expectedAlarmIDs)
-        guard !scheduledForCommand.contains(current.commandId) else { return }
-        if dismissedFromLockScreen || (scheduledForCommand.isEmpty && !restarted) {
-            await stop(.childDismissed, commandId: current.commandId)
-            return
+        guard schedulingCommandId != current.commandId else { return }
+        guard !scheduledIDs.contains(current.commandId) else { return }
+        if scheduledIDs.isEmpty && !restarted {
+            await rearmAndReportDismissal(current, generation: generation)
+        } else {
+            await rearm(current, generation: generation)
         }
-        // Either a reboot cleared the chain or a sentinel is still scheduled and the main alarm
-        // fired naturally. Re-arm the chain without treating it as a child dismissal.
+    }
+
+    private func rearm(_ current: RingState, generation: Int) async {
+        schedulingCommandId = current.commandId
+        defer { schedulingCommandId = nil }
         do {
             try await backend.schedule(current.commandId, until: current.endAt)
         } catch {
@@ -476,15 +484,31 @@ public final class RingController: ObservableObject {
             if state?.commandId != current.commandId { try? await backend.stop(current.commandId) }
             return
         }
-        if lastScheduledIDs != nil {
-            var dismissed = current
-            dismissed.dismissalCount += 1
-            store.save(dismissed)
-            state = dismissed
-            _ = await reporter.report(state: .childDismissed, ringId: current.commandId,
-                                      dismissalCount: dismissed.dismissalCount)
-            armDeadline()
-            await audioPlayer.start()
+        armDeadline()
+        await audioPlayer.start()
+    }
+
+    private func rearmAndReportDismissal(_ current: RingState, generation: Int) async {
+        schedulingCommandId = current.commandId
+        defer { schedulingCommandId = nil }
+        do {
+            try await backend.schedule(current.commandId, until: current.endAt)
+        } catch {
+            return
         }
+        guard generation == operationGeneration,
+              state?.commandId == current.commandId, state?.stopSource == nil else {
+            if state?.commandId != current.commandId { try? await backend.stop(current.commandId) }
+            return
+        }
+        var dismissed = current
+        dismissed.dismissalCount += 1
+        dismissed.endAt = RingPolicy.capEndAt(dismissed.endAt, startedAt: dismissed.startedAt)
+        store.save(dismissed)
+        state = dismissed
+        _ = await reporter.report(state: .childDismissed, ringId: current.commandId,
+                                  dismissalCount: dismissed.dismissalCount)
+        armDeadline()
+        await audioPlayer.start()
     }
 }

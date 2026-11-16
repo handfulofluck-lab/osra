@@ -26,7 +26,6 @@ public enum RingStopSource: String, Codable {
     case pinVerified
     case parentCommand
     case timeout
-    case childDismissed
 }
 
 public enum RingEventState: String, Codable {

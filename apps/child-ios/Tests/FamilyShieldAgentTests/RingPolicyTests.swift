@@ -14,7 +14,11 @@ final class RingPolicyTests: XCTestCase {
         XCTAssertEqual(RingPolicy.event(for: .pinVerified), .pinStopped)
         XCTAssertEqual(RingPolicy.event(for: .parentCommand), .parentStopped)
         XCTAssertEqual(RingPolicy.event(for: .timeout), .timedOut)
-        XCTAssertEqual(RingPolicy.event(for: .childDismissed), .childDismissed)
+        XCTAssertNil(RingPolicy.event(for: .childDismissed))
+    }
+
+    func testChildDismissedIsNotAStopSource() {
+        XCTAssertNil(RingPolicy.stopSource(for: .childDismissed))
     }
 
     func testWallJumpDoesNotEndRingEarly() {

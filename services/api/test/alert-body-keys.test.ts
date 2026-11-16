@@ -217,7 +217,7 @@ describe("ring alert body keys", () => {
   it("accepts valid dismissal params and keeps the English fallback without a count", async () => {
     const input = {
       childId: "child-1", familyId: "fam-1", severity: "warning" as const, category: "ring",
-      title: "Phone ring", body: "The ring alert was dismissed on the phone and has been re-armed.",
+      title: "Phone ring", body: "The ring alert was dismissed on the phone. It is ringing again.",
       bodyKey: "alertBodyRingChildDismissed",
     };
     await raiseAlert({ ...input, params: { ringId: "ring-1", dismissalCount: 2 } });
@@ -228,6 +228,6 @@ describe("ring alert body keys", () => {
     await raiseAlert({ ...input, params: { ringId: "ring-1" } });
     const missing = prismaMock.alert.create.mock.calls[1][0].data as { metadata?: Record<string, unknown>; body: string };
     expect(missing.metadata?.bodyKey).toBeUndefined();
-    expect(missing.body).toBe("The ring alert was dismissed on the phone and has been re-armed.");
+    expect(missing.body).toBe("The ring alert was dismissed on the phone. It is ringing again.");
   });
 });

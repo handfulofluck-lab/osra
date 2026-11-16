@@ -958,9 +958,12 @@ describe("ring dismissal push coalescing", () => {
 
   async function dismissal(seconds: number, count: number, id = ringId, familyId = "fam-1") {
     vi.setSystemTime(start + seconds * 1000);
+    const body = count === 1
+      ? "The ring alert was dismissed on the phone. It is ringing again."
+      : `The ring alert was dismissed on the phone ${count} times. It is still ringing.`;
     return raiseAlertOnce({
       childId: "child-1", familyId, severity: "warning", category: "ring",
-      title: "Phone ring", body: "The ring alert was dismissed on the phone and has been re-armed.",
+      title: "Phone ring", body,
       bodyKey: "alertBodyRingChildDismissed", params: { ringId: id, dismissalCount: count },
       metadata: { state: "child_dismissed", ringId: id },
       dedupeKey: `ring:${id}:child_dismissed:${count}`,
@@ -1073,7 +1076,7 @@ describe("ring dismissal push coalescing", () => {
     setPushProviders([provider]);
     const event = (seconds: number, count: number) => ({
       id: `restart-race-${count}`, childId: "child-1", severity: "warning", category: "ring",
-      title: "Phone ring", body: "The ring alert was dismissed on the phone.",
+      title: "Phone ring", body: "The ring alert was dismissed on the phone. It is ringing again.",
       metadata: { state: "child_dismissed", ringId }, createdAt: new Date(start + seconds * 1000),
     });
     vi.setSystemTime(start);

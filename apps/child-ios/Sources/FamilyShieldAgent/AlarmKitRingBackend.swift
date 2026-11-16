@@ -30,7 +30,6 @@ struct OpenRingIntent: LiveActivityIntent {
     static var openAppWhenRun: Bool { true }
 
     func perform() async throws -> some IntentResult {
-        UserDefaults(suiteName: AgentIdentityStore.suiteName)?.set(true, forKey: "ring.lockScreenDismissed")
         return .result()
     }
 }
@@ -218,7 +217,7 @@ extension AlarmKitRingBackend {
         return UUID(uuidString: hex)!
     }
 
-    public func alarmIDs(for commandID: UUID, until: Date? = nil) -> Set<UUID> {
+    func alarmIDs(for commandID: UUID, until: Date? = nil) -> Set<UUID> {
         Set([commandID] + sentinelIDs(for: commandID, until: until))
     }
 }
