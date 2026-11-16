@@ -14,6 +14,13 @@
   read) now returns it instead of `400`.
 - **Bounds:** telemetry accepts at most 300 apps and 1440 minutes per app (and for the legacy map), so a
   broken or hostile client cannot fill the rollup table.
+- **Two reporting call sites a reused screen and the resume path skipped** (Hydrogen, R3 review): a
+  `singleTask` `BlockActivity` reuse only applied the new intent, so a second block never incremented the
+  attempt row — it now reports from `onNewIntent`. `resume_internet` cleared the paused state without
+  closing the `paused_internet` lock period — it now ends and posts it, as `unlock` already did.
+- **Counters under the filter's worker pool:** `AttemptCounter.next` and `LockPeriodTracker.start/attempt/
+  end` are `@Synchronized`, so a read-modify-write of the day count or the period's attempts cannot
+  interleave between the four DNS worker threads.
 - **Site-name history** (the web report on Play) is not in this change: after Karim's decision it is gated
   behind a server flag that ships off, with host exclusions, retention and batching, and it arrives as its
   own PR.

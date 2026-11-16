@@ -20,6 +20,9 @@ object LockPeriodTracker {
     data class Period(val startedAtMs: Long, val mode: String, val attempts: Int, val endedAtMs: Long?)
 
     /** The period that was still open, if any. [start] returns it so a caller can report it. */
+    // Hydrogen's #836 note: these are read-modify-write on SharedPreferences from the filter's worker
+    // pool; @Synchronized keeps one period's start/attempt/end from interleaving inside this process.
+    @Synchronized
     fun start(context: Context, mode: String, nowMs: Long = System.currentTimeMillis()): Period? {
         val open = open(context)
         val prefs = prefs(context)
@@ -28,6 +31,7 @@ object LockPeriodTracker {
     }
 
     /** Counts one overlay raise while a period is open; a no-op otherwise. */
+    @Synchronized
     fun attempt(context: Context) {
         val prefs = prefs(context)
         val started = prefs.getLong(KEY_START, 0L)
@@ -36,6 +40,7 @@ object LockPeriodTracker {
     }
 
     /** Closes the open period and returns it; null when there was none. */
+    @Synchronized
     fun end(context: Context, nowMs: Long = System.currentTimeMillis()): Period? {
         val open = open(context)
         prefs(context).edit().clear().apply()

@@ -422,6 +422,10 @@ class CommandDispatcher @Inject constructor(
     private fun resumeInternet() {
         rules.setPausedInternet(false)
         com.familyshield.agent.enforcement.LockState.clear(context)
+        // Hydrogen's #836 blocker: `unlock()` closes the lock period, but this path (resume_internet)
+        // cleared the state and never reported it, leaving a `paused_internet` period open until the
+        // next lock command. Close and report it here too.
+        reportLockPeriod(com.familyshield.agent.enforcement.LockPeriodTracker.end(context))
         if (com.familyshield.agent.vpn.VpnState.isEnabled(context)) {
             runCatching { com.familyshield.agent.vpn.FilterVpnService.start(context, com.familyshield.agent.vpn.FilterVpnService.MODE_DNS) }
         }

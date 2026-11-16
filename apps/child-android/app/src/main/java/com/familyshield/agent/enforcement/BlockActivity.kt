@@ -198,6 +198,10 @@ class BlockActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         applyIntent(intent)
+        // Hydrogen's #836 blocker: a `singleTask` reuse skipped the attempt report, which runs only in
+        // onCreate — so a second block of the same or another app never incremented the parent's row.
+        // `session.apply` above has already replaced `request`, so this reports the block in front.
+        reportBlockedAttempt(request.packageId, request.reason)
     }
 
     private fun applyIntent(intent: Intent) {
