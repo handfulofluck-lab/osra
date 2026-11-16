@@ -85,8 +85,8 @@ export default {
 
   platforms: {
     kicker: "Every screen at home",
-    h2: "Every device, the same rules",
-    lede: "Your child's phone, tablet and computer, under one set of rules. At launch, one family plan is planned to cover them all.",
+    h2: "Rules for every screen at home",
+    lede: "Your child's phone, tablet and computer, managed from one parent app. What OSRA can do differs by device. At launch, one family plan is planned to cover them all.",
     items: [
       { icon: "android", title: "Android", status: "In beta December", cls: "", lines: ["Parent app and OSRA Kids on Google Play", "Android 8.0 or later"] },
       { icon: "phone", title: "iPhone and iPad", status: "In beta December", cls: "", lines: ["Parent app and OSRA Kids on the App Store", "Built on Apple's Screen Time"] },
@@ -145,11 +145,11 @@ export default {
     play: "Google Play", appstore: "App Store", getOn: "Get it on", downloadOn: "Download on the",
     computers: { h2: "Computers", lede: "OSRA Kids for your child's computer, downloaded from this site." },
     windows: { title: "OSRA Kids for Windows", status: "In beta December", text: "Your rules on your child's PC." },
-    mac: { title: "OSRA Kids for Mac", status: "2027", text: "The same rules on your child's Mac, when it arrives." },
+    mac: { title: "OSRA Kids for Mac", status: "2027", text: "OSRA Kids on your child's Mac, when it arrives." },
     full: {
       h2: "OSRA Kids Full for Android",
       status: "With the first release",
-      text: "Google Play does not let any store app read SMS, the call log or other apps' notifications. OSRA Kids Full is the same child app with these extra protections, for parents who choose them. It will only ever come from osratech.com, with a step-by-step video and pictures for installing it.",
+      text: "Google Play does not let any store app read SMS, the call log or other apps' notifications. OSRA Kids Full is the same child app with these extra protections, for parents who choose them. It will only ever come from osratech.com, with a step-by-step video and pictures for installing it, and its own privacy notice that says what it collects.",
     },
     beta: { h2: "Want to be first?", lede: "Email us to join the December beta. Tell us which phones and computers your family uses.", button: "Join the December beta" },
     safe: { h2: "Only download OSRA from here", text: "Genuine OSRA apps come only from Google Play, the App Store and osratech.com. Never install OSRA from a link someone sends you." },
