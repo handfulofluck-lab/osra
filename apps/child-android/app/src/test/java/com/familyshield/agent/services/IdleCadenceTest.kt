@@ -100,6 +100,56 @@ class IdleCadenceTest {
         assertTrue(IdleCadence.POLL_TICK_MS <= IdleCadence.MIN_POLL_MS)
     }
 
+    // ---- Issue #673: a lock or a pause is not an idle phone ---------------------------------------
+
+    /**
+     * #673 (Flip4, 12 Nov, run 1): `resume_internet` round 1 took 52.4 s. A lock or a pause leaves the
+     * screen on, so the rule above capped the poll at 60 s and the resume waited for it, while the push
+     * that should have woken the phone was late. Both states are short and are exactly when a late
+     * push hurts, so the poll is 10 s whatever the server says.
+     *
+     * The idle budget (≤ 3 requests per 10 min) is a statement about an idle phone and is untouched:
+     * with no restriction the two rows below still give the server's 600 s.
+     * Mutant: `restricted ->` deleted (60 s in every state) and both rows here go red.
+     */
+    @Test
+    fun `a lock or a pause polls every 10 s, whatever the server says`() {
+        assertEquals(10_000L, IdleCadence.effectivePollMs(10 * minute, interactive = true, restricted = true))
+        assertEquals(10_000L, IdleCadence.effectivePollMs(minute, interactive = false, restricted = true))
+        assertEquals(10_000L, IdleCadence.effectivePollMs(IdleCadence.MIN_POLL_MS, interactive = false, restricted = true))
+    }
+
+    /** Mutant: compare against 60 s and a restricted phone polls at the tick, 15 s late each turn. */
+    @Test
+    fun `the restricted poll is due at 10 s and not at 9, 11 or 15`() {
+        val last = 1_000L
+        assertFalse(IdleCadence.pollDue(last, last + 9_000L, 10 * minute, interactive = true, restricted = true))
+        assertTrue(IdleCadence.pollDue(last, last + 10_000L, 10 * minute, interactive = true, restricted = true))
+    }
+
+    /**
+     * The loop's tick was 15 s, so a 10 s rule alone would still poll every 15 s. Mutant: return
+     * [IdleCadence.POLL_TICK_MS] in every state and the first row goes red.
+     */
+    @Test
+    fun `the tick follows the state, so a restricted poll is 10 s and not the next 15 s tick`() {
+        assertEquals(10_000L, IdleCadence.RESTRICTED_POLL_MS)
+        assertEquals(IdleCadence.RESTRICTED_POLL_MS, IdleCadence.pollTickMs(restricted = true))
+        assertEquals(IdleCadence.POLL_TICK_MS, IdleCadence.pollTickMs(restricted = false))
+    }
+
+    /**
+     * The inverse mutant: a rule that is always restricted would give an idle phone 60 polls per 10
+     * minutes and break the budget it took #353 to reach. Mutant: `restricted` ignored as `true` and
+     * both rows go red.
+     */
+    @Test
+    fun `an idle phone keeps the server interval, so the budget is untouched`() {
+        assertEquals(10 * minute, IdleCadence.effectivePollMs(10 * minute, interactive = false, restricted = false))
+        assertEquals(minute, IdleCadence.effectivePollMs(10 * minute, interactive = true, restricted = false))
+        assertEquals(IdleCadence.POLL_TICK_MS, IdleCadence.pollTickMs(restricted = false))
+    }
+
     // ---- Live activity ----------------------------------------------------------------------------
 
     /** Mutant: return `interactive` alone and the screen-off "idle" snapshot is never sent. */

@@ -57,6 +57,14 @@ jobs:
           terraform -chdir=org-audit validate
           terraform -chdir=org-audit test
 
+      # Its own root (own-model training bucket and role). The test pins who can reach the bucket and
+      # what the training role can do, so "it has no access to anything else" survives the next edit.
+      - name: ml-training — init (no backend), validate and test
+        run: |
+          terraform -chdir=ml-training init -backend=false -input=false
+          terraform -chdir=ml-training validate
+          terraform -chdir=ml-training test
+
       - name: site — init (no backend) and validate
         run: |
           terraform -chdir=site init -backend=false -input=false
