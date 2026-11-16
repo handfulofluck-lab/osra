@@ -265,8 +265,8 @@ void main() {
       await pumpScreen(tester, const UsageHistoryScreen(childId: 'child-1'), api);
       expect(api.calls('GET', '/v1/reports/web').single.query['limit'], 20);
       expect(find.textContaining('Showing the latest 20 visits'), findsOneWidget);
-      expect(find.text('site19.example'), findsOneWidget);
-      expect(find.text('site20.example'), findsNothing);
+      expect(find.textContaining('site19.example'), findsOneWidget);
+      expect(find.textContaining('site20.example'), findsNothing);
 
       final selector = find.byKey(const ValueKey('webLimitSelector'));
       await tester.scrollUntilVisible(selector, 200, scrollable: find.byType(Scrollable).first);
@@ -275,7 +275,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.calls('GET', '/v1/reports/web').last.query['limit'], 100);
-      expect(find.text('site24.example'), findsOneWidget);
+      expect(find.textContaining('site24.example'), findsOneWidget);
       expect(find.textContaining('Showing the latest 100 visits'), findsNothing);
     });
 
