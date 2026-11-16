@@ -107,8 +107,8 @@ public final class RingController: ObservableObject {
         state = next
         restarted = false
         lastScheduledIDs = [id]
-        armDeadline()
         await audioPlayer.start()
+        armDeadline()
         return nil
     }
 
@@ -260,8 +260,8 @@ public final class RingController: ObservableObject {
             active.stopSource = nil
             state = active
             store.save(active)
-            armDeadline()
             await audioPlayer.start()
+            armDeadline()
             do {
                 if try await !backend.scheduledIDs().contains(restored.commandId) {
                     history.record(restored.commandId)
@@ -276,8 +276,8 @@ public final class RingController: ObservableObject {
             }
             return nil
         }
-        armDeadline()
         await audioPlayer.start()
+        armDeadline()
         await drainReports()
         do {
             await process(scheduledIDs: try await backend.scheduledIDs())
@@ -349,8 +349,8 @@ public final class RingController: ObservableObject {
         store.save(resumed)
         state = resumed
         restarted = false
-        armDeadline()
         await audioPlayer.start()
+        armDeadline()
         do {
             if try await !backend.scheduledIDs().contains(current.commandId) {
                 try await backend.schedule(current.commandId)
