@@ -67,12 +67,17 @@ object DnsFilterPolicy {
         val name = normalize(qname)
         if (name.isEmpty()) return Decision.FORWARD
         if (config.pausedInternet) return Decision(Action.SINK, reason = "paused_internet")
-        if (name in ENFORCEMENT_HOSTS) return Decision.FORWARD
         if (config.allowed.any { matches(name, it) }) return Decision.FORWARD
 
-        // #825: a parent's block beats any rewrite; only an explicit allow outranks it.
+        // #825: a parent's block beats any rewrite; only an explicit allow outranks it. The enforcement
+        // hosts are checked *after* this, so a direct query for restrict.youtube.com under a blocked
+        // youtube.com sinks instead of resolving YouTube (Fable, R3 on #825).
         config.blocked.firstOrNull { matches(name, it) }?.let { return Decision(Action.SINK, reason = "blocked_domain:$it") }
         config.categories.entries.firstOrNull { matches(name, it.key) }?.let { return Decision(Action.SINK, reason = "category:${it.value}") }
+
+        // A rewrite never targets another enforcement host, so forwarding these here cannot loop; when
+        // nothing blocks them they resolve normally.
+        if (name in ENFORCEMENT_HOSTS) return Decision.FORWARD
 
         if (config.safeSearch) {
             if (isGoogleSearchHost(name)) return Decision(Action.REWRITE, GOOGLE_SAFE, "safesearch")

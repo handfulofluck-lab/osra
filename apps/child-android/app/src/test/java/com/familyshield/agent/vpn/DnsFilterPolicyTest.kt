@@ -84,6 +84,18 @@ class DnsFilterPolicyTest {
     }
 
     @Test
+    fun `a blocked domain also sinks the enforcement host it points at (#825, Fable B1)`() {
+        val youtubeBlocked = Config(youtubeMode = "strict", blockedDomains = listOf("youtube.com"))
+        assertEquals(Action.SINK, DnsFilterPolicy.decide("restrict.youtube.com", youtubeBlocked).action)
+        assertEquals(Action.SINK, DnsFilterPolicy.decide("restrictmoderate.youtube.com", youtubeBlocked).action)
+        assertEquals(Action.SINK, DnsFilterPolicy.decide("forcesafesearch.google.com", Config(safeSearch = true, blockedDomains = listOf("google.com"))).action)
+        assertEquals(Action.SINK, DnsFilterPolicy.decide("strict.bing.com", Config(safeSearch = true, blockedDomains = listOf("bing.com"))).action)
+        // With nothing blocked the enforcement hosts are still forwarded.
+        assertEquals(Action.FORWARD, DnsFilterPolicy.decide("restrict.youtube.com", Config(youtubeMode = "strict")).action)
+        assertEquals(Action.FORWARD, DnsFilterPolicy.decide("forcesafesearch.google.com", Config(safeSearch = true)).action)
+    }
+
+    @Test
     fun `an explicit blocked domain sinks before the youtube or safesearch rewrite (#825)`() {
         val c = Config(
             safeSearch = true,
