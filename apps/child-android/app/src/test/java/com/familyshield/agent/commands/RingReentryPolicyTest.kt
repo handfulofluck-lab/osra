@@ -148,7 +148,7 @@ class RingReentryPolicyTest {
         val snapshot = service.indexOf("val snapshot = windowSnapshot()")
         assertTrue("the own-package branch calls the ring check", ownReturn > 0)
         assertTrue("and it does so before the rest of the event handling", ownReturn < snapshot)
-        val tracking = service.indexOf("lastWindowClass = event.className?.toString()")
+        val tracking = service.indexOf("lastClassByPkg[eventPkg] = ")
         assertTrue("the class is tracked before that branch", tracking in 1 until ownReturn)
     }
 

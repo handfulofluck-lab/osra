@@ -97,6 +97,7 @@ override_data {
       vault_key_secret_arn           = "arn:aws:secretsmanager:eu-central-1:000000000000:secret:vault"
       demo_password_secret_arn       = "arn:aws:secretsmanager:eu-central-1:000000000000:secret:demo"
       fcm_service_account_secret_arn = "arn:aws:secretsmanager:eu-central-1:000000000000:secret:fcm"
+      apns_key_p8_secret_arn         = "arn:aws:secretsmanager:eu-central-1:000000000000:secret:apns"
       log_group_name                 = "/ecs/test-api"
       internal_hmac_secret_arn       = "arn:aws:secretsmanager:eu-central-1:000000000000:secret:hmac"
       execution_role_name            = "test-execution"
@@ -177,6 +178,10 @@ run "staging_defaults_are_unchanged" {
   assert {
     condition     = length(random_password.db) == 1 && length(aws_ecs_task_definition.db_admin) == 0 && contains([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.name], "REDIS_URL")
     error_message = "staging keeps Terraform-generated secrets and a plain REDIS_URL"
+  }
+  assert {
+    condition     = length([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.name if startswith(x.name, "APNS_")]) == 0 && !contains([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].secrets : x.name], "APNS_KEY_P8")
+    error_message = "with apns_enabled false the task carries no APNs setting (#695)"
   }
   assert {
     condition     = length(aws_flow_log.vpc) == 0 && length(aws_s3_bucket.access_logs) == 0 && length(aws_lb.main.access_logs) == 0
@@ -374,6 +379,41 @@ run "production_settings" {
     condition     = alltrue([for a in aws_cloudwatch_metric_alarm.family_plan : length(a.alarm_actions) == 1 && length(coalesce(a.ok_actions, [])) == 0])
     error_message = "family plan alarms mail on ALARM only, not on every return to OK (#816 R3)"
   }
+}
+
+run "apns_off_by_default_and_mapped_when_enabled" {
+  command = apply
+
+  variables {
+    api_image    = "example/api:test"
+    apns_enabled = true
+    apns_key_id  = "ABCDE12345"
+    apns_team_id = "FGHIJ67890"
+  }
+
+  assert {
+    condition = alltrue([
+      contains([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].secrets : x.name], "APNS_KEY_P8"),
+      one([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].secrets : x.valueFrom if x.name == "APNS_KEY_P8"]) == "arn:aws:secretsmanager:eu-central-1:000000000000:secret:apns",
+      one([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.value if x.name == "APNS_ENV"]) == "production",
+      one([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.value if x.name == "APNS_BUNDLE_ID"]) == "com.osratech.parent",
+      one([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.value if x.name == "APNS_DEVICE_BUNDLE_ID"]) == "com.osratech.child",
+      !contains([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.name], "APNS_KEY_P8"),
+    ])
+    error_message = "apns_enabled maps the key as a secrets entry only, the ids and bundle ids as settings, and the production endpoint (#695)"
+  }
+}
+
+run "apns_needs_both_ids" {
+  command = plan
+
+  variables {
+    api_image    = "example/api:test"
+    apns_enabled = true
+    apns_key_id  = "ABCDE12345"
+  }
+
+  expect_failures = [aws_ecs_task_definition.api]
 }
 
 run "failover_needs_two_nodes" {
