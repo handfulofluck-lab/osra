@@ -21,7 +21,7 @@ import {
   type PolledDevice,
 } from "../lib/pollCadence.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
-import { recordActivityUsage, recordDeviceTotal } from "../lib/usageModel.js";
+import { recordActivityUsage, recordAppUsage, recordDeviceTotal } from "../lib/usageModel.js";
 
 import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
 import { markDeviceRevoked } from "../lib/deviceRevocation.js";
@@ -118,6 +118,9 @@ const TelemetrySchema = z
       .array(z.object({ packageId: z.string().min(1), minutes: z.number().min(0) }))
       .optional(),
     urls: z.array(z.string()).optional(),
+    // #830: the shape Android sent before the contract was standardised. Accepted for one release so an
+    // installed agent keeps reporting per-app minutes; `appUsage` wins when both are present.
+    perAppMinutes: z.record(z.number().min(0)).optional(),
     timestamp: z.string().datetime().optional(),
     // Issue #221 (D1): the agent's own classification of its location grant. Optional so an older
     // agent keeps working (the server then leaves the stored value unknown and queues locate_now).
@@ -141,7 +144,9 @@ const ActivityBatchSchema = z.object({
     .array(
       z.object({
         ts: z.string().datetime().optional(),
-        type: z.enum(["url", "app_usage", "call", "sms"]),
+        // #830: one `lock_period` row per lock the child met (start, end, attempts), decided by Claude
+        // on the issue — information, not an alert.
+        type: z.enum(["url", "app_usage", "call", "sms", "lock_period"]),
         payload: z.record(z.unknown()),
       }),
     )
@@ -862,6 +867,21 @@ export async function deviceRoutes(app: FastifyInstance) {
         await recordDeviceTotal(device.childId, id, parsed.data.totalMinutes);
       } catch (err) {
         req.log.warn({ err }, "usage rollup write failed (telemetry)");
+      }
+    }
+
+    // #830: the per-app rows the parent's usage report reads. `appUsage` is the contract; the legacy
+    // `perAppMinutes` map is folded in for one release.
+    if (device?.childId) {
+      const perApp = parsed.data.appUsage?.length
+        ? parsed.data.appUsage
+        : Object.entries(parsed.data.perAppMinutes ?? {}).map(([packageId, minutes]) => ({ packageId, minutes }));
+      if (perApp.length > 0) {
+        try {
+          await recordAppUsage(device.childId, id, perApp);
+        } catch (err) {
+          req.log.warn({ err }, "per-app usage write failed (telemetry)");
+        }
       }
     }
 

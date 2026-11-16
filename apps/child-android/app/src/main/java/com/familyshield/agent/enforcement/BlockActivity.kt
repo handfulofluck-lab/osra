@@ -107,6 +107,9 @@ class BlockActivity : ComponentActivity() {
         })
 
         applyIntent(intent)
+        // #830: every block the child meets is reported, not only the "Request access" tap, so the parent
+        // sees "tried to open X" with a growing attempt count.
+        reportBlockedAttempt(request.packageId, request.reason)
 
         setContent {
             MaterialTheme {
@@ -220,6 +223,33 @@ class BlockActivity : ComponentActivity() {
         }
         startActivity(homeIntent)
         finish()
+    }
+
+    /**
+     * #830: one grouped `app_blocked` row per app per UTC day. The count is monotonic
+     * ([AttemptCounter]); the server updates the existing row only when the count is higher and never
+     * pushes again, so a child tapping a blocked app ten times reads "10 attempts" and one notification.
+     */
+    private fun reportBlockedAttempt(pkg: String, reason: String) {
+        val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString()
+        val attempts = AttemptCounter.next(this, "app", pkg, day)
+        scope.launch {
+            runCatching {
+                api.postInternalAlert(
+                    AlertDto(
+                        childId = settings.childId(),
+                        deviceId = settings.deviceId(),
+                        severity = "info",
+                        category = "app_blocked",
+                        title = "Blocked app opened",
+                        body = "Your child tried to open a blocked app.",
+                        metadata = mapOf("packageId" to pkg, "reason" to reason),
+                        dedupeKey = AlertKeys.blockedApp(pkg, day),
+                        attemptCount = attempts,
+                    ),
+                )
+            }
+        }
     }
 
     /** POSTs an app_blocked alert for the blocked package; failures are swallowed (best effort). */

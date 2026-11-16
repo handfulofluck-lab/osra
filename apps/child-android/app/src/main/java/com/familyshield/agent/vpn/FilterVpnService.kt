@@ -56,6 +56,11 @@ import kotlinx.coroutines.launch
 class FilterVpnService : VpnService() {
     @Inject lateinit var rules: RuleRepository
     @Inject lateinit var blocklist: BlocklistStore
+    @Inject lateinit var api: com.familyshield.agent.network.ApiService
+    @Inject lateinit var settings: com.familyshield.agent.data.AgentSettings
+
+    /** host → the last time a `web_threat` was posted, so one page load is one attempt. */
+    private val lastSiteAlert = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     private var tun: ParcelFileDescriptor? = null
     private var mode: String = MODE_DNS
@@ -221,6 +226,7 @@ class FilterVpnService : VpnService() {
                 DnsFilterPolicy.Action.SINK -> {
                     if (config.pausedInternet) DnsMessage.buildNxDomain(query, q) else {
                         Log.i(TAG, "sink ${q.name} (${d.reason})")
+                        reportBlockedSite(q.name, d.reason)
                         DnsMessage.buildSink(query, q)
                     }
                 }
@@ -230,6 +236,41 @@ class FilterVpnService : VpnService() {
         if (reply == null) return
         val ip = IpPacket.buildUdpReply(udp, reply)
         synchronized(output) { runCatching { output.write(ip) } }
+    }
+
+    /**
+     * #830: a blocked site the child tried to open is one grouped `web_threat` row per host per UTC day.
+     * A page load is many DNS queries, so a host is posted at most once per ten minutes and the count
+     * increments on later attempts; the server never pushes an aggregate again (ADR-0029).
+     */
+    private fun reportBlockedSite(host: String, reason: String) {
+        if (!reason.startsWith("blocked_domain:") && !reason.startsWith("category:")) return
+        val now = System.currentTimeMillis()
+        val last = lastSiteAlert[host]
+        if (!com.familyshield.agent.enforcement.AlertKeys.siteAlertDue(last, now, SITE_ALERT_QUIET_MS)) return
+        if (lastSiteAlert.size > 512) {
+            lastSiteAlert.entries.removeIf { now - it.value > SITE_ALERT_QUIET_MS }
+        }
+        lastSiteAlert[host] = now
+        val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString()
+        val attempts = com.familyshield.agent.enforcement.AttemptCounter.next(this, "web", host, day)
+        scope.launch {
+            runCatching {
+                api.postInternalAlert(
+                    com.familyshield.agent.network.dto.AlertDto(
+                        childId = settings.childId(),
+                        deviceId = settings.deviceId(),
+                        severity = "info",
+                        category = "web_threat",
+                        title = "Blocked site opened",
+                        body = "Your child tried to open a blocked site.",
+                        metadata = mapOf("domain" to host, "reason" to reason),
+                        dedupeKey = com.familyshield.agent.enforcement.AlertKeys.blockedSite(host, day),
+                        attemptCount = attempts,
+                    ),
+                )
+            }
+        }
     }
 
     /** Sends [query] to the first reachable upstream resolver through a protected socket. */
@@ -302,6 +343,9 @@ class FilterVpnService : VpnService() {
     }
 
     companion object {
+        /** #830: one `web_threat` per host per ten minutes; a page load issues many DNS queries. */
+        private const val SITE_ALERT_QUIET_MS = 10 * 60 * 1000L
+
         /**
          * The mode of the tunnel that is **actually established**, or null when there is none.
          *

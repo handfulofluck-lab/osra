@@ -278,10 +278,38 @@ class CommandDispatcher @Inject constructor(
      * lock lands the moment the parent turns the accessibility service on, which is what makes the
      * screen hold (#389 review).
      */
+    /**
+     * #830: posts one `lock_period` activity row (start, end, attempts, mode). A period left open by a
+     * process death is posted with no end time rather than dropped. Failures are best effort: the lock
+     * itself must never depend on reporting.
+     */
+    private fun reportLockPeriod(period: com.familyshield.agent.enforcement.LockPeriodTracker.Period?) {
+        if (period == null) return
+        val deviceId = settings.deviceId() ?: return
+        val payload = com.familyshield.agent.enforcement.LockPeriodTracker.payload(period)
+        scope.launch {
+            runCatching {
+                api.postActivityEvents(
+                    deviceId,
+                    com.familyshield.agent.network.dto.ActivityEventBatchDto(
+                        events = listOf(
+                            com.familyshield.agent.network.dto.ActivityEventDto(type = "lock_period", payload = payload),
+                        ),
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun reportStaleLockPeriod(period: com.familyshield.agent.enforcement.LockPeriodTracker.Period?) {
+        reportLockPeriod(period)
+    }
+
     private fun lock(): CommandOutcome {
         // ADR-0010: a real screen lock when admin/owner permits it; the overlay stays up either way
         // so the child sees the "locked by your parent" screen and cannot swipe back to their apps.
         com.familyshield.agent.enforcement.LockState.set(context, LockActivity.MODE_LOCKED)
+        reportStaleLockPeriod(com.familyshield.agent.enforcement.LockPeriodTracker.start(context, LockActivity.MODE_LOCKED))
         val adminLocked = deviceAdmin.lockNow()
         val outcome = EnforceabilityPolicy.lockOutcome(
             canOverlay = Settings.canDrawOverlays(context),
@@ -305,6 +333,7 @@ class CommandDispatcher @Inject constructor(
      */
     private fun pause(): CommandOutcome {
         com.familyshield.agent.enforcement.LockState.set(context, LockActivity.MODE_PAUSED)
+        reportStaleLockPeriod(com.familyshield.agent.enforcement.LockPeriodTracker.start(context, LockActivity.MODE_PAUSED))
         val outcome = EnforceabilityPolicy.pauseOutcome(
             canOverlay = Settings.canDrawOverlays(context),
             accessibilityRunning = AccessibilityMonitorService.isRunning,
@@ -334,6 +363,7 @@ class CommandDispatcher @Inject constructor(
         windDownJob?.cancel()
         windDownJob = null
         com.familyshield.agent.enforcement.LockState.clear(context)
+        reportLockPeriod(com.familyshield.agent.enforcement.LockPeriodTracker.end(context))
         val showing = LockActivity.isShowing
         if (showing) {
             context.startActivity(
@@ -366,6 +396,7 @@ class CommandDispatcher @Inject constructor(
     private fun pauseInternet(): CommandOutcome {
         rules.setPausedInternet(true)
         com.familyshield.agent.enforcement.LockState.set(context, LockActivity.MODE_PAUSED_INTERNET)
+        reportStaleLockPeriod(com.familyshield.agent.enforcement.LockPeriodTracker.start(context, LockActivity.MODE_PAUSED_INTERNET))
         val webFilterSetUp = com.familyshield.agent.vpn.VpnState.isEnabled(context) &&
             com.familyshield.agent.vpn.FilterVpnService.isPrepared(context)
         if (webFilterSetUp) {

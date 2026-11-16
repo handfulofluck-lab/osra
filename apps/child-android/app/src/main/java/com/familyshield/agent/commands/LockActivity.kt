@@ -32,6 +32,7 @@ import androidx.core.content.ContextCompat
 import com.familyshield.agent.R
 import com.familyshield.agent.enforcement.KeyguardPolicy
 import com.familyshield.agent.enforcement.LockScreenPolicy
+import com.familyshield.agent.enforcement.LockPeriodTracker
 import com.familyshield.agent.enforcement.LockState
 import com.familyshield.agent.network.DeviceUnlinker
 
@@ -79,6 +80,9 @@ class LockActivity : ComponentActivity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action != DeviceUnlinker.ACTION_UNLINKED) return
             if (!LockState.isActive(this@LockActivity)) finish()
+        // #830: this raise is one attempt in the open period; a child sent back by the overlay repeatedly
+        // is the count the parent sees.
+        LockPeriodTracker.attempt(this)
         }
     }
 

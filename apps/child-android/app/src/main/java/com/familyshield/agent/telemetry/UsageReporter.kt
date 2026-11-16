@@ -21,6 +21,7 @@ import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.ActivityEventBatchDto
 import com.familyshield.agent.capabilities.CapabilityReporter
 import com.familyshield.agent.capabilities.CapabilityUploadPolicy
+import com.familyshield.agent.network.dto.AppUsageDto
 import com.familyshield.agent.network.dto.TelemetryDto
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.LocalDate
@@ -161,7 +162,7 @@ class UsageReporter @Inject constructor(
             api.postTelemetry(
                 deviceId,
                 TelemetryDto(
-                    perAppMinutes = perApp,
+                    appUsage = perApp.filterValues { it > 0 }.map { (packageId, minutes) -> AppUsageDto(packageId, minutes) },
                     totalMinutes = total,
                     unlockCount = unlocks,
                     batteryPct = currentBatteryPct(),
@@ -261,7 +262,7 @@ class UsageReporter @Inject constructor(
             api.postTelemetry(
                 deviceId,
                 TelemetryDto(
-                    perAppMinutes = emptyMap(),
+                    appUsage = emptyList(),
                     totalMinutes = 0,
                     unlockCount = 0,
                     batteryPct = currentBatteryPct(),
@@ -298,7 +299,7 @@ class UsageReporter @Inject constructor(
                 api.postTelemetry(
                     deviceId,
                     TelemetryDto(
-                        perAppMinutes = emptyMap(),
+                        appUsage = emptyList(),
                         totalMinutes = 0,
                         unlockCount = 0,
                         batteryPct = currentBatteryPct(),

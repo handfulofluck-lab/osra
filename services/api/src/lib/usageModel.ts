@@ -133,6 +133,26 @@ export async function recordActivityUsage(childId: string, deviceId: string, eve
   return { usageRows: usage.size, visits: visits.length };
 }
 
+/**
+ * Telemetry hook: per-app minutes reported by the device (#830). The Play agent has no activity-based
+ * source for these rows, so they arrive in the 15-minute telemetry window and are folded into the same
+ * rollup table `/reports/usage` reads. Rows are deltas; [addMinutes] increments.
+ */
+export async function recordAppUsage(
+  childId: string,
+  deviceId: string,
+  rows: Array<{ packageId: string; minutes: number }>,
+  at: Date = new Date(),
+): Promise<void> {
+  const day = utcDay(at);
+  for (const row of rows) {
+    const packageId = `${row.packageId ?? ""}`.trim().slice(0, 200);
+    const minutes = Math.round(row.minutes);
+    if (!packageId || !(minutes > 0)) continue;
+    await addMinutes(childId, deviceId, day, packageId, minutes);
+  }
+}
+
 /** Telemetry hook: the device-reported running total for the day (delta windows accumulate, #31). */
 export async function recordDeviceTotal(childId: string, deviceId: string, minutes: number, at: Date = new Date()): Promise<void> {
   if (!(minutes > 0)) return;
