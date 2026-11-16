@@ -132,6 +132,10 @@ if [ "$OSRA_ENV" = production ]; then
   sg=$(terraform -chdir="$HERE/env" output -raw api_security_group_id)
   log_group=$(terraform -chdir="$HERE/env" output -raw log_group_name)
   db_id=$(terraform -chdir="$HERE/env" output -raw rds_identifier)
+  # Read here, with the profile's credentials: after the switch to the role below, Terraform's S3 backend
+  # (in the management account) cannot be read, and this output came back empty (15 Nov production run:
+  # "refusing: production has no db-admin task definition" right after the snapshot).
+  db_admin_taskdef=$(terraform -chdir="$HERE/env" output -raw db_admin_task_definition_arn 2>/dev/null || true)
 
   # The CLI calls below must run as the production role, as Terraform does, never as the profile itself.
   role=$(terraform -chdir="$HERE/env" output -raw deploy_role_arn)
@@ -158,7 +162,6 @@ EOC
 
   # Production migrates only: no demo family in the real database. The db-admin task (env/db_admin.tf)
   # runs the migration as the master user and grants the osra_api role the API connects as (#766 item 3).
-  db_admin_taskdef=$(terraform -chdir="$HERE/env" output -raw db_admin_task_definition_arn 2>/dev/null || true)
   if [ -z "$db_admin_taskdef" ] || [ "$db_admin_taskdef" = null ]; then
     echo "refusing: production has no db-admin task definition (secrets_out_of_band must be true)." >&2
     exit 1
