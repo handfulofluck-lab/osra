@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- #558: Push Notifications. "development" here; an App Store / TestFlight export re-signs it as
+	     "production". Without this key iOS never issues an APNs token, so firebase_messaging gets no FCM
+	     token and the parent iPhone receives no alerts. CI (parent-app.yml) fails if it goes missing. -->
+	<key>aps-environment</key>
+	<string>development</string>
+</dict>
+</plist>
