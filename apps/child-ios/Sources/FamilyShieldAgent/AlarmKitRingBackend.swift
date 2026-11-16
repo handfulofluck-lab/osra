@@ -78,7 +78,9 @@ public final class AlarmKitRingBackend: RingBackend {
         #if os(iOS)
         guard #available(iOS 26.0, *) else { throw RingCommandError.unsupportedOS }
         do {
-            try await cancelAll(for: id)
+            // Clearing any leftover chain before scheduling is best-effort: on a first ring,
+            // or after part of the chain has already fired, the ids do not exist yet.
+            try? await cancelAll(for: id, throwOnError: false)
             activeCommandIDs.insert(id)
             persistActiveCommandIDs()
             let base = now()
@@ -114,7 +116,7 @@ public final class AlarmKitRingBackend: RingBackend {
     public func stop(_ id: UUID) async throws {
         #if os(iOS)
         if #available(iOS 26.0, *) {
-            try await cancelAll(for: id)
+            try await cancelAll(for: id, throwOnError: true)
             activeCommandIDs.remove(id)
             persistActiveCommandIDs()
         }
@@ -200,7 +202,7 @@ extension AlarmKitRingBackend {
 }
 
 extension AlarmKitRingBackend {
-    private func cancelAll(for id: UUID) async throws {
+    private func cancelAll(for id: UUID, throwOnError: Bool) async throws {
         #if os(iOS)
         if #available(iOS 26.0, *) {
             let ids = [id] + sentinelIDs(for: id)
@@ -210,7 +212,7 @@ extension AlarmKitRingBackend {
                     try AlarmManager.shared.cancel(id: alarmID)
                 } catch {
                     RingAlarmLog.error("cancel \(alarmID.uuidString)", error)
-                    if firstError == nil { firstError = error }
+                    if throwOnError, firstError == nil { firstError = error }
                 }
             }
             if let firstError { throw firstError }
