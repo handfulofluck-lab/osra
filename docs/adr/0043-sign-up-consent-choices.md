@@ -1,4 +1,4 @@
-# ADR-0043 — Three separate choices at parent sign-up: terms, helping train OSRA's model, and marketing email
+# ADR-0043 — Consent at parent sign-up: the terms box now, the training choice later, no marketing box
 
 - **Status:** proposed (2026-11-16). Architecture is Claude's call. **All wording in this ADR is a DRAFT for
   the maintainer's lawyer** and must not ship to anyone outside the team until the lawyer has approved it
@@ -9,6 +9,28 @@
 - **Related:** ADR-0002 (consent gate, per child), ADR-0013 (retention and erasure), ADR-0014 (family
   roles), ADR-0033 (production message scoring), ADR-0038 (design language). Privacy policy and terms
   (#649). The own-model training design (AI plan, "training" section).
+
+## Amendment 2026-11-16 (21:05 UAE): counsel's final advice
+
+Counsel's advice arrived in the publication pack of 16 Nov (`legal/2026-11-16-publication-pack/`, document 09,
+items A1, A2 and A8/C19). It overrides this ADR wherever they differ:
+
+1. **Box 1 wording is final** (A1), version `signup-v1`:
+   "I am an adult and the parent, legal guardian or other person legally allowed to care for each child I
+   add to OSRA. I accept the OSRA [Terms of Use](https://osratech.com/terms) and I have read the
+   [Privacy Policy](https://osratech.com/privacy)."
+   The Arabic and other languages translate exactly this English (Language Bureaus).
+2. **The marketing box is removed entirely** (A8, C19: no marketing or advertising use). There is no
+   `marketing_email` purpose, no marketing switch, no unsubscribe flow and no marketing row in Settings.
+3. **The training box stays off and is not shown in any build** (A2) until its evidence items (E9, E10) and
+   counsel's clearances (C11, C04) exist. Training is not offered. The server keeps refusing
+   `aiImprovement: true`; the purpose key, the switch `CONSENT_AI_IMPROVEMENT_VISIBLE` (off) and the D5
+   owner rule stay in the design so the later switch-on needs no migration, but no screen or string for it is
+   built now.
+4. So, at launch, sign-up shows **one required box**, and Settings → Privacy choices shows only the line
+   "You accepted the Terms and the Privacy Policy on {date}" with the two links. D2's log, D4's versioned
+   wording, D6.3's re-accept screen and D7 are unchanged. Consent records are evidence item E11.
+5. Questions L1, L2 and L7 are answered by the above; L3-L6 and L8 stay open in counsel's register.
 
 ## Context
 
@@ -50,7 +72,7 @@ What exists today (checked on `main@77a5e4f9`):
 |---|---|---|---|---|
 | `terms_privacy` | the Terms of Use and the Privacy Policy, at the shown version | yes, to create an account | unticked | only by deleting the account (existing delete flow) |
 | `ai_improvement` | OSRA may keep short, de-identified parts of some of the family's chats to train OSRA's safety model (AI plan, step 2) | no | **unticked** | any time, in Settings; deletion within 30 days, per the AI plan |
-| `marketing_email` | offers and product news by email | no | **unticked** | any time, in Settings, and by the unsubscribe link in every marketing email |
+| ~~`marketing_email`~~ | removed by the amendment (no marketing use) | | | |
 
 Nothing in the app depends on ticking box 2 or 3: protection, alerts and every feature work the same.
 
@@ -147,13 +169,17 @@ regulator. Question L4 asks the lawyer whether to keep this proof at all and for
   shown and the server refuses `aiImprovement: true`. It turns on only after the lawyer approves the
   wording **and** the DPIA is done (AI plan; January earliest). Even with the switch on, no message is kept
   until the separate collection switch of the AI plan is on.
-- **Box 3** ships behind `CONSENT_MARKETING_VISIBLE` (off) until the lawyer approves and an email provider
-  with one-click unsubscribe exists. No marketing email is sent today.
+- ~~Box 3~~: removed by the amendment. No marketing email exists or is planned.
 
-## Draft wording (English, DRAFT for the lawyer, `signup-v1-draft`)
+## Wording
 
-1. *(required)* "I accept OSRA's [Terms of Use] and [Privacy Policy]." Error if not ticked: "To create an
-   account, please accept the Terms of Use and Privacy Policy."
+1. *(required, FINAL, `signup-v1`, counsel A1)* "I am an adult and the parent, legal guardian or other person legally allowed to care for each child I
+   add to OSRA. I accept the OSRA [Terms of Use](https://osratech.com/terms) and I have read the
+   [Privacy Policy](https://osratech.com/privacy)."
+   Error if not ticked (UI text, Bureaus to word): "To create an account, please tick this box."
+
+   The items below are kept as history; under the amendment, box 2 is not built and box 3 is removed.
+
 2. *(optional)* "OSRA may keep short parts of some of my children's chats, with names and other personal
    details replaced, for up to 24 months, to train OSRA's safety model and make its protection smarter. My
    children aged 13 or over will also be asked. This is off unless I tick it, and I can turn it off at any
@@ -162,7 +188,7 @@ regulator. Question L4 asks the lawyer whether to keep this proof at all and for
    For a guardian (D5), box 2 and the Settings switch carry one more sentence (UI/UX Bureau, #846):
    "Your family's chats are used for this only if the family's account owner also says yes. If you turn
    this off, we will tell the owner."
-3. *(optional)* "Email me OSRA offers and product news. I can unsubscribe at any time."
+3. ~~*(optional)* "Email me OSRA offers and product news. I can unsubscribe at any time."~~ Removed.
 
 The maintainer's phrase "sharing usage feedback" is softer than what box 2 actually allows. The AI plan
 records the rule that the opt-in's first sentence must say plainly that messages are kept, so the draft opens
