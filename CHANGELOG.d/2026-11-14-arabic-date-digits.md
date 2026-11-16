@@ -1,4 +1,5 @@
 ### Parent app — Arabic dates use Western digits and locale-native day headers (#758)
 - App startup and the background notification isolate configure `intl` once and await its locale data, so Arabic dates and times print Western digits rather than Arabic-Indic digits.
 - Alert-list and social-timeline day headers now use the locale's full day/month/year order, through one shared formatter. Existing Arabic strings and all other number/plural paths are unchanged.
+- **The grouping key is locale-independent** (`dayKey`). The lists grouped by `DateFormat('yyyy-MM-dd')`, which follows the ambient locale; in Arabic that key is `٢٠٢٦-١١-١٤`, `DateTime.tryParse` rejects it, and the header fell back to printing the raw ISO key — the two headers the Arabic Bureau flagged on #760. The key is never shown; it only has to parse back into a date for the shared formatter.
 - Added direct background-entry and Arabic widget coverage that rejects Arabic-Indic digits, with alert-detail and alert-list evidence for the Arabic Language Bureau. No phone run is claimed.

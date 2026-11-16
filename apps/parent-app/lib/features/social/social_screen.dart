@@ -1,7 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
 import '../../core/date_formatting.dart';
@@ -407,7 +406,7 @@ class CallsSmsSection extends ConsumerWidget {
             for (final e in items) {
               final day = e.ts == null
                   ? 'Unknown'
-                  : DateFormat('yyyy-MM-dd').format(e.ts!.toLocal());
+                  : dayKey(e.ts!.toLocal());
               if (!groups.containsKey(day)) {
                 groups[day] = [];
                 order.add(day);

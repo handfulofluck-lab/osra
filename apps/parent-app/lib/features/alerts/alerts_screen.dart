@@ -215,7 +215,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     final groups = <String, List<Alert>>{};
     final order = <String>[];
     for (final a in _items) {
-      final day = a.createdAt == null ? 'Unknown' : DateFormat('yyyy-MM-dd').format(a.createdAt!.toLocal());
+      final day = a.createdAt == null ? 'Unknown' : dayKey(a.createdAt!.toLocal());
       if (!groups.containsKey(day)) {
         groups[day] = [];
         order.add(day);
