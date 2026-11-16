@@ -110,7 +110,19 @@ class CommandDispatcher @Inject constructor(
             // Issue #231: the refresh is accepted here, not awaited. refresh() has no failure signal
             // (it falls back to the cached set), so "ok" claims the request was taken up, not that
             // new rules arrived.
-            "rules_updated" -> { scope.launch { rules.refresh() }; CommandOutcome.Applied() }
+            // Issue #826: refreshing the store is not enough — the running filter keeps its old config
+            // until it reloads, so a parent's new blocked list took 10+ minutes to land. The reload is
+            // best-effort and comes after the refresh, so the filter reads the new set; a failed
+            // refresh still reloads from whatever is cached.
+            "rules_updated" -> {
+                scope.launch {
+                    refreshThenReload(
+                        refresh = { rules.refresh() },
+                        reload = { com.familyshield.agent.vpn.FilterVpnService.reload(context) },
+                    )
+                }
+                CommandOutcome.Applied()
+            }
             // Issue #231: starting the service is not a fix — LocationService acks once it has one.
             "locate_now" -> locateNow(commandId)
             // Feature #11: pause the internet — block everything except alwaysAllowedApps and
@@ -526,6 +538,17 @@ class CommandDispatcher @Inject constructor(
         internal const val RESET_CODE_NOTIFICATION_ID = 43
         private const val MIN_MINUTES = 1
         private const val MAX_MINUTES = 240
+
+        /**
+         * Issue #826: a rule refresh must reach the running filter, in that order. Kept here as a pure
+         * suspend function so the JVM suite can hold the ordering and the best-effort behaviour without
+         * a tunnel: a refresh that throws still reloads (from the cached set), and a reload that throws
+         * does not undo the refresh.
+         */
+        internal suspend fun refreshThenReload(refresh: suspend () -> Unit, reload: suspend () -> Unit) {
+            runCatching { refresh() }
+            runCatching { reload() }
+        }
 
         /**
          * Issue #132: the `locate_now` pre-start gate, pure so the JVM suite holds it. A refused
