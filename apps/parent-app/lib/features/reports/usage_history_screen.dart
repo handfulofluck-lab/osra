@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
 import '../../l10n/l10n.dart';
+import '../../providers/family_provider.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../../api/permission_errors.dart';
@@ -253,6 +254,17 @@ class _BrowsingSection extends ConsumerWidget {
     final l10n = context.l10n;
     final query = (childId: childId, days: days, blockedOnly: blockedOnly, limit: limit);
     final visits = ref.watch(webHistoryProvider(query));
+    // #830: the Play build does not report visited sites; the empty state says so, with the child's
+    // name as the screen's other empty states do. Null until the family loads, and the neutral text then.
+    final childName = ref.watch(familyProvider).maybeWhen(
+          data: (o) {
+            for (final c in o.children) {
+              if (c.id == childId) return c.displayName;
+            }
+            return null;
+          },
+          orElse: () => null,
+        );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -303,7 +315,10 @@ class _BrowsingSection extends ConsumerWidget {
               return _EmptyBody(
                 text: blockedOnly
                     ? l10n.noBlockedSites(days)
-                    : l10n.noBrowsingHistory(days),
+                    : childName == null
+                        ? l10n.noBrowsingHistory(days)
+                        // First-strong isolate, as the Arabic Bureau asked: a child's name may be Arabic.
+                        : l10n.webReportEmptyPlay('\u2068$childName\u2069'),
               );
             }
             return Column(

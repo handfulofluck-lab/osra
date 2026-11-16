@@ -807,6 +807,19 @@
   "callsAndTexts": "Phone calls & texts",
   "iosNoCallMonitoring": "iOS does not support phone-call or text monitoring.",
   "noCallsOrTexts": "No phone calls or texts yet",
+  "activityLockRow": "Device locked",
+  "activityLockRowDetail": "{count, plural, =0{The lock screen did not come up} =1{The lock screen came up once} other{The lock screen came up {count} times}}",
+  "@activityLockRowDetail": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "webReportEmptyPlay": "This version of OSRA Kids does not list the websites {childName} visits. Blocked sites {childName} tried to open appear in Alerts.",
+  "@webReportEmptyPlay": {
+    "placeholders": {
+      "childName": { "type": "String" }
+    }
+  },
   "unknownNumber": "Unknown number",
   "trustedContacts": "Trusted contacts",
   "trustedContactsDesc": "Numbers here never raise social concerns.",

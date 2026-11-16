@@ -273,11 +273,15 @@ void main() {
       expect(find.textContaining('Showing the latest 100 visits'), findsNothing);
     });
 
-    testWidgets('empty history shows the empty state', (tester) async {
+    testWidgets('empty history says the Play build does not report sites (#830)', (tester) async {
       final api = trendApi(visits: const []);
       await pumpScreen(tester, const UsageHistoryScreen(childId: 'child-1'), api);
 
-      expect(find.text('No browsing history in the last 7 days'), findsOneWidget);
+      expect(
+        find.text('This version of OSRA Kids does not list the websites \u2068Alex\u2069 visits. '
+            'Blocked sites \u2068Alex\u2069 tried to open appear in Alerts.'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('web error shows an honest error and a retry', (tester) async {
