@@ -216,6 +216,40 @@ describe("APNs provider", () => {
     expect(await provider.send("child-token", buildDeviceWakeMessage())).toMatchObject({ ok: false, invalidToken: false });
     expect(calls).toHaveLength(0);
   });
+
+  it("retries once on a connection-level APNs error so a dropped HTTP/2 session does not lose the push", async () => {
+    const calls: string[] = [];
+    const transport = async (_host: string, _path: string, _headers: Record<string, string>, _body: string) => {
+      calls.push("attempt");
+      if (calls.length === 1) throw new Error("read ECONNRESET");
+      return { status: 200, body: "" };
+    };
+    const provider = new ApnsProvider({ keyP8: ec.privateKey, keyId: "K", teamId: "T", bundleId: "com.osra.parent", host: "https://api.sandbox.push.apple.com" }, transport);
+    expect(await provider.send("abc", buildParentAlertMessage("ios"))).toEqual({ ok: true });
+    expect(calls).toHaveLength(2);
+  });
+
+  it("does not retry APNs errors that are not connection-level", async () => {
+    const calls: string[] = [];
+    const transport = async () => {
+      calls.push("attempt");
+      throw new Error("some other failure");
+    };
+    const provider = new ApnsProvider({ keyP8: ec.privateKey, keyId: "K", teamId: "T", bundleId: "com.osra.parent", host: "https://api.sandbox.push.apple.com" }, transport);
+    expect(await provider.send("abc", buildParentAlertMessage("ios"))).toEqual({ ok: false, invalidToken: false, reason: "some other failure" });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("stops after one retry when the connection error persists", async () => {
+    const calls: string[] = [];
+    const transport = async () => {
+      calls.push("attempt");
+      throw new Error("read ECONNRESET");
+    };
+    const provider = new ApnsProvider({ keyP8: ec.privateKey, keyId: "K", teamId: "T", bundleId: "com.osra.parent", host: "https://api.sandbox.push.apple.com" }, transport);
+    expect(await provider.send("abc", buildParentAlertMessage("ios"))).toEqual({ ok: false, invalidToken: false, reason: "read ECONNRESET" });
+    expect(calls).toHaveLength(2);
+  });
 });
 
 describe("notification policy", () => {
