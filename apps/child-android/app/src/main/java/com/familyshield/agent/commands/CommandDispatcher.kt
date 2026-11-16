@@ -301,15 +301,11 @@ class CommandDispatcher @Inject constructor(
         }
     }
 
-    private fun reportStaleLockPeriod(period: com.familyshield.agent.enforcement.LockPeriodTracker.Period?) {
-        reportLockPeriod(period)
-    }
-
     private fun lock(): CommandOutcome {
         // ADR-0010: a real screen lock when admin/owner permits it; the overlay stays up either way
         // so the child sees the "locked by your parent" screen and cannot swipe back to their apps.
         com.familyshield.agent.enforcement.LockState.set(context, LockActivity.MODE_LOCKED)
-        reportStaleLockPeriod(com.familyshield.agent.enforcement.LockPeriodTracker.start(context, LockActivity.MODE_LOCKED))
+        reportLockPeriod(com.familyshield.agent.enforcement.LockPeriodTracker.start(context, LockActivity.MODE_LOCKED))
         val adminLocked = deviceAdmin.lockNow()
         val outcome = EnforceabilityPolicy.lockOutcome(
             canOverlay = Settings.canDrawOverlays(context),
@@ -333,7 +329,7 @@ class CommandDispatcher @Inject constructor(
      */
     private fun pause(): CommandOutcome {
         com.familyshield.agent.enforcement.LockState.set(context, LockActivity.MODE_PAUSED)
-        reportStaleLockPeriod(com.familyshield.agent.enforcement.LockPeriodTracker.start(context, LockActivity.MODE_PAUSED))
+        reportLockPeriod(com.familyshield.agent.enforcement.LockPeriodTracker.start(context, LockActivity.MODE_PAUSED))
         val outcome = EnforceabilityPolicy.pauseOutcome(
             canOverlay = Settings.canDrawOverlays(context),
             accessibilityRunning = AccessibilityMonitorService.isRunning,
@@ -396,7 +392,7 @@ class CommandDispatcher @Inject constructor(
     private fun pauseInternet(): CommandOutcome {
         rules.setPausedInternet(true)
         com.familyshield.agent.enforcement.LockState.set(context, LockActivity.MODE_PAUSED_INTERNET)
-        reportStaleLockPeriod(com.familyshield.agent.enforcement.LockPeriodTracker.start(context, LockActivity.MODE_PAUSED_INTERNET))
+        reportLockPeriod(com.familyshield.agent.enforcement.LockPeriodTracker.start(context, LockActivity.MODE_PAUSED_INTERNET))
         val webFilterSetUp = com.familyshield.agent.vpn.VpnState.isEnabled(context) &&
             com.familyshield.agent.vpn.FilterVpnService.isPrepared(context)
         if (webFilterSetUp) {
