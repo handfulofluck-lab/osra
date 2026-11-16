@@ -20,22 +20,25 @@
   and a mark inside a phrase would otherwise defeat `contains`. Two rows put a mark **inside** the phrase, where
   removing the strip turns them red; a mark only at the start would match anyway.
 - **The lists are identified by their activity class, not only their words** (Antigravity's Flip4 pass on One UI
-  8.0, 15 Nov). Each of the five list pages has a **Search apps** bar, and opening it replaces the page title with
+  8.0, 15 Nov). The overlay and usage lists carry a **Search apps** bar, and opening it replaces the page title with
   "Search apps" — so the phrase that named the page was gone and the child could toggle us off with no PIN, in
-  English and Arabic alike. `SPECIAL_ACCESS_CLASSES` covers `OverlaySettingsActivity`,
+  English and Arabic alike. Notification access and the VPN list have no search control on One UI 8.0, so there the
+  title still works; the class identifies all five either way. `SPECIAL_ACCESS_CLASSES` covers `OverlaySettingsActivity`,
   `UsageAccessSettingsActivity`, `AppUsageAccessSettingsActivity`, `NotificationAccessSettingsActivity` and
   `NotificationAccessDetailsActivity`, and the words still carry the VPN gear page (`SubSettings`) and split-screen
   (a null class).
 - **The words from the Flip4 dump are in**: One UI 8.0's own Arabic titles («الظهور في الأعلى», «وصول بيانات
   الاستخدام»), the Arabic and English function descriptions the Search results show, and the VPN gear page in
-  ar-AE («تشغيل VPN دائمًا», «حظر الاتصالات من دون VPN», «حذف ملف تعريف VPN») — the last of which deletes our
-  profile with no PIN before this change.
+  ar-AE (`تشغيل vpn دائما`, `حظر الاتصالات من دون vpn`, `حذف ملف تعريف vpn`, written here in the folded form the
+  list stores, which is what the comparison uses) — the last of which deletes our profile with no PIN before this
+  change.
 - **A keyboard state change can no longer clear the latch.** The soft keyboard emits a state change with the IME's
   package, and the service read the latch package from the event — so typing in Search cleared
   `specialAccessLatch` and the location latch, turning a grant we hold into "the parent is granting it".
   `AccessibilityOffPolicy.latchPackage` prefers the foreground application package, and `windowClass` is read from
   the per-package class map (`#802 V5`'s `lastClassByPkg`) rather than the single global pair.
 - **Device state**: Antigravity opened all four pages on the Flip4 (SM-F721B, One UI 8.0, ar-AE and en-GB) at
-  `e131c080` and found the bypasses this change closes; the re-verification runs at the head that lands. The pages
-  are still not opened by this author on a handset, and the private report in `osra-security#29` holds the raw
-  dumps.
+  `e131c080`, found the bypasses this change closes, and **re-ran the whole matrix at `526d513c`**: the bypasses and
+  the keyboard-latch bug are closed in both languages, and the negative controls (browsing a list with OSRA
+  off-screen, an unheld access's setup visit, the top-level VPN list) still do not raise the gate. The raw dumps
+  live in the private report in `osra-security#29`. This author has still not driven the four pages himself.

@@ -759,7 +759,14 @@ class TamperScreenPolicyTest {
                 windowClass = "com.android.settings.SubSettings",
             )
         // English gear page: the switch that keeps the filter on
-        assertEquals(TamperScreen.SPECIAL_ACCESS, words(TamperScreenPolicy.SpecialAccess.VPN, "OSRA", "Always-on VPN", "Block connections without VPN"))
+        assertEquals(TamperScreen.SPECIAL_ACCESS, words(TamperScreenPolicy.SpecialAccess.VPN, "OSRA", "Always-on VPN"))
+        // Claude's smaller item: "block connections without vpn" gets its own row. Asserted beside "Always-on VPN"
+        // it could be deleted and the row would still pass, which is the shape we keep having to fix.
+        assertEquals(
+            "the block-connections row",
+            TamperScreen.SPECIAL_ACCESS,
+            words(TamperScreenPolicy.SpecialAccess.VPN, "OSRA", "Block connections without VPN"),
+        )
         // ar-AE gear page: the switch, the block row, and the delete row that opens the confirm sheet
         for (phrase in listOf("تشغيل VPN دائمًا", "حظر الاتصالات من دون VPN", "حذف ملف تعريف VPN")) {
             assertEquals(phrase, TamperScreen.SPECIAL_ACCESS, words(TamperScreenPolicy.SpecialAccess.VPN, "OSRA", phrase))
@@ -876,5 +883,38 @@ class TamperScreenPolicyTest {
                 ),
             )
         }
+    }
+
+    /**
+     * Arabic Language Bureau, via Claude's note on #817: «الظهور في الأعلى» is a short, common phrase, and it is safe
+     * as a trigger **only** because the page must also name the agent. This is the row that keeps that true.
+     *
+     * Mutant: drop the `namesUs` guard in `classify()` → this row raises the gate on someone else's page.
+     */
+    @Test
+    fun `the short Arabic overlay phrase alone does not guard another app's page`() {
+        assertEquals(
+            TamperScreen.NONE,
+            TamperScreenPolicy.classify(
+                "com.android.settings",
+                listOf<CharSequence>("Chrome", "الظهور في الأعلى", "مسموح"),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                ourSpecialAccess = setOf(TamperScreenPolicy.SpecialAccess.OVERLAY),
+                windowClass = "com.android.settings.SubSettings",
+            ),
+        )
+        // The positive control: the same text with our name on it does guard.
+        assertEquals(
+            TamperScreen.SPECIAL_ACCESS,
+            TamperScreenPolicy.classify(
+                "com.android.settings",
+                listOf<CharSequence>("OSRA", "الظهور في الأعلى", "مسموح"),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                ourSpecialAccess = setOf(TamperScreenPolicy.SpecialAccess.OVERLAY),
+                windowClass = "com.android.settings.SubSettings",
+            ),
+        )
     }
 }

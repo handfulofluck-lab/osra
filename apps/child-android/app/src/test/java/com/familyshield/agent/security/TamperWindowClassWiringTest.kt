@@ -23,6 +23,11 @@ import org.junit.Test
  */
 class TamperWindowClassWiringTest {
 
+    private companion object {
+        /** The line after the cover path, so a slice cannot end above the read it is looking for. */
+        const val NEXT_FUNCTION_ANCHOR = "\n    private fun removeGuardCover("
+    }
+
     private val service = sourceFile("app/src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt")
     private val guard = service.substringAfter("private fun guardProtectionScreens(").substringBefore("performGlobalAction(")
 
@@ -50,10 +55,40 @@ class TamperWindowClassWiringTest {
             "the guard passes the foreground package's own class, so an IME state change cannot erase it",
             guard.contains("windowClass = pkg?.let { lastClassByPkg[it] }"),
         )
-        // The cover path reads it the same way, still gated on the pane being the active one.
+        // The cover path reads it the same way, still gated on the pane being the active one. Sliced to the function
+        // (Hydrogen's note): `service.contains` was satisfied by the guard's own occurrence, so deleting the cover
+        // path's read left this row green.
+        // Bounded by the next function rather than a closing brace: the cover path spans 70 lines with plenty of
+        // inner braces, so a closing-brace slice could end above the read it is meant to find.
+        val cover = service.substringAfter("private fun coverSharedProtectionScreens(", missingDelimiterValue = "")
+            .substringBefore(NEXT_FUNCTION_ANCHOR, missingDelimiterValue = "")
         assertTrue(
             "and the multi-window path does too",
-            service.contains("pkg?.let { lastClassByPkg[it] }"),
+            cover.contains("pkg?.let { lastClassByPkg[it] }"),
+        )
+    }
+
+    /**
+     * Claude's item 1 on #817: reverting the service to pass the event's package into the latches left every test
+     * green, because the planted fault only moved the helper. This row drives the wiring: the service computes
+     * `latchPackage(pkg, pkgOfEvent)` once and hands that to **both** latches.
+     *
+     * Mutant: pass `pkgOfEvent` to either latch → this row goes red.
+     */
+    @Test
+    fun `the service latches on the package it chose, not on the raw event package`() {
+        assertTrue(
+            "the choice is made once, through the helper",
+            guard.contains("AccessibilityOffPolicy.latchPackage(pkg, pkgOfEvent)"),
+        )
+        val latchCalls = guard.substringAfter("val latchPkg =").substringBefore("if (!settings.isPairedSync())")
+        assertTrue(
+            "and both latches read it",
+            latchCalls.contains("packageName = latchPkg,"),
+        )
+        assertFalse(
+            "neither latch reads the event's package directly",
+            latchCalls.contains("packageName = pkgOfEvent,"),
         )
     }
 

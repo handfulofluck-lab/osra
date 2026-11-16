@@ -84,8 +84,7 @@ object TamperScreenPolicy {
     /**
      * osra-security#29, Part 2 (Antigravity's scope, agreed on #813): the *other* system surfaces that decide what
      * the agent may do — drawing over other apps, reading usage, reading notifications, and the VPN entry. Each is a
-     * page that names us and carries one of these phrases; the class names are fragments inside `SubSettings` on
-     * current builds, so the words are the reliable signal here, exactly as the accessibility page needed.
+     * page that names us and carries one of these phrases.
      *
      * Antigravity's Flip4 pass at `e131c080` found that words alone are not enough: the lists have a **Search apps**
      * bar, and while it is open the toolbar title is replaced by "Search apps", so the one phrase that identified the

@@ -161,4 +161,33 @@ class AccessibilityOffPolicyTest {
         )
     }
 
+    /**
+     * Claude's osra-security#29 item 1 on #817: the *entry* event into Settings can arrive while our own window is
+     * still the foreground one. Reading the foreground there leaves the latch empty, and a grant the parent makes
+     * during onboarding then fires the PIN gate mid-flow — a regression the old code could not have.
+     */
+    @Test
+    fun `entering Settings from our own screen still latches the visit`() {
+        assertEquals(
+            "the event's own package wins when the event IS the Settings page",
+            "com.android.settings",
+            AccessibilityOffPolicy.latchPackage("com.osratech.child", "com.android.settings"),
+        )
+        assertEquals(
+            "and the same for the permission controller",
+            "com.android.permissioncontroller",
+            AccessibilityOffPolicy.latchPackage("com.osratech.child", "com.android.permissioncontroller"),
+        )
+        assertEquals(
+            "a keyboard inside Settings does not change the answer",
+            "com.android.settings",
+            AccessibilityOffPolicy.latchPackage("com.android.settings", "com.samsung.android.honeyboard"),
+        )
+        assertEquals(
+            "an unrelated window still reads the foreground package",
+            "com.whatsapp",
+            AccessibilityOffPolicy.latchPackage("com.whatsapp", "com.samsung.android.honeyboard"),
+        )
+    }
+
 }

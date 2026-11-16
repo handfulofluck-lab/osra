@@ -124,7 +124,19 @@ object AccessibilityOffPolicy {
      * granting it" — and reset [nextLatch] the same way. The foreground application package wins whenever it is
      * known; the event's package is the fallback for a window with no application behind it.
      */
-    fun latchPackage(foregroundPkg: String?, eventPkg: String?): String? = foregroundPkg ?: eventPkg
+    fun latchPackage(foregroundPkg: String?, eventPkg: String?): String? = when {
+        eventPkg == null -> foregroundPkg
+        // Claude's osra-security#29 item 1 on #817: the *entry* event into Settings can arrive while our own window is
+        // still the foreground one — then reading the foreground leaves the latch empty, and a grant the parent makes
+        // during onboarding fires the PIN gate mid-flow. The old code could not do that, so it would be a regression
+        // introduced by the IME fix. When the event itself is a Settings or PermissionController window, that IS the
+        // page in front; the foreground package answers every other case (a keyboard inside Settings, a popup).
+        eventPkg == SETTINGS_PACKAGE || eventPkg.contains("permissioncontroller") -> eventPkg
+        else -> foregroundPkg ?: eventPkg
+    }
+
+    /** The package whose special-access pages the latch is about; shared with the service's own calls. */
+    const val SETTINGS_PACKAGE = "com.android.settings"
 
     /**
      * The grant latch for a PermissionController visit (osra-security#30 review): latched from the grant when a
