@@ -108,6 +108,7 @@ class _MfaResetApprovalScreenState extends ConsumerState<MfaResetApprovalScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
+        scrollable: true,
         title: Text(dialogContext.l10n.mfaResetDeclineTitle),
         content: Text(dialogContext.l10n.mfaResetDeclineBody),
         actions: [
