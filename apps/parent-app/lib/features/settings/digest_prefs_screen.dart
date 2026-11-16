@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/localized_list.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/world_class_provider.dart';
 import '../../api/models.dart' show DigestRecipientStatus;
@@ -116,11 +117,7 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
     return [tz, ..._timezones];
   }
 
-  List<String> get _emailList => _emails.text
-      .split(',')
-      .map((e) => e.trim())
-      .where((e) => e.isNotEmpty)
-      .toList();
+  List<String> get _emailList => splitLocalizedList(_emails.text);
 
   Future<void> _save() async {
     setState(() => _saving = true);
@@ -170,12 +167,11 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
+          scrollable: true,
           title: Text(context.l10n.digestPrefsTestTitle),
-          content: SingleChildScrollView(
-            child: SelectableText(
-              buffer.toString().trim().isEmpty ? ctx.l10n.digestPrefsNoDigests : buffer.toString().trim(),
-              key: const ValueKey('digestMarkdown'),
-            ),
+          content: SelectableText(
+            buffer.toString().trim().isEmpty ? ctx.l10n.digestPrefsNoDigests : buffer.toString().trim(),
+            key: const ValueKey('digestMarkdown'),
           ),
           actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: Text(ctx.l10n.digestPrefsClose))],
         ),

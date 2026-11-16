@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/digits.dart';
 import '../../api/mfa_reset_api.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/mfa_provider.dart';
@@ -51,7 +52,7 @@ class _MfaResetWitnessScreenState extends ConsumerState<MfaResetWitnessScreen> {
   }
 
   Future<void> _submit() async {
-    final code = _code.text.trim();
+    final code = normalizeDigits(_code.text.trim());
     if (!RegExp(r'^\d{8}$').hasMatch(code)) {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(context.l10n.mfaResetWitnessEnterCode)));
@@ -95,7 +96,7 @@ class _MfaResetWitnessScreenState extends ConsumerState<MfaResetWitnessScreen> {
               keyboardType: TextInputType.number,
               autofillHints: const [AutofillHints.oneTimeCode],
               inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
+                FilteringTextInputFormatter.allow(anyDigitPattern),
                 LengthLimitingTextInputFormatter(8),
               ],
               decoration: InputDecoration(

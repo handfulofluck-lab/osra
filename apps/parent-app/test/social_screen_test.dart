@@ -227,6 +227,20 @@ void main() {
       expect(puts.single.body['contactAllowlist'], ['15551234567']);
     });
 
+    testWidgets('Arabic digits are the same phone number (#771)', (tester) async {
+      final api = FakeApiClient(socialRoutes(contactAllowlist: const []));
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+      await flushFakeHttp(tester);
+
+      final phoneField = fieldByLabel('Phone number');
+      await reveal(tester, phoneField);
+      await tester.enterText(phoneField, '+١ (٥٥٥) ١٢٣-٤٥٦٧');
+      await tester.tap(find.byTooltip('Add'));
+      await tester.pumpAndSettle();
+      expect(find.text('15551234567'), findsOneWidget);
+      expect(find.text('+١ (٥٥٥) ١٢٣-٤٥٦٧'), findsNothing);
+    });
+
     testWidgets('removing a chip and saving PUTs the updated contactAllowlist', (tester) async {
       final api = FakeApiClient(socialRoutes(contactAllowlist: ['15550001122', '15553334445']));
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
