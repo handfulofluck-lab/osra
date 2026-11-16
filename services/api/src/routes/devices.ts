@@ -22,6 +22,7 @@ import {
 } from "../lib/pollCadence.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 import { recordActivityUsage, recordAppUsage, recordDeviceTotal } from "../lib/usageModel.js";
+import { siteNamesEnabled } from "../lib/siteNames.js";
 
 import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
 import { markDeviceRevoked } from "../lib/deviceRevocation.js";
@@ -945,7 +946,7 @@ export async function deviceRoutes(app: FastifyInstance) {
       // Phase 2c: fold the batch into AppUsageDaily / WebVisit. A failure here must not reject the
       // batch (the raw log is the source of truth; the nightly rollup reconciles from it).
       try {
-        await recordActivityUsage(device.childId, id, persistentEvents as Array<{ ts?: string; type: string; payload: Record<string, unknown> }>);
+        await recordActivityUsage(device.childId, id, persistentEvents as Array<{ ts?: string; type: string; payload: Record<string, unknown> }>, { siteNames: siteNamesEnabled() });
       } catch (err) {
         req.log.warn({ err }, "usage rollup write failed (activity)");
       }

@@ -63,6 +63,10 @@ class FilterVpnService : VpnService() {
     private val lastSiteAlert = java.util.concurrent.ConcurrentHashMap<String, Long>()
     /** host → the last time a visit row was written; a new visit counts only after the quiet gap. */
     private val lastSiteVisit = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    /** #830 B2: hosts waiting for the next batched upload, capped by [SITE_VISIT_BATCH_MAX]. */
+    private val pendingVisits = java.util.LinkedHashMap<String, Boolean>()
+    private val pendingVisitsLock = Any()
+    @Volatile private var visitFlusherStarted = false
 
     private var tun: ParcelFileDescriptor? = null
     private var mode: String = MODE_DNS
@@ -131,6 +135,7 @@ class FilterVpnService : VpnService() {
         val wf = set?.webFilter
         config = DnsFilterPolicy.Config(
             pausedInternet = rules.isInternetPaused(),
+            siteNamesEnabled = rules.siteNamesEnabled(),
             safeSearch = wf?.safeSearchEnforced ?: false,
             youtubeMode = wf?.youtubeRestrictedMode ?: "off",
             allowedDomains = wf?.allowedDomains ?: emptyList(),
@@ -280,13 +285,15 @@ class FilterVpnService : VpnService() {
     }
 
     /**
-     * #830: one `url` activity row per host per [SITE_VISIT_QUIET_MS]. The DNS filter sees names, not
-     * pages, so the payload carries the host in `url` and `domain` and never a path; the server also
-     * reduces anything a client sends to its host. A page load's dozens of lookups count once, and a
-     * later visit after the gap counts again.
+     * #830: one `url` activity row per host per [SITE_VISIT_QUIET_MS], batched. The DNS filter sees
+     * names, not pages, so the payload carries the host in `url` and `domain` and never a path; the
+     * server also reduces anything a client sends to its host. With the server flag off an unblocked
+     * name never leaves the phone ([SiteVisitGate]); a blocked attempt is the parent's rule reporting
+     * itself and is not behind the switch.
      */
     private fun recordSiteVisit(host: String, blocked: Boolean) {
         if (host.isEmpty()) return
+        if (!SiteVisitGate.shouldUpload(config.siteNamesEnabled, blocked)) return
         val now = System.currentTimeMillis()
         val last = lastSiteVisit[host]
         if (!com.familyshield.agent.enforcement.AlertKeys.siteAlertDue(last, now, SITE_VISIT_QUIET_MS)) return
@@ -294,18 +301,46 @@ class FilterVpnService : VpnService() {
             lastSiteVisit.entries.removeIf { now - it.value > SITE_VISIT_QUIET_MS }
         }
         lastSiteVisit[host] = now
+        val flushNow = synchronized(pendingVisitsLock) {
+            pendingVisits[host] = blocked
+            pendingVisits.size >= SITE_VISIT_BATCH_MAX
+        }
+        startVisitFlusher()
+        if (flushNow) flushSiteVisits()
+    }
+
+    /** One flusher per service lifetime; the scope is cancelled in [onDestroy]. */
+    private fun startVisitFlusher() {
+        if (visitFlusherStarted) return
+        visitFlusherStarted = true
+        scope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(SITE_VISIT_FLUSH_MS)
+                flushSiteVisits()
+            }
+        }
+    }
+
+    /** Sends queued names as one batch; a failed upload drops them rather than replaying a day late. */
+    private fun flushSiteVisits() {
+        val batch: List<Pair<String, Boolean>>
+        synchronized(pendingVisitsLock) {
+            if (pendingVisits.isEmpty()) return
+            batch = pendingVisits.entries.map { it.key to it.value }
+            pendingVisits.clear()
+        }
         scope.launch {
             val deviceId = settings.deviceId() ?: return@launch
             runCatching {
                 api.postActivityEvents(
                     deviceId,
                     com.familyshield.agent.network.dto.ActivityEventBatchDto(
-                        events = listOf(
+                        events = batch.take(SITE_VISIT_BATCH_MAX).map { (host, blocked) ->
                             com.familyshield.agent.network.dto.ActivityEventDto(
                                 type = "url",
                                 payload = mapOf("url" to host, "domain" to host, "blocked" to blocked),
-                            ),
-                        ),
+                            )
+                        },
                     ),
                 )
             }
@@ -386,7 +421,13 @@ class FilterVpnService : VpnService() {
         private const val SITE_ALERT_QUIET_MS = 10 * 60 * 1000L
         /** #830: a new visit counts only after five quiet minutes for that host (UI/UX's example). */
         private const val SITE_VISIT_QUIET_MS = 5 * 60 * 1000L
-
+        /**
+         * #830 B2: visits leave the phone in batches, not one request per name. A page load resolves a
+         * dozen names; [SITE_VISIT_FLUSH_MS] bounds how long a name waits, and [SITE_VISIT_BATCH_MAX] is
+         * the cap the server also enforces.
+         */
+        private const val SITE_VISIT_FLUSH_MS = 60_000L
+        private const val SITE_VISIT_BATCH_MAX = 20
         /**
          * The mode of the tunnel that is **actually established**, or null when there is none.
          *

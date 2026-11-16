@@ -147,6 +147,21 @@ describe("usage model — reads and rollup", () => {
     expect(prismaMock.activityEvent.deleteMany).toHaveBeenLastCalledWith({ where: { ts: { lt: rawCutoff } } });
   });
 
+  it("applyRetention keeps site names to 90 days even when RETENTION_DAYS is raised (#830, Fable B1)", async () => {
+    for (const m of ["activityEvent", "webVisit", "socialEvent", "locationPing", "appUsageDaily", "alert"] as const) {
+      prismaMock[m].deleteMany.mockResolvedValue({ count: 0 });
+    }
+    const now = new Date("2026-11-12T02:00:00Z");
+    await applyRetention(now, { RETENTION_DAYS: "365", ROLLUP_RETENTION_DAYS: "365" } as NodeJS.ProcessEnv);
+    const day = 86_400_000;
+    const siteCutoff = new Date(now.getTime() - 90 * day);
+    expect(prismaMock.webVisit.deleteMany).toHaveBeenCalledWith({ where: { ts: { lt: siteCutoff } } });
+    // The other raw rows keep the configured year, so the two windows are not interchangeable.
+    expect(prismaMock.activityEvent.deleteMany).toHaveBeenCalledWith({
+      where: { ts: { lt: new Date(now.getTime() - 365 * day) } },
+    });
+  });
+
   it("applyRetention keeps alerts for 365 days: a 366-day-old alert goes, a 364-day-old one stays (Play decision 10 B)", async () => {
     for (const m of ["activityEvent", "webVisit", "socialEvent", "locationPing", "appUsageDaily", "alert"] as const) {
       prismaMock[m].deleteMany.mockResolvedValue({ count: 0 });

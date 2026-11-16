@@ -3,6 +3,7 @@ import { prisma } from "../db.js";
 import { getRedis } from "../redis.js";
 import { markDeviceRevoked } from "./deviceRevocation.js";
 import { stripAlertLocation } from "./alertLocation.js";
+import { isExcludedSiteHost, siteVisitRetentionDays } from "./siteNames.js";
 
 /**
  * Phase 2c (ADR-0013): the durable usage model.
@@ -138,13 +139,24 @@ async function addMinutes(childId: string, deviceId: string, day: Date, app: str
 }
 
 /** Ingestion hook: fold a device's activity batch into the rollup tables. Best-effort per row. */
-export async function recordActivityUsage(childId: string, deviceId: string, events: IncomingEvent[]): Promise<{ usageRows: number; visits: number }> {
+export async function recordActivityUsage(
+  childId: string,
+  deviceId: string,
+  events: IncomingEvent[],
+  options: { siteNames?: boolean } = {},
+): Promise<{ usageRows: number; visits: number }> {
   const { usage, visits } = bucketEvents(events);
   for (const { day, app, minutes } of usage.values()) await addMinutes(childId, deviceId, day, app, minutes);
-  if (visits.length > 0) {
-    await prisma.webVisit.createMany({ data: visits.map((v) => ({ childId, deviceId, ...v })) });
+  // #830 gating (Fable B1, Claude's conditions): with the flag off, a name that was not blocked never
+  // becomes a row — the server drops it even if a phone sends it. A blocked attempt is not browsing
+  // history (it is the parent's own rule reporting itself), so it stays. The exclusion list applies in
+  // both states: our API, the enforcement hosts and the OS connectivity checks are not sites the child
+  // visited.
+  const keep = visits.filter((v) => !isExcludedSiteHost(v.domain) && (options.siteNames === true || v.blocked));
+  if (keep.length > 0) {
+    await prisma.webVisit.createMany({ data: keep.map((v) => ({ childId, deviceId, ...v })) });
   }
-  return { usageRows: usage.size, visits: visits.length };
+  return { usageRows: usage.size, visits: keep.length };
 }
 
 /**
@@ -298,12 +310,15 @@ export interface RetentionResult {
  */
 export async function applyRetention(at: Date = new Date(), env: NodeJS.ProcessEnv = process.env): Promise<RetentionResult> {
   const rawCutoff = new Date(at.getTime() - retentionDays(env) * MS_PER_DAY);
+  // #830: site names keep their own, shorter window (90 days, named in the privacy notice and the
+  // Play form). A raised RETENTION_DAYS must not extend them silently.
+  const visitCutoff = new Date(at.getTime() - siteVisitRetentionDays(retentionDays(env)) * MS_PER_DAY);
   const locationCutoff = new Date(at.getTime() - locationRetentionDays(env) * MS_PER_DAY);
   const rollupCutoff = utcDay(new Date(at.getTime() - rollupRetentionDays(env) * MS_PER_DAY));
   const alertCutoff = new Date(at.getTime() - alertRetentionDays(env) * MS_PER_DAY);
   const [a, w, s, l, u, al] = await Promise.all([
     prisma.activityEvent.deleteMany({ where: { ts: { lt: rawCutoff } } }),
-    prisma.webVisit.deleteMany({ where: { ts: { lt: rawCutoff } } }),
+    prisma.webVisit.deleteMany({ where: { ts: { lt: visitCutoff } } }),
     prisma.socialEvent.deleteMany({ where: { createdAt: { lt: rawCutoff } } }),
     prisma.locationPing.deleteMany({ where: { timestamp: { lt: locationCutoff } } }),
     prisma.appUsageDaily.deleteMany({ where: { day: { lt: rollupCutoff } } }),

@@ -30,6 +30,8 @@ object DnsFilterPolicy {
 
     data class Config(
         val pausedInternet: Boolean = false,
+        /** #830 gating: the server flag; false keeps unblocked names on the phone. */
+        val siteNamesEnabled: Boolean = false,
         val safeSearch: Boolean = false,
         /** "strict" | "moderate" | "off" — anything else is treated as "off". */
         val youtubeMode: String = "off",
