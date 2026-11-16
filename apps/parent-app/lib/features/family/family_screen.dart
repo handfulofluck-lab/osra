@@ -213,71 +213,70 @@ class _InviteMemberDialogState extends ConsumerState<InviteMemberDialog> {
     final tokens = context.tokens;
     final token = _acceptToken;
     return AlertDialog(
+      scrollable: true,
       title: Text(token == null ? context.l10n.familyInviteMember : context.l10n.familyInviteSent),
-      content: SingleChildScrollView(
-        child: token == null
-            ? Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: _email,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: InputDecoration(
-                      labelText: context.l10n.familyEmailLabel,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
-                    ),
+      content: token == null
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: _email,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: InputDecoration(
+                    labelText: context.l10n.familyEmailLabel,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                   ),
-                  const SizedBox(height: AppSpace.md),
-                  DropdownButtonFormField<String>(
-                    initialValue: _role,
-                    isExpanded: true,
-                    decoration: InputDecoration(
-                      labelText: context.l10n.familyRoleLabel,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
-                    ),
-                    items: [
-                      DropdownMenuItem(value: 'co-parent', child: Text(context.l10n.familyRoleCoParent)),
-                      DropdownMenuItem(value: 'guardian', child: Text(context.l10n.familyRoleGuardian)),
-                    ],
-                    onChanged: (v) => setState(() => _role = v ?? 'co-parent'),
+                ),
+                const SizedBox(height: AppSpace.md),
+                DropdownButtonFormField<String>(
+                  initialValue: _role,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    labelText: context.l10n.familyRoleLabel,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                   ),
-                  const SizedBox(height: AppSpace.sm),
-                  Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: Text(context.l10n.familyPermissions, style: Theme.of(context).textTheme.titleSmall),
-                  ),
-                  for (final p in kInvitePermissions)
-                    CheckboxListTile(
-                      dense: true,
-                      title: Text(familyPermissionName(context.l10n, p)),
-                      value: _permissions[p] ?? true,
-                      onChanged: (v) => setState(() => _permissions[p] = v ?? false),
-                    ),
-                  if (_error != null) ...[
-                    const SizedBox(height: AppSpace.sm),
-                    Text(_error!,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.danger)),
+                  items: [
+                    DropdownMenuItem(value: 'co-parent', child: Text(context.l10n.familyRoleCoParent)),
+                    DropdownMenuItem(value: 'guardian', child: Text(context.l10n.familyRoleGuardian)),
                   ],
-                ],
-              )
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(context.l10n.familyInviteSentTo(_invitedEmail ?? '')),
-                  const SizedBox(height: AppSpace.md),
-                  SelectableText(
-                    token,
-                    // Deliberate: the accept token keeps its literal monospace
-                    // style; AppType.recoveryCode is 16 px with 0.4 tracking
-                    // and would change this dialog's 320 px layout.
-                    style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                  onChanged: (v) => setState(() => _role = v ?? 'co-parent'),
+                ),
+                const SizedBox(height: AppSpace.sm),
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Text(context.l10n.familyPermissions, style: Theme.of(context).textTheme.titleSmall),
+                ),
+                for (final p in kInvitePermissions)
+                  CheckboxListTile(
+                    dense: true,
+                    title: Text(familyPermissionName(context.l10n, p)),
+                    value: _permissions[p] ?? true,
+                    onChanged: (v) => setState(() => _permissions[p] = v ?? false),
                   ),
+                if (_error != null) ...[
                   const SizedBox(height: AppSpace.sm),
-                  Text(context.l10n.familyTokenExplanation),
+                  Text(_error!,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.danger)),
                 ],
-              ),
-      ),
+              ],
+            )
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(context.l10n.familyInviteSentTo(_invitedEmail ?? '')),
+                const SizedBox(height: AppSpace.md),
+                SelectableText(
+                  token,
+                  // Deliberate: the accept token keeps its literal monospace
+                  // style; AppType.recoveryCode is 16 px with 0.4 tracking
+                  // and would change this dialog's 320 px layout.
+                  style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: AppSpace.sm),
+                Text(context.l10n.familyTokenExplanation),
+              ],
+            ),
       actions: token == null
           ? [
               TextButton(onPressed: _sending ? null : () => Navigator.of(context).pop(false), child: Text(context.l10n.cancel)),

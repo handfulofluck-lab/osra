@@ -65,6 +65,11 @@ output "fcm_service_account_secret_arn" {
   value       = aws_secretsmanager_secret.fcm_service_account.arn
 }
 
+output "apns_key_p8_secret_arn" {
+  description = "Secret holding the APNs signing key (.p8); its value is written out of band, never by Terraform."
+  value       = aws_secretsmanager_secret.apns_key_p8.arn
+}
+
 output "hosted_zone_name_servers" {
   description = "Name servers of the zone created here (production). The parent zone needs an NS record for hosted_zone_name with these four values; empty when no zone is created."
   value       = var.create_hosted_zone ? aws_route53_zone.api[0].name_servers : []

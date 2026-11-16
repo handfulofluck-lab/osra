@@ -47,6 +47,7 @@ class _RecoveryCodesScreenState extends State<RecoveryCodesScreen> {
     final leave = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: Text(l10n.mfaCodesLeaveTitle),
         content: Text(l10n.mfaCodesLeaveBody),
         actions: [
