@@ -9,6 +9,7 @@ final class RingRecoveryTests: XCTestCase {
     private var store: InMemoryRingStore!
     private var history: InMemoryRingHistory!
     private var reporter: RecordingRingReporter!
+    private var audioPlayer: FakeRingAudioPlayer!
     private var wall = Date(timeIntervalSince1970: 1_000)
     private var uptime = 10.0
     private var bootSession = 1.0
@@ -20,6 +21,7 @@ final class RingRecoveryTests: XCTestCase {
         store = InMemoryRingStore()
         history = InMemoryRingHistory()
         reporter = RecordingRingReporter()
+        audioPlayer = FakeRingAudioPlayer()
         AgentIdentityStore.secrets = InMemorySecretStore()
         AgentIdentityStore.clear()
         ParentPinStore.clear()
@@ -37,6 +39,7 @@ final class RingRecoveryTests: XCTestCase {
     private func controller(reporter: RingAlertReporting? = nil) -> RingController {
         RingController(backend: backend, store: store, history: history,
                        reporter: reporter ?? self.reporter,
+                       audioPlayer: audioPlayer,
                        now: { self.wall }, monotonic: { self.uptime },
                        bootSession: { self.bootSession },
                        sleep: { seconds in

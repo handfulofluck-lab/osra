@@ -1,6 +1,11 @@
 import XCTest
 @testable import FamilyShieldAgent
 
+final class FakeRingAudioPlayer: RingAudioPlaying {
+    func start() async {}
+    func stop() async {}
+}
+
 /// #690: a phone the parent removed gets `401 {"error":"device_revoked"}` on every device-token call, and then
 /// leaves the paired state: pairing, rules, shields, unsent location and parent PIN all go. Each path that sends
 /// the device token is covered, and no other 401 unpairs. The network is stubbed (`StubProtocol`).
@@ -157,7 +162,8 @@ final class DeviceRevocationTests: XCTestCase {
     @MainActor
     func testRevocationRehydratesPersistedRingBeforeClearing() async {
         let controller = RingController(backend: FakeRingBackend(), store: UserDefaultsRingStore(),
-                                       history: InMemoryRingHistory(), reporter: RecordingRingReporter())
+                                       history: InMemoryRingHistory(), reporter: RecordingRingReporter(),
+                                       audioPlayer: FakeRingAudioPlayer())
         await controller.stopForUnpair()
         let state = RingState(commandId: UUID(), startedAt: Date(), endAt: Date().addingTimeInterval(300),
                               monotonicStart: 0, bootSession: 1)

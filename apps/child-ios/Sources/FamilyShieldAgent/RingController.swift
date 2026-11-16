@@ -23,9 +23,11 @@ public final class RingController: ObservableObject {
     private var deadlineTask: Task<Void, Never>?
     private var deadlineGeneration = 0
     private var operationGeneration = 0
+    private let audioPlayer: RingAudioPlaying
 
     public init(backend: RingBackend? = nil, store: RingStore = UserDefaultsRingStore(),
                 history: RingHistory = UserDefaultsRingHistory(), reporter: RingAlertReporting? = nil,
+                audioPlayer: RingAudioPlaying? = nil,
                 now: @escaping () -> Date = Date.init,
                 monotonic: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
                 bootSession: @escaping () -> TimeInterval? = { RingBootSession.current() },
@@ -36,6 +38,7 @@ public final class RingController: ObservableObject {
         self.store = store
         self.history = history
         self.reporter = reporter ?? RingAlertReporter()
+        self.audioPlayer = audioPlayer ?? RingAudioPlayer()
         self.now = now
         self.monotonic = monotonic
         self.bootSession = bootSession
@@ -79,6 +82,7 @@ public final class RingController: ObservableObject {
             do {
                 try await backend.stop(previous.commandId)
             } catch { }
+            await audioPlayer.stop()
             guard generation == operationGeneration else { return nil }
         }
         do {
@@ -104,6 +108,7 @@ public final class RingController: ObservableObject {
         restarted = false
         lastScheduledIDs = [id]
         armDeadline()
+        await audioPlayer.start()
         return nil
     }
 
@@ -136,6 +141,9 @@ public final class RingController: ObservableObject {
             lastScheduledIDs = []
         }
         armDeadline()
+        if restored.stopSource == nil {
+            await audioPlayer.start()
+        }
     }
 
     @discardableResult
@@ -173,6 +181,7 @@ public final class RingController: ObservableObject {
         #if os(iOS)
         RingNotifier.cancel()
         #endif
+        await audioPlayer.stop()
         await report(event, for: stopped, generation: generation)
         return nil
     }
@@ -205,6 +214,7 @@ public final class RingController: ObservableObject {
             #if os(iOS)
             RingNotifier.cancel()
             #endif
+            await audioPlayer.stop()
         } catch {
             if generation == operationGeneration {
                 state = current
@@ -242,6 +252,7 @@ public final class RingController: ObservableObject {
                 #if os(iOS)
                 RingNotifier.cancel()
                 #endif
+                await audioPlayer.stop()
                 await report(event, for: restored, generation: generation)
                 return nil
             }
@@ -250,6 +261,7 @@ public final class RingController: ObservableObject {
             state = active
             store.save(active)
             armDeadline()
+            await audioPlayer.start()
             do {
                 if try await !backend.scheduledIDs().contains(restored.commandId) {
                     history.record(restored.commandId)
@@ -265,6 +277,7 @@ public final class RingController: ObservableObject {
             return nil
         }
         armDeadline()
+        await audioPlayer.start()
         await drainReports()
         do {
             await process(scheduledIDs: try await backend.scheduledIDs())
@@ -337,6 +350,7 @@ public final class RingController: ObservableObject {
         state = resumed
         restarted = false
         armDeadline()
+        await audioPlayer.start()
         do {
             if try await !backend.scheduledIDs().contains(current.commandId) {
                 try await backend.schedule(current.commandId)

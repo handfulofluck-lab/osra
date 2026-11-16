@@ -8,6 +8,19 @@ final class InMemoryRingStore: RingStore {
     func save(_ state: RingState?) { stored = state }
 }
 
+final class FakeRingAudioPlayer: RingAudioPlaying {
+    private(set) var startCalls = 0
+    private(set) var stopCalls = 0
+
+    func start() async {
+        startCalls += 1
+    }
+
+    func stop() async {
+        stopCalls += 1
+    }
+}
+
 final class FakeRingBackend: RingBackend {
     let available: Bool
     var authorized: Bool
@@ -62,6 +75,7 @@ final class RingControllerTests: XCTestCase {
     private var store: InMemoryRingStore!
     private var history: InMemoryRingHistory!
     private var reporter: RecordingRingReporter!
+    private var audioPlayer: FakeRingAudioPlayer!
     private var wall = Date(timeIntervalSince1970: 1_000)
     private var uptime = 10.0
     private var bootSession: TimeInterval = 1
@@ -73,6 +87,7 @@ final class RingControllerTests: XCTestCase {
         store = InMemoryRingStore()
         history = InMemoryRingHistory()
         reporter = RecordingRingReporter()
+        audioPlayer = FakeRingAudioPlayer()
         bootSession = 1
         clockDriving = false
         AgentIdentityStore.secrets = InMemorySecretStore()
@@ -94,6 +109,7 @@ final class RingControllerTests: XCTestCase {
     private func controller(reporter: RingAlertReporting? = nil,
                             sleep: ((TimeInterval) async throws -> Void)? = nil) -> RingController {
         RingController(backend: backend, store: store, history: history, reporter: reporter ?? self.reporter,
+                       audioPlayer: audioPlayer,
                        now: { self.wall }, monotonic: { self.uptime },
                        bootSession: { self.bootSession },
                        sleep: sleep ?? { seconds in
@@ -765,6 +781,78 @@ extension RingControllerTests {
         XCTAssertEqual(RingPINPresentation.resolve(isConfigured: false), .gate)
         XCTAssertEqual(RingPINPresentation.resolve(isConfigured: true), .gate)
         XCTAssertFalse(ParentPin.verify("not-a-pin", stored: nil))
+    }
+
+    func testStartStartsAudio() async {
+        let controller = controller()
+        await controller.start(id)
+        XCTAssertEqual(audioPlayer.startCalls, 1)
+        XCTAssertEqual(audioPlayer.stopCalls, 0)
+    }
+
+    func testDismissalDoesNotStopAudio() async {
+        let controller = controller()
+        await controller.start(id)
+        await controller.process(scheduledIDs: [])
+        XCTAssertEqual(audioPlayer.startCalls, 1)
+        XCTAssertEqual(audioPlayer.stopCalls, 0)
+    }
+
+    func testParentStopStopsAudio() async {
+        let controller = controller()
+        await controller.start(id)
+        await controller.stop(.parentCommand)
+        XCTAssertEqual(audioPlayer.startCalls, 1)
+        XCTAssertEqual(audioPlayer.stopCalls, 1)
+    }
+
+    func testPinStopStopsAudio() async {
+        let controller = controller()
+        await controller.start(id)
+        await controller.stop(.pinVerified)
+        XCTAssertEqual(audioPlayer.startCalls, 1)
+        XCTAssertEqual(audioPlayer.stopCalls, 1)
+    }
+
+    func testTimeoutStopsAudio() async {
+        let controller = controller()
+        await controller.start(id)
+        uptime += 300
+        clockDriving = true
+        await flushTasks()
+        XCTAssertEqual(audioPlayer.startCalls, 1)
+        XCTAssertEqual(audioPlayer.stopCalls, 1)
+    }
+
+    func testUnpairStopsAudio() async {
+        let controller = controller()
+        await controller.start(id)
+        await controller.stopForUnpair()
+        XCTAssertEqual(audioPlayer.startCalls, 1)
+        XCTAssertEqual(audioPlayer.stopCalls, 1)
+    }
+
+    func testConsentWithdrawalStopsAudio() async {
+        let controller = controller()
+        await controller.start(id)
+        await controller.stopForConsentWithdrawal()
+        XCTAssertEqual(audioPlayer.startCalls, 1)
+        XCTAssertEqual(audioPlayer.stopCalls, 1)
+    }
+
+    func testResumeRestartsAudio() async {
+        await controller().start(id)
+        let resumed = self.controller()
+        await resumed.resume()
+        XCTAssertGreaterThan(audioPlayer.startCalls, 0)
+        XCTAssertEqual(audioPlayer.stopCalls, 0)
+    }
+
+    func testAudioPlayerLoopsRingSound() throws {
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent/RingAudioPlayer.swift")
+        let code = try String(contentsOf: source, encoding: .utf8)
+        XCTAssertTrue(code.contains("numberOfLoops = -1"), "the ring sound must loop until explicitly stopped")
     }
 
     func testAlarmQueryFailureDoesNotCountDismissal() async {

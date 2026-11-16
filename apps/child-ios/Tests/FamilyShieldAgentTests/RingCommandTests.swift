@@ -2,6 +2,11 @@ import Foundation
 import XCTest
 @testable import FamilyShieldAgent
 
+final class FakeRingAudioPlayer: RingAudioPlaying {
+    func start() async {}
+    func stop() async {}
+}
+
 final class FakeRingCommands: RingCommandHandling {
     var error: RingCommandError?
     private(set) var startedIds: [String] = []
@@ -136,7 +141,8 @@ final class RingCommandTests: XCTestCase {
         pair()
         let backend = FakeRingBackend()
         let controller = RingController(backend: backend, store: InMemoryRingStore(),
-                                       history: InMemoryRingHistory(), reporter: RecordingRingReporter())
+                                       history: InMemoryRingHistory(), reporter: RecordingRingReporter(),
+                                       audioPlayer: FakeRingAudioPlayer())
         await controller.start(id)
         respond(to: [[
             "id": UUID().uuidString,
@@ -202,7 +208,8 @@ final class RingCommandTests: XCTestCase {
         let backend = FakeRingBackend()
         let reporter = RecordingRingReporter()
         let controller = RingController(backend: backend, store: InMemoryRingStore(),
-                                       history: InMemoryRingHistory(), reporter: reporter)
+                                       history: InMemoryRingHistory(), reporter: reporter,
+                                       audioPlayer: FakeRingAudioPlayer())
         await controller.start(id)
         StubProtocol.response = (428, Data("{}".utf8))
         let stopped = expectation(description: "ring stopped after consent withdrawal")
