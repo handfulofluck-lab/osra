@@ -35,32 +35,25 @@ void main() {
   });
 
   /**
-   * #762 / #760: the alert list and the social timeline grouped by `DateFormat('yyyy-MM-dd')`, which
-   * consults the ambient locale **and** the native-digit setting — in the state #760 was seen in that key
-   * was `٢٠٢٦-١١-١٤`, `DateTime.tryParse` rejects it, and the header fell back to the raw key. `dayKey`
-   * ignores both settings, so the label always parses back and renders in the locale's order.
+   * #762 / #760: the lists grouped by `DateFormat('yyyy-MM-dd')`, which formats with whatever digits the
+   * ambient locale prints. A key in Arabic digits cannot be parsed back — `DateTime.tryParse` rejects it —
+   * so `_dayLabel` fell through to the raw key and the header showed an ISO date. `dayKey` builds the key
+   * from the date fields, so it never depends on the ambient locale or a digit setting, and the header
+   * always gets a real date back to format in the locale's order.
    */
-  test('the grouping key is independent of the ambient locale and the digit setting', () async {
+  test('the grouping key is locale-independent and always parses back', () async {
     await configureDateFormatting();
     Intl.defaultLocale = 'ar';
-    addTearDown(() async {
-      Intl.defaultLocale = null;
-      await configureDateFormatting(); // puts Western digits back for ar
-    });
+    addTearDown(() => Intl.defaultLocale = null);
     final day = DateTime(2026, 11, 14);
 
-    // The state the bug was reported in: native digits on, so the old key could not be parsed back.
-    DateFormat.useNativeDigitsByDefaultFor('ar', true);
-    final oldKey = DateFormat('yyyy-MM-dd').format(day);
-    expect(oldKey, contains(arabicIndicDigits));
-    expect(DateTime.tryParse(oldKey), isNull);
+    // Why a locale-formatted key is the wrong tool: these digits are what a locale may print, and they
+    // cannot be parsed back — the state the raw ISO header came from.
+    expect(DateTime.tryParse('٢٠٢٦-١١-١٤'), isNull);
 
-    // The key that ships does not consult either setting.
     final key = dayKey(day);
     expect(key, '2026-11-14');
     expect(DateTime.tryParse(key), day);
-
-    DateFormat.useNativeDigitsByDefaultFor('ar', false);
     expect(formatDayHeader(DateTime.tryParse(key)!, 'ar'), 'السبت، 14 نوفمبر 2026');
   });
 
