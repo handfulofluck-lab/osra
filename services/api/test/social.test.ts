@@ -467,6 +467,24 @@ describe("activity ingest and reports", () => {
     await app.close();
   });
 
+  it("#830: the activity report accepts type=lock_period", async () => {
+    const app = await buildApp(reportsRoutes, "/v1/reports");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.activityEvent.findMany.mockResolvedValue([{ id: "lp-1", type: "lock_period" }]);
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/reports/activity?childId=child-1&type=lock_period",
+      headers: authHeader(app),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(prismaMock.activityEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { childId: "child-1", type: "lock_period" } }),
+    );
+    expect(res.json().items).toEqual([{ id: "lp-1", type: "lock_period" }]);
+    await app.close();
+  });
+
   it("passes from/to bounds into the activity report query", async () => {
     const app = await buildApp(reportsRoutes, "/v1/reports");
     prismaMock.child.findUnique.mockResolvedValue(CHILD);
