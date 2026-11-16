@@ -101,6 +101,46 @@ variable "push_enabled" {
   default     = false
 }
 
+variable "apns_enabled" {
+  description = "Map the APNs key secret and the APNS_* settings into the API task (#695). Set it only after the secret has a value, for the same reason as push_enabled."
+  type        = bool
+  default     = false
+}
+
+variable "apns_key_id" {
+  description = "Apple's 10-character id of the APNs key. From tfvars only, never a literal in the repo. Required when apns_enabled."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.apns_key_id == "" || can(regex("^[A-Z0-9]{10}$", var.apns_key_id))
+    error_message = "apns_key_id must be empty or Apple's 10-character key id."
+  }
+}
+
+variable "apns_team_id" {
+  description = "Apple developer team id (10 characters). From tfvars only. Required when apns_enabled."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.apns_team_id == "" || can(regex("^[A-Z0-9]{10}$", var.apns_team_id))
+    error_message = "apns_team_id must be empty or Apple's 10-character team id."
+  }
+}
+
+variable "apns_bundle_id" {
+  description = "Bundle id of the parent app: the APNs topic of parent alerts (apns.ts)."
+  type        = string
+  default     = "com.osratech.parent"
+}
+
+variable "apns_device_bundle_id" {
+  description = "Bundle id of the iOS child agent: the APNs topic of device wakes (apns.ts)."
+  type        = string
+  default     = "com.osratech.child"
+}
+
 # --- Account wiring (issue #714). Staging leaves all of these at their defaults. ---
 
 variable "assume_role_arn" {

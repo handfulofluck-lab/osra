@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://osratech.com/schemas/scenario-manifest.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "title", "pair", "package", "apiHealthUrl", "steps", "measurements"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^SC-[A-Za-z0-9.-]{1,60}$" },
+    "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "pair": { "type": "string", "minLength": 1, "maxLength": 32 },
+    "package": { "enum": ["com.osratech.child", "com.osratech.child.full", "com.osratech.parent"] },
+    "apiHealthUrl": { "type": "string", "format": "uri" },
+    "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 3600 },
+    "steps": {
+      "type": "array", "minItems": 1,
+      "items": { "oneOf": [
+        { "$ref": "#/$defs/adb" },
+        { "$ref": "#/$defs/screencap" },
+        { "$ref": "#/$defs/wait" },
+        { "$ref": "#/$defs/http" },
+        { "$ref": "#/$defs/manual" }
+      ] }
+    },
+    "measurements": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "actual", "comparator"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "actual": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$" },
+          "comparator": { "enum": ["eq", "lte", "gte", "lt", "gt", "present", "empty"] },
+          "limit": { "type": ["number", "string", "boolean", "array", "null"] }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "adb": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "command"],
+      "properties": {
+        "type": { "const": "adb" },
+        "command": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+      }
+    },
+    "screencap": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "name"],
+      "properties": {
+        "type": { "const": "screencap" },
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$" }
+      }
+    },
+    "wait": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "seconds"],
+      "properties": { "type": { "const": "wait" }, "seconds": { "type": "integer", "minimum": 0, "maximum": 3600 } }
+    },
+    "http": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "method", "path"],
+      "properties": {
+        "type": { "const": "http" },
+        "method": { "enum": ["GET", "POST", "PATCH", "DELETE"] },
+        "path": { "type": "string", "pattern": "^/" },
+        "body": { "type": "object" }
+      }
+    },
+    "manual": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "instruction"],
+      "properties": { "type": { "const": "manual" }, "instruction": { "type": "string", "minLength": 1, "maxLength": 500 } }
+    }
+  }
+}

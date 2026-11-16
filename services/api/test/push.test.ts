@@ -60,8 +60,9 @@ describe("FCM provider", () => {
     });
     const provider = new FcmProvider(sa, fetchMock as never);
     const message = buildParentAlertMessage("android");
-    expect(await provider.send("tok-1", message)).toEqual({ ok: true });
-    expect(await provider.send("tok-2", message)).toEqual({ ok: true });
+    // #673: the mock answers with FCM's `name`, so the result carries the id the wake log prints.
+    expect(await provider.send("tok-1", message)).toEqual({ ok: true, messageId: "projects/osra-test/messages/1" });
+    expect(await provider.send("tok-2", message)).toEqual({ ok: true, messageId: "projects/osra-test/messages/1" });
     const tokenCalls = fetchMock.mock.calls.filter(([u]) => (u as string).endsWith("/token"));
     expect(tokenCalls).toHaveLength(1);
     const sendCall = fetchMock.mock.calls.find(([u]) => (u as string).includes("messages:send"))!;
@@ -74,6 +75,26 @@ describe("FCM provider", () => {
     expect(body.message.android.priority).toBe("HIGH");
     expect(body.message.android.collapse_key).toBe("osra-wake");
     expect((sendCall[1] as RequestInit).headers).toMatchObject({ authorization: "Bearer ya29.test" });
+  });
+
+  /**
+   * #673: the wake log names FCM's own message id, because that id is the only handle an operator can
+   * take to Google's log to see whether the push was delivered and when. Mutant: return `{ ok: true }`
+   * unconditionally and the first row goes red; throw on an unreadable body and the second does.
+   */
+  it("reports FCM's message id, and a 200 with no readable body is still a success", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/token")) return jsonResponse(200, { access_token: "t", expires_in: 3600 });
+      return jsonResponse(200, { name: "projects/osra-test/messages/7" });
+    });
+    const provider = new FcmProvider(sa, fetchMock as never);
+    expect(await provider.send("tok", buildDeviceWakeMessage())).toEqual({ ok: true, messageId: "projects/osra-test/messages/7" });
+
+    // An empty 200 (a proxy, or a double in another suite) must not turn a delivered wake into a failure.
+    const emptyBody = vi.fn(async (url: string) =>
+      url.endsWith("/token") ? jsonResponse(200, { access_token: "t", expires_in: 3600 }) : new Response("", { status: 200 }),
+    );
+    expect(await new FcmProvider(sa, emptyBody as never).send("tok", buildDeviceWakeMessage())).toEqual({ ok: true });
   });
 
   it("reports UNREGISTERED tokens as invalid and transient errors as retained", async () => {
@@ -461,6 +482,81 @@ describe("the child device wake (#319)", () => {
     warn.mockRestore();
   });
 
+  /**
+   * #673 (Flip4, 12 Nov, scenario run 1): `resume_internet` took 52.4 s and the API log carried no line
+   * for any wake it sent, so a push that was never sent could not be told from one FCM delivered late.
+   * Every attempt is now one info line naming the command, the device, FCM's message id and the
+   * priority that was used. Mutant: delete the `console.info` in `notifyDeviceWake` and this row goes
+   * red with no line at all.
+   */
+  it("logs a sent wake at info level with the command id, FCM's message id and the priority", async () => {
+    setPushProviders([new FakeProvider(() => ({ ok: true, messageId: "projects/osra-test/messages/42" }))]);
+    prismaMock.device.findUnique.mockResolvedValue({ id: "dev-1", pushToken: "live", platform: "android" });
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const outcome = await notifyDeviceWake("dev-1", "cmd-9");
+    const lines = info.mock.calls.map((c) => String(c[0]));
+    info.mockRestore();
+
+    expect(outcome).toEqual({ delivered: 1, clearedToken: false, skipped: null });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("command=cmd-9");
+    expect(lines[0]).toContain("device=dev-1");
+    expect(lines[0]).toContain("messageId=projects/osra-test/messages/42");
+    expect(lines[0]).toContain("priority=high");
+  });
+
+  /** Same line, same level: a wake FCM refused names the error, and there is no message id to print. */
+  it("logs a refused wake with the provider's error, at the same level", async () => {
+    setPushProviders([new FakeProvider(() => ({ ok: false, invalidToken: false, reason: "HTTP 503 UNAVAILABLE" }))]);
+    prismaMock.device.findUnique.mockResolvedValue({ id: "dev-1", pushToken: "live", platform: "android" });
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    await notifyDeviceWake("dev-1", "cmd-9");
+    const lines = info.mock.calls.map((c) => String(c[0]));
+    info.mockRestore();
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("command=cmd-9");
+    expect(lines[0]).toContain("reason=HTTP 503 UNAVAILABLE");
+    expect(lines[0]).toContain("priority=high");
+    expect(lines[0]).not.toContain("messageId=");
+  });
+
+  /**
+   * The half of #673 that needs no phone: a wake that was never sent says so, in one line. Without it
+   * "no line in the log" still has two meanings — no wake attempted, or a wake attempted and lost.
+   */
+  it("logs a wake that was never sent, so a missing push cannot be mistaken for a late one", async () => {
+    setPushProviders([new FakeProvider()]);
+    prismaMock.device.findUnique.mockResolvedValue({ id: "dev-1", pushToken: null, platform: "android" });
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const outcome = await notifyDeviceWake("dev-1", "cmd-9");
+    const lines = info.mock.calls.map((c) => String(c[0]));
+    info.mockRestore();
+
+    expect(outcome.skipped).toBe("no_token");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("command=cmd-9");
+    expect(lines[0]).toContain("skip=no_token");
+  });
+
+  /**
+   * The command id has to reach the wake, or every line above says `command=none`. Mutant: drop the id
+   * from either `wakeDeviceDetached` call and the row fails on that path.
+   */
+  it("hands the command row's id to the wake, so the log line names the command", async () => {
+    const wakes: Array<[string, string | undefined]> = [];
+    setDeviceWakeSender(async (id, commandId) => {
+      wakes.push([id, commandId]);
+      return { delivered: 1, clearedToken: false, skipped: null };
+    });
+    prismaMock.deviceCommand.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+      id: "cmd-7", createdAt: new Date(), status: "pending", attempts: 0, ...data,
+    }));
+
+    const message = await enqueueDeviceCommand("dev-1", "resume_internet", {}, { requestedBy: "parent-1" });
+    expect(wakes).toEqual([["dev-1", message.id]]);
+  });
+
   it("enqueueDeviceCommand wakes the device exactly once, and a wake that fails does not fail the command", async () => {
     const wakes: string[] = [];
     setDeviceWakeSender(async (id) => {
@@ -490,9 +586,9 @@ describe("the child device wake (#319)", () => {
     // Flip4, 29 Oct: a rules_updated row created while push was off (or whose wake FCM delayed) stayed
     // pending, and the next rules PATCH coalesced onto it without a wake, so the phone waited for the
     // 15-minute poll. Every enqueue must wake, coalesced or not.
-    const wakes: string[] = [];
-    setDeviceWakeSender(async (id) => {
-      wakes.push(id);
+    const wakes: Array<[string, string | undefined]> = [];
+    setDeviceWakeSender(async (id, commandId) => {
+      wakes.push([id, commandId]);
       return { delivered: 1, clearedToken: false, skipped: null };
     });
     const pending = {
@@ -506,6 +602,120 @@ describe("the child device wake (#319)", () => {
 
     expect([first.id, second.id]).toEqual(["c-old", "c-old"]);
     expect(prismaMock.deviceCommand.create).not.toHaveBeenCalled();
-    expect(wakes).toEqual(["dev-1", "dev-1"]);
+    // #673: the coalesced wake names the row it is waking for, not an empty id.
+    expect(wakes).toEqual([["dev-1", "c-old"], ["dev-1", "c-old"]]);
+  });
+});
+
+/**
+ * #673, Antigravity's review at `a56f73d3`: the wake writes a line for every attempt, and the lines are the
+ * evidence that a push was sent at all — but nothing asserted that a line never carries the **device token**. A log
+ * is a place a secret leaks from quietly: it is copied into bug reports, CI output and support tickets, and the token
+ * is the whole credential a provider needs.
+ *
+ * Claude's `a4` / Fable's `B1` asked for one row across every outcome; Fable's `B2` asked for the two lines that say
+ * *why* nothing was sent. Both live here.
+ */
+describe("the wake log (#673, Claude a4 / Fable B1-B2)", () => {
+  // A phrase rather than a token-shaped literal, on purpose: a high-entropy `token = "..."` here trips the
+  // repository's own gitleaks gate (it did, on the first push), and the row only needs a distinctive string that
+  // must never appear in a log line.
+  const token = "device-token-value-that-must-never-be-logged";
+
+  /** Every line any console method received during [body], joined — what a reader of the log would see. */
+  async function captureLog(body: () => Promise<void>): Promise<{ lines: string }> {
+    const lines: string[] = [];
+    const spies = (["info", "warn", "error"] as const).map((level) =>
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        lines.push(args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" "));
+      }),
+    );
+    try {
+      await body();
+    } finally {
+      spies.forEach((s) => s.mockRestore());
+    }
+    return { lines: lines.join("\n"), outcome: undefined };
+  }
+
+  beforeEach(() => {
+    resetPrismaMock();
+    setPushProviders(null);
+    setDeviceWakeSender(null);
+  });
+
+  it("never writes the device token to a log, whatever the wake did", async () => {
+    // Five outcomes in one test on purpose: the row is about the *absence* of the token everywhere, and a per-outcome
+    // test can be deleted one at a time without anyone noticing the coverage shrank.
+    const sent: Array<[string, () => Promise<void>]> = [
+      ["sent", async () => {
+        setPushProviders([new FakeProvider(() => ({ ok: true, messageId: "projects/osra-test/messages/1" }))]);
+        prismaMock.device.findUnique.mockResolvedValue({ id: "dev-1", pushToken: token, platform: "android" });
+        expect(await notifyDeviceWake("dev-1", "cmd-1")).toEqual({ delivered: 1, clearedToken: false, skipped: null });
+      }],
+      ["retained failure", async () => {
+        setPushProviders([new FakeProvider(() => ({ ok: false, reason: "HTTP 500" }))]);
+        prismaMock.device.findUnique.mockResolvedValue({ id: "dev-2", pushToken: token, platform: "android" });
+        expect(await notifyDeviceWake("dev-2", "cmd-2")).toEqual({ delivered: 0, clearedToken: false, skipped: null });
+      }],
+      ["dead token cleared", async () => {
+        setPushProviders([new FakeProvider(() => ({ ok: false, invalidToken: true, reason: "UNREGISTERED" }))]);
+        prismaMock.device.findUnique.mockResolvedValue({ id: "dev-3", pushToken: token, platform: "android" });
+        prismaMock.device.updateMany.mockResolvedValue({ count: 1 });
+        expect(await notifyDeviceWake("dev-3", "cmd-3")).toEqual({ delivered: 0, clearedToken: true, skipped: null });
+      }],
+      ["unsupported platform", async () => {
+        // `deviceWakeProviderFor` falls back to FCM for every non-iOS platform, so the only unsupported case is an
+        // iPhone's raw APNs token with no APNs provider configured (the comment at notify.ts:105-110 explains why an
+        // iPhone must never be sent through FCM — FCM answers INVALID_ARGUMENT and the token would be cleared).
+        setPushProviders([new FakeProvider(() => ({ ok: true }))]);
+        prismaMock.device.findUnique.mockResolvedValue({ id: "dev-4", pushToken: token, platform: "ios" });
+        expect(await notifyDeviceWake("dev-4", "cmd-4")).toEqual({ delivered: 0, clearedToken: false, skipped: "unsupported_platform" });
+      }],
+      // The catch echoes the provider's own error text, so a provider that puts a token in its message would put it
+      // in our log. That is outside this file's control; what it can pin is that *our* lines never add one, which is
+      // why the error here is a realistic transport failure rather than a string carrying the token.
+      ["provider threw", async () => {
+        setPushProviders([new FakeProvider(() => { throw new Error("socket hang up"); })]);
+        prismaMock.device.findUnique.mockResolvedValue({ id: "dev-5", pushToken: token, platform: "android" });
+        expect(await notifyDeviceWake("dev-5", "cmd-5")).toEqual({ delivered: 0, clearedToken: false, skipped: null });
+      }],
+    ];
+
+    for (const [label, run] of sent) {
+      const { lines } = await captureLog(run);
+      expect(lines, `${label}: the wake wrote no line at all, so "no line" still means two things`).not.toBe("");
+      expect(lines, `${label}: a log line carried the device token`).not.toContain(token);
+      // The positive control: the line names the device and the command, or it cannot answer "did it go out".
+      expect(lines, `${label}: no line named the device`).toContain("device=");
+    }
+  });
+
+  it("says why nothing was sent when the platform has no provider", async () => {
+    // An iPhone's token with no APNs provider: the one route that reports \`unsupported_platform\`.
+    setPushProviders([new FakeProvider(() => ({ ok: true }))]);
+    prismaMock.device.findUnique.mockResolvedValue({ id: "dev-9", pushToken: token, platform: "ios" });
+
+    const { lines } = await captureLog(async () => {
+      expect(await notifyDeviceWake("dev-9", "cmd-9")).toEqual({ delivered: 0, clearedToken: false, skipped: "unsupported_platform" });
+    });
+
+    expect(lines).toContain("skipped skip=unsupported_platform");
+    expect(lines).toContain("device=dev-9");
+    expect(lines).toContain("command=cmd-9");
+  });
+
+  it("says the token was cleared when the provider reports it dead", async () => {
+    setPushProviders([new FakeProvider(() => ({ ok: false, invalidToken: true, reason: "UNREGISTERED" }))]);
+    prismaMock.device.findUnique.mockResolvedValue({ id: "dev-8", pushToken: token, platform: "android" });
+    prismaMock.device.updateMany.mockResolvedValue({ count: 1 });
+
+    const { lines } = await captureLog(async () => {
+      expect(await notifyDeviceWake("dev-8", "cmd-8")).toEqual({ delivered: 0, clearedToken: true, skipped: null });
+    });
+
+    expect(lines).toContain("failed");
+    expect(lines).toContain("reason=UNREGISTERED");
+    expect(lines).toContain("tokenCleared=true");
   });
 });

@@ -848,6 +848,24 @@ that catches up after boot clears the overlay in the same second it appears.
 Re-pair from the status screen must show the PIN gate first; a wrong PIN five times returns to the launcher.
 The Remove-protection button (PIN verified) deactivates admin **without** a tamper alert — that is the parent.
 
+### 5a-bis. The four special-access pages on hardware (osra-security#29, part 2, #817)
+
+The parent PIN gates these pages only while the agent already holds the access — onboarding opens the same pages to
+grant them. With a PIN set and each access **held**, open each page and confirm the "Protected" screen comes up,
+then open its **Search apps** bar (overlay and usage), type `OSRA`, and confirm the gate still comes up while the
+title reads "Search apps":
+
+```bash
+adb shell am start -a android.settings.action.MANAGE_OVERLAY_PERMISSION -d package:com.osratech.child
+adb shell am start -a android.settings.USAGE_ACCESS_SETTINGS -d package:com.osratech.child
+adb shell am start -a android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS
+adb shell am start -a android.settings.VPN_SETTINGS     # then the gear icon on the OSRA row
+```
+
+Negative controls, which must **not** raise the gate: browsing a list with OSRA scrolled off-screen, opening a page
+for an access the agent does **not** hold (that is the parent's grant), and the top-level VPN list. One row per
+page, per language, in the handset record — the list is what `osra-security#29` holds the raw dumps for.
+
 ## 5c. Web filter / DNS sinkhole on hardware (ADR-0015, plan 1.4)
 
 With the agent paired, tap **Set up web filter** on the status screen and accept the OS VPN dialog
@@ -1218,6 +1236,35 @@ node scripts/hardware/scenario-family.mjs delete --base-url http://localhost:300
   case into a skip. No CI job runs `e2e.mjs` or `qa-probe.mjs`; those are run by hand against a live stack
   (§2). Nothing in CI counts rows with `psql`: `delete`'s counts come from the parent routes, as above, and
   the row-level count is still `e2e.mjs`'s with `DATABASE_URL`.
+
+### Manifest-driven scenario runner (#667, `scripts/hardware/scenario.ps1`)
+
+Run the five Pester suites with `scripts/hardware/tests/Scenario.*.Tests.ps1`; `workflow-lint` requires
+at least 117 cases, zero failures, and a real `SC-0.1` dry-run table with a `result.md`. The dry run puts
+the fake `adb` directory first on `PATH` and touches no lease, backend or device; it refuses any `adb`
+outside that directory, so a PC with the phone attached cannot drive it. `SC-0.1` allows 600 s because
+every ADB call is a process spawn, and on a loaded Windows host the same dry run has taken 139 s; the
+bound must not turn a healthy run into `scenario_timeout`.
+
+ADB steps are an allowlist of fixed shapes — `getprop`, `setprop persist.sys.locale`, `dumpsys`,
+`settings get|put`, `appops get|set`, `dpm list-owners`, `pm list|uninstall|clear`, `screencap -p`,
+`input tap|swipe|keyevent|text` — with no path in the verb and no quote,
+backslash, control character or shell metacharacter in any element; everything else is refused. The
+`content` command is not allowed at all: its first-`--uri` check could be bypassed with a second `--uri`,
+and no scenario needs it (#797). Inside those shapes, `settings put` is limited to the seven restored keys
+in their own table, `input keyevent` to HOME/BACK/ENTER, and `input text` may not contain a digit. Every
+`appops` and `pm clear|uninstall` target, and the manifest's own `package`, must be one of
+`com.osratech.child`, `com.osratech.child.full` or `com.osratech.parent`, matched case-sensitively; the
+check runs when the command executes, not only when the manifest is validated. Every ADB call receives
+`-s <serial>` from the runner, and `-Serial` has no default — a run that does not name the handset stops
+with `serial_required`.
+
+The runner saves nine before-values plus lock state, captures `exec-out screencap -p` into memory, writes
+only an OSRA-window crop with status bar/notification shade excluded, runs argument-array steps, and
+restores/re-reads every value and releases the lease in `finally`. Missing measurements are `NOT RUN`;
+empty diff, restore failure, or an empty test/result set never yields PASS. Dry-run output is explicitly
+`PASS (DRY RUN)` and is not physical-device evidence. A real run requires Claude's authorized device lease;
+K31's CI only exercises the fake boundary.
 
 
 ## 6. Traps that have cost real time here

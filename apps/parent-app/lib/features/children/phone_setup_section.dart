@@ -133,10 +133,28 @@ class PhoneSetupSection extends StatelessWidget {
       'not_supported' => (Icons.block, Theme.of(context).disabledColor),
       _ => (Icons.cancel_outlined, context.tokens.danger),
     };
-    return Chip(
-      visualDensity: VisualDensity.compact,
-      avatar: Icon(icon, size: 14, color: color),
-      label: Text('${_featureLabel(l10n, key)} · ${_stateLabel(l10n, state)}'),
+    return Container(
+      padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.sm, AppSpace.xs, AppSpace.sm, AppSpace.xs),
+      decoration: BoxDecoration(
+        color: context.tokens.surfaceContainer,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: context.tokens.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: AppSpace.xs),
+          Flexible(
+            child: Text(
+              '${_featureLabel(l10n, key)} · ${_stateLabel(l10n, state)}',
+              style: Theme.of(context).textTheme.labelLarge ?? Theme.of(context).textTheme.bodySmall,
+              softWrap: true,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
