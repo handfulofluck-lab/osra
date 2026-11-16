@@ -139,7 +139,6 @@ void main() {
     expect(find.byKey(const ValueKey('rules-behind-banner')), findsOneWidget);
   });
 
-<<<<<<< HEAD
   testWidgets('Arabic alert detail and day headers use Western digits', (tester) async {
     await configureDateFormatting();
     final api = FakeApiClient({
@@ -164,7 +163,8 @@ void main() {
     for (final text in texts) {
       expect(text, isNot(contains(arabicIndicDigits)), reason: text);
     }
-=======
+  });
+
   testWidgets('an SOS detail shows no raw lat: row until Technical details is opened (#743)', (tester) async {
     // The old behaviour printed every metadata entry as `key: value` under the sentence, so an SOS showed
     // `lat: 25.2769`, a machine timestamp and the device id in English developer words on an Arabic screen.
@@ -198,6 +198,5 @@ void main() {
     expect(line.style?.fontSize, isNot(theme.textTheme.bodySmall?.fontSize),
         reason: 'the location line must not be the detail style');
     expect(line.style, isNull, reason: 'no explicit style means the dialog default, which is the point');
->>>>>>> origin/main
   });
 }
