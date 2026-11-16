@@ -19,8 +19,9 @@ data "aws_iam_policy_document" "assume" {
 }
 
 resource "aws_iam_role" "training" {
-  name               = local.name
-  assume_role_policy = data.aws_iam_policy_document.assume.json
+  name                 = local.name
+  assume_role_policy   = data.aws_iam_policy_document.assume.json
+  permissions_boundary = var.permissions_boundary_arn
 }
 
 data "aws_iam_policy_document" "training" {
@@ -53,8 +54,22 @@ data "aws_iam_policy_document" "training" {
 
   statement {
     sid       = "UseBucketKey"
-    actions   = ["kms:Decrypt", "kms:GenerateDataKey"]
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:Encrypt", "kms:DescribeKey"]
     resources = [aws_kms_key.ml.arn]
+  }
+
+  # A job that sets ResourceConfig.VolumeKmsKeyId makes SageMaker create a grant on the key for the
+  # training volume. Only grants made for an AWS service are allowed.
+  statement {
+    sid       = "GrantForTrainingVolume"
+    actions   = ["kms:CreateGrant"]
+    resources = [aws_kms_key.ml.arn]
+
+    condition {
+      test     = "Bool"
+      variable = "kms:GrantIsForAWSResource"
+      values   = ["true"]
+    }
   }
 
   statement {

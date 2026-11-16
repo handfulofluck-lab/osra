@@ -26,13 +26,19 @@ variable "allowed_account_ids" {
 }
 
 variable "operator_role_arns" {
-  description = "Roles allowed to reach the bucket besides the training role: the deploy role (Terraform) and the role that uploads training files and starts the job. Every other principal is denied by the bucket policy."
+  description = "Roles allowed to reach the bucket besides the training role: the deploy role (Terraform) and the role that uploads training files and starts the job. Every other principal is denied by the bucket policy. Give IAM role ARNs (arn:aws:iam::<account>:role/<name>), never assumed-role session ARNs, and always include the role Terraform itself runs as, or the next refresh is denied and only the account root can remove the policy."
   type        = list(string)
 
   validation {
     condition     = length(var.operator_role_arns) > 0 && alltrue([for a in var.operator_role_arns : can(regex("^arn:aws:iam::[0-9]{12}:role/.+$", a))])
     error_message = "Give at least one IAM role ARN."
   }
+}
+
+variable "permissions_boundary_arn" {
+  description = "Optional permissions boundary for the training role. Null = none. Set it if the security review asks for one; the inline policy is the limit either way."
+  type        = string
+  default     = null
 }
 
 variable "training_image_repository_arns" {
@@ -59,7 +65,11 @@ variable "monthly_budget_usd" {
 }
 
 variable "budget_alert_emails" {
-  description = "Who is emailed at 80% actual and 100% forecast of the budget. Empty = budget without alerts."
+  description = "Who is emailed at 80% actual and 100% forecast of the budget. Required: a budget with nobody to tell is not an alert."
   type        = list(string)
-  default     = []
+
+  validation {
+    condition     = length(var.budget_alert_emails) > 0 && alltrue([for e in var.budget_alert_emails : can(regex("^[^@ ]+@[^@ ]+[.][^@ ]+$", e))])
+    error_message = "Give at least one email address for the budget alert."
+  }
 }

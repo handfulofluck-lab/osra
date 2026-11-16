@@ -14,10 +14,10 @@ resource "aws_budgets_budget" "ml" {
   }
 
   dynamic "notification" {
-    for_each = length(var.budget_alert_emails) > 0 ? [
+    for_each = [
       { threshold = 80, type = "ACTUAL" },
       { threshold = 100, type = "FORECASTED" },
-    ] : []
+    ]
 
     content {
       comparison_operator        = "GREATER_THAN"
