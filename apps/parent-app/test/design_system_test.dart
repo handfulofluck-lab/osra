@@ -49,6 +49,19 @@ void main() {
     String day(int i) => DateTime.utc(2026, 9, 1).add(Duration(days: i)).toIso8601String().substring(0, 10);
     return FakeApiClient({
       ...standardRoutes(),
+      // ADR-0043 D6: the sign-up page reads its one consent sentence from the server.
+      'GET /v1/consent-copy': (_) => {
+            'textVersion': 'signup-v1',
+            'purposes': [
+              {
+                'key': 'terms_privacy',
+                'required': true,
+                'text': 'I am an adult and the parent. I accept the OSRA [Terms of Use](https://osratech.com/terms) and I have read the [Privacy Policy](https://osratech.com/privacy).',
+                'textHash': 'sha256',
+                'links': {'terms': 'https://osratech.com/terms', 'privacy': 'https://osratech.com/privacy'},
+              },
+            ],
+          },
       'GET /v1/reports/summary': (_) => {
             'totalAppMinutes': 300,
             'topApps': [
@@ -411,14 +424,18 @@ void main() {
       await tester.scrollUntilVisible(find.text('Create account'), 100, scrollable: scrollable);
       await tester.tap(find.text('Create account'));
       await tester.pumpAndSettle();
+      // ADR-0043 D6: sign-up is its own page now; its fields and consent box render at 320 wide.
       expect(find.text('Family name'), findsOneWidget);
-      expect(find.text('Register'), findsOneWidget);
+      expect(find.byKey(const ValueKey('createAccountButton')), findsOneWidget);
+      expect(find.byType(Checkbox), findsOneWidget);
       final registerExceptions = drainExceptions(tester);
       expect(
         registerExceptions,
         isEmpty,
         reason: registerExceptions.map((e) => e is FlutterError ? e.toStringDeep() : '$e').join('\n'),
       );
+      await tester.pageBack();
+      await tester.pumpAndSettle();
 
       await tester.scrollUntilVisible(
         find.byKey(const ValueKey('lostAuthenticator')),

@@ -93,6 +93,8 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
     final auth = ref.watch(authProvider);
     final locale = Localizations.localeOf(context).languageCode;
     final copy = ref.watch(consentCopyProvider(locale));
+    final providerError = authErrorText(l10n, auth.error);
+    final shownError = _formError ?? providerError;
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.createAccount)),
@@ -221,11 +223,11 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                         ),
                       ),
                     ),
-                  if (_formError != null)
+                  if (shownError != null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: AppSpace.sm),
                       child: Text(
-                        _formError!,
+                        shownError,
                         key: const ValueKey('registerError'),
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.danger),
                       ),

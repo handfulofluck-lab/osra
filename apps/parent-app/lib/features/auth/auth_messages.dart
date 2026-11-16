@@ -21,6 +21,15 @@ String? registerFormProblem(
   return null;
 }
 
+/// The register screen's error line: a field error names its field, a taken address points at sign-in,
+/// and anything else is the server's own sentence (never a raw code).
+String? authErrorText(AppLocalizations l10n, String? raw) {
+  if (raw == null) return null;
+  if (raw.startsWith(kValidationFailedPrefix)) return authFieldError(l10n, raw);
+  if (raw == 'email_taken') return l10n.registerEmailTaken;
+  return raw;
+}
+
 /// One sentence for a [kValidationFailedPrefix] error, naming the field the server rejected.
 /// Only registration checks the password's length (sign-in accepts any string), so a `password`
 /// field error always means "too short".
