@@ -116,10 +116,16 @@ class CommandDispatcher @Inject constructor(
             // refresh still reloads from whatever is cached.
             "rules_updated" -> {
                 scope.launch {
-                    refreshThenReload(
+                    val failed = refreshThenReload(
                         refresh = { rules.refresh() },
-                        reload = { com.familyshield.agent.vpn.FilterVpnService.reload(context) },
+                        // #848 (Kimi): a rule edit must not revive a filter that is not running — that
+                        // would also undo a paused state or a consent the child has not given yet. The
+                        // refresh still lands; the next start applies it.
+                        reload = { com.familyshield.agent.vpn.FilterVpnService.reload(context, startIfStopped = false) },
                     )
+                    // #826 happened because the parent's change was live nowhere and nothing said so.
+                    // A failed step is logged rather than swallowed.
+                    for (stage in failed) Log.w(TAG, "rules_updated: $stage failed; the change may not be live yet")
                 }
                 CommandOutcome.Applied()
             }
@@ -543,11 +549,14 @@ class CommandDispatcher @Inject constructor(
          * Issue #826: a rule refresh must reach the running filter, in that order. Kept here as a pure
          * suspend function so the JVM suite can hold the ordering and the best-effort behaviour without
          * a tunnel: a refresh that throws still reloads (from the cached set), and a reload that throws
-         * does not undo the refresh.
+         * does not undo the refresh. Returns the steps that failed so the caller can say so (#848) —
+         * the silence is what made #826 last 10+ minutes.
          */
-        internal suspend fun refreshThenReload(refresh: suspend () -> Unit, reload: suspend () -> Unit) {
-            runCatching { refresh() }
-            runCatching { reload() }
+        internal suspend fun refreshThenReload(refresh: suspend () -> Unit, reload: suspend () -> Unit): List<String> {
+            val failed = mutableListOf<String>()
+            runCatching { refresh() }.onFailure { failed += "refresh" }
+            runCatching { reload() }.onFailure { failed += "reload" }
+            return failed
         }
 
         /**
