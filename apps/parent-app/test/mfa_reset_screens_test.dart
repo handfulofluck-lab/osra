@@ -1186,7 +1186,7 @@ void main() {
     testWidgets('request', (tester) async {
       await pumpArabic(tester, const MfaResetRequestScreen(), FakeApiClient(resetRoutes()));
       expect(find.text('إعادة تعيين التحقق بخطوتين'), findsOneWidget);
-      expect(find.text('اطلب إعادة التعيين'), findsOneWidget);
+      expect(find.text('طلب إعادة التعيين'), findsOneWidget);
       expectRtl(tester);
     });
 
@@ -1286,7 +1286,7 @@ void main() {
 
       expect(find.text('انتهى طلب إعادة التعيين هذا'), findsOneWidget);
       expect(find.textContaining('تم إلغاء هذا الطلب، لذلك لم يتغيّر شيء'), findsOneWidget);
-      expect(find.text('ابدأ طلبًا جديدًا'), findsOneWidget);
+      expect(find.text('بدء طلب جديد'), findsOneWidget);
       expectRtl(tester);
     });
 
@@ -1331,7 +1331,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('انتهت صلاحية هذا الرابط أو الرمز'), findsOneWidget);
-      expect(find.text('ابدأ طلبًا جديدًا'), findsOneWidget);
+      expect(find.text('بدء طلب جديد'), findsOneWidget);
       expect(find.byKey(const ValueKey('mfaResetHaveCode')), findsNothing);
       expectRtl(tester);
     });

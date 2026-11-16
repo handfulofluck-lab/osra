@@ -120,7 +120,7 @@ void main() {
   test('commandRefusalText explains a pause that never started', () {
     expect(
       commandRefusalText(ar, 'pause_internet', 'Pixel 7', 'web_filter_start_failed'),
-      'تعذّر بدء إيقاف الإنترنت على هاتف طفلك. افتح تطبيق OSRA هناك وحاول مجددًا.',
+      'تعذّر بدء إيقاف الإنترنت مؤقتًا على هاتف طفلك. افتح تطبيق أسرة للأطفال هناك وحاول مرة أخرى.',
     );
     expect(
       commandRefusalText(en, 'pause_internet', 'Pixel 7', 'web_filter_start_failed'),
@@ -151,7 +151,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('رنين الجهاز'));
     await tester.pumpAndSettle();
-    expect(find.text('لا تملك صلاحية إرسال «رن» إلى Pixel 7. يمكن لمالك العائلة منحك حق الوصول.'),
+    expect(find.text('لا تملك صلاحية إرسال «رن» إلى Pixel 7. يمكن لمدير العائلة منحك حق الوصول.'),
         findsOneWidget);
     expect(find.textContaining('permission_required'), findsNothing,
         reason: 'a mapped cause is not shown as a code');
@@ -169,7 +169,7 @@ void main() {
     expect(
       commandErrorText(ar, 'ring', 'Pixel 7',
           http(403, {'error': 'permission_required', 'permission': 'devices'})),
-      'لا تملك صلاحية إرسال «رن» إلى Pixel 7. يمكن لمالك العائلة منحك حق الوصول.',
+      'لا تملك صلاحية إرسال «رن» إلى Pixel 7. يمكن لمدير العائلة منحك حق الوصول.',
     );
     // @fastify/rate-limit's own body — keyed on the status, not on a string it never sends
     expect(
@@ -237,7 +237,7 @@ void main() {
     await tester.enterText(find.byType(TextField), 'المدرسة');
     await tester.tap(find.text(ar.familyMapCreate));
     await tester.pumpAndSettle();
-    expect(find.text('يمكن لمالك العائلة منحك حق الوصول إلى هذا.'), findsOneWidget);
+    expect(find.text('يمكن لمدير العائلة منحك حق الوصول إلى هذا.'), findsOneWidget);
     expect(find.textContaining('permission_required'), findsNothing);
   });
 

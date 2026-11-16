@@ -89,7 +89,7 @@ describe("localized invitation text", () => {
 
 describe("localized digest text", () => {
   it.each([
-    [0, "لا شيء"],
+    [0, "لا يوجد"],
     [1, "دقيقة واحدة"],
     [2, "دقيقتان"],
     [5, "5 دقائق"],
@@ -130,7 +130,7 @@ describe("localized digest text", () => {
     const message = digestEmail("parent@example.invalid", {
       familyName: "Demo", days: 1, link, children: [child(0)], }, "ar");
     expect(noBidi(message.text)).toContain(
-      "Alex — وقت الشاشة: لا شيء؛ أكثر التطبيقات استخدامًا: لا يوجد؛ المواقع التي فُتحت: 0؛ المواقع المحجوبة: 0؛ تنبيهات وسائل التواصل الاجتماعي: 0؛ المكالمات: 0؛ الرسائل النصية: 0.",
+      "Alex — وقت الشاشة: لا يوجد؛ أكثر التطبيقات استخدامًا: لا يوجد؛ المواقع التي فُتحت: 0؛ المواقع المحجوبة: 0؛ تنبيهات وسائل التواصل الاجتماعي: 0؛ المكالمات: 0؛ الرسائل النصية: 0.",
     );
   });
 

@@ -54,7 +54,7 @@ void main() {
       final ar = lookupAppLocalizations(const Locale('ar'));
 
       expect(permissionRequiredMessage(en), 'Your family owner can give you access to this.');
-      expect(permissionRequiredMessage(ar), 'يمكن لمالك العائلة منحك حق الوصول إلى هذا.');
+      expect(permissionRequiredMessage(ar), 'يمكن لمدير العائلة منحك حق الوصول إلى هذا.');
       // The permission name is deliberately not interpolated: `alerts` in the middle of an Arabic
       // sentence reads as a bug to the guardian reading it.
       expect(permissionRequiredMessage(ar), isNot(contains('alerts')));

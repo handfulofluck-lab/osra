@@ -719,7 +719,7 @@ void main() {
 
     expect(find.text('موافقة الوالدين'), findsOneWidget);
     expect(stateLabel(tester), 'تنتهي قريبًا');
-    expect(find.text('أسئلة معرفية'), findsOneWidget);
+    expect(find.text('أسئلة للتحقق من الهوية'), findsOneWidget);
     expect(Directionality.of(tester.element(find.byType(Scaffold))),
         TextDirection.rtl);
     expect(drainExceptions(tester), isEmpty);
