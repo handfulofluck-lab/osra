@@ -114,14 +114,25 @@ const PAIR_MAX_ATTEMPTS = 5;
 const TelemetrySchema = z
   .object({
     batteryPct: z.number().int().min(0).max(100).optional(),
-    totalMinutes: z.number().int().min(0).optional(),
+    // #830 B3: a day cannot hold more than 1440 minutes per app, and a device has a bounded app list.
+    // Without these a broken or hostile client could fill the rollup table with rows and minutes.
+    totalMinutes: z.number().int().min(0).max(1440).optional(),
     appUsage: z
-      .array(z.object({ packageId: z.string().min(1), minutes: z.number().min(0) }))
+      .array(
+        z.object({
+          packageId: z.string().min(1).max(200),
+          minutes: z.number().min(0).max(1440),
+        }),
+      )
+      .max(300)
       .optional(),
     urls: z.array(z.string()).optional(),
     // #830: the shape Android sent before the contract was standardised. Accepted for one release so an
     // installed agent keeps reporting per-app minutes; `appUsage` wins when both are present.
-    perAppMinutes: z.record(z.number().min(0)).optional(),
+    perAppMinutes: z
+      .record(z.number().min(0).max(1440))
+      .refine((value) => Object.keys(value).length <= 300, { message: "at most 300 apps" })
+      .optional(),
     timestamp: z.string().datetime().optional(),
     // Issue #221 (D1): the agent's own classification of its location grant. Optional so an older
     // agent keeps working (the server then leaves the stored value unknown and queues locate_now).

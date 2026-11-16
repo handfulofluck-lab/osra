@@ -539,6 +539,26 @@ describe("device enrollment & management", () => {
     await app.close();
   });
 
+  it("#830 B3: telemetry caps the app count and each app's minutes", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+
+    const tooManyApps = { appUsage: Array.from({ length: 301 }, (_, i) => ({ packageId: `com.example.app${i}`, minutes: 1 })) };
+    const tooManyMinutes = { appUsage: [{ packageId: "com.example.app", minutes: 1441 }] };
+    const legacyTooMany = { perAppMinutes: Object.fromEntries(Array.from({ length: 301 }, (_, i) => [`com.example.app${i}`, 1])) };
+    const legacyTooManyMinutes = { perAppMinutes: { "com.example.app": 1441 } };
+    for (const payload of [tooManyApps, tooManyMinutes, legacyTooMany, legacyTooManyMinutes]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/devices/dev-1/telemetry",
+        headers: deviceHeader(app),
+        payload: payload as Record<string, unknown>,
+      });
+      expect(res.statusCode).toBe(400);
+    }
+    await app.close();
+  });
+
   it("#830: telemetry per-app minutes become per-app rows, and the legacy map still maps", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockResolvedValue(DEVICE);
@@ -568,6 +588,24 @@ describe("device enrollment & management", () => {
       ]),
     );
 
+    // Both shapes in one report: `appUsage` is the contract, so the legacy map is not folded in.
+    prismaMock.appUsageDaily.upsert.mockClear();
+    const both = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: {
+        appUsage: [{ packageId: "com.google.android.youtube", minutes: 9 }],
+        perAppMinutes: { "com.android.chrome": 40 },
+      },
+    });
+    expect(both.statusCode).toBe(202);
+    const bothRows = prismaMock.appUsageDaily.upsert.mock.calls.map(
+      ([args]: [{ create: { app: string; minutes: number } }]) => args.create,
+    );
+    expect(bothRows).toEqual([expect.objectContaining({ app: "com.google.android.youtube", minutes: 9 })]);
+    expect(bothRows.some((row) => row.app === "com.android.chrome")).toBe(false);
+
     // The shape Android sent before the contract was standardised, accepted for one release.
     prismaMock.appUsageDaily.upsert.mockClear();
     const legacy = await app.inject({
@@ -580,6 +618,22 @@ describe("device enrollment & management", () => {
     expect(prismaMock.appUsageDaily.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ create: expect.objectContaining({ app: "com.google.android.youtube", minutes: 5 }) }),
     );
+    await app.close();
+  });
+
+  it("#830: a device with no child writes no per-app row", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, childId: null });
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: { appUsage: [{ packageId: "com.google.android.youtube", minutes: 5 }] },
+    });
+    expect(res.statusCode).toBe(202);
+    expect(prismaMock.appUsageDaily.upsert).not.toHaveBeenCalled();
     await app.close();
   });
 

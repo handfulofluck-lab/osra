@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
 import '../../l10n/l10n.dart';
-import '../../core/ltr_isolate.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../../api/permission_errors.dart';
@@ -307,19 +306,9 @@ class _BrowsingSection extends ConsumerWidget {
                     : l10n.noBrowsingHistory(days),
               );
             }
-            // #830: the list is site names grouped per host; the note says exactly what is collected,
-            // and it must change with the notice if what is collected changes.
-            final groups = _groupBySite(items);
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Padding(
-                  padding: const EdgeInsets.only(bottom: AppSpace.xs),
-                  child: Text(
-                    l10n.webSiteNamesOnlyNote,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
                 if (items.length >= limit)
                   Padding(
                     padding: const EdgeInsets.only(bottom: AppSpace.xs),
@@ -328,7 +317,7 @@ class _BrowsingSection extends ConsumerWidget {
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),
-                for (final group in groups) _SiteTile(group: group),
+                for (final visit in items) _WebVisitTile(visit: visit),
               ],
             );
           },
@@ -338,62 +327,33 @@ class _BrowsingSection extends ConsumerWidget {
   }
 }
 
-/// One site's de-duplicated visits (#830): rows are hosts, not pages.
-class _SiteGroup {
-  _SiteGroup(this.domain);
-  final String domain;
-  int count = 0;
-  DateTime? newest;
-  DateTime? oldest;
-}
-
-List<_SiteGroup> _groupBySite(List<WebVisit> items) {
-  final order = <String>[];
-  final groups = <String, _SiteGroup>{};
-  for (final visit in items) {
-    final key = visit.domain;
-    final group = groups.putIfAbsent(key, () {
-      order.add(key);
-      return _SiteGroup(key);
-    });
-    group.count += 1;
-    final ts = visit.ts;
-    if (ts != null) {
-      if (group.newest == null || ts.isAfter(group.newest!)) group.newest = ts;
-      if (group.oldest == null || ts.isBefore(group.oldest!)) group.oldest = ts;
-    }
-  }
-  return [for (final key in order) groups[key]!];
-}
-
-class _SiteTile extends StatelessWidget {
-  final _SiteGroup group;
-  const _SiteTile({required this.group});
+class _WebVisitTile extends StatelessWidget {
+  final WebVisit visit;
+  const _WebVisitTile({required this.visit});
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.tokens;
     final l10n = context.l10n;
-    String fmt(DateTime ts) =>
-        DateFormat.MMMd(context.localeName).add_Hm().format(ts.toLocal());
-    final count = group.count;
-    final times = group.newest == null
+    final when = visit.ts == null
         ? l10n.timeUnknown
-        : count > 1 && group.oldest != null && !group.oldest!.isAtSameMomentAs(group.newest!)
-            ? l10n.webSiteSeenRange(fmt(group.oldest!), fmt(group.newest!))
-            : fmt(group.newest!);
+        : DateFormat.MMMd(context.localeName).add_Hm().format(visit.ts!.toLocal());
     return ListTile(
-      key: ValueKey('webSite-${group.domain}'),
+      key: ValueKey('webVisit-${visit.id}'),
       dense: true,
       contentPadding: EdgeInsets.zero,
-      leading: const Icon(Icons.public, size: 18),
-      // A site name is always Latin; the isolate keeps it left to right in the Arabic app.
-      title: Text(ltrIsolate(group.domain), maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(l10n.webSiteVisits(count)),
-          Text(times),
-        ],
+      leading: Icon(
+        visit.blocked ? Icons.block : Icons.public,
+        size: 18,
+        color: visit.blocked ? tokens.danger : null,
+      ),
+      title: Text(visit.domain, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(when),
+      trailing: Text(
+        visit.blocked ? l10n.blocked : l10n.allowed,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: visit.blocked ? tokens.danger : tokens.onSurfaceVariant,
+            ),
       ),
     );
   }

@@ -814,26 +814,6 @@
       "count": { "type": "int" }
     }
   },
-  "webSiteNamesOnlyNote": "Site names only. OSRA Kids does not see the pages opened or anything typed.",
-  "webSiteVisits": "{count, plural, =1{Visited once} other{Visited {count} times}}",
-  "@webSiteVisits": {
-    "placeholders": {
-      "count": { "type": "int" }
-    }
-  },
-  "webSiteSeenRange": "{first} to {last}",
-  "@webSiteSeenRange": {
-    "placeholders": {
-      "first": { "type": "String" },
-      "last": { "type": "String" }
-    }
-  },
-  "webSitesSummary": "{count, plural, =0{No sites visited} =1{1 site visited} other{{count} sites visited}}",
-  "@webSitesSummary": {
-    "placeholders": {
-      "count": { "type": "int" }
-    }
-  },
   "unknownNumber": "Unknown number",
   "trustedContacts": "Trusted contacts",
   "trustedContactsDesc": "Numbers here never raise social concerns.",

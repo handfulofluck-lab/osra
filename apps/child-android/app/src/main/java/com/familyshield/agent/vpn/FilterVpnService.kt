@@ -229,14 +229,10 @@ class FilterVpnService : VpnService() {
         } else {
             val d = DnsFilterPolicy.decide(q.name, config)
             when (d.action) {
-                DnsFilterPolicy.Action.FORWARD -> {
-                    recordSiteVisit(q.name, blocked = false)
-                    forward(query)
-                }
+                DnsFilterPolicy.Action.FORWARD -> forward(query)
                 DnsFilterPolicy.Action.SINK -> {
                     if (config.pausedInternet) DnsMessage.buildNxDomain(query, q) else {
                         Log.i(TAG, "sink ${q.name} (${d.reason})")
-                        recordSiteVisit(q.name, blocked = true)
                         reportBlockedSite(q.name, d.reason)
                         DnsMessage.buildSink(query, q)
                     }

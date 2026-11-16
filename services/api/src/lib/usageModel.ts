@@ -75,18 +75,6 @@ export function dayKey(day: Date): string {
 
 type IncomingEvent = { ts?: string; type: string; payload: Record<string, unknown> };
 
-/** The host name of a URL or bare host; empty when the value has none (#830). */
-export function hostOf(value: string): string {
-  const trimmed = value.trim().replace(/^\*?\./, "");
-  if (!trimmed) return "";
-  try {
-    const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-    return new URL(withScheme).hostname.toLowerCase();
-  } catch {
-    return "";
-  }
-}
-
 /** Minutes per (day, app) from app_usage events, ignoring live heartbeats; hosts from url events. */
 export function bucketEvents(events: IncomingEvent[]): {
   usage: Map<string, { day: Date; app: string; minutes: number }>;
@@ -109,18 +97,16 @@ export function bucketEvents(events: IncomingEvent[]): {
       if (cur) cur.minutes += minutes;
       else usage.set(key, { day, app, minutes });
     } else if (e.type === "url") {
-      const rawUrl = typeof p.url === "string" ? p.url : "";
+      const url = typeof p.url === "string" ? p.url.slice(0, 2048) : "";
       let domain = typeof p.domain === "string" && p.domain ? p.domain : "";
-      if (!domain && rawUrl) domain = hostOf(rawUrl);
-      // #830: the notice promises site names, not page addresses. A value with no host is not a site row.
-      if (!domain) continue;
-      const host = domain.toLowerCase().replace(/^\*?\./, "").slice(0, 253);
-      if (!host) continue;
+      if (!domain && url) {
+        try { domain = new URL(url).hostname; } catch { domain = ""; }
+      }
+      if (!domain) domain = "unknown";
       visits.push({
         ts,
-        domain: host,
-        // Host only, never the path, query or fragment a client might send.
-        url: host,
+        domain: domain.toLowerCase().slice(0, 253),
+        url,
         blocked: p.blocked === true,
         category: typeof p.category === "string" ? p.category.slice(0, 64) : "",
       });

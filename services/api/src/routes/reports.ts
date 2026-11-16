@@ -9,7 +9,7 @@ const ActivityReportQuerySchema = z.object({
   childId: z.string().min(1),
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
-  type: z.enum(["url", "app_usage", "call", "sms"]).optional(),
+  type: z.enum(["url", "app_usage", "call", "sms", "lock_period"]).optional(),
   limit: z.coerce.number().int().min(1).max(1000).default(200),
 });
 
