@@ -60,8 +60,15 @@ object PinLockout {
      *
      * Called on every open and on every attempt, before [isLocked]: after a reboot the monotonic clock has
      * restarted, so the stored reading means nothing and the window starts again from here. A state whose
-     * boot matches **and** whose monotonic reading has not gone backwards, or that is not locked, comes back
-     * unchanged so the caller can skip the write.
+     * boot matches **and** whose monotonic reading has not gone backwards comes back unchanged so the caller can
+     * skip the write.
+     *
+     * **What "not locked" does not mean here.** The guard below is `failures < MAX_ATTEMPTS`, not `isLocked`: a
+     * count that has not been cleared re-anchors on a reboot **even if its window had already run out**, so five
+     * wrong tries lock the gate again for one fresh window every time the phone restarts, days later included.
+     * That is deliberate (Claude's #792 review): the alternative is trusting the wall clock, which the child
+     * controls, and a reboot would then be a way to skip the lockout entirely. The price is one window per reboot
+     * until a correct PIN clears the count, and the changelog says so in the parent's words.
      *
      * The elapsed comparison matters on its own: when `Settings.Global.BOOT_COUNT` cannot be read, both
      * sides carry [NO_BOOT] and the boot count proves nothing. A monotonic clock that reads lower than the

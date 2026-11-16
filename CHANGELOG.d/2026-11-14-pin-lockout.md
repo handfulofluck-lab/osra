@@ -15,7 +15,10 @@
 - **One parent alert per lockout**, not one per attempt, and the fifth wrong try still lands Home as it did
   before (#484). While the gate is closed the child reads one line, "Too many tries. Try again in N minutes,
   or ask your parent." — a plural resource (`pin_locked_notice`), so a one-minute window says "1 minute".
-  Its Arabic value is the Arabic Language Bureau's line and is **not** in this change.
+  Its Arabic value is the Arabic Language Bureau's line and **is** in this change (`values-ar`, `pin_locked_notice`).
+- **A reboot costs a window, not the lockout.** Five wrong tries that were never cleared re-lock the gate for one
+  fresh window on **every** restart, even days later — deliberately, because the alternative is trusting the wall
+  clock, which the child controls. A correct PIN clears the count and ends it (Claude's #792 review).
 - **Verified by JVM unit tests only** (`PinLockoutTest`, 12 rows, `testPlayDebugUnitTest` green), with
   planted faults recorded beside the rows they redden. **Not verified on a handset**: that reopening the
   guarded screen on the Flip4 keeps the count, that the right PIN is refused inside the window, that a

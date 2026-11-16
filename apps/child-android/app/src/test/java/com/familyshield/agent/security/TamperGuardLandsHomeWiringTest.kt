@@ -136,6 +136,38 @@ class TamperGuardLandsHomeWiringTest {
             if (candidate.isFile) return candidate.readText()
             dir = dir.parentFile
         }
-        throw AssertionError("could not find $relative from ${System.getProperty("user.dir")}")
+    /**
+     * Claude's blocking item on #792: the activity's wiring had no row, so both mutants he named would survive —
+     * putting the count back in a field, and checking `isLocked` *after* `verify`. Nothing read the click handler.
+     *
+     * Mutant: move the `isLocked` check below `pinStore.verify(` → [the lockout is checked before the PIN] goes red.
+     * Mutant: read the count from a field instead of `attemptStore` → [the count lives in the store, not in a field].
+     */
+    @Test
+    fun `the lockout is checked before the PIN`() {
+        val handler = gate.substringAfter("unlock.setOnClickListener", missingDelimiterValue = "")
+        val lockCheck = handler.indexOf("PinLockout.isLocked(")
+        val verify = handler.indexOf("pinStore.verify(")
+        assertTrue("the handler checks the lockout", lockCheck >= 0)
+        assertTrue("and verifies the PIN", verify >= 0)
+        assertTrue("the lockout is decided before any PIN is tried", lockCheck < verify)
+        val refusal = handler.substringAfter("if (PinLockout.isLocked(state, elapsed)) {", missingDelimiterValue = "")
+            .substringBefore("}", missingDelimiterValue = "")
+        assertTrue("a closed gate leaves the handler", refusal.contains("return@setOnClickListener"))
+    }
+
+    /** The count is in the store, not in a field of the activity: a field is what the mutant would add back. */
+    @Test
+    fun `the count lives in the store, not in a field`() {
+        val failure = gate.substringAfter("} else {", missingDelimiterValue = "")
+        assertTrue("a failed attempt is written", failure.contains("attemptStore.write("))
+        assertTrue("from the state it read", failure.contains("PinLockout.recordFailure(state,"))
+        val lockedState = gate.substringAfter("private fun lockedState()", missingDelimiterValue = "")
+            .substringBefore("private fun noticeText(", missingDelimiterValue = "")
+        assertTrue("the count is read from the attempt store", lockedState.contains("attemptStore.read()"))
+        assertFalse(
+            "no attempt counter field",
+            Regex("""private var \w*(attempt|fail)\w*""", RegexOption.IGNORE_CASE).containsMatchIn(gate),
+        )
     }
 }
