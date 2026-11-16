@@ -110,7 +110,14 @@ class CallEnforcer(
         // #828: a silent/DND ring leaves the audio mode at NORMAL, so the call notification is the
         // second signal for the shade exemption (Antigravity, Android 14 device run).
         parcel?.let { p ->
-            IncomingRingWindow.next(p.isCall, p.hasDecline, p.hasHangUp, currentMode(), now())?.let { ringUntilMs = it }
+            IncomingRingWindow.next(
+                isCall = p.isCall,
+                hasDecline = p.hasDecline,
+                hasHangUp = p.hasHangUp,
+                mode = currentMode(),
+                nowMs = now(),
+                fromDefaultDialer = pkg == defaultDialerPackage(),
+            )?.let { ringUntilMs = it }
         }
         apply(policy.onNotification(CallNotice(pkg, parcel), isBlocked, isEssential, now()))
     }
@@ -194,6 +201,10 @@ class CallEnforcer(
      * ring, so the call notification's bounded window is the second signal ([IncomingRingWindow]).
      */
     fun isRinging(): Boolean = IncomingRingWindow.isRinging(currentMode(), now(), ringUntilMs)
+
+    /** Fable: only the system default dialer may hold the silent-ring exemption. No permission needed. */
+    private fun defaultDialerPackage(): String? =
+        runCatching { service.getSystemService(android.telecom.TelecomManager::class.java)?.defaultDialerPackage }.getOrNull()
 
     private fun map(mode: Int): CallAudioMode = when (mode) {
         AudioManager.MODE_NORMAL -> CallAudioMode.NORMAL

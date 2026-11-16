@@ -21,9 +21,19 @@ object IncomingRingWindow {
      * [mode] is the audio mode: with a real ringtone the mode already covers the ring, and the window is
      * only needed for the silent/DND case.
      */
-    fun next(isCall: Boolean, hasDecline: Boolean, hasHangUp: Boolean, mode: CallAudioMode, nowMs: Long): Long? {
+    fun next(
+        isCall: Boolean,
+        hasDecline: Boolean,
+        hasHangUp: Boolean,
+        mode: CallAudioMode,
+        nowMs: Long,
+        fromDefaultDialer: Boolean,
+    ): Long? {
         if (!isCall) return null
         if (hasHangUp) return 0L
+        // Fable: only the system default dialer may open the window. Any app that can post a call-style
+        // notification could otherwise hold the exemption open at will, which is osra-security#33 again.
+        if (!fromDefaultDialer) return null
         if (hasDecline && mode == CallAudioMode.NORMAL) return nowMs + WINDOW_MS
         return null
     }

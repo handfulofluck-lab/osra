@@ -18,7 +18,7 @@ class IncomingRingWindowTest {
 
     @Test
     fun `a silent or DND ring sets a bounded window from the call notification`() {
-        val until = IncomingRingWindow.next(isCall = true, hasDecline = true, hasHangUp = false, mode = CallAudioMode.NORMAL, nowMs = 10_000)
+        val until = IncomingRingWindow.next(isCall = true, hasDecline = true, hasHangUp = false, mode = CallAudioMode.NORMAL, nowMs = 10_000, fromDefaultDialer = true)
         assertEquals(10_000 + IncomingRingWindow.WINDOW_MS, until)
         assertTrue(IncomingRingWindow.isRinging(CallAudioMode.NORMAL, 11_000, until!!))
         // Bounded: after the window the phone is not exempt any more.
@@ -27,13 +27,13 @@ class IncomingRingWindowTest {
 
     @Test
     fun `an audible ring needs no window, the audio mode already says so`() {
-        assertNull(IncomingRingWindow.next(isCall = true, hasDecline = true, hasHangUp = false, mode = CallAudioMode.RINGTONE, nowMs = 1_000))
+        assertNull(IncomingRingWindow.next(isCall = true, hasDecline = true, hasHangUp = false, mode = CallAudioMode.RINGTONE, nowMs = 1_000, fromDefaultDialer = true))
         assertTrue(IncomingRingWindow.isRinging(CallAudioMode.RINGTONE, 1_000, 0L))
     }
 
     @Test
     fun `answering clears the window, so the shade locks again during the call`() {
-        assertEquals(0L, IncomingRingWindow.next(isCall = true, hasDecline = false, hasHangUp = true, mode = CallAudioMode.IN_CALL, nowMs = 20_000))
+        assertEquals(0L, IncomingRingWindow.next(isCall = true, hasDecline = false, hasHangUp = true, mode = CallAudioMode.IN_CALL, nowMs = 20_000, fromDefaultDialer = true))
         assertFalse(IncomingRingWindow.isRinging(CallAudioMode.IN_CALL, 20_001, 0L))
     }
 
@@ -45,7 +45,12 @@ class IncomingRingWindowTest {
     }
 
     @Test
+    fun `a call-style notification from another package cannot open the window`() {
+        assertNull(IncomingRingWindow.next(isCall = true, hasDecline = true, hasHangUp = false, mode = CallAudioMode.NORMAL, nowMs = 1_000, fromDefaultDialer = false))
+    }
+
+    @Test
     fun `a notification that is not a call changes nothing`() {
-        assertNull(IncomingRingWindow.next(isCall = false, hasDecline = true, hasHangUp = false, mode = CallAudioMode.NORMAL, nowMs = 1_000))
+        assertNull(IncomingRingWindow.next(isCall = false, hasDecline = true, hasHangUp = false, mode = CallAudioMode.NORMAL, nowMs = 1_000, fromDefaultDialer = true))
     }
 }

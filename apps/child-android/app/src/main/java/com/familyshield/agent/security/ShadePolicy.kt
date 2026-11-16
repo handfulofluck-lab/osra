@@ -1,24 +1,35 @@
 package com.familyshield.agent.security
 
 /**
- * #828 (Karim, Flip4, 15 Nov): while a lock or pause is on, the notification shade still opens over the
- * lock overlay. Every notification is readable in full and WhatsApp's inline Reply works, so the child
- * keeps chatting while "locked".
+ * #828 (Karim, Flip4, 15 Nov; re-shaped after Antigravity's Android 14 run and Fable's ruling):
+ * while a lock or pause is on, the notification shade must not be usable.
  *
- * The accessibility service sees the shade's window event and collapses it with
- * `GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE` (API 31+). Collapsing is the narrow action: the phone app,
- * the emergency dialer and a ringing call are untouched — an incoming call is a full-screen intent, not
- * the shade — and nothing about the child's own notification data is read.
+ * **Collapse by default inside systemui.** The class name cannot identify the shade: on Android 14 the
+ * window event reports `android.widget.FrameLayout`, and One UI may report something else tomorrow. A
+ * positive list of shade names therefore keeps failing open, silently — which is what the device run
+ * measured. So any `TYPE_WINDOW_STATE_CHANGED` from `com.android.systemui` while locked sends the dismiss
+ * action, unless a short non-shade list names the window. That failure mode is acceptable because of
+ * what the action costs: `GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE` only closes the shade — measured with
+ * the power menu focused, the collapse left it open and untouched. A false match is a no-op; a missed
+ * match loses the whole guard.
  *
- * Pure, so the JVM suite holds the cases: a lock, an unrelated window, an old API and a package that is
- * not systemui must all be no-ops.
+ * The exclusion list is tidiness, not safety. Nothing may depend on it being complete.
+ *
+ * Pure, so the JVM suite holds the measured cases: FrameLayout, null, the two dialog classes, another
+ * package, the API floor, and the call exemption.
  */
 object ShadePolicy {
     /** Only systemui hosts the shade; Settings' "notification" screens are not it. */
     const val SHADE_PACKAGE = "com.android.systemui"
 
-    /** Simple-name fragments across AOSP, Google and One UI: StatusBarWindowView, NotificationShadeWindowView, ShadeWindow. */
-    private val SHADE_CLASSES = listOf("statusbar", "notificationshade", "shadewindow", "shade")
+    /** Measured on Android 14 and named so a future OEM window is a one-line addition, not a redesign. */
+    private val NON_SHADE_CLASSES = listOf(
+        "volumedialog",
+        "globalactions",
+        "actionsdialog",
+        "biometric",
+        "keyguard",
+    )
 
     /** `GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE` exists from API 31. */
     const val MIN_API = 31
@@ -32,16 +43,12 @@ object ShadePolicy {
     ): Boolean {
         if (!locked) return false
         if (apiLevel < MIN_API) return false
-        // #828 (UI/UX Bureau): with the screen on, an incoming call is a heads-up in systemui. Collapsing
-        // it would hide Answer. Only the ringing phase is exempt (Fable's review): during a placed or
-        // answered call the shade is locked again, so a call cannot be used to browse notifications.
+        // #828: a ringing incoming call's heads-up is not the shade, and hiding Answer would be the one
+        // collateral damage that matters. The exemption is the ringing phase only (Fable), and it is
+        // provisional until the device row says whether the collapse hides the pop-up at all.
         if (callRinging) return false
         if (packageName != SHADE_PACKAGE) return false
-        // Kimi's review: some OEM builds report a system window with a null class. With the systemui
-        // package already narrow, a null class is treated as the shade — a guard that silently switches
-        // itself off for an unnamed window is a bypass with no trace. Named systemui windows that are not
-        // the shade (the volume dialog) are still excluded by the list.
         val name = className?.lowercase() ?: return true
-        return SHADE_CLASSES.any { name.contains(it) }
+        return NON_SHADE_CLASSES.none { name.contains(it) }
     }
 }

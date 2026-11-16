@@ -27,6 +27,19 @@ class ShadePolicyTest {
     }
 
     @Test
+    fun `the measured Android 14 event collapses: systemui reports FrameLayout`() {
+        // Antigravity, live API 34: top-edge swipe and `cmd statusbar expand-settings` both report
+        // class=android.widget.FrameLayout while the shade opens. The old allowlist could never match it.
+        assertTrue(ShadePolicy.shouldCollapse(true, "com.android.systemui", "android.widget.FrameLayout", 34))
+    }
+
+    @Test
+    fun `the measured non-shade dialogs are excluded by name`() {
+        assertFalse(ShadePolicy.shouldCollapse(true, "com.android.systemui", "com.android.systemui.globalactions.GlobalActionsDialogLite\$ActionsDialogLite", 34))
+        assertFalse(ShadePolicy.shouldCollapse(true, "com.android.systemui", "com.android.systemui.volume.VolumeDialogImpl\$CustomDialog", 34))
+    }
+
+    @Test
     fun `without a lock the shade is left alone`() {
         assertFalse(ShadePolicy.shouldCollapse(false, "com.android.systemui", "com.android.systemui.shade.NotificationShadeWindowView", 34))
     }
