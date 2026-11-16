@@ -218,7 +218,7 @@ extension AlarmKitRingBackend {
         return UUID(uuidString: hex)!
     }
 
-    func alarmIDs(for commandID: UUID, until: Date? = nil) -> Set<UUID> {
+    public func alarmIDs(for commandID: UUID, until: Date? = nil) -> Set<UUID> {
         Set([commandID] + sentinelIDs(for: commandID, until: until))
     }
 }
