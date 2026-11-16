@@ -59,12 +59,20 @@ public struct PinSetupView: View {
 public struct PinGateView: View {
     @State private var pin = ""
     @State private var message: String?
+    @Environment(\.colorScheme) private var colorScheme
     let title: String
     var onUnlock: () -> Void
 
     public init(title: String, onUnlock: @escaping () -> Void) {
         self.title = title
         self.onUnlock = onUnlock
+    }
+
+    private var continueButtonColor: Color {
+        // UI/UX Bureau (#760): brand teal in light, matching light blue in dark.
+        colorScheme == .dark
+            ? Color(red: 125 / 255, green: 180 / 255, blue: 255 / 255)
+            : Color(red: 11 / 255, green: 93 / 255, blue: 87 / 255)
     }
 
     public var body: some View {
@@ -84,7 +92,7 @@ public struct PinGateView: View {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button(L10n.tr("pin_continue")) { check() }
-                    .foregroundStyle(Color(red: 11 / 255, green: 93 / 255, blue: 87 / 255))
+                    .foregroundStyle(continueButtonColor)
                     .accessibilityIdentifier(A11yID.pinContinue)
             }
         }

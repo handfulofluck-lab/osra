@@ -349,13 +349,15 @@ const List<CoachCard> allCoachCards = <CoachCard>[
 ];
 
 /// Returns the coaching card for [category]; `social_concern` alerts resolve
-/// through [concernTypes] first. Unknown categories return `null` unless
-/// [fallback] is `true`, so a new alert category does not silently inherit the
-/// generic card (UI/UX Bureau, #760). Ring alerts never show a coach card.
+/// through [concernTypes] first. Ring, SOS, geofence and install-request alerts
+/// never show a coach card (UI/UX Bureau, #760). All other categories fall back
+/// to the generic calm-conversation card so a parent always sees guidance for
+/// child-safety alerts, while callers can still opt out with `fallback: false`.
 CoachCard? coachCardFor(String category,
-    {List<String> concernTypes = const [], bool fallback = false}) {
+    {List<String> concernTypes = const [], bool fallback = true}) {
   final cat = category.trim().toLowerCase();
-  if (cat == 'ring') return null;
+  const noCardCategories = {'ring', 'sos', 'geofence', 'install_request'};
+  if (noCardCategories.contains(cat)) return null;
   if (cat == 'social_concern') {
     for (final t in concernTypes) {
       final card = _concernCards[t.trim().toLowerCase()];

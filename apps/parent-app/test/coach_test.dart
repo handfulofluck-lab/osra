@@ -72,16 +72,22 @@ void main() {
       }
     });
 
-    test('unknown categories fall back to the generic card when fallback is true', () {
-      final card = coachCardFor('totally_new_category', fallback: true);
-      expect(card!.title, coachCardFor('another_unknown', fallback: true)!.title);
+    test('unknown categories fall back to the generic card by default', () {
+      final card = coachCardFor('totally_new_category');
+      expect(card!.title, coachCardFor('another_unknown')!.title);
       expect(card.title, 'A calm first conversation');
     });
 
-    test('unknown categories and ring return null without fallback', () {
-      expect(coachCardFor('totally_new_category'), isNull);
+    test('ring, sos, geofence and install_request never show a coach card', () {
       expect(coachCardFor('ring'), isNull);
       expect(coachCardFor('ring', concernTypes: ['grooming_risk']), isNull);
+      expect(coachCardFor('sos'), isNull);
+      expect(coachCardFor('geofence'), isNull);
+      expect(coachCardFor('install_request'), isNull);
+    });
+
+    test('unknown categories return null when fallback is false', () {
+      expect(coachCardFor('totally_new_category', fallback: false), isNull);
     });
 
     test('social_concern resolves through concernTypes before falling back', () {
@@ -178,32 +184,33 @@ void main() {
       expect(find.textContaining('collaboration, not punishment'), findsOneWidget);
     });
 
-    testWidgets('an unknown category shows no coach card by default', (tester) async {
+    testWidgets('sos, geofence, install_request and ring show no coach card', (tester) async {
+      final now = DateTime.now();
+      for (final category in ['sos', 'geofence', 'install_request', 'ring']) {
+        final api = FakeApiClient(standardRoutes(alerts: [
+          alertJson('c1', 'info', category, 'Test alert', now),
+        ]));
+        await openDetail(tester, api, 'Test alert');
+        expect(find.text('How to talk about this'), findsNothing,
+            reason: '$category should not show a coach card');
+      }
+    });
+
+    testWidgets('an unknown category shows the generic card by default', (tester) async {
       final now = DateTime.now();
       final api = FakeApiClient(standardRoutes(alerts: [
         alertJson('c1', 'info', 'brand_new_alert_type', 'Something unusual', now),
       ]));
       // An unknown category: English keeps the server's own title (#344 review).
       await openDetail(tester, api, 'Something unusual');
-
-      expect(find.text('How to talk about this'), findsNothing);
-    });
-
-    testWidgets('an unknown category with fallback shows the generic card', (tester) async {
-      final now = DateTime.now();
-      final api = FakeApiClient(standardRoutes(alerts: [
-        alertJson('c1', 'info', 'brand_new_alert_type', 'Something unusual', now),
-      ]));
-      await openDetail(tester, api, 'Something unusual');
-      // The fallback path is exercised by a direct lookup, not the AlertsScreen,
-      // because production UI does not opt into fallback for unknown categories (#760).
-      await tester.pumpWidget(localizedTestApp(
-        Scaffold(body: CoachCardSection(card: coachCardFor('brand_new_alert_type', fallback: true)!)),
-      ));
-      await tester.pumpAndSettle();
       await expandCoachSection(tester);
 
       expect(find.text('A calm first conversation'), findsOneWidget);
+    });
+
+    testWidgets('an unknown category with fallback disabled shows no coach card', (tester) async {
+      final card = coachCardFor('brand_new_alert_type', fallback: false);
+      expect(card, isNull);
     });
   });
 
