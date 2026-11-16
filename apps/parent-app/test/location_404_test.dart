@@ -26,9 +26,11 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  Map<String, FakeRoute> routes({required Object? latest, Object? history}) => standardRoutes()
-    ..['GET /v1/location/child-1/latest'] = (_) => latest
-    ..['GET /v1/location/child-1/history'] = (_) => history ?? const {'pings': []};
+  Map<String, FakeRoute> routes({required Object? latest, Object? history}) => {
+        ...standardRoutes(),
+        'GET /v1/location/child-1/latest': (_) => latest,
+        'GET /v1/location/child-1/history': (_) => history ?? const {'pings': []},
+      };
 
   test('a 404 from the latest-location read is "no location", not an error', () async {
     final container = ProviderContainer(overrides: [
