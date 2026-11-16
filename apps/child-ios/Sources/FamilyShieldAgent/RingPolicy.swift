@@ -15,7 +15,7 @@ public enum RingPolicy {
         case .pinVerified: return .pinStopped
         case .parentCommand: return .parentStopped
         case .timeout: return .timedOut
-        case .childDismissed: return nil
+        case .childDismissed: return .childDismissed
         }
     }
 
@@ -24,7 +24,7 @@ public enum RingPolicy {
         case .pinVerified: return .pinVerified
         case .parentCommand: return .parentCommand
         case .timeout: return .timeout
-        case .childDismissed: return nil
+        case .childDismissed: return .childDismissed
         }
     }
 
@@ -32,6 +32,11 @@ public enum RingPolicy {
                                    nowMonotonic: TimeInterval, restarted: Bool) -> Bool {
         if restarted { return nowWall >= state.endAt }
         return nowMonotonic - state.monotonicStart >= duration
+    }
+
+    /// The absolute wall-clock cap for any ring: five minutes after the server command arrived.
+    public static func capEndAt(_ date: Date, startedAt: Date) -> Date {
+        min(date, startedAt.addingTimeInterval(duration))
     }
 
     public static func dedupeKey(for state: RingEventState, ringId: UUID, dismissalCount: Int) -> String {

@@ -24,6 +24,8 @@ public final class RingController: ObservableObject {
     private var deadlineGeneration = 0
     private var operationGeneration = 0
     private let audioPlayer: RingAudioPlaying
+    private let lockScreenDismissed: () -> Bool
+    private let clearLockScreenDismissed: () -> Void
 
     public init(backend: RingBackend? = nil, store: RingStore = UserDefaultsRingStore(),
                 history: RingHistory = UserDefaultsRingHistory(), reporter: RingAlertReporting? = nil,
@@ -33,6 +35,12 @@ public final class RingController: ObservableObject {
                 bootSession: @escaping () -> TimeInterval? = { RingBootSession.current() },
                 sleep: @escaping (TimeInterval) async throws -> Void = { seconds in
                     try await ContinuousClock().sleep(for: .seconds(seconds))
+                },
+                lockScreenDismissed: @escaping () -> Bool = {
+                    UserDefaults(suiteName: AgentIdentityStore.suiteName)?.bool(forKey: "ring.lockScreenDismissed") == true
+                },
+                clearLockScreenDismissed: @escaping () -> Void = {
+                    UserDefaults(suiteName: AgentIdentityStore.suiteName)?.removeObject(forKey: "ring.lockScreenDismissed")
                 }) {
         self.backend = backend ?? AlarmKitRingBackend()
         self.store = store
@@ -43,6 +51,8 @@ public final class RingController: ObservableObject {
         self.monotonic = monotonic
         self.bootSession = bootSession
         self.sleep = sleep
+        self.lockScreenDismissed = lockScreenDismissed
+        self.clearLockScreenDismissed = clearLockScreenDismissed
         observationTask = Task { [weak self] in
             guard let self else { return }
             let updates = await self.backend.updates()
@@ -64,6 +74,7 @@ public final class RingController: ObservableObject {
     }
 
     public func start(_ id: UUID) async -> RingCommandError? {
+        clearLockScreenDismissed()
         await drainReports()
         guard !history.contains(id) else { return nil }
         if let current = state ?? store.load(), current.commandId == id, current.stopSource == nil {
@@ -238,6 +249,10 @@ public final class RingController: ObservableObject {
         }
         state = restored
         restarted = restored.bootSession.map { $0 != bootSession() } ?? (monotonic() < restored.monotonicStart)
+        if lockScreenDismissed(), restored.stopSource == nil {
+            clearLockScreenDismissed()
+            return await stop(.childDismissed, commandId: restored.commandId)
+        }
         if let source = restored.stopSource {
             let event = event(for: source)
             if history.contains(restored.commandId) {
@@ -298,7 +313,7 @@ public final class RingController: ObservableObject {
         case .pinStopped: return .pinVerified
         case .parentStopped: return .parentCommand
         case .timedOut: return .timeout
-        case .childDismissed: return nil
+        case .childDismissed: return .childDismissed
         }
     }
 
@@ -331,7 +346,7 @@ public final class RingController: ObservableObject {
             await applyResume(current, seconds: seconds, generation: operationGeneration)
         case .pending:
             var pending = current
-            pending.endAt = now().addingTimeInterval(RingPolicy.duration)
+            pending.endAt = RingPolicy.capEndAt(now().addingTimeInterval(RingPolicy.duration), startedAt: current.startedAt)
             pending.monotonicStart = monotonic()
             state = pending
             restarted = false
@@ -344,7 +359,7 @@ public final class RingController: ObservableObject {
         history.remove(current.commandId)
         var resumed = current
         resumed.stopSource = nil
-        resumed.endAt = now().addingTimeInterval(TimeInterval(seconds))
+        resumed.endAt = RingPolicy.capEndAt(now().addingTimeInterval(TimeInterval(seconds)), startedAt: current.startedAt)
         resumed.monotonicStart = monotonic() - (RingPolicy.duration - TimeInterval(seconds))
         store.save(resumed)
         state = resumed
@@ -426,6 +441,8 @@ public final class RingController: ObservableObject {
 
     public func process(scheduledIDs: Set<UUID>) async {
         let generation = operationGeneration
+        let dismissedFromLockScreen = lockScreenDismissed()
+        if dismissedFromLockScreen { clearLockScreenDismissed() }
         defer {
             if generation == operationGeneration { lastScheduledIDs = scheduledIDs }
         }
@@ -439,7 +456,15 @@ public final class RingController: ObservableObject {
             }
             return
         }
-        guard !scheduledIDs.contains(current.commandId) else { return }
+        let expectedAlarmIDs = backend.alarmIDs(for: current.commandId, until: current.endAt)
+        let scheduledForCommand = scheduledIDs.intersection(expectedAlarmIDs)
+        guard !scheduledForCommand.contains(current.commandId) else { return }
+        if dismissedFromLockScreen || (scheduledForCommand.isEmpty && !restarted) {
+            await stop(.childDismissed, commandId: current.commandId)
+            return
+        }
+        // Either a reboot cleared the chain or a sentinel is still scheduled and the main alarm
+        // fired naturally. Re-arm the chain without treating it as a child dismissal.
         do {
             try await backend.schedule(current.commandId, until: current.endAt)
         } catch {

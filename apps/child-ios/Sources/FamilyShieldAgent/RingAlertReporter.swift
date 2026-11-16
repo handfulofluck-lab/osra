@@ -120,9 +120,9 @@ public struct RingAlertReporter: RingAlertReporting {
         if state == .timedOut && afterRestart { return "The ring ended after the phone was restarted." }
         switch state {
         case .childDismissed where dismissalCount == 1:
-            return "The ring alert was dismissed on the phone. It is ringing again."
+            return "The ring alert was dismissed on the phone."
         case .childDismissed:
-            return "The ring alert was dismissed on the phone \(dismissalCount) times. It is still ringing."
+            return "The ring alert was dismissed on the phone \(dismissalCount) times."
         case .pinStopped:
             return "The ring was stopped on the phone with the parent PIN."
         case .parentStopped:

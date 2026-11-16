@@ -29,7 +29,10 @@ struct OpenRingIntent: LiveActivityIntent {
     }
     static var openAppWhenRun: Bool { true }
 
-    func perform() async throws -> some IntentResult { .result() }
+    func perform() async throws -> some IntentResult {
+        UserDefaults(suiteName: AgentIdentityStore.suiteName)?.set(true, forKey: "ring.lockScreenDismissed")
+        return .result()
+    }
 }
 #endif
 
@@ -39,7 +42,7 @@ public final class AlarmKitRingBackend: RingBackend {
     private let chainInterval: TimeInterval
     private let now: () -> Date
     private let defaults: UserDefaults?
-    var activeCommandIDs: Set<UUID> = []
+    var activeAlarmIDs: Set<UUID> = []
 
     public init(leadTime: TimeInterval = 5, chainInterval: TimeInterval = 6,
                 now: @escaping () -> Date = Date.init,
@@ -48,7 +51,8 @@ public final class AlarmKitRingBackend: RingBackend {
         self.chainInterval = chainInterval
         self.now = now
         self.defaults = defaults
-        self.activeCommandIDs = Self.loadActiveCommandIDs(from: defaults)
+        self.activeAlarmIDs = Self.loadActiveAlarmIDs(from: defaults)
+        Self.clearLegacyActiveCommandIDs(from: defaults)
     }
 
     public var available: Bool {
@@ -81,8 +85,9 @@ public final class AlarmKitRingBackend: RingBackend {
             // Clearing any leftover chain before scheduling is best-effort: on a first ring,
             // or after part of the chain has already fired, the ids do not exist yet.
             try? await cancelAll(for: id, throwOnError: false)
-            activeCommandIDs.insert(id)
-            persistActiveCommandIDs()
+            let alarmIDs = Set([id] + sentinelIDs(for: id, until: until))
+            activeAlarmIDs.formUnion(alarmIDs)
+            persistActiveAlarmIDs()
             let base = now()
             let dates = chainDates(until: until)
             for (index, offset) in dates.enumerated() {
@@ -117,8 +122,8 @@ public final class AlarmKitRingBackend: RingBackend {
         #if os(iOS)
         if #available(iOS 26.0, *) {
             try await cancelAll(for: id, throwOnError: true)
-            activeCommandIDs.remove(id)
-            persistActiveCommandIDs()
+            activeAlarmIDs.subtract(alarmIDs(for: id, until: nil))
+            persistActiveAlarmIDs()
         }
         #endif
     }
@@ -128,7 +133,7 @@ public final class AlarmKitRingBackend: RingBackend {
         if #available(iOS 26.0, *) {
             do {
                 let all = try Set(AlarmManager.shared.alarms.map(\.id))
-                return activeCommandIDs.intersection(all)
+                return activeAlarmIDs.intersection(all)
             } catch {
                 RingAlarmLog.error("scheduledIDs", error)
                 throw error
@@ -148,7 +153,7 @@ public final class AlarmKitRingBackend: RingBackend {
                 let task = Task {
                     for await alarms in manager.alarmUpdates {
                         let all = Set(alarms.map(\.id))
-                        continuation.yield(activeCommandIDs.intersection(all))
+                        continuation.yield(activeAlarmIDs.intersection(all))
                     }
                     continuation.finish()
                 }
@@ -161,16 +166,21 @@ public final class AlarmKitRingBackend: RingBackend {
 }
 
 extension AlarmKitRingBackend {
-    static let activeCommandIDsKey = "ring.alarmKit.activeCommandIDs"
+    static let activeAlarmIDsKey = "ring.alarmKit.activeAlarmIDs"
+    static let legacyActiveCommandIDsKey = "ring.alarmKit.activeCommandIDs"
 
-    private func persistActiveCommandIDs() {
-        let strings = activeCommandIDs.map { $0.uuidString }
-        defaults?.set(strings, forKey: Self.activeCommandIDsKey)
+    private func persistActiveAlarmIDs() {
+        let strings = activeAlarmIDs.map { $0.uuidString }
+        defaults?.set(strings, forKey: Self.activeAlarmIDsKey)
     }
 
-    private static func loadActiveCommandIDs(from defaults: UserDefaults?) -> Set<UUID> {
-        guard let strings = defaults?.stringArray(forKey: activeCommandIDsKey) else { return [] }
+    private static func loadActiveAlarmIDs(from defaults: UserDefaults?) -> Set<UUID> {
+        guard let strings = defaults?.stringArray(forKey: activeAlarmIDsKey) else { return [] }
         return Set(strings.compactMap { UUID(uuidString: $0) })
+    }
+
+    private static func clearLegacyActiveCommandIDs(from defaults: UserDefaults?) {
+        defaults?.removeObject(forKey: legacyActiveCommandIDsKey)
     }
 
     func chainDates(until: Date? = nil) -> [TimeInterval] {
@@ -207,15 +217,21 @@ extension AlarmKitRingBackend {
         hex = String(hex[..<prefixEnd]) + suffix
         return UUID(uuidString: hex)!
     }
+
+    func alarmIDs(for commandID: UUID, until: Date? = nil) -> Set<UUID> {
+        Set([commandID] + sentinelIDs(for: commandID, until: until))
+    }
 }
 
 extension AlarmKitRingBackend {
     private func cancelAll(for id: UUID, throwOnError: Bool) async throws {
         #if os(iOS)
         if #available(iOS 26.0, *) {
-            let ids = [id] + sentinelIDs(for: id)
+            let ids = alarmIDs(for: id, until: nil)
+            let existing = (try? Set(AlarmManager.shared.alarms.map(\.id))) ?? []
             var firstError: Error?
             for alarmID in ids {
+                guard existing.contains(alarmID) else { continue }
                 do {
                     try AlarmManager.shared.cancel(id: alarmID)
                 } catch {

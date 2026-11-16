@@ -3134,8 +3134,8 @@ class AppLocalizationsEn extends AppLocalizations {
       count,
       locale: localeName,
       other:
-          'The ring alert was dismissed on the phone $count times. It is still ringing.',
-      one: 'The ring alert was dismissed on the phone. It is ringing again.',
+          'The ring alert was dismissed on the phone $count times.',
+      one: 'The ring alert was dismissed on the phone.',
     );
     return '$_temp0';
   }

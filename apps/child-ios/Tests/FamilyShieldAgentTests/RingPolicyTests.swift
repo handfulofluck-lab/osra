@@ -10,11 +10,11 @@ final class RingPolicyTests: XCTestCase {
                   monotonicStart: monotonicStart, stopSource: nil, dismissalCount: 0)
     }
 
-    func testOnlyPINParentAndTimeoutAreStops() {
+    func testEveryTriggerMapsToAnEvent() {
         XCTAssertEqual(RingPolicy.event(for: .pinVerified), .pinStopped)
         XCTAssertEqual(RingPolicy.event(for: .parentCommand), .parentStopped)
         XCTAssertEqual(RingPolicy.event(for: .timeout), .timedOut)
-        XCTAssertNil(RingPolicy.event(for: .childDismissed))
+        XCTAssertEqual(RingPolicy.event(for: .childDismissed), .childDismissed)
     }
 
     func testWallJumpDoesNotEndRingEarly() {
@@ -43,6 +43,14 @@ final class RingPolicyTests: XCTestCase {
 
     func testCapIsFiveMinutes() {
         XCTAssertEqual(RingPolicy.duration, 300)
+    }
+
+    func testCapEndAtCannotExtendPastOriginalWindow() {
+        let startedAt = Date(timeIntervalSince1970: 0)
+        XCTAssertEqual(RingPolicy.capEndAt(Date(timeIntervalSince1970: 250), startedAt: startedAt),
+                       Date(timeIntervalSince1970: 250))
+        XCTAssertEqual(RingPolicy.capEndAt(Date(timeIntervalSince1970: 350), startedAt: startedAt),
+                       Date(timeIntervalSince1970: 300))
     }
 
     func testStateRoundTripPreservesStopAndDismissalCount() throws {

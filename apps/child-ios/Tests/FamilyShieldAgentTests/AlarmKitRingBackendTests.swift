@@ -12,11 +12,11 @@ final class AlarmKitRingBackendTests: XCTestCase {
         super.setUp()
         suiteName = "test.ring.alarmkit.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suiteName)
-        defaults.removeObject(forKey: AlarmKitRingBackend.activeCommandIDsKey)
+        defaults.removeObject(forKey: AlarmKitRingBackend.activeAlarmIDsKey)
     }
 
     override func tearDown() {
-        defaults.removeObject(forKey: AlarmKitRingBackend.activeCommandIDsKey)
+        defaults.removeObject(forKey: AlarmKitRingBackend.activeAlarmIDsKey)
         UserDefaults.standard.removePersistentDomain(forName: suiteName)
         super.tearDown()
     }
@@ -74,10 +74,10 @@ final class AlarmKitRingBackendTests: XCTestCase {
         XCTAssertTrue(first.isDisjoint(with: second), "sentinel sets for different commands must not overlap")
     }
 
-    func testInitRestoresPersistedActiveCommandIDs() {
-        defaults.set([commandID.uuidString], forKey: AlarmKitRingBackend.activeCommandIDsKey)
+    func testInitRestoresPersistedActiveAlarmIDs() {
+        defaults.set([commandID.uuidString], forKey: AlarmKitRingBackend.activeAlarmIDsKey)
         let restored = backend()
-        XCTAssertTrue(restored.activeCommandIDs.contains(commandID))
+        XCTAssertTrue(restored.activeAlarmIDs.contains(commandID))
     }
 
     func testSentinelIDsAreEmptyWhenRemainingTimeIsShort() {
