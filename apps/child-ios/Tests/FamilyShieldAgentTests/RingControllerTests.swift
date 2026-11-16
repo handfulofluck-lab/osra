@@ -781,7 +781,20 @@ extension RingControllerTests {
         let controller = controller()
         await controller.start(id)
         await controller.process(scheduledIDs: [])
+        XCTAssertGreaterThanOrEqual(audioPlayer.startCalls, 1)
+        XCTAssertEqual(audioPlayer.stopCalls, 0)
+    }
+
+    func testLockScreenStopRearmsAlarmAndRestartsAudio() async {
+        let controller = controller()
+        await controller.start(id)
         XCTAssertEqual(audioPlayer.startCalls, 1)
+        await controller.process(scheduledIDs: [])
+        XCTAssertEqual(backend.scheduled, [id, id], "the alarm must be rescheduled immediately")
+        XCTAssertEqual(controller.state?.commandId, id)
+        XCTAssertEqual(controller.state?.dismissalCount, 1)
+        XCTAssertEqual(reporter.calls.map(\.state), [.childDismissed])
+        XCTAssertEqual(audioPlayer.startCalls, 2, "audio must restart immediately after a system-level stop")
         XCTAssertEqual(audioPlayer.stopCalls, 0)
     }
 

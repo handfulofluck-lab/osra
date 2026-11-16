@@ -457,6 +457,8 @@ public final class RingController: ObservableObject {
             state = dismissed
             _ = await reporter.report(state: .childDismissed, ringId: current.commandId,
                                       dismissalCount: dismissed.dismissalCount)
+            armDeadline()
+            await audioPlayer.start()
         }
     }
 }
