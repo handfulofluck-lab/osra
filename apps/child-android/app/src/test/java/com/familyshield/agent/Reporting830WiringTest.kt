@@ -27,6 +27,13 @@ class Reporting830WiringTest {
         assertTrue(vpn.contains("recordSiteVisit(q.name, blocked = true)"))
         assertTrue(vpn.contains("SiteVisitGate.shouldUpload(config.siteNamesEnabled, blocked, SiteVisitGate.isExcludedHost(name))"))
         assertTrue(vpn.contains("DnsFilterPolicy.normalize(host)"))
+        // #841 review: the alert path normalises too, one flusher wins the race, and a drained batch is
+        // sent whole (up to the API's 200) instead of being truncated after the queue was cleared.
+        val alert = vpn.substringAfter("private fun reportBlockedSite").substringBefore("private fun recordSiteVisit")
+        assertTrue(alert.contains("val name = DnsFilterPolicy.normalize(host)"))
+        assertTrue(alert.contains("SiteVisitGate.isExcludedHost(name)"))
+        assertTrue(vpn.contains("visitFlusherStarted.compareAndSet(false, true)"))
+        assertTrue(vpn.contains("events = batch.map {"))
 
         val dispatcher = source("apps/child-android/app/src/main/java/com/familyshield/agent/commands/CommandDispatcher.kt")
         assertTrue(dispatcher.contains("LockPeriodTracker.start(context, LockActivity.MODE_LOCKED"))

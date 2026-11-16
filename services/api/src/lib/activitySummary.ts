@@ -37,8 +37,18 @@ function asRecord(payload: unknown): Record<string, unknown> {
   return payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
 }
 
-/** Pure JS aggregation over a window of ActivityEvents (spec: compute in JS, not SQL). */
-function aggregateActivityEvents(events: Array<{ type: string; payload: unknown }>): ActivityAggregate {
+/**
+ * Pure JS aggregation over a window of ActivityEvents (spec: compute in JS, not SQL).
+ *
+ * `includeUnblockedUrls` is the site-name flag (ADR-0043's sibling decision, #830/#841): while it is off,
+ * an unblocked `url` row is not browsing history anyone may see — not in the web report, not in the
+ * activity report, and not counted into this summary either. Blocked attempts stay; they are the parent's
+ * own rule reporting itself.
+ */
+function aggregateActivityEvents(
+  events: Array<{ type: string; payload: unknown }>,
+  includeUnblockedUrls = false,
+): ActivityAggregate {
   const appMinutes = new Map<string, number>();
   const blockedDomains = new Map<string, number>();
   let totalAppMinutes = 0;
@@ -55,6 +65,7 @@ function aggregateActivityEvents(events: Array<{ type: string; payload: unknown 
       totalAppMinutes += minutes;
       appMinutes.set(app, (appMinutes.get(app) ?? 0) + minutes);
     } else if (event.type === "url") {
+      if (payload.blocked !== true && !includeUnblockedUrls) continue;
       urlVisits += 1;
       if (payload.blocked === true) {
         blockedHits += 1;
@@ -80,10 +91,14 @@ function aggregateActivityEvents(events: Array<{ type: string; payload: unknown 
 }
 
 /** Aggregate a child's ActivityEvents over the trailing `days` days (#4). */
-export async function summarizeChildActivity(childId: string, days: number): Promise<ActivitySummary> {
+export async function summarizeChildActivity(
+  childId: string,
+  days: number,
+  options: { siteNames?: boolean } = {},
+): Promise<ActivitySummary> {
   const since = new Date(Date.now() - days * MS_PER_DAY);
   const events = await prisma.activityEvent.findMany({ where: { childId, ts: { gte: since } } });
-  const aggregate = aggregateActivityEvents(events);
+  const aggregate = aggregateActivityEvents(events, options.siteNames === true);
   const socialConcerns = await prisma.socialEvent.count({ where: { childId, createdAt: { gte: since } } });
   const { blockedHits: _blockedHits, ...summary } = aggregate;
   return { ...summary, socialConcerns };

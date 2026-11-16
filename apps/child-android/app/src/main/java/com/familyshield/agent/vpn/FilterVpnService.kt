@@ -66,7 +66,7 @@ class FilterVpnService : VpnService() {
     /** #830 B2: hosts waiting for the next batched upload, capped by [SITE_VISIT_BATCH_MAX]. */
     private val pendingVisits = java.util.LinkedHashMap<String, Boolean>()
     private val pendingVisitsLock = Any()
-    @Volatile private var visitFlusherStarted = false
+    private val visitFlusherStarted = java.util.concurrent.atomic.AtomicBoolean(false)
 
     private var tun: ParcelFileDescriptor? = null
     private var mode: String = MODE_DNS
@@ -259,15 +259,20 @@ class FilterVpnService : VpnService() {
      */
     private fun reportBlockedSite(host: String, reason: String) {
         if (!reason.startsWith("blocked_domain:") && !reason.startsWith("category:")) return
+        // #841 review: the visit path normalises `q.name`, this one did not — mixed case or a trailing
+        // dot split the quiet window, the attempt counter and the dedupe key, and slid past the
+        // exclusion list. One normalised name, and an excluded or empty one is not reported at all.
+        val name = DnsFilterPolicy.normalize(host)
+        if (name.isEmpty() || SiteVisitGate.isExcludedHost(name)) return
         val now = System.currentTimeMillis()
-        val last = lastSiteAlert[host]
+        val last = lastSiteAlert[name]
         if (!com.familyshield.agent.enforcement.AlertKeys.siteAlertDue(last, now, SITE_ALERT_QUIET_MS)) return
         if (lastSiteAlert.size > 512) {
             lastSiteAlert.entries.removeIf { now - it.value > SITE_ALERT_QUIET_MS }
         }
-        lastSiteAlert[host] = now
+        lastSiteAlert[name] = now
         val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString()
-        val attempts = com.familyshield.agent.enforcement.AttemptCounter.next(this, "web", host, day)
+        val attempts = com.familyshield.agent.enforcement.AttemptCounter.next(this, "web", name, day)
         scope.launch {
             runCatching {
                 api.postInternalAlert(
@@ -278,8 +283,8 @@ class FilterVpnService : VpnService() {
                         category = "web_threat",
                         title = "Blocked site opened",
                         body = "Your child tried to open a blocked site.",
-                        metadata = mapOf("domain" to host, "reason" to reason),
-                        dedupeKey = com.familyshield.agent.enforcement.AlertKeys.blockedSite(host, day),
+                        metadata = mapOf("domain" to name, "reason" to reason),
+                        dedupeKey = com.familyshield.agent.enforcement.AlertKeys.blockedSite(name, day),
                         attemptCount = attempts,
                     ),
                 )
@@ -317,8 +322,8 @@ class FilterVpnService : VpnService() {
 
     /** One flusher per service lifetime; the scope is cancelled in [onDestroy]. */
     private fun startVisitFlusher() {
-        if (visitFlusherStarted) return
-        visitFlusherStarted = true
+        // One flusher, whatever the worker race: compare-and-set, not a check-then-set (#841 review).
+        if (!visitFlusherStarted.compareAndSet(false, true)) return
         scope.launch {
             while (true) {
                 kotlinx.coroutines.delay(SITE_VISIT_FLUSH_MS)
@@ -341,7 +346,9 @@ class FilterVpnService : VpnService() {
                 api.postActivityEvents(
                     deviceId,
                     com.familyshield.agent.network.dto.ActivityEventBatchDto(
-                        events = batch.take(SITE_VISIT_BATCH_MAX).map { (host, blocked) ->
+                        // The whole drained batch: the API accepts up to 200 events, and truncating to the
+                        // queue cap after clearing the map dropped whatever four workers had just added.
+                        events = batch.map { (host, blocked) ->
                             com.familyshield.agent.network.dto.ActivityEventDto(
                                 type = "url",
                                 payload = mapOf("url" to host, "domain" to host, "blocked" to blocked),

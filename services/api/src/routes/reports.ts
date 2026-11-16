@@ -65,7 +65,7 @@ export async function reportsRoutes(app: FastifyInstance) {
   app.get("/summary", { preHandler: [requireParent, requireFamily({ param: "childId", model: "child", source: "query" })] }, async (req, reply) => {
     const parsed = SummaryQuerySchema.safeParse(req.query ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const summary = await summarizeChildActivity(parsed.data.childId, parsed.data.days);
+    const summary = await summarizeChildActivity(parsed.data.childId, parsed.data.days, { siteNames: siteNamesEnabled() });
     // ADR-0014 amendment, decision 5's exception: the counts stay for every family adult, but domain
     // names are browsing content, and `GET /v1/reports/web?blocked=true` already refuses a guardian
     // without `social`. The same reader must not get them here instead.

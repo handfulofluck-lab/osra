@@ -48,17 +48,17 @@ describe("usage model — bucketing (Phase 2c, ADR-0013)", () => {
     expect(visits).toEqual([]);
   });
 
-  it("turns url events into WebVisit rows, deriving the domain from the url when absent", () => {
+  it("turns url events into host-only WebVisit rows and drops values with no host", () => {
     const { visits } = bucketEvents([
       { ts: "2026-10-15T10:00:00Z", type: "url", payload: { url: "https://Example.COM/a?b=1", blocked: true, category: "games" } },
       { ts: "2026-10-15T10:01:00Z", type: "url", payload: { domain: "News.Site" } },
       { ts: "2026-10-15T10:02:00Z", type: "url", payload: { url: "not a url" } },
       { ts: "garbage", type: "url", payload: { domain: "dropped.invalid-ts" } },
     ]);
+    // #841: the path and query are never stored, and a value with no host is not a visit.
     expect(visits.map((v) => [v.domain, v.blocked, v.category, v.url])).toEqual([
-      ["example.com", true, "games", "https://Example.COM/a?b=1"],
-      ["news.site", false, "", ""],
-      ["unknown", false, "", "not a url"],
+      ["example.com", true, "games", "example.com"],
+      ["news.site", false, "", "news.site"],
     ]);
   });
 
@@ -317,13 +317,29 @@ describe("#841 the rollup hook is a real backstop", () => {
     const out = await recordActivityUsage(
       "child-1",
       "dev-1",
-      [{ ts: "2026-10-15T10:00:00Z", type: "url", payload: { url: "bad.example", blocked: true } }],
+      [{ ts: "2026-10-15T10:00:00Z", type: "url", payload: { url: "https://bad.example/secret-path?token=1", blocked: true } }],
       { siteNames: false },
     );
     expect(out.visits).toBe(1);
+    // Antigravity's direct-call row: the path and query never reach WebVisit.url.
     expect(prismaMock.webVisit.createMany).toHaveBeenCalledWith({
       data: [expect.objectContaining({ domain: "bad.example", url: "bad.example", blocked: true })],
     });
+  });
+
+  it("drops an excluded host sent as a URL when called directly, and a value with no host", async () => {
+    prismaMock.webVisit.createMany.mockResolvedValue({ count: 0 });
+    const out = await recordActivityUsage(
+      "child-1",
+      "dev-1",
+      [
+        { ts: "2026-10-15T10:00:00Z", type: "url", payload: { domain: "https://api.osratech.com/v1/me", url: "https://api.osratech.com/v1/me", blocked: true } },
+        { ts: "2026-10-15T10:00:01Z", type: "url", payload: { url: "://", blocked: true } },
+      ],
+      { siteNames: false },
+    );
+    expect(out.visits).toBe(0);
+    expect(prismaMock.webVisit.createMany).not.toHaveBeenCalled();
   });
 });
 

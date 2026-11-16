@@ -97,17 +97,17 @@ export function bucketEvents(events: IncomingEvent[]): {
       if (cur) cur.minutes += minutes;
       else usage.set(key, { day, app, minutes });
     } else if (e.type === "url") {
-      const url = typeof p.url === "string" ? p.url.slice(0, 2048) : "";
-      let domain = typeof p.domain === "string" && p.domain ? p.domain : "";
-      if (!domain && url) {
-        // #841: one parser for a full address and a bare DNS name; `new URL` throws on the latter.
-        domain = hostOf(url);
-      }
-      if (!domain) domain = "unknown";
+      // #841 (Fable B1, Antigravity's direct-call finding): `bucketEvents` is also reached through
+      // `recordActivityUsage` without the route's gate, so the reduction has to live here too: the host
+      // only, never a path or query, and an address with no host is not a visit at all.
+      const rawUrl = typeof p.url === "string" ? p.url : "";
+      const rawDomain = typeof p.domain === "string" && p.domain ? p.domain : "";
+      const host = hostOf(rawDomain || rawUrl).slice(0, 253);
+      if (!host) continue;
       visits.push({
         ts,
-        domain: domain.toLowerCase().slice(0, 253),
-        url,
+        domain: host,
+        url: host,
         blocked: p.blocked === true,
         category: typeof p.category === "string" ? p.category.slice(0, 64) : "",
       });
