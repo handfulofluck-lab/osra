@@ -967,7 +967,11 @@ class AlertTile extends StatelessWidget {
       child: ListTile(
         leading: Icon(Icons.circle, color: severityColor(alert.severity, context), size: 14),
         title: Text(l10n.alertTitleFor(alert.category, alert.title, isEnglish: context.localeName.startsWith('en'), tamperType: alert.metadata['type']?.toString()), maxLines: 2, overflow: TextOverflow.ellipsis),
-        subtitle: Text(subtitleText, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text(
+          subtitleText,
+          maxLines: alert.category == 'ring' ? 2 : 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         trailing: onAck == null ? null : IconButton(icon: const Icon(Icons.check), tooltip: l10n.acknowledgeTooltip, onPressed: onAck),
         onTap: onTap,
       ),

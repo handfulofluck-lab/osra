@@ -171,7 +171,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('The ring ended by itself after 5 minutes.'), findsOneWidget);
-    // The old category-based subtitle would have shown nothing but the timestamp,
-    // so the body sentence appearing is the Bureau's requested change.
+    // The ring subtitle is allowed two lines so a long body sentence plus the
+    // timestamp stay readable; other alert types keep a single-line subtitle.
+    final subtitle = tester.widget<Text>(find.descendant(
+      of: find.byType(AlertTile),
+      matching: find.byType(Text),
+    ).last);
+    expect(subtitle.maxLines, 2);
   });
 }
