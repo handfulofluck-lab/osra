@@ -38,7 +38,8 @@ object SiteVisitGate {
 
     /** True for a listed host, any subdomain of our own domain, and an empty name. */
     fun isExcludedHost(host: String): Boolean {
-        val h = host.trim().lowercase().trimStart('.').removePrefix("*.")
+        // Same normalisation as DnsFilterPolicy.normalize, so a DNS name with its trailing dot matches.
+        val h = host.trim().trimEnd('.').lowercase().removePrefix("*.").trimStart('.')
         if (h.isEmpty()) return true
         if (h in EXCLUDED_HOSTS) return true
         return h == "osratech.com" || h.endsWith(".osratech.com")

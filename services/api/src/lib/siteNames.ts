@@ -38,7 +38,7 @@ export const EXCLUDED_SITE_HOSTS: readonly string[] = [
 
 /** Exact match for every listed host, plus any subdomain of our own domain. */
 export function isExcludedSiteHost(host: string): boolean {
-  const h = host.trim().toLowerCase().replace(/^\*?\./, "");
+  const h = host.trim().replace(/\.+$/, "").toLowerCase().replace(/^\*?\./, "");
   if (!h) return true;
   if (EXCLUDED_SITE_HOSTS.includes(h)) return true;
   return h === "osratech.com" || h.endsWith(".osratech.com");
@@ -46,11 +46,12 @@ export function isExcludedSiteHost(host: string): boolean {
 
 /** The host name of a URL or bare host; empty when the value has none. */
 export function hostOf(value: string): string {
-  const trimmed = value.trim().replace(/^\*?\./, "");
+  const trimmed = value.trim().replace(/^\*?\./, "").replace(/\.$/, "");
   if (!trimmed) return "";
   try {
     const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-    return new URL(withScheme).hostname.toLowerCase();
+    // A DNS name can arrive with its trailing dot; the stored host never carries it.
+    return new URL(withScheme).hostname.toLowerCase().replace(/\.+$/, "");
   } catch {
     return "";
   }

@@ -69,6 +69,12 @@ describe("#830 site names — host exclusions", () => {
     expect(isExcludedSiteHost("notosratech.com")).toBe(false);
   });
 
+  it("excludes a name that arrives with its DNS trailing dot (#841 CI)", () => {
+    expect(isExcludedSiteHost("api.osratech.com.")).toBe(true);
+    expect(isExcludedSiteHost("CONNECTIVITYCHECK.GSTATIC.COM.")).toBe(true);
+    expect(isExcludedSiteHost("example.com.")).toBe(false);
+  });
+
   it("excludes the enforcement hosts the filter forces and the OS connectivity checks", () => {
     for (const host of [
       "forcesafesearch.google.com",
