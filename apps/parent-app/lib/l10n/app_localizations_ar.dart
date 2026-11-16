@@ -90,9 +90,7 @@ class AppLocalizationsAr extends AppLocalizations {
       'تعذّر تحميل عائلتك. تحقّق من اتصالك وحاول مجددًا.';
 
   @override
-  String deleteAccountFailed(String detail) {
-    return 'لم يُحذف الحساب. $detail';
-  }
+  String get deleteAccountFailed => 'لم يُحذف الحساب.';
 
   @override
   String get cancel => 'إلغاء';
@@ -261,9 +259,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get signOutTooltip => 'تسجيل الخروج';
 
   @override
-  String familyLoadFailed(String error) {
-    return 'تعذّر تحميل العائلة: $error';
-  }
+  String get familyLoadFailed => 'تعذّر تحميل العائلة.';
 
   @override
   String get noChildrenYet => 'لا يوجد أطفال بعد — اضغط «إضافة طفل»';
@@ -355,9 +351,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get resume => 'استئناف';
 
   @override
-  String internetChangeFailed(String error) {
-    return 'فشل تغيير حالة الإنترنت: $error';
-  }
+  String get internetChangeFailed => 'فشل تغيير حالة الإنترنت.';
 
   @override
   String get parentalConsent => 'موافقة الوالدين';
@@ -495,9 +489,7 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String bonusFailed(String error) {
-    return 'فشل منح الوقت الإضافي: $error';
-  }
+  String get bonusFailed => 'فشل منح الوقت الإضافي.';
 
   @override
   String get windDown => 'الاسترخاء قبل النوم';
@@ -523,9 +515,7 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String windDownFailed(String error) {
-    return 'فشل بدء الاسترخاء: $error';
-  }
+  String get windDownFailed => 'فشل بدء الاسترخاء.';
 
   @override
   String commandQueued(String command, String device) {
@@ -538,9 +528,7 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String commandFailed(String error) {
-    return 'فشل الأمر: $error';
-  }
+  String get commandFailed => 'فشل الأمر.';
 
   @override
   String commandErrorForbidden(String command, String device) {
@@ -600,9 +588,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get rulesBehindHint => 'لم يستلم الهاتف هذا التغيير بعد.';
 
   @override
-  String rulesLoadFailed(String error) {
-    return 'تعذّر تحميل القواعد: $error';
-  }
+  String get rulesLoadFailed => 'تعذّر تحميل القواعد.';
 
   @override
   String get noPerAppRules => 'لا توجد قواعد لكل تطبيق';
@@ -617,9 +603,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get appActionAllow => 'سماح';
 
   @override
-  String locationLoadFailed(String error) {
-    return 'تعذّر تحميل الموقع: $error';
-  }
+  String get locationLoadFailed => 'تعذّر تحميل الموقع.';
 
   @override
   String get noLocationReported => 'لم يُبلَّغ عن أي موقع بعد';
@@ -638,9 +622,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get mapPreview => 'معاينة الخريطة';
 
   @override
-  String locationHistoryLoadFailed(String error) {
-    return 'تعذّر تحميل السجل: $error';
-  }
+  String get locationHistoryLoadFailed => 'تعذّر تحميل السجل.';
 
   @override
   String get noLocationHistoryToday => 'لا يوجد سجل مواقع لليوم';
@@ -693,9 +675,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get familyPendingInvites => 'الدعوات المعلّقة';
 
   @override
-  String familyInvitesLoadFailed(String error) {
-    return 'تعذّر تحميل الدعوات: $error';
-  }
+  String get familyInvitesLoadFailed => 'تعذّر تحميل الدعوات.';
 
   @override
   String get familyNoPendingInvites => 'لا دعوات معلّقة';
@@ -709,9 +689,7 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String familyRevokeFailed(String error) {
-    return 'تعذّر الإلغاء: $error';
-  }
+  String get familyRevokeFailed => 'تعذّر الإلغاء.';
 
   @override
   String get familyEnterEmail => 'أدخل عنوان بريد إلكتروني';
@@ -803,9 +781,7 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String familyMapCommandFailed(String error) {
-    return 'فشل إرسال الأمر: $error';
-  }
+  String get familyMapCommandFailed => 'فشل إرسال الأمر.';
 
   @override
   String get familyMapNoChildren => 'لا يوجد أطفال لعرضهم';
@@ -838,9 +814,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get familyMapCreate => 'إنشاء';
 
   @override
-  String alertsLoadFailed(String error) {
-    return 'تعذّر تحميل التنبيهات: $error';
-  }
+  String get alertsLoadFailed => 'تعذّر تحميل التنبيهات.';
 
   @override
   String get noRecentAlerts => 'لا توجد تنبيهات حديثة';
@@ -863,9 +837,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get noInsightsYet => 'لا توجد رؤى لهذا التطبيق بعد';
 
   @override
-  String insightsLoadFailed(String error) {
-    return 'تعذّر تحميل الرؤى: $error';
-  }
+  String get insightsLoadFailed => 'تعذّر تحميل الرؤى.';
 
   @override
   String get commandLock => 'قفل';
@@ -937,9 +909,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get loadMore => 'تحميل المزيد';
 
   @override
-  String acknowledgeFailed(String error) {
-    return 'فشل تأكيد الاستلام: $error';
-  }
+  String get acknowledgeFailed => 'فشل تأكيد الاستلام.';
 
   @override
   String categoryLabel(String category) {
@@ -969,9 +939,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get appBlockedSnack => 'تم حظر التطبيق';
 
   @override
-  String blockFailed(String error) {
-    return 'فشل الحظر: $error';
-  }
+  String get blockFailed => 'فشل الحظر.';
 
   @override
   String get severityCritical => 'حرج';
@@ -1232,9 +1200,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get installedAppsNoMatch => 'لا توجد تطبيقات تطابق بحثك.';
 
   @override
-  String installedAppsLoadFailed(String error) {
-    return 'تعذّر تحميل التطبيقات: $error';
-  }
+  String get installedAppsLoadFailed => 'تعذّر تحميل التطبيقات.';
 
   @override
   String installedAppsTruncated(int count) {
@@ -1294,9 +1260,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get thirtyDays => '30 يومًا';
 
   @override
-  String reportLoadFailed(String error) {
-    return 'تعذّر تحميل التقرير: $error';
-  }
+  String get reportLoadFailed => 'تعذّر تحميل التقرير.';
 
   @override
   String noActivityDays(int days) {
@@ -1708,9 +1672,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get monitoringSaved => 'تم حفظ المراقبة';
 
   @override
-  String saveFailed(String error) {
-    return 'فشل الحفظ: $error';
-  }
+  String get saveFailed => 'فشل الحفظ.';
 
   @override
   String get saveMonitoring => 'حفظ المراقبة';
@@ -2498,9 +2460,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get searchSafetyTitle => 'أمان البحث';
 
   @override
-  String searchSafetyLoadFailed(String error) {
-    return 'تعذّر تحميل نشاط البحث: $error';
-  }
+  String get searchSafetyLoadFailed => 'تعذّر تحميل نشاط البحث.';
 
   @override
   String get searchSafetyEmptyTitle =>
@@ -2537,9 +2497,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get digestPrefsTitle => 'تفضيلات الملخّص';
 
   @override
-  String digestPrefsLoadFailed(String error) {
-    return 'تعذّر تحميل التفضيلات: $error';
-  }
+  String get digestPrefsLoadFailed => 'تعذّر تحميل التفضيلات.';
 
   @override
   String get digestPrefsDailyTitle => 'ملخّص بريدي يومي';
@@ -2609,9 +2567,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get digestPrefsSaved => 'تم حفظ تفضيلات الملخّص';
 
   @override
-  String digestPrefsSaveFailed(String error) {
-    return 'تعذّر الحفظ: $error';
-  }
+  String get digestPrefsSaveFailed => 'تعذّر الحفظ.';
 
   @override
   String digestPrefsTimezoneSet(String zone) {
@@ -2619,9 +2575,7 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String digestPrefsTimezoneFailed(String error) {
-    return 'لم تُحفَظ المنطقة الزمنية: $error';
-  }
+  String get digestPrefsTimezoneFailed => 'لم تُحفَظ المنطقة الزمنية.';
 
   @override
   String get digestPrefsTestTitle => 'ملخّص تجريبي';
@@ -2630,9 +2584,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get digestPrefsClose => 'إغلاق';
 
   @override
-  String digestPrefsSendFailed(String error) {
-    return 'تعذّر الإرسال: $error';
-  }
+  String get digestPrefsSendFailed => 'تعذّر الإرسال.';
 
   @override
   String get digestPrefsNoDigests => 'لم يُنشأ أي ملخّص';
@@ -3296,4 +3248,30 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get appRuleHiddenOnIphone =>
       'على هواتف آيفون، يُخفى هذا التطبيق بدلًا من عرض شاشة الحظر.';
+
+  @override
+  String get errorNoConnection =>
+      'No internet connection. Check your connection and try again.';
+
+  @override
+  String get authSignInFailed =>
+      'Couldn\'t sign in right now. Check your connection and try again.';
+
+  @override
+  String get authMfaReenrollRequired =>
+      'Two-step verification was reset but not finished. Open \"Lost your authenticator?\" if you still have the setup screen open; otherwise contact support.';
+
+  @override
+  String get familyInviteFailed =>
+      'Couldn\'t send invite. Check the email and try again.';
+
+  @override
+  String get digestPrefsTimezonePickerTitle => 'Choose time zone';
+
+  @override
+  String get digestPrefsTimezoneSearchHint =>
+      'Search city or offset (for example Dubai, +4)';
+
+  @override
+  String get digestPrefsTimezoneEmpty => 'No matching time zones';
 }

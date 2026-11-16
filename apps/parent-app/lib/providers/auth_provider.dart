@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart' hide Family;
 
 import '../api/client.dart';
 import '../api/models.dart';
+import '../api/permission_errors.dart';
 import '../api/push_api.dart';
 import '../push/push_registration.dart';
 import '../push/fcm_push_token_source.dart';
@@ -155,7 +156,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } on DioException catch (e) {
       _setState(AuthState(error: _errorMessage(e)));
     } catch (e) {
-      _setState(AuthState(error: e.toString()));
+      logParentError(e);
+      _setState(const AuthState(error: 'unexpected_error'));
     }
   }
 
@@ -196,7 +198,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
       }
       _setState(AuthState(error: _errorMessage(e)));
     } catch (e) {
-      _setState(AuthState(error: e.toString()));
+      logParentError(e);
+      _setState(const AuthState(error: 'unexpected_error'));
     }
   }
 
@@ -223,18 +226,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
     _setState(const AuthState());
   }
 
-  /// Human-readable message from a failed auth response.
+  /// Structured token for a failed auth response; technical text is logged only.
   static String _errorMessage(DioException e) {
+    logParentError(e);
+    if (isNetworkDioError(e)) return 'network_error';
     final data = e.response?.data;
     if (data is Map) {
       final err = data['error'];
       if (err is String) {
-        // #183: the account has MFA on but no authenticator bound (a recovery that has not been
-        // finished). This is not a wrong code, and the password alone cannot fix it — say what it
-        // actually is instead of the generic MFA message below.
         if (err == 'mfa_reenroll_required') {
-          // Issue #199 item 1: after a recovery there are no unused codes left — `/mfa/recover` deletes
-          // the rest of the batch — so the old sentence sent the parent to a door that does not exist.
           return 'Two-step verification was reset but not finished. Open "Lost your authenticator?" if '
               'you still have the setup screen open; otherwise contact support.';
         }
@@ -242,16 +242,18 @@ class AuthNotifier extends StateNotifier<AuthState> {
         if (e.response?.statusCode == 401 && (lower.contains('mfa') || lower == 'invalid_code')) {
           return 'Invalid authentication code';
         }
-        return err;
+        if (err == 'invalid_credentials' ||
+            err == 'email_taken' ||
+            err == 'mfa_required') {
+          return err;
+        }
       }
       if (err is Map && err['fieldErrors'] is Map) {
         final fields = (err['fieldErrors'] as Map).keys.map((k) => '$k').toList()..sort();
         return '$kValidationFailedPrefix${fields.join(',')}';
       }
-      final msg = data['message'];
-      if (msg is String) return msg;
     }
-    return e.message ?? 'request failed';
+    return 'request_failed';
   }
 }
 

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../api/permission_errors.dart';
 import '../../l10n/l10n.dart';
 import 'command_messages.dart';
 import '../../providers/family_provider.dart';
@@ -43,8 +44,7 @@ class CommandHistoryScreen extends ConsumerWidget {
       body: overview.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => _ErrorState(
-          title: l10n.couldNotLoadChild,
-          detail: '$e',
+          title: friendlyErrorText(l10n, e, () => l10n.familyLoadFailed),
           onRetry: () => ref.invalidate(familyProvider),
         ),
         data: (data) {
@@ -124,15 +124,10 @@ class _DeviceCommandSection extends ConsumerWidget {
                 children: [
                   const SizedBox(height: 8),
                   Text(
-                    l10n.couldNotLoadCommandHistory,
+                    friendlyErrorText(l10n, e, () => l10n.couldNotLoadCommandHistory),
                     style:
                         TextStyle(color: Theme.of(context).colorScheme.error),
                   ),
-                  const SizedBox(height: 2),
-                  Text('$e',
-                      style: Theme.of(context).textTheme.bodySmall,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis),
                   TextButton.icon(
                     onPressed: () =>
                         ref.invalidate(deviceCommandHistoryProvider(device.id)),
@@ -207,10 +202,8 @@ class _CommandTile extends StatelessWidget {
 
 class _ErrorState extends StatelessWidget {
   final String title;
-  final String detail;
   final VoidCallback onRetry;
-  const _ErrorState(
-      {required this.title, required this.detail, required this.onRetry});
+  const _ErrorState({required this.title, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -225,12 +218,6 @@ class _ErrorState extends StatelessWidget {
             Text(title,
                 style: Theme.of(context).textTheme.titleMedium,
                 textAlign: TextAlign.center),
-            const SizedBox(height: 4),
-            Text(detail,
-                style: Theme.of(context).textTheme.bodySmall,
-                textAlign: TextAlign.center,
-                maxLines: 4,
-                overflow: TextOverflow.ellipsis),
             const SizedBox(height: 8),
             TextButton.icon(
                 onPressed: onRetry,

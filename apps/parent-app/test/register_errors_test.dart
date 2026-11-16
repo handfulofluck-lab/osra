@@ -175,8 +175,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('registerError')), findsNothing);
-      // The plain screen still shows the server's own string for a wrong password (unchanged).
-      expect(shown(tester, 'loginError'), 'invalid_credentials');
+      // R-ID-1: even the plain sign-in screen translates server codes to a plain sentence.
+      expect(shown(tester, 'loginError'), en.onboardingWrongPassword);
+      expect(find.text('invalid_credentials'), findsNothing);
     });
 
     testWidgets('Arabic: the rule and the short-password error are translated', (tester) async {
