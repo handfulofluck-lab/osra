@@ -49,6 +49,7 @@ import com.familyshield.agent.security.TamperAlertWorker
 import com.familyshield.agent.security.TamperGuardActivity
 import com.familyshield.agent.security.TamperGuardTaskActivity
 import com.familyshield.agent.security.TamperScreen
+import com.familyshield.agent.security.ShadePolicy
 import com.familyshield.agent.security.TamperScreenPolicy
 import com.familyshield.agent.security.TamperState
 import com.familyshield.agent.social.SocialCapture
@@ -296,6 +297,19 @@ class AccessibilityMonitorService : AccessibilityService() {
         }
         val eventPkg = event?.packageName?.toString() ?: return
         calls.onEvent()
+        // #828: a lock or pause must not leave the notification shade usable. It still opened over the
+        // lock overlay on the Flip4, so every notification was readable and inline Reply worked. Collapse
+        // it as it opens; the phone app, the emergency dialer and a ringing call are not the shade.
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            ShadePolicy.shouldCollapse(
+                locked = LockState.isActive(this),
+                packageName = eventPkg,
+                className = event.className?.toString(),
+                apiLevel = android.os.Build.VERSION.SDK_INT,
+            )
+        ) {
+            performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
+        }
         // osra-security#7: before the own-window return below, which our gate's events take.
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
             TamperScreenPolicy.mayHostProtectionScreen(eventPkg)
