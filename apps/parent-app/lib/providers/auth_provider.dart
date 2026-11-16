@@ -120,6 +120,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   /// POSTs /v1/auth/login then bootstraps the family session. When [code] is
   /// non-empty (MFA) it is included in the request body as `code`.
+  /// Drops the last auth error, so a screen opened after a failed sign-in does not inherit its message.
+  void clearError() => _setState(state.copyWith(error: null));
+
   Future<void> login(String email, String password, [String? code]) => _authenticate(() {
         final body = <String, dynamic>{'email': email, 'password': password};
         final trimmed = code?.trim();

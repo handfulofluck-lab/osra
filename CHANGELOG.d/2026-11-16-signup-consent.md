@@ -17,3 +17,7 @@
 - Tests: the copy renders without markdown, the links sit outside the row, the box is required with a live
   region, the register payload carries the version, the register-form rules still fail before the request,
   the server's field error still names its field, and the Arabic error and box text are the Bureau's.
+- **Two kinds of consent, deliberately named apart** (answers Kimi's question on #846): `ConsentRecord`
+  is the per-child monitoring consent (ADR-0002) created when a child is added; `ParentConsentEvent`
+  here is the account-level `terms_privacy` acceptance. They are not the same record and neither is
+  derived from the other.

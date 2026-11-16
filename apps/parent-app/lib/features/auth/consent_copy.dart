@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/auth_provider.dart';
+import '../../providers/server_provider.dart';
 
 /// ADR-0043 D3/D4, the one required choice. Counsel's 16 Nov advice left this as the whole form:
 /// Terms + Privacy, required, with the other two purposes removed or parked.
@@ -78,7 +79,14 @@ class ConsentCopy {
 
 /// `GET /v1/consent-copy?locale=` (ADR-0043 D3). The app renders what it reads; it carries no legal text
 /// of its own, and a `textVersion` it did not receive is never sent back on register.
-final consentCopyProvider = FutureProvider.family<ConsentCopy, String>((ref, locale) async {
+///
+/// `autoDispose`: a failed read must not be cached for the app's life — reopening the screen after the
+/// server recovers has to try again. The screen's Retry invalidates this provider.
+final consentCopyProvider = FutureProvider.autoDispose.family<ConsentCopy, String>((ref, locale) async {
+  // A server typed on an unlocked build must be applied before the first request, or the read goes to an
+  // empty base URL. Watching the notifier also rebuilds the read if the address changes.
+  await ref.watch(serverUrlProvider.notifier).ensureApplied();
+  ref.watch(serverUrlProvider);
   final api = ref.watch(apiClientProvider);
   final res = await api.raw.get('/v1/consent-copy', queryParameters: {'locale': locale});
   final data = res.data is Map ? Map<String, dynamic>.from(res.data as Map) : const <String, dynamic>{};

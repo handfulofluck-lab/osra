@@ -234,6 +234,26 @@ void main() {
       expect(find.textContaining(kValidationFailedPrefix), findsNothing);
     });
 
+    testWidgets('an outdated consent refetches and asks again, never showing the server code', (tester) async {
+      final client = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/consent-copy': (_) => copy(),
+        'POST /v1/auth/register': (_) => const FakeHttpError(400, {'error': 'consent_text_outdated'}),
+      });
+      await pumpSignUp(tester, client);
+      await fillForm(tester);
+      await tester.tap(find.byType(Checkbox));
+      await tester.pumpAndSettle();
+      await tapCreate(tester);
+
+      expect(find.textContaining('consent_text_outdated'), findsNothing);
+      // The copy is read again so the new wording is on screen, and the box is unticked for the new text.
+      expect(client.calls('GET', '/v1/consent-copy'), hasLength(2));
+      final box = tester.widget<Checkbox>(find.byType(Checkbox));
+      expect(box.value, isFalse);
+      expect(shown(tester, 'consentError'), en.consentRequired);
+    });
+
     testWidgets('a taken email says so', (tester) async {
       final client = FakeApiClient({
         ...withRegister((_) => const FakeHttpError(409, {'error': 'email_taken'})),

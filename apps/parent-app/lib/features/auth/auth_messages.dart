@@ -1,5 +1,6 @@
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
+import '../onboarding/onboarding_messages.dart';
 
 /// The server's minimum password length (`RegisterSchema` in services/api/src/routes/auth.ts).
 const kMinPasswordLength = 12;
@@ -27,7 +28,9 @@ String? authErrorText(AppLocalizations l10n, String? raw) {
   if (raw == null) return null;
   if (raw.startsWith(kValidationFailedPrefix)) return authFieldError(l10n, raw);
   if (raw == 'email_taken') return l10n.registerEmailTaken;
-  return raw;
+  // R-ID-1: a raw code or a Dio string never reaches the screen.
+  if (isNetworkMessage(raw.toLowerCase())) return l10n.onboardingNoNetwork;
+  return l10n.authFieldsInvalid;
 }
 
 /// One sentence for a [kValidationFailedPrefix] error, naming the field the server rejected.

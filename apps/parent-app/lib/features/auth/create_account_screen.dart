@@ -4,6 +4,8 @@ import 'package:url_launcher/url_launcher.dart' show LaunchMode, launchUrl;
 
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/mfa_provider.dart';
+import '../../providers/onboarding_provider.dart';
 import '../../theme/app_tokens.dart';
 import 'auth_messages.dart';
 import 'consent_copy.dart';
@@ -15,7 +17,11 @@ import 'consent_copy.dart';
 /// links come from `GET /v1/consent-copy`; this file carries no legal text. The two links are buttons under
 /// the row, so a tap meant for a link can never tick the box.
 class CreateAccountScreen extends ConsumerStatefulWidget {
-  const CreateAccountScreen({super.key});
+  const CreateAccountScreen({super.key, this.onboarding = false});
+
+  /// Opened from the first-run wizard's account step: after a successful register the wizard advances to
+  /// its child step, exactly as LoginScreen does for sign-in.
+  final bool onboarding;
 
   @override
   ConsumerState<CreateAccountScreen> createState() => _CreateAccountScreenState();
@@ -27,6 +33,7 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _consentTileKey = GlobalKey();
+  final _consentFocus = FocusNode();
 
   String _region = 'US';
   bool _accepted = false;
@@ -35,7 +42,17 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
   String? _formError;
 
   @override
+  void initState() {
+    super.initState();
+    // R-ID-1: a failed sign-in on the previous screen must not render here before this form has asked.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.read(authProvider.notifier).clearError();
+    });
+  }
+
+  @override
   void dispose() {
+    _consentFocus.dispose();
     _familyName.dispose();
     _displayName.dispose();
     _email.dispose();
@@ -45,8 +62,9 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
 
   Future<void> _openLink(String url) async {
     final uri = Uri.tryParse(url);
-    if (uri == null || !uri.hasScheme) return;
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    // Only https: a response cannot steer the app into intent:, file: or cleartext.
+    if (uri == null || uri.scheme != 'https' || !uri.hasAuthority) return;
+    await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
   }
 
   Future<void> _submit(ConsentCopy copy, ConsentPurpose purpose) async {
@@ -64,13 +82,11 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
     });
     if (problem != null) return;
     if (_consentMissing) {
-      // The error is a line under the box, and focus lands on the box: no dialog, no snackbar.
+      // The error is a line under the box and focus lands on the box: no dialog, no snackbar. The node is
+      // owned by this state and attached to the tile, so the focus actually moves (WCAG 3.3.1).
+      _consentFocus.requestFocus();
       final tile = _consentTileKey.currentContext;
-      if (tile != null) FocusScope.of(tile).requestFocus(FocusNode());
-      final box = _consentTileKey.currentContext?.findRenderObject();
-      if (box is RenderBox) {
-        Scrollable.ensureVisible(_consentTileKey.currentContext!);
-      }
+      if (tile != null) Scrollable.ensureVisible(tile);
       return;
     }
     setState(() => _submitting = true);
@@ -83,7 +99,35 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
           consentTextVersion: copy.textVersion,
           consentLocale: Localizations.localeOf(context).languageCode,
         );
-    if (mounted) setState(() => _submitting = false);
+    if (!mounted) return;
+    final error = ref.read(authProvider).error;
+    if (error == 'consent_text_outdated') {
+      // The wording changed under us. Untick, drop the cached copy and ask again against the new version;
+      // the server's code is never shown (R-ID-1).
+      ref.read(authProvider.notifier).clearError();
+      ref.invalidate(consentCopyProvider(Localizations.localeOf(context).languageCode));
+      setState(() {
+        _submitting = false;
+        _accepted = false;
+        _consentMissing = true;
+      });
+      return;
+    }
+    if (ref.read(authProvider).isAuthenticated) {
+      if (widget.onboarding) ref.read(onboardingProvider.notifier).signedIn();
+      ref.read(loginNoticeProvider.notifier).state = null;
+    }
+    setState(() => _submitting = false);
+  }
+
+  /// UI/UX item 2 on #846: a 48 dp target, brand primary, underlined — a link a parent can see is a link.
+  static ButtonStyle consentLinkStyle(BuildContext context) {
+    final tokens = context.tokens;
+    return TextButton.styleFrom(
+      minimumSize: const Size(48, 48),
+      foregroundColor: tokens.primary,
+      textStyle: const TextStyle(decoration: TextDecoration.underline),
+    );
   }
 
   @override
@@ -104,16 +148,39 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
           error: (_, __) => Center(
             child: Padding(
               padding: const EdgeInsets.all(AppSpace.xl),
-              child: Text(l10n.readPermissionRequired, textAlign: TextAlign.center),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(l10n.onboardingNoNetwork, textAlign: TextAlign.center),
+                  const SizedBox(height: AppSpace.md),
+                  TextButton(
+                    key: const ValueKey('consentRetry'),
+                    onPressed: () => ref.invalidate(consentCopyProvider(locale)),
+                    child: Text(l10n.retry),
+                  ),
+                ],
+              ),
             ),
           ),
           data: (data) {
             final purpose = data.termsPrivacy;
             if (purpose == null) {
+              // A copy without the required purpose is not something a parent can accept: say so and let
+              // them retry, never a permission sentence that means nothing on this screen.
               return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(AppSpace.xl),
-                  child: Text(l10n.readPermissionRequired, textAlign: TextAlign.center),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(l10n.onboardingNoNetwork, textAlign: TextAlign.center),
+                      const SizedBox(height: AppSpace.md),
+                      TextButton(
+                        onPressed: () => ref.invalidate(consentCopyProvider(locale)),
+                        child: Text(l10n.retry),
+                      ),
+                    ],
+                  ),
                 ),
               );
             }
@@ -174,6 +241,7 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                   const SizedBox(height: AppSpace.lg),
                   CheckboxListTile(
                     key: _consentTileKey,
+                    focusNode: _consentFocus,
                     value: _accepted,
                     controlAffinity: ListTileControlAffinity.leading,
                     contentPadding: EdgeInsets.zero,
@@ -192,12 +260,14 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                       if (purpose.termsLabel.isNotEmpty)
                         TextButton(
                           key: const ValueKey('consentTermsLink'),
+                          style: consentLinkStyle(context),
                           onPressed: () => _openLink(purpose.termsUrl),
                           child: Text(purpose.termsLabel),
                         ),
                       if (purpose.privacyLabel.isNotEmpty)
                         TextButton(
                           key: const ValueKey('consentPrivacyLink'),
+                          style: consentLinkStyle(context),
                           onPressed: () => _openLink(purpose.privacyUrl),
                           child: Text(purpose.privacyLabel),
                         ),

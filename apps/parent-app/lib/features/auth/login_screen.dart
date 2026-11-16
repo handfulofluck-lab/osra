@@ -293,9 +293,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   key: const ValueKey('openCreateAccount'),
                   // ADR-0043 D6 (UI/UX Bureau): sign-up is its own page, opened from one line here,
                   // not an expansion tile that also holds someone else's sign-in error.
-                  onPressed: () => Navigator.of(context).push<void>(MaterialPageRoute(
-                    builder: (_) => const CreateAccountScreen(),
-                  )),
+                  onPressed: () async {
+                    // The server is applied before the page opens, exactly as Sign in does: the page's
+                    // consent read must not go to an empty base URL on an unlocked build.
+                    if (await _saveServer() == null) return;
+                    if (!context.mounted) return;
+                    await Navigator.of(context).push<void>(MaterialPageRoute(
+                      builder: (_) => CreateAccountScreen(onboarding: widget.onboarding),
+                    ));
+                  },
                   child: Text(l10n.createAccount),
                 ),
               ],

@@ -410,6 +410,9 @@ abstract class AppLocalizations {
   /// **'Create account'**
   String get createAccount;
 
+  /// To create an account, please tick this box.
+  String get consentRequired;
+
   /// No description provided for @familyNameLabel.
   ///
   /// In en, this message translates to:

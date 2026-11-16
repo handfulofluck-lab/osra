@@ -189,6 +189,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get createAccount => 'Create account';
 
   @override
+  String get consentRequired => 'To create an account, please tick this box.';
+
+  @override
   String get familyNameLabel => 'Family name';
 
   @override

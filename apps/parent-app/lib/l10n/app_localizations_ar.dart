@@ -197,6 +197,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get createAccount => 'إنشاء حساب';
 
   @override
+  String get consentRequired => 'لإنشاء حساب، يُرجى وضع علامة في هذه الخانة.';
+
+  @override
   String get familyNameLabel => 'اسم العائلة';
 
   @override
