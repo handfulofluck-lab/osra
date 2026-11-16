@@ -7,7 +7,7 @@ vi.mock("../src/realtime/gateway.js", () => ({ publishFamilyEvent: vi.fn(async (
 
 import { FcmProvider, buildAssertion } from "../src/lib/push/fcm.js";
 import { ApnsProvider, buildProviderToken } from "../src/lib/push/apns.js";
-import { backoffDelay, isRetryableConnectionError } from "../src/lib/push/retry.js";
+import { backoffDelay, isRetryableConnectionError, withBackoff } from "../src/lib/push/retry.js";
 import {
   buildParentAlertMessage,
   buildDeviceWakeMessage,
@@ -332,6 +332,67 @@ describe("push retry policy (#842)", () => {
     expect(result).toMatchObject({ ok: false, invalidToken: false, reason: "fetch failed" });
     expect(sends).toBe(3);
     expect(delays).toEqual([200, 400]);
+  });
+
+  /**
+   * Fable's b8/b9/b13 at `cc3e65c2`: the retry rows all failed with messages that match a pattern, so
+   * the code list and the `cause.code` read could be deleted or widened with the suite still green.
+   * These three go through the code path only, with a message that matches nothing.
+   */
+  it("retries a code in the list whose message matches no pattern (b8, err.code)", async () => {
+    const delays: number[] = [];
+    let calls = 0;
+    const out = await withBackoff(
+      async () => {
+        calls += 1;
+        if (calls === 1) throw Object.assign(new Error("socket closed by peer"), { code: "ECONNREFUSED" });
+        return "ok";
+      },
+      { sleep: async (ms) => { delays.push(ms); } },
+    );
+    expect(out).toBe("ok");
+    expect(calls).toBe(2);
+    expect(delays).toEqual([200]);
+  });
+
+  it("retries a code in the list that rides on cause.code (b8, cause)", async () => {
+    const delays: number[] = [];
+    let calls = 0;
+    const out = await withBackoff(
+      async () => {
+        calls += 1;
+        if (calls === 1) {
+          throw new TypeError("request failed", { cause: Object.assign(new Error("refused"), { code: "ECONNREFUSED" }) });
+        }
+        return "ok";
+      },
+      { sleep: async (ms) => { delays.push(ms); } },
+    );
+    expect(out).toBe("ok");
+    expect(calls).toBe(2);
+    expect(delays).toEqual([200]);
+  });
+
+  it("does not retry a neutral error whose code is outside the list (b9, err.code and cause)", async () => {
+    for (const err of [
+      Object.assign(new Error("invalid argument"), { code: "ENOTFOUND" }),
+      Object.assign(new Error("invalid argument"), { code: "ERR_INVALID_ARG_TYPE" }),
+      new TypeError("request failed", { cause: Object.assign(new Error("dns"), { code: "ENOTFOUND" }) }),
+    ]) {
+      const delays: number[] = [];
+      let calls = 0;
+      await expect(
+        withBackoff(
+          async () => {
+            calls += 1;
+            throw err;
+          },
+          { sleep: async (ms) => { delays.push(ms); } },
+        ),
+      ).rejects.toBe(err);
+      expect(calls).toBe(1);
+      expect(delays).toEqual([]);
+    }
   });
 });
 
