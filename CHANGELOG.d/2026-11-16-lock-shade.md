@@ -15,7 +15,8 @@
   while `CallEnforcer` reports the phone **ringing**, and only then, and only when the notice comes from
   the **system default dialer** (Fable): any app could otherwise post a call-style notification and hold
   the exemption open at will. Notification removal is not observable through the accessibility stream, so
-  the 45 s ceiling and the ongoing-form/mode changes close the window, and that limit is stated rather
+  the 45 s ceiling and the ongoing-form/mode changes close the window, and only the default dialer
+  may move it in either direction, and that limit is stated rather
   than implied. Once a call is placed or answered the
   shade is locked again, so a call cannot be used to read notifications. The agent reads no notification
   content; it only sends the collapse.

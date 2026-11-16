@@ -30,10 +30,11 @@ object IncomingRingWindow {
         fromDefaultDialer: Boolean,
     ): Long? {
         if (!isCall) return null
-        if (hasHangUp) return 0L
-        // Fable: only the system default dialer may open the window. Any app that can post a call-style
-        // notification could otherwise hold the exemption open at will, which is osra-security#33 again.
+        // Fable: only the system default dialer may move the window, in either direction. Any app that can
+        // post a call-style notification could otherwise hold the exemption open (or close it) at will,
+        // which is osra-security#33 again. The dialer check therefore precedes the ongoing-form clear.
         if (!fromDefaultDialer) return null
+        if (hasHangUp) return 0L
         if (hasDecline && mode == CallAudioMode.NORMAL) return nowMs + WINDOW_MS
         return null
     }

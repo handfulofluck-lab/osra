@@ -27,7 +27,7 @@ class ShadePolicyTest {
     }
 
     @Test
-    fun `the measured Android 14 event collapses: systemui reports FrameLayout`() {
+    fun `the measured Android 14 event collapses because systemui reports FrameLayout`() {
         // Antigravity, live API 34: top-edge swipe and `cmd statusbar expand-settings` both report
         // class=android.widget.FrameLayout while the shade opens. The old allowlist could never match it.
         assertTrue(ShadePolicy.shouldCollapse(true, "com.android.systemui", "android.widget.FrameLayout", 34))

@@ -50,6 +50,13 @@ class IncomingRingWindowTest {
     }
 
     @Test
+    fun `an ongoing notice from another app cannot close or open the window`() {
+        // Fable: the default-dialer check runs before the ongoing-form clear, so another package cannot
+        // move the window in either direction.
+        assertNull(IncomingRingWindow.next(isCall = true, hasDecline = false, hasHangUp = true, mode = CallAudioMode.IN_CALL, nowMs = 2_000, fromDefaultDialer = false))
+    }
+
+    @Test
     fun `a notification that is not a call changes nothing`() {
         assertNull(IncomingRingWindow.next(isCall = false, hasDecline = true, hasHangUp = false, mode = CallAudioMode.NORMAL, nowMs = 1_000, fromDefaultDialer = true))
     }
