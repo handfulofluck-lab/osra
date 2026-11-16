@@ -207,10 +207,16 @@ void main() {
       final api = trendApi();
       await pumpScreen(tester, const UsageHistoryScreen(childId: 'child-1'), api);
 
-      expect(find.text('tiktok.com'), findsOneWidget);
-      expect(find.text('khanacademy.org'), findsOneWidget);
-      expect(find.text('Blocked'), findsOneWidget);
-      expect(find.text('Allowed'), findsOneWidget);
+      // #830: rows are site names grouped per host, drawn in a first-strong isolate; no Blocked/Allowed
+      // tag on these rows (blocked attempts live in Alerts).
+      expect(find.textContaining('tiktok.com'), findsOneWidget);
+      expect(find.textContaining('khanacademy.org'), findsOneWidget);
+      expect(find.text('Blocked'), findsNothing);
+      expect(find.text('Allowed'), findsNothing);
+      expect(
+        find.text('Site names only. OSRA Kids does not see the pages opened or anything typed.'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('Blocked only sends blocked=true and hides allowed visits', (tester) async {
@@ -227,8 +233,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.calls('GET', '/v1/reports/web').last.query['blocked'], 'true');
-      expect(find.text('tiktok.com'), findsOneWidget);
-      expect(find.text('khanacademy.org'), findsNothing);
+      expect(find.textContaining('tiktok.com'), findsOneWidget);
+      expect(find.textContaining('khanacademy.org'), findsNothing);
     });
 
     testWidgets('Blocked only with no blocked visits shows the filtered empty state', (tester) async {
@@ -273,15 +279,27 @@ void main() {
       expect(find.textContaining('Showing the latest 100 visits'), findsNothing);
     });
 
-    testWidgets('empty history says the Play build does not report sites (#830)', (tester) async {
+    testWidgets('empty history keeps the screen's existing empty state (#830)', (tester) async {
       final api = trendApi(visits: const []);
       await pumpScreen(tester, const UsageHistoryScreen(childId: 'child-1'), api);
 
+      expect(find.text('No browsing history in the last 7 days'), findsOneWidget);
       expect(
-        find.text('This version of OSRA Kids does not list the websites \u2068Alex\u2069 visits. '
-            'Blocked sites \u2068Alex\u2069 tried to open appear in Alerts.'),
-        findsOneWidget,
+        find.text('Site names only. OSRA Kids does not see the pages opened or anything typed.'),
+        findsNothing,
       );
+    });
+
+    testWidgets('two visits to one host read as one site with a count (#830)', (tester) async {
+      final now = DateTime.now();
+      final api = trendApi(visits: [
+        visitJson('v1', 'youtube.com', false, now.subtract(const Duration(minutes: 30))),
+        visitJson('v2', 'youtube.com', false, now.subtract(const Duration(minutes: 2))),
+      ]);
+      await pumpScreen(tester, const UsageHistoryScreen(childId: 'child-1'), api);
+
+      expect(find.textContaining('youtube.com'), findsOneWidget);
+      expect(find.text('Visited 2 times'), findsOneWidget);
     });
 
     testWidgets('web error shows an honest error and a retry', (tester) async {
