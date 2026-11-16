@@ -2,7 +2,7 @@ Describe "Committed scenario manifests and dry-run CLI" {
     BeforeAll {
 $script:RunnerPath = Join-Path $PSScriptRoot "../scenario.ps1"
 if (-not (Test-Path -LiteralPath $script:RunnerPath)) { throw "runner_not_found: path=[$script:RunnerPath]" }
-. $script:RunnerPath
+. $script:RunnerPath -Serial "R5CW116Y6GF"
 $script:DryRun = $true
 
     }
@@ -30,11 +30,19 @@ $script:DryRun = $true
     It "prints PASS (DRY RUN), writes result files, and exits zero" {
         $out = Join-Path $TestDrive "out"
         $hostExe = (Get-Process -Id $PID).Path
-        $output = & $hostExe -NoProfile -ExecutionPolicy Bypass -File $script:RunnerPath -DryRun -Scenario SC-0.1 -Out $out 2>&1 | Out-String
+        $output = & $hostExe -NoProfile -ExecutionPolicy Bypass -File $script:RunnerPath -DryRun -Scenario SC-0.1 -Serial R5CW116Y6GF -Out $out 2>&1 | Out-String
         $LASTEXITCODE | Should -Be 0
         $output | Should -Match "PASS \(DRY RUN\)"
         $result = Get-ChildItem -Path $out -Recurse -Filter result.md
         $result.Count | Should -Be 1
         (Get-Content -LiteralPath $result[0].FullName -Raw) | Should -Match "PASS \(DRY RUN\)"
+    }
+
+    It "exits with serial_required when no serial is named (#797 item 5)" {
+        $out = Join-Path $TestDrive "no-serial"
+        $hostExe = (Get-Process -Id $PID).Path
+        $output = & $hostExe -NoProfile -ExecutionPolicy Bypass -File $script:RunnerPath -DryRun -Scenario SC-0.1 -Out $out 2>&1 | Out-String
+        $LASTEXITCODE | Should -Be 2
+        $output | Should -Match "serial_required"
     }
 }

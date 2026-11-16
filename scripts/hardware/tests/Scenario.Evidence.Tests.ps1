@@ -2,7 +2,7 @@ Describe "OSRA-only evidence and PNG crops" {
     BeforeAll {
 $script:RunnerPath = Join-Path $PSScriptRoot "../scenario.ps1"
 if (-not (Test-Path -LiteralPath $script:RunnerPath)) { throw "runner_not_found: path=[$script:RunnerPath]" }
-. $script:RunnerPath
+. $script:RunnerPath -Serial "R5CW116Y6GF"
 $script:DryRun = $true
 
     }

@@ -2,7 +2,7 @@ Describe "Scenario validation suite" {
     BeforeAll {
 $script:RunnerPath = Join-Path $PSScriptRoot "../scenario.ps1"
 if (-not (Test-Path -LiteralPath $script:RunnerPath)) { throw "runner_not_found: path=[$script:RunnerPath]" }
-. $script:RunnerPath
+. $script:RunnerPath -Serial "R5CW116Y6GF"
 
 function New-Manifest {
     return [pscustomobject]@{
@@ -190,11 +190,39 @@ Describe "Structural device and data refusals" {
         )) { { Assert-ScenarioCommand -Command $command } | Should -Not -Throw }
     }
 
-    It "requires nonpersonal content and a safe projection" {
+    It "refuses every content query, declared safe or not (#797 item 3)" {
         $query = @("shell", "content", "query", "--uri", "content://com.osratech.child.synthetic")
         { Assert-ScenarioStep -Step ([pscustomobject]@{ type = "adb"; command = $query }) } | Should -Throw
-        { Assert-ScenarioStep -Step ([pscustomobject]@{ type = "adb"; command = $query; nonPersonal = $true; projection = @("phone", "body") }) } | Should -Throw
-        { Assert-ScenarioStep -Step ([pscustomobject]@{ type = "adb"; command = $query; nonPersonal = $true; projection = @("count") }) } | Should -Not -Throw
+        { Assert-ScenarioStep -Step ([pscustomobject]@{ type = "adb"; command = $query; nonPersonal = $true }) } | Should -Throw
+    }
+
+    It "refuses a two-uri content command (#797 item 3)" {
+        foreach ($command in @(
+            @("shell", "content", "query", "--uri", "content://com.osratech.child.synthetic", "--uri", "content://call_log/calls"),
+            @("shell", "content", "query", "--uri", "content://call_log/calls", "--uri", "content://com.osratech.child.synthetic")
+        )) { { Assert-ScenarioCommand -Command $command } | Should -Throw }
+    }
+
+    It "refuses an upper-case manifest package and the allowlist at run time (#797 items 1, 2)" {
+        $manifest = New-Manifest
+        $manifest.package = "COM.OSRATECH.CHILD.FULL"
+        $path = Join-Path $TestDrive "SC-0.1-upper.json"
+        $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $path -Encoding UTF8
+        $thrown = $null
+        try { Read-ScenarioManifest -Path $path -Out $TestDrive | Out-Null } catch { $thrown = [string]$_.Exception.Message }
+        $thrown | Should -Be "package_not_in_allowlist"
+        foreach ($command in @(
+            @("shell", "appops", "set", "com.whatsapp", "SYSTEM_ALERT_WINDOW", "allow"),
+            @("shell", "pm", "clear", "com.whatsapp"),
+            @("shell", "pm", "uninstall", "com.whatsapp")
+        )) {
+            $thrown = $null
+            try { Assert-ScenarioCommand -Command $command -Package "com.osratech.child.full" } catch { $thrown = [string]$_.Exception.Message }
+            $thrown | Should -Be "package_not_in_allowlist"
+        }
+        $thrown = $null
+        try { Assert-ScenarioCommand -Command @("shell", "getprop", "ro.product.model") -Package "com.whatsapp" } catch { $thrown = [string]$_.Exception.Message }
+        $thrown | Should -Be "package_not_in_allowlist"
     }
 }
 

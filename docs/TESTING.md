@@ -1205,11 +1205,16 @@ outside that directory, so a PC with the phone attached cannot drive it.
 
 ADB steps are an allowlist of fixed shapes — `getprop`, `setprop persist.sys.locale`, `dumpsys`,
 `settings get|put`, `appops get|set`, `dpm list-owners`, `pm list|uninstall|clear`, `screencap -p`,
-`input tap|swipe|keyevent|text`, `content query`, `logcat` — with no path in the verb and no quote,
-backslash, control character or shell metacharacter in any element; everything else is refused. Inside
-those shapes, `settings put` is limited to the nine restored keys in their own table, `input keyevent` to
-HOME/BACK/ENTER, and `input text` may not contain a digit. Every ADB call receives `-s <serial>` from the
-runner.
+`input tap|swipe|keyevent|text` — with no path in the verb and no quote,
+backslash, control character or shell metacharacter in any element; everything else is refused. The
+`content` command is not allowed at all: its first-`--uri` check could be bypassed with a second `--uri`,
+and no scenario needs it (#797). Inside those shapes, `settings put` is limited to the nine restored keys
+in their own table, `input keyevent` to HOME/BACK/ENTER, and `input text` may not contain a digit. Every
+`appops` and `pm clear|uninstall` target, and the manifest's own `package`, must be one of
+`com.osratech.child`, `com.osratech.child.full` or `com.osratech.parent`, matched case-sensitively; the
+check runs when the command executes, not only when the manifest is validated. Every ADB call receives
+`-s <serial>` from the runner, and `-Serial` has no default — a run that does not name the handset stops
+with `serial_required`.
 
 The runner saves nine before-values plus lock state, captures `exec-out screencap -p` into memory, writes
 only an OSRA-window crop with status bar/notification shade excluded, runs argument-array steps, and

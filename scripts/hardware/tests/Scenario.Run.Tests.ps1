@@ -2,7 +2,7 @@ Describe "Scenario steps, measurements and restore" {
     BeforeAll {
 $script:RunnerPath = Join-Path $PSScriptRoot "../scenario.ps1"
 if (-not (Test-Path -LiteralPath $script:RunnerPath)) { throw "runner_not_found: path=[$script:RunnerPath]" }
-. $script:RunnerPath
+. $script:RunnerPath -Serial "R5CW116Y6GF"
 $script:DryRun = $true
 
 function New-RunManifest($steps, $measurements = @()) {
@@ -64,6 +64,17 @@ function Initialize-RunFake {
         $failed.status | Should -Be "FAIL"
         $unclean = Get-ScenarioOutcome -Measurements @([pscustomobject]@{ name = "diff"; actual = "restore.diffCount"; comparator = "empty" }) -Captures @{ "restore.diffCount" = 0 } -StepsCompleted $true -RestoreClean $false
         $unclean.status | Should -Be "FAIL"
+    }
+
+    It "refuses a manifest package outside the allowlist before adb or a lease (#797 item 4)" {
+        $script:LeaseCalls = @()
+        $manifest = New-RunManifest @([pscustomobject]@{ type = "adb"; command = @("shell", "getprop", "ro.product.model") })
+        $manifest.package = "com.whatsapp"
+        $thrown = $null
+        try { Invoke-ScenarioRun -Manifest $manifest -Out $TestDrive | Out-Null } catch { $thrown = [string]$_.Exception.Message }
+        $thrown | Should -Be "package_not_in_allowlist"
+        (Test-Path -LiteralPath $env:FAKE_ADB_LOG) | Should -Be $false
+        @($script:LeaseCalls).Count | Should -Be 0
     }
 
     It "attempts every restore after one fails and reports the diff" {

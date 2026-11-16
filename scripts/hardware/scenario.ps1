@@ -3,7 +3,7 @@ param(
     [string]$Scenario = "SC-0.1",
     [string]$Out = (Join-Path ([IO.Path]::GetTempPath()) "osra-scenarios"),
     [string]$Owner = "K31",
-    [string]$Serial = "R5CW116Y6GF",
+    [string]$Serial,
     [string]$Package = "com.osratech.child.full",
     [string]$ApiBase,
     [string]$LeaseStore,
@@ -34,11 +34,13 @@ $script:RestoredSettingsTables = [ordered]@{
     zen_mode = "global"
 }
 $script:RestoredSettingsKeys = @($script:RestoredSettingsTables.Keys)
-$script:SafeContentColumns = @("_id", "count", "date", "timestamp", "type", "blocked", "category", "duration")
 
 function Assert-ScenarioCommand {
     param([Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Command, [string]$Package)
     if ($Command.Count -eq 0) { throw "empty_adb_command" }
+    # #797: the allowlist applies when commands run, not only at validation. Case-sensitive: "COM.OSRATECH…"
+    # is not the package.
+    if ($Package -and $Package -cnotin $script:ScenarioPackages) { throw "package_not_in_allowlist" }
     $c = @($Command | ForEach-Object { "$_".ToLowerInvariant() })
     # A denylist of verbs was bypassable (`/system/bin/dpm`, `d''pm`, `input keyboard …`, one digit key
     # per step), so the command must match one fixed allowlisted shape instead (#797 review, item 2).
@@ -56,7 +58,7 @@ function Assert-ScenarioCommand {
     if ($start -ge $flat.Count) { throw "adb_command_not_allowed" }
     $verb = $flat[$start]
     if ($verb -match "/") { throw "adb_command_not_allowed" }
-    if ($verb -notin @("getprop", "setprop", "dumpsys", "settings", "appops", "dpm", "pm", "screencap", "input", "content")) {
+    if ($verb -notin @("getprop", "setprop", "dumpsys", "settings", "appops", "dpm", "pm", "screencap", "input")) {
         throw "adb_command_not_allowed"
     }
     $rest = @()
@@ -76,7 +78,7 @@ function Assert-ScenarioCommand {
                 if ($rest.Count -ne 1) { throw "adb_command_not_allowed" }
             } elseif ($rest[0] -eq "package") {
                 if ($rest.Count -ne 2) { throw "adb_command_not_allowed" }
-                if ($Package -and $rest[1] -ne "$Package".ToLowerInvariant()) { throw "package_outside_scenario" }
+                if ($Package -and $rest[1] -cne $Package) { throw "package_outside_scenario" }
             } else { throw "adb_command_not_allowed" }
         }
         "screencap" {
@@ -100,8 +102,8 @@ function Assert-ScenarioCommand {
         }
         "appops" {
             if ($rest.Count -lt 3 -or $rest[0] -notin @("get", "set")) { throw "appops_read_only" }
-            if ($rest[1] -notmatch "^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$") { throw "adb_command_not_allowed" }
-            if ($Package -and $rest[1] -ne "$Package".ToLowerInvariant()) { throw "package_outside_scenario" }
+            if ($rest[1] -cnotin $script:ScenarioPackages) { throw "package_not_in_allowlist" }
+            if ($Package -and $rest[1] -cne $Package) { throw "package_outside_scenario" }
             if ($rest[2] -notmatch "^[a-z0-9._]+$") { throw "adb_command_not_allowed" }
             if ($rest[0] -eq "set") {
                 # Restore only puts SYSTEM_ALERT_WINDOW back, so no other op may be set (#797 sign-off note).
@@ -116,7 +118,8 @@ function Assert-ScenarioCommand {
             if ($rest.Count -lt 1) { throw "adb_command_not_allowed" }
             if ($rest[0] -eq "list") { }
             elseif ($rest[0] -in @("uninstall", "clear")) {
-                if ($rest.Count -ne 2 -or -not $Package -or $rest[1] -ne "$Package".ToLowerInvariant()) { throw "package_removal_outside_scenario" }
+                if ($rest.Count -ne 2 -or $rest[1] -cnotin $script:ScenarioPackages) { throw "package_not_in_allowlist" }
+                if (-not $Package -or $rest[1] -cne $Package) { throw "package_removal_outside_scenario" }
             } else { throw "pm_command_not_allowed" }
         }
         "input" {
@@ -141,16 +144,6 @@ function Assert-ScenarioCommand {
                 default { throw "adb_command_not_allowed" }
             }
         }
-        "content" {
-            if ($rest.Count -lt 1 -or $rest[0] -ne "query") { throw "content_read_only" }
-            # The projection columns are safe, but the authority decides what they are a record of:
-            # content://call_log/calls with `date` is the owner's call history (Ahmed, R3 on #797).
-            $uriAt = [Array]::IndexOf($rest, "--uri")
-            if ($uriAt -lt 0 -or $uriAt + 1 -ge $rest.Count) { throw "content_uri_required" }
-            if ($rest[$uriAt + 1] -notmatch "^content://com\.osratech\.[a-z0-9._-]+(/[a-z0-9._-]+)*/?$") {
-                throw "content_uri_not_allowed"
-            }
-        }
     }
 }
 
@@ -158,7 +151,7 @@ function Assert-ScenarioStep {
     param([Parameter(Mandatory = $true)]$Step, [string]$Package)
     if (-not $Step.type) { throw "step_type_required" }
     $allowed = switch ($Step.type) {
-        "adb" { @("type", "command", "nonPersonal", "projection") }
+        "adb" { @("type", "command") }
         "screencap" { @("type", "name") }
         "wait" { @("type", "seconds") }
         "http" { @("type", "method", "path", "body") }
@@ -172,13 +165,6 @@ function Assert-ScenarioStep {
         "adb" {
             if ($Step.command -is [string] -or $Step.command -isnot [Array]) { throw "adb_command_must_be_argument_array" }
             Assert-ScenarioCommand -Command ([string[]]$Step.command) -Package $Package
-            $c = @($Step.command | ForEach-Object { "$_".ToLowerInvariant() })
-            if ($c -contains "content" -and $c -contains "query") {
-                if ($Step.nonPersonal -ne $true -or -not $Step.projection) { throw "content_query_not_declared_safe" }
-                foreach ($column in @($Step.projection)) {
-                    if ("$column".ToLowerInvariant() -notin $script:SafeContentColumns) { throw "personal_content_column_refused" }
-                }
-            }
         }
         "screencap" {
             if ("$($Step.name)" -notmatch "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$" -or "$($Step.name)".Contains("..")) { throw "unsafe_evidence_name" }
@@ -217,7 +203,7 @@ function Assert-ManifestShape {
     if ("$($Manifest.id)" -notmatch "^SC-[A-Za-z0-9.-]{1,60}$" -or "$($Manifest.id)".Contains("..")) { throw "invalid_scenario_id" }
     if ([string]::IsNullOrWhiteSpace([string]$Manifest.title) -or ([string]$Manifest.title).Length -gt 120) { throw "invalid_title" }
     if ([string]::IsNullOrWhiteSpace([string]$Manifest.pair) -or ([string]$Manifest.pair).Length -gt 32) { throw "invalid_pair" }
-    if ("$($Manifest.package)" -notin $script:ScenarioPackages) { throw "package_not_in_allowlist" }
+    if ("$($Manifest.package)" -cnotin $script:ScenarioPackages) { throw "package_not_in_allowlist" }
     Assert-HealthUrl -Url $Manifest.apiHealthUrl
     if ($Manifest.PSObject.Properties.Name -contains "timeoutSeconds") {
         if (($Manifest.timeoutSeconds -isnot [int] -and $Manifest.timeoutSeconds -isnot [long]) -or $Manifest.timeoutSeconds -lt 1 -or $Manifest.timeoutSeconds -gt 3600) { throw "invalid_timeout" }
@@ -663,6 +649,7 @@ function Invoke-ScenarioRun {
     param([Parameter(Mandatory = $true)]$Manifest, [Parameter(Mandatory = $true)][string]$Out, [switch]$DryRun)
     if ($PSBoundParameters.ContainsKey("DryRun")) { $script:DryRun = [bool]$DryRun }
     Assert-ManifestShape -Manifest $Manifest
+    if (-not $script:Serial) { throw "serial_required" }
     $script:ActiveManifest = $Manifest
     $script:Package = $Manifest.package
     if ($script:ApiBase) { Assert-HealthUrl -Url $script:ApiBase }

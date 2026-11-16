@@ -172,7 +172,7 @@ jobs:
           # The Pester rows remove the fake env between cases, so the CLI sets its own image here.
           $env:FAKE_SCREENSHOT = Join-Path $env:GITHUB_WORKSPACE "scripts/hardware/tests/fixtures/rgb.png"
           $out = Join-Path $env:RUNNER_TEMP "scenario-evidence"
-          $printed = & pwsh -NoProfile -File ./scripts/hardware/scenario.ps1 -DryRun -Scenario SC-0.1 -Out $out 2>&1 | Out-String
+          $printed = & pwsh -NoProfile -File ./scripts/hardware/scenario.ps1 -DryRun -Scenario SC-0.1 -Serial R5CW116Y6GF -Out $out 2>&1 | Out-String
           $code = $LASTEXITCODE
           Write-Host $printed
           if ($code -ne 0) {
