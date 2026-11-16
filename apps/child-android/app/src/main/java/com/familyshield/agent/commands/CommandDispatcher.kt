@@ -285,9 +285,9 @@ class CommandDispatcher @Inject constructor(
      */
     private fun reportLockPeriod(period: com.familyshield.agent.enforcement.LockPeriodTracker.Period?) {
         if (period == null) return
-        val deviceId = settings.deviceId() ?: return
         val payload = com.familyshield.agent.enforcement.LockPeriodTracker.payload(period)
         scope.launch {
+            val deviceId = settings.deviceId() ?: return@launch
             runCatching {
                 api.postActivityEvents(
                     deviceId,

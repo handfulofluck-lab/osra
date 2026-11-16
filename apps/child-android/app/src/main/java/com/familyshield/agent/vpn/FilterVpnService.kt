@@ -294,8 +294,8 @@ class FilterVpnService : VpnService() {
             lastSiteVisit.entries.removeIf { now - it.value > SITE_VISIT_QUIET_MS }
         }
         lastSiteVisit[host] = now
-        val deviceId = settings.deviceId() ?: return
         scope.launch {
+            val deviceId = settings.deviceId() ?: return@launch
             runCatching {
                 api.postActivityEvents(
                     deviceId,
