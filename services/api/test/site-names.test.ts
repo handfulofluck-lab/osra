@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { deviceRoutes } from "../src/routes/devices.js";
 import { reportsRoutes } from "../src/routes/reports.js";
 import { toApiRuleSet } from "../src/lib/ruleSync.js";
-import { isExcludedSiteHost, siteNamesEnabled, siteVisitRetentionDays } from "../src/lib/siteNames.js";
+import { isExcludedSiteHost, redactedBlockedSiteKey, redactBlockedSiteHost, siteNamesEnabled, siteVisitRetentionDays } from "../src/lib/siteNames.js";
 import { authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
@@ -61,6 +61,16 @@ describe("#830 site names — the flag", () => {
   });
 });
 
+describe("#830 site names — the blocked attempt is a hostless count while the flag is off", () => {
+  it("strips the domain and the blocked word from an alert, and groups by day", () => {
+    const at = new Date("2026-11-16T10:00:00Z");
+    expect(
+      redactBlockedSiteHost({ domain: "bad.example", reason: "blocked_domain:bad.example", childId: "child-1" }, at),
+    ).toEqual({ reason: "blocked_domain", childId: "child-1", day: "2026-11-16" });
+    expect(redactedBlockedSiteKey(at)).toBe("web:2026-11-16");
+  });
+});
+
 describe("#830 site names — host exclusions", () => {
   it("excludes our API and any of its subdomains", () => {
     expect(isExcludedSiteHost("api.osratech.com")).toBe(true);
@@ -94,7 +104,7 @@ describe("#830 site names — host exclusions", () => {
 });
 
 describe("#830 site names — the activity route while the flag is off", () => {
-  it("stores no visit for a name that was not blocked, and still stores a blocked one", async () => {
+  it("stores no visit for any url event while the flag is off, blocked included (Claude's finding-5 ruling)", async () => {
     const res = await postActivity({
       events: [
         { ts: "2026-10-15T10:00:00Z", type: "url", payload: { url: "https://example.com/page?a=1", blocked: false } },
@@ -102,18 +112,10 @@ describe("#830 site names — the activity route while the flag is off", () => {
       ],
     });
     expect(res.statusCode).toBe(202);
-    expect(prismaMock.webVisit.createMany).toHaveBeenCalledWith({
-      data: [
-        expect.objectContaining({ childId: "child-1", deviceId: "dev-1", domain: "bad.example", url: "bad.example", blocked: true }),
-      ],
-    });
-    // The raw log is a second table the same rule must cover (#841, Fable B1): only the blocked row is
-    // stored, and it carries the host, never the path the phone sent.
-    expect(prismaMock.activityEvent.createMany).toHaveBeenCalledTimes(1);
-    const raw = prismaMock.activityEvent.createMany.mock.calls[0][0].data as Array<{ type: string; payload: Record<string, unknown> }>;
-    expect(raw).toHaveLength(1);
-    expect(raw[0].type).toBe("url");
-    expect(raw[0].payload).toEqual({ url: "bad.example", domain: "bad.example", blocked: true });
+    // No host is stored anywhere while the flag is off: not in WebVisit, not in the raw log. The blocked
+    // attempt still reaches the parent as a hostless count through the alert route.
+    expect(prismaMock.webVisit.createMany).not.toHaveBeenCalled();
+    expect(prismaMock.activityEvent.createMany).not.toHaveBeenCalled();
   });
 
   it("writes no row at all when every name in the batch was unblocked", async () => {
@@ -126,6 +128,7 @@ describe("#830 site names — the activity route while the flag is off", () => {
   });
 
   it("reduces a blocked event's full address to its host before the raw insert", async () => {
+    process.env.SITE_NAMES_ENABLED = "true";
     const res = await postActivity({
       events: [
         { ts: "2026-10-15T10:00:00Z", type: "url", payload: { url: "https://Bad.example/secret?a=1", blocked: true, category: "gambling" } },

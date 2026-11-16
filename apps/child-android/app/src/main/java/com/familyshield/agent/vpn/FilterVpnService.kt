@@ -283,8 +283,19 @@ class FilterVpnService : VpnService() {
                         category = "web_threat",
                         title = "Blocked site opened",
                         body = "Your child tried to open a blocked site.",
-                        metadata = mapOf("domain" to name, "reason" to reason),
-                        dedupeKey = com.familyshield.agent.enforcement.AlertKeys.blockedSite(name, day),
+                        // Claude's ruling on #841 finding 5: with the flag off the attempt is still
+                        // reported, but the parent gets a count with no host — no domain, a coarse reason
+                        // (never the blocked word itself) and one row per day.
+                        metadata = if (rules.siteNamesEnabled()) {
+                            mapOf("domain" to name, "reason" to reason)
+                        } else {
+                            mapOf("reason" to reason.substringBefore(':'))
+                        },
+                        dedupeKey = if (rules.siteNamesEnabled()) {
+                            com.familyshield.agent.enforcement.AlertKeys.blockedSite(name, day)
+                        } else {
+                            "web:$day"
+                        },
                         attemptCount = attempts,
                     ),
                 )

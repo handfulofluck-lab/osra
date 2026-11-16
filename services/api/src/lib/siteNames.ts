@@ -58,6 +58,29 @@ export function hostOf(value: string): string {
 }
 
 /**
+ * Claude's ruling on #841 finding 5: while the flag is off, a blocked attempt still reaches the parent as
+ * a count, with **no host**. This strips the host from a `web_threat` alert's metadata and replaces the
+ * per-host dedupe key with a per-day one, so repeats still group but nothing names a site.
+ */
+export function redactBlockedSiteHost(
+  metadata: Record<string, unknown> | undefined,
+  at: Date = new Date(),
+): Record<string, unknown> {
+  const clean: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(metadata ?? {})) {
+    if (key === "domain") continue;
+    clean[key] = key === "reason" && typeof value === "string" ? value.split(":")[0] : value;
+  }
+  clean.day = at.toISOString().slice(0, 10);
+  return clean;
+}
+
+/** The hostless dedupe key for a blocked attempt while the flag is off: one row per day. */
+export function redactedBlockedSiteKey(at: Date = new Date()): string {
+  return `web:${at.toISOString().slice(0, 10)}`;
+}
+
+/**
  * Site names are kept for 90 days, and never longer than the other raw rows. The privacy notice and the
  * store form name that period, so the cleanup job must not inherit a raised `RETENTION_DAYS` silently.
  */

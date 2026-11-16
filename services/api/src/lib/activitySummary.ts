@@ -65,7 +65,13 @@ function aggregateActivityEvents(
       totalAppMinutes += minutes;
       appMinutes.set(app, (appMinutes.get(app) ?? 0) + minutes);
     } else if (event.type === "url") {
-      if (payload.blocked !== true && !includeUnblockedUrls) continue;
+      // Claude's ruling on #841 finding 5: with the flag off, no host is shown or counted — a blocked
+      // attempt included. Its **count** still feeds the safety score (the parent's own rule reporting
+      // itself), which is what "a count with no host is fine" allows.
+      if (!includeUnblockedUrls) {
+        if (payload.blocked === true) blockedHits += 1;
+        continue;
+      }
       urlVisits += 1;
       if (payload.blocked === true) {
         blockedHits += 1;

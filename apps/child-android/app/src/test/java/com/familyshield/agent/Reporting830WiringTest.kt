@@ -34,6 +34,10 @@ class Reporting830WiringTest {
         assertTrue(alert.contains("SiteVisitGate.isExcludedHost(name)"))
         assertTrue(vpn.contains("visitFlusherStarted.compareAndSet(false, true)"))
         assertTrue(vpn.contains("events = batch.map {"))
+        // Claude's finding-5 ruling on #841: while the flag is off the alert is a count with no host.
+        val blockedSite = vpn.substringAfter("private fun reportBlockedSite").substringBefore("private fun recordSiteVisit")
+        assertTrue(blockedSite.contains("rules.siteNamesEnabled()"))
+        assertTrue(blockedSite.contains("\"web:\$day\""))
 
         val dispatcher = source("apps/child-android/app/src/main/java/com/familyshield/agent/commands/CommandDispatcher.kt")
         assertTrue(dispatcher.contains("LockPeriodTracker.start(context, LockActivity.MODE_LOCKED"))

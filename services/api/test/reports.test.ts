@@ -86,10 +86,10 @@ describe("GET /v1/reports/summary", () => {
       { name: "TikTok", minutes: 40 },
       { name: "YouTube", minutes: 20 },
     ]);
-    // #841: while the site-name flag is off, the unblocked visit in the window is not counted; the two
-    // blocked attempts are the parent's own rule reporting itself and stay.
-    expect(body.urlVisits).toBe(2);
-    expect(body.topBlockedDomains).toEqual([{ domain: "bad.example", count: 2 }]);
+    // #841 (Claude's finding-5 ruling): while the flag is off the summary shows no addresses at all —
+    // neither the unblocked visit nor the blocked hosts. Their count still feeds the safety score.
+    expect(body.urlVisits).toBe(0);
+    expect(body.topBlockedDomains).toEqual([]);
     expect(body.socialConcerns).toBe(4);
     expect(body.calls).toBe(2);
     expect(body.sms).toBe(1);
@@ -392,8 +392,8 @@ describe("POST /v1/digests/send-now (#5)", () => {
     expect(markdown).toContain("Laila");
     expect(markdown).toContain("60 min");
     expect(markdown).toContain("TikTok 40m");
-    expect(markdown).toContain("URL visits: 2");
-    expect(markdown).toContain("bad.example (2)");
+    expect(markdown).toContain("URL visits: 0");
+    expect(markdown).not.toContain("bad.example");
     expect(markdown).toContain("Social concerns: 4");
     expect(markdown).toContain("Calls: 2, SMS: 1");
     await app.close();

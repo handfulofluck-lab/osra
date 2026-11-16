@@ -312,7 +312,7 @@ describe("#841 the rollup hook is a real backstop", () => {
     expect(prismaMock.webVisit.createMany).not.toHaveBeenCalled();
   });
 
-  it("keeps a blocked attempt, still host-only, when the flag is off, called directly", async () => {
+  it("stores nothing for a blocked attempt when the flag is off, called directly (finding-5 ruling)", async () => {
     prismaMock.webVisit.createMany.mockResolvedValue({ count: 1 });
     const out = await recordActivityUsage(
       "child-1",
@@ -320,11 +320,8 @@ describe("#841 the rollup hook is a real backstop", () => {
       [{ ts: "2026-10-15T10:00:00Z", type: "url", payload: { url: "https://bad.example/secret-path?token=1", blocked: true } }],
       { siteNames: false },
     );
-    expect(out.visits).toBe(1);
-    // Antigravity's direct-call row: the path and query never reach WebVisit.url.
-    expect(prismaMock.webVisit.createMany).toHaveBeenCalledWith({
-      data: [expect.objectContaining({ domain: "bad.example", url: "bad.example", blocked: true })],
-    });
+    expect(out.visits).toBe(0);
+    expect(prismaMock.webVisit.createMany).not.toHaveBeenCalled();
   });
 
   it("drops an excluded host sent as a URL when called directly, and a value with no host", async () => {
@@ -396,10 +393,9 @@ describe("usage model — ingestion hooks and routes", () => {
       create: { childId: "child-1", deviceId: "dev-1", day: DAY, app: "YouTube", minutes: 12 },
       update: { minutes: { increment: 12 } },
     });
-    // #841: the raw event is scrubbed before the rollup too, so the visit row keeps the host, not the path.
-    expect(prismaMock.webVisit.createMany).toHaveBeenCalledWith({
-      data: [{ childId: "child-1", deviceId: "dev-1", ts: new Date("2026-10-15T10:01:00Z"), domain: "example.com", url: "example.com", blocked: true, category: "" }],
-    });
+    // #841 + Claude's finding-5 ruling: with the flag off no host is stored, so the blocked url in this
+    // batch produces no WebVisit row; the app_usage row above is still folded.
+    expect(prismaMock.webVisit.createMany).not.toHaveBeenCalled();
 
     prismaMock.appUsageDaily.upsert.mockRejectedValueOnce(new Error("db down"));
     const again = await app.inject({ method: "POST", url: "/v1/devices/dev-1/activity", headers: deviceHeader(app), payload: { events: [{ type: "app_usage", payload: { app: "X", minutes: 1 } }] } });

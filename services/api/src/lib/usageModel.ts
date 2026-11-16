@@ -144,8 +144,10 @@ export function gateActivityEvents<T extends { type: string; payload: Record<str
     const raw = typeof p.url === "string" && p.url ? p.url : typeof p.domain === "string" ? p.domain : "";
     const host = hostOf(raw).slice(0, 253);
     if (!host || isExcludedSiteHost(host)) continue;
+    // Claude's ruling on #841 finding 5: with the flag off, no host is stored anywhere — a blocked
+    // attempt included. Its count reaches the parent through the alert, which is gated separately below.
+    if (!siteNames) continue;
     const blocked = p.blocked === true;
-    if (!blocked && !siteNames) continue;
     const payload: Record<string, unknown> = { url: host, domain: host, blocked };
     if (typeof p.category === "string" && p.category) payload.category = p.category.slice(0, 64);
     kept.push({ ...event, payload });
@@ -167,7 +169,11 @@ export async function recordActivityUsage(
   // history (it is the parent's own rule reporting itself), so it stays. The exclusion list applies in
   // both states: our API, the enforcement hosts and the OS connectivity checks are not sites the child
   // visited.
-  const keep = visits.filter((v) => v.domain !== "unknown" && !isExcludedSiteHost(v.domain) && (options.siteNames === true || v.blocked));
+  // Claude's ruling on #841 finding 5: while the flag is off, **no host** is stored — visited or blocked.
+  // The blocked attempt still reaches the parent as a count (the alert row), with no name attached.
+  const keep = options.siteNames === true
+    ? visits.filter((v) => v.domain !== "unknown" && !isExcludedSiteHost(v.domain))
+    : [];
   if (keep.length > 0) {
     await prisma.webVisit.createMany({ data: keep.map((v) => ({ childId, deviceId, ...v })) });
   }
