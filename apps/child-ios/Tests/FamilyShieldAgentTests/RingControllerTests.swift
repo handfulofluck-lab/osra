@@ -31,10 +31,13 @@ final class FakeRingBackend: RingBackend {
         return authorized
     }
 
-    func schedule(_ id: UUID) async throws {
+    var scheduleUntil: [UUID: Date?] = [:]
+
+    func schedule(_ id: UUID, until: Date? = nil) async throws {
         if let scheduleError, scheduleErrorID == nil || scheduleErrorID == id { throw scheduleError }
         if let scheduleGate { await scheduleGate() }
         scheduled.append(id)
+        scheduleUntil[id] = until
     }
 
     func stop(_ id: UUID) async throws {
@@ -466,6 +469,18 @@ extension RingControllerTests {
         XCTAssertEqual(backend.scheduled, [id], "the cancelled alarm is re-armed once")
         XCTAssertTrue(backend.stopCalls.isEmpty)
         XCTAssertEqual(reporter.calls.map(\.afterRestart), [true])
+    }
+
+    func testRearmAfterRestartCapsScheduleAtRemainingEndAt() async {
+        reporter.nextOutcome = .resume(after: 100)
+        let controller = controller()
+        await controller.start(id)
+        wall = wall.addingTimeInterval(600)
+        uptime = 0
+        bootSession = 2
+        await controller.resume()
+        XCTAssertEqual(controller.state?.endAt, wall.addingTimeInterval(100))
+        XCTAssertEqual(backend.scheduleUntil[id], wall.addingTimeInterval(100))
     }
 
     func testOfflineRestartRecordsAfterRestart() async {

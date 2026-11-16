@@ -74,7 +74,7 @@ public final class AlarmKitRingBackend: RingBackend {
         return false
     }
 
-    public func schedule(_ id: UUID) async throws {
+    public func schedule(_ id: UUID, until: Date? = nil) async throws {
         #if os(iOS)
         guard #available(iOS 26.0, *) else { throw RingCommandError.unsupportedOS }
         do {
@@ -84,7 +84,7 @@ public final class AlarmKitRingBackend: RingBackend {
             activeCommandIDs.insert(id)
             persistActiveCommandIDs()
             let base = now()
-            let dates = chainDates()
+            let dates = chainDates(until: until)
             for (index, offset) in dates.enumerated() {
                 let fireDate = base.addingTimeInterval(offset)
                 let alarmID = index == 0 ? id : sentinelID(for: id, index: index)
@@ -173,23 +173,31 @@ extension AlarmKitRingBackend {
         return Set(strings.compactMap { UUID(uuidString: $0) })
     }
 
-    func chainDates() -> [TimeInterval] {
-        var dates: [TimeInterval] = [leadTime]
-        var offset = leadTime + chainInterval
-        while offset <= RingPolicy.duration + .ulpOfOne {
+    func chainDates(until: Date? = nil) -> [TimeInterval] {
+        let base = now()
+        let maxOffset = min(RingPolicy.duration, until?.timeIntervalSince(base) ?? RingPolicy.duration)
+        guard maxOffset > 0 else { return [] }
+        let firstOffset = min(leadTime, maxOffset)
+        var dates: [TimeInterval] = [firstOffset]
+        var offset = firstOffset + chainInterval
+        while offset <= maxOffset + .ulpOfOne {
             dates.append(offset)
             offset += chainInterval
         }
         return dates
     }
 
-    func sentinelCount() -> Int {
-        guard leadTime < RingPolicy.duration else { return 0 }
-        return Int((RingPolicy.duration - leadTime) / chainInterval)
+    func sentinelCount(until: Date? = nil) -> Int {
+        let base = now()
+        let maxOffset = min(RingPolicy.duration, until?.timeIntervalSince(base) ?? RingPolicy.duration)
+        guard leadTime < maxOffset else { return 0 }
+        return Int((maxOffset - leadTime) / chainInterval)
     }
 
-    func sentinelIDs(for commandID: UUID) -> [UUID] {
-        (1...sentinelCount()).map { sentinelID(for: commandID, index: $0) }
+    func sentinelIDs(for commandID: UUID, until: Date? = nil) -> [UUID] {
+        let count = sentinelCount(until: until)
+        guard count > 0 else { return [] }
+        return (1...count).map { sentinelID(for: commandID, index: $0) }
     }
 
     func sentinelID(for commandID: UUID, index: Int) -> UUID {

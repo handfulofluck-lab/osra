@@ -21,8 +21,9 @@ final class AlarmKitRingBackendTests: XCTestCase {
         super.tearDown()
     }
 
-    private func backend(leadTime: TimeInterval = 5, chainInterval: TimeInterval = 6) -> AlarmKitRingBackend {
-        AlarmKitRingBackend(leadTime: leadTime, chainInterval: chainInterval, defaults: defaults)
+    private func backend(leadTime: TimeInterval = 5, chainInterval: TimeInterval = 6,
+                         now: @escaping () -> Date = Date.init) -> AlarmKitRingBackend {
+        AlarmKitRingBackend(leadTime: leadTime, chainInterval: chainInterval, now: now, defaults: defaults)
     }
 
     func testSentinelIDPreservesCommandPrefixAndIsDeterministic() {
@@ -77,5 +78,24 @@ final class AlarmKitRingBackendTests: XCTestCase {
         defaults.set([commandID.uuidString], forKey: AlarmKitRingBackend.activeCommandIDsKey)
         let restored = backend()
         XCTAssertTrue(restored.activeCommandIDs.contains(commandID))
+    }
+
+    func testSentinelIDsAreEmptyWhenRemainingTimeIsShort() {
+        let fixed = Date(timeIntervalSince1970: 1_000)
+        let backend = backend(now: { fixed })
+        XCTAssertEqual(backend.sentinelCount(until: fixed.addingTimeInterval(10)), 0)
+        XCTAssertTrue(backend.sentinelIDs(for: commandID, until: fixed.addingTimeInterval(10)).isEmpty)
+    }
+
+    func testChainDatesAreCappedAtRemainingTime() {
+        let fixed = Date(timeIntervalSince1970: 1_000)
+        let backend = backend(now: { fixed })
+        let dates = backend.chainDates(until: fixed.addingTimeInterval(100))
+        XCTAssertEqual(dates.first, 5)
+        XCTAssertLessThanOrEqual(dates.last!, 100)
+        XCTAssertEqual(dates.count, backend.sentinelCount(until: fixed.addingTimeInterval(100)) + 1)
+        for offset in dates {
+            XCTAssertLessThanOrEqual(offset, 100, accuracy: 0.001)
+        }
     }
 }

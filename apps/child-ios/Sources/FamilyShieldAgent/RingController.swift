@@ -127,7 +127,7 @@ public final class RingController: ObservableObject {
         if restored.stopSource == nil {
             do {
                 if try await !backend.scheduledIDs().contains(restored.commandId) {
-                    try await backend.schedule(restored.commandId)
+                    try await backend.schedule(restored.commandId, until: restored.endAt)
                 }
                 guard generation == operationGeneration, state?.commandId == restored.commandId else {
                     if state?.commandId != restored.commandId { try? await backend.stop(restored.commandId) }
@@ -353,7 +353,7 @@ public final class RingController: ObservableObject {
         armDeadline()
         do {
             if try await !backend.scheduledIDs().contains(current.commandId) {
-                try await backend.schedule(current.commandId)
+                try await backend.schedule(current.commandId, until: resumed.endAt)
             }
             guard generation == operationGeneration, state?.commandId == current.commandId else {
                 if state?.commandId != current.commandId { try? await backend.stop(current.commandId) }
@@ -441,7 +441,7 @@ public final class RingController: ObservableObject {
         }
         guard !scheduledIDs.contains(current.commandId) else { return }
         do {
-            try await backend.schedule(current.commandId)
+            try await backend.schedule(current.commandId, until: current.endAt)
         } catch {
             return
         }
