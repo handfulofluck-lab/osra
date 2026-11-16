@@ -95,7 +95,7 @@ final class AlarmKitRingBackendTests: XCTestCase {
         XCTAssertLessThanOrEqual(dates.last!, 100)
         XCTAssertEqual(dates.count, backend.sentinelCount(until: fixed.addingTimeInterval(100)) + 1)
         for offset in dates {
-            XCTAssertLessThanOrEqual(offset, 100, accuracy: 0.001)
+            XCTAssertLessThanOrEqual(offset, 100)
         }
     }
 }
