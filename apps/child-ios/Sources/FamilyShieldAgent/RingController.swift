@@ -305,6 +305,7 @@ public final class RingController: ObservableObject {
         case .pinVerified: return .pinStopped
         case .parentCommand: return .parentStopped
         case .timeout: return .timedOut
+        case .childDismissed: return .childDismissed
         }
     }
 
