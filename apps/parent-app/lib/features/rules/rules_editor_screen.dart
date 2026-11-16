@@ -2,7 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/digits.dart';
 import '../../api/models.dart';
+import '../../core/localized_list.dart';
 import '../../l10n/l10n.dart';
 
 import '../../api/permission_errors.dart';
@@ -284,9 +286,6 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
     void update(WebFilterRule Function(WebFilterRule) f) =>
         setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: f(wf), appRules: _draft.appRules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
 
-    List<String> splitDomains(String text) =>
-        text.split(',').map((d) => d.trim()).where((d) => d.isNotEmpty).toList();
-
     // Recommended categories first, then any legacy extras still editable.
     final categories = [...kRecommendedCategories, for (final c in _kCategories) if (!kRecommendedCategories.contains(c)) c];
 
@@ -318,13 +317,13 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
         TextField(
           controller: _allowedDomains,
           decoration: InputDecoration(labelText: l10n.allowedDomainsLabel, border: const OutlineInputBorder()),
-          onChanged: (v) => update((w) => w.copyWith(allowedDomains: splitDomains(v))),
+          onChanged: (v) => update((w) => w.copyWith(allowedDomains: splitLocalizedList(v, stripDirectionMarks: true))),
         ),
         const SizedBox(height: AppSpace.md),
         TextField(
           controller: _blockedDomains,
           decoration: InputDecoration(labelText: l10n.blockedDomainsLabel, border: const OutlineInputBorder()),
-          onChanged: (v) => update((w) => w.copyWith(blockedDomains: splitDomains(v))),
+          onChanged: (v) => update((w) => w.copyWith(blockedDomains: splitLocalizedList(v, stripDirectionMarks: true))),
         ),
         SwitchListTile(
           title: Text(l10n.enforceSafeSearch),
@@ -609,7 +608,7 @@ class _AppRuleTileState extends State<_AppRuleTile> {
                 controller: _minutes,
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(labelText: l10n.limitPerDayLabel, border: const OutlineInputBorder(), isDense: true),
-                onChanged: (v) => widget.onChanged(AppRule(packageId: r.packageId, appName: r.appName, action: r.action, dailyLimitMinutes: int.tryParse(v))),
+                onChanged: (v) => widget.onChanged(AppRule(packageId: r.packageId, appName: r.appName, action: r.action, dailyLimitMinutes: int.tryParse(normalizeDigits(v)))),
               ),
             ],
           ],
@@ -916,8 +915,6 @@ class _RoutineDialogState extends State<_RoutineDialog> {
     if (t != null) setState(() => isStart ? _start = t : _end = t);
   }
 
-  List<String> _split(String text) => text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -966,8 +963,8 @@ class _RoutineDialogState extends State<_RoutineDialog> {
               startTime: formatTime(_start),
               endTime: formatTime(_end),
               days: _days.toList()..sort(),
-              blockedApps: _split(_blocked.text),
-              allowedApps: _split(_allowed.text),
+              blockedApps: splitLocalizedList(_blocked.text),
+              allowedApps: splitLocalizedList(_allowed.text),
             ));
           },
           child: Text(l10n.save),

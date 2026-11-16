@@ -71,6 +71,16 @@ timestamp), dashboard, map-sheet, call/SMS and bonus-time widgets with an Arabic
 Removing any one of the seven `ltrIsolate` calls must turn its corresponding row red. These are widget
 tests, not a phone run; no device claim or API access is used.
 
+For Arabic and Latin list separators, run `flutter test test/localized_list_test.dart` from
+`apps/parent-app` (#794). Its nine tests cover the shared splitter and real Arabic-locale widgets for
+allowed/blocked domains, routine blocked/allowed apps and digest recipients. Each field saves both
+`a.com، b.com` as two items and `a.com, b.com،c.com` as three; the helper also covers both semicolon
+families, line breaks, empty items and direction marks. Replacing any one of the five field calls with a
+raw Latin `.split(',')` must turn its owning row red with `['a.com، b.com']` instead of two items.
+Disabling direction-mark removal on blocked domains must turn its dedicated row red. The real API Zod
+validation row is in `services/api/test/reports.test.ts`: a digest recipient containing RLM gets 400 and
+no preferences write. These are network-free widget tests and an injected API test, not a phone run.
+
 ## 2. Prerequisites (dev machine)
 
 | Need | Where it lives here |

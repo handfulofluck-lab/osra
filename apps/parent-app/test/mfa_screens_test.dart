@@ -565,4 +565,30 @@ void main() {
       }
     });
   });
+
+  testWidgets('an Arabic-digit enrolment code is verified as Western digits (#771)', (tester) async {
+    final api = FakeApiClient(mfaRoutes());
+    await pumpScreen(tester, const MfaEnrollScreen(), api);
+
+    await tester.enterText(find.byKey(const ValueKey('mfaEnrollCode')), '١٢٣٤٥٦');
+    await tester.tap(find.byKey(const ValueKey('mfaVerifyButton')));
+    await flush(tester);
+    await tester.pumpAndSettle();
+
+    expect(api.calls('POST', '/v1/auth/mfa/verify').single.body['code'], '123456');
+  });
+
+  testWidgets('an Arabic-digit recovery code is sent as Western digits (#771)', (tester) async {
+    final api = FakeApiClient(mfaRoutes());
+    await pumpScreen(tester, const MfaRecoveryScreen(), api);
+
+    await tester.enterText(find.byKey(const ValueKey('mfaRecoveryEmail')), 'qa@osratech.com');
+    await tester.enterText(find.byKey(const ValueKey('mfaRecoveryPassword')), 'good-password');
+    await tester.enterText(find.byKey(const ValueKey('mfaRecoveryCode')), '١٢٣٤ABCD');
+    await tester.tap(find.byKey(const ValueKey('mfaRecoverySubmit')));
+    await flush(tester);
+    await tester.pumpAndSettle();
+
+    expect(api.calls('POST', '/v1/auth/mfa/recover').single.body['code'], '1234ABCD');
+  });
 }
