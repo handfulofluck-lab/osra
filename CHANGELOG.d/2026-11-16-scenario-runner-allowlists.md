@@ -2,10 +2,14 @@
 - The package allowlist — `com.osratech.child`, `com.osratech.child.full`, `com.osratech.parent` — now
   applies when a command runs, not only when a manifest is validated: an `appops` target, a
   `pm clear`/`pm uninstall` target and the runner's own `-Package` must be one of the three. Matching is
-  case-sensitive (`-cnotin`, and `-cne` against the original string), so an upper-case spelling of an
-  allowed package is refused rather than silently folded.
-- `manifest.schema.json` accepts only those three values for `package`, so a manifest naming anything else
-  fails validation before a lease is claimed.
+  case-sensitive on the tokens as typed (`-cnotin`, and `-cne` against the original string), so
+  `pm clear COM.OSRATECH.CHILD.FULL` is refused rather than folded to lower case.
+- `manifest.schema.json` accepts only those three values for `package`, and a Pester row keeps the schema
+  enum, the runner's allowlist and every committed manifest in step — the first draft of the enum was
+  missing the `com.` prefix and nothing caught it.
+- The runner no longer collects the Android events buffer (`logcat -b events`): on the owner's phone it
+  records which apps he opens, the same personal metadata as a content-provider query. The fake `adb`
+  keeps no canned event output.
 - The `content` command is removed from the ADB allowlist: only the first `--uri` was checked, so a second
   `--uri content://call_log/calls` could read the owner's call log. No scenario used it and no app in the
   repo declares a content provider. The `nonPersonal`/`projection` step fields that existed only for it are

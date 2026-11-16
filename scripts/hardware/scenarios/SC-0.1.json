@@ -4,7 +4,7 @@
   "pair": "A",
   "package": "com.osratech.child.full",
   "apiHealthUrl": "http://127.0.0.1:3000/health",
-  "timeoutSeconds": 120,
+  "timeoutSeconds": 600,
   "steps": [
     { "type": "adb", "command": ["shell", "getprop", "ro.product.model"] },
     { "type": "screencap", "name": "preflight.png" }

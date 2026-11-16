@@ -67,14 +67,6 @@ $script:DryRun = $true
         Test-Path -LiteralPath (Join-Path $TestDrive "safe.png") | Should -Be $false
     }
 
-    It "collects the events buffer separately from the sanitized runner log" {
-        $folder = New-ScenarioEvidence -ScenarioId "SC-0.1" -Out $TestDrive -Before ([pscustomobject]@{ lockState = $false; values = @{} })
-        $process = Start-ScenarioEventLog -Evidence $folder
-        Stop-ScenarioEventLog -Process $process
-        Test-Path -LiteralPath (Join-Path $folder "events.log") | Should -Be $true
-        Test-Path -LiteralPath (Join-Path $folder "runner.log") | Should -Be $false
-    }
-
     It "does not write raw command output or arbitrary messages to the runner log" {
         $folder = New-ScenarioEvidence -ScenarioId "SC-0.1" -Out $TestDrive -Before ([pscustomobject]@{ lockState = $false; values = @{} })
         Write-ScenarioLog -Evidence $folder -Stage "preflight"

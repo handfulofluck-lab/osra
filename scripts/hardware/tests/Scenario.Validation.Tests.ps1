@@ -68,6 +68,17 @@ Describe "Scenario manifest shape and URL validation" {
         $thrown | Should -Be "package_not_in_allowlist"
     }
 
+    It "keeps the schema enum, the runner allowlist and every committed manifest in step (#797 item 6)" {
+        $schema = Get-Content -LiteralPath (Join-Path $PSScriptRoot "../scenarios/manifest.schema.json") -Raw | ConvertFrom-Json
+        $enum = @($schema.properties.package.enum)
+        ($enum -join ",") | Should -Be ($script:ScenarioPackages -join ",")
+        foreach ($file in Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot "../scenarios") -Filter *.json) {
+            $manifest = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
+            if (-not $manifest.id) { continue }
+            ($enum -contains $manifest.package) | Should -Be $true
+        }
+    }
+
     It "refuses an ApiBase outside the allowlist (#797)" {
         $old = $script:ApiBase
         try {
@@ -160,7 +171,11 @@ Describe "Structural device and data refusals" {
         @{ name = "appops set on an op restore does not cover"; command = @("shell", "appops", "set", "com.osratech.child.full", "CAMERA", "allow") },
         @{ name = "content query on the call log"; command = @("shell", "content", "query", "--uri", "content://call_log/calls", "--projection", "date") },
         @{ name = "content query on the SMS store"; command = @("shell", "content", "query", "--uri", "content://sms", "--projection", "type") },
-        @{ name = "content query without a uri"; command = @("shell", "content", "query", "--projection", "count") }
+        @{ name = "content query without a uri"; command = @("shell", "content", "query", "--projection", "count") },
+        @{ name = "appops on a target outside the allowlist with no package named"; command = @("shell", "appops", "set", "com.whatsapp", "SYSTEM_ALERT_WINDOW", "allow") },
+        @{ name = "upper-case appops target"; command = @("shell", "appops", "set", "COM.OSRATECH.CHILD.FULL", "SYSTEM_ALERT_WINDOW", "allow") },
+        @{ name = "upper-case pm clear target"; command = @("shell", "pm", "clear", "COM.OSRATECH.CHILD.FULL") },
+        @{ name = "upper-case pm uninstall target"; command = @("shell", "pm", "uninstall", "Com.Osratech.Child") }
     )
     It "refuses <name>, wrapped or not" -ForEach $cases {
         param($name, $command)

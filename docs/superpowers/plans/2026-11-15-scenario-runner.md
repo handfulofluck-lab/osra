@@ -13,14 +13,14 @@
 ## Global Constraints
 
 - No physical phone, lease, real account, production, store, credential or real-family data is used in implementation or tests. Never merge or enable auto-merge.
-- The runner always injects `adb -s <serial>` itself. Every element is split on whitespace; metacharacters, quotes, backslashes and control characters are refused; and the command must match one fixed allowlisted shape, with no `/` in the verb: `getprop`, `setprop persist.sys.locale`, `dumpsys window|trust|package <scenario package>`, `settings get|put`, `appops get|set`, `dpm list-owners`, `pm list|uninstall|clear`, `screencap -p`, `input tap|swipe|keyevent|text`, `content query`. Everything else is refused, including `-s`, `-t`, `-H`, `-P` and `-L` (#797 review, item 2).
-- Inside those shapes: `settings put` only for one of the nine saved keys, in that key's own table; `dpm` only with `list-owners`; `pm uninstall|clear` only for the scenario package after the admin check; `input keyevent` only HOME, BACK or ENTER, `input text` with no digit at all (a PIN could otherwise be typed one character per step), `input tap|swipe` with integer coordinates only; `content` only `query`.
+- The runner always injects `adb -s <serial>` itself. Every element is split on whitespace; metacharacters, quotes, backslashes and control characters are refused; and the command must match one fixed allowlisted shape, with no `/` in the verb: `getprop`, `setprop persist.sys.locale`, `dumpsys window|trust|package <scenario package>`, `settings get|put`, `appops get|set`, `dpm list-owners`, `pm list|uninstall|clear`, `screencap -p`, `input tap|swipe|keyevent|text`. Everything else is refused, `content` included, as are `-s`, `-t`, `-H`, `-P` and `-L` (#797 review, items 2 and 3).
+- Inside those shapes: `settings put` only for one of the seven restored settings keys, in that key's own table; `dpm` only with `list-owners`; `pm uninstall|clear` only for the scenario package after the admin check, and the target must be one of the three allowed packages; `input keyevent` only HOME, BACK or ENTER, `input text` with no digit at all (a PIN could otherwise be typed one character per step), `input tap|swipe` with integer coordinates only.
 - A dry run refuses to start unless `adb` resolves inside `scripts/hardware/tests/fixtures/bin`, so a developer PC with the phone attached cannot drive the real device without a lease (#797 review, item 4).
 - `input tap`/`swipe` are not digit-filtered: a tap can still press a keypad digit one key at a time. That is accepted because preflight requires the phone already unlocked and the lease names the purpose; the digit refusals cover the typed paths (`input text`, `input keyevent`) only (Ahmed, R3 on #797).
 - Read `dumpsys window`/`trust` during preflight and save lock state. A manual step requiring an unlocked phone stops `NOT RUN`; never type or request an unlock code.
 - Capture only `exec-out screencap -p` bytes in memory, never an on-device path. Crop to the OSRA window, excluding status bar and notification shade. Uncropped bytes never reach disk on either side; missing safe bounds is `NOT RUN`, never permission to capture the whole screen.
 - Save and restore all nine values: the original seven plus `screen_off_timeout` and `zen_mode`, each read and written in its own settings table (`secure` for the accessibility keys, `system` for `screen_off_timeout` and the rotation keys, `global` for the rest) (#797 review, item 3). Restore in `finally` on every exit path, including refusal/error/Ctrl-C, and release with truthful `Clean`/`Locked`/`Unknown`. Heartbeat the lease before each step and stop with `scenario_timeout` when `timeoutSeconds` is exceeded.
-- Raw command output and HTTP bodies do not enter logs. `content query` requires `nonPersonal: true` and an explicit safe projection allowlist; phone numbers/message bodies are never permitted.
+- Raw command output and HTTP bodies do not enter logs. The `content` command is not allowed at all, so no provider — the call log or the SMS store included — can be queried (#797 review, item 3).
 - Missing measurements are `NOT RUN`; an empty diff alone is not PASS. Restore failure overrides PASS. Dry-run evidence is marked as such.
 
 ## Review Focus
@@ -39,11 +39,11 @@
 - Create: `scripts/hardware/tests/Scenario.Validation.Tests.ps1`
 - Create: `scripts/hardware/tests/fixtures/bin/adb` and `adb.cmd`
 
-**Interfaces:** `Read-ScenarioManifest(path)` returns a validated manifest. `Invoke-ScenarioProcess(exe, args)` accepts only an executable and argument array. ADB steps contain `command: string[]`, optional `nonPersonal` and `projection: string[]`.
+**Interfaces:** `Read-ScenarioManifest(path)` returns a validated manifest. `Invoke-ScenarioProcess(exe, args)` accepts only an executable and argument array. ADB steps contain `command: string[]` only; the `content` command and its `nonPersonal`/`projection` fields are gone.
 
 - [ ] Write fail-first schema tests for unknown fields/types, invalid paths/URLs and all five step shapes. Add a table driving every forbidden operation, including nested wrappers, digit keycode sequences/names, 4+-digit text runs, clock keys, `wm size`/`wm density`, and all connection-changing verbs (`svc`, `cmd wifi`/`connectivity`, and airplane-mode commands included). Name the single check removed for each row.
 - [ ] Run `Invoke-Pester scripts/hardware/tests/Scenario.Validation.Tests.ps1 -Output Detailed`; expect failures because the entry point/schema rules do not exist.
-- [ ] Implement validation before any lease/ADB call, with schema `additionalProperties: false` throughout. Use exact argument-array invocation; never `Invoke-Expression`, `cmd /c`, `sh -c` or a manifest script. Validate safe `content query` declarations and discard all other raw output. Allow `settings put` only for one of the nine saved keys.
+- [ ] Implement validation before any lease/ADB call, with schema `additionalProperties: false` throughout. Use exact argument-array invocation; never `Invoke-Expression`, `cmd /c`, `sh -c` or a manifest script. Allow `settings put` only for one of the seven restored settings keys.
 - [ ] Implement the fake `adb` launchers with exact argument logging, canned safe values, controlled failures and no real ADB fallback.
 - [ ] Rerun validation tests green. Commit the tested slice with the K31 trailer.
 
@@ -72,7 +72,7 @@
 
 - [ ] Write fail-first tests for path traversal, log redaction and missing/locked bounds. Using fixed non-interlaced RGB/RGBA PNGs, assert exact cropped width, height and known pixels; status-bar and shade rows must not survive. A skipped-crop mutant must make the height assertion red. Assert the fake `adb` log contains no on-device screenshot path.
 - [ ] Implement private PNG crop functions using .NET compression APIs only: capture `exec-out screencap -p` into memory, parse supported Android-style PNGs, defilter/filter scanlines correctly, crop safe OSRA bounds, and reject interlaced/unsupported/corrupt images as `NOT RUN`. Never write uncropped bytes to disk on either side. Do not introduce an image package or Windows-only drawing dependency.
-- [ ] Start/stop `logcat -b events` through the same process boundary; keep raw output out of `runner.log`. Create `before.json`, `events.log`, `result.json` and `result.md` only in the evidence folder.
+- [ ] Keep raw output out of `runner.log`. Create `before.json`, `result.json` and `result.md` only in the evidence folder; an events log is not collected (#797 review: it records which apps the owner opens).
 - [ ] Run evidence tests plus prior suites green. Commit with the K31 trailer.
 
 ### Task 4: Steps, measurements and guaranteed restoration
@@ -84,7 +84,7 @@
 **Interfaces:** `Invoke-ScenarioSteps` runs `adb`, `screencap`, `wait`, `http` and `manual` in order. `Get-ScenarioOutcome` implements `eq/lte/gte/lt/gt/present/empty`. `Restore-ScenarioState` and lease release run in `finally`.
 
 - [ ] Write fail-first tests for every step kind, scalar/array measurement shapes, missing actual → `NOT RUN`, failed measurement → `FAIL`, and an empty diff never being the only PASS. Dry-run results must say they are not physical evidence.
-- [ ] Inject a step exception, refusal and Ctrl-C: all nine values are restored and re-read, logcat stops, port forwards are removed, and lease release records truthful state. A failed restore overrides PASS; a failed release cannot disappear behind a step error.
+- [ ] Inject a step exception, refusal and Ctrl-C: all nine values are restored and re-read, no child process is left streaming, port forwards are removed, and lease release records truthful state. A failed restore overrides PASS; a failed release cannot disappear behind a step error.
 - [ ] Implement ordered execution, declared-value capture, status-only HTTP handling, heartbeat during waits, and the `finally` restoration/report path. Manual steps are interactive only when unlocked and authorized; dry-run uses the fake, never a hidden prompt.
 - [ ] Write result JSON/Markdown with per-step outcomes, measurements, limits, build kind, restore and release results; missing result/restore records fail the run. Preserve exit codes: refusal 2, scenario/measurement/infrastructure failure nonzero, successful SC-0.1 dry run 0.
 - [ ] Run all Pester suites green. Commit with the K31 trailer.

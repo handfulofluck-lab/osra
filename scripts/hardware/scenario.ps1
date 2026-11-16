@@ -42,6 +42,9 @@ function Assert-ScenarioCommand {
     # is not the package.
     if ($Package -and $Package -cnotin $script:ScenarioPackages) { throw "package_not_in_allowlist" }
     $c = @($Command | ForEach-Object { "$_".ToLowerInvariant() })
+    # The tokens as typed. Shape matching uses the lower-case copy, but a package comparison uses these:
+    # `COM.OSRATECH.CHILD.FULL` is not the package, and adb would receive the original casing (#797).
+    $raw = @(foreach ($element in $Command) { @([regex]::Split("$element", "\s+") | Where-Object { $_ }) })
     # A denylist of verbs was bypassable (`/system/bin/dpm`, `d''pm`, `input keyboard …`, one digit key
     # per step), so the command must match one fixed allowlisted shape instead (#797 review, item 2).
     # Nothing may carry a metacharacter, a quote, a backslash or a control character in any element.
@@ -63,6 +66,8 @@ function Assert-ScenarioCommand {
     }
     $rest = @()
     if ($start + 1 -lt $flat.Count) { $rest = @($flat[($start + 1)..($flat.Count - 1)]) }
+    $restRaw = @()
+    if ($start + 1 -lt $raw.Count) { $restRaw = @($raw[($start + 1)..($raw.Count - 1)]) }
     switch ($verb) {
         "getprop" {
             if ($rest.Count -ne 1 -or $rest[0] -notmatch "^[a-z0-9._-]+$") { throw "adb_command_not_allowed" }
@@ -78,7 +83,8 @@ function Assert-ScenarioCommand {
                 if ($rest.Count -ne 1) { throw "adb_command_not_allowed" }
             } elseif ($rest[0] -eq "package") {
                 if ($rest.Count -ne 2) { throw "adb_command_not_allowed" }
-                if ($Package -and $rest[1] -cne $Package) { throw "package_outside_scenario" }
+                if ($restRaw[1] -cnotin $script:ScenarioPackages) { throw "package_not_in_allowlist" }
+                if ($Package -and $restRaw[1] -cne $Package) { throw "package_outside_scenario" }
             } else { throw "adb_command_not_allowed" }
         }
         "screencap" {
@@ -102,8 +108,8 @@ function Assert-ScenarioCommand {
         }
         "appops" {
             if ($rest.Count -lt 3 -or $rest[0] -notin @("get", "set")) { throw "appops_read_only" }
-            if ($rest[1] -cnotin $script:ScenarioPackages) { throw "package_not_in_allowlist" }
-            if ($Package -and $rest[1] -cne $Package) { throw "package_outside_scenario" }
+            if ($restRaw[1] -cnotin $script:ScenarioPackages) { throw "package_not_in_allowlist" }
+            if ($Package -and $restRaw[1] -cne $Package) { throw "package_outside_scenario" }
             if ($rest[2] -notmatch "^[a-z0-9._]+$") { throw "adb_command_not_allowed" }
             if ($rest[0] -eq "set") {
                 # Restore only puts SYSTEM_ALERT_WINDOW back, so no other op may be set (#797 sign-off note).
@@ -118,8 +124,8 @@ function Assert-ScenarioCommand {
             if ($rest.Count -lt 1) { throw "adb_command_not_allowed" }
             if ($rest[0] -eq "list") { }
             elseif ($rest[0] -in @("uninstall", "clear")) {
-                if ($rest.Count -ne 2 -or $rest[1] -cnotin $script:ScenarioPackages) { throw "package_not_in_allowlist" }
-                if (-not $Package -or $rest[1] -cne $Package) { throw "package_removal_outside_scenario" }
+                if ($rest.Count -ne 2 -or $restRaw[1] -cnotin $script:ScenarioPackages) { throw "package_not_in_allowlist" }
+                if (-not $Package -or $restRaw[1] -cne $Package) { throw "package_removal_outside_scenario" }
             } else { throw "pm_command_not_allowed" }
         }
         "input" {
@@ -301,7 +307,6 @@ function Invoke-ScenarioProcess {
     return [pscustomobject]@{ ExitCode = $process.ExitCode; Bytes = $memory.ToArray() }
 }
 
-
 . (Join-Path $PSScriptRoot "classify-build.ps1")
 
 function Invoke-ScenarioLease {
@@ -419,7 +424,6 @@ function Invoke-ScenarioManualStep {
     return [pscustomobject]@{ status = "DONE"; reason = "manual confirmation recorded" }
 }
 
-
 if (-not ("ScenarioPng" -as [type])) {
     Add-Type -Path (Join-Path $PSScriptRoot "scenario-png.cs")
 }
@@ -476,24 +480,6 @@ function Write-ScenarioLog {
     $path = Join-Path ([IO.Path]::GetFullPath($Evidence)) "runner.log"
     [IO.File]::AppendAllText($path, "$Stage`n", (New-Object System.Text.UTF8Encoding($false)))
 }
-
-function Start-ScenarioEventLog {
-    param([Parameter(Mandatory = $true)][string]$Evidence)
-    $resolved = Resolve-ScenarioAdb
-    $path = Join-Path ([IO.Path]::GetFullPath($Evidence)) "events.log"
-    $argumentLine = @("-s", $script:Serial, "logcat", "-b", "events") | ForEach-Object { ConvertTo-ScenarioProcessArgument $_ }
-    return Start-Process -FilePath $resolved -ArgumentList $argumentLine -RedirectStandardOutput $path -RedirectStandardError (Join-Path $Evidence "events.err.log") -NoNewWindow -PassThru
-}
-
-function Stop-ScenarioEventLog {
-    [CmdletBinding()]
-    param([Parameter(Mandatory = $true)]$Process)
-    if (-not $Process.HasExited) {
-        $Process.Kill()
-        $Process.WaitForExit()
-    }
-}
-
 
 function Invoke-ScenarioSteps {
     param([Parameter(Mandatory = $true)]$Steps, [Parameter(Mandatory = $true)][string]$Evidence, [Parameter(Mandatory = $true)][bool]$LockState)
@@ -654,14 +640,13 @@ function Invoke-ScenarioRun {
     $script:Package = $Manifest.package
     if ($script:ApiBase) { Assert-HealthUrl -Url $script:ApiBase }
     $script:Deadline = if ($Manifest.PSObject.Properties.Name -contains "timeoutSeconds") { [DateTime]::UtcNow.AddSeconds([int]$Manifest.timeoutSeconds) } else { $null }
-    $before = $null; $folder = $null; $eventProcess = $null; $restore = $null; $preflight = $null
+    $before = $null; $folder = $null; $restore = $null; $preflight = $null
     $stepResult = [pscustomobject]@{ completed = $false; captures = [ordered]@{}; steps = @(); error = "not_started" }
     try {
         $preflight = Invoke-ScenarioPreflight -Manifest $Manifest
         $before = Get-ScenarioBeforeState
         $folder = New-ScenarioEvidence -ScenarioId $Manifest.id -Out $Out -Before $before
         Write-ScenarioLog -Evidence $folder -Stage "start"
-        $eventProcess = Start-ScenarioEventLog -Evidence $folder
         $stepResult = Invoke-ScenarioSteps -Steps $Manifest.steps -Evidence $folder -LockState ([bool]$preflight.lockState)
     } catch {
         $stepResult = [pscustomobject]@{ completed = $false; captures = [ordered]@{}; steps = @(); error = "run_failed" }
@@ -670,7 +655,6 @@ function Invoke-ScenarioRun {
             try { $restore = Restore-ScenarioState -Before $before }
             catch { $restore = [pscustomobject]@{ clean = $false; failures = @("restore_exception"); diffCount = 1 } }
         }
-        if ($eventProcess) { Stop-ScenarioEventLog -Process $eventProcess -ErrorAction SilentlyContinue }
         $claimed = @($script:LeaseCalls | Where-Object { $_.Action -eq "Claim" }).Count -gt 0
         $released = @($script:LeaseCalls | Where-Object { $_.Action -eq "Release" }).Count -gt 0
         if ($claimed -and -not $released) {
@@ -700,7 +684,6 @@ function Invoke-ScenarioRun {
     if ($folder) { Write-ScenarioResult -Evidence $folder -Result $result }
     return $result
 }
-
 
 if ($MyInvocation.InvocationName -ne ".") {
     try {

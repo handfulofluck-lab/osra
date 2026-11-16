@@ -50,9 +50,9 @@ The flow is:
 
 1. Parse and validate the manifest before claiming a lease or calling `adb`. Load schema rules and check step types, evidence names, URL hosts and forbidden commands.
 2. Claim through `phone-claim.ps1`, check exact serial/model, classify the installed package and require the health URL to return success without logging its body.
-3. Save app-ops `SYSTEM_ALERT_WINDOW`, `enabled_accessibility_services`, `accessibility_enabled`, the agent's app locale, `stay_on_while_plugged_in`, `accelerometer_rotation` and `user_rotation` verbatim, then create `<out>/<UTC timestamp>-<scenario id>/` with `before.json`, `runner.log`, `events.log`, step screenshots and `result.json`/Markdown.
-4. Start `logcat -b events` through the same safe subprocess boundary, execute steps in order, capture named values, and heartbeat the lease during long waits. Never print message bodies, phone numbers, tokens, passwords, PINs, URLs with userinfo or command output that may contain them.
-5. In `finally`, stop logcat, restore every saved value exactly, re-read all seven values and write before/after diffs, remove port forwards and uninstall only the manifest's test package when instructed by the scenario. Release the lease with the truthful `Clean`, `Locked` or `Unknown` state and write the report. Restoration failure takes precedence over any requested `PASS`.
+3. Save app-ops `SYSTEM_ALERT_WINDOW`, `enabled_accessibility_services`, `accessibility_enabled`, the agent's app locale, `stay_on_while_plugged_in`, `accelerometer_rotation` and `user_rotation` verbatim, then create `<out>/<UTC timestamp>-<scenario id>/` with `before.json`, `runner.log`, step screenshots and `result.json`/Markdown.
+4. Execute steps in order, capture named values, and heartbeat the lease during long waits. The events buffer is deliberately not collected: on the owner's phone it records which apps he opens, the same personal metadata as a call-log query, so the runner dropped it in review (#797, Claude's item 3). Never print message bodies, phone numbers, tokens, passwords, PINs, URLs with userinfo or command output that may contain them.
+5. In `finally`, stop nothing that is still streaming (the runner starts no child process outside a step), restore every saved value exactly, re-read all seven settings values and write before/after diffs, remove port forwards and uninstall only the manifest's test package when instructed by the scenario. Release the lease with the truthful `Clean`, `Locked` or `Unknown` state and write the report. Restoration failure takes precedence over any requested `PASS`.
 
 Subprocesses receive argument arrays, not shell command strings. The runner never invokes `cmd /c`, `sh -c`, `Invoke-Expression`, or a manifest-provided script file. HTTP responses are status-checked and discarded except for declared nonpersonal measurement fields. Raw ADB output and HTTP bodies never enter `runner.log` by default.
 
@@ -66,8 +66,7 @@ Validation rejects a command when any argument is or contains a forbidden operat
 - `reboot`;
 - `input text` whose argument is digits-only, because that is how an unlock code would be typed. Matching is structural, including nested `shell`/`exec-out` wrappers, not a brittle substring against the whole command line.
 
-A `content query` step is refused unless the manifest explicitly sets `nonPersonal: true` **and** supplies an allowlist of nonpersonal projection columns. No phone-number or message-body column is allowed even when marked. There is no override for raw content output.
-
+The `content` command is not allowed at all: its first-`--uri` check could be bypassed with a second `--uri` (Android uses the last), and no scenario or app in the repo declares a content provider. The `nonPersonal` and `projection` step fields went with it, so a manifest cannot carry a safety declaration for a command that cannot run (#797 review, item 3).
 Every rule has a fail-first test and a named mutant: removing each forbidden-command check, allowing arbitrary file paths, skipping restore after an injected step exception, treating missing measurement data as PASS, accepting an empty before/after diff as the only success, emitting sensitive content, or allowing a test-only build to become gate evidence. Each mutant must turn its owning test red and the restored suite green.
 
 ## Evidence and result contract
@@ -76,7 +75,7 @@ Every rule has a fail-first test and a named mutant: removing each forbidden-com
 
 `scenario.ps1 -DryRun -Scenario SC-0.1` must print that table and exit 0. It also writes machine-readable evidence for tests. Other outcomes exit nonzero: invalid manifest/refusal `2`, scenario/measurement failure `1`, and unexpected infrastructure failure `1` with the refusal/restoration details. A `NOT RUN` caused by missing measurement data is nonzero so it cannot be mistaken for PASS.
 
-The fake `adb` is a test fixture script on `PATH`, not production. It supports exact argument-array logging and canned before-values, screenshots, package dumps and logcat lifecycle. Fake `phone-claim` and HTTP responses use the same invocation contract and contain only synthetic data. No real lease, device state, account or service is touched.
+The fake `adb` is a test fixture script on `PATH`, not production. It supports exact argument-array logging and canned before-values, screenshots and package dumps. Fake `phone-claim` and HTTP responses use the same invocation contract and contain only synthetic data. No real lease, device state, account or service is touched.
 
 ## Implementation tasks for the later plan
 

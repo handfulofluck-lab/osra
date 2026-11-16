@@ -1201,14 +1201,16 @@ node scripts/hardware/scenario-family.mjs delete --base-url http://localhost:300
 Run the five Pester suites with `scripts/hardware/tests/Scenario.*.Tests.ps1`; `workflow-lint` requires
 at least 117 cases, zero failures, and a real `SC-0.1` dry-run table with a `result.md`. The dry run puts
 the fake `adb` directory first on `PATH` and touches no lease, backend or device; it refuses any `adb`
-outside that directory, so a PC with the phone attached cannot drive it.
+outside that directory, so a PC with the phone attached cannot drive it. `SC-0.1` allows 600 s because
+every ADB call is a process spawn, and on a loaded Windows host the same dry run has taken 139 s; the
+bound must not turn a healthy run into `scenario_timeout`.
 
 ADB steps are an allowlist of fixed shapes — `getprop`, `setprop persist.sys.locale`, `dumpsys`,
 `settings get|put`, `appops get|set`, `dpm list-owners`, `pm list|uninstall|clear`, `screencap -p`,
 `input tap|swipe|keyevent|text` — with no path in the verb and no quote,
 backslash, control character or shell metacharacter in any element; everything else is refused. The
 `content` command is not allowed at all: its first-`--uri` check could be bypassed with a second `--uri`,
-and no scenario needs it (#797). Inside those shapes, `settings put` is limited to the nine restored keys
+and no scenario needs it (#797). Inside those shapes, `settings put` is limited to the seven restored keys
 in their own table, `input keyevent` to HOME/BACK/ENTER, and `input text` may not contain a digit. Every
 `appops` and `pm clear|uninstall` target, and the manifest's own `package`, must be one of
 `com.osratech.child`, `com.osratech.child.full` or `com.osratech.parent`, matched case-sensitively; the
