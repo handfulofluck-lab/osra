@@ -7,17 +7,20 @@ name: Parent app
 # One file outside `apps/parent-app/` is read: the alert-category parity test (#344) reads the server's
 # category list, so a change to it must run this suite. `scripts/check-ci-paths.mjs` keeps the two lists
 # identical, makes sure they name this file, and fails when a test starts reading another outside file.
+# `scripts/check-parent-ios-push.mjs` (#558) is in the paths too, because a step below runs it.
 on:
   push:
     branches: [main]
     paths:
       - "apps/parent-app/**"
       - "services/api/src/routes/alerts.ts"
+      - "scripts/check-parent-ios-push.mjs"
       - ".github/workflows/parent-app.yml"
   pull_request:
     paths:
       - "apps/parent-app/**"
       - "services/api/src/routes/alerts.ts"
+      - "scripts/check-parent-ios-push.mjs"
       - ".github/workflows/parent-app.yml"
   schedule:
     - cron: "11 2 * * 1"
