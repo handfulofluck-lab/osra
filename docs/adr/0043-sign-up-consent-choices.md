@@ -154,14 +154,19 @@ regulator. Question L4 asks the lawyer whether to keep this proof at all and for
 
 1. *(required)* "I accept OSRA's [Terms of Use] and [Privacy Policy]." Error if not ticked: "To create an
    account, please accept the Terms of Use and Privacy Policy."
-2. *(optional)* "Help make OSRA's protection smarter. OSRA may keep short parts of some of my children's
-   chats, with names and other personal details replaced, to train OSRA's safety model, for up to 24 months.
-   This is off unless I tick it, and I can turn it off at any time in Settings. [Learn more]"
+2. *(optional)* "OSRA may keep short parts of some of my children's chats, with names and other personal
+   details replaced, for up to 24 months, to train OSRA's safety model and make its protection smarter. My
+   children aged 13 or over will also be asked. This is off unless I tick it, and I can turn it off at any
+   time in Settings. [Learn more]" (Arabic Bureau, #846: the first sentence states that chats are kept, as
+   the AI plan requires, and the 13+ question is mentioned, as the 13 Nov policy wording promises.)
+   For a guardian (D5), box 2 and the Settings switch carry one more sentence (UI/UX Bureau, #846):
+   "Your family's chats are used for this only if the family's account owner also says yes. If you turn
+   this off, we will tell the owner."
 3. *(optional)* "Email me OSRA offers and product news. I can unsubscribe at any time."
 
 The maintainer's phrase "sharing usage feedback" is softer than what box 2 actually allows. The AI plan
-records the rule that the opt-in's first sentence must say plainly that messages are kept, so the draft says
-so. All Arabic goes through the Arabic Language Bureau; the Bureau's earlier title for this choice is
+records the rule that the opt-in's first sentence must say plainly that messages are kept, so the draft opens
+with it. All Arabic goes through the Arabic Language Bureau; the Bureau's earlier title for this choice is
 «ساعد في تحسين تنبيهات السلامة» (draft, not signed).
 
 ## Questions for the lawyer
@@ -176,6 +181,9 @@ so. All Arabic goes through the Arabic Language Bureau; the Bureau's earlier tit
   with the child's own yes from 13 added later?
 - **L7** Does the marketing box need a separate line for marketing by push notification or SMS later, or is
   a new box enough when that comes?
+- **L8** The Terms and Privacy Policy are English only today (no `/ar/terms`, `/ar/privacy`). Must they be
+  published in Arabic before Arabic-speaking parents accept them, or may the Arabic box 1 say the documents
+  are in English for now (the Arabic Bureau has that line ready)?
 
 ## Consequences
 
