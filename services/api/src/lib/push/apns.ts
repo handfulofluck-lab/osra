@@ -186,26 +186,11 @@ export class ApnsProvider implements PushProvider {
       "apns-priority": message.dataOnly ? "5" : message.priority === "high" ? "10" : "5",
       ...(message.threadId ? { "apns-collapse-id": message.threadId.slice(0, 64) } : {}),
     };
-    const isRetryableConnectionError = (err: unknown): boolean => {
-      const msg = (err as Error).message ?? "";
-      return ["ECONNRESET", "EPIPE", "ETIMEDOUT", "GOAWAY", "NGHTTP2", "closed session", "Connection reset"].some((pattern) =>
-        msg.includes(pattern),
-      );
-    };
-
     let res: { status: number; body: string };
-    let attempt = 0;
-    while (true) {
-      try {
-        res = await this.transport(this.cfg.host, `/3/device/${token}`, headers, JSON.stringify(ApnsProvider.buildPayload(message)));
-        break;
-      } catch (err) {
-        if (attempt === 0 && isRetryableConnectionError(err)) {
-          attempt++;
-          continue;
-        }
-        return { ok: false, invalidToken: false, reason: (err as Error).message };
-      }
+    try {
+      res = await this.transport(this.cfg.host, `/3/device/${token}`, headers, JSON.stringify(ApnsProvider.buildPayload(message)));
+    } catch (err) {
+      return { ok: false, invalidToken: false, reason: (err as Error).message };
     }
     if (res.status === 200) return { ok: true };
     let reason = "";
