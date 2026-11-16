@@ -5,7 +5,7 @@ import Foundation
 public protocol RingBackend {
     var available: Bool { get }
     func requestAuthorization() async -> Bool
-    func schedule(_ id: UUID, until: Date? = nil) async throws
+    func schedule(_ id: UUID, until: Date?) async throws
     func stop(_ id: UUID) async throws
     func scheduledIDs() async throws -> Set<UUID>
     func updates() async -> AsyncStream<Set<UUID>>

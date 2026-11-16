@@ -86,7 +86,7 @@ public final class RingController: ObservableObject {
             guard generation == operationGeneration else { return nil }
         }
         do {
-            try await backend.schedule(id)
+            try await backend.schedule(id, until: nil)
         } catch {
             if generation == operationGeneration {
                 await restoreReplacement(previous, generation: generation)
