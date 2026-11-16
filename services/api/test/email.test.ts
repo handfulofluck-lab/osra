@@ -44,7 +44,7 @@ describe("templates", () => {
   it("invite names the inviter, family and role, with an idempotency key", () => {
     const m = inviteEmail("co@example.com", { inviterName: "Sara", familyName: "Haddad", role: "co-parent", link: "https://x/invite/accept?token=i1" });
     expect(m.subject).toContain("Haddad");
-    expect(m.text).toContain("Sara invited you to the Haddad family");
+    expect(m.text).toContain(String.fromCharCode(0x2068) + "Sara" + String.fromCharCode(0x2069) + " invited you to the " + String.fromCharCode(0x2068) + "Haddad" + String.fromCharCode(0x2069) + " family");
     expect(m.text).toContain("co-parent");
     expect(m.idempotencyKey).toBe("invite:https://x/invite/accept?token=i1");
   });
@@ -57,7 +57,7 @@ describe("templates", () => {
       children: [{ displayName: "Alex", totalAppMinutes: 310, topApps: [{ name: "YouTube", minutes: 120 }], urlVisits: 44, topBlockedDomains: [{ domain: "bad.example", count: 3 }], socialConcerns: 1, calls: 2, sms: 5 }],
     });
     expect(m.to).toEqual(["a@x", "b@x"]);
-    expect(m.text).toContain("Alex: 310 min on screen; top apps YouTube 120m; 44 sites visited, 1 blocked; 1 social concern(s); 2 calls, 5 SMS.");
+    expect(m.text).toContain("Alex: 310 min on screen; top apps YouTube 120m; 44 sites visited, 1 blocked; 1 social concern; 2 calls, 5 SMS.");
     const empty = digestEmail("a@x", { familyName: "Demo", days: 1, link: "l", children: [] });
     expect(empty.text).toContain("No activity was recorded.");
   });
@@ -309,13 +309,31 @@ describe("routes use the email sender", () => {
     // #804 (Ahmed's B1): the mailed link carries its own secret, never the invite id the inviter can see.
     expect(capture.sent[0].text).toMatch(/https:\/\/app\.osra\.family\/invite\/accept\?token=[0-9a-f]{64}(\s|$)/);
     expect(capture.sent[0].text).not.toContain("token=inv-1");
-    expect(capture.sent[0].text).toContain("Sara invited you to the Haddad family");
+    expect(capture.sent[0].text).toContain(String.fromCharCode(0x2068) + "Sara" + String.fromCharCode(0x2069) + " invited you to the " + String.fromCharCode(0x2068) + "Haddad" + String.fromCharCode(0x2069) + " family");
 
     process.env.RESEND_API_KEY = "re_x";
     process.env.EMAIL_FROM = "a@b";
     const prod = await app.inject({ method: "POST", url: "/v1/family/invites", headers: authHeader(app), payload: { email: "co@example.com", role: "co-parent" } });
     expect(prod.json()).toMatchObject({ emailed: true });
     expect(prod.json().acceptToken).toBeUndefined();
+    await app.close();
+  });
+
+  it("does not invent an inviter or family name when the rows are missing", async () => {
+    const app = await buildApp(inviteRoutes, "/v1/family");
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "parent-1", familyId: "fam-1", role: "owner", permissions: [], displayName: null });
+    prismaMock.family.findUnique.mockResolvedValue(null);
+    prismaMock.familyInvite.create.mockResolvedValue({ id: "inv-1", familyId: "fam-1", email: "co@example.com", role: "co-parent", permissions: [], status: "pending" });
+
+    const res = await app.inject({ method: "POST", url: "/v1/family/invites", headers: authHeader(app), payload: { email: "co@example.com", role: "co-parent" } });
+
+    expect(res.statusCode).toBe(201);
+    const text = capture.sent[0].text;
+    expect(text).not.toContain("A parent");
+    expect(text).not.toContain("the your");
+    expect(text).not.toContain("null");
+    expect(text).toContain("You have been invited to a family on OSRA");
+    expect(text).toContain("دعوة للانضمام إلى عائلة في تطبيق أسرة");
     await app.close();
   });
 });

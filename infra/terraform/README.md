@@ -197,6 +197,19 @@ the task at start with `ResourceInitializationError` and break every session in 
 `loadServiceAccountFromEnv` returns `null` (`services/api/src/lib/push/fcm.ts:55`) — "flag off" and "push off" mean
 the same thing.
 
+**APNs (iPhone push, #695)** follows the same three steps with its own container and flag. The `.p8` file lives
+only on the machine Apple's key was downloaded to; write it from there, never through chat, the repo or a log:
+
+```bash
+ARN=$(terraform -chdir=infra/terraform/base output -raw apns_key_p8_secret_arn)
+aws secretsmanager put-secret-value --region <region> --secret-id "$ARN" --secret-string file://<path outside every checkout>/AuthKey.p8
+# then, with apns_key_id and apns_team_id in the stack's tfvars (never in the repo):
+TF_VAR_apns_enabled=true ./infra/terraform/up.sh
+```
+
+The task always uses the production APNs endpoint (`APNS_ENV=production`): TestFlight and store builds register
+production tokens. One key serves both endpoints, so staging and production use the same `.p8`.
+
 **If `base` is ever destroyed, the value goes with it** (`recovery_window_in_days = 0`, so the name is reusable at
 once). Repeat step 2 after a rebuild; the container comes back, the value does not.
 

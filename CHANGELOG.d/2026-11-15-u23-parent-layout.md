@@ -1,0 +1,8 @@
+### Parent app — responsive dashboard cards, non-truncating child page top bar, and FAB clearance (PR A)
+- Replaced fixed-aspect `GridView.count` in `DashboardScreen` with responsive `ListView.separated` (<600 dp phone single column, >=600 dp tablet 2-column layout with `IntrinsicHeight` and stretch height sharing).
+- Removed unbounded `Spacer()` from `ChildCard` and grouped card layout into top identity/chips and bottom metrics sections, deriving height dynamically from intrinsic content without layout overflow.
+- Enabled multi-line wrapping up to 2 lines (`maxLines: 2, overflow: TextOverflow.ellipsis`) for `child.displayName` and natural wrapping for status chips, battery chip, and Internet pill.
+- Added bottom padding of `AppSpace.xxl * 3` (96 dp) using `EdgeInsetsDirectional` to ensure the final card scrolls clear of `FloatingActionButton.extended` across all text scales.
+- Dedicated child detail `AppBar.title` space to `child.displayName` (`maxLines: 2`) with dynamic `toolbarHeight` scaling with text scale; replaced `TextButton.icon` with accessible `IconButton` (`editRulesButton`, minimum 48 dp touch target), folded bar actions into `childActionsMenu` below `360 dp` so scale `1.0` never truncates the child name, and added a full-width tonal button in `_OverviewTab`.
+- Stacked screen-time label/value end-aligned without ellipsis when tight on narrow cards at `2.0` text scale and allowed `WellbeingRow` score text to wrap cleanly without truncation.
+- Added automated layout matrix test suite (`test/layout_matrix_test.dart`) covering 36 combinations across 3 viewport sizes (320x568, 375x667, 393x852 dp), 3 text scales (1.0, 1.35, 2.0), 2 locales (en, ar), and 2 themes (light, dark), with planted fault regressions.

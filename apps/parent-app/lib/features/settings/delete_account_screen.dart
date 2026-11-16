@@ -178,7 +178,7 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
             style: FilledButton.styleFrom(
               backgroundColor: context.tokens.danger,
               foregroundColor: context.tokens.onDanger,
-              minimumSize: const Size.fromHeight(48),
+              minimumSize: const Size.fromHeight(52),
             ),
             onPressed: (_busy || !_matches || scope == null) ? null : () => _submit(scope),
             child: Text(_busy ? l10n.deleteAccountBusy : l10n.deleteAccountSubmit),

@@ -2,8 +2,10 @@ package com.familyshield.agent.security
 
 import android.content.Context
 import android.util.Log
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
@@ -43,15 +45,17 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
         val childId = settings.childId() ?: return Result.success() // not paired: nobody to tell
         val deviceId = settings.deviceId()
         val guardWindow = guardWindow()
-        val dedupeKey = when (type) {
-            TYPE_ADMIN_REMOVED -> TamperAlertDedupe.adminRemovalKey(deviceId, eventTimestamp())
-            TYPE_GUARD_TRIGGERED -> guardWindow?.let {
-                TamperAlertDedupe.guardAggregateKey(deviceId, it.windowStartMs)
-            }
-            // Not eventTimestamp(): its fallback stamps the admin-disable time, which is not this event's.
-            TYPE_BLOCK_BYPASS -> TamperAlertDedupe.blockBypassKey(deviceId, app, layout, inputData.getLong(KEY_EVENT_AT_MS, 0L))
-            else -> null
-        }
+        val dedupeKey = dedupeKeyFor(
+            type = type,
+            deviceId = deviceId,
+            guardWindow = guardWindow,
+            app = app,
+            layout = layout,
+            // The block-bypass and unbind keys use the event's own time, never eventTimestamp(): its fallback
+            // stamps the admin-disable time, which is not this event's.
+            eventAtMs = inputData.getLong(KEY_EVENT_AT_MS, 0L),
+            adminRemovedAtMs = eventTimestamp(),
+        )
         // The window key is stable across attempts; the local key adds the count so attempt N+1 is
         // posted and a WorkManager retry of attempt N is not.
         val postKey = if (type == TYPE_GUARD_TRIGGERED && guardWindow != null) {
@@ -64,6 +68,14 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             recordPosted = { TamperState.markTamperAlertPosted(applicationContext, it) },
         )
         return try {
+            // U2b (Antigravity): written here, before the POST, so the 60-second poll reads the same event as
+            // already reported. Doing it in onUnbind raced a scope that onDestroy cancels.
+            if (type == TYPE_ACCESSIBILITY_OFF && runAttemptCount == 0) {
+                runCatching {
+                    settings.recordAccessibilityEnabled(false)
+                    settings.recordTamperAlert(com.familyshield.agent.receivers.AccessibilityOffPolicy.TYPE, inputData.getLong(KEY_EVENT_AT_MS, 0L))
+                }
+            }
             dispatcher.dispatch(postKey) {
                 entry.apiService().postInternalAlert(
                     AlertDto(
@@ -83,7 +95,10 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             Result.success()
         } catch (e: Exception) {
             Log.w(TAG, "tamper alert '$type' failed; retrying", e)
-            if (runAttemptCount < 5) Result.retry() else Result.failure()
+            // osra-security#29 review (Claude): the unbind alert never gives up. The poll cannot take over — the
+            // state is written before the POST — so a capped retry would mean an offline phone tells nobody. The
+            // dedupe key makes a repeat safe.
+            if (shouldRetry(type, runAttemptCount)) Result.retry() else Result.failure()
         }
     }
 
@@ -126,6 +141,9 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
         const val TYPE_ADMIN_REMOVED = "device_admin_removed"
         const val TYPE_GUARD_TRIGGERED = "protection_screen_opened"
         const val TYPE_VPN_REVOKED = "content_filter_disconnected"
+
+        /** osra-security#29, second half: the accessibility service was unbound while paired. */
+        const val TYPE_ACCESSIBILITY_OFF = "accessibility_off"
         const val TYPE_BLOCK_BYPASS = "block_bypass"
         private const val KEY_TYPE = "type"
         private const val KEY_DETAIL = "detail"
@@ -141,9 +159,11 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             TYPE_ADMIN_REMOVED to "Device admin was removed",
             TYPE_GUARD_TRIGGERED to "Someone tried to remove protection",
             TYPE_VPN_REVOKED to "Content filter was disconnected",
+            TYPE_ACCESSIBILITY_OFF to "Protection was disabled",
             TYPE_BLOCK_BYPASS to "A blocked app stayed on screen",
         )
         private val BODIES = mapOf(
+            TYPE_ACCESSIBILITY_OFF to "The OSRA accessibility service was turned off on this device",
             TYPE_ADMIN_REMOVED to "OSRA's device-admin rights were turned off on this device. Uninstall is no longer blocked.",
             TYPE_GUARD_TRIGGERED to "A protection-removal screen was opened on this device and the PIN was asked for.",
             TYPE_VPN_REVOKED to "OSRA's web filter (VPN) was disconnected on this device — another VPN app took over or it was turned off in Settings. Web filtering is off until it is reconnected.",
@@ -156,10 +176,36 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             else mapOf("type" to type)
 
         /**
-         * Enqueues one expedited alert of [type]; a second enqueue of the same type replaces the
-         * first. For [TYPE_GUARD_TRIGGERED], [windowStartMs] and [attemptCount] identify the
-         * per-window aggregate row and its count (issue #227).
+         * #813 review (Claude): the dedupe key as a pure function, so a test can drive it. It used to be computed
+         * inline, and a row that only read the source could not tell a deleted branch from a wired one — the two
+         * types below were exactly that mistake.
          */
+        internal fun dedupeKeyFor(
+            type: String,
+            deviceId: String?,
+            guardWindow: GuardAttemptWindow.State?,
+            app: String,
+            layout: String,
+            eventAtMs: Long,
+            adminRemovedAtMs: Long,
+        ): String? = when (type) {
+            TYPE_ADMIN_REMOVED -> TamperAlertDedupe.adminRemovalKey(deviceId, adminRemovedAtMs)
+            TYPE_GUARD_TRIGGERED -> guardWindow?.let { TamperAlertDedupe.guardAggregateKey(deviceId, it.windowStartMs) }
+            TYPE_BLOCK_BYPASS -> TamperAlertDedupe.blockBypassKey(deviceId, app, layout, eventAtMs)
+            TYPE_ACCESSIBILITY_OFF -> TamperAlertDedupe.accessibilityOffKey(deviceId, eventAtMs)
+            else -> null
+        }
+
+        /**
+         * Whether failing attempt N is worth another try. The unbind alert never gives up: the poll reads the state
+         * this worker writes, so a capped retry would leave an offline phone telling nobody.
+         */
+        internal fun shouldRetry(type: String, runAttemptCount: Int): Boolean =
+            type == TYPE_ACCESSIBILITY_OFF || runAttemptCount < MAX_ATTEMPTS_PER_ALERT
+
+        /** How many times an ordinary tamper alert retries before giving up. */
+        internal const val MAX_ATTEMPTS_PER_ALERT = 5
+
         /**
          * Issue #227 D1 (Claude's review): one unique name per type meant a new window's enqueue
          * **cancelled the previous window's pending retry**, so attempts made while the phone was
@@ -171,9 +217,16 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             type == TYPE_GUARD_TRIGGERED && windowStartMs > 0L -> "tamper_alert_${type}_$windowStartMs"
             // Issue #175: one bypass per episode; a second app's episode must not cancel the first's retry.
             type == TYPE_BLOCK_BYPASS -> "tamper_alert_${type}_${app}_$windowStartMs"
+            // U1: one work item per unbind, so a second one cannot cancel the first one's retry.
+            type == TYPE_ACCESSIBILITY_OFF && windowStartMs > 0L -> "tamper_alert_${type}_$windowStartMs"
             else -> "tamper_alert_$type"
         }
 
+        /**
+         * Enqueues one expedited alert of [type]; a second enqueue of the same type replaces the
+         * first. For [TYPE_GUARD_TRIGGERED], [windowStartMs] and [attemptCount] identify the
+         * per-window aggregate row and its count (issue #227).
+         */
         fun enqueue(
             context: Context,
             type: String,
@@ -186,6 +239,10 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             layout: String = "",
         ) {
             val request = OneTimeWorkRequestBuilder<TamperAlertWorker>()
+                // Review of osra-security#29 (Claude): without this the worker keeps failing while the phone is
+                // offline, and with the capped exponential backoff the first successful attempt can land hours
+                // after reconnect. A constraint makes WorkManager wait for the network instead of burning retries.
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .setInputData(
                     workDataOf(
@@ -200,7 +257,17 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
                     ),
                 )
                 .build()
-            WorkManager.getInstance(context).enqueueUniqueWork(uniqueWorkName(type, if (type == TYPE_BLOCK_BYPASS) eventAtMs else windowStartMs, app), ExistingWorkPolicy.REPLACE, request)
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                uniqueWorkName(
+                    type,
+                    // U1 (Antigravity): without this the unbind type always passed 0L and every unbind collapsed
+                    // onto one static work name, cancelling the previous one's retry.
+                    if (type == TYPE_BLOCK_BYPASS || type == TYPE_ACCESSIBILITY_OFF) eventAtMs else windowStartMs,
+                    app,
+                ),
+                ExistingWorkPolicy.REPLACE,
+                request,
+            )
         }
     }
 }
