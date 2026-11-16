@@ -61,8 +61,6 @@ class FilterVpnService : VpnService() {
 
     /** host → the last time a `web_threat` was posted, so one page load is one attempt. */
     private val lastSiteAlert = java.util.concurrent.ConcurrentHashMap<String, Long>()
-    /** host → the last time a visit row was written; a new visit counts only after the quiet gap. */
-    private val lastSiteVisit = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     private var tun: ParcelFileDescriptor? = null
     private var mode: String = MODE_DNS
@@ -224,14 +222,10 @@ class FilterVpnService : VpnService() {
         } else {
             val d = DnsFilterPolicy.decide(q.name, config)
             when (d.action) {
-                DnsFilterPolicy.Action.FORWARD -> {
-                    recordSiteVisit(q.name, blocked = false)
-                    forward(query)
-                }
+                DnsFilterPolicy.Action.FORWARD -> forward(query)
                 DnsFilterPolicy.Action.SINK -> {
                     if (config.pausedInternet) DnsMessage.buildNxDomain(query, q) else {
                         Log.i(TAG, "sink ${q.name} (${d.reason})")
-                        recordSiteVisit(q.name, blocked = true)
                         reportBlockedSite(q.name, d.reason)
                         DnsMessage.buildSink(query, q)
                     }
@@ -273,39 +267,6 @@ class FilterVpnService : VpnService() {
                         metadata = mapOf("domain" to host, "reason" to reason),
                         dedupeKey = com.familyshield.agent.enforcement.AlertKeys.blockedSite(host, day),
                         attemptCount = attempts,
-                    ),
-                )
-            }
-        }
-    }
-
-    /**
-     * #830: one `url` activity row per host per [SITE_VISIT_QUIET_MS]. The DNS filter sees names, not
-     * pages, so the payload carries the host in `url` and `domain` and never a path; the server also
-     * reduces anything a client sends to its host. A page load's dozens of lookups count once, and a
-     * later visit after the gap counts again.
-     */
-    private fun recordSiteVisit(host: String, blocked: Boolean) {
-        if (host.isEmpty()) return
-        val now = System.currentTimeMillis()
-        val last = lastSiteVisit[host]
-        if (!com.familyshield.agent.enforcement.AlertKeys.siteAlertDue(last, now, SITE_VISIT_QUIET_MS)) return
-        if (lastSiteVisit.size > 512) {
-            lastSiteVisit.entries.removeIf { now - it.value > SITE_VISIT_QUIET_MS }
-        }
-        lastSiteVisit[host] = now
-        scope.launch {
-            val deviceId = settings.deviceId() ?: return@launch
-            runCatching {
-                api.postActivityEvents(
-                    deviceId,
-                    com.familyshield.agent.network.dto.ActivityEventBatchDto(
-                        events = listOf(
-                            com.familyshield.agent.network.dto.ActivityEventDto(
-                                type = "url",
-                                payload = mapOf("url" to host, "domain" to host, "blocked" to blocked),
-                            ),
-                        ),
                     ),
                 )
             }
@@ -384,8 +345,6 @@ class FilterVpnService : VpnService() {
     companion object {
         /** #830: one `web_threat` per host per ten minutes; a page load issues many DNS queries. */
         private const val SITE_ALERT_QUIET_MS = 10 * 60 * 1000L
-        /** #830: a new visit counts only after five quiet minutes for that host (UI/UX's example). */
-        private const val SITE_VISIT_QUIET_MS = 5 * 60 * 1000L
 
         /**
          * The mode of the tunnel that is **actually established**, or null when there is none.

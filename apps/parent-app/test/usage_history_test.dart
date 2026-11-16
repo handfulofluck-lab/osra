@@ -207,16 +207,10 @@ void main() {
       final api = trendApi();
       await pumpScreen(tester, const UsageHistoryScreen(childId: 'child-1'), api);
 
-      // #830: rows are site names grouped per host, drawn in a first-strong isolate; no Blocked/Allowed
-      // tag on these rows (blocked attempts live in Alerts).
-      expect(find.textContaining('tiktok.com'), findsOneWidget);
-      expect(find.textContaining('khanacademy.org'), findsOneWidget);
-      expect(find.text('Blocked'), findsNothing);
-      expect(find.text('Allowed'), findsNothing);
-      expect(
-        find.text('Site names only. OSRA Kids does not see the pages opened or anything typed.'),
-        findsOneWidget,
-      );
+      expect(find.text('tiktok.com'), findsOneWidget);
+      expect(find.text('khanacademy.org'), findsOneWidget);
+      expect(find.text('Blocked'), findsOneWidget);
+      expect(find.text('Allowed'), findsOneWidget);
     });
 
     testWidgets('Blocked only sends blocked=true and hides allowed visits', (tester) async {
@@ -233,8 +227,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.calls('GET', '/v1/reports/web').last.query['blocked'], 'true');
-      expect(find.textContaining('tiktok.com'), findsOneWidget);
-      expect(find.textContaining('khanacademy.org'), findsNothing);
+      expect(find.text('tiktok.com'), findsOneWidget);
+      expect(find.text('khanacademy.org'), findsNothing);
     });
 
     testWidgets('Blocked only with no blocked visits shows the filtered empty state', (tester) async {
@@ -265,8 +259,8 @@ void main() {
       await pumpScreen(tester, const UsageHistoryScreen(childId: 'child-1'), api);
       expect(api.calls('GET', '/v1/reports/web').single.query['limit'], 20);
       expect(find.textContaining('Showing the latest 20 visits'), findsOneWidget);
-      expect(find.textContaining('site19.example'), findsOneWidget);
-      expect(find.textContaining('site20.example'), findsNothing);
+      expect(find.text('site19.example'), findsOneWidget);
+      expect(find.text('site20.example'), findsNothing);
 
       final selector = find.byKey(const ValueKey('webLimitSelector'));
       await tester.scrollUntilVisible(selector, 200, scrollable: find.byType(Scrollable).first);
@@ -275,31 +269,15 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.calls('GET', '/v1/reports/web').last.query['limit'], 100);
-      expect(find.textContaining('site24.example'), findsOneWidget);
+      expect(find.text('site24.example'), findsOneWidget);
       expect(find.textContaining('Showing the latest 100 visits'), findsNothing);
     });
 
-    testWidgets("empty history keeps the screen's existing empty state (#830)", (tester) async {
+    testWidgets('empty history shows the empty state', (tester) async {
       final api = trendApi(visits: const []);
       await pumpScreen(tester, const UsageHistoryScreen(childId: 'child-1'), api);
 
       expect(find.text('No browsing history in the last 7 days'), findsOneWidget);
-      expect(
-        find.text('Site names only. OSRA Kids does not see the pages opened or anything typed.'),
-        findsNothing,
-      );
-    });
-
-    testWidgets('two visits to one host read as one site with a count (#830)', (tester) async {
-      final now = DateTime.now();
-      final api = trendApi(visits: [
-        visitJson('v1', 'youtube.com', false, now.subtract(const Duration(minutes: 30))),
-        visitJson('v2', 'youtube.com', false, now.subtract(const Duration(minutes: 2))),
-      ]);
-      await pumpScreen(tester, const UsageHistoryScreen(childId: 'child-1'), api);
-
-      expect(find.textContaining('youtube.com'), findsOneWidget);
-      expect(find.text('Visited 2 times'), findsOneWidget);
     });
 
     testWidgets('web error shows an honest error and a retry', (tester) async {

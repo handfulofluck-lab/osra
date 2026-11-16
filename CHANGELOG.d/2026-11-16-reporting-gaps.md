@@ -10,8 +10,10 @@
 - **Lock:** a lock period records start, mode and the number of overlay raises, and is posted as one
   `lock_period` activity row when the parent unlocks; a period left open by a process death is reported
   without an end time rather than dropped. The server accepts the new activity type.
-- **Web report on Play:** it stays empty for beta A (Claude's decision on #830), with an honest empty
-  state in the parent app so silence is not read as "nothing happened". Parent strings go through both
-  Language Bureaus.
+- **Bounds:** telemetry accepts at most 300 apps and 1440 minutes per app (and for the legacy map), so a
+  broken or hostile client cannot fill the rollup table.
+- **Site-name history** (the web report on Play) is not in this change: after Karim's decision it is gated
+  behind a server flag that ships off, with host exclusions, retention and batching, and it arrives as its
+  own PR.
 - Tests: the API rows pin the `appUsage` contract and the legacy map; JVM rows pin the dedupe keys, the
   site quiet window, the lock payload and the four call sites.

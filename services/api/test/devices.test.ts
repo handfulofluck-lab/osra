@@ -539,6 +539,25 @@ describe("device enrollment & management", () => {
     await app.close();
   });
 
+  it("#830 B3: telemetry caps the app count and each app's minutes", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+
+    const tooManyApps = { appUsage: Array.from({ length: 301 }, (_, i) => ({ packageId: `com.example.app${i}`, minutes: 1 })) };
+    const tooManyMinutes = { appUsage: [{ packageId: "com.example.app", minutes: 1441 }] };
+    const legacyTooMany = { perAppMinutes: Object.fromEntries(Array.from({ length: 301 }, (_, i) => [`com.example.app${i}`, 1])) };
+    for (const payload of [tooManyApps, tooManyMinutes, legacyTooMany]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/devices/dev-1/telemetry",
+        headers: deviceHeader(app),
+        payload: payload as Record<string, unknown>,
+      });
+      expect(res.statusCode).toBe(400);
+    }
+    await app.close();
+  });
+
   it("#830: telemetry per-app minutes become per-app rows, and the legacy map still maps", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockResolvedValue(DEVICE);
