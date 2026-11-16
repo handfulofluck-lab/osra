@@ -64,6 +64,7 @@
   "mfaCodeHelper": "Only if two-step verification is on for your account.",
   "signIn": "Sign in",
   "createAccount": "Create account",
+  "consentRequired": "To create an account, please tick this box.",
   "familyNameLabel": "Family name",
   "yourNameLabel": "Your name",
   "regionLabel": "Region",

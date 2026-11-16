@@ -128,13 +128,29 @@ class AuthNotifier extends StateNotifier<AuthState> {
       });
 
   /// POSTs /v1/auth/register (creates family + owner parent) then bootstraps.
-  Future<void> register({required String email, required String password, required String displayName, required String familyName, required String region}) =>
+  ///
+  /// ADR-0043 D4: registration carries the consent it showed. The version is the one the copy served; the
+  /// server answers `400 consent_text_outdated` for an old one, and the screen refetches.
+  Future<void> register({
+    required String email,
+    required String password,
+    required String displayName,
+    required String familyName,
+    required String region,
+    required String consentTextVersion,
+    required String consentLocale,
+  }) =>
       _authenticate(() => _api.raw.post('/v1/auth/register', data: {
             'email': email,
             'password': password,
             'displayName': displayName,
             'familyName': familyName,
             'region': region,
+            'consents': {
+              'termsPrivacy': true,
+              'textVersion': consentTextVersion,
+              'locale': consentLocale,
+            },
           }));
 
   /// Runs an auth call, persists the returned token, then loads /v1/family/me.

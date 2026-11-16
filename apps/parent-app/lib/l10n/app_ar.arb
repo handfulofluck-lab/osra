@@ -54,6 +54,7 @@
   "mfaCodeHelper": "مطلوب فقط إذا كان التحقق بخطوتين مفعّلًا في حسابك.",
   "signIn": "تسجيل الدخول",
   "createAccount": "إنشاء حساب",
+  "consentRequired": "لإنشاء حساب، يُرجى تحديد هذه الخانة.",
   "familyNameLabel": "اسم العائلة",
   "yourNameLabel": "اسمك",
   "regionLabel": "المنطقة",
