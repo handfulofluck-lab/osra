@@ -95,7 +95,8 @@ void main() {
       expect(fieldByLabel('Server'), findsOneWidget);
       expect(fieldByLabel('Email'), findsOneWidget);
       expect(fieldByLabel('Password'), findsOneWidget);
-      expect(fieldByLabel('Authentication code (if MFA is on)'), findsOneWidget);
+      expect(fieldByLabel('Authenticator code'), findsOneWidget);
+      expect(find.text('Only if two-step verification is on for your account.'), findsOneWidget);
       expect(find.text('Sign in'), findsOneWidget);
     });
 
@@ -226,7 +227,7 @@ void main() {
       await pumpScreen(tester, const DashboardScreen(), api);
       expect(api.calls('GET', '/v1/family/me'), hasLength(1));
 
-      await tester.fling(find.byType(GridView), const Offset(0, 400), 900);
+      await tester.fling(find.byType(ListView).first, const Offset(0, 400), 900);
       await tester.pump();
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
@@ -277,7 +278,7 @@ void main() {
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
       expect(find.text('Pixel 7a'), findsOneWidget);
-      expect(find.text('android 14 · online'), findsOneWidget);
+      expect(find.text('Android 14 · online'), findsOneWidget);
       expect(find.text('55%'), findsOneWidget);
       expect(find.text('Last seen: never'), findsNothing);
     });
@@ -331,7 +332,7 @@ void main() {
 
       expect(find.text('Galaxy A14'), findsOneWidget);
       // #601: the server says online, so the page says online; lastSeen is a separate age line.
-      expect(find.text('android 13 · online'), findsOneWidget);
+      expect(find.text('Android 13 · online'), findsOneWidget);
       expect(find.text('0%'), findsNothing);
     });
 
@@ -539,6 +540,8 @@ void main() {
       final api = pausedApi(startPaused: false);
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
+      await tester.ensureVisible(find.text('Pause net'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Pause net'));
       await flushFakeHttp(tester);
 

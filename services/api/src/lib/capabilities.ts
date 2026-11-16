@@ -161,6 +161,16 @@ const APP_FOR_PLATFORM: Record<string, CapabilityApp | undefined> = {
   macos: "agent-macos",
 };
 
+/**
+ * ADR-0041 D5.5: only a computer has a Windows or Mac account to be an administrator of.
+ *
+ * The rule reads `client.app`, not the platform, so it holds on `pair/claim` too, where the report is
+ * parsed before any Device row exists. A phone that sends the key is not reporting a weak setting; it is
+ * an agent bug (or a forged report), and storing it would put a chip about Windows administrators on an
+ * Android phone's setup screen.
+ */
+const COMPUTER_APPS: readonly CapabilityApp[] = ["agent-desktop", "agent-macos"];
+
 /** The one entry point the routes use: the cap first, the schema second, then the app must match the platform. */
 export function parseCapabilities(
   raw: unknown,
@@ -185,6 +195,15 @@ export function parseCapabilities(
   }
   if (platform != null && APP_FOR_PLATFORM[platform] !== parsed.data.client.app) {
     return { ok: false, issue: `client.app: ${parsed.data.client.app} does not match this device (${platform})` };
+  }
+  // ADR-0041 D5.5: refuse rather than store. A stored phone report carrying the key would show the parent
+  // a Windows/Mac administrator row on a phone, which can never be true.
+  const { client, features } = parsed.data;
+  if (features.child_account_admin !== undefined && !COMPUTER_APPS.includes(client.app)) {
+    return {
+      ok: false,
+      issue: `features.child_account_admin: ${client.app} cannot report it; only agent-desktop and agent-macos have a Windows or Mac account`,
+    };
   }
   return { ok: true, value: parsed.data };
 }
@@ -270,7 +289,7 @@ export function setupFor(report: CapabilityReport, nowMs: number = Date.now()): 
 /**
  * Which feature a command needs, for the refusal below.
  *
- * Only the commands whose effect is one of the ten features appear here. `ring` and `unlock` are
+ * Only the commands whose effect is one of the report's features appear here. `ring` and `unlock` are
  * deliberately absent: no feature describes them, so nothing can honestly refuse them, and a queued
  * command that the phone answers is better than a guess (decision 3's own rule).
  */

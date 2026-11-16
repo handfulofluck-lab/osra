@@ -110,7 +110,15 @@ final installedAppsProvider = FutureProvider.family<InstalledAppsReport, String>
 /// Latest location ping for one child (`GET /v1/location/:childId/latest`).
 final locationProvider = FutureProvider.family<LocationPing?, String>((ref, childId) async {
   final api = ref.watch(apiClientProvider);
-  final res = await api.raw.get('/v1/location/$childId/latest');
+  final Response<dynamic> res;
+  try {
+    res = await api.raw.get('/v1/location/$childId/latest');
+  } on DioException catch (e) {
+    // #850: a child that has never reported a location answers 404. That is the empty state
+    // ("No location reported yet"), not an error, so the tab must not show exception text.
+    if (e.response?.statusCode == 404) return null;
+    rethrow;
+  }
   if (res.data is! Map) return null;
   final latest = (res.data as Map)['latest'];
   if (latest is! Map) return null;

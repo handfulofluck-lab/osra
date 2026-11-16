@@ -11,6 +11,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import com.familyshield.agent.R
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -43,15 +44,42 @@ open class TamperGuardActivity : ComponentActivity() {
         }
 
         val pin = EditText(this).apply {
-            hint = "Parent PIN"
+            hint = getString(R.string.pin_gate_hint)
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
             filters = arrayOf(InputFilter.LengthFilter(ParentPin.MAX_LENGTH))
             textSize = 24f
             gravity = Gravity.CENTER
         }
         val error = TextView(this).apply { setTextColor(0xFFB00020.toInt()); textSize = 16f }
-        val unlock = Button(this).apply { text = "Continue" }
-        val back = Button(this).apply { text = "Go back" }
+        val unlock = Button(this).apply { text = getString(R.string.pin_gate_continue) }
+        val back = Button(this).apply { text = getString(R.string.pin_gate_back) }
+
+        // osra-security#17: Continue stays disabled until the field holds a length the PIN can have, so
+        // an empty submit never reaches the verifier at all. The verifier fails closed on its own now;
+        // this is the other half — a button that cannot be pressed with nothing typed.
+        //
+        // Two silences here are deliberate, both decided by the UI/UX Bureau on #761 and both worth
+        // keeping rather than "improving":
+        //  - **no explanatory line** under a disabled button. Every phone's own passcode screen behaves
+        //    this way, a parent reads a greyed Continue beside an empty field correctly, and extra words
+        //    on this particular screen are read mostly by the child.
+        //  - **no printed 4–8 digit rule**. Printing it here tells the person who is not meant to pass
+        //    this gate what shape the secret has; the rule belongs where the PIN is set, and it is there.
+        //
+        // There is also no IME submit path: the field sets `inputType` and a length filter and nothing
+        // else, so the keyboard's Done only hides the keyboard and the button is the only way in.
+        fun syncUnlockEnabled() {
+            unlock.isEnabled =
+                pin.text.length in ParentPin.MIN_LENGTH..ParentPin.MAX_LENGTH
+        }
+        pin.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) =
+                syncUnlockEnabled()
+
+            override fun afterTextChanged(s: android.text.Editable?) = Unit
+        })
+        syncUnlockEnabled()
 
         unlock.setOnClickListener {
             val entered = pin.text.toString()
@@ -63,9 +91,9 @@ open class TamperGuardActivity : ComponentActivity() {
                 attempts += 1
                 pin.text.clear()
                 error.text = if (attempts >= MAX_ATTEMPTS) {
-                    "Too many attempts. Ask your parent."
+                    getString(R.string.pin_gate_too_many)
                 } else {
-                    "Wrong PIN."
+                    getString(R.string.pin_gate_wrong)
                 }
                 if (attempts >= MAX_ATTEMPTS) goHome()
             }
@@ -80,7 +108,7 @@ open class TamperGuardActivity : ComponentActivity() {
                 setPadding(64, 64, 64, 64)
                 addView(
                     TextView(this@TamperGuardActivity).apply {
-                        text = "Protected by OSRA · أسرة"
+                        text = getString(R.string.pin_gate_title)
                         setTextColor(0xFFFFFFFF.toInt())
                         textSize = 26f
                         gravity = Gravity.CENTER
@@ -88,12 +116,14 @@ open class TamperGuardActivity : ComponentActivity() {
                 )
                 addView(
                     TextView(this@TamperGuardActivity).apply {
-                        text = when (reason) {
-                            REASON_REPAIR -> "Re-pairing this device needs your parent's PIN."
-                            REASON_REMOVE -> "Removing protection needs your parent's PIN."
-                            REASON_RING -> "Stopping the ring needs your parent's PIN."
-                            else -> "Changing this setting needs your parent's PIN.\nYour parent has been notified."
-                        }
+                        text = getString(
+                            when (reason) {
+                                REASON_REPAIR -> R.string.pin_gate_reason_repair
+                                REASON_REMOVE -> R.string.pin_gate_reason_remove
+                                REASON_RING -> R.string.pin_gate_reason_ring
+                                else -> R.string.pin_gate_reason_settings
+                            },
+                        )
                         setTextColor(0xFFAEB0B8.toInt())
                         textSize = 16f
                         gravity = Gravity.CENTER

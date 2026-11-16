@@ -644,3 +644,56 @@ describe("family routes", () => {
   });
 });
 
+
+
+describe("GET /v1/family/entitlement (ADR-0041 D1)", () => {
+  beforeEach(() => resetPrismaMock());
+
+  const purchase = {
+    familyId: "fam-1", source: "google_play", productId: "family.monthly", storeRefHash: "a".repeat(64),
+    status: "active", expiresAt: new Date("2027-01-01T00:00:00.000Z"), autoRenews: true,
+    lastVerifiedAt: new Date("2026-11-15T00:00:00.000Z"), cause: "verify",
+  };
+
+  it("gives an owner the exact eligible response and their stable random account id", async () => {
+    const app = await buildApp(familyRoutes, "/v1/family");
+    prismaMock.familyPurchase.findMany.mockResolvedValue([purchase]);
+    prismaMock.family.findUnique.mockResolvedValue({ id: "fam-1", storeAccountId: "b".repeat(32) });
+    const res = await app.inject({ method: "GET", url: "/v1/family/entitlement", headers: authHeader(app) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      plan: "family", until: "2027-01-01T00:00:00.000Z", source: "google_play", manage_on: "google_play",
+      store_account_id: "b".repeat(32),
+    });
+    await app.close();
+  });
+
+  it("gives a guardian the four plan fields and never the store account id", async () => {
+    const app = await buildApp(familyRoutes, "/v1/family");
+    prismaMock.parent.findUnique.mockResolvedValue({
+      id: "parent-1", familyId: "fam-1", role: "guardian", permissions: [], email: "guardian@example.com",
+    });
+    prismaMock.familyPurchase.findMany.mockResolvedValue([]);
+    const res = await app.inject({ method: "GET", url: "/v1/family/entitlement", headers: authHeader(app) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ plan: null, until: null, source: null, manage_on: null });
+    expect(prismaMock.family.updateMany).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("does not expose the purchase-account id through the broad family envelope", async () => {
+    const app = await buildApp(familyRoutes, "/v1/family");
+    prismaMock.parent.findUnique.mockResolvedValue({
+      id: "parent-1", familyId: "fam-1", role: "guardian", permissions: [], email: "guardian@example.com",
+    });
+    prismaMock.family.findUnique.mockResolvedValue({
+      id: "fam-1", name: "Demo", region: "US", timezone: "UTC", timezoneSource: "default",
+      storeAccountId: "b".repeat(32), parents: [], children: [],
+    });
+    const res = await app.inject({ method: "GET", url: "/v1/family/me", headers: authHeader(app) });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).not.toContain("storeAccountId");
+    expect(res.body).not.toContain("b".repeat(32));
+    await app.close();
+  });
+});

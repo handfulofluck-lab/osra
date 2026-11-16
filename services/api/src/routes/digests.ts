@@ -126,7 +126,7 @@ function resultPage(confirmed: boolean): string {
     ? "Confirmed. This address will now receive the family's OSRA digest."
     : "This link has expired or was already used.";
   const ar = confirmed
-    ? "تمّ التأكيد. سيصل ملخّص العائلة من أسرة إلى هذا العنوان."
+    ? "تم التأكيد. سيصل ملخّص العائلة من تطبيق أسرة إلى هذا العنوان."
     : "انتهت صلاحية هذا الرابط أو سبق استخدامه.";
   return `<!doctype html>
 <html>
@@ -218,8 +218,8 @@ export async function digestRoutes(app: FastifyInstance) {
       <form method="post" action="${action}"><button type="submit" ${button}>Confirm this address</button></form>
     </div>
     <div dir="rtl" style="background:#fff;border-radius:8px;padding:24px;margin-top:16px">
-      <h2 style="margin:0 0 12px;font-size:20px">تأكيد ملخّص عائلة في أسرة</h2>
-      <p style="margin:0 0 16px;line-height:1.5">اضغط الزر لتأكيد هذا العنوان. لن يُرسَل إليه شيء قبل ذلك.</p>
+      <h2 style="margin:0 0 12px;font-size:20px">تأكيد استلام ملخّص عائلة من تطبيق أسرة</h2>
+      <p style="margin:0 0 16px;line-height:1.5">اضغط على الزر لتأكيد هذا العنوان. لن يُرسَل إليه شيء قبل ذلك.</p>
       <form method="post" action="${action}"><button type="submit" ${button}>تأكيد هذا العنوان</button></form>
     </div>
   </div>

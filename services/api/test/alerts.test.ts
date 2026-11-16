@@ -548,3 +548,183 @@ describe("alerts routes", () => {
     await app.close();
   });
 });
+
+/**
+ * Issue #672: an SOS carried `{deviceId}` and nothing about where the child was, while a 13-minute-old fix
+ * sat on the phone. The agent now attaches the five `SosLocationPolicy` keys; the route normalises them so
+ * the stored row holds a location the parent app can place a pin on, or none at all.
+ *
+ * Both refusal directions are pinned on purpose:
+ * - **a location is not required** — an SOS the phone could not place in the world must still reach the
+ *   parent. This row is the one that must never go green-by-deletion.
+ * - **a bad location does not reject the alert** — it is dropped; only the five keys go.
+ */
+/**
+ * Issue #672 review (Fable B1, ADR-0014 amendment decision 3): a guardian may be given `alerts` without
+ * `location`. The alert is theirs; the child's place is not. One row per read — this one is the list, the
+ * next is the realtime frame (test/realtime.test.ts).
+ */
+describe("a guardian without `location` reads alerts without a place (issue #672 B1)", () => {
+  const row = {
+    id: "a-sos",
+    childId: CHILD.id,
+    category: "sos",
+    severity: "critical",
+    metadata: { deviceId: "dev-1", lat: 25.2769, lng: 51.5211, accuracyM: 12, takenAt: "2026-11-13T19:11:00.000Z", ageSeconds: 300 },
+  };
+
+  const listAs = async (permissions: string[]) => {
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "guardian-1", role: "guardian", permissions, familyId: "fam-1", email: "g@example.com", displayName: "G", passwordHash: "x", mfaEnabled: false, mfaSecret: null });
+    prismaMock.alert.count.mockResolvedValue(1);
+    prismaMock.alert.findMany.mockResolvedValue([row]);
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    const res = await app.inject({ method: "GET", url: "/v1/alerts", headers: authHeader(app, "fam-1", "guardian-1") });
+    await app.close();
+    return res;
+  };
+
+  it("a guardian holding `alerts` but not `location` receives the alert with no location keys", async () => {
+    const res = await listAs(["alerts"]);
+    expect(res.statusCode).toBe(200);
+    const item = res.json().items[0];
+    expect(item.id).toBe("a-sos");
+    expect(item.metadata).toEqual({ deviceId: "dev-1" });
+    expect(res.json().meta.total).toBe(1);
+  });
+
+  it("a guardian holding both `alerts` and `location` receives the place", async () => {
+    const res = await listAs(["alerts", "location"]);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().items[0].metadata).toMatchObject({ lat: 25.2769, lng: 51.5211 });
+  });
+
+  it("acknowledging an alert gives a guardian without `location` no place either (B1b)", async () => {
+    // The ack returns the row, so the same guardian who cannot read the place in the list could read it
+    // here — the list was stripped and this route was not (Claude's B1b, #743).
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "guardian-1", role: "guardian", permissions: ["alerts"], familyId: "fam-1", email: "g@example.com", displayName: "G", passwordHash: "x", mfaEnabled: false, mfaSecret: null });
+    prismaMock.alert.findUnique.mockResolvedValue({ id: row.id, child: { familyId: "fam-1" } });
+    prismaMock.alert.update.mockResolvedValue({ ...row, acknowledged: true });
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/alerts/${row.id}/ack`,
+      headers: authHeader(app, "fam-1", "guardian-1"),
+    });
+    await app.close();
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().alert.metadata).toEqual({ deviceId: "dev-1" });
+  });
+
+  it("acknowledging an alert keeps the place for the family's owner (k2)", async () => {
+    // The strip is for a guardian whose invite withheld `location`. An owner holds everything, and a change
+    // that hid the place from the parents who own the family would pass every other row (Claude's k2).
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "parent-1", role: "owner", permissions: null, familyId: "fam-1", email: "o@example.com", displayName: "O", passwordHash: "x", mfaEnabled: false, mfaSecret: null });
+    prismaMock.alert.findUnique.mockResolvedValue({ id: row.id, child: { familyId: "fam-1" } });
+    prismaMock.alert.update.mockResolvedValue({ ...row, acknowledged: true });
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/alerts/${row.id}/ack`,
+      headers: authHeader(app),
+    });
+    await app.close();
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().alert.metadata).toMatchObject({ lat: 25.2769, lng: 51.5211 });
+  });
+
+  it("acknowledging an alert keeps the place for a guardian who holds `location`", async () => {
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "guardian-1", role: "guardian", permissions: ["alerts", "location"], familyId: "fam-1", email: "g@example.com", displayName: "G", passwordHash: "x", mfaEnabled: false, mfaSecret: null });
+    prismaMock.alert.findUnique.mockResolvedValue({ id: row.id, child: { familyId: "fam-1" } });
+    prismaMock.alert.update.mockResolvedValue({ ...row, acknowledged: true });
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/alerts/${row.id}/ack`,
+      headers: authHeader(app, "fam-1", "guardian-1"),
+    });
+    await app.close();
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().alert.metadata).toMatchObject({ lat: 25.2769, lng: 51.5211 });
+  });
+});
+
+describe("SOS location on an internal alert (issue #672)", () => {
+  const postSos = (app: Awaited<ReturnType<typeof buildApp>>, metadata: Record<string, unknown> | undefined) => {
+    const raw = JSON.stringify({
+      childId: CHILD.id,
+      deviceId: "dev-1",
+      severity: "critical",
+      category: "sos",
+      title: "SOS from SM-F721B",
+      body: "Your child pressed the SOS button",
+      ...(metadata === undefined ? {} : { metadata }),
+    });
+    return app.inject({
+      method: "POST",
+      url: "/v1/alerts/internal",
+      headers: { "content-type": "application/json", ...signV2(SECRET, raw, { caller: "ai-engine" }) },
+      payload: raw,
+    });
+  };
+
+  beforeEach(() => {
+    resetPrismaMock();
+    process.env.INTERNAL_HMAC_SECRET = SECRET;
+  });
+
+  it("stores the fix an SOS carried, normalised for the parent app", async () => {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({ id: "a-sos", category: "sos" });
+
+    const res = await postSos(app, {
+      deviceId: "dev-1",
+      lat: "25.2769",
+      lng: "51.5211",
+      accuracyM: "12.0",
+      takenAt: "2026-11-13T19:11:00Z",
+      ageSeconds: "300",
+    });
+
+    expect(res.statusCode).toBe(201);
+    const stored = prismaMock.alert.create.mock.calls[0][0].data.metadata as Record<string, unknown>;
+    expect(stored).toMatchObject({
+      deviceId: "dev-1",
+      lat: 25.2769,
+      lng: 51.5211,
+      accuracyM: 12,
+      takenAt: "2026-11-13T19:11:00.000Z",
+      ageSeconds: 300,
+    });
+    await app.close();
+  });
+
+  it("accepts an SOS with no location at all", async () => {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({ id: "a-sos", category: "sos" });
+
+    const res = await postSos(app, { deviceId: "dev-1" });
+
+    expect(res.statusCode).toBe(201);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.alert.create.mock.calls[0][0].data.metadata).toMatchObject({ deviceId: "dev-1" });
+    await app.close();
+  });
+
+  it("accepts an SOS whose location is broken, and stores no location", async () => {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({ id: "a-sos", category: "sos" });
+
+    const res = await postSos(app, { deviceId: "dev-1", lat: 991, lng: 51.5211 });
+
+    expect(res.statusCode).toBe(201);
+    const stored = prismaMock.alert.create.mock.calls[0][0].data.metadata as Record<string, unknown>;
+    expect(stored).toEqual({ deviceId: "dev-1" });
+    await app.close();
+  });
+});

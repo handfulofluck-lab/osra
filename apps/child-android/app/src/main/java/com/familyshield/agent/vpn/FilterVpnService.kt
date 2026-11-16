@@ -282,12 +282,16 @@ class FilterVpnService : VpnService() {
     private fun startForegroundCompat() {
         val nm = getSystemService(NotificationManager::class.java)
         nm?.createNotificationChannel(
-            NotificationChannel(CHANNEL, "Content filter", NotificationManager.IMPORTANCE_MIN).apply { setShowBadge(false) },
+            NotificationChannel(
+                CHANNEL,
+                getString(R.string.notification_channel_content_filter),
+                NotificationManager.IMPORTANCE_MIN,
+            ).apply { setShowBadge(false) },
         )
         val n: Notification = Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText("Content filter active")
+            .setContentText(getString(R.string.notification_content_filter_active))
             .setOngoing(true)
             .build()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -338,8 +342,15 @@ class FilterVpnService : VpnService() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(i) else context.startService(i)
         }
 
-        fun reload(context: Context) {
-            if (!isRunning) { start(context); return }
+        /**
+         * Re-applies the cached rules to the running filter. [startIfStopped] is false where the caller
+         * may not adopt "a rule change revives the VPN" as a policy: the `rules_updated` command path
+         * passes false (Kimi, #848), because starting the service from a rule edit would also undo a
+         * paused or not-yet-consented state. `RulesSyncWorker` keeps the default, which is the behaviour
+         * it already had.
+         */
+        fun reload(context: Context, startIfStopped: Boolean = true) {
+            if (!isRunning) { if (startIfStopped) start(context); return }
             context.startService(Intent(context, FilterVpnService::class.java).setAction(ACTION_RELOAD))
         }
 

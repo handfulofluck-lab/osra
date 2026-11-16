@@ -33,3 +33,14 @@ site/*.tfstate.*
 site/*.tfvars
 site/*.tfplan
 site/.terraform/
+
+# Production backend files name the production account; only the .example files are committed (#714).
+backend/production-*.hcl
+bootstrap-state/*.tfvars
+bootstrap-state/.terraform/
+bootstrap-state/*.tfstate
+bootstrap-state/*.tfstate.*
+
+# Organisation audit trail stack (#766 item 2).
+backend/org-audit.hcl
+org-audit/.terraform/

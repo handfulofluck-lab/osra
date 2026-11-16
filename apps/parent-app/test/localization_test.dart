@@ -578,6 +578,16 @@ void main() {
       expect(ar.serverLabel, 'الخادم (السيرفر)');
       expect(ar.totalAverage(300, 43), 'الإجمالي: 300 دقيقة · المتوسط: 43 دقيقة يوميًا');
       expect(ar.digestPrefsPushBody, 'إرسال التنبيهات الحرجة كإشعارات فورية');
+      // #570: Karim's clone-space sentence (2026-11-11), pinned in both locales.
+      expect(
+        ar.phoneSetupOtherSpaceClone,
+        'هذا الهاتف يحتوي على مساحة أخرى مؤمنة، ربما تتيح هذه المساحة تشغيل أكثر من نسخة من نفس التطبيق، وقد لا يتمكن هذا التطبيق من مراقبتها طالما لم يتم إلغاء هذه الخاصية من قسم الإعدادات الخاصة بالهاتف.',
+      );
+      final en = await AppLocalizations.delegate.load(const Locale('en'));
+      expect(
+        en.phoneSetupOtherSpaceClone,
+        'This phone has another secure space that may run cloned apps (more than one copy of the same app). OSRA may not be able to monitor it until it is turned off in the phone\'s Settings.',
+      );
     });
 
     test('the screen-time value reads used-then-limit', () async {
@@ -771,28 +781,32 @@ void main() {
       expect(rect.width, greaterThan(0));
     }
 
-    testWidgets('320x568: the action is a tooltipped icon and still opens the rules editor', (tester) async {
+    testWidgets('320x568: actions fold into the overflow menu and still open the rules editor', (tester) async {
       await pumpChildDetail(tester, 320);
-      final action = find.byKey(const ValueKey('editRulesButton'));
-      expect(action, findsOneWidget);
-      // The compact shape: an icon with the label as its tooltip, not a text
-      // button that runs out of room.
-      expect(tester.widget<IconButton>(action).tooltip, 'تعديل القواعد');
+      final menu = find.byKey(const ValueKey('childActionsMenu'));
+      expect(menu, findsOneWidget);
       expect(find.widgetWithText(TextButton, 'تعديل القواعد'), findsNothing);
-      expectInsideAppBar(tester, action);
+      expectInsideAppBar(tester, menu);
       expect(drainExceptions(tester), isEmpty);
 
-      await tester.tap(action);
+      await tester.tap(menu);
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(
+        of: find.byType(PopupMenuItem<String>),
+        matching: find.text('تعديل القواعد'),
+      ));
       await tester.pumpAndSettle();
       expect(find.byType(RulesEditorScreen), findsOneWidget);
     });
 
     for (final width in <double>[360, 375, 411]) {
-      testWidgets('${width.toInt()}px: the label shows in full and opens the rules editor', (tester) async {
+      testWidgets('${width.toInt()}px: top bar has tooltipped icon and overview tab has tonal button', (tester) async {
         await pumpChildDetail(tester, width);
         final action = find.byKey(const ValueKey('editRulesButton'));
         expect(action, findsOneWidget);
-        expect(find.widgetWithText(TextButton, 'تعديل القواعد'), findsOneWidget);
+        expect(tester.widget<IconButton>(action).tooltip, 'تعديل القواعد');
+        expect(find.widgetWithText(TextButton, 'تعديل القواعد'), findsNothing);
+        expect(find.widgetWithText(FilledButton, 'تعديل القواعد'), findsOneWidget);
         expectInsideAppBar(tester, action);
         expect(drainExceptions(tester), isEmpty);
 

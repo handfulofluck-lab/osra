@@ -52,23 +52,26 @@ resource "aws_internet_gateway" "main" {
 }
 
 resource "aws_eip" "nat" {
+  count  = var.nat_gateway_count
   domain = "vpc"
 
   tags = {
-    Name = "${local.name_prefix}-nat"
+    Name = "${local.name_prefix}-nat-${count.index + 1}"
   }
 
   depends_on = [aws_internet_gateway.main]
 }
 
-# ONE NAT gateway for both private subnets. Cost over HA, deliberately: a second NAT would add
+# Staging: ONE NAT gateway for both private subnets. Cost over HA, deliberately: a second NAT adds
 # roughly US$39/month plus data processing to a stack that is destroyed after each session.
+# Production (#714): one per AZ, so losing an AZ does not also cut the surviving tasks' route out.
 resource "aws_nat_gateway" "main" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public[0].id
+  count         = var.nat_gateway_count
+  allocation_id = aws_eip.nat[count.index].id
+  subnet_id     = aws_subnet.public[count.index].id
 
   tags = {
-    Name = "${local.name_prefix}-nat"
+    Name = "${local.name_prefix}-nat-${count.index + 1}"
   }
 
   depends_on = [aws_internet_gateway.main]
@@ -93,24 +96,42 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-# One shared private route table is enough: both private subnets use the same single NAT.
+# One private route table per NAT gateway: staging's two private subnets share one table and NAT;
+# production gives each AZ its own.
 resource "aws_route_table" "private" {
+  count  = var.nat_gateway_count
   vpc_id = aws_vpc.main.id
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.main.id
+    nat_gateway_id = aws_nat_gateway.main[count.index].id
   }
 
   tags = {
-    Name = "${local.name_prefix}-private"
+    Name = var.nat_gateway_count == 1 ? "${local.name_prefix}-private" : "${local.name_prefix}-private-${count.index + 1}"
   }
 }
 
 resource "aws_route_table_association" "private" {
   count          = 2
   subnet_id      = aws_subnet.private[count.index].id
-  route_table_id = aws_route_table.private.id
+  route_table_id = aws_route_table.private[min(count.index, var.nat_gateway_count - 1)].id
+}
+
+# The NAT pieces became counted in #714; these keep a live staging env from being replaced by the rename.
+moved {
+  from = aws_eip.nat
+  to   = aws_eip.nat[0]
+}
+
+moved {
+  from = aws_nat_gateway.main
+  to   = aws_nat_gateway.main[0]
+}
+
+moved {
+  from = aws_route_table.private
+  to   = aws_route_table.private[0]
 }
 
 # --- Security groups -------------------------------------------------------------------------
@@ -197,13 +218,34 @@ resource "aws_vpc_security_group_ingress_rule" "api_from_alb" {
   ip_protocol                  = "tcp"
 }
 
-# Tasks need outbound for ECR image pulls, CloudWatch Logs, Secrets Manager, Resend/FCM and
-# (later) the AI engine. Locking these to AWS prefix lists would be tighter but brittle.
-resource "aws_vpc_security_group_egress_rule" "api_all" {
+# Tasks leave the VPC only over HTTPS (#766 item 6): ECR pulls, CloudWatch Logs, Secrets Manager, Resend,
+# FCM, APNs and the AI engine all speak 443. Inside the VPC they reach only PostgreSQL and Redis. DNS to
+# the VPC resolver is not filtered by security groups, so it needs no rule.
+resource "aws_vpc_security_group_egress_rule" "api_https" {
   security_group_id = aws_security_group.api.id
-  description       = "Outbound to AWS APIs and external providers through the NAT"
+  description       = "HTTPS to AWS APIs and external providers through the NAT"
   cidr_ipv4         = "0.0.0.0/0"
-  ip_protocol       = "-1"
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
+}
+
+resource "aws_vpc_security_group_egress_rule" "api_to_rds" {
+  security_group_id            = aws_security_group.api.id
+  description                  = "PostgreSQL"
+  referenced_security_group_id = aws_security_group.rds.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+}
+
+resource "aws_vpc_security_group_egress_rule" "api_to_redis" {
+  security_group_id            = aws_security_group.api.id
+  description                  = "Redis"
+  referenced_security_group_id = aws_security_group.redis.id
+  from_port                    = 6379
+  to_port                      = 6379
+  ip_protocol                  = "tcp"
 }
 
 resource "aws_vpc_security_group_ingress_rule" "rds_from_api" {
