@@ -80,14 +80,14 @@ class LockActivity : ComponentActivity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action != DeviceUnlinker.ACTION_UNLINKED) return
             if (!LockState.isActive(this@LockActivity)) finish()
-        // #830: this raise is one attempt in the open period; a child sent back by the overlay repeatedly
-        // is the count the parent sees.
-        LockPeriodTracker.attempt(this)
         }
     }
 
     override fun onStart() {
         super.onStart()
+        // #830: every raise of the overlay is one attempt in the open lock period. The unlock intent
+        // clears LockState first, so dismissing the overlay is not counted.
+        if (LockState.isActive(this)) LockPeriodTracker.attempt(this)
         ContextCompat.registerReceiver(
             this,
             unlinkedReceiver,
