@@ -29,9 +29,19 @@
   `EXTRA_DECLINE` and no `EXTRA_HANG_UP`, so a bounded 45-second window starts from that notice, and it
   is cleared the moment the call is answered or another is placed. No permission is added (the Play
   flavour has no `READ_PHONE_STATE` and does not need it for this).
+- **The second dismiss the device run proved necessary** (Antigravity, Android 14): one immediate dismiss
+  can be overridden by the expansion animation, and a shade caught closing emits only content changes.
+  A bounded 250 ms follow-up after a window-state decision and a 300 ms debounced re-check on systemui
+  content changes close both, using the last window class so the volume panel and power menu stay
+  excluded. Both are cancelled in `onDestroy`.
+- **A main-thread ANR found by the same run:** `guardProtectionScreens` read the active window's text for
+  every package, including systemui's teardown events; while the shade detached, a binder stall killed the
+  service and left the shade open. It now returns early for a package that cannot host a protection
+  screen — `classify` already answered NONE for those, so this only skips work.
 - Tests: the pure classifier (lock on, systemui unit names and class names, an unnamed systemui window,
   no lock, another package, a named non-shade systemui window, API 30) and a source row pinning that the
-  service wires the policy to `LockState`, `CallEnforcer.isRinging()` and the dismiss action.
+  service wires the policy to `LockState`, `CallEnforcer.isRinging()`, the two re-checks and the
+  protection-screen guard.
 - **Honest limit (Kimi's review):** the collapse is reactive. The shade is drawn for at least one frame
   before the accessibility event lands, so what this guarantees is that the shade closes before it can be
   used deliberately; it does not prove that a tap landing inside the first frame cannot register. The

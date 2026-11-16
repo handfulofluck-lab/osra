@@ -51,4 +51,21 @@ object ShadePolicy {
         val name = className?.lowercase() ?: return true
         return NON_SHADE_CLASSES.none { name.contains(it) }
     }
+
+    /**
+     * #851 (Antigravity, Android 14): a shade closing mid-animation, or propped open by a pending
+     * expansion, later emits only `TYPE_WINDOW_CONTENT_CHANGED`. The last window-state class names the
+     * dialog, so the volume panel and the power menu stay excluded; everything else in systemui is
+     * treated like the shade.
+     */
+    fun shouldCollapseOnContentChange(
+        locked: Boolean,
+        packageName: String?,
+        lastKnownClass: String?,
+        apiLevel: Int,
+        callRinging: Boolean,
+    ): Boolean = shouldCollapse(locked, packageName, lastKnownClass, apiLevel, callRinging)
+
+    /** The re-check runs only while the lock is still on and no call is ringing. */
+    fun shouldRecheck(locked: Boolean, callRinging: Boolean): Boolean = locked && !callRinging
 }

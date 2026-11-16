@@ -74,6 +74,34 @@ class ShadePolicyTest {
     }
 
     @Test
+    fun `a content change under systemui re-collapses while locked, and the dialogs stay excluded`() {
+        // Antigravity, Android 14: a shade closing mid-animation emits only content changes, and the
+        // last window class still names the dialog.
+        assertTrue(ShadePolicy.shouldCollapseOnContentChange(true, "com.android.systemui", null, 34, false))
+        assertTrue(ShadePolicy.shouldCollapseOnContentChange(true, "com.android.systemui", "android.widget.FrameLayout", 34, false))
+        assertFalse(ShadePolicy.shouldCollapseOnContentChange(true, "com.android.systemui", "com.android.systemui.volume.VolumeDialogImpl\$CustomDialog", 34, false))
+        assertFalse(ShadePolicy.shouldCollapseOnContentChange(true, "com.whatsapp", null, 34, false))
+        assertFalse(ShadePolicy.shouldCollapseOnContentChange(true, "com.android.systemui", null, 34, true))
+    }
+
+    @Test
+    fun `the re-check sends only while locked and not ringing`() {
+        assertTrue(ShadePolicy.shouldRecheck(locked = true, callRinging = false))
+        assertFalse(ShadePolicy.shouldRecheck(locked = false, callRinging = false))
+        assertFalse(ShadePolicy.shouldRecheck(locked = true, callRinging = true))
+    }
+
+    @Test
+    fun `the service guards the protection-screen read and schedules both re-checks`() {
+        val source = source("apps/child-android/app/src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt")
+        // Blocker 1's mutant: delete this line and the binder stall can ANR the service again.
+        assertTrue(source.contains("if (!TamperScreenPolicy.mayHostProtectionScreen(pkg)) return"))
+        assertTrue(source.contains("scheduleShadeRecheck(delayMs = SHADE_RECHECK_MS"))
+        assertTrue(source.contains("scheduleShadeRecheck(delayMs = SHADE_CONTENT_RECHECK_MS"))
+        assertTrue(source.contains("shadeContentRecheck?.let { ringRecheckHandler.removeCallbacks(it) }"))
+    }
+
+    @Test
     fun `the service wires the policy to the lock state, the ringing state and the dismiss action`() {
         val source = source("apps/child-android/app/src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt")
         assertTrue(source.contains("ShadePolicy.shouldCollapse("))
