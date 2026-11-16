@@ -8,19 +8,6 @@ final class InMemoryRingStore: RingStore {
     func save(_ state: RingState?) { stored = state }
 }
 
-final class FakeRingAudioPlayer: RingAudioPlaying {
-    private(set) var startCalls = 0
-    private(set) var stopCalls = 0
-
-    func start() async {
-        startCalls += 1
-    }
-
-    func stop() async {
-        stopCalls += 1
-    }
-}
-
 final class FakeRingBackend: RingBackend {
     let available: Bool
     var authorized: Bool

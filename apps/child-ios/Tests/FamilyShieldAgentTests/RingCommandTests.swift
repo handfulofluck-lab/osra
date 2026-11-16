@@ -2,11 +2,6 @@ import Foundation
 import XCTest
 @testable import FamilyShieldAgent
 
-final class FakeRingAudioPlayer: RingAudioPlaying {
-    func start() async {}
-    func stop() async {}
-}
-
 final class FakeRingCommands: RingCommandHandling {
     var error: RingCommandError?
     private(set) var startedIds: [String] = []
