@@ -150,6 +150,39 @@ jobs:
           printf '%s\n' "$out" | grep -q 'pass 25$'
           printf '%s\n' "$out" | grep -q 'fail 0$'
 
+      - name: Scenario runner Pester and no-device dry run (#667)
+        # Every ADB, lease and HTTP call is behind the fake boundary. The Pester count must be nonempty
+        # and the CLI must print its dry-run table and leave a result file: exit 0 with no tests or no
+        # report would be a gate that did not run. No real lease, backend, account or device is touched.
+        shell: pwsh
+        env:
+          FAKE_SCREENSHOT: ${{ github.workspace }}/scripts/hardware/tests/fixtures/rgb.png
+        run: |
+          Install-Module Pester -RequiredVersion 5.7.1 -Force -Scope CurrentUser -SkipPublisherCheck
+          $env:PATH = (Join-Path $env:GITHUB_WORKSPACE "scripts/hardware/tests/fixtures/bin") + [IO.Path]::PathSeparator + $env:PATH
+          $env:FAKE_ADB_LOG = Join-Path $env:RUNNER_TEMP "scenario-adb.jsonl"
+          $tests = Invoke-Pester -Path @(
+            "scripts/hardware/tests/Scenario.Validation.Tests.ps1",
+            "scripts/hardware/tests/Scenario.Preflight.Tests.ps1",
+            "scripts/hardware/tests/Scenario.Evidence.Tests.ps1",
+            "scripts/hardware/tests/Scenario.Run.Tests.ps1",
+            "scripts/hardware/tests/Scenario.DryRun.Tests.ps1"
+          ) -PassThru
+          if ($tests.TotalCount -lt 117 -or $tests.FailedCount -ne 0) { throw "scenario Pester: $($tests.PassedCount) passed, $($tests.FailedCount) failed, $($tests.TotalCount) total" }
+          # The Pester rows remove the fake env between cases, so the CLI sets its own image here.
+          $env:FAKE_SCREENSHOT = Join-Path $env:GITHUB_WORKSPACE "scripts/hardware/tests/fixtures/rgb.png"
+          $out = Join-Path $env:RUNNER_TEMP "scenario-evidence"
+          $printed = & pwsh -NoProfile -File ./scripts/hardware/scenario.ps1 -DryRun -Scenario SC-0.1 -Serial R5CW116Y6GF -Out $out 2>&1 | Out-String
+          $code = $LASTEXITCODE
+          Write-Host $printed
+          if ($code -ne 0) {
+            Get-ChildItem -Path $out -Recurse -Filter result.json |
+              ForEach-Object { Write-Host (Get-Content -LiteralPath $_.FullName -Raw) }
+            throw "scenario dry run exited $code"
+          }
+          if ($printed -notmatch "PASS \(DRY RUN\)" -or $printed -notmatch "SC-0.1") { throw "scenario dry run printed no PASS (DRY RUN) table" }
+          if (-not (Get-ChildItem -Path $out -Recurse -Filter result.md)) { throw "scenario dry run wrote no result.md" }
+
       - name: A PR may only change what its title says it changes
         # Added after 2026-10-19: a squash built on a pre-#218 base produced a 24-file diff that would
         # have reverted #218 while every test stayed green (the tests proved the old code worked).

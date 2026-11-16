@@ -1237,6 +1237,35 @@ node scripts/hardware/scenario-family.mjs delete --base-url http://localhost:300
   (§2). Nothing in CI counts rows with `psql`: `delete`'s counts come from the parent routes, as above, and
   the row-level count is still `e2e.mjs`'s with `DATABASE_URL`.
 
+### Manifest-driven scenario runner (#667, `scripts/hardware/scenario.ps1`)
+
+Run the five Pester suites with `scripts/hardware/tests/Scenario.*.Tests.ps1`; `workflow-lint` requires
+at least 117 cases, zero failures, and a real `SC-0.1` dry-run table with a `result.md`. The dry run puts
+the fake `adb` directory first on `PATH` and touches no lease, backend or device; it refuses any `adb`
+outside that directory, so a PC with the phone attached cannot drive it. `SC-0.1` allows 600 s because
+every ADB call is a process spawn, and on a loaded Windows host the same dry run has taken 139 s; the
+bound must not turn a healthy run into `scenario_timeout`.
+
+ADB steps are an allowlist of fixed shapes — `getprop`, `setprop persist.sys.locale`, `dumpsys`,
+`settings get|put`, `appops get|set`, `dpm list-owners`, `pm list|uninstall|clear`, `screencap -p`,
+`input tap|swipe|keyevent|text` — with no path in the verb and no quote,
+backslash, control character or shell metacharacter in any element; everything else is refused. The
+`content` command is not allowed at all: its first-`--uri` check could be bypassed with a second `--uri`,
+and no scenario needs it (#797). Inside those shapes, `settings put` is limited to the seven restored keys
+in their own table, `input keyevent` to HOME/BACK/ENTER, and `input text` may not contain a digit. Every
+`appops` and `pm clear|uninstall` target, and the manifest's own `package`, must be one of
+`com.osratech.child`, `com.osratech.child.full` or `com.osratech.parent`, matched case-sensitively; the
+check runs when the command executes, not only when the manifest is validated. Every ADB call receives
+`-s <serial>` from the runner, and `-Serial` has no default — a run that does not name the handset stops
+with `serial_required`.
+
+The runner saves nine before-values plus lock state, captures `exec-out screencap -p` into memory, writes
+only an OSRA-window crop with status bar/notification shade excluded, runs argument-array steps, and
+restores/re-reads every value and releases the lease in `finally`. Missing measurements are `NOT RUN`;
+empty diff, restore failure, or an empty test/result set never yields PASS. Dry-run output is explicitly
+`PASS (DRY RUN)` and is not physical-device evidence. A real run requires Claude's authorized device lease;
+K31's CI only exercises the fake boundary.
+
 
 ## 6. Traps that have cost real time here
 
