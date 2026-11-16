@@ -100,7 +100,8 @@ export function bucketEvents(events: IncomingEvent[]): {
       const url = typeof p.url === "string" ? p.url.slice(0, 2048) : "";
       let domain = typeof p.domain === "string" && p.domain ? p.domain : "";
       if (!domain && url) {
-        try { domain = new URL(url).hostname; } catch { domain = ""; }
+        // #841: one parser for a full address and a bare DNS name; `new URL` throws on the latter.
+        domain = hostOf(url);
       }
       if (!domain) domain = "unknown";
       visits.push({

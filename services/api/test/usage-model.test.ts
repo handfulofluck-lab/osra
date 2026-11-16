@@ -10,6 +10,7 @@ import {
   bucketEvents,
   locationRetentionDays,
   alertRetentionDays,
+  recordActivityUsage,
   rollupDay,
   screenTimeTodayFromDb,
   usageSeries,
@@ -289,6 +290,40 @@ describe("usage model — reads and rollup", () => {
       "deviceCommand", "deviceApp", "locationPing", "alert", "activityEvent", "socialEvent", "installRequest",
       "webVisit", "appUsageDaily", "device", "ruleSet", "geofence", "consentRecord", "pairingDecision", "child",
     ]);
+  });
+});
+
+/**
+ * #841 Fable m11: the route now gates before this hook, so the hook's own filter is a backstop. A direct
+ * call with the flag off must still drop an unblocked name — otherwise the backstop is decoration.
+ */
+describe("#841 the rollup hook is a real backstop", () => {
+  beforeEach(() => resetPrismaMock());
+
+  it("drops an unblocked name when the flag is off, called directly", async () => {
+    prismaMock.webVisit.createMany.mockResolvedValue({ count: 1 });
+    const out = await recordActivityUsage(
+      "child-1",
+      "dev-1",
+      [{ ts: "2026-10-15T10:00:00Z", type: "url", payload: { url: "example.com", blocked: false } }],
+      { siteNames: false },
+    );
+    expect(out.visits).toBe(0);
+    expect(prismaMock.webVisit.createMany).not.toHaveBeenCalled();
+  });
+
+  it("keeps a blocked attempt, still host-only, when the flag is off, called directly", async () => {
+    prismaMock.webVisit.createMany.mockResolvedValue({ count: 1 });
+    const out = await recordActivityUsage(
+      "child-1",
+      "dev-1",
+      [{ ts: "2026-10-15T10:00:00Z", type: "url", payload: { url: "bad.example", blocked: true } }],
+      { siteNames: false },
+    );
+    expect(out.visits).toBe(1);
+    expect(prismaMock.webVisit.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ domain: "bad.example", url: "bad.example", blocked: true })],
+    });
   });
 });
 

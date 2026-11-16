@@ -229,10 +229,17 @@ class FilterVpnService : VpnService() {
         } else {
             val d = DnsFilterPolicy.decide(q.name, config)
             when (d.action) {
-                DnsFilterPolicy.Action.FORWARD -> forward(query)
+                DnsFilterPolicy.Action.FORWARD -> {
+                    // #830/#841: the visit row is gated inside recordSiteVisit; a blocked attempt below
+                    // is not behind the switch. Both call sites are pinned by Reporting830WiringTest so a
+                    // later merge cannot drop the feature and leave the tests green.
+                    recordSiteVisit(q.name, blocked = false)
+                    forward(query)
+                }
                 DnsFilterPolicy.Action.SINK -> {
                     if (config.pausedInternet) DnsMessage.buildNxDomain(query, q) else {
                         Log.i(TAG, "sink ${q.name} (${d.reason})")
+                        recordSiteVisit(q.name, blocked = true)
                         reportBlockedSite(q.name, d.reason)
                         DnsMessage.buildSink(query, q)
                     }

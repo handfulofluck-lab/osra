@@ -21,6 +21,10 @@ class Reporting830WiringTest {
         assertTrue(vpn.contains("AlertKeys.blockedSite"))
         // #841: the exclusion check must be at the call site, not only inside the helper, and the name
         // must be normalised once so two spellings of a host cannot split the maps.
+        // #841: the call sites are part of the feature — the fold of #836 dropped both and every row
+        // stayed green, so these two lines are pinned here, not only the text inside the function.
+        assertTrue(vpn.contains("recordSiteVisit(q.name, blocked = false)"))
+        assertTrue(vpn.contains("recordSiteVisit(q.name, blocked = true)"))
         assertTrue(vpn.contains("SiteVisitGate.shouldUpload(config.siteNamesEnabled, blocked, SiteVisitGate.isExcludedHost(name))"))
         assertTrue(vpn.contains("DnsFilterPolicy.normalize(host)"))
 
