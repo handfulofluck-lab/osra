@@ -196,7 +196,8 @@ void main() {
       // the first time its Arabic has been rendered at all.
       await pumpArabic(tester, const FamilyScreen(), arabicApi());
       expect(find.text('أفراد العائلة'), findsOneWidget);
-      expect(find.text('الدعوات المعلّقة'), findsOneWidget);
+      // Longer role and permission labels (Bureau sweep, 16 Nov) push this heading below the 320x568 fold.
+      expect(find.text('الدعوات المعلّقة', skipOffstage: false), findsOneWidget);
       expectRtlAndNoOverflow(tester);
     });
 

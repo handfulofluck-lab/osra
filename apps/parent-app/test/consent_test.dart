@@ -685,7 +685,7 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('consentGrantButton')));
       await tester.pumpAndSettle();
-      expect(find.textContaining('يُسجَّل السجل بمنطقة عائلتك'), findsOneWidget);
+      expect(find.textContaining('تُسجَّل الموافقة بمنطقة عائلتك'), findsOneWidget);
       expect(Directionality.of(tester.element(find.byType(AlertDialog))),
           TextDirection.rtl);
       expect(drainExceptions(tester), isEmpty);
@@ -734,7 +734,7 @@ void main() {
     );
 
     expect(find.text('سحب الموافقة؟'), findsOneWidget);
-    expect(find.textContaining('يتوقف جمع البيانات الجديد'), findsOneWidget);
+    expect(find.textContaining('يتوقف جمع أي بيانات جديدة'), findsOneWidget);
     expect(Directionality.of(tester.element(find.byType(Scaffold))),
         TextDirection.rtl);
     expect(drainExceptions(tester), isEmpty);
@@ -742,9 +742,9 @@ void main() {
     // The data-handling copy sits below the fold on a 568 px screen; scroll to
     // it so the overflow check covers the whole confirmation page.
     await tester.scrollUntilVisible(
-        find.textContaining('لا يُحذف أي شيء'), 200);
+        find.textContaining('لا تُحذف أي بيانات الآن'), 200);
     await tester.pumpAndSettle();
-    expect(find.textContaining('لا يُحذف أي شيء'), findsOneWidget);
+    expect(find.textContaining('لا تُحذف أي بيانات الآن'), findsOneWidget);
     expect(drainExceptions(tester), isEmpty);
   });
 }

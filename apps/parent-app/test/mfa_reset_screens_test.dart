@@ -1198,7 +1198,7 @@ void main() {
       );
       expect(find.text('إعادة التعيين قيد الانتظار'), findsOneWidget);
       expect(find.text('تحقّق من بريدك الإلكتروني'), findsOneWidget);
-      expect(find.textContaining('افتح رابط الإلغاء في أي بريد وصلك بشأنه'), findsOneWidget);
+      expect(find.textContaining('افتح رابط الإلغاء في أي رسالة بريد إلكتروني وصلتك بشأنه'), findsOneWidget);
       expectRtl(tester);
     });
 
@@ -1351,7 +1351,7 @@ void main() {
       await flush(tester);
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('بانتظار موافقة والد آخر في عائلتك'), findsOneWidget);
+      expect(find.textContaining('بانتظار موافقة وليّ أمر آخر في عائلتك'), findsOneWidget);
       expect(find.text('أدخل الرمز'), findsNothing);
       expectRtl(tester);
     });
@@ -1371,8 +1371,10 @@ void main() {
       final ar = await arabic();
       for (final text in [ar.mfaResetApproveAlready, ar.mfaResetPendingAlreadyWaiting('والد مشارك')]) {
         expect(text.contains('تجاوز'), isFalse, reason: text);
-        expect(text, contains('اجتاز'));
       }
+      expect(ar.mfaResetApproveAlready, contains('اجتاز'));
+      // After a filled-in person the step is «اكتملت», so no verb is given a gender (Bureau sweep, 16 Nov).
+      expect(ar.mfaResetPendingAlreadyWaiting('والد مشارك'), contains('اكتملت خطوة الشاهد'));
     });
   });
 
