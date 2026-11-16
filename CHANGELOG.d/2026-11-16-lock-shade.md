@@ -11,6 +11,13 @@
   content; it only sends the collapse.
 - Below API 31 there is no such action, so the service does nothing there; that limit is stated in the
   code and held by a row rather than implied.
+- **Silent and DND rings are exempt too** (Antigravity, Android 14 device run): under a silent ringer or
+  DND, Telecom suppresses the ringtone for the whole ring, so `AudioManager.mode` stays `NORMAL` and the
+  audio-mode check answered "not ringing" — the collapse then hid the incoming-call heads-up and its
+  Answer. The call notification is the second signal: an incoming call posts `CATEGORY_CALL` with
+  `EXTRA_DECLINE` and no `EXTRA_HANG_UP`, so a bounded 45-second window starts from that notice, and it
+  is cleared the moment the call is answered or another is placed. No permission is added (the Play
+  flavour has no `READ_PHONE_STATE` and does not need it for this).
 - Tests: the pure classifier (lock on, systemui unit names and class names, an unnamed systemui window,
   no lock, another package, a named non-shade systemui window, API 30) and a source row pinning that the
   service wires the policy to `LockState`, `CallEnforcer.isRinging()` and the dismiss action.

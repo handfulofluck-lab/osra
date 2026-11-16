@@ -20,6 +20,7 @@ import com.familyshield.agent.enforcement.CallAudioMode
 import com.familyshield.agent.enforcement.CallBlockPolicy
 import com.familyshield.agent.enforcement.CallNotice
 import com.familyshield.agent.enforcement.CallParcel
+import com.familyshield.agent.enforcement.IncomingRingWindow
 import com.familyshield.agent.security.TamperAlertWorker
 
 /**
@@ -43,10 +44,17 @@ class CallEnforcer(
     private val declineIntents = HashMap<String, PendingIntent>()
     private val hangUpIntents = HashMap<String, PendingIntent>()
     private var cover: View? = null
+
+    /** #828: the deadline a silent/DND ring notification sets, in the audio clock of [now]. */
+    @Volatile private var ringUntilMs = 0L
     private var ticking = false
 
     private val modeListener: Any? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        AudioManager.OnModeChangedListener { mode -> apply(policy.onAudioMode(map(mode), isBlocked, now())) }
+        AudioManager.OnModeChangedListener { mode ->
+            apply(policy.onAudioMode(map(mode), isBlocked, now()))
+            // #828: answered or placed, so a silent ring window cannot outlive the ring.
+            if (map(mode) != CallAudioMode.NORMAL) ringUntilMs = 0L
+        }
     } else {
         null
     }
@@ -54,6 +62,7 @@ class CallEnforcer(
     private val tick = object : Runnable {
         override fun run() {
             apply(policy.onAudioMode(currentMode(), isBlocked, now()))
+            if (currentMode() != CallAudioMode.NORMAL) ringUntilMs = 0L
             if (policy.coverShown || currentMode() != CallAudioMode.NORMAL) {
                 main.postDelayed(this, TICK_MS)
             } else {
@@ -98,6 +107,11 @@ class CallEnforcer(
         }
         // The mode first, so the policy judges the notice in the current call state.
         apply(policy.onAudioMode(currentMode(), isBlocked, now()))
+        // #828: a silent/DND ring leaves the audio mode at NORMAL, so the call notification is the
+        // second signal for the shade exemption (Antigravity, Android 14 device run).
+        parcel?.let { p ->
+            IncomingRingWindow.next(p.isCall, p.hasDecline, p.hasHangUp, currentMode(), now())?.let { ringUntilMs = it }
+        }
         apply(policy.onNotification(CallNotice(pkg, parcel), isBlocked, isEssential, now()))
     }
 
@@ -175,8 +189,11 @@ class CallEnforcer(
      * locked and the screen is on arrives as a systemui heads-up. The guard must not collapse *that*.
      * Only the ringing phase is exempt — during a placed or answered call the shade is locked again, so
      * a child cannot start a call and then read or reply from the shade.
+     *
+     * Antigravity's blocker 2: under a silent ringer or DND the audio mode stays NORMAL for the whole
+     * ring, so the call notification's bounded window is the second signal ([IncomingRingWindow]).
      */
-    fun isRinging(): Boolean = currentMode() == CallAudioMode.RINGTONE
+    fun isRinging(): Boolean = IncomingRingWindow.isRinging(currentMode(), now(), ringUntilMs)
 
     private fun map(mode: Int): CallAudioMode = when (mode) {
         AudioManager.MODE_NORMAL -> CallAudioMode.NORMAL

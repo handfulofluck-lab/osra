@@ -39,6 +39,10 @@ class ShadePolicyTest {
     @Test
     fun `another package is never collapsed`() {
         assertFalse(ShadePolicy.shouldCollapse(true, "com.whatsapp", "com.whatsapp.Conversation", 34))
+        // Antigravity: with null and FrameLayout treated as shade-collapsing, the package check is the
+        // only thing standing between another app and a collapse; pin it directly.
+        assertFalse(ShadePolicy.shouldCollapse(true, "com.whatsapp", null, 34))
+        assertFalse(ShadePolicy.shouldCollapse(true, "com.whatsapp", "android.widget.FrameLayout", 34))
         assertFalse(ShadePolicy.shouldCollapse(true, "com.android.systemui", "com.android.systemui.volume.VolumeDialog", 34))
     }
 
