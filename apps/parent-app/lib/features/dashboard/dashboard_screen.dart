@@ -45,10 +45,17 @@ class DashboardScreen extends ConsumerWidget {
           IconButton(
             tooltip: l10n.alertsTooltip,
             onPressed: () => context.push('/alerts'),
-            icon: Badge(
-              isLabelVisible: unread.hasValue && (unread.value ?? 0) > 0,
-              label: Text('${unread.value ?? 0}'),
-              child: const Icon(Icons.notifications_outlined),
+            // B3: count badge follows accessibility text scale up to 1.3x so
+            // digits stay legible without overlapping the bell or neighbouring AppBar icons.
+            icon: MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.3),
+              ),
+              child: Badge(
+                isLabelVisible: unread.hasValue && (unread.value ?? 0) > 0,
+                label: Text('${unread.value ?? 0}'),
+                child: const Icon(Icons.notifications_outlined),
+              ),
             ),
           ),
           PopupMenuButton<String>(
@@ -302,12 +309,11 @@ class ChildCard extends ConsumerWidget {
                     children: [
                       CircleAvatar(child: Text(child.initials)),
                       const SizedBox(width: AppSpace.sm),
+                      // B2: no line limit on dashboard card child names so cards expand cleanly.
                       Expanded(
                         child: Text(
                           child.displayName,
                           style: Theme.of(context).textTheme.titleMedium,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -342,6 +348,7 @@ class ChildCard extends ConsumerWidget {
                   ),
                   const SizedBox(height: AppSpace.sm),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Icon(Icons.location_on_outlined, size: 14),
                       const SizedBox(width: AppSpace.xs),
@@ -354,7 +361,6 @@ class ChildCard extends ConsumerWidget {
                                   ? l10n.noLocationYet
                                   : ltrIsolate('${location.lat.toStringAsFixed(4)}, ${location.lng.toStringAsFixed(4)}'),
                           style: Theme.of(context).textTheme.bodySmall,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -369,10 +375,9 @@ class ChildCard extends ConsumerWidget {
                   Builder(
                     builder: (context) {
                       final style = Theme.of(context).textTheme.bodySmall;
-                      final valueText = l10n.screenTimeValue(
-                        child.screenTimeTodayMinutes,
-                        dailyLimit > 0 ? dailyLimit : 0,
-                      );
+                      final valueText = dailyLimit > 0
+                          ? l10n.screenTimeValue(child.screenTimeTodayMinutes, dailyLimit)
+                          : l10n.minutesShort(child.screenTimeTodayMinutes);
                       final screenWidth = MediaQuery.sizeOf(context).width;
                       final isWide = screenWidth >= 600;
                       // ListView horizontal padding (AppSpace.md * 2, plus AppSpace.md col gap on wide) + Card default margin (8) + Card padding (AppSpace.md * 2).
@@ -407,7 +412,7 @@ class ChildCard extends ConsumerWidget {
                           ],
                         );
                       }
-                      // NOTE: stack end-aligned when tight so neither label nor value truncates with ellipsis at 2.0 scale.
+                      // NOTE: stack end-aligned when tight so neither label nor value truncates with ellipsis at high scale.
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         mainAxisSize: MainAxisSize.min,
@@ -419,8 +424,10 @@ class ChildCard extends ConsumerWidget {
                       );
                     },
                   ),
-                  const SizedBox(height: AppSpace.xs),
-                  LinearProgressIndicator(value: dailyLimit > 0 ? progress : null),
+                  if (dailyLimit > 0) ...[
+                    const SizedBox(height: AppSpace.xs),
+                    LinearProgressIndicator(value: progress),
+                  ],
                   if (wellbeing != null) ...[
                     const SizedBox(height: AppSpace.sm),
                     WellbeingRow(score: wellbeing),
@@ -454,7 +461,6 @@ class LiveActivityChip extends StatelessWidget {
           '● ${context.l10n.liveActivityToday(activity.app, activity.minutesToday)}',
           key: ValueKey('liveChip-$childId'),
           style: Theme.of(context).textTheme.labelMedium?.copyWith(color: tokens.ok),
-          overflow: TextOverflow.ellipsis,
         ),
       ),
     );
@@ -560,6 +566,7 @@ Future<void> toggleInternetWithConfirm(BuildContext context, WidgetRef ref, Chil
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
+      scrollable: true,
       title: Text(paused ? l10n.resumeInternetTitle(child.displayName) : l10n.pauseInternetTitle(child.displayName)),
       content: Text(paused ? l10n.resumeInternetBody : l10n.pauseInternetBody),
       actions: [
@@ -664,11 +671,11 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
     final tokens = context.tokens;
     final l10n = context.l10n;
     return AlertDialog(
+      scrollable: true,
       title: Text(_consentDone ? l10n.childDetails : l10n.parentalConsent),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
             if (!_consentDone) ...[
               // The notice and the method picker are shared with the consent
               // screen's "give consent again" action (#437 part B), so the
@@ -705,12 +712,11 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
                 ),
               ),
             ],
-            if (_error != null) ...[
-              const SizedBox(height: AppSpace.md),
-              Text(_error!, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.danger)),
-            ],
+          if (_error != null) ...[
+            const SizedBox(height: AppSpace.md),
+            Text(_error!, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.danger)),
           ],
-        ),
+        ],
       ),
       actions: [
         TextButton(onPressed: _busy ? null : () => Navigator.of(context).pop(), child: Text(l10n.cancel)),

@@ -60,51 +60,50 @@ class _ReauthDialogState extends State<ReauthDialog> {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     return AlertDialog(
+      scrollable: true,
       title: Text(l10n.mfaReauthTitle),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(l10n.mfaReauthExplanation),
-            const SizedBox(height: AppSpace.md),
-            TextField(
-              key: const ValueKey('reauthPassword'),
-              controller: _password,
-              obscureText: _obscured,
-              autofillHints: const [AutofillHints.password],
-              decoration: InputDecoration(
-                labelText: l10n.passwordLabel,
-                border: const OutlineInputBorder(),
-                suffixIcon: IconButton(
-                  icon: Icon(_obscured ? Icons.visibility : Icons.visibility_off),
-                  onPressed: () => setState(() => _obscured = !_obscured),
-                ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(l10n.mfaReauthExplanation),
+          const SizedBox(height: AppSpace.md),
+          TextField(
+            key: const ValueKey('reauthPassword'),
+            controller: _password,
+            obscureText: _obscured,
+            autofillHints: const [AutofillHints.password],
+            decoration: InputDecoration(
+              labelText: l10n.passwordLabel,
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                icon: Icon(_obscured ? Icons.visibility : Icons.visibility_off),
+                onPressed: () => setState(() => _obscured = !_obscured),
               ),
-              onSubmitted: (_) => _submit(),
             ),
-            const SizedBox(height: AppSpace.md),
-            TextField(
-              key: const ValueKey('reauthCode'),
-              controller: _code,
-              keyboardType: TextInputType.number,
-              autofillHints: const [AutofillHints.oneTimeCode],
-              decoration: InputDecoration(
-                labelText: l10n.mfaReauthCode,
-                border: const OutlineInputBorder(),
-              ),
-              onSubmitted: (_) => _submit(),
+            onSubmitted: (_) => _submit(),
+          ),
+          const SizedBox(height: AppSpace.md),
+          TextField(
+            key: const ValueKey('reauthCode'),
+            controller: _code,
+            keyboardType: TextInputType.number,
+            autofillHints: const [AutofillHints.oneTimeCode],
+            decoration: InputDecoration(
+              labelText: l10n.mfaReauthCode,
+              border: const OutlineInputBorder(),
             ),
-            if (_error != null) ...[
-              const SizedBox(height: AppSpace.md),
-              Text(
-                _error!,
-                key: const ValueKey('reauthError'),
-                style: TextStyle(color: context.tokens.danger),
-              ),
-            ],
+            onSubmitted: (_) => _submit(),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: AppSpace.md),
+            Text(
+              _error!,
+              key: const ValueKey('reauthError'),
+              style: TextStyle(color: context.tokens.danger),
+            ),
           ],
-        ),
+        ],
       ),
       actions: [
         TextButton(
