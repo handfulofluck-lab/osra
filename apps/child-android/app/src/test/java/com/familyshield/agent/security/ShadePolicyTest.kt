@@ -96,8 +96,13 @@ class ShadePolicyTest {
         val source = source("apps/child-android/app/src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt")
         // Blocker 1's mutant: delete this line and the binder stall can ANR the service again.
         assertTrue(source.contains("if (!TamperScreenPolicy.mayHostProtectionScreen(pkg)) return"))
-        assertTrue(source.contains("scheduleShadeRecheck(delayMs = SHADE_RECHECK_MS"))
-        assertTrue(source.contains("scheduleShadeRecheck(delayMs = SHADE_CONTENT_RECHECK_MS"))
+        assertTrue(source.contains("scheduleShadeRecheck(delayMs = SHADE_RECHECK_MS, slot = ShadePulse.STATE)"))
+        assertTrue(source.contains("scheduleShadeRecheck(delayMs = SHADE_LATE_RECHECK_MS, slot = ShadePulse.LATE)"))
+        assertTrue(source.contains("scheduleShadeRecheck(delayMs = SHADE_CONTENT_RECHECK_MS, slot = ShadePulse.CONTENT)"))
+        // Round 3: a fixed deadline, not a trailing edge — a held thumb emits a content change every
+        // ~100 ms and starved the old removeCallbacks-then-repost version indefinitely.
+        assertTrue(source.contains("if (shadePulse(slot) != null) return"))
+        assertTrue(source.contains("shadeLateRecheck?.let { ringRecheckHandler.removeCallbacks(it) }"))
         assertTrue(source.contains("shadeContentRecheck?.let { ringRecheckHandler.removeCallbacks(it) }"))
     }
 

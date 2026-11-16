@@ -33,7 +33,12 @@
   can be overridden by the expansion animation, and a shade caught closing emits only content changes.
   A bounded 250 ms follow-up after a window-state decision and a 300 ms debounced re-check on systemui
   content changes close both, using the last window class so the volume panel and power menu stay
-  excluded. Both are cancelled in `onDestroy`.
+  excluded. All three are cancelled in `onDestroy`.
+- **Round 3, two timing edges the live suite then found:** the re-check was a trailing edge, so a thumb
+  held on the shade (a content change every ~100 ms) pushed the 300 ms deadline out indefinitely; it is
+  now a **fixed deadline** like the ring re-check, and a held pull collapses on time. A touchless
+  `expandNotificationsPanel()` settles at ~550 ms with no later event, so a second **700 ms** pulse
+  follows the 250 ms one and lands after SystemUI's animator, still inside the one-second requirement.
 - **A main-thread ANR found by the same run:** `guardProtectionScreens` read the active window's text for
   every package, including systemui's teardown events; while the shade detached, a binder stall killed the
   service and left the shade open. It now returns early for a package that cannot host a protection
