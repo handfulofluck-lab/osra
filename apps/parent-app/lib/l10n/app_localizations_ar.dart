@@ -9,14 +9,14 @@ class AppLocalizationsAr extends AppLocalizations {
   AppLocalizationsAr([String locale = 'ar']) : super(locale);
 
   @override
-  String get appName => 'OSRA';
+  String get appName => 'أسرة';
 
   @override
   String get deleteAccountTitle => 'حذف الحساب';
 
   @override
   String get deleteAccountFamilyWarning =>
-      'سيؤدي هذا إلى حذف عائلتك بالكامل: كل طفل وكل جهاز وكل والد آخر. ولا يمكن التراجع عن ذلك.';
+      'سيؤدي هذا إلى حذف عائلتك بالكامل: كل طفل وكل جهاز وكل وليّ أمر آخر. ولا يمكن التراجع عن ذلك.';
 
   @override
   String get deleteAccountSelfWarning =>
@@ -31,7 +31,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get deleteAccountFamilyStopsDevices =>
-      'يُلغى ربط كل جهاز مقترن، ويتوقف تطبيق الطفل عن المراقبة.';
+      'يُلغى إقران كل جهاز مقترن، ويتوقف تطبيق أسرة للأطفال عن المراقبة.';
 
   @override
   String get deleteAccountFamilyStopsParents =>
@@ -72,22 +72,22 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get deleteAccountMfaReenroll =>
-      'يتطلب حسابك التحقق بخطوتين، لكن لا يوجد تطبيق مصادقة مُعدّ. أعدّ واحدًا أولًا.';
+      'يتطلب حسابك التحقق بخطوتين، لكنك لم تُعدّ تطبيق مصادقة بعد. أعدّ تطبيق المصادقة أولًا.';
 
   @override
   String get deleteAccountConsentHeld =>
       'لديك سجلات موافقة لطفل في عائلة أخرى، لذا لا يمكن حذف هذا الحساب الآن.';
 
   @override
-  String get deleteAccountOnlyOwner => 'مالك العائلة فقط يمكنه حذف العائلة.';
+  String get deleteAccountOnlyOwner => 'مدير العائلة فقط يمكنه حذف العائلة.';
 
   @override
   String get deleteAccountOwnerMustUseFamily =>
-      'هذا الحساب يملك العائلة، لذا استخدم حذف العائلة بدلًا من ذلك.';
+      'هذا الحساب هو حساب مدير العائلة، لذا استخدم حذف العائلة بدلًا من ذلك.';
 
   @override
   String get deleteAccountLoadFailed =>
-      'تعذّر تحميل عائلتك. تحقّق من اتصالك وحاول مجددًا.';
+      'تعذّر تحميل عائلتك. تحقّق من اتصالك وحاول مرة أخرى.';
 
   @override
   String deleteAccountFailed(String detail) {
@@ -116,7 +116,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get retry => 'إعادة المحاولة';
 
   @override
-  String get dismiss => 'تجاهل';
+  String get dismiss => 'إغلاق';
 
   @override
   String get system => 'النظام';
@@ -137,7 +137,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get unknown => 'غير معروف';
 
   @override
-  String get never => 'أبدًا';
+  String get never => 'لم يتصل بعد';
 
   @override
   String get timeUnknown => 'الوقت غير معروف';
@@ -218,7 +218,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get regionOther => 'أخرى';
 
   @override
-  String get register => 'تسجيل';
+  String get register => 'إنشاء الحساب';
 
   @override
   String get registerFieldsHint =>
@@ -233,14 +233,14 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get registerEmailTaken =>
-      'يوجد حساب بهذا البريد الإلكتروني بالفعل. سجّل الدخول بدلًا من ذلك أو استخدم بريدًا آخر.';
+      'يوجد حساب بهذا البريد الإلكتروني بالفعل. سجّل الدخول بدلًا من ذلك أو استخدم بريدًا إلكترونيًا آخر.';
 
   @override
   String get authEmailInvalid => 'أدخل عنوان بريد إلكتروني صحيحًا.';
 
   @override
   String get authFieldsInvalid =>
-      'لم تُقبل بعض البيانات. راجع النموذج وحاول مجددًا.';
+      'لم تُقبل بعض البيانات. راجع النموذج وحاول مرة أخرى.';
 
   @override
   String get familyMapTooltip => 'خريطة العائلة';
@@ -327,7 +327,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get wellbeingSafety => 'السلامة';
 
   @override
-  String get paused => 'موقوف';
+  String get paused => 'متوقف مؤقتًا';
 
   @override
   String get internet => 'الإنترنت';
@@ -349,14 +349,14 @@ class AppLocalizationsAr extends AppLocalizations {
   String get resumeInternetBody => 'ستعمل جميع التطبيقات والمواقع مرة أخرى.';
 
   @override
-  String get pause => 'إيقاف';
+  String get pause => 'إيقاف مؤقت';
 
   @override
   String get resume => 'استئناف';
 
   @override
   String internetChangeFailed(String error) {
-    return 'فشل تغيير حالة الإنترنت: $error';
+    return 'تعذّر تغيير حالة الإنترنت: $error';
   }
 
   @override
@@ -376,7 +376,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get consentMethodSmsPlus => 'رسالة نصية مع تأكيد';
 
   @override
-  String get consentMethodKba => 'أسئلة معرفية';
+  String get consentMethodKba => 'أسئلة للتحقق من الهوية';
 
   @override
   String get consentMethodFaceMatch => 'مطابقة الوجه';
@@ -403,7 +403,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get tabApps => 'التطبيقات';
 
   @override
-  String get tabSocial => 'التواصل';
+  String get tabSocial => 'وسائل التواصل';
 
   @override
   String get tabLocation => 'الموقع';
@@ -446,7 +446,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get deliveryStatus => 'حالة التسليم';
 
   @override
-  String get ring => 'رن';
+  String get ring => 'رنين الجهاز';
 
   @override
   String get lock => 'قفل';
@@ -455,10 +455,10 @@ class AppLocalizationsAr extends AppLocalizations {
   String get unlock => 'فتح القفل';
 
   @override
-  String get pauseNet => 'إيقاف الشبكة';
+  String get pauseNet => 'إيقاف الإنترنت';
 
   @override
-  String get resumeNet => 'استئناف الشبكة';
+  String get resumeNet => 'استئناف الإنترنت';
 
   @override
   String get checkingCommandDelivery => 'جارٍ التحقق من تسليم الأمر…';
@@ -496,7 +496,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String bonusFailed(String error) {
-    return 'فشل منح الوقت الإضافي: $error';
+    return 'تعذّر منح الوقت الإضافي: $error';
   }
 
   @override
@@ -524,27 +524,27 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String windDownFailed(String error) {
-    return 'فشل بدء الاسترخاء: $error';
+    return 'تعذّر بدء الاسترخاء قبل النوم: $error';
   }
 
   @override
   String commandQueued(String command, String device) {
-    return 'تم وضع «$command» في قائمة الانتظار لـ$device — لم يؤكّد الجهاز تنفيذه بعد.';
+    return 'أُرسل «$command» إلى $device — ولم يؤكّده الجهاز بعد.';
   }
 
   @override
   String netQueued(String action, String device) {
-    return 'تم وضع «$action» في قائمة الانتظار لـ$device — لم يؤكّد الجهاز تنفيذه بعد.';
+    return 'أُرسل «$action» إلى $device — ولم يؤكّده الجهاز بعد.';
   }
 
   @override
   String commandFailed(String error) {
-    return 'فشل الأمر: $error';
+    return 'تعذّر تنفيذ الأمر: $error';
   }
 
   @override
   String commandErrorForbidden(String command, String device) {
-    return 'لا تملك صلاحية إرسال «$command» إلى $device. يمكن لمالك العائلة منحك حق الوصول.';
+    return 'لا تملك صلاحية إرسال «$command» إلى $device. يمكن لمدير العائلة منحك حق الوصول.';
   }
 
   @override
@@ -564,29 +564,29 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String commandRefusedBackgroundLocation(String command, String device) {
-    return 'لم يُرسل «$command» إلى $device: لم يمنح الهاتف إذن الموقع «السماح دائمًا»، لذا لا يمكن لطلب تحديد الموقع وتنبيهات النطاقات الجغرافية الوصول إليه. اطلب من طفلك فتح OSRA ومنح الإذن.';
+    return 'لم يُرسل «$command» إلى $device: لم يُمنح تطبيق أسرة للأطفال إذن الموقع طوال الوقت، لذا لا يمكن لطلب تحديد الموقع وتنبيهات الأماكن الوصول إليه. اطلب من طفلك فتح تطبيق أسرة للأطفال ومنح الإذن.';
   }
 
   @override
   String commandRefusedLocationPermission(String command, String device) {
-    return 'لم يُرسل «$command» إلى $device: لا يوجد إذن موقع على الهاتف. اطلب من طفلك فتح OSRA ومنح إذن الموقع.';
+    return 'لم يُرسل «$command» إلى $device: لا يوجد إذن موقع على الهاتف. اطلب من طفلك فتح تطبيق أسرة للأطفال ومنح إذن الموقع.';
   }
 
   @override
   String get commandRefusedLockScreen =>
-      'لا يمكن أن يثبت القفل على هاتف طفلك: فعّل خدمة إمكانية الوصول لتطبيق OSRA على ذلك الهاتف.';
+      'لا يمكن أن يثبت القفل على هاتف طفلك: فعّل خدمة إمكانية الوصول لتطبيق أسرة للأطفال على ذلك الهاتف.';
 
   @override
   String get commandRefusedWebFilter =>
-      'لم يتم إعداد عامل تصفية الويب على هاتف طفلك، لذا لم يتم إيقاف الإنترنت.';
+      'لم يتم إعداد تصفية المواقع على هاتف طفلك، لذا لم يتم إيقاف الإنترنت مؤقتًا.';
 
   @override
   String get commandRefusedWebFilterStart =>
-      'تعذّر بدء إيقاف الإنترنت على هاتف طفلك. افتح تطبيق OSRA هناك وحاول مجددًا.';
+      'تعذّر بدء إيقاف الإنترنت مؤقتًا على هاتف طفلك. افتح تطبيق أسرة للأطفال هناك وحاول مرة أخرى.';
 
   @override
   String get commandRefusedUnsupportedCommand =>
-      'يحتاج هذا الأمر إلى إصدار أحدث من OSRA على هاتف طفلك.';
+      'يحتاج هذا الأمر إلى إصدار أحدث من تطبيق أسرة للأطفال على هاتف طفلك.';
 
   @override
   String commandRefusedNotSupported(String command, String device) {
@@ -605,7 +605,7 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get noPerAppRules => 'لا توجد قواعد لكل تطبيق';
+  String get noPerAppRules => 'لا توجد قواعد خاصة بالتطبيقات';
 
   @override
   String get appActionBlock => 'حظر';
@@ -622,7 +622,7 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get noLocationReported => 'لم يُبلَّغ عن أي موقع بعد';
+  String get noLocationReported => 'لا يوجد موقع بعد';
 
   @override
   String accuracyLabel(int meters, String time) {
@@ -659,7 +659,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get readPermissionRequired =>
-      'يمكن لمالك العائلة منحك حق الوصول إلى هذا.';
+      'يمكن لمدير العائلة منحك حق الوصول إلى هذا.';
 
   @override
   String get readErrorConsentMissing =>
@@ -765,7 +765,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get familyPermAlerts => 'التنبيهات';
 
   @override
-  String get familyPermSocial => 'التواصل';
+  String get familyPermSocial => 'وسائل التواصل الاجتماعي';
 
   @override
   String get familyMapTitle => 'خريطة العائلة';
@@ -804,7 +804,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String familyMapCommandFailed(String error) {
-    return 'فشل إرسال الأمر: $error';
+    return 'تعذّر إرسال الأمر: $error';
   }
 
   @override
@@ -815,7 +815,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String familyMapGeofenceAdded(String name) {
-    return 'أُضيف النطاق \"$name\"';
+    return 'أُضيف النطاق «$name»';
   }
 
   @override
@@ -860,11 +860,11 @@ class AppLocalizationsAr extends AppLocalizations {
   String get saferAlternatives => 'بدائل أكثر أمانًا';
 
   @override
-  String get noInsightsYet => 'لا توجد رؤى لهذا التطبيق بعد';
+  String get noInsightsYet => 'لا توجد معلومات عن هذا التطبيق بعد';
 
   @override
   String insightsLoadFailed(String error) {
-    return 'تعذّر تحميل الرؤى: $error';
+    return 'تعذّر تحميل معلومات التطبيق: $error';
   }
 
   @override
@@ -874,16 +874,16 @@ class AppLocalizationsAr extends AppLocalizations {
   String get commandUnlock => 'فتح القفل';
 
   @override
-  String get commandRing => 'رن';
+  String get commandRing => 'رنين الجهاز';
 
   @override
   String get commandStopRing => 'إيقاف الرنين';
 
   @override
-  String get commandClearSos => 'مسح نداء الاستغاثة';
+  String get commandClearSos => 'إنهاء تنبيه الاستغاثة';
 
   @override
-  String get commandPauseDevice => 'إيقاف الجهاز';
+  String get commandPauseDevice => 'إيقاف الجهاز مؤقتًا';
 
   @override
   String get commandResumeDevice => 'استئناف الجهاز';
@@ -925,7 +925,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get statusExpired => 'انتهت صلاحيته قبل التسليم';
 
   @override
-  String get statusPending => 'قيد الانتظار — في انتظار الجهاز';
+  String get statusPending => 'قيد الانتظار — بانتظار الجهاز';
 
   @override
   String get alertsTitle => 'التنبيهات';
@@ -938,7 +938,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String acknowledgeFailed(String error) {
-    return 'فشل تأكيد الاستلام: $error';
+    return 'تعذّر تأكيد الاستلام: $error';
   }
 
   @override
@@ -970,7 +970,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String blockFailed(String error) {
-    return 'فشل الحظر: $error';
+    return 'تعذّر الحظر: $error';
   }
 
   @override
@@ -1013,19 +1013,19 @@ class AppLocalizationsAr extends AppLocalizations {
   String get alertCategoryTamper => 'الحماية';
 
   @override
-  String get alertCategoryVpnDetected => 'VPN';
+  String get alertCategoryVpnDetected => 'شبكة VPN';
 
   @override
   String get alertCategoryInstallRequest => 'طلب تثبيت تطبيق';
 
   @override
-  String get alertCategoryUnknownContact => 'جهة غير معروفة';
+  String get alertCategoryUnknownContact => 'جهة اتصال غير معروفة';
 
   @override
   String get tabScreenTime => 'وقت الشاشة';
 
   @override
-  String get tabWebFilter => 'تصفية الويب';
+  String get tabWebFilter => 'تصفية المواقع';
 
   @override
   String get tabRoutines => 'الروتين';
@@ -1141,7 +1141,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get categoryChatRandom => 'دردشة عشوائية';
 
   @override
-  String get categoryProxiesVpn => 'الوكلاء وشبكات VPN';
+  String get categoryProxiesVpn => 'الخوادم الوكيلة وشبكات VPN';
 
   @override
   String get categoryWarez => 'القرصنة';
@@ -1156,20 +1156,20 @@ class AppLocalizationsAr extends AppLocalizations {
   String get categoryChat => 'الدردشة';
 
   @override
-  String get allowedDomainsLabel => 'النطاقات المسموح بها (مفصولة بفواصل)';
+  String get allowedDomainsLabel => 'المواقع المسموح بها (مفصولة بفواصل)';
 
   @override
-  String get blockedDomainsLabel => 'النطاقات المحظورة (مفصولة بفواصل)';
+  String get blockedDomainsLabel => 'المواقع المحظورة (مفصولة بفواصل)';
 
   @override
-  String get enforceSafeSearch => 'فرض البحث الآمن';
+  String get enforceSafeSearch => 'تفعيل البحث الآمن';
 
   @override
   String get youtubeRestrictedMode => 'الوضع المقيّد في يوتيوب';
 
   @override
   String get youtubeRestrictedDesc =>
-      'يزيل المحتوى غير المناسب المحتمل على يوتيوب عبر أجهزة الأطفال.';
+      'يُخفي المحتوى الذي قد لا يناسب الأطفال على يوتيوب في جميع أجهزة الأطفال.';
 
   @override
   String get strict => 'صارم';
@@ -1178,14 +1178,14 @@ class AppLocalizationsAr extends AppLocalizations {
   String get moderate => 'متوسط';
 
   @override
-  String get off => 'إيقاف';
+  String get off => 'غير مفعّل';
 
   @override
   String get alwaysAllowed => 'مسموح دائمًا';
 
   @override
   String get alwaysAllowedDesc =>
-      'تظل هذه التطبيقات مفتوحة أثناء وقت النوم والساعات المدرسية والإيقاف والروتين.';
+      'تظل هذه التطبيقات مفتوحة أثناء وقت النوم والساعات المدرسية والإيقاف المؤقت والروتين.';
 
   @override
   String get addPaymentApp => 'إضافة تطبيق دفع';
@@ -1222,11 +1222,11 @@ class AppLocalizationsAr extends AppLocalizations {
   String get essentialAppRow => 'مسموح دائمًا (ضروري للمكالمات والسلامة)';
 
   @override
-  String get installedAppsEmpty => 'لم يتم الإبلاغ عن أي تطبيقات بعد';
+  String get installedAppsEmpty => 'لم تصل قائمة التطبيقات بعد';
 
   @override
   String get installedAppsEmptyHint =>
-      'تظهر القائمة بعد تسجيل جهاز الطفل في المرة التالية (خلال 15 دقيقة كحد أقصى).';
+      'تظهر القائمة بعد التحديث التالي من جهاز الطفل (خلال 15 دقيقة كحد أقصى).';
 
   @override
   String get installedAppsNoMatch => 'لا توجد تطبيقات تطابق بحثك.';
@@ -1238,7 +1238,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String installedAppsTruncated(int count) {
-    return 'عرض أول $count تطبيقًا.';
+    return 'تُعرض أول التطبيقات فقط، وعددها: $count.';
   }
 
   @override
@@ -1251,7 +1251,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get packageIdLabel => 'معرّف الحزمة (مثل com.example.app)';
 
   @override
-  String get limitPerDayLabel => 'الحد (دقائق/يوم)';
+  String get limitPerDayLabel => 'الحد اليومي (بالدقائق)';
 
   @override
   String get addRoutine => 'إضافة روتين';
@@ -1264,12 +1264,12 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String startTimeButton(String time) {
-    return 'البداية $time';
+    return 'يبدأ: $time';
   }
 
   @override
   String endTimeButton(String time) {
-    return 'النهاية $time';
+    return 'ينتهي: $time';
   }
 
   @override
@@ -1285,7 +1285,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get reportsTitle => 'التقارير';
 
   @override
-  String get screenTimeWebHistoryTooltip => 'وقت الشاشة وسجل الويب';
+  String get screenTimeWebHistoryTooltip => 'وقت الشاشة وسجل التصفح';
 
   @override
   String get sevenDays => '7 أيام';
@@ -1349,10 +1349,10 @@ class AppLocalizationsAr extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count زيارة لموقع',
-      many: '$count زيارة لموقع',
+      other: '$count زيارة لمواقع',
+      many: '$count زيارة لمواقع',
       few: '$count زيارات لمواقع',
-      two: 'زيارتان لموقعين',
+      two: 'زيارتان لمواقع',
       one: 'زيارة واحدة لموقع',
       zero: 'لا زيارات لمواقع',
     );
@@ -1360,7 +1360,7 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get noBlockedDomains => 'لا توجد نطاقات محظورة';
+  String get noBlockedDomains => 'لا توجد مواقع محظورة';
 
   @override
   String blockedTimes(int count) {
@@ -1377,11 +1377,11 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get safeSearchForced => 'تفعيل البحث الآمن على YouTube';
+  String get safeSearchForced => 'تفعيل البحث الآمن على يوتيوب';
 
   @override
   String get restrictedModeNote =>
-      'يتطلب الوضع المقيّد فحص HTTPS على حاسوب الطفل (راجع الدليل)';
+      'يتطلب الوضع المقيّد فحص HTTPS على كمبيوتر الطفل (راجع الدليل)';
 
   @override
   String get socialAndCommunication => 'التواصل والاتصالات';
@@ -1391,12 +1391,12 @@ class AppLocalizationsAr extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count مخوّف اجتماعي',
-      many: '$count مخوّفًا اجتماعيًا',
-      few: '$count مخاوف اجتماعية',
-      two: 'مخوّفان اجتماعيان',
-      one: 'مخوّف اجتماعي واحد',
-      zero: 'لا مخاوف اجتماعية',
+      other: '$count تنبيه من وسائل التواصل الاجتماعي',
+      many: '$count تنبيهًا من وسائل التواصل الاجتماعي',
+      few: '$count تنبيهات من وسائل التواصل الاجتماعي',
+      two: 'تنبيهان من وسائل التواصل الاجتماعي',
+      one: 'تنبيه واحد من وسائل التواصل الاجتماعي',
+      zero: 'لا تنبيهات من وسائل التواصل الاجتماعي',
     );
     return '$_temp0';
   }
@@ -1504,7 +1504,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String fewerDaysReturned(int returned, int requested) {
-    return 'أُعيد $returned فقط من أصل $requested يومًا مطلوبًا؛ تُعرض تلك الأيام كما هي.';
+    return 'وصلت بيانات $returned فقط من الأيام المطلوبة وعددها $requested؛ تُعرض تلك الأيام كما هي.';
   }
 
   @override
@@ -1552,7 +1552,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String showingLatestVisits(int limit) {
-    return 'تُعرض آخر $limit زيارة — ارفع الحد لرؤية المزيد.';
+    return 'تُعرض أحدث الزيارات وعددها $limit — ارفع الحد لرؤية المزيد.';
   }
 
   @override
@@ -1576,11 +1576,11 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get scanQr => 'امسح رمز QR باستخدام تطبيق OSRA على جهاز الطفل.';
+  String get scanQr => 'امسح رمز QR باستخدام تطبيق أسرة للأطفال على جهاز الطفل.';
 
   @override
   String get typeSixDigit =>
-      'إذا تعذّرت المسح بالكاميرا، فأدخل الرمز المكوّن من 6 أرقام أدناه على جهاز الطفل.';
+      'إذا تعذّر المسح بالكاميرا، فأدخل الرمز المكوّن من 6 أرقام أدناه على جهاز الطفل.';
 
   @override
   String get codeExpired => 'انتهت صلاحية الرمز';
@@ -1623,15 +1623,15 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get pairCodeError =>
-      'لم يُرجع الخادم رمز إقران صالحًا. جرّب إعادة الإنشاء.';
+      'لم يصل من خدمة أسرة رمز إقران صالح. اضغط «إعادة الإنشاء».';
 
   @override
   String get pairCreateError =>
-      'تعذّر إنشاء رمز الإقران. تحقق من الاتصال وحاول مرة أخرى.';
+      'تعذّر إنشاء رمز الإقران. تحقّق من الاتصال وحاول مرة أخرى.';
 
   @override
   String get pairConsentError =>
-      'يحتاج الخادم إلى موافقة الوالدين لهذا الطفل قبل إنشاء رمز الإقران. ارجع وأضف الطفل مرة أخرى ثم حاول مجددًا.';
+      'يتطلب إنشاء رمز الإقران موافقة الوالدين لهذا الطفل. ارجع وأضف الطفل مرة أخرى ثم حاول مرة أخرى.';
 
   @override
   String get pairClaimTitle => 'جهاز يطلب الانضمام';
@@ -1660,7 +1660,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get pairClaimDataCleared =>
-      'تم مسح بيانات OSRA على هذا الهاتف، لذلك فقد حمايته. اسمح به فقط إذا كنت تتوقع ذلك.';
+      'تم مسح بيانات تطبيق أسرة للأطفال على هذا الهاتف، لذلك فقد حمايته. اسمح به فقط إذا كنت تتوقع ذلك.';
 
   @override
   String get appearanceTitle => 'المظهر';
@@ -1670,7 +1670,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get appearanceDesc =>
-      'يتبع هذا الجهاز إعدادات النظام. يُطبَّق الوضع الفاتح أو الداكن على تطبيق OSRA فقط.';
+      'يتبع هذا الجهاز إعدادات النظام. يُطبَّق الوضع الفاتح أو الداكن على تطبيق أسرة فقط.';
 
   @override
   String followingDevice(String mode) {
@@ -1688,7 +1688,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get languageDesc =>
-      'يتبع هذا الجهاز إعدادات النظام. تُطبَّق اللغة الإنجليزية أو العربية على تطبيق OSRA فقط.';
+      'يتبع هذا الجهاز إعدادات النظام. تُطبَّق اللغة الإنجليزية أو العربية على تطبيق أسرة فقط.';
 
   @override
   String followingLanguage(String language) {
@@ -1705,25 +1705,25 @@ class AppLocalizationsAr extends AppLocalizations {
   String get monitoring => 'المراقبة';
 
   @override
-  String get monitoringSaved => 'تم حفظ المراقبة';
+  String get monitoringSaved => 'تم حفظ إعدادات المراقبة';
 
   @override
   String saveFailed(String error) {
-    return 'فشل الحفظ: $error';
+    return 'تعذّر الحفظ: $error';
   }
 
   @override
-  String get saveMonitoring => 'حفظ المراقبة';
+  String get saveMonitoring => 'حفظ إعدادات المراقبة';
 
   @override
-  String get concerns => 'المخاوف';
+  String get concerns => 'ما يثير القلق';
 
   @override
   String get vaultTrustCopy =>
       'تنتقل المقتطفات عبر اتصال مشفّر، وتُخزَّن مشفّرة على خوادم تطبيق أسرة.';
 
   @override
-  String get noConcernsDetected => 'لم تُكتشف أي مخاوف';
+  String get noConcernsDetected => 'لم يتم رصد ما يثير القلق';
 
   @override
   String get unknownContact => 'جهة اتصال غير معروفة';
@@ -1738,17 +1738,17 @@ class AppLocalizationsAr extends AppLocalizations {
   String get viewInDecryptionVault => 'عرض في خزنة فك التشفير';
 
   @override
-  String get socialMessage => 'رسالة اجتماعية';
+  String get socialMessage => 'رسالة على وسائل التواصل الاجتماعي';
 
   @override
-  String get callsAndTexts => 'المكالمات الهاتفية والرسائل';
+  String get callsAndTexts => 'المكالمات الهاتفية والرسائل النصية';
 
   @override
   String get iosNoCallMonitoring =>
-      'لا يدعم iOS مراقبة المكالمات الهاتفية والرسائل.';
+      'لا تتوفر مراقبة المكالمات الهاتفية والرسائل النصية على آيفون.';
 
   @override
-  String get noCallsOrTexts => 'لا توجد مكالمات هاتفية أو رسائل بعد';
+  String get noCallsOrTexts => 'لا توجد مكالمات هاتفية أو رسائل نصية بعد';
 
   @override
   String get unknownNumber => 'رقم غير معروف';
@@ -1758,16 +1758,16 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get trustedContactsDesc =>
-      'الأرقام هنا لا تُثير مخاوف اجتماعية أبدًا.';
+      'لن تصلك تنبيهات عن التواصل مع الأرقام المدرجة هنا.';
 
   @override
   String get phoneNumberLabel => 'رقم الهاتف';
 
   @override
-  String get saveAllowlist => 'حفظ القائمة المسموح بها';
+  String get saveAllowlist => 'حفظ جهات الاتصال الموثوقة';
 
   @override
-  String get allowlistSaved => 'تم حفظ القائمة المسموح بها';
+  String get allowlistSaved => 'تم حفظ جهات الاتصال الموثوقة';
 
   @override
   String get relativeJustNow => 'الآن';
@@ -1839,7 +1839,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get vaultEncryptionDesc =>
-      'محميّ بتشفير AES-256-GCM. يُفكّ التشفير عند الطلب لأولياء الأمور الموثّقين فقط.';
+      'محميّة بتشفير AES-256-GCM. يُفكّ التشفير عند الطلب، ولأولياء الأمور الذين تم التحقق من هويتهم فقط.';
 
   @override
   String get decryptedContent => 'المحتوى بعد فك التشفير';
@@ -1860,7 +1860,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get commandDeliveryTitle => 'تسليم الأوامر';
 
   @override
-  String get couldNotLoadChild => 'تعذّر تحميل هذا الطفل';
+  String get couldNotLoadChild => 'تعذّر تحميل بيانات هذا الطفل';
 
   @override
   String get noDevicesForChild => 'لا توجد أجهزة مسجّلة لهذا الطفل';
@@ -1955,7 +1955,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get mfaEnrollIntro =>
-      'امسح هذا الرمز بتطبيق المصادقة، ثم أدخل الرمز المكوّن من ستة أرقام الذي يعرضه.';
+      'امسح هذا الرمز بتطبيق المصادقة، ثم أدخل الرمز المكوّن من 6 أرقام الذي يعرضه.';
 
   @override
   String get mfaEnrollManual => 'تعذّر المسح؟ أدخل هذا المفتاح في التطبيق:';
@@ -1968,10 +1968,10 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get mfaEnrollAfterRecovery =>
-      'أعد إعداد تطبيق مصادقة جديد لهذا الحساب. إلى أن تتحقق منه، يبقى التحقق بخطوتين غير مفعّل.';
+      'أعدّ تطبيق مصادقة جديدًا لهذا الحساب. يبقى التحقق بخطوتين غير مفعّل إلى أن تؤكّد الرمز منه.';
 
   @override
-  String get mfaCodeFieldLabel => 'رمز من ستة أرقام';
+  String get mfaCodeFieldLabel => 'رمز من 6 أرقام';
 
   @override
   String get mfaVerify => 'تفعيل التحقق بخطوتين';
@@ -1989,7 +1989,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get mfaSessionError =>
-      'انتهت جلستك. سجّل الدخول مجددًا ثم أعد المحاولة.';
+      'انتهت جلستك. سجّل الدخول مجددًا ثم حاول مرة أخرى.';
 
   @override
   String get mfaRecoveryExpired =>
@@ -1997,21 +1997,21 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get mfaTooManyAttempts =>
-      'محاولات كثيرة جدًا. انتظر دقيقة ثم حاول مجددًا.';
+      'محاولات كثيرة جدًا. انتظر دقيقة ثم حاول مرة أخرى.';
 
   @override
   String get mfaNetworkError =>
-      'تعذّر الوصول إلى الخادم. تحقّق من اتصالك ثم حاول مجددًا.';
+      'تعذّر الاتصال بخدمة أسرة. تحقّق من اتصالك ثم حاول مرة أخرى.';
 
   @override
-  String get mfaRequestFailed => 'لم ينجح ذلك. حاول مجددًا.';
+  String get mfaRequestFailed => 'تعذّر إتمام العملية. حاول مرة أخرى.';
 
   @override
-  String get mfaEnrollError => 'تعذّر إنشاء مفتاح المصادقة. حاول مجددًا.';
+  String get mfaEnrollError => 'تعذّر إنشاء مفتاح إعداد تطبيق المصادقة. حاول مرة أخرى.';
 
   @override
   String get mfaNoRecoveryCodes =>
-      'لم يُرجع الخادم رموز الاسترداد. حاول مجددًا قبل مغادرة هذه الشاشة.';
+      'لم تصل رموز الاسترداد. حاول مرة أخرى قبل مغادرة هذه الشاشة.';
 
   @override
   String get mfaCodesTitle => 'احفظ رموز الاسترداد';
@@ -2037,7 +2037,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get mfaCodesLeaveBody =>
-      'لا يمكن عرض هذه الرموز مرة أخرى. إذا غادرت الآن، فستحتاج إلى إنشاء مجموعة جديدة من الإعدادات.';
+      'لا يمكن عرض هذه الرموز مرة أخرى. إذا غادرت الآن، فستحتاج إلى إنشاء رموز جديدة من «الإعدادات».';
 
   @override
   String get mfaCodesStay => 'البقاء';
@@ -2079,14 +2079,14 @@ class AppLocalizationsAr extends AppLocalizations {
       'البريد الإلكتروني أو كلمة المرور أو رمز الاسترداد غير صحيح.';
 
   @override
-  String get mfaRecoveryNoToken => 'لم يُرجع الخادم جلسة استرداد. حاول مجددًا.';
+  String get mfaRecoveryNoToken => 'تعذّر بدء الاسترداد. حاول مرة أخرى.';
 
   @override
   String get mfaFieldsRequired =>
-      'املأ البريد الإلكتروني وكلمة المرور ورمز الاسترداد.';
+      'أدخل البريد الإلكتروني وكلمة المرور ورمز الاسترداد.';
 
   @override
-  String get onboardingWelcomeTitle => 'مرحبًا بك في OSRA';
+  String get onboardingWelcomeTitle => 'مرحبًا بك في تطبيق أسرة';
 
   @override
   String get onboardingWelcomeBody =>
@@ -2104,22 +2104,22 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get onboardingWrongPassword =>
-      'البريد الإلكتروني أو كلمة المرور غير صحيحة. تحقق منها وحاول مجددًا.';
+      'البريد الإلكتروني أو كلمة المرور غير صحيحة. تحقّق منها وحاول مرة أخرى.';
 
   @override
   String get onboardingInvalidMfaCode =>
-      'لم يُقبل رمز التحقق. تحقق من الرمز وحاول مجددًا.';
+      'لم يُقبل رمز تطبيق المصادقة. تحقّق من الرمز وحاول مرة أخرى.';
 
   @override
   String get onboardingNoNetwork =>
-      'تعذّر الوصول إلى الخادم. تحقق من عنوان الخادم واتصال الإنترنت ثم حاول مجددًا.';
+      'تعذّر الاتصال بخدمة أسرة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
 
   @override
   String get onboardingChildTitle => 'أضف طفلك';
 
   @override
   String get onboardingChildIntro =>
-      'أدخل اسم طفلك وسنة ميلاده. اختر طريقة موافقة الوالدين — يحتاج الخادم إلى الموافقة قبل إضافة الطفل.';
+      'أدخل اسم طفلك وسنة ميلاده، ثم اختر الطريقة التي قدّمت بها موافقة الوالدين. لا يمكن إضافة الطفل قبل تسجيل الموافقة.';
 
   @override
   String get onboardingChildNameRequired => 'أدخل اسم طفلك.';
@@ -2129,7 +2129,7 @@ class AppLocalizationsAr extends AppLocalizations {
       'أدخل سنة ميلاد بين 1900 وهذا العام.';
 
   @override
-  String get onboardingAddChildContinue => 'أضف الطفل وتابع';
+  String get onboardingAddChildContinue => 'إضافة الطفل والمتابعة';
 
   @override
   String get onboardingChildPrivacy =>
@@ -2137,33 +2137,33 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get onboardingExistingChildren =>
-      'لدى حسابك أطفال بالفعل. تابع لإقران جهاز.';
+      'في حسابك أطفال مضافون من قبل. تابع لإقران جهاز.';
 
   @override
   String get onboardingConsentRequired =>
-      'يحتاج الخادم إلى موافقة الوالدين لهذا الطفل. تحقق من بيانات الموافقة وحاول مجددًا.';
+      'لا يمكن إضافة هذا الطفل قبل تسجيل موافقة الوالدين. تحقّق من بيانات الموافقة وحاول مرة أخرى.';
 
   @override
   String get onboardingOwnerOnly =>
-      'مالك العائلة وحده يمكنه إضافة طفل. سجّل الدخول بحساب المالك أو اطلب من المالك إضافة هذا الطفل.';
+      'مدير العائلة وحده يمكنه إضافة طفل. سجّل الدخول بحساب مدير العائلة أو اطلب منه إضافة هذا الطفل.';
 
   @override
   String get onboardingChildInvalid =>
-      'تعذّر على الخادم إضافة هذا الطفل. تحقق من الاسم وسنة الميلاد ثم حاول مجددًا.';
+      'تعذّرت إضافة هذا الطفل. تحقّق من الاسم وسنة الميلاد ثم حاول مرة أخرى.';
 
   @override
   String get onboardingChildFailed =>
-      'تعذّرت إضافة طفلك. تحقق من اتصالك وحاول مجددًا.';
+      'تعذّرت إضافة طفلك. تحقّق من اتصالك وحاول مرة أخرى.';
 
   @override
   String get onboardingLeaveTitle => 'العودة إلى تسجيل الدخول؟';
 
   @override
   String get onboardingLeaveBody =>
-      'سيتم تسجيل خروجك. أي شيء أضفته بالفعل يبقى على حسابك.';
+      'سيتم تسجيل خروجك. يبقى ما أضفته حتى الآن محفوظًا في حسابك.';
 
   @override
-  String get onboardingLeaveStay => 'ابقَ';
+  String get onboardingLeaveStay => 'البقاء';
 
   @override
   String get onboardingLeaveConfirm => 'تسجيل الخروج';
@@ -2173,7 +2173,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String onboardingPairIntro(String childName) {
-    return 'افتح OSRA على هاتف $childName واختر الإقران برمز.';
+    return 'افتح تطبيق أسرة للأطفال على هاتف $childName وانتقل إلى شاشة الإقران.';
   }
 
   @override
@@ -2189,7 +2189,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get onboardingPairCheckFailed =>
-      'تعذّر التحقق من الإقران بعد. تحقق من اتصالك واضغط مجددًا.';
+      'تعذّر التحقق من الإقران بعد. تحقّق من اتصالك واضغط مجددًا.';
 
   @override
   String get onboardingPairLater => 'الإعداد لاحقًا';
@@ -2218,7 +2218,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get onboardingDonePendingBody =>
-      'تمت إضافة طفلك، لكن هاتفه غير مقرون بعد. يمكنك إقرانه في أي وقت من لوحة التحكم.';
+      'تمت إضافة طفلك، لكن هاتفه غير مقترن بعد. يمكنك إقرانه في أي وقت من لوحة التحكم.';
 
   @override
   String get onboardingGoToDashboard => 'الانتقال إلى لوحة التحكم';
@@ -2239,7 +2239,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String consentStatusSubtitle(String childName) {
-    return 'ما هو مسجّل حاليًا على الخادم بشأن $childName؟';
+    return 'ما هو مسجّل حاليًا على الخادم بشأن $childName.';
   }
 
   @override
@@ -2266,7 +2266,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String consentStateExpiringDetail(String date) {
-    return 'ينتهي هذا السجل في $date. يتوقف الجمع والتنبيهات بعد ذلك التاريخ ما لم تُمنح الموافقة مجددًا.';
+    return 'ينتهي هذا السجل في $date. يتوقف جمع البيانات وتتوقف التنبيهات بعد ذلك التاريخ ما لم تُمنح الموافقة مجددًا.';
   }
 
   @override
@@ -2281,12 +2281,12 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String consentStateMismatchDetail(String record, String family) {
-    return 'اختصاص السجل ($record) لا يطابق منطقة عائلتك ($family)، لذلك لا يمكنه السماح بالمراقبة.';
+    return 'الاختصاص القضائي للسجل ($record) لا يطابق منطقة عائلتك ($family)، لذلك لا يجيز هذا السجل المراقبة.';
   }
 
   @override
   String get consentStateNoneDetail =>
-      'لا توجد موافقة والدين مسجّلة لهذا الطفل. المراقبة وجمع البيانات تتطلبان سجلًا ساريًا.';
+      'لا توجد موافقة والدين مسجّلة لهذا الطفل. المراقبة وجمع البيانات يتطلبان سجلًا ساريًا.';
 
   @override
   String get consentJurisdictionLabel => 'الاختصاص القضائي';
@@ -2301,13 +2301,13 @@ class AppLocalizationsAr extends AppLocalizations {
   String get consentNoExpiry => 'بلا تاريخ انتهاء';
 
   @override
-  String get consentThirdPartyLabel => 'المشاركة مع أطراف ثالثة';
+  String get consentThirdPartyLabel => 'المشاركة مع جهات خارجية';
 
   @override
   String get consentSharingOn => 'مفعّلة';
 
   @override
-  String get consentSharingOff => 'معطّلة';
+  String get consentSharingOff => 'غير مفعّلة';
 
   @override
   String get consentRevokedLabel => 'تاريخ السحب';
@@ -2341,7 +2341,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get consentLoadFailed =>
-      'تعذّر تحميل سجل الموافقة. تحقّق من اتصالك وحاول مجددًا.';
+      'تعذّر تحميل سجل الموافقة. تحقّق من اتصالك وحاول مرة أخرى.';
 
   @override
   String get consentGrantTitle => 'منح الموافقة مجددًا';
@@ -2351,23 +2351,23 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get consentGrantNote =>
-      'تبقى المراقبة متوقفة حتى يوجد سجل موافقة جديد. منح الموافقة مجددًا يستأنف الجمع على أجهزة هذا الطفل.';
+      'تبقى المراقبة متوقفة إلى أن تُسجَّل موافقة جديدة. عند منح الموافقة مجددًا يُستأنف جمع البيانات على أجهزة هذا الطفل.';
 
   @override
   String consentGrantRegion(String region) {
-    return 'يُسجَّل السجل بمنطقة عائلتك ($region). السجل من منطقة أخرى لا يمكنه السماح بالمراقبة.';
+    return 'تُسجَّل الموافقة بمنطقة عائلتك ($region). السجل الصادر من منطقة أخرى لا يجيز المراقبة.';
   }
 
   @override
   String get consentGrantDone =>
-      'سُجِّلت الموافقة. تستأنف المراقبة على أجهزة هذا الطفل.';
+      'سُجِّلت الموافقة. تُستأنف المراقبة على أجهزة هذا الطفل.';
 
   @override
   String get consentGrantFailed =>
-      'لم تُسجَّل الموافقة. تحقّق من اتصالك وحاول مجددًا.';
+      'لم تُسجَّل الموافقة. تحقّق من اتصالك وحاول مرة أخرى.';
 
   @override
-  String get consentGrantForbidden => 'مالك العائلة فقط يمكنه منح الموافقة.';
+  String get consentGrantForbidden => 'مدير العائلة فقط يمكنه منح الموافقة.';
 
   @override
   String get consentGrantBusy => 'جارٍ الحفظ…';
@@ -2387,14 +2387,14 @@ class AppLocalizationsAr extends AppLocalizations {
   String get consentWithdrawAction => 'سحب الموافقة';
 
   @override
-  String get consentWithdrawOnlyOwner => 'مالك العائلة فقط يمكنه سحب الموافقة.';
+  String get consentWithdrawOnlyOwner => 'مدير العائلة فقط يمكنه سحب الموافقة.';
 
   @override
   String get consentWithdrawUnavailable => 'لا يوجد سجل موافقة سارٍ لسحبه.';
 
   @override
   String get consentWithdrawNote =>
-      'سحب الموافقة يوقف المراقبة. لا يحذف البيانات التي جُمعت بالفعل.';
+      'سحب الموافقة يوقف المراقبة، لكنه لا يحذف البيانات التي سبق جمعها.';
 
   @override
   String get consentRevokeTitle => 'سحب الموافقة؟';
@@ -2409,11 +2409,11 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get consentRevokeStopsCollection =>
-      'يتوقف جمع البيانات الجديد: الموقع والنشاط في التطبيقات والويب وفحص المحادثات.';
+      'يتوقف جمع أي بيانات جديدة: الموقع، والنشاط في التطبيقات والويب، وفحص المحادثات.';
 
   @override
   String get consentRevokeStopsAlerts =>
-      'تتوقف تنبيهات السلامة، بما فيها SOS ووقت الشاشة والمواقع المحظورة.';
+      'تتوقف تنبيهات السلامة، بما فيها تنبيهات الاستغاثة ووقت الشاشة والمواقع المحظورة.';
 
   @override
   String get consentRevokeStopsRules =>
@@ -2421,18 +2421,18 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get consentRevokeKeepsSafe =>
-      'يبقى فتح قفل جهاز طفلك واستئناف استخدامه متاحين أثناء سحب الموافقة.';
+      'يبقى فتح قفل جهاز طفلك واستئناف استخدامه متاحين ما دامت الموافقة مسحوبة.';
 
   @override
-  String get consentRevokeDataTitle => 'ماذا يحدث للبيانات المجمّعة بالفعل';
+  String get consentRevokeDataTitle => 'ماذا يحدث للبيانات التي سبق جمعها';
 
   @override
   String get consentRevokeDataRetained =>
-      'لا يُحذف أي شيء أو يُخفى الآن. تبقى التقارير والتنبيهات وسجل المواقع المجمّعة في حساب عائلتك.';
+      'لا تُحذف أي بيانات الآن ولا تُخفى هوية صاحبها. تبقى التقارير والتنبيهات وسجل المواقع التي سبق جمعها في حساب عائلتك.';
 
   @override
   String get consentRevokeDataRetention =>
-      'تُحذف بيانات الموقع الخام بواسطة مهمة الاحتفاظ بعد 30 يومًا افتراضيًا، وبيانات التطبيقات والويب والمحادثات الخام بعد 90 يومًا.\n\nتُحفظ ملخصات الاستخدام لمدة 365 يومًا. تبقى التنبيهات حتى تُحذف بيانات الطفل.';
+      'تُحذف بيانات الموقع الخام تلقائيًا بعد 30 يومًا (المدة الافتراضية)، وبيانات التطبيقات والويب والمحادثات الخام بعد 90 يومًا.\n\nتُحفظ ملخصات الاستخدام لمدة 365 يومًا. تبقى التنبيهات حتى تُحذف بيانات الطفل.';
 
   @override
   String get consentRevokeDataErase =>
@@ -2462,11 +2462,11 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get consentRevokeFailed =>
-      'تعذّر سحب الموافقة. لم يتغيّر شيء. تحقّق من اتصالك وحاول مجددًا.';
+      'تعذّر سحب الموافقة. لم يتغيّر شيء. تحقّق من اتصالك وحاول مرة أخرى.';
 
   @override
   String get consentRevokeForbidden =>
-      'مالك العائلة فقط يمكنه سحب الموافقة. لم يتغيّر شيء.';
+      'مدير العائلة فقط يمكنه سحب الموافقة. لم يتغيّر شيء.';
 
   @override
   String get consentRevokeDone => 'تم سحب الموافقة. أُوقفت المراقبة.';
@@ -2480,7 +2480,10 @@ class AppLocalizationsAr extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'أُضيفت إشارة الإيقاف لـ $count أجهزة.',
+      other: 'أُضيفت إشارة الإيقاف لـ $count جهاز.',
+      many: 'أُضيفت إشارة الإيقاف لـ $count جهازًا.',
+      few: 'أُضيفت إشارة الإيقاف لـ $count أجهزة.',
+      two: 'أُضيفت إشارة الإيقاف لجهازين.',
       one: 'أُضيفت إشارة الإيقاف لجهاز واحد.',
       zero: 'لم يكن أي جهاز متصلًا.',
     );
@@ -2489,7 +2492,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get consentChildNameMissing =>
-      'تعذّر تحميل اسم طفلك. ارجع وحاول مجددًا.';
+      'تعذّر تحميل اسم طفلك. ارجع وحاول مرة أخرى.';
 
   @override
   String get refresh => 'تحديث';
@@ -2516,7 +2519,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String searchSafetyFlaggedCount(int count) {
-    return 'عمليات البحث المُبلَّغ عنها ($count)';
+    return 'عمليات البحث المثيرة للقلق ($count)';
   }
 
   @override
@@ -2530,7 +2533,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String searchSafetyVaultTitle(String query) {
-    return 'بحث: \"$query\"';
+    return 'بحث: «$query»';
   }
 
   @override
@@ -2542,13 +2545,13 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get digestPrefsDailyTitle => 'ملخّص بريدي يومي';
+  String get digestPrefsDailyTitle => 'ملخّص يومي بالبريد الإلكتروني';
 
   @override
   String get digestPrefsDailyBody => 'ملخّص قصير كل مساء';
 
   @override
-  String get digestPrefsWeeklyTitle => 'ملخّص بريدي أسبوعي';
+  String get digestPrefsWeeklyTitle => 'ملخّص أسبوعي بالبريد الإلكتروني';
 
   @override
   String get digestPrefsWeeklyBody => 'ملخّص أوسع مرة كل أسبوع';
@@ -2645,10 +2648,10 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get mfaResetIntro =>
-      'استخدم هذا الخيار فقط إذا فقدت تطبيق المصادقة وكل رموز الاسترداد. ستحتاج إلى كلمة مرور حسابك، وإلى الوصول إلى بريد هذا الحساب، وإلى أحد الأمرين: رمز يُعرض على هاتف طفلك، أو موافقة مالك آخر أو والد مشارك من تطبيقه. بعد ذلك تنتظر 72 ساعة قبل إعادة تعيين التحقق بخطوتين.';
+      'استخدم هذا الخيار فقط إذا فقدت تطبيق المصادقة وكل رموز الاسترداد. ستحتاج إلى كلمة مرور حسابك، وإلى الوصول إلى البريد الإلكتروني لهذا الحساب، وإلى أحد الأمرين: رمز يُعرض على هاتف طفلك، أو موافقة مدير آخر للعائلة أو والد مشارك من تطبيقه. بعد ذلك تنتظر 72 ساعة قبل إعادة تعيين التحقق بخطوتين.';
 
   @override
-  String get mfaResetSubmit => 'اطلب إعادة التعيين';
+  String get mfaResetSubmit => 'طلب إعادة التعيين';
 
   @override
   String get mfaResetFieldsRequired => 'أدخل بريدك الإلكتروني وكلمة المرور.';
@@ -2663,11 +2666,11 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get mfaResetNoWitness =>
-      'لا يوجد لهذا الحساب شاهد من العائلة: لا جهاز طفل مقترن ولا مالك آخر أو والد مشارك. من دون ذلك يتعذّر إعادة تعيين التحقق بخطوتين. وإذا لم يعد هاتف الطفل مقترنًا، يمكنك إنشاء حساب جديد ببريد إلكتروني آخر.';
+      'لا يوجد لهذا الحساب شاهد من العائلة: لا جهاز طفل مقترن ولا مدير آخر للعائلة أو والد مشارك. من دون ذلك تتعذّر إعادة تعيين التحقق بخطوتين. وإذا لم يعد هاتف الطفل مقترنًا، يمكنك إنشاء حساب جديد ببريد إلكتروني آخر.';
 
   @override
   String get mfaResetAlreadyPending =>
-      'هناك طلب إعادة تعيين لهذا الحساب داخل فترة انتظاره (72 ساعة) ولا يمكن استبداله. أكمل ذلك الطلب، أو ألغِه عبر الرابط في بريده.';
+      'هناك طلب إعادة تعيين لهذا الحساب داخل فترة انتظاره (72 ساعة) ولا يمكن استبداله. أكمل ذلك الطلب، أو ألغِه عبر الرابط في رسالة البريد الإلكتروني الخاصة به.';
 
   @override
   String get mfaResetLimitReached =>
@@ -2685,7 +2688,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get mfaResetSetupNote =>
-      'إذا فقدت تطبيق المصادقة وكل هذه الرموز، فلا سبيل للعودة إلا بشاهد من العائلة: جهاز طفل مقترن، أو مالك آخر أو والد مشارك.';
+      'إذا فقدت تطبيق المصادقة وكل هذه الرموز، فلا سبيل للعودة إلا بشاهد من العائلة: جهاز طفل مقترن، أو مدير آخر للعائلة أو والد مشارك.';
 
   @override
   String get mfaResetWaitingTitle => 'إعادة التعيين قيد الانتظار';
@@ -2695,7 +2698,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get mfaResetStageMailboxBody =>
-      'افتح رابط إعادة التعيين المرسل إلى بريد هذا الحساب خلال 30 دقيقة. فتح الرابط يُظهر رمزًا من 8 أرقام على هاتف طفلك. وإذا كان والد آخر هو من سيوافق بدلًا من ذلك، فعليه الموافقة من تطبيقه.';
+      'افتح رابط إعادة التعيين المرسل إلى البريد الإلكتروني لهذا الحساب خلال 30 دقيقة. فتح الرابط يُظهر رمزًا من 8 أرقام على هاتف طفلك. وإذا كان والد آخر هو من سيوافق بدلًا من ذلك، فعليه الموافقة من تطبيقه.';
 
   @override
   String mfaResetMailboxExpires(String time) {
@@ -2709,7 +2712,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get mfaResetCancelHint =>
-      'لإيقاف هذا الطلب، افتح رابط الإلغاء في أي بريد وصلك بشأنه. كما أن تسجيل دخولك بتطبيق المصادقة يلغيه.';
+      'لإيقاف هذا الطلب، افتح رابط الإلغاء في أي رسالة بريد إلكتروني وصلتك بشأنه. كما أن تسجيل دخولك بتطبيق المصادقة يلغيه.';
 
   @override
   String get mfaResetStageWitnessTitle => 'أدخل الرمز من هاتف طفلك';
@@ -2725,7 +2728,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String mfaResetAwaitingCoParent(String time) {
-    return 'بانتظار موافقة والد آخر في عائلتك، بحلول $time.';
+    return 'بانتظار موافقة وليّ أمر آخر في عائلتك قبل $time.';
   }
 
   @override
@@ -2755,7 +2758,7 @@ class AppLocalizationsAr extends AppLocalizations {
       'انتهت صلاحية هذا الرابط أو الرمز. الطلب الجديد يستبدل هذا الطلب.';
 
   @override
-  String get mfaResetFinish => 'أكمل إعادة التعيين';
+  String get mfaResetFinish => 'إكمال إعادة التعيين';
 
   @override
   String get mfaResetCancelKeep => 'متابعة الانتظار';
@@ -2795,7 +2798,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get mfaResetFinishBody =>
-      'أدخل بريد هذا الحساب وكلمة مروره. سيُمسح التحقق بخطوتين الحالي، ثم تُعِدّ تطبيق مصادقة جديدًا.';
+      'أدخل البريد الإلكتروني لهذا الحساب وكلمة مروره. سيُمسح التحقق بخطوتين الحالي، ثم تُعِدّ تطبيق مصادقة جديدًا.';
 
   @override
   String get mfaResetFinishSubmit => 'إعادة تعيين التحقق بخطوتين';
@@ -2811,14 +2814,14 @@ class AppLocalizationsAr extends AppLocalizations {
   String get mfaResetWitnessLabel => 'رمز من 8 أرقام';
 
   @override
-  String get mfaResetWitnessSubmit => 'تحقّق من الرمز';
+  String get mfaResetWitnessSubmit => 'التحقق من الرمز';
 
   @override
   String get mfaResetWitnessEnterCode => 'أدخل الرمز المكوّن من 8 أرقام.';
 
   @override
   String get mfaResetWitnessInvalid =>
-      'لم يُقبل هذا الرمز أو انتهت صلاحيته. تحقّق من الرمز على هاتف طفلك وحاول مجددًا.';
+      'لم يُقبل هذا الرمز أو انتهت صلاحيته. تحقّق من الرمز على هاتف طفلك وحاول مرة أخرى.';
 
   @override
   String mfaResetWitnessAttemptsLeft(int count) {
@@ -2834,7 +2837,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get mfaResetApproveIntro =>
-      'وصل طلب من والد آخر في عائلتك لإعادة تعيين التحقق بخطوتين بعد فقدان تطبيق المصادقة ورموز الاسترداد. الموافقة تبدأ انتظارًا مدته 72 ساعة، وأي تسجيل دخول من ذلك الوالد خلال الانتظار يلغي الطلب.';
+      'وصل طلب من وليّ أمر آخر في عائلتك لإعادة تعيين التحقق بخطوتين بعد فقدان تطبيق المصادقة ورموز الاسترداد. الموافقة تبدأ انتظارًا مدته 72 ساعة، وأي تسجيل دخول منه خلال الانتظار يلغي الطلب.';
 
   @override
   String get mfaResetApproveAction => 'موافقة';
@@ -2853,14 +2856,14 @@ class AppLocalizationsAr extends AppLocalizations {
   String get mfaResetDeclineConfirm => 'رفض الطلب';
 
   @override
-  String get mfaResetApproved => 'تمت الموافقة. بدأ انتظار الـ 72 ساعة.';
+  String get mfaResetApproved => 'تمت الموافقة. بدأت فترة الانتظار (72 ساعة).';
 
   @override
   String get mfaResetDeclined => 'تم الرفض وإلغاء الطلب.';
 
   @override
   String get mfaResetApproveRole =>
-      'لا يمكن إلا لمالك أو والد مشارك الموافقة على طلب إعادة التعيين أو رفضه.';
+      'لا يمكن إلا لمدير العائلة أو والد مشارك الموافقة على طلب إعادة التعيين أو رفضه.';
 
   @override
   String get mfaResetApproveForbidden =>
@@ -2880,13 +2883,13 @@ class AppLocalizationsAr extends AppLocalizations {
       'اجتاز هذا الطلب خطوة الشاهد بالفعل. فترة الانتظار البالغة 72 ساعة جارية، ويمكنك رفضه لإلغائه.';
 
   @override
-  String get mfaResetRoleOwner => 'مالك';
+  String get mfaResetRoleOwner => 'مدير العائلة';
 
   @override
   String get mfaResetRoleCoParent => 'والد مشارك';
 
   @override
-  String get mfaResetRoleGuardian => 'ولي أمر';
+  String get mfaResetRoleGuardian => 'وليّ أمر';
 
   @override
   String get mfaResetRoleFamilyMember => 'فرد من العائلة';
@@ -2918,7 +2921,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String mfaResetPendingAlreadyWaiting(String role) {
-    return '$role — اجتاز خطوة الشاهد، وفترة الانتظار البالغة 72 ساعة جارية';
+    return '$role — اكتملت خطوة الشاهد، وفترة الانتظار البالغة 72 ساعة جارية';
   }
 
   @override
@@ -2939,7 +2942,7 @@ class AppLocalizationsAr extends AppLocalizations {
       'لا يوجد طلب إعادة تعيين محفوظ على هذا الهاتف.';
 
   @override
-  String get mfaResetStartNewRequest => 'ابدأ طلبًا جديدًا';
+  String get mfaResetStartNewRequest => 'بدء طلب جديد';
 
   @override
   String get mfaResetTerminalTitle => 'انتهى طلب إعادة التعيين هذا';
@@ -2977,7 +2980,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get mfaResetStageWitnessBodyResumed =>
-      'إذا ظهر رمز من 8 أرقام على هاتف طفلك، فأدخله أدناه. وإذا كان مالك آخر أو والد مشارك هو من يوافق بدلًا من ذلك، فعليه الموافقة من تطبيقه؛ ويتابع هذا الطلب عندما يحدث ذلك.';
+      'إذا ظهر رمز من 8 أرقام على هاتف طفلك، فأدخله أدناه. وإذا كان مدير آخر للعائلة أو والد مشارك هو من يوافق بدلًا من ذلك، فعليه الموافقة من تطبيقه؛ ويتابع هذا الطلب عندما يحدث ذلك.';
 
   @override
   String get digestPrefsSendHourLabel => 'ساعة الإرسال';
@@ -3017,10 +3020,10 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get alertCallBypassNote =>
-      'تم حظر تطبيق المكالمات، لكن المكالمة استمرت خلف شاشة الحظر. لا يستطيع OSRA إنهاء مكالمة تطبيق آخر، لذا تبقى الشاشة محظورة حتى تنتهي المكالمة.';
+      'تم حظر تطبيق المكالمات، لكن المكالمة استمرت خلف شاشة الحظر. لا يستطيع تطبيق أسرة إنهاء مكالمة تطبيق آخر، لذا تبقى الشاشة محجوبة حتى تنتهي المكالمة.';
 
   @override
-  String get alertTitleDataCleared => 'تم مسح بيانات OSRA على هاتف';
+  String get alertTitleDataCleared => 'تم مسح بيانات تطبيق أسرة للأطفال على أحد الهواتف';
 
   @override
   String get alertTitleVpnDetected => 'تم اكتشاف شبكة VPN';
@@ -3115,10 +3118,10 @@ class AppLocalizationsAr extends AppLocalizations {
   String get riskSelfHarm => 'إيذاء النفس';
 
   @override
-  String get riskSubstanceUse => 'تعاطي المواد';
+  String get riskSubstanceUse => 'تعاطي المواد المخدّرة';
 
   @override
-  String get riskSubstanceAbuse => 'إساءة استخدام المواد';
+  String get riskSubstanceAbuse => 'إساءة استعمال المواد المخدّرة';
 
   @override
   String get riskAdultContent => 'محتوى للبالغين';
@@ -3133,10 +3136,10 @@ class AppLocalizationsAr extends AppLocalizations {
   String get riskGrooming => 'استدراج';
 
   @override
-  String get riskViolence => 'العنف';
+  String get riskViolence => 'عنف';
 
   @override
-  String get riskHateSpeech => 'خطاب الكراهية';
+  String get riskHateSpeech => 'خطاب كراهية';
 
   @override
   String get riskAiConcern => 'محتوى مثير للقلق';
@@ -3150,13 +3153,13 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get phoneSetupOtherSpaceOther =>
-      'في هذا الهاتف مساحة أخرى، وقد لا يصل OSRA إلى التطبيقات داخلها.';
+      'في هذا الهاتف مساحة أخرى، وقد لا يصل تطبيق أسرة إلى التطبيقات داخلها.';
 
   @override
   String get phoneSetupTitle => 'إعداد الهاتف';
 
   @override
-  String get phoneSetupNeverReported => 'لم يبلّغ هذا الهاتف عن إمكاناته بعد.';
+  String get phoneSetupNeverReported => 'لم يرسل هذا الهاتف بيانات إعداده بعد.';
 
   @override
   String phoneSetupReported(Object age) {
@@ -3184,7 +3187,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get phoneSetupFeatureLockScreen => 'شاشة القفل';
 
   @override
-  String get phoneSetupFeaturePauseScreen => 'شاشة الإيقاف';
+  String get phoneSetupFeaturePauseScreen => 'شاشة الإيقاف المؤقت';
 
   @override
   String get phoneSetupFeatureAppBlocking => 'حظر التطبيقات';
@@ -3202,13 +3205,13 @@ class AppLocalizationsAr extends AppLocalizations {
   String get phoneSetupFeatureLocation => 'الموقع';
 
   @override
-  String get phoneSetupFeatureUninstallGuard => 'حماية من الإزالة';
+  String get phoneSetupFeatureUninstallGuard => 'الحماية من إلغاء التثبيت';
 
   @override
   String get phoneSetupFeatureNotificationScan => 'فحص الإشعارات';
 
   @override
-  String get phoneSetupFeatureCallSmsLog => 'المكالمات والرسائل';
+  String get phoneSetupFeatureCallSmsLog => 'المكالمات والرسائل النصية';
 
   @override
   String get phoneSetupStateReady => 'جاهز';
@@ -3223,31 +3226,31 @@ class AppLocalizationsAr extends AppLocalizations {
   String get phoneSetupStateNotSupported => 'غير موجود في هذا الإصدار';
 
   @override
-  String get grantAccessibility => 'خدمة إمكانية الوصول';
+  String get grantAccessibility => 'خدمة إمكانية الوصول (تسهيل الاستخدام)';
 
   @override
   String get grantUsageAccess => 'الوصول إلى بيانات الاستخدام';
 
   @override
-  String get grantOverlay => 'العرض فوق التطبيقات الأخرى';
+  String get grantOverlay => 'الظهور فوق التطبيقات الأخرى';
 
   @override
   String get grantDeviceAdmin => 'مسؤول الجهاز';
 
   @override
-  String get grantWebFilter => 'تصفية المواقع (موافقة VPN)';
+  String get grantWebFilter => 'تصفية المواقع (السماح بشبكة VPN)';
 
   @override
-  String get grantLocation => 'الموقع (السماح دائمًا)';
+  String get grantLocation => 'الموقع (طوال الوقت)';
 
   @override
-  String get grantPrivateDns => 'DNS الخاص';
+  String get grantPrivateDns => 'إعداد DNS الخاص';
 
   @override
   String get grantBattery => 'البطارية: بدون قيود';
 
   @override
-  String get grantUsbDebugging => 'إيقاف تصحيح USB';
+  String get grantUsbDebugging => 'إيقاف تصحيح أخطاء USB';
 
   @override
   String get grantNotificationListener => 'الوصول إلى الإشعارات';
@@ -3256,7 +3259,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get grantFullScreenIntent => 'تنبيهات ملء الشاشة';
 
   @override
-  String get grantFamilyControls => 'وقت الشاشة (Family Controls)';
+  String get grantFamilyControls => 'مدة استخدام الجهاز (Family Controls)';
 
   @override
   String get grantBackgroundRefresh => 'تحديث التطبيقات في الخلفية';
@@ -3266,7 +3269,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get appGroupsBody =>
-      'تُنشأ المجموعات على آيفون الطفل باستخدام رمز PIN للوالدين. عند حظر مجموعة من هنا، تُحجب تطبيقاتها على آيفون الطفل.';
+      'تُنشأ المجموعات على آيفون الطفل، ويحميها رمز PIN للوالدين. عند حظر مجموعة من هنا، تُحجب تطبيقاتها على آيفون الطفل.';
 
   @override
   String appGroupsCounts(Object apps, Object categories, Object sites) {

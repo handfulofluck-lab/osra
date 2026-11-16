@@ -94,7 +94,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.requests.where((r) => r.method == 'POST').length, 1);
     expect(
-      find.text('«رن» غير متاح على Pixel 7: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.'),
+      find.text('«رنين الجهاز» غير متاح على Pixel 7: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.'),
       findsOneWidget,
       reason: 'the refusal must be the mapped sentence, not the raw reason or a "queued" claim',
     );
@@ -109,7 +109,7 @@ void main() {
 
   test('commandRefusalText maps not_supported and still falls back to the raw code', () {
     expect(commandRefusalText(ar, 'ring', 'Pixel 7', 'not_supported'),
-        '«رن» غير متاح على Pixel 7: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.');
+        '«رنين الجهاز» غير متاح على Pixel 7: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.');
     expect(commandRefusalText(ar, 'ring', 'Pixel 7', 'something_new'), contains('something_new'),
         reason: 'an unknown code stays visible rather than becoming a vague failure');
   });
@@ -120,7 +120,7 @@ void main() {
   test('commandRefusalText explains a pause that never started', () {
     expect(
       commandRefusalText(ar, 'pause_internet', 'Pixel 7', 'web_filter_start_failed'),
-      'تعذّر بدء إيقاف الإنترنت على هاتف طفلك. افتح تطبيق OSRA هناك وحاول مجددًا.',
+      'تعذّر بدء إيقاف الإنترنت مؤقتًا على هاتف طفلك. افتح تطبيق أسرة للأطفال هناك وحاول مرة أخرى.',
     );
     expect(
       commandRefusalText(en, 'pause_internet', 'Pixel 7', 'web_filter_start_failed'),
@@ -151,7 +151,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('رنين الجهاز'));
     await tester.pumpAndSettle();
-    expect(find.text('لا تملك صلاحية إرسال «رن» إلى Pixel 7. يمكن لمالك العائلة منحك حق الوصول.'),
+    expect(find.text('لا تملك صلاحية إرسال «رنين الجهاز» إلى Pixel 7. يمكن لمدير العائلة منحك حق الوصول.'),
         findsOneWidget);
     expect(find.textContaining('permission_required'), findsNothing,
         reason: 'a mapped cause is not shown as a code');
@@ -169,17 +169,17 @@ void main() {
     expect(
       commandErrorText(ar, 'ring', 'Pixel 7',
           http(403, {'error': 'permission_required', 'permission': 'devices'})),
-      'لا تملك صلاحية إرسال «رن» إلى Pixel 7. يمكن لمالك العائلة منحك حق الوصول.',
+      'لا تملك صلاحية إرسال «رنين الجهاز» إلى Pixel 7. يمكن لمدير العائلة منحك حق الوصول.',
     );
     // @fastify/rate-limit's own body — keyed on the status, not on a string it never sends
     expect(
       commandErrorText(ar, 'ring', 'Pixel 7',
           http(429, {'statusCode': 429, 'error': 'Too Many Requests', 'message': 'Rate limit exceeded, retry in 1 minute'})),
-      'لم يُرسل «رن» إلى Pixel 7: طلبات كثيرة الآن. حاول مرة أخرى بعد دقيقة.',
+      'لم يُرسل «رنين الجهاز» إلى Pixel 7: طلبات كثيرة الآن. حاول مرة أخرى بعد دقيقة.',
     );
     // a reason the agent would have used keeps the same sentence as a 200 refusal
     expect(commandErrorText(ar, 'ring', 'Pixel 7', 'not_supported'),
-        '«رن» غير متاح على Pixel 7: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.');
+        '«رنين الجهاز» غير متاح على Pixel 7: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.');
     // the two 428 shapes, keyed on the body's `error`; a bare 428 with no code stays verbatim
     expect(
       commandErrorText(ar, 'lock', 'Pixel 7',
@@ -237,7 +237,7 @@ void main() {
     await tester.enterText(find.byType(TextField), 'المدرسة');
     await tester.tap(find.text(ar.familyMapCreate));
     await tester.pumpAndSettle();
-    expect(find.text('يمكن لمالك العائلة منحك حق الوصول إلى هذا.'), findsOneWidget);
+    expect(find.text('يمكن لمدير العائلة منحك حق الوصول إلى هذا.'), findsOneWidget);
     expect(find.textContaining('permission_required'), findsNothing);
   });
 

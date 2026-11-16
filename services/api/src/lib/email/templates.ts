@@ -77,7 +77,7 @@ export function passwordResetEmail(to: string, link: string, locale: Locale = "b
     },
     locale,
   );
-  return { to, subject: "Reset your OSRA password · إعادة تعيين كلمة المرور", html, text };
+  return { to, subject: "Reset your OSRA password · إعادة تعيين كلمة مرور حسابك في تطبيق أسرة", html, text };
 }
 
 /**
@@ -100,14 +100,14 @@ export function mfaRecoveredEmail(to: string, locale: Locale = "both"): EmailMes
         title: "تم استخدام رمز استرداد لحسابك في تطبيق أسرة",
         body: [
           "استُخدم أحد رموز الاسترداد الخاصة بحسابك لإيقاف التحقق بخطوتين. أُزيل تطبيق المصادقة من الحساب، ولم تعد رموز الاسترداد صالحة، وسُجّل الخروج من كل الأجهزة.",
-          "إذا كنت أنت من فعل ذلك، فسجّل الدخول بكلمة المرور وأعد إعداد تطبيق مصادقة جديد، وستحصل على مجموعة جديدة من رموز الاسترداد.",
+          "إذا كنت أنت من فعل ذلك، فسجّل الدخول بكلمة المرور وأعِدّ تطبيق مصادقة جديدًا، وستحصل على مجموعة جديدة من رموز الاسترداد.",
           "إذا لم تكن أنت، فغيّر كلمة المرور فورًا، فمن فعل ذلك يعرف كلمة مرورك أيضًا.",
         ],
       },
     },
     locale,
   );
-  return { to, subject: "MFA recovery used on your OSRA account · تم استخدام رمز استرداد", html, text };
+  return { to, subject: "MFA recovery used on your OSRA account · تم استخدام رمز استرداد لحسابك في تطبيق أسرة", html, text };
 }
 
 function optionalName(value: string | null): string | null {
@@ -199,7 +199,7 @@ function countEn(value: number, singular: string, plural = `${singular}s`): stri
 
 function screenAr(value: number): string {
   switch (new Intl.PluralRules("ar").select(value)) {
-    case "zero": return "لا شيء";
+    case "zero": return "لا يوجد";
     case "one": return "دقيقة واحدة";
     case "two": return "دقيقتان";
     case "few": return `${value} دقائق`;

@@ -28,11 +28,11 @@ class ChildSystemStringsTest {
 
     /** Karim's approved Arabic, line for line. */
     private val approvedArabic = linkedMapOf(
-        "accessibility_service_label" to "إمكانية الوصول في OSRA",
-        "accessibility_description" to "يراقب OSRA استخدام التطبيقات لتطبيق قواعد وقت الشاشة التي وضعها والدك أو والدتك.",
-        "device_admin_label" to "الرقابة الأبوية من OSRA",
-        "device_admin_description" to "يتيح لـ OSRA قفل الجهاز، ويمنع إزالة التطبيق دون رمز PIN للوالدين.",
-        "wipe_detected_notice" to "مُسحت بيانات OSRA على هذا الهاتف، لذلك لم يعد محميًا. اطلب من والدك أو والدتك إقرانه مرة أخرى.",
+        "accessibility_service_label" to "أسرة للأطفال",
+        "accessibility_description" to "يراقب تطبيق أسرة للأطفال استخدام التطبيقات لتطبيق قواعد وقت الشاشة التي وضعها والدك أو والدتك.",
+        "device_admin_label" to "الرقابة الأبوية من تطبيق أسرة",
+        "device_admin_description" to "يتيح لتطبيق أسرة للأطفال قفل الجهاز، ويمنع إزالة التطبيق دون رمز PIN للوالدين.",
+        "wipe_detected_notice" to "مُسحت بيانات تطبيق أسرة للأطفال على هذا الهاتف، لذلك لم يعد محميًا. اطلب من والدك أو والدتك إقرانه مرة أخرى.",
         // #473/#496, Q10 (Karim 2026-10-31 15:30Z): the block screen's window line.
         "block_window_line" to "محجوب بواسطة %1\$s حتى %2\$s",
         "block_window_bedtime" to "وقت النوم",

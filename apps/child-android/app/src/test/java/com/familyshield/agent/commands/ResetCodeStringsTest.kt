@@ -80,7 +80,7 @@ class ResetCodeStringsTest {
         assertTrue("OSRA must promise never to ask for the code", englishSafety.contains("never ask"))
         assertTrue(arabicSafety.contains("فارفض"))
         assertTrue(arabicSafety.contains("تثق به"))
-        assertTrue(arabicSafety.contains("لن تطلب"))
+        assertTrue(arabicSafety.contains("لن يطلب"))
     }
 
     @Test

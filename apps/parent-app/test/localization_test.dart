@@ -196,7 +196,8 @@ void main() {
       // the first time its Arabic has been rendered at all.
       await pumpArabic(tester, const FamilyScreen(), arabicApi());
       expect(find.text('أفراد العائلة'), findsOneWidget);
-      expect(find.text('الدعوات المعلّقة'), findsOneWidget);
+      // Longer role and permission labels (Bureau sweep, 16 Nov) push this heading below the 320x568 fold.
+      expect(find.text('الدعوات المعلّقة', skipOffstage: false), findsOneWidget);
       expectRtlAndNoOverflow(tester);
     });
 
@@ -490,7 +491,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('تفضيلات الملخّص'), findsOneWidget);
-      expect(find.text('ملخّص بريدي يومي'), findsOneWidget);
+      expect(find.text('ملخّص يومي بالبريد الإلكتروني'), findsOneWidget);
       expect(find.text('الإشعارات الفورية'), findsOneWidget);
       // The buttons sit below the fold at 320x568 and a ListView builds lazily, so they are reached by
       // scrolling -- an assertion that fails without it is testing the viewport, not the copy.
@@ -729,7 +730,7 @@ void main() {
     test('search risk tags are localized, with the raw key only as a fallback', () async {
       final ar = await arabic();
       final en = await AppLocalizations.delegate.load(const Locale('en'));
-      expect(ar.searchRiskCategory('substance_use'), 'تعاطي المواد');
+      expect(ar.searchRiskCategory('substance_use'), 'تعاطي المواد المخدّرة');
       expect(ar.searchRiskCategory('self_harm'), 'إيذاء النفس');
       expect(ar.searchRiskCategory('grooming_risk'), 'استدراج');
       expect(en.searchRiskCategory('substance_use'), 'Substance use');

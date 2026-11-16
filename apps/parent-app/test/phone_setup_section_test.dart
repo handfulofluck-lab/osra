@@ -125,7 +125,7 @@ void main() {
     );
     expect(find.text('إعداد الهاتف'), findsOneWidget);
     expect(find.text('شاشة القفل · جاهز'), findsOneWidget);
-    expect(find.text('• خدمة إمكانية الوصول'), findsOneWidget);
+    expect(find.text('• خدمة إمكانية الوصول (تسهيل الاستخدام)'), findsOneWidget);
   });
 
   testWidgets('all thirteen grant keys get a human label, and the list matches the shared vocabulary', (tester) async {

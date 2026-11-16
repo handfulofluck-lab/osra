@@ -250,7 +250,7 @@ class TamperScreenPolicyTest {
     // ---- osra-security#5: protection screens in a non-English system language ----
     // On an Arabic phone our labels resolve to Arabic too: the launcher label stays the brand ("OSRA"),
     // the device-admin label is the Arabic string from values-ar.
-    private val adminAr = "الرقابة الأبوية من OSRA"
+    private val adminAr = "الرقابة الأبوية من تطبيق أسرة"
 
     /** The class matters for the rows below: these pages say nothing that a word list would catch. */
     private fun classifyWindow(packageName: String?, windowClass: String?, vararg texts: String) =

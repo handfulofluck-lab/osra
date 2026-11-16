@@ -57,7 +57,7 @@ const COMMON = {
   },
   too_many: {
     en: "Too many attempts. Wait a minute and try again.",
-    ar: "محاولات كثيرة جدًا. انتظر دقيقة ثم حاول مجددًا.",
+    ar: "محاولات كثيرة جدًا. انتظر دقيقة ثم حاول مرة أخرى.",
   },
 } satisfies Record<string, Copy>;
 
