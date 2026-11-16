@@ -8,6 +8,7 @@ import 'package:familyshield_parent/features/alerts/alerts_screen.dart';
 import 'package:familyshield_parent/features/coach/coach_card_section.dart';
 import 'package:familyshield_parent/features/coach/coach_content.dart';
 import 'package:familyshield_parent/features/social/social_screen.dart';
+import 'package:familyshield_parent/l10n/app_localizations_en.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
 import 'fake_api_client.dart';
@@ -186,13 +187,20 @@ void main() {
 
     testWidgets('sos, geofence, install_request and ring show no coach card', (tester) async {
       final now = DateTime.now();
-      for (final category in ['sos', 'geofence', 'install_request', 'ring']) {
+      final l10n = AppLocalizationsEn();
+      final cases = {
+        'sos': l10n.alertTitleSos,
+        'geofence': l10n.alertTitleGeofence,
+        'install_request': l10n.alertTitleInstallRequest,
+        'ring': l10n.alertTitleRing,
+      };
+      for (final entry in cases.entries) {
         final api = FakeApiClient(standardRoutes(alerts: [
-          alertJson('c1', 'info', category, 'Test alert', now),
+          alertJson('c1', 'info', entry.key, 'Test alert', now),
         ]));
-        await openDetail(tester, api, 'Test alert');
+        await openDetail(tester, api, entry.value);
         expect(find.text('How to talk about this'), findsNothing,
-            reason: '$category should not show a coach card');
+            reason: '${entry.key} should not show a coach card');
       }
     });
 
