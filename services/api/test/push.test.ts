@@ -7,6 +7,7 @@ vi.mock("../src/realtime/gateway.js", () => ({ publishFamilyEvent: vi.fn(async (
 
 import { FcmProvider, buildAssertion } from "../src/lib/push/fcm.js";
 import { ApnsProvider, buildProviderToken } from "../src/lib/push/apns.js";
+import { backoffDelay, isRetryableConnectionError } from "../src/lib/push/retry.js";
 import {
   buildParentAlertMessage,
   buildDeviceWakeMessage,
@@ -240,15 +241,97 @@ describe("APNs provider", () => {
     expect(calls).toHaveLength(1);
   });
 
-  it("stops after one retry when the connection error persists", async () => {
+  it("stops after three attempts when the connection error persists (#842: the cap is now a backoff)", async () => {
     const calls: string[] = [];
     const transport = async () => {
       calls.push("attempt");
       throw new Error("read ECONNRESET");
     };
-    const provider = new ApnsProvider({ keyP8: ec.privateKey, keyId: "K", teamId: "T", bundleId: "com.osra.parent", host: "https://api.sandbox.push.apple.com" }, transport);
+    const provider = new ApnsProvider({ keyP8: ec.privateKey, keyId: "K", teamId: "T", bundleId: "com.osra.parent", host: "https://api.sandbox.push.apple.com" }, transport, () => Date.now(), async () => {});
     expect(await provider.send("abc", buildParentAlertMessage("ios"))).toEqual({ ok: false, invalidToken: false, reason: "read ECONNRESET" });
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
+  });
+});
+
+describe("push retry policy (#842)", () => {
+  it("backs off 200, 400, 800, 1600 and then stays at the 2 s cap", () => {
+    expect([1, 2, 3, 4, 5, 6].map((attempt) => backoffDelay(attempt))).toEqual([200, 400, 800, 1600, 2000, 2000]);
+  });
+
+  it("reads the errno from the error itself or from fetch's cause", () => {
+    expect(isRetryableConnectionError(Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }))).toBe(true);
+    expect(
+      isRetryableConnectionError(new TypeError("fetch failed", { cause: Object.assign(new Error("socket"), { code: "ECONNRESET" }) })),
+    ).toBe(true);
+    expect(isRetryableConnectionError(new Error("some other failure"))).toBe(false);
+    expect(isRetryableConnectionError(undefined)).toBe(false);
+  });
+
+  it("APNs retries twice with 200 and 400 ms and succeeds on the third attempt", async () => {
+    const delays: number[] = [];
+    let calls = 0;
+    const transport = async () => {
+      calls += 1;
+      if (calls < 3) throw Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" });
+      return { status: 200, body: "" };
+    };
+    const provider = new ApnsProvider({ keyP8: ec.privateKey, keyId: "K", teamId: "T", bundleId: "com.osra.parent", host: "https://api.sandbox.push.apple.com" }, transport, () => Date.now(), async (ms) => {
+      delays.push(ms);
+    });
+    expect(await provider.send("abc", buildParentAlertMessage("ios"))).toEqual({ ok: true });
+    expect(calls).toBe(3);
+    expect(delays).toEqual([200, 400]);
+  });
+
+  it("FCM retries the send on a dropped connection and does not re-exchange the token", async () => {
+    const delays: number[] = [];
+    let sends = 0;
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/token")) return jsonResponse(200, { access_token: "t", expires_in: 3600 });
+      sends += 1;
+      if (sends === 1) throw new TypeError("fetch failed", { cause: Object.assign(new Error("socket"), { code: "ECONNRESET" }) });
+      return jsonResponse(200, { name: "projects/osra-test/messages/9" });
+    });
+    const provider = new FcmProvider(sa, fetchMock as never, () => Date.now(), async (ms) => {
+      delays.push(ms);
+    });
+    expect(await provider.send("tok", buildParentAlertMessage("android"))).toEqual({ ok: true, messageId: "projects/osra-test/messages/9" });
+    expect(sends).toBe(2);
+    expect(fetchMock.mock.calls.filter(([u]) => (u as string).endsWith("/token"))).toHaveLength(1);
+    expect(delays).toEqual([200]);
+  });
+
+  it("FCM returns a non-connection failure at once and never sleeps", async () => {
+    const delays: number[] = [];
+    let sends = 0;
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/token")) return jsonResponse(200, { access_token: "t", expires_in: 3600 });
+      sends += 1;
+      throw new TypeError("invalid payload");
+    });
+    const provider = new FcmProvider(sa, fetchMock as never, () => Date.now(), async (ms) => {
+      delays.push(ms);
+    });
+    expect(await provider.send("tok", buildParentAlertMessage("android"))).toEqual({ ok: false, invalidToken: false, reason: "invalid payload" });
+    expect(sends).toBe(1);
+    expect(delays).toEqual([]);
+  });
+
+  it("FCM gives up after three attempts and reports the last connection error", async () => {
+    const delays: number[] = [];
+    let sends = 0;
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/token")) return jsonResponse(200, { access_token: "t", expires_in: 3600 });
+      sends += 1;
+      throw new TypeError("fetch failed", { cause: Object.assign(new Error("socket"), { code: "ETIMEDOUT" }) });
+    });
+    const provider = new FcmProvider(sa, fetchMock as never, () => Date.now(), async (ms) => {
+      delays.push(ms);
+    });
+    const result = await provider.send("tok", buildParentAlertMessage("android"));
+    expect(result).toMatchObject({ ok: false, invalidToken: false, reason: "fetch failed" });
+    expect(sends).toBe(3);
+    expect(delays).toEqual([200, 400]);
   });
 });
 
