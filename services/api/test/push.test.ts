@@ -239,6 +239,17 @@ describe("APNs provider", () => {
     expect(await provider.send("abc", buildParentAlertMessage("ios"))).toEqual({ ok: false, invalidToken: false, reason: "some other failure" });
     expect(calls).toHaveLength(1);
   });
+
+  it("stops after one retry when the connection error persists", async () => {
+    const calls: string[] = [];
+    const transport = async () => {
+      calls.push("attempt");
+      throw new Error("read ECONNRESET");
+    };
+    const provider = new ApnsProvider({ keyP8: ec.privateKey, keyId: "K", teamId: "T", bundleId: "com.osra.parent", host: "https://api.sandbox.push.apple.com" }, transport);
+    expect(await provider.send("abc", buildParentAlertMessage("ios"))).toEqual({ ok: false, invalidToken: false, reason: "read ECONNRESET" });
+    expect(calls).toHaveLength(2);
+  });
 });
 
 describe("notification policy", () => {

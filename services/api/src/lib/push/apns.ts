@@ -111,7 +111,13 @@ export function http2Transport(): ApnsTransport {
       });
       req.on("data", (c: Buffer) => chunks.push(c));
       req.on("end", () => resolve({ status, body: Buffer.concat(chunks).toString("utf8") }));
-      req.on("error", reject);
+      req.on("error", (err) => {
+        if (session && !session.closed && !session.destroyed) {
+          session.destroy();
+        }
+        session = null;
+        reject(err);
+      });
       req.end(body);
     });
 }
