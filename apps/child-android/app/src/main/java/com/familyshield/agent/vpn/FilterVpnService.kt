@@ -230,8 +230,8 @@ class FilterVpnService : VpnService() {
             val d = DnsFilterPolicy.decide(q.name, config)
             when (d.action) {
                 DnsFilterPolicy.Action.FORWARD -> {
-                    // #830/#841: the visit row is gated inside recordSiteVisit; a blocked attempt below
-                    // is not behind the switch. Both call sites are pinned by Reporting830WiringTest so a
+                    // #830/#841: the visit row is gated inside recordSiteVisit, which uploads nothing
+                    // while the flag is off. Both call sites are pinned by Reporting830WiringTest so a
                     // later merge cannot drop the feature and leave the tests green.
                     recordSiteVisit(q.name, blocked = false)
                     forward(query)
@@ -264,15 +264,20 @@ class FilterVpnService : VpnService() {
         // exclusion list. One normalised name, and an excluded or empty one is not reported at all.
         val name = DnsFilterPolicy.normalize(host)
         if (name.isEmpty() || SiteVisitGate.isExcludedHost(name)) return
+        // Fable's blocker D: one read of the flag for the whole alert, so a single row cannot be built
+        // half in each state; while it is off the quiet window and the counter use a hostless key, so the
+        // parent's count is the day's total rather than the largest single host's.
+        val siteNames = config.siteNamesEnabled
+        val alertKey = if (siteNames) name else "blocked-day"
         val now = System.currentTimeMillis()
-        val last = lastSiteAlert[name]
+        val last = lastSiteAlert[alertKey]
         if (!com.familyshield.agent.enforcement.AlertKeys.siteAlertDue(last, now, SITE_ALERT_QUIET_MS)) return
         if (lastSiteAlert.size > 512) {
             lastSiteAlert.entries.removeIf { now - it.value > SITE_ALERT_QUIET_MS }
         }
-        lastSiteAlert[name] = now
+        lastSiteAlert[alertKey] = now
         val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString()
-        val attempts = com.familyshield.agent.enforcement.AttemptCounter.next(this, "web", name, day)
+        val attempts = com.familyshield.agent.enforcement.AttemptCounter.next(this, "web", alertKey, day)
         scope.launch {
             runCatching {
                 api.postInternalAlert(
@@ -286,12 +291,12 @@ class FilterVpnService : VpnService() {
                         // Claude's ruling on #841 finding 5: with the flag off the attempt is still
                         // reported, but the parent gets a count with no host — no domain, a coarse reason
                         // (never the blocked word itself) and one row per day.
-                        metadata = if (rules.siteNamesEnabled()) {
+                        metadata = if (siteNames) {
                             mapOf("domain" to name, "reason" to reason)
                         } else {
                             mapOf("reason" to reason.substringBefore(':'))
                         },
-                        dedupeKey = if (rules.siteNamesEnabled()) {
+                        dedupeKey = if (siteNames) {
                             com.familyshield.agent.enforcement.AlertKeys.blockedSite(name, day)
                         } else {
                             "web:$day"
@@ -306,9 +311,9 @@ class FilterVpnService : VpnService() {
     /**
      * #830: one `url` activity row per host per [SITE_VISIT_QUIET_MS], batched. The DNS filter sees
      * names, not pages, so the payload carries the host in `url` and `domain` and never a path; the
-     * server also reduces anything a client sends to its host. With the server flag off an unblocked
-     * name never leaves the phone ([SiteVisitGate]); a blocked attempt is the parent's rule reporting
-     * itself and is not behind the switch.
+     * server also reduces anything a client sends to its host. With the flag off **no** name leaves the
+     * phone, blocked or not ([SiteVisitGate], Fable's blocker A); the blocked attempt still reaches the
+     * parent as a hostless count through its alert.
      */
     private fun recordSiteVisit(host: String, blocked: Boolean) {
         // One normalised name for the quiet window, the batch and the exclusion check: `q.name` arrives

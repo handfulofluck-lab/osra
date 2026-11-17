@@ -3,15 +3,18 @@
   (16 Nov) is that a family sees none of it until the privacy notice (#649) names the collection and
   Play's Data safety form declares web browsing history.
 - **Server flag, off by default:** `SITE_NAMES_ENABLED` is unset in every environment. While it is off,
-  `POST /v1/devices/:id/activity` stores no visit for a name that was not blocked, whatever a phone
-  sends; a blocked attempt is the parent's own rule reporting itself and is not behind the switch.
+  `POST /v1/devices/:id/activity` stores no visit for any name, **blocked included** (Claude's ruling on
+  Fable's finding 5): the blocked attempt reaches the parent as a hostless count through its alert, and
+  no address exists in the raw log, `WebVisit`, the summary or the digest.
 - **The phone does not send while it is off:** the rule projection carries `siteNames`, the agent stores
-  it with the rest of its rules, and `SiteVisitGate` keeps an unblocked name on the phone until the flag
+  it with the rest of its rules, and `SiteVisitGate` keeps **every** name on the phone until the flag
   arrives as true.
 - **The raw log is gated too:** the same rule runs before `ActivityEvent` stores a `url` event, so with
-  the flag off an unblocked name is dropped there as well (not only from `WebVisit`), a kept event carries
+  the flag off no `url` event is stored at all (not only in `WebVisit`), a kept event carries
   the host and never the path or query, and excluded hosts are dropped. `url` rows leave the raw log at 90
-  days too, and while the flag is off the web report returns blocked attempts only.
+  days too, and while the flag is off both reports return no address at all. A `web_threat` alert is
+  redacted server-side to `{reason prefix, day}` with a server-owned title and body and the dedupe key
+  `web:<day>`, and the phone counts it on a hostless key so the parent sees the day's total.
 - **Exclusions, one list:** our API host and its subdomains, the search-enforcement hosts the filter
   forces, and the Android/OS connectivity and time checks are dropped on the server; the phone drops the
   same names before they reach the batch.
@@ -21,6 +24,6 @@
   lookup.
 - **Turning it on** is its own reviewed step after #649 and the Play forms are live; this change does not
   flip it.
-- Tests: server rows for the off state (unblocked writes nothing, blocked still writes), the exclusion
+- Tests: server rows for the off state (nothing is stored, blocked included), the exclusion
   list, the 90-day window and the flag in the rule projection; an Android unit test for the phone's
   decision function. The Android rows run in CI; this PC has no Android SDK, so they were not run locally.

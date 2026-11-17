@@ -66,13 +66,13 @@ export function redactBlockedSiteHost(
   metadata: Record<string, unknown> | undefined,
   at: Date = new Date(),
 ): Record<string, unknown> {
-  const clean: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(metadata ?? {})) {
-    if (key === "domain") continue;
-    clean[key] = key === "reason" && typeof value === "string" ? value.split(":")[0] : value;
-  }
-  clean.day = at.toISOString().slice(0, 10);
-  return clean;
+  // An allowlist, not "drop domain": a client that sends `host`, `url` or `site` must not have it stored
+  // either (Fable's blocker B). Only the coarse reason and the day survive.
+  const reason = typeof metadata?.reason === "string" ? metadata.reason.split(":")[0] : "";
+  return {
+    ...(reason ? { reason } : {}),
+    day: at.toISOString().slice(0, 10),
+  };
 }
 
 /** The hostless dedupe key for a blocked attempt while the flag is off: one row per day. */

@@ -31,9 +31,16 @@ object SiteVisitGate {
         "android.clients.google.com",
     )
 
+    /**
+     * Fable's #841 blocker A: while the flag is off **no name is uploaded, blocked or not**. The blocked
+     * attempt still reaches the parent as a hostless count through its alert; the activity stream carries
+     * no site name at all, which is what the policy sentence says.
+     */
     fun shouldUpload(siteNamesEnabled: Boolean, blocked: Boolean, excludedHost: Boolean = false): Boolean {
         if (excludedHost) return false
-        return blocked || siteNamesEnabled
+        // `blocked` no longer bypasses the switch; the parameter stays so call sites and rows read the
+        // same, and the row that used to assert the bypass now asserts its absence.
+        return siteNamesEnabled
     }
 
     /** True for a listed host, any subdomain of our own domain, and an empty name. */

@@ -17,8 +17,9 @@ class SiteVisitGateTest {
     }
 
     @Test
-    fun `a blocked attempt is not behind the flag`() {
-        assertTrue(SiteVisitGate.shouldUpload(siteNamesEnabled = false, blocked = true))
+    fun `a blocked attempt is behind the flag too (Fable, blocker A)`() {
+        // The alert is the hostless count; the activity stream carries no name while the flag is off.
+        assertFalse(SiteVisitGate.shouldUpload(siteNamesEnabled = false, blocked = true))
     }
 
     @Test

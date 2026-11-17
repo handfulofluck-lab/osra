@@ -27,6 +27,9 @@ object AttemptCounter {
     private const val PREFS = "osra_block_attempts"
 
     /** The next count for [namespace]:[id] on [day] (`yyyy-MM-dd`, UTC). */
+    // Hydrogen's #836 note: read-modify-write under the filter's 4-thread pool could lose a count.
+    // @Synchronized serialises it inside this process; the count is grouping metadata, not a secret.
+    @Synchronized
     fun next(context: Context, namespace: String, id: String, day: String): Int {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val key = "$namespace|$id|$day"

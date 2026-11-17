@@ -46,6 +46,21 @@ class Reporting830WiringTest {
         assertTrue(dispatcher.contains("type = \"lock_period\""))
     }
 
+    /**
+     * Hydrogen's #836 blockers: the two reporting call sites a `singleTask` reuse and the resume path
+     * skipped. The behaviour rows are the server's; these pin that the screens and commands call them.
+     */
+    @Test
+    fun `a reused block screen reports its attempt, and resume_internet closes its period`() {
+        val block = source("apps/child-android/app/src/main/java/com/familyshield/agent/enforcement/BlockActivity.kt")
+        val onNewIntent = block.substringAfter("override fun onNewIntent(intent: Intent)").substringBefore("private fun applyIntent")
+        assertTrue("onNewIntent must report the attempt", onNewIntent.contains("reportBlockedAttempt(request.packageId"))
+
+        val dispatcher = source("apps/child-android/app/src/main/java/com/familyshield/agent/commands/CommandDispatcher.kt")
+        val resume = dispatcher.substringAfter("private fun resumeInternet()").substringBefore("Wind-down (Feature #22)")
+        assertTrue("resume_internet must close the paused period", resume.contains("LockPeriodTracker.end(context)"))
+    }
+
     private fun source(relative: String): String {
         var dir: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
         while (dir != null) {

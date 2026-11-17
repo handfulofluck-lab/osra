@@ -64,9 +64,13 @@ describe("#830 site names — the flag", () => {
 describe("#830 site names — the blocked attempt is a hostless count while the flag is off", () => {
   it("strips the domain and the blocked word from an alert, and groups by day", () => {
     const at = new Date("2026-11-16T10:00:00Z");
+    // An allowlist: `domain`, `childId` — and any other key a client invents — are not stored.
     expect(
-      redactBlockedSiteHost({ domain: "bad.example", reason: "blocked_domain:bad.example", childId: "child-1" }, at),
-    ).toEqual({ reason: "blocked_domain", childId: "child-1", day: "2026-11-16" });
+      redactBlockedSiteHost(
+        { domain: "bad.example", host: "bad.example", url: "bad.example", site: "bad.example", childId: "child-1", reason: "blocked_domain:bad.example" },
+        at,
+      ),
+    ).toEqual({ reason: "blocked_domain", day: "2026-11-16" });
     expect(redactedBlockedSiteKey(at)).toBe("web:2026-11-16");
   });
 });
@@ -181,21 +185,22 @@ describe("#830 site names — the activity route with the flag on", () => {
 });
 
 describe("#830 site names — the read side", () => {
-  it("the web report shows blocked attempts only while the flag is off", async () => {
+  it("the web report returns no address at all while the flag is off (Fable blocker C)", async () => {
     const app = await buildApp(reportsRoutes, "/v1/reports");
     prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", familyId: "fam-1", displayName: "Laila", birthYear: 2012 });
-    prismaMock.webVisit.findMany.mockResolvedValue([]);
+    prismaMock.webVisit.findMany.mockResolvedValue([{ id: "w1", domain: "bad.example", blocked: true }]);
     const res = await app.inject({
       method: "GET",
-      url: "/v1/reports/web?childId=child-1",
+      url: "/v1/reports/web?childId=child-1&blocked=true",
       headers: authHeader(app),
     });
     expect(res.statusCode).toBe(200);
-    expect(prismaMock.webVisit.findMany.mock.calls[0][0].where).toMatchObject({ childId: "child-1", blocked: true });
+    expect(res.json().items).toEqual([]);
+    expect(prismaMock.webVisit.findMany).not.toHaveBeenCalled();
     await app.close();
   });
 
-  it("the activity report excludes unblocked url rows while the flag is off", async () => {
+  it("the activity report returns no url row at all while the flag is off (Fable blocker C)", async () => {
     const app = await buildApp(reportsRoutes, "/v1/reports");
     prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", familyId: "fam-1", displayName: "Laila", birthYear: 2012 });
     prismaMock.activityEvent.findMany.mockResolvedValue([]);
@@ -206,10 +211,7 @@ describe("#830 site names — the read side", () => {
     });
     expect(res.statusCode).toBe(200);
     const where = prismaMock.activityEvent.findMany.mock.calls[0][0].where as Record<string, unknown>;
-    expect(where.OR).toEqual([
-      { type: { not: "url" } },
-      { payload: { path: ["blocked"], equals: true } },
-    ]);
+    expect(where.NOT).toEqual({ type: "url" });
     await app.close();
   });
 });

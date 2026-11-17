@@ -144,8 +144,10 @@ export async function alertsRoutes(app: FastifyInstance) {
       deviceId: effectiveDeviceId,
       severity,
       category,
-      title,
-      body,
+      // A redacted web_threat carries no client text either: the title and body are free text that could
+      // name a site, so the server owns both while the flag is off (Fable's blocker B).
+      title: redactSite ? "Blocked site opened" : title,
+      body: redactSite ? "Your child tried to open a blocked site." : body,
       // Issue #672: an SOS may carry where it was sent from, as the five flat keys the agent writes.
       // The location is normalised here — or dropped, keeping every other key — and never rejects the
       // alert: an SOS with no usable fix is still an SOS a parent must receive.

@@ -47,10 +47,9 @@ export async function reportsRoutes(app: FastifyInstance) {
       where: {
         childId: q.childId,
         ...(q.type ? { type: q.type } : {}),
-        // #830: while the flag is off, a `url` row is returned only when it is a blocked attempt.
-        ...(siteNames
-          ? {}
-          : { OR: [{ type: { not: "url" } }, { payload: { path: ["blocked"], equals: true } }] }),
+        // Claude's finding-5 ruling, read side (Fable's blocker C): while the flag is off **no** `url`
+        // row is returned, blocked or not. A row written before the gate existed must not leak here.
+        ...(siteNames ? {} : { NOT: { type: "url" } }),
         ...(q.from || q.to
           ? { ts: { ...(q.from ? { gte: new Date(q.from) } : {}), ...(q.to ? { lte: new Date(q.to) } : {}) } }
           : {}),
@@ -96,11 +95,11 @@ export async function reportsRoutes(app: FastifyInstance) {
     const parsed = WebQuerySchema.safeParse(req.query ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const q = parsed.data;
-    // #830: while the site-name flag is off, the web report shows blocked attempts only. The gate at
-    // ingestion already stops new unblocked rows; this keeps a read from exposing a row written before
-    // the gate (or by a client that ignored it).
+    // Under the ruling there is no address to show while the flag is off — no visit, blocked or not
+    // (Fable's blocker C). The blocked attempt reaches the parent through its alert, as a count.
+    if (!siteNamesEnabled()) return { items: [] };
     const items = await webHistory(q.childId, q.days, q.limit, {
-      blockedOnly: !siteNamesEnabled() || q.blocked === "true",
+      blockedOnly: q.blocked === "true",
       domain: q.domain,
     });
     return { childId: q.childId, days: q.days, items };

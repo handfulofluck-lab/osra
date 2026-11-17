@@ -452,6 +452,9 @@ describe("usage model — ingestion hooks and routes", () => {
   });
 
   it("GET /reports/usage and /reports/web are family-scoped and validated", async () => {
+    // This row is about scoping and validation, not the flag: with the flag off the web report is empty
+    // by design (Claude's finding-5 ruling), so the read is exercised with site names on.
+    process.env.SITE_NAMES_ENABLED = "true";
     const app = await buildApp(reportsRoutes, "/v1/reports");
     prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", familyId: "fam-1" });
     prismaMock.appUsageDaily.findMany.mockResolvedValue([{ day: utcDay(), app: "YouTube", minutes: 9, deviceId: "d" }]);
@@ -474,6 +477,7 @@ describe("usage model — ingestion hooks and routes", () => {
     expect(bad.statusCode).toBe(400);
     const badWeb = await app.inject({ method: "GET", url: "/v1/reports/web?childId=child-1&days=91", headers: authHeader(app) });
     expect(badWeb.statusCode).toBe(400);
+    delete process.env.SITE_NAMES_ENABLED;
     await app.close();
   });
 });
