@@ -4,7 +4,7 @@ name: CI
 # live here (api, parent-app, child-android, agent-desktop, ai-engine) moved to their own workflows on
 # 2026-10-24, each with a `paths:` filter, so a PR runs only the suites whose inputs it changes:
 # `api.yml`, `parent-app.yml`, `child-android.yml`, `agent-desktop.yml`, `ai-engine.yml`. Each also runs on
-# every push to main that touches it, and nightly on main whatever changed. The reasons and the numbers are
+# every push to main that touches it, and weekly on main whatever changed. The reasons and the numbers are
 # in docs/TESTING.md §4; `scripts/check-ci-paths.mjs` (run by workflow-lint) keeps the path lists honest.
 on:
   push:

@@ -177,7 +177,7 @@ const nextMessage = (channel) =>
   });
 
 // --- 1. Seeded parent login + /me envelope ---
-const login = await call("POST", "/v1/auth/login", { body: { email: "demo@familyshield.dev", password: "CorrectHorseBatteryStaple!" } });
+const login = await call("POST", "/v1/auth/login", { body: { email: "demo@osratech.com", password: "CorrectHorseBatteryStaple!" } });
 check("seeded parent login", login.status === 200 && !!login.data?.token);
 const token = login.data?.token;
 

@@ -1,8 +1,9 @@
 name: Agent desktop
 
 # The Windows desktop agent. Until 2026-10-24 this was the `agent-desktop` job of ci.yml and ran on every pull
-# request on a Windows runner (billed at twice the Linux rate in a private repository); now it runs when the
-# agent changes, on main when it changes, and nightly on main whatever changed. Nothing outside
+# request on a Windows runner (billed above the Linux rate in a private repository — about 1.67× at the
+# 2026 rates); now it runs when the
+# agent changes, on main when it changes, and weekly on main whatever changed. Nothing outside
 # `apps/agent-desktop/` is read by this job. `scripts/check-ci-paths.mjs` keeps the two lists identical and
 # makes sure they name this file.
 on:
@@ -16,7 +17,7 @@ on:
       - "apps/agent-desktop/**"
       - ".github/workflows/agent-desktop.yml"
   schedule:
-    - cron: "11 2 * * *"
+    - cron: "11 2 * * 1"
   workflow_dispatch:
 
 concurrency:

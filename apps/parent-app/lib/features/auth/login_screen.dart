@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/digits.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/mfa_provider.dart';
@@ -19,9 +21,17 @@ import 'mfa_recovery_screen.dart';
 /// to Welcome and names the causes a non-engineer can fix (wrong password,
 /// unreachable server) instead of showing the API's raw code.
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key, this.onboarding = false});
+  const LoginScreen({super.key, this.onboarding = false, this.debug, this.builtIn});
 
   final bool onboarding;
+
+  /// Test seam: overrides [kDebugMode] for the server-field visibility check. Production leaves it null.
+  final bool? debug;
+
+  /// Test seam: overrides [kDefaultServerUrl] for the server-field lock/visibility check. Production
+  /// leaves it null. [_LoginScreenState._saveServer] does not read it: the effective server is never
+  /// driven by the widget.
+  final String? builtIn;
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -98,6 +108,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  bool _titleFitsInAppBar(BuildContext context, String title, {required bool canGoBack}) {
+    final availableWidth = (MediaQuery.sizeOf(context).width - (canGoBack ? 72 : 32) - 16)
+        .clamp(0.0, double.infinity);
+    final painter = TextPainter(
+      text: TextSpan(
+        text: title,
+        style: Theme.of(context).appBarTheme.titleTextStyle ?? Theme.of(context).textTheme.titleLarge,
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 2,
+    )..layout(maxWidth: availableWidth);
+    return !painter.didExceedMaxLines;
+  }
+
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
@@ -108,22 +133,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final onboarding = ref.watch(onboardingProvider);
     final canGoBack = widget.onboarding &&
         (onboarding.step == OnboardingStep.signIn || onboarding.step == OnboardingStep.welcome);
+    final titleInAppBar = widget.onboarding &&
+        _titleFitsInAppBar(context, l10n.onboardingSignInTitle, canGoBack: canGoBack);
+    final backButton = canGoBack
+        ? BackButton(onPressed: () {
+            ref.read(onboardingProvider.notifier).backToWelcome();
+            context.go('/welcome');
+          })
+        : null;
     // Keep the field in sync with the persisted URL until the user edits it.
     if (!_serverTouched && _server.text != serverUrl) {
       _server.text = serverUrl;
     }
     final errorText = _formError ?? _authErrorText(l10n, auth.error);
+    final builtIn = widget.builtIn ?? kDefaultServerUrl;
+    final locked = isServerLocked(builtIn);
+    final showServer = showServerField(debug: widget.debug ?? kDebugMode, builtIn: builtIn);
     return Scaffold(
       appBar: widget.onboarding
-          ? AppBar(
-              title: Text(l10n.onboardingSignInTitle),
-              leading: canGoBack
-                  ? BackButton(onPressed: () {
-                      ref.read(onboardingProvider.notifier).backToWelcome();
-                      context.go('/welcome');
-                    })
-                  : null,
-            )
+          ? (titleInAppBar
+              ? AppBar(
+                  toolbarHeight: MediaQuery.textScalerOf(context).scale(kToolbarHeight + AppSpace.sm),
+                  title: Text(
+                    l10n.onboardingSignInTitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  leading: backButton,
+                )
+              : AppBar(leading: backButton))
           : null,
       body: Center(
         child: SingleChildScrollView(
@@ -142,6 +180,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant)),
                 if (widget.onboarding) ...[
+                  if (!titleInAppBar) ...[
+                    const SizedBox(height: AppSpace.md),
+                    Semantics(
+                      header: true,
+                      child: Text(
+                        l10n.onboardingSignInTitle,
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: AppSpace.sm),
                   Text(
                     l10n.onboardingSignInBody,
@@ -159,23 +208,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const SizedBox(height: AppSpace.xl),
                 ] else
                   const SizedBox(height: AppSpace.xl),
-                TextField(
-                  key: const ValueKey('loginServerField'),
-                  controller: _server,
-                  // osra-security#8 F3: locked to the built-in server in store builds.
-                  readOnly: isServerLocked(),
-                  enabled: !isServerLocked(),
-                  keyboardType: TextInputType.url,
-                  autofillHints: const [AutofillHints.url],
-                  onChanged: (_) => _serverTouched = true,
-                  decoration: InputDecoration(
-                    labelText: l10n.serverLabel,
-                    hintText: l10n.serverHint,
-                    errorText: _serverError,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                if (showServer) ...[
+                  TextField(
+                    key: const ValueKey('loginServerField'),
+                    controller: _server,
+                    // osra-security#8 F3: hidden in locked (store) builds; debug keeps it visible and locked.
+                    readOnly: locked,
+                    enabled: !locked,
+                    keyboardType: TextInputType.url,
+                    autofillHints: const [AutofillHints.url],
+                    onChanged: (_) => _serverTouched = true,
+                    decoration: InputDecoration(
+                      labelText: l10n.serverLabel,
+                      hintText: l10n.serverHint,
+                      errorText: _serverError,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                    ),
                   ),
-                ),
-                const SizedBox(height: AppSpace.md),
+                  const SizedBox(height: AppSpace.md),
+                ],
                 if (showMfaNotice) ...[
                   Text(
                     l10n.mfaSessionNotice,
@@ -218,6 +269,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   autofillHints: const [AutofillHints.oneTimeCode],
                   decoration: InputDecoration(
                     labelText: l10n.mfaCodeLabel,
+                    helperText: l10n.mfaCodeHelper,
+                    helperMaxLines: 2,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                   ),
                 ),
@@ -237,7 +290,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             _formError = null;
                           });
                           if (await _saveServer() == null) return;
-                          await _submit(() => ref.read(authProvider.notifier).login(_email.text.trim(), _password.text, _code.text));
+                          await _submit(() => ref.read(authProvider.notifier).login(_email.text.trim(), _password.text, normalizeDigits(_code.text)));
                         },
                   icon: auth.loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.login),
                   label: Text(l10n.signIn),

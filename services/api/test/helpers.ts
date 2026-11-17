@@ -40,6 +40,7 @@ export const MOCKED_MODELS = [
   "digestRecipient",
   "digestSend",
   "familyInvite",
+  "familyPurchase",
   "parentPushToken",
   "deviceCommand",
   "deviceApp",

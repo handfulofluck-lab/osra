@@ -4,11 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../rules/rules_behind_banner.dart';
 import '../../providers/social_provider.dart';
+import '../../core/digits.dart';
 import '../../theme/app_tokens.dart';
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
@@ -428,7 +430,7 @@ class CallsSmsSection extends ConsumerWidget {
                       child: ListTile(
                         dense: true,
                         leading: Icon(e.type == 'call' ? callIconFor(e.direction) : Icons.sms_outlined),
-                        title: Text(e.number ?? l10n.unknownNumber),
+                        title: Text(e.number == null ? l10n.unknownNumber : ltrIsolate(e.number!)),
                         subtitle: e.type == 'sms'
                             ? Text(_truncateSms(e.bodyPreview))
                             // Roadmap 4.5: a brand name, so the same text in both languages and no new
@@ -478,8 +480,10 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
     _items = List.of(ruleSet.contactAllowlist);
   }
 
-  /// Keep digits only — '+1 (555) 123-4567' becomes '15551234567'.
-  static String normalizePhone(String raw) => raw.replaceAll(RegExp(r'\D'), '');
+  /// Normalise the digit forms first, then keep digits only — '+1 (555) 123-4567' and the same
+  /// number typed with Arabic digits both become '15551234567' (#771).
+  static String normalizePhone(String raw) =>
+      normalizeDigits(raw).replaceAll(RegExp(r'\D'), '');
 
   void _add() {
     final digits = normalizePhone(_input.text);

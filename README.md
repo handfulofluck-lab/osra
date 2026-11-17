@@ -86,7 +86,7 @@ corepack enable && pnpm install
 # 2. Datastores
 docker compose up -d postgres redis
 
-# 3. Database schema + demo seed (demo@familyshield.dev / CorrectHorseBatteryStaple!)
+# 3. Database schema + demo seed (demo@osratech.com / local seed default in services/api/scripts/seed-password.ts)
 pnpm db:migrate && pnpm db:seed
 
 # 4. API + AI engine

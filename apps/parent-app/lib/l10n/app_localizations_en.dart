@@ -176,7 +176,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get passwordLabel => 'Password';
 
   @override
-  String get mfaCodeLabel => 'Authentication code (if MFA is on)';
+  String get mfaCodeLabel => 'Authenticator code';
+
+  @override
+  String get mfaCodeHelper =>
+      'Only if two-step verification is on for your account.';
 
   @override
   String get signIn => 'Sign in';
@@ -348,7 +352,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get consentMethodLabel => 'Consent method';
 
   @override
-  String get consentMethodSmsPlus => 'SMS +';
+  String get consentMethodSmsPlus => 'Text message plus confirmation';
 
   @override
   String get consentMethodKba => 'Knowledge-based questions';
@@ -598,6 +602,11 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String accuracyLabel(int meters, String time) {
     return 'Accuracy ±$meters m · $time';
+  }
+
+  @override
+  String accuracyShort(int meters) {
+    return '±$meters m';
   }
 
   @override
@@ -1587,7 +1596,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get vaultTrustCopy =>
-      'Snippets are encrypted with your family key before leaving the device and stored encrypted on your server.';
+      'Excerpts travel over an encrypted connection and are stored encrypted on OSRA\'s servers.';
 
   @override
   String get noConcernsDetected => 'No concerns detected';
@@ -1646,6 +1655,14 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String relativeHoursAgo(int count) {
     return '${count}h ago';
+  }
+
+  @override
+  String get alertTechnicalDetails => 'Technical details';
+
+  @override
+  String relativeOverHoursAgo(int count) {
+    return 'more than ${count}h ago';
   }
 
   @override
@@ -2861,6 +2878,67 @@ class AppLocalizationsEn extends AppLocalizations {
       'Open OSRA to see the details.\nProtecting your family at all times.';
 
   @override
+  String alertSosWhereMinutes(int n, String coords) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Last location: $coords, $n min ago',
+      one: 'Last location: $coords, 1 min ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertSosWhereHours(int n, String coords) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Last location: $coords, more than $n hours ago',
+      one: 'Last location: $coords, more than 1 hour ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertSosLocationMinutes(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Location from $n min ago. Tap to see it on the map.',
+      one: 'Location from 1 min ago. Tap to see it on the map.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertSosLocationHours(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Location from more than $n hours ago. Tap to see it on the map.',
+      one: 'Location from more than 1 hour ago. Tap to see it on the map.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertLocationAccuracy(int m) {
+    return 'accurate to about $m m';
+  }
+
+  @override
+  String get alertCopyCoordinates => 'Copy coordinates';
+
+  @override
+  String get alertCoordinatesCopied => 'Coordinates copied';
+
+  @override
+  String get alertOpenInMaps => 'Open in Maps';
+
+  @override
+  String get alertShowOnMap => 'Show on map';
+
+  @override
   String get riskSelfHarm => 'Self-harm';
 
   @override
@@ -2892,7 +2970,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get phoneSetupOtherSpaceClone =>
-      'This phone has a second space for cloned apps (Dual Messenger).';
+      'This phone has another secure space that may run cloned apps (more than one copy of the same app). OSRA may not be able to monitor it until it is turned off in the phone\'s Settings.';
 
   @override
   String get phoneSetupOtherSpaceWork => 'This phone has a work profile.';

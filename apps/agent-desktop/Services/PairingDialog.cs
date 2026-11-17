@@ -104,7 +104,7 @@ internal static class PairingDialog
                 return;
             }
 
-            if (!string.Equals(pin, _pinConfirmBox.Text.Trim(), StringComparison.Ordinal))
+            if (!ParentPinPolicy.SamePin(pin, _pinConfirmBox.Text))
             {
                 _status.Text = "The two PIN entries do not match.";
                 return;

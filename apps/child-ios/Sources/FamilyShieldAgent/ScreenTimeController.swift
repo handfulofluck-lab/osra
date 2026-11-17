@@ -4,7 +4,7 @@ import os
 import UIKit
 #endif
 
-#if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+#if os(iOS)
 import DeviceActivity
 import FamilyControls
 import ManagedSettings

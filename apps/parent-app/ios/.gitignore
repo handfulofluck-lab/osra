@@ -32,3 +32,6 @@ Runner/GeneratedPluginRegistrant.*
 !default.mode2v3
 !default.pbxuser
 !default.perspectivev3
+
+# #558: the iOS Firebase config is supplied by the build machine, never committed (#317).
+Runner/GoogleService-Info.plist

@@ -1,8 +1,10 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/map/family_map_screen.dart';
 import 'package:familyshield_parent/l10n/app_localizations.dart';
@@ -75,5 +77,28 @@ void main() {
       await pumpWith(tester, const FamilyMapScreen(), const []);
       expect(find.text(l10n.readPermissionRequired), findsNothing);
     });
+  });
+
+/// #598: on iOS the Google Maps SDK aborts in `checkServicePreconditions` when `GMSServices.provideAPIKey`
+/// was never called. `mapIsAvailable` is the pure decision; these rows pin that the screen honours it, which
+/// is the half a unit test of the predicate cannot see.
+  test("a build with no iOS maps key draws no map view, and does not throw", () {
+    expect(mapIsAvailable(TargetPlatform.iOS, key: ""), isFalse);
+    expect(mapIsAvailable(TargetPlatform.iOS, key: "a-real-key"), isTrue);
+    // Android gets its key from the Gradle manifest, which Dart cannot read; the crash is iOS-only.
+    expect(mapIsAvailable(TargetPlatform.android, key: ""), isTrue);
+  });
+
+  testWidgets("the map screen shows the not-available state on iOS when no key is compiled in", (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      await pumpWith(tester, const FamilyMapScreen(), const []);
+      // The card is the existing approved string; no GoogleMap is constructed, which is what crashed.
+      expect(find.text('Not available'), findsOneWidget);
+      expect(find.byType(GoogleMap), findsNothing);
+      expect(tester.takeException(), isNull);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 }

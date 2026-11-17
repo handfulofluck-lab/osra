@@ -1,0 +1,35 @@
+name: Agent macOS
+
+# The macOS agent's platform-pure migration/status services and their tests. The app itself targets
+# net8.0-macos, which only builds on a Mac, so the CI-runnable part is the pure net8.0 xunit target under
+# apps/agent-macos/tests that compiles the shared services via linked sources. Nothing outside
+# `apps/agent-macos/` is read by this job. `scripts/check-ci-paths.mjs` keeps the two path lists identical
+# and makes sure they name this file.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/agent-macos/**"
+      - ".github/workflows/agent-macos.yml"
+  pull_request:
+    paths:
+      - "apps/agent-macos/**"
+      - ".github/workflows/agent-macos.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: agent-macos-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  agent-macos-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/agent-macos
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet test tests/FamilyShield.Agent.MacOS.Tests --nologo

@@ -31,7 +31,7 @@ void main() {
 
   const secret = 'JBSWY3DPEHPK3PXP';
   const otpauthUrl =
-      'otpauth://totp/OSRA:qa%40familyshield.dev?secret=JBSWY3DPEHPK3PXP&issuer=OSRA';
+      'otpauth://totp/OSRA:qa%40osratech.com?secret=JBSWY3DPEHPK3PXP&issuer=OSRA';
 
   const recoveryCodes = [
     'ABCD-EFGH-JKMN-PQRS',
@@ -422,7 +422,7 @@ void main() {
       ));
       await pumpScreen(tester, const MfaRecoveryScreen(), api);
 
-      await tester.enterText(find.byKey(const ValueKey('mfaRecoveryEmail')), 'qa@familyshield.dev');
+      await tester.enterText(find.byKey(const ValueKey('mfaRecoveryEmail')), 'qa@osratech.com');
       await tester.enterText(find.byKey(const ValueKey('mfaRecoveryPassword')), 'good-password');
       await tester.enterText(find.byKey(const ValueKey('mfaRecoveryCode')), recoveryCodes.first);
       await tester.tap(find.byKey(const ValueKey('mfaRecoverySubmit')));
@@ -430,7 +430,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final recover = api.calls('POST', '/v1/auth/mfa/recover').single;
-      expect(recover.body['email'], 'qa@familyshield.dev');
+      expect(recover.body['email'], 'qa@osratech.com');
       expect(recover.body['code'], recoveryCodes.first);
 
       expect(find.byType(MfaEnrollScreen), findsOneWidget);
@@ -564,5 +564,31 @@ void main() {
         );
       }
     });
+  });
+
+  testWidgets('an Arabic-digit enrolment code is verified as Western digits (#771)', (tester) async {
+    final api = FakeApiClient(mfaRoutes());
+    await pumpScreen(tester, const MfaEnrollScreen(), api);
+
+    await tester.enterText(find.byKey(const ValueKey('mfaEnrollCode')), '١٢٣٤٥٦');
+    await tester.tap(find.byKey(const ValueKey('mfaVerifyButton')));
+    await flush(tester);
+    await tester.pumpAndSettle();
+
+    expect(api.calls('POST', '/v1/auth/mfa/verify').single.body['code'], '123456');
+  });
+
+  testWidgets('an Arabic-digit recovery code is sent as Western digits (#771)', (tester) async {
+    final api = FakeApiClient(mfaRoutes());
+    await pumpScreen(tester, const MfaRecoveryScreen(), api);
+
+    await tester.enterText(find.byKey(const ValueKey('mfaRecoveryEmail')), 'qa@osratech.com');
+    await tester.enterText(find.byKey(const ValueKey('mfaRecoveryPassword')), 'good-password');
+    await tester.enterText(find.byKey(const ValueKey('mfaRecoveryCode')), '١٢٣٤ABCD');
+    await tester.tap(find.byKey(const ValueKey('mfaRecoverySubmit')));
+    await flush(tester);
+    await tester.pumpAndSettle();
+
+    expect(api.calls('POST', '/v1/auth/mfa/recover').single.body['code'], '1234ABCD');
   });
 }

@@ -95,4 +95,27 @@ void main() {
       );
     });
   });
+
+  group('Arabic digits (#771)', () {
+    test('decode normalises a code typed with Arabic digits', () {
+      // ١٢٣٤٥٦ percent-encoded, as a scanner can hand it over.
+      final payload = PairQrPayload.decode(
+          'osra://pair?v=1&code=%D9%A1%D9%A2%D9%A3%D9%A4%D9%A5%D9%A6'
+          '&host=http%3A%2F%2F192.168.1.5%3A3000');
+      expect(payload.code, '123456');
+    });
+
+    test('decode accepts the Extended Arabic-Indic family too', () {
+      final payload = PairQrPayload.decode(
+          'osra://pair?v=1&code=%DB%B0%DB%B1%DB%B2%DB%B3%DB%B4%DB%B5'
+          '&host=http%3A%2F%2F192.168.1.5%3A3000');
+      expect(payload.code, '012345');
+    });
+
+    test('encode emits Western digits for an Arabic-digit code', () {
+      const payload =
+          PairQrPayload(code: '١٢٣٤٥٦', apiBaseUrl: 'http://192.168.1.5:3000');
+      expect(payload.encode(), contains('code=123456'));
+    });
+  });
 }

@@ -8,6 +8,7 @@ import { locationRoutes } from "../src/routes/location.js";
 import { getRedis } from "../src/redis.js";
 import { MAX_POLL_MISSES, PAIR_SCRIPTS } from "../src/lib/pairApproval.js";
 import { PAIR_POLL_RATE_LIMIT } from "../src/lib/rateLimits.js";
+import { decryptSecret } from "../src/lib/secretVault.js";
 import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
@@ -255,6 +256,14 @@ describe("device pairing (spec §14.1)", () => {
     expect(body.device.model).toBe("Alex's Phone"); // deviceName wins over model
     expect(body.device.pushToken).toBe("tok-1");
     expect(body.device).not.toHaveProperty("familyId");
+    // osra-security#14: the phone gets its raw key once; the database row holds it only under VAULT_KEY,
+    // and the stored value is not echoed back.
+    expect(body.hmacSecret).toMatch(/^[0-9a-f]{64}$/);
+    const stored = prismaMock.device.create.mock.calls[0][0].data.internalSecret as string;
+    expect(stored.startsWith("enc1:")).toBe(true);
+    expect(stored).not.toContain(body.hmacSecret);
+    expect(decryptSecret(stored)).toBe(body.hmacSecret);
+    expect(body.device).not.toHaveProperty("internalSecret");
 
     const decoded = app.jwt.verify<{ sub: string; deviceId: string; childId: string; familyId: string; role: string; exp?: number }>(
       body.token,

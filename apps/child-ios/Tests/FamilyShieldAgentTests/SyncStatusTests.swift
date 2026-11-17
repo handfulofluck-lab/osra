@@ -40,6 +40,22 @@ final class SyncStatusTests: XCTestCase {
         XCTAssertTrue(SyncStatus.succeeded(.consentWithdrawn))
     }
 
+    /// #661: the server address sits in a "Technical details" section at the bottom, closed until tapped.
+    func testTheServerAddressIsUnderClosedTechnicalDetails() throws {
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent/PairingView.swift")
+        let text = try String(contentsOf: source, encoding: .utf8)
+        XCTAssertTrue(text.contains("@State private var showTechnicalDetails = false"), "closed by default")
+        let group = try XCTUnwrap(text.range(of: "DisclosureGroup(L10n.tr(\"status_technical_details\"), isExpanded: $showTechnicalDetails)"))
+        let server = try XCTUnwrap(text.range(of: "LabeledContent(L10n.tr(\"status_server\")"))
+        let repair = try XCTUnwrap(text.range(of: "L10n.tr(\"repair_button\")"))
+        XCTAssertGreaterThan(server.lowerBound, group.lowerBound, "the server row is inside the section")
+        XCTAssertGreaterThan(group.lowerBound, repair.lowerBound, "the section is the last one, below Pair again")
+        XCTAssertEqual(text.components(separatedBy: "L10n.tr(\"status_server\")").count, 2, "the server row appears once")
+        XCTAssertEqual(L10n.tr("status_technical_details", language: "en"), "Technical details")
+        XCTAssertNotEqual(L10n.tr("status_technical_details", language: "ar"), "status_technical_details", "Arabic line present")
+    }
+
     func testTheStatusScreenShowsNoRawIds() throws {
         let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent/PairingView.swift")

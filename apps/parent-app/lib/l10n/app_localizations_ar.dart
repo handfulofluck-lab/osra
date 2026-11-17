@@ -184,7 +184,11 @@ class AppLocalizationsAr extends AppLocalizations {
   String get passwordLabel => 'كلمة المرور';
 
   @override
-  String get mfaCodeLabel => 'رمز المصادقة (عند تفعيل المصادقة الثنائية)';
+  String get mfaCodeLabel => 'رمز تطبيق المصادقة';
+
+  @override
+  String get mfaCodeHelper =>
+      'مطلوب فقط إذا كان التحقق بخطوتين مفعّلًا في حسابك.';
 
   @override
   String get signIn => 'تسجيل الدخول';
@@ -369,7 +373,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get consentMethodLabel => 'طريقة الموافقة';
 
   @override
-  String get consentMethodSmsPlus => 'رسالة نصية +';
+  String get consentMethodSmsPlus => 'رسالة نصية مع تأكيد';
 
   @override
   String get consentMethodKba => 'أسئلة معرفية';
@@ -623,6 +627,11 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String accuracyLabel(int meters, String time) {
     return 'الدقة ±$meters م · $time';
+  }
+
+  @override
+  String accuracyShort(int meters) {
+    return 'الدقة ±$meters م';
   }
 
   @override
@@ -1711,7 +1720,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get vaultTrustCopy =>
-      'تُشفَّر المقاطع بمفتاح عائلتك قبل مغادرة الجهاز وتُخزَّن مشفّرة على خادمك.';
+      'تنتقل المقتطفات عبر اتصال مشفّر، وتُخزَّن مشفّرة على خوادم تطبيق أسرة.';
 
   @override
   String get noConcernsDetected => 'لم تُكتشف أي مخاوف';
@@ -1787,6 +1796,23 @@ class AppLocalizationsAr extends AppLocalizations {
       few: 'قبل $count ساعات',
       two: 'قبل ساعتين',
       one: 'قبل ساعة',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get alertTechnicalDetails => 'التفاصيل التقنية';
+
+  @override
+  String relativeOverHoursAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'قبل أكثر من $count ساعة',
+      many: 'قبل أكثر من $count ساعة',
+      few: 'قبل أكثر من $count ساعات',
+      two: 'قبل أكثر من ساعتين',
+      one: 'قبل أكثر من ساعة',
     );
     return '$_temp0';
   }
@@ -3013,6 +3039,79 @@ class AppLocalizationsAr extends AppLocalizations {
       'افتح تطبيق أسرة لمشاهدة التفاصيل\nحماية لعائلتك بكل الأوقات';
 
   @override
+  String alertSosWhereMinutes(int n, String coords) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'آخر موقع: $coords، قبل $n دقيقة',
+      many: 'آخر موقع: $coords، قبل $n دقيقة',
+      few: 'آخر موقع: $coords، قبل $n دقائق',
+      two: 'آخر موقع: $coords، قبل دقيقتين',
+      one: 'آخر موقع: $coords، قبل دقيقة',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertSosWhereHours(int n, String coords) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'آخر موقع: $coords، قبل أكثر من $n ساعة',
+      many: 'آخر موقع: $coords، قبل أكثر من $n ساعة',
+      few: 'آخر موقع: $coords، قبل أكثر من $n ساعات',
+      two: 'آخر موقع: $coords، قبل أكثر من ساعتين',
+      one: 'آخر موقع: $coords، قبل أكثر من ساعة',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertSosLocationMinutes(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'سُجّل آخر موقع قبل $n دقيقة. اضغط لعرضه.',
+      many: 'سُجّل آخر موقع قبل $n دقيقة. اضغط لعرضه.',
+      few: 'سُجّل آخر موقع قبل $n دقائق. اضغط لعرضه.',
+      two: 'سُجّل آخر موقع قبل دقيقتين. اضغط لعرضه.',
+      one: 'سُجّل آخر موقع قبل دقيقة. اضغط لعرضه.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertSosLocationHours(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'سُجّل آخر موقع قبل أكثر من $n ساعة. اضغط لعرضه.',
+      many: 'سُجّل آخر موقع قبل أكثر من $n ساعة. اضغط لعرضه.',
+      few: 'سُجّل آخر موقع قبل أكثر من $n ساعات. اضغط لعرضه.',
+      two: 'سُجّل آخر موقع قبل أكثر من ساعتين. اضغط لعرضه.',
+      one: 'سُجّل آخر موقع قبل أكثر من ساعة. اضغط لعرضه.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertLocationAccuracy(int m) {
+    return 'الدقة: نحو $m م';
+  }
+
+  @override
+  String get alertCopyCoordinates => 'نسخ الإحداثيات';
+
+  @override
+  String get alertCoordinatesCopied => 'تم نسخ الإحداثيات';
+
+  @override
+  String get alertOpenInMaps => 'فتح في تطبيق الخرائط';
+
+  @override
+  String get alertShowOnMap => 'عرض على الخريطة';
+
+  @override
   String get riskSelfHarm => 'إيذاء النفس';
 
   @override
@@ -3044,7 +3143,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get phoneSetupOtherSpaceClone =>
-      'في هذا الهاتف مساحة ثانية لنسخ التطبيقات (Dual Messenger).';
+      'هذا الهاتف يحتوي على مساحة أخرى مؤمنة، ربما تتيح هذه المساحة تشغيل أكثر من نسخة من نفس التطبيق، وقد لا يتمكن هذا التطبيق من مراقبتها طالما لم يتم إلغاء هذه الخاصية من قسم الإعدادات الخاصة بالهاتف.';
 
   @override
   String get phoneSetupOtherSpaceWork => 'في هذا الهاتف ملف عمل.';

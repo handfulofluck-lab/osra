@@ -14,6 +14,7 @@ import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
 import { isValidTimeZone, utcOffsetMinutes } from "../lib/digestSchedule.js";
 import { ReauthSchema, checkReauth, consentHeldElsewhere, eraseFamilyData } from "../lib/accountDeletion.js";
 import { AUTH_RATE_LIMIT } from "../lib/rateLimits.js";
+import { entitlement, storeAccountIdFor } from "../lib/entitlement.js";
 
 const ConsentCreateSchema = z.object({
   method: z.enum(["sms_plus", "kba", "face_match", "credit_card"]),
@@ -48,6 +49,17 @@ type AuthedUser = { sub: string; familyId: string };
 const sanitizeParent = ({ passwordHash: _ph, mfaSecret: _ms, mfaRecoveryCodes: _mrc, ...rest }: Record<string, unknown>) => rest;
 
 export async function familyRoutes(app: FastifyInstance) {
+  /** Every guardian reads the plan; only the owner receives the id used to make a store purchase. */
+  app.get("/entitlement", { preHandler: requireParent }, async (req, reply) => {
+    const user = req.user as AuthedUser;
+    const parent = await prisma.parent.findUnique({ where: { id: user.sub }, select: { familyId: true, role: true } });
+    if (!parent) return reply.code(404).send({ error: "parent_not_found" });
+    if (parent.familyId !== user.familyId) return reply.code(403).send({ error: "forbidden" });
+    const plan = await entitlement(parent.familyId);
+    if (parent.role !== "owner") return plan;
+    return { ...plan, store_account_id: await storeAccountIdFor(parent.familyId) };
+  });
+
   /** Return the authenticated parent's family envelope: family, parents, children (with devices) and a flat device list. */
   app.get("/me", { preHandler: requireParent }, async (req, reply) => {
     const user = req.user as AuthedUser;
@@ -114,7 +126,8 @@ export async function familyRoutes(app: FastifyInstance) {
       }),
     );
     const devices = children.flatMap((c) => c.devices);
-    const { parents: _parents, ...familyRest } = family;
+    // The purchase-account id has exactly one read: the owner's entitlement response above.
+    const { parents: _parents, storeAccountId: _storeAccountId, ...familyRest } = family;
     // ADR-0014 amendment, decision 2: a guardian without `location` must not receive the family's
     // geofences through this broad read after the narrow `GET /v1/location/geofences/:childId`
     // refuses them. Owners, co-parents and device tokens are unwithheld (`guardianPermissions` is
@@ -363,7 +376,7 @@ export async function familyRoutes(app: FastifyInstance) {
       },
     });
     if (!family) return reply.code(404).send({ error: "family_not_found" });
-    reply.header("Content-Disposition", `attachment; filename="familyshield-export-${family.id}.json"`);
+    reply.header("Content-Disposition", `attachment; filename="osra-export-${family.id}.json"`);
     // Strip internal secrets and push tokens from the export too.
     const exportChildren = family.children.map((c) => ({
       ...c,
