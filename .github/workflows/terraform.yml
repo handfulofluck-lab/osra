@@ -7,6 +7,7 @@ on:
   pull_request:
     paths:
       - "infra/terraform/**"
+      - "infra/scripts/**"
       - ".github/workflows/terraform.yml"
 
 jobs:
@@ -56,6 +57,13 @@ jobs:
           terraform -chdir=org-audit init -backend=false -input=false
           terraform -chdir=org-audit validate
           terraform -chdir=org-audit test
+
+      - name: agent credential and source policy fakes
+        env:
+          AWS_CONFIG_FILE: /dev/null
+          AWS_SHARED_CREDENTIALS_FILE: /dev/null
+          AWS_EC2_METADATA_DISABLED: "true"
+        run: python3 -B -m unittest discover -s org-audit/tests -p 'test_agent_*.py'
 
       # Its own root (own-model training bucket and role). The test pins who can reach the bucket and
       # what the training role can do, so "it has no access to anything else" survives the next edit.
