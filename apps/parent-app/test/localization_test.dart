@@ -280,6 +280,30 @@ void main() {
     Set<String> messageKeys(Map<String, dynamic> arb) =>
         {for (final k in arb.keys) if (!k.startsWith('@')) k};
 
+    // Keys whose Arabic the Arabic Language Bureau writes and we never do (#604, AGENTS.md). A key may sit
+    // here only while app_ar.arb genuinely lacks it: the assertions below fail on a typo (not an English key)
+    // and on a stale entry (a key that has Arabic again), so the list cannot quietly outlive the gap. The app
+    // falls back to the English template for these, which is visible; what it must never do is show an
+    // English sentence from a file that claims to be Arabic.
+    const pendingArabic = <String>{
+      'addAComputer',
+      'computerSelectPrompt',
+      'computerWindows',
+      'computerMac',
+      'computerAdminInstallNote',
+      'computerPairIntro',
+      'computerDownloadAddress',
+      'copyLink',
+      'linkCopied',
+      'sendTheLinkLine',
+      'sendTheLink',
+      'sendLinkCopied',
+      'pairClaimBodyComputer',
+      'pairClaimAllowedComputer',
+      'pairClaimDeniedComputer',
+      'computerAdminWarning',
+    };
+
     test('every English message has a non-empty Arabic translation', () {
       final en = readArb('app_en.arb');
       final ar = readArb('app_ar.arb');
@@ -287,11 +311,16 @@ void main() {
       final empty = <String>[];
       for (final key in messageKeys(en)) {
         if (!ar.containsKey(key)) {
-          missing.add(key);
+          if (!pendingArabic.contains(key)) missing.add(key);
         } else if ((ar[key] as String?)?.trim().isEmpty ?? true) {
           empty.add(key);
         }
       }
+      expect(pendingArabic.difference(messageKeys(en)), isEmpty,
+          reason: 'pendingArabic names keys app_en.arb does not have');
+      expect(pendingArabic.where(ar.containsKey), isEmpty,
+          reason: 'these keys have Arabic now and must leave pendingArabic: '
+              '${pendingArabic.where(ar.containsKey).join(', ')}');
       expect(missing, isEmpty, reason: 'app_ar.arb is missing: ${missing.join(', ')}');
       expect(empty, isEmpty, reason: 'app_ar.arb has empty values: ${empty.join(', ')}');
       expect(messageKeys(ar).difference(messageKeys(en)), isEmpty,
@@ -319,6 +348,9 @@ void main() {
       final ar = readArb('app_ar.arb');
       final placeholder = RegExp(r'\{([A-Za-z][A-Za-z0-9_]*)[,}]');
       for (final key in messageKeys(en)) {
+        // A pendingArabic key has no Arabic yet; the completeness row above owns whether that is allowed,
+        // and this row's question ("do the placeholders agree?") only exists where both sides do.
+        if (!ar.containsKey(key)) continue;
         final enNames = {
           for (final m in placeholder.allMatches(en[key] as String)) m.group(1)!,
         };

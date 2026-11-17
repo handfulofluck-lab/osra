@@ -155,4 +155,21 @@ void main() {
     expect(find.textContaining('another space'), findsOneWidget);
   });
 
+  testWidgets('ADR-0041 D5.5: an administrator account warns, and a report without the fact says nothing',
+      (tester) async {
+    await pump(tester, device(features: {DeviceSetup.accountAdminKey: 'degraded'}));
+    expect(find.byKey(const ValueKey('computerAdminWarning')), findsOneWidget);
+    expect(
+        find.text("Protection is weak on this computer because your child's account is an administrator."),
+        findsOneWidget);
+    // The fact is a fact, not a feature: it must not also appear as a raw-key chip.
+    expect(find.textContaining(DeviceSetup.accountAdminKey), findsNothing);
+
+    await pump(tester, device(features: {'lock_screen': 'ready'}));
+    expect(find.byKey(const ValueKey('computerAdminWarning')), findsNothing);
+
+    // `ready` is the agent saying the child is not an administrator: no warning.
+    await pump(tester, device(features: {DeviceSetup.accountAdminKey: 'ready'}));
+    expect(find.byKey(const ValueKey('computerAdminWarning')), findsNothing);
+  });
 }
