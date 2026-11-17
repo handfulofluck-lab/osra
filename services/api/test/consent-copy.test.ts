@@ -70,20 +70,19 @@ describe("GET /v1/consent-copy", () => {
     // The Arabic Language Bureau (17 Nov): `ar.links` pointed at /ar/terms and /ar/privacy, and neither
     // page exists — an Arabic parent tapping a link while being asked to accept would land on nothing.
     // This row reads the site tree, so a link to a page we do not ship fails here rather than on a phone.
-    const copy = consentCopyFor("ar");
-    const urls = [copy.purposes[0].links.terms, copy.purposes[0].links.privacy];
-    // The URLs inside the markdown are what the app renders as the two buttons.
-    for (const match of copy.purposes[0].text.matchAll(/\]\(([^)]+)\)/g)) urls.push(match[1]);
-    expect(urls.length).toBe(4);
+    const urls: string[] = [];
+    for (const locale of ["ar", "en"] as const) {
+      const copy = consentCopyFor(locale);
+      const purpose = copy.purposes[0];
+      // The links object is what the app's buttons open; the markdown targets are what it renders them from.
+      urls.push(purpose.links.terms, purpose.links.privacy);
+      for (const match of purpose.text.matchAll(/\]\(([^)]+)\)/g)) urls.push(match[1]);
+    }
+    expect(urls).toHaveLength(8);
     for (const url of urls) {
       const path = new URL(url).pathname.replace(/^\/|\/$/g, "");
       const page = fileURLToPath(new URL(`../../../site/${path}/index.html`, import.meta.url));
       expect(existsSync(page), `${url} must be a page we publish (looked for site/${path}/index.html)`).toBe(true);
-    }
-    // And the same for English, so the row is not Arabic-only.
-    for (const url of [consentCopyFor("en").purposes[0].links.terms, consentCopyFor("en").purposes[0].links.privacy]) {
-      const path = new URL(url).pathname.replace(/^\/|\/$/g, "");
-      expect(existsSync(fileURLToPath(new URL(`../../../site/${path}/index.html`, import.meta.url)))).toBe(true);
     }
   });
 
