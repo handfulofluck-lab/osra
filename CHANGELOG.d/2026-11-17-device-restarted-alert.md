@@ -13,7 +13,7 @@
   tampering. Where either side has no count (an older agent), the comparison falls back to the 90-second
   instant rule, and the code comment says plainly that the fallback keeps the clock-move weakness until
   the first count-bearing report is stored.
-- **Server half:** `Device.lastBootAt` and `Device.lastBootCount` (migration `0036_device_last_boot_at`).
+- **Server half:** `Device.lastBootAt` and `Device.lastBootCount` (migration `0037_device_last_boot_at`).
   A restart raises one `device_restarted` alert through `raiseAlertOnce` — `info`, or `warning` when the
   gap reaches 30 minutes (the point the parent would also have received `device_silent`). The body reads
   `Pixel 7a restarted at 14:32, back after 2 minutes.` in the family's own timezone. A repeated tick writes
