@@ -836,6 +836,158 @@ describe("device enrollment & management", () => {
     await app.close();
   });
 
+  it("issue #830/S1: the per-app split in telemetry reaches AppUsageDaily", async () => {
+    // The parent's usage report read `apps: []` for every family because the only per-app writer was fed by
+    // persistent activity events, and the agent marks all of its own `app_usage` events `live` (filtered by
+    // BUG-002). The same telemetry that carries the total already carries the split; this row pins that it
+    // is stored, and that the total keeps its single writer.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, childId: "child-1" });
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: {
+        totalMinutes: 22,
+        appUsage: [
+          { packageId: "com.google.android.youtube", minutes: 14.6 },
+          { packageId: "com.whatsapp", minutes: 7 },
+          // A phone that reports the reserved total key inside the split must not be able to write the
+          // total a second time. Mutant: drop the `app === DEVICE_TOTAL_APP` guard and this row doubles it.
+          { packageId: "*", minutes: 5 },
+        ],
+      },
+    });
+
+    expect(res.statusCode).toBe(202);
+    const rows = prismaMock.appUsageDaily.upsert.mock.calls.map(([args]: [{ where: { childId_deviceId_day_app: { app: string } }; create: { minutes: number } }]) => [
+      args.where.childId_deviceId_day_app.app,
+      args.create.minutes,
+    ]);
+    expect(rows).toEqual(expect.arrayContaining([["com.google.android.youtube", 15], ["com.whatsapp", 7]]));
+    // `*` is the total's own row, written once by `recordDeviceTotal`: a second writer would double it.
+    const totals = prismaMock.appUsageDaily.upsert.mock.calls.filter(
+      ([args]: [{ where: { childId_deviceId_day_app: { app: string } } }]) => args.where.childId_deviceId_day_app.app === "*",
+    );
+    expect(totals).toHaveLength(1);
+    expect((totals[0][0] as { create: { minutes: number } }).create.minutes).toBe(22);
+    await app.close();
+  });
+
+  it("issue #830/S1: an empty or zero-minute entry is skipped, and repeats accumulate", async () => {
+    // The schema already refuses a blank packageId with a 400 for the whole tick (so the writer cannot see
+    // one), but a zero-minute row is legal and must not create a row, and two entries for one package in
+    // one tick are the same counter, not a race to overwrite.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, childId: "child-1" });
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: {
+        batteryPct: 40,
+        appUsage: [
+          { packageId: "com.whatsapp", minutes: 0 },
+          { packageId: "com.whatsapp", minutes: 3 },
+        ],
+      },
+    });
+
+    expect(res.statusCode).toBe(202);
+    const perApp = prismaMock.appUsageDaily.upsert.mock.calls.filter(
+      ([args]: [{ where: { childId_deviceId_day_app: { app: string } } }]) => args.where.childId_deviceId_day_app.app === "com.whatsapp",
+    );
+    expect(perApp).toHaveLength(1);
+    expect((perApp[0][0] as { create: { minutes: number } }).create.minutes).toBe(3);
+    await app.close();
+  });
+
+  it("issue #830/S1 C1: the field Android actually sends reaches AppUsageDaily", async () => {
+    // The exact `TelemetryDto` wire shape (`PayloadDtos.kt:19-23`): `perAppMinutes` as a map, no `appUsage`.
+    // Antigravity's C1: without this branch the rollup is a no-op on every real phone, tests green or not.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, childId: "child-1" });
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: {
+        perAppMinutes: { "com.google.android.youtube": 15, "com.whatsapp": 7, "*": 5 },
+        totalMinutes: 22,
+        unlockCount: 3,
+        batteryPct: 80,
+        locationGrant: "background",
+      },
+    });
+
+    expect(res.statusCode).toBe(202);
+    const rows = prismaMock.appUsageDaily.upsert.mock.calls.map(
+      ([a]: [{ where: { childId_deviceId_day_app: { app: string } }; create: { minutes: number } }]) => [
+        a.where.childId_deviceId_day_app.app,
+        a.create.minutes,
+      ],
+    );
+    expect(rows).toEqual(expect.arrayContaining([["com.google.android.youtube", 15], ["com.whatsapp", 7]]));
+    // The map's `*` entry must not write the total either — same guard as the array shape.
+    const totals = rows.filter(([k]: [string, number]) => k === "*");
+    expect(totals).toHaveLength(1);
+    expect(totals[0][1]).toBe(22);
+    await app.close();
+  });
+
+  it("issue #830/S1 C1: both shapes in one tick are written once, not added", async () => {
+    // Precedence, not addition: a transitional client must not double its own minutes. Mutant: feed both
+    // lists into recordAppUsage and the count doubles.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, childId: "child-1" });
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+
+    await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: {
+        appUsage: [{ packageId: "com.whatsapp", minutes: 5 }],
+        perAppMinutes: { "com.whatsapp": 9 },
+      },
+    });
+
+    const whatsapp = prismaMock.appUsageDaily.upsert.mock.calls.filter(
+      ([a]: [{ where: { childId_deviceId_day_app: { app: string } } }]) => a.where.childId_deviceId_day_app.app === "com.whatsapp",
+    );
+    expect(whatsapp).toHaveLength(1);
+    expect((whatsapp[0][0] as { create: { minutes: number } }).create.minutes).toBe(5);
+    await app.close();
+  });
+
+  it("issue #830/S1: a failed per-app rollup does not change the response or lose the tick", async () => {
+    // Hydrogen's B1 (#901): §5 promises that a broken rollup cannot fail the upload. Mutant: `throw err` in
+    // the handler's catch, and this row is the only thing that notices.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, childId: "child-1" });
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    prismaMock.appUsageDaily.upsert.mockRejectedValueOnce(new Error("db down"));
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      // No `totalMinutes`: the only rollup that can fail here is the per-app one.
+      payload: { batteryPct: 55, appUsage: [{ packageId: "com.whatsapp", minutes: 4 }] },
+    });
+
+    expect(res.statusCode).toBe(202);
+    // The heartbeat still happened: the device row was refreshed, so lastSeen advances as usual.
+    expect(prismaMock.device.update).toHaveBeenCalled();
+    await app.close();
+  });
+
   it("issue #31: accumulates daily screen time minutes on telemetry reports", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, childId: "child-1" });
@@ -1210,6 +1362,37 @@ describe("device restart reporting (#867)", () => {
     expect(alert.metadata).toMatchObject({ gapMinutes: 2 });
     // The count that decided the restart is stored, so the next tick's comparison has it.
     expect(bootWrites()[0][0].data).toMatchObject({ lastBootCount: 8 });
+    await app.close();
+  });
+
+  it("adopts a counter on a same-boot tick from an upgraded agent, silently", async () => {
+    // Fable's review of #884: a row with an instant and no counter is an agent upgraded in place. Recording
+    // the counter on this tick — no alert, no instant rewrite — is what moves the next restart's decision off
+    // the wall clock. The mutant, waiting for the next reboot, leaves the clock-move weakness for a full uptime.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    const storedInstant = minutesAgo(90);
+    storedDevice({ lastBootAt: storedInstant, lastBootCount: null });
+
+    expect((await tick(app, { bootedAt: storedInstant.toISOString(), bootCount: 5 })).statusCode).toBe(202);
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+    expect(bootWrites()).toHaveLength(1);
+    expect(bootWrites()[0][0].data).toMatchObject({ lastBootCount: 5 });
+    // The instant is not rewritten: this is not a new boot, and moving it would misdate the next gap.
+    expect(bootWrites()[0][0].data).not.toHaveProperty("lastBootAt");
+    await app.close();
+  });
+
+  it("alerts with a dedupe key that names the deciding count", async () => {
+    // Fable's x10 on #884: the key gained the count, and the row that guarded it was lost. Two API instances
+    // both deciding "new boot" for one restart would otherwise push twice; the count is part of the identity
+    // because a moved clock can repeat an instant.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    storedDevice({ lastBootAt: minutesAgo(180), lastBootCount: 7, lastSeen: minutesAgo(122) });
+    const boot = minutesAgo(120);
+
+    expect((await tick(app, { bootedAt: boot.toISOString(), bootCount: 8 })).statusCode).toBe(202);
+    const alert = prismaMock.alert.create.mock.calls[0][0].data as { dedupeKey?: string };
+    expect(alert.dedupeKey).toBe(`boot|${boot.toISOString()}|8`);
     await app.close();
   });
 

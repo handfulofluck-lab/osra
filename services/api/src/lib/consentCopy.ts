@@ -31,8 +31,8 @@ const COPY: Record<CopyLocale, CopyEntry> = {
   },
   ar: {
     text:
-      "أُقرّ بأنني بلغت سن الرشد، وبأنني أحد والدَي كل طفل أضيفه إلى تطبيق أسرة أو وصيّه القانوني أو شخص آخر مخوّل قانونًا برعايته. وأقبل [شروط استخدام تطبيق أسرة](https://osratech.com/ar/terms)، وقد قرأت [سياسة الخصوصية](https://osratech.com/ar/privacy).",
-    links: { terms: "https://osratech.com/ar/terms", privacy: "https://osratech.com/ar/privacy" },
+      "أُقرّ بأنني بلغت سن الرشد، وبأنني أحد والدَي كل طفل أضيفه إلى تطبيق أسرة أو وصيّه القانوني أو شخص آخر مخوّل قانونًا برعايته. وأقبل [شروط استخدام تطبيق أسرة](https://osratech.com/terms)، وقد قرأت [سياسة الخصوصية](https://osratech.com/privacy).",
+    links: { terms: "https://osratech.com/terms", privacy: "https://osratech.com/privacy" },
   },
 };
 
