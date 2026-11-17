@@ -58,7 +58,16 @@ class CommandHistoryScreen extends ConsumerWidget {
               ),
             );
           }
-          return ListView(
+          return RefreshIndicator(
+            // #876: this list had no manual refresh either; the Retry button only existed on the error state.
+            onRefresh: () async {
+              ref.invalidate(familyProvider);
+              for (final device in devices) {
+                ref.invalidate(deviceCommandHistoryProvider(device.id));
+              }
+            },
+            child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(16),
             children: [
               Text(
@@ -71,6 +80,7 @@ class CommandHistoryScreen extends ConsumerWidget {
                 const SizedBox(height: 12),
               ],
             ],
+            ),
           );
         },
       ),

@@ -195,6 +195,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get createAccount => 'إنشاء حساب';
 
   @override
+  String get consentRequired => 'لإنشاء حساب، يُرجى وضع علامة في هذه الخانة.';
+
+  @override
   String get familyNameLabel => 'اسم العائلة';
 
   @override
@@ -1190,7 +1193,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get essentialAppRow => 'مسموح دائمًا (ضروري للمكالمات والسلامة)';
 
   @override
-  String get installedAppsEmpty => 'لم يتم الإبلاغ عن أي تطبيقات بعد';
+  String get installedAppsEmpty => 'لم يُرسل جهاز الطفل قائمة تطبيقاته بعد';
 
   @override
   String get installedAppsEmptyHint =>
@@ -1200,7 +1203,8 @@ class AppLocalizationsAr extends AppLocalizations {
   String get installedAppsNoMatch => 'لا توجد تطبيقات تطابق بحثك.';
 
   @override
-  String get installedAppsLoadFailed => 'تعذّر تحميل التطبيقات.';
+  String get installedAppsLoadFailed =>
+      'تعذّر تحميل التطبيقات. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
 
   @override
   String installedAppsTruncated(int count) {
@@ -2074,7 +2078,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get onboardingNoNetwork =>
-      'تعذّر الوصول إلى الخادم. تحقق من عنوان الخادم واتصال الإنترنت ثم حاول مجددًا.';
+      'تعذّر الاتصال بخدمة أسرة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
 
   @override
   String get onboardingChildTitle => 'أضف طفلك';
@@ -3248,6 +3252,19 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get appRuleHiddenOnIphone =>
       'على هواتف آيفون، يُخفى هذا التطبيق بدلًا من عرض شاشة الحظر.';
+
+  @override
+  String get showPassword => 'إظهار كلمة المرور';
+
+  @override
+  String get hidePassword => 'إخفاء كلمة المرور';
+
+  @override
+  String get passwordMinHint => '12 حرفًا على الأقل.';
+
+  @override
+  String get familyNameHelper =>
+      'سيظهر هذا الاسم لأولياء الأمور الآخرين الذين تدعوهم.';
 
   @override
   String get errorNoConnection =>

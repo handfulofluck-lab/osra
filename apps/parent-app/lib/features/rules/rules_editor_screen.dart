@@ -99,6 +99,13 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
       // right after Save `applied == rules` and the line the parent just earned never appears — which is
       // exactly the "I changed it, why is Meet still blocked?" moment it exists for.
       ref.invalidate(familyProvider);
+      // #876: the save queues a `rules_updated` command, so every delivery list on this child is stale from
+      // this moment. The family snapshot already carries the devices, so refresh each one's history — the
+      // list used to change only after leaving the screen and coming back.
+      final savedDevices = ref.read(familyProvider).valueOrNull?.devicesFor(widget.childId) ?? const <Device>[];
+      for (final device in savedDevices) {
+        ref.invalidate(deviceCommandHistoryProvider(device.id));
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.rulesSaved)));
       }

@@ -28,6 +28,7 @@ import { startMfaResetExpiryScheduler } from "./jobs/mfaResetExpiry.js";
 import { startRevokedTokenPruneScheduler } from "./jobs/revokedTokenPrune.js";
 import { sessionGuardHook } from "./middleware/sessionGuard.js";
 import { healthRoutes } from "./routes/health.js";
+import { consentCopyRoutes } from "./routes/consentCopy.js";
 import { registerErrorHandler } from "./lib/errorHandler.js";
 import { registerIdleBudgetHook } from "./lib/idleBudget.js";
 import { registerClientHeader } from "./middleware/clientHeader.js";
@@ -116,6 +117,8 @@ registerIdleBudgetHook(app);
 registerErrorHandler(app);
 
 await app.register(healthRoutes);
+// ADR-0043 D3 / #846 part A: the sign-up copy, public because the app asks before anyone signs in.
+await app.register(consentCopyRoutes, { prefix: "/v1" });
 
 
 // Auth routes get a stricter bucket (review API-11): brute-force protection on register/login/reset.

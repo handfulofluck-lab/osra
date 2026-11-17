@@ -153,7 +153,18 @@ class _OverviewTab extends ConsumerWidget {
     final devices = overview?.devicesFor(childId) ?? const <Device>[];
     final internetPaused = ref.watch(internetPausedProvider(childId)).valueOrNull ?? false;
     if (overview == null) return const Center(child: CircularProgressIndicator());
-    return SingleChildScrollView(
+    return RefreshIndicator(
+      // #876: the delivery line on this tab had no way to be refreshed by hand — pulling down did nothing.
+      onRefresh: () async {
+        ref.invalidate(familyProvider);
+        for (final device in devices) {
+          ref.invalidate(deviceCommandHistoryProvider(device.id));
+        }
+      },
+      child: SingleChildScrollView(
+      // The pull gesture needs something scrollable even when the content fits: `AlwaysScrollable` keeps it
+      // working on a short page and at a large text scale alike.
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -310,8 +321,9 @@ class _OverviewTab extends ConsumerWidget {
           ),
         ),
       ],
+      ),
     ),
-  );
+    );
   }
 
   /// The server's judgement (`Device.status`), never a clock rule on this phone (#601).

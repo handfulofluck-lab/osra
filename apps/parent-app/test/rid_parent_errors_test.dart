@@ -112,6 +112,28 @@ void main() {
       expect(find.textContaining('auth response missing token'), findsNothing);
       expect(find.text(en.authSignInFailed), findsOneWidget);
     });
+
+    testWidgets('plain sign-in translates invalid_credentials to onboardingWrongPassword', (tester) async {
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'POST /v1/auth/login': (_) => const FakeHttpError(401, {'error': 'invalid_credentials'}),
+      });
+      await tester.pumpWidget(ProviderScope(
+        overrides: [apiClientProvider.overrideWithValue(api)],
+        child: localizedTestApp(const LoginScreen()),
+      ));
+      await tester.pumpAndSettle();
+
+      Finder field(String label) => find.ancestor(of: find.text(label), matching: find.byType(TextField));
+      await tester.enterText(field('Server'), 'http://testserver');
+      await tester.enterText(field('Email'), 'parent@osratech.com');
+      await tester.enterText(field('Password'), 'twelve-chars-ok');
+      await tester.tap(find.text('Sign in'));
+      await tester.pumpAndSettle();
+
+      expect(find.descendant(of: find.byKey(const ValueKey('loginError')), matching: find.text(en.onboardingWrongPassword)), findsOneWidget);
+      expect(find.textContaining('invalid_credentials'), findsNothing);
+    });
   });
 
   group('R-ID-3 searchable city/GMT timezone picker', () {

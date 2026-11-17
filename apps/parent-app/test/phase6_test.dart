@@ -282,7 +282,7 @@ void main() {
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
 
       expect(
-        find.text('Snippets are encrypted with your family key before leaving the device and stored encrypted on your server.'),
+        find.text('Excerpts travel over an encrypted connection and are stored encrypted on OSRA\'s servers.'),
         findsOneWidget,
       );
     });

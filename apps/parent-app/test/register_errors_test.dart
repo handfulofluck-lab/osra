@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:familyshield_parent/features/auth/auth_messages.dart';
-import 'package:familyshield_parent/features/auth/login_screen.dart';
+import 'package:familyshield_parent/features/auth/create_account_screen.dart';
 import 'package:familyshield_parent/l10n/l10n.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/providers/onboarding_provider.dart';
@@ -13,10 +13,11 @@ import 'package:familyshield_parent/providers/onboarding_provider.dart';
 import 'fake_api_client.dart';
 import 'test_app.dart';
 
-/// 3.2 first-run test (2026-10-23): a password under 12 characters made Register answer "Validation
-/// failed", which named neither the field nor the rule. These rows pin the replacement: the rule is
-/// shown up front, a short password or a missing name is caught before the request, and a server
-/// rejection names its field beside the Register button.
+/// ADR-0043 D6, part B (counsel's 16 Nov scope): sign-up is its own page with one required consent box.
+/// These rows keep the register-form behaviour that #161/#189 established — the rule is stated, a short
+/// password or missing name is caught before the request, a server rejection names its field — and add the
+/// consent contract: the sentence and links come from `GET /v1/consent-copy`, the box is required, and the
+/// register payload carries the `textVersion` it showed.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -28,11 +29,30 @@ void main() {
   const validPassword = 'twelve-chars-ok';
   final en = lookupAppLocalizations(const Locale('en'));
 
+  // Counsel's final English (publication pack 16 Nov, doc 09 A1), byte for byte.
+  const englishBox =
+      'I am an adult and the parent, legal guardian or other person legally allowed to care for each child I add to OSRA. I accept the OSRA [Terms of Use](https://osratech.com/terms) and I have read the [Privacy Policy](https://osratech.com/privacy).';
+
+  Map<String, dynamic> copy({String text = englishBox}) => {
+        'textVersion': 'signup-v1',
+        'purposes': [
+          {
+            'key': 'terms_privacy',
+            'required': true,
+            'text': text,
+            'textHash': 'sha256-of-the-english-box',
+            'links': {
+              'terms': 'https://osratech.com/terms',
+              'privacy': 'https://osratech.com/privacy',
+            },
+          },
+        ],
+      };
+
   Finder fieldByLabel(String label) => find.ancestor(of: find.text(label), matching: find.byType(TextField));
 
-  Future<void> pumpLogin(WidgetTester tester, FakeApiClient api, {Locale locale = const Locale('en')}) async {
-    // Tall enough that the expanded register section needs no scrolling.
-    tester.view.physicalSize = const Size(800, 2000);
+  Future<void> pumpSignUp(WidgetTester tester, FakeApiClient api, {Locale locale = const Locale('en')}) async {
+    tester.view.physicalSize = const Size(800, 2400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() {
       tester.view.resetPhysicalSize();
@@ -40,161 +60,340 @@ void main() {
     });
     await tester.pumpWidget(ProviderScope(
       overrides: [apiClientProvider.overrideWithValue(api)],
-      child: localizedTestApp(const LoginScreen(), locale: locale),
+      child: localizedTestApp(const CreateAccountScreen(), locale: locale),
     ));
     await tester.pumpAndSettle();
   }
 
-  Future<void> fillRegister(
+  Future<FakeApiClient> api({Map<String, dynamic>? copyBody}) async {
+    return FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/consent-copy': (_) => copyBody ?? copy(),
+    });
+  }
+
+  Future<void> fillForm(
     WidgetTester tester, {
     String email = 'new@osratech.com',
     String password = validPassword,
     String familyName = 'Rivera',
     String displayName = 'Sam',
   }) async {
-    await tester.enterText(fieldByLabel('Server'), 'http://testserver');
-    await tester.enterText(fieldByLabel('Email'), email);
-    await tester.enterText(fieldByLabel('Password'), password);
-    await tester.tap(find.text('Create account'));
-    await tester.pumpAndSettle();
     await tester.enterText(fieldByLabel('Family name'), familyName);
     await tester.enterText(fieldByLabel('Your name'), displayName);
+    await tester.enterText(fieldByLabel('Email'), email);
+    await tester.enterText(fieldByLabel('Password'), password);
   }
 
-  Future<void> tapRegister(WidgetTester tester) async {
-    await tester.tap(find.text('Register'));
+  Future<void> tapCreate(WidgetTester tester) async {
+    await tester.tap(find.byKey(const ValueKey('createAccountButton')));
     await tester.pumpAndSettle();
   }
+
+  /// #862 UI/UX addendum: on the iPhone SE 3 at AX5 the label was cut inside a fixed 52 pt button —
+  /// "Create" only in English, the Arabic cut at the bottom. The height is a minimum now, so the button
+  /// grows to two lines. Mutant: put `SizedBox(height: 52)` back and the height is exactly 52 again.
+  testWidgets('at AX5 the Create account button grows instead of cutting its label', (tester) async {
+    final client = await api();
+    tester.view.physicalSize = const Size(750, 1334);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(client)],
+      child: localizedTestApp(
+        // Keep the test view's own metrics (a bare MediaQueryData has a zero size) and change only the
+        // text scale to the largest accessibility step.
+        Builder(builder: (context) {
+          final media = MediaQuery.of(context);
+          return MediaQuery(
+            data: media.copyWith(textScaler: const TextScaler.linear(3.0)),
+            child: const CreateAccountScreen(),
+          );
+        }),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final button = find.byKey(const ValueKey('createAccountButton'));
+    expect(button, findsOneWidget);
+    expect(tester.getSize(button).height, greaterThan(52.0));
+
+    // Scoped to the button: the AppBar's title is the same words, so a bare `find.text` matches twice.
+    final label = tester.widget<Text>(
+      find.descendant(of: button, matching: find.byType(Text)),
+    );
+    expect(label.data, en.createAccount);
+    // The label wraps; it is never clipped to a line count.
+    expect(label.maxLines, isNull);
+    expect(label.textAlign, TextAlign.center);
+  });
 
   String? shown(WidgetTester tester, String key) {
     final f = find.byKey(ValueKey(key));
     return f.evaluate().isEmpty ? null : (tester.widget<Text>(f).data);
   }
 
-  Map<String, FakeRoute> routesWithRegister(FakeRoute register) => {
-        ...standardRoutes(),
+  Map<String, FakeRoute> withRegister(FakeRoute register) => {
         'POST /v1/auth/register': register,
+        'GET /v1/consent-copy': (_) => copy(),
       };
 
-  group('register form', () {
-    testWidgets('states the 12-character rule as soon as the section opens', (tester) async {
-      await pumpLogin(tester, FakeApiClient(standardRoutes()));
-      expect(find.byKey(const ValueKey('registerFieldsHint')), findsNothing);
-      await tester.tap(find.text('Create account'));
+  group('sign-up form', () {
+    testWidgets('the consent box shows the copy sentence without markdown, and its two links as buttons', (tester) async {
+      await pumpSignUp(tester, await api());
+
+      final label = shown(tester, 'consentTermsText')!;
+      expect(label, contains('I am an adult and the parent'));
+      expect(label, isNot(contains('[')), reason: 'markdown brackets are not shown');
+      expect(label, isNot(contains('http')), reason: 'the link is a button, not text');
+      expect(find.byKey(const ValueKey('consentTermsLink')), findsOneWidget);
+      expect(find.byKey(const ValueKey('consentPrivacyLink')), findsOneWidget);
+      expect(find.text('Terms of Use'), findsOneWidget);
+      expect(find.text('Privacy Policy'), findsOneWidget);
+    });
+
+    testWidgets('the links are outside the tappable row, so a link tap cannot tick the box', (tester) async {
+      await pumpSignUp(tester, await api());
+      expect(
+        find.descendant(of: find.byType(CheckboxListTile), matching: find.byKey(const ValueKey('consentTermsLink'))),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: find.byType(CheckboxListTile), matching: find.byKey(const ValueKey('consentPrivacyLink'))),
+        findsNothing,
+      );
+    });
+
+    testWidgets('pressing create without ticking names the box, not the fields, and sends nothing', (tester) async {
+      final client = await api();
+      await pumpSignUp(tester, client);
+      await fillForm(tester);
+      await tapCreate(tester);
+
+      expect(shown(tester, 'consentError'), en.consentRequired);
+      expect(shown(tester, 'registerError'), isNull);
+      expect(client.calls('POST', '/v1/auth/register'), isEmpty);
+      final button = tester.widget<FilledButton>(find.byKey(const ValueKey('createAccountButton')));
+      expect(button.onPressed, isNotNull, reason: 'the button is never greyed out as the answer');
+    });
+
+    testWidgets('the error is announced as a live region under the box', (tester) async {
+      await pumpSignUp(tester, await api());
+      await fillForm(tester);
+      await tapCreate(tester);
+
+      final semantics = find.ancestor(
+        of: find.byKey(const ValueKey('consentError')),
+        matching: find.byType(Semantics),
+      );
+      final widget = tester.widget<Semantics>(semantics.first);
+      expect(widget.properties.liveRegion, isTrue);
+    });
+
+    testWidgets('a ticked box sends the consents the copy served', (tester) async {
+      final client = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/consent-copy': (_) => copy(),
+        // 409 keeps the row on this screen: a success would navigate, and the bare test app has no router.
+        'POST /v1/auth/register': (_) => const FakeHttpError(409, {'error': 'email_taken'}),
+      });
+      await pumpSignUp(tester, client);
+      await fillForm(tester);
+      await tester.tap(find.byType(Checkbox));
       await tester.pumpAndSettle();
-      expect(shown(tester, 'registerFieldsHint'), en.registerFieldsHint);
-      expect(en.registerFieldsHint, contains('$kMinPasswordLength'));
+      await tapCreate(tester);
+
+      final sent = client.calls('POST', '/v1/auth/register');
+      expect(sent, hasLength(1));
+      expect(sent.single.body['consents'], {
+        'termsPrivacy': true,
+        'textVersion': 'signup-v1',
+        'locale': 'en',
+      });
     });
 
-    testWidgets('a short password is named beside Register and never sent', (tester) async {
-      final api = FakeApiClient(standardRoutes());
-      await pumpLogin(tester, api);
-      await fillRegister(tester, password: 'ten-chars!');
-      await tapRegister(tester);
+    testWidgets('a short password is named beside the fields and never sent', (tester) async {
+      final client = await api();
+      await pumpSignUp(tester, client);
+      await fillForm(tester, password: 'ten-chars!');
+      await tester.tap(find.byType(Checkbox));
+      await tester.pumpAndSettle();
+      await tapCreate(tester);
 
       expect(shown(tester, 'registerError'), en.registerPasswordTooShort);
-      expect(find.byKey(const ValueKey('loginError')), findsNothing);
-      expect(api.calls('POST', '/v1/auth/register'), isEmpty);
-    });
-
-    testWidgets('11 characters is still short and 12 is enough (the server minimum)', (tester) async {
-      // The server answers 409 so a sent request stays on this screen: a success would navigate,
-      // and this bare MaterialApp has no router.
-      final api = FakeApiClient(routesWithRegister((_) => const FakeHttpError(409, {'error': 'email_taken'})));
-      await pumpLogin(tester, api);
-      await fillRegister(tester, password: 'a' * (kMinPasswordLength - 1));
-      await tapRegister(tester);
-      expect(shown(tester, 'registerError'), en.registerPasswordTooShort);
-      expect(api.calls('POST', '/v1/auth/register'), isEmpty);
-
-      await tester.enterText(fieldByLabel('Password'), 'a' * kMinPasswordLength);
-      await tapRegister(tester);
-      expect(api.calls('POST', '/v1/auth/register'), hasLength(1));
-      expect(api.calls('POST', '/v1/auth/register').single.body['password'], 'a' * kMinPasswordLength);
+      expect(client.calls('POST', '/v1/auth/register'), isEmpty);
     });
 
     testWidgets('a missing name is named before the request', (tester) async {
-      final api = FakeApiClient(standardRoutes());
-      await pumpLogin(tester, api);
-      await fillRegister(tester, displayName: '   ');
-      await tapRegister(tester);
+      final client = await api();
+      await pumpSignUp(tester, client);
+      await fillForm(tester, displayName: '   ');
+      await tester.tap(find.byType(Checkbox));
+      await tester.pumpAndSettle();
+      await tapCreate(tester);
 
       expect(shown(tester, 'registerError'), en.registerNamesRequired);
-      expect(api.calls('POST', '/v1/auth/register'), isEmpty);
+      expect(client.calls('POST', '/v1/auth/register'), isEmpty);
     });
 
     testWidgets('an email without @ is named before the request', (tester) async {
-      final api = FakeApiClient(standardRoutes());
-      await pumpLogin(tester, api);
-      await fillRegister(tester, email: 'sam.example.com');
-      await tapRegister(tester);
+      final client = await api();
+      await pumpSignUp(tester, client);
+      await fillForm(tester, email: 'sam.example.com');
+      await tester.tap(find.byType(Checkbox));
+      await tester.pumpAndSettle();
+      await tapCreate(tester);
 
       expect(shown(tester, 'registerError'), en.authEmailInvalid);
-      expect(api.calls('POST', '/v1/auth/register'), isEmpty);
+      expect(client.calls('POST', '/v1/auth/register'), isEmpty);
     });
 
     testWidgets('a field the server rejects is named, never "Validation failed"', (tester) async {
-      final api = FakeApiClient(routesWithRegister((_) => const FakeHttpError(400, {
-            'error': {
-              'formErrors': <String>[],
-              'fieldErrors': {
-                'email': ['Invalid email'],
+      final client = FakeApiClient({
+        ...withRegister((_) => const FakeHttpError(400, {
+              'error': {
+                'formErrors': <String>[],
+                'fieldErrors': {
+                  'email': ['Invalid email'],
+                },
               },
-            },
-          })));
-      await pumpLogin(tester, api);
-      // Has an @, so it passes the app's check; zod's stricter email check refuses it.
-      await fillRegister(tester, email: 'sam@localhost');
-      await tapRegister(tester);
+            })),
+        'GET /v1/consent-copy': (_) => copy(),
+      });
+      await pumpSignUp(tester, client);
+      await fillForm(tester, email: 'sam@localhost');
+      await tester.tap(find.byType(Checkbox));
+      await tester.pumpAndSettle();
+      await tapCreate(tester);
 
-      expect(api.calls('POST', '/v1/auth/register'), hasLength(1));
+      expect(client.calls('POST', '/v1/auth/register'), hasLength(1));
       expect(shown(tester, 'registerError'), en.authEmailInvalid);
       expect(find.text('Validation failed'), findsNothing);
       expect(find.textContaining(kValidationFailedPrefix), findsNothing);
     });
 
-    testWidgets('a taken email says so and points to Sign in', (tester) async {
-      final api = FakeApiClient(routesWithRegister((_) => const FakeHttpError(409, {'error': 'email_taken'})));
-      await pumpLogin(tester, api);
-      await fillRegister(tester);
-      await tapRegister(tester);
+    testWidgets('an outdated consent refetches and asks again, never showing the server code', (tester) async {
+      final client = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/consent-copy': (_) => copy(),
+        'POST /v1/auth/register': (_) => const FakeHttpError(400, {'error': 'consent_text_outdated'}),
+      });
+      await pumpSignUp(tester, client);
+      await fillForm(tester);
+      await tester.tap(find.byType(Checkbox));
+      await tester.pumpAndSettle();
+      await tapCreate(tester);
+
+      expect(find.textContaining('consent_text_outdated'), findsNothing);
+      // The copy is read again so the new wording is on screen, and the box is unticked for the new text.
+      expect(client.calls('GET', '/v1/consent-copy'), hasLength(2));
+      final box = tester.widget<Checkbox>(find.byType(Checkbox));
+      expect(box.value, isFalse);
+      expect(shown(tester, 'consentError'), en.consentRequired);
+    });
+
+    testWidgets('a taken email says so', (tester) async {
+      final client = FakeApiClient({
+        ...withRegister((_) => const FakeHttpError(409, {'error': 'email_taken'})),
+      });
+      await pumpSignUp(tester, client);
+      await fillForm(tester);
+      await tester.tap(find.byType(Checkbox));
+      await tester.pumpAndSettle();
+      await tapCreate(tester);
 
       expect(shown(tester, 'registerError'), en.registerEmailTaken);
       expect(find.text('email_taken'), findsNothing);
     });
 
-    testWidgets('pressing Sign in after a register error moves the message back above Sign in', (tester) async {
-      final api = FakeApiClient(standardRoutes());
-      await pumpLogin(tester, api);
-      await fillRegister(tester, password: 'short');
-      await tapRegister(tester);
-      expect(shown(tester, 'registerError'), en.registerPasswordTooShort);
-
-      await tester.enterText(fieldByLabel('Password'), 'wrong-password');
-      await tester.tap(find.text('Sign in'));
+    testWidgets('Arabic: the consent error is the Bureau sentence, and the box text comes from the copy', (tester) async {
+      final ar = lookupAppLocalizations(const Locale('ar'));
+      // The Arabic Language Bureau's box 1 at the final English (6914704859-adjacent, doc 09 A1), verbatim.
+      const arabicBox = 'أُقرّ بأنني بلغت سن الرشد، وبأنني أحد والدَي كل طفل أضيفه إلى تطبيق أسرة أو وصيّه القانوني أو شخص آخر مخوّل قانونًا برعايته. وأقبل [شروط استخدام تطبيق أسرة](https://osratech.com/ar/terms)، وقد قرأت [سياسة الخصوصية](https://osratech.com/ar/privacy).';
+      final client = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/consent-copy': (_) => copy(text: arabicBox),
+        'POST /v1/auth/register': (_) => const FakeHttpError(409, {'error': 'email_taken'}),
+      });
+      await pumpSignUp(tester, client, locale: const Locale('ar'));
+      await tester.enterText(fieldByLabel(ar.familyNameLabel), 'Rivera');
+      await tester.enterText(fieldByLabel(ar.yourNameLabel), 'Sam');
+      await tester.enterText(fieldByLabel(ar.emailLabel), 'new@osratech.com');
+      await tester.enterText(fieldByLabel(ar.passwordLabel), validPassword);
+      await tester.tap(find.byKey(const ValueKey('createAccountButton')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('registerError')), findsNothing);
-      // R-ID-1: even the plain sign-in screen translates server codes to a plain sentence.
-      expect(shown(tester, 'loginError'), en.onboardingWrongPassword);
-      expect(find.text('invalid_credentials'), findsNothing);
+      expect(shown(tester, 'consentError'), ar.consentRequired);
+      expect(shown(tester, 'consentTermsText'), contains('أُقرّ بأنني بلغت سن الرشد'));
+      expect(find.text('شروط استخدام تطبيق أسرة'), findsOneWidget);
+
+      // #862 condition 3: a multi-word Arabic label is shown with its spaces. The parser copies the
+      // label out of the copy's markdown and rewrites nothing, so an underscore here would mean the
+      // copy or a stub sent one — which is exactly what this pins.
+      for (final key in ['consentTermsLink', 'consentPrivacyLink']) {
+        for (final text in tester.widgetList<Text>(
+          find.descendant(of: find.byKey(ValueKey(key)), matching: find.byType(Text)),
+        )) {
+          expect(text.data ?? '', isNot(contains('_')), reason: '$key renders "${text.data}"');
+        }
+      }
     });
 
-    testWidgets('Arabic: the rule and the short-password error are translated', (tester) async {
-      final ar = lookupAppLocalizations(const Locale('ar'));
-      final api = FakeApiClient(standardRoutes());
-      await pumpLogin(tester, api, locale: const Locale('ar'));
-      await tester.enterText(fieldByLabel(ar.serverLabel), 'http://testserver');
-      await tester.enterText(fieldByLabel(ar.emailLabel), 'new@osratech.com');
-      await tester.enterText(fieldByLabel(ar.passwordLabel), 'short');
-      await tester.tap(find.text(ar.createAccount));
-      await tester.pumpAndSettle();
-      expect(shown(tester, 'registerFieldsHint'), ar.registerFieldsHint);
+    /// #862 Antigravity, keyboard row 1: with the password focused, IME `Next` used to land on the eye
+    /// button inside the same field, because that button is the next focusable in the tree. It now lands
+    /// on the field the parent is walking towards.
+    testWidgets('Next from the password lands on the family name, not the eye button', (tester) async {
+      final client = await api();
+      await pumpSignUp(tester, client);
 
-      await tester.tap(find.text(ar.register));
+      await tester.tap(fieldByLabel('Password'));
       await tester.pumpAndSettle();
-      expect(shown(tester, 'registerError'), ar.registerPasswordTooShort);
-      expect(ar.registerPasswordTooShort, isNot(en.registerPasswordTooShort));
+      await tester.enterText(fieldByLabel('Password'), validPassword);
+      await tester.testTextInput.receiveAction(TextInputAction.next);
+      await tester.pumpAndSettle();
+
+      final family = tester.widget<TextField>(fieldByLabel('Family name'));
+      final eye = tester.widget<IconButton>(find.byKey(const ValueKey('togglePassword')));
+      expect(family.focusNode?.hasFocus, isTrue);
+      // The eye button keeps its tap target and its label; it is simply not where the cursor goes.
+      expect(eye.onPressed, isNotNull);
+      expect(find.byTooltip('Show password'), findsOneWidget);
+    });
+
+    /// #862 Antigravity, keyboard row 2: the keyboard's `Done` reaches `_submit` directly, past the
+    /// button's own `onPressed` guard, so a second press while the first request is in flight used to
+    /// register twice. The guard lives in `_submit` now.
+    testWidgets('Done on the family name cannot submit twice while a request is in flight', (tester) async {
+      final client = await api();
+      await pumpSignUp(tester, client);
+      await fillForm(tester);
+      await tester.tap(find.byType(Checkbox));
+      await tester.pumpAndSettle();
+      // Focus the field whose Done submits: from the password, Done is `next` and lands on the family
+      // name instead (the row above), so this row has to start where the keyboard's Done means "go".
+      await tester.tap(fieldByLabel('Family name'));
+      await tester.pumpAndSettle();
+
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump(); // the first request is in flight; _submitting is true
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(client.calls('POST', '/v1/auth/register'), hasLength(1));
+    });
+
+    testWidgets('a copy the server cannot serve is a plain line, never a half form', (tester) async {
+      final client = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/consent-copy': (_) => const FakeHttpError(500),
+      });
+      await pumpSignUp(tester, client);
+      expect(find.byType(Checkbox), findsNothing);
+      expect(find.byKey(const ValueKey('createAccountButton')), findsNothing);
     });
   });
 
@@ -214,7 +413,14 @@ void main() {
       final notifier = AuthNotifier(api);
       addTearDown(notifier.dispose);
       await notifier.register(
-          email: 'x@y', password: 'p', displayName: 'a', familyName: 'b', region: 'US');
+        email: 'x@y',
+        password: 'p',
+        displayName: 'a',
+        familyName: 'b',
+        region: 'US',
+        consentTextVersion: 'signup-v1',
+        consentLocale: 'en',
+      );
       expect(notifier.state.error, '${kValidationFailedPrefix}email,password');
     });
 

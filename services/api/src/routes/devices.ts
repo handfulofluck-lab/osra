@@ -21,6 +21,7 @@ import {
   type PolledDevice,
 } from "../lib/pollCadence.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
+import { familyAppliedVersion, rulesAppliedReached } from "../lib/rulesApplied.js";
 import { recordActivityUsage, recordDeviceTotal } from "../lib/usageModel.js";
 
 import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
@@ -847,6 +848,34 @@ export async function deviceRoutes(app: FastifyInstance) {
       const current = issued?.rulesVersion ?? 0;
       if (reportedVersion <= current) {
         await prisma.device.update({ where: { id }, data: { appliedRulesVersion: reportedVersion } });
+        // #865: tell the family's parents the moment its last reporting device catches up. Without this
+        // the "hasn't picked this change up yet" line is refreshed only by an unrelated socket frame, so
+        // a parent reads "not picked up" while the phone is already enforcing. The frame carries the
+        // same reduced number the banner reads and nothing else: no rule content, no device detail.
+        //
+        // Only on the transition: `req.device` is the row as it was before this upload, so an upload that
+        // repeats a version the phone already reported must not publish — otherwise every telemetry tick
+        // makes every open parent app refetch the family snapshot, changed or not.
+        const previousVersion = (device as { appliedRulesVersion?: number | null }).appliedRulesVersion ?? null;
+        const advanced = previousVersion === null || reportedVersion > previousVersion;
+        const familyId = (device as { child?: { familyId?: string } }).child?.familyId;
+        if (familyId && advanced) {
+          const siblings = await prisma.device.findMany({
+            where: { childId: device.childId },
+            select: { appliedRulesVersion: true },
+          });
+          const applied = familyAppliedVersion(siblings.map((sibling) => sibling.appliedRulesVersion));
+          if (rulesAppliedReached(applied, current)) {
+            await publishFamilyEvent(familyId, {
+              type: "rules_applied",
+              payload: { childId: device.childId, appliedRulesVersion: applied },
+            }).catch((err) => {
+              // The report is stored and the upload succeeded; a push that cannot be delivered is a
+              // cache refresh the parent misses until the next frame, not a reason to fail the upload.
+              req.log.warn({ err, familyId }, "rules_applied publish failed (telemetry)");
+            });
+          }
+        }
       } else {
         req.log.warn({ deviceId: id, reportedVersion, issued: current }, "appliedRulesVersion above the issued version; ignored");
       }

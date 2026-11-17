@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/social/social_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
+import 'package:familyshield_parent/providers/family_provider.dart';
 
 import 'fake_api_client.dart';
 import 'test_app.dart';
@@ -35,6 +36,14 @@ void main() {
         if (applied != null) 'appliedRulesVersion': applied,
       };
 
+  /// Dio dispatches through chained zero-duration timers; a refetch started by an invalidate needs fake
+  /// time advanced before its answer is read (`pumpAndSettle` alone settles the frame, not the timers).
+  Future<void> flushFakeHttp(WidgetTester tester) async {
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+  }
+
   Future<void> pumpSocial(WidgetTester tester, Map<String, dynamic> childJson) async {
     final api = FakeApiClient({
       ...standardRoutes(familyMe: {...familyMeTwoChildren(), 'children': [childJson]}),
@@ -60,6 +69,69 @@ void main() {
   testWidgets('a phone that never reported shows nothing', (tester) async {
     // Null is "never reported", not "version 0": a fresh install must not be warned about.
     await pumpSocial(tester, child(rules: 7));
+    expect(find.byKey(const ValueKey('rules-behind-banner')), findsNothing);
+  });
+
+  /// #865: the line was earned honestly but never un-earned — the only thing that refreshed the family
+  /// snapshot was an unrelated socket frame. The server now pushes `rules_applied` when the last device
+  /// catches up; this row drives the app half (a family refresh clears the line) and the mapping row in
+  /// `realtime_refresh_test.dart` drives the frame-to-effect half.
+  testWidgets('a family refresh clears the line once the phone catches up', (tester) async {
+    var applied = 5;
+    final api = FakeApiClient({
+      ...standardRoutes(familyMe: familyMeTwoChildren()),
+      // The server's answer changes between the first read and the refresh, exactly as a telemetry upload
+      // in between would change it.
+      'GET /v1/family/me': (_) => {
+            ...familyMeTwoChildren(),
+            'children': [child(rules: 7, applied: applied)],
+          },
+    });
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: localizedTestApp(const SocialScreen(childId: 'child-1')),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('rules-behind-banner')), findsOneWidget);
+
+    applied = 7;
+    final container = ProviderScope.containerOf(tester.element(find.byType(SocialScreen)));
+    container.invalidate(familyProvider);
+    await flushFakeHttp(tester);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('rules-behind-banner')), findsNothing);
+  });
+
+  /// The dropped-socket backstop: coming back to the foreground re-reads the snapshot.
+  testWidgets('returning to the foreground refreshes the snapshot', (tester) async {
+    var applied = 5;
+    var reads = 0;
+    final api = FakeApiClient({
+      ...standardRoutes(familyMe: familyMeTwoChildren()),
+      'GET /v1/family/me': (_) {
+        reads++;
+        return {
+          ...familyMeTwoChildren(),
+          'children': [child(rules: 7, applied: applied)],
+        };
+      },
+    });
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: localizedTestApp(const SocialScreen(childId: 'child-1')),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('rules-behind-banner')), findsOneWidget);
+    final before = reads;
+
+    applied = 7;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await flushFakeHttp(tester);
+    await tester.pumpAndSettle();
+
+    expect(reads, greaterThan(before));
     expect(find.byKey(const ValueKey('rules-behind-banner')), findsNothing);
   });
 

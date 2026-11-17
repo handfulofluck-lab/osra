@@ -410,6 +410,12 @@ abstract class AppLocalizations {
   /// **'Create account'**
   String get createAccount;
 
+  /// No description provided for @consentRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'To create an account, please tick this box.'**
+  String get consentRequired;
+
   /// No description provided for @familyNameLabel.
   ///
   /// In en, this message translates to:
@@ -2651,7 +2657,7 @@ abstract class AppLocalizations {
   /// No description provided for @vaultTrustCopy.
   ///
   /// In en, this message translates to:
-  /// **'Snippets are encrypted with your family key before leaving the device and stored encrypted on your server.'**
+  /// **'Excerpts travel over an encrypted connection and are stored encrypted on OSRA\'s servers.'**
   String get vaultTrustCopy;
 
   /// No description provided for @noConcernsDetected.
@@ -3269,7 +3275,7 @@ abstract class AppLocalizations {
   /// No description provided for @onboardingNoNetwork.
   ///
   /// In en, this message translates to:
-  /// **'Cannot reach the server. Check the server address and your internet connection, then try again.'**
+  /// **'Couldn\'t connect to OSRA. Check your internet connection, then try again.'**
   String get onboardingNoNetwork;
 
   /// No description provided for @onboardingChildTitle.
@@ -5185,6 +5191,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'On the iPhone, this app is hidden instead of showing the OSRA screen.'**
   String get appRuleHiddenOnIphone;
+
+  /// No description provided for @showPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Show password'**
+  String get showPassword;
+
+  /// No description provided for @hidePassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide password'**
+  String get hidePassword;
+
+  /// No description provided for @passwordMinHint.
+  ///
+  /// In en, this message translates to:
+  /// **'At least 12 characters.'**
+  String get passwordMinHint;
+
+  /// No description provided for @familyNameHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'Other parents you invite will see this.'**
+  String get familyNameHelper;
 
   /// No description provided for @errorNoConnection.
   ///
