@@ -152,7 +152,18 @@ class _OverviewTab extends ConsumerWidget {
     final devices = overview?.devicesFor(childId) ?? const <Device>[];
     final internetPaused = ref.watch(internetPausedProvider(childId)).valueOrNull ?? false;
     if (overview == null) return const Center(child: CircularProgressIndicator());
-    return SingleChildScrollView(
+    return RefreshIndicator(
+      // #876: the delivery line on this tab had no way to be refreshed by hand — pulling down did nothing.
+      onRefresh: () async {
+        ref.invalidate(familyProvider);
+        for (final device in devices) {
+          ref.invalidate(deviceCommandHistoryProvider(device.id));
+        }
+      },
+      child: SingleChildScrollView(
+      // The pull gesture needs something scrollable even when the content fits: `AlwaysScrollable` keeps it
+      // working on a short page and at a large text scale alike.
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -309,8 +320,9 @@ class _OverviewTab extends ConsumerWidget {
           ),
         ),
       ],
+      ),
     ),
-  );
+    );
   }
 
   /// The server's judgement (`Device.status`), never a clock rule on this phone (#601).
@@ -681,7 +693,9 @@ class _LocationTab extends ConsumerWidget {
     final ping = ref.watch(locationProvider(childId));
     return ping.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text(l10n.locationLoadFailed('$e'))),
+      // #850: never show exception text to a parent. A read refused for permission says so; anything
+      // else is the plain localized line, with no error detail.
+      error: (e, _) => Center(child: Text(readErrorText(l10n, e, () => l10n.locationLoadFailed(l10n.tryAgain)))),
       data: (p) => ListView(
         padding: const EdgeInsets.all(AppSpace.lg),
         children: [
@@ -769,7 +783,7 @@ class _HistoryScrubberState extends ConsumerState<_HistoryScrubber> {
       error: (e, _) => Card(
           child: ListTile(
         leading: const Icon(Icons.history),
-        title: Text(readErrorText(l10n, e, () => l10n.locationHistoryLoadFailed('$e'))),
+        title: Text(readErrorText(l10n, e, () => l10n.locationHistoryLoadFailed(l10n.tryAgain))),
       )),
       data: (pings) {
         if (pings.isEmpty) {

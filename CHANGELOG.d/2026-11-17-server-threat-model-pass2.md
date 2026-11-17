@@ -1,0 +1,2 @@
+### Docs
+- Server threat model, second pass for gate #637 at the candidate `main@7be1a92b`: management-account stack in scope, secrets out of Terraform state, the `osra_api` and `db-admin` split, the database's own key, outbound limits, the ALB access-log decision, Ahmed's six access controls as applied, the device secret at rest (#839), body limits, and the open-items table as of 17 Nov. Flags one mismatch: backup lifetime against the privacy notice.

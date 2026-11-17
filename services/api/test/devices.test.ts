@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { deviceRoutes } from "../src/routes/devices.js";
+import { familyAppliedVersion, rulesAppliedReached } from "../src/lib/rulesApplied.js";
 import { getRedis } from "../src/redis.js";
 import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
 
@@ -924,6 +925,379 @@ describe("#305 review: the witness code is a device credential, not a parent one
 
     expect(res.statusCode).toBe(400);
     expect(prismaMock.deviceCommand.create).not.toHaveBeenCalled();
+    await app.close();
+  });
+});
+
+/**
+ * #865: the rules banner and the delivery status told a parent opposite things. The banner reads the
+ * child's reduced `appliedRulesVersion`; nothing pushed it, so it cleared only when an unrelated socket
+ * frame arrived. The telemetry route now publishes `rules_applied` on the family channel the moment the
+ * last reporting device catches up — with the same reduced number the banner reads, and nothing else.
+ */
+describe("applied rules version push (#865)", () => {
+  const redis = () => getRedis() as unknown as import("./helpers.js").MockRedis;
+
+  beforeEach(() => {
+    resetPrismaMock();
+  });
+
+  const report = (app: Awaited<ReturnType<typeof buildApp>>, appliedRulesVersion: number) =>
+    app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: { appliedRulesVersion },
+    });
+
+  it("publishes rules_applied on the family channel when the last device catches up", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ rulesVersion: 4 });
+    prismaMock.device.findMany.mockResolvedValue([{ appliedRulesVersion: 4 }]);
+    redis().publish.mockClear();
+
+    const res = await report(app, 4);
+    expect(res.statusCode).toBe(202);
+    expect(redis().publish).toHaveBeenCalledWith("family:fam-1:events", expect.stringContaining('"rules_applied"'));
+
+    const frame = JSON.parse(redis().publish.mock.calls.at(-1)![1] as string);
+    // Exactly the number, scoped to the child: no rule content and no device detail ride on it.
+    expect(frame).toEqual({ type: "rules_applied", payload: { childId: "child-1", appliedRulesVersion: 4 } });
+    expect(JSON.stringify(frame)).not.toContain("dev-1");
+    await app.close();
+  });
+
+  it("publishes once, not on every upload that repeats the version", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ rulesVersion: 4 });
+    prismaMock.device.findMany.mockResolvedValue([{ appliedRulesVersion: 4 }]);
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    // The row as `requireFamily` loads it: first upload sees a device that never reported, second sees the
+    // version the first one stored. That is the transition, and it happens once.
+    prismaMock.device.findUnique
+      .mockResolvedValueOnce(DEVICE)
+      .mockResolvedValue({ ...DEVICE, appliedRulesVersion: 4 });
+    redis().publish.mockClear();
+
+    expect((await report(app, 4)).statusCode).toBe(202);
+    const afterFirst = redis().publish.mock.calls.filter(([, message]) => String(message).includes('"rules_applied"')).length;
+    expect(afterFirst).toBe(1);
+
+    expect((await report(app, 4)).statusCode).toBe(202);
+    const afterSecond = redis().publish.mock.calls.filter(([, message]) => String(message).includes('"rules_applied"')).length;
+    // The mutant: drop `advanced` and every telemetry tick republishes, making every open parent app
+    // refetch the family snapshot for as long as nothing changes.
+    expect(afterSecond).toBe(1);
+    await app.close();
+  });
+
+  it("publishes again when the version moves up and the family is caught up", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ rulesVersion: 5 });
+    prismaMock.device.findMany.mockResolvedValue([{ appliedRulesVersion: 5 }]);
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, appliedRulesVersion: 4 });
+    redis().publish.mockClear();
+
+    expect((await report(app, 5)).statusCode).toBe(202);
+    const frames = redis().publish.mock.calls.filter(([, message]) => String(message).includes('"rules_applied"'));
+    // The mutant: treat a repeat of the *old* number as caught up, or compare against the new version and
+    // this row stays quiet while the phone has actually moved.
+    expect(frames).toHaveLength(1);
+    expect(JSON.parse(frames[0][1] as string).payload.appliedRulesVersion).toBe(5);
+    await app.close();
+  });
+
+  it("stays quiet while another device of the same child is still behind", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ rulesVersion: 4 });
+    // The second device is on version 2: the family has not caught up, so no frame.
+    prismaMock.device.findMany.mockResolvedValue([{ appliedRulesVersion: 4 }, { appliedRulesVersion: 2 }]);
+    redis().publish.mockClear();
+
+    const res = await report(app, 4);
+    expect(res.statusCode).toBe(202);
+    expect(redis().publish).not.toHaveBeenCalledWith("family:fam-1:events", expect.stringContaining('"rules_applied"'));
+    await app.close();
+  });
+
+  it("stays quiet when no ruleset has ever been issued for the child", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    prismaMock.ruleSet.findUnique.mockResolvedValue(null);
+    prismaMock.device.findMany.mockResolvedValue([{ appliedRulesVersion: 1 }]);
+    redis().publish.mockClear();
+
+    const res = await report(app, 1);
+    expect(res.statusCode).toBe(202);
+    expect(redis().publish).not.toHaveBeenCalledWith("family:fam-1:events", expect.stringContaining('"rules_applied"'));
+    await app.close();
+  });
+
+  it("stays quiet for a version above the issued one and when the report is omitted", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ rulesVersion: 4 });
+    prismaMock.device.findMany.mockResolvedValue([{ appliedRulesVersion: 4 }]);
+    redis().publish.mockClear();
+
+    expect((await report(app, 99)).statusCode).toBe(202);
+    const plain = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: { batteryPct: 44 },
+    });
+    expect(plain.statusCode).toBe(202);
+    expect(redis().publish).not.toHaveBeenCalledWith("family:fam-1:events", expect.stringContaining('"rules_applied"'));
+    // A future version is not stored either — the #475 rule the push must not weaken.
+    expect(
+      prismaMock.device.update.mock.calls.some(
+        ([args]: [{ data?: Record<string, unknown> }]) => args.data?.appliedRulesVersion === 99,
+      ),
+    ).toBe(false);
+    await app.close();
+  });
+
+  it("publishes exactly one frame, on the channel of the family that owns the device", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ rulesVersion: 2 });
+    prismaMock.device.findMany.mockResolvedValue([{ appliedRulesVersion: 2 }]);
+    redis().publish.mockClear();
+
+    const res = await report(app, 2);
+    expect(res.statusCode).toBe(202);
+
+    // The family comes from the device row, never from the request: a device cannot steer the frame at
+    // another family, and `requireFamily` answers 403 long before this route if its row belongs to one.
+    const frames = redis().publish.mock.calls.filter(([, message]) => String(message).includes('"rules_applied"'));
+    expect(frames).toHaveLength(1);
+    expect(frames[0][0]).toBe("family:fam-1:events");
+    await app.close();
+  });
+});
+
+describe("rulesApplied reduction (#865)", () => {
+  it("is the lowest version any device reported", () => {
+    expect(familyAppliedVersion([3, 1, 2])).toBe(1);
+  });
+
+  it("ignores a device that has never reported instead of counting it as zero", () => {
+    // The mutant: treat null as 0 and the banner never clears on a family with one fresh install.
+    expect(familyAppliedVersion([3, null, undefined, 2])).toBe(2);
+  });
+
+  it("is null when nothing has reported", () => {
+    expect(familyAppliedVersion([null, undefined])).toBeNull();
+    expect(familyAppliedVersion([])).toBeNull();
+  });
+
+  it("has reached only when the issued version exists and the family meets it", () => {
+    expect(rulesAppliedReached(4, 4)).toBe(true);
+    expect(rulesAppliedReached(4, 5)).toBe(false);
+    expect(rulesAppliedReached(null, 4)).toBe(false);
+    // No ruleset ever issued: there is nothing to catch up to and nothing to announce.
+    expect(rulesAppliedReached(5, 0)).toBe(false);
+  });
+});
+
+/**
+ * Issue #867: a child phone restart takes 1–2 minutes and the 30-minute silence window must not be lowered
+ * (a false `device_silent` critical is worse than a late one), so the restart is reported by the device as
+ * `bootedAt` + `bootCount` and this route turns it into one `device_restarted` alert.
+ *
+ * The rows here prove what the pure module cannot: which column the route writes and when, that a first
+ * report is silent (#884 blocker 1), that a moved clock with an unchanged boot count is not a restart
+ * (#884 blocker 2), that the alert uses the family's zone and the boot fields never reach the cached
+ * telemetry blob. Each row names the mutant it kills where the mutant is not obvious from the assertion.
+ */
+describe("device restart reporting (#867)", () => {
+  beforeEach(() => {
+    resetPrismaMock();
+  });
+
+  /** A boot that many minutes ago, relative to the real clock. */
+  const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000);
+
+  /**
+   * The row as `requireFamily` loads it. `update` writes back onto it so the second request sees what the
+   * first one stored, as two real ticks would; `mockResolvedValue` would answer with the pre-restart row
+   * forever and make a repeated tick look like a second restart.
+   */
+  function storedDevice(overrides: Record<string, unknown> = {}) {
+    const row: Record<string, unknown> = {
+      id: "dev-1",
+      childId: "child-1",
+      model: "Pixel 7a",
+      lastSeen: minutesAgo(7),
+      lastBootAt: null,
+      lastBootCount: null,
+      child: { familyId: "fam-1", displayName: "Alex" },
+      ...overrides,
+    };
+    prismaMock.device.findUnique.mockResolvedValue(row);
+    prismaMock.device.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => Object.assign(row, data));
+    prismaMock.alert.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: "alert-1", ...data }));
+    prismaMock.family.findUnique.mockResolvedValue({ timezone: "Asia/Dubai" });
+    return row;
+  }
+
+  const tick = (app: Awaited<ReturnType<typeof buildApp>>, payload: Record<string, unknown>) =>
+    app.inject({ method: "POST", url: "/v1/devices/dev-1/telemetry", headers: deviceHeader(app), payload });
+
+  const bootWrites = () =>
+    prismaMock.device.update.mock.calls.filter(
+      ([args]: [{ data?: Record<string, unknown> }]) => "lastBootAt" in (args.data ?? {}) || "lastBootCount" in (args.data ?? {}),
+    );
+
+  it("stores a first report and raises nothing; a moved instant on the next tick alerts", async () => {
+    // Blocker 1 of #884: nothing is stored, so the server cannot know a restart happened. The mutant —
+    // alert on a first report — would tell every family on ship day about a boot days old.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    storedDevice();
+
+    expect((await tick(app, { batteryPct: 50, bootedAt: minutesAgo(5).toISOString() })).statusCode).toBe(202);
+    expect(bootWrites()).toHaveLength(1);
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+
+    // Same phone, no counter (an older agent): the fallback compares the instant, and two minutes is a
+    // restart. This is the row the review asked for — store on the first tick, alert on the moved one.
+    expect((await tick(app, { batteryPct: 49, bootedAt: minutesAgo(3).toISOString() })).statusCode).toBe(202);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    const alert = prismaMock.alert.create.mock.calls[0][0].data as Record<string, unknown>;
+    expect(alert).toMatchObject({ severity: "info", category: "device_restarted", title: "Device restarted" });
+    await app.close();
+  });
+
+  it("a moved clock with an unchanged boot count is not a restart and rewrites nothing", async () => {
+    // Blocker 2 of #884: the instant is derived from a wall clock a child can set. The mutant — let the
+    // instant decide while a count is present — alerts on every tick after one clock change.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    const storedInstant = minutesAgo(180);
+    const row = storedDevice({ lastBootAt: storedInstant, lastBootCount: 7, lastSeen: minutesAgo(182) });
+
+    // An hour of clock drift, same count.
+    expect((await tick(app, { bootedAt: minutesAgo(120).toISOString(), bootCount: 7 })).statusCode).toBe(202);
+    expect(bootWrites()).toHaveLength(0);
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+    expect(row.lastBootAt).toEqual(storedInstant);
+    await app.close();
+  });
+
+  it("a higher boot count alerts even when the instant moved, and the gap comes from lastSeen", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    storedDevice({ lastBootAt: minutesAgo(180), lastBootCount: 7, lastSeen: minutesAgo(122) });
+
+    expect((await tick(app, { bootedAt: minutesAgo(120).toISOString(), bootCount: 8 })).statusCode).toBe(202);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    const alert = prismaMock.alert.create.mock.calls[0][0].data as { severity: string; body: string; metadata: Record<string, unknown> };
+    expect(alert.severity).toBe("info");
+    expect(alert.body).toMatch(/^Pixel 7a restarted at \d\d:\d\d, back after 2 minutes\.$/);
+    expect(alert.metadata).toMatchObject({ gapMinutes: 2 });
+    // The count that decided the restart is stored, so the next tick's comparison has it.
+    expect(bootWrites()[0][0].data).toMatchObject({ lastBootCount: 8 });
+    await app.close();
+  });
+
+  it("a lower boot count is a new baseline, not a restart", async () => {
+    // A wipe or a restore reports an earlier counter. The mutant — alert on any change — calls it tampering.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    storedDevice({ lastBootAt: minutesAgo(180), lastBootCount: 9 });
+
+    expect((await tick(app, { bootedAt: minutesAgo(5).toISOString(), bootCount: 2 })).statusCode).toBe(202);
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+    expect(bootWrites()[0][0].data).toMatchObject({ lastBootCount: 2 });
+    await app.close();
+  });
+
+  it("raises again for a different boot, as a warning once the gap reaches the silence window", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    const boot = minutesAgo(5);
+    storedDevice({ lastBootAt: minutesAgo(24 * 60), lastSeen: new Date(boot.getTime() - 40 * 60_000) });
+
+    expect((await tick(app, { bootedAt: boot.toISOString() })).statusCode).toBe(202);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    const alert = prismaMock.alert.create.mock.calls[0][0].data as { severity: string; body: string; metadata: { gapMinutes: number } };
+    // 40 minutes: the parent would also have received `device_silent` at 30, so this explains an alarm
+    // they already got instead of reading like a routine reboot.
+    expect(alert.severity).toBe("warning");
+    expect(alert.metadata.gapMinutes).toBe(40);
+    expect(alert.body).toMatch(/^Pixel 7a restarted at \d\d:\d\d, back after 40 minutes\.$/);
+    await app.close();
+  });
+
+  it("drops a boot instant from the future: no write, no alert, the upload still accepted", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    storedDevice({ lastBootAt: minutesAgo(180), lastBootCount: 7 });
+
+    const future = new Date(Date.now() + 6 * 60_000).toISOString();
+    // The count differs too: the whole report is a caller bug, so nothing is stored — the next tick with a
+    // sane clock still sees the difference and reports it then.
+    expect((await tick(app, { batteryPct: 30, bootedAt: future, bootCount: 8 })).statusCode).toBe(202);
+    expect(bootWrites()).toHaveLength(0);
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+
+    // An older agent sends no `bootedAt` at all: the column keeps what it had and nothing is raised.
+    expect((await tick(app, { batteryPct: 29 })).statusCode).toBe(202);
+    expect(bootWrites()).toHaveLength(0);
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("keeps the boot fields out of the cached telemetry blob (x11)", async () => {
+    // Fable's x11: a copy in `device:<id>:telemetry` would be a second source of truth, and a dropped
+    // clock-ahead value would reappear through the blob the parent reads.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    storedDevice();
+    const redis = getRedis() as unknown as import("./helpers.js").MockRedis;
+
+    expect((await tick(app, { bootedAt: minutesAgo(5).toISOString(), bootCount: 7 })).statusCode).toBe(202);
+    // The last write, not the first: other rows in this file also store this key, and reading theirs would
+    // prove nothing about this route.
+    const write = redis.set.mock.calls.filter(([key]) => key === "device:dev-1:telemetry").at(-1);
+    expect(write).toBeDefined();
+    const blob = JSON.parse(write![1] as string);
+    expect(blob).not.toHaveProperty("bootedAt");
+    expect(blob).not.toHaveProperty("bootCount");
+    expect(blob).toHaveProperty("receivedAt");
+    await app.close();
+  });
+
+  it("renders the alert in the family's timezone, not UTC (x12)", async () => {
+    // Fable's x12: the pure function is tested with a zone; the mutant is the route passing "UTC" — or
+    // reading the wrong family — and a wrong hour in "restarted at …" is the made-up number the body warns
+    // about. The fixture family is Asia/Dubai, so the two clocks differ by four hours.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    const boot = minutesAgo(10);
+    storedDevice({ lastBootAt: minutesAgo(180), lastSeen: new Date(boot.getTime() - 2 * 60_000) });
+
+    expect((await tick(app, { bootedAt: boot.toISOString() })).statusCode).toBe(202);
+    const alert = prismaMock.alert.create.mock.calls[0][0].data as { body: string };
+    const hhmm = (timeZone: string) =>
+      new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(boot);
+    expect(hhmm("Asia/Dubai")).not.toBe(hhmm("UTC"));
+    expect(alert.body).toContain(`restarted at ${hhmm("Asia/Dubai")}`);
+    expect(alert.body).not.toContain(`restarted at ${hhmm("UTC")}`);
+    await app.close();
+  });
+
+  it("exposes the stored boot state on the parent's device read", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    const boot = new Date("2026-11-17T10:00:00Z");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, model: "Pixel 7a", lastBootAt: boot, lastBootCount: 7 });
+
+    const res = await app.inject({ method: "GET", url: "/v1/devices/dev-1", headers: authHeader(app) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().device.lastBootAt).toBe("2026-11-17T10:00:00.000Z");
+    expect(res.json().device.lastBootCount).toBe(7);
     await app.close();
   });
 });

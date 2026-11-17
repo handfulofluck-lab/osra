@@ -87,6 +87,7 @@ model Parent {
   createdAt    DateTime        @default(now())
   family       Family          @relation(fields: [familyId], references: [id])
   consents     ConsentRecord[]
+  consentEvents ParentConsentEvent[]
   pushTokens   ParentPushToken[]
   mfaRecoveryCodes ParentMfaRecoveryCode[]
   mfaResetRequests MfaResetRequest[]
@@ -251,6 +252,16 @@ model Device {
   status     String         @default("offline")
   batteryPct Int            @default(0)
   lastSeen   DateTime       @default(now())
+  /// Issue #867: the instant the AGENT says this phone booted (`now - SystemClock.elapsedRealtime()`),
+  /// stable for the life of one boot. Null until an agent reports it. A report that moves it by more than
+  /// 90 seconds is a restart (src/lib/bootReport.ts); that is how the parent hears about the 1–2 minute gap
+  /// the 30-minute silence window deliberately cannot see.
+  lastBootAt DateTime? @db.Timestamptz(3)
+  /// Issue #867 / #884 review: Android's `Settings.Global.BOOT_COUNT` as the agent last reported it, one
+  /// increment per boot and immune to the wall clock. When both this and the report carry a count, the
+  /// counts decide a restart and `lastBootAt` only dates it; null for an agent that does not send one, where
+  /// the 90-second instant comparison in src/lib/bootReport.ts is the fallback.
+  lastBootCount Int?
   pushToken  String?
   // Per-device internal HMAC secret (minted at pair/claim; handoff item 5).
   internalSecret String?
@@ -511,6 +522,34 @@ model Alert {
   child        Child    @relation(fields: [childId], references: [id])
   device       Device?  @relation(fields: [deviceId], references: [id])
   @@index([childId, createdAt])
+}
+
+/// ADR-0043 D2 / #846 part A step 2: one append-only row per consent act by an account holder.
+///
+/// This is the adult's own proof, not the child's monitoring consent (`ConsentRecord`): it answers "what
+/// wording was this parent shown, in which language, and what did they agree to". Deliberately **no IP
+/// address and no device id** — the proof is about the text and the act, not about where it came from. Rows
+/// are never updated or deleted: withdrawing the terms is account deletion (ADR-0043 D2, existing flow).
+model ParentConsentEvent {
+  id              String   @id @default(uuid())
+  parentId        String   @map("parent_id")
+  /// `terms_privacy` today; the training purpose keeps its own key when it is switched on.
+  purpose         String
+  /// `granted` (or `refused`, which no build sends today — the row records only what happened).
+  action          String
+  textVersion     String   @map("text_version")
+  /// The published version of the two pages at the time, e.g. `terms:2026-11-12,privacy:2026-11-12`.
+  documentVersion String?  @map("document_version")
+  locale          String
+  textHash        String   @map("text_hash") @db.Char(64)
+  /// Where the act happened: `app_signup` today.
+  surface         String
+  clientVersion   String?  @map("client_version")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  parent          Parent   @relation(fields: [parentId], references: [id], onDelete: Cascade)
+
+  @@index([parentId, purpose])
+  @@map("parent_consent_events")
 }
 
 model ConsentRecord {
