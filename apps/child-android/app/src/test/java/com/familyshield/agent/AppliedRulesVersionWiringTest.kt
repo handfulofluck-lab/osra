@@ -31,16 +31,11 @@ class AppliedRulesVersionWiringTest {
         val saveVersion = repository.indexOf("settings.saveAppliedRulesVersion(")
         assertTrue("both must be present", saveRules > 0 && saveVersion > 0)
         assertTrue("the version must not be stored before the rules are", saveVersion > saveRules)
-        // #865 second half: the write now also fires the applied-version listener, so the one-liner became a
-        // block. The guarantee is the same and both halves of it are still asserted by text: the guard, and
-        // the save inside it.
+        // #865 second half kept the one-liner: the report is now launched after the enforcement listeners,
+        // not inside this call, so the guarantee reads exactly as it did before that feature.
         assertTrue(
             "and only when the rules were actually written",
-            repository.contains("if (persisted) {"),
-        )
-        assertTrue(
-            "the version is stored inside that guard, and the listener fires only if the store succeeded",
-            repository.contains("runCatching { settings.saveAppliedRulesVersion(updated.rulesVersion) }.onSuccess {"),
+            repository.contains("if (persisted) runCatching { settings.saveAppliedRulesVersion(updated.rulesVersion) }"),
         )
         assertEquals(
             "one writer, so there is no second path to drift",
