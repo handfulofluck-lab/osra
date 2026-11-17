@@ -185,15 +185,29 @@ final class RingControllerTests: XCTestCase {
         XCTAssertNil(store.load(), "a delivered parent stop clears its active state")
     }
 
-    func testNaturalAlarmProgressionRearmsMainAlarm() async {
+    func testMainAlarmStillScheduledDoesNotRearmOrReport() async {
+        let sentinel = UUID(uuidString: "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6C")!
+        backend.sentinelIDsForCommand[id] = [sentinel]
+        let controller = controller()
+        await controller.start(id)
+        await controller.process(scheduledIDs: [id, sentinel])
+        XCTAssertEqual(backend.scheduled, [id])
+        XCTAssertEqual(controller.state?.commandId, id)
+        XCTAssertEqual(controller.state?.dismissalCount, 0, "an alerting main alarm is not a dismissal")
+        XCTAssertEqual(reporter.callCount, 0)
+    }
+
+    func testDismissalWithRemainingSentinelsStillReports() async {
         let sentinel = UUID(uuidString: "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6C")!
         backend.sentinelIDsForCommand[id] = [sentinel]
         let controller = controller()
         await controller.start(id)
         await controller.process(scheduledIDs: [sentinel])
-        XCTAssertEqual(backend.scheduled, [id, id])
         XCTAssertEqual(controller.state?.commandId, id)
-        XCTAssertEqual(controller.state?.dismissalCount, 0, "natural sentinel progression is not a child dismissal")
+        XCTAssertEqual(controller.state?.dismissalCount, 1,
+                       "the main alarm leaving is a dismissal even when later alarms remain scheduled")
+        XCTAssertEqual(reporter.calls.map(\.state), [.childDismissed])
+        XCTAssertEqual(backend.stopCalls, [], "a dismissal re-arms instead of stopping the chain")
     }
 
     func testMultipleLockScreenDismissalsIncrementCount() async {

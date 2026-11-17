@@ -464,10 +464,10 @@ public final class RingController: ObservableObject {
         }
         guard schedulingCommandId != current.commandId else { return }
         guard !scheduledIDs.contains(current.commandId) else { return }
-        if scheduledIDs.isEmpty && !restarted {
-            await rearmAndReportDismissal(current, generation: generation)
-        } else {
+        if restarted {
             await rearm(current, generation: generation)
+        } else {
+            await rearmAndReportDismissal(current, generation: generation)
         }
     }
 
