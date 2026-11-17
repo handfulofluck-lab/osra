@@ -1,0 +1,2 @@
+### Parent App
+- Removed the raw `key: value` `alert.metadata` loop, the `Technical details` expansion section, and the `alertTechnicalDetails` l10n key from the parent alert detail dialog; suppressed the child agent's raw English SOS body sentence (`category == 'sos'`); and added the localized `alertChildLabel` (`Child: {name}` / `الطفل: {name}`) row so parents know which child raised an alert (#755).

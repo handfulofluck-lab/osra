@@ -1804,7 +1804,9 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get alertTechnicalDetails => 'التفاصيل التقنية';
+  String alertChildLabel(String name) {
+    return 'الطفل: $name';
+  }
 
   @override
   String relativeOverHoursAgo(int count) {
@@ -3310,5 +3312,6 @@ class AppLocalizationsAr extends AppLocalizations {
   String get passwordMinHint => '12 حرفًا على الأقل.';
 
   @override
-  String get familyNameHelper => 'سيظهر هذا الاسم لأولياء الأمور الآخرين الذين تدعوهم.';
+  String get familyNameHelper =>
+      'سيظهر هذا الاسم لأولياء الأمور الآخرين الذين تدعوهم.';
 }

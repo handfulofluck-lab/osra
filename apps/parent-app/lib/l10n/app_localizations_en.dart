@@ -1661,7 +1661,9 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get alertTechnicalDetails => 'Technical details';
+  String alertChildLabel(String name) {
+    return 'Child: $name';
+  }
 
   @override
   String relativeOverHoursAgo(int count) {
