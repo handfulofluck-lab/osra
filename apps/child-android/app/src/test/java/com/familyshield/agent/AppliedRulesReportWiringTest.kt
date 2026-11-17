@@ -13,11 +13,20 @@ import org.junit.Test
  */
 class AppliedRulesReportWiringTest {
 
-    private fun source(path: String) = File(path).readText()
+    /** Same walker as the other wiring tests: Gradle's working directory is the module, not the repo root. */
+    private fun source(relative: String): String {
+        var dir: File? = File(System.getProperty("user.dir")).absoluteFile
+        while (dir != null) {
+            val candidate = File(dir, relative)
+            if (candidate.isFile) return candidate.readText()
+            dir = dir.parentFile
+        }
+        throw AssertionError("could not find $relative from ${System.getProperty("user.dir")}")
+    }
 
     @Test
     fun `the version is handed over only after it was stored`() {
-        val repository = source("apps/child-android/app/src/main/java/com/familyshield/agent/data/RuleRepository.kt")
+        val repository = source("app/src/main/java/com/familyshield/agent/data/RuleRepository.kt")
 
         // Both halves inside the same persisted branch: a failed write must not announce a version.
         assertTrue(repository.contains("if (persisted) {"))
@@ -31,7 +40,7 @@ class AppliedRulesReportWiringTest {
 
     @Test
     fun `the reporter is registered and posts the version it was handed`() {
-        val reporter = source("apps/child-android/app/src/main/java/com/familyshield/agent/telemetry/UsageReporter.kt")
+        val reporter = source("app/src/main/java/com/familyshield/agent/telemetry/UsageReporter.kt")
 
         assertTrue(reporter.contains("rules.addRulesAppliedListener { reportAppliedRulesIfChanged() }"))
         // The upload carries the version, not a re-read that could race a newer apply.
@@ -44,7 +53,7 @@ class AppliedRulesReportWiringTest {
 
     @Test
     fun `the accepted version is tracked apart from the applied one`() {
-        val settings = source("apps/child-android/app/src/main/java/com/familyshield/agent/data/AgentSettings.kt")
+        val settings = source("app/src/main/java/com/familyshield/agent/data/AgentSettings.kt")
 
         // Two keys, two meanings: "what the phone holds" and "what the server acknowledged". Collapsing them
         // into one would make a failed upload permanently silent.
