@@ -24,6 +24,7 @@ UPDATE "Device" SET "pairedAt" = "lastSeen" WHERE "pairedAt" IS NULL;
 -- index on a column that is null for a day's worth of abandoned claims and non-null for every real
 -- device would cost write time on every pairing for a read that walks a few rows.
 --
--- Folder number: this is 0036, not 0035, because `0035_device_last_boot_at` holds that number in the
--- unmerged #884. Prisma orders by folder name, so a gap is harmless and a collision is not — two
--- `0035_*` folders would apply as two migrations in one order today and a different one tomorrow.
+-- Folder number: 0038. `main` already carries `0036_parent_consent_events` (#878) and the unmerged #884
+-- carries `0037_device_last_boot_at`, so this cannot be 0036 or 0037. Prisma orders by folder name, so a
+-- gap is harmless and a collision is not — two same-numbered folders would apply in one order today and a
+-- different one tomorrow.

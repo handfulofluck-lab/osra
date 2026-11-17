@@ -20,9 +20,9 @@
   respected) deletes a pending device whose `lastSeen` is older than 30 minutes, re-checking
   `pairedAt IS NULL` in the DELETE so a phone that answers in the window is never removed. Nothing is
   pushed or mailed to the parent — an alert about a phone they never saw would be worse than silence.
-- **Migration `0036_device_paired_at`** adds the nullable column and backfills every existing row with
+- **Migration `0038_device_paired_at`** adds the nullable column and backfills every existing row with
   `pairedAt = lastSeen`, so no device that works today disappears from a parent's list. The folder is
-  0036 rather than 0035 because `0035_device_last_boot_at` holds that number in the unmerged #884.
+  0036 rather than 0035 because `0037_device_last_boot_at` holds that number in the unmerged #884.
 - `POST /v1/devices/register` (a parent's own enrollment, and what `e2e.mjs`/`qa-probe.mjs` use) sets
   `pairedAt` at creation: nothing claimed it, and a pending row would be hidden from the parent that
   created it. The demo seed does the same.
