@@ -52,7 +52,10 @@ function aggregateActivityEvents(
   const appMinutes = new Map<string, number>();
   const blockedDomains = new Map<string, number>();
   let totalAppMinutes = 0;
-  let urlVisits = 0;
+  // #841 UI/UX condition 3: the label says "sites visited", so the count is **distinct hosts**, not URL
+  // events — ten visits to one site is one site. A blocked attempt is not a visit either: it has its own
+  // counter (`blockedHits`, `topBlockedDomains`), so it does not enter this set.
+  const visitedHosts = new Set<string>();
   let blockedHits = 0;
   let calls = 0;
   let sms = 0;
@@ -72,11 +75,12 @@ function aggregateActivityEvents(
         if (payload.blocked === true) blockedHits += 1;
         continue;
       }
-      urlVisits += 1;
+      const host = typeof payload.domain === "string" && payload.domain ? payload.domain : "unknown";
       if (payload.blocked === true) {
         blockedHits += 1;
-        const domain = typeof payload.domain === "string" && payload.domain ? payload.domain : "unknown";
-        blockedDomains.set(domain, (blockedDomains.get(domain) ?? 0) + 1);
+        blockedDomains.set(host, (blockedDomains.get(host) ?? 0) + 1);
+      } else {
+        visitedHosts.add(host);
       }
     } else if (event.type === "call") {
       calls += 1;
@@ -88,7 +92,7 @@ function aggregateActivityEvents(
   return {
     totalAppMinutes,
     topApps: [...appMinutes.entries()].sort(byValueDesc).slice(0, TOP_LIMIT).map(([name, minutes]) => ({ name, minutes })),
-    urlVisits,
+    urlVisits: visitedHosts.size,
     topBlockedDomains: [...blockedDomains.entries()].sort(byValueDesc).slice(0, TOP_LIMIT).map(([domain, count]) => ({ domain, count })),
     blockedHits,
     calls,

@@ -11,3 +11,6 @@
   when site-name rows replace full URLs and had no caller until now.
 - Verified: no Flutter SDK on the authoring host, so `flutter analyze`/`test` are CI evidence. The two
   tests that pinned the withdrawn English and the "42 URL visits" wording are updated.
+- **#841 UI/UX condition 3:** `urlVisits` in the activity summary now counts **distinct sites (hosts)**, not
+  URL events — ten visits to one site is one site — and a blocked attempt is not a visit, because it has its
+  own counter (`blockedHits`, `topBlockedDomains`). The Reports card label already said "sites visited".
