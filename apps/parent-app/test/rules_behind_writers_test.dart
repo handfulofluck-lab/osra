@@ -36,6 +36,14 @@ void main() {
         if (applied != null) 'appliedRulesVersion': applied,
       };
 
+  /// Dio dispatches through chained zero-duration timers; a refetch started by an invalidate needs fake
+  /// time advanced before its answer is read (`pumpAndSettle` alone settles the frame, not the timers).
+  Future<void> flushFakeHttp(WidgetTester tester) async {
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+  }
+
   Future<void> pumpSocial(WidgetTester tester, Map<String, dynamic> childJson) async {
     final api = FakeApiClient({
       ...standardRoutes(familyMe: {...familyMeTwoChildren(), 'children': [childJson]}),
@@ -89,6 +97,7 @@ void main() {
     applied = 7;
     final container = ProviderScope.containerOf(tester.element(find.byType(SocialScreen)));
     container.invalidate(familyProvider);
+    await flushFakeHttp(tester);
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('rules-behind-banner')), findsNothing);
@@ -119,6 +128,7 @@ void main() {
     applied = 7;
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await flushFakeHttp(tester);
     await tester.pumpAndSettle();
 
     expect(reads, greaterThan(before));
