@@ -23,10 +23,39 @@ model Family {
   parents   Parent[]
   children  Child[]
   purchases FamilyPurchase[]
+  aiUsage   AiScanUsage[]
 }
 
 /// ADR-0041 D1: the server's record of a family's finite plan. The raw store reference never reaches
 /// this table; store_ref contains its SHA-256 hash. Nullable expiry is rejected by entitlement().
+/// Issue #890 (pricing): what a family's scanning actually costs, per family-local day.
+///
+/// The pricing debate on #890 needs "measured variable cost per family", and nothing recorded it: the
+/// AI spend is invisible behind a promise (`AI_ENGINE_URL` unset means every scan is free). One row per
+/// (family, local day) is the unit a monthly figure is summed from, and the unit a per-family fair-use
+/// cap would read. Two counters, not one, because they cost different amounts: `scans` is every capture
+/// that was classified at all, `aiCalls` is the subset that reached the model — the local pattern pass
+/// costs nothing, so a family that only ever hits local patterns shows a real number and a zero bill.
+///
+/// `day` is the family-local calendar day (`Family.timezone`), the same clock the digest and the plan
+/// counters use, so "this month" means the same thing everywhere. Stored as text, not a date: a date
+/// column would be read back in UTC and shift a Dubai family's evening into the next day.
+model AiScanUsage {
+  id       String @id @default(uuid())
+  familyId String @map("family_id")
+  /// `yyyy-mm-dd` in the family's own zone.
+  day      String
+  /// Captures classified for this family that day, local patterns and model alike.
+  scans    Int    @default(0)
+  /// The subset that reached the AI engine. This is the counter a cost figure multiplies.
+  aiCalls  Int    @default(0) @map("ai_calls")
+  family   Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@unique([familyId, day])
+  @@index([day])
+  @@map("ai_scan_usage")
+}
+
 model FamilyPurchase {
   id             String   @id @default(uuid())
   familyId       String   @map("family_id")
