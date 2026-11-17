@@ -64,7 +64,11 @@ open class TamperGuardActivity : ComponentActivity() {
             textSize = 24f
             gravity = Gravity.CENTER
         }
-        errorView = TextView(this).apply { setTextColor(0xFFB00020.toInt()); textSize = 16f }
+        // Codex on #792: `0xFFB00020` on this screen's `0xFF0D1B2A` measures 2.37:1, below the 4.5:1 the
+        // Bureau holds normal text to. `0xFFFFB4AB` is the Material dark-theme error role and measures
+        // 10.24:1 on the same background, so the banner is legible without changing a word of it. If the
+        // Bureau names a different token, this one constant is the only thing that moves.
+        errorView = TextView(this).apply { setTextColor(GuardPalette.ERROR_TEXT); textSize = 16f }
         val unlock = Button(this).apply { text = getString(R.string.pin_gate_continue) }
         val back = Button(this).apply { text = getString(R.string.pin_gate_back) }
 
@@ -217,14 +221,43 @@ open class TamperGuardActivity : ComponentActivity() {
         refreshLockoutUi()
     }
 
-    /** The banner and the button, from the stored state — see [onResume] (#792, Antigravity S1). */
+    /**
+     * The banner and the button, from the stored state — see [onResume] (#792, Antigravity S1).
+     *
+     * Codex on #792: running this only in `onResume` leaves both stale for the rest of the window. A screen
+     * that stays in front when the lockout ends keeps "locked" text above a Continue that only becomes
+     * pressable once the parent types again or leaves and returns. So the refresh also schedules itself for
+     * the instant the window ends — one delayed post, cancelled whenever the state says unlocked and in
+     * [onDestroy], which keeps it from outliving the screen.
+     */
     private fun refreshLockoutUi() {
         if (!::errorView.isInitialized) return
         val elapsed = SystemClock.elapsedRealtime()
-        val locked = PinLockout.isLocked(lockedState(), elapsed)
+        val state = lockedState()
+        val locked = PinLockout.isLocked(state, elapsed)
         errorView.text = if (locked) noticeText() else ""
         syncUnlockEnabledRef?.invoke()
+        lockoutRefresh?.let { handler.removeCallbacks(it) }
+        lockoutRefresh = null
+        if (!locked) return
+        // A quarter second past the boundary: the reachability check is `now - lastFailure < window`, so
+        // posting exactly at the boundary can land one millisecond early and re-arm itself forever.
+        val delayMs = PinLockout.remainingMs(state, elapsed) + LOCKOUT_REFRESH_SLACK_MS
+        handler.postDelayed(
+            Runnable {
+                lockoutRefresh = null
+                refreshLockoutUi()
+            }.also { lockoutRefresh = it },
+            delayMs,
+        )
     }
+
+    /** Posts the lockout re-check; see [refreshLockoutUi]. Main looper: it touches views. */
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var lockoutRefresh: Runnable? = null
+
+    /** A quarter second of slack past the window; see the delay in [refreshLockoutUi]. */
+    private val LOCKOUT_REFRESH_SLACK_MS = 250L
 
     private fun bootCount(): Int = runCatching {
         Settings.Global.getInt(contentResolver, Settings.Global.BOOT_COUNT, PinLockout.NO_BOOT)
@@ -252,6 +285,13 @@ open class TamperGuardActivity : ComponentActivity() {
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
         super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
         onSharingChanged(isInMultiWindowMode)
+    }
+
+    /** A re-check posted for a lockout boundary must not outlive the screen (see [refreshLockoutUi]). */
+    override fun onDestroy() {
+        lockoutRefresh?.let { handler.removeCallbacks(it) }
+        lockoutRefresh = null
+        super.onDestroy()
     }
 
     /** Hardware back is the same as "Go back": never a way through. */
