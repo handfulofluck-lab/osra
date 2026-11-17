@@ -121,7 +121,11 @@ void main() {
     expect(button, findsOneWidget);
     expect(tester.getSize(button).height, greaterThan(52.0));
 
-    final label = tester.widget<Text>(find.text(en.createAccount));
+    // Scoped to the button: the AppBar's title is the same words, so a bare `find.text` matches twice.
+    final label = tester.widget<Text>(
+      find.descendant(of: button, matching: find.byType(Text)),
+    );
+    expect(label.data, en.createAccount);
     // The label wraps; it is never clipped to a line count.
     expect(label.maxLines, isNull);
     expect(label.textAlign, TextAlign.center);
