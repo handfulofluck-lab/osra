@@ -1,0 +1,2 @@
+### Changed
+- infra/terraform/env: new `backup_offsite_copy_enabled` switch (default `true`, so nothing changes until it is set). With `false`, production's daily AWS Backup plan keeps its 14-day in-account backup in eu-central-1 but plans no copy to the management account's eu-west-1 vault, and the production guard accepts that. Prepared for the closed-beta choice in #892 section 6 (privacy notice says backups stay in Frankfurt); not to be merged until Karim picks that option. New test `production_offsite_copy_off`.
