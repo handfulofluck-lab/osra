@@ -107,6 +107,34 @@ final installedAppsProvider = FutureProvider.family<InstalledAppsReport, String>
   return report;
 });
 
+/// U33 (#868): the same inventory kept per device, so the picker can group rows under the device that
+/// reported them. Devices arrive in the family overview's order. One phone that fails to answer leaves
+/// its own group empty instead of emptying the whole picker — the other devices still list their apps.
+final installedAppsByDeviceProvider =
+    FutureProvider.family<List<DeviceApps>, String>((ref, childId) async {
+  final api = ref.watch(apiClientProvider);
+  final overview = await ref.watch(familyProvider.future);
+  final groups = <DeviceApps>[];
+  for (final device in overview.devicesFor(childId)) {
+    var report = const InstalledAppsReport();
+    try {
+      final res = await api.raw.get('/v1/devices/${device.id}/apps');
+      if (res.data is Map) {
+        report = InstalledAppsReport.fromJson(
+            Map<String, dynamic>.from(res.data as Map));
+      }
+    } on DioException {
+      // A device that has not reported, or an offline read: empty group, not a failed picker.
+    }
+    groups.add(DeviceApps(
+      deviceId: device.id,
+      label: device.model.trim().isEmpty ? device.platform : device.model.trim(),
+      report: report,
+    ));
+  }
+  return groups;
+});
+
 /// Latest location ping for one child (`GET /v1/location/:childId/latest`).
 final locationProvider = FutureProvider.family<LocationPing?, String>((ref, childId) async {
   final api = ref.watch(apiClientProvider);
