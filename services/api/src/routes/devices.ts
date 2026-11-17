@@ -22,7 +22,7 @@ import {
 } from "../lib/pollCadence.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 import { familyAppliedVersion, rulesAppliedReached } from "../lib/rulesApplied.js";
-import { recordActivityUsage, recordDeviceTotal } from "../lib/usageModel.js";
+import { recordActivityUsage, recordAppUsage, recordDeviceTotal } from "../lib/usageModel.js";
 
 import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
 import { markDeviceRevoked } from "../lib/deviceRevocation.js";
@@ -944,6 +944,19 @@ export async function deviceRoutes(app: FastifyInstance) {
         await recordDeviceTotal(device.childId, id, parsed.data.totalMinutes);
       } catch (err) {
         req.log.warn({ err }, "usage rollup write failed (telemetry)");
+      }
+    }
+
+    // Issue #830/S1: the per-app split the same uploads already carry. Without this the parent's usage
+    // report has a total and no breakdown on every device, because the only other per-app writer is fed
+    // by persistent activity events and the agent's are all `live` (filtered above by BUG-002).
+    if (parsed.data.appUsage && parsed.data.appUsage.length > 0 && device?.childId) {
+      try {
+        await recordAppUsage(device.childId, id, parsed.data.appUsage);
+      } catch (err) {
+        // Best-effort, like the total: the phone's next tick re-reports the same minutes and the row is
+        // an increment, not a snapshot — a lost write under-counts one app for one day, it does not lie.
+        req.log.warn({ err }, "per-app usage rollup write failed (telemetry)");
       }
     }
 

@@ -830,6 +830,70 @@ describe("device enrollment & management", () => {
     await app.close();
   });
 
+  it("issue #830/S1: the per-app split in telemetry reaches AppUsageDaily", async () => {
+    // The parent's usage report read `apps: []` for every family because the only per-app writer was fed by
+    // persistent activity events, and the agent marks all of its own `app_usage` events `live` (filtered by
+    // BUG-002). The same telemetry that carries the total already carries the split; this row pins that it
+    // is stored, and that the total keeps its single writer.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, childId: "child-1" });
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: {
+        totalMinutes: 22,
+        appUsage: [{ packageId: "com.google.android.youtube", minutes: 14.6 }, { packageId: "com.whatsapp", minutes: 7 }],
+      },
+    });
+
+    expect(res.statusCode).toBe(202);
+    const rows = prismaMock.appUsageDaily.upsert.mock.calls.map(([args]: [{ where: { childId_deviceId_day_app: { app: string } }; create: { minutes: number } }]) => [
+      args.where.childId_deviceId_day_app.app,
+      args.create.minutes,
+    ]);
+    expect(rows).toEqual(expect.arrayContaining([["com.google.android.youtube", 15], ["com.whatsapp", 7]]));
+    // `*` is the total's own row, written once by `recordDeviceTotal`: a second writer would double it.
+    const totals = prismaMock.appUsageDaily.upsert.mock.calls.filter(
+      ([args]: [{ where: { childId_deviceId_day_app: { app: string } } }]) => args.where.childId_deviceId_day_app.app === "*",
+    );
+    expect(totals).toHaveLength(1);
+    expect((totals[0][0] as { create: { minutes: number } }).create.minutes).toBe(22);
+    await app.close();
+  });
+
+  it("issue #830/S1: an empty or zero-minute entry is skipped, and repeats accumulate", async () => {
+    // The schema already refuses a blank packageId with a 400 for the whole tick (so the writer cannot see
+    // one), but a zero-minute row is legal and must not create a row, and two entries for one package in
+    // one tick are the same counter, not a race to overwrite.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, childId: "child-1" });
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: {
+        batteryPct: 40,
+        appUsage: [
+          { packageId: "com.whatsapp", minutes: 0 },
+          { packageId: "com.whatsapp", minutes: 3 },
+        ],
+      },
+    });
+
+    expect(res.statusCode).toBe(202);
+    const perApp = prismaMock.appUsageDaily.upsert.mock.calls.filter(
+      ([args]: [{ where: { childId_deviceId_day_app: { app: string } } }]) => args.where.childId_deviceId_day_app.app === "com.whatsapp",
+    );
+    expect(perApp).toHaveLength(1);
+    expect((perApp[0][0] as { create: { minutes: number } }).create.minutes).toBe(3);
+    await app.close();
+  });
+
   it("issue #31: accumulates daily screen time minutes on telemetry reports", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, childId: "child-1" });
