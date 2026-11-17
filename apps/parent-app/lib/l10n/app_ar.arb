@@ -54,6 +54,7 @@
   "mfaCodeHelper": "مطلوب فقط إذا كان التحقق بخطوتين مفعّلًا في حسابك.",
   "signIn": "تسجيل الدخول",
   "createAccount": "إنشاء حساب",
+  "consentRequired": "لإنشاء حساب، يُرجى وضع علامة في هذه الخانة.",
   "familyNameLabel": "اسم العائلة",
   "yourNameLabel": "اسمك",
   "regionLabel": "المنطقة",
@@ -541,7 +542,7 @@
   "onboardingSignInBody": "هذا الحساب يتحكم في حماية طفلك. سجّل الدخول، أو أنشئ حساب عائلتك أدناه.",
   "onboardingWrongPassword": "البريد الإلكتروني أو كلمة المرور غير صحيحة. تحقق منها وحاول مجددًا.",
   "onboardingInvalidMfaCode": "لم يُقبل رمز التحقق. تحقق من الرمز وحاول مجددًا.",
-  "onboardingNoNetwork": "تعذّر الوصول إلى الخادم. تحقق من عنوان الخادم واتصال الإنترنت ثم حاول مجددًا.",
+  "onboardingNoNetwork": "تعذّر الاتصال بخدمة أسرة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "onboardingChildTitle": "أضف طفلك",
   "onboardingChildIntro": "أدخل اسم طفلك وسنة ميلاده. اختر طريقة موافقة الوالدين — يحتاج الخادم إلى الموافقة قبل إضافة الطفل.",
   "onboardingChildNameRequired": "أدخل اسم طفلك.",
@@ -980,5 +981,9 @@
   "webSiteNamesOnlyNote": "أسماء المواقع والخدمات على الإنترنت التي وصل إليها هذا الهاتف، لا الصفحات التي فُتحت. تُحفظ لمدة 90 يومًا.",
   "webSiteVisits": "{count, plural, zero{لا زيارات} one{زيارة واحدة} two{زيارتان} few{{count} زيارات} many{{count} زيارة} other{{count} زيارة}}",
   "webSiteSeenRange": "من {first} إلى {last}",
-  "webSitesSummary": "{count, plural, zero{لم تتم زيارة أي موقع} one{تمت زيارة موقع واحد} two{تمت زيارة موقعين} few{تمت زيارة {count} مواقع} many{تمت زيارة {count} موقعًا} other{تمت زيارة {count} موقع}}"
+  "webSitesSummary": "عدد المواقع: {count}",
+  "showPassword": "إظهار كلمة المرور",
+  "hidePassword": "إخفاء كلمة المرور",
+  "passwordMinHint": "12 حرفًا على الأقل.",
+  "familyNameHelper": "سيظهر هذا الاسم لأولياء الأمور الآخرين الذين تدعوهم."
 }

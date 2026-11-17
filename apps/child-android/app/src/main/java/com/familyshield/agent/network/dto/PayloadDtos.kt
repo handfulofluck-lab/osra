@@ -53,6 +53,23 @@ data class TelemetryDto(
      * agent must never erase what a newer one said.
      */
     val capabilities: Map<String, Any?>? = null,
+    /**
+     * Issue #867: the instant this device booted (ISO-8601, UTC), from
+     * [com.familyshield.agent.telemetry.BootClock]. Sent on every upload rather than only on the first
+     * one after a restart, because the server is the side that remembers the last value and decides what
+     * counts as a new boot — a client-side "already sent" flag would be a second source of truth that a
+     * `pm clear` desynchronises from the server's. Nullable only so the field can be absent from a build
+     * that does not compute it yet.
+     */
+    val bootedAt: String? = null,
+    /**
+     * Issue #867 / #884 review: `Settings.Global.BOOT_COUNT`, from
+     * [com.familyshield.agent.telemetry.BootClock.bootCountNow]. Sent beside [bootedAt] because the
+     * instant is derived from a wall clock a child can move, while this counter ignores the clock: where the
+     * server has one stored, a change in the count is the restart and the instant only dates it. Nullable
+     * for the same reasons as [bootedAt] — an older build, or a device whose setting is absent.
+     */
+    val bootCount: Int? = null,
 )
 
 /**

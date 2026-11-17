@@ -312,8 +312,28 @@ export async function createFamily({ baseUrl, tokenFile, log = console.error }) 
   let token;
   let familyId;
   try {
+    // ADR-0043 D3 (#846 part A step 2): `POST /v1/auth/register` now requires the acceptance block, so the
+    // runner reads the copy the server serves and sends the version it was given. Ticking the box for a
+    // throwaway test family is deliberate — the runner's only legal entity is a scenario account it deletes
+    // again in the same run, and hard-coding the version here would silently break the day the wording moves.
+    // English: the runner has no parent locale of its own, and the server falls back to it anyway.
+    const copy = await api(baseUrl, "GET", "/v1/consent-copy?locale=en");
+    // `textVersion` rides the envelope and the purpose carries the hash; the runner needs the version to
+    // send back and the purpose to know the box exists at all.
+    const servedVersion = copy.data?.textVersion;
+    const servedPurpose = copy.data?.purposes?.[0];
+    if (copy.status !== 200 || typeof servedVersion !== "string" || servedPurpose?.key !== "terms_privacy") {
+      throw new StepFailed(`GET /v1/consent-copy answered ${brief(copy)}`);
+    }
     const registration = await api(baseUrl, "POST", "/v1/auth/register", {
-      body: { email, password, displayName: `Scenario ${tag}`, familyName: `Scenario ${tag}`, region: REGION },
+      body: {
+        email,
+        password,
+        displayName: `Scenario ${tag}`,
+        familyName: `Scenario ${tag}`,
+        region: REGION,
+        consents: { termsPrivacy: true, textVersion: servedVersion, locale: copy.data?.locale ?? "en" },
+      },
     });
     if (registration.status !== 201 || typeof registration.data?.token !== "string") {
       throw new StepFailed(`POST /v1/auth/register answered ${brief(registration)}`);

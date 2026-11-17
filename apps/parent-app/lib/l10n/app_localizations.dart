@@ -410,10 +410,11 @@ abstract class AppLocalizations {
   /// **'Create account'**
   String get createAccount;
 
-  String get webSiteNamesOnlyNote;
-  String webSiteVisits(int count);
-  String webSiteSeenRange(String first, String last);
-  String webSitesSummary(int count);
+  /// No description provided for @consentRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'To create an account, please tick this box.'**
+  String get consentRequired;
 
   /// No description provided for @familyNameLabel.
   ///
@@ -3286,7 +3287,7 @@ abstract class AppLocalizations {
   /// No description provided for @onboardingNoNetwork.
   ///
   /// In en, this message translates to:
-  /// **'Cannot reach the server. Check the server address and your internet connection, then try again.'**
+  /// **'Couldn\'t connect to OSRA. Check your internet connection, then try again.'**
   String get onboardingNoNetwork;
 
   /// No description provided for @onboardingChildTitle.
@@ -5202,6 +5203,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'On the iPhone, this app is hidden instead of showing the OSRA screen.'**
   String get appRuleHiddenOnIphone;
+
+  /// No description provided for @webSiteNamesOnlyNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Names of sites and online services this phone connected to, not the pages opened. Kept for 90 days.'**
+  String get webSiteNamesOnlyNote;
+
+  /// No description provided for @webSiteVisits.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Visited once} other{Visited {count} times}}'**
+  String webSiteVisits(int count);
+
+  /// No description provided for @webSiteSeenRange.
+  ///
+  /// In en, this message translates to:
+  /// **'{first} to {last}'**
+  String webSiteSeenRange(String first, String last);
+
+  /// No description provided for @webSitesSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No sites visited} =1{1 site visited} other{{count} sites visited}}'**
+  String webSitesSummary(int count);
+
+  /// No description provided for @showPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Show password'**
+  String get showPassword;
+
+  /// No description provided for @hidePassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide password'**
+  String get hidePassword;
+
+  /// No description provided for @passwordMinHint.
+  ///
+  /// In en, this message translates to:
+  /// **'At least 12 characters.'**
+  String get passwordMinHint;
+
+  /// No description provided for @familyNameHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'Other parents you invite will see this.'**
+  String get familyNameHelper;
 }
 
 class _AppLocalizationsDelegate

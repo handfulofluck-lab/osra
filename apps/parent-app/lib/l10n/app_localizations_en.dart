@@ -189,6 +189,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get createAccount => 'Create account';
 
   @override
+  String get consentRequired => 'To create an account, please tick this box.';
+
+  @override
   String get familyNameLabel => 'Family name';
 
   @override
@@ -1966,7 +1969,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get onboardingNoNetwork =>
-      'Cannot reach the server. Check the server address and your internet connection, then try again.';
+      'Couldn\'t connect to OSRA. Check your internet connection, then try again.';
 
   @override
   String get onboardingChildTitle => 'Add your child';
@@ -3141,20 +3144,46 @@ class AppLocalizationsEn extends AppLocalizations {
       'On the iPhone, this app is hidden instead of showing the OSRA screen.';
 
   @override
-  String get webSiteNamesOnlyNote => 'Names of sites and online services this phone connected to, not the pages opened. Kept for 90 days.';
+  String get webSiteNamesOnlyNote =>
+      'Names of sites and online services this phone connected to, not the pages opened. Kept for 90 days.';
 
   @override
   String webSiteVisits(int count) {
-    return (count == 1) ? 'Visited once' : 'Visited $count times';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Visited $count times',
+      one: 'Visited once',
+    );
+    return '$_temp0';
   }
 
   @override
-  String webSiteSeenRange(String first, String last) => '$first to $last';
+  String webSiteSeenRange(String first, String last) {
+    return '$first to $last';
+  }
 
   @override
   String webSitesSummary(int count) {
-    if (count == 0) return 'No sites visited';
-    if (count == 1) return '1 site visited';
-    return '$count sites visited';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count sites visited',
+      one: '1 site visited',
+      zero: 'No sites visited',
+    );
+    return '$_temp0';
   }
+
+  @override
+  String get showPassword => 'Show password';
+
+  @override
+  String get hidePassword => 'Hide password';
+
+  @override
+  String get passwordMinHint => 'At least 12 characters.';
+
+  @override
+  String get familyNameHelper => 'Other parents you invite will see this.';
 }

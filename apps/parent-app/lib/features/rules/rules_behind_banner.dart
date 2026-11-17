@@ -14,14 +14,44 @@ import 'rules_freshness.dart';
 ///
 /// Renders nothing — a zero-height [SizedBox] — when the child is unknown or current, so a screen can place
 /// it unconditionally at the top of a column.
-class RulesBehindBanner extends ConsumerWidget {
+///
+/// **When it clears** (#865): the server pushes `rules_applied` the moment the family's last reporting
+/// device catches up, and [applyRealtimeMessage] refreshes the snapshot on it. For a dropped socket, the
+/// widget also re-reads the snapshot when the app comes back to the foreground — no poll, and no state of
+/// its own beyond the observer.
+class RulesBehindBanner extends ConsumerStatefulWidget {
   const RulesBehindBanner({super.key, required this.childId});
 
   final String childId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final child = ref.watch(familyProvider).valueOrNull?.children.where((c) => c.id == childId).firstOrNull;
+  ConsumerState<RulesBehindBanner> createState() => _RulesBehindBannerState();
+}
+
+class _RulesBehindBannerState extends ConsumerState<RulesBehindBanner> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    // The backstop for a report the socket missed while the app was in the background: the next look at
+    // the screen re-reads the one number the line depends on.
+    ref.invalidate(familyProvider);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final child = ref.watch(familyProvider).valueOrNull?.children.where((c) => c.id == widget.childId).firstOrNull;
     if (child == null || !rulesAreBehind(child)) return const SizedBox.shrink();
     return MaterialBanner(
       key: const ValueKey('rules-behind-banner'),

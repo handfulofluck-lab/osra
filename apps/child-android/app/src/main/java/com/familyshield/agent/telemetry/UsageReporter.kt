@@ -169,6 +169,8 @@ class UsageReporter @Inject constructor(
                     locationGrant = grant,
                     appliedRulesVersion = appliedRules,
                     capabilities = report,
+                    bootedAt = BootClock.bootedAtIsoNow(),
+                    bootCount = BootClock.bootCountNow(context),
                 ),
             )
             // Issue #221: the periodic upload also counts as a report, so the expedited path does not
@@ -269,6 +271,8 @@ class UsageReporter @Inject constructor(
                     locationGrant = currentLocationGrant(),
                     appliedRulesVersion = settings.appliedRulesVersion(),
                     capabilities = report,
+                    bootedAt = BootClock.bootedAtIsoNow(),
+                    bootCount = BootClock.bootCountNow(context),
                 ),
             )
             settings.recordReportedCapabilities(fingerprint)
@@ -306,6 +310,8 @@ class UsageReporter @Inject constructor(
                         locationGrant = grant,
                         appliedRulesVersion = settings.appliedRulesVersion(),
                         capabilities = report,
+                        bootedAt = BootClock.bootedAtIsoNow(),
+                        bootCount = BootClock.bootCountNow(context),
                     ),
                 )
                 recordCapabilities(report)

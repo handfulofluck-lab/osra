@@ -197,6 +197,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get createAccount => 'إنشاء حساب';
 
   @override
+  String get consentRequired => 'لإنشاء حساب، يُرجى وضع علامة في هذه الخانة.';
+
+  @override
   String get familyNameLabel => 'اسم العائلة';
 
   @override
@@ -2130,7 +2133,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get onboardingNoNetwork =>
-      'تعذّر الوصول إلى الخادم. تحقق من عنوان الخادم واتصال الإنترنت ثم حاول مجددًا.';
+      'تعذّر الاتصال بخدمة أسرة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
 
   @override
   String get onboardingChildTitle => 'أضف طفلك';
@@ -3316,38 +3319,44 @@ class AppLocalizationsAr extends AppLocalizations {
       'على هواتف آيفون، يُخفى هذا التطبيق بدلًا من عرض شاشة الحظر.';
 
   @override
-  String get webSiteNamesOnlyNote => 'أسماء المواقع والخدمات على الإنترنت التي وصل إليها هذا الهاتف، لا الصفحات التي فُتحت. تُحفظ لمدة 90 يومًا.';
+  String get webSiteNamesOnlyNote =>
+      'أسماء المواقع والخدمات على الإنترنت التي وصل إليها هذا الهاتف، لا الصفحات التي فُتحت. تُحفظ لمدة 90 يومًا.';
 
   @override
   String webSiteVisits(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      zero: 'لا زيارات',
-      one: 'زيارة واحدة',
-      two: 'زيارتان',
-      few: '$count زيارات',
-      many: '$count زيارة',
       other: '$count زيارة',
+      many: '$count زيارة',
+      few: '$count زيارات',
+      two: 'زيارتان',
+      one: 'زيارة واحدة',
+      zero: 'لا زيارات',
     );
     return '$_temp0';
   }
 
   @override
-  String webSiteSeenRange(String first, String last) => 'من $first إلى $last';
+  String webSiteSeenRange(String first, String last) {
+    return 'من $first إلى $last';
+  }
 
   @override
   String webSitesSummary(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      zero: 'لم تتم زيارة أي موقع',
-      one: 'تمت زيارة موقع واحد',
-      two: 'تمت زيارة موقعين',
-      few: 'تمت زيارة $count مواقع',
-      many: 'تمت زيارة $count موقعًا',
-      other: 'تمت زيارة $count موقع',
-    );
-    return '$_temp0';
+    return 'عدد المواقع: $count';
   }
+
+  @override
+  String get showPassword => 'إظهار كلمة المرور';
+
+  @override
+  String get hidePassword => 'إخفاء كلمة المرور';
+
+  @override
+  String get passwordMinHint => '12 حرفًا على الأقل.';
+
+  @override
+  String get familyNameHelper =>
+      'سيظهر هذا الاسم لأولياء الأمور الآخرين الذين تدعوهم.';
 }
