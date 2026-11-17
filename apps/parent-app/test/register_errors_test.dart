@@ -301,6 +301,50 @@ void main() {
       }
     });
 
+    /// #862 Antigravity, keyboard row 1: with the password focused, IME `Next` used to land on the eye
+    /// button inside the same field, because that button is the next focusable in the tree. It now lands
+    /// on the field the parent is walking towards.
+    testWidgets('Next from the password lands on the family name, not the eye button', (tester) async {
+      final client = await api();
+      await pumpSignUp(tester, client);
+
+      await tester.tap(fieldByLabel('Password'));
+      await tester.pumpAndSettle();
+      await tester.enterText(fieldByLabel('Password'), validPassword);
+      await tester.testTextInput.receiveAction(TextInputAction.next);
+      await tester.pumpAndSettle();
+
+      final family = tester.widget<TextField>(fieldByLabel('Family name'));
+      final eye = tester.widget<IconButton>(find.byKey(const ValueKey('togglePassword')));
+      expect(family.focusNode?.hasFocus, isTrue);
+      // The eye button keeps its tap target and its label; it is simply not where the cursor goes.
+      expect(eye.onPressed, isNotNull);
+      expect(find.byTooltip('Show password'), findsOneWidget);
+    });
+
+    /// #862 Antigravity, keyboard row 2: the keyboard's `Done` reaches `_submit` directly, past the
+    /// button's own `onPressed` guard, so a second press while the first request is in flight used to
+    /// register twice. The guard lives in `_submit` now.
+    testWidgets('Done on the family name cannot submit twice while a request is in flight', (tester) async {
+      final client = await api();
+      await pumpSignUp(tester, client);
+      await fillForm(tester);
+      await tester.tap(find.byType(Checkbox));
+      await tester.pumpAndSettle();
+      // Focus the field whose Done submits: from the password, Done is `next` and lands on the family
+      // name instead (the row above), so this row has to start where the keyboard's Done means "go".
+      await tester.tap(fieldByLabel('Family name'));
+      await tester.pumpAndSettle();
+
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump(); // the first request is in flight; _submitting is true
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(client.calls('POST', '/v1/auth/register'), hasLength(1));
+    });
+
     testWidgets('a copy the server cannot serve is a plain line, never a half form', (tester) async {
       final client = FakeApiClient({
         ...standardRoutes(),

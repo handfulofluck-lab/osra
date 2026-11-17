@@ -1954,7 +1954,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get onboardingNoNetwork =>
-      'Couldn't connect to OSRA. Check your internet connection, then try again.';
+      'Couldn\'t connect to OSRA. Check your internet connection, then try again.';
 
   @override
   String get onboardingChildTitle => 'Add your child';

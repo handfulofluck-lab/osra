@@ -35,6 +35,11 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
   final _consentTileKey = GlobalKey();
   final _consentFocus = FocusNode();
 
+  /// Where IME `Next` lands from the password field. Without it the next focusable is the eye button
+  /// inside the password field's own suffix, which is not a place a parent expects the cursor to go (#862
+  /// Antigravity). The button keeps its tap target and its screen-reader label.
+  final _familyNameFocus = FocusNode();
+
   String _region = 'US';
   bool _accepted = false;
   bool _consentMissing = false;
@@ -54,6 +59,7 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
   @override
   void dispose() {
     _consentFocus.dispose();
+    _familyNameFocus.dispose();
     _familyName.dispose();
     _displayName.dispose();
     _email.dispose();
@@ -69,6 +75,9 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
   }
 
   Future<void> _submit(ConsentCopy copy, ConsentPurpose purpose) async {
+    // The keyboard's Done reaches this method directly, past the button's own guard, so the guard lives
+    // here too: a second submit while one is in flight would register twice (#862 Antigravity).
+    if (_submitting || ref.read(authProvider).loading) return;
     final l10n = context.l10n;
     final problem = registerFormProblem(
       l10n,
@@ -234,6 +243,7 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                     obscureText: _obscured,
                     autofillHints: const [AutofillHints.newPassword],
                     textInputAction: TextInputAction.next,
+                    onSubmitted: (_) => _familyNameFocus.requestFocus(),
                     decoration: InputDecoration(
                       labelText: l10n.passwordLabel,
                       // The rule is stated before the error, not only after it (UI/UX item 2).
@@ -254,6 +264,7 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                   const SizedBox(height: AppSpace.md),
                   TextField(
                     controller: _familyName,
+                    focusNode: _familyNameFocus,
                     textInputAction: TextInputAction.done,
                     onSubmitted: (_) => _submit(data, purpose),
                     decoration: InputDecoration(
