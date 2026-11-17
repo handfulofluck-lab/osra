@@ -137,16 +137,29 @@ void main() {
   });
 
   group('R-ID-3 searchable city/GMT timezone picker', () {
-    test('timezone catalog formats city + GMT, defaults by device offset, orders current first', () {
-      expect(formatTimezoneLabel('Asia/Dubai'), 'Dubai (GMT+4)');
-      expect(formatTimezoneLabel('America/Argentina/Buenos_Aires'), 'Buenos Aires (GMT-3)');
-      expect(defaultDeviceTimezone(const Duration(hours: 4)), 'Asia/Dubai');
+    test('timezone catalog formats EN/AR city + DST-aware GMT, defaults by device offset, orders current first', () {
+      final winter = DateTime.utc(2026, 1, 15, 12);
+      final summer = DateTime.utc(2026, 7, 15, 12);
+      expect(formatTimezoneLabel('Asia/Dubai', nowUtc: winter), 'Dubai (GMT+4)');
+      expect(formatTimezoneLabel('Asia/Dubai', languageCode: 'ar', nowUtc: winter), 'دبي (GMT+4)');
+      expect(formatTimezoneLabel('America/Argentina/Buenos_Aires', nowUtc: winter), 'Buenos Aires (GMT-3)');
+      expect(formatTimezoneLabel('Europe/London', languageCode: 'ar', nowUtc: winter), 'لندن (GMT+0)');
+      expect(formatTimezoneLabel('Europe/London', languageCode: 'ar', nowUtc: summer), 'لندن (GMT+1)');
+      expect(formatTimezoneLabel('Africa/Cairo', nowUtc: summer), 'Cairo (GMT+3)');
+      expect(formatTimezoneLabel('America/New_York', nowUtc: summer), 'New York (GMT-4)');
+      expect(defaultDeviceTimezone(const Duration(hours: 4), winter), 'Asia/Dubai');
+
+      final dubai = timezoneOptionFor('Asia/Dubai');
+      expect(dubai.matches('دبي'), isTrue);
+      expect(dubai.matches('dubai'), isTrue);
+      expect(dubai.matches('GMT+4'), isTrue);
+
       final ordered = orderedTimezones('Asia/Riyadh');
       expect(ordered.first.id, 'Asia/Riyadh');
       expect(ordered.where((o) => o.id == 'Asia/Riyadh'), hasLength(1));
     });
 
-    testWidgets('picker pins current zone first, filters search, works in 320px RTL without overflow', (tester) async {
+    testWidgets('picker pins current Arabic zone first, searches in Arabic & English, works in 320px RTL without overflow', (tester) async {
       tester.view.physicalSize = const Size(320, 640);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
@@ -175,7 +188,7 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      expect(find.text('Riyadh (GMT+3)'), findsOneWidget);
+      expect(find.text('الرياض (GMT+3)'), findsOneWidget);
       expect(find.text('Asia/Riyadh'), findsNothing);
 
       await tester.drag(find.byType(ListView), const Offset(0, -350));
@@ -184,12 +197,12 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('digestTimezone')));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byKey(const ValueKey('digestTimezoneSearch')), '+4');
+      await tester.enterText(find.byKey(const ValueKey('digestTimezoneSearch')), 'دبي');
       await tester.pumpAndSettle();
-      expect(find.descendant(of: find.byType(BottomSheet), matching: find.text('Dubai (GMT+4)')), findsOneWidget);
-      expect(find.descendant(of: find.byType(BottomSheet), matching: find.text('Riyadh (GMT+3)')), findsNothing);
+      expect(find.descendant(of: find.byType(BottomSheet), matching: find.text('دبي (GMT+4)')), findsOneWidget);
+      expect(find.descendant(of: find.byType(BottomSheet), matching: find.text('الرياض (GMT+3)')), findsNothing);
 
-      await tester.tap(find.descendant(of: find.byType(BottomSheet), matching: find.text('Dubai (GMT+4)')));
+      await tester.tap(find.descendant(of: find.byType(BottomSheet), matching: find.text('دبي (GMT+4)')));
       await tester.pumpAndSettle();
       expect(api.calls('PATCH', '/v1/family/me').single.body['timezone'], 'Asia/Dubai');
       expect(tester.takeException(), isNull);

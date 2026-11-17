@@ -83,8 +83,9 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
     try {
       await ref.read(apiClientProvider).raw.patch('/v1/family/me', data: {'timezone': tz});
       if (mounted) {
+        final lang = Localizations.localeOf(context).languageCode;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.digestPrefsTimezoneSet(formatTimezoneLabel(tz)))),
+          SnackBar(content: Text(context.l10n.digestPrefsTimezoneSet(formatTimezoneLabel(tz, languageCode: lang)))),
         );
       }
     } catch (e) {
@@ -363,7 +364,10 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
                             suffixIcon: const Icon(Icons.arrow_drop_down),
                           ),
                           child: Text(
-                            formatTimezoneLabel(_timezone ?? defaultDeviceTimezone()),
+                            formatTimezoneLabel(
+                              _timezone ?? defaultDeviceTimezone(),
+                              languageCode: Localizations.localeOf(context).languageCode,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -472,8 +476,9 @@ class _TimezonePickerSheetState extends State<_TimezonePickerSheet> {
                       itemBuilder: (_, index) {
                         final opt = filtered[index];
                         final selected = opt.id == widget.currentId;
+                        final lang = Localizations.localeOf(context).languageCode;
                         return ListTile(
-                          title: Text(opt.label),
+                          title: Text(opt.labelFor(lang)),
                           trailing: selected ? const Icon(Icons.check) : null,
                           selected: selected,
                           onTap: () => Navigator.of(context).pop(opt.id),
