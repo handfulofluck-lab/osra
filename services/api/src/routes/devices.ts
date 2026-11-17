@@ -29,6 +29,7 @@ import { markDeviceRevoked } from "../lib/deviceRevocation.js";
 import { PAIR_CLAIM_RATE_LIMIT, PAIR_POLL_RATE_LIMIT } from "../lib/rateLimits.js";
 import { cleanDeviceText, decideClaim, markPaired, pollSecretMatches, readClaim, readClaimForCode, recordPollMiss, releaseClaim, reserveClaim, takeApprovedClaim } from "../lib/pairApproval.js";
 import { raiseAlertOnce } from "../lib/alerts.js";
+import { bootReportBody, decideBootReport } from "../lib/bootReport.js";
 import { encryptSecret } from "../lib/secretVault.js";
 // Re-exported for existing importers/tests; the constant and its contract live in lib/deviceToken.ts.
 export { DEVICE_TOKEN_TTL_SECONDS };
@@ -121,6 +122,10 @@ const TelemetrySchema = z
       .optional(),
     urls: z.array(z.string()).optional(),
     timestamp: z.string().datetime().optional(),
+    // Issue #867: the instant the phone says it booted (`now - elapsedRealtime`), stable for the life of one
+    // boot and therefore a restart detector the 30-minute silence window cannot be. UTC only: the agent's
+    // value is an instant, and an offset form would only be another way to write the same one.
+    bootedAt: z.string().datetime().optional(),
     // Issue #221 (D1): the agent's own classification of its location grant. Optional so an older
     // agent keeps working (the server then leaves the stored value unknown and queues locate_now).
     locationGrant: z.enum(LOCATION_GRANT_STATES).optional(),
@@ -819,9 +824,37 @@ export async function deviceRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const parsed = TelemetrySchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const device = (req as unknown as { device: { id: string; childId: string; platform?: string } }).device;
+    const device = (req as unknown as {
+      device: {
+        id: string;
+        childId: string;
+        platform?: string;
+        model?: string;
+        lastSeen?: Date | null;
+        lastBootAt?: Date | null;
+        child?: { familyId?: string; displayName?: string };
+      };
+    }).device;
     // ADR-0008 §2b: withdrawal of consent stops collection.
     if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
+
+    // Issue #867: one comparison decides whether this tick is a restart, and `now` is shared with the
+    // lastSeen write below so the stored instant and the "as it was before this upload" row it was
+    // compared against cannot disagree about when the tick happened.
+    const now = new Date();
+    const bootFamilyId = device?.child?.familyId;
+    const boot = decideBootReport({
+      bootedAt: parsed.data.bootedAt === undefined ? null : new Date(parsed.data.bootedAt),
+      storedBootAt: device?.lastBootAt ?? null,
+      lastSeen: device?.lastSeen ?? null,
+      now,
+      maxAheadMs: ACTIVITY_CLOCK_SKEW_MS,
+    });
+    if (boot.kind === "clock_ahead") {
+      // Same rule as an activity event from the future: a broken device clock is not a report. Dropping it
+      // keeps the stored boot instant useful for the next tick instead of poisoning every comparison.
+      req.log.warn({ deviceId: id, bootedAt: boot.bootedAt.toISOString() }, "bootedAt ahead of the server clock; ignored");
+    }
 
     // ADR-0034 A2: a strict, enum-keyed, 4 KB-capped report. Parsed here rather than inside
     // `TelemetrySchema` so a bad one costs this field only — the rest of the upload is stored.
@@ -881,7 +914,10 @@ export async function deviceRoutes(app: FastifyInstance) {
       }
     }
 
-    const { capabilities: rawCapabilities, ...telemetryFields } = parsed.data;
+    // `bootedAt` is device state, not the latest payload: it lives on `Device.lastBootAt` (written below)
+    // and is read back there, so copying it into the cached blob would be a second source of truth — and a
+    // clock-ahead report that was dropped would keep reappearing through the blob.
+    const { capabilities: rawCapabilities, bootedAt: _bootedAt, ...telemetryFields } = parsed.data;
     await setJson(`device:${id}:telemetry`, { ...telemetryFields, receivedAt: new Date().toISOString() }, 86400);
 
     // Accumulate daily usage per child (Issue #31: delta windows must accumulate, not overwrite)
@@ -900,11 +936,11 @@ export async function deviceRoutes(app: FastifyInstance) {
     }
 
     // A device that reports telemetry is alive: refresh lastSeen/battery so the
-    // parent app shows a meaningful "online" state.
+    // parent app shows a meaningful "online" state. `now` is the instant the boot comparison above used.
     await prisma.device.update({
       where: { id },
       data: {
-        lastSeen: new Date(),
+        lastSeen: now,
         status: "online",
         ...(parsed.data.batteryPct !== undefined ? { batteryPct: parsed.data.batteryPct } : {}),
         // Issue #221 (D1): the latest grant report wins; omitting the field leaves the stored value
@@ -919,8 +955,45 @@ export async function deviceRoutes(app: FastifyInstance) {
         ...(capabilitiesOk
           ? { capabilities: capabilitiesParsed as Prisma.InputJsonValue, capabilitiesReportedAt: new Date() }
           : {}),
+        // Issue #867: only a new boot writes the column, in the same update that refreshes `lastSeen`.
+        // A tick that repeats the same instant writes nothing — not the value, and not a second alert below.
+        ...(boot.kind === "new_boot" ? { lastBootAt: boot.bootedAt } : {}),
       },
     });
+    if (boot.kind === "new_boot" && bootFamilyId) {
+      // Issue #867: the restart itself, reported by the phone because the 30-minute silence window can never
+      // see a 1–2 minute gap. `raiseAlertOnce`, not `raiseAlert`: since #711 a `raiseAlert` producer must
+      // carry a localization `bodyKey`, and no parent-app string exists for a restart yet — the English
+      // title/body is the compatibility floor every un-updated app renders.
+      try {
+        // The body is stored as English and read verbatim, so the clock in it has to be the family's
+        // (ADR-0017/ADR-0020), not the server's UTC.
+        const family = await prisma.family.findUnique({ where: { id: bootFamilyId }, select: { timezone: true } });
+        await raiseAlertOnce({
+          childId: device.childId,
+          familyId: bootFamilyId,
+          deviceId: id,
+          severity: boot.severity,
+          category: "device_restarted",
+          title: "Device restarted",
+          body: bootReportBody(boot, device.model ?? "A phone", family?.timezone ?? "UTC"),
+          metadata: {
+            type: "device_restarted",
+            bootedAt: boot.bootedAt.toISOString(),
+            gapMinutes: boot.gapMinutes,
+            lastSeen: boot.previousLastSeen?.toISOString() ?? null,
+          },
+          // #225: two API instances can both read the pre-upload row and both decide "new boot"; keying on
+          // the boot instant makes the loser a no-op instead of a second push for one restart.
+          dedupeKey: `boot|${boot.bootedAt.toISOString()}`,
+          childName: device.child?.displayName,
+        });
+      } catch (err) {
+        // The instant is stored and the upload succeeded. A restart the parent does not hear about is a
+        // missed notification, not a reason to fail the tick that carried it.
+        req.log.warn({ err, deviceId: id }, "device_restarted alert failed (telemetry)");
+      }
+    }
     if (rawCapabilities !== undefined && !capabilitiesOk) {
       // A2: refused with 400 **for the capabilities field**, and the rest of the upload is stored above.
       req.log.warn({ deviceId: id }, "capabilities report refused; the rest of the telemetry was stored");

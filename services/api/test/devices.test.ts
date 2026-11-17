@@ -1108,3 +1108,132 @@ describe("rulesApplied reduction (#865)", () => {
     expect(rulesAppliedReached(5, 0)).toBe(false);
   });
 });
+
+/**
+ * Issue #867: a child phone restart takes 1–2 minutes and the 30-minute silence window must not be lowered
+ * (a false `device_silent` critical is worse than a late one), so the restart is reported by the device as
+ * `bootedAt` and this route turns a moved instant into one `device_restarted` alert.
+ *
+ * The rows here prove the two halves a unit test on the pure module cannot: the column is written once for
+ * two ticks of the same boot, and the alert is raised once with them. The mutant for the first row is the
+ * obvious one — write `lastBootAt` on every tick, or alert before comparing — and each fails a different
+ * assertion: the write count, then the alert count.
+ */
+describe("device restart reporting (#867)", () => {
+  beforeEach(() => {
+    resetPrismaMock();
+  });
+
+  /**
+   * A boot five minutes ago, relative to the real clock. The route compares `bootedAt` with its own `now`
+   * and drops anything more than five minutes ahead as a caller bug, so a pinned date would make these rows
+   * pass or fail depending on the hour they run at. The rendered clock is pinned exactly in
+   * `boot-report.test.ts`, against a fixed `Date`; here the body is matched by shape.
+   */
+  const bootedAt = () => new Date(Date.now() - 5 * 60_000);
+
+  /**
+   * The row as `requireFamily` loads it. `update` writes back onto it so the second request sees what the
+   * first one stored, as two real ticks would; `mockResolvedValue` would answer with the pre-restart row
+   * forever and make a repeated tick look like a second restart.
+   */
+  function storedDevice(overrides: Record<string, unknown> = {}) {
+    const row: Record<string, unknown> = {
+      id: "dev-1",
+      childId: "child-1",
+      model: "Pixel 7a",
+      lastSeen: new Date(bootedAt().getTime() - 2 * 60_000),
+      lastBootAt: null,
+      child: { familyId: "fam-1", displayName: "Alex" },
+      ...overrides,
+    };
+    prismaMock.device.findUnique.mockResolvedValue(row);
+    prismaMock.device.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => Object.assign(row, data));
+    prismaMock.alert.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: "alert-1", ...data }));
+    prismaMock.family.findUnique.mockResolvedValue({ timezone: "Asia/Dubai" });
+    return row;
+  }
+
+  const tick = (app: Awaited<ReturnType<typeof buildApp>>, payload: Record<string, unknown>) =>
+    app.inject({ method: "POST", url: "/v1/devices/dev-1/telemetry", headers: deviceHeader(app), payload });
+
+  const bootWrites = () =>
+    prismaMock.device.update.mock.calls.filter(([args]: [{ data?: Record<string, unknown> }]) => "lastBootAt" in (args.data ?? {}));
+
+  it("writes the boot instant once and raises one alert for two ticks of the same boot", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    storedDevice();
+    const boot = bootedAt();
+    const previousLastSeen = new Date(boot.getTime() - 2 * 60_000);
+
+    expect((await tick(app, { batteryPct: 50, bootedAt: boot.toISOString() })).statusCode).toBe(202);
+    expect((await tick(app, { batteryPct: 49, bootedAt: boot.toISOString() })).statusCode).toBe(202);
+
+    const writes = bootWrites();
+    expect(writes).toHaveLength(1);
+    expect(writes[0][0].data.lastBootAt).toEqual(boot);
+
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    const alert = prismaMock.alert.create.mock.calls[0][0].data as Record<string, any>;
+    expect(alert).toMatchObject({
+      childId: "child-1",
+      deviceId: "dev-1",
+      severity: "info",
+      category: "device_restarted",
+      title: "Device restarted",
+      // The family's clock in the sentence, and the gap measured from the last report before the boot.
+      body: expect.stringMatching(/^Pixel 7a restarted at \d\d:\d\d, back after 2 minutes\.$/),
+      dedupeKey: `boot|${boot.toISOString()}`,
+    });
+    expect(alert.metadata).toEqual({
+      type: "device_restarted",
+      bootedAt: boot.toISOString(),
+      gapMinutes: 2,
+      lastSeen: previousLastSeen.toISOString(),
+    });
+    await app.close();
+  });
+
+  it("raises again for a different boot, as a warning once the gap reaches the silence window", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    const boot = bootedAt();
+    storedDevice({ lastBootAt: new Date(Date.now() - 24 * 3600_000), lastSeen: new Date(boot.getTime() - 40 * 60_000) });
+
+    expect((await tick(app, { bootedAt: boot.toISOString() })).statusCode).toBe(202);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    const alert = prismaMock.alert.create.mock.calls[0][0].data as { severity: string; body: string; metadata: { gapMinutes: number } };
+    // 40 minutes: the parent would also have received `device_silent` at 30, so this explains an alarm
+    // they already got instead of reading like a routine reboot.
+    expect(alert.severity).toBe("warning");
+    expect(alert.metadata.gapMinutes).toBe(40);
+    expect(alert.body).toMatch(/^Pixel 7a restarted at \d\d:\d\d, back after 40 minutes\.$/);
+    await app.close();
+  });
+
+  it("drops a boot instant from the future: no write, no alert, the upload still accepted", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    storedDevice();
+
+    const future = new Date(Date.now() + 6 * 60_000).toISOString();
+    expect((await tick(app, { batteryPct: 30, bootedAt: future })).statusCode).toBe(202);
+    expect(bootWrites()).toHaveLength(0);
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+
+    // An older agent sends no `bootedAt` at all: the column keeps what it had and nothing is raised.
+    expect((await tick(app, { batteryPct: 29 })).statusCode).toBe(202);
+    expect(bootWrites()).toHaveLength(0);
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("exposes the stored boot instant on the parent's device read", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    const boot = new Date("2026-11-17T10:00:00Z");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, model: "Pixel 7a", lastBootAt: boot });
+
+    const res = await app.inject({ method: "GET", url: "/v1/devices/dev-1", headers: authHeader(app) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().device.lastBootAt).toBe("2026-11-17T10:00:00.000Z");
+    await app.close();
+  });
+});

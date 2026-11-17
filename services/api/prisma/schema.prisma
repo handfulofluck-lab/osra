@@ -251,6 +251,11 @@ model Device {
   status     String         @default("offline")
   batteryPct Int            @default(0)
   lastSeen   DateTime       @default(now())
+  /// Issue #867: the instant the AGENT says this phone booted (`now - SystemClock.elapsedRealtime()`),
+  /// stable for the life of one boot. Null until an agent reports it. A report that moves it by more than
+  /// 90 seconds is a restart (src/lib/bootReport.ts); that is how the parent hears about the 1–2 minute gap
+  /// the 30-minute silence window deliberately cannot see.
+  lastBootAt DateTime? @db.Timestamptz(3)
   pushToken  String?
   // Per-device internal HMAC secret (minted at pair/claim; handoff item 5).
   internalSecret String?

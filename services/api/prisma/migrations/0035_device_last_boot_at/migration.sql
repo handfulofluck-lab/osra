@@ -1,0 +1,12 @@
+-- Issue #867: the parent never sees the child phone go offline during a restart.
+--
+-- A phone restart takes 1–2 minutes, and the silence watch is deliberately 30 minutes (two telemetry
+-- intervals, src/jobs/deviceSilence.ts) because a false `device_silent` critical is worse than a late true
+-- one. The gap instead has to be REPORTED: the agent sends the wall-clock instant it booted
+-- (`now - elapsedRealtime`), stable for the life of one boot. A report that moves it by more than 90 s is a
+-- restart (src/lib/bootReport.ts) and raises `device_restarted`.
+--
+-- Nullable on purpose: null is "this agent has never reported a boot instant", which an older agent never
+-- will. There is no backfill — the first report a device makes after this ships is treated as a new boot,
+-- which is the same comparison, with nothing invented for the past.
+ALTER TABLE "Device" ADD COLUMN "lastBootAt" TIMESTAMPTZ(3);
