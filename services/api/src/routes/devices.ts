@@ -22,7 +22,7 @@ import {
 } from "../lib/pollCadence.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 import { familyAppliedVersion, rulesAppliedReached } from "../lib/rulesApplied.js";
-import { recordActivityUsage, recordDeviceTotal } from "../lib/usageModel.js";
+import { recordActivityUsage, recordAppUsage, recordDeviceTotal } from "../lib/usageModel.js";
 
 import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
 import { markDeviceRevoked } from "../lib/deviceRevocation.js";
@@ -120,6 +120,11 @@ const TelemetrySchema = z
     appUsage: z
       .array(z.object({ packageId: z.string().min(1), minutes: z.number().min(0) }))
       .optional(),
+    // C1 (Antigravity's review of #901): the field Android actually sends. `TelemetryDto.perAppMinutes` is
+    // a `Map<String, Int>`, so every real upload left `appUsage: undefined` and the per-app rollup wrote
+    // nothing — the fix would have shipped working tests and an unchanged Flip4. Named here (not only read
+    // ad hoc) so `TELEMETRY_READ_FIELDS`, built from this shape, keeps `GET /v1/devices/:id` consistent.
+    perAppMinutes: z.record(z.string(), z.number().min(0)).optional(),
     urls: z.array(z.string()).optional(),
     timestamp: z.string().datetime().optional(),
     // Issue #867: the instant the phone says it booted (`now - elapsedRealtime`), stable for the life of one
@@ -966,6 +971,26 @@ export async function deviceRoutes(app: FastifyInstance) {
       }
     }
 
+    // Issue #830/S1: the per-app split the same uploads already carry. Without this the parent's usage
+    // report has a total and no breakdown on every device, because the only other per-app writer is fed
+    // by persistent activity events and the agent's are all `live` (filtered above by BUG-002).
+    // Precedence, not addition: a transitional client that ever sends both shapes must not have its minutes
+    // written twice. `appUsage` is the array shape this PR first targeted; `perAppMinutes` is what the
+    // Android agent has always sent, and it is the one that reaches a real phone.
+    const appUsageEntries =
+      parsed.data.appUsage && parsed.data.appUsage.length > 0
+        ? parsed.data.appUsage
+        : Object.entries(parsed.data.perAppMinutes ?? {}).map(([packageId, minutes]) => ({ packageId, minutes }));
+    if (appUsageEntries.length > 0 && device?.childId) {
+      try {
+        await recordAppUsage(device.childId, id, appUsageEntries);
+      } catch (err) {
+        // Best-effort, like the total: the phone's next tick re-reports the same minutes and the row is
+        // an increment, not a snapshot — a lost write under-counts one app for one day, it does not lie.
+        req.log.warn({ err }, "per-app usage rollup write failed (telemetry)");
+      }
+    }
+
     // A device that reports telemetry is alive: refresh lastSeen/battery so the
     // parent app shows a meaningful "online" state. `now` is the instant the boot comparison above used.
     await prisma.device.update({
@@ -994,6 +1019,11 @@ export async function deviceRoutes(app: FastifyInstance) {
         // report that omits it leaves the stored count alone — that report uses the instant fallback, and
         // the count decides again as soon as one arrives.
         ...(bootBaseline && bootBaseline.bootCount !== null ? { lastBootCount: bootBaseline.bootCount } : {}),
+        // Reviewed on #884 (Fable): an in-place agent upgrade reaches a row that has an instant but no counter.
+        // Recording the counter on that first count-bearing tick, without touching the instant and without an
+        // alert, is what moves the restart decision off the wall clock for every existing device after one
+        // tick instead of after the next reboot.
+        ...(boot.kind === "same_boot_adopt_count" ? { lastBootCount: boot.bootCount } : {}),
       },
     });
     if (boot.kind === "new_boot" && bootFamilyId) {

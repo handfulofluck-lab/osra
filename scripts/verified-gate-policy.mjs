@@ -539,6 +539,14 @@ function selftest() {
     'docs/legal/terms.ar.md',
     'docs/customer/faq.md',
     'services/api/src/lib/email/templates.ts',
+    // The five server files #904 added anchors for (#846). Each needs its own sample: without one, deleting
+    // its pattern removes two cases and the selftest only gets shorter, which a count cannot tell apart
+    // from a pass. With one, the case named after the file goes red — Hydrogen's and Ahmed's note on #904.
+    'services/api/src/lib/consentCopy.ts',
+    'services/api/src/lib/htmlPage.ts',
+    'services/api/src/routes/linkPages.ts',
+    'services/api/src/routes/account.ts',
+    'services/api/src/routes/digests.ts',
   ];
   const allButArabic = [...v('Claude', 'Fable'), { kind: 'uiux' }];
   for (const f of arabicPaths) {
