@@ -23,6 +23,8 @@ jobs:
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd
         with:
           terraform_version: 1.13.4
+          # Policy fakes deliberately clear inherited environment; use the native binary directly.
+          terraform_wrapper: false
 
       - name: terraform fmt -check -recursive
         run: terraform fmt -check -recursive

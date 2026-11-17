@@ -389,6 +389,8 @@ off, the read route still answers but returns `counting: false` and `withinBudge
 
 The Mac phase1 tooling has a fake-only suite beside the org-audit tests:
 `python3 -B -m unittest discover -s infra/terraform/org-audit/tests -p 'test_agent*.py'`.
+The CI setup disables the Terraform output wrapper: isolated test environments intentionally omit
+its binary-location variable. The native binary preserves exit codes without wrapper dependencies.
 Terraform must be on PATH for provider-free evaluation of actual HCL. No AWS credentials, profile,
 network session, credential file or login-Keychain access is used. The CI job also runs plan-only mock
 AWS/archive providers; mock results are not an AWS IAM simulator or permission proof.
