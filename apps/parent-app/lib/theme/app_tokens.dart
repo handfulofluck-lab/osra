@@ -146,58 +146,60 @@ class AppTokens extends ThemeExtension<AppTokens> {
     this.elevationDialog = AppElevation.dialog,
   });
 
+  /// Calm light palette from `docs/design/tokens.json` (ADR-0038, #650 U20).
   static const AppTokens light = AppTokens(
-    surface: Color(0xFFFFFFFF),
-    surfaceVariant: Color(0xFFEFEDF4),
-    surfaceContainer: Color(0xFFF7F5FA),
-    primary: Color(0xFF3F51B5),
-    onPrimary: Color(0xFFFFFFFF),
-    primaryContainer: Color(0xFFDDE1FF),
-    onPrimaryContainer: Color(0xFF111C6B),
-    onSurface: Color(0xFF1B1B1F),
-    onSurfaceVariant: Color(0xFF46464F),
-    border: Color(0xFFC7C5D0),
-    danger: Color(0xFFB3261E),
-    warn: Color(0xFF7A5900),
-    ok: Color(0xFF1B5E20),
-    onDanger: Color(0xFFFFFFFF),
-    onOk: Color(0xFFFFFFFF),
+    surface: Color(0xFFF1F5F4), // color.page.light
+    surfaceVariant: Color(0xFFFFFFFF), // color.card.light
+    surfaceContainer: Color(0xFFFFFFFF), // color.raised.light
+    primary: Color(0xFF0B5D57), // color.primary.light
+    onPrimary: Color(0xFFFFFFFF), // color.onPrimary.light
+    primaryContainer: Color(0xFFEAF2F0), // color.tint.light
+    onPrimaryContainer: Color(0xFF12211F), // color.ink.light
+    onSurface: Color(0xFF12211F), // color.ink.light
+    onSurfaceVariant: Color(0xFF4D5E5A), // color.muted.light
+    border: Color(0xFFC9D6D3), // color.border.light
+    danger: Color(0xFFA3242B), // color.danger.light
+    warn: Color(0xFF8A4B00), // color.warn.light
+    ok: Color(0xFF0B5D57), // color.ok.light
+    onDanger: Color(0xFFFFFFFF), // color.onDanger.light
+    onOk: Color(0xFFFFFFFF), // color.onPrimary.light
     severityCritical: Colors.red, // pinned by the alert test (runtime type included)
     severityWarning: Colors.amber, // pinned by the alert test
     severityInfo: Colors.blue, // pinned by the alert test
-    severityCriticalText: Color(0xFFB3261E),
-    severityWarningText: Color(0xFF7A5900),
-    severityInfoText: Color(0xFF0B57D0),
+    severityCriticalText: Color(0xFFA3242B), // color.danger.light
+    severityWarningText: Color(0xFF8A4B00), // color.warn.light
+    severityInfoText: Color(0xFF1F4E9A), // usageCategory.learning.light
     wellbeingLow: Colors.red, // pinned by the wellbeing ring test
     wellbeingMid: Colors.amber, // pinned by the wellbeing ring test
     wellbeingHigh: Colors.green, // pinned by the wellbeing ring test
   );
 
+  /// Control room dark palette from `docs/design/tokens.json` (ADR-0038, #650 U20).
   static const AppTokens dark = AppTokens(
-    surface: Color(0xFF141218),
-    surfaceVariant: Color(0xFF2B2930),
-    surfaceContainer: Color(0xFF1D1B20),
-    primary: Color(0xFFBAC3FF),
-    onPrimary: Color(0xFF1B1B5E),
-    primaryContainer: Color(0xFF2E3A7A),
-    onPrimaryContainer: Color(0xFFDDE1FF),
-    onSurface: Color(0xFFE6E1E9),
-    onSurfaceVariant: Color(0xFFCAC4D0),
-    border: Color(0xFF49454F),
-    danger: Color(0xFFFFB4AB),
-    warn: Color(0xFFFFD37A),
-    ok: Color(0xFF7CDB9E),
-    onDanger: Color(0xFF690005),
-    onOk: Color(0xFF00391B),
-    severityCritical: Color(0xFFFF8A80),
-    severityWarning: Color(0xFFFFD54F),
-    severityInfo: Color(0xFF82B1FF),
-    severityCriticalText: Color(0xFFFFB4AB),
-    severityWarningText: Color(0xFFFFD37A),
-    severityInfoText: Color(0xFF82B1FF),
-    wellbeingLow: Color(0xFFFF8A80),
-    wellbeingMid: Color(0xFFFFD54F),
-    wellbeingHigh: Color(0xFF7CDB9E),
+    surface: Color(0xFF0E1417), // color.page.dark
+    surfaceVariant: Color(0xFF172026), // color.card.dark
+    surfaceContainer: Color(0xFF1E2A31), // color.raised.dark
+    primary: Color(0xFF7DB4FF), // color.primary.dark
+    onPrimary: Color(0xFF0E1417), // color.onPrimary.dark
+    primaryContainer: Color(0xFF1E2A31), // color.tint.dark
+    onPrimaryContainer: Color(0xFFE9EFF1), // color.ink.dark
+    onSurface: Color(0xFFE9EFF1), // color.ink.dark
+    onSurfaceVariant: Color(0xFFA7B6BD), // color.muted.dark
+    border: Color(0xFF3A4A53), // color.border.dark
+    danger: Color(0xFFFF9A8C), // color.danger.dark
+    warn: Color(0xFFFFB454), // color.warn.dark
+    ok: Color(0xFF86D4BE), // color.ok.dark
+    onDanger: Color(0xFF0E1417), // color.onDanger.dark
+    onOk: Color(0xFF0E1417), // color.onPrimary.dark
+    severityCritical: Color(0xFFFF9A8C), // color.danger.dark
+    severityWarning: Color(0xFFFFB454), // color.warn.dark
+    severityInfo: Color(0xFF7DB4FF), // color.primary.dark
+    severityCriticalText: Color(0xFFFF9A8C), // color.danger.dark
+    severityWarningText: Color(0xFFFFB454), // color.warn.dark
+    severityInfoText: Color(0xFF7DB4FF), // color.primary.dark
+    wellbeingLow: Color(0xFFFF9A8C), // color.danger.dark
+    wellbeingMid: Color(0xFFFFB454), // color.warn.dark
+    wellbeingHigh: Color(0xFF86D4BE), // color.ok.dark
   );
 
   @override

@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -481,6 +484,91 @@ void main() {
         isEmpty,
         reason: exceptions.map((e) => e is FlutterError ? e.toStringDeep() : '$e').join('\n'),
       );
+    });
+  });
+
+  group('docs/design/tokens.json parity (U20)', () {
+    File findTokensJson() {
+      var dir = Directory.current.absolute;
+      for (var i = 0; i < 6; i++) {
+        final candidate = File('${dir.path}${Platform.pathSeparator}docs${Platform.pathSeparator}design${Platform.pathSeparator}tokens.json');
+        if (candidate.existsSync()) return candidate;
+        dir = dir.parent;
+      }
+      fail('Could not locate docs/design/tokens.json from ${Directory.current.path}');
+    }
+
+    Color parseHex(String hex) {
+      final clean = hex.trim().replaceFirst('#', '');
+      expect(clean.length, 6, reason: 'Expected 6-digit hex color, got "$hex"');
+      return Color(int.parse('FF$clean', radix: 16));
+    }
+
+    test('AppTokens.light, AppTokens.dark and AppSpace match docs/design/tokens.json', () {
+      final raw = jsonDecode(findTokensJson().readAsStringSync()) as Map<String, dynamic>;
+      final colors = raw['color'] as Map<String, dynamic>;
+      final usageCategory = raw['usageCategory'] as Map<String, dynamic>;
+      final space = raw['space'] as Map<String, dynamic>;
+
+      Color tokenColor(String key, String brightness) =>
+          parseHex((colors[key] as Map<String, dynamic>)[brightness] as String);
+      Color categoryColor(String key, String brightness) =>
+          parseHex((usageCategory[key] as Map<String, dynamic>)[brightness] as String);
+
+      // Spacing tokens match docs/design/tokens.json.
+      expect(AppSpace.xxs, (space['xxs'] as num).toDouble());
+      expect(AppSpace.xs, (space['xs'] as num).toDouble());
+      expect(AppSpace.sm, (space['sm'] as num).toDouble());
+      expect(AppSpace.md, (space['md'] as num).toDouble());
+      expect(AppSpace.lg, (space['lg'] as num).toDouble());
+      expect(AppSpace.xl, (space['xl'] as num).toDouble());
+      expect(AppSpace.xxl, (space['xxl'] as num).toDouble());
+
+      // Light ('Calm') palette matches docs/design/tokens.json.
+      expect(AppTokens.light.surface, tokenColor('page', 'light'));
+      expect(AppTokens.light.surfaceVariant, tokenColor('card', 'light'));
+      expect(AppTokens.light.surfaceContainer, tokenColor('raised', 'light'));
+      expect(AppTokens.light.primary, tokenColor('primary', 'light'));
+      expect(AppTokens.light.onPrimary, tokenColor('onPrimary', 'light'));
+      expect(AppTokens.light.primaryContainer, tokenColor('tint', 'light'));
+      expect(AppTokens.light.onPrimaryContainer, tokenColor('ink', 'light'));
+      expect(AppTokens.light.onSurface, tokenColor('ink', 'light'));
+      expect(AppTokens.light.onSurfaceVariant, tokenColor('muted', 'light'));
+      expect(AppTokens.light.border, tokenColor('border', 'light'));
+      expect(AppTokens.light.danger, tokenColor('danger', 'light'));
+      expect(AppTokens.light.warn, tokenColor('warn', 'light'));
+      expect(AppTokens.light.ok, tokenColor('ok', 'light'));
+      expect(AppTokens.light.onDanger, tokenColor('onDanger', 'light'));
+      expect(AppTokens.light.onOk, tokenColor('onPrimary', 'light'));
+      expect(AppTokens.light.severityCriticalText, tokenColor('danger', 'light'));
+      expect(AppTokens.light.severityWarningText, tokenColor('warn', 'light'));
+      expect(AppTokens.light.severityInfoText, categoryColor('learning', 'light'));
+
+      // Dark ('Control room') palette matches docs/design/tokens.json.
+      expect(AppTokens.dark.surface, tokenColor('page', 'dark'));
+      expect(AppTokens.dark.surfaceVariant, tokenColor('card', 'dark'));
+      expect(AppTokens.dark.surfaceContainer, tokenColor('raised', 'dark'));
+      expect(AppTokens.dark.primary, tokenColor('primary', 'dark'));
+      expect(AppTokens.dark.onPrimary, tokenColor('onPrimary', 'dark'));
+      expect(AppTokens.dark.primaryContainer, tokenColor('tint', 'dark'));
+      expect(AppTokens.dark.onPrimaryContainer, tokenColor('ink', 'dark'));
+      expect(AppTokens.dark.onSurface, tokenColor('ink', 'dark'));
+      expect(AppTokens.dark.onSurfaceVariant, tokenColor('muted', 'dark'));
+      expect(AppTokens.dark.border, tokenColor('border', 'dark'));
+      expect(AppTokens.dark.danger, tokenColor('danger', 'dark'));
+      expect(AppTokens.dark.warn, tokenColor('warn', 'dark'));
+      expect(AppTokens.dark.ok, tokenColor('ok', 'dark'));
+      expect(AppTokens.dark.onDanger, tokenColor('onDanger', 'dark'));
+      expect(AppTokens.dark.onOk, tokenColor('onPrimary', 'dark'));
+      expect(AppTokens.dark.severityCritical, tokenColor('danger', 'dark'));
+      expect(AppTokens.dark.severityWarning, tokenColor('warn', 'dark'));
+      expect(AppTokens.dark.severityInfo, tokenColor('primary', 'dark'));
+      expect(AppTokens.dark.severityCriticalText, tokenColor('danger', 'dark'));
+      expect(AppTokens.dark.severityWarningText, tokenColor('warn', 'dark'));
+      expect(AppTokens.dark.severityInfoText, tokenColor('primary', 'dark'));
+      expect(AppTokens.dark.wellbeingLow, tokenColor('danger', 'dark'));
+      expect(AppTokens.dark.wellbeingMid, tokenColor('warn', 'dark'));
+      expect(AppTokens.dark.wellbeingHigh, tokenColor('ok', 'dark'));
     });
   });
 }
