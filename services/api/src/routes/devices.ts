@@ -120,6 +120,11 @@ const TelemetrySchema = z
     appUsage: z
       .array(z.object({ packageId: z.string().min(1), minutes: z.number().min(0) }))
       .optional(),
+    // C1 (Antigravity's review of #901): the field Android actually sends. `TelemetryDto.perAppMinutes` is
+    // a `Map<String, Int>`, so every real upload left `appUsage: undefined` and the per-app rollup wrote
+    // nothing — the fix would have shipped working tests and an unchanged Flip4. Named here (not only read
+    // ad hoc) so `TELEMETRY_READ_FIELDS`, built from this shape, keeps `GET /v1/devices/:id` consistent.
+    perAppMinutes: z.record(z.string(), z.number().min(0)).optional(),
     urls: z.array(z.string()).optional(),
     timestamp: z.string().datetime().optional(),
     // Issue #867: the instant the phone says it booted (`now - elapsedRealtime`), stable for the life of one
@@ -969,9 +974,16 @@ export async function deviceRoutes(app: FastifyInstance) {
     // Issue #830/S1: the per-app split the same uploads already carry. Without this the parent's usage
     // report has a total and no breakdown on every device, because the only other per-app writer is fed
     // by persistent activity events and the agent's are all `live` (filtered above by BUG-002).
-    if (parsed.data.appUsage && parsed.data.appUsage.length > 0 && device?.childId) {
+    // Precedence, not addition: a transitional client that ever sends both shapes must not have its minutes
+    // written twice. `appUsage` is the array shape this PR first targeted; `perAppMinutes` is what the
+    // Android agent has always sent, and it is the one that reaches a real phone.
+    const appUsageEntries =
+      parsed.data.appUsage && parsed.data.appUsage.length > 0
+        ? parsed.data.appUsage
+        : Object.entries(parsed.data.perAppMinutes ?? {}).map(([packageId, minutes]) => ({ packageId, minutes }));
+    if (appUsageEntries.length > 0 && device?.childId) {
       try {
-        await recordAppUsage(device.childId, id, parsed.data.appUsage);
+        await recordAppUsage(device.childId, id, appUsageEntries);
       } catch (err) {
         // Best-effort, like the total: the phone's next tick re-reports the same minutes and the row is
         // an increment, not a snapshot — a lost write under-counts one app for one day, it does not lie.
