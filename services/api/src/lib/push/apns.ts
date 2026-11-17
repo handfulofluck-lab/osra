@@ -1,6 +1,7 @@
 import { createSign } from "node:crypto";
 import { connect, type ClientHttp2Session } from "node:http2";
 import type { PushMessage, PushProvider, PushResult } from "./types.js";
+import { withBackoff } from "./retry.js";
 
 /**
  * Apple Push Notification service over HTTP/2 with token-based (p8) authentication — no SDK.
@@ -130,6 +131,7 @@ export class ApnsProvider implements PushProvider {
     private readonly cfg: ApnsConfig,
     private readonly transport: ApnsTransport = http2Transport(),
     private readonly now: () => number = () => Date.now(),
+    private readonly sleep?: (ms: number) => Promise<void>,
   ) {}
 
   private providerToken(): string {
@@ -178,28 +180,16 @@ export class ApnsProvider implements PushProvider {
       "apns-priority": message.dataOnly ? "5" : message.priority === "high" ? "10" : "5",
       ...(message.threadId ? { "apns-collapse-id": message.threadId.slice(0, 64) } : {}),
     };
-    const isRetryableConnectionError = (err: unknown): boolean => {
-      const code = (err as NodeJS.ErrnoException).code ?? "";
-      if (["ECONNRESET", "EPIPE", "ETIMEDOUT"].includes(code)) return true;
-      const msg = (err as Error).message ?? "";
-      return ["ECONNRESET", "EPIPE", "ETIMEDOUT", "GOAWAY", "NGHTTP2", "closed session", "Connection reset"].some((pattern) =>
-        msg.includes(pattern),
-      );
-    };
-
+    // #842: one bounded, capped backoff for the connection-level failures (#843 retried once); the
+    // transport still disposes a dead HTTP/2 session on error, so the retry dials a fresh one.
     let res: { status: number; body: string };
-    let attempt = 0;
-    while (true) {
-      try {
-        res = await this.transport(this.cfg.host, `/3/device/${token}`, headers, JSON.stringify(ApnsProvider.buildPayload(message)));
-        break;
-      } catch (err) {
-        if (attempt === 0 && isRetryableConnectionError(err)) {
-          attempt++;
-          continue;
-        }
-        return { ok: false, invalidToken: false, reason: (err as Error).message };
-      }
+    try {
+      res = await withBackoff(
+        () => this.transport(this.cfg.host, `/3/device/${token}`, headers, JSON.stringify(ApnsProvider.buildPayload(message))),
+        this.sleep ? { sleep: this.sleep } : {},
+      );
+    } catch (err) {
+      return { ok: false, invalidToken: false, reason: (err as Error).message };
     }
     if (res.status === 200) return { ok: true };
     let reason = "";

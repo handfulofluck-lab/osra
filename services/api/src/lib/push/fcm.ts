@@ -1,6 +1,7 @@
 import { createSign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { FetchLike, PushMessage, PushProvider, PushResult } from "./types.js";
+import { withBackoff } from "./retry.js";
 
 /**
  * Firebase Cloud Messaging, HTTP v1 API, authenticated with a service-account key — no SDK.
@@ -68,6 +69,7 @@ export class FcmProvider implements PushProvider {
     private readonly sa: ServiceAccount,
     private readonly fetchImpl: FetchLike = fetch,
     private readonly now: () => number = () => Date.now(),
+    private readonly sleep?: (ms: number) => Promise<void>,
   ) {}
 
   private async token(): Promise<string> {
@@ -135,14 +137,23 @@ export class FcmProvider implements PushProvider {
     } catch (err) {
       return { ok: false, invalidToken: false, reason: (err as Error).message };
     }
-    const res = await this.fetchImpl(
-      `https://fcm.googleapis.com/v1/projects/${this.sa.project_id}/messages:send`,
-      {
-        method: "POST",
-        headers: { authorization: `Bearer ${bearer}`, "content-type": "application/json" },
-        body: JSON.stringify(FcmProvider.buildMessage(token, message)),
-      },
-    );
+    // #842: the fetch rejects on a dropped connection (`TypeError: fetch failed`, errno on `cause.code`);
+    // that is the only case retried. The token exchange above stays single-attempt, so one send never
+    // turns into several token calls. At-least-once, as the alert path already assumes.
+    let res: Response;
+    try {
+      res = await withBackoff(
+        () =>
+          this.fetchImpl(`https://fcm.googleapis.com/v1/projects/${this.sa.project_id}/messages:send`, {
+            method: "POST",
+            headers: { authorization: `Bearer ${bearer}`, "content-type": "application/json" },
+            body: JSON.stringify(FcmProvider.buildMessage(token, message)),
+          }),
+        this.sleep ? { sleep: this.sleep } : {},
+      );
+    } catch (err) {
+      return { ok: false, invalidToken: false, reason: (err as Error).message };
+    }
     if (res.ok) {
       // #673: FCM answers `{ "name": "projects/<p>/messages/<id>" }`. That id is what an operator
       // takes to Google's log to see whether a wake was delivered and how late, so it travels back
