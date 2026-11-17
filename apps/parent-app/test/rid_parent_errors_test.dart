@@ -202,7 +202,7 @@ void main() {
       expect(find.text('الرياض (GMT+3)'), findsOneWidget);
       expect(find.text('Asia/Riyadh'), findsNothing);
       final chosenText = tester.widget<Text>(
-        find.descendant(of: find.byKey(const ValueKey('digestTimezone')), matching: find.byType(Text)),
+        find.descendant(of: find.byKey(const ValueKey('digestTimezone')), matching: find.text('الرياض (GMT+3)')),
       );
       expect(chosenText.maxLines, 2);
       expect(chosenText.overflow, isNull);
