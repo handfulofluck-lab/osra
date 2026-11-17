@@ -84,6 +84,43 @@ describe("/v1/me/consents", () => {
     expect(JSON.stringify(body)).not.toContain("parent-1");
   });
 
+  it("the state is read for the signed-in parent", async () => {
+    // Ahmed's c11 / Fable's Blocker 2: the id must come from the token, never from anything else in scope.
+    await app.inject({ method: "GET", url: "/v1/me/consents", headers: authHeader(app) });
+    const [call] = prismaMock.parentConsentEvent.findMany.mock.calls as Array<[{ where?: Record<string, unknown> }]>;
+    expect(call[0].where).toEqual({ parentId: "parent-1" });
+  });
+
+  it("the row is written for the signed-in parent", async () => {
+    // Ahmed's c10: recording under `user.familyId`, or any id but the token's, would file a consent against
+    // the wrong person. `authHeader` signs as parent-1.
+    prismaMock.parentConsentEvent.findFirst.mockResolvedValue(null);
+    await app.inject({
+      method: "PUT",
+      url: "/v1/me/consents/terms_privacy",
+      headers: authHeader(app),
+      payload: { granted: true, textVersion: SERVED.textVersion, locale: "en" },
+    });
+    const [call] = prismaMock.parentConsentEvent.create.mock.calls as Array<[{ data: Record<string, unknown> }]>;
+    expect(call[0].data.parentId).toBe("parent-1");
+    // And the dedupe read is scoped the same way.
+    const [first] = prismaMock.parentConsentEvent.findFirst.mock.calls as Array<[{ where?: Record<string, unknown> }]>;
+    expect(first[0].where).toMatchObject({ parentId: "parent-1", purpose: "terms_privacy" });
+  });
+
+  it("an app write stores the locale the server served, not the one asked for", async () => {
+    // Ahmed's c9: sign-up has this row (#878 N1); the app write did not.
+    prismaMock.parentConsentEvent.findFirst.mockResolvedValue(null);
+    await app.inject({
+      method: "PUT",
+      url: "/v1/me/consents/terms_privacy",
+      headers: authHeader(app),
+      payload: { granted: true, textVersion: SERVED.textVersion, locale: "fr" },
+    });
+    const [call] = prismaMock.parentConsentEvent.create.mock.calls as Array<[{ data: Record<string, unknown> }]>;
+    expect(call[0].data).toMatchObject({ locale: "en", textHash: consentCopyFor("en").purposes[0].textHash });
+  });
+
   it("the history is scoped to the signed-in parent", async () => {
     // Ahmed's B2: dropping `where: { parentId }` would let one parent read every family's consent history.
     prismaMock.parentConsentEvent.findMany.mockResolvedValue([grantedRow]);
