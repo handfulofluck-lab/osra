@@ -171,7 +171,9 @@ open class TamperGuardActivity : ComponentActivity() {
             LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setBackgroundColor(0xFF0D1B2A.toInt())
+                // N1 (Antigravity): the background comes from the palette too, so a token swap moves both
+                // colours together — the text already did, and half a palette is how one of them drifts.
+                setBackgroundColor(GuardPalette.BACKGROUND)
                 setPadding(64, 64, 64, 64)
                 addView(
                     TextView(this@TamperGuardActivity).apply {
