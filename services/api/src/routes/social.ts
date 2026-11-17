@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { raiseAlert } from "../lib/alerts.js";
@@ -7,6 +7,7 @@ import { registerRawBodyParser, authenticateInternalRequest } from "../lib/inter
 import { checkActiveConsent } from "../lib/consent.js";
 import { requireFamily, requireGuardianRead, requireParent } from "../middleware/requireFamily.js";
 import { decryptSnippet, encryptSnippet } from "../lib/snippetVault.js";
+import { isValidTimeZone } from "../lib/digestSchedule.js";
 
 const ScanSchema = z.object({
   childId: z.string().min(1),
@@ -101,11 +102,41 @@ type ScanItemResult =
   | { ok: true; flagged: boolean; severity: Severity; concernTypes: string[] }
   | { ok: false; reason: string; status: number; body?: Record<string, unknown> };
 
+/** `yyyy-mm-dd` in the family's own zone; the unit a monthly cost figure is summed from. */
+function localDay(now: Date, timeZone: string): string {
+  const zone = isValidTimeZone(timeZone) ? timeZone : "UTC";
+  return new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
+
+/**
+ * Issue #890 (pricing): count one classified capture against its family's day.
+ *
+ * Two counters because they cost different amounts: every scan is classified (local patterns first, which
+ * are free), and only the ones that reached the engine are a bill. Nothing anywhere recorded that split,
+ * so "measured variable cost per family" was unanswerable — this row is what makes it a query.
+ *
+ * Best-effort by contract: a counter must never turn a served scan into a 500, and a lost increment is a
+ * rounding error in a monthly figure. The caller awaits nothing.
+ */
+async function recordScanUsage(familyId: string, usedAi: boolean, log?: FastifyRequest["log"]): Promise<void> {
+  try {
+    const family = await prisma.family.findUnique({ where: { id: familyId }, select: { timezone: true } });
+    const day = localDay(new Date(), family?.timezone ?? "UTC");
+    await prisma.aiScanUsage.upsert({
+      where: { familyId_day: { familyId, day } },
+      create: { familyId, day, scans: 1, aiCalls: usedAi ? 1 : 0 },
+      update: { scans: { increment: 1 }, ...(usedAi ? { aiCalls: { increment: 1 } } : {}) },
+    });
+  } catch (err) {
+    log?.warn({ err, familyId }, "scan usage counter failed");
+  }
+}
+
 /**
  * Scans one capture: ownership, consent, the verdict, the vault write and the throttled alert. Shared
  * by the single-item body and each item of a batch (#490), so the checks are identical for both.
  */
-async function scanOne(input: unknown, device: ScanDevice): Promise<ScanItemResult> {
+async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest["log"]): Promise<ScanItemResult> {
   const parsed = ScanSchema.safeParse(input);
   if (!parsed.success) return { ok: false, reason: "invalid_item", status: 400, body: { error: parsed.error.flatten() } };
   const { childId, deviceId, app: appName, contact, text } = parsed.data;
@@ -127,7 +158,10 @@ async function scanOne(input: unknown, device: ScanDevice): Promise<ScanItemResu
   const childAge = typeof (child as { birthYear?: number }).birthYear === "number"
     ? new Date().getFullYear() - (child as { birthYear: number }).birthYear
     : undefined;
-  const verdict = (await analyzeWithAi(text, childAge)) ?? localKeywordCheck(text);
+  const aiVerdict = await analyzeWithAi(text, childAge);
+  const verdict = aiVerdict ?? localKeywordCheck(text);
+  // Issue #890: the counter is written whether or not the capture is flagged — cost is paid on both.
+  await recordScanUsage(child.familyId, aiVerdict !== null, log);
   if (!verdict.flagged) {
     return { ok: true, flagged: false, severity: "info", concernTypes: [] };
   }
@@ -187,12 +221,12 @@ export async function socialRoutes(app: FastifyInstance) {
       // reach the agent's 30 s read timeout, so a slow engine would fail a batch the server had already
       // stored, and the retry would store it twice. `Promise.all` keeps the order, and the alert
       // throttle is an atomic SET NX, so same-app items still raise at most one alert.
-      const scanned = await Promise.all(batch.data.items.map((item) => scanOne(item, auth.device)));
+      const scanned = await Promise.all(batch.data.items.map((item) => scanOne(item, auth.device, req.log)));
       // A failed item carries its reason only; status codes belong to the single-item body.
       const results = scanned.map((r) => (r.ok ? r : { ok: false, reason: r.reason }));
       return { results };
     }
-    const single = await scanOne(req.body, auth.device);
+    const single = await scanOne(req.body, auth.device, req.log);
     if (!single.ok) {
       return reply.code(single.status).send(single.body ?? { error: single.reason });
     }

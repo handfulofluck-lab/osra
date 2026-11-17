@@ -51,6 +51,8 @@ export const MOCKED_MODELS = [
   "appUsageDaily",
   "webVisit",
   "accountDeletionToken",
+  // Issue #890: per-family, per-day scan counters.
+  "aiScanUsage",
 ] as const;
 
 /** Build the mocked PrismaClient shape used by all route tests. */

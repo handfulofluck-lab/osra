@@ -100,6 +100,49 @@ describe("social routes", () => {
     await app.close();
   });
 
+  it("counts each scan against the family's own day (#890 cost accounting)", async () => {
+    // The pricing debate needs "measured cost per family"; this row is what makes it a query. The counters
+    // are per family-local day, because a UTC date would move a Dubai family's evening into tomorrow.
+    const app = await buildApp(socialRoutes, "/v1/social");
+    vi.stubGlobal("fetch", aiOk({ flagged: false, severity: "info", categories: { safe: 0.9 } }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.family.findUnique.mockResolvedValue({ timezone: "Asia/Dubai" });
+
+    await postScan(app, scanBody({ text: "want to play soccer later?" }));
+
+    expect(prismaMock.aiScanUsage.upsert).toHaveBeenCalledTimes(1);
+    const call = prismaMock.aiScanUsage.upsert.mock.calls[0][0] as {
+      where: { familyId_day: { familyId: string; day: string } };
+      create: { scans: number; aiCalls: number };
+      update: Record<string, unknown>;
+    };
+    expect(call.where.familyId_day.familyId).toBe("fam-1");
+    expect(call.where.familyId_day.day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(call.create).toMatchObject({ scans: 1, aiCalls: 1 });
+    expect(call.update).toEqual({ scans: { increment: 1 }, aiCalls: { increment: 1 } });
+    await app.close();
+  });
+
+  it("a scan the engine never answered is a scan but not a model call (#890)", async () => {
+    // The fallback path is free: counting it as an AI call would overstate every family's bill, and the
+    // whole point of the counter is to be the number a price is set from.
+    const app = await buildApp(socialRoutes, "/v1/social");
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNREFUSED"); }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.family.findUnique.mockResolvedValue({ timezone: "UTC" });
+
+    await postScan(app, scanBody({ text: "want to play soccer later?" }));
+
+    const call = prismaMock.aiScanUsage.upsert.mock.calls[0][0] as {
+      create: { scans: number; aiCalls: number };
+      update: Record<string, unknown>;
+    };
+    expect(call.create).toMatchObject({ scans: 1, aiCalls: 0 });
+    // The mutant — always incrementing aiCalls — would bill a family for an engine that never ran.
+    expect(call.update).toEqual({ scans: { increment: 1 } });
+    await app.close();
+  });
+
   it("flags risky text: vault row holds only ciphertext, alert has no preview snippet", async () => {
     const app = await buildApp(socialRoutes, "/v1/social");
     vi.stubGlobal("fetch", aiOk({ flagged: true, severity: "warning", categories: { self_harm: 0.8, safe: 0.2 } }));
