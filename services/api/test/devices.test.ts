@@ -131,8 +131,11 @@ describe("device enrollment & management", () => {
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().device.id).toBe("dev-2");
+    // #790: a parent's own enrollment is not a pending claim — nothing claimed anything, so the row is
+    // paired on creation. Without `pairedAt` the device would be hidden from the parent that created it
+    // and swept 30 minutes later.
     expect(prismaMock.device.create).toHaveBeenCalledWith({
-      data: { childId: "child-1", platform: "android", model: "Pixel 7a", osVersion: "14", pushToken: "tok" },
+      data: { childId: "child-1", platform: "android", model: "Pixel 7a", osVersion: "14", pushToken: "tok", pairedAt: expect.any(Date) },
     });
     await app.close();
   });
@@ -263,8 +266,11 @@ describe("device enrollment & management", () => {
     const res = await app.inject({ method: "GET", url: "/v1/devices", headers: authHeader(app) });
     expect(res.statusCode).toBe(200);
     expect(res.json().devices).toHaveLength(2);
+    // #790 narrowed this query: the list is the family's phones, and a pending device (a pairing claim
+    // whose phone has not made one accepted request) is not one of them yet. The assertion is exact, so
+    // dropping the `pairedAt` filter fails here rather than silently drawing an unproven row.
     expect(prismaMock.device.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { child: { familyId: "fam-1" } } }),
+      expect.objectContaining({ where: { child: { familyId: "fam-1" }, pairedAt: { not: null } } }),
     );
 
     prismaMock.device.findMany.mockClear();
