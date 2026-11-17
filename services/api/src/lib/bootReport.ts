@@ -65,6 +65,16 @@ export type BootReport =
    */
   | { kind: "first_report"; bootedAt: Date; bootCount: number | null; reason: "no_previous" | "count_reset" }
   | { kind: "same_boot" }
+  /**
+   * The same boot, but this report is the first to carry a counter where the stored row has none — an agent
+   * that was upgraded in place. Nothing is announced; the counter is recorded so that the *next* restart is
+   * decided by the counter instead of by the instant.
+   *
+   * Reviewed on #884 (Fable): without this, a count-less row waits for the next restart to learn a count, so
+   * the clock-move weakness of the instant fallback survives for up to a full uptime. Adopting it here
+   * shortens that to one tick.
+   */
+  | { kind: "same_boot_adopt_count"; bootCount: number }
   | {
       kind: "new_boot";
       bootedAt: Date;
@@ -88,7 +98,9 @@ export type BootReport =
  *    from an earlier state (wiped, restored, or a different build's counter), which is not a restart of the
  *    phone the parent knows about and must not read as tampering.
  * 4. Otherwise (a count on one side only) → the stored instant decides: nothing stored is `first_report`,
- *    within [SAME_BOOT_TOLERANCE_MS] is the same boot, anything else is a new boot.
+ *    within [SAME_BOOT_TOLERANCE_MS] is `same_boot_adopt_count` when this report carries a count and the
+ *    stored row has none (so the next decision is count-led), otherwise the same boot; anything else is a
+ *    new boot.
  *
  * The gap is measured against the previous `lastSeen`, not against `now`: `lastSeen` is the last report the
  * phone managed before it went down, so the number is the downtime, and a telemetry upload that arrives
@@ -109,7 +121,14 @@ export function decideBootReport(input: BootReportInput): BootReport {
   }
 
   if (!storedBootAt) return { kind: "first_report", bootedAt, bootCount, reason: "no_previous" };
-  if (Math.abs(bootedAt.getTime() - storedBootAt.getTime()) <= SAME_BOOT_TOLERANCE_MS) return { kind: "same_boot" };
+  if (Math.abs(bootedAt.getTime() - storedBootAt.getTime()) <= SAME_BOOT_TOLERANCE_MS) {
+    // Same boot by the instant, and this report brings a counter the stored row does not have: record it so
+    // the next restart is decided by the counter rather than by the clock (see `same_boot_adopt_count`).
+    if (bootCount !== null && (storedBootCount === null || storedBootCount === undefined)) {
+      return { kind: "same_boot_adopt_count", bootCount };
+    }
+    return { kind: "same_boot" };
+  }
   return newBoot(bootedAt, bootCount, lastSeen);
 }
 
