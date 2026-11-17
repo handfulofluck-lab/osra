@@ -42,7 +42,7 @@ WHAT YOU CAN DO
 
 WHAT OSRA DOES NOT DO ON GOOGLE PLAY
 • It does not read SMS, call logs or notifications.
-• The child app is for Android only. There is no iPhone child app yet.
+• This child app is for Android. The iPhone child app works differently, through Apple's Screen Time, and does less (see the privacy policy).
 • It does not hide. Your child sees the OSRA icon and a notification on their phone at all times.
 
 PRIVACY
@@ -88,7 +88,7 @@ PRIVACY
 
 ما لا يفعله «أسرة» في نسخة Google Play
 • لا يقرأ الرسائل النصية (SMS) ولا سجل المكالمات ولا الإشعارات.
-• تطبيق الطفل متاح لأجهزة Android فقط، ولا يتوفر بعد لأجهزة iPhone.
+• تطبيق الطفل هذا مخصّص لأجهزة Android. أما على iPhone، فيعمل تطبيق الطفل بطريقة مختلفة، من خلال «مدة استخدام الجهاز» من Apple، ويقدّم ميزات أقل (راجع سياسة الخصوصية).
 • لا يختبئ: يرى طفلك أيقونة «أسرة» وإشعارًا ظاهرًا على هاتفه طوال الوقت.
 
 الخصوصية

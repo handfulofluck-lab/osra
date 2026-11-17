@@ -798,7 +798,7 @@
   },
   "saveMonitoring": "Save monitoring",
   "concerns": "Concerns",
-  "vaultTrustCopy": "Snippets are encrypted with your family key before leaving the device and stored encrypted on your server.",
+  "vaultTrustCopy": "Excerpts travel over an encrypted connection and are stored encrypted on OSRA's servers.",
   "noConcernsDetected": "No concerns detected",
   "unknownContact": "Unknown contact",
   "unknownApp": "Unknown app",

@@ -2651,7 +2651,7 @@ abstract class AppLocalizations {
   /// No description provided for @vaultTrustCopy.
   ///
   /// In en, this message translates to:
-  /// **'Snippets are encrypted with your family key before leaving the device and stored encrypted on your server.'**
+  /// **'Excerpts travel over an encrypted connection and are stored encrypted on OSRA\'s servers.'**
   String get vaultTrustCopy;
 
   /// No description provided for @noConcernsDetected.
