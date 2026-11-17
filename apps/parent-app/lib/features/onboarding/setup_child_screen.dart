@@ -232,10 +232,13 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
         const SizedBox(height: AppSpace.lg),
         FilledButton(
           key: const ValueKey('onboardingAddChild'),
+          // #874 B6 (UI/UX Bureau): at the largest text the wrapped label ran into the rounded edge. The
+          // #862 pattern — a full-width button with a 52 px floor and a centred label — gives it the room.
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
           onPressed: _busy ? null : _createChild,
           child: _busy
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-              : Text(l10n.onboardingAddChildContinue),
+              : Text(l10n.onboardingAddChildContinue, textAlign: TextAlign.center),
         ),
         const SizedBox(height: AppSpace.md),
         Text(

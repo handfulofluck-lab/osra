@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 // Prefixed: riverpod exports its own `Family` (the provider family type).
 import 'package:familyshield_parent/api/models.dart' as models;
 import 'package:familyshield_parent/features/children/consent_screen.dart';
+import 'package:familyshield_parent/features/children/consent_step.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/onboarding/setup_child_screen.dart';
 import 'package:familyshield_parent/l10n/l10n.dart';
@@ -109,6 +110,99 @@ void main() {
       // Mutant: `_ => code` and this row goes red, as does the "no code on screen" claim of the row above.
       expect(regionPlaceName(en, 'ZZ'), 'Other');
       expect(regionPlaceName(en, ''), 'Other');
+    });
+  });
+
+  group('B6 at 320 px / 200 % (#874, UI/UX Bureau)', () {
+    /// Sets a 320 px surface at 200 % text for the duration of one test.
+    void narrowAndLarge(WidgetTester tester) {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1.0;
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+        tester.platformDispatcher.clearTextScaleFactorTestValue();
+      });
+    }
+
+    /// The `DropdownButton` a form field builds, which is where `isExpanded` and `selectedItemBuilder`
+    /// actually live: the form-field widget passes both straight through and stores neither.
+    DropdownButton<String> buttonFor(WidgetTester tester, Key fieldKey) => tester.widget<DropdownButton<String>>(
+          find.descendant(of: find.byKey(fieldKey), matching: find.byType(DropdownButton<String>)),
+        );
+
+    /// Every widget a `selectedItemBuilder` returns must be allowed to wrap: no `maxLines`, no ellipsis.
+    void expectMayWrap(WidgetTester tester, DropdownButton<String> button, Key fieldKey) {
+      final items = button.selectedItemBuilder!(tester.element(find.byKey(fieldKey)));
+      expect(items, isNotEmpty);
+      for (final item in items) {
+        expect(item, isA<Text>());
+        final text = item as Text;
+        expect(text.maxLines, isNull, reason: 'a capped line count is how the label was cut');
+        expect(text.overflow, isNot(TextOverflow.ellipsis), reason: 'the Bureau refused the ellipsis');
+      }
+    }
+
+    testWidgets('the add-child region picker expands and its chosen place may wrap', (tester) async {
+      narrowAndLarge(tester);
+      await pumpSignedIn(tester, const Scaffold(body: AddChildDialog()));
+      // Mutant: drop `isExpanded: true` and the 200 % frame overflows by 27 px (82 px at 320/200 %); this
+      // row is the code fact, the frames are the picture.
+      final button = buttonFor(tester, const ValueKey('addChildJurisdiction'));
+      expect(button.isExpanded, isTrue);
+      expect(button.selectedItemBuilder, isNotNull);
+      expectMayWrap(tester, button, const ValueKey('addChildJurisdiction'));
+      expect(tester.takeException(), isNull, reason: 'the dialog lays out at 320 px / 200 %');
+    });
+
+    testWidgets('the consent-method picker expands and «رسالة نصية مع تأكيد» may wrap', (tester) async {
+      narrowAndLarge(tester);
+      await tester.pumpWidget(ProviderScope(
+        overrides: [apiClientProvider.overrideWithValue(FakeApiClient(standardRoutes()))],
+        child: localizedTestApp(
+          Scaffold(
+            body: Padding(
+              padding: const EdgeInsets.all(8),
+              child: ConsentStep(method: kConsentMethods.first, onMethodChanged: (_) {}),
+            ),
+          ),
+          locale: const Locale('ar'),
+          textDirection: TextDirection.rtl,
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      final button = buttonFor(tester, const ValueKey('consentMethod'));
+      expect(button.isExpanded, isTrue);
+      expect(button.selectedItemBuilder, isNotNull);
+      expectMayWrap(tester, button, const ValueKey('consentMethod'));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('"Add child and continue" is a 52 px full-width button with a centred label', (tester) async {
+      narrowAndLarge(tester);
+      await pumpSignedIn(tester, const SetupChildScreen());
+      // The screen is a lazy ListView and the button is below the fold at 320 px / 200 %, so it is not
+      // built until it is scrolled to. Scrolling first is also the honest frame the Bureau measured.
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('onboardingAddChild')),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      final button = tester.widget<FilledButton>(find.byKey(const ValueKey('onboardingAddChild')));
+      final size = button.style?.minimumSize?.resolve(<WidgetState>{});
+      // Mutant: drop the style and the label wraps into the rounded edge at the largest text.
+      expect(size?.height, 52);
+      expect(size?.width, double.infinity, reason: 'Size.fromHeight: full width, a floor on height only');
+
+      final label = tester.widget<Text>(find.descendant(
+        of: find.byKey(const ValueKey('onboardingAddChild')),
+        matching: find.text(lookupAppLocalizations(const Locale('en')).onboardingAddChildContinue),
+      ));
+      expect(label.textAlign, TextAlign.center);
     });
   });
 

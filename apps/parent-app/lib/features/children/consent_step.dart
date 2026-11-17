@@ -71,6 +71,11 @@ class ConsentStep extends StatelessWidget {
             for (final m in kConsentMethods)
               DropdownMenuItem(value: m, child: Text(l10n.consentMethod(m))),
           ],
+          // #874 B6 (UI/UX Bureau): the selected label may wrap rather than ellipsise. «رسالة نصية مع
+          // تأكيد» is the Arabic the Bureau asked to see whole, and it is the longest of the three.
+          selectedItemBuilder: (context) => [
+            for (final m in kConsentMethods) Text(l10n.consentMethod(m)),
+          ],
           onChanged: (v) => onMethodChanged(v ?? kConsentMethods.first),
         ),
       ],
