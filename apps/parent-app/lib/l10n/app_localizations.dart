@@ -410,6 +410,14 @@ abstract class AppLocalizations {
   /// **'Create account'**
   String get createAccount;
 
+  /// To create an account, please tick this box.
+  String get consentRequired;
+
+  String get showPassword;
+  String get hidePassword;
+  String get passwordMinHint;
+  String get familyNameHelper;
+
   /// No description provided for @familyNameLabel.
   ///
   /// In en, this message translates to:
@@ -3269,7 +3277,7 @@ abstract class AppLocalizations {
   /// No description provided for @onboardingNoNetwork.
   ///
   /// In en, this message translates to:
-  /// **'Cannot reach the server. Check the server address and your internet connection, then try again.'**
+  /// **'Couldn't connect to OSRA. Check your internet connection, then try again.'**
   String get onboardingNoNetwork;
 
   /// No description provided for @onboardingChildTitle.
