@@ -90,6 +90,43 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// #862 UI/UX addendum: on the iPhone SE 3 at AX5 the label was cut inside a fixed 52 pt button —
+  /// "Create" only in English, the Arabic cut at the bottom. The height is a minimum now, so the button
+  /// grows to two lines. Mutant: put `SizedBox(height: 52)` back and the height is exactly 52 again.
+  testWidgets('at AX5 the Create account button grows instead of cutting its label', (tester) async {
+    final client = await api();
+    tester.view.physicalSize = const Size(750, 1334);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(client)],
+      child: localizedTestApp(
+        // Keep the test view's own metrics (a bare MediaQueryData has a zero size) and change only the
+        // text scale to the largest accessibility step.
+        Builder(builder: (context) {
+          final media = MediaQuery.of(context);
+          return MediaQuery(
+            data: media.copyWith(textScaler: const TextScaler.linear(3.0)),
+            child: const CreateAccountScreen(),
+          );
+        }),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final button = find.byKey(const ValueKey('createAccountButton'));
+    expect(button, findsOneWidget);
+    expect(tester.getSize(button).height, greaterThan(52.0));
+
+    final label = tester.widget<Text>(find.text(en.createAccount));
+    // The label wraps; it is never clipped to a line count.
+    expect(label.maxLines, isNull);
+    expect(label.textAlign, TextAlign.center);
+  });
+
   String? shown(WidgetTester tester, String key) {
     final f = find.byKey(ValueKey(key));
     return f.evaluate().isEmpty ? null : (tester.widget<Text>(f).data);

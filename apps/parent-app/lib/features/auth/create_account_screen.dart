@@ -136,7 +136,9 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
     return TextButton.styleFrom(
       minimumSize: const Size(48, 48),
       foregroundColor: tokens.primary,
-      textStyle: const TextStyle(decoration: TextDecoration.underline),
+      // #862 UI/UX addendum: these are buttons. An underline breaks at every word gap in Arabic and
+      // reads like underscores at large text, so the link colour carries the affordance instead.
+      textStyle: const TextStyle(decoration: TextDecoration.none),
     );
   }
 
@@ -363,13 +365,16 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                       ),
                     ),
                   const SizedBox(height: AppSpace.md),
-                  SizedBox(
-                    height: 52,
+                  // #862 UI/UX addendum: a fixed 52 cut the label inside the button at AX5 ("Create", and
+                  // the Arabic cut at the bottom). The height is a minimum, so the button grows to two
+                  // lines instead; the label is centred and never truncated.
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 52),
                     child: FilledButton(
                       key: const ValueKey('createAccountButton'),
                       // Never greyed out: the box's error is the answer, not a disabled button.
                       onPressed: auth.loading || _submitting ? null : () => _submit(data, purpose),
-                      child: Text(l10n.createAccount),
+                      child: Text(l10n.createAccount, textAlign: TextAlign.center),
                     ),
                   ),
                 ],
