@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:familyshield_parent/api/models.dart' show LiveActivity, wellbeingColor;
+import 'package:familyshield_parent/core/ltr_isolate.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/reports/reports_screen.dart';
@@ -73,11 +74,11 @@ void main() {
 
       // Web section: visits, blocked domains and the #7 YouTube NOTE.
       final scrollable = find.byType(Scrollable).first;
-      await tester.scrollUntilVisible(find.text('tiktok.com'), 200, scrollable: scrollable);
+      await tester.scrollUntilVisible(find.text(ltrIsolateHost('tiktok.com')), 200, scrollable: scrollable);
       await tester.pumpAndSettle();
       // #830: the card counts sites once site names replace addresses.
       expect(find.textContaining('42 sites visited'), findsOneWidget);
-      expect(find.text('tiktok.com'), findsOneWidget);
+      expect(find.text(ltrIsolateHost('tiktok.com')), findsOneWidget);
       expect(find.textContaining('12× blocked'), findsOneWidget);
       expect(find.textContaining('YouTube search is forced to SafeSearch'), findsOneWidget);
       expect(find.textContaining('Restricted Mode needs HTTPS inspection'), findsOneWidget);

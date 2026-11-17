@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../api/models.dart';
+import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
@@ -98,60 +99,138 @@ class _UsageSection extends StatelessWidget {
           )
         else ...[
           const SizedBox(height: AppSpace.md),
-          SizedBox(
-            // NOTE: fixed height — BarChart throws inside an unbounded height.
-            height: 200,
-            child: BarChart(
-              key: const ValueKey('usageBarChart'),
-              BarChartData(
-                barGroups: [
-                  for (var i = 0; i < summary.topApps.length; i++)
-                    BarChartGroupData(x: i, barRods: [BarChartRodData(toY: summary.topApps[i].minutes.toDouble(), width: 18)]),
-                ],
-                titlesData: FlTitlesData(
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      getTitlesWidget: (value, _) {
-                        final i = value.toInt();
-                        if (i < 0 || i >= summary.topApps.length) return const SizedBox.shrink();
-                        // NOTE: shortened label — long app names overflow narrow screens.
-                        final name = summary.topApps[i].name;
-                        return Padding(
-                          padding: const EdgeInsets.only(top: AppSpace.xs),
-                          child: Text(
-                            name.length > 8 ? '${name.substring(0, 8)}…' : name,
-                            style: AppType.chartTick,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  // NOTE: the default left axis drew bare minute numbers with no
-                  // unit — an unexplained "120" next to the tallest bar. Label
-                  // the ticks with the minute unit so the value is self-describing.
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 64,
-                      getTitlesWidget: (value, _) => value <= 0
-                          ? const SizedBox.shrink()
-                          : Text(
-                              l10n.minutesShort(value.toInt()),
-                              style: AppType.chartTick,
-                              textAlign: TextAlign.center,
-                            ),
-                    ),
-                  ),
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                ),
-                borderData: FlBorderData(show: false),
-              ),
-            ),
-          ),
+          TopAppsChart(apps: summary.topApps),
         ],
       ],
+    );
+  }
+}
+
+/// The top-apps bar chart, sized for the text scale it is drawn at.
+///
+/// #841 condition 4 (UI/UX Bureau). At 320 px with 200 % text the chart collided with itself in three
+/// ways: the value axis reserved a fixed 64 px whatever the text size, every app name was cut to eight
+/// characters with an ellipsis, and the labels had no width of their own to wrap into. The three fixes
+/// are the three knobs: [tickIntervalFor] keeps the value axis to at most three labels,
+/// [axisWidthFor] reserves what the widest label actually measures at this scale, and each bottom
+/// label is given its own slot to wrap inside.
+///
+/// Public (like `UsageBar`) so a widget test can assert the two sizing rules directly instead of
+/// guessing them from a screenshot.
+class TopAppsChart extends StatelessWidget {
+  final List<TopApp> apps;
+  const TopAppsChart({super.key, required this.apps});
+
+  /// Height of the plot alone; the labels strip is added to it in [build].
+  static const double plotHeight = 140;
+
+  /// The value the axis tops out at: the busiest app plus headroom, so the tallest bar is not flush
+  /// with the top edge. Never 0 — fl_chart divides by the range.
+  static double maxYFor(List<TopApp> apps) {
+    final top = apps.fold<int>(0, (m, a) => a.minutes > m ? a.minutes : m);
+    return top <= 0 ? 1 : top * 1.1;
+  }
+
+  /// The interval that draws **at most three** value labels (0 is not drawn), however tall the text.
+  static double tickIntervalFor(List<TopApp> apps) => maxYFor(apps) / 2;
+
+  /// The width the value axis needs for the widest label it will draw, measured rather than guessed:
+  /// «210 دقائق» at 200 % is more than twice what "210 min" is at 100 %.
+  static double axisWidthFor(BuildContext context, List<TopApp> apps) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: context.l10n.minutesShort(maxYFor(apps).round()),
+        style: AppType.chartTick,
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    return painter.width.ceilToDouble() + AppSpace.sm;
+  }
+
+  /// Two lines of the tick face at the current scale, plus the gap above them.
+  static double labelHeightFor(BuildContext context) {
+    final scaled = MediaQuery.textScalerOf(context).scale(AppType.chartTick.fontSize ?? 10);
+    return scaled * 2 * (AppType.chartTick.height ?? 1.2) + AppSpace.xs;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final axisWidth = axisWidthFor(context, apps);
+    final labelHeight = labelHeightFor(context);
+    final interval = tickIntervalFor(apps);
+    return SizedBox(
+      // NOTE: fixed height — BarChart throws inside an unbounded height. It grows with the label strip
+      // so a 200 % text scale gets the room the labels need instead of squeezing the plot.
+      height: plotHeight + labelHeight,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // One label's slot: the plot width divided by the bars it holds. A label wraps inside its
+          // own slot, so two neighbours cannot overlap even when both wrap.
+          final slot = (constraints.maxWidth - axisWidth) / apps.length;
+          return BarChart(
+            key: const ValueKey('usageBarChart'),
+            BarChartData(
+              maxY: maxYFor(apps),
+              barGroups: [
+                for (var i = 0; i < apps.length; i++)
+                  BarChartGroupData(x: i, barRods: [BarChartRodData(toY: apps[i].minutes.toDouble(), width: 18)]),
+              ],
+              titlesData: FlTitlesData(
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: labelHeight,
+                    getTitlesWidget: (value, _) {
+                      final i = value.toInt();
+                      if (i < 0 || i >= apps.length) return const SizedBox.shrink();
+                      return SizedBox(
+                        width: slot,
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: AppSpace.xxs),
+                          child: Text(
+                            apps[i].name,
+                            style: AppType.chartTick,
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            softWrap: true,
+                            // No ellipsis: the name shortens to nothing if it cannot fit, which reads as
+                            // "make the text smaller", not as a site name cut in half.
+                            overflow: TextOverflow.fade,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                // NOTE: the default left axis drew bare minute numbers with no
+                // unit — an unexplained "120" next to the tallest bar. Label
+                // the ticks with the minute unit so the value is self-describing.
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: axisWidth,
+                    interval: interval,
+                    getTitlesWidget: (value, _) => value <= 0
+                        ? const SizedBox.shrink()
+                        : Text(
+                            l10n.minutesShort(value.toInt()),
+                            style: AppType.chartTick,
+                            textAlign: TextAlign.center,
+                          ),
+                  ),
+                ),
+                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              ),
+              // Grid lines follow the same interval, so a line always means a label.
+              gridData: FlGridData(horizontalInterval: interval),
+              borderData: FlBorderData(show: false),
+            ),
+          );
+        },
+      ),
     );
   }
 }
@@ -177,14 +256,7 @@ class _WebSection extends StatelessWidget {
         if (summary.topBlockedDomains.isEmpty)
           Text(l10n.noBlockedDomains)
         else
-          for (final d in summary.topBlockedDomains)
-            ListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.block, size: 16),
-              title: Text(d.domain),
-              trailing: Text(l10n.blockedTimes(d.count)),
-            ),
+          for (final d in summary.topBlockedDomains) _BlockedDomainTile(domain: d.domain, count: d.count),
         const SizedBox(height: AppSpace.sm),
         Card(
           color: context.tokens.surfaceVariant,
@@ -195,6 +267,38 @@ class _WebSection extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// One blocked host and how often it was blocked.
+///
+/// #841 condition 5 (UI/UX Bureau): at a narrow width or a large text scale the count must sit on its
+/// own line under the host instead of being a trailing column, where the two compete for the same
+/// pixels and the host is the part that gets cut. The threshold is the same one the Bureau named —
+/// a 320 px phone, or text over 130 % — and the host keeps the same full-text, break-at-dot treatment
+/// as the history rows (#841 condition 2).
+class _BlockedDomainTile extends StatelessWidget {
+  final String domain;
+  final int count;
+  const _BlockedDomainTile({required this.domain, required this.count});
+
+  /// The width and text scale at which the count stops fitting beside the host.
+  static bool stacksAt(BuildContext context) =>
+      MediaQuery.sizeOf(context).width < 360 || MediaQuery.textScalerOf(context).scale(1) > 1.3;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final stacks = stacksAt(context);
+    return ListTile(
+      key: ValueKey('blockedDomain-$domain'),
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      leading: const Icon(Icons.block, size: 16),
+      title: Text(ltrIsolateHost(domain)),
+      subtitle: stacks ? Text(l10n.blockedTimes(count)) : null,
+      trailing: stacks ? null : Text(l10n.blockedTimes(count)),
     );
   }
 }

@@ -386,8 +386,11 @@ class _SiteTile extends StatelessWidget {
       dense: true,
       contentPadding: EdgeInsets.zero,
       leading: const Icon(Icons.public, size: 18),
-      // A site name is always Latin; the isolate keeps it left to right in the Arabic app.
-      title: Text(ltrIsolate(group.domain), maxLines: 1, overflow: TextOverflow.ellipsis),
+      // A site name is always Latin; the isolate keeps it left to right in the Arabic app. #841 condition 2:
+      // the host is the site's name, so it is drawn in full — no ellipsis — and the zero-width space after
+      // each dot is the break point, which is why there is no maxLines cap here: at 320 px with large text a
+      // realistic host uses two or three lines, and a cap would be the truncation the Bureau refused.
+      title: Text(ltrIsolateHost(group.domain)),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
