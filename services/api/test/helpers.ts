@@ -165,11 +165,15 @@ export class MockRedis {
  * test exercises a route without the gate in front of it, which is how the device-revocation rule
  * came to be tested only through the one router that re-implemented it (ADR-0032). The import is
  * dynamic so the files that never ask for the guard still do not load `src/db.ts`.
+ *
+ * `opts.pairedAtHook` mounts `middleware/pairedAt.ts`, the `onResponse` hook that clears a device's
+ * pending state (#790) — the same pair `server.ts` registers, for the tests that assert what a device
+ * request does to its own row.
  */
 export async function buildApp(
   routes: (app: FastifyInstance) => Promise<void>,
   prefix: string,
-  opts: { sessionGuard?: boolean } = {},
+  opts: { sessionGuard?: boolean; pairedAtHook?: boolean } = {},
 ): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   await app.register(fastifyJwt, { secret: "test-secret" });
@@ -177,6 +181,10 @@ export async function buildApp(
   if (opts.sessionGuard) {
     const { sessionGuardHook } = await import("../src/middleware/sessionGuard.js");
     app.addHook("preHandler", sessionGuardHook);
+  }
+  if (opts.pairedAtHook) {
+    const { registerPairedAtHook } = await import("../src/middleware/pairedAt.js");
+    registerPairedAtHook(app);
   }
   await app.register(routes, { prefix });
   await app.ready();
