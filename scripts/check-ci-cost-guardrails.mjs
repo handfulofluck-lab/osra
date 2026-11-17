@@ -18,7 +18,7 @@
  * Usage: node scripts/check-ci-cost-guardrails.mjs [--selftest]
  * Exit 0 green, 1 a rule failed, 2 a required workflow file is missing.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -98,13 +98,22 @@ function hasCancelInProgress(text) {
 
 const GRADLE_PIN = /gradle\/actions\/setup-gradle@[0-9a-f]{40}\s+#\s*v4(?:\.\d+){0,2}\s*$/m;
 
+/// The one rule for `gradle/actions/setup-gradle`, wherever it appears: pinned by a full commit SHA with a
+/// version comment. #911 follow-up (Antigravity's M1 on the parent-app cache PR): the check read
+/// `child-android.yml` by name, so an unpinned `setup-gradle` in any other workflow was invisible —
+/// including the one that now caches Gradle for the release AAB. Returns a problem, or null.
+function gradlePinProblem(text, file) {
+  if (!/gradle\/actions\/setup-gradle@/.test(text)) return null;
+  return GRADLE_PIN.test(text) ? null : `${file}: setup-gradle must use a full 40-character commit SHA with a version comment`;
+}
+
 function setupGradleAfterSetupJava(text) {
   const java = text.indexOf("actions/setup-java@v4");
   const gradle = GRADLE_PIN.exec(text);
   return gradle !== null && java !== -1 && gradle.index > java;
 }
 
-function check(read) {
+function check(read, workflowFiles = []) {
   const problems = [];
 
   const ios = read(IOS);
@@ -136,6 +145,12 @@ function check(read) {
   if (!/gradle\/actions\/setup-gradle@/.test(ca)) problems.push("child-android.yml: gradle/actions/setup-gradle is missing");
   else if (!GRADLE_PIN.test(ca)) problems.push("child-android.yml: setup-gradle must use a full 40-character commit SHA with a version comment");
   else if (!setupGradleAfterSetupJava(ca)) problems.push("child-android.yml: setup-gradle must come after setup-java");
+  // The same pin rule for every other workflow that uses the action (#911 follow-up).
+  for (const f of workflowFiles) {
+    if (f === "child-android.yml") continue; // reported above, with its two extra rules
+    const problem = gradlePinProblem(read(`.github/workflows/${f}`), f);
+    if (problem) problems.push(problem);
+  }
 
   return problems;
 }
@@ -146,7 +161,8 @@ function runRepo() {
     if (!existsSync(full)) { console.log(`ERROR ${p}: missing`); process.exit(2); }
     return readFileSync(full, "utf8");
   };
-  const problems = check(read);
+  const workflowFiles = readdirSync(join(ROOT, ".github/workflows")).filter((f) => f.endsWith(".yml"));
+  const problems = check(read, workflowFiles);
   for (const p of problems) console.log(`ERROR ${p}`);
   console.log(`ci-cost-guardrails: ${problems.length} problem(s)`);
   process.exit(problems.length ? 1 : 0);
@@ -240,6 +256,13 @@ function selftest() {
 
   const shortGradle = good(); shortGradle.set(".github/workflows/child-android.yml", withCancel(suite()) + "\n" + ca().replace("ed408507eac070d1f99cc633dbcf757c94c7933a", "ed40850"));
   expect("a short setup-gradle SHA fails", check(read(shortGradle)).some((p) => p.includes("40-character commit SHA")));
+
+  // The rule is not child-android's alone (#911 follow-up): an unpinned setup-gradle anywhere fails, a
+  // pinned one anywhere passes. Measured on the helper so the case does not need a whole fixture.
+  const pinned = "      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3";
+  expect("an unpinned setup-gradle in any workflow fails", gradlePinProblem("      - uses: gradle/actions/setup-gradle@v4", "parent-app.yml") !== null);
+  expect("a pinned setup-gradle in any workflow passes", gradlePinProblem(pinned, "parent-app.yml") === null);
+  expect("a workflow with no setup-gradle is not a problem", gradlePinProblem("      - uses: actions/checkout@v4", "api.yml") === null);
 
   console.log(`ci-cost-guardrails self-test: ${total - bad}/${total} cases`);
   process.exit(bad ? 1 : 0);

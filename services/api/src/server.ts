@@ -26,8 +26,11 @@ import { startUsageRollupScheduler } from "./jobs/usageRollup.js";
 import { startDeviceSilenceScheduler } from "./jobs/deviceSilence.js";
 import { startMfaResetExpiryScheduler } from "./jobs/mfaResetExpiry.js";
 import { startRevokedTokenPruneScheduler } from "./jobs/revokedTokenPrune.js";
+import { startPendingDeviceScheduler } from "./jobs/pendingDevices.js";
 import { sessionGuardHook } from "./middleware/sessionGuard.js";
+import { registerPairedAtHook } from "./middleware/pairedAt.js";
 import { healthRoutes } from "./routes/health.js";
+import { consentCopyRoutes } from "./routes/consentCopy.js";
 import { registerErrorHandler } from "./lib/errorHandler.js";
 import { registerIdleBudgetHook } from "./lib/idleBudget.js";
 import { registerClientHeader } from "./middleware/clientHeader.js";
@@ -102,6 +105,11 @@ app.addHook("preHandler", sessionGuardHook);
 // request records its build. CLIENT_POLICY ships empty, so nothing is refused.
 registerClientHeader(app);
 
+// Issue #790: a device created by an approved pairing claim is PENDING (`Device.pairedAt` null) and
+// invisible to its family until a request from it is accepted. The rule lives in one global hook rather
+// than in each device route: `middleware/pairedAt.ts` says why `onResponse` and not the preHandler.
+registerPairedAtHook(app);
+
 /**
  * Idle-request budget (roadmap 5.8): count authenticated device requests, per device per minute per route,
  * so the acceptance's "idle child phone ≤ 3 requests per 10 min" becomes a number instead of an impression.
@@ -116,6 +124,8 @@ registerIdleBudgetHook(app);
 registerErrorHandler(app);
 
 await app.register(healthRoutes);
+// ADR-0043 D3 / #846 part A: the sign-up copy, public because the app asks before anyone signs in.
+await app.register(consentCopyRoutes, { prefix: "/v1" });
 
 
 // Auth routes get a stricter bucket (review API-11): brute-force protection on register/login/reset.
@@ -161,3 +171,5 @@ startDeviceSilenceScheduler();
 startMfaResetExpiryScheduler();
 // ADR-0032: single-logout records are pruned once the token they revoked could no longer be shown.
 startRevokedTokenPruneScheduler();
+// Issue #790: a pairing claim's device row is deleted if the phone never made an accepted request.
+startPendingDeviceScheduler();

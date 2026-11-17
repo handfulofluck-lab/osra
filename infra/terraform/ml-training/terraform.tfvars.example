@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars (gitignored) and fill in. No real account ID in the repo.
+allowed_account_ids = ["<prod-account-id>"]
+assume_role_arn     = "arn:aws:iam::<prod-account-id>:role/<deploy-role-name>"
+
+# The deploy role above, plus the role that uploads training files and starts the job.
+# IAM role ARNs only (":role/<name>"), not "assumed-role" session ARNs. The role Terraform runs as MUST
+# be in this list. Run `terraform plan` straight after the apply: it must refresh without AccessDenied.
+operator_role_arns = [
+  "arn:aws:iam::<prod-account-id>:role/<deploy-role-name>",
+]
+
+# Required, at least one: the two addresses the production alarms already go to.
+budget_alert_emails = [
+  "<owner-alarm-address>",
+  "<team-alarm-address>",
+]
+
+# Optional: a permissions boundary for the training role, if the security review asks for one.
+# permissions_boundary_arn = "arn:aws:iam::<prod-account-id>:policy/<boundary-name>"

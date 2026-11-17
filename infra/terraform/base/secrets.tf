@@ -96,6 +96,16 @@ resource "aws_secretsmanager_secret" "fcm_service_account" {
   recovery_window_in_days = var.secret_recovery_window_days # see database_url above
 }
 
+# APNs signing key (#695, #637 box 3). Same pattern as the FCM entry above: the container is Terraform's,
+# the value (the .p8 file Apple issued, made 11 Nov for Sandbox & Production) is written out of band
+# from the machine that holds the file and never appears in state, the repo or a log. The API reads it as
+# APNS_KEY_P8 (services/api/src/lib/push/apns.ts). Nothing maps it into a task until env's apns_enabled.
+resource "aws_secretsmanager_secret" "apns_key_p8" {
+  name                    = "${local.name_prefix}/apns-key-p8"
+  description             = "APNs signing key (.p8) for the OSRA ${var.environment} API"
+  recovery_window_in_days = var.secret_recovery_window_days # see database_url above
+}
+
 # INTERNAL_HMAC_SECRET (#714 requirement, 14 Nov): the global SERVICE credential the ai-engine signs with
 # (services/api/src/lib/internalAuth.ts). Generated here, fresh, so production can never inherit a value
 # that was ever pasted anywhere; its fingerprint goes into the #637 evidence, never the value. It reaches

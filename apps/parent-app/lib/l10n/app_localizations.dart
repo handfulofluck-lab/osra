@@ -389,8 +389,14 @@ abstract class AppLocalizations {
   /// No description provided for @mfaCodeLabel.
   ///
   /// In en, this message translates to:
-  /// **'Authentication code (if MFA is on)'**
+  /// **'Authenticator code'**
   String get mfaCodeLabel;
+
+  /// No description provided for @mfaCodeHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'Only if two-step verification is on for your account.'**
+  String get mfaCodeHelper;
 
   /// No description provided for @signIn.
   ///
@@ -403,6 +409,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Create account'**
   String get createAccount;
+
+  /// No description provided for @consentRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'To create an account, please tick this box.'**
+  String get consentRequired;
 
   /// No description provided for @familyNameLabel.
   ///
@@ -683,7 +695,7 @@ abstract class AppLocalizations {
   /// No description provided for @consentMethodSmsPlus.
   ///
   /// In en, this message translates to:
-  /// **'SMS +'**
+  /// **'Text message plus confirmation'**
   String get consentMethodSmsPlus;
 
   /// No description provided for @consentMethodKba.
@@ -2645,7 +2657,7 @@ abstract class AppLocalizations {
   /// No description provided for @vaultTrustCopy.
   ///
   /// In en, this message translates to:
-  /// **'Snippets are encrypted with your family key before leaving the device and stored encrypted on your server.'**
+  /// **'Excerpts travel over an encrypted connection and are stored encrypted on OSRA\'s servers.'**
   String get vaultTrustCopy;
 
   /// No description provided for @noConcernsDetected.
@@ -3263,7 +3275,7 @@ abstract class AppLocalizations {
   /// No description provided for @onboardingNoNetwork.
   ///
   /// In en, this message translates to:
-  /// **'Cannot reach the server. Check the server address and your internet connection, then try again.'**
+  /// **'Couldn\'t connect to OSRA. Check your internet connection, then try again.'**
   String get onboardingNoNetwork;
 
   /// No description provided for @onboardingChildTitle.
@@ -4901,7 +4913,7 @@ abstract class AppLocalizations {
   /// Phone setup row (osra-security#6): the capability report's profiles.kinds holds clone. Arabic wording by Karim (2026-11-11).
   ///
   /// In en, this message translates to:
-  /// **'This phone has another secure space that may run cloned apps (more than one copy of the same app). OSRA may not be able to monitor it until it is turned off in the phone's Settings.'**
+  /// **'This phone has another secure space that may run cloned apps (more than one copy of the same app). OSRA may not be able to monitor it until it is turned off in the phone\'s Settings.'**
   String get phoneSetupOtherSpaceClone;
 
   /// Phone setup row (osra-security#6): profiles.kinds holds work. Arabic approved by Karim.
@@ -5179,6 +5191,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'On the iPhone, this app is hidden instead of showing the OSRA screen.'**
   String get appRuleHiddenOnIphone;
+
+  /// No description provided for @showPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Show password'**
+  String get showPassword;
+
+  /// No description provided for @hidePassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide password'**
+  String get hidePassword;
+
+  /// No description provided for @passwordMinHint.
+  ///
+  /// In en, this message translates to:
+  /// **'At least 12 characters.'**
+  String get passwordMinHint;
+
+  /// No description provided for @familyNameHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'Other parents you invite will see this.'**
+  String get familyNameHelper;
 }
 
 class _AppLocalizationsDelegate

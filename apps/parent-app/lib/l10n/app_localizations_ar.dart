@@ -184,13 +184,20 @@ class AppLocalizationsAr extends AppLocalizations {
   String get passwordLabel => 'كلمة المرور';
 
   @override
-  String get mfaCodeLabel => 'رمز المصادقة (عند تفعيل المصادقة الثنائية)';
+  String get mfaCodeLabel => 'رمز تطبيق المصادقة';
+
+  @override
+  String get mfaCodeHelper =>
+      'مطلوب فقط إذا كان التحقق بخطوتين مفعّلًا في حسابك.';
 
   @override
   String get signIn => 'تسجيل الدخول';
 
   @override
   String get createAccount => 'إنشاء حساب';
+
+  @override
+  String get consentRequired => 'لإنشاء حساب، يُرجى وضع علامة في هذه الخانة.';
 
   @override
   String get familyNameLabel => 'اسم العائلة';
@@ -369,7 +376,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get consentMethodLabel => 'طريقة الموافقة';
 
   @override
-  String get consentMethodSmsPlus => 'رسالة نصية +';
+  String get consentMethodSmsPlus => 'رسالة نصية مع تأكيد';
 
   @override
   String get consentMethodKba => 'أسئلة معرفية';
@@ -1716,7 +1723,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get vaultTrustCopy =>
-      'تُشفَّر المقاطع بمفتاح عائلتك قبل مغادرة الجهاز وتُخزَّن مشفّرة على خادمك.';
+      'تنتقل المقتطفات عبر اتصال مشفّر، وتُخزَّن مشفّرة على خوادم تطبيق أسرة.';
 
   @override
   String get noConcernsDetected => 'لم تُكتشف أي مخاوف';
@@ -2108,7 +2115,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get onboardingNoNetwork =>
-      'تعذّر الوصول إلى الخادم. تحقق من عنوان الخادم واتصال الإنترنت ثم حاول مجددًا.';
+      'تعذّر الاتصال بخدمة أسرة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
 
   @override
   String get onboardingChildTitle => 'أضف طفلك';
@@ -3292,4 +3299,17 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get appRuleHiddenOnIphone =>
       'على هواتف آيفون، يُخفى هذا التطبيق بدلًا من عرض شاشة الحظر.';
+
+  @override
+  String get showPassword => 'إظهار كلمة المرور';
+
+  @override
+  String get hidePassword => 'إخفاء كلمة المرور';
+
+  @override
+  String get passwordMinHint => '12 حرفًا على الأقل.';
+
+  @override
+  String get familyNameHelper =>
+      'سيظهر هذا الاسم لأولياء الأمور الآخرين الذين تدعوهم.';
 }

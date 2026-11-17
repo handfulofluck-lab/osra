@@ -23,6 +23,12 @@ import { stripAlertLocation } from "./alertLocation.js";
 /** Device-reported day total (telemetry `totalMinutes`), kept apart from per-app rows. */
 export const DEVICE_TOTAL_APP = "*";
 
+/** A phone cannot sensibly report more apps than this in one tick; beyond it the payload is a bug. */
+const MAX_APP_USAGE_ENTRIES = 200;
+
+/** Every minute of one day: a larger per-app figure is a broken counter, not a longer day. */
+const MAX_MINUTES_PER_DAY = 1440;
+
 const MS_PER_DAY = 86_400_000;
 
 export function retentionDays(env: NodeJS.ProcessEnv = process.env): number {
@@ -131,6 +137,42 @@ export async function recordActivityUsage(childId: string, deviceId: string, eve
     await prisma.webVisit.createMany({ data: visits.map((v) => ({ childId, deviceId, ...v })) });
   }
   return { usageRows: usage.size, visits: visits.length };
+}
+
+/**
+ * Ingestion hook (#830/S1): the per-app minutes a phone reports in telemetry, folded into the same
+ * `AppUsageDaily` rows the activity path writes.
+ *
+ * Until this existed the *only* per-app writer was [recordActivityUsage], which is fed by **persistent**
+ * activity events — and the child's only event producer marks its `app_usage` events `live`, which
+ * `routes/devices.ts` filters out of the persistent path on purpose (BUG-002). So `apps` was empty for
+ * every family on every device, while the day total (from `totalMinutes`) was right. That is exactly the
+ * "22 minutes, no breakdown" a parent saw on the Flip4.
+ *
+ * `*` is skipped: the total has its own writer ([recordDeviceTotal]) and two writers for one counter would
+ * double it. Entries are bounded, and a malformed one costs that entry rather than the upload — telemetry
+ * is the heartbeat, not the report.
+ */
+export async function recordAppUsage(
+  childId: string,
+  deviceId: string,
+  entries: ReadonlyArray<{ packageId: string; minutes: number }>,
+  at: Date = new Date(),
+): Promise<number> {
+  const day = utcDay(at);
+  let written = 0;
+  for (const entry of entries.slice(0, MAX_APP_USAGE_ENTRIES)) {
+    // N1 (Antigravity's review of #901): the same bounds `bucketEvents` applies — a 200-character package id
+    // and a 1440-minute ceiling, which is every minute of one day. Without them an oversized float reaches an
+    // `Int` column and a long id reaches a `text` one; neither should be able to fail the heartbeat.
+    const app = typeof entry?.packageId === "string" ? entry.packageId.trim().slice(0, 200) : "";
+    const raw = typeof entry?.minutes === "number" && Number.isFinite(entry.minutes) ? Math.round(entry.minutes) : 0;
+    const minutes = Math.min(raw, MAX_MINUTES_PER_DAY);
+    if (!app || app === DEVICE_TOTAL_APP || !(minutes > 0)) continue;
+    await addMinutes(childId, deviceId, day, app, minutes);
+    written += 1;
+  }
+  return written;
 }
 
 /** Telemetry hook: the device-reported running total for the day (delta windows accumulate, #31). */
