@@ -2566,11 +2566,14 @@ class AppLocalizationsAr extends AppLocalizations {
   String get digestPrefsEmailsLabel => 'عناوين البريد الإلكتروني';
 
   @override
-  String get digestPrefsEmailsHelper => 'لتلقي الملخّص (افصل بينها بفواصل)';
+  String get digestPrefsEmailsHelper => 'يُرسَل الملخّص إلى هذه العناوين.';
+
+  @override
+  String get digestPrefsAddEmail => 'إضافة عنوان بريد إلكتروني';
 
   @override
   String get digestPrefsConfirmationSent =>
-      'تم إرسال رابط التأكيد — لن يستلم هذا العنوان أي ملخّص قبل التأكيد';
+      'أرسلنا رابط التأكيد. لن يصل الملخّص إلى هذا العنوان قبل تأكيده.';
 
   @override
   String get digestPrefsNotSent => 'لم يُرسَل. احفظ مرة أخرى للمحاولة.';

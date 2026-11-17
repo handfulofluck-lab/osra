@@ -290,7 +290,7 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
                   suffixIcon: IconButton(
                     key: const ValueKey('digestEmailAddButton'),
                     icon: const Icon(Icons.add),
-                    tooltip: l10n.add,
+                    tooltip: l10n.digestPrefsAddEmail,
                     onPressed: _addPendingEmail,
                   ),
                 ),
