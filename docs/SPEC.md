@@ -674,8 +674,16 @@ POST /v1/devices/pair/claims/:claimId/poll     (NO auth; the poll secret is the 
   → 202 { status: "pending" } | 410 { error: "claim_denied" } | 428 (consent withdrawn) |
     201 { device, token, childId, familyId, hmacSecret }  — after Allow, exactly once
   token = device JWT, claims { sub: deviceId, deviceId, childId, familyId, role: "device" },
-  expiresIn "10y". The device row (status "online", lastSeen now) is created by this poll, never
-  earlier. An unknown claim, an expired one and a wrong secret are one answer, 404
+  expiresIn "10y". The device row (lastSeen now) is created by this poll, never earlier, as
+  **PENDING** (#790): `status: "offline"` and `pairedAt` null. It becomes the family's device — in
+  `GET /v1/devices`, `GET /v1/family/me`, the export and the family's device counts — on the first
+  request from it the API **accepts**, which sets `pairedAt` once (`middleware/pairedAt.ts`, one
+  global `onResponse` hook; a 401, a 403 for another device's id or any other refusal does not).
+  Until then it is absent from those reads and answers 404 to a parent's device reads; a pending row
+  whose `lastSeen` is 30 minutes old is deleted by `jobs/pendingDevices.ts`, with nothing raised to
+  the parent. Was: `status: "online"` at creation, which showed a phone whose first secret-proof was
+  refused as a working device (found by the Mac seat on #779).
+  An unknown claim, an expired one and a wrong secret are one answer, 404
   { error: "claim_not_found" }; the tenth wrong secret burns the claim and frees the code.
   Family/child ids come from the Redis payload, never from the client; only a sha256 of the poll
   secret is stored, and no device token or HMAC secret is ever written to Redis.

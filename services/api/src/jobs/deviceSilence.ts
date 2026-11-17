@@ -8,11 +8,12 @@ import { raiseAlert } from "../lib/alerts.js";
  * reporting). Every tick, each `online` device whose `lastSeen` is older than `DEVICE_SILENT_MINUTES`
  * gets one `device_silent` alert (critical) and its status set to `offline`, so the parent hears
  * "the phone has not reported for 30 minutes" instead of nothing. A device that reports again goes
- * back to `online` through the telemetry, ping and pair/claim writers, which is what re-arms the watch.
+ * back to `online` through the telemetry, ping and command-poll writers, which is what re-arms the watch.
  *
- * Vocabulary (audit finding 4): the column is a free string, so the writers are the contract. Pair/claim
- * (`routes/devices.ts:187`), telemetry (`:338`), location ping (`routes/location.ts:239`) and the seed
- * (`scripts/seed.ts:60`) all write `online`; the schema default and this job write `offline`; the parent
+ * Vocabulary (audit finding 4): the column is a free string, so the writers are the contract. Telemetry,
+ * the command poll (`lib/pollCadence.ts`), the location ping (`routes/location.ts`) and the seed
+ * (`scripts/seed.ts`) write `online`; the schema default, pair/claim (which creates a PENDING device,
+ * issue #790 — it has not proven itself yet) and this job write `offline`; the parent
  * app and `DeviceStatus` in `packages/shared-types` speak `online`/`offline`/`locked`/`sos`. This job
  * therefore watches `online`, not the `active` it was written against: nothing ever wrote `active`, so
  * the watch matched no device and `pm clear` stayed silent.

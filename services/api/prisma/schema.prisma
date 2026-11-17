@@ -276,11 +276,19 @@ model Device {
   model      String
   osVersion  String
   /// online | offline | locked | sos (mirrors DeviceStatus in packages/shared-types). Writers set
-  /// `online` on pair/claim, telemetry and location ping; the silence job sets `offline`. Nothing
-  /// writes `active` — it was the job's stale assumption and is fixed in src/jobs/deviceSilence.ts.
+  /// `online` on telemetry, the command poll and location ping; pair/claim (`routes/devices.ts`), the
+  /// silence job and the column default write `offline`. Nothing writes `active` — it was the job's
+  /// stale assumption and is fixed in src/jobs/deviceSilence.ts.
   status     String         @default("offline")
   batteryPct Int            @default(0)
   lastSeen   DateTime       @default(now())
+  /// Issue #790: when this device last proved it holds the credentials pairing gave it — set by the
+  /// first request it made that the API accepted (`middleware/pairedAt.ts`) and never rewritten after.
+  /// **Null means pending**: the row exists so an approved claim has somewhere to put its secret, but
+  /// the phone has not answered yet. A pending row is invisible to parents (every parent-facing device
+  /// read excludes it), outside the family's device counts, and deleted by `jobs/pendingDevices.ts`
+  /// after 30 minutes. Pair/claim creates it null on purpose; nothing else may.
+  pairedAt   DateTime?      @db.Timestamptz(3)
   /// Issue #867: the instant the AGENT says this phone booted (`now - SystemClock.elapsedRealtime()`),
   /// stable for the life of one boot. Null until an agent reports it. A report that moves it by more than
   /// 90 seconds is a restart (src/lib/bootReport.ts); that is how the parent hears about the 1–2 minute gap
