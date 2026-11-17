@@ -118,3 +118,111 @@ export async function currentConsents(parentId: string): Promise<Record<string, 
   }
   return out;
 }
+
+/** What a write asks for: one purpose, granted or withdrawn, at a version the parent was shown. */
+export interface ConsentWrite {
+  purpose: string;
+  granted: boolean;
+  textVersion: string;
+  locale: string;
+}
+
+export type ConsentWriteRefusal =
+  | "unknown_purpose"
+  | "consent_text_outdated"
+  | "terms_withdrawal_is_account_deletion"
+  | "consent_purpose_not_offered";
+
+/** The purposes this build can record. The two parked ones stay listed so a write is refused by name. */
+export const OFFERED_PURPOSES = [TERMS_PURPOSE] as const;
+const PARKED_PURPOSES = ["ai_improvement", "marketing_email"] as const;
+
+/**
+ * ADR-0043 D3/D5/D8: whether a write may be recorded, and with what proof.
+ *
+ * - an unknown purpose is a caller bug, not a choice;
+ * - `terms_privacy` is required to hold an account, so withdrawing it is account deletion (ADR-0043 D3),
+ *   not a write this route can make;
+ * - the two parked purposes are refused while their switches are off, because no build offers them.
+ */
+export function consentWriteFor(
+  input: ConsentWrite,
+): { ok: true; fields: ConsentEventFields; action: "granted" | "withdrawn" } | { ok: false; reason: ConsentWriteRefusal } {
+  if ((PARKED_PURPOSES as readonly string[]).includes(input.purpose)) {
+    return { ok: false, reason: "consent_purpose_not_offered" };
+  }
+  if (input.purpose !== TERMS_PURPOSE) return { ok: false, reason: "unknown_purpose" };
+  if (!input.granted) return { ok: false, reason: "terms_withdrawal_is_account_deletion" };
+  const copy = consentCopyFor(input.locale);
+  if (input.textVersion !== CONSENT_TEXT_VERSION || copy.textVersion !== CONSENT_TEXT_VERSION) {
+    return { ok: false, reason: "consent_text_outdated" };
+  }
+  const purpose = copy.purposes.find((entry) => entry.key === TERMS_PURPOSE);
+  if (!purpose) return { ok: false, reason: "consent_text_outdated" };
+  return {
+    ok: true,
+    action: "granted",
+    fields: {
+      textVersion: copy.textVersion,
+      textHash: purpose.textHash,
+      locale: copy.locale,
+      documentVersion: (copy as { documentVersion?: string | null }).documentVersion ?? null,
+    },
+  };
+}
+
+/** One row of the parent's own consent history (a data-subject answer, ADR-0043 D3). */
+export async function consentHistory(parentId: string) {
+  const rows = await prisma.parentConsentEvent.findMany({
+    where: { parentId },
+    orderBy: { createdAt: "desc" },
+    select: { purpose: true, action: true, textVersion: true, locale: true, surface: true, createdAt: true },
+  });
+  return rows.map((row) => ({
+    purpose: row.purpose,
+    action: row.action,
+    textVersion: row.textVersion,
+    locale: row.locale,
+    surface: row.surface,
+    at: row.createdAt,
+  }));
+}
+
+/**
+ * Append one row through a transaction client, for a write that comes from the app rather than sign-up.
+ * Same table and same proof as sign-up; only `surface` differs, so a reader can tell where a tick happened.
+ */
+export async function recordConsent(
+  parentId: string,
+  input: ConsentWrite,
+  fields: ConsentEventFields,
+  action: "granted" | "withdrawn",
+  surface: string,
+  clientVersion: string | null,
+): Promise<{ recorded: boolean }> {
+  // Ahmed's N1 on #886: a loop on one account would otherwise append one identical row per request, up to
+  // the global rate limit. A repeat of the newest state for that purpose is not a new consent act — the ADR
+  // asks for one row per tick or untick, and repeating a tick is not another tick.
+  const newest = await prisma.parentConsentEvent.findFirst({
+    where: { parentId, purpose: input.purpose },
+    orderBy: { createdAt: "desc" },
+    select: { action: true, textVersion: true, locale: true },
+  });
+  if (newest && newest.action === action && newest.textVersion === fields.textVersion && newest.locale === fields.locale) {
+    return { recorded: false };
+  }
+  await prisma.parentConsentEvent.create({
+    data: {
+      parentId,
+      purpose: input.purpose,
+      action,
+      textVersion: fields.textVersion,
+      documentVersion: fields.documentVersion,
+      locale: fields.locale,
+      textHash: fields.textHash,
+      surface,
+      clientVersion,
+    },
+  });
+  return { recorded: true };
+}
