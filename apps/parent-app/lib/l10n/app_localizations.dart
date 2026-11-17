@@ -5199,6 +5199,9 @@ abstract class AppLocalizations {
   String get alertTitleRing;
 
   /// No description provided for @alertBodyRingChildDismissed.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{The ring alert was dismissed on the phone. It is ringing again.} other{The ring alert was dismissed on the phone {count} times. It is still ringing.}}'**
   String alertBodyRingChildDismissed(int count);
 
   /// No description provided for @alertBodyRingPinStopped.

@@ -3305,24 +3305,23 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String alertBodyRingChildDismissed(int count) {
-    final intl.NumberFormat countNumberFormat = intl.NumberFormat.decimalPattern(localeName);
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
     final String countString = countNumberFormat.format(count);
 
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      one:
-          'أُغلق تنبيه الرنين على الهاتف. عاد الهاتف إلى الرنين.',
-      two:
-          'أُغلق تنبيه الرنين على الهاتف مرتين. ما زال الهاتف يرنّ.',
-      few:
-          'أُغلق تنبيه الرنين على الهاتف $countString مرات. ما زال الهاتف يرنّ.',
-      many:
-          'أُغلق تنبيه الرنين على الهاتف $countString مرة. ما زال الهاتف يرنّ.',
       other:
           'أُغلق تنبيه الرنين على الهاتف $countString مرة. ما زال الهاتف يرنّ.',
+      many:
+          'أُغلق تنبيه الرنين على الهاتف $countString مرة. ما زال الهاتف يرنّ.',
+      few:
+          'أُغلق تنبيه الرنين على الهاتف $countString مرات. ما زال الهاتف يرنّ.',
+      two: 'أُغلق تنبيه الرنين على الهاتف مرتين. ما زال الهاتف يرنّ.',
+      one: 'أُغلق تنبيه الرنين على الهاتف. عاد الهاتف إلى الرنين.',
     );
-    return _temp0;
+    return '$_temp0';
   }
 
   @override
@@ -3334,8 +3333,7 @@ class AppLocalizationsAr extends AppLocalizations {
       'أوقف أحد الوالدين الرنين من تطبيق أسرة.';
 
   @override
-  String get alertBodyRingTimedOut =>
-      'انتهى الرنين تلقائيًا بعد 5 دقائق.';
+  String get alertBodyRingTimedOut => 'انتهى الرنين تلقائيًا بعد 5 دقائق.';
 
   @override
   String get alertBodyRingAfterRestart =>

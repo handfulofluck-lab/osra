@@ -3133,7 +3133,8 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String alertBodyRingChildDismissed(int count) {
-    final intl.NumberFormat countNumberFormat = intl.NumberFormat.decimalPattern(localeName);
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
     final String countString = countNumberFormat.format(count);
 
     String _temp0 = intl.Intl.pluralLogic(
@@ -3143,7 +3144,7 @@ class AppLocalizationsEn extends AppLocalizations {
           'The ring alert was dismissed on the phone $countString times. It is still ringing.',
       one: 'The ring alert was dismissed on the phone. It is ringing again.',
     );
-    return _temp0;
+    return '$_temp0';
   }
 
   @override
