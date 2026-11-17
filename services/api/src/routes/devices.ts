@@ -126,6 +126,10 @@ const TelemetrySchema = z
     // boot and therefore a restart detector the 30-minute silence window cannot be. UTC only: the agent's
     // value is an instant, and an offset form would only be another way to write the same one.
     bootedAt: z.string().datetime().optional(),
+    // Issue #867 / #884 review: Android's `Settings.Global.BOOT_COUNT`, which increments once per boot and
+    // ignores the clock. When both sides carry it, this is what decides a restart — `bootedAt` only dates
+    // it — because a child can move the wall clock but not this counter. Bounded to the column's Int32.
+    bootCount: z.number().int().min(0).max(2_147_483_647).optional(),
     // Issue #221 (D1): the agent's own classification of its location grant. Optional so an older
     // agent keeps working (the server then leaves the stored value unknown and queues locate_now).
     locationGrant: z.enum(LOCATION_GRANT_STATES).optional(),
@@ -832,6 +836,7 @@ export async function deviceRoutes(app: FastifyInstance) {
         model?: string;
         lastSeen?: Date | null;
         lastBootAt?: Date | null;
+        lastBootCount?: number | null;
         child?: { familyId?: string; displayName?: string };
       };
     }).device;
@@ -845,16 +850,23 @@ export async function deviceRoutes(app: FastifyInstance) {
     const bootFamilyId = device?.child?.familyId;
     const boot = decideBootReport({
       bootedAt: parsed.data.bootedAt === undefined ? null : new Date(parsed.data.bootedAt),
+      bootCount: parsed.data.bootCount ?? null,
       storedBootAt: device?.lastBootAt ?? null,
+      storedBootCount: device?.lastBootCount ?? null,
       lastSeen: device?.lastSeen ?? null,
       now,
       maxAheadMs: ACTIVITY_CLOCK_SKEW_MS,
     });
     if (boot.kind === "clock_ahead") {
       // Same rule as an activity event from the future: a broken device clock is not a report. Dropping it
-      // keeps the stored boot instant useful for the next tick instead of poisoning every comparison.
+      // excludes both fields, and nothing is stored — so the next tick with a sane clock still sees the
+      // count difference and reports the restart then.
       req.log.warn({ deviceId: id, bootedAt: boot.bootedAt.toISOString() }, "bootedAt ahead of the server clock; ignored");
     }
+    // A first report and a counter that went backwards both name a new baseline rather than a restart: the
+    // instant (and count) are recorded so the next tick can compare, and no parent is told a phone restarted
+    // when the server has nothing to have seen it restart from (#884 review, blocker 1).
+    const bootBaseline = boot.kind === "first_report" || boot.kind === "new_boot" ? boot : null;
 
     // ADR-0034 A2: a strict, enum-keyed, 4 KB-capped report. Parsed here rather than inside
     // `TelemetrySchema` so a bad one costs this field only — the rest of the upload is stored.
@@ -914,10 +926,10 @@ export async function deviceRoutes(app: FastifyInstance) {
       }
     }
 
-    // `bootedAt` is device state, not the latest payload: it lives on `Device.lastBootAt` (written below)
-    // and is read back there, so copying it into the cached blob would be a second source of truth — and a
-    // clock-ahead report that was dropped would keep reappearing through the blob.
-    const { capabilities: rawCapabilities, bootedAt: _bootedAt, ...telemetryFields } = parsed.data;
+    // `bootedAt`/`bootCount` are device state, not the latest payload: they live on `Device.lastBootAt` /
+    // `Device.lastBootCount` (written below) and are read back there, so copying them into the cached blob
+    // would be a second source of truth — and a clock-ahead report that was dropped would keep reappearing.
+    const { capabilities: rawCapabilities, bootedAt: _bootedAt, bootCount: _bootCount, ...telemetryFields } = parsed.data;
     await setJson(`device:${id}:telemetry`, { ...telemetryFields, receivedAt: new Date().toISOString() }, 86400);
 
     // Accumulate daily usage per child (Issue #31: delta windows must accumulate, not overwrite)
@@ -955,9 +967,14 @@ export async function deviceRoutes(app: FastifyInstance) {
         ...(capabilitiesOk
           ? { capabilities: capabilitiesParsed as Prisma.InputJsonValue, capabilitiesReportedAt: new Date() }
           : {}),
-        // Issue #867: only a new boot writes the column, in the same update that refreshes `lastSeen`.
-        // A tick that repeats the same instant writes nothing — not the value, and not a second alert below.
-        ...(boot.kind === "new_boot" ? { lastBootAt: boot.bootedAt } : {}),
+        // Issue #867: a new boot and a first report both write the baseline that the next tick compares
+        // against, in the same update that refreshes `lastSeen`. A tick that repeats the same boot writes
+        // nothing — not even a moved instant, which here means the clock moved rather than the phone.
+        ...(bootBaseline ? { lastBootAt: bootBaseline.bootedAt } : {}),
+        // Only a report that carried a count writes one: an older agent cannot erase a newer count, and a
+        // report that omits it leaves the stored count alone — that report uses the instant fallback, and
+        // the count decides again as soon as one arrives.
+        ...(bootBaseline && bootBaseline.bootCount !== null ? { lastBootCount: bootBaseline.bootCount } : {}),
       },
     });
     if (boot.kind === "new_boot" && bootFamilyId) {
@@ -984,8 +1001,9 @@ export async function deviceRoutes(app: FastifyInstance) {
             lastSeen: boot.previousLastSeen?.toISOString() ?? null,
           },
           // #225: two API instances can both read the pre-upload row and both decide "new boot"; keying on
-          // the boot instant makes the loser a no-op instead of a second push for one restart.
-          dedupeKey: `boot|${boot.bootedAt.toISOString()}`,
+          // the boot (its counter too, since that is what decided it, and an instant can repeat when the
+          // clock was moved) makes the loser a no-op instead of a second push for one restart.
+          dedupeKey: `boot|${boot.bootedAt.toISOString()}|${boot.bootCount ?? "instant"}`,
           childName: device.child?.displayName,
         });
       } catch (err) {

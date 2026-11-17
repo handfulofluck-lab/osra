@@ -256,6 +256,11 @@ model Device {
   /// 90 seconds is a restart (src/lib/bootReport.ts); that is how the parent hears about the 1–2 minute gap
   /// the 30-minute silence window deliberately cannot see.
   lastBootAt DateTime? @db.Timestamptz(3)
+  /// Issue #867 / #884 review: Android's `Settings.Global.BOOT_COUNT` as the agent last reported it, one
+  /// increment per boot and immune to the wall clock. When both this and the report carry a count, the
+  /// counts decide a restart and `lastBootAt` only dates it; null for an agent that does not send one, where
+  /// the 90-second instant comparison in src/lib/bootReport.ts is the fallback.
+  lastBootCount Int?
   pushToken  String?
   // Per-device internal HMAC secret (minted at pair/claim; handoff item 5).
   internalSecret String?

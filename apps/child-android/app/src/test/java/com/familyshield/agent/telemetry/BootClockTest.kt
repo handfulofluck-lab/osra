@@ -54,4 +54,21 @@ class BootClockTest {
         assertEquals(true, iso.endsWith("Z"))
         assertEquals(false, iso.contains("."))
     }
+
+    @Test
+    fun `the boot counter is absent when the platform does not expose it`() {
+        // `Settings.Global.getInt` answers its default (-1) when the setting is missing, and a device that
+        // cannot answer must omit the field: the server then falls back to the instant rather than reading
+        // -1 as a boot count that never changes.
+        assertEquals(null, BootClock.bootCountOrNull(-1))
+        assertEquals(null, BootClock.bootCountOrNull(-7))
+    }
+
+    @Test
+    fun `a present boot counter is passed through, including zero`() {
+        // Zero is a real counter value on an image that has never recorded a boot; it must not be dropped
+        // the way -1 is, or the server would lose the count on exactly the devices that need the baseline.
+        assertEquals(0, BootClock.bootCountOrNull(0))
+        assertEquals(41, BootClock.bootCountOrNull(41))
+    }
 }

@@ -9,26 +9,89 @@ import {
 
 /**
  * Issue #867: a restart takes 1–2 minutes and the 30-minute silence window must stay as it is, so the gap is
- * reported by the device (`bootedAt`) and this module decides what the report means. Every row below is a
- * value the decision can get wrong in a way the parent would read as a fact.
+ * reported by the device (`bootedAt`, and `bootCount` since #884) and this module decides what the report
+ * means. Every row below is a value the decision can get wrong in a way the parent would read as a fact.
  *
- * Mutants, one row each: compare `bootedAt` to `now` instead of to `lastSeen` → [the gap is the downtime];
- * treat a missing stored value as "same boot" → [the first report is a new boot]; use `>=` on the tolerance
- * → [a tick that moved the instant by 90 s is still the same boot]; drop the `lastSeen < bootedAt` guard →
- * [a boot older than the last report is not a negative gap]; use `>` for the warning floor → [a 30-minute gap
- * is a warning].
+ * Mutants, one row each: alert on a first report → [the first report is a baseline]; let a moved instant
+ * decide when counts are present → [the clock, not the phone, moved]; treat a lower count as a restart →
+ * [a reset count is a baseline]; require a count instead of falling back → [a count-less agent is still
+ * compared by instant]; compare `bootedAt` to `now` instead of to `lastSeen` → [the gap is the downtime];
+ * use `>=` on the tolerance → [a tick that moved the instant by 90 s is still the same boot]; drop the
+ * `lastSeen < bootedAt` guard → [a boot older than the last report is not a negative gap].
  */
 describe("boot report (#867)", () => {
   const now = new Date("2026-11-17T10:02:00Z");
   const bootedAt = new Date("2026-11-17T10:00:00Z");
+  // A stored boot from an earlier day, so a default call is a `new_boot` and each row overrides only the
+  // field it is about.
+  const storedBootAt = new Date("2026-11-01T08:00:00Z");
   const maxAheadMs = 5 * 60_000;
 
   const decide = (input: Partial<Parameters<typeof decideBootReport>[0]> = {}) =>
-    decideBootReport({ bootedAt, storedBootAt: null, lastSeen: null, now, maxAheadMs, ...input });
+    decideBootReport({ bootedAt, bootCount: null, storedBootAt, storedBootCount: null, lastSeen: null, now, maxAheadMs, ...input });
 
-  it("treats the first report of a boot instant as a new boot", () => {
-    const report = decide({ lastSeen: new Date("2026-11-17T09:58:00Z") });
-    expect(report).toMatchObject({ kind: "new_boot", gapMinutes: 2, severity: "info" });
+  it("stores the first report of a boot instant and raises nothing", () => {
+    // Blocker 1 of #884: nothing is stored, so the server cannot know a restart happened. Storing the
+    // baseline is the only honest result; an alert here would describe a boot days old as if it were news.
+    expect(decide({ storedBootAt: null, lastSeen: new Date("2026-11-17T09:58:00Z") })).toEqual({
+      kind: "first_report",
+      bootedAt,
+      bootCount: null,
+      reason: "no_previous",
+    });
+  });
+
+  it("keeps the first report after a phone is paired, even with a count", () => {
+    expect(decide({ storedBootAt: null, storedBootCount: null, bootCount: 7 })).toMatchObject({
+      kind: "first_report",
+      reason: "no_previous",
+      bootCount: 7,
+    });
+  });
+
+  it("calls a higher boot count a restart, and the instant only dates it", () => {
+    // The reported instant is an hour earlier than the stored one (a clock moved back) and the count moved
+    // up by one: the phone restarted, and the alert must still exist with a zero gap rather than a negative.
+    const report = decide({
+      bootedAt: new Date(storedBootAt.getTime() - 3600_000),
+      bootCount: 8,
+      storedBootCount: 7,
+      lastSeen: new Date("2026-11-01T07:58:00Z"),
+    });
+    expect(report).toMatchObject({ kind: "new_boot", gapMinutes: 0, severity: "info", bootCount: 8 });
+  });
+
+  it("ignores a moved instant when the count says the phone did not restart", () => {
+    // Blocker 2 of #884: `bootedAt` is derived from a wall clock a child can set. Same count plus an hour
+    // of drift is a clock move, not a reboot, and no alert (and no stored instant) may come of it.
+    expect(
+      decide({ bootedAt: new Date(storedBootAt.getTime() + 3600_000), bootCount: 7, storedBootCount: 7 }),
+    ).toEqual({ kind: "same_boot" });
+  });
+
+  it("treats a lower count as a new baseline, not a restart of this phone", () => {
+    // A factory reset or a restored image reports an earlier state. That is not tampering, and a parent
+    // must not be told their phone restarted; it becomes the new baseline to compare against.
+    expect(decide({ bootCount: 3, storedBootCount: 7 })).toEqual({
+      kind: "first_report",
+      bootedAt,
+      bootCount: 3,
+      reason: "count_reset",
+    });
+  });
+
+  it("falls back to the instant when either side has no count, and records the first count it sees", () => {
+    // An agent that ships the count after this server change: one report still compared by instant, which
+    // is the fallback the code comment says keeps the clock-move weakness — bounded here, because the
+    // returned baseline stores the count and every later report is decided by it.
+    const viaUpgrade = decide({ bootCount: 7, storedBootCount: null, storedBootAt });
+    expect(viaUpgrade).toMatchObject({ kind: "new_boot", bootCount: 7 });
+    // A downgrade (or a report that omits the count): the stored count is ignored and the instant decides.
+    expect(decide({ bootCount: null, storedBootCount: 7, storedBootAt }).kind).toBe("new_boot");
+    // ...and within the tolerance it is still the same boot on that fallback.
+    expect(
+      decide({ bootCount: null, storedBootCount: 7, storedBootAt: new Date(bootedAt.getTime() - SAME_BOOT_TOLERANCE_MS) }).kind,
+    ).toBe("same_boot");
   });
 
   it("measures the gap from the last report before the boot, not from the server's clock", () => {

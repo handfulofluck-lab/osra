@@ -1112,25 +1112,20 @@ describe("rulesApplied reduction (#865)", () => {
 /**
  * Issue #867: a child phone restart takes 1–2 minutes and the 30-minute silence window must not be lowered
  * (a false `device_silent` critical is worse than a late one), so the restart is reported by the device as
- * `bootedAt` and this route turns a moved instant into one `device_restarted` alert.
+ * `bootedAt` + `bootCount` and this route turns it into one `device_restarted` alert.
  *
- * The rows here prove the two halves a unit test on the pure module cannot: the column is written once for
- * two ticks of the same boot, and the alert is raised once with them. The mutant for the first row is the
- * obvious one — write `lastBootAt` on every tick, or alert before comparing — and each fails a different
- * assertion: the write count, then the alert count.
+ * The rows here prove what the pure module cannot: which column the route writes and when, that a first
+ * report is silent (#884 blocker 1), that a moved clock with an unchanged boot count is not a restart
+ * (#884 blocker 2), that the alert uses the family's zone and the boot fields never reach the cached
+ * telemetry blob. Each row names the mutant it kills where the mutant is not obvious from the assertion.
  */
 describe("device restart reporting (#867)", () => {
   beforeEach(() => {
     resetPrismaMock();
   });
 
-  /**
-   * A boot five minutes ago, relative to the real clock. The route compares `bootedAt` with its own `now`
-   * and drops anything more than five minutes ahead as a caller bug, so a pinned date would make these rows
-   * pass or fail depending on the hour they run at. The rendered clock is pinned exactly in
-   * `boot-report.test.ts`, against a fixed `Date`; here the body is matched by shape.
-   */
-  const bootedAt = () => new Date(Date.now() - 5 * 60_000);
+  /** A boot that many minutes ago, relative to the real clock. */
+  const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000);
 
   /**
    * The row as `requireFamily` loads it. `update` writes back onto it so the second request sees what the
@@ -1142,8 +1137,9 @@ describe("device restart reporting (#867)", () => {
       id: "dev-1",
       childId: "child-1",
       model: "Pixel 7a",
-      lastSeen: new Date(bootedAt().getTime() - 2 * 60_000),
+      lastSeen: minutesAgo(7),
       lastBootAt: null,
+      lastBootCount: null,
       child: { familyId: "fam-1", displayName: "Alex" },
       ...overrides,
     };
@@ -1158,46 +1154,74 @@ describe("device restart reporting (#867)", () => {
     app.inject({ method: "POST", url: "/v1/devices/dev-1/telemetry", headers: deviceHeader(app), payload });
 
   const bootWrites = () =>
-    prismaMock.device.update.mock.calls.filter(([args]: [{ data?: Record<string, unknown> }]) => "lastBootAt" in (args.data ?? {}));
+    prismaMock.device.update.mock.calls.filter(
+      ([args]: [{ data?: Record<string, unknown> }]) => "lastBootAt" in (args.data ?? {}) || "lastBootCount" in (args.data ?? {}),
+    );
 
-  it("writes the boot instant once and raises one alert for two ticks of the same boot", async () => {
+  it("stores a first report and raises nothing; a moved instant on the next tick alerts", async () => {
+    // Blocker 1 of #884: nothing is stored, so the server cannot know a restart happened. The mutant —
+    // alert on a first report — would tell every family on ship day about a boot days old.
     const app = await buildApp(deviceRoutes, "/v1/devices");
     storedDevice();
-    const boot = bootedAt();
-    const previousLastSeen = new Date(boot.getTime() - 2 * 60_000);
 
-    expect((await tick(app, { batteryPct: 50, bootedAt: boot.toISOString() })).statusCode).toBe(202);
-    expect((await tick(app, { batteryPct: 49, bootedAt: boot.toISOString() })).statusCode).toBe(202);
+    expect((await tick(app, { batteryPct: 50, bootedAt: minutesAgo(5).toISOString() })).statusCode).toBe(202);
+    expect(bootWrites()).toHaveLength(1);
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
 
-    const writes = bootWrites();
-    expect(writes).toHaveLength(1);
-    expect(writes[0][0].data.lastBootAt).toEqual(boot);
-
+    // Same phone, no counter (an older agent): the fallback compares the instant, and two minutes is a
+    // restart. This is the row the review asked for — store on the first tick, alert on the moved one.
+    expect((await tick(app, { batteryPct: 49, bootedAt: minutesAgo(3).toISOString() })).statusCode).toBe(202);
     expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
-    const alert = prismaMock.alert.create.mock.calls[0][0].data as Record<string, any>;
-    expect(alert).toMatchObject({
-      childId: "child-1",
-      deviceId: "dev-1",
-      severity: "info",
-      category: "device_restarted",
-      title: "Device restarted",
-      // The family's clock in the sentence, and the gap measured from the last report before the boot.
-      body: expect.stringMatching(/^Pixel 7a restarted at \d\d:\d\d, back after 2 minutes\.$/),
-      dedupeKey: `boot|${boot.toISOString()}`,
-    });
-    expect(alert.metadata).toEqual({
-      type: "device_restarted",
-      bootedAt: boot.toISOString(),
-      gapMinutes: 2,
-      lastSeen: previousLastSeen.toISOString(),
-    });
+    const alert = prismaMock.alert.create.mock.calls[0][0].data as Record<string, unknown>;
+    expect(alert).toMatchObject({ severity: "info", category: "device_restarted", title: "Device restarted" });
+    await app.close();
+  });
+
+  it("a moved clock with an unchanged boot count is not a restart and rewrites nothing", async () => {
+    // Blocker 2 of #884: the instant is derived from a wall clock a child can set. The mutant — let the
+    // instant decide while a count is present — alerts on every tick after one clock change.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    const storedInstant = minutesAgo(180);
+    const row = storedDevice({ lastBootAt: storedInstant, lastBootCount: 7, lastSeen: minutesAgo(182) });
+
+    // An hour of clock drift, same count.
+    expect((await tick(app, { bootedAt: minutesAgo(120).toISOString(), bootCount: 7 })).statusCode).toBe(202);
+    expect(bootWrites()).toHaveLength(0);
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+    expect(row.lastBootAt).toEqual(storedInstant);
+    await app.close();
+  });
+
+  it("a higher boot count alerts even when the instant moved, and the gap comes from lastSeen", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    storedDevice({ lastBootAt: minutesAgo(180), lastBootCount: 7, lastSeen: minutesAgo(122) });
+
+    expect((await tick(app, { bootedAt: minutesAgo(120).toISOString(), bootCount: 8 })).statusCode).toBe(202);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    const alert = prismaMock.alert.create.mock.calls[0][0].data as { severity: string; body: string; metadata: Record<string, unknown> };
+    expect(alert.severity).toBe("info");
+    expect(alert.body).toMatch(/^Pixel 7a restarted at \d\d:\d\d, back after 2 minutes\.$/);
+    expect(alert.metadata).toMatchObject({ gapMinutes: 2 });
+    // The count that decided the restart is stored, so the next tick's comparison has it.
+    expect(bootWrites()[0][0].data).toMatchObject({ lastBootCount: 8 });
+    await app.close();
+  });
+
+  it("a lower boot count is a new baseline, not a restart", async () => {
+    // A wipe or a restore reports an earlier counter. The mutant — alert on any change — calls it tampering.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    storedDevice({ lastBootAt: minutesAgo(180), lastBootCount: 9 });
+
+    expect((await tick(app, { bootedAt: minutesAgo(5).toISOString(), bootCount: 2 })).statusCode).toBe(202);
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+    expect(bootWrites()[0][0].data).toMatchObject({ lastBootCount: 2 });
     await app.close();
   });
 
   it("raises again for a different boot, as a warning once the gap reaches the silence window", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
-    const boot = bootedAt();
-    storedDevice({ lastBootAt: new Date(Date.now() - 24 * 3600_000), lastSeen: new Date(boot.getTime() - 40 * 60_000) });
+    const boot = minutesAgo(5);
+    storedDevice({ lastBootAt: minutesAgo(24 * 60), lastSeen: new Date(boot.getTime() - 40 * 60_000) });
 
     expect((await tick(app, { bootedAt: boot.toISOString() })).statusCode).toBe(202);
     expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
@@ -1212,10 +1236,12 @@ describe("device restart reporting (#867)", () => {
 
   it("drops a boot instant from the future: no write, no alert, the upload still accepted", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
-    storedDevice();
+    storedDevice({ lastBootAt: minutesAgo(180), lastBootCount: 7 });
 
     const future = new Date(Date.now() + 6 * 60_000).toISOString();
-    expect((await tick(app, { batteryPct: 30, bootedAt: future })).statusCode).toBe(202);
+    // The count differs too: the whole report is a caller bug, so nothing is stored — the next tick with a
+    // sane clock still sees the difference and reports it then.
+    expect((await tick(app, { batteryPct: 30, bootedAt: future, bootCount: 8 })).statusCode).toBe(202);
     expect(bootWrites()).toHaveLength(0);
     expect(prismaMock.alert.create).not.toHaveBeenCalled();
 
@@ -1226,14 +1252,52 @@ describe("device restart reporting (#867)", () => {
     await app.close();
   });
 
-  it("exposes the stored boot instant on the parent's device read", async () => {
+  it("keeps the boot fields out of the cached telemetry blob (x11)", async () => {
+    // Fable's x11: a copy in `device:<id>:telemetry` would be a second source of truth, and a dropped
+    // clock-ahead value would reappear through the blob the parent reads.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    storedDevice();
+    const redis = getRedis() as unknown as import("./helpers.js").MockRedis;
+
+    expect((await tick(app, { bootedAt: minutesAgo(5).toISOString(), bootCount: 7 })).statusCode).toBe(202);
+    // The last write, not the first: other rows in this file also store this key, and reading theirs would
+    // prove nothing about this route.
+    const write = redis.set.mock.calls.filter(([key]) => key === "device:dev-1:telemetry").at(-1);
+    expect(write).toBeDefined();
+    const blob = JSON.parse(write![1] as string);
+    expect(blob).not.toHaveProperty("bootedAt");
+    expect(blob).not.toHaveProperty("bootCount");
+    expect(blob).toHaveProperty("receivedAt");
+    await app.close();
+  });
+
+  it("renders the alert in the family's timezone, not UTC (x12)", async () => {
+    // Fable's x12: the pure function is tested with a zone; the mutant is the route passing "UTC" — or
+    // reading the wrong family — and a wrong hour in "restarted at …" is the made-up number the body warns
+    // about. The fixture family is Asia/Dubai, so the two clocks differ by four hours.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    const boot = minutesAgo(10);
+    storedDevice({ lastBootAt: minutesAgo(180), lastSeen: new Date(boot.getTime() - 2 * 60_000) });
+
+    expect((await tick(app, { bootedAt: boot.toISOString() })).statusCode).toBe(202);
+    const alert = prismaMock.alert.create.mock.calls[0][0].data as { body: string };
+    const hhmm = (timeZone: string) =>
+      new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(boot);
+    expect(hhmm("Asia/Dubai")).not.toBe(hhmm("UTC"));
+    expect(alert.body).toContain(`restarted at ${hhmm("Asia/Dubai")}`);
+    expect(alert.body).not.toContain(`restarted at ${hhmm("UTC")}`);
+    await app.close();
+  });
+
+  it("exposes the stored boot state on the parent's device read", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     const boot = new Date("2026-11-17T10:00:00Z");
-    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, model: "Pixel 7a", lastBootAt: boot });
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, model: "Pixel 7a", lastBootAt: boot, lastBootCount: 7 });
 
     const res = await app.inject({ method: "GET", url: "/v1/devices/dev-1", headers: authHeader(app) });
     expect(res.statusCode).toBe(200);
     expect(res.json().device.lastBootAt).toBe("2026-11-17T10:00:00.000Z");
+    expect(res.json().device.lastBootCount).toBe(7);
     await app.close();
   });
 });

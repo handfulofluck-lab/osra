@@ -3,10 +3,15 @@
 -- A phone restart takes 1–2 minutes, and the silence watch is deliberately 30 minutes (two telemetry
 -- intervals, src/jobs/deviceSilence.ts) because a false `device_silent` critical is worse than a late true
 -- one. The gap instead has to be REPORTED: the agent sends the wall-clock instant it booted
--- (`now - elapsedRealtime`), stable for the life of one boot. A report that moves it by more than 90 s is a
--- restart (src/lib/bootReport.ts) and raises `device_restarted`.
+-- (`now - elapsedRealtime`) and the platform boot counter (`Settings.Global.BOOT_COUNT`).
 --
--- Nullable on purpose: null is "this agent has never reported a boot instant", which an older agent never
--- will. There is no backfill — the first report a device makes after this ships is treated as a new boot,
--- which is the same comparison, with nothing invented for the past.
+-- The count is what decides a restart (#884 review, Fable's blocker 2): `elapsedRealtime` is monotonic but
+-- `currentTimeMillis` is not, so a child moving the clock fabricates a moved instant. When both sides carry
+-- a count, the counts decide and the instant only dates the alert; the instant comparison remains the
+-- fallback for agents that do not send one (src/lib/bootReport.ts says so in place).
+--
+-- Both nullable on purpose: null is "this agent has never reported it", which an older agent never will.
+-- There is no backfill — the first count-bearing report a device makes after this ships is a baseline, not
+-- a restart, and the server raises nothing for it.
 ALTER TABLE "Device" ADD COLUMN "lastBootAt" TIMESTAMPTZ(3);
+ALTER TABLE "Device" ADD COLUMN "lastBootCount" INTEGER;
