@@ -321,6 +321,9 @@ class UsageReporter @Inject constructor(
                         totalMinutes = 0,
                         unlockCount = 0,
                         batteryPct = currentBatteryPct(),
+                        // The field is non-null and always sent (issue #221): a telemetry post that omitted it
+                        // would be a compile error, and on the wire it would clear a grant the server holds.
+                        locationGrant = currentLocationGrant(),
                         appliedRulesVersion = version,
                         capabilities = report,
                     ),
