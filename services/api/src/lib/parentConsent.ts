@@ -189,8 +189,12 @@ export async function consentHistory(parentId: string) {
 }
 
 /**
- * Append one row through a transaction client, for a write that comes from the app rather than sign-up.
- * Same table and same proof as sign-up; only `surface` differs, so a reader can tell where a tick happened.
+ * Append one row for a write that comes from the app rather than sign-up.
+ *
+ * It writes on its own (the module `prisma`), not inside a caller's transaction: an app tick is a single
+ * append, and there is no account being created beside it that would have to roll back with it. Sign-up is
+ * the case that needs a transaction, and it uses [recordSignupConsent] with the caller's client.
+ * Same table and same proof either way; only `surface` differs, so a reader can tell where a tick happened.
  */
 export async function recordConsent(
   parentId: string,
