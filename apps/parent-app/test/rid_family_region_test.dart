@@ -4,7 +4,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:familyshield_parent/api/models.dart';
+// Prefixed: riverpod exports its own `Family` (the provider family type).
+import 'package:familyshield_parent/api/models.dart' as models;
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/onboarding/setup_child_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
@@ -34,7 +35,7 @@ void main() {
   /// clock entirely — the assertion is about which region the picker starts on, not about bootstrap.
   Future<void> pumpSignedIn(WidgetTester tester, Widget home, {String region = 'EU'}) async {
     final api = FakeApiClient(standardRoutes());
-    final family = Family.fromJson({'id': 'fam-1', 'name': 'QA Family', 'region': region});
+    final family = models.Family.fromJson({'id': 'fam-1', 'name': 'QA Family', 'region': region});
     await tester.pumpWidget(ProviderScope(
       overrides: [
         apiClientProvider.overrideWithValue(api),
@@ -80,7 +81,7 @@ void main() {
 /// An `AuthNotifier` whose session is already loaded. `state` is settable from a subclass, which is the
 /// smallest way to hand a widget a signed-in family without touching the network or the fake clock.
 class _SignedInNotifier extends AuthNotifier {
-  _SignedInNotifier(FakeApiClient api, Family family) : super(api) {
+  _SignedInNotifier(FakeApiClient api, models.Family family) : super(api) {
     state = AuthState(isAuthenticated: true, family: family);
   }
 }
