@@ -27,15 +27,29 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  /// A session that is already signed in, so the screens can read the family's region at construction.
-  ///
-  /// `AuthNotifier.bootstrap()` would be the honest route, but awaiting it here deadlocks: the fake HTTP
-  /// client dispatches through chained zero-duration timers that only advance inside `tester.pump`, and the
-  /// await happens before there is a tree to pump. Setting the state on a subclass keeps the test off the
-  /// clock entirely — the assertion is about which region the picker starts on, not about bootstrap.
+  /// Advances Dio's chained zero-duration timers so the fake answers land inside the test.
+  Future<void> flushFakeHttp(WidgetTester tester) async {
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+  }
+
+  /// Pumps a screen behind a session that is already signed in, so it can read the family's region at
+  /// construction. `AuthNotifier.bootstrap()` would be the honest route, but awaiting it here deadlocks —
+  /// the fake client's timers only advance inside `tester.pump`, and the await happens before there is a
+  /// tree to pump. The assertion is about which region the picker starts on, not about bootstrap.
   Future<void> pumpSignedIn(WidgetTester tester, Widget home, {String region = 'EU'}) async {
-    final api = FakeApiClient(standardRoutes());
     final family = models.Family.fromJson({'id': 'fam-1', 'name': 'QA Family', 'region': region});
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      // No children yet, so the onboarding screen renders its form instead of the "add another" list —
+      // the jurisdiction picker lives in the form.
+      'GET /v1/family/me': (_) => {
+            ...familyMeTwoChildren(),
+            'family': {'id': 'fam-1', 'name': 'QA Family', 'region': region},
+            'children': <Map<String, dynamic>>[],
+          },
+    });
     await tester.pumpWidget(ProviderScope(
       overrides: [
         apiClientProvider.overrideWithValue(api),
@@ -43,6 +57,7 @@ void main() {
       ],
       child: localizedTestApp(home),
     ));
+    await flushFakeHttp(tester);
     await tester.pumpAndSettle();
   }
 
