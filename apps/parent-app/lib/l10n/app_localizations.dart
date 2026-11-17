@@ -713,7 +713,7 @@ abstract class AppLocalizations {
   /// No description provided for @jurisdictionLabel.
   ///
   /// In en, this message translates to:
-  /// **'Jurisdiction'**
+  /// **'Where does your family live?'**
   String get jurisdictionLabel;
 
   /// No description provided for @childNameLabel.

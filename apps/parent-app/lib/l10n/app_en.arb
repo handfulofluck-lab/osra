@@ -151,7 +151,7 @@
   "consentMethodKba": "Knowledge-based questions",
   "consentMethodFaceMatch": "Face match",
   "consentMethodCreditCard": "Credit card",
-  "jurisdictionLabel": "Jurisdiction",
+  "jurisdictionLabel": "Where does your family live?",
   "childNameLabel": "Child name",
   "birthYearLabel": "Birth year",
   "childFallback": "Child",
