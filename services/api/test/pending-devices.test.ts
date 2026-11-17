@@ -212,6 +212,11 @@ describe("pending devices are swept after the window (#790)", () => {
     // An alert about a phone the parent has never seen would be worse than silence; so would a command.
     expect(prismaMock.alert.create).not.toHaveBeenCalled();
     expect(prismaMock.deviceCommand.create).not.toHaveBeenCalled();
+    // B1 (Antigravity's review of #888): the row is gone, so its ten-year JWT must be too. Without the
+    // revocation, `sessionGuardHook` would still find `device:live:<id>` in Redis for five minutes and let
+    // a deleted device read child-scoped routes. Mutant: drop `markDeviceRevoked` and this line fails.
+    expect(redis.del).toHaveBeenCalledWith("device:live:old-1");
+    expect(redis.set).toHaveBeenCalledWith("revoked:device:old-1", expect.any(String), "EX", expect.any(Number));
   });
 
   it("leaves a younger pending device alone: the window is the query's, 30 minutes back from now", async () => {
@@ -254,6 +259,12 @@ describe("pending devices are swept after the window (#790)", () => {
 
     expect(run.deleted).toEqual([]);
     expect(prismaMock.device.deleteMany).toHaveBeenCalledWith({ where: { id: "late-1", pairedAt: null } });
+    // And no revocation: the phone proved itself in time and is a paired device now, so revoking its token
+    // would log the family's own working phone out. The mutant — revoking outside the `count > 0` branch —
+    // would do exactly that.
+    const redis = getRedis() as unknown as MockRedis;
+    expect(redis.del).not.toHaveBeenCalledWith("device:live:late-1");
+    expect(redis.set).not.toHaveBeenCalledWith("revoked:device:late-1", expect.anything(), "EX", expect.any(Number));
   });
 
   it("another instance's claim means this one does not delete", async () => {

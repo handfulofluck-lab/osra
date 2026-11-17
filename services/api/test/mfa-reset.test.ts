@@ -465,6 +465,25 @@ describe("MFA reset — request (ADR-0031 claim 1a, 7)", () => {
     await app.close();
   });
 
+  it("#790 / B3: the reset code goes to the paired device only, never to a pending sibling", async () => {
+    // Antigravity's M11 on #888: with one paired and one pending device in the family, dropping
+    // `pairedAt: { not: null }` from the confirm fan-out still passed every test. Without that filter a
+    // phone that never proved itself would be handed the parent's recovery code — a reset command to a
+    // device the app never told anyone about.
+    const { app } = await setup();
+    devices.push({ id: "dev-pending", childId: "child-1", familyId: "fam-1", model: "Pixel P", pairedAt: null });
+
+    const requested = await request(app);
+    expect(requested.statusCode).toBe(200);
+    const confirmed = await confirm(app, confirmTokenFor(app, requested));
+
+    expect(confirmed.statusCode).toBe(200);
+    const recipients = commands.filter((c) => c.type === "show_reset_code").map((c) => c.deviceId);
+    expect(recipients).toContain("dev-1");
+    expect(recipients).not.toContain("dev-pending");
+    await app.close();
+  });
+
   it("claim 1b: no show_reset_code command exists before the mailbox link is clicked", async () => {
     const { app } = await setup();
     const requested = await request(app);

@@ -1,5 +1,6 @@
 import { prisma } from "../db.js";
 import { getRedis } from "../redis.js";
+import { markDeviceRevoked } from "../lib/deviceRevocation.js";
 
 /**
  * Issue #790: the sweep that removes a pairing claim's half-created device.
@@ -67,7 +68,14 @@ export async function runPendingDeviceSweep(now: Date = new Date(), env: NodeJS.
     // answered a second too late. `deleteMany` rather than `delete` so that is a zero-row no-op instead
     // of a 404-style throw.
     const removed = await prisma.device.deleteMany({ where: { id: device.id, pairedAt: null } });
-    if ((removed?.count ?? 0) > 0) deleted.push(device.id);
+    if ((removed?.count ?? 0) > 0) {
+      // B1 (Antigravity's review of #888): a device JWT lasts ten years, and `sessionGuardHook` answers a
+      // refused request by caching `device:live:<id>` for five minutes — so a pending device whose JWT was
+      // presented during its last five minutes would still pass the guard on a child-scoped route after its
+      // row is gone. Every other Device deletion in this codebase calls `markDeviceRevoked`; this one must too.
+      await markDeviceRevoked(device.id);
+      deleted.push(device.id);
+    }
   }
   if (deleted.length > 0 && env.NODE_ENV !== "test") {
     // A count, not ids, models or child names: this log answers "did the sweep run", and nothing in it

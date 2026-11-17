@@ -325,6 +325,22 @@ describe("device pairing (spec §14.1)", () => {
     await app.close();
   });
 
+  it("the GDPR export carries the same pending filter as the family list", async () => {
+    // B2 (Antigravity's review of #888): mutant M9 — replacing the filter with `devices: true` in
+    // `GET /v1/family/export` — survived the whole suite. An export is the parent's record; a phone that
+    // never proved itself was never part of it, and a data-subject answer must not invent a device.
+    const app = await buildApp(familyRoutes, "/v1/family");
+    prismaMock.family.findUnique.mockResolvedValue({ id: "fam-1", name: "F", region: "OTHER", parents: [], children: [] });
+
+    const res = await app.inject({ method: "GET", url: "/v1/family/export", headers: authHeader(app) });
+    expect(res.statusCode).toBe(200);
+    const query = prismaMock.family.findUnique.mock.calls.at(-1)?.[0] as {
+      include: { children: { include: { devices: unknown } } };
+    };
+    expect(query.include.children.include.devices).toEqual({ where: { pairedAt: { not: null } } });
+    await app.close();
+  });
+
   // #602: the child's phone names the child on its status screen. Mutant: drop childName from the 201 body.
   it("the poll answers with the child's name for the phone's status screen", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
