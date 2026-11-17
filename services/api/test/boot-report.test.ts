@@ -108,6 +108,22 @@ describe("boot report (#867)", () => {
     expect(decide({ storedBootAt: new Date(bootedAt.getTime() - SAME_BOOT_TOLERANCE_MS) })).toEqual({ kind: "same_boot" });
   });
 
+  it("adopts a counter on a same-boot tick, and stops offering once it is stored", () => {
+    // Fable's review of #884: a row with an instant and no counter is an agent upgraded in place. The tick
+    // that first carries a counter records it, so the next restart is decided by the counter and not by a
+    // clock the child can move. Mutant: return `same_boot` here and the weakness survives a full uptime.
+    expect(decide({ storedBootAt: bootedAt, storedBootCount: null, bootCount: 7 })).toEqual({
+      kind: "same_boot_adopt_count",
+      bootCount: 7,
+    });
+    // Once stored, the same report is an ordinary same boot — no write, nothing to adopt.
+    expect(decide({ storedBootAt: bootedAt, storedBootCount: 7, bootCount: 7 })).toEqual({ kind: "same_boot" });
+    // A report that carries no counter has nothing to adopt either.
+    expect(decide({ storedBootAt: bootedAt, storedBootCount: null, bootCount: null })).toEqual({ kind: "same_boot" });
+    // A different counter on that path is a restart, not an adoption.
+    expect(decide({ storedBootAt: bootedAt, storedBootCount: 6, bootCount: 7 }).kind).toBe("new_boot");
+  });
+
   it("calls a moved instant beyond the tolerance a new boot", () => {
     const report = decide({ storedBootAt: new Date(bootedAt.getTime() - SAME_BOOT_TOLERANCE_MS - 1) });
     expect(report.kind).toBe("new_boot");
