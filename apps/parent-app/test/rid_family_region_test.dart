@@ -6,8 +6,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 // Prefixed: riverpod exports its own `Family` (the provider family type).
 import 'package:familyshield_parent/api/models.dart' as models;
+import 'package:familyshield_parent/features/children/consent_screen.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/onboarding/setup_child_screen.dart';
+import 'package:familyshield_parent/l10n/l10n.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
 import 'fake_api_client.dart';
@@ -82,6 +84,32 @@ void main() {
     expect(find.text('United Kingdom'), findsOneWidget);
     expect(find.text('United States'), findsNothing);
     expect(find.text('UK'), findsNothing);
+  });
+
+  /// R-ID-4, the same defect one screen over (Kimi, 04:41Z): the consent screen printed the raw codes,
+  /// both in its "Jurisdiction" field and inside the mismatch sentence. Both now go through one mapping
+  /// that reuses the picker's own words — no new string, and a value the app does not know becomes
+  /// "Other" rather than being echoed.
+  group('regionPlaceName', () {
+    final en = lookupAppLocalizations(const Locale('en'));
+
+    test('names the four regions the API issues', () {
+      expect(regionPlaceName(en, 'US'), 'United States');
+      expect(regionPlaceName(en, 'EU'), 'European Union');
+      expect(regionPlaceName(en, 'UK'), 'United Kingdom');
+      expect(regionPlaceName(en, 'OTHER'), 'Other');
+    });
+
+    test('is case- and space-tolerant, because the value comes from the server', () {
+      expect(regionPlaceName(en, ' eu '), 'European Union');
+      expect(regionPlaceName(en, 'uk'), 'United Kingdom');
+    });
+
+    test('never echoes an unknown code back to the parent', () {
+      // Mutant: `_ => code` and this row goes red, as does the "no code on screen" claim of the row above.
+      expect(regionPlaceName(en, 'ZZ'), 'Other');
+      expect(regionPlaceName(en, ''), 'Other');
+    });
   });
 
   testWidgets('a family registered in the United States still sees its own answer', (tester) async {

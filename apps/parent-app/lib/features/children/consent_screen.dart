@@ -170,10 +170,23 @@ String _stateDetail(
     ConsentState.revoked =>
       l10n.consentStateRevokedDetail(formatConsentTime(context, at)),
     ConsentState.jurisdictionMismatch => l10n.consentStateMismatchDetail(
-        record?.jurisdiction ?? '', status.jurisdiction),
+        regionPlaceName(l10n, record?.jurisdiction ?? ''),
+        regionPlaceName(l10n, status.jurisdiction)),
     ConsentState.none => l10n.consentStateNoneDetail,
   };
 }
+
+/// R-ID-4: the mismatch line used to print the raw codes a server speaks in — "EU does not match UK" —
+/// which tells a parent nothing they can act on. The four regions the API issues are rendered with the
+/// same words the consent picker offers (the strings are unchanged); a value the app does not recognise
+/// becomes "Other" rather than being echoed back.
+String regionPlaceName(AppLocalizations l10n, String code) =>
+    switch (code.trim().toUpperCase()) {
+      'US' => l10n.regionUS,
+      'EU' => l10n.regionEU,
+      'UK' => l10n.regionUK,
+      _ => l10n.regionOther,
+    };
 
 IconData _stateIcon(ConsentState state) => switch (state) {
       ConsentState.active => Icons.verified_user_outlined,
@@ -259,9 +272,12 @@ class _CurrentRecordCard extends StatelessWidget {
             ),
             _Detail(
               label: l10n.consentJurisdictionLabel,
-              value: record.jurisdiction.isEmpty
-                  ? status.jurisdiction
-                  : record.jurisdiction,
+              // R-ID-4: the same mapping as the mismatch line — the field showed "US", which is a code
+              // the parent never chose to read. The label word itself is still the Bureau's to replace.
+              value: regionPlaceName(
+                l10n,
+                record.jurisdiction.isEmpty ? status.jurisdiction : record.jurisdiction,
+              ),
             ),
             _Detail(
               label: l10n.consentGrantedLabel,
