@@ -571,6 +571,9 @@ describe("ring alert intake", () => {
     prismaMock.alert.findFirst.mockImplementation(async ({ where }: { where: { dedupeKey?: string } }) =>
       rows.find((row) => row.dedupeKey === where.dedupeKey) ?? null);
     prismaMock.alert.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+      if (data.dedupeKey && rows.some((row) => row.dedupeKey === data.dedupeKey)) {
+        throw Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+      }
       const row = { id: `ring-alert-${rows.length + 1}`, createdAt: new Date(), ...data };
       rows.push(row);
       return row;
@@ -584,8 +587,8 @@ describe("ring alert intake", () => {
     });
     prismaMock.alert.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
       rows.find((candidate) => candidate.id === where.id) ?? null);
-    async function postRing(state: string, dismissalCount: number | string = 0, extraMetadata: Record<string, unknown> = {}, overrideDedupeKey?: string | null) {
-      const canonicalRingId = ringId.toLowerCase();
+    async function postRing(state: string, dismissalCount: number | string = 0, extraMetadata: Record<string, unknown> = {}, overrideDedupeKey?: string | null, forRingId: string = ringId) {
+      const canonicalRingId = forRingId.toLowerCase();
       const computedDedupeKey = state === "child_dismissed"
         ? `ring:${canonicalRingId}:child_dismissed:${dismissalCount}`
         : `ring:${canonicalRingId}:${state}`;
@@ -598,7 +601,7 @@ describe("ring alert intake", () => {
           : state === "timed_out" && extraMetadata.afterRestart === true
             ? "The ring ended after the phone was restarted."
             : fallback[state],
-        metadata: { state, ringId, ...extraMetadata },
+        metadata: { state, ringId: canonicalRingId, ...extraMetadata },
       };
       if (dedupeKey !== undefined) payload.dedupeKey = dedupeKey;
       const raw = JSON.stringify(payload);
@@ -669,6 +672,56 @@ describe("ring alert intake", () => {
       expect(rows[9].attemptCount).toBe(12);
       expect(rows[9].body).toBe("The ring alert was dismissed on the phone 12 times. It is still ringing.");
       expect((rows[9].metadata as { bodyParams: { dismissalCount: number } }).bodyParams.dismissalCount).toBe(12);
+    } finally { await app.close(); }
+  });
+
+  it("rejects a missing or malformed dismissal key instead of creating a row", async () => {
+    const { app, rows, postRing } = await fixture();
+    try {
+      expect((await postRing("child_dismissed", 1, {}, null)).statusCode).toBe(400);
+      expect((await postRing("child_dismissed", 1, {}, "not-a-ring-key")).statusCode).toBe(400);
+      expect(rows).toHaveLength(0);
+    } finally { await app.close(); }
+  });
+
+  it("canonicalizes a case-variant dismissal key to one row", async () => {
+    const { app, rows, postRing } = await fixture();
+    try {
+      expect((await postRing("child_dismissed", 1)).statusCode).toBe(201);
+      const mixedCase = `ring:${ringId.toUpperCase()}:child_dismissed:1`;
+      expect((await postRing("child_dismissed", 1, {}, mixedCase)).statusCode).toBe(200);
+      expect(rows).toHaveLength(1);
+    } finally { await app.close(); }
+  });
+
+  it("collapses concurrent same-bucket dismissal reports to one row", async () => {
+    const { app, rows, postRing } = await fixture();
+    try {
+      const responses = await Promise.all([
+        postRing("child_dismissed", 11),
+        postRing("child_dismissed", 11),
+      ]);
+      expect(responses.map((response) => response.statusCode).sort()).toEqual([200, 201]);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].dedupeKey).toBe(`ring:${ringId.toLowerCase()}:child_dismissed:10`);
+      expect(rows[0].attemptCount).toBe(11);
+    } finally { await app.close(); }
+  });
+
+  it("keeps the ten-row ceiling per ring, not per device", async () => {
+    const ring2 = "0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D";
+    const { app, rows, postRing } = await fixture();
+    try {
+      prismaMock.deviceCommand.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
+        [ringId.toLowerCase(), ring2.toLowerCase()].includes(where.id)
+          ? { id: where.id, deviceId: "dev-1", type: "ring", createdAt: new Date() }
+          : null);
+      for (let count = 1; count <= 10; count += 1) {
+        expect((await postRing("child_dismissed", count)).statusCode).toBe(201);
+      }
+      expect((await postRing("child_dismissed", 1, {}, undefined, ring2)).statusCode).toBe(201);
+      expect(rows).toHaveLength(11);
+      expect(rows[10].metadata as { ringId: string }).toMatchObject({ ringId: ring2.toLowerCase() });
     } finally { await app.close(); }
   });
 
@@ -798,15 +851,15 @@ describe("ring alert intake", () => {
     } finally { await app.close(); }
   });
 
-  it("drops localization for zero, malformed, oversized, or another ring's count", async () => {
-    const { app, postRing } = await fixture();
+  it("rejects zero, malformed, oversized, or another ring's dismissal count", async () => {
+    const { app, rows, postRing } = await fixture();
     try {
       for (const count of [0, "abc", 999999999999]) {
         const response = await postRing("child_dismissed", count);
-        expect(response.statusCode).toBe(201);
-        expect(response.json().alert.metadata.bodyKey).toBeUndefined();
-        expect(response.json().alert.metadata.bodyParams).toBeUndefined();
+        expect(response.statusCode).toBe(400);
+        expect(response.json().error).toBe("invalid_ring_dedupe");
       }
+      expect(rows).toHaveLength(0);
       const other = ringAlertFields("ring", { state: "child_dismissed", ringId },
         "ring:00000000-0000-0000-0000-000000000000:child_dismissed:2");
       expect(other.bodyKey).toBeUndefined();

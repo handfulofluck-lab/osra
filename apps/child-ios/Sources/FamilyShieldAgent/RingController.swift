@@ -113,6 +113,8 @@ public final class RingController: ObservableObject {
         lastScheduledIDs = [id]
         lastDismissalMonotonic = nil
         await startAudioIfActive()
+        guard generation == operationGeneration,
+              state?.commandId == id, state?.stopSource == nil else { return nil }
         armDeadline()
         return nil
     }
@@ -269,6 +271,8 @@ public final class RingController: ObservableObject {
             state = active
             store.save(active)
             await startAudioIfActive()
+            guard generation == operationGeneration,
+                  state?.commandId == restored.commandId, state?.stopSource == nil else { return nil }
             armDeadline()
             do {
                 if try await !backend.scheduledIDs().contains(restored.commandId) {
@@ -288,6 +292,8 @@ public final class RingController: ObservableObject {
             await timeoutAfterRestart(restored)
         } else {
             await startAudioIfActive()
+            guard generation == operationGeneration,
+                  state?.commandId == restored.commandId, state?.stopSource == nil else { return nil }
             armDeadline()
             await drainReports()
             lastScheduledIDs = [restored.commandId]
@@ -375,6 +381,8 @@ public final class RingController: ObservableObject {
         state = resumed
         restarted = false
         await startAudioIfActive()
+        guard generation == operationGeneration,
+              state?.commandId == current.commandId, state?.stopSource == nil else { return }
         armDeadline()
         do {
             if try await !backend.scheduledIDs().contains(current.commandId) {
@@ -499,6 +507,9 @@ public final class RingController: ObservableObject {
         }
         if let lastDismissalMonotonic,
            monotonic() - lastDismissalMonotonic < RingPolicy.minimumDismissalInterval {
+            // Suppress the duplicate report, not the re-arm: the ring must stay armed after every
+            // main-alarm disappearance, even when the report is coalesced.
+            await rearm(refreshed, generation: generation)
             return
         }
         lastDismissalMonotonic = monotonic()
@@ -513,7 +524,7 @@ public final class RingController: ObservableObject {
         await audioPlayer.start()
         guard generation == operationGeneration,
               state?.commandId == current.commandId, state?.stopSource == nil else {
-            if generation == operationGeneration, let latest = state, latest.commandId != current.commandId {
+            if let latest = state, latest.commandId != current.commandId {
                 return
             }
             await audioPlayer.stop()

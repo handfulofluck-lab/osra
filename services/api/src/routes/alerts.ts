@@ -142,17 +142,20 @@ export async function alertsRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: "invalid_ring_command" });
       }
       acceptedMetadata = { ...metadata, ringId };
-      if (metadata?.state === "child_dismissed" && dedupeKey) {
+      if (metadata?.state === "child_dismissed") {
         const prefix = `ring:${ringId}:child_dismissed:`;
-        const canonicalDedupe = dedupeKey.toLowerCase();
-        const count = canonicalDedupe.startsWith(prefix) ? Number(canonicalDedupe.slice(prefix.length)) : NaN;
-        if (Number.isInteger(count) && count > 10) {
-          // Security guard (#760): a looping or modified phone cannot create more than ten
-          // dismissal rows per ring. Later reports update the tenth row's count in place and
-          // are not pushed again; `applyAttemptCount` already does exactly that.
-          effectiveDedupeKey = `${prefix}10`;
-          effectiveAttemptCount = count;
+        const canonicalDedupe = dedupeKey?.toLowerCase() ?? "";
+        const rawCount = canonicalDedupe.startsWith(prefix) ? canonicalDedupe.slice(prefix.length) : "";
+        if (!/^[1-9][0-9]{0,3}$/.test(rawCount)) {
+          return reply.code(400).send({ error: "invalid_ring_dedupe" });
         }
+        const count = Number(rawCount);
+        const bucket = Math.min(count, 10);
+        // Security guard (#760): every stored dismissal key is derived here, not trusted from
+        // the device. Counts 1–10 get their own row; every later count updates the tenth row
+        // in place through `applyAttemptCount`, which also suppresses the push.
+        effectiveDedupeKey = `${prefix}${bucket}`;
+        effectiveAttemptCount = count;
       }
       if (metadata?.state === "timed_out" && metadata.afterRestart === true) {
         // Queue age is not ringing time: the first successful acknowledgement proves the alarm was applied.

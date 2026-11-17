@@ -34,10 +34,16 @@ final class FakeRingBackend: RingBackend {
 
     var scheduleUntil: [UUID: Date?] = [:]
     var sentinelIDsForCommand: [UUID: Set<UUID>] = [:]
+    var bufferedScheduleSnapshots: [Set<UUID>] = []
+    private var pendingUpdates: [Set<UUID>] = []
 
     func schedule(_ id: UUID, until: Date? = nil) async throws {
         if let scheduleError, scheduleErrorID == nil || scheduleErrorID == id { throw scheduleError }
         if let scheduleGate { await scheduleGate() }
+        if !bufferedScheduleSnapshots.isEmpty {
+            pendingUpdates.append(contentsOf: bufferedScheduleSnapshots)
+            bufferedScheduleSnapshots.removeAll()
+        }
         scheduled.append(id)
         scheduleUntil[id] = until
     }
@@ -60,6 +66,10 @@ final class FakeRingBackend: RingBackend {
 
     func emit() { emit(Set(scheduled)) }
     func emit(_ ids: Set<UUID>) { continuation?.yield(ids) }
+    func flushBufferedUpdates() {
+        for ids in pendingUpdates { continuation?.yield(ids) }
+        pendingUpdates.removeAll()
+    }
 
     private func alarmIDs(for commandId: UUID, until: Date? = nil) -> Set<UUID> {
         Set([commandId] + (sentinelIDsForCommand[commandId] ?? []))
@@ -105,9 +115,10 @@ final class RingControllerTests: XCTestCase {
     }
 
     private func controller(reporter: RingAlertReporting? = nil,
-                            sleep: ((TimeInterval) async throws -> Void)? = nil) -> RingController {
+                            sleep: ((TimeInterval) async throws -> Void)? = nil,
+                            audio: RingAudioPlaying? = nil) -> RingController {
         RingController(backend: backend, store: store, history: history, reporter: reporter ?? self.reporter,
-                       audioPlayer: audioPlayer,
+                       audioPlayer: audio ?? audioPlayer,
                        now: { self.wall }, monotonic: { self.uptime },
                        bootSession: { self.bootSession },
                        sleep: sleep ?? { seconds in
@@ -227,7 +238,40 @@ final class RingControllerTests: XCTestCase {
         XCTAssertEqual(backend.scheduled, [id])
     }
 
-    func testRapidSecondDismissalWithinSixSecondsIsSuppressed() async {
+    func testBufferedScheduleSnapshotsAfterStartDoNotReport() async {
+        let sentinel = UUID(uuidString: "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6C")!
+        backend.sentinelIDsForCommand[id] = [sentinel]
+        backend.bufferedScheduleSnapshots = [[sentinel], [id, sentinel]]
+        let controller = controller()
+        await controller.start(id)
+        backend.flushBufferedUpdates()
+        await flushTasks()
+        XCTAssertEqual(controller.state?.dismissalCount, 0)
+        XCTAssertEqual(reporter.callCount, 0)
+        XCTAssertEqual(audioPlayer.startCalls, 1)
+    }
+
+    func testBufferedScheduleSnapshotsAfterRearmDoNotReportLoop() async {
+        let sentinel = UUID(uuidString: "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6C")!
+        backend.sentinelIDsForCommand[id] = [sentinel]
+        let controller = controller()
+        await controller.start(id)
+        backend.scheduled = []
+        backend.bufferedScheduleSnapshots = [[sentinel], [id, sentinel]]
+        await controller.process(scheduledIDs: [])
+        XCTAssertEqual(controller.state?.dismissalCount, 1)
+        XCTAssertEqual(reporter.callCount, 1)
+        backend.flushBufferedUpdates()
+        await flushTasks()
+        XCTAssertEqual(controller.state?.dismissalCount, 1,
+                       "buffered cancel/add snapshots from our own re-arm must not count again")
+        XCTAssertEqual(reporter.callCount, 1)
+        XCTAssertEqual(audioPlayer.startCalls, 2,
+                       "one re-arm starts audio once; buffered snapshots must not restart it")
+        XCTAssertEqual(backend.scheduled, [id])
+    }
+
+    func testRapidSecondDismissalWithinTheReportingWindowIsSuppressedAndRearmed() async {
         let controller = controller()
         await controller.start(id)
         backend.scheduled = []
@@ -237,13 +281,35 @@ final class RingControllerTests: XCTestCase {
         backend.scheduled = []
         await controller.process(scheduledIDs: [])
         XCTAssertEqual(controller.state?.dismissalCount, 1,
-                       "one action cannot produce two reports inside the chain interval")
+                       "one action cannot produce two reports inside the reporting window")
         XCTAssertEqual(reporter.callCount, 1)
+        XCTAssertTrue(backend.scheduled.contains(id),
+                      "a suppressed duplicate report must still re-arm the alarm")
         uptime += RingPolicy.minimumDismissalInterval
         backend.scheduled = []
         await controller.process(scheduledIDs: [])
         XCTAssertEqual(controller.state?.dismissalCount, 2)
         XCTAssertEqual(reporter.callCount, 2)
+    }
+
+    func testDelayedAudioStartForOldRingDoesNotStopReplacementRing() async {
+        let audio = GatedAudioPlayer()
+        let gate = ReportGate()
+        audio.startGate = { await gate.wait() }
+        let controller = controller(audio: audio)
+        let first = UUID()
+        let second = UUID()
+        let firstStart = Task { await controller.start(first) }
+        while audio.startCalls == 0 { await Task.yield() }
+        let secondStart = Task { await controller.start(second) }
+        await secondStart.value
+        XCTAssertEqual(controller.state?.commandId, second)
+        let stopsBeforeRelease = audio.stopCalls
+        gate.release()
+        await firstStart.value
+        XCTAssertEqual(controller.state?.commandId, second)
+        XCTAssertEqual(audio.stopCalls, stopsBeforeRelease,
+                       "the old ring's delayed audio start must not stop the replacement ring")
     }
 
     func testPendingDismissalReportDoesNotStartAudioAfterStop() async {
@@ -341,6 +407,25 @@ final class ReportGate {
     func release() {
         continuation?.resume()
         continuation = nil
+    }
+}
+
+@MainActor
+final class GatedAudioPlayer: RingAudioPlaying {
+    private(set) var startCalls = 0
+    private(set) var stopCalls = 0
+    var startGate: (() async -> Void)?
+
+    func start() async {
+        startCalls += 1
+        if let gate = startGate {
+            startGate = nil
+            await gate()
+        }
+    }
+
+    func stop() async {
+        stopCalls += 1
     }
 }
 
