@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/onboarding/setup_child_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
@@ -20,25 +21,24 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() {
-    // bootstrap() reads the stored token, then `/v1/family/me` — the family region comes from that answer.
+    // Secure storage and preferences are still mocked: the screens and the providers they watch read both.
     FlutterSecureStorage.setMockInitialValues({'jwt': 'jwt-token'});
     SharedPreferences.setMockInitialValues({});
   });
 
+  /// A session that is already signed in, so the screens can read the family's region at construction.
+  ///
+  /// `AuthNotifier.bootstrap()` would be the honest route, but awaiting it here deadlocks: the fake HTTP
+  /// client dispatches through chained zero-duration timers that only advance inside `tester.pump`, and the
+  /// await happens before there is a tree to pump. Setting the state on a subclass keeps the test off the
+  /// clock entirely — the assertion is about which region the picker starts on, not about bootstrap.
   Future<void> pumpSignedIn(WidgetTester tester, Widget home, {String region = 'EU'}) async {
-    final family = Map<String, dynamic>.from(familyMeTwoChildren()['family'] as Map)..['region'] = region;
-    final api = FakeApiClient({
-      ...standardRoutes(),
-      'GET /v1/family/me': (_) => {...familyMeTwoChildren(), 'family': family},
-    });
-    final notifier = AuthNotifier(api);
-    await notifier.bootstrap();
-    addTearDown(notifier.dispose);
+    final api = FakeApiClient(standardRoutes());
+    final family = Family.fromJson({'id': 'fam-1', 'name': 'QA Family', 'region': region});
     await tester.pumpWidget(ProviderScope(
       overrides: [
         apiClientProvider.overrideWithValue(api),
-        // The screens read the family's region from the session, which bootstrap just loaded.
-        authProvider.overrideWith((ref) => notifier),
+        authProvider.overrideWith((ref) => _SignedInNotifier(api, family)),
       ],
       child: localizedTestApp(home),
     ));
@@ -75,4 +75,12 @@ void main() {
     expect(find.text('United States'), findsOneWidget);
     expect(find.text('Where does your family live?'), findsOneWidget);
   });
+}
+
+/// An `AuthNotifier` whose session is already loaded. `state` is settable from a subclass, which is the
+/// smallest way to hand a widget a signed-in family without touching the network or the fake clock.
+class _SignedInNotifier extends AuthNotifier {
+  _SignedInNotifier(FakeApiClient api, Family family) : super(api) {
+    state = AuthState(isAuthenticated: true, family: family);
+  }
 }
