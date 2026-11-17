@@ -348,8 +348,8 @@ run "production_settings" {
     error_message = "production's database must use its own key and be in the daily backup plan (#766 item 5)"
   }
   assert {
-    condition     = one([for r in aws_backup_plan.main[0].rule : one([for c in r.copy_action : c.lifecycle[0].delete_after])]) == 90 && one([for r in aws_backup_plan.main[0].rule : r.lifecycle[0].delete_after]) <= 90
-    error_message = "backups and their off-site copies are deleted within 90 days (privacy policy)"
+    condition     = one([for r in aws_backup_plan.main[0].rule : one([for c in r.copy_action : c.lifecycle[0].delete_after])]) == 14 && one([for r in aws_backup_plan.main[0].rule : r.lifecycle[0].delete_after]) == 14
+    error_message = "backups and their off-site copies are deleted after 14 days (privacy notice, #892 section 6)"
   }
   assert {
     condition     = length(aws_cloudwatch_event_target.rds_key_danger) == 1 && strcontains(aws_cloudwatch_event_rule.rds_key_danger[0].event_pattern, "ScheduleKeyDeletion")
