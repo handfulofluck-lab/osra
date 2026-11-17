@@ -75,7 +75,7 @@ replace any item's own acceptance and do not open a gate by themselves.
 
 | # | Item | Acceptance | Status · evidence |
 |---|---|---|---|
-| S0 | The bed: preflight, restore and stuck-lock recovery (SC-0.1 to SC-0.3) on the Flip4, the iPhone and the emulator | a run starts in under 2 min and leaves every device as it found it | ⬜ |
+| S0 | The bed: preflight, restore and stuck-lock recovery (SC-0.1 to SC-0.3) on the Flip4, the iPhone and the emulator | a run starts in under 2 min and leaves every device as it found it | 🔵 runner implementation in draft PR #797: fake-boundary Pester suites, in-memory OSRA-only crops, nine restore values and a dry-run CLI. Physical SC-0.1–0.3 runs remain NOT RUN until Claude's authorized lease. |
 | S1 | Android child stories (SC-1.1 to SC-1.11): lock, bedtime, app block, time limit, pause, web filter, ring and locate, SOS, removal attempts, offline and back | each scenario's measure met on the Flip4, build kind named | ⬜ |
 | S2 | Backend through two devices (SC-2.1 to SC-2.6): push to a closed parent app, honest command status, consent revoke, usage report, WhatsApp scan, unlink and erasure | measured on the second device or in the server's rows | ⬜ |
 | S3 | Parent app stories (SC-3.1 to SC-3.7): first run under 5 min, Arabic, MFA and reset, app picker, second guardian, two children, light and dark | measured with the real parent UI on a phone; Arabic and theme screenshots sent to the two Bureaus | ⬜ |

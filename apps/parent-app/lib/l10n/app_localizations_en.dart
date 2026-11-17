@@ -189,6 +189,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get createAccount => 'Create account';
 
   @override
+  String get consentRequired => 'To create an account, please tick this box.';
+
+  @override
   String get familyNameLabel => 'Family name';
 
   @override
@@ -1596,7 +1599,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get vaultTrustCopy =>
-      'Snippets are encrypted with your family key before leaving the device and stored encrypted on your server.';
+      'Excerpts travel over an encrypted connection and are stored encrypted on OSRA\'s servers.';
 
   @override
   String get noConcernsDetected => 'No concerns detected';
@@ -1951,7 +1954,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get onboardingNoNetwork =>
-      'Cannot reach the server. Check the server address and your internet connection, then try again.';
+      'Couldn\'t connect to OSRA. Check your internet connection, then try again.';
 
   @override
   String get onboardingChildTitle => 'Add your child';
@@ -3130,14 +3133,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String alertBodyRingChildDismissed(int count) {
+    final intl.NumberFormat countNumberFormat = intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
       other:
-          'The ring alert was dismissed on the phone $count times. It is still ringing.',
+          'The ring alert was dismissed on the phone $countString times. It is still ringing.',
       one: 'The ring alert was dismissed on the phone. It is ringing again.',
     );
-    return '$_temp0';
+    return _temp0;
   }
 
   @override
@@ -3159,4 +3165,16 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get commandRefusedRingUnsupportedOs =>
       'This iPhone cannot ring yet. It needs iOS 26 or later.';
+
+  @override
+  String get showPassword => 'Show password';
+
+  @override
+  String get hidePassword => 'Hide password';
+
+  @override
+  String get passwordMinHint => 'At least 12 characters.';
+
+  @override
+  String get familyNameHelper => 'Other parents you invite will see this.';
 }

@@ -197,6 +197,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get createAccount => 'إنشاء حساب';
 
   @override
+  String get consentRequired => 'لإنشاء حساب، يُرجى وضع علامة في هذه الخانة.';
+
+  @override
   String get familyNameLabel => 'اسم العائلة';
 
   @override
@@ -1720,7 +1723,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get vaultTrustCopy =>
-      'تُشفَّر المقاطع بمفتاح عائلتك قبل مغادرة الجهاز وتُخزَّن مشفّرة على خادمك.';
+      'تنتقل المقتطفات عبر اتصال مشفّر، وتُخزَّن مشفّرة على خوادم تطبيق أسرة.';
 
   @override
   String get noConcernsDetected => 'لم تُكتشف أي مخاوف';
@@ -2112,7 +2115,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get onboardingNoNetwork =>
-      'تعذّر الوصول إلى الخادم. تحقق من عنوان الخادم واتصال الإنترنت ثم حاول مجددًا.';
+      'تعذّر الاتصال بخدمة أسرة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
 
   @override
   String get onboardingChildTitle => 'أضف طفلك';
@@ -3302,16 +3305,24 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String alertBodyRingChildDismissed(int count) {
+    final intl.NumberFormat countNumberFormat = intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'أُغلق تنبيه الرنين على الهاتف $count مرة. ما زال الهاتف يرنّ.',
-      many: 'أُغلق تنبيه الرنين على الهاتف $count مرة. ما زال الهاتف يرنّ.',
-      few: 'أُغلق تنبيه الرنين على الهاتف $count مرات. ما زال الهاتف يرنّ.',
-      two: 'أُغلق تنبيه الرنين على الهاتف مرتين. ما زال الهاتف يرنّ.',
-      one: 'أُغلق تنبيه الرنين على الهاتف. عاد الهاتف إلى الرنين.',
+      one:
+          'أُغلق تنبيه الرنين على الهاتف. عاد الهاتف إلى الرنين.',
+      two:
+          'أُغلق تنبيه الرنين على الهاتف مرتين. ما زال الهاتف يرنّ.',
+      few:
+          'أُغلق تنبيه الرنين على الهاتف $countString مرات. ما زال الهاتف يرنّ.',
+      many:
+          'أُغلق تنبيه الرنين على الهاتف $countString مرة. ما زال الهاتف يرنّ.',
+      other:
+          'أُغلق تنبيه الرنين على الهاتف $countString مرة. ما زال الهاتف يرنّ.',
     );
-    return '$_temp0';
+    return _temp0;
   }
 
   @override
@@ -3323,7 +3334,8 @@ class AppLocalizationsAr extends AppLocalizations {
       'أوقف أحد الوالدين الرنين من تطبيق أسرة.';
 
   @override
-  String get alertBodyRingTimedOut => 'انتهى الرنين تلقائيًا بعد 5 دقائق.';
+  String get alertBodyRingTimedOut =>
+      'انتهى الرنين تلقائيًا بعد 5 دقائق.';
 
   @override
   String get alertBodyRingAfterRestart =>
@@ -3332,4 +3344,16 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get commandRefusedRingUnsupportedOs =>
       'لا يمكن أن يرنّ هذا الآيفون حاليًا. يحتاج إلى iOS 26 أو أحدث.';
+
+  @override
+  String get showPassword => 'إظهار كلمة المرور';
+
+  @override
+  String get hidePassword => 'إخفاء كلمة المرور';
+
+  @override
+  String get passwordMinHint => '12 حرفًا على الأقل.';
+
+  @override
+  String get familyNameHelper => 'سيظهر هذا الاسم لأولياء الأمور الآخرين الذين تدعوهم.';
 }

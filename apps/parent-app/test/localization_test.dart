@@ -329,6 +329,25 @@ void main() {
       }
     });
 
+    test('ring dismissal count uses locale-aware decimal formatting', () {
+      final en = readArb('app_en.arb');
+      final enMeta = en['@alertBodyRingChildDismissed'] as Map<String, dynamic>;
+      final enPlaceholders = enMeta['placeholders'] as Map<String, dynamic>;
+      expect(
+        enPlaceholders['count']?['format'],
+        'decimalPattern',
+        reason: 'alertBodyRingChildDismissed count must use decimalPattern so rows never mix digit sets',
+      );
+      final ar = readArb('app_ar.arb');
+      final arMeta = ar['@alertBodyRingChildDismissed'] as Map<String, dynamic>?;
+      final arPlaceholders = arMeta?['placeholders'] as Map<String, dynamic>?;
+      expect(
+        arPlaceholders?['count']?['format'],
+        'decimalPattern',
+        reason: 'Arabic ring dismissal count must also use decimalPattern',
+      );
+    });
+
     test('the four alert-title keys are present and non-empty in both locales', () {
       final en = readArb('app_en.arb');
       final ar = readArb('app_ar.arb');

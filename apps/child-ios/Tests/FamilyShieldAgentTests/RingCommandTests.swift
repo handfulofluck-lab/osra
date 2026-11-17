@@ -171,6 +171,25 @@ final class RingCommandTests: XCTestCase {
         XCTAssertFalse(view.contains("get: { ring.requiresPin }"), "the old cover binding is gone")
     }
 
+    func testRingViewPutsContinueInSafeAreaInset() throws {
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent/RingView.swift")
+        let view = try String(contentsOf: source, encoding: .utf8)
+        XCTAssertTrue(view.contains(".safeAreaInset(edge: .bottom)"), "Continue rides above the keyboard")
+        XCTAssertTrue(view.contains("A11yID.pinContinue"), "the bottom Continue has the fixed identifier")
+        XCTAssertTrue(view.contains("disabled(pin.count < ParentPin.minLength)"), "Continue is disabled until the PIN is long enough")
+    }
+
+    func testRingViewPinGateHidesItsOwnButtons() throws {
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent/RingView.swift")
+        let view = try String(contentsOf: source, encoding: .utf8)
+        let pinGateRange = try XCTUnwrap(view.range(of: "PinGateView(title: L10n.tr(\"ring_pin_title\")"))
+        let endRange = try XCTUnwrap(view.range(of: ")", range: pinGateRange.upperBound..<view.endIndex))
+        let pinGateCall = String(view[pinGateRange.lowerBound..<endRange.upperBound])
+        XCTAssertTrue(pinGateCall.contains("showsButtons: false"), "RingView's PinGateView does not show its own Continue")
+    }
+
     func testHomeOrBackgroundDoesNotStop() async {
         let backend = FakeRingBackend()
         let controller = RingController(backend: backend, store: InMemoryRingStore(),

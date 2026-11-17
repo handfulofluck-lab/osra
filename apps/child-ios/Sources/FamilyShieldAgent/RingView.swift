@@ -3,6 +3,8 @@ import SwiftUI
 
 public struct RingView: View {
     @ObservedObject var controller: RingController
+    @State private var pin = ""
+    @State private var pinMessage: String?
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
 
@@ -31,14 +33,9 @@ public struct RingView: View {
                         .font(.body)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
-                    PinGateView(title: L10n.tr("ring_pin_title")) {
-                        Task {
-                            await controller.stop(.pinVerified)
-                            RingNotifier.cancel()
-                        }
-                    }
-                    .scrollContentBackground(.hidden)
-                    .frame(minHeight: 240)
+                    PinGateView(title: L10n.tr("ring_pin_title"), pin: $pin, message: $pinMessage, onUnlock: stopRing, showsButtons: false)
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 240)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 24)
@@ -48,6 +45,21 @@ public struct RingView: View {
             .background(color(0xF1F5F4, 0x0E1417).ignoresSafeArea())
             .accessibilityIdentifier(A11yID.ringView)
             .interactiveDismissDisabled()
+            .safeAreaInset(edge: .bottom) {
+                Button(action: checkPin) {
+                    Text(L10n.tr("pin_continue"))
+                        .font(.body.bold())
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                }
+                .disabled(pin.count < ParentPin.minLength)
+                .foregroundStyle(color(0xFFFFFF, 0x0E1417))
+                .background(pin.count < ParentPin.minLength ? color(0xC9D6D3, 0x3A4A53) : continueButtonColor)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .accessibilityIdentifier(A11yID.pinContinue)
+            }
             .onChange(of: scenePhase) { phase in
                 if phase == .background {
                     Task {
@@ -56,6 +68,26 @@ public struct RingView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var continueButtonColor: Color {
+        colorScheme == .dark
+            ? Color(red: 125 / 255, green: 180 / 255, blue: 255 / 255)
+            : Color(red: 11 / 255, green: 93 / 255, blue: 87 / 255)
+    }
+
+    private func checkPin() {
+        let result = ParentPinStore.check(pin)
+        pin = ""
+        pinMessage = PinGateMessage.text(for: result)
+        if result == .ok { stopRing() }
+    }
+
+    private func stopRing() {
+        Task {
+            await controller.stop(.pinVerified)
+            RingNotifier.cancel()
         }
     }
 

@@ -21,6 +21,7 @@ import {
   type PolledDevice,
 } from "../lib/pollCadence.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
+import { familyAppliedVersion, rulesAppliedReached } from "../lib/rulesApplied.js";
 import { recordActivityUsage, recordDeviceTotal } from "../lib/usageModel.js";
 
 import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
@@ -28,6 +29,7 @@ import { markDeviceRevoked } from "../lib/deviceRevocation.js";
 import { PAIR_CLAIM_RATE_LIMIT, PAIR_POLL_RATE_LIMIT } from "../lib/rateLimits.js";
 import { cleanDeviceText, decideClaim, markPaired, pollSecretMatches, readClaim, readClaimForCode, recordPollMiss, releaseClaim, reserveClaim, takeApprovedClaim } from "../lib/pairApproval.js";
 import { raiseAlertOnce } from "../lib/alerts.js";
+import { encryptSecret } from "../lib/secretVault.js";
 // Re-exported for existing importers/tests; the constant and its contract live in lib/deviceToken.ts.
 export { DEVICE_TOKEN_TTL_SECONDS };
 
@@ -500,7 +502,9 @@ export async function deviceRoutes(app: FastifyInstance) {
         childId: record.childId,
         status: "online",
         lastSeen: new Date(),
-        internalSecret,
+        // Stored under VAULT_KEY like the parent's TOTP secret (ADR-0014): a read of the Device table, a snapshot or a
+        // backup does not hand out every phone's signing key. The phone gets the raw key once, below.
+        internalSecret: encryptSecret(internalSecret),
         // ADR-0034: the report the phone sent with its claim, and the time the server received it.
         ...(record.capabilities !== undefined
           ? { capabilities: record.capabilities as Prisma.InputJsonValue, capabilitiesReportedAt: new Date(record.capabilitiesReportedAt ?? Date.now()) }
@@ -515,8 +519,10 @@ export async function deviceRoutes(app: FastifyInstance) {
     // #602: the child's own phone shows the child's name on its status screen instead of an id. The name the
     // parent typed, for the child this claim was approved for; null when it cannot be read.
     const child = await prisma.child.findUnique({ where: { id: record.childId }, select: { displayName: true } });
+    // The phone gets its key once, as `hmacSecret`; the stored (encrypted) column is not echoed back.
+    const { internalSecret: _stored, ...shownDevice } = device;
     return reply.code(201).send({
-      device,
+      device: shownDevice,
       token,
       childId: record.childId,
       familyId: record.familyId,
@@ -859,6 +865,34 @@ export async function deviceRoutes(app: FastifyInstance) {
       const current = issued?.rulesVersion ?? 0;
       if (reportedVersion <= current) {
         await prisma.device.update({ where: { id }, data: { appliedRulesVersion: reportedVersion } });
+        // #865: tell the family's parents the moment its last reporting device catches up. Without this
+        // the "hasn't picked this change up yet" line is refreshed only by an unrelated socket frame, so
+        // a parent reads "not picked up" while the phone is already enforcing. The frame carries the
+        // same reduced number the banner reads and nothing else: no rule content, no device detail.
+        //
+        // Only on the transition: `req.device` is the row as it was before this upload, so an upload that
+        // repeats a version the phone already reported must not publish — otherwise every telemetry tick
+        // makes every open parent app refetch the family snapshot, changed or not.
+        const previousVersion = (device as { appliedRulesVersion?: number | null }).appliedRulesVersion ?? null;
+        const advanced = previousVersion === null || reportedVersion > previousVersion;
+        const familyId = (device as { child?: { familyId?: string } }).child?.familyId;
+        if (familyId && advanced) {
+          const siblings = await prisma.device.findMany({
+            where: { childId: device.childId },
+            select: { appliedRulesVersion: true },
+          });
+          const applied = familyAppliedVersion(siblings.map((sibling) => sibling.appliedRulesVersion));
+          if (rulesAppliedReached(applied, current)) {
+            await publishFamilyEvent(familyId, {
+              type: "rules_applied",
+              payload: { childId: device.childId, appliedRulesVersion: applied },
+            }).catch((err) => {
+              // The report is stored and the upload succeeded; a push that cannot be delivered is a
+              // cache refresh the parent misses until the next frame, not a reason to fail the upload.
+              req.log.warn({ err, familyId }, "rules_applied publish failed (telemetry)");
+            });
+          }
+        }
       } else {
         req.log.warn({ deviceId: id, reportedVersion, issued: current }, "appliedRulesVersion above the issued version; ignored");
       }
