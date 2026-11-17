@@ -852,8 +852,14 @@ export async function deviceRoutes(app: FastifyInstance) {
         // the "hasn't picked this change up yet" line is refreshed only by an unrelated socket frame, so
         // a parent reads "not picked up" while the phone is already enforcing. The frame carries the
         // same reduced number the banner reads and nothing else: no rule content, no device detail.
+        //
+        // Only on the transition: `req.device` is the row as it was before this upload, so an upload that
+        // repeats a version the phone already reported must not publish — otherwise every telemetry tick
+        // makes every open parent app refetch the family snapshot, changed or not.
+        const previousVersion = (device as { appliedRulesVersion?: number | null }).appliedRulesVersion ?? null;
+        const advanced = previousVersion === null || reportedVersion > previousVersion;
         const familyId = (device as { child?: { familyId?: string } }).child?.familyId;
-        if (familyId) {
+        if (familyId && advanced) {
           const siblings = await prisma.device.findMany({
             where: { childId: device.childId },
             select: { appliedRulesVersion: true },

@@ -969,6 +969,47 @@ describe("applied rules version push (#865)", () => {
     await app.close();
   });
 
+  it("publishes once, not on every upload that repeats the version", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ rulesVersion: 4 });
+    prismaMock.device.findMany.mockResolvedValue([{ appliedRulesVersion: 4 }]);
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    // The row as `requireFamily` loads it: first upload sees a device that never reported, second sees the
+    // version the first one stored. That is the transition, and it happens once.
+    prismaMock.device.findUnique
+      .mockResolvedValueOnce(DEVICE)
+      .mockResolvedValue({ ...DEVICE, appliedRulesVersion: 4 });
+    redis().publish.mockClear();
+
+    expect((await report(app, 4)).statusCode).toBe(202);
+    const afterFirst = redis().publish.mock.calls.filter(([, message]) => String(message).includes('"rules_applied"')).length;
+    expect(afterFirst).toBe(1);
+
+    expect((await report(app, 4)).statusCode).toBe(202);
+    const afterSecond = redis().publish.mock.calls.filter(([, message]) => String(message).includes('"rules_applied"')).length;
+    // The mutant: drop `advanced` and every telemetry tick republishes, making every open parent app
+    // refetch the family snapshot for as long as nothing changes.
+    expect(afterSecond).toBe(1);
+    await app.close();
+  });
+
+  it("publishes again when the version moves up and the family is caught up", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ rulesVersion: 5 });
+    prismaMock.device.findMany.mockResolvedValue([{ appliedRulesVersion: 5 }]);
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, appliedRulesVersion: 4 });
+    redis().publish.mockClear();
+
+    expect((await report(app, 5)).statusCode).toBe(202);
+    const frames = redis().publish.mock.calls.filter(([, message]) => String(message).includes('"rules_applied"'));
+    // The mutant: treat a repeat of the *old* number as caught up, or compare against the new version and
+    // this row stays quiet while the phone has actually moved.
+    expect(frames).toHaveLength(1);
+    expect(JSON.parse(frames[0][1] as string).payload.appliedRulesVersion).toBe(5);
+    await app.close();
+  });
+
   it("stays quiet while another device of the same child is still behind", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockResolvedValue(DEVICE);
