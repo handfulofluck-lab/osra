@@ -271,13 +271,17 @@ class _ConfirmBar extends StatelessWidget {
       top: false,
       child: Padding(
         padding: const EdgeInsets.all(AppSpace.lg),
-        child: SizedBox(
-          height: 52,
-          width: double.infinity,
-          child: FilledButton(
-            key: const ValueKey('appPickerConfirm'),
-            onPressed: onConfirm,
-            child: Text(context.l10n.addApp),
+        // #862 UI/UX addendum applies here too: 52 is a floor, so the confirm button grows with its
+        // label at the largest text instead of cutting it.
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 52),
+          child: SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              key: const ValueKey('appPickerConfirm'),
+              onPressed: onConfirm,
+              child: Text(context.l10n.addApp, textAlign: TextAlign.center),
+            ),
           ),
         ),
       ),
