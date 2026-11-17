@@ -186,7 +186,14 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
               );
             }
             return SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(AppSpace.xl, AppSpace.lg, AppSpace.xl, AppSpace.xl + MediaQuery.viewInsetsOf(context).bottom),
+              // #862 condition 1: at the largest text the scroll has to end below the button, not at it —
+              // the Create account button keeps the safe-area inset plus 24 of air under it.
+              padding: EdgeInsets.fromLTRB(
+                AppSpace.xl,
+                AppSpace.lg,
+                AppSpace.xl,
+                AppSpace.xl + MediaQuery.paddingOf(context).bottom + MediaQuery.viewInsetsOf(context).bottom,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -199,6 +206,10 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                     textInputAction: TextInputAction.next,
                     decoration: InputDecoration(
                       labelText: l10n.yourNameLabel,
+                      // B6 (#862 condition 2): a helper or an error is a sentence, and a sentence is
+                      // never cut with an ellipsis at 320 px / 200 % text.
+                      helperMaxLines: 3,
+                      errorMaxLines: 3,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                     ),
                   ),
@@ -210,6 +221,10 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                     textInputAction: TextInputAction.next,
                     decoration: InputDecoration(
                       labelText: l10n.emailLabel,
+                      // B6 (#862 condition 2): a helper or an error is a sentence, and a sentence is
+                      // never cut with an ellipsis at 320 px / 200 % text.
+                      helperMaxLines: 3,
+                      errorMaxLines: 3,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                     ),
                   ),
@@ -229,6 +244,10 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                         icon: Icon(_obscured ? Icons.visibility : Icons.visibility_off),
                         onPressed: () => setState(() => _obscured = !_obscured),
                       ),
+                      // B6 (#862 condition 2): a helper or an error is a sentence, and a sentence is
+                      // never cut with an ellipsis at 320 px / 200 % text.
+                      helperMaxLines: 3,
+                      errorMaxLines: 3,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                     ),
                   ),
@@ -241,6 +260,10 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                       labelText: l10n.familyNameLabel,
                       // Co-parents see this name, so the field says so (UI/UX recommendation).
                       helperText: l10n.familyNameHelper,
+                      // B6 (#862 condition 2): a helper or an error is a sentence, and a sentence is
+                      // never cut with an ellipsis at 320 px / 200 % text.
+                      helperMaxLines: 3,
+                      errorMaxLines: 3,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                     ),
                   ),
@@ -250,6 +273,10 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                     isExpanded: true,
                     decoration: InputDecoration(
                       labelText: l10n.regionLabel,
+                      // B6 (#862 condition 2): a helper or an error is a sentence, and a sentence is
+                      // never cut with an ellipsis at 320 px / 200 % text.
+                      helperMaxLines: 3,
+                      errorMaxLines: 3,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                     ),
                     items: [

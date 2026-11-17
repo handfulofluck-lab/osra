@@ -288,6 +288,17 @@ void main() {
       expect(shown(tester, 'consentError'), ar.consentRequired);
       expect(shown(tester, 'consentTermsText'), contains('أُقرّ بأنني بلغت سن الرشد'));
       expect(find.text('شروط استخدام تطبيق أسرة'), findsOneWidget);
+
+      // #862 condition 3: a multi-word Arabic label is shown with its spaces. The parser copies the
+      // label out of the copy's markdown and rewrites nothing, so an underscore here would mean the
+      // copy or a stub sent one — which is exactly what this pins.
+      for (final key in ['consentTermsLink', 'consentPrivacyLink']) {
+        for (final text in tester.widgetList<Text>(
+          find.descendant(of: find.byKey(ValueKey(key)), matching: find.byType(Text)),
+        )) {
+          expect(text.data ?? '', isNot(contains('_')), reason: '$key renders "${text.data}"');
+        }
+      }
     });
 
     testWidgets('a copy the server cannot serve is a plain line, never a half form', (tester) async {
