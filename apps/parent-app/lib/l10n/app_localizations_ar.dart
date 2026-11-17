@@ -1723,7 +1723,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get vaultTrustCopy =>
-      'تُشفَّر المقاطع بمفتاح عائلتك قبل مغادرة الجهاز وتُخزَّن مشفّرة على خادمك.';
+      'تنتقل المقتطفات عبر اتصال مشفّر، وتُخزَّن مشفّرة على خوادم تطبيق أسرة.';
 
   @override
   String get noConcernsDetected => 'لم تُكتشف أي مخاوف';
