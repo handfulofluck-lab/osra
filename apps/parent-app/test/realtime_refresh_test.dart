@@ -57,6 +57,24 @@ void main() {
       expect(effects.activities, isEmpty);
     });
 
+    test('rules_applied refreshes only the family overview (#865)', () {
+      final effects = RecordingEffects();
+      applyRealtimeMessage(effects, {
+        // The server's frame when the family's last reporting device catches up. It carries the number
+        // the banner already reads; the app re-reads the snapshot and nothing else.
+        'type': 'rules_applied',
+        'payload': {'childId': 'child-1', 'appliedRulesVersion': 7},
+      });
+
+      expect(effects.family, 1);
+      // Mutant: widen this to alerts or a live activity and the counts below go red.
+      expect(effects.alerts, 0);
+      expect(effects.unacknowledged, 0);
+      expect(effects.locations, isEmpty);
+      expect(effects.consents, isEmpty);
+      expect(effects.activities, isEmpty);
+    });
+
     test('a location invalidates that child and the family overview', () {
       final effects = RecordingEffects();
       applyRealtimeMessage(effects, {

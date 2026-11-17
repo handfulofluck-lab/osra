@@ -233,6 +233,11 @@ void applyRealtimeMessage(RealtimeEffects effects, Map<String, dynamic> msg) {
         final activity = LiveActivity.fromJson(Map<String, dynamic>.from(payload));
         effects.updateLiveActivity(activity);
       }
+    case 'rules_applied':
+      // #865: the family's lowest applied rules version reached what the server issued, so the
+      // "hasn't picked this change up yet" line (which reads that number) is stale from here on.
+      // Nothing else changes: no content and no device detail ride on this frame.
+      effects.invalidateFamily();
   }
 }
 

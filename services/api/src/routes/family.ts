@@ -6,6 +6,7 @@ import { requireConsent } from "../middleware/requireConsent.js";
 import { checkActiveConsent } from "../lib/consent.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
+import { familyAppliedVersion } from "../lib/rulesApplied.js";
 import { defaultRuleSetRow } from "../lib/defaultRules.js";
 import { setupFor } from "../lib/capabilities.js";
 import { getRedis } from "../redis.js";
@@ -106,14 +107,15 @@ export async function familyRoutes(app: FastifyInstance) {
         }
         // Issue #475: the pair the rule screens compare, on the request the app already makes. The child
         // endpoint answers the same two numbers from the same rule — one row asserts they agree.
-        const reported = c.devices
-          .map((d) => (d as { appliedRulesVersion?: number | null }).appliedRulesVersion)
-          .filter((v): v is number => typeof v === "number");
         return {
           ...c,
           screenTimeTodayMinutes,
           rulesVersion: (c as { ruleSet?: { rulesVersion?: number } | null }).ruleSet?.rulesVersion ?? null,
-          appliedRulesVersion: reported.length > 0 ? Math.min(...reported) : null,
+          // #865: one reduction for the whole app — the same function the telemetry push fires on, so the
+          // number a parent is shown and the number the push announces cannot drift apart.
+          appliedRulesVersion: familyAppliedVersion(
+            c.devices.map((d) => (d as { appliedRulesVersion?: number | null }).appliedRulesVersion),
+          ),
           // Issue #601: the parent app's device cards and its "Phone setup" block read this envelope, not
           // `GET /v1/devices`, so the setup projection has to travel here too — the same `setupFor` call as
           // `devices.ts` (list and detail), so the two cannot disagree. A device with no report carries
@@ -224,16 +226,13 @@ export async function familyRoutes(app: FastifyInstance) {
       prisma.ruleSet.findUnique({ where: { childId }, select: { rulesVersion: true } }),
       prisma.device.findMany({ where: { childId }, select: { appliedRulesVersion: true } }),
     ]);
-    const reported = devices
-      .map((d) => d.appliedRulesVersion)
-      .filter((v): v is number => typeof v === "number");
     return {
       ...child,
       rulesVersion: ruleSet?.rulesVersion ?? null,
       // The MINIMUM of the children's devices, because the warning is about a phone that is behind: with
       // two handsets, one having the change is not enough. Null when no device has ever reported, which
       // the app renders as nothing rather than as a warning.
-      appliedRulesVersion: reported.length > 0 ? Math.min(...reported) : null,
+      appliedRulesVersion: familyAppliedVersion(devices.map((d) => d.appliedRulesVersion)),
     };
   });
 
