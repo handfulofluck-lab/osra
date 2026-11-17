@@ -116,6 +116,19 @@ describe("POST /v1/auth/register — the consent record", () => {
     expect(call[0].data.textHash).toBe(served.textHash);
   });
 
+  it("stores the locale the server served, not the one the client asked for", async () => {
+    // Ahmed's N1: a client sending `locale: "fr"` is served English, so a row claiming `fr` beside the
+    // English hash would be a proof that does not match itself.
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/auth/register",
+      payload: body({ consents: { ...SIGNUP_CONSENTS, locale: "fr" } }),
+    });
+    expect(res.statusCode).toBe(201);
+    const [call] = prismaMock.parentConsentEvent.create.mock.calls as Array<[{ data: Record<string, unknown> }]>;
+    expect(call[0].data).toMatchObject({ locale: "en", textHash: consentCopyFor("en").purposes[0].textHash });
+  });
+
   it("stores the Arabic hash when the parent signed up in Arabic", async () => {
     const res = await app.inject({
       method: "POST",
