@@ -975,6 +975,11 @@ export async function deviceRoutes(app: FastifyInstance) {
         // report that omits it leaves the stored count alone — that report uses the instant fallback, and
         // the count decides again as soon as one arrives.
         ...(bootBaseline && bootBaseline.bootCount !== null ? { lastBootCount: bootBaseline.bootCount } : {}),
+        // Reviewed on #884 (Fable): an in-place agent upgrade reaches a row that has an instant but no counter.
+        // Recording the counter on that first count-bearing tick, without touching the instant and without an
+        // alert, is what moves the restart decision off the wall clock for every existing device after one
+        // tick instead of after the next reboot.
+        ...(boot.kind === "same_boot_adopt_count" ? { lastBootCount: boot.bootCount } : {}),
       },
     });
     if (boot.kind === "new_boot" && bootFamilyId) {

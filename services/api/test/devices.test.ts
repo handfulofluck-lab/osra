@@ -1207,6 +1207,37 @@ describe("device restart reporting (#867)", () => {
     await app.close();
   });
 
+  it("adopts a counter on a same-boot tick from an upgraded agent, silently", async () => {
+    // Fable's review of #884: a row with an instant and no counter is an agent upgraded in place. Recording
+    // the counter on this tick — no alert, no instant rewrite — is what moves the next restart's decision off
+    // the wall clock. The mutant, waiting for the next reboot, leaves the clock-move weakness for a full uptime.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    const storedInstant = minutesAgo(90);
+    storedDevice({ lastBootAt: storedInstant, lastBootCount: null });
+
+    expect((await tick(app, { bootedAt: storedInstant.toISOString(), bootCount: 5 })).statusCode).toBe(202);
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+    expect(bootWrites()).toHaveLength(1);
+    expect(bootWrites()[0][0].data).toMatchObject({ lastBootCount: 5 });
+    // The instant is not rewritten: this is not a new boot, and moving it would misdate the next gap.
+    expect(bootWrites()[0][0].data).not.toHaveProperty("lastBootAt");
+    await app.close();
+  });
+
+  it("alerts with a dedupe key that names the deciding count", async () => {
+    // Fable's x10 on #884: the key gained the count, and the row that guarded it was lost. Two API instances
+    // both deciding "new boot" for one restart would otherwise push twice; the count is part of the identity
+    // because a moved clock can repeat an instant.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    storedDevice({ lastBootAt: minutesAgo(180), lastBootCount: 7, lastSeen: minutesAgo(122) });
+    const boot = minutesAgo(120);
+
+    expect((await tick(app, { bootedAt: boot.toISOString(), bootCount: 8 })).statusCode).toBe(202);
+    const alert = prismaMock.alert.create.mock.calls[0][0].data as { dedupeKey?: string };
+    expect(alert.dedupeKey).toBe(`boot|${boot.toISOString()}|8`);
+    await app.close();
+  });
+
   it("a lower boot count is a new baseline, not a restart", async () => {
     // A wipe or a restore reports an earlier counter. The mutant — alert on any change — calls it tampering.
     const app = await buildApp(deviceRoutes, "/v1/devices");
