@@ -62,6 +62,18 @@ jobs:
       # default, and the only path the Firebase plugins support today.
       - run: flutter config --no-enable-swift-package-manager
       - run: flutter pub get
+      # The generated l10n files are committed, so one that no longer matches its ARB is code nobody
+      # regenerated — #841 found `app_localizations_ar.dart` behind `app_ar.arb`, and #862 an escaped
+      # apostrophe hand-edited into one. `pubspec.yaml` sets `generate: true`, so `pub get` above has
+      # already written what `flutter gen-l10n` would write; if that differs from the tree, this fails.
+      # The ARB is the source of truth (Arabic Language Bureau), so the fix is to regenerate, never to
+      # edit the generated file.
+      - name: Generated l10n matches gen-l10n
+        run: |
+          if ! git diff --exit-code -- lib/l10n; then
+            echo "::error::lib/l10n is stale — run 'flutter gen-l10n' in apps/parent-app and commit the result"
+            exit 1
+          fi
       - run: flutter analyze
       - run: flutter test
       # Store-readiness gate: a release build must compile, shrink and carry INTERNET + the Maps
