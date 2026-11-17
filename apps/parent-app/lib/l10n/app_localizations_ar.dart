@@ -1370,11 +1370,11 @@ class AppLocalizationsAr extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'تم الحظر $count مرة',
-      many: 'تم الحظر $count مرة',
-      few: 'تم الحظر $count مرات',
-      two: 'تم الحظر مرتين',
-      one: 'تم الحظر مرة واحدة',
+      other: 'حُظر $count مرة',
+      many: 'حُظر $count مرة',
+      few: 'حُظر $count مرات',
+      two: 'حُظر مرتين',
+      one: 'حُظر مرة واحدة',
     );
     return '$_temp0';
   }
@@ -1555,7 +1555,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String showingLatestVisits(int limit) {
-    return 'تُعرض آخر $limit زيارة — ارفع الحد لرؤية المزيد.';
+    return 'تُعرض آخر $limit زيارة. اختر عددًا أكبر لرؤية المزيد.';
   }
 
   @override

@@ -76,6 +76,58 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   }
 }
 
+/// "Total X · avg Y" on one line when it fits, two lines when it does not.
+///
+/// #841 Arabic Language Bureau (22:22Z): at 320 px / 200 % the average wrapped and left the separator at
+/// the end of the first line — «الإجمالي: 315 دقيقة ·» — and in RTL a dot at the end of a line reads as a
+/// stray mark. So the separator is only drawn when both halves share the line; otherwise the two halves
+/// are two lines and there is no dot. The halves come from the localized string itself (split on the
+/// separator glyph both locales use), so no new string had to be authored for this.
+class _TotalAndAverage extends StatelessWidget {
+  final int total;
+  final int avg;
+  const _TotalAndAverage({required this.total, required this.avg});
+
+  static final _separator = RegExp(r'\s*\u00B7\s*');
+
+  /// The two halves of the localized line, or null when the string has no separator at all.
+  static (String, String)? halves(String combined) {
+    final parts = combined.split(_separator);
+    if (parts.length < 2) return null;
+    return (parts.first.trim(), parts.sublist(1).join(' \u00B7 ').trim());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final combined = context.l10n.totalAverage(total, avg);
+    final split = halves(combined);
+    if (split == null) return Text(combined);
+    final (left, right) = split;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final style = DefaultTextStyle.of(context).style;
+        final scaler = MediaQuery.textScalerOf(context);
+        bool fits(String text) {
+          final painter = TextPainter(
+            text: TextSpan(text: text, style: style),
+            textDirection: Directionality.of(context),
+            textScaler: scaler,
+            maxLines: 1,
+          )..layout(maxWidth: constraints.maxWidth);
+          return !painter.didExceedMaxLines;
+        }
+
+        // Mutant: always return the single Text, and the Arabic frame ends its first line on «·» again.
+        if (fits(combined)) return Text(combined);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [Text(left), Text(right)],
+        );
+      },
+    );
+  }
+}
+
 /// App usage: total + average text and a bar chart of the top apps (minutes).
 class _UsageSection extends StatelessWidget {
   final ReportSummary summary;
@@ -91,7 +143,7 @@ class _UsageSection extends StatelessWidget {
       children: [
         Text(l10n.appUsage, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: AppSpace.xs),
-        Text(l10n.totalAverage(summary.totalAppMinutes, avg)),
+        _TotalAndAverage(total: summary.totalAppMinutes, avg: avg),
         if (summary.topApps.isEmpty)
           Padding(
             padding: const EdgeInsets.only(top: AppSpace.md),
@@ -148,6 +200,29 @@ class TopAppsChart extends StatelessWidget {
     return painter.width.ceilToDouble() + AppSpace.sm;
   }
 
+  /// How many lines [name] needs at [width], capped at [maxLines]; measured with the chart's own face,
+  /// because a widget test's font is not the handset's and a guess is not a layout.
+  static int linesNeededFor(String name, double width, int maxLines, TextScaler scaler) {
+    final painter = TextPainter(
+      text: TextSpan(text: name, style: AppType.chartTick),
+      textDirection: TextDirection.ltr,
+      textScaler: scaler,
+      maxLines: maxLines,
+    )..layout(maxWidth: width);
+    if (!painter.didExceedMaxLines) {
+      // The count is the number of line boxes the painter produced.
+      final boxes = painter.getBoxesForSelection(TextSelection(baseOffset: 0, extentOffset: name.length));
+      return boxes.map((b) => b.top.round()).toSet().length;
+    }
+    return maxLines + 1;
+  }
+
+  /// The gap between one label's slot and the next, so two neighbours never touch.
+  static const double labelGap = 6;
+
+  /// At most this many lines under a bar before the labels stop being readable as labels.
+  static const int labelMaxLines = 3;
+
   /// Two lines of the tick face at the current scale, plus the gap above them.
   static double labelHeightFor(BuildContext context) {
     final scaled = MediaQuery.textScalerOf(context).scale(AppType.chartTick.fontSize ?? 10);
@@ -160,16 +235,28 @@ class TopAppsChart extends StatelessWidget {
     final axisWidth = axisWidthFor(context, apps);
     final labelHeight = labelHeightFor(context);
     final interval = tickIntervalFor(apps);
-    return SizedBox(
-      // NOTE: fixed height — BarChart throws inside an unbounded height. It grows with the label strip
-      // so a 200 % text scale gets the room the labels need instead of squeezing the plot.
-      height: plotHeight + labelHeight,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          // One label's slot: the plot width divided by the bars it holds. A label wraps inside its
-          // own slot, so two neighbours cannot overlap even when both wrap.
-          final slot = (constraints.maxWidth - axisWidth) / apps.length;
-          return BarChart(
+    final scaler = MediaQuery.textScalerOf(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Condition 4 (UI/UX Bureau, Codex's retake): the slot is the real bar spacing minus a gap, and the
+        // names are measured rather than assumed to fit. Slots were `plotWidth / bars` with no gap, so with
+        // 200 % text one label's last word sat against the next label's first — «FictionaReading».
+        final slot = ((constraints.maxWidth - axisWidth) / apps.length) - labelGap;
+        final widest = apps.fold<int>(1, (m, a) {
+          final lines = linesNeededFor(a.name, slot, labelMaxLines, scaler);
+          return lines > m ? lines : m;
+        });
+        // Condition 4's second half: "a readable full-name layout when labels do not fit". Under a bar there
+        // is room for three lines and no more; beyond that the names move below the chart as a legend, where
+        // every one is drawn whole and left to right instead of being shortened to fit a 30 px slot.
+        final legend = widest > labelMaxLines;
+        final legendHeight = legend ? _legendHeightFor(context) : 0.0;
+
+        final chart = SizedBox(
+          // NOTE: fixed height — BarChart throws inside an unbounded height. It grows with the label strip
+          // so a 200 % text scale gets the room the labels need instead of squeezing the plot.
+          height: plotHeight + (legend ? 0 : labelHeight),
+          child: BarChart(
             key: const ValueKey('usageBarChart'),
             BarChartData(
               maxY: maxYFor(apps),
@@ -178,32 +265,34 @@ class TopAppsChart extends StatelessWidget {
                   BarChartGroupData(x: i, barRods: [BarChartRodData(toY: apps[i].minutes.toDouble(), width: 18)]),
               ],
               titlesData: FlTitlesData(
-                bottomTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    reservedSize: labelHeight,
-                    getTitlesWidget: (value, _) {
-                      final i = value.toInt();
-                      if (i < 0 || i >= apps.length) return const SizedBox.shrink();
-                      return SizedBox(
-                        width: slot,
-                        child: Padding(
-                          padding: const EdgeInsets.only(top: AppSpace.xxs),
-                          child: Text(
-                            apps[i].name,
-                            style: AppType.chartTick,
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            softWrap: true,
-                            // No ellipsis: the name shortens to nothing if it cannot fit, which reads as
-                            // "make the text smaller", not as a site name cut in half.
-                            overflow: TextOverflow.fade,
-                          ),
+                bottomTitles: legend
+                    ? const AxisTitles(sideTitles: SideTitles(showTitles: false))
+                    : AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          reservedSize: labelHeight,
+                          getTitlesWidget: (value, _) {
+                            final i = value.toInt();
+                            if (i < 0 || i >= apps.length) return const SizedBox.shrink();
+                            return SizedBox(
+                              width: slot,
+                              child: Padding(
+                                padding: const EdgeInsets.only(top: AppSpace.xxs),
+                                child: Text(
+                                  // A Latin app name inside an Arabic chart needs its own first-strong
+                                  // isolate, exactly as the host rows do (Arabic Language Bureau, 22:22Z).
+                                  ltrIsolate(apps[i].name),
+                                  style: AppType.chartTick,
+                                  textAlign: TextAlign.center,
+                                  maxLines: labelMaxLines,
+                                  softWrap: true,
+                                  overflow: TextOverflow.clip,
+                                ),
+                              ),
+                            );
+                          },
                         ),
-                      );
-                    },
-                  ),
-                ),
+                      ),
                 // NOTE: the default left axis drew bare minute numbers with no
                 // unit — an unexplained "120" next to the tallest bar. Label
                 // the ticks with the minute unit so the value is self-describing.
@@ -228,11 +317,48 @@ class TopAppsChart extends StatelessWidget {
               gridData: FlGridData(horizontalInterval: interval),
               borderData: FlBorderData(show: false),
             ),
-          );
-        },
-      ),
+          ),
+        );
+
+        if (!legend) return chart;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            chart,
+            SizedBox(height: legendHeight),
+            for (final app in apps)
+              Padding(
+                key: ValueKey('usageChartLegend-${app.name}'),
+                padding: const EdgeInsets.only(bottom: AppSpace.xxs),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(color: context.tokens.primary, borderRadius: BorderRadius.circular(2)),
+                    ),
+                    const SizedBox(width: AppSpace.sm),
+                    Expanded(
+                      child: Text(
+                        ltrIsolate(app.name),
+                        style: AppType.chartTick,
+                        softWrap: true,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
+
+  /// One wrapped line per legend row at the current scale, plus the gap above the list.
+  static double _legendHeightFor(BuildContext context) =>
+      MediaQuery.textScalerOf(context).scale(AppType.chartTick.fontSize ?? 10) *
+          (AppType.chartTick.height ?? 1.2) +
+      AppSpace.xs;
 }
 
 /// Web activity: sites visited, top blocked domains and the YouTube

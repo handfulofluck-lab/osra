@@ -47,25 +47,26 @@ void main() {
         'sms': 3,
       };
 
-  FakeApiClient reportApi() => FakeApiClient({
+  FakeApiClient reportApi({Map<String, dynamic>? summary}) => FakeApiClient({
         ...standardRoutes(),
-        'GET /v1/reports/summary': (_) => summaryJson(),
+        'GET /v1/reports/summary': (_) => summary ?? summaryJson(),
       });
 
   /// Pumps the reports screen at [width] logical pixels and [scale] text scale.
-  Future<FakeApiClient> pumpReports(WidgetTester tester, {required double width, required double scale}) async {
+  Future<FakeApiClient> pumpReports(WidgetTester tester,
+      {required double width, required double scale, Locale locale = const Locale('en'), Map<String, dynamic>? summary}) async {
     tester.view.physicalSize = Size(width, 900);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() {
       tester.view.resetPhysicalSize();
       tester.view.resetDevicePixelRatio();
     });
-    final api = reportApi();
+    final api = reportApi(summary: summary);
     await tester.pumpWidget(ProviderScope(
       overrides: [apiClientProvider.overrideWithValue(api)],
       child: MediaQuery(
         data: MediaQueryData(size: Size(width, 900), textScaler: TextScaler.linear(scale)),
-        child: localizedTestApp(const ReportsScreen(childId: 'child-1')),
+        child: localizedTestApp(const ReportsScreen(childId: 'child-1'), locale: locale),
       ),
     ));
     await tester.pumpAndSettle();
@@ -92,8 +93,10 @@ void main() {
 
       expect(find.byKey(const ValueKey('usageBarChart')), findsOneWidget);
       // Mutant: put `name.substring(0, 8)` back — this row then finds 'Google P…' and no full name.
-      expect(find.text('Google Play Services'), findsOneWidget);
-      expect(find.text('WhatsApp Business'), findsOneWidget);
+      // Every name carries its own first-strong isolate now (Arabic Language Bureau, 22:22Z), so a
+      // Latin name cannot run into its neighbour across the bidi boundary — «FictionaReading».
+      expect(find.text(ltrIsolate('Google Play Services')), findsOneWidget);
+      expect(find.text(ltrIsolate('WhatsApp Business')), findsOneWidget);
       expect(find.textContaining('…'), findsNothing);
 
       // At most three tick labels inside the chart (the axis draws two at this interval).
@@ -128,6 +131,52 @@ void main() {
     testWidgets('nothing overflows or throws at the smallest size the app supports', (tester) async {
       await pumpReports(tester, width: 320, scale: 2.0);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('the header and the labels at 320 px / 200 % (#841, Bureaus 22:22Z)', () {
+    testWidgets('the separator is dropped when total and average cannot share a line', (tester) async {
+      await pumpReports(tester, width: 320, scale: 2.0, locale: const Locale('ar'));
+
+      // Mutant: render the combined string unconditionally and the Arabic first line ends on «·», which in
+      // RTL reads as a stray mark (Arabic Language Bureau).
+      expect(find.textContaining('·'), findsNothing);
+      expect(find.textContaining('الإجمالي'), findsOneWidget);
+      expect(find.textContaining('المتوسط'), findsOneWidget);
+    });
+
+    testWidgets('on a wide screen at 100 % the line keeps its separator', (tester) async {
+      await pumpReports(tester, width: 900, scale: 1.0, locale: const Locale('en'));
+      expect(find.textContaining('Total 270 min · avg 39 min/day'), findsOneWidget);
+    });
+
+    testWidgets('names that cannot fit under a bar move to a legend, in full', (tester) async {
+      await pumpReports(tester, width: 320, scale: 2.0, summary: {
+        'totalAppMinutes': 90,
+        'topApps': [
+          {'name': 'Fictional Learning', 'minutes': 60},
+          {'name': 'Reading', 'minutes': 30},
+        ],
+        'urlVisits': 0,
+        'topBlockedDomains': <Map<String, dynamic>>[],
+        'socialConcerns': 0,
+        'calls': 0,
+        'sms': 0,
+      });
+
+      // Mutant: keep the slots-only layout and the first name is cut where the second begins. The legend
+      // keys exist only when the measured three-line slot check fails, which is this size.
+      expect(find.byKey(const ValueKey('usageChartLegend-Fictional Learning')), findsOneWidget);
+      expect(find.text(ltrIsolate('Fictional Learning')), findsOneWidget);
+      expect(find.textContaining('…'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('short names keep their labels under the bars, with no legend', (tester) async {
+      await pumpReports(tester, width: 900, scale: 1.0);
+      // Mutant: always use the legend and the chart loses its axis labels on every wide screen.
+      expect(find.byKey(const ValueKey('usageChartLegend-Google Play Services')), findsNothing);
+      expect(find.text(ltrIsolate('Google Play Services')), findsOneWidget);
     });
   });
 
