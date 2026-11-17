@@ -2,7 +2,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/localized_list.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/world_class_provider.dart';
 import '../../api/models.dart' show DigestRecipientStatus;
@@ -10,8 +9,8 @@ import '../../l10n/l10n.dart';
 import '../../theme/app_tokens.dart';
 
 /// Feature #5: digest notification preferences — daily/weekly email and push
-/// switches, a comma-separated recipient list, plus a dev 'send now' button
-/// that renders the digest in-app (the test build has no SMTP — see SPEC).
+/// switches, removable recipient email chips (R-ID-10), plus a dev 'send now'
+/// button that renders the digest in-app (the test build has no SMTP — see SPEC).
 ///
 /// Roadmap 2.7 (osra-security#2): a recipient that is not a parent of the family
 /// receives nothing until it uses the confirmation link mailed to it, so the
@@ -28,7 +27,9 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
   bool _daily = false;
   bool _weekly = false;
   bool _push = true;
-  final _emails = TextEditingController();
+  final _emailInput = TextEditingController();
+  List<String> _emailsList = [];
+  String? _emailError;
   bool _initialized = false;
   bool _saving = false;
   bool _sending = false;
@@ -38,6 +39,8 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
   // ADR-0020 / #101: the family's timezone decides the local hour the digest is sent at.
   String? _timezone;
   bool _timezoneSaving = false;
+
+  static final RegExp _emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
   /// The fixed local send hour (see `digestPrefsSendHour`); shown as its own
   /// field so the explanation and this value are no longer one run-on line.
@@ -68,7 +71,7 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
 
   @override
   void dispose() {
-    _emails.dispose();
+    _emailInput.dispose();
     super.dispose();
   }
 
@@ -117,16 +120,36 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
     return [tz, ..._timezones];
   }
 
-  List<String> get _emailList => splitLocalizedList(_emails.text);
+  bool _addPendingEmail() {
+    final candidate = _emailInput.text.trim();
+    if (candidate.isEmpty) {
+      if (_emailError != null) setState(() => _emailError = null);
+      return true;
+    }
+    if (!_emailPattern.hasMatch(candidate)) {
+      setState(() => _emailError = context.l10n.authEmailInvalid);
+      return false;
+    }
+    final lower = candidate.toLowerCase();
+    setState(() {
+      if (!_emailsList.any((e) => e.toLowerCase() == lower)) {
+        _emailsList = [..._emailsList, candidate];
+      }
+      _emailInput.clear();
+      _emailError = null;
+    });
+    return true;
+  }
 
   Future<void> _save() async {
+    if (!_addPendingEmail()) return;
     setState(() => _saving = true);
     try {
       final res = await ref.read(apiClientProvider).raw.put('/v1/digests/prefs', data: {
         'dailyEmail': _daily,
         'weeklyEmail': _weekly,
         'pushEnabled': _push,
-        'emails': _emailList,
+        'emails': List<String>.from(_emailsList),
       });
       // The PUT answers each address `confirmed` or `pending` (roadmap 2.7); take that answer, so a
       // freshly added address shows that its confirmation was sent without a reload.
@@ -200,7 +223,7 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
             _daily = data.dailyEmail;
             _weekly = data.weeklyEmail;
             _push = data.pushEnabled;
-            _emails.text = data.emails.join(', ');
+            _emailsList = List<String>.from(data.emails);
             _recipients = data.recipients;
             _initialized = true;
           }
@@ -226,12 +249,50 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
                 onChanged: (v) => setState(() => _push = v),
               ),
               const SizedBox(height: AppSpace.md),
+              Text(l10n.digestPrefsEmailsLabel, style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: AppSpace.xs),
+              Text(l10n.digestPrefsEmailsHelper, style: Theme.of(context).textTheme.bodySmall),
+              if (_emailsList.isNotEmpty) ...[
+                const SizedBox(height: AppSpace.sm),
+                Wrap(
+                  key: const ValueKey('digestEmailChips'),
+                  spacing: AppSpace.sm,
+                  runSpacing: AppSpace.xs,
+                  children: [
+                    for (final email in _emailsList)
+                      InputChip(
+                        key: ValueKey('digestEmailChip-$email'),
+                        visualDensity: VisualDensity.compact,
+                        label: Text(email, softWrap: true),
+                        onDeleted: () => setState(() {
+                          _emailsList = _emailsList.where((e) => e != email).toList();
+                        }),
+                      ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: AppSpace.sm),
               TextField(
-                controller: _emails,
+                key: const ValueKey('digestEmailAddInput'),
+                controller: _emailInput,
+                keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.done,
+                onChanged: (_) {
+                  if (_emailError != null) setState(() => _emailError = null);
+                },
+                onSubmitted: (_) => _addPendingEmail(),
                 decoration: InputDecoration(
-                  labelText: l10n.digestPrefsEmailsLabel,
-                  helperText: l10n.digestPrefsEmailsHelper,
+                  labelText: l10n.familyEnterEmail,
+                  errorText: _emailError,
+                  errorMaxLines: 2,
                   border: const OutlineInputBorder(),
+                  isDense: true,
+                  suffixIcon: IconButton(
+                    key: const ValueKey('digestEmailAddButton'),
+                    icon: const Icon(Icons.add),
+                    tooltip: l10n.add,
+                    onPressed: _addPendingEmail,
+                  ),
                 ),
               ),
               // Roadmap 2.7: an address that is not a parent of the family is not a recipient yet.
