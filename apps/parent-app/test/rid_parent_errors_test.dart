@@ -154,6 +154,17 @@ void main() {
       expect(dubai.matches('dubai'), isTrue);
       expect(dubai.matches('GMT+4'), isTrue);
 
+      // #604 Arabic Bureau (6952107767): Arabic search ignores tashkeel/shadda and alef/taa-marbuta forms,
+      // while labels preserve the exact approved spellings.
+      final amman = timezoneOptionFor('Asia/Amman');
+      expect(amman.labelFor('ar', nowUtc: winter), 'عمّان (GMT+3)');
+      expect(amman.matches('عمان'), isTrue);
+      final istanbul = timezoneOptionFor('Europe/Istanbul');
+      expect(istanbul.labelFor('ar', nowUtc: winter), 'إسطنبول (GMT+3)');
+      expect(istanbul.matches('اسطنبول'), isTrue);
+      expect(timezoneOptionFor('Asia/Kuala_Lumpur').matches('كوالالمبور'), isTrue);
+      expect(timezoneOptionFor('Africa/Cairo').matches('القاهره'), isTrue);
+
       final ordered = orderedTimezones('Asia/Riyadh');
       expect(ordered.first.id, 'Asia/Riyadh');
       expect(ordered.where((o) => o.id == 'Asia/Riyadh'), hasLength(1));
@@ -190,6 +201,11 @@ void main() {
 
       expect(find.text('الرياض (GMT+3)'), findsOneWidget);
       expect(find.text('Asia/Riyadh'), findsNothing);
+      final chosenText = tester.widget<Text>(
+        find.descendant(of: find.byKey(const ValueKey('digestTimezone')), matching: find.byType(Text)),
+      );
+      expect(chosenText.maxLines, 2);
+      expect(chosenText.overflow, isNull);
 
       await tester.drag(find.byType(ListView), const Offset(0, -350));
       await tester.pumpAndSettle();

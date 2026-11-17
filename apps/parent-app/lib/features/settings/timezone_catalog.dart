@@ -1,5 +1,33 @@
+import '../../core/digits.dart';
+
 /// Daylight-saving rule for curated cities whose UTC offset changes seasonally.
 enum TimezoneDstRule { none, eu, us, egypt }
+
+/// Normalizes Arabic text for search only: strips Arabic marks U+064B–U+0652,
+/// U+0670, and tatweel U+0640, and maps alef variants (`أ إ آ ٱ` -> `ا`),
+/// alef maqsura (`ى` -> `ي`), and taa marbuta (`ة` -> `ه`).
+String normalizeArabicSearch(String value) {
+  final buffer = StringBuffer();
+  for (final rune in value.trim().toLowerCase().runes) {
+    if ((rune >= 0x064B && rune <= 0x0652) || rune == 0x0670 || rune == 0x0640) {
+      continue;
+    }
+    switch (rune) {
+      case 0x0623:
+      case 0x0625:
+      case 0x0622:
+      case 0x0671:
+        buffer.writeCharCode(0x0627);
+      case 0x0649:
+        buffer.writeCharCode(0x064A);
+      case 0x0629:
+        buffer.writeCharCode(0x0647);
+      default:
+        buffer.writeCharCode(rune);
+    }
+  }
+  return buffer.toString();
+}
 
 /// R-ID-3: human-readable time zones ("Dubai (GMT+4)" / "دبي (GMT+4)")
 /// instead of raw IANA ids.
@@ -35,12 +63,14 @@ class TimezoneOption {
   String get label => labelFor('en');
 
   bool matches(String query, {DateTime? nowUtc}) {
-    final q = query.trim().toLowerCase();
-    if (q.isEmpty) return true;
-    return city.toLowerCase().contains(q) ||
-        cityAr.toLowerCase().contains(q) ||
-        formatGmtOffset(effectiveOffsetMinutes(nowUtc)).toLowerCase().contains(q) ||
-        id.toLowerCase().contains(q);
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) return true;
+    final qAscii = normalizeDigits(trimmed).toLowerCase();
+    final qAr = normalizeArabicSearch(normalizeDigits(trimmed));
+    return city.toLowerCase().contains(qAscii) ||
+        (qAr.isNotEmpty && normalizeArabicSearch(cityAr).contains(qAr)) ||
+        formatGmtOffset(effectiveOffsetMinutes(nowUtc)).toLowerCase().contains(qAscii) ||
+        id.toLowerCase().contains(qAscii);
   }
 }
 
