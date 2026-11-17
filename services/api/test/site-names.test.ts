@@ -195,7 +195,7 @@ describe("#830 site names — the read side", () => {
       headers: authHeader(app),
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().items).toEqual([]);
+    expect(res.json()).toEqual({ childId: "child-1", days: 7, items: [] });
     expect(prismaMock.webVisit.findMany).not.toHaveBeenCalled();
     await app.close();
   });

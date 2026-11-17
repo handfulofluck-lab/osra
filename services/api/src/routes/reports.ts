@@ -97,7 +97,9 @@ export async function reportsRoutes(app: FastifyInstance) {
     const q = parsed.data;
     // Under the ruling there is no address to show while the flag is off — no visit, blocked or not
     // (Fable's blocker C). The blocked attempt reaches the parent through its alert, as a count.
-    if (!siteNamesEnabled()) return { items: [] };
+    // Same shape as the normal reply: the parent app reads `childId` and `days`, and an off state must
+    // look like an empty list, not a malformed one (Fable, point 3).
+    if (!siteNamesEnabled()) return { childId: q.childId, days: q.days, items: [] };
     const items = await webHistory(q.childId, q.days, q.limit, {
       blockedOnly: q.blocked === "true",
       domain: q.domain,
