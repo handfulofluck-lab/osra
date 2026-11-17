@@ -575,10 +575,20 @@ describe("ring alert intake", () => {
       rows.push(row);
       return row;
     });
+    prismaMock.alert.updateMany.mockImplementation(async ({ where, data }: { where: { id: string }, data: Record<string, unknown> }) => {
+      const row = rows.find((candidate) => candidate.id === where.id);
+      if (!row) return { count: 0 };
+      if (Number(data.attemptCount) <= Number(row.attemptCount ?? 1)) return { count: 0 };
+      Object.assign(row, data);
+      return { count: 1 };
+    });
+    prismaMock.alert.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
+      rows.find((candidate) => candidate.id === where.id) ?? null);
     async function postRing(state: string, dismissalCount: number | string = 0, extraMetadata: Record<string, unknown> = {}, overrideDedupeKey?: string | null) {
+      const canonicalRingId = ringId.toLowerCase();
       const computedDedupeKey = state === "child_dismissed"
-        ? `ring:${ringId}:child_dismissed:${dismissalCount}`
-        : `ring:${ringId}:${state}`;
+        ? `ring:${canonicalRingId}:child_dismissed:${dismissalCount}`
+        : `ring:${canonicalRingId}:${state}`;
       const dedupeKey = overrideDedupeKey === null ? undefined : (overrideDedupeKey ?? computedDedupeKey);
       const payload: Record<string, unknown> = {
         childId: CHILD.id, deviceId: "dev-1", severity: state === "child_dismissed" ? "warning" : "info",
@@ -642,6 +652,23 @@ describe("ring alert intake", () => {
           ? `The ring alert was dismissed on the phone ${count} times. It is still ringing.`
           : fallback[state]);
       }
+    } finally { await app.close(); }
+  });
+
+  it("caps dismissal rows at ten per ring and keeps the latest count on the tenth", async () => {
+    const { app, rows, postRing } = await fixture();
+    try {
+      for (let count = 1; count <= 10; count += 1) {
+        expect((await postRing("child_dismissed", count)).statusCode).toBe(201);
+      }
+      for (let count = 11; count <= 12; count += 1) {
+        expect((await postRing("child_dismissed", count)).statusCode).toBe(200);
+      }
+      expect(rows).toHaveLength(10);
+      expect(rows[9].dedupeKey).toBe(`ring:${ringId.toLowerCase()}:child_dismissed:10`);
+      expect(rows[9].attemptCount).toBe(12);
+      expect(rows[9].body).toBe("The ring alert was dismissed on the phone 12 times. It is still ringing.");
+      expect((rows[9].metadata as { bodyParams: { dismissalCount: number } }).bodyParams.dismissalCount).toBe(12);
     } finally { await app.close(); }
   });
 

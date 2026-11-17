@@ -19,6 +19,7 @@ public final class RingController: ObservableObject {
     private let sleep: (TimeInterval) async throws -> Void
     private var restarted = true
     private var lastScheduledIDs: Set<UUID>?
+    private var lastDismissalMonotonic: TimeInterval?
     private var observationTask: Task<Void, Never>?
     private var deadlineTask: Task<Void, Never>?
     private var deadlineGeneration = 0
@@ -110,7 +111,8 @@ public final class RingController: ObservableObject {
         state = next
         restarted = false
         lastScheduledIDs = [id]
-        await audioPlayer.start()
+        lastDismissalMonotonic = nil
+        await startAudioIfActive()
         armDeadline()
         return nil
     }
@@ -147,7 +149,7 @@ public final class RingController: ObservableObject {
         }
         armDeadline()
         if restored.stopSource == nil {
-            await audioPlayer.start()
+            await startAudioIfActive()
         }
     }
 
@@ -237,6 +239,7 @@ public final class RingController: ObservableObject {
         operationGeneration += 1
         let generation = operationGeneration
         lastScheduledIDs = nil
+        lastDismissalMonotonic = nil
         guard let restored = store.load() else {
             state = nil
             return nil
@@ -265,7 +268,7 @@ public final class RingController: ObservableObject {
             active.stopSource = nil
             state = active
             store.save(active)
-            await audioPlayer.start()
+            await startAudioIfActive()
             armDeadline()
             do {
                 if try await !backend.scheduledIDs().contains(restored.commandId) {
@@ -284,9 +287,10 @@ public final class RingController: ObservableObject {
         if restarted {
             await timeoutAfterRestart(restored)
         } else {
-            await audioPlayer.start()
+            await startAudioIfActive()
             armDeadline()
             await drainReports()
+            lastScheduledIDs = [restored.commandId]
             do {
                 await process(scheduledIDs: try await backend.scheduledIDs())
             } catch { }
@@ -370,7 +374,7 @@ public final class RingController: ObservableObject {
         store.save(resumed)
         state = resumed
         restarted = false
-        await audioPlayer.start()
+        await startAudioIfActive()
         armDeadline()
         do {
             if try await !backend.scheduledIDs().contains(current.commandId) {
@@ -449,25 +453,71 @@ public final class RingController: ObservableObject {
 
     public func process(scheduledIDs: Set<UUID>) async {
         let generation = operationGeneration
-        defer {
-            if generation == operationGeneration { lastScheduledIDs = scheduledIDs }
-        }
         await drainReports()
-        guard let current = state, current.stopSource == nil else { return }
+        guard let current = state, current.stopSource == nil else {
+            if generation == operationGeneration { lastScheduledIDs = scheduledIDs }
+            return
+        }
         if RingPolicy.hasTimedOut(current, nowWall: now(), nowMonotonic: monotonic(), restarted: restarted) {
             if restarted {
                 await timeoutAfterRestart(current)
             } else {
                 await stop(.timeout)
             }
+            if generation == operationGeneration { lastScheduledIDs = scheduledIDs }
             return
         }
         guard schedulingCommandId != current.commandId else { return }
-        guard !scheduledIDs.contains(current.commandId) else { return }
+        if scheduledIDs.contains(current.commandId) {
+            lastScheduledIDs = scheduledIDs
+            return
+        }
+
+        // A schedule cancels and re-adds the chain. Its cancel snapshots can be delivered after
+        // `schedulingCommandId` clears, so reconcile against the live backend before treating a
+        // main-alarm-absent snapshot as a dismissal.
+        let commandId = current.commandId
+        let fresh: Set<UUID>
+        do {
+            fresh = try await backend.scheduledIDs()
+        } catch {
+            return
+        }
+        guard generation == operationGeneration,
+              let refreshed = state, refreshed.commandId == commandId, refreshed.stopSource == nil else { return }
+        if fresh.contains(commandId) {
+            lastScheduledIDs = fresh
+            return
+        }
+        guard lastScheduledIDs?.contains(commandId) == true else {
+            lastScheduledIDs = fresh
+            return
+        }
         if restarted {
-            await rearm(current, generation: generation)
-        } else {
-            await rearmAndReportDismissal(current, generation: generation)
+            await rearm(refreshed, generation: generation)
+            return
+        }
+        if let lastDismissalMonotonic,
+           monotonic() - lastDismissalMonotonic < RingPolicy.minimumDismissalInterval {
+            return
+        }
+        lastDismissalMonotonic = monotonic()
+        await rearmAndReportDismissal(refreshed, generation: generation)
+    }
+
+    /// Starts audio only while this ring is still the active, unstoppable ring. The concrete player is
+    /// idempotent; this guard covers a stop that interleaves while an injected player's `start` is suspended.
+    private func startAudioIfActive() async {
+        let generation = operationGeneration
+        guard let current = state, current.stopSource == nil else { return }
+        await audioPlayer.start()
+        guard generation == operationGeneration,
+              state?.commandId == current.commandId, state?.stopSource == nil else {
+            if generation == operationGeneration, let latest = state, latest.commandId != current.commandId {
+                return
+            }
+            await audioPlayer.stop()
+            return
         }
     }
 
@@ -484,8 +534,9 @@ public final class RingController: ObservableObject {
             if state?.commandId != current.commandId { try? await backend.stop(current.commandId) }
             return
         }
+        lastScheduledIDs = [current.commandId]
         armDeadline()
-        await audioPlayer.start()
+        await startAudioIfActive()
     }
 
     private func rearmAndReportDismissal(_ current: RingState, generation: Int) async {
@@ -508,7 +559,10 @@ public final class RingController: ObservableObject {
         state = dismissed
         _ = await reporter.report(state: .childDismissed, ringId: current.commandId,
                                   dismissalCount: dismissed.dismissalCount)
+        guard generation == operationGeneration,
+              state?.commandId == current.commandId, state?.stopSource == nil else { return }
+        lastScheduledIDs = [current.commandId]
         armDeadline()
-        await audioPlayer.start()
+        await startAudioIfActive()
     }
 }

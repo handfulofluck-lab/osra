@@ -131,6 +131,8 @@ export async function alertsRoutes(app: FastifyInstance) {
 
     const effectiveDeviceId = deviceId ?? auth.device?.id;
     let acceptedMetadata = metadata;
+    let effectiveDedupeKey = dedupeKey;
+    let effectiveAttemptCount = attemptCount;
     if (category === "ring") {
       const ringId = typeof metadata?.ringId === "string" ? metadata.ringId.toLowerCase() : "";
       const command = /^[0-9a-f-]{36}$/.test(ringId)
@@ -140,6 +142,18 @@ export async function alertsRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: "invalid_ring_command" });
       }
       acceptedMetadata = { ...metadata, ringId };
+      if (metadata?.state === "child_dismissed" && dedupeKey) {
+        const prefix = `ring:${ringId}:child_dismissed:`;
+        const canonicalDedupe = dedupeKey.toLowerCase();
+        const count = canonicalDedupe.startsWith(prefix) ? Number(canonicalDedupe.slice(prefix.length)) : NaN;
+        if (Number.isInteger(count) && count > 10) {
+          // Security guard (#760): a looping or modified phone cannot create more than ten
+          // dismissal rows per ring. Later reports update the tenth row's count in place and
+          // are not pushed again; `applyAttemptCount` already does exactly that.
+          effectiveDedupeKey = `${prefix}10`;
+          effectiveAttemptCount = count;
+        }
+      }
       if (metadata?.state === "timed_out" && metadata.afterRestart === true) {
         // Queue age is not ringing time: the first successful acknowledgement proves the alarm was applied.
         const appliedAt = command.status === "acked" ? command.ackedAt : null;
@@ -172,8 +186,8 @@ export async function alertsRoutes(app: FastifyInstance) {
       // The location is normalised here — or dropped, keeping every other key — and never rejects the
       // alert: an SOS with no usable fix is still an SOS a parent must receive.
       metadata: sanitizeAlertMetadata(acceptedMetadata),
-      dedupeKey,
-      attemptCount,
+      dedupeKey: effectiveDedupeKey,
+      attemptCount: effectiveAttemptCount,
       childName: child.displayName,
     });
     return reply.code(deduplicated ? 200 : 201).send({ alert });

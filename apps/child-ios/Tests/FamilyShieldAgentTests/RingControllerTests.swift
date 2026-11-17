@@ -58,7 +58,8 @@ final class FakeRingBackend: RingBackend {
         AsyncStream { continuation = $0 }
     }
 
-    func emit() { continuation?.yield(Set(scheduled)) }
+    func emit() { emit(Set(scheduled)) }
+    func emit(_ ids: Set<UUID>) { continuation?.yield(ids) }
 
     private func alarmIDs(for commandId: UUID, until: Date? = nil) -> Set<UUID> {
         Set([commandId] + (sentinelIDsForCommand[commandId] ?? []))
@@ -202,6 +203,7 @@ final class RingControllerTests: XCTestCase {
         backend.sentinelIDsForCommand[id] = [sentinel]
         let controller = controller()
         await controller.start(id)
+        backend.scheduled = [sentinel]
         await controller.process(scheduledIDs: [sentinel])
         XCTAssertEqual(controller.state?.commandId, id)
         XCTAssertEqual(controller.state?.dismissalCount, 1,
@@ -210,11 +212,66 @@ final class RingControllerTests: XCTestCase {
         XCTAssertEqual(backend.stopCalls, [], "a dismissal re-arms instead of stopping the chain")
     }
 
+    func testStaleCancelSnapshotAfterScheduleDoesNotReport() async {
+        let sentinel = UUID(uuidString: "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6C")!
+        backend.sentinelIDsForCommand[id] = [sentinel]
+        let controller = controller()
+        await controller.start(id)
+        // A cancel snapshot from our own schedule can be delivered after schedulingCommandId clears.
+        // The live backend still has the main alarm, so this is not a dismissal.
+        backend.emit([sentinel])
+        await flushTasks()
+        XCTAssertEqual(controller.state?.commandId, id)
+        XCTAssertEqual(controller.state?.dismissalCount, 0)
+        XCTAssertEqual(reporter.callCount, 0)
+        XCTAssertEqual(backend.scheduled, [id])
+    }
+
+    func testRapidSecondDismissalWithinSixSecondsIsSuppressed() async {
+        let controller = controller()
+        await controller.start(id)
+        backend.scheduled = []
+        await controller.process(scheduledIDs: [])
+        XCTAssertEqual(controller.state?.dismissalCount, 1)
+        XCTAssertEqual(reporter.callCount, 1)
+        backend.scheduled = []
+        await controller.process(scheduledIDs: [])
+        XCTAssertEqual(controller.state?.dismissalCount, 1,
+                       "one action cannot produce two reports inside the chain interval")
+        XCTAssertEqual(reporter.callCount, 1)
+        uptime += RingPolicy.minimumDismissalInterval
+        backend.scheduled = []
+        await controller.process(scheduledIDs: [])
+        XCTAssertEqual(controller.state?.dismissalCount, 2)
+        XCTAssertEqual(reporter.callCount, 2)
+    }
+
+    func testPendingDismissalReportDoesNotStartAudioAfterStop() async {
+        let controller = controller()
+        await controller.start(id)
+        backend.scheduled = []
+        let gate = ReportGate()
+        reporter.reportGate = { await gate.wait() }
+        let processTask = Task { await controller.process(scheduledIDs: []) }
+        while !gate.started { await Task.yield() }
+        reporter.reportGate = nil
+        await controller.stop(.pinVerified)
+        XCTAssertNil(controller.state)
+        gate.release()
+        await processTask.value
+        XCTAssertNil(controller.state)
+        XCTAssertEqual(audioPlayer.startCalls, 1, "the stale report must not restart audio after the PIN stop")
+        XCTAssertEqual(audioPlayer.stopCalls, 1)
+    }
+
     func testMultipleLockScreenDismissalsIncrementCount() async {
         let controller = controller()
         await controller.start(id)
+        backend.scheduled = []
         await controller.process(scheduledIDs: [])
         XCTAssertEqual(controller.state?.dismissalCount, 1)
+        uptime += RingPolicy.minimumDismissalInterval
+        backend.scheduled = []
         await controller.process(scheduledIDs: [])
         XCTAssertEqual(controller.state?.dismissalCount, 2)
         XCTAssertEqual(reporter.calls.map(\.state), [.childDismissed, .childDismissed])
@@ -272,10 +329,27 @@ final class RecordingRingReporter: RingAlertReporting {
 }
 
 @MainActor
+final class ReportGate {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private(set) var started = false
+
+    func wait() async {
+        started = true
+        await withCheckedContinuation { continuation = $0 }
+    }
+
+    func release() {
+        continuation?.resume()
+        continuation = nil
+    }
+}
+
+@MainActor
 extension RingControllerTests {
     func testLockScreenDismissalRearmsRingAndReportsDismissal() async {
         let controller = controller()
         await controller.start(id)
+        backend.scheduled = []
         await controller.process(scheduledIDs: [])
         XCTAssertTrue(backend.stopCalls.isEmpty, "a lock-screen dismissal re-arms instead of stopping")
         XCTAssertEqual(controller.state?.commandId, id)
@@ -287,6 +361,7 @@ extension RingControllerTests {
     func testDeliveredEventIsNotRetriedAfterRestart() async {
         let controller = controller()
         await controller.start(id)
+        backend.scheduled = []
         await controller.process(scheduledIDs: [])
         XCTAssertEqual(reporter.callCount, 1)
         await controller.resume()
@@ -297,6 +372,7 @@ extension RingControllerTests {
         reporter.statuses = [500, 200]
         let controller = controller()
         await controller.start(id)
+        backend.scheduled = []
         await controller.process(scheduledIDs: [])
         XCTAssertEqual(reporter.callCount, 1)
         await controller.resume()
@@ -328,6 +404,7 @@ extension RingControllerTests {
         await controller.start(id)
         wall = wall.addingTimeInterval(600)
         uptime += 30
+        backend.scheduled = []
         await controller.process(scheduledIDs: [])
         XCTAssertEqual(reporter.calls.map(\.state), [.childDismissed])
         XCTAssertNil(controller.state?.stopSource)
@@ -344,6 +421,7 @@ extension RingControllerTests {
         await controller.stop(.parentCommand)
         XCTAssertEqual(reporter.calls.map(\.state), [.parentStopped])
         XCTAssertNil(controller.state)
+        backend.scheduled = []
         await controller.process(scheduledIDs: [])
         XCTAssertEqual(backend.scheduled, [])
     }
@@ -366,6 +444,7 @@ extension RingControllerTests {
         defaults?.set(["app:old": 100.0], forKey: ShieldTapPolicy.requestTimesKey)
         let controller = controller()
         await controller.start(id)
+        backend.scheduled = []
         await controller.process(scheduledIDs: [])
         XCTAssertEqual(defaults?.dictionary(forKey: ShieldTapPolicy.requestTimesKey) as? [String: Double],
                        ["app:old": 100.0])
@@ -756,6 +835,7 @@ extension RingControllerTests {
             })
         let controller = controller(reporter: reporter)
         await controller.start(id)
+        backend.scheduled = []
         await controller.process(scheduledIDs: [])
         XCTAssertEqual(requests.count, 1)
         XCTAssertNil(defaults.stringArray(forKey: RingAlertReporter.deliveredKey))
@@ -771,6 +851,7 @@ extension RingControllerTests {
         let controller = controller()
         await controller.start(id)
         await controller.stop(.parentCommand)
+        backend.scheduled = []
         await controller.process(scheduledIDs: [])
         XCTAssertNil(controller.state)
         XCTAssertEqual(reporter.calls.map(\.state), [.parentStopped])
@@ -787,6 +868,7 @@ extension RingControllerTests {
             let requests = RingRequestRecorder()
             let controller = controller(reporter: transportReporter(defaults, status: status, requests: requests))
             await controller.start(id)
+            backend.scheduled = []
             await controller.process(scheduledIDs: [])
             let recreated = self.controller(reporter: transportReporter(defaults, status: status, requests: requests))
             await recreated.resume()
@@ -812,6 +894,7 @@ extension RingControllerTests {
     func testLockScreenDismissalRestartsAudio() async {
         let controller = controller()
         await controller.start(id)
+        backend.scheduled = []
         await controller.process(scheduledIDs: [])
         XCTAssertEqual(audioPlayer.startCalls, 2, "a lock-screen dismissal re-arms and restarts audio")
         XCTAssertEqual(audioPlayer.stopCalls, 0)
@@ -821,6 +904,7 @@ extension RingControllerTests {
         let controller = controller()
         await controller.start(id)
         XCTAssertEqual(audioPlayer.startCalls, 1)
+        backend.scheduled = []
         await controller.process(scheduledIDs: [])
         XCTAssertTrue(backend.stopCalls.isEmpty, "a lock-screen dismissal must not cancel the ring")
         XCTAssertEqual(controller.state?.commandId, id)
@@ -876,6 +960,7 @@ extension RingControllerTests {
     func testLockScreenDismissalFollowedByLaunchDoesNotRearmAgain() async {
         let controller = controller()
         await controller.start(id)
+        backend.scheduled = []
         await controller.process(scheduledIDs: [])
         XCTAssertTrue(backend.stopCalls.isEmpty)
         XCTAssertEqual(audioPlayer.startCalls, 2)
@@ -923,6 +1008,8 @@ extension RingControllerTests {
             .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent/RingAudioPlayer.swift")
         let code = try String(contentsOf: source, encoding: .utf8)
         XCTAssertTrue(code.contains("numberOfLoops = -1"), "the ring sound must loop until explicitly stopped")
+        XCTAssertTrue(code.contains("guard player?.isPlaying != true"),
+                      "a re-arm must not recreate the audio player while the ring is already audible")
     }
 
     func testAlarmQueryFailureDoesNotCountDismissal() async {

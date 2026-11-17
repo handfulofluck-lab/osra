@@ -17,7 +17,7 @@ public final class RingAudioPlayer: RingAudioPlaying {
     public init() {}
 
     public func start() async {
-        await stop()
+        guard player?.isPlaying != true else { return }
         guard let url = Bundle.main.url(forResource: "ring", withExtension: "wav") else {
             RingAlarmLog.info("ring sound not found in bundle")
             return

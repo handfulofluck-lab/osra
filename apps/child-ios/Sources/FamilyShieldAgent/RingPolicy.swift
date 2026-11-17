@@ -9,6 +9,10 @@ public enum RingTrigger {
 
 public enum RingPolicy {
     public static let duration: TimeInterval = 300
+    /// A re-arm cancels and re-adds the alarm chain, so one physical dismissal can surface as more than one
+    /// snapshot. The controller accepts at most one dismissal report in this interval; the chain itself is
+    /// spaced six seconds apart, so a real second dismissal still arrives after it.
+    public static let minimumDismissalInterval: TimeInterval = 6
 
     public static func event(for trigger: RingTrigger) -> RingEventState? {
         switch trigger {
