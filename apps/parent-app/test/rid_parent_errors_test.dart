@@ -131,7 +131,7 @@ void main() {
       await tester.tap(find.text('Sign in'));
       await tester.pumpAndSettle();
 
-      expect(find.descendant(of: find.byKey(const ValueKey('loginError')), matching: find.text(en.onboardingWrongPassword)), findsOneWidget);
+      expect(tester.widget<Text>(find.byKey(const ValueKey('loginError'))).data, en.onboardingWrongPassword);
       expect(find.textContaining('invalid_credentials'), findsNothing);
     });
   });

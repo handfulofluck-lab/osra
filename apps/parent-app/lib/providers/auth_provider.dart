@@ -263,7 +263,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
         }
         if (err == 'invalid_credentials' ||
             err == 'email_taken' ||
-            err == 'mfa_required') {
+            err == 'mfa_required' ||
+            err == 'consent_text_outdated') {
           return err;
         }
       }
