@@ -5,3 +5,4 @@
 - `apps/child-ios/Tests/FamilyShieldAgentTests/RingCommandTests.swift`: add source tests that assert the bottom Continue uses `safeAreaInset`, is disabled until the PIN is long enough, and `RingView`'s `PinGateView` has `showsButtons: false`.
 - `apps/parent-app/lib/l10n/app_en.arb` and `apps/parent-app/lib/l10n/app_ar.arb`: format the `count` placeholder of `alertBodyRingChildDismissed` with `decimalPattern` so the dismissal count uses the locale's number format and never mixes digit sets within a row.
 - `apps/parent-app/test/localization_test.dart`: assert the ring dismissal count placeholder uses `decimalPattern` in both locales.
+- `.github/workflows/ios-ci.yml`: the macOS portable-test discovery guard now expects 338 tests (the two new `RingCommandTests` source checks).
