@@ -179,7 +179,8 @@ class _AppPickerState extends ConsumerState<AppPicker> {
             ),
             Expanded(child: _body(data)),
             _ConfirmBar(
-              count: _chosen.length,
+              // The count waits for the Arabic Bureau's plural line ("Add {n} apps"); until then the
+              // bar is disabled at zero and an empty list cannot be confirmed.
               onConfirm: _chosen.isEmpty ? null : () => Navigator.of(context).pop(_result(data)),
             ),
           ],
@@ -260,10 +261,9 @@ class _AppPickerState extends ConsumerState<AppPicker> {
 }
 
 class _ConfirmBar extends StatelessWidget {
-  final int count;
   final VoidCallback? onConfirm;
 
-  const _ConfirmBar({required this.count, this.onConfirm});
+  const _ConfirmBar({this.onConfirm});
 
   @override
   Widget build(BuildContext context) {
