@@ -87,6 +87,7 @@ model Parent {
   createdAt    DateTime        @default(now())
   family       Family          @relation(fields: [familyId], references: [id])
   consents     ConsentRecord[]
+  consentEvents ParentConsentEvent[]
   pushTokens   ParentPushToken[]
   mfaRecoveryCodes ParentMfaRecoveryCode[]
   mfaResetRequests MfaResetRequest[]
@@ -519,6 +520,34 @@ model Alert {
   child        Child    @relation(fields: [childId], references: [id])
   device       Device?  @relation(fields: [deviceId], references: [id])
   @@index([childId, createdAt])
+}
+
+/// ADR-0043 D2 / #846 part A step 2: one append-only row per consent act by an account holder.
+///
+/// This is the adult's own proof, not the child's monitoring consent (`ConsentRecord`): it answers "what
+/// wording was this parent shown, in which language, and what did they agree to". Deliberately **no IP
+/// address and no device id** — the proof is about the text and the act, not about where it came from. Rows
+/// are never updated or deleted: withdrawing the terms is account deletion (ADR-0043 D2, existing flow).
+model ParentConsentEvent {
+  id              String   @id @default(uuid())
+  parentId        String   @map("parent_id")
+  /// `terms_privacy` today; the training purpose keeps its own key when it is switched on.
+  purpose         String
+  /// `granted` (or `refused`, which no build sends today — the row records only what happened).
+  action          String
+  textVersion     String   @map("text_version")
+  /// The published version of the two pages at the time, e.g. `terms:2026-11-12,privacy:2026-11-12`.
+  documentVersion String?  @map("document_version")
+  locale          String
+  textHash        String   @map("text_hash") @db.Char(64)
+  /// Where the act happened: `app_signup` today.
+  surface         String
+  clientVersion   String?  @map("client_version")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  parent          Parent   @relation(fields: [parentId], references: [id], onDelete: Cascade)
+
+  @@index([parentId, purpose])
+  @@map("parent_consent_events")
 }
 
 model ConsentRecord {

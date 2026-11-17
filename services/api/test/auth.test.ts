@@ -8,7 +8,7 @@ import { decryptSecret, encryptSecret } from "../src/lib/secretVault.js";
 import { totpAtCounter } from "../src/lib/totp.js";
 import { setEmailSender, type EmailMessage, type EmailSender } from "../src/lib/email/index.js";
 import { getRedis } from "../src/redis.js";
-import { MockRedis, authHeader, buildApp, prismaMock, resetPrismaMock } from "./helpers.js";
+import { MockRedis, SIGNUP_CONSENTS, authHeader, buildApp, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -26,6 +26,8 @@ const registerBody = {
   displayName: "Demo Parent",
   familyName: "Demo Family",
   region: "US",
+  // ADR-0043 D3: required — an account may not exist without its acceptance row.
+  consents: SIGNUP_CONSENTS,
 };
 
 class CaptureSender implements EmailSender {
