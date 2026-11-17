@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { deviceRoutes } from "../src/routes/devices.js";
+import { familyAppliedVersion, rulesAppliedReached } from "../src/lib/rulesApplied.js";
 import { getRedis } from "../src/redis.js";
 import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
 
@@ -925,5 +926,144 @@ describe("#305 review: the witness code is a device credential, not a parent one
     expect(res.statusCode).toBe(400);
     expect(prismaMock.deviceCommand.create).not.toHaveBeenCalled();
     await app.close();
+  });
+});
+
+/**
+ * #865: the rules banner and the delivery status told a parent opposite things. The banner reads the
+ * child's reduced `appliedRulesVersion`; nothing pushed it, so it cleared only when an unrelated socket
+ * frame arrived. The telemetry route now publishes `rules_applied` on the family channel the moment the
+ * last reporting device catches up — with the same reduced number the banner reads, and nothing else.
+ */
+describe("applied rules version push (#865)", () => {
+  const redis = () => getRedis() as unknown as import("./helpers.js").MockRedis;
+
+  beforeEach(() => {
+    resetPrismaMock();
+  });
+
+  const report = (app: Awaited<ReturnType<typeof buildApp>>, appliedRulesVersion: number) =>
+    app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: { appliedRulesVersion },
+    });
+
+  it("publishes rules_applied on the family channel when the last device catches up", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ rulesVersion: 4 });
+    prismaMock.device.findMany.mockResolvedValue([{ appliedRulesVersion: 4 }]);
+    redis().publish.mockClear();
+
+    const res = await report(app, 4);
+    expect(res.statusCode).toBe(202);
+    expect(redis().publish).toHaveBeenCalledWith("family:fam-1:events", expect.stringContaining('"rules_applied"'));
+
+    const frame = JSON.parse(redis().publish.mock.calls.at(-1)![1] as string);
+    // Exactly the number, scoped to the child: no rule content and no device detail ride on it.
+    expect(frame).toEqual({ type: "rules_applied", payload: { childId: "child-1", appliedRulesVersion: 4 } });
+    expect(JSON.stringify(frame)).not.toContain("dev-1");
+    await app.close();
+  });
+
+  it("stays quiet while another device of the same child is still behind", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ rulesVersion: 4 });
+    // The second device is on version 2: the family has not caught up, so no frame.
+    prismaMock.device.findMany.mockResolvedValue([{ appliedRulesVersion: 4 }, { appliedRulesVersion: 2 }]);
+    redis().publish.mockClear();
+
+    const res = await report(app, 4);
+    expect(res.statusCode).toBe(202);
+    expect(redis().publish).not.toHaveBeenCalledWith("family:fam-1:events", expect.stringContaining('"rules_applied"'));
+    await app.close();
+  });
+
+  it("stays quiet when no ruleset has ever been issued for the child", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    prismaMock.ruleSet.findUnique.mockResolvedValue(null);
+    prismaMock.device.findMany.mockResolvedValue([{ appliedRulesVersion: 1 }]);
+    redis().publish.mockClear();
+
+    const res = await report(app, 1);
+    expect(res.statusCode).toBe(202);
+    expect(redis().publish).not.toHaveBeenCalledWith("family:fam-1:events", expect.stringContaining('"rules_applied"'));
+    await app.close();
+  });
+
+  it("stays quiet for a version above the issued one and when the report is omitted", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ rulesVersion: 4 });
+    prismaMock.device.findMany.mockResolvedValue([{ appliedRulesVersion: 4 }]);
+    redis().publish.mockClear();
+
+    expect((await report(app, 99)).statusCode).toBe(202);
+    const plain = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: { batteryPct: 44 },
+    });
+    expect(plain.statusCode).toBe(202);
+    expect(redis().publish).not.toHaveBeenCalledWith("family:fam-1:events", expect.stringContaining('"rules_applied"'));
+    // A future version is not stored either — the #475 rule the push must not weaken.
+    expect(
+      prismaMock.device.update.mock.calls.some(
+        ([args]: [{ data?: Record<string, unknown> }]) => args.data?.appliedRulesVersion === 99,
+      ),
+    ).toBe(false);
+    await app.close();
+  });
+
+  it("publishes exactly one frame, on the channel of the family that owns the device", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ rulesVersion: 2 });
+    prismaMock.device.findMany.mockResolvedValue([{ appliedRulesVersion: 2 }]);
+    redis().publish.mockClear();
+
+    const res = await report(app, 2);
+    expect(res.statusCode).toBe(202);
+
+    // The family comes from the device row, never from the request: a device cannot steer the frame at
+    // another family, and `requireFamily` answers 403 long before this route if its row belongs to one.
+    const frames = redis().publish.mock.calls.filter(([, message]) => String(message).includes('"rules_applied"'));
+    expect(frames).toHaveLength(1);
+    expect(frames[0][0]).toBe("family:fam-1:events");
+    await app.close();
+  });
+});
+
+describe("rulesApplied reduction (#865)", () => {
+  it("is the lowest version any device reported", () => {
+    expect(familyAppliedVersion([3, 1, 2])).toBe(1);
+  });
+
+  it("ignores a device that has never reported instead of counting it as zero", () => {
+    // The mutant: treat null as 0 and the banner never clears on a family with one fresh install.
+    expect(familyAppliedVersion([3, null, undefined, 2])).toBe(2);
+  });
+
+  it("is null when nothing has reported", () => {
+    expect(familyAppliedVersion([null, undefined])).toBeNull();
+    expect(familyAppliedVersion([])).toBeNull();
+  });
+
+  it("has reached only when the issued version exists and the family meets it", () => {
+    expect(rulesAppliedReached(4, 4)).toBe(true);
+    expect(rulesAppliedReached(4, 5)).toBe(false);
+    expect(rulesAppliedReached(null, 4)).toBe(false);
+    // No ruleset ever issued: there is nothing to catch up to and nothing to announce.
+    expect(rulesAppliedReached(5, 0)).toBe(false);
   });
 });
