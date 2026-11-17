@@ -100,7 +100,7 @@ void main() {
   /// The save path cannot be observed through a widget here — the provider is not mounted on the rules
   /// screen — so the wiring is pinned the way the Kotlin wiring rows are: by reading the source.
   test('a rule save invalidates the child\'s delivery lists', () {
-    final source = File('lib/features/rules/rules_editor_screen.dart').readTextSync();
+    final source = File('lib/features/rules/rules_editor_screen.dart').readAsStringSync();
     final save = source.indexOf('Future<void> _save() async');
     final invalidate = source.indexOf('ref.invalidate(deviceCommandHistoryProvider(device.id))');
     expect(save, isNonNegative);
