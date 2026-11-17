@@ -77,10 +77,16 @@ function aiVerdictFrom(data: unknown): Verdict | null {
   return { flagged: d.flagged, severity, concernTypes };
 }
 
-/** Call the AI engine /analyze with a 5 s timeout; null on any failure (caller falls back). */
-async function analyzeWithAi(text: string, childAge?: number): Promise<Verdict | null> {
+/**
+ * Call the AI engine /analyze with a 5 s timeout; `verdict: null` on any failure (caller falls back).
+ *
+ * `attempted` is whether a request left this process, not whether it was answered (#897 review, Fable's
+ * point a): a call that reached the engine and timed out after five seconds was still paid for, and for a
+ * cost floor under-counting is the unsafe direction.
+ */
+async function analyzeWithAi(text: string, childAge?: number): Promise<{ verdict: Verdict | null; attempted: boolean }> {
   const base = process.env.AI_ENGINE_URL;
-  if (!base) return null;
+  if (!base) return { verdict: null, attempted: false };
   try {
     const res = await fetch(`${base.replace(/\/$/, "")}/analyze`, {
       method: "POST",
@@ -88,10 +94,14 @@ async function analyzeWithAi(text: string, childAge?: number): Promise<Verdict |
       body: JSON.stringify({ text, context: "message", ...(childAge !== undefined ? { child_age: childAge } : {}) }),
       signal: AbortSignal.timeout(AI_TIMEOUT_MS),
     });
-    if (!res.ok) return null;
-    return aiVerdictFrom(await res.json());
-  } catch {
-    return null;
+    if (!res.ok) return { verdict: null, attempted: true };
+    return { verdict: aiVerdictFrom(await res.json()), attempted: true };
+  } catch (err) {
+    // A connection that never opened (refused, DNS) cost nothing; one that opened and then ran past the
+    // 5 s timeout was paid for. `AbortSignal.timeout` surfaces as TimeoutError, and an aborted read as
+    // AbortError, so those two count as attempts and everything else does not.
+    const name = (err as { name?: string } | null)?.name;
+    return { verdict: null, attempted: name === "TimeoutError" || name === "AbortError" };
   }
 }
 
@@ -103,7 +113,7 @@ type ScanItemResult =
   | { ok: false; reason: string; status: number; body?: Record<string, unknown> };
 
 /** `yyyy-mm-dd` in the family's own zone; the unit a monthly cost figure is summed from. */
-function localDay(now: Date, timeZone: string): string {
+export function localDay(now: Date, timeZone: string): string {
   const zone = isValidTimeZone(timeZone) ? timeZone : "UTC";
   return new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
@@ -112,23 +122,40 @@ function localDay(now: Date, timeZone: string): string {
  * Issue #890 (pricing): count one classified capture against its family's day.
  *
  * Two counters because they cost different amounts: every scan is classified (local patterns first, which
- * are free), and only the ones that reached the engine are a bill. Nothing anywhere recorded that split,
- * so "measured variable cost per family" was unanswerable — this row is what makes it a query.
+ * are free), and only the ones that reached the engine are a bill. What this measures is **volume per
+ * family**, not spend: the engine decides internally whether its own model or Bedrock answered, and that
+ * split is invisible here (#897 review, Fable's point b — `stage1`/`escalations` need the engine to report
+ * which stage answered, which is its own change).
  *
- * Best-effort by contract: a counter must never turn a served scan into a 500, and a lost increment is a
- * rounding error in a monthly figure. The caller awaits nothing.
+ * Best-effort by contract, and the caller awaits it so the row exists by the time the response is sent: a
+ * counter must never turn a served scan into a 500, and a lost increment is a rounding error in a monthly
+ * figure. The timezone comes from the child row the route already read, so this costs one upsert and no
+ * extra query.
  */
-async function recordScanUsage(familyId: string, usedAi: boolean, log?: FastifyRequest["log"]): Promise<void> {
-  try {
-    const family = await prisma.family.findUnique({ where: { id: familyId }, select: { timezone: true } });
-    const day = localDay(new Date(), family?.timezone ?? "UTC");
-    await prisma.aiScanUsage.upsert({
+async function recordScanUsage(
+  familyId: string,
+  timeZone: string | null | undefined,
+  attemptedAi: boolean,
+  log?: FastifyRequest["log"],
+): Promise<void> {
+  const day = localDay(new Date(), timeZone ?? "UTC");
+  const write = () =>
+    prisma.aiScanUsage.upsert({
       where: { familyId_day: { familyId, day } },
-      create: { familyId, day, scans: 1, aiCalls: usedAi ? 1 : 0 },
-      update: { scans: { increment: 1 }, ...(usedAi ? { aiCalls: { increment: 1 } } : {}) },
+      create: { familyId, day, scans: 1, aiCalls: attemptedAi ? 1 : 0 },
+      update: { scans: { increment: 1 }, ...(attemptedAi ? { aiCalls: { increment: 1 } } : {}) },
     });
+  try {
+    await write();
   } catch (err) {
-    log?.warn({ err, familyId }, "scan usage counter failed");
+    // A batch runs its items concurrently, so several first-scans of a day can race the unique index and
+    // the losers would be a few short every morning. One retry turns the race into a normal increment;
+    // anything else is logged and dropped, never raised into the scan.
+    try {
+      await write();
+    } catch (retryErr) {
+      log?.warn({ err: err ?? retryErr, familyId }, "scan usage counter failed");
+    }
   }
 }
 
@@ -146,7 +173,8 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
     if (deviceId && deviceId !== device.id) return { ok: false, reason: "device_mismatch", status: 400 };
   }
 
-  const child = await prisma.child.findUnique({ where: { id: childId } });
+  // The family's zone rides the lookup the route already does, so the day key costs no second query.
+  const child = await prisma.child.findUnique({ where: { id: childId }, include: { family: { select: { timezone: true } } } });
   if (!child) return { ok: false, reason: "child_not_found", status: 404 };
   // ADR-0008 §2b: withdrawal of consent stops collection.
   const consent = await checkActiveConsent(childId);
@@ -158,10 +186,11 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
   const childAge = typeof (child as { birthYear?: number }).birthYear === "number"
     ? new Date().getFullYear() - (child as { birthYear: number }).birthYear
     : undefined;
-  const aiVerdict = await analyzeWithAi(text, childAge);
-  const verdict = aiVerdict ?? localKeywordCheck(text);
-  // Issue #890: the counter is written whether or not the capture is flagged — cost is paid on both.
-  await recordScanUsage(child.familyId, aiVerdict !== null, log);
+  const ai = await analyzeWithAi(text, childAge);
+  const verdict = ai.verdict ?? localKeywordCheck(text);
+  // Issue #890: the counter is written whether or not the capture is flagged — cost is paid on both — and
+  // it counts the ATTEMPT, so a timeout against a paid engine is not recorded as a free scan.
+  await recordScanUsage(child.familyId, (child as { family?: { timezone?: string } | null }).family?.timezone, ai.attempted, log);
   if (!verdict.flagged) {
     return { ok: true, flagged: false, severity: "info", concernTypes: [] };
   }

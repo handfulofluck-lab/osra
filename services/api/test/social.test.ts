@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHmac } from "node:crypto";
 import { signV2 } from "../src/lib/internalAuth.js";
 import { decryptForFamily, encryptForFamily } from "@familyshield/crypto";
-import { socialRoutes } from "../src/routes/social.js";
+import { localDay, socialRoutes } from "../src/routes/social.js";
 import { deviceRoutes } from "../src/routes/devices.js";
 import { reportsRoutes } from "../src/routes/reports.js";
 import { rulesRoutes } from "../src/routes/rules.js";
@@ -21,7 +21,7 @@ vi.mock("ioredis", async () => {
 
 const SECRET = "test-internal-secret";
 const VAULT_KEY = Buffer.alloc(32, 7).toString("base64");
-const CHILD = { id: "child-1", familyId: "fam-1", birthYear: 2012 };
+const CHILD = { id: "child-1", familyId: "fam-1", birthYear: 2012, family: { timezone: "Asia/Dubai" } };
 const FLAGGED_TEXT = "seriously you should kill yourself";
 
 const sign = (raw: string) => createHmac("sha256", SECRET).update(raw).digest("hex");
@@ -140,6 +140,70 @@ describe("social routes", () => {
     expect(call.create).toMatchObject({ scans: 1, aiCalls: 0 });
     // The mutant — always incrementing aiCalls — would bill a family for an engine that never ran.
     expect(call.update).toEqual({ scans: { increment: 1 } });
+    await app.close();
+  });
+
+  it("a broken counter cannot fail the scan or lose the alert (#897 review, u5)", async () => {
+    // The route is the child-safety path: a scan that 500s is a message never classified and an alert never
+    // raised. The counter is allowed to fail; the verdict and the alert are not. Mutant: let the counter's
+    // error escape (or move the write above the verdict) and this row goes red.
+    const app = await buildApp(socialRoutes, "/v1/social");
+    vi.stubGlobal("fetch", aiOk({ flagged: true, severity: "warning", categories: { self_harm: 0.9 } }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.socialEvent.create.mockResolvedValue({ id: "se-1" });
+    prismaMock.alert.create.mockResolvedValue({ id: "a-1" });
+    prismaMock.aiScanUsage.upsert.mockRejectedValue(new Error("counter down"));
+
+    const res = await postScan(app, scanBody());
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ flagged: true, severity: "warning" });
+    expect(prismaMock.socialEvent.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    // One retry on the way out, and still no throw: a unique-index race is not a scan failure either.
+    expect(prismaMock.aiScanUsage.upsert).toHaveBeenCalledTimes(2);
+    await app.close();
+  });
+
+  it("the day key is the family's zone, and a broken zone falls back to UTC (#897 review, u4/u9)", () => {
+    // 21:30 UTC is 01:30 the next day in Dubai. A UTC key would file that scan under yesterday, and a
+    // monthly figure would drift by a day per family without anyone seeing it. Tested on the pure function
+    // rather than through the route: fake timers stall the rate limiter's own timers, and the property under
+    // test is the arithmetic, not the transport.
+    expect(localDay(new Date("2026-11-17T21:30:00Z"), "Asia/Dubai")).toBe("2026-11-18");
+    expect(localDay(new Date("2026-11-17T21:30:00Z"), "UTC")).toBe("2026-11-17");
+    // A zone the database should never hold: fall back to UTC, do not throw inside the scan path.
+    expect(() => localDay(new Date("2026-11-17T21:30:00Z"), "Mars/Olympus")).not.toThrow();
+    expect(localDay(new Date("2026-11-17T21:30:00Z"), "Mars/Olympus")).toBe("2026-11-17");
+  });
+
+  it("the counter's day is the family's, taken from the child row the route already read", async () => {
+    // The route-level half of the same claim: the key written for a Dubai family is the Dubai day, and the
+    // zone came from the query that already ran (no second family lookup on the scan path).
+    const app = await buildApp(socialRoutes, "/v1/social");
+    vi.stubGlobal("fetch", aiOk({ flagged: false, severity: "info", categories: { safe: 0.9 } }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+
+    await postScan(app, scanBody({ text: "want to play soccer later?" }));
+
+    const call = prismaMock.aiScanUsage.upsert.mock.calls[0][0] as { where: { familyId_day: { day: string } } };
+    expect(call.where.familyId_day.day).toBe(localDay(new Date(), "Asia/Dubai"));
+    expect(prismaMock.family.findUnique).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("a scan whose engine call timed out is still a model attempt (#897 review, point a)", async () => {
+    // A request that reached the engine and ran past the 5 s timeout was paid for; recording it as a free
+    // local-pattern scan under-counts every family, which is the unsafe direction for a cost floor.
+    const app = await buildApp(socialRoutes, "/v1/social");
+    const timeout = Object.assign(new Error("timed out"), { name: "TimeoutError" });
+    vi.stubGlobal("fetch", vi.fn(async () => { throw timeout; }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+
+    await postScan(app, scanBody({ text: "want to play soccer later?" }));
+
+    const call = prismaMock.aiScanUsage.upsert.mock.calls[0][0] as { create: { scans: number; aiCalls: number } };
+    expect(call.create).toMatchObject({ scans: 1, aiCalls: 1 });
     await app.close();
   });
 

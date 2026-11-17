@@ -11,6 +11,14 @@
   read back in UTC and move a Dubai family's evening into the next day.
 - Migration `0039_ai_scan_usage` is additive and starts empty: no earlier scan was ever recorded anywhere, so
   there is nothing to backfill and the first month is the first honest number.
+- **What this number is, and is not (#897 review).** It is **volume per family**: scans, and the subset where an
+  AI request was actually made — an attempt that opened a connection and then timed out counts, because it was
+  paid for, while a refused connection does not. It is **not** spend: the engine decides internally whether its
+  own model or Bedrock answered, so `stage1` and `escalations` would need the engine to report which stage
+  answered, and until it does the cost split the pricing debate turns on is invisible here. The row that makes
+  a price from this must not pretend otherwise.
+- Retention: kept while the family exists and deleted with it (the §4 guard forced that decision on the day the
+  model was added). One row per family per day is a few kilobytes a year, so no sweep owns it yet.
 - **Not in this PR:** no endpoint and no screen. The counters are for the cost question, and exposing them
   needs the tier decision first (a parent-facing usage figure is a product choice, not a counter).
 - Verified: `npx vitest run test/social.test.ts` **29 passed** (two new rows), each row watched failing
