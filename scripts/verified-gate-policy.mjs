@@ -348,6 +348,8 @@ function selftest() {
     ['codex/ R2 signed only by Codex', { headRef: 'codex/x', files: ['a/b.ts'], signatures: v('Codex') }, false],
     ['K31 R2 signed by Codex (different family)', { headRef: 'k31/x', files: ['a/b.ts'], signatures: v('Codex') }, true],
     ['R3 path, Codex + Ahmed on a K31 PR', { headRef: 'k31/x', files: ['infra/terraform/main.tf'], signatures: v('Codex', 'Ahmed') }, true],
+    // Codex is not a security key (maintainer, 2026-11-17): adding him to SECURITY_KEYS must fail this row.
+    ['Codex is not a security key: K31 R3 Codex + Hydrogen', { headRef: 'k31/x', files: ['infra/terraform/main.tf'], signatures: v('Codex', 'Hydrogen') }, false],
     ['unknown signer name ignored', { headRef: 'kimi/x', files: ['a/b.ts'], signatures: v('Mallory') }, false],
     // New members 2026-11-14 (#785, #786): prefixes, two Google families, Antigravity as a security key.
     ['antigravity/ prefix names Antigravity: self-signed', { headRef: 'antigravity/x', files: ['a/b.ts'], signatures: v('Antigravity') }, false],
@@ -569,6 +571,12 @@ function selftest() {
     ['UI/UX line signed by the coordinator is not the Bureau', `UIUX-Bureau: reviewed ${H}\n— Claude (architecture + testing), team coordinator`, []],
     ['Arabic line signed by the Bureau', `Arabic-Bureau: reviewed ${H}\n— Claude (Arabic Language Bureau)`, [`arabic:-:${H}`]],
     ['Arabic line signed by the coordinator is not the Bureau', `Arabic-Bureau: reviewed ${H}\n— Claude (architecture + testing), team coordinator`, []],
+    // Codex (OpenAI, #617): the signature has to parse by name, and the Bureau line too — a gate that
+    // recognised him in `cases` but not in `parseCases` would pass while his real comments counted for nothing.
+    ['Codex signs by name', `Verified-sha: ${H}
+— Codex (development + verification)`, [`verify:Codex:${H}`]],
+    ['Codex UI/UX Bureau line', `UIUX-Bureau: reviewed ${H}
+— Codex for the UI/UX Bureau`, [`uiux:-:${H}`]],
     ['a longer name is not a member (Claudette is not Claude)', `Verified-sha: ${H}\n— Claudette`, []],
     ['Arabic line inline in a request is not a review', `Bureau, please post \`Arabic-Bureau: reviewed ${H}\`.\n— Claude (Arabic Language Bureau)`, []],
     ['a longer hex run is not a sha', `Verified-sha: ${H}ff\n— K31`, []],

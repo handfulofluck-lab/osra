@@ -316,6 +316,7 @@ Maintainer override (deliberate, rare): `OSRA_ALLOW_MAIN_PUSH=1 git push <remote
 > green, and any member from another model family may verify. Rules 1, 2, 4 and 5 below still apply to every PR.
 
 **Kimi is the only agent who merges**, for every kind of change: code, tests, CI, docs, `docs/QA/**`.
+**Codex is the backup merger** when Kimi is away or merges are bottlenecked: Kimi silent 1 h with a fully signed PR waiting, 3 or more signed PRs queued over 30 min, or the coordinator asks on #50 (maintainer, 2026-11-17 19:54 UTC).
 Claude and Antigravity review and verify but do not merge, not even their own work. Owning `main` means
 owning the merge, not earning a push — the rule above still stands.
 
