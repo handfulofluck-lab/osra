@@ -26,6 +26,9 @@ export const DEVICE_TOTAL_APP = "*";
 /** A phone cannot sensibly report more apps than this in one tick; beyond it the payload is a bug. */
 const MAX_APP_USAGE_ENTRIES = 200;
 
+/** Every minute of one day: a larger per-app figure is a broken counter, not a longer day. */
+const MAX_MINUTES_PER_DAY = 1440;
+
 const MS_PER_DAY = 86_400_000;
 
 export function retentionDays(env: NodeJS.ProcessEnv = process.env): number {
@@ -159,8 +162,12 @@ export async function recordAppUsage(
   const day = utcDay(at);
   let written = 0;
   for (const entry of entries.slice(0, MAX_APP_USAGE_ENTRIES)) {
-    const app = typeof entry?.packageId === "string" ? entry.packageId.trim() : "";
-    const minutes = typeof entry?.minutes === "number" ? Math.round(entry.minutes) : 0;
+    // N1 (Antigravity's review of #901): the same bounds `bucketEvents` applies — a 200-character package id
+    // and a 1440-minute ceiling, which is every minute of one day. Without them an oversized float reaches an
+    // `Int` column and a long id reaches a `text` one; neither should be able to fail the heartbeat.
+    const app = typeof entry?.packageId === "string" ? entry.packageId.trim().slice(0, 200) : "";
+    const raw = typeof entry?.minutes === "number" && Number.isFinite(entry.minutes) ? Math.round(entry.minutes) : 0;
+    const minutes = Math.min(raw, MAX_MINUTES_PER_DAY);
     if (!app || app === DEVICE_TOTAL_APP || !(minutes > 0)) continue;
     await addMinutes(childId, deviceId, day, app, minutes);
     written += 1;

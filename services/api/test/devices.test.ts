@@ -906,6 +906,66 @@ describe("device enrollment & management", () => {
     await app.close();
   });
 
+  it("issue #830/S1 C1: the field Android actually sends reaches AppUsageDaily", async () => {
+    // The exact `TelemetryDto` wire shape (`PayloadDtos.kt:19-23`): `perAppMinutes` as a map, no `appUsage`.
+    // Antigravity's C1: without this branch the rollup is a no-op on every real phone, tests green or not.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, childId: "child-1" });
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: {
+        perAppMinutes: { "com.google.android.youtube": 15, "com.whatsapp": 7, "*": 5 },
+        totalMinutes: 22,
+        unlockCount: 3,
+        batteryPct: 80,
+        locationGrant: "background",
+      },
+    });
+
+    expect(res.statusCode).toBe(202);
+    const rows = prismaMock.appUsageDaily.upsert.mock.calls.map(
+      ([a]: [{ where: { childId_deviceId_day_app: { app: string } }; create: { minutes: number } }]) => [
+        a.where.childId_deviceId_day_app.app,
+        a.create.minutes,
+      ],
+    );
+    expect(rows).toEqual(expect.arrayContaining([["com.google.android.youtube", 15], ["com.whatsapp", 7]]));
+    // The map's `*` entry must not write the total either — same guard as the array shape.
+    const totals = rows.filter(([k]: [string, number]) => k === "*");
+    expect(totals).toHaveLength(1);
+    expect(totals[0][1]).toBe(22);
+    await app.close();
+  });
+
+  it("issue #830/S1 C1: both shapes in one tick are written once, not added", async () => {
+    // Precedence, not addition: a transitional client must not double its own minutes. Mutant: feed both
+    // lists into recordAppUsage and the count doubles.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, childId: "child-1" });
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+
+    await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: {
+        appUsage: [{ packageId: "com.whatsapp", minutes: 5 }],
+        perAppMinutes: { "com.whatsapp": 9 },
+      },
+    });
+
+    const whatsapp = prismaMock.appUsageDaily.upsert.mock.calls.filter(
+      ([a]: [{ where: { childId_deviceId_day_app: { app: string } } }]) => a.where.childId_deviceId_day_app.app === "com.whatsapp",
+    );
+    expect(whatsapp).toHaveLength(1);
+    expect((whatsapp[0][0] as { create: { minutes: number } }).create.minutes).toBe(5);
+    await app.close();
+  });
+
   it("issue #830/S1: a failed per-app rollup does not change the response or lose the tick", async () => {
     // Hydrogen's B1 (#901): §5 promises that a broken rollup cannot fail the upload. Mutant: `throw err` in
     // the handler's catch, and this row is the only thing that notices.
