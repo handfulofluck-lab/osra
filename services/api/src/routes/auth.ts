@@ -8,6 +8,7 @@ import { prisma } from "../db.js";
 import { appPublicUrl, emailConfigured, getEmailSender } from "../lib/email/index.js";
 import { mfaRecoveredEmail, passwordResetEmail } from "../lib/email/templates.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
+import { consentEventFor, recordSignupConsent } from "../lib/parentConsent.js";
 import {
   MFA_RESET_CODE_TTL_SECONDS,
   MFA_RESET_MAILBOX_TTL_SECONDS,
@@ -50,6 +51,18 @@ const RegisterSchema = z.object({
   region: z.enum(["US", "EU", "UK", "OTHER"]),
   // ADR-0020: optional, additive; existing clients send nothing and nothing changes.
   timezone: z.string().max(64).optional(),
+  // ADR-0043 D3: the one required choice at sign-up, with the version of the wording that was shown. It is
+  // required from here on: no account may exist without its acceptance row, so a client that sends nothing
+  // is refused rather than quietly creating an unaccepted account.
+  consents: z.object({
+    termsPrivacy: z.boolean(),
+    textVersion: z.string().min(1).max(64),
+    locale: z.string().min(2).max(16),
+    // Parked by counsel's amendment (A2/A8). Accepted as fields so a caller that sends `true` gets a named
+    // refusal instead of a silent drop — a stored row for text nobody was shown would be a false proof.
+    aiImprovement: z.boolean().optional(),
+    marketingEmail: z.boolean().optional(),
+  }),
 });
 
 const LoginSchema = z.object({
@@ -174,6 +187,11 @@ export async function authRoutes(app: FastifyInstance) {
     const existing = await prisma.parent.findUnique({ where: { email } });
     if (existing) return reply.code(409).send({ error: "email_taken" });
 
+    // ADR-0043 D3: the text and its hash come from the copy the server serves, never from the request.
+    const consent = consentEventFor(parsed.data.consents);
+    if (!consent.ok) return reply.code(400).send({ error: consent.reason });
+    const clientVersion = (req as unknown as { client?: { version?: string } }).client?.version ?? null;
+
     const passwordHash = await argon2.hash(password);
     const result = await prisma.$transaction(async (tx) => {
       const zone = timezone && isValidTimeZone(timezone) ? timezone : null;
@@ -183,6 +201,9 @@ export async function authRoutes(app: FastifyInstance) {
       const parent = await tx.parent.create({
         data: { familyId: family.id, email, passwordHash, displayName, role: "owner" },
       });
+      // Same transaction as the account: an account without its acceptance row is the state the ADR forbids,
+      // and a failed insert here rolls the Parent and the Family back with it.
+      await recordSignupConsent(tx, parent.id, consent.fields, clientVersion);
       return { family, parent };
     });
 

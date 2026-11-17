@@ -33,6 +33,8 @@ export const MOCKED_MODELS = [
   "geofence",
   "alert",
   "consentRecord",
+  // ADR-0043 D2 / #846 step 2: the adult's consent rows.
+  "parentConsentEvent",
   "locationPing",
   "activityEvent",
   "socialEvent",
@@ -78,6 +80,13 @@ function makePrismaMock() {
 
 /** Mocked PrismaClient; wire it in test files with vi.mock("../src/db.js", () => ({ prisma: prismaMock })). */
 export const prismaMock = makePrismaMock();
+
+/**
+ * ADR-0043 D3: the consent block `POST /v1/auth/register` now requires, exactly as the parent app sends it
+ * (`apps/parent-app/lib/providers/auth_provider.dart`). Shared so a new register row cannot forget it and
+ * fail for the wrong reason.
+ */
+export const SIGNUP_CONSENTS = { termsPrivacy: true, textVersion: "signup-v1", locale: "en" } as const;
 
 /** In-memory stand-in for ioredis so no live Redis is needed. */
 export class MockRedis {
