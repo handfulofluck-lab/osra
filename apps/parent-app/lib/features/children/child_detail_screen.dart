@@ -152,165 +152,177 @@ class _OverviewTab extends ConsumerWidget {
     final devices = overview?.devicesFor(childId) ?? const <Device>[];
     final internetPaused = ref.watch(internetPausedProvider(childId)).valueOrNull ?? false;
     if (overview == null) return const Center(child: CircularProgressIndicator());
-    return SingleChildScrollView(
-      padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (child != null) ...[
-            Card(
-              child: ListTile(
-                leading: CircleAvatar(child: Text(child.initials)),
-                title: Text(child.displayName),
-                subtitle: Text(l10n.bornYear(child.birthYear)),
-              ),
-            ),
-            const SizedBox(height: AppSpace.sm),
-            FilledButton.tonal(
-              key: const ValueKey('overviewEditRulesButton'),
-              onPressed: () => context.push('/child/$childId/rules'),
-              child: Text(l10n.editRules),
-            ),
-          ],
-        // NOTE: simplest entry — the chevron jumps to the Social tab instead
-        // of pushing the standalone /child/:id/social route.
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.forum_outlined),
-            title: Text(l10n.socialMonitoringTitle),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => DefaultTabController.of(context).animateTo(2),
-          ),
-        ),
-        const SizedBox(height: AppSpace.sm),
-        // NOTE: Wrap instead of Row — the header overflowed on 320px-wide screens.
-        Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.center,
+    return RefreshIndicator(
+      // #876: the delivery line on this tab had no way to be refreshed by hand — pulling down did nothing.
+      onRefresh: () async {
+        ref.invalidate(familyProvider);
+        for (final device in devices) {
+          ref.invalidate(deviceCommandHistoryProvider(device.id));
+        }
+      },
+      child: SingleChildScrollView(
+        // The pull gesture needs something scrollable even when the content fits: `AlwaysScrollable` keeps it
+        // working on a short page and on a large text scale alike.
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(l10n.devices, style: Theme.of(context).textTheme.titleMedium),
-            TextButton.icon(
-              onPressed: () => _pairDevice(context, ref, childId),
-              icon: const Icon(Icons.phonelink_setup, size: 18),
-              label: Text(l10n.pairADevice),
+            if (child != null) ...[
+              Card(
+                child: ListTile(
+                  leading: CircleAvatar(child: Text(child.initials)),
+                  title: Text(child.displayName),
+                  subtitle: Text(l10n.bornYear(child.birthYear)),
+                ),
+              ),
+              const SizedBox(height: AppSpace.sm),
+              FilledButton.tonal(
+                key: const ValueKey('overviewEditRulesButton'),
+                onPressed: () => context.push('/child/$childId/rules'),
+                child: Text(l10n.editRules),
+              ),
+            ],
+          // NOTE: simplest entry — the chevron jumps to the Social tab instead
+          // of pushing the standalone /child/:id/social route.
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.forum_outlined),
+              title: Text(l10n.socialMonitoringTitle),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => DefaultTabController.of(context).animateTo(2),
             ),
+          ),
+          const SizedBox(height: AppSpace.sm),
+          // NOTE: Wrap instead of Row — the header overflowed on 320px-wide screens.
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(l10n.devices, style: Theme.of(context).textTheme.titleMedium),
+              TextButton.icon(
+                onPressed: () => _pairDevice(context, ref, childId),
+                icon: const Icon(Icons.phonelink_setup, size: 18),
+                label: Text(l10n.pairADevice),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.xs),
+          if (devices.isEmpty)
+            Card(child: ListTile(leading: const Icon(Icons.devices_other), title: Text(l10n.noDevicesRegistered)))
+          else
+            for (final d in devices)
+              Card(
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: Icon(switch (d.platform) {
+                        'android' => Icons.android,
+                        'ios' => Icons.apple,
+                        _ => Icons.devices_other,
+                      }),
+                      title: Text(d.model),
+                      subtitle: Text(switch (formatDevicePlatformLabel(d.platform, d.osVersion)) {
+                        '' => _statusLabel(context, d),
+                        final platformLabel => '$platformLabel · ${_statusLabel(context, d)}',
+                      }),
+                      trailing: d.batteryPct > 0
+                          ? Chip(
+                              visualDensity: VisualDensity.compact,
+                              avatar: Icon(d.batteryPct <= 20 ? Icons.battery_alert : Icons.battery_std, size: 14),
+                              label: Text('${d.batteryPct}%'),
+                            )
+                          : null,
+                    ),
+                    Padding(
+                      padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, 0, AppSpace.lg, AppSpace.xs),
+                      child: Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Text(l10n.lastSeenLabel(formatLastSeen(context, d.lastSeen)), style: Theme.of(context).textTheme.bodySmall),
+                      ),
+                    ),
+                    // ADR-0034 decision 3: what this phone says it can do, and what is missing.
+                    PhoneSetupSection(device: d),
+                    // ADR-0037 PR B3c: the iPhone's app groups, each with a Block switch.
+                    AppGroupsSection(device: d),
+                    // Plan 3.6: the latest command's real state, straight from the
+                    // durable queue. An unacked command is never described as sent.
+                    Padding(
+                      padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, 0, AppSpace.lg, AppSpace.xxs),
+                      child: Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: _DeviceDeliverySummary(deviceId: d.id, deviceModel: d.model),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.sm, 0, AppSpace.sm, 6),
+                      // NOTE: Wrap instead of Row — the command buttons
+                      // overflowed on 320px-wide screens.
+                      child: Wrap(
+                        spacing: AppSpace.sm,
+                        children: [
+                          TextButton.icon(
+                            onPressed: () => context.push('/child/$childId/commands'),
+                            icon: const Icon(Icons.receipt_long, size: 18),
+                            label: Text(l10n.deliveryStatus),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => _sendCommand(context, ref, d, 'ring'),
+                            icon: const Icon(Icons.notifications_active, size: 18),
+                            label: Text(l10n.ring),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => _sendCommand(context, ref, d, 'lock'),
+                            icon: const Icon(Icons.lock, size: 18),
+                            label: Text(l10n.lock),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => _sendCommand(context, ref, d, 'unlock'),
+                            icon: const Icon(Icons.lock_open, size: 18),
+                            label: Text(l10n.unlock),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => _sendCommand(context, ref, d, 'pause'),
+                            icon: const Icon(Icons.pause_circle, size: 18),
+                            label: Text(l10n.pause),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => _sendCommand(context, ref, d, 'resume'),
+                            icon: const Icon(Icons.play_circle, size: 18),
+                            label: Text(l10n.resume),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => _toggleInternet(context, ref, childId, internetPaused, d),
+                            icon: Icon(internetPaused ? Icons.wifi : Icons.wifi_off, size: 18),
+                            label: Text(internetPaused ? l10n.resumeNet : l10n.pauseNet),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          const SizedBox(height: AppSpace.sm),
+          _BonusTimeCard(childId: childId),
+          const SizedBox(height: AppSpace.sm),
+          _WindDownCard(childId: childId),
+          const SizedBox(height: AppSpace.sm),
+          // Plan 3.7: the consent record and the withdrawal flow. Kept at the
+          // end so the cards above keep their existing position at 320 px.
+          Card(
+            child: ListTile(
+              key: const ValueKey('consentScreenTile'),
+              leading: const Icon(Icons.verified_user_outlined),
+              title: Text(l10n.parentalConsent),
+              subtitle: Text(l10n.consentRecordSummary),
+              trailing: const Icon(Icons.arrow_forward, size: 18),
+              onTap: () => context.push('/child/$childId/consent'),
+            ),
+          ),
           ],
         ),
-        const SizedBox(height: AppSpace.xs),
-        if (devices.isEmpty)
-          Card(child: ListTile(leading: const Icon(Icons.devices_other), title: Text(l10n.noDevicesRegistered)))
-        else
-          for (final d in devices)
-            Card(
-              child: Column(
-                children: [
-                  ListTile(
-                    leading: Icon(switch (d.platform) {
-                      'android' => Icons.android,
-                      'ios' => Icons.apple,
-                      _ => Icons.devices_other,
-                    }),
-                    title: Text(d.model),
-                    subtitle: Text(switch (formatDevicePlatformLabel(d.platform, d.osVersion)) {
-                      '' => _statusLabel(context, d),
-                      final platformLabel => '$platformLabel · ${_statusLabel(context, d)}',
-                    }),
-                    trailing: d.batteryPct > 0
-                        ? Chip(
-                            visualDensity: VisualDensity.compact,
-                            avatar: Icon(d.batteryPct <= 20 ? Icons.battery_alert : Icons.battery_std, size: 14),
-                            label: Text('${d.batteryPct}%'),
-                          )
-                        : null,
-                  ),
-                  Padding(
-                    padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, 0, AppSpace.lg, AppSpace.xs),
-                    child: Align(
-                      alignment: AlignmentDirectional.centerStart,
-                      child: Text(l10n.lastSeenLabel(formatLastSeen(context, d.lastSeen)), style: Theme.of(context).textTheme.bodySmall),
-                    ),
-                  ),
-                  // ADR-0034 decision 3: what this phone says it can do, and what is missing.
-                  PhoneSetupSection(device: d),
-                  // ADR-0037 PR B3c: the iPhone's app groups, each with a Block switch.
-                  AppGroupsSection(device: d),
-                  // Plan 3.6: the latest command's real state, straight from the
-                  // durable queue. An unacked command is never described as sent.
-                  Padding(
-                    padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, 0, AppSpace.lg, AppSpace.xxs),
-                    child: Align(
-                      alignment: AlignmentDirectional.centerStart,
-                      child: _DeviceDeliverySummary(deviceId: d.id, deviceModel: d.model),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.sm, 0, AppSpace.sm, 6),
-                    // NOTE: Wrap instead of Row — the command buttons
-                    // overflowed on 320px-wide screens.
-                    child: Wrap(
-                      spacing: AppSpace.sm,
-                      children: [
-                        TextButton.icon(
-                          onPressed: () => context.push('/child/$childId/commands'),
-                          icon: const Icon(Icons.receipt_long, size: 18),
-                          label: Text(l10n.deliveryStatus),
-                        ),
-                        TextButton.icon(
-                          onPressed: () => _sendCommand(context, ref, d, 'ring'),
-                          icon: const Icon(Icons.notifications_active, size: 18),
-                          label: Text(l10n.ring),
-                        ),
-                        TextButton.icon(
-                          onPressed: () => _sendCommand(context, ref, d, 'lock'),
-                          icon: const Icon(Icons.lock, size: 18),
-                          label: Text(l10n.lock),
-                        ),
-                        TextButton.icon(
-                          onPressed: () => _sendCommand(context, ref, d, 'unlock'),
-                          icon: const Icon(Icons.lock_open, size: 18),
-                          label: Text(l10n.unlock),
-                        ),
-                        TextButton.icon(
-                          onPressed: () => _sendCommand(context, ref, d, 'pause'),
-                          icon: const Icon(Icons.pause_circle, size: 18),
-                          label: Text(l10n.pause),
-                        ),
-                        TextButton.icon(
-                          onPressed: () => _sendCommand(context, ref, d, 'resume'),
-                          icon: const Icon(Icons.play_circle, size: 18),
-                          label: Text(l10n.resume),
-                        ),
-                        TextButton.icon(
-                          onPressed: () => _toggleInternet(context, ref, childId, internetPaused, d),
-                          icon: Icon(internetPaused ? Icons.wifi : Icons.wifi_off, size: 18),
-                          label: Text(internetPaused ? l10n.resumeNet : l10n.pauseNet),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        const SizedBox(height: AppSpace.sm),
-        _BonusTimeCard(childId: childId),
-        const SizedBox(height: AppSpace.sm),
-        _WindDownCard(childId: childId),
-        const SizedBox(height: AppSpace.sm),
-        // Plan 3.7: the consent record and the withdrawal flow. Kept at the
-        // end so the cards above keep their existing position at 320 px.
-        Card(
-          child: ListTile(
-            key: const ValueKey('consentScreenTile'),
-            leading: const Icon(Icons.verified_user_outlined),
-            title: Text(l10n.parentalConsent),
-            subtitle: Text(l10n.consentRecordSummary),
-            trailing: const Icon(Icons.arrow_forward, size: 18),
-            onTap: () => context.push('/child/$childId/consent'),
-          ),
-        ),
-      ],
-    ),
-  );
+      ),
+    );
   }
 
   /// The server's judgement (`Device.status`), never a clock rule on this phone (#601).
@@ -514,6 +526,7 @@ class _WindDownCard extends ConsumerWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }
