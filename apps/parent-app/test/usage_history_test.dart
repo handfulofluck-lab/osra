@@ -214,7 +214,7 @@ void main() {
       expect(find.text('Blocked'), findsNothing);
       expect(find.text('Allowed'), findsNothing);
       expect(
-        find.text('Site names only. OSRA Kids does not see the pages opened or anything typed.'),
+        find.text('Names of sites and online services this phone connected to, not the pages opened. Kept for 90 days.'),
         findsOneWidget,
       );
     });
@@ -285,7 +285,7 @@ void main() {
 
       expect(find.text('No browsing history in the last 7 days'), findsOneWidget);
       expect(
-        find.text('Site names only. OSRA Kids does not see the pages opened or anything typed.'),
+        find.text('Names of sites and online services this phone connected to, not the pages opened. Kept for 90 days.'),
         findsNothing,
       );
     });

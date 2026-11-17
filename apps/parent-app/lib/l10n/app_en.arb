@@ -1420,7 +1420,7 @@
   "setupMonitoringContinue": "Continue",
   "appRuleHiddenOnIphone": "On the iPhone, this app is hidden instead of showing the OSRA screen.",
   "@appRuleHiddenOnIphone": {"description": "ADR-0037 decision 3: under a blocked app rule when the child has an iPhone, where a blocked app id is hidden rather than shielded. Arabic is a draft pending Karim's review."},
-  "webSiteNamesOnlyNote": "Site names only. OSRA Kids does not see the pages opened or anything typed.",
+  "webSiteNamesOnlyNote": "Names of sites and online services this phone connected to, not the pages opened. Kept for 90 days.",
   "webSiteVisits": "{count, plural, =1{Visited once} other{Visited {count} times}}",
   "@webSiteVisits": {"placeholders": {"count": {"type": "int"}}},
   "webSiteSeenRange": "{first} to {last}",

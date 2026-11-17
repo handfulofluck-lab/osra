@@ -1627,6 +1627,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noCallsOrTexts => 'No phone calls or texts yet';
 
   @override
+  String get activityLockRow => 'Device locked';
+
+  @override
+  String activityLockRowDetail(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'The lock screen came up $count times',
+      one: 'The lock screen came up once',
+      zero: 'The lock screen did not come up',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get unknownNumber => 'Unknown number';
 
   @override
@@ -3126,7 +3141,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'On the iPhone, this app is hidden instead of showing the OSRA screen.';
 
   @override
-  String get webSiteNamesOnlyNote => 'Site names only. OSRA Kids does not see the pages opened or anything typed.';
+  String get webSiteNamesOnlyNote => 'Names of sites and online services this phone connected to, not the pages opened. Kept for 90 days.';
 
   @override
   String webSiteVisits(int count) {

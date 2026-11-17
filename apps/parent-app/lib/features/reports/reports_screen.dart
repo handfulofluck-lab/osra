@@ -156,7 +156,7 @@ class _UsageSection extends StatelessWidget {
   }
 }
 
-/// Web activity: total URL visits, top blocked domains and the YouTube
+/// Web activity: sites visited, top blocked domains and the YouTube
 /// SafeSearch NOTE (#7 — pure copy, no behavior).
 class _WebSection extends StatelessWidget {
   final ReportSummary summary;
@@ -170,7 +170,9 @@ class _WebSection extends StatelessWidget {
       children: [
         Text(l10n.webSection, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: AppSpace.xs),
-        Text(l10n.urlVisits(summary.urlVisits)),
+        // #830: with site-name rows the card counts sites, not addresses; the Bureau issued this line for it
+        // and it had no caller until now.
+        Text(l10n.webSitesSummary(summary.urlVisits)),
         const SizedBox(height: AppSpace.sm),
         if (summary.topBlockedDomains.isEmpty)
           Text(l10n.noBlockedDomains)

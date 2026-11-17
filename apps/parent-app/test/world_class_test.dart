@@ -75,7 +75,8 @@ void main() {
       final scrollable = find.byType(Scrollable).first;
       await tester.scrollUntilVisible(find.text('tiktok.com'), 200, scrollable: scrollable);
       await tester.pumpAndSettle();
-      expect(find.textContaining('42 URL visits'), findsOneWidget);
+      // #830: the card counts sites once site names replace addresses.
+      expect(find.textContaining('42 sites visited'), findsOneWidget);
       expect(find.text('tiktok.com'), findsOneWidget);
       expect(find.textContaining('12× blocked'), findsOneWidget);
       expect(find.textContaining('YouTube search is forced to SafeSearch'), findsOneWidget);

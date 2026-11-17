@@ -2713,6 +2713,18 @@ abstract class AppLocalizations {
   /// **'No phone calls or texts yet'**
   String get noCallsOrTexts;
 
+  /// No description provided for @activityLockRow.
+  ///
+  /// In en, this message translates to:
+  /// **'Device locked'**
+  String get activityLockRow;
+
+  /// No description provided for @activityLockRowDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{The lock screen did not come up} =1{The lock screen came up once} other{The lock screen came up {count} times}}'**
+  String activityLockRowDetail(int count);
+
   /// No description provided for @unknownNumber.
   ///
   /// In en, this message translates to:

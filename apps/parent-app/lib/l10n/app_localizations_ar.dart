@@ -1751,6 +1751,24 @@ class AppLocalizationsAr extends AppLocalizations {
   String get noCallsOrTexts => 'لا توجد مكالمات هاتفية أو رسائل بعد';
 
   @override
+  String get activityLockRow => 'الجهاز مقفل';
+
+  @override
+  String activityLockRowDetail(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'ظهرت شاشة القفل $count مرة',
+      many: 'ظهرت شاشة القفل $count مرة',
+      few: 'ظهرت شاشة القفل $count مرات',
+      two: 'ظهرت شاشة القفل مرتين',
+      one: 'ظهرت شاشة القفل مرة واحدة',
+      zero: 'لم تظهر شاشة القفل',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get unknownNumber => 'رقم غير معروف';
 
   @override
