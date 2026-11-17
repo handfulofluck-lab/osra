@@ -95,8 +95,10 @@ final locationHistoryProvider = FutureProvider.family<List<LocationPing>, String
   final Response<dynamic> res;
   try {
     res = await api.raw.get('/v1/location/$childId/history', queryParameters: {
-      'from': from.toIso8601String(),
-      'to': now.toIso8601String(),
+      // #869: the API accepts UTC/Z datetimes. Convert the local-day boundary,
+      // rather than constructing UTC midnight, so "today" stays the parent's day.
+      'from': from.toUtc().toIso8601String(),
+      'to': now.toUtc().toIso8601String(),
     });
   } on DioException catch (e) {
     // #850: no location yet is an empty day, not an error.
