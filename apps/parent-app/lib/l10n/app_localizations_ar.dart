@@ -3299,4 +3299,16 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get appRuleHiddenOnIphone =>
       'على هواتف آيفون، يُخفى هذا التطبيق بدلًا من عرض شاشة الحظر.';
+
+  @override
+  String get showPassword => 'إظهار كلمة المرور';
+
+  @override
+  String get hidePassword => 'إخفاء كلمة المرور';
+
+  @override
+  String get passwordMinHint => '12 حرفًا على الأقل.';
+
+  @override
+  String get familyNameHelper => 'سيظهر هذا الاسم لأولياء الأمور الآخرين الذين تدعوهم.';
 }

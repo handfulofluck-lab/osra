@@ -246,6 +246,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     labelText: l10n.passwordLabel,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                     suffixIcon: IconButton(
+                      key: const ValueKey('togglePassword'),
+                      tooltip: _obscured ? l10n.showPassword : l10n.hidePassword,
                       icon: Icon(_obscured ? Icons.visibility : Icons.visibility_off),
                       onPressed: () => setState(() => _obscured = !_obscured),
                     ),

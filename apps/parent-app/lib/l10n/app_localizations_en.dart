@@ -3127,4 +3127,16 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get appRuleHiddenOnIphone =>
       'On the iPhone, this app is hidden instead of showing the OSRA screen.';
+
+  @override
+  String get showPassword => 'Show password';
+
+  @override
+  String get hidePassword => 'Hide password';
+
+  @override
+  String get passwordMinHint => 'At least 12 characters.';
+
+  @override
+  String get familyNameHelper => 'Other parents you invite will see this.';
 }

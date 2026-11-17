@@ -39,6 +39,7 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
   bool _accepted = false;
   bool _consentMissing = false;
   bool _submitting = false;
+  bool _obscured = true;
   String? _formError;
 
   @override
@@ -215,11 +216,19 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                   const SizedBox(height: AppSpace.md),
                   TextField(
                     controller: _password,
-                    obscureText: true,
+                    obscureText: _obscured,
                     autofillHints: const [AutofillHints.newPassword],
                     textInputAction: TextInputAction.next,
                     decoration: InputDecoration(
                       labelText: l10n.passwordLabel,
+                      // The rule is stated before the error, not only after it (UI/UX item 2).
+                      helperText: l10n.passwordMinHint,
+                      suffixIcon: IconButton(
+                        key: const ValueKey('togglePassword'),
+                        tooltip: _obscured ? l10n.showPassword : l10n.hidePassword,
+                        icon: Icon(_obscured ? Icons.visibility : Icons.visibility_off),
+                        onPressed: () => setState(() => _obscured = !_obscured),
+                      ),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                     ),
                   ),
@@ -230,6 +239,8 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                     onSubmitted: (_) => _submit(data, purpose),
                     decoration: InputDecoration(
                       labelText: l10n.familyNameLabel,
+                      // Co-parents see this name, so the field says so (UI/UX recommendation).
+                      helperText: l10n.familyNameHelper,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                     ),
                   ),

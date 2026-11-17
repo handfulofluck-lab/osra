@@ -413,6 +413,11 @@ abstract class AppLocalizations {
   /// To create an account, please tick this box.
   String get consentRequired;
 
+  String get showPassword;
+  String get hidePassword;
+  String get passwordMinHint;
+  String get familyNameHelper;
+
   /// No description provided for @familyNameLabel.
   ///
   /// In en, this message translates to:
