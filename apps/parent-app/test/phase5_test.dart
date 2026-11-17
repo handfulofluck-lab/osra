@@ -96,29 +96,29 @@ void main() {
       final api = rulesApi();
       await openAppsTab(tester, api);
 
-      // Add com.new.app via the dialog.
-      await tester.tap(find.text('Add app'));
+      // U33 (#868): the app is chosen from the child's own reported list, never typed.
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Add app'));
       await tester.pumpAndSettle();
-      final dialog = find.byType(AlertDialog);
-      await tester.enterText(find.descendant(of: dialog, matching: find.byType(TextField)), 'com.new.app');
-      await tester.tap(find.descendant(of: dialog, matching: find.text('Add')));
+      await tester.tap(find.byKey(const ValueKey('appPickerRow-com.example.video')));
       await tester.pumpAndSettle();
-      expect(find.text('com.new.app'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('appPickerConfirm')));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(InputChip, 'Video'), findsOneWidget);
 
-      // Save → PUT carries both apps.
+      // Save → PUT carries both apps, by package id.
       await tester.tap(find.text('Save'));
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
       var puts = api.calls('PUT', '/v1/rules/child-1');
       expect(puts, hasLength(1));
-      expect(puts.single.body['alwaysAllowedApps'], ['com.edu.app', 'com.new.app']);
+      expect(puts.single.body['alwaysAllowedApps'], ['com.edu.app', 'com.example.video']);
       await runOutSnackbar(tester);
 
       // Remove the chip, save again → PUT carries only the remaining app.
-      final chip = find.widgetWithText(InputChip, 'com.new.app');
+      final chip = find.widgetWithText(InputChip, 'Video');
       await tester.tap(find.descendant(of: chip, matching: find.byIcon(Icons.clear)));
       await tester.pumpAndSettle();
-      expect(find.text('com.new.app'), findsNothing);
+      expect(find.widgetWithText(InputChip, 'Video'), findsNothing);
 
       await tester.tap(find.text('Save'));
       await flushFakeHttp(tester);

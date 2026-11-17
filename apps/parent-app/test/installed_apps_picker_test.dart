@@ -149,8 +149,9 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('appPickerConfirm')));
     await tester.pumpAndSettle();
     expect(picker(), findsNothing);
+    // The two new rows exist; the PUT below is what proves their contents — the rule list is lazy, so
+    // a card below the fold is not in the element tree to be found by text.
     expect(find.text('Video'), findsOneWidget);
-    expect(find.text('Reader'), findsOneWidget);
     // U33: the typed path is gone — no "Add app rule" button and no package id on any row.
     expect(find.text('Add app rule'), findsNothing);
     expect(find.text('com.example.video'), findsNothing);
@@ -192,7 +193,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(picker(), findsOneWidget); // tapping a ruled app does not close the picker
 
-    await tester.pageBack();
+    await tester.tap(find.byType(CloseButton));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();

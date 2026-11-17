@@ -123,8 +123,11 @@ final installedAppsByDeviceProvider =
         report = InstalledAppsReport.fromJson(
             Map<String, dynamic>.from(res.data as Map));
       }
-    } on DioException {
-      // A device that has not reported, or an offline read: empty group, not a failed picker.
+    } on DioException catch (e) {
+      // Only "this phone has no report" is an empty group: the API answers 404 for a device that has
+      // never uploaded. Anything else (a 500, an auth failure) is a real load failure and stays one —
+      // the picker shows its error with a retry rather than an empty list that reads as "no apps".
+      if (e.response?.statusCode != 404) rethrow;
     }
     groups.add(DeviceApps(
       deviceId: device.id,
