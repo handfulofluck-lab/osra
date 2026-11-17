@@ -342,6 +342,68 @@ void main() {
     expect(drainExceptions(tester), isEmpty);
   });
 
+  /// #872 conditions 3, 4 and 5 (UI/UX Bureau): each has its own row so the next reader can see what a
+  /// regression looks like.
+  testWidgets('a device that reports nothing keeps its header and says so', (tester) async {
+    // Mutant: `if (visible.isEmpty) continue;` — the whole group is skipped and the second phone vanishes.
+    final api = FakeApiClient({
+      ...standardRoutes(familyMe: familyMeMixedDevices()),
+      'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(),
+      'GET /v1/devices/dev-3/apps': (_) => installedAppsPayload(apps: const []),
+    });
+    await pumpRules(tester, api);
+    await openPicker(tester);
+
+    expect(find.byKey(const ValueKey('appPickerGroup-dev-3')), findsOneWidget);
+    expect(find.text('Galaxy Tab'), findsOneWidget);
+    expect(find.byKey(const ValueKey('appPickerGroupEmpty-dev-3')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('appPickerGroupEmpty-dev-3')),
+        matching: find.text('No apps reported yet'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets("a truncated inventory says so above that device's apps", (tester) async {
+    // Mutant: drop the notice and a cut list reads as "this app is not installed", which is a different
+    // and wrong statement.
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(
+            apps: [
+              installedAppJson('com.example.video', 'Video'),
+              installedAppJson('com.example.maps', 'Maps'),
+            ],
+            truncated: true,
+          ),
+    });
+    await pumpRules(tester, api);
+    await openPicker(tester);
+
+    final notice = find.byKey(const ValueKey('appPickerTruncated-dev-1'));
+    expect(notice, findsOneWidget);
+    expect(
+      find.descendant(of: notice, matching: find.text('Showing the first 2 apps.')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the confirm button says Save, not "Add app"', (tester) async {
+    // Mutant: put `l10n.addApp` back — the label says one app after several are ticked.
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(),
+    });
+    await pumpRules(tester, api);
+    await openPicker(tester);
+
+    final confirm = find.byKey(const ValueKey('appPickerConfirm'));
+    expect(find.descendant(of: confirm, matching: find.text('Save')), findsOneWidget);
+    expect(find.text('Add app'), findsNothing);
+  });
+
   /// A parent's own chips and rows show the app's name and icon, not the id. A stored id whose app the
   /// phone no longer reports is the one place the id still appears — it is the saved value, not a prompt.
   testWidgets('the always-allowed chips show names, and a legacy id keeps itself only', (tester) async {

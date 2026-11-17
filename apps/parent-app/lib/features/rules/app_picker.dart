@@ -191,7 +191,13 @@ class _AppPickerState extends ConsumerState<AppPicker> {
 
   Widget _body(List<DeviceApps> groups) {
     final l10n = context.l10n;
-    if (groups.isEmpty || !groups.any((g) => g.report.apps.isNotEmpty)) {
+    // #872 condition 4 (UI/UX Bureau): a device that reports nothing keeps its group header with the
+    // "no apps reported yet" line under it, so a second phone never disappears from the list. Only a
+    // device with apps that the search filtered out is skipped — that is the search working, not a gap.
+    // A single device that has never reported keeps the original empty state (title + "appears after
+    // the next check-in"): there is no second phone to lose, and that is the sentence a parent needs.
+    // Condition 4 is about the multi-device list, where skipping an empty group made a phone vanish.
+    if (groups.isEmpty || (groups.length == 1 && groups.single.report.apps.isEmpty)) {
       return ListView(
         key: const ValueKey('appPickerEmpty'),
         padding: const EdgeInsets.all(AppSpace.lg),
@@ -206,7 +212,7 @@ class _AppPickerState extends ConsumerState<AppPicker> {
     final rows = <Widget>[];
     for (final group in groups) {
       final visible = _visible(group.report.apps);
-      if (visible.isEmpty) continue;
+      if (visible.isEmpty && group.report.apps.isNotEmpty) continue;
       // With one device the list needs no header; with several, each device's apps are grouped under
       // the device that reported them, and the same app ticked in one group is ticked in the other.
       if (multiDevice) {
@@ -216,7 +222,27 @@ class _AppPickerState extends ConsumerState<AppPicker> {
           child: Text(group.label, style: Theme.of(context).textTheme.titleSmall),
         ));
       }
-      rows.addAll([for (final app in visible) _row(app)]);
+      // #872 condition 3 (UI/UX Bureau): the truncation notice belongs above the apps it describes, per
+      // device, so a list cut short is not read as a definitive "this app is not installed".
+      if (group.report.truncated) {
+        rows.add(Padding(
+          key: ValueKey('appPickerTruncated-${group.deviceId}'),
+          padding: const EdgeInsets.fromLTRB(AppSpace.lg, 0, AppSpace.lg, AppSpace.xs),
+          child: Text(
+            l10n.installedAppsTruncated(group.report.apps.length),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ));
+      }
+      if (group.report.apps.isEmpty) {
+        rows.add(Padding(
+          key: ValueKey('appPickerGroupEmpty-${group.deviceId}'),
+          padding: const EdgeInsets.fromLTRB(AppSpace.lg, 0, AppSpace.lg, AppSpace.sm),
+          child: Text(l10n.installedAppsEmpty, style: Theme.of(context).textTheme.bodySmall),
+        ));
+      } else {
+        rows.addAll([for (final app in visible) _row(app)]);
+      }
     }
     if (rows.isEmpty) {
       return ListView(
@@ -280,7 +306,10 @@ class _ConfirmBar extends StatelessWidget {
             child: FilledButton(
               key: const ValueKey('appPickerConfirm'),
               onPressed: onConfirm,
-              child: Text(context.l10n.addApp, textAlign: TextAlign.center),
+              // #872 condition 5 (UI/UX Bureau): "Add app" is a lie once several are ticked, and the
+              // plural line ("Add {n} apps") is the Language Bureaus' to issue. Until it arrives, the
+              // existing "Save" is the honest label.
+              child: Text(context.l10n.save, textAlign: TextAlign.center),
             ),
           ),
         ),
