@@ -845,7 +845,13 @@ describe("device enrollment & management", () => {
       headers: deviceHeader(app),
       payload: {
         totalMinutes: 22,
-        appUsage: [{ packageId: "com.google.android.youtube", minutes: 14.6 }, { packageId: "com.whatsapp", minutes: 7 }],
+        appUsage: [
+          { packageId: "com.google.android.youtube", minutes: 14.6 },
+          { packageId: "com.whatsapp", minutes: 7 },
+          // A phone that reports the reserved total key inside the split must not be able to write the
+          // total a second time. Mutant: drop the `app === DEVICE_TOTAL_APP` guard and this row doubles it.
+          { packageId: "*", minutes: 5 },
+        ],
       },
     });
 
@@ -891,6 +897,28 @@ describe("device enrollment & management", () => {
     );
     expect(perApp).toHaveLength(1);
     expect((perApp[0][0] as { create: { minutes: number } }).create.minutes).toBe(3);
+    await app.close();
+  });
+
+  it("issue #830/S1: a failed per-app rollup does not change the response or lose the tick", async () => {
+    // Hydrogen's B1 (#901): §5 promises that a broken rollup cannot fail the upload. Mutant: `throw err` in
+    // the handler's catch, and this row is the only thing that notices.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, childId: "child-1" });
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    prismaMock.appUsageDaily.upsert.mockRejectedValueOnce(new Error("db down"));
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      // No `totalMinutes`: the only rollup that can fail here is the per-app one.
+      payload: { batteryPct: 55, appUsage: [{ packageId: "com.whatsapp", minutes: 4 }] },
+    });
+
+    expect(res.statusCode).toBe(202);
+    // The heartbeat still happened: the device row was refreshed, so lastSeen advances as usual.
+    expect(prismaMock.device.update).toHaveBeenCalled();
     await app.close();
   });
 
