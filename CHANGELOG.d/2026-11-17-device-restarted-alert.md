@@ -14,8 +14,14 @@
 - The stored value is on the parent's device read as `lastBootAt`, and `device_restarted` is in the shared
   `Alert` category union. No push or email template change: the alert is already visible in the alerts
   list because the server supplies its title and body.
-- **Not in this PR, and it is why nothing changes for a parent yet:** no client sends `bootedAt` — the
-  Android/iOS agent change is a separate PR — so every device simply keeps `lastBootAt` null, and its
-  first report after an agent ships that field is treated as a new boot once. Not run: the live
-  `qa-probe`/`e2e` gates (no stack here) and any hardware row; `pnpm --filter @familyshield/api test` is
-  the evidence.
+- **Agent half, in the same PR:** `TelemetryDto.bootedAt` (`BootClock.bootedAtIso(nowMs, elapsedRealtimeMs)`,
+  truncated to whole seconds) rides every telemetry upload from all three call sites — the periodic
+  aggregate, the capability report and the location-grant report. It is sent every tick rather than only
+  after a restart because the server is the side that remembers the last value: a client-side "already
+  sent" flag would be a second source of truth that a `pm clear` desynchronises from the server's.
+- **Not run here:** the live `qa-probe`/`e2e` gates (no stack on this machine) and any hardware row. The
+  evidence is `pnpm --filter @familyshield/api test` (1153 passed) plus a targeted re-run of the three
+  touched files (69 passed) after the Android commit was folded in, and CI for the Kotlin compile —
+  the local Gradle daemon is unusable on this machine, so `BootClockTest` is compiled and run by CI, not
+  here. **The hardware row that this PR cannot supply:** one real restart on the Flip4 showing the alert
+  arrive with the right gap.
