@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { consentCopyRoutes } from "../src/routes/consentCopy.js";
+import { consentCopyFor } from "../src/lib/consentCopy.js";
 import { buildApp } from "./helpers.js";
 
 /**
@@ -15,7 +18,7 @@ const ENGLISH_BOX =
   "I am an adult and the parent, legal guardian or other person legally allowed to care for each child I add to OSRA. I accept the OSRA [Terms of Use](https://osratech.com/terms) and I have read the [Privacy Policy](https://osratech.com/privacy).";
 
 const ARABIC_BOX =
-  "أُقرّ بأنني بلغت سن الرشد، وبأنني أحد والدَي كل طفل أضيفه إلى تطبيق أسرة أو وصيّه القانوني أو شخص آخر مخوّل قانونًا برعايته. وأقبل [شروط استخدام تطبيق أسرة](https://osratech.com/ar/terms)، وقد قرأت [سياسة الخصوصية](https://osratech.com/ar/privacy).";
+  "أُقرّ بأنني بلغت سن الرشد، وبأنني أحد والدَي كل طفل أضيفه إلى تطبيق أسرة أو وصيّه القانوني أو شخص آخر مخوّل قانونًا برعايته. وأقبل [شروط استخدام تطبيق أسرة](https://osratech.com/terms)، وقد قرأت [سياسة الخصوصية](https://osratech.com/privacy).";
 
 const sha256 = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
 
@@ -48,7 +51,7 @@ describe("GET /v1/consent-copy", () => {
     expect(res.headers["cache-control"]).toBe("no-store");
   });
 
-  it("serves the Bureau's Arabic byte for byte, with the Arabic pages linked", async () => {
+  it("serves the Bureau's Arabic byte for byte, with the pages we actually publish", async () => {
     const res = await app.inject({ method: "GET", url: "/v1/consent-copy?locale=ar" });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -56,9 +59,31 @@ describe("GET /v1/consent-copy", () => {
     const [box] = body.purposes;
     expect(box.text).toBe(ARABIC_BOX);
     expect(box.textHash).toBe(sha256(ARABIC_BOX));
-    expect(box.links).toEqual({ terms: "https://osratech.com/ar/terms", privacy: "https://osratech.com/ar/privacy" });
+    // The Bureau (17 Nov): until the lawyer clears the Arabic pages, the Arabic copy links to the
+    // English ones, and this row is what makes "we publish that page" a fact rather than an intention.
+    expect(box.links).toEqual({ terms: "https://osratech.com/terms", privacy: "https://osratech.com/privacy" });
     // The Bureau's instruction: copy byte for byte, "no hidden direction marks".
     expect(/[‎‏؜]/.test(box.text)).toBe(false);
+  });
+
+  it("every link in the served copy points at a page we publish", () => {
+    // The Arabic Language Bureau (17 Nov): `ar.links` pointed at /ar/terms and /ar/privacy, and neither
+    // page exists — an Arabic parent tapping a link while being asked to accept would land on nothing.
+    // This row reads the site tree, so a link to a page we do not ship fails here rather than on a phone.
+    const urls: string[] = [];
+    for (const locale of ["ar", "en"] as const) {
+      const copy = consentCopyFor(locale);
+      const purpose = copy.purposes[0];
+      // The links object is what the app's buttons open; the markdown targets are what it renders them from.
+      urls.push(purpose.links.terms, purpose.links.privacy);
+      for (const match of purpose.text.matchAll(/\]\(([^)]+)\)/g)) urls.push(match[1]);
+    }
+    expect(urls).toHaveLength(8);
+    for (const url of urls) {
+      const path = new URL(url).pathname.replace(/^\/|\/$/g, "");
+      const page = fileURLToPath(new URL(`../../../site/${path}/index.html`, import.meta.url));
+      expect(existsSync(page), `${url} must be a page we publish (looked for site/${path}/index.html)`).toBe(true);
+    }
   });
 
   it("falls back to English for a locale it does not serve, and says which one it served", async () => {
