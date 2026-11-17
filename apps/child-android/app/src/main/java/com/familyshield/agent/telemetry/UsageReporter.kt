@@ -58,6 +58,12 @@ class UsageReporter @Inject constructor(
     @Volatile private var lastTs: Long = 0L
     private val unlockCounter = AtomicInteger(0)
 
+    init {
+        // #865 second half: the rules were applied, so tell the server now. Registered here rather than in a
+        // service because this is the object that owns the upload path, and both are singletons.
+        rules.addRulesAppliedListener { reportAppliedRulesIfChanged() }
+    }
+
     /** Records one foreground transition at [ts] (epoch millis); safe to call on the main thread. */
     fun recordForeground(pkg: String, ts: Long) {
         val prevPkg = lastPkg
@@ -287,6 +293,51 @@ class UsageReporter @Inject constructor(
      * granted — and refuse a Locate the phone could have answered. Called from the pairing screen's
      * resume and from the location-permission callbacks.
      */
+    /**
+     * #865 second half (Claude, 06:33Z): send the applied rules version the moment it moves.
+     *
+     * The Mac test bed measured a six-minute gap between the phone applying v15 and `/v1/family/me` saying
+     * so, because the number travelled only inside telemetry uploads and the periodic upload returns early
+     * when there is no usage to send. The parent's "has the phone picked this up" line reads that number, so
+     * it stayed up while the phone was already enforcing.
+     *
+     * Same shape as [reportLocationGrantIfChanged]: nothing while consent is paused, the accepted version is
+     * recorded only after a 2xx, and a failure is retried by the next tick.
+     */
+    suspend fun reportAppliedRulesIfChanged() {
+        val deviceId = settings.deviceId() ?: return
+        if (consent.isPaused()) return // ADR-0008 §3: no telemetry while consent is withdrawn
+        val reporter = AppliedRulesReporter(
+            lastReported = { settings.reportedAppliedRulesVersion() },
+            recordReported = { settings.recordReportedAppliedRulesVersion(it) },
+            upload = { version ->
+                val report = capabilities.report()
+                api.postTelemetry(
+                    deviceId,
+                    TelemetryDto(
+                        // An empty usage body: this upload exists to carry one number, and the server
+                        // treats a telemetry post without usage as a heartbeat (devices.ts).
+                        perAppMinutes = emptyMap(),
+                        totalMinutes = 0,
+                        unlockCount = 0,
+                        batteryPct = currentBatteryPct(),
+                        appliedRulesVersion = version,
+                        capabilities = report,
+                    ),
+                )
+                recordCapabilities(report)
+            },
+        )
+        try {
+            reporter.reportIfChanged(settings.appliedRulesVersion())
+        } catch (e: CancellationException) {
+            throw e // NOTE: never swallow coroutine cancellation
+        } catch (e: Exception) {
+            // Left unrecorded on purpose: the next tick or the next apply retries with the same number.
+            Log.w(TAG, "applied rules version report failed", e)
+        }
+    }
+
     suspend fun reportLocationGrantIfChanged() {
         val deviceId = settings.deviceId() ?: return
         if (consent.isPaused()) return // ADR-0008 §3: no telemetry while consent is withdrawn

@@ -70,6 +70,24 @@ class RuleRepository @Inject constructor(
         rulesChangedListeners -= listener
     }
 
+    /**
+     * #865 second half: told the stored version right after it is written, so the phone can hand it to the
+     * server within seconds of applying the rules instead of at the next telemetry tick.
+     *
+     * Separate from [rulesChangedListeners] on purpose: that one fires whether or not the version persisted,
+     * and it is about enforcement. This one fires only when the version was stored — the fact a parent's
+     * "has the phone picked this up" line is about.
+     */
+    private val rulesAppliedListeners = java.util.concurrent.CopyOnWriteArrayList<suspend (Int) -> Unit>()
+
+    fun addRulesAppliedListener(listener: suspend (Int) -> Unit) {
+        rulesAppliedListeners += listener
+    }
+
+    fun removeRulesAppliedListener(listener: suspend (Int) -> Unit) {
+        rulesAppliedListeners -= listener
+    }
+
     // Pause-the-internet state (Feature #11): set by CommandDispatcher on pause_internet /
     // resume_internet; consulted by [evaluate] so every non-always-allowed app is blocked.
     @Volatile private var pausedInternet = false
@@ -258,7 +276,21 @@ class RuleRepository @Inject constructor(
             val persisted = runCatching {
                 settings.saveRulesJson(moshi.adapter(RuleSetDto::class.java).toJson(updated))
             }.isSuccess
-            if (persisted) runCatching { settings.saveAppliedRulesVersion(updated.rulesVersion) }
+            if (persisted) {
+                runCatching { settings.saveAppliedRulesVersion(updated.rulesVersion) }.onSuccess {
+                    // #865: the version is stored, so the server can be told now — not one tick later. A
+                    // listener that fails must not fail the refresh: the periodic upload still carries it.
+                    rulesAppliedListeners.forEach { listener ->
+                        try {
+                            listener(updated.rulesVersion)
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e // NOTE: never swallow coroutine cancellation
+                        } catch (e: Exception) {
+                            // The periodic upload still carries the number; a listener must not fail the refresh.
+                        }
+                    }
+                }
+            }
             runCatching { FirebaseMessaging.getInstance().subscribeToTopic("child:$childId:rules") }
             rulesChangedListeners.forEach { runCatching { it() } }
             updated
