@@ -51,6 +51,17 @@ describe("/v1/me/consents", () => {
     expect(body.purposes[0].copy.textHash).toBe(TERMS_HASH);
   });
 
+  it("serves the asked language, so the copy and the hash agree", async () => {
+    // Ahmed's B1: serving English while a later write records Arabic would be a proof of text nobody saw.
+    const res = await app.inject({ method: "GET", url: "/v1/me/consents?locale=ar", headers: authHeader(app) });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    const ar = consentCopyFor("ar");
+    expect(body.purposes[0].copy.text).toBe(ar.purposes[0].text);
+    expect(body.purposes[0].copy.textHash).toBe(ar.purposes[0].textHash);
+    expect(body.purposes[0].copy.textHash).not.toBe(TERMS_HASH);
+  });
+
   it("a granted row at the served version needs no re-accept", async () => {
     prismaMock.parentConsentEvent.findMany.mockResolvedValue([grantedRow]);
     const body = (await app.inject({ method: "GET", url: "/v1/me/consents", headers: authHeader(app) })).json();
@@ -73,7 +84,34 @@ describe("/v1/me/consents", () => {
     expect(JSON.stringify(body)).not.toContain("parent-1");
   });
 
+  it("the history is scoped to the signed-in parent", async () => {
+    // Ahmed's B2: dropping `where: { parentId }` would let one parent read every family's consent history.
+    prismaMock.parentConsentEvent.findMany.mockResolvedValue([grantedRow]);
+    await app.inject({ method: "GET", url: "/v1/me/consents/history", headers: authHeader(app) });
+    const [call] = prismaMock.parentConsentEvent.findMany.mock.calls as Array<[{ where?: Record<string, unknown> }]>;
+    expect(call[0].where).toEqual({ parentId: "parent-1" });
+  });
+
+  it("a repeat of the newest state is not a second consent act", async () => {
+    // Ahmed's N1: a loop would append one identical row per request.
+    prismaMock.parentConsentEvent.findFirst.mockResolvedValue({
+      action: "granted",
+      textVersion: SERVED.textVersion,
+      locale: "en",
+    });
+    const res = await app.inject({
+      method: "PUT",
+      url: "/v1/me/consents/terms_privacy",
+      headers: authHeader(app),
+      payload: { granted: true, textVersion: SERVED.textVersion, locale: "en" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().recorded).toBe(false);
+    expect(prismaMock.parentConsentEvent.create).not.toHaveBeenCalled();
+  });
+
   it("ticking the terms writes one row with the served hash and the settings surface", async () => {
+    prismaMock.parentConsentEvent.findFirst.mockResolvedValue(null);
     const res = await app.inject({
       method: "PUT",
       url: "/v1/me/consents/terms_privacy",

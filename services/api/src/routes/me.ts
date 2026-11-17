@@ -72,15 +72,6 @@ export async function meRoutes(app: FastifyInstance) {
   });
 
   /**
-   * #442 (Play account deletion): a co-parent or guardian deletes their own account — their `Parent`
-   * row and the rows that are theirs alone. The family and the children stay. The owner deletes the
-   * whole family instead (`DELETE /v1/family`), so here they get `409 owner_must_delete_family`:
-   * ownership transfer is a later feature, and a family with no owner could not be managed or deleted.
-   *
-   * Same re-authentication as the family deletion: `{ password, mfaCode? }`, `401 reauth_failed`, and
-   * the same `409 consent_records_held` (`consentHeldElsewhere`).
-   */
-  /**
    * ADR-0043 D3/D4 / #846 part A step 3: the parent's own consent state, with the copy to show.
    *
    * `requiresAcceptance` is the re-accept signal D6 asks for: an account created before step 2 — or one
@@ -91,7 +82,10 @@ export async function meRoutes(app: FastifyInstance) {
   app.get("/consents", { preHandler: requireParent }, async (req) => {
     const user = req.user as AuthedUser;
     const current = await currentConsents(user.sub);
-    const copy = consentCopyFor(undefined);
+    // Ahmed's B1 on #886: the copy served here must be the copy a later write records the hash of. Serving
+    // English and writing Arabic would put the Arabic hash beside text the parent never saw.
+    const requested = (req.query as { locale?: unknown } | undefined)?.locale;
+    const copy = consentCopyFor(typeof requested === "string" ? requested : undefined);
     const terms = current[TERMS_PURPOSE];
     return {
       requiresAcceptance: !(terms?.granted === true && terms.textVersion === copy.textVersion),
@@ -126,10 +120,22 @@ export async function meRoutes(app: FastifyInstance) {
     const write = consentWriteFor({ purpose, ...parsed.data });
     if (!write.ok) return reply.code(400).send({ error: write.reason });
     const clientVersion = (req as unknown as { client?: { version?: string } }).client?.version ?? null;
-    await recordConsent(user.sub, { purpose, ...parsed.data }, write.fields, write.action, SETTINGS_SURFACE, clientVersion);
-    return reply.code(201).send({ purpose, granted: write.action === "granted", textVersion: write.fields.textVersion });
+    const { recorded } = await recordConsent(user.sub, { purpose, ...parsed.data }, write.fields, write.action, SETTINGS_SURFACE, clientVersion);
+    // 201 when a row was appended; 200 when the newest row already said exactly this (Ahmed's N1).
+    return reply
+      .code(recorded ? 201 : 200)
+      .send({ purpose, granted: write.action === "granted", textVersion: write.fields.textVersion, recorded });
   });
 
+  /**
+   * #442 (Play account deletion): a co-parent or guardian deletes their own account — their `Parent`
+   * row and the rows that are theirs alone. The family and the children stay. The owner deletes the
+   * whole family instead (`DELETE /v1/family`), so here they get `409 owner_must_delete_family`:
+   * ownership transfer is a later feature, and a family with no owner could not be managed or deleted.
+   *
+   * Same re-authentication as the family deletion: `{ password, mfaCode? }`, `401 reauth_failed`, and
+   * the same `409 consent_records_held` (`consentHeldElsewhere`).
+   */
   app.delete("/", { preHandler: requireParent, config: { rateLimit: AUTH_RATE_LIMIT } }, async (req, reply) => {
     const parsed = ReauthSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });

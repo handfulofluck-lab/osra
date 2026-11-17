@@ -199,7 +199,18 @@ export async function recordConsent(
   action: "granted" | "withdrawn",
   surface: string,
   clientVersion: string | null,
-): Promise<void> {
+): Promise<{ recorded: boolean }> {
+  // Ahmed's N1 on #886: a loop on one account would otherwise append one identical row per request, up to
+  // the global rate limit. A repeat of the newest state for that purpose is not a new consent act — the ADR
+  // asks for one row per tick or untick, and repeating a tick is not another tick.
+  const newest = await prisma.parentConsentEvent.findFirst({
+    where: { parentId, purpose: input.purpose },
+    orderBy: { createdAt: "desc" },
+    select: { action: true, textVersion: true, locale: true },
+  });
+  if (newest && newest.action === action && newest.textVersion === fields.textVersion && newest.locale === fields.locale) {
+    return { recorded: false };
+  }
   await prisma.parentConsentEvent.create({
     data: {
       parentId,
@@ -213,4 +224,5 @@ export async function recordConsent(
       clientVersion,
     },
   });
+  return { recorded: true };
 }
