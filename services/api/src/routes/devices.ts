@@ -300,7 +300,11 @@ export async function deviceRoutes(app: FastifyInstance) {
       });
     }
     const { childId, ...rest } = parsed.data;
-    const device = await prisma.device.create({ data: { childId, ...rest } });
+    // Issue #790: this is the parent's own enrollment — no phone claimed anything, so there is nothing
+    // to prove and `pairedAt` is set here rather than left null. A null would make the row invisible to
+    // the parent that just created it and have `jobs/pendingDevices.ts` delete it half an hour later;
+    // the e2e and probe suites register their devices through this route.
+    const device = await prisma.device.create({ data: { childId, ...rest, pairedAt: new Date() } });
     return reply.code(201).send({ device: sanitizeDevice(device) });
   });
 
@@ -493,6 +497,13 @@ export async function deviceRoutes(app: FastifyInstance) {
     // Handoff item 5: each device gets its OWN internal HMAC secret, so the global INTERNAL_HMAC_SECRET
     // is never shipped to devices (it remains the ai-engine key).
     const internalSecret = randomBytes(32).toString("hex");
+    // Issue #790: the row is PENDING — `status: "offline"` and `pairedAt` left null, on purpose.
+    // Everything else the claim reported is written here (the phone's model, its capability report, its
+    // push token), because the row is the identity the phone will use. But a phone that has not yet made
+    // one request this API accepted has not proved it holds the secret minted below, and the client that
+    // cannot prove it has no way to ask the server to remove its own row — so it stays offline and
+    // invisible to the parent until `middleware/pairedAt.ts` clears pending on its first accepted
+    // request. `jobs/pendingDevices.ts` removes it if that never comes.
     const device = await prisma.device.create({
       data: {
         platform: record.platform as z.infer<typeof PLATFORM>,
@@ -500,7 +511,8 @@ export async function deviceRoutes(app: FastifyInstance) {
         osVersion: record.osVersion,
         ...(record.pushToken ? { pushToken: record.pushToken } : {}),
         childId: record.childId,
-        status: "online",
+        status: "offline",
+        pairedAt: null,
         lastSeen: new Date(),
         // Stored under VAULT_KEY like the parent's TOTP secret (ADR-0014): a read of the Device table, a snapshot or a
         // backup does not hand out every phone's signing key. The phone gets the raw key once, below.
@@ -535,7 +547,11 @@ export async function deviceRoutes(app: FastifyInstance) {
   app.get("/", { preHandler: requireParent }, async (req) => {
     const user = req.user as AuthedUser;
     const devices = await prisma.device.findMany({
-      where: { child: { familyId: user.familyId } },
+      // Issue #790: a pending device is not the family's device yet. It is created by an approved claim
+      // and proves itself with its first accepted request; until then a row that cannot be shown working
+      // must not be shown at all (the parent's app draws this list as "phones"). `jobs/pendingDevices.ts`
+      // collects the ones that never answer.
+      where: { child: { familyId: user.familyId }, pairedAt: { not: null } },
       include: { child: true },
       orderBy: { lastSeen: "desc" },
     });
@@ -550,7 +566,7 @@ export async function deviceRoutes(app: FastifyInstance) {
   /** Return one device with its latest telemetry payload merged in. */
   // NOTE: there is no telemetry table in the schema; agents POST to /:id/telemetry and the
   // latest payload is kept in Redis under `device:<id>:telemetry`, merged into this response.
-  app.get("/:id", { preHandler: requireFamily({ model: "device" }) }, async (req, reply) => {
+  app.get("/:id", { preHandler: requireFamily({ model: "device", hidePending: true }) }, async (req, reply) => {
     const user = req.user as AuthedUser;
     const { id } = req.params as { id: string };
     if (user.role === "device" && user.deviceId !== id) {
@@ -589,7 +605,7 @@ export async function deviceRoutes(app: FastifyInstance) {
    * answers with the shape a current parent app understands. `reportedAt` is null until the agent
    * has checked in once.
    */
-  app.get("/:id/apps", { preHandler: [requireParent, requirePermission("rules"), requireFamily({ model: "device" })] }, async (req) => {
+  app.get("/:id/apps", { preHandler: [requireParent, requirePermission("rules"), requireFamily({ model: "device", hidePending: true })] }, async (req) => {
     const { id } = req.params as { id: string };
     const device = (req as unknown as { device: { appsReportedAt?: Date | null } }).device;
     const apps = await prisma.deviceApp.findMany({
@@ -643,7 +659,9 @@ export async function deviceRoutes(app: FastifyInstance) {
   });
 
   /** Publish a lock/unlock/ring/sos_clear command to the device's Redis command channel and queue. */
-  app.post("/:id/command", { preHandler: [requireParent, requirePermission("devices"), requireFamily({ model: "device" })] }, async (req, reply) => {
+  // #790: `hidePending` — a device that has never answered a request is not a phone a parent can
+  // command; its row answers 404 until the agent's own first accepted request clears pending.
+  app.post("/:id/command", { preHandler: [requireParent, requirePermission("devices"), requireFamily({ model: "device", hidePending: true })] }, async (req, reply) => {
     const parsed = CommandSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { id } = req.params as { id: string };
@@ -743,7 +761,7 @@ export async function deviceRoutes(app: FastifyInstance) {
    * `withinBudget`. An empty reading reported as "within budget" would turn "nobody was counting" into
    * "the phone is idle", which is the one answer this instrument exists to be unable to give.
    */
-  app.get("/:id/requests", { preHandler: [requireParent, requireFamily({ model: "device" })] }, async (req) => {
+  app.get("/:id/requests", { preHandler: [requireParent, requireFamily({ model: "device", hidePending: true })] }, async (req) => {
     const { id } = req.params as { id: string };
     const windowParam = Number((req.query as { window?: string })?.window ?? BUDGET_WINDOW_MINUTES);
     const windowMinutes = Number.isFinite(windowParam) && windowParam > 0 && windowParam <= RETENTION_MINUTES ? Math.floor(windowParam) : BUDGET_WINDOW_MINUTES;
@@ -767,7 +785,8 @@ export async function deviceRoutes(app: FastifyInstance) {
   });
 
   /** Parent view of recent commands and their delivery state (Phase 2b). Never consumes anything. */
-  app.get("/:id/commands/history", { preHandler: [requireParent, requireFamily({ model: "device" })] }, async (req) => {
+  // #790: `hidePending` — the history read is a parent surface, so a pending row answers 404 there too.
+  app.get("/:id/commands/history", { preHandler: [requireParent, requireFamily({ model: "device", hidePending: true })] }, async (req) => {
     const { id } = req.params as { id: string };
     const limit = Number((req.query as { limit?: string })?.limit ?? 20);
     const items = await listDeviceCommands(id, Number.isFinite(limit) ? limit : 20);

@@ -72,6 +72,8 @@ interface DeviceRow {
   childId: string;
   familyId: string;
   model: string;
+  /** #790: null while the device is pending (an approved claim that never made an accepted request). */
+  pairedAt?: Date | null;
 }
 interface CommandRow {
   id: string;
@@ -133,7 +135,8 @@ async function setup(opts: { familyDevices?: number; mfaEnabled?: boolean } = {}
   });
   devices = [];
   for (let i = 1; i <= (opts.familyDevices ?? 2); i++) {
-    devices.push({ id: `dev-${i}`, childId: `child-${i}`, familyId: "fam-1", model: `Pixel ${i}` });
+    // Paired: a device that has answered a request for that child (#790).
+    devices.push({ id: `dev-${i}`, childId: `child-${i}`, familyId: "fam-1", model: `Pixel ${i}`, pairedAt: new Date("2026-10-01T00:00:00.000Z") });
   }
 
   prismaMock.parent.findUnique.mockImplementation(async ({ where }: { where: { id?: string; email?: string } }) => {
@@ -164,11 +167,17 @@ async function setup(opts: { familyDevices?: number; mfaEnabled?: boolean } = {}
           : { ...p },
       ),
   );
-  prismaMock.device.count.mockImplementation(async ({ where }: { where: { child: { familyId: string } } }) =>
-    devices.filter((d) => d.familyId === where.child.familyId).length,
+  // Both halves of the witness rule (#790): the family's device count and the fan-out of the
+  // `show_reset_code` command read only PAIRED devices. A pending row is one an approved claim created
+  // whose phone has not answered — it is not a witness and must not be sent the reset code.
+  const deviceMatches = (d: DeviceRow, where: { child?: { familyId: string }; pairedAt?: { not: null } }) =>
+    (!where.child || d.familyId === where.child.familyId) &&
+    (!where.pairedAt || d.pairedAt !== null && d.pairedAt !== undefined);
+  prismaMock.device.count.mockImplementation(async ({ where }: { where: { child: { familyId: string }; pairedAt?: { not: null } } }) =>
+    devices.filter((d) => deviceMatches(d, where)).length,
   );
-  prismaMock.device.findMany.mockImplementation(async ({ where }: { where: { child?: { familyId: string } } }) =>
-    devices.filter((d) => !where.child || d.familyId === where.child.familyId),
+  prismaMock.device.findMany.mockImplementation(async ({ where }: { where: { child?: { familyId: string }; pairedAt?: { not: null } } }) =>
+    devices.filter((d) => deviceMatches(d, where)),
   );
   prismaMock.device.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => {
     const d = devices.find((x) => x.id === where.id);
@@ -435,6 +444,23 @@ describe("MFA reset — request (ADR-0031 claim 1a, 7)", () => {
     expect(commands).toHaveLength(0);
     // The refusal's own rate-limit counter is all that may be touched: no reset row exists.
     expect(prismaMock.mfaResetRequest.create).not.toHaveBeenCalled();
+    expect(prismaMock.deviceCommand.create).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  // Issue #790: a pending device is not the family's device yet — it is a pairing claim whose phone has
+  // not made one accepted request — so it is neither a witness nor a recipient of the reset code the
+  // witness step can issue. Mutant: drop `pairedAt: { not: null }` from `familyWitnesses` -> a family
+  // whose only row is a phone that never answered passes claim 7.
+  it("#790: a family whose only device is still pending has no witness", async () => {
+    const { app } = await setup({ familyDevices: 0 });
+    devices.push({ id: "dev-pending", childId: "child-1", familyId: "fam-1", model: "Pixel P", pairedAt: null });
+    parents = parents.filter((p) => p.id === "parent-1" || p.familyId !== "fam-1");
+
+    const res = await request(app);
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toEqual({ error: "no_witness" });
+    expect(resets).toHaveLength(0);
     expect(prismaMock.deviceCommand.create).not.toHaveBeenCalled();
     await app.close();
   });
