@@ -28,14 +28,30 @@ class AppliedRulesReportWiringTest {
     fun `the version is handed over only after it was stored`() {
         val repository = source("app/src/main/java/com/familyshield/agent/data/RuleRepository.kt")
 
-        // Both halves inside the same persisted branch: a failed write must not announce a version.
-        assertTrue(repository.contains("if (persisted) {"))
+        // Guarded by the same persisted branch: a failed write must not announce a version.
         val save = repository.indexOf("settings.saveAppliedRulesVersion(")
         val fire = repository.indexOf("rulesAppliedListeners.forEach")
         assertTrue("the listener must fire after the save", save in 0 until fire)
-        assertTrue(repository.contains(".onSuccess {"))
+        // The report sits inside the `if (persisted) {` block that follows enforcement being told.
+        val guard = repository.lastIndexOf("if (persisted) {", fire)
+        assertTrue("the report is guarded by the write having succeeded", guard in 0 until fire)
         // Mutant: move the forEach out of `onSuccess` and this row's ordering check is the one that fails.
         assertEquals(1, Regex("""rulesAppliedListeners\.forEach""").findAll(repository).count())
+    }
+
+    /// Claude's review on #879: the report used to run inline, before enforcement was told, so on a dead
+    /// network the phone kept enforcing the old rules while telling the parent the new ones were applied.
+    @Test
+    fun `enforcement hears first, and the report never blocks the refresh`() {
+        val repository = source("app/src/main/java/com/familyshield/agent/data/RuleRepository.kt")
+        val enforcement = repository.indexOf("rulesChangedListeners.forEach")
+        val report = repository.indexOf("rulesAppliedListeners.forEach")
+        assertTrue("both must be present", enforcement >= 0 && report >= 0)
+        // Mutant: fire the report before the enforcement listeners and this ordering check fails.
+        assertTrue("enforcement is told before the server", enforcement < report)
+        // And the report is launched, not awaited: a slow upload must not hold up this refresh.
+        val launch = repository.lastIndexOf("appScope.launch", report)
+        assertTrue("the report runs on the agent's own scope", launch in 0 until report)
     }
 
     @Test

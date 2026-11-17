@@ -276,23 +276,27 @@ class RuleRepository @Inject constructor(
             val persisted = runCatching {
                 settings.saveRulesJson(moshi.adapter(RuleSetDto::class.java).toJson(updated))
             }.isSuccess
+            if (persisted) runCatching { settings.saveAppliedRulesVersion(updated.rulesVersion) }
+            runCatching { FirebaseMessaging.getInstance().subscribeToTopic("child:$childId:rules") }
+            rulesChangedListeners.forEach { runCatching { it() } }
+            // #865 second half, ordered by Claude's review on #879: enforcement is told first (the two lines
+            // above), and only then does the phone tell the server — on the agent's own scope, so a slow or
+            // dead network never holds up this refresh, the rule change, or the parent's screen. A listener
+            // that fails leaves the number unreported; the periodic upload still carries it on the next tick.
             if (persisted) {
-                runCatching { settings.saveAppliedRulesVersion(updated.rulesVersion) }.onSuccess {
-                    // #865: the version is stored, so the server can be told now — not one tick later. A
-                    // listener that fails must not fail the refresh: the periodic upload still carries it.
+                val appliedVersion = updated.rulesVersion
+                appScope.launch {
                     rulesAppliedListeners.forEach { listener ->
                         try {
-                            listener(updated.rulesVersion)
+                            listener(appliedVersion)
                         } catch (e: kotlinx.coroutines.CancellationException) {
                             throw e // NOTE: never swallow coroutine cancellation
                         } catch (e: Exception) {
-                            // The periodic upload still carries the number; a listener must not fail the refresh.
+                            // Left unreported on purpose: the next tick retries with the same number.
                         }
                     }
                 }
             }
-            runCatching { FirebaseMessaging.getInstance().subscribeToTopic("child:$childId:rules") }
-            rulesChangedListeners.forEach { runCatching { it() } }
             updated
         }
     }

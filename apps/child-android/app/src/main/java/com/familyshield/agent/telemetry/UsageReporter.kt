@@ -286,14 +286,6 @@ class UsageReporter @Inject constructor(
     }
 
     /**
-     * Issue #221 (D1 follow-up): upload the grant immediately when it changed, independent of usage.
-     *
-     * The periodic path ([aggregateAndUpload]) returns early while there are no usage events, so on a
-     * phone without accessibility the server could go a long time without learning that location was
-     * granted — and refuse a Locate the phone could have answered. Called from the pairing screen's
-     * resume and from the location-permission callbacks.
-     */
-    /**
      * #865 second half (Claude, 06:33Z): send the applied rules version the moment it moves.
      *
      * The Mac test bed measured a six-minute gap between the phone applying v15 and `/v1/family/me` saying
@@ -340,6 +332,15 @@ class UsageReporter @Inject constructor(
             Log.w(TAG, "applied rules version report failed", e)
         }
     }
+
+    /**
+     * Issue #221 (D1 follow-up): upload the grant immediately when it changed, independent of usage.
+     *
+     * The periodic path ([aggregateAndUpload]) returns early while there are no usage events, so on a
+     * phone without accessibility the server could go a long time without learning that location was
+     * granted — and refuse a Locate the phone could have answered. Called from the pairing screen's
+     * resume and from the location-permission callbacks.
+     */
 
     suspend fun reportLocationGrantIfChanged() {
         val deviceId = settings.deviceId() ?: return
