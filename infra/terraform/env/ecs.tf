@@ -72,6 +72,16 @@ resource "aws_ecs_task_definition" "api" {
         # telemetry that filled memory would make revocation writes fail. Logouts answering 5xx because of a
         # counter is the trade this flag refuses. Staging carries it so #346's reviewer can measure the Flip4.
         var.environment == "staging" ? [{ name = "IDLE_BUDGET_COUNTING", value = "1" }] : [],
+        # APNs (#695). Always the production APNs endpoint: TestFlight and store builds carry
+        # aps-environment=production, and a sandbox token sent there fails with BadDeviceToken. Key and team
+        # ids are not secrets but stay out of the repo; they come from tfvars.
+        var.apns_enabled ? [
+          { name = "APNS_KEY_ID", value = var.apns_key_id },
+          { name = "APNS_TEAM_ID", value = var.apns_team_id },
+          { name = "APNS_BUNDLE_ID", value = var.apns_bundle_id },
+          { name = "APNS_DEVICE_BUNDLE_ID", value = var.apns_device_bundle_id },
+          { name = "APNS_ENV", value = "production" },
+        ] : [],
       )
 
       # Secrets are injected from Secrets Manager, never baked into the task definition.
@@ -91,6 +101,9 @@ resource "aws_ecs_task_definition" "api" {
         ] : [],
         var.push_enabled ? [
           { name = "FCM_SERVICE_ACCOUNT_JSON", valueFrom = data.terraform_remote_state.base.outputs.fcm_service_account_secret_arn },
+        ] : [],
+        var.apns_enabled ? [
+          { name = "APNS_KEY_P8", valueFrom = data.terraform_remote_state.base.outputs.apns_key_p8_secret_arn },
         ] : [],
         # Production's service credential (#714): a `secrets` entry, never `environment`, so the value is in
         # no task definition. try(): a staging base from before this change has no such output.
@@ -117,6 +130,14 @@ resource "aws_ecs_task_definition" "api" {
 
   tags = {
     Name = "${local.name_prefix}-api"
+  }
+
+  # APNs with an empty key or team id would start a task whose every iPhone push fails at signing.
+  lifecycle {
+    precondition {
+      condition     = !var.apns_enabled || (var.apns_key_id != "" && var.apns_team_id != "")
+      error_message = "apns_enabled needs apns_key_id and apns_team_id in tfvars."
+    }
   }
 }
 

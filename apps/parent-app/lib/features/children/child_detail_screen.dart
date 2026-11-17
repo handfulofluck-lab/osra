@@ -15,6 +15,7 @@ import '../../providers/family_provider.dart';
 import '../rules/rules_behind_banner.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
+import '../../widgets/layout_helpers.dart';
 import '../dashboard/dashboard_screen.dart' show formatLastSeen;
 import '../pairing/pair_qr_screen.dart';
 import '../rules/active_window.dart';
@@ -45,16 +46,18 @@ class ChildDetailScreen extends ConsumerWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
-          // NOTE: scrollable — five labels no longer fit at 320px width.
-          bottom: TabBar(
-            isScrollable: true,
-            tabs: [
-              Tab(text: l10n.tabOverview),
-              Tab(text: l10n.tabApps),
-              Tab(text: l10n.tabSocial),
-              Tab(text: l10n.tabLocation),
-              Tab(text: l10n.tabAlerts),
-            ],
+          // NOTE: scrollable — five labels no longer fit at 320px width; height scales with text (B4).
+          bottom: FadingScrollableTabBar(
+            tabBar: TabBar(
+              isScrollable: true,
+              tabs: FadingScrollableTabBar.scaledTabs(context, [
+                l10n.tabOverview,
+                l10n.tabApps,
+                l10n.tabSocial,
+                l10n.tabLocation,
+                l10n.tabAlerts,
+              ]),
+            ),
           ),
           actions: [
             // NOTE: below 360px fold the three actions into one overflow menu so scale 1.0 fits the child name without truncation.
@@ -208,7 +211,10 @@ class _OverviewTab extends ConsumerWidget {
                       _ => Icons.devices_other,
                     }),
                     title: Text(d.model),
-                    subtitle: Text('${d.platform} ${d.osVersion} · ${_statusLabel(context, d)}'),
+                    subtitle: Text(switch (formatDevicePlatformLabel(d.platform, d.osVersion)) {
+                      '' => _statusLabel(context, d),
+                      final platformLabel => '$platformLabel · ${_statusLabel(context, d)}',
+                    }),
                     trailing: d.batteryPct > 0
                         ? Chip(
                             visualDensity: VisualDensity.compact,
@@ -453,6 +459,7 @@ class _WindDownCard extends ConsumerWidget {
     final minutes = await showDialog<int>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: Text(l10n.windDown),
         content: Text(l10n.windDownBody),
         actions: [
@@ -674,7 +681,9 @@ class _LocationTab extends ConsumerWidget {
     final ping = ref.watch(locationProvider(childId));
     return ping.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text(l10n.locationLoadFailed('$e'))),
+      // #850: never show exception text to a parent. A read refused for permission says so; anything
+      // else is the plain localized line, with no error detail.
+      error: (e, _) => Center(child: Text(readErrorText(l10n, e, () => l10n.locationLoadFailed(l10n.tryAgain)))),
       data: (p) => ListView(
         padding: const EdgeInsets.all(AppSpace.lg),
         children: [
@@ -762,7 +771,7 @@ class _HistoryScrubberState extends ConsumerState<_HistoryScrubber> {
       error: (e, _) => Card(
           child: ListTile(
         leading: const Icon(Icons.history),
-        title: Text(readErrorText(l10n, e, () => l10n.locationHistoryLoadFailed('$e'))),
+        title: Text(readErrorText(l10n, e, () => l10n.locationHistoryLoadFailed(l10n.tryAgain))),
       )),
       data: (pings) {
         if (pings.isEmpty) {
@@ -938,7 +947,7 @@ class AlertTile extends StatelessWidget {
     return Card(
       child: ListTile(
         leading: Icon(Icons.circle, color: severityColor(alert.severity, context), size: 14),
-        title: Text(l10n.alertTitleFor(alert.category, alert.title, isEnglish: context.localeName.startsWith('en'), tamperType: alert.metadata['type']?.toString()), maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(l10n.alertTitleFor(alert.category, alert.title, isEnglish: context.localeName.startsWith('en'), tamperType: alert.metadata['type']?.toString()), maxLines: 2, overflow: TextOverflow.ellipsis),
         subtitle: Text('${l10n.alertCategory(alert.category)} · $when'),
         trailing: onAck == null ? null : IconButton(icon: const Icon(Icons.check), tooltip: l10n.acknowledgeTooltip, onPressed: onAck),
         onTap: onTap,

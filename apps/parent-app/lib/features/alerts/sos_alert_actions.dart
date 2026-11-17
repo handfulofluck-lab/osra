@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../theme/app_tokens.dart';
 
 /// The SOS alert detail's actions, in the order a parent reads them.
 ///
@@ -26,23 +27,77 @@ List<Widget> sosAlertActions({
 }) =>
     [
       if (mapAvailable)
-        FilledButton.icon(
+        FilledButton(
           key: const ValueKey('alert-show-on-map'),
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsetsDirectional.symmetric(
+              horizontal: AppSpace.lg,
+              vertical: AppSpace.sm,
+            ),
+          ),
           onPressed: onShowOnMap,
-          icon: const Icon(Icons.place),
-          label: Text(l10n.alertShowOnMap),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.place),
+              const SizedBox(width: AppSpace.sm),
+              Flexible(
+                child: Text(
+                  l10n.alertShowOnMap,
+                  textAlign: TextAlign.center,
+                  softWrap: true,
+                ),
+              ),
+            ],
+          ),
         )
       else
-        FilledButton.icon(
+        FilledButton(
           key: const ValueKey('alert-open-in-maps'),
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsetsDirectional.symmetric(
+              horizontal: AppSpace.lg,
+              vertical: AppSpace.sm,
+            ),
+          ),
           onPressed: onOpenInMaps,
-          icon: const Icon(Icons.map_outlined),
-          label: Text(l10n.alertOpenInMaps),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.map_outlined),
+              const SizedBox(width: AppSpace.sm),
+              Flexible(
+                child: Text(
+                  l10n.alertOpenInMaps,
+                  textAlign: TextAlign.center,
+                  softWrap: true,
+                ),
+              ),
+            ],
+          ),
         ),
-      TextButton.icon(
+      TextButton(
         key: const ValueKey('alert-copy-coordinates'),
+        style: TextButton.styleFrom(
+          padding: const EdgeInsetsDirectional.symmetric(
+            horizontal: AppSpace.md,
+            vertical: AppSpace.sm,
+          ),
+        ),
         onPressed: onCopy,
-        icon: const Icon(Icons.copy, size: 18),
-        label: Text(l10n.alertCopyCoordinates),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.copy, size: 18),
+            const SizedBox(width: AppSpace.sm),
+            Flexible(
+              child: Text(
+                l10n.alertCopyCoordinates,
+                textAlign: TextAlign.center,
+                softWrap: true,
+              ),
+            ),
+          ],
+        ),
       ),
     ];

@@ -184,7 +184,11 @@ class AppLocalizationsAr extends AppLocalizations {
   String get passwordLabel => 'كلمة المرور';
 
   @override
-  String get mfaCodeLabel => 'رمز المصادقة (عند تفعيل المصادقة الثنائية)';
+  String get mfaCodeLabel => 'رمز تطبيق المصادقة';
+
+  @override
+  String get mfaCodeHelper =>
+      'مطلوب فقط إذا كان التحقق بخطوتين مفعّلًا في حسابك.';
 
   @override
   String get signIn => 'تسجيل الدخول';
@@ -369,7 +373,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get consentMethodLabel => 'طريقة الموافقة';
 
   @override
-  String get consentMethodSmsPlus => 'رسالة نصية +';
+  String get consentMethodSmsPlus => 'رسالة نصية مع تأكيد';
 
   @override
   String get consentMethodKba => 'أسئلة معرفية';
@@ -1716,7 +1720,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get vaultTrustCopy =>
-      'تُشفَّر المقاطع بمفتاح عائلتك قبل مغادرة الجهاز وتُخزَّن مشفّرة على خادمك.';
+      'تنتقل المقتطفات عبر اتصال مشفّر، وتُخزَّن مشفّرة على خوادم تطبيق أسرة.';
 
   @override
   String get noConcernsDetected => 'لم تُكتشف أي مخاوف';
@@ -3292,4 +3296,40 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get appRuleHiddenOnIphone =>
       'على هواتف آيفون، يُخفى هذا التطبيق بدلًا من عرض شاشة الحظر.';
+
+  @override
+  String get webSiteNamesOnlyNote => 'أسماء المواقع والخدمات على الإنترنت التي وصل إليها هذا الهاتف، لا الصفحات التي فُتحت. تُحفظ لمدة 90 يومًا.';
+
+  @override
+  String webSiteVisits(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      zero: 'لا زيارات',
+      one: 'زيارة واحدة',
+      two: 'زيارتان',
+      few: '$count زيارات',
+      many: '$count زيارة',
+      other: '$count زيارة',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String webSiteSeenRange(String first, String last) => 'من $first إلى $last';
+
+  @override
+  String webSitesSummary(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      zero: 'لم تتم زيارة أي موقع',
+      one: 'تمت زيارة موقع واحد',
+      two: 'تمت زيارة موقعين',
+      few: 'تمت زيارة $count مواقع',
+      many: 'تمت زيارة $count موقعًا',
+      other: 'تمت زيارة $count موقع',
+    );
+    return '$_temp0';
+  }
 }

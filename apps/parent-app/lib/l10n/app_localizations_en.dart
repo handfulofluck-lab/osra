@@ -176,7 +176,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get passwordLabel => 'Password';
 
   @override
-  String get mfaCodeLabel => 'Authentication code (if MFA is on)';
+  String get mfaCodeLabel => 'Authenticator code';
+
+  @override
+  String get mfaCodeHelper =>
+      'Only if two-step verification is on for your account.';
 
   @override
   String get signIn => 'Sign in';
@@ -348,7 +352,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get consentMethodLabel => 'Consent method';
 
   @override
-  String get consentMethodSmsPlus => 'SMS +';
+  String get consentMethodSmsPlus => 'Text message plus confirmation';
 
   @override
   String get consentMethodKba => 'Knowledge-based questions';
@@ -1592,7 +1596,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get vaultTrustCopy =>
-      'Snippets are encrypted with your family key before leaving the device and stored encrypted on your server.';
+      'Excerpts travel over an encrypted connection and are stored encrypted on OSRA\'s servers.';
 
   @override
   String get noConcernsDetected => 'No concerns detected';
@@ -3120,4 +3124,22 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get appRuleHiddenOnIphone =>
       'On the iPhone, this app is hidden instead of showing the OSRA screen.';
+
+  @override
+  String get webSiteNamesOnlyNote => 'Site names only. OSRA Kids does not see the pages opened or anything typed.';
+
+  @override
+  String webSiteVisits(int count) {
+    return (count == 1) ? 'Visited once' : 'Visited $count times';
+  }
+
+  @override
+  String webSiteSeenRange(String first, String last) => '$first to $last';
+
+  @override
+  String webSitesSummary(int count) {
+    if (count == 0) return 'No sites visited';
+    if (count == 1) return '1 site visited';
+    return '$count sites visited';
+  }
 }

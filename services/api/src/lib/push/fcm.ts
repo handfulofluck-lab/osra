@@ -143,7 +143,20 @@ export class FcmProvider implements PushProvider {
         body: JSON.stringify(FcmProvider.buildMessage(token, message)),
       },
     );
-    if (res.ok) return { ok: true };
+    if (res.ok) {
+      // #673: FCM answers `{ "name": "projects/<p>/messages/<id>" }`. That id is what an operator
+      // takes to Google's log to see whether a wake was delivered and how late, so it travels back
+      // with the outcome. A 200 whose body is empty or not JSON (a proxy, a double) is still a
+      // delivery: an unreadable id must not turn a sent wake into a failure.
+      let messageId: string | undefined;
+      try {
+        const body = (await res.json()) as { name?: string };
+        messageId = typeof body.name === "string" ? body.name : undefined;
+      } catch {
+        /* no JSON body */
+      }
+      return { ok: true, messageId };
+    }
     let detail = "";
     let tokenFieldViolation = false;
     try {

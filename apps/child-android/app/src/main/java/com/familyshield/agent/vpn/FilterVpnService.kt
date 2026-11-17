@@ -492,8 +492,15 @@ class FilterVpnService : VpnService() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(i) else context.startService(i)
         }
 
-        fun reload(context: Context) {
-            if (!isRunning) { start(context); return }
+        /**
+         * Re-applies the cached rules to the running filter. [startIfStopped] is false where the caller
+         * may not adopt "a rule change revives the VPN" as a policy: the `rules_updated` command path
+         * passes false (Kimi, #848), because starting the service from a rule edit would also undo a
+         * paused or not-yet-consented state. `RulesSyncWorker` keeps the default, which is the behaviour
+         * it already had.
+         */
+        fun reload(context: Context, startIfStopped: Boolean = true) {
+            if (!isRunning) { if (startIfStopped) start(context); return }
             context.startService(Intent(context, FilterVpnService::class.java).setAction(ACTION_RELOAD))
         }
 

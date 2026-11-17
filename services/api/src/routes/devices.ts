@@ -29,6 +29,7 @@ import { markDeviceRevoked } from "../lib/deviceRevocation.js";
 import { PAIR_CLAIM_RATE_LIMIT, PAIR_POLL_RATE_LIMIT } from "../lib/rateLimits.js";
 import { cleanDeviceText, decideClaim, markPaired, pollSecretMatches, readClaim, readClaimForCode, recordPollMiss, releaseClaim, reserveClaim, takeApprovedClaim } from "../lib/pairApproval.js";
 import { raiseAlertOnce } from "../lib/alerts.js";
+import { encryptSecret } from "../lib/secretVault.js";
 // Re-exported for existing importers/tests; the constant and its contract live in lib/deviceToken.ts.
 export { DEVICE_TOKEN_TTL_SECONDS };
 
@@ -517,7 +518,9 @@ export async function deviceRoutes(app: FastifyInstance) {
         childId: record.childId,
         status: "online",
         lastSeen: new Date(),
-        internalSecret,
+        // Stored under VAULT_KEY like the parent's TOTP secret (ADR-0014): a read of the Device table, a snapshot or a
+        // backup does not hand out every phone's signing key. The phone gets the raw key once, below.
+        internalSecret: encryptSecret(internalSecret),
         // ADR-0034: the report the phone sent with its claim, and the time the server received it.
         ...(record.capabilities !== undefined
           ? { capabilities: record.capabilities as Prisma.InputJsonValue, capabilitiesReportedAt: new Date(record.capabilitiesReportedAt ?? Date.now()) }
@@ -532,8 +535,10 @@ export async function deviceRoutes(app: FastifyInstance) {
     // #602: the child's own phone shows the child's name on its status screen instead of an id. The name the
     // parent typed, for the child this claim was approved for; null when it cannot be read.
     const child = await prisma.child.findUnique({ where: { id: record.childId }, select: { displayName: true } });
+    // The phone gets its key once, as `hmacSecret`; the stored (encrypted) column is not echoed back.
+    const { internalSecret: _stored, ...shownDevice } = device;
     return reply.code(201).send({
-      device,
+      device: shownDevice,
       token,
       childId: record.childId,
       familyId: record.familyId,
