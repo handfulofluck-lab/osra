@@ -6,9 +6,8 @@
   (`authProvider.family.region`) rather than a fixed United States; four new rows in
   `rid_family_region_test.dart` pin the label, the preselection for EU, UK and US, and that no code
   (`EU`, `UK`) is ever rendered.
-- **Arabic is not updated in this commit.** The Bureau's line for the new English wording is requested on
-  #604; the Arabic key still carries the old phrase until it is issued, and I will not author it. That
-  mismatch is the reason this PR needs `needs:arabic` and cannot merge without the Bureau's line.
+- **Arabic is in**, from the Arabic Language Bureau's line of 17 Nov, byte for byte: «أين تقيم عائلتك؟»
+  replaces the court word in `app_ar.arb` and the Arabic getter.
 - Not in this scope, raised for the Bureau: `consent_screen.dart:172` renders
   `consentStateMismatchDetail(record.jurisdiction, family.region)`, which puts the raw codes in a
   sentence. That is a separate string change and belongs with the wording batch.
