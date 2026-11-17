@@ -86,6 +86,10 @@ export const PARENT_SCOPED_DELETES: Record<string, (s: ParentScope) => unknown> 
   parentMfaRecoveryCode: (s) => ({ parentId: s.parentId }),
   familyInvite: (s) => ({ familyId: s.familyId, email: s.email }),
   accountDeletionToken: (s) => ({ parentId: s.parentId }),
+  // ADR-0043 D2: the adult's own consent rows. The FK cascades from `Parent` anyway, so this line only
+  // makes the decision explicit to the §4 coverage guard — and it is the decision that matches the
+  // account-deletion promise: the proof of a consent goes with the account it authorised.
+  parentConsentEvent: (s) => ({ parentId: s.parentId }),
   parent: (s) => ({ id: s.parentId }),
 };
 
