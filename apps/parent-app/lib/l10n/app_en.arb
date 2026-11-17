@@ -614,6 +614,8 @@
   },
   "appUsage": "App usage",
   "totalAverage": "Total {total} min · avg {avg} min/day",
+  "chartLegendRow": "{app}: {minutes} min",
+  "@chartLegendRow": {"placeholders": {"app": {"type": "String"}, "minutes": {"type": "int"}}},
   "@totalAverage": {
     "placeholders": {
       "total": { "type": "int" },

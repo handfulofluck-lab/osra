@@ -340,7 +340,10 @@ class TopAppsChart extends StatelessWidget {
                     const SizedBox(width: AppSpace.sm),
                     Expanded(
                       child: Text(
-                        ltrIsolate(app.name),
+                        // The Bureau's condition on the legend: in Arabic the bars run right to left, so a
+                        // top-to-bottom list is easy to map the wrong way round. The row carries its own
+                        // minutes, so it identifies its bar by value rather than by position.
+                        l10n.chartLegendRow(ltrIsolate(app.name), app.minutes),
                         style: AppType.chartTick,
                         softWrap: true,
                       ),

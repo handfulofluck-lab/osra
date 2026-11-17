@@ -1342,6 +1342,20 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String chartLegendRow(String app, int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة',
+      many: '$minutes دقيقة',
+      few: '$minutes دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    return '$app: $_temp0';
+  }
+
+  @override
   String get noAppUsage => 'لم يُسجَّل أي استخدام للتطبيقات';
 
   @override

@@ -1278,6 +1278,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String chartLegendRow(String app, int minutes) {
+    return '$app: $minutes min';
+  }
+
+  @override
   String get noAppUsage => 'No app usage recorded';
 
   @override

@@ -2258,6 +2258,12 @@ abstract class AppLocalizations {
   /// **'Total {total} min · avg {avg} min/day'**
   String totalAverage(int total, int avg);
 
+  /// No description provided for @chartLegendRow.
+  ///
+  /// In en, this message translates to:
+  /// **'{app}: {minutes} min'**
+  String chartLegendRow(String app, int minutes);
+
   /// No description provided for @noAppUsage.
   ///
   /// In en, this message translates to:

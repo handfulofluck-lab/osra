@@ -95,8 +95,10 @@ void main() {
       // Mutant: put `name.substring(0, 8)` back — this row then finds 'Google P…' and no full name.
       // Every name carries its own first-strong isolate now (Arabic Language Bureau, 22:22Z), so a
       // Latin name cannot run into its neighbour across the bidi boundary — «FictionaReading».
-      expect(find.text(ltrIsolate('Google Play Services')), findsOneWidget);
-      expect(find.text(ltrIsolate('WhatsApp Business')), findsOneWidget);
+      // Either under its bar or in a legend row, the name is present whole and isolated — `textContaining`
+      // so this row does not depend on which of the two layouts the measured slot chose.
+      expect(find.textContaining(ltrIsolate('Google Play Services')), findsOneWidget);
+      expect(find.textContaining(ltrIsolate('WhatsApp Business')), findsOneWidget);
       expect(find.textContaining('…'), findsNothing);
 
       // At most three tick labels inside the chart (the axis draws two at this interval).
@@ -167,7 +169,10 @@ void main() {
       // Mutant: keep the slots-only layout and the first name is cut where the second begins. The legend
       // keys exist only when the measured three-line slot check fails, which is this size.
       expect(find.byKey(const ValueKey('usageChartLegend-Fictional Learning')), findsOneWidget);
-      expect(find.text(ltrIsolate('Fictional Learning')), findsOneWidget);
+      // The Bureau's condition: a legend row identifies its bar by value, not by position, because in Arabic
+      // the bars run right to left and a list is easy to map the wrong way round. Mutant: show only the name.
+      expect(find.text('${ltrIsolate('Fictional Learning')}: 60 min'), findsOneWidget);
+      expect(find.text('${ltrIsolate('Reading')}: 30 min'), findsOneWidget);
       expect(find.textContaining('…'), findsNothing);
       expect(tester.takeException(), isNull);
     });
