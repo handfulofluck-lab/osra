@@ -1074,7 +1074,7 @@ run "production_requires_offsite_backup_copy" {
 # Closed-beta option (#892 section 6): the daily backup stays in Frankfurt, with no copy to eu-west-1.
 # The guard must accept it, the in-account plan and its 14-day lifecycle stay, and no copy_action is planned.
 run "production_offsite_copy_off" {
-  command = plan
+  command = apply
 
   variables {
     environment                 = "production"
@@ -1119,6 +1119,10 @@ run "production_offsite_copy_off" {
   assert {
     condition     = alltrue([for r in aws_backup_plan.main[0].rule : length(r.copy_action) == 0 && r.lifecycle[0].delete_after == 14])
     error_message = "backup_offsite_copy_enabled = false must plan no copy_action, and keep the 14-day lifecycle"
+  }
+  assert {
+    condition     = !strcontains(aws_kms_key.rds[0].policy, "BackupCopyAccountReads")
+    error_message = "with the off-site copy off, no other account may read the database key"
   }
 }
 

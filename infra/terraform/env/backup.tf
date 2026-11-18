@@ -30,8 +30,9 @@ resource "aws_kms_key" "rds" {
         Resource  = "*"
       }],
       # The backup copy is re-encrypted in the destination vault; AWS Backup in the destination account
-      # needs to read this key to do it.
-      var.backup_copy_account_id != "" ? [{
+      # needs to read this key to do it. Only while the copy is on: with backup_offsite_copy_enabled = false
+      # no other account can read the database key (#907 review).
+      var.backup_copy_account_id != "" && var.backup_offsite_copy_enabled ? [{
         Sid       = "BackupCopyAccountReads"
         Effect    = "Allow"
         Principal = { AWS = "arn:aws:iam::${var.backup_copy_account_id}:root" }
