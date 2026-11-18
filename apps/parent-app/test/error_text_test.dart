@@ -85,13 +85,44 @@ void main() {
     await pump(tester, const SocialScreen(childId: 'child-1'), api);
 
     expect(find.byType(ErrorRetryView), findsWidgets);
-    final before = api.calls('GET', '/v1/rules/child-1').length;
+    // Antigravity's M3: swap `friendlyErrorText` for `e.toString()` and this pair goes red — the row
+    // asserted the retry but not that the *sentence* was the one the Bureau issued.
+    expect(find.text(l10nFor().rulesLoadFailed), findsWidgets);
+    expectNoRawException(tester);
+
+    final rulesBefore = api.calls('GET', '/v1/rules/child-1').length;
+    final socialBefore = api.calls('GET', '/v1/social/events').length;
+    final activityBefore = api.calls('GET', '/v1/reports/activity').length;
+
     await tester.tap(find.text('Retry').first);
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
     await tester.pumpAndSettle();
-    expect(api.calls('GET', '/v1/rules/child-1').length, greaterThan(before));
+
+    expect(api.calls('GET', '/v1/rules/child-1').length, greaterThan(rulesBefore));
+    // Antigravity's M4: an `onRetry` that invalidated its siblings would survive without these two —
+    // "only the section that failed is re-requested" is a claim the row has to make good.
+    expect(api.calls('GET', '/v1/social/events').length, socialBefore);
+    expect(api.calls('GET', '/v1/reports/activity').length, activityBefore);
+  });
+
+  /// Antigravity's M5: in an 800×600 viewport the lazy list never builds Calls & SMS, so a row that only
+  /// looks at the top of the screen cannot see `friendlyErrorText` replace it with `e.toString()`. This row
+  /// scrolls to the section and asserts the sentence and the absence of raw text there.
+  testWidgets('a failed Calls & SMS section shows the sentence, not the exception', (tester) async {
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/reports/activity': (_) => const FakeHttpError(500),
+    });
+    await pump(tester, const SocialScreen(childId: 'child-1'), api);
+
+    final section = find.text(l10nFor().callsAndTexts);
+    await tester.scrollUntilVisible(section, 200, scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+
+    expect(find.text(l10nFor().rulesLoadFailed), findsWidgets);
+    expectNoRawException(tester);
   });
 
   testWidgets('a 500 on the social screen shows a sentence, not the exception', (tester) async {
