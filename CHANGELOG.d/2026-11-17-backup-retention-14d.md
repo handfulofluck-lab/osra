@@ -1,0 +1,2 @@
+### Security
+- Backups now follow the privacy notice's 14 days (threat model #892 §6, gate #637 row 6). The daily backup and its off-site copy are each deleted after 14 days (they were 30 and 90). The copy vault's lock now caps retention at 14 days. The pre-migration backup in `up.sh` is now an AWS Backup job that expires after 14 days, instead of a manual RDS snapshot that the organisation's control policy stops agents from ever deleting.

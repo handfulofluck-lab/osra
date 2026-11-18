@@ -92,3 +92,13 @@ output "region" {
   description = "Region of this stack."
   value       = var.region
 }
+
+output "backup_vault_name" {
+  description = "In-account backup vault (up.sh puts the pre-migration backup here, so AWS Backup expires it after 14 days)."
+  value       = local.backup_enabled ? aws_backup_vault.main[0].name : ""
+}
+
+output "backup_role_arn" {
+  description = "Role AWS Backup uses for jobs in this account (up.sh passes it to the pre-migration backup)."
+  value       = local.backup_enabled ? aws_iam_role.backup[0].arn : ""
+}
