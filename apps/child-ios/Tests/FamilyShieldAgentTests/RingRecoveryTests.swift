@@ -136,6 +136,9 @@ final class RingRecoveryTests: XCTestCase {
         // AlarmKit dropped a schedule whose fire date was already in the past.
         XCTAssertTrue(backend.contains(".fixed(fireDate)"))
         XCTAssertTrue(backend.contains("leadTime: TimeInterval = 5"))
+        XCTAssertFalse(backend.contains("for (index, offset) in dates.enumerated()"),
+                       "one ring command must schedule one alarm, not the pre-scheduled sentinel chain")
+        XCTAssertTrue(backend.contains("One ring command presents one AlarmKit alarm"))
         XCTAssertTrue(backend.contains("RingAlarmLog"))
         XCTAssertTrue(backend.contains("type(of: error)"))
         XCTAssertTrue(backend.contains("authorization state="))

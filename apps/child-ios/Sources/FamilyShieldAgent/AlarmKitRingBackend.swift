@@ -82,32 +82,33 @@ public final class AlarmKitRingBackend: RingBackend {
         guard #available(iOS 26.0, *) else { throw RingCommandError.unsupportedOS }
         do {
             // Clearing any leftover chain before scheduling is best-effort: on a first ring,
-            // or after part of the chain has already fired, the ids do not exist yet.
+            // or after part of a previous chain has already fired, the ids do not exist yet.
             try? await cancelAll(for: id, throwOnError: false)
-            let alarmIDs = Set([id] + sentinelIDs(for: id, until: until))
-            activeAlarmIDs.formUnion(alarmIDs)
+            activeAlarmIDs.subtract(sentinelIDs(for: id, until: nil))
+            activeAlarmIDs.insert(id)
             persistActiveAlarmIDs()
             let base = now()
-            let dates = chainDates(until: until)
-            for (index, offset) in dates.enumerated() {
-                let fireDate = base.addingTimeInterval(offset)
-                let alarmID = index == 0 ? id : sentinelID(for: id, index: index)
-                RingAlarmLog.info("schedule fireDate=\(fireDate.timeIntervalSince1970) offset=\(offset) index=\(index) id=\(alarmID.uuidString)")
-                let alert = AlarmPresentation.Alert(
-                    title: LocalizedStringResource("ring_alarm_title", table: "Localizable", bundle: .module),
-                    stopButton: AlarmButton(text: LocalizedStringResource("ring_alert_ok", table: "Localizable", bundle: .module),
-                                            textColor: .white, systemImageName: "checkmark"),
-                    secondaryButton: AlarmButton(text: LocalizedStringResource("ring_dismiss", table: "Localizable", bundle: .module),
-                                                 textColor: .white, systemImageName: "arrow.up.forward.app"),
-                    secondaryButtonBehavior: .custom)
-                let attributes = AlarmAttributes<RingAlarmMetadata>(
-                    presentation: AlarmPresentation(alert: alert), metadata: RingAlarmMetadata(),
-                    tintColor: Color(red: 11 / 255, green: 93 / 255, blue: 87 / 255))
-                let configuration: AlarmManager.AlarmConfiguration<RingAlarmMetadata> = .alarm(
-                    schedule: .fixed(fireDate), attributes: attributes,
-                    secondaryIntent: OpenRingIntent(), sound: .default)
-                _ = try await AlarmManager.shared.schedule(id: alarmID, configuration: configuration)
-            }
+            let maxOffset = min(RingPolicy.duration, until?.timeIntervalSince(base) ?? RingPolicy.duration)
+            guard maxOffset > 0 else { return }
+            // One ring command presents one AlarmKit alarm. The controller re-arms on dismissal;
+            // pre-scheduled sentinels would also fire while the main alarm is still alerting.
+            let offset = min(leadTime, maxOffset)
+            let fireDate = base.addingTimeInterval(offset)
+            RingAlarmLog.info("schedule fireDate=\(fireDate.timeIntervalSince1970) offset=\(offset) id=\(id.uuidString)")
+            let alert = AlarmPresentation.Alert(
+                title: LocalizedStringResource("ring_alarm_title", table: "Localizable", bundle: .module),
+                stopButton: AlarmButton(text: LocalizedStringResource("ring_alert_ok", table: "Localizable", bundle: .module),
+                                        textColor: .white, systemImageName: "checkmark"),
+                secondaryButton: AlarmButton(text: LocalizedStringResource("ring_dismiss", table: "Localizable", bundle: .module),
+                                             textColor: .white, systemImageName: "arrow.up.forward.app"),
+                secondaryButtonBehavior: .custom)
+            let attributes = AlarmAttributes<RingAlarmMetadata>(
+                presentation: AlarmPresentation(alert: alert), metadata: RingAlarmMetadata(),
+                tintColor: Color(red: 11 / 255, green: 93 / 255, blue: 87 / 255))
+            let configuration: AlarmManager.AlarmConfiguration<RingAlarmMetadata> = .alarm(
+                schedule: .fixed(fireDate), attributes: attributes,
+                secondaryIntent: OpenRingIntent(), sound: .default)
+            _ = try await AlarmManager.shared.schedule(id: id, configuration: configuration)
         } catch {
             RingAlarmLog.error("schedule", error)
             throw error
@@ -122,6 +123,22 @@ public final class AlarmKitRingBackend: RingBackend {
         if #available(iOS 26.0, *) {
             try await cancelAll(for: id, throwOnError: true)
             activeAlarmIDs.subtract(alarmIDs(for: id, until: nil))
+            persistActiveAlarmIDs()
+        }
+        #endif
+    }
+
+    /// The alarm chain is a dismissal fallback, not a second voice. Once the main alarm is
+    /// present, remove the sentinels so one ring command cannot present several system alarms.
+    public func cancelSentinels(for id: UUID) async {
+        #if os(iOS)
+        if #available(iOS 26.0, *) {
+            let sentinels = sentinelIDs(for: id, until: nil)
+            let existing = (try? Set(AlarmManager.shared.alarms.map(\.id))) ?? []
+            for sentinel in sentinels where existing.contains(sentinel) {
+                try? AlarmManager.shared.cancel(id: sentinel)
+            }
+            activeAlarmIDs.subtract(sentinels)
             persistActiveAlarmIDs()
         }
         #endif

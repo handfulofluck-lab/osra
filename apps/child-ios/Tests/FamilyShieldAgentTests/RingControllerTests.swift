@@ -34,6 +34,7 @@ final class FakeRingBackend: RingBackend {
 
     var scheduleUntil: [UUID: Date?] = [:]
     var sentinelIDsForCommand: [UUID: Set<UUID>] = [:]
+    private(set) var cancelSentinelsCalls: [UUID] = []
     var bufferedScheduleSnapshots: [Set<UUID>] = []
     private var pendingUpdates: [Set<UUID>] = []
 
@@ -53,6 +54,12 @@ final class FakeRingBackend: RingBackend {
         if let stopGate { await stopGate() }
         stopCalls.append(id)
         scheduled.removeAll { alarmIDs(for: id).contains($0) }
+    }
+
+    func cancelSentinels(for id: UUID) async {
+        cancelSentinelsCalls.append(id)
+        let sentinels = sentinelIDsForCommand[id] ?? []
+        scheduled.removeAll { sentinels.contains($0) }
     }
 
     func scheduledIDs() async throws -> Set<UUID> {
@@ -206,6 +213,20 @@ final class RingControllerTests: XCTestCase {
         XCTAssertEqual(backend.scheduled, [id])
         XCTAssertEqual(controller.state?.commandId, id)
         XCTAssertEqual(controller.state?.dismissalCount, 0, "an alerting main alarm is not a dismissal")
+        XCTAssertEqual(reporter.callCount, 0)
+    }
+
+    func testMainAlarmPresentCancelsSentinels() async {
+        let sentinel = UUID(uuidString: "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6C")!
+        backend.sentinelIDsForCommand[id] = [sentinel]
+        let controller = controller()
+        await controller.start(id)
+        backend.scheduled = [id, sentinel]
+        await controller.process(scheduledIDs: [id, sentinel])
+        XCTAssertEqual(backend.cancelSentinelsCalls, [id])
+        XCTAssertEqual(backend.scheduled, [id],
+                       "a ring command must present one alarm, not the whole sentinel chain")
+        XCTAssertEqual(controller.state?.dismissalCount, 0)
         XCTAssertEqual(reporter.callCount, 0)
     }
 
