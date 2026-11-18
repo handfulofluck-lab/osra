@@ -550,17 +550,26 @@ class InstalledApp {
   /// before this field: selectable, with no label. A stale row must not claim either answer.
   final bool? essential;
 
+  /// U33 (#868): a URL the server serves this app's icon from, or null while it has not arrived.
+  ///
+  /// Null is the normal state until the child agent uploads icons (`kimi/u33-app-icons`): the picker
+  /// draws a letter avatar in the brand tint for null, never a blank square. The field is additive, so
+  /// an older server answer simply leaves it null and nothing else in the row changes.
+  final String? iconUrl;
+
   const InstalledApp({
     required this.packageId,
     required this.label,
     this.isSystem = false,
     this.essential,
+    this.iconUrl,
   });
 
   factory InstalledApp.fromJson(Map<String, dynamic> json) {
     final packageId = _str(json['packageId']);
     final label = _str(json['label']).trim();
     final rawEssential = json['essential'];
+    final rawIcon = _strOrNull(json['iconUrl'])?.trim();
     return InstalledApp(
       packageId: packageId,
       // The API already falls back to the package id; repeat it so a hand-written
@@ -569,6 +578,8 @@ class InstalledApp {
       isSystem: _bool(json['isSystem']),
       // Absent and explicit null both mean "not reported"; anything that is not a bool is not a claim.
       essential: rawEssential is bool ? rawEssential : null,
+      // An empty string is not a URL: treat it as "no icon yet" so the row draws its letter avatar.
+      iconUrl: rawIcon == null || rawIcon.isEmpty ? null : rawIcon,
     );
   }
 }
@@ -621,6 +632,26 @@ class InstalledAppsReport {
       truncated: truncated || other.truncated,
     );
   }
+}
+
+/// U33 (#868): one device's installed-app report, kept apart so the picker can group rows under the
+/// device that reported them. A child with two Android phones gets two of these; a phone that has not
+/// reported arrives with an empty [report] (and its own empty state), never as a missing entry.
+@immutable
+class DeviceApps {
+  final String deviceId;
+
+  /// The device's display name. Today that is the model string the phone reported (`Pixel 7a`); a
+  /// user-set name needs an API field that does not exist yet (asked on #868).
+  final String label;
+
+  final InstalledAppsReport report;
+
+  const DeviceApps({
+    required this.deviceId,
+    required this.label,
+    this.report = const InstalledAppsReport(),
+  });
 }
 
 /// A named time window (homework, dinner, ...). Times are "HH:mm"; `days`
