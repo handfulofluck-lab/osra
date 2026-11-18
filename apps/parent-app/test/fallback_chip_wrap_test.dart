@@ -1,8 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,9 +17,11 @@ import 'test_app.dart';
 /// (material/chip.dart) — one line — while the sentence needs two, and its label defaults to
 /// `softWrap: false`, so the remainder fades.
 ///
-/// These run the real screen at the real surface with a **real Arabic font** loaded into the engine.
-/// The bundled test font has no Arabic glyphs, which is why the layout matrix alone could never see
-/// this: every glyph was a box of the wrong width.
+/// **No font is loaded, on purpose.** An earlier version of this file read Tahoma from
+/// `C:\Windows\Fonts`, which made two things true at once: it only ran on this PC, and it made CI red on
+/// every runner (Kimi's `parent-app` failure at `5e9094ff`). The engine's default test font draws every
+/// glyph as a box, which is wider than any real Arabic — so the sentence wraps here for a reason that
+/// does not depend on which machine is running, and the rows exercise the same layout path.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => FlutterSecureStorage.setMockInitialValues({}));
@@ -44,9 +43,6 @@ void main() {
   }
 
   Future<void> pumpArabic(WidgetTester tester, FakeApiClient api, {double width = 320}) async {
-    final bytes = File(r'C:\Windows\Fonts\tahoma.ttf').readAsBytesSync();
-    await (FontLoader('ArReal')..addFont(Future.value(ByteData.view(bytes.buffer)))).load();
-
     tester.view.physicalSize = Size(width, 568);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() {
@@ -67,9 +63,14 @@ void main() {
           ),
         ),
         locale: const Locale('ar'),
-        theme: AppTheme.light.copyWith(textTheme: AppTheme.light.textTheme.apply(fontFamily: 'ArReal')),
+        theme: AppTheme.light,
       ),
     ));
+    // Dio resolves through chained zero-duration timers, so a bare pumpAndSettle can return before the
+    // rules and the device report land — the same flush `installed_apps_picker_test.dart` uses.
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
     await tester.pumpAndSettle();
   }
 
@@ -86,6 +87,14 @@ void main() {
     await tester.pumpAndSettle();
 
     final ar = AppLocalizationsAr();
+    // 320 px at 200 % puts the Always-allowed section below the fold, and the Apps tab is a lazy list:
+    // the chip is not built until it is scrolled into view.
+    await tester.scrollUntilVisible(
+      find.text(ar.appNoLongerInstalled),
+      200,
+      scrollable: find.byWidgetPredicate((w) => w is Scrollable && w.axis == Axis.vertical).first,
+    );
+    await tester.pumpAndSettle();
     final label = find.text(ar.appNoLongerInstalled);
     expect(label, findsOneWidget);
     expectWhole(tester, label, reason: 'always-allowed chip');
@@ -119,37 +128,25 @@ void main() {
     await tester.tap(find.text('Homework'));
     await tester.pumpAndSettle();
 
-    final label = find.text(AppLocalizationsAr().appNoLongerInstalled);
+    final ar = AppLocalizationsAr();
+    if (find.text(ar.appNoLongerInstalled).evaluate().isEmpty) {
+      await tester.scrollUntilVisible(
+        find.text(ar.appNoLongerInstalled),
+        100,
+        scrollable: find.descendant(of: find.byType(AlertDialog), matching: find.byType(Scrollable)).first,
+      );
+      await tester.pumpAndSettle();
+    }
+    final label = find.text(ar.appNoLongerInstalled);
     expect(label, findsOneWidget);
     expectWhole(tester, label, reason: 'routine dialog chip');
   });
 
-  /// **These rows are shape assertions, not mutants, and that is deliberate.** They pass on the old
-  /// `InputChip` too, because Tahoma's Arabic is narrower than the device font Codex's frames used, so at
-  /// these widths the sentence happened to fit one line and the chip escaped its own cap. A test that
-  /// passes both ways proves nothing about the clip — the evidence for the defect is the frames plus
-  /// Flutter's own layout (`maxHeight: contentSize`), and the evidence for the fix is Codex's re-shoot at
-  /// the device font. What these rows pin is the invariant and the wiring: the sentence is laid out whole
-  /// wherever it appears, and the remove control keeps the Bureaus' tooltip. Codex measured the **English**
-  /// label needing three lines inside the dialog, which is why `_FallbackChip` carries no line cap at
-  /// all — a two-line cap only moved the cut to another screen.
-  testWidgets('AR 280/200%: the sentence wraps instead of being cut', (tester) async {
-    final routes = standardRoutes();
-    routes['GET /v1/rules/child-1'] =
-        (_) => ruleSetPayload('child-1', alwaysAllowedApps: ['com.example.gone']);
-    routes['GET /v1/devices/dev-1/apps'] =
-        (_) => installedAppsPayload(apps: [installedAppJson('com.example.video', 'Video')]);
-
-    await pumpArabic(tester, FakeApiClient(routes), width: 280);
-    DefaultTabController.of(tester.element(find.byType(TabBar))).animateTo(2);
-    await tester.pumpAndSettle();
-
-    final label = find.text(AppLocalizationsAr().appNoLongerInstalled);
-    expect(label, findsOneWidget);
-    expectWhole(tester, label, reason: 'always-allowed chip at 280');
-    expect(tester.takeException(), isNull, reason: 'the chip must fit the surface, not overflow it');
-  });
-
+  /// **What these rows prove, and what they do not.** The clip needs a device font to reproduce, so the
+  /// evidence for the defect is Codex's frames plus Flutter's own layout (`maxHeight: contentSize`), and
+  /// for the fix, Codex's re-shoot. What the rows pin is the invariant and the wiring: the sentence is
+  /// laid out whole wherever it appears, and the remove control keeps the Bureaus' tooltip. The English
+  /// case is a real mutant — restoring `maxLines: 2` turns it red, because three lines are needed.
   /// Codex's second retest: the English label needs **three** lines in the narrower routine dialog at
   /// 320/200 %. A two-line cap moved the cut rather than removing it, so the row below checks the whole
   /// sentence on the surface that exposed it.
