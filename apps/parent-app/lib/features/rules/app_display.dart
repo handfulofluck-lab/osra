@@ -37,11 +37,23 @@ String appDisplayName(
 String appRemoveLabel(BuildContext context, {required bool reportKnown}) =>
     reportKnown ? context.l10n.appNoLongerInstalledRemove : context.l10n.appNamePendingRemove;
 
-/// The avatar for a chip or row: the app's own icon when the device reported it, a "?" when it did not.
-Widget appDisplayAvatar(Map<String, InstalledApp> apps, String packageId, {double size = 20}) {
+/// The avatar for a chip or row: the app's own icon when the device reported it, then the letter of a saved
+/// name, and a "?" only when we genuinely have no name at all.
+///
+/// Antigravity's #872 finding 2: a rule that carries a real `appName` was drawing "?" because the avatar was
+/// built from the report alone. A saved name is a name — the row already shows it in the title.
+Widget appDisplayAvatar(
+  Map<String, InstalledApp> apps,
+  String packageId, {
+  double size = 20,
+  String? savedName,
+}) {
   final app = apps[packageId];
+  if (app != null) return AppIconBadge(app: app, size: size);
+  final name = (savedName ?? '').trim();
+  final known = name.isNotEmpty && name != packageId;
   return AppIconBadge(
-    app: app ?? InstalledApp(packageId: packageId, label: '?'),
+    app: InstalledApp(packageId: packageId, label: known ? name : '?'),
     size: size,
   );
 }

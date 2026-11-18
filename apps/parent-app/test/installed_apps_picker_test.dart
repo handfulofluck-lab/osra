@@ -343,6 +343,92 @@ void main() {
     expect(drainExceptions(tester), isEmpty);
   });
 
+  /// Antigravity's three blockers on #872 at `fb8717f4`. Each row is written to fail on the mutant it names
+  /// in its comment, because the first pass of this feature shipped with all three alive.
+  group('Antigravity #872 blockers', () {
+    Finder chipShowing(String text) => find.ancestor(
+          of: find.text(text),
+          matching: find.byType(InputChip),
+        );
+
+    testWidgets('the remove action announces the state the chip shows, absent and pending', (tester) async {
+      // M3: strip all three `deleteButtonTooltipMessage`/`tooltip` calls and this row goes red. It was the
+      // mutant that survived 83/83 before — the labels were in the ARBs and never asserted on a widget.
+      final absent = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1', alwaysAllowedApps: const ['com.example.gone']),
+        'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(),
+      });
+      await pumpRules(tester, absent);
+      await openAppsTab(tester);
+      final absentChip = tester.widget<InputChip>(chipShowing('App no longer installed'));
+      expect(absentChip.deleteButtonTooltipMessage, 'App no longer installed. Remove');
+
+      final pending = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1', alwaysAllowedApps: const ['com.example.gone']),
+        'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(apps: const [], reportedAt: null),
+      });
+      await pumpRules(tester, pending);
+      await openAppsTab(tester);
+      final pendingChip = tester.widget<InputChip>(chipShowing('Name not available yet'));
+      expect(pendingChip.deleteButtonTooltipMessage, 'Name not available yet. Remove');
+    });
+
+    testWidgets('a rule with a real saved name draws its letter, not "?", and no state tooltip', (tester) async {
+      // Finding 2: the avatar was built from the report alone, so a rule that knows its name drew "?" and
+      // announced "Name not available yet" over a row titled "WhatsApp".
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/rules/child-1': (_) {
+          final payload = ruleSetPayload('child-1');
+          payload['appRules'] = [
+            {'packageId': 'com.whatsapp', 'appName': 'WhatsApp', 'action': 'block'},
+          ];
+          return payload;
+        },
+        'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(apps: const [], reportedAt: null),
+      });
+      await pumpRules(tester, api);
+      await openAppsTab(tester);
+
+      expect(find.text('WhatsApp'), findsOneWidget);
+      expect(find.text('?'), findsNothing, reason: 'a saved name is a name');
+      final remove = tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.delete_outline));
+      expect(remove.tooltip, isNull);
+    });
+
+    testWidgets("one device answering 404 does not hide the other device's names", (tester) async {
+      // Finding 3a: the merged provider had no 404 catch, so a `pending` sibling threw the whole future and
+      // the first phone's names fell back to the pending line.
+      final api = FakeApiClient({
+        ...standardRoutes(familyMe: familyMeMixedDevices()),
+        'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1', alwaysAllowedApps: const ['com.example.video']),
+        'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(),
+        'GET /v1/devices/dev-3/apps': (_) => const FakeHttpError(404),
+      });
+      await pumpRules(tester, api);
+      await openAppsTab(tester);
+
+      expect(find.text('Video'), findsWidgets);
+      expect(find.text('Name not available yet'), findsNothing);
+    });
+
+    testWidgets('a truncated report is not "confirmed absent"', (tester) async {
+      // Finding 3b: `truncated` was ignored, so an app missing from a cut-short list read as uninstalled.
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1', alwaysAllowedApps: const ['com.example.gone']),
+        'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(apps: const [], truncated: true),
+      });
+      await pumpRules(tester, api);
+      await openAppsTab(tester);
+
+      expect(find.text('Name not available yet'), findsWidgets);
+      expect(find.text('App no longer installed'), findsNothing);
+    });
+  });
+
   /// Codex's #872 finding ("pending versus confirmed absence"): before any device sends its app list, a
   /// missing name means we do not know yet — not that the app was removed. The two lines are different on
   /// purpose, and saying the wrong one claims something the parent will act on.

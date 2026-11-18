@@ -92,10 +92,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
   /// its chip falls back to the id — the only place an id can still surface, and only for what is saved.
   /// Codex's #872 finding: a missing id is *confirmed absent* only when a report exists. Before any
   /// device reports, the honest state is "pending" and the Bureaus' second line says so.
-  bool get _reportKnown {
-    final report = ref.watch(installedAppsProvider(widget.childId)).valueOrNull;
-    return report != null && report.reportedAt != null;
-  }
+  bool get _reportKnown => _reportIsComplete(ref, widget.childId);
 
   Map<String, InstalledApp> get _appIndex {
     final report = ref.watch(installedAppsProvider(widget.childId)).valueOrNull;
@@ -706,6 +703,25 @@ class _AppRuleTile extends StatefulWidget {
   State<_AppRuleTile> createState() => _AppRuleTileState();
 }
 
+/// Whether the child's inventory is **complete**: at least one device, every device has reported, and no
+/// report is truncated.
+///
+/// Antigravity's #872 finding 3: the old check asked only the merged report's `reportedAt`, so a truncated
+/// list or a second phone that had not checked in yet still counted as "a report exists" — and an app
+/// missing from that partial list was labelled «App no longer installed», which is a claim about the child's
+/// phone that a partial list cannot support.
+bool _reportIsComplete(WidgetRef ref, String childId) {
+  final groups = ref.watch(installedAppsByDeviceProvider(childId)).valueOrNull;
+  if (groups == null || groups.isEmpty) return false;
+  return groups.every((g) => g.report.reportedAt != null && !g.report.truncated);
+}
+
+/// True when a stored `appName` is a name a parent would recognise — not blank, not the package id.
+bool _hasRealName(String appName, String packageId) {
+  final name = appName.trim();
+  return name.isNotEmpty && name != packageId;
+}
+
 class _AppRuleTileState extends State<_AppRuleTile> {
   late final TextEditingController _minutes = TextEditingController(text: widget.rule.dailyLimitMinutes?.toString() ?? '');
 
@@ -729,7 +745,12 @@ class _AppRuleTileState extends State<_AppRuleTile> {
               children: [
                 // #872 condition 2: a rule whose app nothing reports any more names itself with the
                 // Bureaus' line and a "?" avatar — the package id is not a name, and it was the finding.
-                appDisplayAvatar({if (widget.app != null) r.packageId: widget.app!}, r.packageId, size: 28),
+                appDisplayAvatar(
+                  {if (widget.app != null) r.packageId: widget.app!},
+                  r.packageId,
+                  size: 28,
+                  savedName: r.appName,
+                ),
                 const SizedBox(width: AppSpace.sm),
                 Expanded(
                   child: Text(
@@ -745,7 +766,10 @@ class _AppRuleTileState extends State<_AppRuleTile> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.delete_outline),
-                  tooltip: widget.app != null
+                  // Antigravity's #872 finding 2: a rule with a real saved name shows that name, so its
+                  // remove action must not announce "Name not available yet". Only a row without a name
+                  // carries the state's label.
+                  tooltip: widget.app != null || _hasRealName(r.appName, r.packageId)
                       ? null
                       : appRemoveLabel(context, reportKnown: widget.reportKnown),
                   onPressed: widget.onRemove,
@@ -802,10 +826,7 @@ class _RoutineDialog extends ConsumerStatefulWidget {
 
 class _RoutineDialogState extends ConsumerState<_RoutineDialog> {
   /// The same split as the editor: no report yet is "pending", a report without the id is "gone".
-  bool get _reportKnown {
-    final report = ref.watch(installedAppsProvider(widget.childId)).valueOrNull;
-    return report != null && report.reportedAt != null;
-  }
+  bool get _reportKnown => _reportIsComplete(ref, widget.childId);
 
   late final TextEditingController _name = TextEditingController(text: widget.existing?.name ?? '');
   late final Set<String> _blocked = {...?widget.existing?.blockedApps};

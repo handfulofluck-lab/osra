@@ -100,9 +100,17 @@ final installedAppsProvider = FutureProvider.family<InstalledAppsReport, String>
   final overview = await ref.watch(familyProvider.future);
   var report = const InstalledAppsReport();
   for (final device in overview.devicesFor(childId)) {
-    final res = await api.raw.get('/v1/devices/${device.id}/apps');
-    if (res.data is! Map) continue;
-    report = report.merge(InstalledAppsReport.fromJson(Map<String, dynamic>.from(res.data as Map)));
+    try {
+      final res = await api.raw.get('/v1/devices/${device.id}/apps');
+      if (res.data is! Map) continue;
+      report = report.merge(InstalledAppsReport.fromJson(Map<String, dynamic>.from(res.data as Map)));
+    } on DioException catch (e) {
+      // Antigravity's #872 finding 3: a `pending` device answers 404 here (`requireFamily hidePending`),
+      // and one sibling's 404 used to throw the whole future away — which hid the *first* phone's app
+      // names behind the "pending" line. Only "this phone has no report" is skippable; a 500 or an auth
+      // failure is a real load failure and stays one, exactly as in the per-device provider below.
+      if (e.response?.statusCode != 404) rethrow;
+    }
   }
   return report;
 });
