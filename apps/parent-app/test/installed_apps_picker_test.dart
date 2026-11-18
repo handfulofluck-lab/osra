@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/features/rules/app_picker.dart';
 import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
 import 'package:familyshield_parent/l10n/app_localizations.dart';
@@ -619,5 +620,42 @@ void main() {
     );
     expect(find.textContaining('com.example.game'), findsNothing);
     expect(drainExceptions(tester), isEmpty);
+  });
+
+  /// Kimi's #872 review: the picker must never hand a package id to a caller as if it were a name.
+  /// An id no device reports comes back with an empty label — the widget does not know the name, the
+  /// avatar already draws `?` for it, and every screen renders the Bureaus' line instead of the id.
+  testWidgets('a saved id that nothing reports never comes back as its own label', (tester) async {
+    final api = FakeApiClient(standardRoutes());
+    List<InstalledApp>? chosen;
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: localizedTestApp(
+        Builder(
+          builder: (context) => TextButton(
+            onPressed: () async {
+              chosen = await showAppPicker(
+                context,
+                childId: 'child-1',
+                selected: {'com.example.gone'},
+              );
+            },
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await flushFakeHttp(tester);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('appPickerConfirm')));
+    await tester.pumpAndSettle();
+
+    expect(chosen, isNotNull);
+    final entry = chosen!.singleWhere((a) => a.packageId == 'com.example.gone');
+    expect(entry.label, isEmpty, reason: 'the package id must never travel as a label');
+    expect(entry.label, isNot('com.example.gone'));
   });
 }

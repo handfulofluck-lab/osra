@@ -77,8 +77,15 @@ class _AppPickerState extends ConsumerState<AppPicker> {
   }
 
   /// The chosen ids resolved to the apps the devices reported, in the list's order. An id that no
-  /// device reports (a rule saved before this picker existed) keeps its id as its label — the one
-  /// place a raw id can still surface, and only for what is already saved.
+  /// device reports (a rule saved before this picker existed) comes back with an **empty** label, not
+  /// the id.
+  ///
+  /// Kimi's #872 review: the old line was `InstalledApp(packageId: id, label: id)`, which handed the
+  /// package id to every caller as if it were a name — and one caller persists the label as the rule's
+  /// `appName`. An empty label is the honest value: this widget does not know the name, `_firstLetter`
+  /// already draws `?` for it, and every screen renders the Bureaus' line (`appNoLongerInstalled` /
+  /// `appNamePending`) instead of the id. A distinct "Unknown app" key would work too, but it is new
+  /// user-facing Arabic for a state the issued lines already cover.
   List<InstalledApp> _result(List<DeviceApps> groups) {
     final byId = <String, InstalledApp>{};
     for (final group in groups) {
@@ -88,7 +95,7 @@ class _AppPickerState extends ConsumerState<AppPicker> {
     }
     return [
       for (final id in _chosen)
-        byId[id] ?? InstalledApp(packageId: id, label: id),
+        byId[id] ?? InstalledApp(packageId: id, label: ''),
     ];
   }
 
