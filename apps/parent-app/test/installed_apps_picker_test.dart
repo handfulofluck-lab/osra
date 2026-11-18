@@ -556,4 +556,68 @@ void main() {
     expect(picker(), findsOneWidget);
     expect(find.byType(AppPicker), findsOneWidget);
   });
+
+  /// #872: the routine chip is the third place a package id used to reach a parent's eye, and it was
+  /// the one the pending/absent split did not assert for itself — it was covered only through the
+  /// shared helper. These two tests pin the chip's own branch: same routine, same missing id, opposite
+  /// sentences depending on whether the child's phone has reported its app list at all.
+  Future<void> openRoutinesTab(WidgetTester tester) async {
+    final controller = DefaultTabController.of(tester.element(find.byType(TabBar)));
+    controller.animateTo(3);
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> openHomeworkRoutine(WidgetTester tester) async {
+    await openRoutinesTab(tester);
+    await tester.tap(find.text('Homework'));
+    await tester.pumpAndSettle();
+  }
+
+  Finder routineBlockedChip(String packageId) => find.byKey(ValueKey('routineBlocked-$packageId'));
+
+  testWidgets('a routine chip says the name is pending while no device has reported', (tester) async {
+    final routes = standardRoutes();
+    // No `reportedAt`: the phone has an inventory route but has never sent a list, so an id missing
+    // from it says nothing about the app.
+    routes['GET /v1/devices/dev-1/apps'] =
+        (_) => installedAppsPayload(apps: [installedAppJson('com.example.video', 'Video')], reportedAt: null);
+    final api = FakeApiClient(routes);
+    await pumpRules(tester, api);
+    await flushFakeHttp(tester);
+    await openHomeworkRoutine(tester);
+
+    final en = lookupAppLocalizations(const Locale('en'));
+    final chip = routineBlockedChip('com.example.game');
+    expect(chip, findsOneWidget);
+    expect(find.descendant(of: chip, matching: find.text(en.appNamePending)), findsOneWidget);
+    expect(
+      tester.widget<InputChip>(chip).deleteButtonTooltipMessage,
+      en.appNamePendingRemove,
+    );
+    expect(find.textContaining('com.example.game'), findsNothing);
+    expect(drainExceptions(tester), isEmpty);
+  });
+
+  testWidgets('the same routine chip says "no longer installed" once a report exists', (tester) async {
+    final routes = standardRoutes();
+    // A report exists and the routine's app is not in it: now the chip may say "no longer installed".
+    routes['GET /v1/devices/dev-1/apps'] =
+        (_) => installedAppsPayload(apps: [installedAppJson('com.example.video', 'Video')]);
+    final api = FakeApiClient(routes);
+    await pumpRules(tester, api);
+    await flushFakeHttp(tester);
+    await openHomeworkRoutine(tester);
+
+    final en = lookupAppLocalizations(const Locale('en'));
+    final chip = routineBlockedChip('com.example.game');
+    expect(chip, findsOneWidget);
+    // Mutant: `reportKnown` ignored in the chip and this reads the pending line while a report exists.
+    expect(find.descendant(of: chip, matching: find.text(en.appNoLongerInstalled)), findsOneWidget);
+    expect(
+      tester.widget<InputChip>(chip).deleteButtonTooltipMessage,
+      en.appNoLongerInstalledRemove,
+    );
+    expect(find.textContaining('com.example.game'), findsNothing);
+    expect(drainExceptions(tester), isEmpty);
+  });
 }
