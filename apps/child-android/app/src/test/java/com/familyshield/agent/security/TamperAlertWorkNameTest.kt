@@ -134,15 +134,19 @@ class TamperAlertWorkNameTest {
         val second = TamperAlertWorker.uniqueWorkName(TamperAlertWorker.TYPE_ACCESSIBILITY_OFF, 61_000L)
         org.junit.Assert.assertTrue("the moment is in the name", first.contains("1000"))
         org.junit.Assert.assertNotEquals("two unbinds do not collapse onto one name", first, second)
-        val source = java.io.File(System.getProperty("user.dir") ?: ".").let { wd ->
-            listOf(
-                java.io.File(wd, "src/main/java/com/familyshield/agent/security/TamperAlertWorker.kt"),
-                java.io.File(wd, "app/src/main/java/com/familyshield/agent/security/TamperAlertWorker.kt"),
-            ).firstOrNull { it.isFile }?.readText() ?: error("worker source not found")
-        }
-        org.junit.Assert.assertTrue(
-            "and enqueue passes the event time for it",
-            source.contains("type == TYPE_BLOCK_BYPASS || type == TYPE_ACCESSIBILITY_OFF) eventAtMs"),
+        // #792: this used to grep `TamperAlertWorker.kt` for the inline `if` that picked the instant. That row could
+        // not fail when the selection moved (it did, into `workNameInstant`), and it could not fail when the choice
+        // was wrong either — only when the text changed. It now drives the seam that makes the choice, for both
+        // event-keyed types, and the lockout's own row is in `TamperAlertLockoutBodyTest`.
+        org.junit.Assert.assertEquals(
+            "the unbind is named by its own moment, not by the guard window",
+            61_000L,
+            TamperAlertWorker.workNameInstant(TamperAlertWorker.TYPE_ACCESSIBILITY_OFF, 61_000L, 0L),
+        )
+        org.junit.Assert.assertEquals(
+            "a guard window still names its aggregate, not the event instant",
+            5_000L,
+            TamperAlertWorker.workNameInstant(TamperAlertWorker.TYPE_GUARD_TRIGGERED, 61_000L, 5_000L),
         )
     }
 }
