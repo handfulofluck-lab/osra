@@ -91,9 +91,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'Could not load your family. Check your connection and try again.';
 
   @override
-  String deleteAccountFailed(String detail) {
-    return 'The account was not deleted. $detail';
-  }
+  String get deleteAccountFailed =>
+      'Couldn\'t delete your account. Check your connection and try again.';
 
   @override
   String get cancel => 'Cancel';
@@ -256,9 +255,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get signOutTooltip => 'Sign out';
 
   @override
-  String familyLoadFailed(String error) {
-    return 'Failed to load family: $error';
-  }
+  String get familyLoadFailed =>
+      'Couldn\'t load your family. Check your connection and try again.';
 
   @override
   String get noChildrenYet => 'No children yet — tap \"Add child\"';
@@ -337,9 +335,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get resume => 'Resume';
 
   @override
-  String internetChangeFailed(String error) {
-    return 'Internet change failed: $error';
-  }
+  String get internetChangeFailed =>
+      'Couldn\'t change internet access. Check your connection and try again.';
 
   @override
   String get parentalConsent => 'Parental consent';
@@ -474,9 +471,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String bonusFailed(String error) {
-    return 'Bonus failed: $error';
-  }
+  String get bonusFailed =>
+      'Couldn\'t add bonus time. Check your connection and try again.';
 
   @override
   String get windDown => 'Wind down';
@@ -500,9 +496,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String windDownFailed(String error) {
-    return 'Wind down failed: $error';
-  }
+  String get windDownFailed =>
+      'Couldn\'t start wind-down. Check your connection and try again.';
 
   @override
   String commandQueued(String command, String device) {
@@ -515,9 +510,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String commandFailed(String error) {
-    return 'Command failed: $error';
-  }
+  String get commandFailed =>
+      'Couldn\'t send the command. Check your connection and try again.';
 
   @override
   String commandErrorForbidden(String command, String device) {
@@ -594,9 +588,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appActionAllow => 'Allow';
 
   @override
-  String locationLoadFailed(String error) {
-    return 'Failed to load location: $error';
-  }
+  String get locationLoadFailed =>
+      'Couldn\'t load location. Check your connection and try again.';
 
   @override
   String get noLocationReported => 'No location reported yet';
@@ -615,9 +608,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mapPreview => 'Map preview';
 
   @override
-  String locationHistoryLoadFailed(String error) {
-    return 'Failed to load history: $error';
-  }
+  String get locationHistoryLoadFailed =>
+      'Couldn\'t load location history. Check your connection and try again.';
 
   @override
   String get noLocationHistoryToday => 'No location history for today';
@@ -670,9 +662,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get familyPendingInvites => 'Pending invites';
 
   @override
-  String familyInvitesLoadFailed(String error) {
-    return 'Failed to load invites: $error';
-  }
+  String get familyInvitesLoadFailed =>
+      'Couldn\'t load invites. Check your connection and try again.';
 
   @override
   String get familyNoPendingInvites => 'No pending invites';
@@ -686,9 +677,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String familyRevokeFailed(String error) {
-    return 'Revoke failed: $error';
-  }
+  String get familyRevokeFailed =>
+      'Couldn\'t revoke invite. Check your connection and try again.';
 
   @override
   String get familyEnterEmail => 'Enter an email address';
@@ -780,9 +770,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String familyMapCommandFailed(String error) {
-    return 'Command failed: $error';
-  }
+  String get familyMapCommandFailed =>
+      'Couldn\'t send the command. Check your connection and try again.';
 
   @override
   String get familyMapNoChildren => 'No children to show';
@@ -815,9 +804,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get familyMapCreate => 'Create';
 
   @override
-  String alertsLoadFailed(String error) {
-    return 'Failed to load alerts: $error';
-  }
+  String get alertsLoadFailed =>
+      'Couldn\'t load alerts. Check your connection and try again.';
 
   @override
   String get noRecentAlerts => 'No recent alerts';
@@ -840,9 +828,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noInsightsYet => 'No insights for this app yet';
 
   @override
-  String insightsLoadFailed(String error) {
-    return 'Failed to load insights: $error';
-  }
+  String get insightsLoadFailed =>
+      'Couldn\'t load app insights. Check your connection and try again.';
 
   @override
   String get commandLock => 'Lock';
@@ -914,9 +901,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get loadMore => 'Load more';
 
   @override
-  String acknowledgeFailed(String error) {
-    return 'Acknowledge failed: $error';
-  }
+  String get acknowledgeFailed =>
+      'Couldn\'t dismiss alert. Check your connection and try again.';
 
   @override
   String categoryLabel(String category) {
@@ -946,9 +932,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appBlockedSnack => 'App blocked';
 
   @override
-  String blockFailed(String error) {
-    return 'Block failed: $error';
-  }
+  String get blockFailed =>
+      'Couldn\'t block app. Check your connection and try again.';
 
   @override
   String get severityCritical => 'Critical';
@@ -1192,7 +1177,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get installedAppsLoadFailed =>
-      'Couldn\'t load apps. Check your connection and try again.';
+      'Couldn\'t load installed apps. Check your connection and try again.';
 
   @override
   String get appNoLongerInstalled => 'App no longer installed';
@@ -1603,9 +1588,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get monitoringSaved => 'Monitoring saved';
 
   @override
-  String saveFailed(String error) {
-    return 'Save failed: $error';
-  }
+  String get saveFailed =>
+      'Couldn\'t save changes. Check your connection and try again.';
 
   @override
   String get saveMonitoring => 'Save monitoring';
@@ -2375,9 +2359,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get searchSafetyTitle => 'Search safety';
 
   @override
-  String searchSafetyLoadFailed(String error) {
-    return 'Failed to load search activity: $error';
-  }
+  String get searchSafetyLoadFailed =>
+      'Couldn\'t load search activity. Check your connection and try again.';
 
   @override
   String get searchSafetyEmptyTitle => 'No flagged searches detected';
@@ -2413,9 +2396,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get digestPrefsTitle => 'Digest preferences';
 
   @override
-  String digestPrefsLoadFailed(String error) {
-    return 'Failed to load preferences: $error';
-  }
+  String get digestPrefsLoadFailed =>
+      'Couldn\'t load digest settings. Check your connection and try again.';
 
   @override
   String get digestPrefsDailyTitle => 'Daily email digest';
@@ -2485,9 +2467,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get digestPrefsSaved => 'Digest preferences saved';
 
   @override
-  String digestPrefsSaveFailed(String error) {
-    return 'Save failed: $error';
-  }
+  String get digestPrefsSaveFailed =>
+      'Couldn\'t save digest settings. Check your connection and try again.';
 
   @override
   String digestPrefsTimezoneSet(String zone) {
@@ -2495,9 +2476,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String digestPrefsTimezoneFailed(String error) {
-    return 'Timezone not saved: $error';
-  }
+  String get digestPrefsTimezoneFailed =>
+      'Couldn\'t update time zone. Check your connection and try again.';
 
   @override
   String get digestPrefsTestTitle => 'Test digest';
@@ -2506,9 +2486,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get digestPrefsClose => 'Close';
 
   @override
-  String digestPrefsSendFailed(String error) {
-    return 'Send failed: $error';
-  }
+  String get digestPrefsSendFailed =>
+      'Couldn\'t send test digest. Check your connection and try again.';
 
   @override
   String get digestPrefsNoDigests => 'No digests generated';
@@ -3203,4 +3182,30 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get familyNameHelper => 'Other parents you invite will see this.';
+
+  @override
+  String get errorNoConnection =>
+      'No internet connection. Check your connection and try again.';
+
+  @override
+  String get authSignInFailed =>
+      'Couldn\'t sign in right now. Check your connection and try again.';
+
+  @override
+  String get authMfaReenrollRequired =>
+      'Two-step verification was reset but not finished. Open \"Lost your authenticator?\" if you still have the setup screen open; otherwise contact support.';
+
+  @override
+  String get familyInviteFailed =>
+      'Couldn\'t send invite. Check the email and try again.';
+
+  @override
+  String get digestPrefsTimezonePickerTitle => 'Choose time zone';
+
+  @override
+  String get digestPrefsTimezoneSearchHint =>
+      'Search city or offset (for example Dubai, +4)';
+
+  @override
+  String get digestPrefsTimezoneEmpty => 'No matching time zones';
 }

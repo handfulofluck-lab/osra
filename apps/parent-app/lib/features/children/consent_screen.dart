@@ -80,7 +80,7 @@ class ConsentScreen extends ConsumerWidget {
       body: status.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => _ConsentError(
-          message: readErrorText(l10n, e, () => l10n.consentLoadFailed),
+          message: friendlyErrorText(l10n, e, () => l10n.consentLoadFailed),
           onRetry: () => ref.invalidate(consentStatusProvider(childId)),
         ),
         data: (data) => RefreshIndicator(

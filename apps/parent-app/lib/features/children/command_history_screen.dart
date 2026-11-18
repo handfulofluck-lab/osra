@@ -44,7 +44,7 @@ class CommandHistoryScreen extends ConsumerWidget {
       body: overview.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => _ErrorState(
-          title: readErrorText(l10n, e, () => l10n.couldNotLoadChild),
+          title: friendlyErrorText(l10n, e, () => l10n.familyLoadFailed),
           onRetry: () => ref.invalidate(familyProvider),
         ),
         data: (data) {
@@ -134,7 +134,7 @@ class _DeviceCommandSection extends ConsumerWidget {
                 children: [
                   const SizedBox(height: 8),
                   Text(
-                    l10n.couldNotLoadCommandHistory,
+                    friendlyErrorText(l10n, e, () => l10n.couldNotLoadCommandHistory),
                     style:
                         TextStyle(color: Theme.of(context).colorScheme.error),
                   ),

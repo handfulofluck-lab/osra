@@ -107,11 +107,12 @@ void main() {
         reason: 'a refused command is not queued');
   });
 
-  test('commandRefusalText maps not_supported and still falls back to the raw code', () {
+  test('commandRefusalText maps not_supported and hides unknown raw codes (R-ID-1)', () {
     expect(commandRefusalText(ar, 'ring', 'Pixel 7', 'not_supported'),
         '«رن» غير متاح على Pixel 7: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.');
-    expect(commandRefusalText(ar, 'ring', 'Pixel 7', 'something_new'), contains('something_new'),
-        reason: 'an unknown code stays visible rather than becoming a vague failure');
+    expect(commandRefusalText(ar, 'ring', 'Pixel 7', 'something_new'), isNot(contains('something_new')),
+        reason: 'R-ID-1: raw internal reason codes must never reach the screen');
+    expect(commandRefusalText(en, 'ring', 'Pixel 7', 'something_new'), en.commandFailed);
   });
 
   // #234: the pause could not start although the filter is consented and prepared — a different
@@ -157,7 +158,7 @@ void main() {
         reason: 'a mapped cause is not shown as a code');
   });
 
-  test('commandErrorText keys on the shapes the routes send, and keeps the rest verbatim', () {
+  test('commandErrorText keys on the shapes the routes send, and never leaks raw codes (R-ID-1)', () {
     final options = RequestOptions(path: '/v1/devices/dev-1/command');
     DioException http(int status, Map<String, dynamic> body) => DioException(
           requestOptions: options,
@@ -192,11 +193,10 @@ void main() {
       'لم يُرسل «قفل» إلى Pixel 7: أُعطيت موافقة هذا الطفل لمنطقة غير منطقة عائلتك، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل للتفاصيل.',
     );
     expect(commandErrorText(ar, 'lock', 'Pixel 7', http(428, {'error': 'something_else'})),
-        contains('something_else'),
-        reason: 'a 428 without a known code is a bug report, not a sentence we invented');
-    // anything else stays visible
-    expect(commandErrorText(ar, 'ring', 'Pixel 7', 'some_new_code'), contains('some_new_code'),
-        reason: 'an unknown code must stay visible rather than becoming a vague failure');
+        isNot(contains('something_else')),
+        reason: 'R-ID-1: unmapped 428 codes do not leak onto screen');
+    expect(commandErrorText(ar, 'ring', 'Pixel 7', 'some_new_code'), isNot(contains('some_new_code')),
+        reason: 'R-ID-1: unknown codes stay behind the localized failure sentence');
   });
 
   testWidgets('a 429 on lock reads as "try again in a minute", not as Too Many Requests', (tester) async {

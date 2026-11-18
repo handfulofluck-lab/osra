@@ -1,7 +1,7 @@
 {
   "@@locale": "en",
   "appName": "OSRA",
-    "deleteAccountTitle": "Delete account",
+  "deleteAccountTitle": "Delete account",
   "deleteAccountFamilyWarning": "This deletes your whole family: every child, every device and every other parent. It cannot be undone.",
   "deleteAccountSelfWarning": "This deletes your account and signs you out. The family and its children stay.",
   "deleteAccountFamilyStopsTitle": "What is deleted",
@@ -12,7 +12,13 @@
   "deleteAccountSelfStopsAccount": "Your account and your sign-in. The family keeps working without you.",
   "deleteAccountSelfStopsFamilyKept": "The children stay monitored by the rest of the family.",
   "deleteAccountTypeEmail": "Type your email to confirm: {email}",
-  "@deleteAccountTypeEmail": {"placeholders": {"email": {"type": "String"}}},
+  "@deleteAccountTypeEmail": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
   "deleteAccountTypeHint": "Deletion has no undo.",
   "deleteAccountSubmit": "Delete account",
   "deleteAccountBusy": "Deleting…",
@@ -22,10 +28,9 @@
   "deleteAccountConsentHeld": "You hold consent records for a child in another family, so this account cannot be deleted yet.",
   "deleteAccountOnlyOwner": "Only the family owner can delete the family.",
   "deleteAccountOwnerMustUseFamily": "This account owns the family, so use the family deletion instead.",
-    "deleteAccountLoadFailed": "Could not load your family. Check your connection and try again.",
-"deleteAccountFailed": "The account was not deleted. {detail}",
-  "@deleteAccountFailed": {"placeholders": {"detail": {"type": "String"}}},
-"cancel": "Cancel",
+  "deleteAccountLoadFailed": "Could not load your family. Check your connection and try again.",
+  "deleteAccountFailed": "Couldn't delete your account. Check your connection and try again.",
+  "cancel": "Cancel",
   "save": "Save",
   "add": "Add",
   "continueLabel": "Continue",
@@ -45,7 +50,9 @@
   "minutesShort": "{minutes} min",
   "@minutesShort": {
     "placeholders": {
-      "minutes": { "type": "int" }
+      "minutes": {
+        "type": "int"
+      }
     }
   },
   "appTagline": "أسرة — parental control for your family",
@@ -54,7 +61,9 @@
   "serverShown": "Server: {url}",
   "@serverShown": {
     "placeholders": {
-      "url": { "type": "String" }
+      "url": {
+        "type": "String"
+      }
     }
   },
   "invalidServer": "Enter a valid server, e.g. http://192.168.1.5:3000",
@@ -85,12 +94,7 @@
   "appearanceMenu": "Appearance",
   "digestPreferencesMenu": "Digest preferences",
   "signOutTooltip": "Sign out",
-  "familyLoadFailed": "Failed to load family: {error}",
-  "@familyLoadFailed": {
-    "placeholders": {
-      "error": { "type": "String" }
-    }
-  },
+  "familyLoadFailed": "Couldn't load your family. Check your connection and try again.",
   "noChildrenYet": "No children yet — tap \"Add child\"",
   "addChild": "Add child",
   "statusOnline": "online",
@@ -100,21 +104,31 @@
   "screenTimeValue": "{minutes} / {limit, plural, =0{— min} other{{limit} min}}",
   "@screenTimeValue": {
     "placeholders": {
-      "minutes": { "type": "int" },
-      "limit": { "type": "int" }
+      "minutes": {
+        "type": "int"
+      },
+      "limit": {
+        "type": "int"
+      }
     }
   },
   "liveActivityToday": "{app} · {minutes}m today",
   "@liveActivityToday": {
     "placeholders": {
-      "app": { "type": "String" },
-      "minutes": { "type": "int" }
+      "app": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "int"
+      }
     }
   },
   "wellbeingScore": "Wellbeing {score}/100",
   "@wellbeingScore": {
     "placeholders": {
-      "score": { "type": "int" }
+      "score": {
+        "type": "int"
+      }
     }
   },
   "wellbeingUsage": "usage",
@@ -125,25 +139,24 @@
   "pauseInternetTitle": "Pause internet for {name}?",
   "@pauseInternetTitle": {
     "placeholders": {
-      "name": { "type": "String" }
+      "name": {
+        "type": "String"
+      }
     }
   },
   "resumeInternetTitle": "Resume internet for {name}?",
   "@resumeInternetTitle": {
     "placeholders": {
-      "name": { "type": "String" }
+      "name": {
+        "type": "String"
+      }
     }
   },
   "pauseInternetBody": "Educational apps keep working.",
   "resumeInternetBody": "All apps and sites work again.",
   "pause": "Pause",
   "resume": "Resume",
-  "internetChangeFailed": "Internet change failed: {error}",
-  "@internetChangeFailed": {
-    "placeholders": {
-      "error": { "type": "String" }
-    }
-  },
+  "internetChangeFailed": "Couldn't change internet access. Check your connection and try again.",
   "parentalConsent": "Parental consent",
   "childDetails": "Child details",
   "consentNotice": "Before you add a child, we need to confirm that you are their parent or guardian.",
@@ -167,7 +180,9 @@
   "bornYear": "Born {year}",
   "@bornYear": {
     "placeholders": {
-      "year": { "type": "int" }
+      "year": {
+        "type": "int"
+      }
     }
   },
   "socialMonitoringTitle": "Social monitoring",
@@ -177,7 +192,9 @@
   "lastSeenLabel": "Last seen: {time}",
   "@lastSeenLabel": {
     "placeholders": {
-      "time": { "type": "String" }
+      "time": {
+        "type": "String"
+      }
     }
   },
   "deliveryStatus": "Delivery status",
@@ -192,9 +209,15 @@
   "latestCommand": "Latest: {type} · {status} · {time}",
   "@latestCommand": {
     "placeholders": {
-      "type": { "type": "String" },
-      "status": { "type": "String" },
-      "time": { "type": "String" }
+      "type": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
     }
   },
   "bonusTime": "Bonus time",
@@ -202,70 +225,111 @@
   "bonusGranted": "{minutes, plural, =1{+1 extra minute granted today} other{+{minutes} extra minutes granted today}}",
   "@bonusGranted": {
     "placeholders": {
-      "minutes": { "type": "int" }
+      "minutes": {
+        "type": "int"
+      }
     }
   },
-  "bonusFailed": "Bonus failed: {error}",
-  "@bonusFailed": {
-    "placeholders": {
-      "error": { "type": "String" }
-    }
-  },
+  "bonusFailed": "Couldn't add bonus time. Check your connection and try again.",
   "windDown": "Wind down",
   "windDownBody": "The device shows a soft bedtime warning, then locks.",
   "windDownSubtitle": "Soft warning, then the screen locks",
   "windDownConfirm": "{minutes, plural, =1{Screen will lock in 1 minute on the device} other{Screen will lock in {minutes} minutes on the device}}",
   "@windDownConfirm": {
     "placeholders": {
-      "minutes": { "type": "int" }
+      "minutes": {
+        "type": "int"
+      }
     }
   },
-  "windDownFailed": "Wind down failed: {error}",
-  "@windDownFailed": {
-    "placeholders": {
-      "error": { "type": "String" }
-    }
-  },
+  "windDownFailed": "Couldn't start wind-down. Check your connection and try again.",
   "commandQueued": "{command} queued for {device} — the device has not confirmed it yet.",
   "@commandQueued": {
     "placeholders": {
-      "command": { "type": "String" },
-      "device": { "type": "String" }
+      "command": {
+        "type": "String"
+      },
+      "device": {
+        "type": "String"
+      }
     }
   },
   "netQueued": "{action} queued for {device} — the device has not confirmed it yet.",
   "@netQueued": {
     "placeholders": {
-      "action": { "type": "String" },
-      "device": { "type": "String" }
+      "action": {
+        "type": "String"
+      },
+      "device": {
+        "type": "String"
+      }
     }
   },
-  "commandFailed": "Command failed: {error}",
+  "commandFailed": "Couldn't send the command. Check your connection and try again.",
   "commandErrorForbidden": "You don't have permission to send {command} to {device}. Your family owner can give you access.",
-  "@commandErrorForbidden": {"placeholders": {"command": {"type": "String"}, "device": {"type": "String"}}},
+  "@commandErrorForbidden": {
+    "placeholders": {
+      "command": {
+        "type": "String"
+      },
+      "device": {
+        "type": "String"
+      }
+    }
+  },
   "commandErrorRateLimited": "{command} was not sent to {device}: too many requests right now. Try again in a minute.",
-  "@commandErrorRateLimited": {"placeholders": {"command": {"type": "String"}, "device": {"type": "String"}}},
+  "@commandErrorRateLimited": {
+    "placeholders": {
+      "command": {
+        "type": "String"
+      },
+      "device": {
+        "type": "String"
+      }
+    }
+  },
   "commandErrorConsentWithdrawn": "{command} was not sent to {device}: this child has no active consent, so monitoring is paused. Open Parental consent on the child's page to see why.",
   "commandErrorJurisdictionMismatch": "{command} was not sent to {device}: this child's consent was given for a different region than your family's, so monitoring is paused. Open Parental consent on the child's page for details.",
-  "@commandErrorConsentWithdrawn": {"placeholders": {"command": {"type": "String"}, "device": {"type": "String"}}},
-  "@commandErrorJurisdictionMismatch": {"placeholders": {"command": {"type": "String"}, "device": {"type": "String"}}},
-  "@commandFailed": {
+  "@commandErrorConsentWithdrawn": {
     "placeholders": {
-      "error": { "type": "String" }
+      "command": {
+        "type": "String"
+      },
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "@commandErrorJurisdictionMismatch": {
+    "placeholders": {
+      "command": {
+        "type": "String"
+      },
+      "device": {
+        "type": "String"
+      }
     }
   },
   "commandRefusedBackgroundLocation": "{command} was not sent to {device}: the phone has not granted “Allow all the time” location, so Locate and geofence alerts cannot reach it. Ask your child to open OSRA and grant it.",
   "@commandRefusedBackgroundLocation": {
     "placeholders": {
-      "command": { "type": "String" },
-      "device": { "type": "String" }
+      "command": {
+        "type": "String"
+      },
+      "device": {
+        "type": "String"
+      }
     }
   },
   "commandRefusedLocationPermission": "{command} was not sent to {device}: the phone has no location permission. Ask your child to open OSRA and grant location.",
   "@commandRefusedLocationPermission": {
     "placeholders": {
-      "command": { "type": "String" },
-      "device": { "type": "String" }
+      "command": {
+        "type": "String"
+      },
+      "device": {
+        "type": "String"
+      }
     }
   },
   "commandRefusedLockScreen": "The lock can't hold on your child's phone: turn on OSRA's accessibility service there.",
@@ -281,61 +345,65 @@
   "appActionBlock": "Block",
   "appActionTimeLimit": "Time limit",
   "appActionAllow": "Allow",
-  "locationLoadFailed": "Failed to load location: {error}",
-  "@locationLoadFailed": {
-    "placeholders": {
-      "error": { "type": "String" }
-    }
-  },
+  "locationLoadFailed": "Couldn't load location. Check your connection and try again.",
   "noLocationReported": "No location reported yet",
   "accuracyLabel": "Accuracy ±{meters} m · {time}",
   "@accuracyLabel": {
     "placeholders": {
-      "meters": { "type": "int" },
-      "time": { "type": "String" }
+      "meters": {
+        "type": "int"
+      },
+      "time": {
+        "type": "String"
+      }
     }
   },
   "accuracyShort": "±{meters} m",
   "@accuracyShort": {
     "placeholders": {
-      "meters": { "type": "int" }
+      "meters": {
+        "type": "int"
+      }
     }
   },
   "mapPreview": "Map preview",
-  "locationHistoryLoadFailed": "Failed to load history: {error}",
-  "@locationHistoryLoadFailed": {
-    "placeholders": {
-      "error": { "type": "String" }
-    }
-  },
+  "locationHistoryLoadFailed": "Couldn't load location history. Check your connection and try again.",
   "noLocationHistoryToday": "No location history for today",
   "todaysRoute": "Today's route",
   "back15Tooltip": "Back 15 min",
   "forward15Tooltip": "Forward 15 min",
   "accuracyUnknown": "accuracy unknown",
   "readPermissionRequired": "Your family owner can give you access to this.",
-
   "readErrorConsentMissing": "This change was not saved: this child has no active consent, so monitoring is paused. Open Parental consent on the child's page to see why.",
   "readErrorConsentRegion": "This change was not saved: this child's consent was given for a different region than your family's. Open Parental consent on the child's page for details.",
-
   "@readErrorConsentMissing": {},
   "@readErrorConsentRegion": {},
   "addChildConsentRegion": "The consent region must match your family's region ({region}). Choose {region} and try again.",
-  "@addChildConsentRegion": {"placeholders": {"region": {"type": "String"}}},
+  "@addChildConsentRegion": {
+    "placeholders": {
+      "region": {
+        "type": "String"
+      }
+    }
+  },
   "familyDone": "Done",
   "familyMembersTitle": "Family members",
   "familyParentsHeading": "Parents",
   "familyNoParents": "No parents found",
   "familyInviteMember": "Invite member",
   "familyPendingInvites": "Pending invites",
-  "familyInvitesLoadFailed": "Failed to load invites: {error}",
-  "@familyInvitesLoadFailed": {"placeholders": {"error": {"type": "String"}}},
+  "familyInvitesLoadFailed": "Couldn't load invites. Check your connection and try again.",
   "familyNoPendingInvites": "No pending invites",
   "familyRevokeInvite": "Revoke invite",
   "familyInviteRevoked": "Invite to {email} revoked",
-  "@familyInviteRevoked": {"placeholders": {"email": {"type": "String"}}},
-  "familyRevokeFailed": "Revoke failed: {error}",
-  "@familyRevokeFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@familyInviteRevoked": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "familyRevokeFailed": "Couldn't revoke invite. Check your connection and try again.",
   "familyEnterEmail": "Enter an email address",
   "familyInviteSent": "Invite sent",
   "familyEmailLabel": "Email",
@@ -344,9 +412,17 @@
   "familyRoleGuardian": "Guardian",
   "familyPermissions": "Permissions",
   "listSeparator": ", ",
-  "@listSeparator": {"description": "Joins the items of a short inline list, such as an invite's permissions. Arabic uses the Arabic comma."},
+  "@listSeparator": {
+    "description": "Joins the items of a short inline list, such as an invite's permissions. Arabic uses the Arabic comma."
+  },
   "familyInviteSentTo": "Invite sent to {email}.",
-  "@familyInviteSentTo": {"placeholders": {"email": {"type": "String"}}},
+  "@familyInviteSentTo": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
   "familyTokenExplanation": "(test build: share this token — the invited parent registers, then POSTs accept with it)",
   "familySendInvite": "Send invite",
   "familyCopyToken": "Copy token",
@@ -358,52 +434,85 @@
   "familyMapTitle": "Family map",
   "familyMapAddGeofence": "Add geofence",
   "familyMapLastUpdate": "Last update: {time}",
-  "@familyMapLastUpdate": {"placeholders": {"time": {"type": "String"}}},
+  "@familyMapLastUpdate": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "familyMapLastUpdateUnknown": "unknown",
   "familyMapBattery": "Battery: {pct}%",
-  "@familyMapBattery": {"placeholders": {"pct": {"type": "int"}}},
+  "@familyMapBattery": {
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      }
+    }
+  },
   "familyMapRing": "Ring device",
   "familyMapLock": "Lock device",
   "familyMapRingQueued": "Ring queued for {model} — the device has not confirmed it yet.",
-  "@familyMapRingQueued": {"placeholders": {"model": {"type": "String"}}},
+  "@familyMapRingQueued": {
+    "placeholders": {
+      "model": {
+        "type": "String"
+      }
+    }
+  },
   "familyMapLockQueued": "Lock queued for {model} — the device has not confirmed it yet.",
-  "@familyMapLockQueued": {"placeholders": {"model": {"type": "String"}}},
-  "familyMapCommandFailed": "Command failed: {error}",
-  "@familyMapCommandFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@familyMapLockQueued": {
+    "placeholders": {
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "familyMapCommandFailed": "Couldn't send the command. Check your connection and try again.",
   "familyMapNoChildren": "No children to show",
   "familyMapEnterLabel": "Enter a label",
   "familyMapGeofenceAdded": "Geofence \"{name}\" added",
-  "@familyMapGeofenceAdded": {"placeholders": {"name": {"type": "String"}}},
+  "@familyMapGeofenceAdded": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "familyMapChild": "Child",
   "familyMapLabelField": "Label (e.g. School)",
   "familyMapRadius": "Radius: {meters} m",
-  "@familyMapRadius": {"placeholders": {"meters": {"type": "int"}}},
-  "familyMapMeters": "{meters} m",
-  "@familyMapMeters": {"placeholders": {"meters": {"type": "int"}}},
-  "familyMapCreate": "Create",
-  "alertsLoadFailed": "Failed to load alerts: {error}",
-  "@alertsLoadFailed": {
+  "@familyMapRadius": {
     "placeholders": {
-      "error": { "type": "String" }
+      "meters": {
+        "type": "int"
+      }
     }
   },
+  "familyMapMeters": "{meters} m",
+  "@familyMapMeters": {
+    "placeholders": {
+      "meters": {
+        "type": "int"
+      }
+    }
+  },
+  "familyMapCreate": "Create",
+  "alertsLoadFailed": "Couldn't load alerts. Check your connection and try again.",
   "noRecentAlerts": "No recent alerts",
   "acknowledgeTooltip": "Acknowledge",
   "ageRating": "Age rating: {rating}",
   "@ageRating": {
     "placeholders": {
-      "rating": { "type": "String" }
+      "rating": {
+        "type": "String"
+      }
     }
   },
   "risks": "Risks",
   "saferAlternatives": "Safer alternatives",
   "noInsightsYet": "No insights for this app yet",
-  "insightsLoadFailed": "Failed to load insights: {error}",
-  "@insightsLoadFailed": {
-    "placeholders": {
-      "error": { "type": "String" }
-    }
-  },
+  "insightsLoadFailed": "Couldn't load app insights. Check your connection and try again.",
   "commandLock": "Lock",
   "commandUnlock": "Unlock",
   "commandRing": "Ring",
@@ -427,40 +536,36 @@
   "alertsTitle": "Alerts",
   "noAlertsYet": "No alerts yet",
   "loadMore": "Load more",
-  "acknowledgeFailed": "Acknowledge failed: {error}",
-  "@acknowledgeFailed": {
-    "placeholders": {
-      "error": { "type": "String" }
-    }
-  },
+  "acknowledgeFailed": "Couldn't dismiss alert. Check your connection and try again.",
   "categoryLabel": "Category: {category}",
   "@categoryLabel": {
     "placeholders": {
-      "category": { "type": "String" }
+      "category": {
+        "type": "String"
+      }
     }
   },
   "severityLabel": "Severity: {severity}",
   "@severityLabel": {
     "placeholders": {
-      "severity": { "type": "String" }
+      "severity": {
+        "type": "String"
+      }
     }
   },
   "timeLabel": "Time: {time}",
   "@timeLabel": {
     "placeholders": {
-      "time": { "type": "String" }
+      "time": {
+        "type": "String"
+      }
     }
   },
   "allowAction": "Allow",
   "blockThisApp": "Block this app",
   "allowedSnack": "Allowed",
   "appBlockedSnack": "App blocked",
-  "blockFailed": "Block failed: {error}",
-  "@blockFailed": {
-    "placeholders": {
-      "error": { "type": "String" }
-    }
-  },
+  "blockFailed": "Couldn't block app. Check your connection and try again.",
   "severityCritical": "Critical",
   "severityWarning": "Warning",
   "severityInfo": "Info",
@@ -483,13 +588,17 @@
   "dailyLimit": "Daily limit: {minutes} min",
   "@dailyLimit": {
     "placeholders": {
-      "minutes": { "type": "int" }
+      "minutes": {
+        "type": "int"
+      }
     }
   },
   "weekendLimit": "Weekend limit: {minutes} min",
   "@weekendLimit": {
     "placeholders": {
-      "minutes": { "type": "int" }
+      "minutes": {
+        "type": "int"
+      }
     }
   },
   "bedtime": "Bedtime",
@@ -500,8 +609,12 @@
   "@blockedNowBy": {
     "description": "#456: why an app the parent allowed is refused right now. {reason} is a localised window name (School hours, Bedtime) or the family's own routine name.",
     "placeholders": {
-      "reason": { "type": "String" },
-      "time": { "type": "String" }
+      "reason": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
     }
   },
   "weekdayMon": "Mon",
@@ -557,7 +670,7 @@
   "installedAppsEmpty": "No apps reported yet",
   "installedAppsEmptyHint": "The list appears after the child device's next check-in (up to 15 minutes).",
   "installedAppsNoMatch": "No apps match your search.",
-  "installedAppsLoadFailed": "Couldn't load apps. Check your connection and try again.",
+  "installedAppsLoadFailed": "Couldn't load installed apps. Check your connection and try again.",
   "appNoLongerInstalled": "App no longer installed",
   "appNoLongerInstalledRemove": "App no longer installed. Remove",
   "appNamePending": "Name not available yet",
@@ -565,7 +678,9 @@
   "installedAppsTruncated": "Showing the first {count} apps.",
   "@installedAppsTruncated": {
     "placeholders": {
-      "count": { "type": "int" }
+      "count": {
+        "type": "int"
+      }
     }
   },
   "addAlwaysAllowedTitle": "Add always-allowed app",
@@ -578,13 +693,17 @@
   "startTimeButton": "Start {time}",
   "@startTimeButton": {
     "placeholders": {
-      "time": { "type": "String" }
+      "time": {
+        "type": "String"
+      }
     }
   },
   "endTimeButton": "End {time}",
   "@endTimeButton": {
     "placeholders": {
-      "time": { "type": "String" }
+      "time": {
+        "type": "String"
+      }
     }
   },
   "blockedAppsLabel": "Blocked apps (comma-separated)",
@@ -598,7 +717,9 @@
   "noActivityDays": "{days, plural, =1{No activity recorded in the last day} other{No activity recorded in the last {days} days}}",
   "@noActivityDays": {
     "placeholders": {
-      "days": { "type": "int" }
+      "days": {
+        "type": "int"
+      }
     }
   },
   "appUsage": "App usage",
@@ -607,8 +728,12 @@
   "@chartLegendRow": {"placeholders": {"app": {"type": "String"}, "minutes": {"type": "int"}}},
   "@totalAverage": {
     "placeholders": {
-      "total": { "type": "int" },
-      "avg": { "type": "int" }
+      "total": {
+        "type": "int"
+      },
+      "avg": {
+        "type": "int"
+      }
     }
   },
   "noAppUsage": "No app usage recorded",
@@ -616,14 +741,18 @@
   "urlVisits": "{count, plural, =0{No URL visits} =1{1 URL visit} other{{count} URL visits}}",
   "@urlVisits": {
     "placeholders": {
-      "count": { "type": "int" }
+      "count": {
+        "type": "int"
+      }
     }
   },
   "noBlockedDomains": "No blocked domains",
   "blockedTimes": "{count, plural, =1{blocked once} other{{count}× blocked}}",
   "@blockedTimes": {
     "placeholders": {
-      "count": { "type": "int" }
+      "count": {
+        "type": "int"
+      }
     }
   },
   "safeSearchForced": "YouTube search is forced to SafeSearch",
@@ -632,53 +761,73 @@
   "socialConcerns": "{count, plural, =0{No social concerns} =1{1 social concern} other{{count} social concerns}}",
   "@socialConcerns": {
     "placeholders": {
-      "count": { "type": "int" }
+      "count": {
+        "type": "int"
+      }
     }
   },
   "callsCount": "{count, plural, =0{No calls} =1{1 call} other{{count} calls}}",
   "@callsCount": {
     "placeholders": {
-      "count": { "type": "int" }
+      "count": {
+        "type": "int"
+      }
     }
   },
   "smsCount": "{count, plural, =0{No SMS} =1{1 SMS} other{{count} SMS}}",
   "@smsCount": {
     "placeholders": {
-      "count": { "type": "int" }
+      "count": {
+        "type": "int"
+      }
     }
   },
   "screenTimeWebTitle": "Screen time & web",
   "daysShort": "{days}d",
   "@daysShort": {
     "placeholders": {
-      "days": { "type": "int" }
+      "days": {
+        "type": "int"
+      }
     }
   },
   "couldNotLoadScreenTime": "Could not load screen time. Check your connection and try again.",
   "noScreenTimeData": "{days, plural, =1{No screen time data in the last day} other{No screen time data in the last {days} days}}",
   "@noScreenTimeData": {
     "placeholders": {
-      "days": { "type": "int" }
+      "days": {
+        "type": "int"
+      }
     }
   },
   "noScreenTimeRecorded": "{days, plural, =1{No screen time recorded in the last day} other{No screen time recorded in the last {days} days}}",
   "@noScreenTimeRecorded": {
     "placeholders": {
-      "days": { "type": "int" }
+      "days": {
+        "type": "int"
+      }
     }
   },
   "totalOverDays": "Total {total} min over {count, plural, =1{1 day} other{{count} days}}",
   "@totalOverDays": {
     "placeholders": {
-      "total": { "type": "int" },
-      "count": { "type": "int" }
+      "total": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      }
     }
   },
   "fewerDaysReturned": "Only {returned} of the {requested} requested days were returned; showing those days as-is.",
   "@fewerDaysReturned": {
     "placeholders": {
-      "returned": { "type": "int" },
-      "requested": { "type": "int" }
+      "returned": {
+        "type": "int"
+      },
+      "requested": {
+        "type": "int"
+      }
     }
   },
   "dayByDay": "Day by day",
@@ -689,19 +838,25 @@
   "noBlockedSites": "{days, plural, =1{No blocked sites in the last day} other{No blocked sites in the last {days} days}}",
   "@noBlockedSites": {
     "placeholders": {
-      "days": { "type": "int" }
+      "days": {
+        "type": "int"
+      }
     }
   },
   "noBrowsingHistory": "{days, plural, =1{No browsing history in the last day} other{No browsing history in the last {days} days}}",
   "@noBrowsingHistory": {
     "placeholders": {
-      "days": { "type": "int" }
+      "days": {
+        "type": "int"
+      }
     }
   },
   "showingLatestVisits": "Showing the latest {limit} visits — raise the limit to see more.",
   "@showingLatestVisits": {
     "placeholders": {
-      "limit": { "type": "int" }
+      "limit": {
+        "type": "int"
+      }
     }
   },
   "blocked": "Blocked",
@@ -709,8 +864,12 @@
   "dayTooltip": "{date}: {minutes} min",
   "@dayTooltip": {
     "placeholders": {
-      "date": { "type": "String" },
-      "minutes": { "type": "int" }
+      "date": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "int"
+      }
     }
   },
   "scanQr": "Scan this QR code with the OSRA child app.",
@@ -720,13 +879,17 @@
   "pairingQrSemantics": "Pairing QR code for {code}",
   "@pairingQrSemantics": {
     "placeholders": {
-      "code": { "type": "String" }
+      "code": {
+        "type": "String"
+      }
     }
   },
   "expiresIn": "Expires in {time}",
   "@expiresIn": {
     "placeholders": {
-      "time": { "type": "String" }
+      "time": {
+        "type": "String"
+      }
     }
   },
   "regenerate": "Regenerate",
@@ -735,7 +898,9 @@
   "codeWorksOnce": "{minutes, plural, =1{The code works once and expires after 1 minute.} other{The code works once and expires after {minutes} minutes.}}",
   "@codeWorksOnce": {
     "placeholders": {
-      "minutes": { "type": "int" }
+      "minutes": {
+        "type": "int"
+      }
     }
   },
   "pairCodeError": "The server did not return a usable pairing code. Try Regenerate.",
@@ -745,7 +910,9 @@
   "pairClaimBody": "{device} wants to be paired. Allow it only if it is the phone in front of you.",
   "@pairClaimBody": {
     "placeholders": {
-      "device": { "type": "String" }
+      "device": {
+        "type": "String"
+      }
     }
   },
   "pairClaimDeny": "Deny",
@@ -753,7 +920,9 @@
   "pairClaimPaired": "{device} is paired.",
   "@pairClaimPaired": {
     "placeholders": {
-      "device": { "type": "String" }
+      "device": {
+        "type": "String"
+      }
     }
   },
   "pairClaimDenied": "Declined. Make a new code to pair a phone.",
@@ -765,7 +934,9 @@
   "followingDevice": "Following the device (currently {mode}).",
   "@followingDevice": {
     "placeholders": {
-      "mode": { "type": "String" }
+      "mode": {
+        "type": "String"
+      }
     }
   },
   "lightAlwaysOn": "Light theme is always on.",
@@ -775,19 +946,16 @@
   "followingLanguage": "Following the device (currently {language}).",
   "@followingLanguage": {
     "placeholders": {
-      "language": { "type": "String" }
+      "language": {
+        "type": "String"
+      }
     }
   },
   "englishAlwaysOn": "English is always on.",
   "arabicAlwaysOn": "Arabic is always on.",
   "monitoring": "Monitoring",
   "monitoringSaved": "Monitoring saved",
-  "saveFailed": "Save failed: {error}",
-  "@saveFailed": {
-    "placeholders": {
-      "error": { "type": "String" }
-    }
-  },
+  "saveFailed": "Couldn't save changes. Check your connection and try again.",
   "saveMonitoring": "Save monitoring",
   "concerns": "Concerns",
   "vaultTrustCopy": "Excerpts travel over an encrypted connection and are stored encrypted on OSRA's servers.",
@@ -817,26 +985,34 @@
   "relativeMinutesAgo": "{count}m ago",
   "@relativeMinutesAgo": {
     "placeholders": {
-      "count": { "type": "int" }
+      "count": {
+        "type": "int"
+      }
     }
   },
   "relativeHoursAgo": "{count}h ago",
   "@relativeHoursAgo": {
     "placeholders": {
-      "count": { "type": "int" }
+      "count": {
+        "type": "int"
+      }
     }
   },
   "alertTechnicalDetails": "Technical details",
   "relativeOverHoursAgo": "more than {count}h ago",
   "@relativeOverHoursAgo": {
     "placeholders": {
-      "count": { "type": "int" }
+      "count": {
+        "type": "int"
+      }
     }
   },
   "relativeDaysAgo": "{count}d ago",
   "@relativeDaysAgo": {
     "placeholders": {
-      "count": { "type": "int" }
+      "count": {
+        "type": "int"
+      }
     }
   },
   "decryptedVaultContent": "Decrypted Vault Content",
@@ -855,19 +1031,25 @@
   "createdEvent": "Created {time}",
   "@createdEvent": {
     "placeholders": {
-      "time": { "type": "String" }
+      "time": {
+        "type": "String"
+      }
     }
   },
   "deliveredEvent": "Delivered {time}",
   "@deliveredEvent": {
     "placeholders": {
-      "time": { "type": "String" }
+      "time": {
+        "type": "String"
+      }
     }
   },
   "confirmedEvent": "Confirmed {time}",
   "@confirmedEvent": {
     "placeholders": {
-      "time": { "type": "String" }
+      "time": {
+        "type": "String"
+      }
     }
   },
   "mfaMenu": "Two-step verification",
@@ -920,13 +1102,17 @@
   "mfaCodesIssuedAt": "Created {date}",
   "@mfaCodesIssuedAt": {
     "placeholders": {
-      "date": { "type": "String" }
+      "date": {
+        "type": "String"
+      }
     }
   },
   "mfaRecoveryCodeSemantics": "Recovery code {index}",
   "@mfaRecoveryCodeSemantics": {
     "placeholders": {
-      "index": { "type": "int" }
+      "index": {
+        "type": "int"
+      }
     }
   },
   "mfaRecoveryLink": "Lost your authenticator?",
@@ -965,7 +1151,9 @@
   "onboardingPairIntro": "Open OSRA on {childName}'s phone and choose Pair with a code.",
   "@onboardingPairIntro": {
     "placeholders": {
-      "childName": { "type": "String" }
+      "childName": {
+        "type": "String"
+      }
     }
   },
   "onboardingPairSteps": "Scan this QR code, or type the six digits below if the camera cannot scan it. You do not need to give your password to the person holding the phone.",
@@ -977,7 +1165,9 @@
   "pairingCodeSemantics": "Pairing code {code}",
   "@pairingCodeSemantics": {
     "placeholders": {
-      "code": { "type": "String" }
+      "code": {
+        "type": "String"
+      }
     }
   },
   "onboardingDoneStepTitle": "Setup",
@@ -990,7 +1180,9 @@
   "onboardingFinishSetupBody": "Pair {childName}'s phone to start protection.",
   "@onboardingFinishSetupBody": {
     "placeholders": {
-      "childName": { "type": "String" }
+      "childName": {
+        "type": "String"
+      }
     }
   },
   "onboardingPairNow": "Pair now",
@@ -998,7 +1190,9 @@
   "consentStatusSubtitle": "What the server has on record for {childName}.",
   "@consentStatusSubtitle": {
     "placeholders": {
-      "childName": { "type": "String" }
+      "childName": {
+        "type": "String"
+      }
     }
   },
   "consentStateActive": "Active",
@@ -1011,26 +1205,36 @@
   "consentStateExpiringDetail": "This record expires on {date}. Collection and alerts stop after that date unless consent is granted again.",
   "@consentStateExpiringDetail": {
     "placeholders": {
-      "date": { "type": "String" }
+      "date": {
+        "type": "String"
+      }
     }
   },
   "consentStateExpiredDetail": "This record expired on {date}. Monitoring and data collection are stopped until consent is granted again.",
   "@consentStateExpiredDetail": {
     "placeholders": {
-      "date": { "type": "String" }
+      "date": {
+        "type": "String"
+      }
     }
   },
   "consentStateRevokedDetail": "Consent was withdrawn on {date}. Monitoring and data collection are stopped until consent is granted again.",
   "@consentStateRevokedDetail": {
     "placeholders": {
-      "date": { "type": "String" }
+      "date": {
+        "type": "String"
+      }
     }
   },
   "consentStateMismatchDetail": "The record's jurisdiction ({record}) does not match your family region ({family}), so it cannot authorise monitoring.",
   "@consentStateMismatchDetail": {
     "placeholders": {
-      "record": { "type": "String" },
-      "family": { "type": "String" }
+      "record": {
+        "type": "String"
+      },
+      "family": {
+        "type": "String"
+      }
     }
   },
   "consentStateNoneDetail": "No parental consent is on record for this child. Monitoring and data collection require an active record.",
@@ -1048,20 +1252,28 @@
   "consentHistoryGranted": "{method} · granted {date}",
   "@consentHistoryGranted": {
     "placeholders": {
-      "method": { "type": "String" },
-      "date": { "type": "String" }
+      "method": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
     }
   },
   "consentHistoryRevoked": "withdrawn {date}",
   "@consentHistoryRevoked": {
     "placeholders": {
-      "date": { "type": "String" }
+      "date": {
+        "type": "String"
+      }
     }
   },
   "consentHistoryExpired": "expired {date}",
   "@consentHistoryExpired": {
     "placeholders": {
-      "date": { "type": "String" }
+      "date": {
+        "type": "String"
+      }
     }
   },
   "consentHistoryActive": "active",
@@ -1072,7 +1284,9 @@
   "consentGrantRegion": "Recorded with your family's region ({region}). A record from another region cannot authorise monitoring.",
   "@consentGrantRegion": {
     "placeholders": {
-      "region": { "type": "String" }
+      "region": {
+        "type": "String"
+      }
     }
   },
   "consentGrantDone": "Consent recorded. Monitoring resumes on this child's devices.",
@@ -1090,7 +1304,9 @@
   "consentRevokeWarning": "This stops monitoring for {childName}. The device stays paired, and consent can be granted again later.",
   "@consentRevokeWarning": {
     "placeholders": {
-      "childName": { "type": "String" }
+      "childName": {
+        "type": "String"
+      }
     }
   },
   "consentRevokeStopsTitle": "What stops immediately",
@@ -1105,14 +1321,18 @@
   "consentRevokeTypePrompt": "Type {childName} to confirm",
   "@consentRevokeTypePrompt": {
     "placeholders": {
-      "childName": { "type": "String" }
+      "childName": {
+        "type": "String"
+      }
     }
   },
   "consentRevokeTypeHint": "The name must match.",
   "consentRevokeMismatch": "This does not match {childName}.",
   "@consentRevokeMismatch": {
     "placeholders": {
-      "childName": { "type": "String" }
+      "childName": {
+        "type": "String"
+      }
     }
   },
   "consentRevokeSubmit": "Withdraw consent now",
@@ -1125,13 +1345,15 @@
   "consentRevokeDevices": "{count, plural, =0{No device was connected.} =1{Pause signal queued for 1 device.} other{Pause signal queued for {count} devices.}}",
   "@consentRevokeDevices": {
     "placeholders": {
-      "count": { "type": "int" }
+      "count": {
+        "type": "int"
+      }
     }
   },
   "consentChildNameMissing": "Could not load your child's name. Go back and try again.",
   "refresh": "Refresh",
   "searchSafetyTitle": "Search safety",
-  "searchSafetyLoadFailed": "Failed to load search activity: {error}",
+  "searchSafetyLoadFailed": "Couldn't load search activity. Check your connection and try again.",
   "searchSafetyEmptyTitle": "No flagged searches detected",
   "searchSafetyEmptyBody": "SafeSearch enforcement and content inspection are active across all supported browsers and apps.",
   "searchSafetyVaultNotice": "Search queries are analysed for safety concerns. High-severity matches are logged to the encrypted family vault.",
@@ -1140,11 +1362,22 @@
   "searchSafetyEmptyQuery": "(Empty query)",
   "searchSafetyViewVault": "View vault details",
   "searchSafetyVaultTitle": "Search: \"{query}\"",
-  "@searchSafetyLoadFailed": {"placeholders": {"error": {"type": "String"}}},
-  "@searchSafetyFlaggedCount": {"placeholders": {"count": {"type": "int"}}},
-  "@searchSafetyVaultTitle": {"placeholders": {"query": {"type": "String"}}},
+  "@searchSafetyFlaggedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@searchSafetyVaultTitle": {
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
   "digestPrefsTitle": "Digest preferences",
-  "digestPrefsLoadFailed": "Failed to load preferences: {error}",
+  "digestPrefsLoadFailed": "Couldn't load digest settings. Check your connection and try again.",
   "digestPrefsDailyTitle": "Daily email digest",
   "digestPrefsDailyBody": "A short summary every evening",
   "digestPrefsWeeklyTitle": "Weekly email digest",
@@ -1166,19 +1399,21 @@
   "digestPrefsRendering": "Rendering…",
   "digestPrefsSendNow": "Send test digest now",
   "digestPrefsSaved": "Digest preferences saved",
-  "digestPrefsSaveFailed": "Save failed: {error}",
+  "digestPrefsSaveFailed": "Couldn't save digest settings. Check your connection and try again.",
   "digestPrefsTimezoneSet": "Digest timezone set to {zone}",
-  "digestPrefsTimezoneFailed": "Timezone not saved: {error}",
+  "digestPrefsTimezoneFailed": "Couldn't update time zone. Check your connection and try again.",
   "digestPrefsTestTitle": "Test digest",
   "digestPrefsClose": "Close",
-  "digestPrefsSendFailed": "Send failed: {error}",
+  "digestPrefsSendFailed": "Couldn't send test digest. Check your connection and try again.",
   "digestPrefsNoDigests": "No digests generated",
   "digestPrefsChildFallback": "Child",
-  "@digestPrefsLoadFailed": {"placeholders": {"error": {"type": "String"}}},
-  "@digestPrefsSaveFailed": {"placeholders": {"error": {"type": "String"}}},
-  "@digestPrefsTimezoneSet": {"placeholders": {"zone": {"type": "String"}}},
-  "@digestPrefsTimezoneFailed": {"placeholders": {"error": {"type": "String"}}},
-  "@digestPrefsSendFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@digestPrefsTimezoneSet": {
+    "placeholders": {
+      "zone": {
+        "type": "String"
+      }
+    }
+  },
   "mfaResetTitle": "Reset two-step verification",
   "mfaResetIntro": "Use this only if you have lost your authenticator and every recovery code. You will need your account password and access to this account's email, and one of these: a code shown on your child's phone, or another owner or co-parent who approves from their app. Then there is a 72-hour wait before two-step verification is reset.",
   "mfaResetSubmit": "Request a reset",
@@ -1196,22 +1431,52 @@
   "mfaResetStageMailboxTitle": "Check your email",
   "mfaResetStageMailboxBody": "Open the reset link sent to this account's email within 30 minutes. Opening the link puts an 8-digit code on your child's phone. If another parent is going to approve instead, they must do it from their app.",
   "mfaResetMailboxExpires": "The link is valid until {time}.",
-  "@mfaResetMailboxExpires": {"placeholders": {"time": {"type": "String"}}},
+  "@mfaResetMailboxExpires": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "mfaResetMailboxLinkGrace": "The link expired at {time}. If you opened it before then, enter the code now: it works for 10 minutes after the link was opened.",
-  "@mfaResetMailboxLinkGrace": {"placeholders": {"time": {"type": "String"}}},
+  "@mfaResetMailboxLinkGrace": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "mfaResetCancelHint": "To stop this request, open the cancel link in any email about it. Signing in with your authenticator also cancels it.",
   "mfaResetStageWitnessTitle": "Enter the code from your child's phone",
   "mfaResetStageWitnessBody": "The code is 8 digits and is valid for 10 minutes.",
   "mfaResetCodeExpires": "The code is valid until {time}.",
-  "@mfaResetCodeExpires": {"placeholders": {"time": {"type": "String"}}},
+  "@mfaResetCodeExpires": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "mfaResetAwaitingCoParent": "Waiting for another parent in your family to approve, by {time}.",
-  "@mfaResetAwaitingCoParent": {"placeholders": {"time": {"type": "String"}}},
+  "@mfaResetAwaitingCoParent": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "mfaResetHaveCode": "I have the code",
   "mfaResetEnterCode": "Enter the code",
   "mfaResetStageWindowTitle": "The 72-hour wait has started",
   "mfaResetStageWindowBody": "Two-step verification will be reset when the wait ends, unless the request is cancelled before then.",
   "mfaResetWindowEndsAt": "The wait ends at {time}.",
-  "@mfaResetWindowEndsAt": {"placeholders": {"time": {"type": "String"}}},
+  "@mfaResetWindowEndsAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "mfaResetWindowDue": "The wait is over. You can finish the reset now.",
   "mfaResetDeadlinePassed": "This link or code has run out. A new request replaces this one.",
   "mfaResetFinish": "Finish the reset",
@@ -1235,7 +1500,13 @@
   "mfaResetWitnessEnterCode": "Enter the 8-digit code.",
   "mfaResetWitnessInvalid": "That code was not accepted or has expired. Check the code on your child's phone and try again.",
   "mfaResetWitnessAttemptsLeft": "That code was not accepted. Attempts left: {count}.",
-  "@mfaResetWitnessAttemptsLeft": {"placeholders": {"count": {"type": "int"}}},
+  "@mfaResetWitnessAttemptsLeft": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "mfaResetWitnessTooMany": "Too many wrong codes. This request has ended; start again from the beginning.",
   "mfaResetApproveTitle": "Approve a reset request",
   "mfaResetApproveIntro": "Another parent in your family asked to reset their two-step verification after losing their authenticator and recovery codes. Approving starts a 72-hour wait. A sign-in by that parent during the wait cancels the request.",
@@ -1250,7 +1521,16 @@
   "mfaResetApproveForbidden": "You cannot approve or decline this request.",
   "mfaResetApproveNeedsId": "Open this screen from the notification about the request.",
   "mfaResetApproveIntroNamed": "{name} ({role}) asked to reset their two-step verification after losing their authenticator and recovery codes. Approving starts a 72-hour wait. A sign-in by {name} during the wait cancels the request.",
-  "@mfaResetApproveIntroNamed": {"placeholders": {"name": {"type": "String"}, "role": {"type": "String"}}},
+  "@mfaResetApproveIntroNamed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "role": {
+        "type": "String"
+      }
+    }
+  },
   "mfaResetApproveAlready": "This request already has its witness. The 72-hour wait is running; you can still decline it to cancel.",
   "mfaResetRoleOwner": "owner",
   "mfaResetRoleCoParent": "co-parent",
@@ -1258,12 +1538,33 @@
   "mfaResetRoleFamilyMember": "family member",
   "mfaResetPendingSectionTitle": "Reset requests waiting for you",
   "mfaResetPendingBanner": "{name} ({role}) asked to reset their two-step verification.",
-  "@mfaResetPendingBanner": {"placeholders": {"name": {"type": "String"}, "role": {"type": "String"}}},
+  "@mfaResetPendingBanner": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "role": {
+        "type": "String"
+      }
+    }
+  },
   "mfaResetPendingReview": "Review",
   "mfaResetPendingMore": "and {count} more",
-  "@mfaResetPendingMore": {"placeholders": {"count": {"type": "int"}}},
+  "@mfaResetPendingMore": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "mfaResetPendingAlreadyWaiting": "{role} — witness passed, the 72-hour wait is running",
-  "@mfaResetPendingAlreadyWaiting": {"placeholders": {"role": {"type": "String"}}},
+  "@mfaResetPendingAlreadyWaiting": {
+    "placeholders": {
+      "role": {
+        "type": "String"
+      }
+    }
+  },
   "mfaResetResumeTitle": "Continue your reset",
   "mfaResetResumeBody": "A reset request from this phone is still on file. Enter your account password to see where it stands. The password is used only for this check and is not saved.",
   "mfaResetResumePasswordRequired": "Enter your password to continue.",
@@ -1301,51 +1602,74 @@
   "alertTitleInstallRequest": "App install request",
   "alertTitleUnknownContact": "Unknown contact",
   "alertTitleGeneric": "Alert",
-    "alertPushBodyGeneric": "Open OSRA to see the details.\nProtecting your family at all times.",
-    "alertSosWhereMinutes": "{n, plural, =1{Last location: {coords}, 1 min ago} other{Last location: {coords}, {n} min ago}}",
-    "@alertSosWhereMinutes": {
-      "description": "#672: the SOS fix named with its coordinates and its age, one whole line per plural case (Arabic Language Bureau rule). The app wraps {coords} in LRI/PDI so the pair keeps its order in a right-to-left line.",
-      "placeholders": {"n": {"type": "int"}, "coords": {"type": "String"}}
-    },
-    "alertSosWhereHours": "{n, plural, =1{Last location: {coords}, more than 1 hour ago} other{Last location: {coords}, more than {n} hours ago}}",
-    "@alertSosWhereHours": {
-      "description": "#672: the same line for a fix an hour or more old; hours round down and the line says «more than».",
-      "placeholders": {"n": {"type": "int"}, "coords": {"type": "String"}}
-    },
-    "alertSosLocationMinutes": "{n, plural, =1{Location from 1 min ago. Tap to see it on the map.} other{Location from {n} min ago. Tap to see it on the map.}}",
-    "@alertSosLocationMinutes": {
-      "description": "#672, UI/UX Bureau: the notification body. A location exists and is this old — no coordinates on a lock screen; a tap opens the alert.",
-      "placeholders": {"n": {"type": "int"}}
-    },
-    "alertSosLocationHours": "{n, plural, =1{Location from more than 1 hour ago. Tap to see it on the map.} other{Location from more than {n} hours ago. Tap to see it on the map.}}",
-    "@alertSosLocationHours": {
-      "description": "#672: the notification body for a fix an hour or more old; hours round down and the line says «more than».",
-      "placeholders": {"n": {"type": "int"}}
-    },
-    "alertLocationAccuracy": "accurate to about {m} m",
-    "@alertLocationAccuracy": {
-      "description": "#672, UI/UX Bureau: the detail line's accuracy clause, shown only when the fix carries one.",
-      "placeholders": {"m": {"type": "int"}}
-    },
-    "alertCopyCoordinates": "Copy coordinates",
-    "@alertCopyCoordinates": {
-      "description": "#672, UI/UX Bureau: quiet action in the SOS alert's detail; copies five decimals, left to right."
-    },
-    "alertCoordinatesCopied": "Coordinates copied",
-    "@alertCoordinatesCopied": {
-      "description": "#672: short confirmation after Copy coordinates."
-    },
-    "alertOpenInMaps": "Open in Maps",
-    "@alertOpenInMaps": {
-      "description": "#672, UI/UX Bureau: hands the fix to the phone's own maps app, for a build whose in-app map cannot draw."
-    },
-    "alertShowOnMap": "Show on map",
-    "@alertShowOnMap": {
-      "description": "#672: the SOS alert's primary action, the family map opened on its fix."
-    },
-    "@alertShowOnMap": {
-      "description": "#672: the SOS alert's action that opens the family map on its fix."
-    },
+  "alertPushBodyGeneric": "Open OSRA to see the details.\nProtecting your family at all times.",
+  "alertSosWhereMinutes": "{n, plural, =1{Last location: {coords}, 1 min ago} other{Last location: {coords}, {n} min ago}}",
+  "@alertSosWhereMinutes": {
+    "description": "#672: the SOS fix named with its coordinates and its age, one whole line per plural case (Arabic Language Bureau rule). The app wraps {coords} in LRI/PDI so the pair keeps its order in a right-to-left line.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      },
+      "coords": {
+        "type": "String"
+      }
+    }
+  },
+  "alertSosWhereHours": "{n, plural, =1{Last location: {coords}, more than 1 hour ago} other{Last location: {coords}, more than {n} hours ago}}",
+  "@alertSosWhereHours": {
+    "description": "#672: the same line for a fix an hour or more old; hours round down and the line says «more than».",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      },
+      "coords": {
+        "type": "String"
+      }
+    }
+  },
+  "alertSosLocationMinutes": "{n, plural, =1{Location from 1 min ago. Tap to see it on the map.} other{Location from {n} min ago. Tap to see it on the map.}}",
+  "@alertSosLocationMinutes": {
+    "description": "#672, UI/UX Bureau: the notification body. A location exists and is this old — no coordinates on a lock screen; a tap opens the alert.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "alertSosLocationHours": "{n, plural, =1{Location from more than 1 hour ago. Tap to see it on the map.} other{Location from more than {n} hours ago. Tap to see it on the map.}}",
+  "@alertSosLocationHours": {
+    "description": "#672: the notification body for a fix an hour or more old; hours round down and the line says «more than».",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "alertLocationAccuracy": "accurate to about {m} m",
+  "@alertLocationAccuracy": {
+    "description": "#672, UI/UX Bureau: the detail line's accuracy clause, shown only when the fix carries one.",
+    "placeholders": {
+      "m": {
+        "type": "int"
+      }
+    }
+  },
+  "alertCopyCoordinates": "Copy coordinates",
+  "@alertCopyCoordinates": {
+    "description": "#672, UI/UX Bureau: quiet action in the SOS alert's detail; copies five decimals, left to right."
+  },
+  "alertCoordinatesCopied": "Coordinates copied",
+  "@alertCoordinatesCopied": {
+    "description": "#672: short confirmation after Copy coordinates."
+  },
+  "alertOpenInMaps": "Open in Maps",
+  "@alertOpenInMaps": {
+    "description": "#672, UI/UX Bureau: hands the fix to the phone's own maps app, for a build whose in-app map cannot draw."
+  },
+  "alertShowOnMap": "Show on map",
+  "@alertShowOnMap": {
+    "description": "#672: the SOS alert's action that opens the family map on its fix."
+  },
   "riskSelfHarm": "Self-harm",
   "riskSubstanceUse": "Substance use",
   "riskSubstanceAbuse": "Substance abuse",
@@ -1357,11 +1681,17 @@
   "riskHateSpeech": "Hate speech",
   "riskAiConcern": "Concerning content",
   "phoneSetupOtherSpaceClone": "This phone has another secure space that may run cloned apps (more than one copy of the same app). OSRA may not be able to monitor it until it is turned off in the phone's Settings.",
-  "@phoneSetupOtherSpaceClone": {"description": "Phone setup row (osra-security#6): the capability report's profiles.kinds holds clone. Arabic wording by Karim (2026-11-11)."},
+  "@phoneSetupOtherSpaceClone": {
+    "description": "Phone setup row (osra-security#6): the capability report's profiles.kinds holds clone. Arabic wording by Karim (2026-11-11)."
+  },
   "phoneSetupOtherSpaceWork": "This phone has a work profile.",
-  "@phoneSetupOtherSpaceWork": {"description": "Phone setup row (osra-security#6): profiles.kinds holds work. Arabic approved by Karim."},
+  "@phoneSetupOtherSpaceWork": {
+    "description": "Phone setup row (osra-security#6): profiles.kinds holds work. Arabic approved by Karim."
+  },
   "phoneSetupOtherSpaceOther": "This phone has another space. OSRA may not reach the apps inside it.",
-  "@phoneSetupOtherSpaceOther": {"description": "Phone setup row (osra-security#6): profiles.kinds holds other or secure_folder. Arabic approved by Karim."},
+  "@phoneSetupOtherSpaceOther": {
+    "description": "Phone setup row (osra-security#6): profiles.kinds holds other or secure_folder. Arabic approved by Karim."
+  },
   "phoneSetupTitle": "Phone setup",
   "phoneSetupNeverReported": "This phone has not reported what it can do yet.",
   "phoneSetupReported": "Reported {age}",
@@ -1397,15 +1727,30 @@
   "grantFamilyControls": "Screen Time (Family Controls)",
   "grantBackgroundRefresh": "Background app refresh",
   "appGroupsTitle": "App groups on this iPhone",
-  "@appGroupsTitle": {"description": "ADR-0037: heading over the iPhone's app groups on the child screen. Arabic is a draft pending Karim's review."},
+  "@appGroupsTitle": {
+    "description": "ADR-0037: heading over the iPhone's app groups on the child screen. Arabic is a draft pending Karim's review."
+  },
   "appGroupsBody": "Groups are made on the child's iPhone, behind the parent PIN. Block one here and the iPhone shields its apps.",
-  "@appGroupsBody": {"description": "ADR-0037: one line under the heading. Arabic is a draft pending Karim's review."},
+  "@appGroupsBody": {
+    "description": "ADR-0037: one line under the heading. Arabic is a draft pending Karim's review."
+  },
   "appGroupsCounts": "Apps {apps} · Categories {categories} · Websites {sites}",
-  "@appGroupsCounts": {"description": "ADR-0037: what one group holds, as counts only (the parent app never learns which apps). Arabic is a draft pending Karim's review.", "placeholders": {"apps": {}, "categories": {}, "sites": {}}},
+  "@appGroupsCounts": {
+    "description": "ADR-0037: what one group holds, as counts only (the parent app never learns which apps). Arabic is a draft pending Karim's review.",
+    "placeholders": {
+      "apps": {},
+      "categories": {},
+      "sites": {}
+    }
+  },
   "appGroupsBlock": "Block",
-  "@appGroupsBlock": {"description": "ADR-0037: label of the switch that blocks one app group. Arabic is a draft pending Karim's review."},
+  "@appGroupsBlock": {
+    "description": "ADR-0037: label of the switch that blocks one app group. Arabic is a draft pending Karim's review."
+  },
   "appGroupsSaveFailed": "Could not save the change. Try again.",
-  "@appGroupsSaveFailed": {"description": "ADR-0037: snackbar when blocking or unblocking a group fails. Arabic is a draft pending Karim's review."},
+  "@appGroupsSaveFailed": {
+    "description": "ADR-0037: snackbar when blocking or unblocking a group fails. Arabic is a draft pending Karim's review."
+  },
   "setupMonitoringTitle": "Which apps should OSRA watch for you?",
   "setupMonitoringIntro": "OSRA checks messages in these apps for signs of bullying, grooming or self-harm, and tells you when it finds something. Tick the apps you want; you can change this any time in the rules.",
   "setupMonitoringConsent": "A flagged message excerpt is kept for 90 days and an alert for 12 months. Nothing is read from an app you untick.",
@@ -1422,5 +1767,12 @@
   "showPassword": "Show password",
   "hidePassword": "Hide password",
   "passwordMinHint": "At least 12 characters.",
-  "familyNameHelper": "Other parents you invite will see this."
+  "familyNameHelper": "Other parents you invite will see this.",
+  "errorNoConnection": "No internet connection. Check your connection and try again.",
+  "authSignInFailed": "Couldn't sign in right now. Check your connection and try again.",
+  "authMfaReenrollRequired": "Two-step verification was reset but not finished. Open \"Lost your authenticator?\" if you still have the setup screen open; otherwise contact support.",
+  "familyInviteFailed": "Couldn't send invite. Check the email and try again.",
+  "digestPrefsTimezonePickerTitle": "Choose time zone",
+  "digestPrefsTimezoneSearchHint": "Search city or offset (for example Dubai, +4)",
+  "digestPrefsTimezoneEmpty": "No matching time zones"
 }

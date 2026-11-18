@@ -16,6 +16,7 @@ import 'rules_behind_banner.dart';
 import 'app_display.dart';
 import 'app_picker.dart';
 import '../../theme/app_tokens.dart';
+import '../../widgets/error_retry_view.dart';
 import '../../widgets/layout_helpers.dart';
 
 const _kCategories = ['pornography', 'gambling', 'violence', 'drugs', 'social_media', 'chat']; // legacy extras; the recommended 13 live in kRecommendedCategories (models.dart)
@@ -145,13 +146,11 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.rulesSaved)));
       }
     } on DioException catch (e) {
-      // Issue #437: a rule write can be refused for consent (`428`), and that sentence names no
-      // command because this is an edit. `readErrorText` decides; the raw code stays for anything else.
-      final data = e.response?.data;
-      setState(() => _error = readErrorText(
+      // Issue #437: a rule write can be refused for consent (`428`); anything else maps cleanly.
+      setState(() => _error = friendlyErrorText(
             l10n,
             e,
-            () => data is Map ? '${data['error'] ?? data['message'] ?? e.message}' : (e.message ?? ''),
+            () => l10n.saveFailed,
           ));
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -217,7 +216,10 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
       ),
       body: rules.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(l10n.rulesLoadFailed)),
+        error: (e, _) => ErrorRetryView(
+          message: friendlyErrorText(l10n, e, () => l10n.rulesLoadFailed),
+          onRetry: () => ref.invalidate(rulesProvider(widget.childId)),
+        ),
         data: (ruleSet) {
           _applyLoaded(ruleSet);
           return _buildTabs(context, showHeading: !titleInAppBar);

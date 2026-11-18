@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:familyshield_parent/features/rules/app_picker.dart';
 import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
+import 'package:familyshield_parent/l10n/app_localizations.dart';
 import 'package:familyshield_parent/l10n/app_localizations_ar.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
@@ -226,8 +227,9 @@ void main() {
     await pumpRules(tester, api);
     await openPicker(tester);
 
-    // #872 condition 1: a whole sentence with no placeholder, so nothing can be spliced into it.
-    expect(find.text("Couldn't load apps. Check your connection and try again."), findsOneWidget);
+    final en = lookupAppLocalizations(const Locale('en'));
+    expect(find.text(en.installedAppsLoadFailed), findsOneWidget);
+    expect(find.textContaining('boom'), findsNothing);
     expect(find.text('Retry'), findsOneWidget);
 
     fail = false;

@@ -12,6 +12,7 @@ import 'package:familyshield_parent/features/auth/login_screen.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
+import 'package:familyshield_parent/l10n/app_localizations.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/providers/onboarding_provider.dart';
 import 'package:familyshield_parent/providers/server_provider.dart';
@@ -125,7 +126,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.calls('POST', '/v1/auth/login'), hasLength(1));
-      expect(find.text('invalid_credentials'), findsOneWidget);
+      final en = lookupAppLocalizations(const Locale('en'));
+      expect(find.text(en.onboardingWrongPassword), findsOneWidget);
+      expect(find.text('invalid_credentials'), findsNothing);
     });
 
     // NOTE: success navigation is asserted by pumping the REAL app router
@@ -423,7 +426,7 @@ void main() {
       );
     });
 
-    testWidgets('an unknown refusal reason still names the code, not "queued"', (tester) async {
+    testWidgets('an unknown refusal reason shows a localized failure instead of the raw code or "queued" (R-ID-1)', (tester) async {
       final api = FakeApiClient({
         ...standardRoutes(),
         'POST /v1/devices/dev-1/command': (_) => {
@@ -437,7 +440,9 @@ void main() {
       await tester.tap(find.text('Lock'));
       await flushFakeHttp(tester);
 
-      expect(find.textContaining('some_new_reason'), findsOneWidget);
+      final en = lookupAppLocalizations(const Locale('en'));
+      expect(find.text(en.commandFailed), findsOneWidget);
+      expect(find.textContaining('some_new_reason'), findsNothing);
       expect(find.textContaining('queued'), findsNothing);
     });
   });
