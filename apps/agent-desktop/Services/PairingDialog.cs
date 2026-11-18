@@ -100,6 +100,13 @@ internal static class PairingDialog
                 return;
             }
 
+            if (!AgentConfig.CanPersist(AppContext.BaseDirectory))
+            {
+                _status.ForeColor = Color.Firebrick;
+                _status.Text = "Administrator permission is required to save pairing settings. Open OSRA as administrator and try again.";
+                return;
+            }
+
             _pairButton.Enabled = false;
             _status.ForeColor = Color.DarkSlateGray;
             _status.Text = "Pairing…";

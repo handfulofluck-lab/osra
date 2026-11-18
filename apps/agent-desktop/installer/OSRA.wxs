@@ -10,6 +10,9 @@
                   Schedule="afterInstallInitialize" />
     <MediaTemplate EmbedCab="yes" />
 
+    <!-- Locale-independent well-known SID properties for localized Windows installations. -->
+    <util:QueryWindowsWellKnownSIDs />
+
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="OSRA" />
     </StandardDirectory>
@@ -27,9 +30,9 @@
       <!-- Restrict install directory writes to SYSTEM and Administrators so a child account cannot tamper with binaries or config. -->
       <Component Id="InstallDirPermissions" Guid="8E51A1C4-43A2-4918-9A4C-52B1E13C1D01">
         <CreateFolder>
-          <util:PermissionEx User="SYSTEM" GenericAll="yes" />
-          <util:PermissionEx User="Administrators" GenericAll="yes" />
-          <util:PermissionEx User="Users" GenericRead="yes" GenericExecute="yes" />
+          <util:PermissionEx User="[WIX_ACCOUNT_LOCALSYSTEM]" GenericAll="yes" />
+          <util:PermissionEx User="[WIX_ACCOUNT_ADMINISTRATORS]" GenericAll="yes" />
+          <util:PermissionEx User="[WIX_ACCOUNT_USERS]" GenericRead="yes" GenericExecute="yes" />
         </CreateFolder>
       </Component>
 
@@ -58,13 +61,9 @@
                         Wait="yes" />
       </Component>
 
+      <!-- OSRA Service (TraySupervisor) launches and tracks the per-session tray PID once paired; no duplicate HKLM Run key. -->
       <Component Id="OsraTrayComponent">
         <File Id="OsraTrayExe" Source="$(var.PublishDir)\OSRA.exe" KeyPath="yes" />
-        <RegistryValue Root="HKLM"
-                       Key="Software\Microsoft\Windows\CurrentVersion\Run"
-                       Name="OSRA"
-                       Type="string"
-                       Value="&quot;[INSTALLFOLDER]OSRA.exe&quot;" />
       </Component>
 
       <Component Id="StartMenuShortcut" Directory="ApplicationProgramsFolder" Guid="C2B917B0-1284-4094-A31B-8B8E00F1E84D">

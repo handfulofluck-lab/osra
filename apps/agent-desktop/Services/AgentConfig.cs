@@ -146,6 +146,33 @@ public sealed class AgentConfig
     }
 
     /// <summary>
+    /// Verifies that the process has filesystem permission to persist <see cref="FileName"/> inside
+    /// <paramref name="exeDir"/> before claiming a pairing code on the server.
+    /// </summary>
+    public static bool CanPersist(string exeDir)
+    {
+        if (string.IsNullOrWhiteSpace(exeDir) || !Directory.Exists(exeDir)) return false;
+        var probePath = Path.Combine(exeDir, $".osra-write-probe-{Guid.NewGuid():N}.tmp");
+        try
+        {
+            using (File.Create(probePath, 1, FileOptions.DeleteOnClose)) { }
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (System.Security.SecurityException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Writes indented JSON to <paramref name="exeDir"/>/<see cref="FileName"/>; skips the write
     /// when the content is unchanged (avoids rewrite churn). Returns true when the file was written.
     /// </summary>
