@@ -83,6 +83,10 @@ class DeepSeekScorer:
         self.cache_path = cache_path
         self.timeout = timeout
         self._client = client
+        # One client for the process, not one per row: a fresh `httpx.Client` per call pays a TLS
+        # handshake every time. Measured on this machine, that was ~3.8 s of overhead on top of a
+        # ~1.8 s call — invisible in a unit test, and 28 hours across a 26,824-row run.
+        self._own_client = None
         self._sleep = sleep
         self._log = log or (lambda _m: None)
         # The prompt is instance state, not a module constant, so the key and the request cannot disagree
@@ -149,43 +153,43 @@ class DeepSeekScorer:
             body["temperature"] = 0
         headers = {"authorization": f"Bearer {self.api_key}", "content-type": "application/json"}
         url = f"{self.base_url}/chat/completions"
-        client = self._client or httpx.Client(timeout=self.timeout)
-        owns_client = self._client is None
-        last_error: Optional[Exception] = None
-        try:
-            for attempt in range(3):
-                started = time.monotonic()
-                try:
-                    response = client.post(url, json=body, headers=headers)
-                except httpx.HTTPError as exc:
-                    last_error = exc
-                else:
-                    if response.status_code == 200:
-                        payload = response.json()
-                        self.last_latency_ms = int((time.monotonic() - started) * 1000)
-                        usage = payload.get("usage") or {}
-                        self.last_tokens_in = int(usage.get("prompt_tokens", 0) or 0)
-                        self.last_tokens_out = int(usage.get("completion_tokens", 0) or 0)
-                        try:
-                            return payload["choices"][0]["message"]["content"]
-                        except (KeyError, IndexError, TypeError) as exc:
-                            raise DeepSeekUnavailable(f"unexpected reply shape: {payload!r:.300}") from exc
-                    if response.status_code in (401, 403):
-                        raise DeepSeekUnavailable(
-                            f"the key was refused ({response.status_code}); check DEEPSEEK_API_KEY"
-                        )
-                    if response.status_code == 400:
-                        raise DeepSeekUnavailable(f"the request was refused: {response.text[:300]}")
-                    if response.status_code != 429 and response.status_code < 500:
-                        raise DeepSeekUnavailable(
-                            f"unexpected status {response.status_code}: {response.text[:300]}"
-                        )
-                    last_error = DeepSeekUnavailable(f"status {response.status_code}")
-                self._sleep(2 ** attempt)  # 1s, 2s, 4s — only on 429/5xx or a transport error
-            raise DeepSeekUnavailable(f"gave up after 3 attempts: {last_error}")
-        finally:
-            if owns_client:
-                client.close()
+        if self._client is not None:
+            client = self._client
+        else:
+            if self._own_client is None:
+                self._own_client = httpx.Client(timeout=self.timeout)
+                atexit.register(self._own_client.close)
+            client = self._own_client
+        for attempt in range(3):
+            started = time.monotonic()
+            try:
+                response = client.post(url, json=body, headers=headers)
+            except httpx.HTTPError as exc:
+                last_error = exc
+            else:
+                if response.status_code == 200:
+                    payload = response.json()
+                    self.last_latency_ms = int((time.monotonic() - started) * 1000)
+                    usage = payload.get("usage") or {}
+                    self.last_tokens_in = int(usage.get("prompt_tokens", 0) or 0)
+                    self.last_tokens_out = int(usage.get("completion_tokens", 0) or 0)
+                    try:
+                        return payload["choices"][0]["message"]["content"]
+                    except (KeyError, IndexError, TypeError) as exc:
+                        raise DeepSeekUnavailable(f"unexpected reply shape: {payload!r:.300}") from exc
+                if response.status_code in (401, 403):
+                    raise DeepSeekUnavailable(
+                        f"the key was refused ({response.status_code}); check DEEPSEEK_API_KEY"
+                    )
+                if response.status_code == 400:
+                    raise DeepSeekUnavailable(f"the request was refused: {response.text[:300]}")
+                if response.status_code != 429 and response.status_code < 500:
+                    raise DeepSeekUnavailable(
+                        f"unexpected status {response.status_code}: {response.text[:300]}"
+                    )
+                last_error = DeepSeekUnavailable(f"status {response.status_code}")
+            self._sleep(2 ** attempt)  # 1s, 2s, 4s — only on 429/5xx or a transport error
+        raise DeepSeekUnavailable(f"gave up after 3 attempts: {last_error}")
 
     def __call__(self, text: str) -> Dict[str, float]:
         key = _cache_key(self.model, text, self.prompt)

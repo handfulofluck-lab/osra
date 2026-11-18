@@ -240,3 +240,27 @@ def test_temperature_zero_is_sent_only_where_it_binds(tmp_path):
     body = _body_sent(tmp_path, thinking=True)
     assert body["thinking"] == {"type": "enabled"}
     assert "temperature" not in body
+
+
+def test_one_http_client_is_created_for_the_whole_process(tmp_path, monkeypatch):
+    """A client per row pays a TLS handshake per row: ~3.8 s of a ~5.6 s row on this machine, which is
+    invisible in a unit test and 28 hours across a 26,824-row run. The client is the scorer's now."""
+    made = []
+
+    def handler(request):
+        return httpx.Response(200, json=_reply({"safe": 0.9}))
+
+    real_client = httpx.Client
+
+    def factory(*args, **kwargs):
+        kwargs.pop("transport", None)
+        client = real_client(*args, transport=httpx.MockTransport(handler), **kwargs)
+        made.append(client)
+        return client
+
+    monkeypatch.setattr("eval.deepseek_scorer.httpx.Client", factory)
+    scorer = DeepSeekScorer(api_key="test-key", cache_path=None, log=lambda _m: None)
+    for text in ("a", "b", "c"):
+        scorer(text)
+
+    assert len(made) == 1, f"expected one client for three rows, built {len(made)}"
