@@ -1180,6 +1180,18 @@ class AppLocalizationsEn extends AppLocalizations {
       'Couldn\'t load installed apps. Check your connection and try again.';
 
   @override
+  String get appNoLongerInstalled => 'App no longer installed';
+
+  @override
+  String get appNoLongerInstalledRemove => 'App no longer installed. Remove';
+
+  @override
+  String get appNamePending => 'Name not available yet';
+
+  @override
+  String get appNamePendingRemove => 'Name not available yet. Remove';
+
+  @override
   String installedAppsTruncated(int count) {
     return 'Showing the first $count apps.';
   }

@@ -671,6 +671,10 @@
   "installedAppsEmptyHint": "The list appears after the child device's next check-in (up to 15 minutes).",
   "installedAppsNoMatch": "No apps match your search.",
   "installedAppsLoadFailed": "Couldn't load installed apps. Check your connection and try again.",
+  "appNoLongerInstalled": "App no longer installed",
+  "appNoLongerInstalledRemove": "App no longer installed. Remove",
+  "appNamePending": "Name not available yet",
+  "appNamePendingRemove": "Name not available yet. Remove",
   "installedAppsTruncated": "Showing the first {count} apps.",
   "@installedAppsTruncated": {
     "placeholders": {
