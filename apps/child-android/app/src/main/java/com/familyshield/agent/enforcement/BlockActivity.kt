@@ -69,6 +69,9 @@ class BlockActivity : ComponentActivity() {
     @Inject lateinit var settings: AgentSettings
     @Inject lateinit var appBlocker: AppBlocker
     @Inject lateinit var rules: RuleRepository
+    // S1 (osra-security#39): the same pause the filter service honours. Without it a blocked app tapped
+    // while consent is withdrawn still increments the persisted counter and posts a row.
+    @Inject lateinit var consent: com.familyshield.agent.data.ConsentState
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -235,6 +238,7 @@ class BlockActivity : ComponentActivity() {
      * pushes again, so a child tapping a blocked app ten times reads "10 attempts" and one notification.
      */
     private fun reportBlockedAttempt(pkg: String, reason: String) {
+        if (consent.isPaused()) return // before AttemptCounter.next: the count is persisted, not just posted
         val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString()
         val attempts = AttemptCounter.next(this, "app", pkg, day)
         scope.launch {

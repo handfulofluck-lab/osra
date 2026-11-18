@@ -243,6 +243,11 @@ class AgentSettings @Inject constructor(
         }
         // Issue #227: a re-pair is a new device enrolment; its first guard attempt opens a new window.
         TamperState.clearGuardAttemptWindow(context)
+        // S2 (osra-security#39): so is the open lock period and the day's blocked-attempt counts. Left
+        // behind, the next child's first lock reports the previous child's period and the next blocked app
+        // reports their count — across enrolments, possibly across families.
+        com.familyshield.agent.enforcement.LockPeriodTracker.clear(context)
+        com.familyshield.agent.enforcement.AttemptCounter.clear(context)
         baseUrlCache = null
         tokenCache = null
         deviceIdCache = null

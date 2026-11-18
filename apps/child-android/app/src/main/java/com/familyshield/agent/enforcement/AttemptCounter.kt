@@ -26,6 +26,15 @@ object AttemptCounter {
 
     private const val PREFS = "osra_block_attempts"
 
+    /**
+     * S2 (osra-security#39): the counters are keyed by package id and host, not by child, so one left behind
+     * on a re-pair is reported against the next child's first blocked app — the previous enrolment's count.
+     */
+    @Synchronized
+    fun clear(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+    }
+
     /** The next count for [namespace]:[id] on [day] (`yyyy-MM-dd`, UTC). */
     // Hydrogen's #836 note: read-modify-write under the filter's 4-thread pool could lose a count.
     // @Synchronized serialises it inside this process; the count is grouping metadata, not a secret.

@@ -39,6 +39,16 @@ object LockPeriodTracker {
         prefs.edit().putInt(KEY_ATTEMPTS, prefs.getInt(KEY_ATTEMPTS, 0) + 1).apply()
     }
 
+    /**
+     * S2 (osra-security#39): the stored period belongs to one enrolment. A re-pair or an unlink that leaves
+     * it behind lets the next child's first lock read the previous child's open period and upload it as
+     * theirs — a cross-enrolment leak, not a cosmetic stale row.
+     */
+    @Synchronized
+    fun clear(context: Context) {
+        prefs(context).edit().clear().apply()
+    }
+
     /** Closes the open period and returns it; null when there was none. */
     @Synchronized
     fun end(context: Context, nowMs: Long = System.currentTimeMillis()): Period? {

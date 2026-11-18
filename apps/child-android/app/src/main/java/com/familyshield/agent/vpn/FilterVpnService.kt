@@ -58,6 +58,9 @@ class FilterVpnService : VpnService() {
     @Inject lateinit var blocklist: BlocklistStore
     @Inject lateinit var api: com.familyshield.agent.network.ApiService
     @Inject lateinit var settings: com.familyshield.agent.data.AgentSettings
+    // S1 (osra-security#39): this service became a collector in #830/#841, so it is the one collector that
+    // has to consult the consent pause itself. ADR-0008 §3 pauses enforcement and collection together.
+    @Inject lateinit var consent: com.familyshield.agent.data.ConsentState
 
     /** host → the last time a `web_threat` was posted, so one page load is one attempt. */
     private val lastSiteAlert = java.util.concurrent.ConcurrentHashMap<String, Long>()
@@ -226,6 +229,12 @@ class FilterVpnService : VpnService() {
         val query = packet.copyOfRange(udp.payloadOffset, udp.payloadOffset + udp.payloadLength)
         val reply: ByteArray? = if (q == null) {
             forward(query)
+        } else if (consent.isPaused()) {
+            // S1 (osra-security#39): while consent is withdrawn the tunnel filters nothing and records
+            // nothing. Whatever was queued for upload is dropped here rather than flushed after a re-grant,
+            // which is what made a withdrawn window's browsing history reach the server.
+            synchronized(pendingVisitsLock) { pendingVisits.clear() }
+            forward(query)
         } else {
             val d = DnsFilterPolicy.decide(q.name, config)
             when (d.action) {
@@ -258,6 +267,9 @@ class FilterVpnService : VpnService() {
      * increments on later attempts; the server never pushes an aggregate again (ADR-0029).
      */
     private fun reportBlockedSite(host: String, reason: String) {
+        // S1: before AttemptCounter.next, not after it. The counter is persisted on disk, so a paused window
+        // that incremented it would add its attempts to the first count the parent sees after a re-grant.
+        if (consent.isPaused()) return
         if (!reason.startsWith("blocked_domain:") && !reason.startsWith("category:")) return
         // #841 review: the visit path normalises `q.name`, this one did not — mixed case or a trailing
         // dot split the quiet window, the attempt counter and the dedupe key, and slid past the
@@ -316,6 +328,7 @@ class FilterVpnService : VpnService() {
      * parent as a hostless count through its alert.
      */
     private fun recordSiteVisit(host: String, blocked: Boolean) {
+        if (consent.isPaused()) return
         // One normalised name for the quiet window, the batch and the exclusion check: `q.name` arrives
         // with its DNS casing and a trailing dot, and two spellings of one host split the maps (#841).
         val name = DnsFilterPolicy.normalize(host)
@@ -350,6 +363,12 @@ class FilterVpnService : VpnService() {
 
     /** Sends queued names as one batch; a failed upload drops them rather than replaying a day late. */
     private fun flushSiteVisits() {
+        if (consent.isPaused()) {
+            // S1: a pause drains the queue instead of uploading it. Without this the 60 s flusher posts the
+            // withdrawn window's names on the next tick, or the moment consent comes back.
+            synchronized(pendingVisitsLock) { pendingVisits.clear() }
+            return
+        }
         val batch: List<Pair<String, Boolean>>
         synchronized(pendingVisitsLock) {
             if (pendingVisits.isEmpty()) return

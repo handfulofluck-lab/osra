@@ -262,7 +262,19 @@ class TopAppsChart extends StatelessWidget {
               maxY: maxYFor(apps),
               barGroups: [
                 for (var i = 0; i < apps.length; i++)
-                  BarChartGroupData(x: i, barRods: [BarChartRodData(toY: apps[i].minutes.toDouble(), width: 18)]),
+                  // Codex's follow-up on the frames: the rod colour was implicit (fl_chart's own cyan) while the
+                  // legend swatch used `tokens.primary`, so the cue pointed at the wrong colour. Both now draw
+                  // from the token, which is also what the design system expects of a chart.
+                  BarChartGroupData(
+                    x: i,
+                    barRods: [
+                      BarChartRodData(
+                        toY: apps[i].minutes.toDouble(),
+                        width: 18,
+                        color: context.tokens.primary,
+                      ),
+                    ],
+                  ),
               ],
               titlesData: FlTitlesData(
                 bottomTitles: legend

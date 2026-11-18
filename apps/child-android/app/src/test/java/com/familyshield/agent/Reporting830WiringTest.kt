@@ -51,6 +51,74 @@ class Reporting830WiringTest {
     }
 
     /**
+     * osra-security#39 S1: the collector that #830/#841 added is the one that has to honour the consent
+     * pause itself. Every guard is pinned by name, and the two that write to disk before uploading are
+     * pinned *before* their write, because a pause that is checked after `AttemptCounter.next` still
+     * persists the withdrawn window's count.
+     *
+     * Mutant: delete any one `if (consent.isPaused()) return` and its row goes red; move the one in
+     * `reportBlockedSite` below `AttemptCounter.next` and the ordering row goes red.
+     */
+    @Test
+    fun `the collectors honour the consent pause, before they write`() {
+        val vpn = source("apps/child-android/app/src/main/java/com/familyshield/agent/vpn/FilterVpnService.kt")
+        assertTrue(vpn.contains("lateinit var consent: com.familyshield.agent.data.ConsentState"))
+
+        // answer(): paused means forward and collect nothing, and drop what was queued.
+        val answer = vpn.substringAfter("private fun answer(").substringBefore("private fun reportBlockedSite")
+        assertTrue(answer.contains("consent.isPaused()"))
+        assertTrue(answer.contains("pendingVisits.clear()"))
+
+        // recordSiteVisit(): the guard is the first statement.
+        val record = vpn.substringAfter("private fun recordSiteVisit(host: String, blocked: Boolean) {")
+            .substringBefore("private fun startVisitFlusher")
+        assertTrue(record.trimStart().startsWith("if (consent.isPaused()) return"))
+
+        // flushSiteVisits(): a pause drains the queue instead of uploading it.
+        val flush = vpn.substringAfter("private fun flushSiteVisits(").substringBefore("private fun forward(")
+        assertTrue(flush.contains("consent.isPaused()"))
+        assertTrue(flush.contains("pendingVisits.clear()"))
+
+        // reportBlockedSite(): the pause is checked before the persisted counter, not after it.
+        val alert = vpn.substringAfter("private fun reportBlockedSite(").substringBefore("private fun recordSiteVisit")
+        val pauseAt = alert.indexOf("consent.isPaused()")
+        val counterAt = alert.indexOf("AttemptCounter.next(")
+        assertTrue(pauseAt >= 0)
+        assertTrue(counterAt > pauseAt)
+
+        val block = source("apps/child-android/app/src/main/java/com/familyshield/agent/enforcement/BlockActivity.kt")
+        val attempt = block.substringAfter("private fun reportBlockedAttempt(").substringBefore("private fun requestAccess(")
+        val appPauseAt = attempt.indexOf("consent.isPaused()")
+        val appCounterAt = attempt.indexOf("AttemptCounter.next(")
+        assertTrue(appPauseAt >= 0)
+        assertTrue(appCounterAt > appPauseAt)
+    }
+
+    /**
+     * osra-security#39 S2: a lock period and a day's blocked-attempt counts belong to one enrolment.
+     * Leaving them behind on a re-pair reports the previous child's period and count against the next
+     * child — across enrolments, possibly across families.
+     *
+     * Mutant: drop either clear from `clearPairing` (or the period clear from the unlinker) and its row
+     * goes red while every other suite stays green, which is how this shipped.
+     */
+    @Test
+    fun `a re-pair or an unlink clears the lock period and the attempt counts`() {
+        val settings = source("apps/child-android/app/src/main/java/com/familyshield/agent/data/AgentSettings.kt")
+        val clearPairing = settings.substringAfter("suspend fun clearPairing()")
+        assertTrue(clearPairing.contains("LockPeriodTracker.clear(context)"))
+        assertTrue(clearPairing.contains("AttemptCounter.clear(context)"))
+
+        val unlinker = source("apps/child-android/app/src/main/java/com/familyshield/agent/network/DeviceUnlinker.kt")
+        assertTrue(unlinker.contains("LockPeriodTracker.clear(context)"))
+
+        val tracker = source("apps/child-android/app/src/main/java/com/familyshield/agent/enforcement/LockPeriodTracker.kt")
+        assertTrue(tracker.contains("fun clear(context: Context)"))
+        val counter = source("apps/child-android/app/src/main/java/com/familyshield/agent/enforcement/AttemptCounter.kt")
+        assertTrue(counter.contains("fun clear(context: Context)"))
+    }
+
+    /**
      * Hydrogen's #836 blockers: the two reporting call sites a `singleTask` reuse and the resume path
      * skipped. The behaviour rows are the server's; these pin that the screens and commands call them.
      */
