@@ -64,6 +64,18 @@ For family-plan entitlements (#619), run `pnpm --filter @familyshield/api test -
 
 The maintainer-only finite grant command is `node services/api/scripts/billing/grant.mjs --family-id <uuid> --expires-at <ISO8601> --reason <reason> --secret-name <name> [--profile <name>] [--region <name>]`. It requires a future expiry no more than 366 days away, reads the database connection secret into memory with the AWS CLI, and writes no public route or lifetime grant. The raw store reference and database credentials are not logged; database credentials go to `psql` through its environment, not command arguments. K31's tests inject fake AWS CLI and SQL boundaries and make no AWS, store or real database call. `test/grant-script.test.ts` proves invalid expiry is refused before AWS is called.
 
+For the location-history query contract (#869), run
+`TZ=UTC flutter test --concurrency=2 test/location_history_query_test.dart test/location_404_test.dart`,
+then `TZ=Asia/Dubai flutter test --concurrency=2 test/location_history_query_test.dart` from
+`apps/parent-app`. The new test inspects the real provider request: both bounds must carry UTC `Z`,
+the start must represent the parent's local midnight converted to UTC, and the end must fall within
+the request's measured time interval. It tolerates a midnight crossing. Removing either `.toUtc()`
+must fail its UTC assertion; constructing UTC midnight must fail the local-day assertion on a
+nonzero-offset host. The existing API route row in `services/api/test/geofence.test.ts` independently
+covers accepted UTC/Z history bounds. These are fictional transport fixtures, not evidence that a
+child uploaded a point, Locate completed, or staging C5 passed. Keep #869 open for current-build
+runtime evidence; #871 owns the shared friendly-error and Retry UI.
+
 For composite numeric values in Arabic RTL, run `flutter test test/ltr_isolates_test.dart` from
 `apps/parent-app` (#751). It renders the real latest-location, location-history (with and without a
 timestamp), dashboard, map-sheet, call/SMS and bonus-time widgets with an Arabic `Locale` and
@@ -384,7 +396,30 @@ off, the read route still answers but returns `counting: false` and `withinBudge
 | `workflow-lint.yml` | every PR | `scripts/check-workflows.mjs --strict` — a YAML file GitHub rejects means **zero jobs run**, so this is checked in its own file — and `scripts/check-docs-links.mjs` in the same job, with the self-tests of the other gates. Among them `scripts/check-verified-gate-signers.mjs` (2026-10-23): it fails if `verified-gate.yml` could read a verification from any account but the agent account, structurally and by running the gate's own jq filter over fixture comments (`--selftest` proves both layers fail on the pre-fix filter; without `jq` it runs the structural layer only, and in CI a missing `jq` is exit 2). Since 2026-10-24 also `scripts/check-ci-paths.mjs` (below) and `scripts/verified-gate-carry.mjs --selftest` (below). Since 2026-11-13 also `scripts/check-ci-cost-guardrails.mjs` (below). Since 2026-11-12 also `scripts/check-site-design.mjs` (roadmap 3.19): `site/style.css` must carry the values of `docs/design/tokens.json` under the same names in both themes, no colour outside those two blocks, nothing loaded from another site, `dir="rtl"` on an Arabic page and no physical side in the sheet; rules and fixtures in `docs/design/WEBSITE.md` §5. Since 2026-11-12 also `scripts/check-user-visible-brand.mjs` (issue #608): fails any tracked or untracked repo file carrying the pre-OSRA user-visible forms, with exact-path exemptions for the dated QA audit records and only the two named legacy demo-email migration constants; rules, fixtures and CLI wiring in `--selftest` |
 | `verified-gate.yml` | On every PR to `main`: `state:verified` **and** a `Verified-sha:` line at the head, in a comment written by the agent account `handfulofluck-lab` and signed by a verifier (`AGENTS.md` §6.4, §6.5 rule 6). A comment by any other account is never read: the run log prints how many were left out. Since 2026-10-24 the carry-forward decision is `scripts/verified-gate-carry.mjs <signed-sha> <head-sha>`, run from `origin/main` so a PR's edit to the script does not judge its own carry-forward (the workflow file still comes from the PR; see #359). It exits 0 when only clean merges of main followed the signature and the PR's own `-U0` patch is unchanged; 1 when that patch moved, or when a merge after the signature was not a clean merge of its parents (a conflict, a resolution, an evil merge, or a merge with other than two parents); 2 when it cannot decide (missing or unknown sha, not an ancestor, a non-merge commit after the signature, git older than 2.38 so a merge cannot be re-run). Context is ignored, so position is not compared — a line moved by a hand-edited merge is refused by the clean-merge rule, and the only remaining limit is a line moved by a clean merge, which is git's own result. `--selftest` runs seven cases on real git repositories. Local: `node scripts/check-verified-gate-signers.mjs --selftest` and `node scripts/verified-gate-carry.mjs --selftest`. Since 2026-10-31 the trigger list also carries **`edited`**: when a stacked PR's base branch is deleted GitHub retargets the PR to `main` and announces it only as `edited` (`changes.base`), so without that event the required check is never created at all and the PR cannot merge while every visible check is green (#501; measured on the scratch PR #503 — see §6) |
 | `terraform.yml` | On a PR touching `infra/terraform/**`: `terraform fmt -check -recursive` plus `init -backend=false` and `validate` in `base/` and `env/` (Terraform 1.13.4, no credentials, no `plan`). `plan` and `apply` stay human steps — see `infra/terraform/README.md` |
+
 | `main-guard.yml` | Detects a commit on `main` that did not arrive through a pull request |
+
+The Mac phase1 tooling has a fake-only suite beside the org-audit tests:
+`python3 -B -m unittest discover -s infra/terraform/org-audit/tests -p 'test_agent*.py'`.
+The CI setup disables the Terraform output wrapper: isolated test environments intentionally omit
+its binary-location variable. The native binary preserves exit codes without wrapper dependencies.
+Terraform must be on PATH for provider-free evaluation of actual HCL. No AWS credentials, profile,
+network session, credential file or login-Keychain access is used. The CI job also runs plan-only mock
+AWS/archive providers; mock results are not an AWS IAM simulator or permission proof.
+
+The suite checks credential-process boundaries, early refusal of both Mac rotation entry points,
+the complete original watcher-deny list (including unconditional key creation), stricter key guards, explicit metadata actions, scoped account/region/role targets and separate
+user/SourceIdentity ceilings. Content reads and IAM writes must be denied even when another policy
+would allow them. The expiry fakes cover all current keys, pagination, equality at the fixed deadline,
+renewal, missing/malformed tags, concurrent key deletion and sanitized status/count diagnostics.
+Literal-date tests cover just before/equality/after and require reconciliation with the protected tag.
+
+Each regression names its mutant: an administrator or wildcard-read grant, changed role target,
+missing SourceIdentity guard, premature key deletion, first-key-only expiry, or changed equality
+cutoff must turn the relevant test red. Existing audit-deny lists and conditions remain pinned.
+Separately approved private checks must establish the real mapping, trusts, boundaries, permission
+results, runtime identity, fixed deadline and delivered alarms. These local tests do not authorize
+access or establish live readiness.
 
 The scenario helper's own gates (#668) sit in those two workflows rather than a third: **`workflow-lint`**
 runs `node --test scripts/hardware/scenario-family.test.mjs` and asserts both `pass 21` and `fail 0`, so a

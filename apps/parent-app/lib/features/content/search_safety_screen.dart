@@ -62,7 +62,7 @@ class SearchSafetyScreen extends ConsumerWidget {
             padding: const EdgeInsets.all(AppSpace.xl),
             children: [
               Center(
-                child: Text(readErrorText(l10n, e, () => l10n.searchSafetyLoadFailed('$e')), textAlign: TextAlign.center),
+                child: Text(friendlyErrorText(l10n, e, () => l10n.searchSafetyLoadFailed), textAlign: TextAlign.center),
               ),
               const SizedBox(height: AppSpace.lg),
               Center(

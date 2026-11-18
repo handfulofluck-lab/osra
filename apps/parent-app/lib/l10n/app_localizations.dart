@@ -233,8 +233,8 @@ abstract class AppLocalizations {
   /// No description provided for @deleteAccountFailed.
   ///
   /// In en, this message translates to:
-  /// **'The account was not deleted. {detail}'**
-  String deleteAccountFailed(String detail);
+  /// **'Couldn\'t delete your account. Check your connection and try again.'**
+  String get deleteAccountFailed;
 
   /// No description provided for @cancel.
   ///
@@ -539,8 +539,8 @@ abstract class AppLocalizations {
   /// No description provided for @familyLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load family: {error}'**
-  String familyLoadFailed(String error);
+  /// **'Couldn\'t load your family. Check your connection and try again.'**
+  String get familyLoadFailed;
 
   /// No description provided for @noChildrenYet.
   ///
@@ -665,8 +665,8 @@ abstract class AppLocalizations {
   /// No description provided for @internetChangeFailed.
   ///
   /// In en, this message translates to:
-  /// **'Internet change failed: {error}'**
-  String internetChangeFailed(String error);
+  /// **'Couldn\'t change internet access. Check your connection and try again.'**
+  String get internetChangeFailed;
 
   /// No description provided for @parentalConsent.
   ///
@@ -905,8 +905,8 @@ abstract class AppLocalizations {
   /// No description provided for @bonusFailed.
   ///
   /// In en, this message translates to:
-  /// **'Bonus failed: {error}'**
-  String bonusFailed(String error);
+  /// **'Couldn\'t add bonus time. Check your connection and try again.'**
+  String get bonusFailed;
 
   /// No description provided for @windDown.
   ///
@@ -935,8 +935,8 @@ abstract class AppLocalizations {
   /// No description provided for @windDownFailed.
   ///
   /// In en, this message translates to:
-  /// **'Wind down failed: {error}'**
-  String windDownFailed(String error);
+  /// **'Couldn\'t start wind-down. Check your connection and try again.'**
+  String get windDownFailed;
 
   /// No description provided for @commandQueued.
   ///
@@ -953,8 +953,8 @@ abstract class AppLocalizations {
   /// No description provided for @commandFailed.
   ///
   /// In en, this message translates to:
-  /// **'Command failed: {error}'**
-  String commandFailed(String error);
+  /// **'Couldn\'t send the command. Check your connection and try again.'**
+  String get commandFailed;
 
   /// No description provided for @commandErrorForbidden.
   ///
@@ -1037,8 +1037,8 @@ abstract class AppLocalizations {
   /// No description provided for @rulesLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load rules: {error}'**
-  String rulesLoadFailed(String error);
+  /// **'Couldn\'t load rules. Check your connection and try again.'**
+  String get rulesLoadFailed;
 
   /// No description provided for @noPerAppRules.
   ///
@@ -1067,8 +1067,8 @@ abstract class AppLocalizations {
   /// No description provided for @locationLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load location: {error}'**
-  String locationLoadFailed(String error);
+  /// **'Couldn\'t load location. Check your connection and try again.'**
+  String get locationLoadFailed;
 
   /// No description provided for @noLocationReported.
   ///
@@ -1097,8 +1097,8 @@ abstract class AppLocalizations {
   /// No description provided for @locationHistoryLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load history: {error}'**
-  String locationHistoryLoadFailed(String error);
+  /// **'Couldn\'t load location history. Check your connection and try again.'**
+  String get locationHistoryLoadFailed;
 
   /// No description provided for @noLocationHistoryToday.
   ///
@@ -1193,8 +1193,8 @@ abstract class AppLocalizations {
   /// No description provided for @familyInvitesLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load invites: {error}'**
-  String familyInvitesLoadFailed(String error);
+  /// **'Couldn\'t load invites. Check your connection and try again.'**
+  String get familyInvitesLoadFailed;
 
   /// No description provided for @familyNoPendingInvites.
   ///
@@ -1217,8 +1217,8 @@ abstract class AppLocalizations {
   /// No description provided for @familyRevokeFailed.
   ///
   /// In en, this message translates to:
-  /// **'Revoke failed: {error}'**
-  String familyRevokeFailed(String error);
+  /// **'Couldn\'t revoke invite. Check your connection and try again.'**
+  String get familyRevokeFailed;
 
   /// No description provided for @familyEnterEmail.
   ///
@@ -1379,8 +1379,8 @@ abstract class AppLocalizations {
   /// No description provided for @familyMapCommandFailed.
   ///
   /// In en, this message translates to:
-  /// **'Command failed: {error}'**
-  String familyMapCommandFailed(String error);
+  /// **'Couldn\'t send the command. Check your connection and try again.'**
+  String get familyMapCommandFailed;
 
   /// No description provided for @familyMapNoChildren.
   ///
@@ -1433,8 +1433,8 @@ abstract class AppLocalizations {
   /// No description provided for @alertsLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load alerts: {error}'**
-  String alertsLoadFailed(String error);
+  /// **'Couldn\'t load alerts. Check your connection and try again.'**
+  String get alertsLoadFailed;
 
   /// No description provided for @noRecentAlerts.
   ///
@@ -1475,8 +1475,8 @@ abstract class AppLocalizations {
   /// No description provided for @insightsLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load insights: {error}'**
-  String insightsLoadFailed(String error);
+  /// **'Couldn\'t load app insights. Check your connection and try again.'**
+  String get insightsLoadFailed;
 
   /// No description provided for @commandLock.
   ///
@@ -1619,8 +1619,8 @@ abstract class AppLocalizations {
   /// No description provided for @acknowledgeFailed.
   ///
   /// In en, this message translates to:
-  /// **'Acknowledge failed: {error}'**
-  String acknowledgeFailed(String error);
+  /// **'Couldn\'t dismiss alert. Check your connection and try again.'**
+  String get acknowledgeFailed;
 
   /// No description provided for @categoryLabel.
   ///
@@ -1667,8 +1667,8 @@ abstract class AppLocalizations {
   /// No description provided for @blockFailed.
   ///
   /// In en, this message translates to:
-  /// **'Block failed: {error}'**
-  String blockFailed(String error);
+  /// **'Couldn\'t block app. Check your connection and try again.'**
+  String get blockFailed;
 
   /// No description provided for @severityCritical.
   ///
@@ -2129,8 +2129,8 @@ abstract class AppLocalizations {
   /// No description provided for @installedAppsLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Could not load apps: {error}'**
-  String installedAppsLoadFailed(String error);
+  /// **'Couldn\'t load installed apps. Check your connection and try again.'**
+  String get installedAppsLoadFailed;
 
   /// No description provided for @installedAppsTruncated.
   ///
@@ -2237,8 +2237,8 @@ abstract class AppLocalizations {
   /// No description provided for @reportLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load report: {error}'**
-  String reportLoadFailed(String error);
+  /// **'Couldn\'t load report. Check your connection and try again.'**
+  String get reportLoadFailed;
 
   /// No description provided for @noActivityDays.
   ///
@@ -2257,6 +2257,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Total {total} min · avg {avg} min/day'**
   String totalAverage(int total, int avg);
+
+  /// No description provided for @chartLegendRow.
+  ///
+  /// In en, this message translates to:
+  /// **'{app}: {minutes} min'**
+  String chartLegendRow(String app, int minutes);
 
   /// No description provided for @noAppUsage.
   ///
@@ -2339,7 +2345,7 @@ abstract class AppLocalizations {
   /// No description provided for @couldNotLoadScreenTime.
   ///
   /// In en, this message translates to:
-  /// **'Could not load screen time'**
+  /// **'Could not load screen time. Check your connection and try again.'**
   String get couldNotLoadScreenTime;
 
   /// No description provided for @noScreenTimeData.
@@ -2393,7 +2399,7 @@ abstract class AppLocalizations {
   /// No description provided for @couldNotLoadBrowsing.
   ///
   /// In en, this message translates to:
-  /// **'Could not load browsing history'**
+  /// **'Could not load browsing history. Check your connection and try again.'**
   String get couldNotLoadBrowsing;
 
   /// No description provided for @noBlockedSites.
@@ -2639,8 +2645,8 @@ abstract class AppLocalizations {
   /// No description provided for @saveFailed.
   ///
   /// In en, this message translates to:
-  /// **'Save failed: {error}'**
-  String saveFailed(String error);
+  /// **'Couldn\'t save changes. Check your connection and try again.'**
+  String get saveFailed;
 
   /// No description provided for @saveMonitoring.
   ///
@@ -2713,6 +2719,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No phone calls or texts yet'**
   String get noCallsOrTexts;
+
+  /// No description provided for @activityLockRow.
+  ///
+  /// In en, this message translates to:
+  /// **'Device locked'**
+  String get activityLockRow;
+
+  /// No description provided for @activityLockRowDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{The lock screen did not come up} =1{The lock screen came up once} other{The lock screen came up {count} times}}'**
+  String activityLockRowDetail(int count);
 
   /// No description provided for @unknownNumber.
   ///
@@ -2861,7 +2879,7 @@ abstract class AppLocalizations {
   /// No description provided for @couldNotLoadCommandHistory.
   ///
   /// In en, this message translates to:
-  /// **'Could not load command history'**
+  /// **'Could not load command history. Check your connection and try again.'**
   String get couldNotLoadCommandHistory;
 
   /// No description provided for @createdEvent.
@@ -3899,8 +3917,8 @@ abstract class AppLocalizations {
   /// No description provided for @searchSafetyLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load search activity: {error}'**
-  String searchSafetyLoadFailed(String error);
+  /// **'Couldn\'t load search activity. Check your connection and try again.'**
+  String get searchSafetyLoadFailed;
 
   /// No description provided for @searchSafetyEmptyTitle.
   ///
@@ -3959,8 +3977,8 @@ abstract class AppLocalizations {
   /// No description provided for @digestPrefsLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load preferences: {error}'**
-  String digestPrefsLoadFailed(String error);
+  /// **'Couldn\'t load digest settings. Check your connection and try again.'**
+  String get digestPrefsLoadFailed;
 
   /// No description provided for @digestPrefsDailyTitle.
   ///
@@ -4097,8 +4115,8 @@ abstract class AppLocalizations {
   /// No description provided for @digestPrefsSaveFailed.
   ///
   /// In en, this message translates to:
-  /// **'Save failed: {error}'**
-  String digestPrefsSaveFailed(String error);
+  /// **'Couldn\'t save digest settings. Check your connection and try again.'**
+  String get digestPrefsSaveFailed;
 
   /// No description provided for @digestPrefsTimezoneSet.
   ///
@@ -4109,8 +4127,8 @@ abstract class AppLocalizations {
   /// No description provided for @digestPrefsTimezoneFailed.
   ///
   /// In en, this message translates to:
-  /// **'Timezone not saved: {error}'**
-  String digestPrefsTimezoneFailed(String error);
+  /// **'Couldn\'t update time zone. Check your connection and try again.'**
+  String get digestPrefsTimezoneFailed;
 
   /// No description provided for @digestPrefsTestTitle.
   ///
@@ -4127,8 +4145,8 @@ abstract class AppLocalizations {
   /// No description provided for @digestPrefsSendFailed.
   ///
   /// In en, this message translates to:
-  /// **'Send failed: {error}'**
-  String digestPrefsSendFailed(String error);
+  /// **'Couldn\'t send test digest. Check your connection and try again.'**
+  String get digestPrefsSendFailed;
 
   /// No description provided for @digestPrefsNoDigests.
   ///
@@ -5198,6 +5216,30 @@ abstract class AppLocalizations {
   /// **'On the iPhone, this app is hidden instead of showing the OSRA screen.'**
   String get appRuleHiddenOnIphone;
 
+  /// No description provided for @webSiteNamesOnlyNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Names of sites and online services this phone connected to, not the pages opened. Kept for 90 days.'**
+  String get webSiteNamesOnlyNote;
+
+  /// No description provided for @webSiteVisits.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Visited once} other{Visited {count} times}}'**
+  String webSiteVisits(int count);
+
+  /// No description provided for @webSiteSeenRange.
+  ///
+  /// In en, this message translates to:
+  /// **'{first} to {last}'**
+  String webSiteSeenRange(String first, String last);
+
+  /// No description provided for @webSitesSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No sites visited} =1{1 site visited} other{{count} sites visited}}'**
+  String webSitesSummary(int count);
+
   /// No description provided for @showPassword.
   ///
   /// In en, this message translates to:
@@ -5221,6 +5263,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Other parents you invite will see this.'**
   String get familyNameHelper;
+
+  /// No description provided for @errorNoConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'No internet connection. Check your connection and try again.'**
+  String get errorNoConnection;
+
+  /// No description provided for @authSignInFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t sign in right now. Check your connection and try again.'**
+  String get authSignInFailed;
+
+  /// No description provided for @authMfaReenrollRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Two-step verification was reset but not finished. Open \"Lost your authenticator?\" if you still have the setup screen open; otherwise contact support.'**
+  String get authMfaReenrollRequired;
+
+  /// No description provided for @familyInviteFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t send invite. Check the email and try again.'**
+  String get familyInviteFailed;
+
+  /// No description provided for @digestPrefsTimezonePickerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose time zone'**
+  String get digestPrefsTimezonePickerTitle;
+
+  /// No description provided for @digestPrefsTimezoneSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search city or offset (for example Dubai, +4)'**
+  String get digestPrefsTimezoneSearchHint;
+
+  /// No description provided for @digestPrefsTimezoneEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No matching time zones'**
+  String get digestPrefsTimezoneEmpty;
 }
 
 class _AppLocalizationsDelegate
