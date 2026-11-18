@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -178,6 +179,44 @@ void main() {
       expect(button.selectedItemBuilder, isNotNull);
       expectMayWrap(tester, button, const ValueKey('consentMethod'));
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the question sits above the field and is laid out whole', (tester) async {
+      // Antigravity's finding at `50aad293`: `FieldQuestion` had two surviving mutants. This row kills
+      // the first — `maxLines: 1` + `TextOverflow.ellipsis` on the heading, which is exactly what Flutter
+      // does to `InputDecoration.labelText` and what made the dialog read "Consent meth…".
+      narrowAndLarge(tester);
+      await pumpSignedIn(tester, const Scaffold(body: AddChildDialog()));
+
+      final l10n = lookupAppLocalizations(const Locale('en'));
+      final heading = find.text(l10n.jurisdictionLabel);
+      expect(heading, findsOneWidget, reason: 'the question is a widget of its own, above the field');
+
+      final paragraph = tester.renderObject<RenderParagraph>(heading);
+      final neededWidth = paragraph.getMaxIntrinsicWidth(double.infinity);
+      final neededHeight = paragraph.getMaxIntrinsicHeight(paragraph.size.width);
+      expect(paragraph.didExceedMaxLines, isFalse, reason: 'ellipsised — this is the defect again');
+      final fitsWidth = paragraph.size.width + 0.5 >= neededWidth;
+      final fitsHeight = paragraph.size.height + 0.5 >= neededHeight;
+      expect(fitsWidth || fitsHeight, isTrue,
+          reason: 'box ${paragraph.size} needs ${neededWidth}x$neededHeight');
+    });
+
+    testWidgets('the field carries the question as its accessible name, exactly once', (tester) async {
+      // Antigravity's second mutant: deleting `Semantics(label: text, child: child)`. The visible heading
+      // is inside `ExcludeSemantics`, so without that wrapper a screen reader hears the question zero
+      // times — and with it, once, on the control itself.
+      narrowAndLarge(tester);
+      final handle = tester.ensureSemantics();
+      await pumpSignedIn(tester, const Scaffold(body: AddChildDialog()));
+
+      final l10n = lookupAppLocalizations(const Locale('en'));
+      expect(
+        find.bySemanticsLabel(RegExp(RegExp.escape(l10n.jurisdictionLabel))),
+        findsOneWidget,
+        reason: 'the question must reach a screen reader once, on the field',
+      );
+      handle.dispose(); // before the test ends: the framework rejects a leaked handle
     });
 
     testWidgets('"Add child and continue" is a 52 px full-width button with a centred label', (tester) async {
