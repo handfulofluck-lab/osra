@@ -4,6 +4,7 @@ public enum RingReportOutcome: Equatable {
     case delivered
     case pending
     case resume(after: Int)
+    case consentWithdrawn
 }
 
 public struct RingPendingEvent: Codable, Equatable {
@@ -29,6 +30,7 @@ public protocol RingAlertReporting {
     func report(state: RingEventState, ringId: UUID, dismissalCount: Int,
                 afterRestart: Bool) async -> RingReportOutcome
     func pendingEvents() -> [RingPendingEvent]
+    func clear()
 }
 
 public extension RingAlertReporting {
@@ -36,6 +38,7 @@ public extension RingAlertReporting {
         await report(state: state, ringId: ringId, dismissalCount: dismissalCount, afterRestart: false)
     }
     func pendingEvents() -> [RingPendingEvent] { [] }
+    func clear() {}
 }
 
 @MainActor
@@ -82,6 +85,10 @@ public struct RingAlertReporter: RingAlertReporting {
             childId: AlertReporter.pairedChildId(), metadata: metadata, dedupeKey: key) else { return .pending }
         do {
             let response = try await sender(request)
+            if response.status == 428 {
+                defaults?.removeObject(forKey: Self.pendingKey)
+                return .consentWithdrawn
+            }
             guard response.status == 200 || response.status == 201 else { return .pending }
             let payload = try? JSONSerialization.jsonObject(with: response.body) as? [String: Any]
             if payload?["active"] as? Bool == true {
@@ -96,6 +103,11 @@ public struct RingAlertReporter: RingAlertReporting {
         } catch {
             return .pending
         }
+    }
+
+    public func clear() {
+        defaults?.removeObject(forKey: Self.deliveredKey)
+        defaults?.removeObject(forKey: Self.pendingKey)
     }
 
     public static func clear() {

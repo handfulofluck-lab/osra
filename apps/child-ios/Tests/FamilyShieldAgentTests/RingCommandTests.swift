@@ -7,6 +7,7 @@ final class FakeRingCommands: RingCommandHandling {
     private(set) var startedIds: [String] = []
     private(set) var stopCalls = 0
     private(set) var stoppedIds: [String?] = []
+    private(set) var consentWithdrawalCalls = 0
 
     func startRing(id: String) async -> RingCommandError? {
         if let error { return error }
@@ -18,6 +19,10 @@ final class FakeRingCommands: RingCommandHandling {
         stopCalls += 1
         stoppedIds.append(targetId)
         return error
+    }
+
+    func stopForConsentWithdrawal() async {
+        consentWithdrawalCalls += 1
     }
 }
 

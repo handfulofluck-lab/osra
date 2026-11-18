@@ -104,9 +104,9 @@ jobs:
           missing = sorted(required - tests)
           if missing:
               print("Portable tests missing on macOS:", *missing, sep="\n", file=sys.stderr)
-          if len(tests) != 347:
-              print(f"macOS test count changed: expected 347, discovered {len(tests)}", file=sys.stderr)
-          if missing or len(tests) != 347:
+          if len(tests) != 351:
+              print(f"macOS test count changed: expected 351, discovered {len(tests)}", file=sys.stderr)
+          if missing or len(tests) != 351:
               print("Discovered macOS test identifiers:", *sorted(tests), sep="\n", file=sys.stderr)
               sys.exit(1)
           print(f"macOS portable tests discovered: {len(tests)}; pairing, signer, rules and strings present")
@@ -114,9 +114,11 @@ jobs:
 
       - name: Test the shared package on macOS
         working-directory: apps/child-ios
+        env:
+          SWIFT_TEST_FILTER: ${{ inputs.swift_test_filter }}
         run: |
-          if [ -n "${{ inputs.swift_test_filter }}" ]; then
-            swift test --filter "${{ inputs.swift_test_filter }}"
+          if [ -n "$SWIFT_TEST_FILTER" ]; then
+            swift test --filter "$SWIFT_TEST_FILTER"
           else
             swift test
           fi

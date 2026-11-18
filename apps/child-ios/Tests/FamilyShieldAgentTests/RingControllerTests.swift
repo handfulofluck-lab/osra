@@ -223,6 +223,17 @@ final class RingControllerTests: XCTestCase {
         XCTAssertEqual(backend.stopCalls, [], "a dismissal re-arms instead of stopping the chain")
     }
 
+    func testConsentWithdrawnReportStopsTheRing() async {
+        reporter.nextOutcome = .consentWithdrawn
+        let controller = controller()
+        await controller.start(id)
+        backend.scheduled = []
+        await controller.process(scheduledIDs: [])
+        XCTAssertNil(controller.state)
+        XCTAssertNil(store.load())
+        XCTAssertEqual(backend.stopCalls, [id])
+    }
+
     func testStaleCancelSnapshotAfterScheduleDoesNotReport() async {
         let sentinel = UUID(uuidString: "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6C")!
         backend.sentinelIDsForCommand[id] = [sentinel]
@@ -580,6 +591,15 @@ extension RingControllerTests {
         XCTAssertEqual(first, .pending)
         XCTAssertEqual(second, .delivered, "delivery attempts: \(attempts)")
         XCTAssertEqual(attempts, [500, 200])
+    }
+
+    func testConsentWithdrawal428DropsPendingReports() async {
+        let defaults = UserDefaults(suiteName: AgentIdentityStore.suiteName)
+        defaults?.removeObject(forKey: RingAlertReporter.pendingKey)
+        let reporter = RingAlertReporter(defaults: defaults, sender: { _ in (428, Data()) })
+        let outcome = await reporter.report(state: .childDismissed, ringId: id, dismissalCount: 1)
+        XCTAssertEqual(outcome, .consentWithdrawn)
+        XCTAssertTrue(reporter.pendingEvents().isEmpty)
     }
 }
 

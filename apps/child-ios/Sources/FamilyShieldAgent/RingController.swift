@@ -203,7 +203,7 @@ public final class RingController: ObservableObject {
             if generation == operationGeneration {
                 store.save(nil)
                 state = nil
-                RingAlertReporter.clear()
+                reporter.clear()
                 UserDefaultsRingHistory.clear()
                 #if os(iOS)
                 RingNotifier.cancel()
@@ -218,7 +218,7 @@ public final class RingController: ObservableObject {
             state = nil
             lastScheduledIDs = []
             history.remove(current.commandId)
-            RingAlertReporter.clear()
+            reporter.clear()
             UserDefaultsRingHistory.clear()
             #if os(iOS)
             RingNotifier.cancel()
@@ -326,6 +326,10 @@ public final class RingController: ObservableObject {
         let afterRestart = restarted || (event == .timedOut && current.bootSession.map { $0 != bootSession() } == true)
         let outcome = await reporter.report(state: event, ringId: current.commandId,
                                             dismissalCount: current.dismissalCount, afterRestart: afterRestart)
+        if outcome == .consentWithdrawn {
+            await stopForConsentWithdrawal()
+            return
+        }
         guard expectedGeneration == operationGeneration, state?.commandId == current.commandId else { return }
         if event == .timedOut, case .resume(let seconds) = outcome {
             await applyResume(current, seconds: seconds, generation: expectedGeneration)
@@ -351,6 +355,8 @@ public final class RingController: ObservableObject {
             await stop(.timeout, commandId: current.commandId)
         case .resume(let seconds):
             await applyResume(current, seconds: seconds, generation: generation)
+        case .consentWithdrawn:
+            await stopForConsentWithdrawal()
         case .pending:
             var pending = current
             pending.endAt = RingPolicy.capEndAt(now().addingTimeInterval(RingPolicy.duration), startedAt: current.startedAt)
@@ -426,6 +432,10 @@ public final class RingController: ObservableObject {
             let generation = operationGeneration
             let outcome = await reporter.report(state: event.state, ringId: event.ringId,
                                                 dismissalCount: event.dismissalCount, afterRestart: event.afterRestart)
+            if outcome == .consentWithdrawn {
+                await stopForConsentWithdrawal()
+                return
+            }
             if outcome == .pending { break }
             if event.state == .timedOut, case .resume(let seconds) = outcome,
                generation == operationGeneration,
@@ -589,8 +599,12 @@ public final class RingController: ObservableObject {
         dismissed.endAt = RingPolicy.capEndAt(dismissed.endAt, startedAt: dismissed.startedAt)
         store.save(dismissed)
         state = dismissed
-        _ = await reporter.report(state: .childDismissed, ringId: current.commandId,
-                                  dismissalCount: dismissed.dismissalCount)
+        let outcome = await reporter.report(state: .childDismissed, ringId: current.commandId,
+                                            dismissalCount: dismissed.dismissalCount)
+        if outcome == .consentWithdrawn {
+            await stopForConsentWithdrawal()
+            return
+        }
         guard generation == operationGeneration,
               state?.commandId == current.commandId, state?.stopSource == nil else { return }
         lastScheduledIDs = [current.commandId]
