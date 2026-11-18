@@ -140,11 +140,25 @@ object OsraTheme {
     val LocalOsraPalette = staticCompositionLocalOf { OsraTokens.light }
     val LocalOsraRadii = staticCompositionLocalOf { OsraTokens.lightRadii }
 
+    /**
+     * The palette [darkTheme] selects. A function rather than two `if`s inside the composable so the
+     * **selection itself** is testable: #807 review (Codex) planted exactly this swap — the branches
+     * reversed — and every row still passed, because they compared generated constants and never observed
+     * which one the theme chose. The row that holds this now is
+     * `the dark theme selects the dark palette and light selects light`.
+     */
+    fun paletteFor(darkTheme: Boolean): OsraTokens.Palette =
+        if (darkTheme) OsraTokens.dark else OsraTokens.light
+
+    /** The radii [darkTheme] selects; dark surfaces get the smaller corners by design. See [paletteFor]. */
+    fun radiiFor(darkTheme: Boolean): OsraTokens.Radii =
+        if (darkTheme) OsraTokens.darkRadii else OsraTokens.lightRadii
+
     /** The theme a screen wraps its content in. */
     @Composable
     fun OsraTheme(darkTheme: Boolean = androidx.compose.foundation.isSystemInDarkTheme(), content: @Composable () -> Unit) {
-        val palette = if (darkTheme) OsraTokens.dark else OsraTokens.light
-        val radii = if (darkTheme) OsraTokens.darkRadii else OsraTokens.lightRadii
+        val palette = paletteFor(darkTheme)
+        val radii = radiiFor(darkTheme)
         CompositionLocalProvider(
             LocalOsraPalette provides palette,
             LocalOsraRadii provides radii,

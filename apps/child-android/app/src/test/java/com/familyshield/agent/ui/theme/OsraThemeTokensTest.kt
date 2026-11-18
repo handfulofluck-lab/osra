@@ -5,6 +5,7 @@ import java.io.File
 import androidx.compose.ui.unit.sp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -20,9 +21,10 @@ import org.junit.Test
  * Material for `primary` get the design's primary, does it get the design's type sizes on the slots it will
  * reach for, and do the two themes really differ.
  *
- * Mutants: point `colors()` at a hardcoded colour → [every Material slot comes from the palette]; swap the light
- * and dark palettes in `OsraTheme` → [the two themes are different where the design says so]; hand-write a
- * `TextStyle` instead of reading the token → [the type sizes are the design file's].
+ * Mutants: point `colors()` at a hardcoded colour → [every Material slot comes from the palette]; reverse
+ * `OsraTheme.paletteFor`/`radiiFor` → [the dark theme selects the dark palette and light selects light] (the
+ * themes-differ row does *not* catch that swap — #807 review); hand-write a `TextStyle` instead of reading the
+ * token → [the type sizes are the design file's].
  */
 class OsraThemeTokensTest {
 
@@ -40,6 +42,20 @@ class OsraThemeTokensTest {
             assertEquals("outline", palette.border, scheme.outline)
             assertEquals("scrim", palette.scrim, scheme.scrim)
         }
+    }
+
+    /**
+     * #807 review (Codex): the rows above compare the **generated constants**; none of them ever asked
+     * `OsraTheme` which constant it picked. He swapped the two branches in the composable and all 18 rows
+     * stayed green, so the header's old claim that "the themes-differ row catches the swap" was false.
+     * This row observes the selection itself — reverse `paletteFor`/`radiiFor` and it goes red.
+     */
+    @Test
+    fun `the dark theme selects the dark palette and light selects light`() {
+        assertSame("dark selects the dark palette", OsraTokens.dark, OsraTheme.paletteFor(true))
+        assertSame("light selects the light palette", OsraTokens.light, OsraTheme.paletteFor(false))
+        assertSame("dark selects the dark corners", OsraTokens.darkRadii, OsraTheme.radiiFor(true))
+        assertSame("light selects the light corners", OsraTokens.lightRadii, OsraTheme.radiiFor(false))
     }
 
     @Test

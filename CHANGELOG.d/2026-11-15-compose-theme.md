@@ -9,5 +9,8 @@
   same file.
 - **Two gaps stated, not hidden:** the IBM Plex families are named but not bundled (the files and their OFL licence
   belong in the PR that draws the first screen), and `cardBorder` is the design's `transparent` in the light theme.
-- Verified by JVM tests only: `OsraThemeTokensTest` (five rows on the mapping) and `PairingScreenStateTest` (the
-  screen's rules). **Not verified on a handset** — no screen uses the theme yet.
+- Verified by JVM tests only: `OsraThemeTokensTest` (seven rows: the Material mapping, the palette/radii **selection**
+  itself, the two themes differing, the type sizes, the per-theme radii and the generated font names) and
+  `PairingScreenStateTest` (the screen's rules). The selection row exists because the #807 review found the earlier
+  claim false: swapping the palettes left every other row green, since they compared generated constants and never
+  observed which one the theme chose. **Not verified on a handset** — no screen uses the theme yet.

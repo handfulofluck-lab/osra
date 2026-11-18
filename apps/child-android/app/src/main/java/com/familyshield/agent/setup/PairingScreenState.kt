@@ -50,7 +50,7 @@ data class PairingScreenState(
         return copy(digits = digits.dropLast(1), error = null)
     }
 
-    /** The optional phone name ("Alex's phone"). Trimmed, and capped so a paste cannot bloat the claim. */
+    /** The optional phone name ("Alex's phone"). Capped so a paste cannot bloat the claim; kept as typed, not trimmed. */
     fun onName(text: String): PairingScreenState =
         if (waiting) this else copy(deviceName = text.take(NAME_MAX_LENGTH), error = null)
 

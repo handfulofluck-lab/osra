@@ -3,8 +3,9 @@
 // Generator: scripts/gen-android-tokens.mjs. Written for #728, so every screen after it (lock, block, SOS,
 // ring, the PIN gate) has one theme rather than a colour chosen per screen.
 //
-// OsraTokensMatchJsonTest fails when this file and the design file disagree, so a token change that does not
-// reach Android is a red test, not a wrong colour on a phone.
+// This file is checked, not trusted: scripts/gen-android-tokens.mjs --check fails when it no longer matches
+// the design file, and workflow-lint runs that check — so a token change that does not reach Android is a red
+// CI job, not a wrong colour on a phone.
 package com.familyshield.agent.ui.theme
 
 import androidx.compose.ui.graphics.Color

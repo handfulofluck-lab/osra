@@ -4,9 +4,11 @@
  *
  * Why generated rather than copied: the design file is the single source of the palette, radii, spacing,
  * sizes and type scale, and the Bureau reviews screens against it. A hand-kept Kotlin copy drifts the first
- * time a token changes, and nothing catches it — a wrong hex is not a compile error. `OsraTokensMatchJson`
- * (apps/child-android, JVM) fails when this file no longer matches the design file, so the drift is a red
- * test rather than a wrong colour on a child's phone.
+ * time a token changes, and nothing catches it — a wrong hex is not a compile error. **This script is the
+ * guard**: `--check` exits 1 when `OsraTokens.kt` no longer matches the design file, and `workflow-lint` runs
+ * it beside the other repository checks — so the drift is a red CI job rather than a wrong colour on a child's
+ * phone. (There is no JVM test that re-parses the JSON: the earlier comment here named one, and it did not
+ * exist — corrected after the #807 review.)
  *
  * Usage:
  *   node scripts/gen-android-tokens.mjs            # writes the file
@@ -58,8 +60,9 @@ function render(tokens) {
 // Generator: scripts/gen-android-tokens.mjs. Written for #728, so every screen after it (lock, block, SOS,
 // ring, the PIN gate) has one theme rather than a colour chosen per screen.
 //
-// OsraTokensMatchJsonTest fails when this file and the design file disagree, so a token change that does not
-// reach Android is a red test, not a wrong colour on a phone.
+// This file is checked, not trusted: scripts/gen-android-tokens.mjs --check fails when it no longer matches
+// the design file, and workflow-lint runs that check — so a token change that does not reach Android is a red
+// CI job, not a wrong colour on a phone.
 package com.familyshield.agent.ui.theme
 
 import androidx.compose.ui.graphics.Color
