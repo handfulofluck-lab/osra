@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- draft: Bureau wording, not yet read by a native speaker. iPhone child app plurals. -->
+<plist version="1.0">
+<dict>
+	<key>pin_wrong</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>غلط PIN۔ وقفے سے پہلے %d کوشش باقی ہے۔</string>
+			<key>other</key>
+			<string>غلط PIN۔ وقفے سے پہلے %d کوششیں باقی ہیں۔</string>
+		</dict>
+	</dict>
+	<key>pin_locked</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>بہت زیادہ غلط PIN درج ہوئے۔ %d سیکنڈ بعد دوبارہ کوشش کریں۔</string>
+			<key>other</key>
+			<string>بہت زیادہ غلط PIN درج ہوئے۔ %d سیکنڈ بعد دوبارہ کوشش کریں۔</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

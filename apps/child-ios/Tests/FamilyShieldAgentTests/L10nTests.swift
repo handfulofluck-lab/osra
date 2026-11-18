@@ -20,6 +20,48 @@ final class L10nTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(en.count, 80)
     }
 
+    /// ADR-0042 (#883): the five launch languages carry every English line with the same placeholders, and no empty
+    /// value. A line missing here would draw its key on the screen instead of a sentence, so this is the gate that
+    /// lets the catalogs land behind the D1a switch.
+    func testTheFiveLaunchLanguagesCoverEnglishAndKeepItsPlaceholders() throws {
+        let en = try table("en")
+        for language in ["tr", "id", "ms", "fr", "ur"] {
+            let other = try table(language)
+            let missing = Set(en.keys).subtracting(other.keys).sorted()
+            XCTAssertTrue(missing.isEmpty, "\(language) is missing \(missing)")
+            XCTAssertTrue(other.values.allSatisfy { !$0.trimmingCharacters(in: .whitespaces).isEmpty },
+                          "\(language) has an empty line")
+            for (key, english) in en {
+                guard let line = other[key] else { continue }
+                XCTAssertEqual(Self.placeholders(english), Self.placeholders(line),
+                               "\(language) changes the placeholders of \(key)")
+            }
+        }
+    }
+
+    /// A catalog may run ahead of English while a screen is still held (the `#880` and `#881` lines), so extra keys
+    /// are allowed. The plurals are not: the same two keys, in every language that ships one.
+    func testTheFiveLaunchLanguagesKeepTheEnglishPlurals() throws {
+        let en = try pluralKeys("en")
+        for language in ["tr", "id", "ms", "fr", "ur"] {
+            XCTAssertEqual(try pluralKeys(language), en, "\(language) plurals")
+        }
+    }
+
+    private func pluralKeys(_ language: String) throws -> Set<String> {
+        let path = try XCTUnwrap(Bundle.module.path(forResource: "Localizable", ofType: "stringsdict",
+                                                    inDirectory: nil, forLocalization: language),
+                                 "no \(language) Localizable.stringsdict in the package bundle")
+        let plist = try XCTUnwrap(NSDictionary(contentsOfFile: path) as? [String: Any])
+        return Set(plist.keys.compactMap { $0 as? String })
+    }
+
+    private static func placeholders(_ line: String) -> [String] {
+        let pattern = try? NSRegularExpression(pattern: #"%(?:\d+\$)?[@difs]"#)
+        let matches = pattern?.matches(in: line, range: NSRange(line.startIndex..., in: line)) ?? []
+        return matches.compactMap { Range($0.range, in: line).map { String(line[$0]) } }.sorted()
+    }
+
     func testEveryKeyTheCodeAsksForExists() throws {
         let sources = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

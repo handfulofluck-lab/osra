@@ -1,0 +1,107 @@
+/* OSRA Kids iPhone, fr: Language Bureau DRAFT, not yet read by a native speaker. Mirrors en.lproj at main 5a59d182 line by line. Lands on main only behind the ADR-0042 D1a served switch. */
+/* #511: the iPhone block screen, the same wording as the Android agent (values/strings.xml). */
+"block_title_blocked" = "Cette application est bloquée par ton parent";
+"block_request_access" = "Demander l’accès";
+"block_exit_home" = "Fermer l’application";
+/* %1$@ is the window (Bedtime, or the routine's name), %2$@ its end time (HH:MM). */
+"block_window_line" = "Bloqué : %1$@, jusqu’à %2$@";
+"block_window_bedtime" = "Heure du coucher";
+
+/* The app's own screens (5.5, Arabic Language Bureau sheet, approved by Karim 2026-11-12 11:20Z). Plurals are in Localizable.stringsdict. */
+"pair_section_title" = "OSRA Kids";
+"pair_server_field" = "Adresse du serveur (par ex. 192.168.1.5:3000)";
+"pair_code_field" = "Code d’association à 6 chiffres";
+"pair_name_field" = "Nom de l’appareil (facultatif)";
+"pair_button" = "Associer cet appareil";
+"pair_button_busy" = "Association…";
+"pair_hint" = "Demande à ton parent le code d’association affiché dans son application OSRA.";
+"pair_waiting" = "En attente : ton parent doit appuyer sur Autoriser sur son téléphone…";
+"pair_title" = "Associer l’appareil";
+"pair_error_server" = "Saisis une adresse de serveur valide, par ex. 192.168.1.5:3000";
+"pair_error_code" = "Saisis le code d’association à 6 chiffres.";
+"pair_error_invalid" = "Code invalide ou expiré. Demande un nouveau code à ton parent.";
+"pair_error_claimed" = "Ce code est déjà utilisé par un autre téléphone. Demande un nouveau code à ton parent.";
+"pair_error_denied" = "Ton parent a refusé ce téléphone. Si c’est une erreur, demande-lui un nouveau code.";
+"pair_error_expired" = "Le code a expiré avant que ton parent autorise ce téléphone. Demande-lui un nouveau code.";
+"pair_error_consent" = "Ton parent doit donner son consentement dans l’application OSRA avant que ce téléphone puisse être associé.";
+"pair_error_network" = "Impossible de joindre le serveur. Vérifie l’adresse et le réseau.";
+"pair_error_response" = "Réponse inattendue du serveur. Vérifie l’adresse du serveur.";
+"pair_error_http" = "Le serveur a rejeté la demande (HTTP %d).";
+"pair_error_save" = "Impossible d’enregistrer l’association sur ce téléphone. Réessaie.";
+"status_title" = "État";
+"status_paired" = "Associé";
+"status_child" = "Enfant";
+"status_server" = "Serveur";
+"status_technical_details" = "Détails techniques";
+"status_device" = "Appareil";
+"screen_time" = "Temps d’écran";
+"screen_time_on" = "Activé";
+"screen_time_off" = "Désactivé";
+"screen_time_not_allowed" = "Non autorisé";
+"screen_time_button" = "Activer Temps d’écran";
+"screen_time_footer_off" = "Les limites et blocages d’applications de tes parents nécessitent Temps d’écran. Touche « Activer Temps d’écran » et autorise-le.";
+"screen_time_footer_on" = "Les limites et blocages d’applications de tes parents s’appliquent sur cet appareil.";
+"screen_time_footer_denied" = "Temps d’écran n’a pas été autorisé : les limites de tes parents ne s’appliquent donc pas. Touche de nouveau « Activer Temps d’écran », ou demande à un parent d’ouvrir Réglages > Temps d’écran et d’autoriser OSRA Kids.";
+"location" = "Localisation";
+"location_always" = "Toujours";
+"location_while_in_use" = "Lorsque l’app est active (« Toujours » est nécessaire)";
+"location_off" = "Désactivée";
+"location_allow" = "Autoriser la localisation";
+"location_open_settings" = "Ouvrir Réglages";
+"location_footer" = "Tes parents voient cet appareil sur leur carte lorsqu’il se déplace sur une distance notable et reçoivent des alertes pour les lieux qu’ils ont définis. Choisis « Autoriser lorsque l’app est active », puis « Passer à Toujours autoriser ».";
+"groups" = "Groupes d’applications";
+"groups_status_footer" = "Réservé aux parents : choisissez ici les applications à bloquer. Les applications bloquées affichent l’écran OSRA avec « Demander l’accès ».";
+"repair_button" = "Associer de nouveau cet appareil";
+"repair_title" = "Nouvelle association";
+"pin_set_title" = "Définir un code PIN parental";
+"pin_parent" = "Code PIN parental";
+"pin_new_field" = "Nouveau code PIN (4 à 8 chiffres)";
+"pin_repeat_field" = "Répétez le code PIN";
+"pin_save" = "Enregistrer le code PIN";
+"pin_set_reason" = "Définissez un code PIN parental pour que seul un parent puisse modifier OSRA Kids ou associer de nouveau ce téléphone.";
+"pin_set_footer" = "Réservé aux parents. Le code PIN protège les groupes d’applications et la nouvelle association sur ce téléphone. Il reste sur ce téléphone et n’est jamais envoyé ailleurs.";
+"pin_mismatch" = "Les deux codes PIN sont différents.";
+"pin_save_failed" = "Le code PIN n’a pas pu être enregistré. Réessayez.";
+"pin_continue" = "Continuer";
+"pin_parents_only" = "Réservé aux parents.";
+"pin_too_short" = "Le code PIN doit comporter au moins 4 chiffres.";
+"pin_too_long" = "Le code PIN doit comporter au plus 8 chiffres.";
+"pin_not_digits" = "Le code PIN ne doit contenir que des chiffres.";
+"pin_same_digit" = "Choisissez un code PIN qui ne répète pas le même chiffre.";
+"pin_weak" = "Choisissez un code PIN moins facile à deviner.";
+"groups_empty" = "Aucun groupe pour le moment.";
+"groups_blocked" = "Bloqué";
+"groups_chosen" = "Sélection";
+"groups_counts" = "Applications : %1$d · Catégories : %2$d · Sites web : %3$d";
+"groups_nothing" = "Aucune sélection";
+"groups_change" = "Modifier les applications";
+"groups_delete" = "Supprimer le groupe";
+"groups_empty_footer" = "Rien n’est sélectionné : ce groupe ne bloque donc rien. Touchez « Modifier les applications » pour choisir de nouveau.";
+"groups_by_parent" = "Bloqué depuis l’application du parent.";
+"groups_new" = "Nouveau groupe";
+"groups_name_field" = "Nom du groupe, par ex. Jeux";
+"groups_choose" = "Choisir des applications";
+"groups_add" = "Ajouter le groupe";
+"groups_new_footer" = "40 caractères au maximum. Les applications bloquées affichent l’écran OSRA avec « Demander l’accès ».";
+"groups_error_choose" = "Choisissez au moins une application, une catégorie ou un site web.";
+"groups_error_name" = "Donnez un nom au groupe.";
+"groups_error_max" = "Il ne peut pas y avoir plus de 20 groupes.";
+
+/* #602 Status screen: child name, last sync, Sync now (Bureau, approved by Karim 2026-11-12 12:55Z). */
+"status_child_name" = "Enfant";
+"status_last_synced" = "Dernière synchronisation : %@";
+"status_never_synced" = "Pas encore synchronisé";
+"status_sync_stale" = "Pas de synchronisation depuis %@. Vérifie la connexion Internet, puis touche « Synchroniser maintenant ».";
+"status_sync_now" = "Synchroniser maintenant";
+"status_syncing" = "Synchronisation…";
+"status_sync_failed" = "Impossible de joindre le serveur. Réessaie dans un instant.";
+"status_sync_note" = "Quand OSRA Kids est fermé, une modification faite par ton parent peut mettre quelques minutes à arriver. Ouvrir l’application ou toucher « Synchroniser maintenant » la récupère tout de suite.";
+
+/* #880 alarm permission step and denied row, #881 default block-screen subtitle (English drafts by the UI/UX Bureau, 17 Nov). Key names proposed; rename to match the code. */
+"alarm_setup_title" = "Permets à ton parent de faire sonner ce téléphone";
+"alarm_setup_body" = "Ainsi, ton parent pourra faire sonner fort ce téléphone s’il est perdu.";
+"alarm_setup_allow" = "Autoriser la sonnerie";
+"alarm_setup_not_now" = "Plus tard";
+"alarm_denied_row" = "La sonnerie est désactivée sur cet iPhone.";
+"alarm_denied_button" = "Activer dans Réglages";
+"block_subtitle_default" = "Touche « Demander l’accès » pour demander à ton parent.";
