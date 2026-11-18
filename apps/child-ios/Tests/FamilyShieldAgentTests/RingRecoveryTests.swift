@@ -200,7 +200,7 @@ final class RingRecoveryTests: XCTestCase {
         wall = wall.addingTimeInterval(600)
         uptime = 0
         bootSession = 2
-        reporter.statuses = [500, 201]
+        reporter.statuses = [201, 500]
         var release: (() -> Void)?
         reporter.reportGate = {
             self.reporter.reportGate = nil
