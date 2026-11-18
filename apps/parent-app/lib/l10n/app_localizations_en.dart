@@ -1260,6 +1260,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String chartLegendRow(String app, int minutes) {
+    return '$app: $minutes min';
+  }
+
+  @override
   String get noAppUsage => 'No app usage recorded';
 
   @override
@@ -1346,7 +1351,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get couldNotLoadScreenTime => 'Could not load screen time';
+  String get couldNotLoadScreenTime =>
+      'Could not load screen time. Check your connection and try again.';
 
   @override
   String noScreenTimeData(int days) {
@@ -1399,7 +1405,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get showLabel => 'Show';
 
   @override
-  String get couldNotLoadBrowsing => 'Could not load browsing history';
+  String get couldNotLoadBrowsing =>
+      'Could not load browsing history. Check your connection and try again.';
 
   @override
   String noBlockedSites(int days) {
@@ -1611,6 +1618,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noCallsOrTexts => 'No phone calls or texts yet';
 
   @override
+  String get activityLockRow => 'Device locked';
+
+  @override
+  String activityLockRowDetail(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'The lock screen came up $count times',
+      one: 'The lock screen came up once',
+      zero: 'The lock screen did not come up',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get unknownNumber => 'Unknown number';
 
   @override
@@ -1693,7 +1715,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'A command is confirmed only when the child device reports back. Delivered means the device collected it; it has not confirmed it ran.';
 
   @override
-  String get couldNotLoadCommandHistory => 'Could not load command history';
+  String get couldNotLoadCommandHistory =>
+      'Could not load command history. Check your connection and try again.';
 
   @override
   String createdEvent(String time) {
@@ -3103,6 +3126,38 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get appRuleHiddenOnIphone =>
       'On the iPhone, this app is hidden instead of showing the OSRA screen.';
+
+  @override
+  String get webSiteNamesOnlyNote =>
+      'Names of sites and online services this phone connected to, not the pages opened. Kept for 90 days.';
+
+  @override
+  String webSiteVisits(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Visited $count times',
+      one: 'Visited once',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String webSiteSeenRange(String first, String last) {
+    return '$first to $last';
+  }
+
+  @override
+  String webSitesSummary(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count sites visited',
+      one: '1 site visited',
+      zero: 'No sites visited',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get showPassword => 'Show password';

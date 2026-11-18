@@ -138,6 +138,9 @@ class _DeviceCommandSection extends ConsumerWidget {
                     style:
                         TextStyle(color: Theme.of(context).colorScheme.error),
                   ),
+                  // Ahmed's N1 on #841 (6967168641): this card still printed the raw exception under the
+                  // sentence, which the outer error state stopped doing in #841. The sentence and the Retry
+                  // button below are the whole message; there is nothing here a parent can act on.
                   TextButton.icon(
                     onPressed: () =>
                         ref.invalidate(deviceCommandHistoryProvider(device.id)),
@@ -228,6 +231,8 @@ class _ErrorState extends StatelessWidget {
             Text(title,
                 style: Theme.of(context).textTheme.titleMedium,
                 textAlign: TextAlign.center),
+            // UI/UX Bureau (#841 follow-up): the title is a whole sentence that already says "try again",
+            // and the button below does it. This line made the screen say it twice.
             const SizedBox(height: 8),
             TextButton.icon(
                 onPressed: onRetry,

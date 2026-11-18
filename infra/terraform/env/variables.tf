@@ -391,6 +391,12 @@ variable "backup_copy_account_id" {
   default     = ""
 }
 
+variable "backup_offsite_copy_enabled" {
+  description = "Copy each daily backup to backup_copy_vault_arn (another account and EU region). false = the daily backup stays in this account and region only; the vault ARN still selects the AWS Backup plan."
+  type        = bool
+  default     = true
+}
+
 variable "backup_copy_vault_arn" {
   description = "Backup vault in another account and region that receives a copy of each daily backup (org-audit output backup_copy_vault_arn). Empty = no AWS Backup plan."
   type        = string

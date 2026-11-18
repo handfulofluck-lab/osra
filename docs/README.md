@@ -44,6 +44,7 @@ Start here. This page is the map: what each document is for, and which one to re
 | [`ROADMAP.md`](ROADMAP.md) | The KCL plan (Phases 0–5, five gates, 20 weeks) item by item with acceptance lines and current status; mirrored on issue #50 |
 | [`ops/ci-cost-2026-11.md`](ops/ci-cost-2026-11.md) | Measured 31-day GitHub Actions usage and the 2026 USD cost model behind the cheaper-CI workflow changes (#613) |
 | [`adr/`](adr/README.md) | Architecture decision records — context, decision, reasoning, rejected alternatives, costs |
+| [Bounded Mac metadata access](adr/0043-bounded-mac-metadata-access.md) | Proposed implementation record for #893; reviewed inputs, operating limits and private evidence prerequisites |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | What changed on which day, with the PR/issue that carried it, and the verification state |
 | [`../CHANGELOG.d/`](../CHANGELOG.d/README.md) | One changelog fragment per change — where entries are written now, and why the shared `[Unreleased]` block was replaced |
 | [`../AGENTS.md`](../AGENTS.md) | Binding working agreement: the role split and the merge rule (§1), definition of done (§3), hard rules (§4), PR/review protocol (§6), device hygiene (§7) |

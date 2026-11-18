@@ -1,0 +1,2 @@
+### Changed
+- docs/QA/security/server-threat-model.md: Ahmed's read of §4 to §6 against `0036d6b9` (#637 comment 6957582839). Adds the adult's consent-record rows (#875, #878, #886), states both MFA reset times (24-hour witness deadline, 72-hour reset window), marks the 443 egress for review before public launch, and brings §5 up to 18 Nov: #20 and #32 closed, the ALB-to-task transport accepted for the closed beta only, 14-day backups decided, backups in Frankfurt only (Karim 18 Nov), and the #27 residuals.
