@@ -1244,6 +1244,12 @@ class AppLocalizationsAr extends AppLocalizations {
   String get appNoLongerInstalledRemove => 'تطبيق لم يعد مثبّتًا. إزالة';
 
   @override
+  String get appNamePending => 'الاسم غير متوفّر بعد';
+
+  @override
+  String get appNamePendingRemove => 'الاسم غير متوفّر بعد. إزالة';
+
+  @override
   String installedAppsTruncated(int count) {
     return 'عرض أول $count تطبيقًا.';
   }

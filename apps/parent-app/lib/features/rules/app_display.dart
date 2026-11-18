@@ -13,19 +13,29 @@ import '../../l10n/l10n.dart';
 /// The fallback is the Bureaus' line, not the id: a rule saved before names were stored carries the id in
 /// `appName`, and a parent should never read `com.example.app` on their own screen. A "?" avatar marks the
 /// row the same way, so the chip, the rule row and the routine chip share one look.
+/// [reportKnown] is "a device has sent its app list". Codex's finding on #872: a missing id means two
+/// different things — **confirmed absent** when a report exists and the app is not in it, and **pending**
+/// when no report has arrived. Saying «تطبيق لم يعد مثبّتًا» before any report claims something we do not
+/// know, so the pending state has its own line and the name fills in by itself when the report lands.
 String appDisplayName(
   BuildContext context,
   Map<String, InstalledApp> apps,
   String packageId, {
   String? savedName,
+  bool reportKnown = true,
 }) {
   final reported = apps[packageId];
   if (reported != null) return reported.label;
   final name = (savedName ?? '').trim();
-  // A saved name that is the id is not a name; both paths fall through to the Bureaus' line.
+  // A saved name that is the id is not a name; both paths fall through to the state's line.
   if (name.isNotEmpty && name != packageId) return name;
-  return context.l10n.appNoLongerInstalled;
+  return reportKnown ? context.l10n.appNoLongerInstalled : context.l10n.appNamePending;
 }
+
+/// The tooltip and screen-reader label for the remove action on a chip whose name is not a real one:
+/// "App no longer installed. Remove" or "Name not available yet. Remove", matching what the chip says.
+String appRemoveLabel(BuildContext context, {required bool reportKnown}) =>
+    reportKnown ? context.l10n.appNoLongerInstalledRemove : context.l10n.appNamePendingRemove;
 
 /// The avatar for a chip or row: the app's own icon when the device reported it, a "?" when it did not.
 Widget appDisplayAvatar(Map<String, InstalledApp> apps, String packageId, {double size = 20}) {

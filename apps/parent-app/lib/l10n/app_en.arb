@@ -560,6 +560,8 @@
   "installedAppsLoadFailed": "Couldn't load apps. Check your connection and try again.",
   "appNoLongerInstalled": "App no longer installed",
   "appNoLongerInstalledRemove": "App no longer installed. Remove",
+  "appNamePending": "Name not available yet",
+  "appNamePendingRemove": "Name not available yet. Remove",
   "installedAppsTruncated": "Showing the first {count} apps.",
   "@installedAppsTruncated": {
     "placeholders": {

@@ -343,6 +343,26 @@ void main() {
     expect(drainExceptions(tester), isEmpty);
   });
 
+  /// Codex's #872 finding ("pending versus confirmed absence"): before any device sends its app list, a
+  /// missing name means we do not know yet — not that the app was removed. The two lines are different on
+  /// purpose, and saying the wrong one claims something the parent will act on.
+  testWidgets('no report yet says the name is pending, and never that the app is gone', (tester) async {
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1', alwaysAllowedApps: const ['com.example.gone']),
+      // A report that exists but carries no `reportedAt`: no device has checked in with its list.
+      'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(apps: const [], reportedAt: null),
+    });
+    await pumpRules(tester, api);
+    await openAppsTab(tester);
+
+    // Mutant: one fallback line for both states, and this row reads «App no longer installed» before any
+    // device has reported — a statement about the child's phone that nothing has supported.
+    expect(find.text('Name not available yet'), findsWidgets);
+    expect(find.text('App no longer installed'), findsNothing);
+    expect(find.textContaining('com.example.gone'), findsNothing);
+  });
+
   /// #872 conditions 3, 4 and 5 (UI/UX Bureau): each has its own row so the next reader can see what a
   /// regression looks like.
   testWidgets('a device that reports nothing keeps its header and says so', (tester) async {

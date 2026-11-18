@@ -90,6 +90,13 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
   /// U33 (#868): reported package id → the app the phone described, for the chips and rows that render
   /// a choice the parent already made. A package the phone no longer reports is absent from this map and
   /// its chip falls back to the id — the only place an id can still surface, and only for what is saved.
+  /// Codex's #872 finding: a missing id is *confirmed absent* only when a report exists. Before any
+  /// device reports, the honest state is "pending" and the Bureaus' second line says so.
+  bool get _reportKnown {
+    final report = ref.watch(installedAppsProvider(widget.childId)).valueOrNull;
+    return report != null && report.reportedAt != null;
+  }
+
   Map<String, InstalledApp> get _appIndex {
     final report = ref.watch(installedAppsProvider(widget.childId)).valueOrNull;
     return {
@@ -102,7 +109,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
   // display time; when nothing reports the id, the Bureaus' line and a "?" avatar replace it. The id is
   // never shown to a parent — that was the finding.
   String _nameOf(Map<String, InstalledApp> apps, String packageId) =>
-      appDisplayName(context, apps, packageId);
+      appDisplayName(context, apps, packageId, reportKnown: _reportKnown);
 
   Widget _chipIcon(Map<String, InstalledApp> apps, String packageId) =>
       appDisplayAvatar(apps, packageId);
@@ -502,6 +509,9 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
                 InputChip(
                   avatar: _chipIcon(names, pkg),
                   label: Text(_nameOf(names, pkg)),
+                  deleteButtonTooltipMessage: names.containsKey(pkg)
+                      ? null
+                      : appRemoveLabel(context, reportKnown: _reportKnown),
                   onDeleted: () => updateAlwaysAllowed([..._draft.alwaysAllowedApps]..remove(pkg)),
                 ),
             ],
@@ -585,6 +595,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
             key: ValueKey(_draft.appRules[i].packageId),
             rule: _draft.appRules[i],
             app: names[_draft.appRules[i].packageId],
+            reportKnown: _reportKnown,
             childHasIphone: childHasIphone,
             onChanged: (r) => update([..._draft.appRules]..[i] = r),
             onRemove: () => update([..._draft.appRules]..removeAt(i)),
@@ -685,7 +696,11 @@ class _AppRuleTile extends StatefulWidget {
   final ValueChanged<AppRule> onChanged;
   final VoidCallback onRemove;
   final bool childHasIphone;
-  const _AppRuleTile({super.key, required this.rule, required this.onChanged, required this.onRemove, this.app, this.childHasIphone = false});
+
+  /// Whether a device has reported its app list at all — Codex's #872 split: without one, a missing name
+  /// is pending, not "no longer installed".
+  final bool reportKnown;
+  const _AppRuleTile({super.key, required this.rule, required this.onChanged, required this.onRemove, this.app, this.childHasIphone = false, this.reportKnown = true});
 
   @override
   State<_AppRuleTile> createState() => _AppRuleTileState();
@@ -723,11 +738,18 @@ class _AppRuleTileState extends State<_AppRuleTile> {
                       {if (widget.app != null) r.packageId: widget.app!},
                       r.packageId,
                       savedName: r.appName,
+                      reportKnown: widget.reportKnown,
                     ),
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
                 ),
-                IconButton(icon: const Icon(Icons.delete_outline), onPressed: widget.onRemove),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: widget.app != null
+                      ? null
+                      : appRemoveLabel(context, reportKnown: widget.reportKnown),
+                  onPressed: widget.onRemove,
+                ),
               ],
             ),
             // U33 (#868): the row names the app and shows its icon; the package id is not shown.
@@ -779,6 +801,12 @@ class _RoutineDialog extends ConsumerStatefulWidget {
 }
 
 class _RoutineDialogState extends ConsumerState<_RoutineDialog> {
+  /// The same split as the editor: no report yet is "pending", a report without the id is "gone".
+  bool get _reportKnown {
+    final report = ref.watch(installedAppsProvider(widget.childId)).valueOrNull;
+    return report != null && report.reportedAt != null;
+  }
+
   late final TextEditingController _name = TextEditingController(text: widget.existing?.name ?? '');
   late final Set<String> _blocked = {...?widget.existing?.blockedApps};
   late final Set<String> _allowed = {...?widget.existing?.allowedApps};
@@ -857,6 +885,7 @@ class _RoutineDialogState extends ConsumerState<_RoutineDialog> {
             keyPrefix: 'routineBlocked',
             title: l10n.blocked,
             packageIds: _blocked,
+          reportKnown: _reportKnown,
             apps: apps,
             onPick: () => _choose(blockedList: true),
             onRemove: (id) => setState(() => _blocked.remove(id)),
@@ -866,6 +895,7 @@ class _RoutineDialogState extends ConsumerState<_RoutineDialog> {
             keyPrefix: 'routineAllowed',
             title: l10n.alwaysAllowed,
             packageIds: _allowed,
+          reportKnown: _reportKnown,
             apps: apps,
             onPick: () => _choose(blockedList: false),
             onRemove: (id) => setState(() => _allowed.remove(id)),
@@ -901,6 +931,7 @@ class _RoutineAppsField extends StatelessWidget {
   final String keyPrefix;
   final String title;
   final Set<String> packageIds;
+  final bool reportKnown;
   final Map<String, InstalledApp> apps;
   final VoidCallback onPick;
   final ValueChanged<String> onRemove;
@@ -909,6 +940,7 @@ class _RoutineAppsField extends StatelessWidget {
     required this.keyPrefix,
     required this.title,
     required this.packageIds,
+    required this.reportKnown,
     required this.apps,
     required this.onPick,
     required this.onRemove,
@@ -932,7 +964,10 @@ class _RoutineAppsField extends StatelessWidget {
                   InputChip(
                     key: ValueKey('$keyPrefix-$id'),
                     avatar: appDisplayAvatar(apps, id),
-                    label: Text(appDisplayName(context, apps, id)),
+                    label: Text(appDisplayName(context, apps, id, reportKnown: reportKnown)),
+                    deleteButtonTooltipMessage: apps.containsKey(id)
+                        ? null
+                        : appRemoveLabel(context, reportKnown: reportKnown),
                     onDeleted: () => onRemove(id),
                   ),
               ],

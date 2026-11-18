@@ -2144,6 +2144,18 @@ abstract class AppLocalizations {
   /// **'App no longer installed. Remove'**
   String get appNoLongerInstalledRemove;
 
+  /// No description provided for @appNamePending.
+  ///
+  /// In en, this message translates to:
+  /// **'Name not available yet'**
+  String get appNamePending;
+
+  /// No description provided for @appNamePendingRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Name not available yet. Remove'**
+  String get appNamePendingRemove;
+
   /// No description provided for @installedAppsTruncated.
   ///
   /// In en, this message translates to:

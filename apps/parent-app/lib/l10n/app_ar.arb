@@ -343,6 +343,8 @@
   "installedAppsLoadFailed": "تعذّر تحميل التطبيقات المثبّتة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "appNoLongerInstalled": "تطبيق لم يعد مثبّتًا",
   "appNoLongerInstalledRemove": "تطبيق لم يعد مثبّتًا. إزالة",
+  "appNamePending": "الاسم غير متوفّر بعد",
+  "appNamePendingRemove": "الاسم غير متوفّر بعد. إزالة",
   "installedAppsTruncated": "عرض أول {count} تطبيقًا.",
   "addAlwaysAllowedTitle": "إضافة تطبيق مسموح دائمًا",
   "appNameLabel": "اسم التطبيق",
