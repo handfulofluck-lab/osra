@@ -1037,8 +1037,8 @@ abstract class AppLocalizations {
   /// No description provided for @rulesLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load rules: {error}'**
-  String rulesLoadFailed(String error);
+  /// **'Couldn\'t load rules. Check your connection and try again.'**
+  String get rulesLoadFailed;
 
   /// No description provided for @noPerAppRules.
   ///
@@ -2237,8 +2237,8 @@ abstract class AppLocalizations {
   /// No description provided for @reportLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load report: {error}'**
-  String reportLoadFailed(String error);
+  /// **'Couldn\'t load report. Check your connection and try again.'**
+  String get reportLoadFailed;
 
   /// No description provided for @noActivityDays.
   ///
@@ -2257,6 +2257,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Total {total} min · avg {avg} min/day'**
   String totalAverage(int total, int avg);
+
+  /// No description provided for @chartLegendRow.
+  ///
+  /// In en, this message translates to:
+  /// **'{app}: {minutes} min'**
+  String chartLegendRow(String app, int minutes);
 
   /// No description provided for @noAppUsage.
   ///
@@ -2339,7 +2345,7 @@ abstract class AppLocalizations {
   /// No description provided for @couldNotLoadScreenTime.
   ///
   /// In en, this message translates to:
-  /// **'Could not load screen time'**
+  /// **'Could not load screen time. Check your connection and try again.'**
   String get couldNotLoadScreenTime;
 
   /// No description provided for @noScreenTimeData.
@@ -2393,7 +2399,7 @@ abstract class AppLocalizations {
   /// No description provided for @couldNotLoadBrowsing.
   ///
   /// In en, this message translates to:
-  /// **'Could not load browsing history'**
+  /// **'Could not load browsing history. Check your connection and try again.'**
   String get couldNotLoadBrowsing;
 
   /// No description provided for @noBlockedSites.
@@ -2714,6 +2720,18 @@ abstract class AppLocalizations {
   /// **'No phone calls or texts yet'**
   String get noCallsOrTexts;
 
+  /// No description provided for @activityLockRow.
+  ///
+  /// In en, this message translates to:
+  /// **'Device locked'**
+  String get activityLockRow;
+
+  /// No description provided for @activityLockRowDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{The lock screen did not come up} =1{The lock screen came up once} other{The lock screen came up {count} times}}'**
+  String activityLockRowDetail(int count);
+
   /// No description provided for @unknownNumber.
   ///
   /// In en, this message translates to:
@@ -2861,7 +2879,7 @@ abstract class AppLocalizations {
   /// No description provided for @couldNotLoadCommandHistory.
   ///
   /// In en, this message translates to:
-  /// **'Could not load command history'**
+  /// **'Could not load command history. Check your connection and try again.'**
   String get couldNotLoadCommandHistory;
 
   /// No description provided for @createdEvent.
@@ -5233,6 +5251,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This iPhone cannot ring yet. It needs iOS 26 or later.'**
   String get commandRefusedRingUnsupportedOs;
+
+  /// No description provided for @webSiteNamesOnlyNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Names of sites and online services this phone connected to, not the pages opened. Kept for 90 days.'**
+  String get webSiteNamesOnlyNote;
+
+  /// No description provided for @webSiteVisits.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Visited once} other{Visited {count} times}}'**
+  String webSiteVisits(int count);
+
+  /// No description provided for @webSiteSeenRange.
+  ///
+  /// In en, this message translates to:
+  /// **'{first} to {last}'**
+  String webSiteSeenRange(String first, String last);
+
+  /// No description provided for @webSitesSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No sites visited} =1{1 site visited} other{{count} sites visited}}'**
+  String webSitesSummary(int count);
 
   /// No description provided for @showPassword.
   ///

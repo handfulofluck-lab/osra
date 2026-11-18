@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../api/permission_errors.dart';
 import '../../l10n/l10n.dart';
 import 'command_messages.dart';
 import '../../providers/family_provider.dart';
@@ -43,8 +44,7 @@ class CommandHistoryScreen extends ConsumerWidget {
       body: overview.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => _ErrorState(
-          title: l10n.couldNotLoadChild,
-          detail: '$e',
+          title: readErrorText(l10n, e, () => l10n.couldNotLoadChild),
           onRetry: () => ref.invalidate(familyProvider),
         ),
         data: (data) {
@@ -217,13 +217,12 @@ class _CommandTile extends StatelessWidget {
 
 class _ErrorState extends StatelessWidget {
   final String title;
-  final String detail;
   final VoidCallback onRetry;
-  const _ErrorState(
-      {required this.title, required this.detail, required this.onRetry});
+  const _ErrorState({required this.title, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -236,7 +235,7 @@ class _ErrorState extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleMedium,
                 textAlign: TextAlign.center),
             const SizedBox(height: 4),
-            Text(detail,
+            Text(l10n.tryAgain,
                 style: Theme.of(context).textTheme.bodySmall,
                 textAlign: TextAlign.center,
                 maxLines: 4,

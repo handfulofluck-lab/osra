@@ -82,6 +82,69 @@ describe("alerts routes", () => {
     await app.close();
   });
 
+  it("redacts a web_threat to a hostless count while the site-name flag is off (Fable blocker B)", async () => {
+    delete process.env.SITE_NAMES_ENABLED;
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: "a-redacted", ...data }));
+
+    const raw = JSON.stringify({
+      childId: CHILD.id,
+      deviceId: "dev-1",
+      severity: "info",
+      category: "web_threat",
+      title: "Blocked site opened: tiktok.com",
+      body: "Your child tried to open tiktok.com.",
+      metadata: { domain: "tiktok.com", host: "tiktok.com", url: "tiktok.com", site: "tiktok.com", reason: "blocked_domain:tiktok.com" },
+      dedupeKey: "domain:tiktok.com:2026-11-16",
+      attemptCount: 2,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/alerts/internal",
+      headers: { "content-type": "application/json", ...signV2(SECRET, raw, { caller: "ai-engine" }) },
+      payload: raw,
+    });
+    expect(res.statusCode).toBe(201);
+    const stored = (prismaMock.alert.create.mock.calls[0][0] as { data: Record<string, unknown> }).data;
+    expect(stored.metadata).toEqual({ reason: "blocked_domain", day: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
+    expect(stored.dedupeKey).toBe(`web:${(stored.metadata as { day: string }).day}`);
+    // No client text either: a title or body could carry the name.
+    expect(stored.title).toBe("Blocked site opened");
+    expect(stored.body).toBe("Your child tried to open a blocked site.");
+    await app.close();
+  });
+
+  it("keeps the host on a web_threat while the site-name flag is on", async () => {
+    process.env.SITE_NAMES_ENABLED = "true";
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: "a-host", ...data }));
+
+    const raw = JSON.stringify({
+      childId: CHILD.id,
+      deviceId: "dev-1",
+      severity: "info",
+      category: "web_threat",
+      title: "Blocked site opened",
+      body: "Your child tried to open a blocked site.",
+      metadata: { domain: "tiktok.com", reason: "blocked_domain:tiktok.com" },
+      dedupeKey: "domain:tiktok.com:2026-11-16",
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/alerts/internal",
+      headers: { "content-type": "application/json", ...signV2(SECRET, raw, { caller: "ai-engine" }) },
+      payload: raw,
+    });
+    expect(res.statusCode).toBe(201);
+    const stored = (prismaMock.alert.create.mock.calls[0][0] as { data: Record<string, unknown> }).data;
+    expect(stored.metadata).toMatchObject({ domain: "tiktok.com", reason: "blocked_domain:tiktok.com" });
+    expect(stored.dedupeKey).toBe("domain:tiktok.com:2026-11-16");
+    delete process.env.SITE_NAMES_ENABLED;
+    await app.close();
+  });
+
   it("a device-signed alert cannot smuggle its own bodyKey through metadata (Fable n13)", async () => {
     // This route never passes a bodyKey, so it is the ONE path osra-security#16 is about: without the strip
     // in the no-key branch, a phone (or an AI engine caller) could store a bodyKey and params this server

@@ -84,7 +84,7 @@ resource "aws_backup_vault_policy" "production_copy" {
 }
 
 # Binding retention (#783 review): with a lock, not even this account can delete a copy early or keep one
-# past 90 days, whatever the vault policy says. GOVERNANCE mode (no changeable_for_days): a principal with
+# past 14 days (the privacy notice), whatever the vault policy says. GOVERNANCE mode (no changeable_for_days): a principal with
 # backup:DeleteBackupVaultLockConfiguration can still remove it. COMPLIANCE mode would be permanent after its
 # cooling-off period; that is Karim's decision to take, not a default (README).
 resource "aws_backup_vault_lock_configuration" "production_copy" {
@@ -92,7 +92,7 @@ resource "aws_backup_vault_lock_configuration" "production_copy" {
 
   backup_vault_name  = aws_backup_vault.production_copy.name
   min_retention_days = 1
-  max_retention_days = 90
+  max_retention_days = 14
 }
 
 # --- Off-site restore drill (restore-drill.sh --from-copy) -------------------------------------------------
