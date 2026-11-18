@@ -508,7 +508,9 @@ public final class RingController: ObservableObject {
         }
         guard schedulingCommandId != current.commandId else { return }
         if scheduledIDs.contains(current.commandId) {
-            await backend.cancelSentinels(for: current.commandId)
+            if await backend.isAlerting(current.commandId) {
+                await backend.cancelSentinels(for: current.commandId)
+            }
             guard generation == operationGeneration,
                   state?.commandId == current.commandId, state?.stopSource == nil else { return }
             lastScheduledIDs = scheduledIDs

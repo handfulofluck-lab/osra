@@ -49,6 +49,8 @@ private final class ScreenshotRingBackend: RingBackend {
     func requestAuthorization() async -> Bool { true }
     func schedule(_ id: UUID, until: Date? = nil) async throws { ids.insert(id) }
     func stop(_ id: UUID) async throws { ids.remove(id) }
+    func isAlerting(_ id: UUID) async -> Bool { false }
+    func cancelSentinels(for id: UUID) async {}
     func scheduledIDs() async throws -> Set<UUID> { ids }
     func updates() async -> AsyncStream<Set<UUID>> { AsyncStream { $0.finish() } }
 }

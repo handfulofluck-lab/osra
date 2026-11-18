@@ -35,6 +35,7 @@ final class FakeRingBackend: RingBackend {
     var scheduleUntil: [UUID: Date?] = [:]
     var sentinelIDsForCommand: [UUID: Set<UUID>] = [:]
     private(set) var cancelSentinelsCalls: [UUID] = []
+    var alertingIDs: Set<UUID> = []
     var bufferedScheduleSnapshots: [Set<UUID>] = []
     private var pendingUpdates: [Set<UUID>] = []
 
@@ -54,6 +55,10 @@ final class FakeRingBackend: RingBackend {
         if let stopGate { await stopGate() }
         stopCalls.append(id)
         scheduled.removeAll { alarmIDs(for: id).contains($0) }
+    }
+
+    func isAlerting(_ id: UUID) async -> Bool {
+        alertingIDs.contains(id)
     }
 
     func cancelSentinels(for id: UUID) async {
@@ -214,6 +219,8 @@ final class RingControllerTests: XCTestCase {
         XCTAssertEqual(controller.state?.commandId, id)
         XCTAssertEqual(controller.state?.dismissalCount, 0, "an alerting main alarm is not a dismissal")
         XCTAssertEqual(reporter.callCount, 0)
+        XCTAssertTrue(backend.cancelSentinelsCalls.isEmpty,
+                      "sentinels stay as the no-app dismissal fallback until the main alarm is alerting")
     }
 
     func testMainAlarmPresentCancelsSentinels() async {
@@ -222,6 +229,7 @@ final class RingControllerTests: XCTestCase {
         let controller = controller()
         await controller.start(id)
         backend.scheduled = [id, sentinel]
+        backend.alertingIDs = [id]
         await controller.process(scheduledIDs: [id, sentinel])
         XCTAssertEqual(backend.cancelSentinelsCalls, [id])
         XCTAssertEqual(backend.scheduled, [id],
