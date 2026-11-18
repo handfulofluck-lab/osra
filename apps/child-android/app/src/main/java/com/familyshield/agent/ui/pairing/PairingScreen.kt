@@ -207,7 +207,7 @@ private fun CodeCells(
     error: String?,
 ) {
     val palette = MaterialTheme.colorScheme
-    val radii = OsraTokens.lightRadii
+    val radii = OsraTheme.LocalOsraRadii.current
 
     Row(
         modifier = Modifier.fillMaxWidth(),

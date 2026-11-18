@@ -84,7 +84,14 @@ class OsraThemeTokensTest {
         val offenders = ui.walkTopDown()
             .filter { it.isFile && it.extension == "kt" }
             .filterNot { it.path.replace('\\', '/').contains("/ui/theme/") }
-            .mapNotNull { file -> banned.find(file.readText())?.let { "${file.name}: ${it.value}" } }
+            .flatMap { file ->
+                // A comment may name the ban — the file that documents it is not a screen reading it. Only
+                // code is refused, and the line number is reported so the offender is one click away.
+                file.readLines().asSequence().mapIndexedNotNull { index, line ->
+                    banned.find(line.substringBefore("//"))
+                        ?.let { "${file.name}:${index + 1}: ${it.value}" }
+                }
+            }
             .toList()
 
         assertTrue("a screen named a token theme instead of the current one: $offenders", offenders.isEmpty())
