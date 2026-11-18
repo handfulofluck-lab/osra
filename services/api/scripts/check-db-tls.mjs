@@ -13,8 +13,12 @@
  *   1. the URL as given                                        must CONNECT, session TLS=true, sslcert has 1 cert
  *   2. the same URL, decoy CA                                  must be REFUSED  (chain checked against sslcert)
  *   3. the same URL, no CA file                                must be REFUSED  (nothing outside sslcert trusted)
- *   4. the same URL, 2-cert bundle [decoy CA, real CA]         must be REFUSED  (Prisma loads only the first cert;
- *                                                                                a bundle with the wrong first cert fails)
+ *   4. the same URL, 2-cert bundles (right-first & wrong-first) wrong-first [decoy CA, real CA] must be REFUSED;
+ *                                                              right-first [real CA, decoy CA] distinguishes
+ *                                                              engines that load only cert #1 (OpenSSL on Linux,
+ *                                                              SChannel on Windows: right-first connects, wrong-first
+ *                                                              refused) from engines that reject multi-cert PEMs in
+ *                                                              both orders (Security.framework on macOS).
  *
  * Row 1 alone proves nothing: `sslmode=require` passes it and verifies no certificate. Rows 2, 3 and 4 are the
  * evidence (#919: `rds-global-bundle.pem` had 114 roots with eu-central-1's `rds-ca-rsa2048-g1` at #100, and even
@@ -93,7 +97,7 @@ const bundlePem = readFileSync(bundle, "utf8");
 const certs = pemBlocks(bundlePem);
 const decoyPem = readFileSync(DECOY, "utf8");
 
-console.log(`check-db-tls: CA file ${bundle} (${certs.length} certificate(s))`);
+console.log(`check-db-tls: platform=${process.platform}, CA file ${bundle} (${certs.length} certificate(s))`);
 if (certs.length !== 1) {
   row(false, `0. sslcert must hold exactly 1 root certificate (Prisma loads only the first), found ${certs.length}`);
 }
@@ -113,15 +117,25 @@ row(!none.connected, none.connected ? "3. with no CA bundle it CONNECTED: someth
 
 const tmpDir = mkdtempSync(join(tmpdir(), "check-db-tls-"));
 try {
+  const rightFirstPath = join(tmpDir, "right-first-bundle.pem");
   const wrongFirstPath = join(tmpDir, "wrong-first-bundle.pem");
+  writeFileSync(rightFirstPath, `${bundlePem.trim()}\n${decoyPem.trim()}\n`, "utf8");
   writeFileSync(wrongFirstPath, `${decoyPem.trim()}\n${bundlePem.trim()}\n`, "utf8");
+  const rightFirst = await attempt(variant((p) => p.set("sslcert", rightFirstPath)));
   const wrongFirst = await attempt(variant((p) => p.set("sslcert", wrongFirstPath)));
-  row(
-    !wrongFirst.connected,
-    wrongFirst.connected
-      ? "4. with a bundle whose first certificate is wrong (decoy before real CA) it CONNECTED"
-      : `4. with a bundle whose first certificate is wrong (decoy before real CA) it is refused: ${wrongFirst.reason}`,
-  );
+  if (wrongFirst.connected) {
+    row(false, "4. with a 2-cert bundle whose first certificate is wrong (decoy before real CA) it CONNECTED");
+  } else if (rightFirst.connected) {
+    row(
+      true,
+      `4. wrong-first 2-cert bundle is refused while right-first connected (engine loads only the first certificate on ${process.platform}): ${wrongFirst.reason}`,
+    );
+  } else {
+    row(
+      true,
+      `4. both 2-cert bundle orders are refused on ${process.platform} (engine rejects multi-certificate sslcert outright; right-first: ${rightFirst.reason}; wrong-first: ${wrongFirst.reason})`,
+    );
+  }
 } finally {
   rmSync(tmpDir, { recursive: true, force: true });
 }

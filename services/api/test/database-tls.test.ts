@@ -278,16 +278,22 @@ describe("scripts/check-db-tls.mjs live against Prisma's query engine (#919)", (
     });
   }
 
-  // Planted test for #919:
-  // 1) With a single right root CA, check-db-tls.mjs passes all 4 rows (including row 4 proving a 2-cert bundle
-  //    whose first cert is wrong [decoy CA, real CA] is refused by Prisma 5.22).
+  // Planted test for #919 (#924 review):
+  // 1) With a single right root CA, check-db-tls.mjs passes all 4 rows. Row 4 runs both 2-cert bundle orders
+  //    ([real CA, decoy CA] right-first and [decoy CA, real CA] wrong-first):
+  //    - On Linux (OpenSSL, production image) and Windows (SChannel), native-tls loads only the first PEM block, so
+  //      right-first CONNECTS and wrong-first is REFUSED ("wrong-first 2-cert bundle is refused while right-first connected").
+  //    - On macOS (Security.framework), native-tls rejects multi-certificate PEMs outright in both orders
+  //      ("both 2-cert bundle orders are refused on darwin").
   // 2) With a multi-cert bundle whose first cert is wrong [wrong CA, right CA] — reproducing today's production
   //    rds-global-bundle.pem failure — check-db-tls.mjs exits 1 (both row 0 single-cert guard and row 1 TLS connect
   //    refusal fail) and never prints the database password.
-  // Mutant: in check-db-tls.mjs, write `${bundlePem}\n${decoyPem}` (real CA first) in row 4 instead of decoy first;
-  // Prisma connects on row 4 and the single-root run fails with exit 1.
+  // Mutants:
+  // - All platforms: write `${bundlePem}\n` (single real CA) to `wrongFirstPath` in check-db-tls.mjs -> row 4 CONNECTS -> exit 1.
+  // - Linux / Windows (OpenSSL / SChannel): swap `wrongFirstPath` to `${bundlePem}\n${decoyPem}` -> row 4 CONNECTS -> exit 1;
+  //   swap `rightFirstPath` to `${decoyPem}\n${bundlePem}` -> `while right-first connected` assertion fails.
   it(
-    "passes all 4 rows on a single root CA and fails on a multi-cert bundle whose first certificate is wrong (#919)",
+    "passes all 4 rows on a single root CA (with platform-explicit 2-cert order proof) and fails on a wrong-first bundle (#919)",
     async () => {
       const openssl = findOpenSsl();
       const tmp = mkdtempSync(join(tmpdir(), "osra-db-tls-test-"));
@@ -407,10 +413,19 @@ describe("scripts/check-db-tls.mjs live against Prisma's query engine (#919)", (
           `postgresql://osra_api:${PASSWORD}@localhost:${port}/osra?sslmode=require&sslaccept=strict&sslcert=${encodeURIComponent(rightCaPath)}`,
         );
         expect(okRun.status, okRun.stdout + okRun.stderr).toBe(0);
+        expect(okRun.stdout).toContain(`check-db-tls: platform=${process.platform},`);
         expect(okRun.stdout).toContain("PASS  1. the URL as given connects; session TLS=true");
         expect(okRun.stdout).toContain("PASS  2. with the decoy CA it is refused:");
         expect(okRun.stdout).toContain("PASS  3. with no CA bundle it is refused:");
-        expect(okRun.stdout).toContain("PASS  4. with a bundle whose first certificate is wrong (decoy before real CA) it is refused:");
+        if (process.platform === "darwin") {
+          expect(okRun.stdout).toContain(
+            "PASS  4. both 2-cert bundle orders are refused on darwin (engine rejects multi-certificate sslcert outright;",
+          );
+        } else {
+          expect(okRun.stdout).toContain(
+            `PASS  4. wrong-first 2-cert bundle is refused while right-first connected (engine loads only the first certificate on ${process.platform}):`,
+          );
+        }
         expect(okRun.stdout + okRun.stderr).not.toContain(PASSWORD);
 
         const plantedBundleRun = await runCheckScript(
