@@ -41,7 +41,7 @@ export interface ActivityEvent {
   childId: string;
   deviceId?: string;
   ts: string;
-  type: "url" | "app_usage" | "social" | "call" | "sms";
+  type: "url" | "app_usage" | "social" | "call" | "sms" | "lock_period";
   payload: Record<string, unknown>;
 }
 

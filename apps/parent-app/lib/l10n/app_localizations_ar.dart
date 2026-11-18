@@ -603,9 +603,8 @@ class AppLocalizationsAr extends AppLocalizations {
   String get rulesBehindHint => 'لم يستلم الهاتف هذا التغيير بعد.';
 
   @override
-  String rulesLoadFailed(String error) {
-    return 'تعذّر تحميل القواعد: $error';
-  }
+  String get rulesLoadFailed =>
+      'تعذّر تحميل القواعد. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
 
   @override
   String get noPerAppRules => 'لا توجد قواعد لكل تطبيق';
@@ -1297,9 +1296,8 @@ class AppLocalizationsAr extends AppLocalizations {
   String get thirtyDays => '30 يومًا';
 
   @override
-  String reportLoadFailed(String error) {
-    return 'تعذّر تحميل التقرير: $error';
-  }
+  String get reportLoadFailed =>
+      'تعذّر تحميل التقرير. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
 
   @override
   String noActivityDays(int days) {
@@ -1342,6 +1340,20 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String chartLegendRow(String app, int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة',
+      many: '$minutes دقيقة',
+      few: '$minutes دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    return '$app: $_temp0';
+  }
+
+  @override
   String get noAppUsage => 'لم يُسجَّل أي استخدام للتطبيقات';
 
   @override
@@ -1370,11 +1382,11 @@ class AppLocalizationsAr extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'تم الحظر $count مرة',
-      many: 'تم الحظر $count مرة',
-      few: 'تم الحظر $count مرات',
-      two: 'تم الحظر مرتين',
-      one: 'تم الحظر مرة واحدة',
+      other: 'حُظر $count مرة',
+      many: 'حُظر $count مرة',
+      few: 'حُظر $count مرات',
+      two: 'حُظر مرتين',
+      one: 'حُظر مرة واحدة',
     );
     return '$_temp0';
   }
@@ -1452,7 +1464,8 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get couldNotLoadScreenTime => 'تعذّر تحميل وقت الشاشة';
+  String get couldNotLoadScreenTime =>
+      'تعذّر تحميل وقت الشاشة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
 
   @override
   String noScreenTimeData(int days) {
@@ -1523,7 +1536,8 @@ class AppLocalizationsAr extends AppLocalizations {
   String get showLabel => 'عرض';
 
   @override
-  String get couldNotLoadBrowsing => 'تعذّر تحميل سجل التصفح';
+  String get couldNotLoadBrowsing =>
+      'تعذّر تحميل سجل التصفح. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
 
   @override
   String noBlockedSites(int days) {
@@ -1555,7 +1569,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String showingLatestVisits(int limit) {
-    return 'تُعرض آخر $limit زيارة — ارفع الحد لرؤية المزيد.';
+    return 'تُعرض آخر $limit زيارة. اختر عددًا أكبر لرؤية المزيد.';
   }
 
   @override
@@ -1754,6 +1768,24 @@ class AppLocalizationsAr extends AppLocalizations {
   String get noCallsOrTexts => 'لا توجد مكالمات هاتفية أو رسائل بعد';
 
   @override
+  String get activityLockRow => 'الجهاز مقفل';
+
+  @override
+  String activityLockRowDetail(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'ظهرت شاشة القفل $count مرة',
+      many: 'ظهرت شاشة القفل $count مرة',
+      few: 'ظهرت شاشة القفل $count مرات',
+      two: 'ظهرت شاشة القفل مرتين',
+      one: 'ظهرت شاشة القفل مرة واحدة',
+      zero: 'لم تظهر شاشة القفل',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get unknownNumber => 'رقم غير معروف';
 
   @override
@@ -1873,7 +1905,8 @@ class AppLocalizationsAr extends AppLocalizations {
       'لا يُعدّ الأمر مؤكدًا إلا عندما يردّ جهاز الطفل. يعني «تم التسليم» أن الجهاز استلمه، ولم يؤكّد تنفيذه.';
 
   @override
-  String get couldNotLoadCommandHistory => 'تعذّر تحميل سجل الأوامر';
+  String get couldNotLoadCommandHistory =>
+      'تعذّر تحميل سجل الأوامر. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
 
   @override
   String createdEvent(String time) {
@@ -2344,7 +2377,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get consentLoadFailed =>
-      'تعذّر تحميل سجل الموافقة. تحقّق من اتصالك وحاول مجددًا.';
+      'تعذّر تحميل سجل الموافقة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
 
   @override
   String get consentGrantTitle => 'منح الموافقة مجددًا';
@@ -3299,6 +3332,35 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get appRuleHiddenOnIphone =>
       'على هواتف آيفون، يُخفى هذا التطبيق بدلًا من عرض شاشة الحظر.';
+
+  @override
+  String get webSiteNamesOnlyNote =>
+      'أسماء المواقع والخدمات على الإنترنت التي وصل إليها هذا الهاتف، لا الصفحات التي فُتحت. تُحفظ لمدة 90 يومًا.';
+
+  @override
+  String webSiteVisits(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count زيارة',
+      many: '$count زيارة',
+      few: '$count زيارات',
+      two: 'زيارتان',
+      one: 'زيارة واحدة',
+      zero: 'لا زيارات',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String webSiteSeenRange(String first, String last) {
+    return 'من $first إلى $last';
+  }
+
+  @override
+  String webSitesSummary(int count) {
+    return 'عدد المواقع: $count';
+  }
 
   @override
   String get showPassword => 'إظهار كلمة المرور';

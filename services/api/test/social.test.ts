@@ -505,6 +505,9 @@ describe("activity ingest and reports", () => {
   it("ingests an activity batch with a device JWT (202) and persists via createMany", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockResolvedValue({ id: "dev-1", childId: "child-1", child: { familyId: "fam-1" } });
+    // #841: an unblocked url is kept only with the site-name flag on; with it off this batch would be
+    // reduced to the call row, which `site-names.test.ts` asserts separately.
+    vi.stubEnv("SITE_NAMES_ENABLED", "true");
 
     const res = await app.inject({
       method: "POST",
@@ -520,9 +523,10 @@ describe("activity ingest and reports", () => {
     expect(res.statusCode).toBe(202);
     const data = (prismaMock.activityEvent.createMany.mock.calls[0][0] as { data: Array<Record<string, unknown>> }).data;
     expect(data).toHaveLength(2);
-    expect(data[0]).toMatchObject({ childId: "child-1", deviceId: "dev-1", type: "url", payload: { url: "https://example.com" } });
+    expect(data[0]).toMatchObject({ childId: "child-1", deviceId: "dev-1", type: "url", payload: { url: "example.com", domain: "example.com", blocked: false } });
     expect(data[0].ts).toBeInstanceOf(Date);
     expect(data[1]).toMatchObject({ type: "call" });
+    vi.unstubAllEnvs();
     await app.close();
   });
 
@@ -568,9 +572,31 @@ describe("activity ingest and reports", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(prismaMock.activityEvent.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { childId: "child-1", type: "call" }, orderBy: { ts: "desc" }, take: 200 }),
+      expect.objectContaining({
+        where: expect.objectContaining({ childId: "child-1", type: "call" }),
+        orderBy: { ts: "desc" },
+        take: 200,
+      }),
     );
     expect(res.json().items).toEqual([{ id: "ae-1", type: "call" }]);
+    await app.close();
+  });
+
+  it("#830: the activity report accepts type=lock_period", async () => {
+    const app = await buildApp(reportsRoutes, "/v1/reports");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.activityEvent.findMany.mockResolvedValue([{ id: "lp-1", type: "lock_period" }]);
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/reports/activity?childId=child-1&type=lock_period",
+      headers: authHeader(app),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(prismaMock.activityEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ childId: "child-1", type: "lock_period" }) }),
+    );
+    expect(res.json().items).toEqual([{ id: "lp-1", type: "lock_period" }]);
     await app.close();
   });
 

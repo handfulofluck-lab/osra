@@ -187,7 +187,12 @@ void main() {
     testWidgets('reports', (tester) async {
       await pumpArabic(tester, const ReportsScreen(childId: 'child-1'), arabicApi());
       expect(find.text('التقارير'), findsOneWidget);
-      expect(find.text('الإجمالي: 300 دقيقة · المتوسط: 43 دقيقة يوميًا'), findsOneWidget);
+      // #841 (Arabic Language Bureau, 22:22Z): at 320 px the total and the average do not share a line, so
+      // they are drawn as two lines with **no** separator — a «·» left at the end of an RTL line reads as a
+      // stray mark. Both halves are asserted, so a regression that drops one cannot pass as "split".
+      expect(find.text('الإجمالي: 300 دقيقة'), findsOneWidget);
+      expect(find.text('المتوسط: 43 دقيقة يوميًا'), findsOneWidget);
+      expect(find.textContaining('·'), findsNothing);
       expectRtlAndNoOverflow(tester);
     });
 

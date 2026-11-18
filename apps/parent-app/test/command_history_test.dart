@@ -319,7 +319,9 @@ void main() {
       await pumpScreen(
           tester, const CommandHistoryScreen(childId: 'child-1'), api);
 
-      expect(find.text('Could not load command history'), findsOneWidget);
+      // #841 condition 1: the message is now a whole sentence (Arabic Bureau's line, English mirroring it),
+      // so the row matches the sentence the app actually ships rather than the fragment it used to show.
+      expect(find.text('Could not load command history. Check your connection and try again.'), findsOneWidget);
       expect(calls, 1);
 
       await tester.tap(find.text('Retry'));
@@ -327,7 +329,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(calls, 2);
-      expect(find.text('Could not load command history'), findsNothing);
+      expect(find.text('Could not load command history. Check your connection and try again.'), findsNothing);
       expect(find.text('Confirmed by device'), findsOneWidget);
     });
 

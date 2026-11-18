@@ -86,8 +86,11 @@ describe("GET /v1/reports/summary", () => {
       { name: "TikTok", minutes: 40 },
       { name: "YouTube", minutes: 20 },
     ]);
-    expect(body.urlVisits).toBe(3);
-    expect(body.topBlockedDomains).toEqual([{ domain: "bad.example", count: 2 }]);
+    // #841 (Claude's finding-5 ruling): while the flag is off the summary shows no addresses at all —
+    // neither the unblocked visit nor the blocked hosts. Their count still feeds the safety score.
+    expect(body.urlVisits).toBe(0);
+    expect(body.topBlockedDomains).toEqual([]);
+
     expect(body.socialConcerns).toBe(4);
     expect(body.calls).toBe(2);
     expect(body.sms).toBe(1);
@@ -96,6 +99,42 @@ describe("GET /v1/reports/summary", () => {
     );
     await app.close();
   });
+
+  it("counts distinct sites, not URL events, and a blocked attempt is not a visit (#841 condition 3)", async () => {
+    // The label says "sites visited": ten visits to one site is one site. A blocked attempt is not a visit
+    // at all — it has its own counter — so it neither adds a site nor inflates one already seen.
+    process.env.SITE_NAMES_ENABLED = "true";
+    try {
+      const events = [
+        { id: "u1", childId: "child-1", type: "url", ts: new Date(NOW - 60_000), payload: { domain: "youtube.com", blocked: false } },
+        { id: "u2", childId: "child-1", type: "url", ts: new Date(NOW - 120_000), payload: { domain: "youtube.com", blocked: false } },
+        { id: "u3", childId: "child-1", type: "url", ts: new Date(NOW - 180_000), payload: { domain: "bbc.co.uk", blocked: false } },
+        { id: "u4", childId: "child-1", type: "url", ts: new Date(NOW - 240_000), payload: { domain: "youtube.com", blocked: true } },
+        { id: "u5", childId: "child-1", type: "url", ts: new Date(NOW - 300_000), payload: { domain: "blocked.example", blocked: true } },
+      ];
+      const app = await buildApp(reportsRoutes, "/v1/reports");
+      prismaMock.child.findUnique.mockResolvedValue(CHILD);
+      mockActivityFindMany(events);
+      prismaMock.socialEvent.count.mockResolvedValue(0);
+
+      const body = (await app.inject({
+        method: "GET",
+        url: "/v1/reports/summary?childId=child-1&days=7",
+        headers: authHeader(app),
+      })).json();
+
+      // Mutant: restore `urlVisits += 1` per event and this becomes 5 (or 3 if blocked ones were skipped
+      // but repeats counted) — either way it fails here.
+      expect(body.urlVisits).toBe(2);
+      expect(body.topBlockedDomains).toEqual([
+        { domain: "youtube.com", count: 1 },
+        { domain: "blocked.example", count: 1 },
+      ]);
+    } finally {
+      delete process.env.SITE_NAMES_ENABLED;
+    }
+  });
+
 
   it("caps top apps and blocked domains at 8, sorted by minutes/count desc", async () => {
     const app = await buildApp(reportsRoutes, "/v1/reports");
@@ -390,8 +429,8 @@ describe("POST /v1/digests/send-now (#5)", () => {
     expect(markdown).toContain("Laila");
     expect(markdown).toContain("60 min");
     expect(markdown).toContain("TikTok 40m");
-    expect(markdown).toContain("URL visits: 3");
-    expect(markdown).toContain("bad.example (2)");
+    expect(markdown).toContain("URL visits: 0");
+    expect(markdown).not.toContain("bad.example");
     expect(markdown).toContain("Social concerns: 4");
     expect(markdown).toContain("Calls: 2, SMS: 1");
     await app.close();
