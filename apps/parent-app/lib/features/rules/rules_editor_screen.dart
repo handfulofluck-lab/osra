@@ -505,14 +505,23 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
               // U33 (#868): the chip carries the app's name and icon, never the package id the parent
               // would have had to type. An id whose app the phone no longer reports falls back to the id.
               for (final pkg in _draft.alwaysAllowedApps)
-                InputChip(
-                  avatar: _chipIcon(names, pkg),
-                  label: Text(_nameOf(names, pkg)),
-                  deleteButtonTooltipMessage: names.containsKey(pkg)
-                      ? null
-                      : appRemoveLabel(context, reportKnown: _reportKnown),
-                  onDeleted: () => updateAlwaysAllowed([..._draft.alwaysAllowedApps]..remove(pkg)),
-                ),
+                if (names.containsKey(pkg))
+                  InputChip(
+                    avatar: _chipIcon(names, pkg),
+                    label: Text(_nameOf(names, pkg)),
+                    onDeleted: () => updateAlwaysAllowed([..._draft.alwaysAllowedApps]..remove(pkg)),
+                  )
+                else
+                  // Codex's AR 320/200 % frames (#872): `InputChip` constrains its label to one line's
+                  // height (`chip.dart`, `maxHeight: contentSize`), so the Bureaus' fallback sentence was
+                  // cut mid-phrase even with `softWrap: true`. The one case that needs two lines gets a
+                  // chip that can take them; a real name keeps the Material chip unchanged.
+                  _FallbackChip(
+                    avatar: _chipIcon(names, pkg),
+                    label: _nameOf(names, pkg),
+                    tooltip: appRemoveLabel(context, reportKnown: _reportKnown),
+                    onDeleted: () => updateAlwaysAllowed([..._draft.alwaysAllowedApps]..remove(pkg)),
+                  ),
             ],
           ),
         const SizedBox(height: AppSpace.sm),
@@ -984,15 +993,21 @@ class _RoutineAppsField extends StatelessWidget {
               runSpacing: AppSpace.xs,
               children: [
                 for (final id in packageIds)
-                  InputChip(
-                    key: ValueKey('$keyPrefix-$id'),
-                    avatar: appDisplayAvatar(apps, id),
-                    label: Text(appDisplayName(context, apps, id, reportKnown: reportKnown)),
-                    deleteButtonTooltipMessage: apps.containsKey(id)
-                        ? null
-                        : appRemoveLabel(context, reportKnown: reportKnown),
-                    onDeleted: () => onRemove(id),
-                  ),
+                  if (apps.containsKey(id))
+                    InputChip(
+                      key: ValueKey('$keyPrefix-$id'),
+                      avatar: appDisplayAvatar(apps, id),
+                      label: Text(appDisplayName(context, apps, id, reportKnown: reportKnown)),
+                      onDeleted: () => onRemove(id),
+                    )
+                  else
+                    _FallbackChip(
+                      key: ValueKey('$keyPrefix-$id'),
+                      avatar: appDisplayAvatar(apps, id),
+                      label: appDisplayName(context, apps, id, reportKnown: reportKnown),
+                      tooltip: appRemoveLabel(context, reportKnown: reportKnown),
+                      onDeleted: () => onRemove(id),
+                    ),
               ],
             ),
           ),
@@ -1006,6 +1021,63 @@ class _RoutineAppsField extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// A chip for a name that is a **sentence**: the Bureaus' pending / no-longer-installed line.
+///
+/// `InputChip` cannot carry one. Its label is laid out with `maxHeight: contentSize`
+/// (`material/chip.dart`), which is a single line, and the label's default `softWrap: false` fades the
+/// rest — so at AR 320 / 200 % «تطبيق لم يعد مثبّتًا» was cut mid-phrase. Codex's frames for #872 show
+/// it on the Always-allowed list and inside the routine dialog. This keeps the chip's shape and the
+/// remove control (with the Bureaus' remove label as its tooltip) and lets the label take two lines.
+class _FallbackChip extends StatelessWidget {
+  const _FallbackChip({
+    super.key,
+    required this.avatar,
+    required this.label,
+    required this.tooltip,
+    required this.onDeleted,
+  });
+
+  final Widget avatar;
+  final String label;
+  final String tooltip;
+  final VoidCallback onDeleted;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Material(
+      color: tokens.surfaceVariant,
+      shape: const StadiumBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.sm, AppSpace.xs, 0, AppSpace.xs),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            avatar,
+            const SizedBox(width: AppSpace.xs),
+            Flexible(
+              child: Text(
+                label,
+                softWrap: true,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, size: 18),
+              tooltip: tooltip,
+              onPressed: onDeleted,
+              visualDensity: VisualDensity.compact,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

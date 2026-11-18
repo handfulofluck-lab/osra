@@ -349,9 +349,13 @@ void main() {
   /// Antigravity's three blockers on #872 at `fb8717f4`. Each row is written to fail on the mutant it names
   /// in its comment, because the first pass of this feature shipped with all three alive.
   group('Antigravity #872 blockers', () {
+    // The chip that carries a fallback sentence is not an `InputChip` any more: that widget cannot lay a
+    // label out over two lines (#872, Codex's AR 320/200 % frames). The assertions below therefore read
+    // what the parent sees and hears — the sentence and the remove control's announcement — not a widget
+    // class, so the row survives the shape changing again.
     Finder chipShowing(String text) => find.ancestor(
           of: find.text(text),
-          matching: find.byType(InputChip),
+          matching: find.byWidgetPredicate((w) => w.runtimeType.toString() == '_FallbackChip'),
         );
 
     testWidgets('the remove action announces the state the chip shows, absent and pending', (tester) async {
@@ -364,8 +368,11 @@ void main() {
       });
       await pumpRules(tester, absent);
       await openAppsTab(tester);
-      final absentChip = tester.widget<InputChip>(chipShowing('App no longer installed'));
-      expect(absentChip.deleteButtonTooltipMessage, 'App no longer installed. Remove');
+      expect(chipShowing('App no longer installed'), findsOneWidget);
+      expect(
+        find.descendant(of: chipShowing('App no longer installed'), matching: find.byTooltip('App no longer installed. Remove')),
+        findsOneWidget,
+      );
 
       final pending = FakeApiClient({
         ...standardRoutes(),
@@ -374,8 +381,11 @@ void main() {
       });
       await pumpRules(tester, pending);
       await openAppsTab(tester);
-      final pendingChip = tester.widget<InputChip>(chipShowing('Name not available yet'));
-      expect(pendingChip.deleteButtonTooltipMessage, 'Name not available yet. Remove');
+      expect(chipShowing('Name not available yet'), findsOneWidget);
+      expect(
+        find.descendant(of: chipShowing('Name not available yet'), matching: find.byTooltip('Name not available yet. Remove')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('a rule with a real saved name draws its letter, not "?", and no state tooltip', (tester) async {
@@ -591,10 +601,7 @@ void main() {
     final chip = routineBlockedChip('com.example.game');
     expect(chip, findsOneWidget);
     expect(find.descendant(of: chip, matching: find.text(en.appNamePending)), findsOneWidget);
-    expect(
-      tester.widget<InputChip>(chip).deleteButtonTooltipMessage,
-      en.appNamePendingRemove,
-    );
+    expect(find.descendant(of: chip, matching: find.byTooltip(en.appNamePendingRemove)), findsOneWidget);
     expect(find.textContaining('com.example.game'), findsNothing);
     expect(drainExceptions(tester), isEmpty);
   });
@@ -614,10 +621,7 @@ void main() {
     expect(chip, findsOneWidget);
     // Mutant: `reportKnown` ignored in the chip and this reads the pending line while a report exists.
     expect(find.descendant(of: chip, matching: find.text(en.appNoLongerInstalled)), findsOneWidget);
-    expect(
-      tester.widget<InputChip>(chip).deleteButtonTooltipMessage,
-      en.appNoLongerInstalledRemove,
-    );
+    expect(find.descendant(of: chip, matching: find.byTooltip(en.appNoLongerInstalledRemove)), findsOneWidget);
     expect(find.textContaining('com.example.game'), findsNothing);
     expect(drainExceptions(tester), isEmpty);
   });
