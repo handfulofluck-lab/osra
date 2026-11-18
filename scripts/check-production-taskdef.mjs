@@ -79,6 +79,9 @@ const FORBIDDEN = {
   FCM_SERVICE_ACCOUNT_FILE: 'a credential read from a file in the image; production uses the secret entry',
   CLIENT_POLICY: 'set only by a reviewed change; a stray policy locks clients out or lets old ones in',
   DEVICE_SILENT_ALLOW_TIGHT: 'test-only override of the device-silence floor (services/api/src/jobs/deviceSilence.ts, #166)',
+  // #830: the site-name history is off until the privacy notice (#649) and the Play data-safety form are
+  // live. Turning it on means removing this line in its own reviewed change, with that evidence.
+  SITE_NAMES_ENABLED: 'site names stay off until the privacy notice and the Play form are live (Karim, 2026-11-16)',
 };
 
 /** Allowed, optional, plain. A value rule where a wrong value matters. */
@@ -402,6 +405,7 @@ function selftest() {
     ['added Linux capabilities', (t) => { api(t).linuxParameters = { capabilities: { add: ['SYS_PTRACE'] } }; }, 'Linux capabilities added'],
     ['a non-essential only container', (t) => { api(t).essential = false; }, 'essential is false'],
     ['the device-silence test override', (t) => setEnv(t, 'DEVICE_SILENT_ALLOW_TIGHT', '1'), 'DEVICE_SILENT_ALLOW_TIGHT: not allowed'],
+    ['the site-name switch before the notice is live', (t) => setEnv(t, 'SITE_NAMES_ENABLED', 'true'), 'SITE_NAMES_ENABLED: not allowed'],
     ['iPhone push key missing at launch', (t) => dropSecret(t, 'APNS_KEY_P8'), 'APNS_KEY_P8: missing (needed at launch'],
     ['Play package missing at launch', (t) => dropEnv(t, 'PLAY_PACKAGE_NAME'), 'PLAY_PACKAGE_NAME: missing (needed at launch'],
   ];
