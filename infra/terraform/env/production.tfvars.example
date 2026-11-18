@@ -86,5 +86,5 @@ audit_logs_enabled = true
 db_customer_kms_key    = true
 backup_copy_account_id = "<management-account-id>"
 backup_copy_vault_arn  = "arn:aws:backup:eu-west-1:<management-account-id>:backup-vault:osra-production-copy"
-# false = no copy to the other region; the daily backup stays in this account and region (closed-beta option, #892 section 6).
-# backup_offsite_copy_enabled = false
+# Closed beta: no copy to the other region; the daily backup stays in Frankfurt (Karim 18 Nov, "Frankfurt only", #892 section 6).
+backup_offsite_copy_enabled = false
