@@ -65,7 +65,11 @@ class UnlinkedOverlayWiringTest {
      */
     @Test
     fun `the lock screen's return path holds because the unlink clears the lock`() {
-        assertTrue("the unlink clears the stored lock", unlinker.contains("clearLock = { LockState.clear(context) }"))
+        // S2 (osra-security#39): the unlink clears the lock *and* the lock period. The row is the same row —
+        // "the unlink clears the stored lock" — but the period belongs to the enrolment too, and a pin that
+        // only matched the old one-line lambda would have made the fix look like a regression.
+        assertTrue("the unlink clears the stored lock", unlinker.contains("LockState.clear(context)"))
+        assertTrue("and the open lock period, which belongs to the enrolment", unlinker.contains("LockPeriodTracker.clear(context)"))
         val onResume = lock.substringAfter("override fun onResume()").substringBefore("override fun onUserLeaveHint()")
         assertTrue(
             "and onResume finishes when the stored mode no longer shows",

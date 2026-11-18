@@ -216,7 +216,7 @@ class _MonitoringTogglesSectionState
               padding: EdgeInsets.all(AppSpace.lg),
               child: Center(child: CircularProgressIndicator())),
           error: (e, _) =>
-              Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed('$e'))),
+              Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed)),
           data: (ruleSet) {
             _applyLoaded(ruleSet);
             final draft = _draft!;
@@ -276,7 +276,7 @@ class ConcernsSection extends ConsumerWidget {
               padding: EdgeInsets.all(AppSpace.lg),
               child: Center(child: CircularProgressIndicator())),
           error: (e, _) =>
-              Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed('$e'))),
+              Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed)),
           data: (items) => items.isEmpty
               ? Padding(
                   padding: const EdgeInsets.symmetric(vertical: AppSpace.lg),
@@ -393,7 +393,7 @@ class CallsSmsSection extends ConsumerWidget {
               padding: EdgeInsets.all(AppSpace.lg),
               child: Center(child: CircularProgressIndicator())),
           error: (e, _) =>
-              Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed('$e'))),
+              Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed)),
           data: (items) {
             if (items.isEmpty) {
               return Padding(
@@ -429,9 +429,19 @@ class CallsSmsSection extends ConsumerWidget {
                     Card(
                       child: ListTile(
                         dense: true,
-                        leading: Icon(e.type == 'call' ? callIconFor(e.direction) : Icons.sms_outlined),
-                        title: Text(e.number == null ? l10n.unknownNumber : ltrIsolate(e.number!)),
-                        subtitle: e.type == 'sms'
+                        leading: Icon(e.type == 'lock_period'
+                            ? Icons.lock_outline
+                            : e.type == 'call'
+                                ? callIconFor(e.direction)
+                                : Icons.sms_outlined),
+                        title: Text(e.type == 'lock_period'
+                            ? l10n.activityLockRow
+                            : e.number == null
+                                ? l10n.unknownNumber
+                                : ltrIsolate(e.number!)),
+                        subtitle: e.type == 'lock_period'
+                            ? Text(l10n.activityLockRowDetail(_lockAttempts(e)))
+                            : e.type == 'sms'
                             ? Text(_truncateSms(e.bodyPreview))
                             // Roadmap 4.5: a brand name, so the same text in both languages and no new
                             // Arabic to approve (#523 ruled the phone side; the screen has to match).
@@ -454,6 +464,9 @@ class CallsSmsSection extends ConsumerWidget {
     if (d == null) return key;
     return DateFormat('EEEE, MMM d, yyyy', context.localeName).format(d);
   }
+
+  /// #830: the attempts a lock-period row carries; 0 when an older row has none.
+  int _lockAttempts(ActivityEvent e) => e.payload['attempts'] is int ? e.payload['attempts'] as int : 0;
 
   /// SMS previews are capped at 120 chars server-side; truncate defensively.
   String _truncateSms(String preview) =>
@@ -550,7 +563,7 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
               padding: EdgeInsets.all(AppSpace.lg),
               child: Center(child: CircularProgressIndicator())),
           error: (e, _) =>
-              Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed('$e'))),
+              Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed)),
           data: (ruleSet) {
             _applyLoaded(ruleSet);
             final items = _items!;

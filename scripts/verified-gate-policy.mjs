@@ -167,6 +167,14 @@ const ARABIC_PATHS = [
   /\.ar\.[a-z]+$/,
   /^docs\/(store|customer)\//,
   /^services\/api\/src\/lib\/email\//,
+  // The server's own Arabic copy (#846, Arabic Bureau 6955960186): the consent text merged in #875 with a
+  // dead Arabic link and no Bureau line, because none of these files matched a path the gate watches. Each
+  // one holds Arabic a parent reads, so each one now asks for the `Arabic-Bureau:` line.
+  /^services\/api\/src\/lib\/consentCopy\.ts$/,
+  /^services\/api\/src\/lib\/htmlPage\.ts$/,
+  /^services\/api\/src\/routes\/linkPages\.ts$/,
+  /^services\/api\/src\/routes\/account\.ts$/,
+  /^services\/api\/src\/routes\/digests\.ts$/,
 ];
 
 const any = (files, res) => files.some((f) => res.some((re) => re.test(f)));
@@ -330,6 +338,11 @@ function selftest() {
     ['UI change with UI/UX line', { headRef: 'kimi/x', files: ['apps/parent-app/lib/features/home/home.dart'], signatures: [...v('Claude'), { kind: 'uiux' }] }, true],
     ['Arabic change with UI/UX line only', { headRef: 'kimi/x', files: ['apps/parent-app/lib/l10n/app_ar.arb'], signatures: [...v('Claude'), { kind: 'uiux' }] }, false],
     ['Arabic change with both lines', { headRef: 'kimi/x', files: ['apps/parent-app/lib/l10n/app_ar.arb'], signatures: [...v('Claude'), { kind: 'uiux' }, { kind: 'arabic' }] }, true],
+    // #846: the consent copy carries Arabic a parent accepts at sign-up, and it merged without a Bureau
+    // line because the gate watched no server copy file. These rows are what make that impossible again.
+    ['the consent copy needs the Arabic line', { headRef: 'kimi/x', files: ['services/api/src/lib/consentCopy.ts'], signatures: v('Claude', 'Fable') }, false],
+    ['the consent copy with the Arabic line', { headRef: 'kimi/x', files: ['services/api/src/lib/consentCopy.ts'], signatures: [...v('Claude', 'Fable'), { kind: 'arabic' }] }, true],
+    ['the mailed link pages need the Arabic line', { headRef: 'kimi/x', files: ['services/api/src/routes/linkPages.ts'], signatures: v('Claude', 'Fable') }, false],
     ['needs:arabic label forces the Arabic line', { headRef: 'kimi/x', labels: ['needs:arabic'], files: ['a/b.ts'], signatures: v('Claude') }, false],
     // Unknown prefix fails closed unless Kimi's own commit is on it (Fable's notes on #788).
     ['unknown prefix, no Kimi commit, signed by Antigravity', { headRef: 'gemini/x', files: ['a/b.ts'], signatures: v('Antigravity') }, false],
@@ -526,6 +539,14 @@ function selftest() {
     'docs/legal/terms.ar.md',
     'docs/customer/faq.md',
     'services/api/src/lib/email/templates.ts',
+    // The five server files #904 added anchors for (#846). Each needs its own sample: without one, deleting
+    // its pattern removes two cases and the selftest only gets shorter, which a count cannot tell apart
+    // from a pass. With one, the case named after the file goes red — Hydrogen's and Ahmed's note on #904.
+    'services/api/src/lib/consentCopy.ts',
+    'services/api/src/lib/htmlPage.ts',
+    'services/api/src/routes/linkPages.ts',
+    'services/api/src/routes/account.ts',
+    'services/api/src/routes/digests.ts',
   ];
   const allButArabic = [...v('Claude', 'Fable'), { kind: 'uiux' }];
   for (const f of arabicPaths) {
