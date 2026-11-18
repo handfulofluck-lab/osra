@@ -5,7 +5,8 @@
 #   1. prisma migrate deploy as the master user;
 #   2. create osra_api if missing, set its password from the api-db-password secret, grant DML on all
 #      tables and sequences, and default privileges for tables later migrations create.
-# Every connection uses Prisma's verifying TLS form against the RDS CA bundle in the image (#777).
+# Every connection uses Prisma's verifying TLS form against eu-central-1's single RDS root CA in the image
+# (#777, #919: Prisma 5.22 loads only the first PEM block of sslcert, not a multi-cert bundle).
 # The password itself never reaches SQL: the task computes a SCRAM-SHA-256 verifier (random salt, 4096
 # rounds, RFC 7677) and sends that, which PostgreSQL stores as is. A statement PostgreSQL logs (statement
 # logging, a failing statement, Performance Insights) can then hold only the verifier (#781 review B3).
@@ -13,7 +14,7 @@
 
 locals {
   db_admin_enabled = var.secrets_out_of_band
-  db_tls_query     = "sslmode=require&sslaccept=strict&sslcert=/app/certs/rds-global-bundle.pem"
+  db_tls_query     = "sslmode=require&sslaccept=strict&sslcert=/app/certs/rds-eu-central-1-rsa2048-g1.pem"
 
   db_admin_script = <<-SH
     set -eu
