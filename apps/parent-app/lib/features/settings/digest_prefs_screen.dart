@@ -6,8 +6,11 @@ import '../../core/localized_list.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/world_class_provider.dart';
 import '../../api/models.dart' show DigestRecipientStatus;
+import '../../api/permission_errors.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/app_tokens.dart';
+import '../../widgets/error_retry_view.dart';
+import 'timezone_catalog.dart';
 
 /// Feature #5: digest notification preferences — daily/weekly email and push
 /// switches, a comma-separated recipient list, plus a dev 'send now' button
@@ -43,29 +46,6 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
   /// field so the explanation and this value are no longer one run-on line.
   static const _sendHour = '18:00';
 
-  /// A curated list rather than the full IANA database: these are the markets OSRA ships to, and the
-  /// API validates the value anyway (an unknown name is refused with invalid_timezone).
-  static const _timezones = <String>[
-    'UTC',
-    'Asia/Dubai',
-    'Asia/Riyadh',
-    'Asia/Kuwait',
-    'Asia/Qatar',
-    'Asia/Bahrain',
-    'Asia/Muscat',
-    'Asia/Amman',
-    'Africa/Cairo',
-    'Europe/London',
-    'Europe/Berlin',
-    'Europe/Paris',
-    'America/New_York',
-    'America/Chicago',
-    'America/Los_Angeles',
-    'Asia/Karachi',
-    'Asia/Kolkata',
-    'Asia/Singapore',
-  ];
-
   @override
   void dispose() {
     _emails.dispose();
@@ -83,13 +63,19 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
       final res = await ref.read(apiClientProvider).raw.get('/v1/family/me');
       final family = (res.data is Map ? res.data['family'] : null);
       final tz = family is Map ? family['timezone']?.toString() : null;
-      if (mounted && tz != null) setState(() => _timezone = tz);
-    } catch (_) {
-      // A failed load leaves the dropdown empty; the parent can still pick a zone.
+      if (mounted) {
+        setState(() => _timezone = (tz != null && tz.isNotEmpty) ? tz : defaultDeviceTimezone());
+      }
+    } catch (e) {
+      logParentError(e);
+      if (mounted && _timezone == null) {
+        setState(() => _timezone = defaultDeviceTimezone());
+      }
     }
   }
 
   Future<void> _saveTimezone(String tz) async {
+    final previous = _timezone;
     setState(() {
       _timezone = tz;
       _timezoneSaving = true;
@@ -97,24 +83,43 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
     try {
       await ref.read(apiClientProvider).raw.patch('/v1/family/me', data: {'timezone': tz});
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.digestPrefsTimezoneSet('$tz'))));
+        final lang = Localizations.localeOf(context).languageCode;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.digestPrefsTimezoneSet(formatTimezoneLabel(tz, languageCode: lang)))),
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.digestPrefsTimezoneFailed('$e'))));
+        setState(() => _timezone = previous);
+        showErrorSnackBar(
+          context,
+          friendlyErrorText(context.l10n, e, () => context.l10n.digestPrefsTimezoneFailed),
+          onRetry: () => _saveTimezone(tz),
+        );
       }
     } finally {
       if (mounted) setState(() => _timezoneSaving = false);
     }
   }
 
-  /// The curated list, plus the family's actual zone when it is not in it (#108). Without this the
-  /// control shows `UTC` for a family on, say, Asia/Tokyo while the server keeps the real value - the
-  /// PATCH would not lie, but the screen would.
-  List<String> get _zoneOptions {
-    final tz = _timezone;
-    if (tz == null || _timezones.contains(tz)) return _timezones;
-    return [tz, ..._timezones];
+  Future<void> _pickTimezone() async {
+    final l10n = context.l10n;
+    final options = orderedTimezones(_timezone ?? defaultDeviceTimezone());
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (ctx) => _TimezonePickerSheet(
+        title: l10n.digestPrefsTimezonePickerTitle,
+        searchHint: l10n.digestPrefsTimezoneSearchHint,
+        emptyText: l10n.digestPrefsTimezoneEmpty,
+        currentId: _timezone,
+        options: options,
+      ),
+    );
+    if (picked != null && picked != _timezone && mounted) {
+      await _saveTimezone(picked);
+    }
   }
 
   List<String> get _emailList => splitLocalizedList(_emails.text);
@@ -142,7 +147,11 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.digestPrefsSaveFailed('$e'))));
+        showErrorSnackBar(
+          context,
+          friendlyErrorText(context.l10n, e, () => context.l10n.digestPrefsSaveFailed),
+          onRetry: _save,
+        );
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -178,7 +187,19 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
       );
     } on DioException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.digestPrefsSendFailed('${e.response?.statusCode ?? e.message}'))));
+        showErrorSnackBar(
+          context,
+          friendlyErrorText(context.l10n, e, () => context.l10n.digestPrefsSendFailed),
+          onRetry: _sendNow,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        showErrorSnackBar(
+          context,
+          friendlyErrorText(context.l10n, e, () => context.l10n.digestPrefsSendFailed),
+          onRetry: _sendNow,
+        );
       }
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -193,7 +214,10 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
       appBar: AppBar(title: Text(context.l10n.digestPrefsTitle)),
       body: prefs.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(context.l10n.digestPrefsLoadFailed('$e'))),
+        error: (e, _) => ErrorRetryView(
+          message: friendlyErrorText(l10n, e, () => l10n.digestPrefsLoadFailed),
+          onRetry: () => ref.invalidate(digestPrefsProvider),
+        ),
         data: (data) {
           // NOTE: copy server state into the editors once, then edit locally.
           if (!_initialized) {
@@ -329,17 +353,24 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
                         Text(l10n.digestPrefsTimezoneLoading, style: Theme.of(context).textTheme.bodySmall),
                         const SizedBox(height: AppSpace.sm),
                       ],
-                      DropdownButtonFormField<String>(
+                      InkWell(
                         key: const ValueKey('digestTimezone'),
-                        // The same 320 px trap the register and invite dropdowns hit (ROADMAP 3.8): a long zone
-                        // name like `America/Argentina/Buenos_Aires` overflows the button's Row in RTL.
-                        isExpanded: true,
-                        initialValue: _zoneOptions.contains(_timezone) ? _timezone : 'UTC',
-                        decoration: InputDecoration(border: const OutlineInputBorder(), labelText: l10n.digestPrefsTimezoneLabel),
-                        items: [
-                          for (final tz in _zoneOptions) DropdownMenuItem(value: tz, child: Text(tz)),
-                        ],
-                        onChanged: _timezoneSaving ? null : (v) { if (v != null) _saveTimezone(v); },
+                        onTap: _timezoneSaving ? null : _pickTimezone,
+                        borderRadius: BorderRadius.circular(4),
+                        child: InputDecorator(
+                          decoration: InputDecoration(
+                            border: const OutlineInputBorder(),
+                            labelText: l10n.digestPrefsTimezoneLabel,
+                            suffixIcon: const Icon(Icons.arrow_drop_down),
+                          ),
+                          child: Text(
+                            formatTimezoneLabel(
+                              _timezone ?? defaultDeviceTimezone(),
+                              languageCode: Localizations.localeOf(context).languageCode,
+                            ),
+                            maxLines: 2,
+                          ),
+                        ),
                       ),
                       if (_timezoneSaving) ...[
                         const SizedBox(height: AppSpace.xs),
@@ -364,6 +395,98 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _TimezonePickerSheet extends StatefulWidget {
+  final String title;
+  final String searchHint;
+  final String emptyText;
+  final String? currentId;
+  final List<TimezoneOption> options;
+
+  const _TimezonePickerSheet({
+    required this.title,
+    required this.searchHint,
+    required this.emptyText,
+    required this.currentId,
+    required this.options,
+  });
+
+  @override
+  State<_TimezonePickerSheet> createState() => _TimezonePickerSheetState();
+}
+
+class _TimezonePickerSheetState extends State<_TimezonePickerSheet> {
+  final _search = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = [
+      for (final tz in widget.options)
+        if (tz.matches(_query)) tz,
+    ];
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.75;
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(AppSpace.lg, AppSpace.lg, AppSpace.lg, AppSpace.sm),
+              child: Text(widget.title, style: Theme.of(context).textTheme.titleMedium),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpace.lg),
+              child: TextField(
+                key: const ValueKey('digestTimezoneSearch'),
+                controller: _search,
+                autofocus: false,
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search),
+                  hintText: widget.searchHint,
+                  border: const OutlineInputBorder(),
+                ),
+                onChanged: (v) => setState(() => _query = v),
+              ),
+            ),
+            const SizedBox(height: AppSpace.sm),
+            Flexible(
+              child: filtered.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.all(AppSpace.xl),
+                      child: Center(child: Text(widget.emptyText)),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: filtered.length,
+                      itemBuilder: (_, index) {
+                        final opt = filtered[index];
+                        final selected = opt.id == widget.currentId;
+                        final lang = Localizations.localeOf(context).languageCode;
+                        return ListTile(
+                          title: Text(opt.labelFor(lang)),
+                          trailing: selected ? const Icon(Icons.check) : null,
+                          selected: selected,
+                          onTap: () => Navigator.of(context).pop(opt.id),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }

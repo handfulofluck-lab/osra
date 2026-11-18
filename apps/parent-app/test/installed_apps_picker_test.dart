@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
+import 'package:familyshield_parent/l10n/app_localizations.dart';
 import 'package:familyshield_parent/l10n/app_localizations_ar.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
@@ -207,7 +208,9 @@ void main() {
     await pumpRules(tester, api);
     await openPicker(tester);
 
-    expect(find.textContaining('Could not load apps:'), findsOneWidget);
+    final en = lookupAppLocalizations(const Locale('en'));
+    expect(find.text(en.installedAppsLoadFailed), findsOneWidget);
+    expect(find.textContaining('boom'), findsNothing);
     expect(find.text('Retry'), findsOneWidget);
 
     fail = false;

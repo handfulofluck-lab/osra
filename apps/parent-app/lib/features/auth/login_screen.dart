@@ -74,14 +74,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return url;
   }
 
-  /// What the parent reads for [AuthState.error]. A rejected field and a taken email are named on
-  /// both screens; anything else keeps the existing split (the wizard names the causes a
-  /// non-engineer can fix, the plain screen shows the server's string).
+  /// What the parent reads for [AuthState.error]: localized sentences on both
+  /// the onboarding wizard and plain sign-in, never raw server codes or exceptions.
   String? _authErrorText(AppLocalizations l10n, String? raw) {
     if (raw == null) return null;
     if (raw.startsWith(kValidationFailedPrefix)) return authFieldError(l10n, raw);
     if (raw == 'email_taken') return l10n.registerEmailTaken;
-    return widget.onboarding ? onboardingAuthError(l10n, raw) : raw;
+    return onboardingAuthError(l10n, raw);
   }
 
   Future<void> _submit(Future<void> Function() action) async {

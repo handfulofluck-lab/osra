@@ -9,6 +9,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../../api/permission_errors.dart';
+import '../../widgets/error_retry_view.dart';
 import '../auth/mfa_reset_messages.dart';
 
 /// The four grantable permission scopes for an invited member (#13).
@@ -37,7 +38,10 @@ class FamilyScreen extends ConsumerWidget {
       appBar: AppBar(title: Text(context.l10n.familyMembersTitle)),
       body: family.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(readErrorText(context.l10n, e, () => context.l10n.familyLoadFailed('$e')))),
+        error: (e, _) => ErrorRetryView(
+          message: friendlyErrorText(context.l10n, e, () => context.l10n.familyLoadFailed),
+          onRetry: () => ref.invalidate(familyProvider),
+        ),
         data: (overview) {
           final parents = overview.parents.isEmpty && overview.parent.id.isNotEmpty
               // NOTE: older servers omit the parents array — fall back to the
@@ -78,7 +82,10 @@ class FamilyScreen extends ConsumerWidget {
                   padding: EdgeInsets.all(AppSpace.lg),
                   child: Center(child: CircularProgressIndicator()),
                 ),
-                error: (e, _) => Text(readErrorText(context.l10n, e, () => context.l10n.familyInvitesLoadFailed('$e'))),
+                error: (e, _) => ErrorRetryView(
+                  message: friendlyErrorText(context.l10n, e, () => context.l10n.familyInvitesLoadFailed),
+                  onRetry: () => ref.invalidate(familyInvitesProvider),
+                ),
                 data: (items) {
                   final pending = items.where((i) => i.status == 'pending').toList();
                   if (pending.isEmpty) {
@@ -130,7 +137,11 @@ class FamilyScreen extends ConsumerWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.familyRevokeFailed('$e'))));
+        showErrorSnackBar(
+          context,
+          friendlyErrorText(context.l10n, e, () => context.l10n.familyRevokeFailed),
+          onRetry: () => _revokeInvite(context, ref, invite),
+        );
       }
     }
   }
@@ -191,10 +202,9 @@ class _InviteMemberDialogState extends ConsumerState<InviteMemberDialog> {
       });
     } on DioException catch (e) {
       if (!mounted) return;
-      final body = e.response?.data;
       setState(() {
         _sending = false;
-        _error = body is Map ? '${body['error'] ?? e.message}' : e.message;
+        _error = friendlyErrorText(context.l10n, e, () => context.l10n.familyInviteFailed);
       });
     }
   }

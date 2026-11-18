@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../api/models.dart';
+import '../../api/permission_errors.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart' show apiClientProvider, authProvider;
 import '../../providers/family_provider.dart';
@@ -98,15 +99,17 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
       }
     } on DioException catch (e) {
       if (!mounted) return;
+      logParentError(e);
       setState(() {
         _busy = false;
         _error = deleteAccountError(l10n, e);
       });
     } catch (e) {
       if (!mounted) return;
+      logParentError(e);
       setState(() {
         _busy = false;
-        _error = l10n.deleteAccountFailed('$e');
+        _error = isNetworkOrPlainFailure(l10n, e);
       });
     }
   }
@@ -123,7 +126,7 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
       appBar: AppBar(title: Text(l10n.deleteAccountTitle)),
       body: OverviewNotLoaded(
         overview: overview,
-        error: family.hasError ? '${family.error}' : null,
+        error: family.hasError ? friendlyErrorText(l10n, family.error!, () => l10n.familyLoadFailed) : null,
         onRetry: () => ref.invalidate(familyProvider),
         child: ListView(
         padding: const EdgeInsets.all(AppSpace.lg),
@@ -208,7 +211,6 @@ List<String> _selfStops(AppLocalizations l10n) => [
 
 /// The one sentence for a refusal, so a `409` or a `428` never reaches the parent as a code.
 String deleteAccountError(AppLocalizations l10n, DioException e) {
-  final status = e.response?.statusCode;
   final body = e.response?.data;
   final code = body is Map ? body['error'] : null;
   return switch (code) {
@@ -217,9 +219,12 @@ String deleteAccountError(AppLocalizations l10n, DioException e) {
     'consent_records_held' => l10n.deleteAccountConsentHeld,
     'owner_role_required' => l10n.deleteAccountOnlyOwner,
     'owner_must_delete_family' => l10n.deleteAccountOwnerMustUseFamily,
-    _ => l10n.deleteAccountFailed('${status ?? '?'}: ${code ?? e.message ?? ''}'),
+    _ => friendlyErrorText(l10n, e, () => l10n.deleteAccountFailed),
   };
 }
+
+String isNetworkOrPlainFailure(AppLocalizations l10n, Object error) =>
+    friendlyErrorText(l10n, error, () => l10n.deleteAccountFailed);
 
 /// A `null` overview is "not loaded yet", not "no account": showing either copy while the role is
 /// unknown would offer the wrong deletion, so this never falls back to one.

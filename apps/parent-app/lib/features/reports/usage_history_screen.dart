@@ -105,7 +105,7 @@ class _UsageSection extends ConsumerWidget {
           // #841 condition 1 (UI/UX Bureau, 00:46Z): no `$e` reaches the screen. The localized sentence
           // is whole and "Try again" is the action, so there is no detail line to append.
           error: (e, _) => _ErrorBody(
-            message: readErrorText(l10n, e, () => l10n.couldNotLoadScreenTime),
+            message: friendlyErrorText(l10n, e, () => l10n.couldNotLoadScreenTime),
             onRetry: () => ref.invalidate(usageReportProvider(query)),
           ),
           data: (data) => _UsageBody(report: data, requestedDays: days),
@@ -296,7 +296,7 @@ class _BrowsingSection extends ConsumerWidget {
           // ADR-0014 decision 7 (#406): a refusal says so and drops the raw DioException detail, so the
           // owner sentence is not followed by "DioException [bad response]: ...".
           error: (e, _) => _ErrorBody(
-            message: readErrorText(l10n, e, () => l10n.couldNotLoadBrowsing),
+            message: friendlyErrorText(l10n, e, () => l10n.couldNotLoadBrowsing),
             onRetry: () => ref.invalidate(webHistoryProvider(query)),
           ),
           data: (items) {
@@ -415,8 +415,7 @@ class _EmptyBody extends StatelessWidget {
   }
 }
 
-/// Error body with the action that retries the same query. [detail] is the
-/// raw exception so a 403/500 is visible, not hidden behind a friendly line.
+/// Error body with the action that retries the same query.
 class _ErrorBody extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
