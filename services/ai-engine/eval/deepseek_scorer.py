@@ -192,7 +192,10 @@ class DeepSeekScorer:
         raise DeepSeekUnavailable(f"gave up after 3 attempts: {last_error}")
 
     def __call__(self, text: str) -> Dict[str, float]:
-        key = _cache_key(self.model, text, self.prompt)
+        # F1 (Antigravity's #923 review): `thinking` changes the request body, so it is part of what the
+        # score *is*. Without it a thinking-on run would be served thinking-off answers from the disk
+        # cache. The `thinking=False` form keeps the old key, so existing caches stay valid.
+        key = _cache_key(self.model if not self.thinking else f"{self.model}+thinking", text, self.prompt)
         cached = self._cache.get(key)
         if cached is not None:
             self.hits += 1

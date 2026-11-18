@@ -205,9 +205,12 @@ def test_the_cost_reported_is_an_upper_bound(tmp_path):
 
     scorer = _scorer(handler, tmp_path)
     summary = score_rows([_row("r1", "a")], scorer, str(tmp_path / "out.jsonl"))
-    period = summary["cost"]["price_period_at_end"]
-    expected = 0.30 if period == "peak" else 0.15
-    # 1M input tokens at the cache-miss rate for the period, and nothing else.
+    # F3: priced against the period the call happened in, not one `now()` at the end.
+    spend = summary["cost"]["spend_by_period"]
+    assert sum(v["tokens_in"] for v in spend.values()) == 1_000_000
+    expected = 0.0
+    for period, tokens in spend.items():
+        expected += tokens["tokens_in"] * (0.30 if period == "peak" else 0.15) / 1e6
     assert summary["cost"]["usd_upper_bound"] == pytest.approx(expected, abs=1e-4)
 
 
@@ -231,3 +234,49 @@ def test_the_cli_refuses_without_a_key(tmp_path, monkeypatch):
     with pytest.raises(SystemExit) as exc:
         main(["--input", rows, "--output", str(tmp_path / "out.jsonl")])
     assert "DEEPSEEK_API_KEY" in str(exc.value) or "unavailable" in str(exc.value)
+
+
+def test_a_malformed_labels_field_is_refused_not_read_as_unlabelled(tmp_path):
+    """F2 (Antigravity's review): "no labels" is the one shape --cleared-by may allow, so a string,
+    a dict, an empty list or an empty entry must not be quietly treated as absent."""
+    assert policy_refusal({"id": "1", "text": "x", "labels": "grooming"}, cleared_by="READY").startswith(
+        "malformed labels field"
+    )
+    assert policy_refusal({"id": "1", "text": "x", "labels": {}}, cleared_by="READY").startswith(
+        "malformed labels field"
+    )
+    assert policy_refusal({"id": "1", "text": "x", "labels": []}, cleared_by="READY").startswith(
+        "malformed labels field"
+    )
+    assert policy_refusal({"id": "1", "text": "x", "labels": [""]}, cleared_by="READY").startswith(
+        "malformed labels field"
+    )
+
+
+def test_a_singular_label_or_category_is_still_checked(tmp_path):
+    """F2: `label` (singular) and `category` carry the same meaning and were going unchecked."""
+    refused = policy_refusal({"id": "1", "text": "x", "label": "self_harm"}, cleared_by="READY")
+    assert refused is not None and "outside the allowed set" in refused
+    refused = policy_refusal({"id": "1", "text": "x", "category": "sexual_content"}, cleared_by="READY")
+    assert refused is not None and "outside the allowed set" in refused
+    assert policy_refusal({"id": "1", "text": "x", "category": "violence"}, cleared_by="READY") is None
+
+
+def test_a_whitespace_cleared_by_is_not_a_clearance(tmp_path):
+    """F2: three spaces is not a provenance record."""
+    assert policy_refusal({"id": "1", "text": "x"}, cleared_by="   ") is not None
+    assert policy_refusal({"id": "1", "text": "x"}, cleared_by=" READY ") is None
+
+
+def test_omit_text_keeps_the_rows_out_of_the_log(tmp_path):
+    """F4: Claude's schema for the private runs (`6981967377`) has no `text`, so a result file does not
+    carry a second copy of test B, test D or the teacher pool."""
+    def handler(request):
+        return httpx.Response(200, json=_reply({"safe": 0.9}))
+
+    scorer = _scorer(handler, tmp_path)
+    output = str(tmp_path / "out.jsonl")
+    score_rows([_row("r1", "a")], scorer, output, include_text=False)
+    entry = json.loads(open(output, encoding="utf-8").read())
+    assert "text" not in entry
+    assert set(entry) == {"id", "probs", "refused", "latency_ms", "tokens_in", "tokens_out"}

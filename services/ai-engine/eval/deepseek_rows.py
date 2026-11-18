@@ -117,12 +117,20 @@ def read_rows(path: str) -> List[dict]:
 
 
 def labels_of(row: dict) -> List[str]:
-    """The row's labels, tolerant of the two shapes the banks use (`labels` list, `category` string)."""
+    """The row's labels, from `labels` (list), `label` (string) or `category` (string).
+
+    Only well-formed `labels` are read here. A malformed one — a string, a dict, an empty list, an empty
+    entry — is refused by `policy_refusal` rather than quietly read as "no labels", because "no labels"
+    is the one shape that `--cleared-by` can allow.
+    """
     labels = row.get("labels")
     if isinstance(labels, list) and labels:
-        return [str(label) for label in labels]
-    category = row.get("category")
-    return [str(category)] if category else []
+        return [str(label).strip() for label in labels if isinstance(label, str) and label.strip()]
+    for key in ("label", "category"):
+        value = row.get(key)
+        if isinstance(value, str) and value.strip():
+            return [value.strip()]
+    return []
 
 
 def policy_refusal(row: dict, cleared_by: Optional[str] = None) -> Optional[str]:
@@ -130,12 +138,22 @@ def policy_refusal(row: dict, cleared_by: Optional[str] = None) -> Optional[str]
 
     An unlabelled row cannot be shown to be inside the allowed set, and "probably fine" is not one of
     the rules — so it is refused unless the operator names the document that states its provenance
-    (`--cleared-by`). The flag is not a bypass: a row that *does* carry labels is still checked against
-    the allow-list, so a mixed set cannot be waved through by putting the flag on the command line.
+    (`--cleared-by`, non-empty after stripping). The flag is not a bypass: a row that carries labels is
+    still checked against the allow-list, and a malformed labels field is refused rather than read as
+    absent, so neither a mixed set nor a broken row can be waved through.
     """
-    labels = labels_of(row)
+    cleared = (cleared_by or "").strip() or None
+    raw = row.get("labels")
+    if raw is not None:
+        if not isinstance(raw, list):
+            return "malformed labels field (expected a list)"
+        labels = labels_of(row)
+        if not labels or len(labels) != len(raw):
+            return "malformed labels field (empty or non-string entries)"
+    else:
+        labels = labels_of(row)
     if not labels:
-        if cleared_by:
+        if cleared:
             return None
         return "no labels (and no --cleared-by naming the provenance statement)"
     outside = sorted(set(labels) - POLICY_ALLOWED)
@@ -150,18 +168,27 @@ def entry_for(
     latency_ms: int = 0,
     tokens_in: int = 0,
     tokens_out: int = 0,
+    include_text: bool = True,
 ) -> Dict[str, Any]:
     """One row-log line. `_refused` is the parser's marker, not a category, so it becomes a boolean and
-    the probabilities keep exactly the eight categories a comparison needs."""
-    return {
-        "id": row["id"],
-        "text": row["text"],
+    the probabilities keep exactly the eight categories a comparison needs.
+
+    `include_text=False` drops the input text from the log. Claude's schema for the private runs
+    (`6981967377`) omits it so a result file never carries a second copy of test B, test D or the
+    teacher pool; the flag exists because #918's issue body did include it and a comparison against
+    another scorer's log may need the text to line rows up.
+    """
+    entry: Dict[str, Any] = {"id": row["id"]}
+    if include_text:
+        entry["text"] = row["text"]
+    entry.update({
         "probs": {category: round(float(probs.get(category, 0.0)), 6) for category in CATEGORIES_FOR_LOG},
         "refused": bool(probs.get(REFUSED_KEY)),
         "latency_ms": latency_ms,
         "tokens_in": tokens_in,
         "tokens_out": tokens_out,
-    }
+    })
+    return entry
 
 
 def score_rows(
@@ -171,6 +198,7 @@ def score_rows(
     resume: bool = True,
     delay_seconds: float = 0.0,
     cleared_by: Optional[str] = None,
+    include_text: bool = True,
     sleep=time.sleep,
     log=None,
 ) -> Dict[str, Any]:
@@ -184,6 +212,10 @@ def score_rows(
     resumed = 0
     skipped = 0
     sendable = 0
+    # F3 (Antigravity's #923 review): a long run can cross out of a peak window, so the tokens are
+    # accumulated against the period each call actually happened in. One `now()` at the end could price
+    # an eight-hour run at whichever side of the boundary it finished on.
+    spend = {"peak": [0, 0], "off_peak": [0, 0]}
     started = time.monotonic()
     with open(output_path, "a", encoding="utf-8", newline="\n") as out:
         for row in rows:
@@ -206,17 +238,21 @@ def score_rows(
                 latency_ms=scorer.last_latency_ms,
                 tokens_in=scorer.last_tokens_in,
                 tokens_out=scorer.last_tokens_out,
+                include_text=include_text,
             )
             out.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
             out.flush()
+            period = price_period(datetime.datetime.now(datetime.timezone.utc))
+            spend[period][0] += scorer.last_tokens_in
+            spend[period][1] += scorer.last_tokens_out
             written += 1
             if log and written % 50 == 0:
                 log(f"[deepseek-rows] {written} written · {scorer.calls} calls")
 
-    now = datetime.datetime.now(datetime.timezone.utc)
-    period = price_period(now)
     usage = scorer.usage()
-    usd = (usage["input_tokens"] * PRICE_IN[period] + usage["output_tokens"] * PRICE_OUT[period]) / 1e6
+    usd = 0.0
+    for period, (tokens_in, tokens_out) in spend.items():
+        usd += (tokens_in * PRICE_IN[period] + tokens_out * PRICE_OUT[period]) / 1e6
     return {
         "output": output_path,
         "rows_in_file": written + resumed + skipped,
@@ -227,7 +263,7 @@ def score_rows(
         "wall_seconds": round(time.monotonic() - started, 1),
         "usage": usage,
         "cost": {
-            "price_period_at_end": period,
+            "spend_by_period": {k: {"tokens_in": v[0], "tokens_out": v[1]} for k, v in spend.items()},
             "usd_upper_bound": round(usd, 4),
             "note": "cache-miss input and output rates only: the cache-hit share is unknown to a run",
         },
@@ -247,6 +283,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     parser.add_argument("--delay-seconds", type=float, default=0.2, help="pause between calls")
     parser.add_argument("--limit", type=int, default=0, help="stop after N rows to score (0: all)")
+    parser.add_argument(
+        "--omit-text",
+        action="store_true",
+        help="leave the input text out of the row log (Claude's schema for the private runs: a result "
+        "file should not carry a second copy of the rows)",
+    )
     parser.add_argument("--no-resume", action="store_true", help="re-score ids already in the output")
     parser.add_argument(
         "--cleared-by",
@@ -257,6 +299,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    if args.cleared_by is not None and not args.cleared_by.strip():
+        raise SystemExit("--cleared-by needs a non-empty description of the provenance record")
     rows = read_rows(args.input)
     if args.limit:
         rows = rows[: args.limit]
@@ -277,6 +321,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             resume=not args.no_resume,
             delay_seconds=args.delay_seconds,
             cleared_by=args.cleared_by,
+            include_text=not args.omit_text,
             log=lambda message: print(message, file=sys.stderr, flush=True),
         )
     except DeepSeekUnavailable as exc:
