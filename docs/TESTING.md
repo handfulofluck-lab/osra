@@ -64,6 +64,18 @@ For family-plan entitlements (#619), run `pnpm --filter @familyshield/api test -
 
 The maintainer-only finite grant command is `node services/api/scripts/billing/grant.mjs --family-id <uuid> --expires-at <ISO8601> --reason <reason> --secret-name <name> [--profile <name>] [--region <name>]`. It requires a future expiry no more than 366 days away, reads the database connection secret into memory with the AWS CLI, and writes no public route or lifetime grant. The raw store reference and database credentials are not logged; database credentials go to `psql` through its environment, not command arguments. K31's tests inject fake AWS CLI and SQL boundaries and make no AWS, store or real database call. `test/grant-script.test.ts` proves invalid expiry is refused before AWS is called.
 
+For the location-history query contract (#869), run
+`TZ=UTC flutter test --concurrency=2 test/location_history_query_test.dart test/location_404_test.dart`,
+then `TZ=Asia/Dubai flutter test --concurrency=2 test/location_history_query_test.dart` from
+`apps/parent-app`. The new test inspects the real provider request: both bounds must carry UTC `Z`,
+the start must represent the parent's local midnight converted to UTC, and the end must fall within
+the request's measured time interval. It tolerates a midnight crossing. Removing either `.toUtc()`
+must fail its UTC assertion; constructing UTC midnight must fail the local-day assertion on a
+nonzero-offset host. The existing API route row in `services/api/test/geofence.test.ts` independently
+covers accepted UTC/Z history bounds. These are fictional transport fixtures, not evidence that a
+child uploaded a point, Locate completed, or staging C5 passed. Keep #869 open for current-build
+runtime evidence; #871 owns the shared friendly-error and Retry UI.
+
 For composite numeric values in Arabic RTL, run `flutter test test/ltr_isolates_test.dart` from
 `apps/parent-app` (#751). It renders the real latest-location, location-history (with and without a
 timestamp), dashboard, map-sheet, call/SMS and bonus-time widgets with an Arabic `Locale` and
