@@ -44,7 +44,7 @@ class CommandHistoryScreen extends ConsumerWidget {
       body: overview.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => _ErrorState(
-          title: readErrorText(l10n, e, () => l10n.couldNotLoadChild),
+          title: friendlyErrorText(l10n, e, () => l10n.familyLoadFailed),
           onRetry: () => ref.invalidate(familyProvider),
         ),
         data: (data) {
@@ -134,15 +134,13 @@ class _DeviceCommandSection extends ConsumerWidget {
                 children: [
                   const SizedBox(height: 8),
                   Text(
-                    l10n.couldNotLoadCommandHistory,
+                    friendlyErrorText(l10n, e, () => l10n.couldNotLoadCommandHistory),
                     style:
                         TextStyle(color: Theme.of(context).colorScheme.error),
                   ),
-                  const SizedBox(height: 2),
-                  Text('$e',
-                      style: Theme.of(context).textTheme.bodySmall,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis),
+                  // Ahmed's N1 on #841 (6967168641): this card still printed the raw exception under the
+                  // sentence, which the outer error state stopped doing in #841. The sentence and the Retry
+                  // button below are the whole message; there is nothing here a parent can act on.
                   TextButton.icon(
                     onPressed: () =>
                         ref.invalidate(deviceCommandHistoryProvider(device.id)),
@@ -222,7 +220,6 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = context.l10n;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -234,12 +231,8 @@ class _ErrorState extends StatelessWidget {
             Text(title,
                 style: Theme.of(context).textTheme.titleMedium,
                 textAlign: TextAlign.center),
-            const SizedBox(height: 4),
-            Text(l10n.tryAgain,
-                style: Theme.of(context).textTheme.bodySmall,
-                textAlign: TextAlign.center,
-                maxLines: 4,
-                overflow: TextOverflow.ellipsis),
+            // UI/UX Bureau (#841 follow-up): the title is a whole sentence that already says "try again",
+            // and the button below does it. This line made the screen say it twice.
             const SizedBox(height: 8),
             TextButton.icon(
                 onPressed: onRetry,

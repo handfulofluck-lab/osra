@@ -78,7 +78,7 @@ void main() {
       apiClientProvider.overrideWithValue(FakeApiClient(routes(latest: const {'latest': null}))),
       locationProvider('child-1').overrideWith((ref) => throw failure),
     ]);
-    expect(find.text(en.locationLoadFailed(en.tryAgain)), findsOneWidget);
+    expect(find.text(en.locationLoadFailed), findsOneWidget);
     expect(find.textContaining('DioException'), findsNothing);
   });
 }

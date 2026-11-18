@@ -333,6 +333,24 @@ void main() {
       expect(find.text('Confirmed by device'), findsOneWidget);
     });
 
+  /// Ahmed's N1 on #841 (6967168641): the inner history card printed the raw exception under the sentence,
+  /// which the outer error state no longer does. Mutant: put the `Text('$e')` back and this row goes red —
+  /// it is a different code path from the summary row #841 fixed, which is how it survived that review.
+  testWidgets('a failed device history prints the sentence and Retry, never the exception', (tester) async {
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/devices/dev-1/commands/history': (_) => const FakeHttpError(500),
+    });
+    await pumpScreen(tester, const CommandHistoryScreen(childId: 'child-1'), api);
+
+    expect(find.text('Could not load command history. Check your connection and try again.'), findsWidgets);
+    expect(find.text('Retry'), findsWidgets);
+    for (final raw in ['DioException', 'Exception', 'bad response', ': null', 'null']) {
+      expect(find.textContaining(raw), findsNothing, reason: 'raw "$raw" reached the screen');
+    }
+  });
+
+
     testWidgets('layout survives a long device model at 320x568',
         (tester) async {
       final api = FakeApiClient({

@@ -39,7 +39,7 @@ String commandRefusalText(
     'not_supported' => l10n.commandRefusedNotSupported(type, deviceModel),
     'unsupported_os' => l10n.commandRefusedRingUnsupportedOs,
     'invalid_payload' => l10n.commandRefusedInvalidPayload,
-    _ => l10n.commandFailed('${reason ?? 'unknown'}'),
+    _ => l10n.commandFailed,
   };
 }
 
@@ -80,9 +80,10 @@ String commandErrorText(
     }
   }
   final body = error is DioException ? error.response?.data : null;
-  final code = body is Map ? (body['error'] ?? (error as DioException).message) : (error is DioException ? error.message : error);
-  final raw = '${code ?? 'unknown'}';
-  final mapped = commandRefusalText(l10n, commandType, deviceModel, code);
-  if (mapped != l10n.commandFailed(raw)) return mapped;
-  return l10n.commandFailed(raw);
+  final code = body is Map ? body['error'] : (error is DioException ? null : error);
+  if (code != null) {
+    final mapped = commandRefusalText(l10n, commandType, deviceModel, code);
+    if (mapped != l10n.commandFailed) return mapped;
+  }
+  return friendlyErrorText(l10n, error, () => l10n.commandFailed);
 }

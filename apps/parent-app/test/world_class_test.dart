@@ -227,29 +227,33 @@ void main() {
               },
         });
 
-    testWidgets('timezone dropdown loads the family zone and PATCHes a change (ADR-0020)', (tester) async {
+    testWidgets('timezone picker shows city + GMT offset, searches, and PATCHes IANA id (R-ID-3)', (tester) async {
       final api = digestApi();
       await pumpScreen(tester, const DigestPrefsScreen(), api);
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
 
-      // The zone is loaded from /v1/family/me and shown as the current value.
+      // The zone is loaded from /v1/family/me and shown as a city + offset, never raw IANA ids.
       expect(find.byKey(const ValueKey('digestTimezone')), findsOneWidget);
+      expect(find.text('UTC (GMT+0)'), findsOneWidget);
       expect(find.text('18:00'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('digestTimezone')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Asia/Dubai').last);
+      await tester.enterText(find.byKey(const ValueKey('digestTimezoneSearch')), 'Dubai');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Dubai (GMT+4)').last);
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
 
       final patches = api.calls('PATCH', '/v1/family/me');
       expect(patches, hasLength(1));
       expect(patches.single.body['timezone'], 'Asia/Dubai');
-      expect(find.textContaining('Digest timezone set to Asia/Dubai'), findsOneWidget);
+      expect(find.textContaining('Digest timezone set to Dubai (GMT+4)'), findsOneWidget);
+      expect(find.textContaining('Asia/Dubai'), findsNothing);
     });
 
-    testWidgets('a zone outside the curated list is shown, not replaced by UTC (#108)', (tester) async {
+    testWidgets('a zone outside the curated list is pinned at top cleanly without IANA text (#108, R-ID-3)', (tester) async {
       final api = FakeApiClient({
         ...standardRoutes(),
         'GET /v1/digests/prefs': (_) => {
@@ -266,10 +270,8 @@ void main() {
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
 
-      final dropdown = tester.widget<DropdownButtonFormField<String>>(
-        find.byKey(const ValueKey('digestTimezone')),
-      );
-      expect(dropdown.initialValue, 'Asia/Tokyo');
+      expect(find.text('Tokyo (GMT+9)'), findsOneWidget);
+      expect(find.text('Asia/Tokyo'), findsNothing);
       expect(find.text('18:00'), findsOneWidget);
       // The displayed value matches the server: no PATCH was needed to correct it.
       expect(api.calls('PATCH', '/v1/family/me'), isEmpty);

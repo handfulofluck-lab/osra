@@ -14,6 +14,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../../api/permission_errors.dart';
+import '../../widgets/error_retry_view.dart';
 import '../children/command_messages.dart';
 
 /// Marker hue per device status.
@@ -112,7 +113,10 @@ class FamilyMapScreen extends ConsumerWidget {
       ),
       body: family.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(readErrorText(context.l10n, e, () => context.l10n.familyLoadFailed('$e')))),
+        error: (e, _) => ErrorRetryView(
+          message: friendlyErrorText(context.l10n, e, () => context.l10n.familyLoadFailed),
+          onRetry: () => ref.invalidate(familyProvider),
+        ),
         data: (overview) => _MapBody(overview: overview, focus: focus),
       ),
     );
@@ -507,15 +511,14 @@ class _GeofenceCreateDialogState extends ConsumerState<GeofenceCreateDialog> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(added)));
     } on DioException catch (e) {
       if (!mounted) return;
-      final body = e.response?.data;
       setState(() {
         _saving = false;
         // #434 review: this route is gated by `requirePermission("location")`, so a refusal here is
         // the same `permission_required` 403 every gated read uses — one sentence, no new copy.
-        _error = readErrorText(
+        _error = friendlyErrorText(
           context.l10n,
           e,
-          () => body is Map ? '${body['error'] ?? e.message}' : (e.message ?? ''),
+          () => context.l10n.saveFailed,
         );
       });
     }
