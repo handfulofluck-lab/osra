@@ -1367,7 +1367,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get couldNotLoadScreenTime => 'Could not load screen time';
+  String get couldNotLoadScreenTime =>
+      'Could not load screen time. Check your connection and try again.';
 
   @override
   String noScreenTimeData(int days) {
@@ -1420,7 +1421,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get showLabel => 'Show';
 
   @override
-  String get couldNotLoadBrowsing => 'Could not load browsing history';
+  String get couldNotLoadBrowsing =>
+      'Could not load browsing history. Check your connection and try again.';
 
   @override
   String noBlockedSites(int days) {
@@ -1730,7 +1732,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'A command is confirmed only when the child device reports back. Delivered means the device collected it; it has not confirmed it ran.';
 
   @override
-  String get couldNotLoadCommandHistory => 'Could not load command history';
+  String get couldNotLoadCommandHistory =>
+      'Could not load command history. Check your connection and try again.';
 
   @override
   String createdEvent(String time) {

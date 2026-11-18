@@ -655,7 +655,7 @@
       "days": { "type": "int" }
     }
   },
-  "couldNotLoadScreenTime": "Could not load screen time",
+  "couldNotLoadScreenTime": "Could not load screen time. Check your connection and try again.",
   "noScreenTimeData": "{days, plural, =1{No screen time data in the last day} other{No screen time data in the last {days} days}}",
   "@noScreenTimeData": {
     "placeholders": {
@@ -686,7 +686,7 @@
   "browsingHistory": "Browsing history",
   "blockedOnly": "Blocked only",
   "showLabel": "Show",
-  "couldNotLoadBrowsing": "Could not load browsing history",
+  "couldNotLoadBrowsing": "Could not load browsing history. Check your connection and try again.",
   "noBlockedSites": "{days, plural, =1{No blocked sites in the last day} other{No blocked sites in the last {days} days}}",
   "@noBlockedSites": {
     "placeholders": {
@@ -852,7 +852,7 @@
   "couldNotLoadChild": "Could not load this child",
   "noDevicesForChild": "No devices registered for this child",
   "deliveryExplanation": "A command is confirmed only when the child device reports back. Delivered means the device collected it; it has not confirmed it ran.",
-  "couldNotLoadCommandHistory": "Could not load command history",
+  "couldNotLoadCommandHistory": "Could not load command history. Check your connection and try again.",
   "createdEvent": "Created {time}",
   "@createdEvent": {
     "placeholders": {

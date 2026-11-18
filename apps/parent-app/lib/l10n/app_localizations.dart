@@ -2345,7 +2345,7 @@ abstract class AppLocalizations {
   /// No description provided for @couldNotLoadScreenTime.
   ///
   /// In en, this message translates to:
-  /// **'Could not load screen time'**
+  /// **'Could not load screen time. Check your connection and try again.'**
   String get couldNotLoadScreenTime;
 
   /// No description provided for @noScreenTimeData.
@@ -2399,7 +2399,7 @@ abstract class AppLocalizations {
   /// No description provided for @couldNotLoadBrowsing.
   ///
   /// In en, this message translates to:
-  /// **'Could not load browsing history'**
+  /// **'Could not load browsing history. Check your connection and try again.'**
   String get couldNotLoadBrowsing;
 
   /// No description provided for @noBlockedSites.
@@ -2879,7 +2879,7 @@ abstract class AppLocalizations {
   /// No description provided for @couldNotLoadCommandHistory.
   ///
   /// In en, this message translates to:
-  /// **'Could not load command history'**
+  /// **'Could not load command history. Check your connection and try again.'**
   String get couldNotLoadCommandHistory;
 
   /// No description provided for @createdEvent.

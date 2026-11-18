@@ -1464,7 +1464,8 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get couldNotLoadScreenTime => 'تعذّر تحميل وقت الشاشة';
+  String get couldNotLoadScreenTime =>
+      'تعذّر تحميل وقت الشاشة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
 
   @override
   String noScreenTimeData(int days) {
@@ -1535,7 +1536,8 @@ class AppLocalizationsAr extends AppLocalizations {
   String get showLabel => 'عرض';
 
   @override
-  String get couldNotLoadBrowsing => 'تعذّر تحميل سجل التصفح';
+  String get couldNotLoadBrowsing =>
+      'تعذّر تحميل سجل التصفح. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
 
   @override
   String noBlockedSites(int days) {
@@ -1903,7 +1905,8 @@ class AppLocalizationsAr extends AppLocalizations {
       'لا يُعدّ الأمر مؤكدًا إلا عندما يردّ جهاز الطفل. يعني «تم التسليم» أن الجهاز استلمه، ولم يؤكّد تنفيذه.';
 
   @override
-  String get couldNotLoadCommandHistory => 'تعذّر تحميل سجل الأوامر';
+  String get couldNotLoadCommandHistory =>
+      'تعذّر تحميل سجل الأوامر. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
 
   @override
   String createdEvent(String time) {
@@ -2374,7 +2377,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get consentLoadFailed =>
-      'تعذّر تحميل سجل الموافقة. تحقّق من اتصالك وحاول مجددًا.';
+      'تعذّر تحميل سجل الموافقة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
 
   @override
   String get consentGrantTitle => 'منح الموافقة مجددًا';
