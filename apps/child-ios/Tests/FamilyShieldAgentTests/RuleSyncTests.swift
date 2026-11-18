@@ -282,6 +282,12 @@ final class RuleSyncTests: XCTestCase {
         return Data(rulesJSON.replacingOccurrences(of: #""id": "rs-1","#, with: #""id": "rs-1", "rulesVersion": \#(version),"#).utf8)
     }
 
+    private func rules(languages: [String]) -> Data {
+        let list = (try? JSONEncoder().encode(languages)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+        return Data(rulesJSON.replacingOccurrences(of: #""id": "rs-1","#,
+                                                   with: #""id": "rs-1", "enabledLanguages": \#(list),"#).utf8)
+    }
+
     func testTheVersionIsStoredAndReportedAfterASuccessfulApply() async throws {
         pair()
         RuleStore.clear()
@@ -318,6 +324,31 @@ final class RuleSyncTests: XCTestCase {
                                      reportApplied: { _, v in reported.append(v); return 202 })
         XCTAssertNil(RuleStore.appliedRulesVersion(), "fetched and stored is not applied")
         XCTAssertEqual(reported, [])
+    }
+
+    // MARK: - ADR-0042 D1a (#883): the enabled languages arrive with the rules
+
+    /// The list the family may use comes with the rules, and the sync hands it to the one recorder the shield reads.
+    func testTheRulesCarryTheEnabledLanguages() async throws {
+        pair()
+        StubProtocol.response = (200, rules(languages: ["en", "ar", "fr"]))
+        var recorded: [[String]] = []
+        _ = await RuleSyncer.syncNow(client: stubbedClient, enforce: false,
+                                     recordLanguages: { recorded.append($0) },
+                                     reportApplied: { _, _ in 202 })
+        XCTAssertEqual(recorded, [["en", "ar", "fr"]])
+    }
+
+    /// A server before the switch sends none, and then the phone keeps whatever it has: an older API must not be
+    /// able to blank the list and drop a tester family back to English mid-session.
+    func testAPayloadWithoutTheFieldRecordsNothing() async throws {
+        pair()
+        StubProtocol.response = (200, Data(rulesJSON.utf8))
+        var recorded: [[String]] = []
+        _ = await RuleSyncer.syncNow(client: stubbedClient, enforce: false,
+                                     recordLanguages: { recorded.append($0) },
+                                     reportApplied: { _, _ in 202 })
+        XCTAssertEqual(recorded, [])
     }
 
     func testAServerWithoutAVersionIsReadAsOne() async throws {

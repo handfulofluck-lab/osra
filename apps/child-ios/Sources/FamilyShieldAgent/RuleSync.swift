@@ -62,6 +62,9 @@ public struct RuleSet: Decodable, Equatable {
     public var appGroupRules: [AppGroupRule]?
     /// #475: the version the server bumps on every rule write. Absent from an older server, read as 1.
     public var rulesVersion: Int?
+    /// ADR-0042 D1a (#883): the languages this family may use, released for everyone and `beta` for tester
+    /// families. Absent from a server before the switch, and then the app keeps what it has (the released pair).
+    public var enabledLanguages: [String]?
 
     /// #475: the version this rule set carries, 1 when the server sent none (its starting value).
     public var effectiveRulesVersion: Int { rulesVersion ?? 1 }
@@ -339,11 +342,15 @@ public enum RuleSyncer {
     @discardableResult
     public static func syncNow(client: RuleSyncClient = RuleSyncClient(), enforce: Bool = true,
                                apply: Apply? = nil,
+                               recordLanguages: ([String]) -> Void = { SharedLanguage.recordEnabled($0) },
                                reportApplied: ReportApplied = { await LocationClient().reportAppliedRulesVersion($0, $1) }) async -> Outcome {
         guard let identity = AgentIdentityStore.load() else { return .notPaired }
         do {
             let rules = try await client.fetch(for: identity)
             RuleStore.save(rules)
+            // ADR-0042 D1a (#883): the family's enabled languages arrive with the rules, and the shield reads the
+            // same list from the app group. A payload without the field leaves the last enabled list alone.
+            if let languages = rules.enabledLanguages { recordLanguages(languages) }
             if let applying = apply ?? (enforce ? defaultApply : nil) {
                 do {
                     try applying(rules)

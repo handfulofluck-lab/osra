@@ -285,7 +285,23 @@ def check_principal_sources():
             fail(f"{folder}: no `class {cls}:` in its own Swift files")
 
 
-LANGUAGES = ["en", "ar"]
+def released_languages():
+    """The compiled-in released list, read from `SharedLanguage.released` (ADR-0042 D1a, #883).
+
+    The app and this check must not keep two copies of the language list: the build offers exactly what the
+    code declares, so the script reads the declaration rather than naming en and ar a second time.
+    """
+    path = os.path.join(ROOT, "Sources", "FamilyShieldAgent", "SharedLanguage.swift")
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    match = re.search(r"public static let released\s*=\s*\[([^\]]*)\]", text)
+    if not match:
+        fail(f"SharedLanguage.swift: no `public static let released = [...]`")
+        return ["en", "ar"]
+    return re.findall(r'"([^"]+)"', match.group(1))
+
+
+LANGUAGES = released_languages()
 
 # Source folder -> the bundle it builds, for the localization check (#654).
 LOCALIZED_SOURCES = {"App": "app", **EXTENSION_SOURCES}
