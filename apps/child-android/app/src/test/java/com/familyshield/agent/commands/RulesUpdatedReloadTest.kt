@@ -70,6 +70,28 @@ class RulesUpdatedReloadTest {
         assertTrue(vpn.contains("if (!isRunning) { if (startIfStopped) start(context); return }"))
     }
 
+    /**
+     * #864 (Karim, Flip4): a category block or unblock was "live" on the parent's screen and the site
+     * stayed open. The rule set and the category pack are two stores: re-reading `blocklist.domains()`
+     * after `rules.refresh()` returns the last pack the periodic worker stored, so the reload was
+     * rebuilding the filter from a stale pack. Mutant: delete the `blocklist.refresh(` line and this
+     * row fails while every other row stays green.
+     */
+    @Test
+    fun `a reload re-fetches the category pack, not only the rule set`() {
+        val vpn = source("apps/child-android/app/src/main/java/com/familyshield/agent/vpn/FilterVpnService.kt")
+        val reload = vpn.substringAfter("private fun reloadConfig()").substringBefore("private fun applyRules(")
+        assertTrue("the reload must refresh the rule set", reload.contains("rules.refresh()"))
+        assertTrue(
+            "the pack is a separate store: refreshing rules and re-reading blocklist.domains() is stale (#864)",
+            reload.contains("blocklist.refresh("),
+        )
+        assertTrue(
+            "the pack is merged against the categories the fresh rule set blocks",
+            reload.contains("blockedCategories"),
+        )
+    }
+
     private fun source(relative: String): String {
         var dir: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
         while (dir != null) {
