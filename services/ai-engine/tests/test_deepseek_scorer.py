@@ -207,3 +207,36 @@ def test_the_cache_key_separates_prompt_from_text(tmp_path):
     assert base != _cache_key("deepseek-chat", "other text", prompt="prompt")
     assert base != _cache_key("deepseek-chat", "text", prompt="other prompt")
     assert base == _cache_key("deepseek-chat", "text", prompt="prompt")
+
+
+def test_the_default_model_id_is_the_published_flash_id(tmp_path):
+    """#918: the id a run reports has to be the id it called. `deepseek-flash` is DeepSeek-V4.1-Flash-1017
+    on the vendor's pricing page (read 18 Nov 2026); the `deepseek-chat` alias still resolves, which is
+    exactly why a default can drift back there without anything going red."""
+    scorer = DeepSeekScorer(api_key="test-key", cache_path=None, log=lambda _m: None)
+    assert scorer.model == "deepseek-flash"
+
+
+def _body_sent(tmp_path, **kwargs):
+    bodies = []
+
+    def handler(request):
+        bodies.append(json.loads(request.content))
+        return httpx.Response(200, json=_reply({"safe": 0.9}))
+
+    scorer = _scorer(handler, tmp_path, **kwargs)
+    scorer("hello")
+    return bodies[0]
+
+
+def test_temperature_zero_is_sent_only_where_it_binds(tmp_path):
+    """#918's "prompt v3, temperature 0", done honestly: thinking mode ignores `temperature`, so the
+    switch is off and the value is sent. With thinking on, sending a temperature nobody honours would
+    put a setting in the request that the run does not have."""
+    off = _body_sent(tmp_path)
+    assert off["thinking"] == {"type": "disabled"}
+    assert off["temperature"] == 0
+
+    body = _body_sent(tmp_path, thinking=True)
+    assert body["thinking"] == {"type": "enabled"}
+    assert "temperature" not in body

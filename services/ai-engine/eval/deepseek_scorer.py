@@ -23,14 +23,25 @@ import atexit
 import json
 import os
 import time
-from typing import Callable, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 import httpx
 
-from eval.prompt import CATEGORIES, SYSTEM_PROMPT, cache_key, parse_categories, strip_fences  # noqa: F401
+from eval.prompt import (  # noqa: F401
+    CATEGORIES,
+    REFUSED_KEY,
+    SYSTEM_PROMPT,
+    cache_key,
+    parse_categories,
+    refused_probs,
+    strip_fences,
+)
 
 DEFAULT_BASE_URL = "https://api.deepseek.com"
-DEFAULT_MODEL = "deepseek-chat"
+# #918: the exact current API id for "DeepSeek 4.1 Flash" — `deepseek-flash`, model version
+# DeepSeek-V4.1-Flash-1017 (api-docs.deepseek.com/quick_start/pricing, read 18 Nov 2026). The old
+# `deepseek-chat` alias still resolves, but the id a run reports has to be the one that was called.
+DEFAULT_MODEL = "deepseek-flash"
 DEFAULT_TIMEOUT_SECONDS = 30.0
 DEFAULT_CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".deepseek-cache.json")
 
@@ -58,6 +69,7 @@ class DeepSeekScorer:
         sleep: Callable[[float], None] = time.sleep,
         log: Optional[Callable[[str], None]] = print,
         prompt: Optional[str] = None,
+        thinking: bool = False,
     ):
         self.api_key = (api_key or os.environ.get("DEEPSEEK_API_KEY", "")).strip()
         if not self.api_key:
@@ -76,9 +88,21 @@ class DeepSeekScorer:
         # The prompt is instance state, not a module constant, so the key and the request cannot disagree
         # about which prompt produced a cached score — and so a test can prove a changed prompt misses.
         self.prompt = prompt or SYSTEM_PROMPT
+        # #918: thinking mode is ON by default on this model, and while it is on the service **ignores**
+        # `temperature`. "Prompt v3 unchanged, temperature 0" is therefore only a real instruction with
+        # thinking off, so off is the default here and `thinking=True` is an explicit choice that the
+        # run has to state — it is not the same comparison.
+        self.thinking = thinking
         self._cache: Dict[str, Dict[str, float]] = self._load_cache()
         self.calls = 0  # network calls actually made, for the run summary
         self.hits = 0
+        # Per-call accounting for the row log (#918): what the last call cost and how long it took.
+        self.input_tokens = 0
+        self.output_tokens = 0
+        self.last_tokens_in = 0
+        self.last_tokens_out = 0
+        self.last_latency_ms = 0
+        self.refusals = 0
         # Flush on the way out as well as every 25 calls: a run killed by a timeout or a `SystemExit`
         # still leaves what it paid for on disk, which is what makes the next run cheap.
         atexit.register(self.save_cache)
@@ -115,9 +139,14 @@ class DeepSeekScorer:
                 {"role": "user", "content": text},
             ],
             "response_format": {"type": "json_object"},
-            "temperature": 0,
             "max_tokens": 200,
+            # The switch the docs name for the OpenAI format. Thinking is on by default upstream.
+            "thinking": {"type": "enabled" if self.thinking else "disabled"},
         }
+        if not self.thinking:
+            # Only non-thinking mode honours it: with thinking on the service accepts `temperature` and
+            # ignores it, so sending it would describe a setting the run does not actually have.
+            body["temperature"] = 0
         headers = {"authorization": f"Bearer {self.api_key}", "content-type": "application/json"}
         url = f"{self.base_url}/chat/completions"
         client = self._client or httpx.Client(timeout=self.timeout)
@@ -125,6 +154,7 @@ class DeepSeekScorer:
         last_error: Optional[Exception] = None
         try:
             for attempt in range(3):
+                started = time.monotonic()
                 try:
                     response = client.post(url, json=body, headers=headers)
                 except httpx.HTTPError as exc:
@@ -132,6 +162,10 @@ class DeepSeekScorer:
                 else:
                     if response.status_code == 200:
                         payload = response.json()
+                        self.last_latency_ms = int((time.monotonic() - started) * 1000)
+                        usage = payload.get("usage") or {}
+                        self.last_tokens_in = int(usage.get("prompt_tokens", 0) or 0)
+                        self.last_tokens_out = int(usage.get("completion_tokens", 0) or 0)
                         try:
                             return payload["choices"][0]["message"]["content"]
                         except (KeyError, IndexError, TypeError) as exc:
@@ -158,11 +192,28 @@ class DeepSeekScorer:
         cached = self._cache.get(key)
         if cached is not None:
             self.hits += 1
+            # A hit is not a call: nothing was billed and nothing was waited for. The row log records
+            # zeros for those rows, so a run's cost is read from `usage()`, never summed from the log.
+            self.last_tokens_in = 0
+            self.last_tokens_out = 0
+            self.last_latency_ms = 0
+            if cached.get(REFUSED_KEY):
+                self.refusals += 1
             return cached
         content = self._post(text)
-        probs = parse_categories(content)
+        try:
+            probs = parse_categories(content)
+        except ValueError:
+            # A refusal or an unreadable answer is a datapoint, not a crash — and #918's row log has a
+            # column for exactly it. A run of a thousand rows must not die on the one where the model
+            # declined. `bedrock_scorer.py` does the same.
+            probs = refused_probs()
         self._cache[key] = probs
         self.calls += 1
+        self.input_tokens += self.last_tokens_in
+        self.output_tokens += self.last_tokens_out
+        if probs.get(REFUSED_KEY):
+            self.refusals += 1
         # Save as we go: an interrupted run must keep what it has already paid for. Every 25 rows is
         # often enough that a crash costs at most 25 calls, and rare enough that the write is invisible.
         if self.calls % 25 == 0:
@@ -179,6 +230,25 @@ class DeepSeekScorer:
                 self._log(f"[deepseek] {index} rows · {self.calls} calls · {self.hits} cache hits")
         self.save_cache()
         return results
+
+    def usage(self) -> Dict[str, Any]:
+        """What the run cost in tokens — the same shape `bedrock_scorer.usage()` reports, so the two
+        runs can be put side by side. Prices are not baked in: DeepSeek's per-million rates differ
+        between peak and off-peak hours, so a dollar figure needs the time the call was made, and the
+        caller passes the rate it was billed at (see `deepseek_rows.py`)."""
+        summary: Dict[str, Any] = {
+            "model": self.model,
+            "thinking": self.thinking,
+            "calls": self.calls,
+            "cache_hits": self.hits,
+            "refused_or_unreadable": self.refusals,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+        }
+        if self.calls:
+            summary["input_tokens_per_scan"] = round(self.input_tokens / self.calls, 1)
+            summary["output_tokens_per_scan"] = round(self.output_tokens / self.calls, 1)
+        return summary
 
 
 _DEFAULT: Optional[DeepSeekScorer] = None
