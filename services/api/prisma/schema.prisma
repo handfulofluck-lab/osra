@@ -18,8 +18,63 @@ model Family {
   /// device at registration/login) or `parent` (chosen explicitly and never overwritten).
   timezoneSource String @default("default")
   createdAt DateTime @default(now())
+  /// ADR-0041 D1: opaque random purchase-account identifier, created on first owner purchase use.
+  storeAccountId String? @unique @map("store_account_id") @db.Char(32)
   parents   Parent[]
   children  Child[]
+  purchases FamilyPurchase[]
+  aiUsage   AiScanUsage[]
+}
+
+/// ADR-0041 D1: the server's record of a family's finite plan. The raw store reference never reaches
+/// this table; store_ref contains its SHA-256 hash. Nullable expiry is rejected by entitlement().
+/// Issue #890 (pricing): what a family's scanning actually costs, per family-local day.
+///
+/// The pricing debate on #890 needs "measured variable cost per family", and nothing recorded it: the
+/// AI spend is invisible behind a promise (`AI_ENGINE_URL` unset means every scan is free). One row per
+/// (family, local day) is the unit a monthly figure is summed from, and the unit a per-family fair-use
+/// cap would read. Two counters, not one, because they cost different amounts: `scans` is every capture
+/// that was classified at all, `aiCalls` is the subset that reached the model — the local pattern pass
+/// costs nothing, so a family that only ever hits local patterns shows a real number and a zero bill.
+///
+/// `day` is the family-local calendar day (`Family.timezone`), the same clock the digest and the plan
+/// counters use, so "this month" means the same thing everywhere. Stored as text, not a date: a date
+/// column would be read back in UTC and shift a Dubai family's evening into the next day.
+model AiScanUsage {
+  id       String @id @default(uuid())
+  familyId String @map("family_id")
+  /// `yyyy-mm-dd` in the family's own zone.
+  day      String
+  /// Captures classified for this family that day, local patterns and model alike.
+  scans    Int    @default(0)
+  /// The subset that reached the AI engine. This is the counter a cost figure multiplies.
+  aiCalls  Int    @default(0) @map("ai_calls")
+  family   Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@unique([familyId, day])
+  @@index([day])
+  @@map("ai_scan_usage")
+}
+
+model FamilyPurchase {
+  id             String   @id @default(uuid())
+  familyId       String   @map("family_id")
+  source         String
+  productId      String   @map("product_id")
+  storeRefHash   String   @map("store_ref") @db.Char(64)
+  status         String
+  expiresAt      DateTime? @map("expires_at") @db.Timestamptz(3)
+  /// The first transition into a revoking state. Re-verification never moves this end forward.
+  endedAt        DateTime? @map("ended_at") @db.Timestamptz(3)
+  autoRenews     Boolean  @map("auto_renews")
+  lastVerifiedAt DateTime @map("last_verified_at") @db.Timestamptz(3)
+  cause          String
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  family         Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@unique([source, storeRefHash])
+  @@index([familyId])
+  @@map("family_purchases")
 }
 
 /// ADR-0017: one row per (family, kind, period) that was sent, so a restart, a duplicate scheduler or
@@ -61,6 +116,7 @@ model Parent {
   createdAt    DateTime        @default(now())
   family       Family          @relation(fields: [familyId], references: [id])
   consents     ConsentRecord[]
+  consentEvents ParentConsentEvent[]
   pushTokens   ParentPushToken[]
   mfaRecoveryCodes ParentMfaRecoveryCode[]
   mfaResetRequests MfaResetRequest[]
@@ -220,11 +276,29 @@ model Device {
   model      String
   osVersion  String
   /// online | offline | locked | sos (mirrors DeviceStatus in packages/shared-types). Writers set
-  /// `online` on pair/claim, telemetry and location ping; the silence job sets `offline`. Nothing
-  /// writes `active` — it was the job's stale assumption and is fixed in src/jobs/deviceSilence.ts.
+  /// `online` on telemetry, the command poll and location ping; pair/claim (`routes/devices.ts`), the
+  /// silence job and the column default write `offline`. Nothing writes `active` — it was the job's
+  /// stale assumption and is fixed in src/jobs/deviceSilence.ts.
   status     String         @default("offline")
   batteryPct Int            @default(0)
   lastSeen   DateTime       @default(now())
+  /// Issue #790: when this device last proved it holds the credentials pairing gave it — set by the
+  /// first request it made that the API accepted (`middleware/pairedAt.ts`) and never rewritten after.
+  /// **Null means pending**: the row exists so an approved claim has somewhere to put its secret, but
+  /// the phone has not answered yet. A pending row is invisible to parents (every parent-facing device
+  /// read excludes it), outside the family's device counts, and deleted by `jobs/pendingDevices.ts`
+  /// after 30 minutes. Pair/claim creates it null on purpose; nothing else may.
+  pairedAt   DateTime?      @db.Timestamptz(3)
+  /// Issue #867: the instant the AGENT says this phone booted (`now - SystemClock.elapsedRealtime()`),
+  /// stable for the life of one boot. Null until an agent reports it. A report that moves it by more than
+  /// 90 seconds is a restart (src/lib/bootReport.ts); that is how the parent hears about the 1–2 minute gap
+  /// the 30-minute silence window deliberately cannot see.
+  lastBootAt DateTime? @db.Timestamptz(3)
+  /// Issue #867 / #884 review: Android's `Settings.Global.BOOT_COUNT` as the agent last reported it, one
+  /// increment per boot and immune to the wall clock. When both this and the report carry a count, the
+  /// counts decide a restart and `lastBootAt` only dates it; null for an agent that does not send one, where
+  /// the 90-second instant comparison in src/lib/bootReport.ts is the fallback.
+  lastBootCount Int?
   pushToken  String?
   // Per-device internal HMAC secret (minted at pair/claim; handoff item 5).
   internalSecret String?
@@ -485,6 +559,34 @@ model Alert {
   child        Child    @relation(fields: [childId], references: [id])
   device       Device?  @relation(fields: [deviceId], references: [id])
   @@index([childId, createdAt])
+}
+
+/// ADR-0043 D2 / #846 part A step 2: one append-only row per consent act by an account holder.
+///
+/// This is the adult's own proof, not the child's monitoring consent (`ConsentRecord`): it answers "what
+/// wording was this parent shown, in which language, and what did they agree to". Deliberately **no IP
+/// address and no device id** — the proof is about the text and the act, not about where it came from. Rows
+/// are never updated or deleted: withdrawing the terms is account deletion (ADR-0043 D2, existing flow).
+model ParentConsentEvent {
+  id              String   @id @default(uuid())
+  parentId        String   @map("parent_id")
+  /// `terms_privacy` today; the training purpose keeps its own key when it is switched on.
+  purpose         String
+  /// `granted` (or `refused`, which no build sends today — the row records only what happened).
+  action          String
+  textVersion     String   @map("text_version")
+  /// The published version of the two pages at the time, e.g. `terms:2026-11-12,privacy:2026-11-12`.
+  documentVersion String?  @map("document_version")
+  locale          String
+  textHash        String   @map("text_hash") @db.Char(64)
+  /// Where the act happened: `app_signup` today.
+  surface         String
+  clientVersion   String?  @map("client_version")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  parent          Parent   @relation(fields: [parentId], references: [id], onDelete: Cascade)
+
+  @@index([parentId, purpose])
+  @@map("parent_consent_events")
 }
 
 model ConsentRecord {

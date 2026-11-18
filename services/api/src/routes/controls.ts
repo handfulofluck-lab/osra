@@ -6,7 +6,7 @@ import { requireParent, requireFamily, requirePermission } from "../middleware/r
 import { requireConsent } from "../middleware/requireConsent.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
 import { defaultRuleSetRow } from "../lib/defaultRules.js";
-import { toApiRuleSet } from "./rules.js";
+import { filterAgentRules, toApiRuleSet } from "../lib/ruleSync.js";
 
 const BonusSchema = z.object({
   minutes: z.number().int().min(1),
@@ -90,7 +90,7 @@ export async function controlsRoutes(app: FastifyInstance) {
       const api = toApiRuleSet(row as unknown as Record<string, unknown>);
       await fanOutToDevices(childId, "bonus_time", { minutes });
       // Agents read the extra minutes from the rules payload, so republish it on every grant.
-      await publishJson(`child:${childId}:rules`, api);
+      await publishJson(`child:${childId}:rules`, await filterAgentRules(childId, api));
       return api;
     },
   );

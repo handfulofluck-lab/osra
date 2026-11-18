@@ -35,6 +35,10 @@ abstract final class AppTheme {
       outlineVariant: tokens.border,
     );
 
+    const buttonMinSizeStyle = ButtonStyle(
+      minimumSize: WidgetStatePropertyAll(Size(kMinInteractiveDimension, 52)),
+    );
+
     return ThemeData(
       useMaterial3: true,
       brightness: brightness,
@@ -61,6 +65,9 @@ abstract final class AppTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
       ),
       dividerTheme: DividerThemeData(color: tokens.border),
+      filledButtonTheme: const FilledButtonThemeData(style: buttonMinSizeStyle),
+      elevatedButtonTheme: const ElevatedButtonThemeData(style: buttonMinSizeStyle),
+      outlinedButtonTheme: const OutlinedButtonThemeData(style: buttonMinSizeStyle),
       inputDecorationTheme: InputDecorationTheme(
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
         enabledBorder: OutlineInputBorder(

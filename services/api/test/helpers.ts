@@ -33,6 +33,8 @@ export const MOCKED_MODELS = [
   "geofence",
   "alert",
   "consentRecord",
+  // ADR-0043 D2 / #846 step 2: the adult's consent rows.
+  "parentConsentEvent",
   "locationPing",
   "activityEvent",
   "socialEvent",
@@ -40,6 +42,7 @@ export const MOCKED_MODELS = [
   "digestRecipient",
   "digestSend",
   "familyInvite",
+  "familyPurchase",
   "parentPushToken",
   "deviceCommand",
   "deviceApp",
@@ -48,6 +51,8 @@ export const MOCKED_MODELS = [
   "appUsageDaily",
   "webVisit",
   "accountDeletionToken",
+  // Issue #890: per-family, per-day scan counters.
+  "aiScanUsage",
 ] as const;
 
 /** Build the mocked PrismaClient shape used by all route tests. */
@@ -77,6 +82,13 @@ function makePrismaMock() {
 
 /** Mocked PrismaClient; wire it in test files with vi.mock("../src/db.js", () => ({ prisma: prismaMock })). */
 export const prismaMock = makePrismaMock();
+
+/**
+ * ADR-0043 D3: the consent block `POST /v1/auth/register` now requires, exactly as the parent app sends it
+ * (`apps/parent-app/lib/providers/auth_provider.dart`). Shared so a new register row cannot forget it and
+ * fail for the wrong reason.
+ */
+export const SIGNUP_CONSENTS = { termsPrivacy: true, textVersion: "signup-v1", locale: "en" } as const;
 
 /** In-memory stand-in for ioredis so no live Redis is needed. */
 export class MockRedis {
@@ -155,11 +167,15 @@ export class MockRedis {
  * test exercises a route without the gate in front of it, which is how the device-revocation rule
  * came to be tested only through the one router that re-implemented it (ADR-0032). The import is
  * dynamic so the files that never ask for the guard still do not load `src/db.ts`.
+ *
+ * `opts.pairedAtHook` mounts `middleware/pairedAt.ts`, the `onResponse` hook that clears a device's
+ * pending state (#790) — the same pair `server.ts` registers, for the tests that assert what a device
+ * request does to its own row.
  */
 export async function buildApp(
   routes: (app: FastifyInstance) => Promise<void>,
   prefix: string,
-  opts: { sessionGuard?: boolean } = {},
+  opts: { sessionGuard?: boolean; pairedAtHook?: boolean } = {},
 ): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   await app.register(fastifyJwt, { secret: "test-secret" });
@@ -167,6 +183,10 @@ export async function buildApp(
   if (opts.sessionGuard) {
     const { sessionGuardHook } = await import("../src/middleware/sessionGuard.js");
     app.addHook("preHandler", sessionGuardHook);
+  }
+  if (opts.pairedAtHook) {
+    const { registerPairedAtHook } = await import("../src/middleware/pairedAt.js");
+    registerPairedAtHook(app);
   }
   await app.register(routes, { prefix });
   await app.ready();

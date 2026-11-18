@@ -18,10 +18,10 @@ class PhoneSetupSection extends StatelessWidget {
   final Device device;
   const PhoneSetupSection({super.key, required this.device});
 
-  /// Generic permission grants from `packages/shared-types/src/capabilities.ts`.
+  /// The server's `GRANT_KEYS`, verbatim (`packages/shared-types/src/capabilities.ts`).
   ///
-  /// Desktop account-administrator state is excluded: ADR-0041 D5 handles that pairing warning separately.
-  /// A grant added to the generic vocabulary without a label would otherwise reach a parent as a raw key.
+  /// Kept here so a test can compare the two lists: a grant added to the shared vocabulary without a label
+  /// below would otherwise reach a parent as `• full_screen_intent` in the "what to fix" list.
   static const grantKeys = [
     'accessibility',
     'usage_access',
@@ -133,10 +133,28 @@ class PhoneSetupSection extends StatelessWidget {
       'not_supported' => (Icons.block, Theme.of(context).disabledColor),
       _ => (Icons.cancel_outlined, context.tokens.danger),
     };
-    return Chip(
-      visualDensity: VisualDensity.compact,
-      avatar: Icon(icon, size: 14, color: color),
-      label: Text('${_featureLabel(l10n, key)} · ${_stateLabel(l10n, state)}'),
+    return Container(
+      padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.sm, AppSpace.xs, AppSpace.sm, AppSpace.xs),
+      decoration: BoxDecoration(
+        color: context.tokens.surfaceContainer,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: context.tokens.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: AppSpace.xs),
+          Flexible(
+            child: Text(
+              '${_featureLabel(l10n, key)} · ${_stateLabel(l10n, state)}',
+              style: Theme.of(context).textTheme.labelLarge ?? Theme.of(context).textTheme.bodySmall,
+              softWrap: true,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

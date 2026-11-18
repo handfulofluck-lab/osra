@@ -1,4 +1,7 @@
-# OSRA staging infrastructure — AWS, Stockholm (`eu-north-1`)
+# OSRA infrastructure — staging in Stockholm (`eu-north-1`), production in Frankfurt (`eu-central-1`)
+
+The same `base/` and `env/` stacks serve both environments; every production setting is a variable whose
+default is staging's value. Production specifics are in **Production** below (#714).
 
 Terraform for the staging deployment of the API service, one independent regional stack as
 [ADR-0028](../../docs/adr/0028-hosting-regions-and-scaling.md) requires. The stack moved from the UAE
@@ -91,7 +94,14 @@ Do not edit state by hand; use `terraform state ...`. `down.sh` only touches `en
 | `env/dns.tf` | Route 53 alias from the API hostname to this session's ALB (release mode only) |
 | `env/secrets.tf` | Per-session `DATABASE_URL` version (RDS endpoint + password) |
 | `env/outputs.tf` | ALB DNS, `api_url`, cluster/service, seed-task inputs, RDS/cache hosts |
-| `*/terraform.tfvars.example` | Every value a human supplies |
+| `*/terraform.tfvars.example` | Every value a human supplies (staging) |
+| `*/production.tfvars.example` | Every production value (#714); copy to the gitignored `production.tfvars` |
+| `backend/*.hcl` | Backend settings per environment and stack; `production-*.hcl` is gitignored, built from its `.example` |
+| `bootstrap-state/` | Production's state bucket, created once with local state |
+| `base/budget.tf` | Production's monthly AWS Budget (off in staging) |
+| `env/waf.tf` | WAFv2 web ACL on the ALB (production) |
+| `env/alarms.tf` | SNS alarm topic and ALB/ECS/RDS alarms (production) |
+| `*/tests/*.tftest.hcl` | `terraform test` checks against a mocked provider; CI runs them |
 
 ## Prerequisites
 
@@ -186,6 +196,19 @@ Why the flag exists at all: **ECS cannot resolve a secret with no version**, so 
 the task at start with `ResourceInitializationError` and break every session in between. With the flag off, the API's
 `loadServiceAccountFromEnv` returns `null` (`services/api/src/lib/push/fcm.ts:55`) — "flag off" and "push off" mean
 the same thing.
+
+**APNs (iPhone push, #695)** follows the same three steps with its own container and flag. The `.p8` file lives
+only on the machine Apple's key was downloaded to; write it from there, never through chat, the repo or a log:
+
+```bash
+ARN=$(terraform -chdir=infra/terraform/base output -raw apns_key_p8_secret_arn)
+aws secretsmanager put-secret-value --region <region> --secret-id "$ARN" --secret-string file://<path outside every checkout>/AuthKey.p8
+# then, with apns_key_id and apns_team_id in the stack's tfvars (never in the repo):
+TF_VAR_apns_enabled=true ./infra/terraform/up.sh
+```
+
+The task always uses the production APNs endpoint (`APNS_ENV=production`): TestFlight and store builds register
+production tokens. One key serves both endpoints, so staging and production use the same `.p8`.
 
 **If `base` is ever destroyed, the value goes with it** (`recovery_window_in_days = 0`, so the name is reusable at
 once). Repeat step 2 after a rebuild; the container comes back, the value does not.
@@ -473,7 +496,292 @@ family `valkey8`), and it costs nothing to try because `env` is destroyed and re
 **Production must recheck Valkey in Frankfurt (`eu-central-1`) before it matters** (ADR-0028 names
 Valkey, ADR-0030 decision 6 asks for one staging run in Frankfurt before go-live).
 
-## Cost
+## Production — Frankfurt (`eu-central-1`), account `osra-production` (#714)
+
+Production is the **same two stacks** with `production.tfvars`, in the member account `osra-production`, reached by
+assuming a role from the management-account deployer (no key inside the production account). It is long-lived:
+`down.sh` refuses it, and RDS and the ALB carry deletion protection.
+
+### What production changes
+
+| Setting | Staging | Production |
+|---|---|---|
+| API tasks | 0.5 vCPU / 1 GiB, 2-4 | 1 vCPU / 2 GiB, 2-6 |
+| NAT gateways | 1 | 2 (one per AZ) |
+| PostgreSQL 16 | `db.t4g.micro`, single-AZ, 20 GB, no backups, deletable | `db.t4g.small`, **Multi-AZ**, 50 GB growing to 200, **14 days point-in-time restore**, deletion protection, final snapshot, Performance Insights (7 days, free), changes wait for the window (03:00 UAE backups, Friday 04:00 UAE maintenance) |
+| Cache | 1 node, plaintext | primary + replica, automatic failover, **TLS** (`rediss://`, which ioredis handles on its own — `services/api/test/redis-url-tls.test.ts`) |
+| HTTPS | `api.staging.osratech.com` | `api.osratech.com`, TLS 1.2/1.3 policy, HTTP → HTTPS 301 |
+| WAF | none | AWS managed IP-reputation, known-bad-inputs and common rules; per-IP rate rule (2,000 / 5 min) in **count** mode for the first two weeks |
+| Alarms | Redis memory, no action | SNS topic `osra-production-alarms` (e-mail to **two different addresses**, `alarm_email` and `alarm_email_secondary`) for ALB 5xx, unhealthy targets, ECS CPU/memory, RDS CPU/storage/connections, Redis memory per node |
+| Budget | hand-made `osra-monthly` | `osra-production-monthly`, US$400: forecast 100%, actual 80% and 100%, to both alarm addresses |
+| Logs / secrets | 14 days / 0-day recovery | **exactly 90 days** (the privacy policy promises at most 90) / 7-day recovery |
+| Database TLS | `rds.force_ssl = 1` in `osra-staging-postgres16` | the same, pinned in `osra-production-postgres16` |
+| Task egress | 443 to anywhere; 5432/6379 to RDS/Redis only | the same |
+| Image repository | immutable tags, scan on push | the same, enforced by the guard, never force-deleted |
+| Seed | demo family | **migrations only** (`prisma migrate deploy`); no demo data and no demo-password secret |
+| GitHub OIDC | publish + Bedrock evaluation roles | publish role only |
+| Audit | none | organisation CloudTrail (all accounts and regions, log file validation, bucket and KMS key in the **management** account, `org-audit/`); GuardDuty with RDS login and S3 data monitoring, severity 7+ mailed; VPC flow logs (S3), WAF logs (query string, authorization, cookie and `x-familyshield-signature` redacted) and the PostgreSQL log (CloudWatch), each kept exactly 90 days; no ALB access logs (they would store the WebSocket ticket from the query string); trail bucket under S3 Object Lock (GOVERNANCE by default, `trail_lock_mode = "COMPLIANCE"` makes it unremovable); GuardDuty also in the management account (home region and us-east-1) |
+| Alarm topic key | — | a customer KMS key that CloudWatch and EventBridge may use (the AWS-managed `aws/sns` key silently blocks alarm delivery) |
+| Secret values in state | JWT, vault key, DB password generated by Terraform | **none** (`secrets_out_of_band`): RDS-managed master password, `production-secrets.sh` for the rest; state bucket encrypted with a customer KMS key, readable only by the deploy role |
+| Database / cache access | master user, plain Redis | API as `osra_api` (rows only), TLS verified against the RDS CA (`sslaccept=strict`), Redis AUTH token |
+| `INTERNAL_HMAC_SECRET` | not set | generated fresh in Secrets Manager, passed as a `secrets` entry; `internal_hmac_secret_fingerprint` output (SHA-256 prefix) is the #637 evidence that it differs from any exposed value |
+
+### Order of steps (plan first; every apply needs Karim's written go and Ahmed's #637 sign-off)
+
+Run from a **separate worktree** that has only `production.tfvars` files: `up.sh` refuses production while a staging
+`terraform.tfvars` sits next to it, because Terraform would load it automatically.
+
+0. **Organisation trail (once, from the management account).** `aws organizations enable-aws-service-access
+   --service-principal cloudtrail.amazonaws.com`, then `org-audit/` with `backend/org-audit.hcl` and
+   `org-audit/org-audit.tfvars` (copied from the examples): plan to a file, read it, apply it.
+1. **State bucket.** `cp bootstrap-state/production.tfvars.example bootstrap-state/production.tfvars`, fill it, then
+   `terraform -chdir=bootstrap-state init` and `plan -var-file=production.tfvars`. Apply creates the versioned,
+   encrypted, TLS-only bucket `osra-terraform-state-<prod-account-id>-eu-central-1`.
+2. **Backend and variable files.** Copy `backend/production-{base,env}.hcl.example` and
+   `{base,env}/production.tfvars.example` to their gitignored names and fill the `<...>` values.
+3. **The API zone, then the delegation.** First apply only the zone:
+   `terraform -chdir=base apply -var-file=production.tfvars -target=aws_route53_zone.api`, read
+   `terraform -chdir=base output hosted_zone_name_servers`, and add one `NS` record `api.osratech.com` with those four
+   values to the `osratech.com` zone in the management account. Until that record exists the certificate cannot
+   validate and a full base apply would wait on it.
+Every production step is **plan to a file, read it, apply exactly that file** (`up.sh` never applies a plan nobody
+saw), and `AWS_PROFILE` must be named explicitly (it never falls back to the staging profile). With
+`environment = "production"` both stacks refuse to plan unless every protection in the table above is set
+(`*/production_guard.tf`), so a line missing from a hand-copied tfvars fails loudly instead of creating production
+without backups.
+
+4. **Plan base:** `OSRA_ENV=production AWS_PROFILE=<profile> ./infra/terraform/up.sh` saves `base/production.tfplan`
+   and stops when base has changes (env is only planned against an applied base).
+5. **Apply base:** the same command with `OSRA_PROD_APPLY=yes` applies that saved file and nothing else.
+6. **Publish the image** to the production repository over OIDC:
+   `gh workflow run api-publish.yml --ref main -f target=production`. Once, after base is applied, set the two
+   production variables from production base's outputs:
+   `gh variable set AWS_PRODUCTION_ECR_REPOSITORY --body "$(terraform -chdir=infra/terraform/base output -raw ecr_repository_url)"`
+   and the same for `AWS_PRODUCTION_PUBLISH_ROLE_ARN` (`publish_role_arn`). The workflow refuses a role and repository
+   from different accounts, or a repository not named `osra-production/api`. Name the published sha (12 characters)
+   in `env/production.tfvars` as `api_image`.
+6b. **Secret values, once:** `AWS_PROFILE=<profile> ./infra/terraform/production-secrets.sh`. It writes JWT_SECRET,
+   INTERNAL_HMAC_SECRET (printing only its 12-character fingerprint, for #637), VAULT_KEY, the osra_api password,
+   the Redis AUTH token (set on the cache with ROTATE, then SET; passed as `file://`, never on a command line),
+   REDIS_URL and DATABASE_URL straight into Secrets Manager as the production role. No value is printed and none
+   enters Terraform state; a second run changes nothing. Never put a value in a tfvars file.
+   **On the production stack applied 14 Nov 2026, the first run must be `production-secrets.sh --rotate-all`.**
+   That stack was applied before `secrets_out_of_band`: Terraform wrote the JWT secret, vault key, HMAC secret and
+   database URL, so those values sit in the state file and its older versions. Turning the switch on removes the
+   resources but not the values; `--rotate-all` replaces every one, which is free now (empty database, no token
+   issued). Then post `aws secretsmanager describe-secret` (version ids and dates only) for each, showing the
+   current versions were created by that run. The older state objects in the bucket still hold the retired values
+   until their 90-day expiry: they are worthless after the rotation, and **no one restores state from them**.
+   Rotating later (`--rotate-all`) signs every user out and orphans data sealed with the old vault key, so on a
+   stack with users it is a planned operation.
+7. **Schema phase:** plan again (env, `OSRA_PROD_PHASE=schema`, the default): the first time it creates everything but
+   the service; on an upgrade it registers only the new task definition. Apply it with `OSRA_PROD_APPLY=yes`: after
+   the apply, `up.sh` assumes the production role for its CLI calls, checks the account, takes a manual RDS snapshot
+   and runs the **db-admin** task (`env/db_admin.tf`): `prisma migrate deploy` as the master user (password from the
+   RDS-managed secret), then it creates `osra_api`, sets its password as a SCRAM-SHA-256 verifier computed in the
+   task (the password itself never appears in SQL or a database log) and grants it rows only — no DDL, no
+   ownership. The task has its own execution role; the API's role cannot read the master or the osra_api password. The API itself
+   connects as `osra_api` with `DATABASE_TLS_VERIFY=required` and Prisma's verifying TLS form.
+8. **Service phase:** `OSRA_PROD_PHASE=service`, plan, read, apply: creates the service or rolls it onto the new task
+   definition.
+
+### Load balancer to task: plain HTTP inside the VPC (#766 item 4, proposed acceptance)
+
+TLS ends at the ALB (`ELBSecurityPolicy-TLS13-1-2-2021-06`). From the ALB to a task, traffic is HTTP on
+port 3000 inside the VPC. **Proposed for acceptance by Ahmed (gate #637) and Karim**, for these reasons:
+- The path never leaves the VPC: the tasks are in private subnets with no public address, and the task
+  security group accepts port 3000 **only** from the ALB's security group (`env/network.tf`, `api_from_alb`).
+  No other host in any network can open that port.
+- The ALB does not validate a target's certificate. TLS to the task would add encryption against that same
+  in-VPC observer, but not identity. It would also need a certificate inside the image and a code change in
+  the API, which the gate's schedule does not allow before the beta.
+- **What crosses this hop in clear** (said plainly, #783 review): every request body and response the API
+  handles: a child's message text sent for scoring, searches, locations, a parent's password at sign-in,
+  tokens. Nothing on this hop is end-to-end encrypted; ADR-0006's vault encrypts excerpts **at rest on the
+  server**, not in transit. Reading it would take a foothold inside the VPC on the ALB-to-task path, which the
+  two points above are there to prevent.
+- Proposed scope: accepted **for the closed beta only**. HTTPS to the task stays on the list as a
+  **before-public-launch** item (#637 follow-up).
+
+Revisit when any of these changes: a second service joins the VPC, the ALB is replaced by something that
+validates targets, or a reviewer asks for it. Changing it then means an HTTPS listener in the API, the target
+group on `HTTPS`, and the security group rule on the new port.
+
+### Backups outside the account (#766 item 5)
+
+Production's database uses its own KMS key (`db_customer_kms_key`), because a backup encrypted with the
+AWS-managed `aws/rds` key cannot be copied to another account. AWS Backup takes a daily backup at 05:00 UAE,
+keeps it 30 days in production's vault, and copies it to `osra-production-copy` in the **management account**
+in **eu-west-1** (`org-audit/backup_vault.tf`). The copy is deleted after 90 days, and the vault policy
+forbids deleting it early. Once, in the management account:
+`aws organizations enable-aws-service-access --service-principal backup.amazonaws.com` and
+`aws backup update-global-settings --global-settings isCrossAccountBackupEnabled=true`.
+
+**Moving the database to its own key replaces it** (`kms_key_id` cannot change in place). Today it is empty, so
+that is free, but deletion protection is on and the final snapshot has a fixed name. With Karim's written OK:
+(1) `aws rds modify-db-instance --db-instance-identifier osra-production-postgres --no-deletion-protection
+--apply-immediately`; (2) plan and apply env from a saved plan that shows exactly one replacement,
+`aws_db_instance.main`; Terraform takes the final snapshot `osra-production-postgres-final`; (3) the new
+instance comes up with `deletion_protection = true` from the code. Afterwards that snapshot exists, so the
+next deliberate destroy would collide with its name: delete it (empty database) or rename it first. The endpoint name
+stays the same (same identifier), so DATABASE_URL is unchanged; run the db-admin task again, because the new
+database has no `osra_api` role yet.
+
+A scheduled deletion or a disable of this key reaches both alarm addresses (EventBridge rule
+`<prefix>-rds-key-danger`), because losing it makes the database and every backup under it unreadable.
+
+**Restore drill:** `AWS_PROFILE=<profile> ./infra/terraform/restore-drill.sh` restores the newest recovery point
+into a temporary private instance, waits until it is available, prints what it restored, and deletes it. Its
+log is the gate evidence. Run it once before go-live and after any change to the backup plan. A trap deletes
+the temporary instance on any exit once the restore job has started, and every wait has a ceiling.
+`--from-copy` (run with the **management** account's profile) restores the newest off-site copy in
+`osra-production-copy` inside the management account, into the isolated drill network `org-audit` creates
+there: it is the path that matters if the production account is lost, and the proof that the KMS and vault
+policies let a copy be made and read back. Both runs' logs go on #637. The copy vault carries an AWS Backup **Vault Lock in governance mode**
+(1 to 90 days), so retention is enforced beyond the vault policy; switching it to compliance mode would make it
+permanent after the cooling-off period, so that is Karim's call, not a default.
+
+### Access (#766 item 7)
+
+Owner decision, rationale and runbook: osra-security#27 (private).
+
+- **People** sign in through IAM Identity Center (`org-audit/identity_center.tf`): user, permission set
+  `OsraAdministrator` (8-hour sessions), assigned in the management account and osra-production.
+  **Order matters:** first, in the console, Settings → Authentication → require MFA at every sign-in and
+  require a device to be registered at first sign-in, and post evidence of that setting on #637; **then** apply.
+  Without that setting the new user would be an administrator with a password only.
+- **The deployer user** (`org-audit/access.tf`): the organisation trail also writes to `/osra/org-trail`
+  (90 days); three alarms reach both alarm addresses: use from an unexpected address, any change to that
+  user's keys, and that user creating a new IAM principal. An explicit deny stops the deployer user from
+  switching any of that monitoring off (trail, its bucket and its Object Lock, log group and filters, alarms,
+  topic, keys, the management account's GuardDuty detectors and their alert rules, and its own policies).
+  Management-account GuardDuty findings of severity 7+ reach the same two addresses (`guardduty_alerts.tf`;
+  us-east-1 findings are forwarded to the home region's event bus first). The same policies narrow the indirect route (not close it; the "new principals" alarm covers the rest, and roles it makes carry a boundary, see role_boundary.tf): the user
+  cannot assume any management-account role, create users, sign-in passwords or other users' keys, detach the
+  trail at the organisation level, or remove the off-site copy vault's lock or policy. Nothing the agents do needs
+  those; production and staging are reached through roles in the member accounts. Changing those resources later is done through Identity Center with MFA; an apply of this
+  stack by the deployer user that touches them fails by design.
+- **Ahmed's six conditions for the access exception** (#637 comment 6881460052; Karim's OK 14 Nov 23:54 UAE):
+  1. *No erasing evidence or backups:* the user's three managed deny policies here, and in osra-production the
+     service control policy `osra-agent-cannot-erase-evidence` (`org-audit/agent_guardrails.tf`), which binds
+     every principal there except Karim's Identity Center roles, so a role the agents create there is bound too.
+     AWS Backup's own role may still expire recovery points, and no one but Karim may change it or create a role
+     under `aws-reserved/`. The policy type must be enabled on the organisation root (checked 15 Nov: enabled).
+     RDS deletion protection has no IAM condition key, so deleting the instance, snapshots, automated backups
+     and recovery points is denied instead; only the restore drill's `*-restore-drill-*` instance stays deletable.
+  2. *No self-escalation:* own keys only, no changes to its own policies, and every role it creates or changes
+     here carries `osra-management-role-boundary` (`org-audit/role_boundary.tf`); roles are passed only to
+     CloudTrail, EventBridge, Backup and Config; no new identity providers, no new accounts or delegated
+     administrators, and no Identity Center writes at all (`sso-directory:*`, every `sso:`/`identitystore:` write
+     verb), so the key cannot reset Karim's password or MFA.
+  3. *Key age:* AWS Config rule `osra-access-keys-rotated` (100 days) mails both alarm addresses. Claude rotates
+     monthly.
+  4. *Key store:* `move-agent-key-to-store.sh` (once) moves the key into a Windows DPAPI store under Karim's
+     Windows user; the profile reads it through `agent-credential.ps1` (`credential_process`), and
+     `rotate-agent-key.sh` writes new keys there and reads the store back, refusing to go on unless it holds the
+     new key id. The key is never put in a repository, a CI secret, a cloud
+     agent session or a chat.
+  5. *Use from outside Karim's network* raises an alarm and blocks nothing.
+  6. *Root:* osra-production has no root password, keys or MFA (centralised root management, recovery through
+     the management account); the management root has MFA and no access keys. Evidence on #637.
+  **Apply order:** org-audit is applied once, at the head that carries all of this (not batch E first: its deny
+  would stop this apply adding the boundary to the roles E created). The RDS replacement in batch D is applied
+  before, because the policy forbids deleting the old instance afterwards.
+- `rotate-agent-key.sh` replaces the key without a gap: new key, written to the credentials file, proved,
+  then the old one deleted; on any failure before that, the new key is deleted and the file restored.
+
+#### Mac credential tooling (#887, #893; review draft)
+
+Initial access uses an explicit infrastructure-metadata action/resource allowlist, independent deny
+ceilings and reviewed entry-role aliases. The draft still requires independent security review and the
+approved operating procedure before it can be used. The prepared
+policy and scripts are not authorization to create a principal, provision credentials, read a Keychain
+item, assume a role or change cloud resources. Keep access off until the reviewed policy, required
+controls, independent evidence and the owner's written MFA/apply approval are all in place.
+
+`infra/scripts/agent_credential_mac.py` provides a credential-process helper for one item in the current
+macOS user's login Keychain. It does not write a plaintext credentials file. After approval, a profile
+uses absolute interpreter/helper paths and the reviewed identity. Credential-process output is consumed
+by the AWS CLI; do not run it merely to display or copy credential material. Processes under the same
+macOS login share that Keychain access boundary.
+
+Mac phase 1 has no rotation or IAM write grant. Both the Python rotation command and the shell
+`--mac` mode refuse before accessing Keychain or AWS. The existing PC script and caller defaults are unchanged. The management boundary keeps its original
+unconditional key-creation deny; additional key guards restrict other key management to the PC user's
+account-bound own user. These stricter boundary conditions require independent security review.
+At the fixed fourteen-day authorization deadline, the scheduled job disables every current Mac-user
+key. Renewal requires the owner's separate approved MFA key-creation step and reconciliation of the
+protected deadline tag with every installed literal deadline. Rotation never renews authorization.
+
+The local infrastructure preparation includes the reviewed deny/boundary pattern, fixed-deadline
+controls, scheduled key disablement and per-user monitoring. No access-key resource is stored in
+Terraform state. SourceIdentity is supplied explicitly where the approved caller procedure requires
+it; an asserted value is not authentication. Trust and caller setup are reviewed together before role
+use, and existing monitoring is retained through that transition. Broader caller integration is a
+separate phase from the proposed initial read-only scope.
+
+The scheduled job processes current keys against the protected authorization deadline and emits only
+status/count diagnostics. Key deactivation alone is not STS-session revocation. AWS documents
+[minute-resolution scheduled rules](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-create-rule-schedule.html),
+[temporary-session permission evaluation](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_control-access_disable-perms.html),
+[SourceIdentity behavior](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_control-access_monitor.html)
+and [date-condition variable restrictions](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_variables.html).
+The approved operating procedure and private evidence must address the applicable timing and session
+requirements; these source files and unit tests do not establish live readiness.
+
+Supply the reviewed `mac_phase1_regions` and `mac_phase1_entry_role_names` alias mapping explicitly;
+neither has a default. The mapping resolves only into the existing configured production account.
+The policy grants literal metadata actions for ECS/ECR, RDS infrastructure, ELB/VPC, CloudWatch,
+Backup and selected Config/CloudTrail status APIs. Content-returning APIs and broad managed read-only
+policies are excluded. No download-bucket grant or general data-read grant is included.
+
+The owner creates the initial principal and first key only through the approved console/MFA procedure.
+Import that existing principal into the reviewed infrastructure state before any apply; Terraform does
+not create or store a key. The production mapping and current role trust must be independently reviewed
+before any role use. The emitted trust statements are review material, not an applied trust change.
+
+Keep account/resource mappings, trusted network details, policy-simulator results, reviewed scope,
+current-head approvals and runtime evidence in the private security review. Public documentation must
+not contain credentials, private identifiers or security-gap investigation details.
+
+Fake-only checks use no AWS or Keychain access:
+
+```sh
+python3 -B -m unittest discover -s infra/terraform/org-audit/tests -p 'test_agent_*.py'
+bash -n infra/terraform/rotate-agent-key.sh
+```
+
+Terraform must be on PATH for the provider-free source-policy rows. The org-audit `.tftest.hcl`
+suite uses mocked AWS/archive providers; its plan-only checks and `terraform validate` are offline
+configuration evidence, not cloud enforcement or an independent security sign-off. Keep provider
+lock-file changes reviewable with the code. No production plan/apply is part of these local checks.
+
+### Production cost (estimate, on-demand list prices in `eu-central-1`, 730 h/month)
+
+| Item | Basis | US$/month |
+|---|---|---:|
+| NAT gateways | 2 × hourly + light data processing | ~79 |
+| Fargate (ARM) | 2 tasks × (1 vCPU + 2 GiB) | ~66 |
+| RDS PostgreSQL | `db.t4g.small` Multi-AZ + 50 GB gp3 × 2 | ~68 |
+| ElastiCache | 2 × `cache.t4g.micro` | ~28 |
+| Load balancer | hourly + light LCU | ~26 |
+| Public IPv4 | 2 ALB + 2 NAT addresses | ~15 |
+| WAF | web ACL + 4 rules + requests | ~10 |
+| CloudWatch | 12 alarms + ~5 GB logs | ~5 |
+| Secrets, Route 53, ECR, S3 state | | ~4 |
+| GuardDuty | production (trail, flow, DNS, RDS login, S3 data) + management account in 2 regions, light volume | ~10–15 |
+| VPC flow logs + WAF logs | ~5 GB/month delivered to S3 and CloudWatch | ~4 |
+| KMS keys | ~6 customer keys × US$1 + requests | ~6–7 |
+| CloudTrail copy in CloudWatch | organisation trail management events to the access-alarm log group (batch E) | ~2–4 |
+| Backups | daily RDS backups + copy to the management account's vault (batch D) | ~5–8 |
+| AWS Config | management account, IAM users only, one rule | <1 |
+| **Total** | at minimum scale (2 tasks) | **~US$330–340** |
+
+Each extra API task adds ~US$33/month. Data out to the internet beyond 100 GB/month, taxes and AWS Support are
+excluded. The audit and security lines (GuardDuty to backups) were added with the #766 hardening and raise the
+~US$300 first estimate by ~US$30–40. **This is an estimate, not a quote**; the budget alarm at US$400 is the real check.
+
+## Cost (staging)
 
 Rough **US$0.19/hour** for `env` at the defaults, on-demand list prices in `eu-north-1` — about
 **US$1.55 for an 8-hour session** (the line items below add up to 0.194; `up.sh` prints 1.52 because

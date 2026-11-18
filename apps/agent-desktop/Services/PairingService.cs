@@ -44,7 +44,11 @@ public static class PairingService
     {
         var baseUrl = (apiBase ?? string.Empty).Trim().TrimEnd('/');
         var pin = ParentPinPolicy.Normalize(parentPin);
-        if (baseUrl.Length == 0 || string.IsNullOrWhiteSpace(code) || pin is null) return null;
+        var typedCode = (code ?? string.Empty).Trim();
+        if (baseUrl.Length == 0 || typedCode.Length == 0 || pin is null) return null;
+        // Every caller goes through here, so the code is normalised once (#771): the server accepts
+        // ^\d{6}$ only and would refuse ١٢٣٤٥٦ as typed.
+        var claimCode = ParentPinPolicy.NormalizeDigits(typedCode);
 
         Uri baseUri;
         try
@@ -64,7 +68,7 @@ public static class PairingService
             new RuntimeFacts(HasParentPin: true, TrayConnected: false, ProcessBlocking: true, WebFiltering: true));
         using var res = await http.PostAsJsonAsync("/v1/devices/pair/claim", new
         {
-            code = code.Trim(),
+            code = claimCode,
             platform = string.IsNullOrWhiteSpace(platform) ? "windows" : platform.Trim(),
             model = Environment.MachineName,
             osVersion = Environment.OSVersion.VersionString,

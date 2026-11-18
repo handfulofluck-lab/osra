@@ -35,10 +35,7 @@ public static class DesktopCapabilities
     {
         var client = DesktopClientIdentity.CapabilityClient()
             ?? throw new InvalidDataException("The desktop build cannot be named truthfully.");
-        var grants = new Dictionary<string, string>
-        {
-            ["child_account_admin"] = user.IsAdministrator ? "granted" : "missing",
-        };
+        var grants = new Dictionary<string, string>();
         var interactive = !facts.HasParentPin ? "unavailable" : facts.TrayConnected ? "ready" : "degraded";
         var features = new Dictionary<string, string>
         {
@@ -48,6 +45,7 @@ public static class DesktopCapabilities
             ["screen_time"] = interactive,
             ["web_filter"] = facts.WebFiltering ? "degraded" : "unavailable",
             ["pause_internet"] = facts.WebFiltering ? "degraded" : "unavailable",
+            ["child_account_admin"] = user.IsAdministrator ? "degraded" : "ready",
         };
         return JsonSerializer.SerializeToElement(new { client, grants, features, source = "tray" });
     }
@@ -63,7 +61,7 @@ public sealed class DesktopCapabilitiesStore
 {
     private static readonly HashSet<string> FeatureKeys = new()
     {
-        "lock_screen", "pause_screen", "app_blocking", "screen_time", "web_filter", "pause_internet",
+        "lock_screen", "pause_screen", "app_blocking", "screen_time", "web_filter", "pause_internet", "child_account_admin",
     };
 
     private JsonElement? _current;
@@ -79,15 +77,16 @@ public sealed class DesktopCapabilitiesStore
             throw new InvalidDataException("Unexpected desktop report source.");
         if (report.GetProperty("client").GetProperty("app").GetString() != "agent-desktop")
             throw new InvalidDataException("Unexpected desktop client.");
-        if (report.GetProperty("grants").EnumerateObject().Select(p => p.Name).SingleOrDefault() != "child_account_admin")
+        if (report.GetProperty("grants").ValueKind != JsonValueKind.Object || report.GetProperty("grants").EnumerateObject().Any())
             throw new InvalidDataException("Unexpected grant vocabulary.");
-        var admin = report.GetProperty("grants").GetProperty("child_account_admin").GetString();
-        if (admin is not ("granted" or "missing")) throw new InvalidDataException("Unexpected grant state.");
         foreach (var feature in report.GetProperty("features").EnumerateObject())
         {
             if (!FeatureKeys.Contains(feature.Name) || feature.Value.GetString() is not ("ready" or "degraded" or "unavailable"))
                 throw new InvalidDataException("Unexpected desktop feature state.");
         }
+        if (!report.GetProperty("features").TryGetProperty("child_account_admin", out var adminProp) ||
+            adminProp.GetString() is not ("ready" or "degraded"))
+            throw new InvalidDataException("Missing or invalid desktop account state.");
         _current = report.Clone();
     }
 }

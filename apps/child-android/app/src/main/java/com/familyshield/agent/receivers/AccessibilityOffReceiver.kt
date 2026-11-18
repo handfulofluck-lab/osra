@@ -7,6 +7,8 @@ import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.AlertDto
 import com.familyshield.agent.security.AccessibilityServiceListPolicy
+import com.familyshield.agent.security.TamperAlertDedupe
+import com.familyshield.agent.security.TamperState
 import com.familyshield.agent.security.PermissionObservationPolicy
 import com.familyshield.agent.services.AccessibilityMonitorService
 
@@ -33,8 +35,18 @@ class AccessibilityOffReceiver {
         val services = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
         val component = ComponentName(context, AccessibilityMonitorService::class.java).flattenToString()
         val enabledNow = AccessibilityOffPolicy.isEffectivelyEnabled(enabled, services, component)
+        // osra-security#29 review (Claude): this poll is the *other* reporter of the same event. A parent who turned
+        // the service off inside the PIN's grace window, and a phone that was never paired, must be recorded without
+        // paging — which is what the unbind alert already does.
+        // Antigravity's exact replacement: the observation check first (so an "on" observation is recorded as on),
+        // then the switch-off moment, then the decision — which reads that moment, not the clock.
         if (!AccessibilityOffPolicy.shouldAlertOnObservation(settings.accessibilityWasEnabled(), enabledNow)) {
             settings.recordAccessibilityEnabled(enabledNow)
+            return
+        }
+        val eventAtMs = AccessibilityOffPolicy.eventTimeMs(TamperState.accessibilityDisabledAtMs(context), nowMs)
+        if (!AccessibilityOffPolicy.shouldTellParent(settings.isPairedSync(), TamperState.graceUntil(context), eventAtMs)) {
+            settings.recordAccessibilityEnabled(false)
             return
         }
         // The edge is real. If the type is throttled, record it off: this event was already reported
@@ -54,6 +66,9 @@ class AccessibilityOffReceiver {
                     title = "Protection was disabled",
                     body = "The OSRA accessibility service was turned off on this device",
                     metadata = mapOf("type" to AccessibilityOffPolicy.TYPE),
+                    // Antigravity's fix: the same key the unbind alert uses for this switch-off, so the server sees
+                    // one alert rather than one keyed and one unkeyed page.
+                    dedupeKey = TamperAlertDedupe.accessibilityOffKey(settings.deviceId(), eventAtMs),
                 ),
             )
         }.onSuccess {
@@ -68,6 +83,71 @@ object AccessibilityOffPolicy {
 
     /** Detection type; doubles as the per-type throttle key segment. */
     const val TYPE: String = "accessibility"
+
+    /**
+     * osra-security#29 review (Claude): whether an unbind or a poll observation should reach the parent at all.
+     *
+     * Not on a phone that was never paired — nobody to tell — and not inside the PIN grace window: a parent who
+     * turned the service off after entering the PIN did what they meant to do, and paging them for it is noise
+     * that trains a family to ignore the one alert that matters. Pure, because this is the decision a test has to
+     * be able to drive.
+     */
+    /**
+     * The moment of the switch-off, as one pure function: the stamped time when the service has one, and "now"
+     * otherwise. Both reporters and the grace decision use it, and a row goes red if the stamp is ignored.
+     */
+    fun eventTimeMs(disabledAtMs: Long, nowMs: Long): Long = if (disabledAtMs > 0L) disabledAtMs else nowMs
+
+    fun shouldTellParent(paired: Boolean, graceUntilMs: Long, nowMs: Long): Boolean =
+        paired && nowMs >= graceUntilMs
+
+    /**
+     * Part 2's latch (osra-security#29 review, Antigravity's item 3): the special-access set is captured on
+     * **entering** Settings and dropped on leaving it — including when a window of our own package opens, which is
+     * what happens when a parent finishes granting and presses Back into OSRA.
+     */
+    fun nextSpecialAccessLatch(
+        previous: Set<com.familyshield.agent.security.TamperScreenPolicy.SpecialAccess>?,
+        packageName: String?,
+        settingsPackage: String,
+        heldNow: () -> Set<com.familyshield.agent.security.TamperScreenPolicy.SpecialAccess>,
+    ): Set<com.familyshield.agent.security.TamperScreenPolicy.SpecialAccess>? = when {
+        packageName == null -> previous
+        packageName == settingsPackage -> previous ?: heldNow()
+        else -> null
+    }
+
+    /**
+     * osra-security#29 (#817, Antigravity's Flip4 pass): the package whose window a latch should read. A soft
+     * keyboard's state change arrives with the IME's package while Settings is still the page in front, and reading
+     * the event's own package cleared [nextSpecialAccessLatch] — turning an access we hold into "the parent is
+     * granting it" — and reset [nextLatch] the same way. The foreground application package wins whenever it is
+     * known; the event's package is the fallback for a window with no application behind it.
+     */
+    fun latchPackage(foregroundPkg: String?, eventPkg: String?): String? = when {
+        eventPkg == null -> foregroundPkg
+        // Claude's osra-security#29 item 1 on #817: the *entry* event into Settings can arrive while our own window is
+        // still the foreground one — then reading the foreground leaves the latch empty, and a grant the parent makes
+        // during onboarding fires the PIN gate mid-flow. The old code could not do that, so it would be a regression
+        // introduced by the IME fix. When the event itself is a Settings or PermissionController window, that IS the
+        // page in front; the foreground package answers every other case (a keyboard inside Settings, a popup).
+        eventPkg == SETTINGS_PACKAGE || eventPkg.contains("permissioncontroller") -> eventPkg
+        else -> foregroundPkg ?: eventPkg
+    }
+
+    /** The package whose special-access pages the latch is about; shared with the service's own calls. */
+    const val SETTINGS_PACKAGE = "com.android.settings"
+
+    /**
+     * The grant latch for a PermissionController visit (osra-security#30 review): latched from the grant when a
+     * PermissionController window is entered, cleared when any other window is entered, and left alone when the
+     * window cannot be named.
+     */
+    fun nextLatch(previous: Boolean?, packageName: String?, grantedNow: () -> Boolean): Boolean? = when {
+        packageName == null -> previous
+        packageName.contains("permissioncontroller") -> previous ?: grantedNow()
+        else -> null
+    }
 
     /**
      * True when the service identified by flattened [component] appears in the

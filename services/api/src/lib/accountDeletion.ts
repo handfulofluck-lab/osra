@@ -63,9 +63,14 @@ type DeleteMany = (args: { where: unknown }) => Promise<{ count: number }>;
  */
 export const FAMILY_SCOPED_DELETES: Record<string, (s: FamilyScope) => unknown> = {
   familyInvite: (s) => ({ familyId: s.familyId }),
+  familyPurchase: (s) => ({ familyId: s.familyId }),
   digestRecipient: (s) => ({ familyId: s.familyId }),
   digestSend: (s) => ({ familyId: s.familyId }),
   digestPrefs: (s) => ({ familyId: s.familyId }),
+  // Issue #890: per-family scan counters. Aggregates with no child id in them, but they are still the
+  // family's usage and they go with it — the §4 guard is right to refuse a new familyId model that
+  // nobody decided about.
+  aiScanUsage: (s) => ({ familyId: s.familyId }),
   mfaResetRequest: (s) => ({ parentId: { in: s.parentIds } }),
   parentPushToken: (s) => ({ parentId: { in: s.parentIds } }),
   parentMfaRecoveryCode: (s) => ({ parentId: { in: s.parentIds } }),
@@ -85,6 +90,10 @@ export const PARENT_SCOPED_DELETES: Record<string, (s: ParentScope) => unknown> 
   parentMfaRecoveryCode: (s) => ({ parentId: s.parentId }),
   familyInvite: (s) => ({ familyId: s.familyId, email: s.email }),
   accountDeletionToken: (s) => ({ parentId: s.parentId }),
+  // ADR-0043 D2: the adult's own consent rows. The FK cascades from `Parent` anyway, so this line only
+  // makes the decision explicit to the §4 coverage guard — and it is the decision that matches the
+  // account-deletion promise: the proof of a consent goes with the account it authorised.
+  parentConsentEvent: (s) => ({ parentId: s.parentId }),
   parent: (s) => ({ id: s.parentId }),
 };
 

@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../db.js";
 import { getRedis } from "../redis.js";
+import { decryptSecret, encryptSecret, isEncryptedSecret } from "./secretVault.js";
 
 /**
  * Internal request signing — `X-FamilyShield-Signature` (ADR-0014, Phase 2d).
@@ -186,8 +187,10 @@ export async function authenticateInternalRequest(
   //    without a secret cannot be acted on by a body-only signer (the old fallback is closed).
   if (deviceId) {
     const device = await prisma.device.findUnique({ where: { id: deviceId } });
-    if (!device?.internalSecret) return { valid: false, reason: "device_has_no_secret" };
-    if (!verifyWith(device.internalSecret, rawBody, env)) return { valid: false, reason: "invalid_signature" };
+    const key = deviceKey(device);
+    if (!device || !key) return { valid: false, reason: "device_has_no_secret" };
+    if (!verifyWith(key, rawBody, env)) return { valid: false, reason: "invalid_signature" };
+    sealLegacyKey(device);
     if (env.version === 1 && !allowLegacyV1(envVars)) return { valid: false, reason: "legacy_signature_disabled" };
     if (env.version === 2) {
       const claim = await claimNonce(device.id, env.nonce, envVars);
@@ -200,7 +203,9 @@ export async function authenticateInternalRequest(
   if (parsed.childId) {
     const childDevices = await prisma.device.findMany({ where: { childId: parsed.childId } });
     for (const dev of childDevices) {
-      if (dev.internalSecret && verifyWith(dev.internalSecret, rawBody, env)) {
+      const key = deviceKey(dev);
+      if (key && verifyWith(key, rawBody, env)) {
+        sealLegacyKey(dev);
         if (env.version === 1 && !allowLegacyV1(envVars)) return { valid: false, reason: "legacy_signature_disabled" };
         if (env.version === 2) {
           const claim = await claimNonce(dev.id, env.nonce, envVars);
@@ -212,6 +217,28 @@ export async function authenticateInternalRequest(
   }
 
   return { valid: false, reason: "invalid_signature" };
+}
+
+/**
+ * The device's raw HMAC key. The column holds it under VAULT_KEY (`enc1:`); a row written before that is plain hex
+ * and is still accepted, then sealed by `sealLegacyKey`. "" when there is no key or it cannot be decrypted, which
+ * the callers treat as "no key", never as a key.
+ */
+function deviceKey(device: { internalSecret?: string | null } | null | undefined): string {
+  return decryptSecret(device?.internalSecret);
+}
+
+/** Re-store a legacy plaintext key encrypted, after it has verified a request. Best effort: a failure changes nothing. */
+function sealLegacyKey(device: { id: string; internalSecret?: string | null }): void {
+  const stored = device.internalSecret;
+  if (!stored || isEncryptedSecret(stored)) return;
+  try {
+    void Promise.resolve(
+      prisma.device.updateMany({ where: { id: device.id, internalSecret: stored }, data: { internalSecret: encryptSecret(stored) } }),
+    ).catch(() => {});
+  } catch {
+    // the next verified request tries again
+  }
 }
 
 export async function verifyInternalSignature(

@@ -92,10 +92,19 @@ final locationHistoryProvider = FutureProvider.family<List<LocationPing>, String
   final api = ref.watch(apiClientProvider);
   final now = DateTime.now();
   final from = DateTime(now.year, now.month, now.day);
-  final res = await api.raw.get('/v1/location/$childId/history', queryParameters: {
-    'from': from.toIso8601String(),
-    'to': now.toIso8601String(),
-  });
+  final Response<dynamic> res;
+  try {
+    res = await api.raw.get('/v1/location/$childId/history', queryParameters: {
+      // #869: the API accepts UTC/Z datetimes. Convert the local-day boundary,
+      // rather than constructing UTC midnight, so "today" stays the parent's day.
+      'from': from.toUtc().toIso8601String(),
+      'to': now.toUtc().toIso8601String(),
+    });
+  } on DioException catch (e) {
+    // #850: no location yet is an empty day, not an error.
+    if (e.response?.statusCode == 404) return const <LocationPing>[];
+    rethrow;
+  }
   final data = res.data is Map ? Map<String, dynamic>.from(res.data as Map) : const <String, dynamic>{};
   final pings = <LocationPing>[
     for (final p in (data['pings'] as List? ?? const []))

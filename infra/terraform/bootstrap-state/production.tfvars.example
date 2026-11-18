@@ -1,0 +1,4 @@
+# Copy to production.tfvars (gitignored). No real IDs in the repository.
+region              = "eu-central-1"
+assume_role_arn     = "arn:aws:iam::<prod-account-id>:role/<deploy-role-name>"
+allowed_account_ids = ["<prod-account-id>"]

@@ -134,6 +134,9 @@ class RuleRepository @Inject constructor(
     /** Feature #2: true unless the cached rule set explicitly disables social monitoring for [appKey] (absent key = enabled). */
     fun socialMonitoringEnabled(appKey: String): Boolean = cached?.socialMonitoring?.get(appKey) ?: true
 
+    /** #830 gating: true only after the server flag went on and the phone synced that rule set. */
+    fun siteNamesEnabled(): Boolean = cached?.siteNames == true
+
     /** Feature #27: the parent-curated contact allowlist; empty means unknown-contact alerting is disabled. */
     fun contactAllowlist(): List<String> = cached?.contactAllowlist ?: emptyList()
 

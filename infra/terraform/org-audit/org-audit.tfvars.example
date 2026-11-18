@@ -1,0 +1,25 @@
+# Copy to org-audit.tfvars (gitignored). No real IDs in the repository.
+region                = "eu-central-1"
+management_account_id = "<management-account-id>"
+trail_retention_days  = 365
+production_account_id = "<prod-account-id>"
+backup_copy_region    = "eu-west-1"
+
+# Access (#766 item 7, access.tf and identity_center.tf).
+agent_user_names = ["osra-staging-deployer", "osra-codex-mac"]
+agent_trusted_ip_prefixes = {
+  osra-staging-deployer = ["<pc-prefix>."]
+  osra-codex-mac        = ["<mac-prefix>."]
+}
+# Required reviewed inputs: examples are placeholders, not an approved mapping.
+mac_phase1_regions = ["<approved-region>"]
+mac_phase1_entry_role_names = {
+  approved-entry = "<approved-role-path-and-name>"
+}
+mac_access_expires_at      = "<owner-approved-fixed-ISO-deadline>"
+alarm_email               = "<owner-email>"
+alarm_email_secondary     = "<support-email>"
+owner_user_name           = "<owner-user-name>"
+owner_given_name          = "<given-name>"
+owner_family_name         = "<family-name>"
+owner_email               = "<owner-email>"

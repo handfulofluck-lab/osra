@@ -8,8 +8,19 @@ name: Publish API image
 # It builds `github.sha` and nothing else. A `ref` input would be a way around the gate: the OIDC
 # subject comes from the branch the run was started on, not from what checkout fetches, so a run on
 # `main` could build unverified code from another branch and push it under a `main`-only role.
+# `target` picks the account (#766 item 8). Each account has its own publish role, trusted for this
+# repository's `main` only, and its own immutable repository; the role and repository come from separate
+# repository variables so a staging value can never point a production run at the wrong account.
+# Publishing to production only puts an image in its registry: nothing runs it until a reviewed
+# Terraform plan names that tag in `env/api_image`.
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: "Which account's registry to push to"
+        type: choice
+        options: [staging, production]
+        default: staging
 
 permissions:
   contents: read
@@ -17,7 +28,7 @@ permissions:
 
 # Queue rather than cancel: a cancelled run can leave a half-uploaded layer.
 concurrency:
-  group: api-publish
+  group: api-publish-${{ inputs.target }}
   cancel-in-progress: false
 
 jobs:
@@ -28,35 +39,60 @@ jobs:
     # GitHub's arm64 runner: no QEMU emulation, and Fargate runs ARM64 (ADR-0028).
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
+    env:
+      TARGET: ${{ inputs.target }}
     steps:
       - uses: actions/checkout@v4
 
       # Both values come from repository variables because Actions cannot read base's Terraform state.
       - name: Require the repository variables
+        id: target
         env:
-          AWS_ECR_REPOSITORY: ${{ vars.AWS_ECR_REPOSITORY }}
-          AWS_PUBLISH_ROLE_ARN: ${{ vars.AWS_PUBLISH_ROLE_ARN }}
+          STAGING_REPO: ${{ vars.AWS_ECR_REPOSITORY }}
+          STAGING_ROLE: ${{ vars.AWS_PUBLISH_ROLE_ARN }}
+          PRODUCTION_REPO: ${{ vars.AWS_PRODUCTION_ECR_REPOSITORY }}
+          PRODUCTION_ROLE: ${{ vars.AWS_PRODUCTION_PUBLISH_ROLE_ARN }}
         run: |
           set -eu
+          # Chosen in the shell, not with `a && b || c` in an expression: that form falls back to the
+          # staging value when the production variable is empty.
+          case "$TARGET" in
+            staging) PREFIX=""; AWS_ECR_REPOSITORY="${STAGING_REPO:-}"; AWS_PUBLISH_ROLE_ARN="${STAGING_ROLE:-}" ;;
+            production) PREFIX="PRODUCTION_"; AWS_ECR_REPOSITORY="${PRODUCTION_REPO:-}"; AWS_PUBLISH_ROLE_ARN="${PRODUCTION_ROLE:-}" ;;
+            *) echo "::error::unknown target '$TARGET'"; exit 1 ;;
+          esac
           if [ -z "$AWS_ECR_REPOSITORY" ]; then
-            echo "::error::AWS_ECR_REPOSITORY is unset. After base is applied: gh variable set AWS_ECR_REPOSITORY --body \"\$(terraform -chdir=infra/terraform/base output -raw ecr_repository_url)\""
+            echo "::error::AWS_${PREFIX}ECR_REPOSITORY is unset. After $TARGET base is applied: gh variable set AWS_${PREFIX}ECR_REPOSITORY --body \"\$(terraform -chdir=infra/terraform/base output -raw ecr_repository_url)\""
             exit 1
           fi
           if [ -z "$AWS_PUBLISH_ROLE_ARN" ]; then
-            echo "::error::AWS_PUBLISH_ROLE_ARN is unset. After base is applied: gh variable set AWS_PUBLISH_ROLE_ARN --body \"\$(terraform -chdir=infra/terraform/base output -raw publish_role_arn)\""
+            echo "::error::AWS_${PREFIX}PUBLISH_ROLE_ARN is unset. After $TARGET base is applied: gh variable set AWS_${PREFIX}PUBLISH_ROLE_ARN --body \"\$(terraform -chdir=infra/terraform/base output -raw publish_role_arn)\""
             exit 1
           fi
+          # The role and the repository must be in the same account, and production's repository must be
+          # production's: a crossed variable fails here instead of pushing into the wrong registry.
+          ROLE_ACCOUNT="$(printf '%s' "$AWS_PUBLISH_ROLE_ARN" | cut -d: -f5)"
+          REPO_ACCOUNT="${AWS_ECR_REPOSITORY%%.*}"
+          if [ "$ROLE_ACCOUNT" != "$REPO_ACCOUNT" ]; then
+            echo "::error::publish role and repository are in different accounts"; exit 1
+          fi
+          case "$AWS_ECR_REPOSITORY" in
+            */osra-${TARGET}/api) ;;
+            *) echo "::error::repository must be osra-${TARGET}/api for target ${TARGET}"; exit 1 ;;
+          esac
+          HOST="${AWS_ECR_REPOSITORY%%/*}"
+          echo "region=$(printf '%s' "$HOST" | cut -d. -f4)" >> "$GITHUB_OUTPUT"
+          echo "AWS_ECR_REPOSITORY=$AWS_ECR_REPOSITORY" >> "$GITHUB_ENV"
+          echo "AWS_PUBLISH_ROLE_ARN=$AWS_PUBLISH_ROLE_ARN" >> "$GITHUB_ENV"
 
       # Pinned by full SHA (v4) so a moved tag cannot change what receives the OIDC token.
       - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
         with:
-          role-to-assume: ${{ vars.AWS_PUBLISH_ROLE_ARN }}
-          aws-region: eu-north-1
+          role-to-assume: ${{ env.AWS_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ steps.target.outputs.region || 'eu-north-1' }}
           role-session-name: ${{ github.run_id }}
 
       - name: Log in to ECR
-        env:
-          AWS_ECR_REPOSITORY: ${{ vars.AWS_ECR_REPOSITORY }}
         run: |
           # `pipefail` matters here: without it a failed `get-login-password` is masked by the pipeline's
           # last command, so the step would report the confusing `docker login` error instead of the real one.
@@ -99,6 +135,6 @@ jobs:
           push: true
           # No `:latest`: a mutable pointer in a task definition is how a "known good" deploy silently
           # becomes a different image. `env/api_image` pins the sha tag this produces.
-          tags: ${{ vars.AWS_ECR_REPOSITORY }}:${{ steps.tag.outputs.tag }}
+          tags: ${{ env.AWS_ECR_REPOSITORY }}:${{ steps.tag.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

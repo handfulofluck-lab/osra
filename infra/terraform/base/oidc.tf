@@ -134,8 +134,13 @@ locals {
 
 data "aws_caller_identity" "current" {}
 
+locals {
+  # Production leaves the evaluation role out: measuring models is staging's job (#714).
+  bedrock_eval_enabled = local.github_oidc_enabled && var.bedrock_eval_role_enabled
+}
+
 resource "aws_iam_role" "bedrock_eval" {
-  count = local.github_oidc_enabled ? 1 : 0
+  count = local.bedrock_eval_enabled ? 1 : 0
 
   name                 = "${local.name_prefix}-bedrock-eval"
   assume_role_policy   = data.aws_iam_policy_document.publish_assume[0].json
@@ -147,7 +152,7 @@ resource "aws_iam_role" "bedrock_eval" {
 }
 
 data "aws_iam_policy_document" "bedrock_eval" {
-  count = local.github_oidc_enabled ? 1 : 0
+  count = local.bedrock_eval_enabled ? 1 : 0
 
   statement {
     sid = "InvokeEuModelsOnly"
@@ -163,7 +168,7 @@ data "aws_iam_policy_document" "bedrock_eval" {
 }
 
 resource "aws_iam_role_policy" "bedrock_eval" {
-  count = local.github_oidc_enabled ? 1 : 0
+  count = local.bedrock_eval_enabled ? 1 : 0
 
   name   = "${local.name_prefix}-bedrock-eval"
   role   = aws_iam_role.bedrock_eval[0].id

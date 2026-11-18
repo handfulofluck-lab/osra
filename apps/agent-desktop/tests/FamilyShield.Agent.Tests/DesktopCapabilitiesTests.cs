@@ -8,13 +8,14 @@ namespace FamilyShield.Agent.Tests;
 public sealed class DesktopCapabilitiesTests
 {
     [Theory]
-    [InlineData(true, "granted")]
-    [InlineData(false, "missing")]
+    [InlineData(true, "degraded")]
+    [InlineData(false, "ready")]
     public void ChildAccountAdminReflectsTheInteractiveUser(bool administrator, string expected)
     {
         var report = DesktopCapabilities.Create(new TestAccountIdentity(administrator), Facts());
 
-        Assert.Equal(expected, report.GetProperty("grants").GetProperty("child_account_admin").GetString());
+        Assert.Empty(report.GetProperty("grants").EnumerateObject());
+        Assert.Equal(expected, report.GetProperty("features").GetProperty("child_account_admin").GetString());
         Assert.Equal("agent-desktop", report.GetProperty("client").GetProperty("app").GetString());
         Assert.Equal("0.1.0", report.GetProperty("client").GetProperty("version").GetString());
         Assert.Equal(1, report.GetProperty("client").GetProperty("build").GetInt32());
@@ -27,7 +28,7 @@ public sealed class DesktopCapabilitiesTests
         Assert.Equal("degraded", report.GetProperty("features").GetProperty("pause_internet").GetString());
         Assert.Equal(4, report.EnumerateObject().Count());
         Assert.Equal("tray", report.GetProperty("source").GetString());
-        Assert.Equal(6, report.GetProperty("features").EnumerateObject().Count());
+        Assert.Equal(7, report.GetProperty("features").EnumerateObject().Count());
         Assert.DoesNotContain("not_supported", JsonSerializer.Serialize(report));
         Assert.DoesNotContain("pin", JsonSerializer.Serialize(report).ToLowerInvariant());
         Assert.DoesNotContain("secret", JsonSerializer.Serialize(report).ToLowerInvariant());
@@ -68,7 +69,7 @@ public sealed class DesktopCapabilitiesTests
             capabilities.Update(report);
             await uploader.UploadOnce(CancellationToken.None);
             Assert.NotNull(api.Batch.Capabilities);
-            Assert.Equal("missing", api.Batch.Capabilities.Value.GetProperty("grants").GetProperty("child_account_admin").GetString());
+            Assert.Equal("ready", api.Batch.Capabilities.Value.GetProperty("features").GetProperty("child_account_admin").GetString());
         }
         finally
         {

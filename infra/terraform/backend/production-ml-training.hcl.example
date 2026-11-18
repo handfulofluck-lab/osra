@@ -1,0 +1,10 @@
+# Copy to production-ml-training.hcl (gitignored) and replace the placeholders. Same state bucket and
+# KMS key as production base and env, its own state key.
+bucket     = "osra-terraform-state-<prod-account-id>-eu-central-1"
+key        = "production/ml-training/terraform.tfstate"
+region     = "eu-central-1"
+kms_key_id = "arn:aws:kms:eu-central-1:<prod-account-id>:key/<key-id>"
+
+assume_role = {
+  role_arn = "arn:aws:iam::<prod-account-id>:role/<deploy-role-name>"
+}

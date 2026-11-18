@@ -36,18 +36,6 @@ function report(overrides: Record<string, unknown> = {}) {
 }
 
 describe("A2 — the schema is strict, enum-keyed and capped", () => {
-  it("accepts child_account_admin for desktop only and rejects other grant states", () => {
-    const desktop = report({ client: { app: "agent-desktop", version: "0.1.0", build: 1, flavour: "dev" } });
-    expect(CapabilitiesSchema.safeParse(report({ ...desktop, grants: { child_account_admin: "granted" } })).success).toBe(true);
-    expect(CapabilitiesSchema.safeParse(report({ ...desktop, grants: { child_account_admin: "missing" } })).success).toBe(true);
-    expect(CapabilitiesSchema.safeParse(report({ ...desktop, grants: { child_account_admin: "administrator" } })).success).toBe(false);
-    expect(CapabilitiesSchema.safeParse(report({ grants: { child_account_admin: "granted" } })).success).toBe(false);
-    expect(CapabilitiesSchema.safeParse(report({
-      client: { app: "child-ios", version: "0.1.0", build: 1, flavour: "testflight" },
-      grants: { child_account_admin: "missing" },
-    })).success).toBe(false);
-  });
-
   it("accepts only the desktop tray as report provenance", () => {
     expect(CapabilitiesSchema.safeParse(report({
       client: { app: "agent-desktop", version: "0.1.0", build: 1, flavour: "dev" },
@@ -97,21 +85,6 @@ describe("decision 3 + A4 — what the parent's setup screen is shown", () => {
     expect(setup.reportedAt).toBe(new Date(NOW - 60_000).toISOString());
     expect(setup.missing).toEqual(["overlay"]);
     expect(setup.features.lock_screen).toBe("ready");
-  });
-
-  it("the desktop account state is not a generic missing permission", () => {
-    const desktop = { app: "agent-desktop", version: "0.1.0", build: 1, flavour: "dev" };
-    const standard = setupFor({
-      capabilities: report({ client: desktop, grants: { child_account_admin: "missing" } }),
-      capabilitiesReportedAt: new Date(NOW),
-    }, NOW);
-    const administrator = setupFor({
-      capabilities: report({ client: desktop, grants: { child_account_admin: "granted" } }),
-      capabilitiesReportedAt: new Date(NOW),
-    }, NOW);
-
-    expect(standard.missing).toEqual([]);
-    expect(administrator.missing).not.toContain("child_account_admin");
   });
 
   it("a report older than 20 minutes is stale, and still shown", () => {
@@ -180,7 +153,7 @@ describe("decision 3 + A1 — when a command is refused instead of queued", () =
   });
 
   it("commands with no feature behind them are always queued", () => {
-    // `ring` and `unlock` have no entry in the ten features, so nothing can honestly refuse them.
+    // `ring` and `unlock` have no feature behind them, so nothing can honestly refuse them.
     const r = report({ features: { ...report().features, lock_screen: "unavailable" } });
     expect(commandRefusal({ capabilities: r, capabilitiesReportedAt: new Date(NOW) }, "ring", NOW)).toBeNull();
     expect(commandRefusal({ capabilities: r, capabilitiesReportedAt: new Date(NOW) }, "unlock", NOW)).toBeNull();

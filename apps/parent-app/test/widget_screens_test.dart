@@ -12,6 +12,7 @@ import 'package:familyshield_parent/features/auth/login_screen.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
+import 'package:familyshield_parent/l10n/app_localizations.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/providers/onboarding_provider.dart';
 import 'package:familyshield_parent/providers/server_provider.dart';
@@ -95,7 +96,8 @@ void main() {
       expect(fieldByLabel('Server'), findsOneWidget);
       expect(fieldByLabel('Email'), findsOneWidget);
       expect(fieldByLabel('Password'), findsOneWidget);
-      expect(fieldByLabel('Authentication code (if MFA is on)'), findsOneWidget);
+      expect(fieldByLabel('Authenticator code'), findsOneWidget);
+      expect(find.text('Only if two-step verification is on for your account.'), findsOneWidget);
       expect(find.text('Sign in'), findsOneWidget);
     });
 
@@ -124,7 +126,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.calls('POST', '/v1/auth/login'), hasLength(1));
-      expect(find.text('invalid_credentials'), findsOneWidget);
+      final en = lookupAppLocalizations(const Locale('en'));
+      expect(find.text(en.onboardingWrongPassword), findsOneWidget);
+      expect(find.text('invalid_credentials'), findsNothing);
     });
 
     // NOTE: success navigation is asserted by pumping the REAL app router
@@ -226,7 +230,7 @@ void main() {
       await pumpScreen(tester, const DashboardScreen(), api);
       expect(api.calls('GET', '/v1/family/me'), hasLength(1));
 
-      await tester.fling(find.byType(GridView), const Offset(0, 400), 900);
+      await tester.fling(find.byType(ListView).first, const Offset(0, 400), 900);
       await tester.pump();
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
@@ -277,7 +281,7 @@ void main() {
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
       expect(find.text('Pixel 7a'), findsOneWidget);
-      expect(find.text('android 14 · online'), findsOneWidget);
+      expect(find.text('Android 14 · online'), findsOneWidget);
       expect(find.text('55%'), findsOneWidget);
       expect(find.text('Last seen: never'), findsNothing);
     });
@@ -331,7 +335,7 @@ void main() {
 
       expect(find.text('Galaxy A14'), findsOneWidget);
       // #601: the server says online, so the page says online; lastSeen is a separate age line.
-      expect(find.text('android 13 · online'), findsOneWidget);
+      expect(find.text('Android 13 · online'), findsOneWidget);
       expect(find.text('0%'), findsNothing);
     });
 
@@ -422,7 +426,7 @@ void main() {
       );
     });
 
-    testWidgets('an unknown refusal reason still names the code, not "queued"', (tester) async {
+    testWidgets('an unknown refusal reason shows a localized failure instead of the raw code or "queued" (R-ID-1)', (tester) async {
       final api = FakeApiClient({
         ...standardRoutes(),
         'POST /v1/devices/dev-1/command': (_) => {
@@ -436,7 +440,9 @@ void main() {
       await tester.tap(find.text('Lock'));
       await flushFakeHttp(tester);
 
-      expect(find.textContaining('some_new_reason'), findsOneWidget);
+      final en = lookupAppLocalizations(const Locale('en'));
+      expect(find.text(en.commandFailed), findsOneWidget);
+      expect(find.textContaining('some_new_reason'), findsNothing);
       expect(find.textContaining('queued'), findsNothing);
     });
   });
@@ -539,6 +545,8 @@ void main() {
       final api = pausedApi(startPaused: false);
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
+      await tester.ensureVisible(find.text('Pause net'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Pause net'));
       await flushFakeHttp(tester);
 
