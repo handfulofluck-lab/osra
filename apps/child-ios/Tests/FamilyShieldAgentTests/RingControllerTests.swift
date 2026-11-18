@@ -596,6 +596,7 @@ extension RingControllerTests {
     func testConsentWithdrawal428DropsPendingReports() async {
         let defaults = UserDefaults(suiteName: AgentIdentityStore.suiteName)
         defaults?.removeObject(forKey: RingAlertReporter.pendingKey)
+        pairForTransport()
         let reporter = RingAlertReporter(defaults: defaults, sender: { _ in (428, Data()) })
         let outcome = await reporter.report(state: .childDismissed, ringId: id, dismissalCount: 1)
         XCTAssertEqual(outcome, .consentWithdrawn)
