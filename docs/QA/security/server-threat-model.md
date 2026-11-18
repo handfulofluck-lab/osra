@@ -2,7 +2,7 @@
 
 **For:** release security gate #637, box 1 ("threat model read against the build").
 **Author:** Claude (Fable, server gate). **Reviewer and owner of the verdict:** Ahmed (security).
-**Read from:** the gate candidate `main@7be1a92b` (named on #637, 2026-11-17). First pass `main@da0b3f0c`
+**Read from:** the gate candidate `main@7be1a92b` (named on #637, 2026-11-17); the candidate is now `main@0036d6b9`, which adds only #886, and Ahmed's read against it (#637 comment 6957582839) is folded in on 2026-11-18. First pass `main@da0b3f0c`
 (2026-11-14); this second pass takes Antigravity's completeness read (#780 comment 6884240350) and what batches A to F
 of #766 put in place. Where a control exists in code but is not yet live in production, the row says so.
 **Scope:** `services/api` and what runs it in production: `infra/terraform/{base,env}` in account `osra-production`,
@@ -84,6 +84,11 @@ the live probe (`services/api/scripts/qa-probe.mjs`). "#766 n" is an item of the
 | Reading or changing another family's child, device, rule or alert | Every resource is loaded through the caller's family; a foreign id answers 403 | `src/middleware/requireFamily.ts`; [authz-matrix.md](authz-matrix.md) (one row per route, refusal columns asserted live by probe section Q); `test/security.test.ts` |
 | A guardian reading what the invitation did not grant | Reads are gated by the permission on the invite (ADR-0014 amendment) | `test/guardian-reads.test.ts`, `test/sessions-and-roles.test.ts` |
 | Processing a child's data after consent is withdrawn | The consent gate answers 428 before the handler runs | `src/middleware/requireConsent.ts`; `test/consent.test.ts` |
+| A forged proof that the adult accepted the terms (#875, #878, #886) | The stored hash and version come from the copy the server served, never from the request | `test/register-consent.test.ts` ("stores the served hash, version and surface") |
+| An account created without its consent record | The consent row is written through the same transaction as the account; a failed insert leaves no account and no session | `test/register-consent.test.ts` ("writes the account and its consent row through the same transaction client", "a failed consent insert leaves no session") |
+| Reading or writing another parent's consent | The `/v1/me` consent routes are scoped to the token's `sub` | `test/consent-routes.test.ts` (state read, row written and history scoped to the signed-in parent) |
+| Flooding the consent history with repeat writes | A repeat of the newest state appends nothing | `test/consent-routes.test.ts` ("a repeat of the newest state is not a second consent act") |
+| The public consent copy route | Read-only, `cache-control: no-store`, under the global rate limit | `src/routes/consentCopy.ts`; `test/consent-copy.test.ts` |
 | A device token used on a parent route, or the reverse | Role guards on every route group | authz-matrix.md columns `403r`, `403d` |
 
 ### 4.3 Accounts and sessions (T5)
@@ -93,7 +98,7 @@ the live probe (`services/api/scripts/qa-probe.mjs`). "#766 n" is an item of the
 | A stolen password | Optional TOTP MFA; a used code cannot be replayed, and the replay store failing closes sign-in in production | `src/lib/mfaVerify.ts`; `test/auth.test.ts` |
 | Staying signed in after the parent reacts | Logout-all, a password reset or an MFA change bumps a session version held in PostgreSQL; every request is checked against it before any route runs. Redis is a cache the database rebuilds ([ADR-0032](../../adr/0032-durable-revocation.md)) | `src/middleware/sessionGuard.ts`; `test/durable-revocation.test.ts`; `scripts/check-redis-durability.mjs` |
 | A stolen refresh token | Rotation with reuse detection: a replayed token revokes the family of tokens | `test/token-hygiene.test.ts` |
-| Taking over an account through "I lost my authenticator" | MFA reset needs the e-mail link and a witness on a paired device, with a 24-hour window (ADR-0031) | `test/mfa-reset.test.ts`, `test/mfa-reset-expiry.test.ts` |
+| Taking over an account through "I lost my authenticator" | MFA reset needs the e-mail link (single use, 30 minutes) and a witness on a paired device. The witness must land within 24 hours of the mailbox confirmation (`MFA_RESET_WITNESS_DEADLINE_MS`), and a 72-hour reset window starts when it passes (`MFA_RESET_WINDOW_MS`), during which the parent can cancel (ADR-0031) | `test/mfa-reset.test.ts`, `test/mfa-reset-expiry.test.ts` |
 | A reset or deletion link read from a log | The request log redacts `token=` and `ticket=` values | `src/lib/logRedaction.ts`; `test/account-deletion-web.test.ts` |
 | A JWT on a WebSocket URL | The socket accepts a single-use ticket only ([ADR-0022](../../adr/0022-websocket-ticket-only.md)) | `test/realtime.test.ts` |
 
@@ -171,7 +176,7 @@ What the child can do on the device itself belongs to the client gates and the c
 | A secret committed to the repository | Key-material and PIN checks on every pull request; a full-history scan | `scripts/check-no-service-account-keys.mjs`, `check-no-pins.mjs`; gitleaks in CI: #767 |
 | A development switch left on in production | The production task definition is checked against a list of required, allowed and forbidden variables, and every variable the API reads must be on it | `check-production-taskdef.mjs` (#778) |
 | A dependency that changes under us | A frozen lockfile in the image build; the image runs as a non-root user | `services/api/Dockerfile` |
-| Compromised code in a task sending data anywhere | The task can leave the VPC only on port 443; inside the VPC it reaches only PostgreSQL (5432) and Redis (6379), each by security group. 443 is still open to any address, so this limits the channel, not the destination | `env/network.tf` (`api_https`, `api_to_rds`, `api_to_redis`); #766 item 6 |
+| Compromised code in a task sending data anywhere | The task can leave the VPC only on port 443; inside the VPC it reaches only PostgreSQL (5432) and Redis (6379), each by security group. 443 is still open to any address, so this limits the channel, not the destination. Accepted for the closed beta; **revisit before public launch** with an egress allowlist (VPC endpoints plus the APNs and FCM hosts) | `env/network.tf` (`api_https`, `api_to_rds`, `api_to_redis`); #766 item 6 |
 
 ### 4.8 Operating the account (T7)
 
@@ -188,21 +193,24 @@ What the child can do on the device itself belongs to the client gates and the c
 
 Each is tracked where its detail may be written. This page gives the number only.
 
-| Item | State on 2026-11-17 | Needed for sign-off |
+| Item | State on 2026-11-18 | Needed for sign-off |
 |---|---|---|
-| osra-security#27 (who can deploy to production, and how) | Decided by Karim 2026-11-14; batches E and F applied 15 Nov; refused-call evidence on #637 | Ahmed reads the evidence and closes it |
-| osra-security#14 (device secret at rest) | Fixed by #839 (merged 16 Nov) | After the service phase: a count of device rows still stored the old way, expected to fall to 0 |
+| osra-security#27 (who can deploy to production, and how) | Decided by Karim 2026-11-14; batches E and F applied 15 Nov; refused-call evidence on #637. **Accepted residuals, not done:** the 22 Oct key is still the effective production key, and the follow-ups (retire it, split plan from apply, and the rest of Fable's list) are still open | Ahmed reads the evidence and closes it, with the residuals listed |
+| osra-security#14 (device secret at rest) | Fixed by #839 (merged 16 Nov) | After the service phase: a count of device rows still stored the old way, expected to fall to 0 (row 7) |
 | osra-security#15 (billing) | **Accepted by Karim for the beta**, 16 Nov (#637 comment 6909499225); fix before paid launch | None for the beta |
-| osra-security#20 (an SOS's place in alert data) | Both parts already on `main` with #743 (#637 comment 6948811005) | Ahmed closes it |
+| osra-security#20 (an SOS's place in alert data) | **Closed** (fixed by #743, `1864f1bb`) | Done |
 | osra-security#26 | Closed | Done |
-| osra-security#32 | Ahmed to say whether #811 covers it | Closed, or accepted like #15 |
+| osra-security#32 | **Closed** | Done |
 | #789 (mailed links opened no page) | Merged 15 Nov (#804) with both Bureaus' lines | Done |
-| Push (APNs and FCM) in the production task | **Required by Karim** for the first testers (16 Nov); wiring merged (#840), not yet applied | Box 3 launch run at exit 0 with the four `PLAY_*` values listed as Karim's accepted exception |
-| Plain HTTP from the ALB to the task (#766 item 4) | Proposed for the closed beta only (Terraform README) | Ahmed's and Karim's written acceptance on #637, or TLS on the task |
-| Backup lifetime against the privacy notice (§6) | **Mismatch**: the notice says 14 days, the backup plan keeps 30 and 90 | Settled before the first family's data is stored |
+| Push (APNs and FCM) in the production task | **Required by Karim** for the first testers (16 Nov); wiring merged (#840); the empty APNs secret applied 17 Nov | Box 3 launch run at exit 0 with the four `PLAY_*` values listed as Karim's accepted exception |
+| Plain HTTP from the ALB to the task (#766 item 4) | **Accepted for the closed beta only** by Ahmed (#637 comment 6950396150) and Karim (17 Nov 19:13 UAE, #637 comment 6952130548), on four conditions: private subnets with no public IP, task ingress from the ALB's security group only, TLS on that hop before any public launch (public-launch-gate issue), and this written acceptance | The service-phase plan shows the first two conditions |
+| Backup lifetime against the privacy notice (§6) | **Decided: 14 days everywhere** (#906 merged): the AWS Backup plan, and up.sh's pre-migration backup as an AWS Backup job with `DeleteAfterDays: 14` | Row 6 evidence as deployed |
+| Backup location against the privacy notice (§6) | **Decided by Karim 18 Nov: Frankfurt only.** The copy to the `eu-west-1` vault is turned off (#907) and the notice is unchanged | Row 6 evidence that the deployed plan has no copy action |
 | Restore drill (#766 item 5) | Script merged; first recovery point taken | Drill log on #637 |
-| #766 items 1 to 13 | Batches A to F merged and applied 15 Nov; schema phase (db-admin, migrate) and service phase still to run | Applied before the service phase is signed |
+| #766 items 1 to 13 | Batches A to F merged and applied 15 Nov; base apply for push 17 Nov; schema phase (db-admin, migrate) and service phase still to run | Applied before the service phase is signed |
 | #777, #778, #772, #767 | Merged | Done |
+
+Not in the candidate `0036d6b9`, so not in this pass: #760's ring routes and the `child_dismissed` cap, and #884's boot report. They belong to the next server candidate's pass.
 
 ## 6. What the configuration must match in the published privacy policy
 
