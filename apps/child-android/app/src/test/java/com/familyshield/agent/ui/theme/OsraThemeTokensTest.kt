@@ -1,0 +1,131 @@
+package com.familyshield.agent.ui.theme
+
+import androidx.compose.ui.text.font.FontWeight
+import java.io.File
+import androidx.compose.ui.unit.sp
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * #728: the theme's two halves, judged where a JVM can judge them.
+ *
+ * **The tokens themselves are checked by the generator, not here.** `node scripts/gen-android-tokens.mjs
+ * --check` fails when `OsraTokens.kt` no longer matches `docs/design/tokens.json`, and it runs in
+ * `workflow-lint` beside the other repository checks — so a colour nudged by hand is a red CI job, and this file
+ * does not re-implement a JSON parser to say the same thing badly.
+ *
+ * What is left for these rows is the **mapping**, which the generator cannot check: does a screen that asks
+ * Material for `primary` get the design's primary, does it get the design's type sizes on the slots it will
+ * reach for, and do the two themes really differ.
+ *
+ * Mutants: point `colors()` at a hardcoded colour → [every Material slot comes from the palette]; reverse
+ * `OsraTheme.paletteFor`/`radiiFor` → [the dark theme selects the dark palette and light selects light] (the
+ * themes-differ row does *not* catch that swap — #807 review); hand-write a `TextStyle` instead of reading the
+ * token → [the type sizes are the design file's].
+ */
+class OsraThemeTokensTest {
+
+    @Test
+    fun `every Material slot comes from the palette`() {
+        for (palette in listOf(OsraTokens.light, OsraTokens.dark)) {
+            val scheme = OsraTheme.colors(palette, dark = palette === OsraTokens.dark)
+            assertEquals("primary", palette.primary, scheme.primary)
+            assertEquals("onPrimary", palette.onPrimary, scheme.onPrimary)
+            assertEquals("background", palette.page, scheme.background)
+            assertEquals("onBackground", palette.ink, scheme.onBackground)
+            assertEquals("surface", palette.card, scheme.surface)
+            assertEquals("onSurface", palette.ink, scheme.onSurface)
+            assertEquals("error", palette.danger, scheme.error)
+            assertEquals("outline", palette.border, scheme.outline)
+            assertEquals("scrim", palette.scrim, scheme.scrim)
+        }
+    }
+
+    /**
+     * #807 review (Codex): the rows above compare the **generated constants**; none of them ever asked
+     * `OsraTheme` which constant it picked. He swapped the two branches in the composable and all 18 rows
+     * stayed green, so the header's old claim that "the themes-differ row catches the swap" was false.
+     * This row observes the selection itself — reverse `paletteFor`/`radiiFor` and it goes red.
+     */
+    @Test
+    fun `the dark theme selects the dark palette and light selects light`() {
+        assertSame("dark selects the dark palette", OsraTokens.dark, OsraTheme.paletteFor(true))
+        assertSame("light selects the light palette", OsraTokens.light, OsraTheme.paletteFor(false))
+        assertSame("dark selects the dark corners", OsraTokens.darkRadii, OsraTheme.radiiFor(true))
+        assertSame("light selects the light corners", OsraTokens.lightRadii, OsraTheme.radiiFor(false))
+    }
+
+    @Test
+    fun `the two themes are different where the design says so`() {
+        assertNotEquals("a light page is not a dark page", OsraTokens.light.page, OsraTokens.dark.page)
+        assertNotEquals("and the action colour flips", OsraTokens.light.primary, OsraTokens.dark.primary)
+        // The dark card carries an outline; the light one does not (the design's `transparent`).
+        assertNotEquals("the dark card has a border", OsraTokens.dark.cardBorder, OsraTokens.light.cardBorder)
+    }
+
+    @Test
+    fun `the type sizes are the design file's`() {
+        val type = OsraTheme.typography()
+        assertEquals("screenTitle sits on headlineMedium", 26.sp, type.headlineMedium.fontSize)
+        assertEquals("its line height", 32.sp, type.headlineMedium.lineHeight)
+        assertEquals("its weight", FontWeight(700), type.headlineMedium.fontWeight)
+        // Bureau, #807: `bodyLarge`/`bodyMedium` were inverted, so Material's dialog text, list supporting
+        // text and snackbars (all `bodyMedium`) would have come out LARGER than the main text. Mutant: swap
+        // them back and this row fails with the sizes it names.
+        assertEquals("status sits on bodyLarge", 17.sp, type.bodyLarge.fontSize)
+        assertEquals("body sits on bodyMedium", 15.sp, type.bodyMedium.fontSize)
+        assertEquals("secondary sits on bodySmall", 13.sp, type.bodySmall.fontSize)
+        assertEquals("rowTitle is the 600 label", FontWeight(600), type.labelLarge.fontWeight)
+        assertEquals("bigNumber is the display", 48.sp, type.displayLarge.fontSize)
+    }
+
+    /**
+     * Bureau, #807, condition 3: a screen under `ui/` must read the theme *currently in force*, not a token
+     * object by name. `PairingScreen.kt` named `OsraTokens.lightRadii` and gave a dark screen the light
+     * corners; that is the class of bug a palette swap makes invisible, so it is refused mechanically.
+     *
+     * `ui/theme/` is the one place allowed to name them — it is where the locals are provided.
+     */
+    @Test
+    fun `no screen names a token theme by hand`() {
+        val ui = generateSequence(File(System.getProperty("user.dir")).absoluteFile) { it.parentFile }
+            .map { File(it, "src/main/java/com/familyshield/agent/ui") }
+            .firstOrNull { it.isDirectory }
+            ?: error("could not find ui/ from ${System.getProperty("user.dir")}")
+
+        val banned = Regex("""OsraTokens\.(light|dark|lightRadii|darkRadii)\b""")
+        val offenders = ui.walkTopDown()
+            .filter { it.isFile && it.extension == "kt" }
+            .filterNot { it.path.replace('\\', '/').contains("/ui/theme/") }
+            .flatMap { file ->
+                // A comment may name the ban — the file that documents it is not a screen reading it. Only
+                // code is refused, and the line number is reported so the offender is one click away.
+                file.readLines().asSequence().mapIndexedNotNull { index, line ->
+                    banned.find(line.substringBefore("//"))
+                        ?.let { "${file.name}:${index + 1}: ${it.value}" }
+                }
+            }
+            .toList()
+
+        assertTrue("a screen named a token theme instead of the current one: $offenders", offenders.isEmpty())
+    }
+
+    @Test
+    fun `the radii are per theme`() {
+        assertEquals("a light card is 18", 18, OsraTokens.lightRadii.card.value.toInt())
+        assertEquals("a dark card is 12", 12, OsraTokens.darkRadii.card.value.toInt())
+        val light = OsraTheme.shapes(OsraTokens.lightRadii)
+        val dark = OsraTheme.shapes(OsraTokens.darkRadii)
+        assertNotEquals("the two shape sets differ", light.large, dark.large)
+    }
+
+    @Test
+    fun `the generated tokens carry the design's font names`() {
+        assertEquals("IBM Plex Sans", OsraTokens.FONT_LATIN)
+        assertEquals("IBM Plex Sans Arabic", OsraTokens.FONT_ARABIC)
+        assertTrue("the families are named, not left to the system", OsraTokens.FONT_LATIN.isNotBlank())
+    }
+}
