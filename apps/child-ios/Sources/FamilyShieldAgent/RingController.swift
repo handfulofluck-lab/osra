@@ -341,20 +341,41 @@ public final class RingController: ObservableObject {
     }
 
     private func timeoutAfterRestart(_ current: RingState) async {
+        let generation = operationGeneration
         let outcome = await reporter.report(state: .timedOut, ringId: current.commandId,
                                             dismissalCount: current.dismissalCount, afterRestart: true)
+        guard generation == operationGeneration,
+              state?.commandId == current.commandId, state?.stopSource == nil else { return }
         switch outcome {
         case .delivered:
-            await stop(.timeout)
+            await stop(.timeout, commandId: current.commandId)
         case .resume(let seconds):
-            await applyResume(current, seconds: seconds, generation: operationGeneration)
+            await applyResume(current, seconds: seconds, generation: generation)
         case .pending:
             var pending = current
             pending.endAt = RingPolicy.capEndAt(now().addingTimeInterval(RingPolicy.duration), startedAt: current.startedAt)
             pending.monotonicStart = monotonic()
+            store.save(pending)
             state = pending
             restarted = false
+            await startAudioIfActive()
+            guard generation == operationGeneration,
+                  state?.commandId == current.commandId, state?.stopSource == nil else { return }
             armDeadline()
+            do {
+                if try await !backend.scheduledIDs().contains(current.commandId) {
+                    schedulingCommandId = current.commandId
+                    defer { schedulingCommandId = nil }
+                    let scheduleEnd = pending.endAt > now() ? pending.endAt : nil
+                    try await backend.schedule(current.commandId, until: scheduleEnd)
+                }
+                guard generation == operationGeneration,
+                      state?.commandId == current.commandId, state?.stopSource == nil else {
+                    if state?.commandId != current.commandId { try? await backend.stop(current.commandId) }
+                    return
+                }
+                lastScheduledIDs = [current.commandId]
+            } catch { }
         }
     }
 

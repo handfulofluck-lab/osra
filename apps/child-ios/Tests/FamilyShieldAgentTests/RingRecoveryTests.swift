@@ -194,6 +194,54 @@ final class RingRecoveryTests: XCTestCase {
         XCTAssertNil(recreated.state)
     }
 
+    func testPendingRestartReportCannotResurrectPinStoppedRing() async {
+        let controller = controller()
+        await controller.start(id)
+        wall = wall.addingTimeInterval(600)
+        uptime = 0
+        bootSession = 2
+        reporter.statuses = [500, 201]
+        var release: (() -> Void)?
+        reporter.reportGate = {
+            self.reporter.reportGate = nil
+            await withCheckedContinuation { continuation in
+                release = { continuation.resume() }
+            }
+        }
+        let resumed = Task { await controller.resume() }
+        await waitForGate { release != nil }
+        await controller.stop(.pinVerified)
+        XCTAssertNil(controller.state)
+        release?()
+        await resumed.value
+        XCTAssertNil(controller.state)
+        XCTAssertNil(store.load())
+        XCTAssertEqual(audioPlayer.startCalls, 1,
+                       "a pending restart report must not restart audio after a PIN stop")
+        XCTAssertGreaterThanOrEqual(audioPlayer.stopCalls, 1)
+    }
+
+    func testOfflineRestartPendingStartsAudioAndSchedulesAgain() async {
+        let controller = controller()
+        await controller.start(id)
+        wall = wall.addingTimeInterval(600)
+        uptime = 0
+        bootSession = 2
+        backend.scheduled = []
+        reporter.statuses = [500, 201]
+        await controller.resume()
+        XCTAssertEqual(controller.state?.commandId, id)
+        XCTAssertEqual(audioPlayer.startCalls, 2,
+                       "an offline reboot must restart audio while the ring is pending")
+        XCTAssertTrue(backend.scheduled.contains(id),
+                      "an offline reboot must schedule the alarm again")
+        clockDriving = true
+        uptime += 300
+        await flushTasks()
+        XCTAssertNil(controller.state)
+        XCTAssertEqual(reporter.calls.map(\.state), [.timedOut, .timedOut])
+    }
+
     func testLateStopResponseCannotClearReplacement() async {
         let replacement = UUID()
         let controller = controller()
