@@ -1,8 +1,8 @@
 # --- Backups outside the account and region (production, #766 item 5) ------------------------
 # RDS keeps 14 days of point-in-time restore inside this account. That does not survive the account
 # itself being lost or taken over, so AWS Backup also copies a daily backup to a vault in the MANAGEMENT
-# account in another EU region (org-audit/backup_vault.tf). Both copies are deleted within 90 days, as the
-# privacy policy promises.
+# account in another EU region (org-audit/backup_vault.tf). Both copies are deleted after 14 days, as the
+# privacy notice promises (a deleted family's data leaves every backup within 14 days; threat model #892 §6).
 #
 # A cross-account copy of an RDS backup needs a customer-managed KMS key: a snapshot encrypted with the
 # AWS-managed aws/rds key cannot be shared. Moving an existing instance to a new key means replacing it,
@@ -10,6 +10,8 @@
 
 locals {
   backup_enabled = var.backup_copy_vault_arn != ""
+  # The privacy notice's promise. RDS point-in-time restore is 14 days as well (rds.tf).
+  backup_retention_days = 14
 }
 
 resource "aws_kms_key" "rds" {
@@ -100,13 +102,13 @@ resource "aws_backup_plan" "main" {
     completion_window = 360
 
     lifecycle {
-      delete_after = 30
+      delete_after = local.backup_retention_days
     }
 
     copy_action {
       destination_vault_arn = var.backup_copy_vault_arn
       lifecycle {
-        delete_after = 90
+        delete_after = local.backup_retention_days
       }
     }
   }
