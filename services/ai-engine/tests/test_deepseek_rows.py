@@ -148,9 +148,41 @@ def test_a_disallowed_label_is_never_sent(tmp_path):
 
 
 def test_an_unlabelled_row_is_refused_rather_than_assumed(tmp_path):
-    assert policy_refusal({"id": "x", "text": "t"}) == "no labels"
+    assert policy_refusal({"id": "x", "text": "t"}).startswith("no labels")
     assert policy_refusal({"id": "x", "text": "t", "labels": ["safe"]}) is None
     assert policy_refusal({"id": "x", "text": "t", "category": "violence"}) is None
+
+
+def test_an_unlabelled_set_may_be_cleared_by_naming_its_provenance(tmp_path):
+    """#918's private inputs carry no labels at all, so the provenance statement is the evidence. The
+    flag is what puts that decision on the command line instead of in a habit."""
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json=_reply({"safe": 0.9}))
+
+    scorer = _scorer(handler, tmp_path)
+    rows = [{"id": "u1", "lang": "ar", "text": "a"}, {"id": "u2", "lang": "en", "text": "b"}]
+    output = str(tmp_path / "out.jsonl")
+
+    # Without the flag: refused, nothing sent.
+    summary = score_rows(rows, scorer, output)
+    assert summary["written"] == 0
+    assert summary["skipped_by_policy"] == 2
+    assert calls == []
+
+    # With the provenance named: permitted, and the choice is recorded in the summary.
+    summary = score_rows(rows, scorer, output, cleared_by="READY (own-model thread, 18 Nov)")
+    assert summary["written"] == 2
+    assert summary["cleared_by"] == "READY (own-model thread, 18 Nov)"
+    assert len(calls) == 2
+
+
+def test_the_cleared_by_flag_does_not_wave_through_a_labelled_disallowed_row(tmp_path):
+    """A mixed set must not be spendable: a row that carries labels is still checked."""
+    assert policy_refusal({"id": "x", "text": "t", "labels": ["self_harm"]}, cleared_by="READY") is not None
+    assert policy_refusal({"id": "x", "text": "t"}, cleared_by="READY") is None
 
 
 def test_policy_covers_exactly_the_four_allowed_categories():

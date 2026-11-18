@@ -125,12 +125,19 @@ def labels_of(row: dict) -> List[str]:
     return [str(category)] if category else []
 
 
-def policy_refusal(row: dict) -> Optional[str]:
-    """Why this row may not be sent, or None when it may. Empty labels are refused too: an unlabelled
-    row cannot be shown to be inside the allowed set, and "probably fine" is not one of the rules."""
+def policy_refusal(row: dict, cleared_by: Optional[str] = None) -> Optional[str]:
+    """Why this row may not be sent, or None when it may.
+
+    An unlabelled row cannot be shown to be inside the allowed set, and "probably fine" is not one of
+    the rules — so it is refused unless the operator names the document that states its provenance
+    (`--cleared-by`). The flag is not a bypass: a row that *does* carry labels is still checked against
+    the allow-list, so a mixed set cannot be waved through by putting the flag on the command line.
+    """
     labels = labels_of(row)
     if not labels:
-        return "no labels"
+        if cleared_by:
+            return None
+        return "no labels (and no --cleared-by naming the provenance statement)"
     outside = sorted(set(labels) - POLICY_ALLOWED)
     if outside:
         return "labels outside the allowed set: " + ", ".join(outside)
@@ -163,6 +170,7 @@ def score_rows(
     output_path: str,
     resume: bool = True,
     delay_seconds: float = 0.0,
+    cleared_by: Optional[str] = None,
     sleep=time.sleep,
     log=None,
 ) -> Dict[str, Any]:
@@ -182,7 +190,7 @@ def score_rows(
             if row["id"] in already:
                 resumed += 1
                 continue
-            reason = policy_refusal(row)
+            reason = policy_refusal(row, cleared_by=cleared_by)
             if reason is not None:
                 skipped += 1
                 if log:
@@ -215,6 +223,7 @@ def score_rows(
         "written": written,
         "resumed": resumed,
         "skipped_by_policy": skipped,
+        "cleared_by": cleared_by,
         "wall_seconds": round(time.monotonic() - started, 1),
         "usage": usage,
         "cost": {
@@ -239,6 +248,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--delay-seconds", type=float, default=0.2, help="pause between calls")
     parser.add_argument("--limit", type=int, default=0, help="stop after N rows to score (0: all)")
     parser.add_argument("--no-resume", action="store_true", help="re-score ids already in the output")
+    parser.add_argument(
+        "--cleared-by",
+        default=None,
+        metavar="DOCUMENT",
+        help="the file or statement that gives an unlabelled input its label provenance; without it an "
+        "unlabelled row is refused, and labelled rows are checked against the allow-list either way",
+    )
     args = parser.parse_args(argv)
 
     rows = read_rows(args.input)
@@ -260,6 +276,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             args.output,
             resume=not args.no_resume,
             delay_seconds=args.delay_seconds,
+            cleared_by=args.cleared_by,
             log=lambda message: print(message, file=sys.stderr, flush=True),
         )
     except DeepSeekUnavailable as exc:
