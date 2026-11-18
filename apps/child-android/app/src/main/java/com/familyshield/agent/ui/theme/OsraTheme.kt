@@ -8,6 +8,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -56,7 +58,6 @@ object OsraTheme {
             surfaceTint = palette.primary,
             inverseSurface = palette.ink, inverseOnSurface = palette.page,
             error = palette.danger, onError = palette.onDanger,
-            errorContainer = palette.warnContainer, onErrorContainer = palette.onWarnContainer,
             outline = palette.border, outlineVariant = palette.line,
             scrim = palette.scrim,
         )
@@ -73,7 +74,6 @@ object OsraTheme {
             surfaceTint = palette.primary,
             inverseSurface = palette.ink, inverseOnSurface = palette.page,
             error = palette.danger, onError = palette.onDanger,
-            errorContainer = palette.warnContainer, onErrorContainer = palette.onWarnContainer,
             outline = palette.border, outlineVariant = palette.line,
             scrim = palette.scrim,
         )
@@ -110,8 +110,8 @@ object OsraTheme {
             titleLarge = pageTitle,
             titleMedium = cardTitle,
             titleSmall = rowTitle,
-            bodyLarge = body,
-            bodyMedium = status,
+            bodyLarge = status,
+            bodyMedium = body,
             bodySmall = secondary,
             labelLarge = rowTitle,
             labelMedium = secondary,
@@ -128,17 +128,34 @@ object OsraTheme {
         extraLarge = RoundedCornerShape(radii.sheet),
     )
 
+    /**
+     * The palette and radii of the theme currently in force.
+     *
+     * Material's `ColorScheme` and `Shapes` carry what Material slots can express; the design file also has
+     * `warn`, `ok`, `cardBorder`, `line` and per-theme radii, and a screen that named
+     * `OsraTokens.light…` directly would draw a **dark** screen with the light corners — `PairingScreen.kt`
+     * did exactly that (Bureau, #807). These two locals are how a screen reads the current theme; naming the
+     * token object from `ui/` is refused by `OsraThemeTokensTest`.
+     */
+    val LocalOsraPalette = staticCompositionLocalOf { OsraTokens.light }
+    val LocalOsraRadii = staticCompositionLocalOf { OsraTokens.lightRadii }
+
     /** The theme a screen wraps its content in. */
     @Composable
     fun OsraTheme(darkTheme: Boolean = androidx.compose.foundation.isSystemInDarkTheme(), content: @Composable () -> Unit) {
         val palette = if (darkTheme) OsraTokens.dark else OsraTokens.light
         val radii = if (darkTheme) OsraTokens.darkRadii else OsraTokens.lightRadii
-        MaterialTheme(
-            colorScheme = colors(palette, darkTheme),
-            typography = typography(),
-            shapes = shapes(radii),
-            content = content,
-        )
+        CompositionLocalProvider(
+            LocalOsraPalette provides palette,
+            LocalOsraRadii provides radii,
+        ) {
+            MaterialTheme(
+                colorScheme = colors(palette, darkTheme),
+                typography = typography(),
+                shapes = shapes(radii),
+                content = content,
+            )
+        }
     }
 
     /** The transparent colour the design file uses for "no outline"; exposed so a screen can compare. */

@@ -60,7 +60,9 @@ fun PairingScreen(
     modifier: Modifier = Modifier,
 ) {
     val palette = MaterialTheme.colorScheme
-    val radii = OsraTokens.lightRadii
+    // The current theme's radii, not the light ones by name (Bureau, #807): naming `OsraTokens.lightRadii`
+    // gave a dark screen the light corners, and the test below refuses the pattern from `ui/`.
+    val radii = OsraTheme.LocalOsraRadii.current
 
     Column(
         modifier = modifier

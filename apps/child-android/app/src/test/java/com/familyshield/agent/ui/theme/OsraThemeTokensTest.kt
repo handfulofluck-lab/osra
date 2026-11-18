@@ -1,6 +1,7 @@
 package com.familyshield.agent.ui.theme
 
 import androidx.compose.ui.text.font.FontWeight
+import java.io.File
 import androidx.compose.ui.unit.sp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -55,9 +56,38 @@ class OsraThemeTokensTest {
         assertEquals("screenTitle sits on headlineMedium", 26.sp, type.headlineMedium.fontSize)
         assertEquals("its line height", 32.sp, type.headlineMedium.lineHeight)
         assertEquals("its weight", FontWeight(700), type.headlineMedium.fontWeight)
-        assertEquals("body sits on bodyLarge", 15.sp, type.bodyLarge.fontSize)
+        // Bureau, #807: `bodyLarge`/`bodyMedium` were inverted, so Material's dialog text, list supporting
+        // text and snackbars (all `bodyMedium`) would have come out LARGER than the main text. Mutant: swap
+        // them back and this row fails with the sizes it names.
+        assertEquals("status sits on bodyLarge", 17.sp, type.bodyLarge.fontSize)
+        assertEquals("body sits on bodyMedium", 15.sp, type.bodyMedium.fontSize)
+        assertEquals("secondary sits on bodySmall", 13.sp, type.bodySmall.fontSize)
         assertEquals("rowTitle is the 600 label", FontWeight(600), type.labelLarge.fontWeight)
         assertEquals("bigNumber is the display", 48.sp, type.displayLarge.fontSize)
+    }
+
+    /**
+     * Bureau, #807, condition 3: a screen under `ui/` must read the theme *currently in force*, not a token
+     * object by name. `PairingScreen.kt` named `OsraTokens.lightRadii` and gave a dark screen the light
+     * corners; that is the class of bug a palette swap makes invisible, so it is refused mechanically.
+     *
+     * `ui/theme/` is the one place allowed to name them — it is where the locals are provided.
+     */
+    @Test
+    fun `no screen names a token theme by hand`() {
+        val ui = generateSequence(File(System.getProperty("user.dir")).absoluteFile) { it.parentFile }
+            .map { File(it, "src/main/java/com/familyshield/agent/ui") }
+            .firstOrNull { it.isDirectory }
+            ?: error("could not find ui/ from ${System.getProperty("user.dir")}")
+
+        val banned = Regex("""OsraTokens\.(light|dark|lightRadii|darkRadii)\b""")
+        val offenders = ui.walkTopDown()
+            .filter { it.isFile && it.extension == "kt" }
+            .filterNot { it.path.replace('\\', '/').contains("/ui/theme/") }
+            .mapNotNull { file -> banned.find(file.readText())?.let { "${file.name}: ${it.value}" } }
+            .toList()
+
+        assertTrue("a screen named a token theme instead of the current one: $offenders", offenders.isEmpty())
     }
 
     @Test
