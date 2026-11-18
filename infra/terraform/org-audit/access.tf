@@ -3,19 +3,32 @@
 # keys, and on it creating new IAM principals; and an explicit deny that stops that user from switching any
 # of this monitoring off. Rationale and owner decision: osra-security#27.
 
-variable "agent_user_name" {
-  description = "IAM user (management account) whose access key the agents use."
-  type        = string
-  default     = "osra-staging-deployer"
+variable "agent_user_names" {
+  description = "Root-path management IAM users monitored and protected by the agent denies."
+  type        = list(string)
+  default     = ["osra-staging-deployer", "osra-codex-mac"]
+
+  validation {
+    condition = length(var.agent_user_names) == length(toset(var.agent_user_names)) && alltrue([
+      for user in ["osra-staging-deployer", "osra-codex-mac"] : contains(var.agent_user_names, user)
+    ]) && alltrue([for user in var.agent_user_names : can(regex("^[A-Za-z0-9+=,.@_-]{1,64}$", user))])
+    error_message = "Keep both agent users, with unique IAM names under the root path."
+  }
 }
 
 variable "agent_trusted_ip_prefixes" {
-  description = "Expected source-address prefixes for the deployer user (tfvars only). Use from elsewhere alarms; nothing is blocked."
-  type        = list(string)
+  description = "Expected source-address prefixes per agent user (private tfvars only). Alarms do not block access."
+  type        = map(list(string))
 
   validation {
-    condition     = length(var.agent_trusted_ip_prefixes) > 0 && alltrue([for p in var.agent_trusted_ip_prefixes : can(regex("^[0-9]{1,3}\\.([0-9]{1,3}\\.){0,2}$", p))])
-    error_message = "Give at least one IPv4 prefix ending in a dot."
+    condition = toset(keys(var.agent_trusted_ip_prefixes)) == toset(var.agent_user_names) && alltrue([
+      for prefixes in values(var.agent_trusted_ip_prefixes) : length(prefixes) > 0 && alltrue([
+        for p in prefixes : can(regex("^[0-9]{1,3}\\.([0-9]{1,3}\\.){0,2}$", p)) && alltrue([
+          for octet in split(".", trimsuffix(p, ".")) : try(tonumber(octet) <= 255, false)
+        ])
+      ])
+    ])
+    error_message = "Give every agent its own nonempty list of valid IPv4 prefixes ending in a dot."
   }
 }
 
@@ -41,22 +54,41 @@ variable "access_log_retention_days" {
 }
 
 locals {
-  agent_user_arn = "arn:aws:iam::${local.account_id}:user/${var.agent_user_name}"
+  agent_user_arns = { for user in toset(var.agent_user_names) : user => "arn:aws:iam::${local.account_id}:user/${user}" }
+  # Explicit current account, root user path, and IAM's caller variable: never a shared key exemption.
+  agent_own_key_arn = "arn:aws:iam::${local.account_id}:user/$${aws:username}"
+  legacy_agent      = "osra-staging-deployer"
 
   # Calls AWS services make on the caller's behalf carry a service name or "AWS Internal" as the source.
   agent_ip_clauses = join(" && ", concat(
-    [for p in var.agent_trusted_ip_prefixes : "($.sourceIPAddress != \"${p}*\")"],
+    [for p in lookup(var.agent_trusted_ip_prefixes, local.legacy_agent, []) : "($.sourceIPAddress != \"${p}*\")"],
     ["($.sourceIPAddress != \"*.amazonaws.com\")", "($.sourceIPAddress != \"AWS Internal\")"],
   ))
 
   # The user itself, or a session assumed into a member account's OrganizationAccountAccessRole.
-  agent_principal_clause = "(($.userIdentity.arn = \"${local.agent_user_arn}\") || ($.userIdentity.arn = \"*:assumed-role/OrganizationAccountAccessRole/*\"))"
+  agent_principal_clause = "(($.userIdentity.arn = \"${local.agent_user_arns[local.legacy_agent]}\") || ($.userIdentity.arn = \"*:assumed-role/OrganizationAccountAccessRole/*\"))"
+
+  # Keep the legacy umbrella above until private CloudTrail evidence proves every entry session carries
+  # SourceIdentity. Only this immutable session field (not the network address) attributes role calls.
+  agent_principal_clauses = {
+    for user, arn in local.agent_user_arns : user => "(($.userIdentity.arn = \"${arn}\") || (($.userIdentity.type = \"AssumedRole\") && ($.userIdentity.sessionContext.sourceIdentity = \"${user}\")))"
+  }
+  agent_ip_clauses_by_user = {
+    for user in toset(var.agent_user_names) : user => join(" && ", concat(
+      [for p in lookup(var.agent_trusted_ip_prefixes, user, []) : "($.sourceIPAddress != \"${p}*\")"],
+      ["($.sourceIPAddress != \"*.amazonaws.com\")", "($.sourceIPAddress != \"AWS Internal\")"],
+    ))
+  }
 
   # New principals created by the deployer user itself: a way around the deny below, so it alarms. Expected
   # during an org-audit apply that adds a role; anything else is an incident.
-  agent_new_principals = "($.userIdentity.arn = \"${local.agent_user_arn}\") && (($.eventName = \"CreateUser\") || ($.eventName = \"CreateRole\") || ($.eventName = \"CreateLoginProfile\") || ($.eventName = \"UpdateAssumeRolePolicy\") || ($.eventName = \"CreateOpenIDConnectProvider\") || ($.eventName = \"CreateSAMLProvider\") || ($.eventName = \"CreateAccountAssignment\") || ($.eventName = \"CreatePermissionSet\") || ($.eventName = \"CreateGroupMembership\") || ($.eventName = \"UpdatePassword\") || ($.eventName = \"DeleteMfaDeviceForUser\") || ($.eventName = \"UpdateMfaDeviceForUser\") || ($.eventName = \"StartVirtualMfaDeviceRegistration\") || (($.eventName = \"CreateAccessKey\") && ($.requestParameters.userName != \"${var.agent_user_name}\")))"
+  agent_new_principals = {
+    for user, clause in local.agent_principal_clauses : user => "${clause} && (($.eventName = \"CreateUser\") || ($.eventName = \"CreateRole\") || ($.eventName = \"CreateLoginProfile\") || ($.eventName = \"UpdateAssumeRolePolicy\") || ($.eventName = \"CreateOpenIDConnectProvider\") || ($.eventName = \"CreateSAMLProvider\") || ($.eventName = \"CreateAccountAssignment\") || ($.eventName = \"CreatePermissionSet\") || ($.eventName = \"CreateGroupMembership\") || ($.eventName = \"UpdatePassword\") || ($.eventName = \"DeleteMfaDeviceForUser\") || ($.eventName = \"UpdateMfaDeviceForUser\") || ($.eventName = \"StartVirtualMfaDeviceRegistration\") || (($.eventName = \"CreateAccessKey\") && ($.requestParameters.userName != \"${user}\")))"
+  }
 
-  agent_key_changes = "(($.eventName = \"CreateAccessKey\") || ($.eventName = \"UpdateAccessKey\") || ($.eventName = \"DeleteAccessKey\")) && ($.requestParameters.userName = \"${var.agent_user_name}\")"
+  agent_key_changes = {
+    for user in var.agent_user_names : user => "(($.eventName = \"CreateAccessKey\") || ($.eventName = \"UpdateAccessKey\") || ($.eventName = \"DeleteAccessKey\")) && ($.requestParameters.userName = \"${user}\")"
+  }
 }
 
 # --- The trail's CloudWatch Logs copy -------------------------------------------------------------------
@@ -176,12 +208,13 @@ resource "aws_cloudwatch_metric_alarm" "agent_key_unexpected_source" {
 }
 
 resource "aws_cloudwatch_log_metric_filter" "agent_key_changed" {
-  name           = "osra-agent-key-changed"
+  for_each       = toset(var.agent_user_names)
+  name           = each.key == local.legacy_agent ? "osra-agent-key-changed" : "osra-agent-key-changed-${each.key}"
   log_group_name = aws_cloudwatch_log_group.trail.name
-  pattern        = "{ ${local.agent_key_changes} }"
+  pattern        = "{ ${local.agent_key_changes[each.key]} }"
 
   metric_transformation {
-    name          = "AgentKeyChanged"
+    name          = each.key == local.legacy_agent ? "AgentKeyChanged" : "AgentKeyChanged-${each.key}"
     namespace     = "OSRA/Access"
     value         = "1"
     default_value = "0"
@@ -189,10 +222,11 @@ resource "aws_cloudwatch_log_metric_filter" "agent_key_changed" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "agent_key_changed" {
-  alarm_name          = "osra-agent-key-changed"
-  alarm_description   = "A key of the deployer user was created, disabled or deleted. Expected during rotate-agent-key.sh; anything else is an incident."
+  for_each            = toset(var.agent_user_names)
+  alarm_name          = each.key == local.legacy_agent ? "osra-agent-key-changed" : "osra-agent-key-changed-${each.key}"
+  alarm_description   = "A key of ${each.key} was created, disabled or deleted. Expected during approved rotation; otherwise investigate."
   namespace           = "OSRA/Access"
-  metric_name         = "AgentKeyChanged"
+  metric_name         = each.key == local.legacy_agent ? "AgentKeyChanged" : "AgentKeyChanged-${each.key}"
   statistic           = "Sum"
   period              = 300
   evaluation_periods  = 1
@@ -203,12 +237,13 @@ resource "aws_cloudwatch_metric_alarm" "agent_key_changed" {
 }
 
 resource "aws_cloudwatch_log_metric_filter" "agent_new_principals" {
-  name           = "osra-agent-new-principals"
+  for_each       = toset(var.agent_user_names)
+  name           = each.key == local.legacy_agent ? "osra-agent-new-principals" : "osra-agent-new-principals-${each.key}"
   log_group_name = aws_cloudwatch_log_group.trail.name
-  pattern        = "{ ${local.agent_new_principals} }"
+  pattern        = "{ ${local.agent_new_principals[each.key]} }"
 
   metric_transformation {
-    name          = "AgentNewPrincipals"
+    name          = each.key == local.legacy_agent ? "AgentNewPrincipals" : "AgentNewPrincipals-${each.key}"
     namespace     = "OSRA/Access"
     value         = "1"
     default_value = "0"
@@ -216,10 +251,11 @@ resource "aws_cloudwatch_log_metric_filter" "agent_new_principals" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "agent_new_principals" {
-  alarm_name          = "osra-agent-new-principals"
-  alarm_description   = "The deployer user created an IAM user, role, login profile or another user's key, or changed a role's trust. Expected only during an org-audit apply that adds a role."
+  for_each            = toset(var.agent_user_names)
+  alarm_name          = each.key == local.legacy_agent ? "osra-agent-new-principals" : "osra-agent-new-principals-${each.key}"
+  alarm_description   = "${each.key} or a SourceIdentity-attributed session changed an IAM principal or trust; inspect the private runbook."
   namespace           = "OSRA/Access"
-  metric_name         = "AgentNewPrincipals"
+  metric_name         = each.key == local.legacy_agent ? "AgentNewPrincipals" : "AgentNewPrincipals-${each.key}"
   statistic           = "Sum"
   period              = 300
   evaluation_periods  = 1
@@ -233,11 +269,14 @@ resource "aws_cloudwatch_metric_alarm" "agent_new_principals" {
 # Nothing else is narrowed. Changing any of these resources later is done signed in through Identity Center
 # with MFA; an apply of this stack by the deployer user that touches them fails by design.
 locals {
-  watched_alarm_arns = [
-    aws_cloudwatch_metric_alarm.agent_key_unexpected_source.arn,
-    aws_cloudwatch_metric_alarm.agent_key_changed.arn,
-    aws_cloudwatch_metric_alarm.agent_new_principals.arn,
-  ]
+  watched_alarm_arns = concat(
+    [aws_cloudwatch_metric_alarm.agent_key_unexpected_source.arn],
+    [for alarm in aws_cloudwatch_metric_alarm.agent_key_unexpected_source_by_user : alarm.arn],
+    [for alarm in aws_cloudwatch_metric_alarm.agent_key_changed : alarm.arn],
+    [for alarm in aws_cloudwatch_metric_alarm.agent_new_principals : alarm.arn],
+    [aws_cloudwatch_metric_alarm.mac_expiry_failure.arn],
+    [for alarm in aws_cloudwatch_metric_alarm.mac_expiry_health : alarm.arn],
+  )
   watched_detector_arns = [
     aws_guardduty_detector.management.arn, "${aws_guardduty_detector.management.arn}/*",
     aws_guardduty_detector.management_us_east_1.arn, "${aws_guardduty_detector.management_us_east_1.arn}/*",
@@ -246,6 +285,7 @@ locals {
     aws_cloudwatch_event_rule.management_guardduty_high.arn,
     aws_cloudwatch_event_rule.management_guardduty_forward.arn,
     aws_cloudwatch_event_rule.access_key_too_old.arn,
+    aws_cloudwatch_event_rule.mac_expiry.arn,
   ]
 }
 
@@ -257,6 +297,8 @@ locals {
     "arn:aws:iam::${local.account_id}:policy/osra-agent-no-escalation",
     "arn:aws:iam::${local.account_id}:policy/osra-agent-keep-backups-and-config",
     "arn:aws:iam::${local.account_id}:policy/osra-management-role-boundary",
+    "arn:aws:iam::${local.account_id}:policy/osra-mac-phase1-metadata",
+    "arn:aws:iam::${local.account_id}:policy/osra-mac-phase1-ceiling",
   ]
 }
 
@@ -337,6 +379,14 @@ resource "aws_iam_policy" "agent_keep_backups" {
     Version = "2012-10-17"
     Statement = [
       {
+        # The expiry guard is another non-removable control. Keep it in this existing direct
+        # policy so the watcher policy stays under its unchanged 4,500-character safety budget.
+        Sid      = "ExpiryStays"
+        Effect   = "Deny"
+        Action   = "*"
+        Resource = local.mac_expiry_resource_arns
+      },
+      {
         Sid      = "CopyVault"
         Effect   = "Deny"
         Action   = ["backup:DeleteBackupVaultLockConfiguration", "backup:PutBackupVaultAccessPolicy", "backup:DeleteBackupVaultAccessPolicy", "backup:DeleteBackupVault"]
@@ -382,7 +432,7 @@ resource "aws_iam_policy" "agent_no_escalation" {
         Sid      = "KeepTheServiceControlPolicy"
         Effect   = "Deny"
         Action   = ["organizations:DetachPolicy", "organizations:DeletePolicy", "organizations:UpdatePolicy"]
-        Resource = aws_organizations_policy.agent_cannot_erase_evidence.arn
+        Resource = [aws_organizations_policy.agent_cannot_erase_evidence.arn, aws_organizations_policy.mac_phase1_ceiling.arn]
       },
       {
         Sid      = "KeepServiceControlPoliciesOn"
@@ -467,8 +517,8 @@ resource "aws_iam_policy" "agent_no_escalation" {
       {
         Sid         = "NoKeysForOthers"
         Effect      = "Deny"
-        Action      = ["iam:CreateAccessKey", "iam:DeleteAccessKey", "iam:UpdateAccessKey"]
-        NotResource = local.agent_user_arn
+        Action      = ["iam:CreateAccessKey", "iam:DeleteAccessKey", "iam:UpdateAccessKey", "iam:ListAccessKeys"]
+        NotResource = local.agent_own_key_arn
       },
       {
         Sid      = "OrganisationKeepsTheTrail"
@@ -481,7 +531,14 @@ resource "aws_iam_policy" "agent_no_escalation" {
         Sid      = "OwnPolicies"
         Effect   = "Deny"
         Action   = ["iam:PutUserPolicy", "iam:DeleteUserPolicy", "iam:AttachUserPolicy", "iam:DetachUserPolicy", "iam:PutUserPermissionsBoundary", "iam:DeleteUserPermissionsBoundary", "iam:AddUserToGroup", "iam:RemoveUserFromGroup"]
-        Resource = local.agent_user_arn
+        Resource = values(local.agent_user_arns)
+      },
+      {
+        Sid       = "AccessDeadlineStays"
+        Effect    = "Deny"
+        Action    = ["iam:TagUser", "iam:UntagUser"]
+        Resource  = values(local.agent_user_arns)
+        Condition = { "ForAnyValue:StringEqualsIgnoreCase" = { "aws:TagKeys" = ["osra:access-expires-at"] } }
       },
       {
         # Both deny policies stay as written: no new version, no deletion (detaching is OwnPolicies).
@@ -495,17 +552,20 @@ resource "aws_iam_policy" "agent_no_escalation" {
 }
 
 resource "aws_iam_user_policy_attachment" "agent_keep_watchers" {
-  user       = var.agent_user_name
+  for_each   = toset(var.agent_user_names)
+  user       = each.key == "osra-codex-mac" ? aws_iam_user.codex_mac.name : each.key
   policy_arn = aws_iam_policy.agent_keep_watchers.arn
 }
 
 resource "aws_iam_user_policy_attachment" "agent_keep_backups" {
-  user       = var.agent_user_name
+  for_each   = toset(var.agent_user_names)
+  user       = each.key == "osra-codex-mac" ? aws_iam_user.codex_mac.name : each.key
   policy_arn = aws_iam_policy.agent_keep_backups.arn
 }
 
 resource "aws_iam_user_policy_attachment" "agent_no_escalation" {
-  user       = var.agent_user_name
+  for_each   = toset(var.agent_user_names)
+  user       = each.key == "osra-codex-mac" ? aws_iam_user.codex_mac.name : each.key
   policy_arn = aws_iam_policy.agent_no_escalation.arn
 
   # Identity Center is set up by this same apply, before this policy takes it away (IdentityCenterStays).

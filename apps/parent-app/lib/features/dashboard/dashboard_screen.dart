@@ -17,6 +17,7 @@ import '../../providers/mfa_reset_provider.dart';
 import '../../providers/onboarding_provider.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
+import '../../widgets/error_retry_view.dart';
 import '../auth/mfa_reset_approval_screen.dart';
 import '../auth/mfa_reset_messages.dart';
 import '../children/consent_step.dart';
@@ -86,7 +87,10 @@ class DashboardScreen extends ConsumerWidget {
       ),
       body: family.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(l10n.familyLoadFailed('$e'))),
+        error: (e, _) => ErrorRetryView(
+          message: friendlyErrorText(l10n, e, () => l10n.familyLoadFailed),
+          onRetry: () => ref.invalidate(familyProvider),
+        ),
         data: (overview) {
           final setupBanner = _finishSetupBanner(context, ref, overview);
           final banners = <Widget>[
@@ -586,13 +590,17 @@ Future<void> toggleInternetWithConfirm(BuildContext context, WidgetRef ref, Chil
     // #441 review: the pill is the main entry to pause/resume, so it needs the same sentence as the
     // device card — and it must not print `ControlsRefusal(428)`, which is what '$e' became.
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(readErrorText(l10n, r.error, () => l10n.internetChangeFailed('${r.error}'))),
-      ));
+      showErrorSnackBar(
+        context,
+        friendlyErrorText(l10n, r.error, () => l10n.internetChangeFailed),
+      );
     }
   } catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.internetChangeFailed('$e'))));
+      showErrorSnackBar(
+        context,
+        friendlyErrorText(l10n, e, () => l10n.internetChangeFailed),
+      );
     }
   }
 }
@@ -658,9 +666,8 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
       // exist yet — the generic consent sentences would point at a page that is not there. The one case
       // worth a sentence is the region mismatch, because the dialog has a region dropdown and the fix
       // is to pick the family's.
-      final data = e.response?.data;
       setState(() => _error = addChildConsentRegionError(context.l10n, e) ??
-          (data is Map ? '${data['error'] ?? data['message'] ?? e.message}' : (e.message ?? '')));
+          friendlyErrorText(context.l10n, e, () => context.l10n.onboardingChildFailed));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

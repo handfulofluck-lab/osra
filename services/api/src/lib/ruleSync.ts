@@ -2,6 +2,7 @@ import { prisma } from "../db.js";
 import { publishJson } from "../redis.js";
 import { enqueueDeviceCommand } from "./deviceCommands.js";
 import { hasEnforcingPlan, PREMIUM_FEATURES } from "./planGate.js";
+import { siteNamesEnabled } from "./siteNames.js";
 
 /** Parents keep their stored rules after a lapse; only the agent's enforcement projection is filtered. */
 export async function filterAgentRules<T extends Record<string, unknown>>(childId: string, ruleSet: T): Promise<T> {
@@ -43,6 +44,12 @@ export function toApiRuleSet(row: Record<string, unknown>) {
     appGroupRules: (row.appGroupRules as unknown[]) ?? [],
     alwaysAllowedApps: row.alwaysAllowedApps,
     bonusMinutesToday: row.bonusMinutesToday,
+    /**
+     * #830 gating: the agent may capture site names only when the server flag is on. It is part of the
+     * rule projection because that is how the agent learns everything else it must honour, and an agent
+     * that has not synced since the flag went on behaves like one on a server where it is off.
+     */
+    siteNames: siteNamesEnabled(),
     socialMonitoring: (row.socialMonitoring as Record<string, boolean>) ?? {},
     contactAllowlist: (row.contactAllowlist as string[]) ?? [],
     updatedAt: row.updatedAt,

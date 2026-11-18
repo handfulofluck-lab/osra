@@ -15,9 +15,20 @@ data class LocationPingBatchDto(
     val pings: List<LocationPingDto>,
 )
 
+/** One app's minutes in a telemetry delta; the contract the server reads (#830). */
+data class AppUsageDto(
+    val packageId: String,
+    val minutes: Int,
+)
+
 /** Aggregated usage delta for POST /v1/devices/<id>/telemetry. */
 data class TelemetryDto(
-    val perAppMinutes: Map<String, Int>,
+    /**
+     * Per-app minutes for this window (#830). The server's `TelemetrySchema.appUsage` is the contract;
+     * the old `perAppMinutes` map is no longer sent, and the server still accepts it from an agent
+     * installed before this change for one release.
+     */
+    val appUsage: List<AppUsageDto>,
     val totalMinutes: Int,
     val unlockCount: Int,
     val batteryPct: Int? = null,
