@@ -220,7 +220,6 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = context.l10n;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -232,12 +231,8 @@ class _ErrorState extends StatelessWidget {
             Text(title,
                 style: Theme.of(context).textTheme.titleMedium,
                 textAlign: TextAlign.center),
-            const SizedBox(height: 4),
-            Text(l10n.tryAgain,
-                style: Theme.of(context).textTheme.bodySmall,
-                textAlign: TextAlign.center,
-                maxLines: 4,
-                overflow: TextOverflow.ellipsis),
+            // UI/UX Bureau (#841 follow-up): the title is a whole sentence that already says "try again",
+            // and the button below does it. This line made the screen say it twice.
             const SizedBox(height: 8),
             TextButton.icon(
                 onPressed: onRetry,

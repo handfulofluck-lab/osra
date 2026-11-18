@@ -690,6 +690,72 @@ Owner decision, rationale and runbook: osra-security#27 (private).
 - `rotate-agent-key.sh` replaces the key without a gap: new key, written to the credentials file, proved,
   then the old one deleted; on any failure before that, the new key is deleted and the file restored.
 
+#### Mac credential tooling (#887, #893; review draft)
+
+Initial access uses an explicit infrastructure-metadata action/resource allowlist, independent deny
+ceilings and reviewed entry-role aliases. The draft still requires independent security review and the
+approved operating procedure before it can be used. The prepared
+policy and scripts are not authorization to create a principal, provision credentials, read a Keychain
+item, assume a role or change cloud resources. Keep access off until the reviewed policy, required
+controls, independent evidence and the owner's written MFA/apply approval are all in place.
+
+`infra/scripts/agent_credential_mac.py` provides a credential-process helper for one item in the current
+macOS user's login Keychain. It does not write a plaintext credentials file. After approval, a profile
+uses absolute interpreter/helper paths and the reviewed identity. Credential-process output is consumed
+by the AWS CLI; do not run it merely to display or copy credential material. Processes under the same
+macOS login share that Keychain access boundary.
+
+Mac phase 1 has no rotation or IAM write grant. Both the Python rotation command and the shell
+`--mac` mode refuse before accessing Keychain or AWS. The existing PC script and caller defaults are unchanged. The management boundary keeps its original
+unconditional key-creation deny; additional key guards restrict other key management to the PC user's
+account-bound own user. These stricter boundary conditions require independent security review.
+At the fixed fourteen-day authorization deadline, the scheduled job disables every current Mac-user
+key. Renewal requires the owner's separate approved MFA key-creation step and reconciliation of the
+protected deadline tag with every installed literal deadline. Rotation never renews authorization.
+
+The local infrastructure preparation includes the reviewed deny/boundary pattern, fixed-deadline
+controls, scheduled key disablement and per-user monitoring. No access-key resource is stored in
+Terraform state. SourceIdentity is supplied explicitly where the approved caller procedure requires
+it; an asserted value is not authentication. Trust and caller setup are reviewed together before role
+use, and existing monitoring is retained through that transition. Broader caller integration is a
+separate phase from the proposed initial read-only scope.
+
+The scheduled job processes current keys against the protected authorization deadline and emits only
+status/count diagnostics. Key deactivation alone is not STS-session revocation. AWS documents
+[minute-resolution scheduled rules](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-create-rule-schedule.html),
+[temporary-session permission evaluation](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_control-access_disable-perms.html),
+[SourceIdentity behavior](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_control-access_monitor.html)
+and [date-condition variable restrictions](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_variables.html).
+The approved operating procedure and private evidence must address the applicable timing and session
+requirements; these source files and unit tests do not establish live readiness.
+
+Supply the reviewed `mac_phase1_regions` and `mac_phase1_entry_role_names` alias mapping explicitly;
+neither has a default. The mapping resolves only into the existing configured production account.
+The policy grants literal metadata actions for ECS/ECR, RDS infrastructure, ELB/VPC, CloudWatch,
+Backup and selected Config/CloudTrail status APIs. Content-returning APIs and broad managed read-only
+policies are excluded. No download-bucket grant or general data-read grant is included.
+
+The owner creates the initial principal and first key only through the approved console/MFA procedure.
+Import that existing principal into the reviewed infrastructure state before any apply; Terraform does
+not create or store a key. The production mapping and current role trust must be independently reviewed
+before any role use. The emitted trust statements are review material, not an applied trust change.
+
+Keep account/resource mappings, trusted network details, policy-simulator results, reviewed scope,
+current-head approvals and runtime evidence in the private security review. Public documentation must
+not contain credentials, private identifiers or security-gap investigation details.
+
+Fake-only checks use no AWS or Keychain access:
+
+```sh
+python3 -B -m unittest discover -s infra/terraform/org-audit/tests -p 'test_agent_*.py'
+bash -n infra/terraform/rotate-agent-key.sh
+```
+
+Terraform must be on PATH for the provider-free source-policy rows. The org-audit `.tftest.hcl`
+suite uses mocked AWS/archive providers; its plan-only checks and `terraform validate` are offline
+configuration evidence, not cloud enforcement or an independent security sign-off. Keep provider
+lock-file changes reviewable with the code. No production plan/apply is part of these local checks.
+
 ### Production cost (estimate, on-demand list prices in `eu-central-1`, 730 h/month)
 
 | Item | Basis | US$/month |
