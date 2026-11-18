@@ -124,13 +124,15 @@ void main() {
     expectWhole(tester, label, reason: 'routine dialog chip');
   });
 
-  /// **These rows are shape assertions, not mutants, and that is deliberate.** I checked: they pass on the
-  /// old `InputChip` too, because Tahoma's Arabic is narrower than the device font Codex's frames used, so
-  /// at these widths the sentence happened to fit one line and the chip escaped its own cap. A test that
+  /// **These rows are shape assertions, not mutants, and that is deliberate.** They pass on the old
+  /// `InputChip` too, because Tahoma's Arabic is narrower than the device font Codex's frames used, so at
+  /// these widths the sentence happened to fit one line and the chip escaped its own cap. A test that
   /// passes both ways proves nothing about the clip — the evidence for the defect is the frames plus
   /// Flutter's own layout (`maxHeight: contentSize`), and the evidence for the fix is Codex's re-shoot at
-  /// the device font. What these rows do pin is the invariant and the wiring: the sentence is laid out
-  /// whole, and the remove control keeps the Bureaus' tooltip.
+  /// the device font. What these rows pin is the invariant and the wiring: the sentence is laid out whole
+  /// wherever it appears, and the remove control keeps the Bureaus' tooltip. Codex measured the **English**
+  /// label needing three lines inside the dialog, which is why `_FallbackChip` carries no line cap at
+  /// all — a two-line cap only moved the cut to another screen.
   testWidgets('AR 280/200%: the sentence wraps instead of being cut', (tester) async {
     final routes = standardRoutes();
     routes['GET /v1/rules/child-1'] =
@@ -146,5 +148,59 @@ void main() {
     expect(label, findsOneWidget);
     expectWhole(tester, label, reason: 'always-allowed chip at 280');
     expect(tester.takeException(), isNull, reason: 'the chip must fit the surface, not overflow it');
+  });
+
+  /// Codex's second retest: the English label needs **three** lines in the narrower routine dialog at
+  /// 320/200 %. A two-line cap moved the cut rather than removing it, so the row below checks the whole
+  /// sentence on the surface that exposed it.
+  testWidgets('EN 320/200%: the routine dialog shows the English sentence whole', (tester) async {
+    final routes = standardRoutes();
+    routes['GET /v1/rules/child-1'] = (_) {
+      final payload = ruleSetPayload('child-1');
+      payload['routines'] = [
+        {
+          'id': 'r1',
+          'name': 'Homework',
+          'startTime': '17:00',
+          'endTime': '19:00',
+          'days': [1, 2, 3],
+          'blockedApps': ['com.example.gone'],
+          'allowedApps': <String>[],
+        },
+      ];
+      return payload;
+    };
+    routes['GET /v1/devices/dev-1/apps'] =
+        (_) => installedAppsPayload(apps: [installedAppJson('com.example.video', 'Video')]);
+
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(FakeApiClient(routes))],
+      child: localizedTestApp(
+        Builder(
+          builder: (c) => MediaQuery(
+            data: MediaQuery.of(c).copyWith(textScaler: const TextScaler.linear(2.0)),
+            child: const RulesEditorScreen(childId: 'child-1'),
+          ),
+        ),
+        locale: const Locale('en'),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    DefaultTabController.of(tester.element(find.byType(TabBar))).animateTo(3);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Homework'));
+    await tester.pumpAndSettle();
+
+    final label = find.text('App no longer installed');
+    expect(label, findsOneWidget);
+    expectWhole(tester, label, reason: 'English routine dialog chip');
+    expect(tester.takeException(), isNull);
   });
 }

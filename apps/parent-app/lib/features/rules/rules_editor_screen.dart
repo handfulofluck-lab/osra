@@ -514,8 +514,9 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
                 else
                   // Codex's AR 320/200 % frames (#872): `InputChip` constrains its label to one line's
                   // height (`chip.dart`, `maxHeight: contentSize`), so the Bureaus' fallback sentence was
-                  // cut mid-phrase even with `softWrap: true`. The one case that needs two lines gets a
-                  // chip that can take them; a real name keeps the Material chip unchanged.
+                  // cut mid-phrase even with `softWrap: true`. The one case whose label is a sentence gets
+                  // a chip that grows with it — two lines in Arabic, three in English in the dialog; a
+                  // real name keeps the Material chip unchanged.
                   _FallbackChip(
                     avatar: _chipIcon(names, pkg),
                     label: _nameOf(names, pkg),
@@ -1061,11 +1062,13 @@ class _FallbackChip extends StatelessWidget {
             avatar,
             const SizedBox(width: AppSpace.xs),
             Flexible(
+              // No `maxLines` and no ellipsis: Codex measured the English label needing **three**
+              // lines inside the routine dialog at 320 px / 200 %, so a two-line cap only moved the cut
+              // to a different screen. The sentence is short; letting it take what it needs is the only
+              // setting that cannot hide part of it.
               child: Text(
                 label,
                 softWrap: true,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
             ),
