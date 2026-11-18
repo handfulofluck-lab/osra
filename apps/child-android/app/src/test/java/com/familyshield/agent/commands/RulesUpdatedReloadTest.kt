@@ -3,6 +3,7 @@ package com.familyshield.agent
 import com.familyshield.agent.commands.CommandDispatcher
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -71,24 +72,47 @@ class RulesUpdatedReloadTest {
     }
 
     /**
-     * #864 (Karim, Flip4): a category block or unblock was "live" on the parent's screen and the site
-     * stayed open. The rule set and the category pack are two stores: re-reading `blocklist.domains()`
-     * after `rules.refresh()` returns the last pack the periodic worker stored, so the reload was
-     * rebuilding the filter from a stale pack. Mutant: delete the `blocklist.refresh(` line and this
-     * row fails while every other row stays green.
+     * #864/#922 (Karim's Flip4 repro; Antigravity's review): the category pack feeds BOTH the DNS sinkhole
+     * (`blocklist.domains()`) and app blocking (`blocklist.apps()`, read by `verdict`). It used to be fetched
+     * only by `RulesSyncWorker`, so a category change waited for the next sync — and once it was moved to
+     * `FilterVpnService.reloadConfig()` it was still stale whenever the tunnel was not running, and the #444 C4
+     * listeners fired before the pack was fresh.
+     *
+     * The call belongs in `RuleRepository.refresh()`: inside the mutex, after `cached = updated`, **before**
+     * `rulesChangedListeners.forEach`. Mutants: delete the line (no pack on any path), or move it after the
+     * listeners (listeners observe a stale pack) — this row fails on both.
      */
     @Test
-    fun `a reload re-fetches the category pack, not only the rule set`() {
-        val vpn = source("apps/child-android/app/src/main/java/com/familyshield/agent/vpn/FilterVpnService.kt")
-        val reload = vpn.substringAfter("private fun reloadConfig()").substringBefore("private fun applyRules(")
-        assertTrue("the reload must refresh the rule set", reload.contains("rules.refresh()"))
+    fun `the rule refresh re-fetches the category pack before the C4 listeners run`() {
+        val repo = source("apps/child-android/app/src/main/java/com/familyshield/agent/data/RuleRepository.kt")
+        val refresh = repo.substringAfter("suspend fun refresh(): RuleSetDto?")
+            .substringBefore("fun refreshAsync()")
         assertTrue(
-            "the pack is a separate store: refreshing rules and re-reading blocklist.domains() is stale (#864)",
-            reload.contains("blocklist.refresh("),
+            "the pack is a separate store and must be re-fetched on the rules path (#864)",
+            refresh.contains("blocklist.refresh(updated.webFilter.blockedCategories)"),
+        )
+        val packAt = refresh.indexOf("blocklist.refresh(")
+        val cachedAt = refresh.indexOf("cached = updated")
+        val listenersAt = refresh.indexOf("rulesChangedListeners.forEach")
+        assertTrue("the pack refresh comes after the rule set is cached", cachedAt in 0..<packAt)
+        assertTrue(
+            "the #444 C4 listeners must not observe a stale pack",
+            packAt in 0..<listenersAt,
         )
         assertTrue(
-            "the pack is merged against the categories the fresh rule set blocks",
-            reload.contains("blockedCategories"),
+            "CancellationException must not be swallowed here: BlocklistStore.refresh rethrows it and " +
+                "handles ordinary failures itself, so the call is not wrapped in runCatching",
+            !refresh.contains("runCatching { blocklist.refresh"),
+        )
+    }
+
+    @Test
+    fun `the VPN reload no longer owns the pack refresh`() {
+        val vpn = source("apps/child-android/app/src/main/java/com/familyshield/agent/vpn/FilterVpnService.kt")
+        val reload = vpn.substringAfter("private fun reloadConfig()").substringBefore("private fun applyRules(")
+        assertFalse(
+            "the pack refresh lives in RuleRepository.refresh() (#922 review): the tunnel is not always up",
+            reload.contains("blocklist.refresh("),
         )
     }
 

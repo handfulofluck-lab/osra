@@ -130,16 +130,7 @@ class FilterVpnService : VpnService() {
         applyRules(rules.cachedRules())
         scope.launch {
             applyRules(rules.currentRules())
-            runCatching { rules.refresh() }.getOrNull()?.let { fresh ->
-                // #864: the category pack is a store of its own, not part of the rule set, so
-                // re-reading `blocklist.domains()` after a rule refresh returns whatever the last
-                // periodic sync stored. Until this line existed, a category block/unblock was live
-                // only when `RulesSyncWorker` next ran — the parent saw "blocked" and the site
-                // stayed open. The pack is re-merged against the fresh rule set before the filter
-                // is rebuilt, and a failed fetch keeps the previous pack rather than emptying it.
-                runCatching { blocklist.refresh(fresh.webFilter.blockedCategories) }
-                applyRules(fresh)
-            }
+            runCatching { rules.refresh() }.getOrNull()?.let { applyRules(it) }
         }
     }
 
