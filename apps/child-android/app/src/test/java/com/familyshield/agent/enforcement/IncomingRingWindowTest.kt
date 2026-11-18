@@ -25,6 +25,62 @@ class IncomingRingWindowTest {
         assertFalse(IncomingRingWindow.isRinging(CallAudioMode.NORMAL, 10_000 + IncomingRingWindow.WINDOW_MS + 1, until))
     }
 
+    /**
+     * Antigravity's #851 finding on the Flip4: One UI posts the incoming-call notification from
+     * `com.samsung.android.incallui`, not from `TelecomManager.defaultDialerPackage`. With the default-dialer
+     * test alone, a silent ring on that handset set no window and the shade collapse hid the call's Answer.
+     *
+     * Mutant: make [IncomingRingWindow.fromTrustedSource] `pkg == defaultDialer` again and this row goes red
+     * while every other row stays green — which is exactly how it shipped.
+     */
+    @Test
+    fun `a platform in-call UI package may set the window, One UI's included`() {
+        val samsung = IncomingRingWindow.fromTrustedSource(
+            pkg = "com.samsung.android.incallui",
+            defaultDialer = "com.samsung.android.dialer",
+            platformInCallUi = EssentialPackages.inCallUi,
+        )
+        assertTrue(samsung)
+        assertEquals(
+            20_000 + IncomingRingWindow.WINDOW_MS,
+            IncomingRingWindow.next(
+                isCall = true,
+                hasDecline = true,
+                hasHangUp = false,
+                mode = CallAudioMode.NORMAL,
+                nowMs = 20_000,
+                fromDefaultDialer = samsung,
+            ),
+        )
+        // AOSP and Google shapes are trusted too, and the default dialer keeps working.
+        assertTrue(IncomingRingWindow.fromTrustedSource("com.android.incallui", "com.android.dialer", EssentialPackages.inCallUi))
+        assertTrue(IncomingRingWindow.fromTrustedSource("com.google.android.dialer", "com.google.android.dialer", EssentialPackages.inCallUi))
+    }
+
+    /**
+     * Fable's rule survives the widening: an ordinary app that posts a call-style notification, with a
+     * decline action and no hang-up, still cannot open the exemption.
+     */
+    @Test
+    fun `an ordinary app posting a call notification cannot set the window`() {
+        val trusted = IncomingRingWindow.fromTrustedSource(
+            pkg = "com.example.chat",
+            defaultDialer = "com.samsung.android.dialer",
+            platformInCallUi = EssentialPackages.inCallUi,
+        )
+        assertFalse(trusted)
+        assertNull(
+            IncomingRingWindow.next(
+                isCall = true,
+                hasDecline = true,
+                hasHangUp = false,
+                mode = CallAudioMode.NORMAL,
+                nowMs = 30_000,
+                fromDefaultDialer = trusted,
+            ),
+        )
+    }
+
     @Test
     fun `an audible ring needs no window, the audio mode already says so`() {
         assertNull(IncomingRingWindow.next(isCall = true, hasDecline = true, hasHangUp = false, mode = CallAudioMode.RINGTONE, nowMs = 1_000, fromDefaultDialer = true))

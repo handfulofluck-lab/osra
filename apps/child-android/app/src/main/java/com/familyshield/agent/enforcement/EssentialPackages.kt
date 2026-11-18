@@ -101,6 +101,17 @@ object EssentialPackages {
     )
 
     /**
+     * The platform in-call UI packages that post an incoming call's notification. On most OEMs that is the
+     * default dialer; One UI posts it from `com.samsung.android.incallui` instead, which is why the ring
+     * window asks this set as well as `TelecomManager.defaultDialerPackage` (#851).
+     */
+    val inCallUi: Set<String> = setOf(
+        "com.android.incallui",
+        "com.google.android.incallui",
+        "com.samsung.android.incallui",
+    )
+
+    /**
      * True when [packageId] is on the static essential set.
      *
      * NOTE: a name is a *hint* here, not a role. `com.anything.dialer` is NOT exempt by name — review

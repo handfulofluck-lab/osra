@@ -20,6 +20,7 @@ import com.familyshield.agent.enforcement.CallAudioMode
 import com.familyshield.agent.enforcement.CallBlockPolicy
 import com.familyshield.agent.enforcement.CallNotice
 import com.familyshield.agent.enforcement.CallParcel
+import com.familyshield.agent.enforcement.EssentialPackages
 import com.familyshield.agent.enforcement.IncomingRingWindow
 import com.familyshield.agent.security.TamperAlertWorker
 
@@ -116,7 +117,11 @@ class CallEnforcer(
                 hasHangUp = p.hasHangUp,
                 mode = currentMode(),
                 nowMs = now(),
-                fromDefaultDialer = pkg == defaultDialerPackage(),
+                fromDefaultDialer = IncomingRingWindow.fromTrustedSource(
+                    pkg = pkg,
+                    defaultDialer = defaultDialerPackage(),
+                    platformInCallUi = EssentialPackages.inCallUi,
+                ),
             )?.let { ringUntilMs = it }
         }
         apply(policy.onNotification(CallNotice(pkg, parcel), isBlocked, isEssential, now()))

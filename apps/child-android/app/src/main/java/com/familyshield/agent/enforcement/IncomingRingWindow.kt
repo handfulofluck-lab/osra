@@ -39,6 +39,20 @@ object IncomingRingWindow {
         return null
     }
 
+    /**
+     * Whether [pkg] is allowed to move the window: the system default dialer, or a platform in-call UI
+     * package.
+     *
+     * Antigravity's #851 finding on the Flip4: One UI posts the incoming-call `CATEGORY_CALL` notification
+     * from `com.samsung.android.incallui`, while `TelecomManager.defaultDialerPackage` answers
+     * `com.samsung.android.dialer`. With the default-dialer test alone the window never opened under a silent
+     * ringer, `isRinging()` stayed false, and the shade collapse hid an incoming call's heads-up with its
+     * Answer. Fable's rule is kept intact: only platform packages qualify, so an ordinary app that posts a
+     * call-style notification still cannot hold the exemption open.
+     */
+    fun fromTrustedSource(pkg: String, defaultDialer: String?, platformInCallUi: Set<String>): Boolean =
+        pkg == defaultDialer || pkg in platformInCallUi
+
     /** Whether an incoming call is ringing now, from the two signals together. */
     fun isRinging(mode: CallAudioMode, nowMs: Long, ringUntilMs: Long): Boolean = when {
         mode == CallAudioMode.RINGTONE -> true
