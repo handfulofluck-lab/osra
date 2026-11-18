@@ -30,8 +30,9 @@ resource "aws_kms_key" "rds" {
         Resource  = "*"
       }],
       # The backup copy is re-encrypted in the destination vault; AWS Backup in the destination account
-      # needs to read this key to do it.
-      var.backup_copy_account_id != "" ? [{
+      # needs to read this key to do it. Only while the copy is on: with backup_offsite_copy_enabled = false
+      # no other account can read the database key (#907 review).
+      var.backup_copy_account_id != "" && var.backup_offsite_copy_enabled ? [{
         Sid       = "BackupCopyAccountReads"
         Effect    = "Allow"
         Principal = { AWS = "arn:aws:iam::${var.backup_copy_account_id}:root" }
@@ -105,10 +106,16 @@ resource "aws_backup_plan" "main" {
       delete_after = local.backup_retention_days
     }
 
-    copy_action {
-      destination_vault_arn = var.backup_copy_vault_arn
-      lifecycle {
-        delete_after = local.backup_retention_days
+    # The off-site copy (another account, another EU region). backup_offsite_copy_enabled = false keeps
+    # the daily backup in this account and region only: the closed-beta option while the privacy notice
+    # says backups stay in Frankfurt (#892 section 6). The rule name is kept so the switch is an in-place update.
+    dynamic "copy_action" {
+      for_each = var.backup_offsite_copy_enabled ? [1] : []
+      content {
+        destination_vault_arn = var.backup_copy_vault_arn
+        lifecycle {
+          delete_after = local.backup_retention_days
+        }
       }
     }
   }
