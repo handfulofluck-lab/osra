@@ -14,7 +14,7 @@ public sealed class AgentConfig
     public const string FileName = "agent.config.json";
 
     /// <summary>The only API address a Release build may use.</summary>
-    public const string ProductionApiBase = "https://api.osratech.com";
+    public const string ProductionApiBase = BuildEndpoint.ApiBase;
 
     /// <summary>Whether this loaded configuration may use legacy environment overrides.</summary>
     [JsonIgnore]
