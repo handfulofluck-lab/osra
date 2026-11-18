@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/digits.dart';
 import '../../api/models.dart';
 import '../../l10n/l10n.dart';
+import '../../widgets/field_question.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../providers/onboarding_provider.dart';
@@ -199,24 +200,29 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
         // before it can be translated; it stays English, as on the dashboard.
         Text(l10n.consentNotice, style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: AppSpace.md),
-        DropdownButtonFormField<String>(
+        FieldQuestion(
+          text: l10n.consentMethodLabel,
+          child: DropdownButtonFormField<String>(
           key: const ValueKey('onboardingConsentMethod'),
           initialValue: _method,
           isExpanded: true,
           // See consent_step.dart: `isDense` defaults to true here and clips a wrapped selected value
           // at large text (#874, Arabic Language Bureau).
           isDense: false,
-          decoration: InputDecoration(labelText: l10n.consentMethodLabel, border: const OutlineInputBorder()),
+          decoration: const InputDecoration(border: OutlineInputBorder()),
           items: [for (final m in _methods) DropdownMenuItem(value: m, child: Text(l10n.consentMethod(m)))],
           onChanged: _busy ? null : (v) => setState(() => _method = v ?? _methods.first),
+          ),
         ),
         const SizedBox(height: AppSpace.md),
-        DropdownButtonFormField<String>(
+        FieldQuestion(
+          text: l10n.jurisdictionLabel,
+          child: DropdownButtonFormField<String>(
           key: const ValueKey('onboardingJurisdiction'),
           initialValue: _jurisdiction,
           isExpanded: true,
           isDense: false,
-          decoration: InputDecoration(labelText: l10n.jurisdictionLabel, border: const OutlineInputBorder()),
+          decoration: const InputDecoration(border: OutlineInputBorder()),
           items: [
             DropdownMenuItem(value: 'US', child: Text(l10n.regionUS)),
             DropdownMenuItem(value: 'EU', child: Text(l10n.regionEU)),
@@ -224,6 +230,7 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
             DropdownMenuItem(value: 'OTHER', child: Text(l10n.regionOther)),
           ],
           onChanged: _busy ? null : (v) => setState(() => _jurisdiction = v ?? 'US'),
+          ),
         ),
         if (_error != null) ...[
           const SizedBox(height: AppSpace.md),

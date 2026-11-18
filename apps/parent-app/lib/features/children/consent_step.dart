@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../l10n/l10n.dart';
+import '../../widgets/field_question.dart';
 import '../../theme/app_tokens.dart';
 
 /// The consent methods the server accepts (`ConsentCreateSchema.method`).
@@ -55,7 +56,9 @@ class ConsentStep extends StatelessWidget {
         // decision before it can be translated; it stays English.
         Text(notice ?? l10n.consentNotice),
         const SizedBox(height: AppSpace.md),
-        DropdownButtonFormField<String>(
+        FieldQuestion(
+          text: l10n.consentMethodLabel,
+          child: DropdownButtonFormField<String>(
           key: const ValueKey('consentMethod'),
           initialValue: method,
           // `isExpanded` is false by default, which sizes the button to its widest item rather than
@@ -68,10 +71,7 @@ class ConsentStep extends StatelessWidget {
           // «رسالة نصية مع تأكيد» needs 96 px and got 48, so a parent read «رسالة نصية» (Arabic
           // Language Bureau, #874). False lets the field grow with the text.
           isDense: false,
-          decoration: InputDecoration(
-            labelText: l10n.consentMethodLabel,
-            border: const OutlineInputBorder(),
-          ),
+          decoration: const InputDecoration(border: OutlineInputBorder()),
           items: [
             for (final m in kConsentMethods)
               DropdownMenuItem(value: m, child: Text(l10n.consentMethod(m))),
@@ -82,6 +82,7 @@ class ConsentStep extends StatelessWidget {
             for (final m in kConsentMethods) Text(l10n.consentMethod(m)),
           ],
           onChanged: (v) => onMethodChanged(v ?? kConsentMethods.first),
+          ),
         ),
       ],
     );

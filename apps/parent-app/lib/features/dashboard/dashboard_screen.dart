@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import '../../api/models.dart';
 import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
+import '../../widgets/field_question.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/controls_provider.dart';
 import '../../providers/family_provider.dart';
@@ -692,7 +693,9 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
                 onMethodChanged: (m) => setState(() => _method = m),
               ),
               const SizedBox(height: AppSpace.md),
-              DropdownButtonFormField<String>(
+              FieldQuestion(
+                text: l10n.jurisdictionLabel,
+                child: DropdownButtonFormField<String>(
                 key: const ValueKey('addChildJurisdiction'),
                 initialValue: _jurisdiction,
                 // #874 B6 (UI/UX Bureau): `isExpanded` false sized the button to its widest item, so at
@@ -703,7 +706,7 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
                 // #874: the default `isDense: true` caps the field at 48 px and clips the wrapped
                 // selected value at AR 320 / 200 % (Arabic Language Bureau's frame).
                 isDense: false,
-                decoration: InputDecoration(labelText: l10n.jurisdictionLabel, border: const OutlineInputBorder()),
+                decoration: const InputDecoration(border: OutlineInputBorder()),
                 items: [
                   DropdownMenuItem(value: 'US', child: Text(l10n.regionUS)),
                   DropdownMenuItem(value: 'EU', child: Text(l10n.regionEU)),
@@ -719,6 +722,7 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
                   Text(l10n.regionOther),
                 ],
                 onChanged: (v) => setState(() => _jurisdiction = v ?? 'US'),
+                ),
               ),
             ] else ...[
               TextField(
