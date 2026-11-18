@@ -285,4 +285,51 @@ final class RingRecoveryTests: XCTestCase {
         XCTAssertEqual(backend.scheduled, [])
         XCTAssertFalse(history.contains(id))
     }
+
+    func testConcurrentColdLaunchAndStopIntentResumeDoesNotDropChildDismissed() async {
+        let initial = controller()
+        await initial.start(id)
+        let recreated = controller()
+        backend.scheduled = []
+        var release: (() -> Void)?
+        backend.scheduleGate = {
+            self.backend.scheduleGate = nil
+            await withCheckedContinuation { continuation in
+                release = { continuation.resume() }
+            }
+        }
+        let launchResume = Task { await recreated.resume() }
+        await waitForGate { release != nil }
+        let intentResume = Task { await recreated.resume() }
+        await flushTasks()
+        release?()
+        _ = await launchResume.value
+        _ = await intentResume.value
+        XCTAssertEqual(backend.scheduled, [id])
+        XCTAssertEqual(recreated.state?.dismissalCount, 1)
+        XCTAssertEqual(reporter.calls.map(\.state), [.childDismissed])
+    }
+
+    func testStopIntentResumeDuringObservationRearmDoesNotDropChildDismissed() async {
+        let controller = controller()
+        await controller.start(id)
+        var release: (() -> Void)?
+        backend.scheduleGate = {
+            self.backend.scheduleGate = nil
+            await withCheckedContinuation { continuation in
+                release = { continuation.resume() }
+            }
+        }
+        backend.scheduled = []
+        backend.emit([])
+        await waitForGate { release != nil }
+        let intentResume = Task { await controller.resume() }
+        await flushTasks()
+        release?()
+        _ = await intentResume.value
+        await flushTasks()
+        XCTAssertEqual(backend.scheduled, [id])
+        XCTAssertEqual(controller.state?.dismissalCount, 1)
+        XCTAssertEqual(reporter.calls.map(\.state), [.childDismissed])
+    }
 }

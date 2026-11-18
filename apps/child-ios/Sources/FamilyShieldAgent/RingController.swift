@@ -24,6 +24,8 @@ public final class RingController: ObservableObject {
     private var deadlineTask: Task<Void, Never>?
     private var deadlineGeneration = 0
     private var operationGeneration = 0
+    private var resumeTask: Task<RingCommandError?, Never>?
+    private var resumeToken = 0
     private let audioPlayer: RingAudioPlaying
     private var schedulingCommandId: UUID?
 
@@ -74,6 +76,7 @@ public final class RingController: ObservableObject {
             return nil
         }
         guard backend.available else { return .unsupportedOS }
+        cancelResumeTask()
         operationGeneration += 1
         let generation = operationGeneration
         guard await backend.requestAuthorization() else { return .authorizationDenied }
@@ -166,6 +169,7 @@ public final class RingController: ObservableObject {
         }
         guard let source = RingPolicy.stopSource(for: trigger),
               let event = RingPolicy.event(for: trigger) else { return nil }
+        cancelResumeTask()
         operationGeneration += 1
         let generation = operationGeneration
         var stopped = current
@@ -196,6 +200,7 @@ public final class RingController: ObservableObject {
     }
 
     public func stopForUnpair() async {
+        cancelResumeTask()
         operationGeneration += 1
         let generation = operationGeneration
         cancelDeadline()
@@ -238,16 +243,34 @@ public final class RingController: ObservableObject {
 
     @discardableResult
     public func resume() async -> RingCommandError? {
-        operationGeneration += 1
-        let generation = operationGeneration
-        lastScheduledIDs = nil
-        lastDismissalMonotonic = nil
+        if let resumeTask { return await resumeTask.value }
+        resumeToken += 1
+        let token = resumeToken
+        let task = Task { await self.performResume() }
+        resumeTask = task
+        let result = await task.value
+        if resumeToken == token { resumeTask = nil }
+        return result
+    }
+
+    private func performResume() async -> RingCommandError? {
         guard let restored = store.load() else {
             state = nil
             return nil
         }
+        let isRestarted = restored.bootSession.map { $0 != bootSession() } ?? (monotonic() < restored.monotonicStart)
+        let sameActive = state?.commandId == restored.commandId
+            && state?.stopSource == nil
+            && restored.stopSource == nil
+            && !isRestarted
+        if !sameActive {
+            operationGeneration += 1
+            lastScheduledIDs = nil
+            lastDismissalMonotonic = nil
+        }
+        let generation = operationGeneration
         state = restored
-        restarted = restored.bootSession.map { $0 != bootSession() } ?? (monotonic() < restored.monotonicStart)
+        restarted = isRestarted
         if let source = restored.stopSource {
             let event = event(for: source)
             if history.contains(restored.commandId) {
@@ -451,6 +474,12 @@ public final class RingController: ObservableObject {
                 }
             }
         }
+    }
+
+    private func cancelResumeTask() {
+        resumeToken += 1
+        resumeTask?.cancel()
+        resumeTask = nil
     }
 
     private func cancelDeadline() {
