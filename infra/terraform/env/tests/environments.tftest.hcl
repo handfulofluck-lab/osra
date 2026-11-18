@@ -312,8 +312,8 @@ run "production_settings" {
     error_message = "production must set DATABASE_TLS_VERIFY=required (#777)"
   }
   assert {
-    condition     = length(aws_ecs_task_definition.db_admin) == 1 && strcontains(local.db_admin_script, "sslaccept=strict&sslcert=/app/certs/rds-global-bundle.pem") && !strcontains(local.db_admin_script, "verify-full")
-    error_message = "the db-admin task must exist and connect with Prisma's verifying TLS form"
+    condition     = length(aws_ecs_task_definition.db_admin) == 1 && strcontains(local.db_admin_script, "sslaccept=strict&sslcert=/app/certs/rds-eu-central-1-rsa2048-g1.pem") && !strcontains(local.db_admin_script, "rds-global-bundle.pem") && !strcontains(local.db_admin_script, "verify-full")
+    error_message = "the db-admin task must exist and connect with Prisma's verifying TLS form against the single eu-central-1 RDS root (#919)"
   }
   assert {
     condition     = [for x in jsondecode(aws_ecs_task_definition.db_admin[0].container_definitions)[0].secrets : x.valueFrom][0] == "arn:aws:secretsmanager:eu-central-1:000000000000:secret:rds-master:password::"

@@ -1220,7 +1220,19 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get installedAppsLoadFailed =>
-      'تعذّر تحميل التطبيقات المثبتة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
+      'تعذّر تحميل التطبيقات المثبّتة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
+
+  @override
+  String get appNoLongerInstalled => 'تطبيق لم يعد مثبّتًا';
+
+  @override
+  String get appNoLongerInstalledRemove => 'تطبيق لم يعد مثبّتًا. إزالة';
+
+  @override
+  String get appNamePending => 'الاسم غير متوفّر بعد';
+
+  @override
+  String get appNamePendingRemove => 'الاسم غير متوفّر بعد. إزالة';
 
   @override
   String installedAppsTruncated(int count) {

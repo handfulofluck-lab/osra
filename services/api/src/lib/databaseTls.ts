@@ -5,17 +5,18 @@
  * database's address can read the password and every query. Prisma only checks the certificate chain and the
  * hostname when the URL carries all three of:
  *
- *   sslmode=require & sslaccept=strict & sslcert=<path to the CA bundle>
+ *   sslmode=require & sslaccept=strict & sslcert=<path to the single root CA PEM>
  *
  * The spellings every PostgreSQL guide gives do NOT work here. Measured on Prisma 5.22 against PostgreSQL 16
- * with a certificate from a private CA (2026-11-14):
+ * with a certificate from a private CA (2026-11-14) and against eu-central-1 RDS (#919, 2026-11-18):
  *
- *   sslmode=require&sslaccept=strict&sslcert=<right CA>     connects
- *   sslmode=require&sslaccept=strict&sslcert=<another CA>   refused (certificate verify failed)
- *   same, host spelled as an address the certificate lacks  refused
- *   sslmode=require&sslaccept=strict (no sslcert)           refused
- *   sslmode=verify-full&sslrootcert=<right CA>              connects, and so does
- *   sslmode=verify-full&sslcert=<another CA>                connects: nothing was verified
+ *   sslmode=require&sslaccept=strict&sslcert=<single right CA>            connects
+ *   sslmode=require&sslaccept=strict&sslcert=<another CA>                 refused (certificate verify failed)
+ *   sslmode=require&sslaccept=strict&sslcert=<bundle, wrong CA first>     refused (Prisma loads only the first PEM block)
+ *   same, host spelled as an address the certificate lacks                refused
+ *   sslmode=require&sslaccept=strict (no sslcert)                         refused
+ *   sslmode=verify-full&sslrootcert=<right CA>                            connects, and so does
+ *   sslmode=verify-full&sslcert=<another CA>                              connects: nothing was verified
  *
  * So a URL that reads as the strictest setting verifies nothing, and no error says so. This check is what
  * says so: with DATABASE_TLS_VERIFY=required the API refuses to start on any URL but the verifying form.
@@ -91,7 +92,17 @@ export function assertDatabaseTls(env: NodeJS.ProcessEnv, files: FileReader = re
   if (!files.exists(bundle)) {
     throw new Error(`DATABASE_URL's sslcert file ${bundle} is not in this image (DATABASE_TLS_VERIFY=required)`);
   }
-  if (!files.read(bundle).includes("-----BEGIN CERTIFICATE-----")) {
+  const pem = files.read(bundle);
+  const certs = pem.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g) ?? [];
+  if (certs.length === 0) {
     throw new Error(`DATABASE_URL's sslcert file ${bundle} holds no certificate (DATABASE_TLS_VERIFY=required)`);
+  }
+  // #919: Prisma 5.22 loads only the first PEM block from sslcert; a multi-CA bundle whose first cert is not the
+  // instance's root fails with P1011 ("self-signed certificate in certificate chain").
+  if (certs.length > 1) {
+    throw new Error(
+      `DATABASE_URL's sslcert file ${bundle} holds ${certs.length} certificates; Prisma loads only the first ` +
+        `certificate of sslcert, so point sslcert at the single root CA file (DATABASE_TLS_VERIFY=required)`,
+    );
   }
 }
