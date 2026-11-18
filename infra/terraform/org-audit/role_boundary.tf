@@ -15,6 +15,12 @@ resource "aws_iam_policy" "role_boundary" {
     Version = "2012-10-17"
     Statement = [
       {
+        Sid      = "ExpiryStays"
+        Effect   = "Deny"
+        Action   = "*"
+        Resource = local.mac_expiry_resource_arns
+      },
+      {
         Sid      = "Everything"
         Effect   = "Allow"
         Action   = "*"
@@ -46,6 +52,32 @@ resource "aws_iam_policy" "role_boundary" {
           "organizations:RemoveAccountFromOrganization", "organizations:DeleteOrganization",
         ]
         Resource = "*"
+      },
+      {
+        # These additional guards limit other key management to the PC user's own account-bound user.
+        # The unconditional CreateAccessKey deny above remains for every boundary principal.
+        Sid         = "KeysOnlyForOwnUser"
+        Effect      = "Deny"
+        Action      = ["iam:CreateAccessKey", "iam:DeleteAccessKey", "iam:UpdateAccessKey", "iam:ListAccessKeys"]
+        NotResource = local.agent_own_key_arn
+      },
+      {
+        # No username context is an explicit deny, not an absent-variable exception. Roles/federated
+        # principals keep their original key-creation deny, including when SourceIdentity is present.
+        Sid       = "NoRoleKeyManagement"
+        Effect    = "Deny"
+        Action    = ["iam:CreateAccessKey", "iam:DeleteAccessKey", "iam:UpdateAccessKey", "iam:ListAccessKeys"]
+        Resource  = "*"
+        Condition = { StringNotEquals = { "aws:PrincipalType" = "User" } }
+      },
+      {
+        # Negated equality also denies missing username context. This strengthens the original Null
+        # guard without granting a role/federated caller the PC user's exception.
+        Sid       = "NoKeysWithoutUsername"
+        Effect    = "Deny"
+        Action    = ["iam:CreateAccessKey", "iam:DeleteAccessKey", "iam:UpdateAccessKey", "iam:ListAccessKeys"]
+        Resource  = "*"
+        Condition = { StringNotEquals = { "aws:username" = "osra-staging-deployer" } }
       },
       {
         # A role under this boundary cannot make an unbounded role, or reach Identity Center or an outside

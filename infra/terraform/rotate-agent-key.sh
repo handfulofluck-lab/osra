@@ -14,6 +14,13 @@
 # Expect one "osra-agent-key-changed" alarm email for the create and one for the delete.
 set -euo pipefail
 
+# Mac phase1 has no rotation. Refuse before reading storage or invoking any credential/AWS helper.
+# The existing Windows path below remains unchanged.
+if [ "${1:-}" = "--mac" ]; then
+  echo "Mac rotation is disabled in phase 1; renewal requires the owner's approved MFA key-creation step." >&2
+  exit 1
+fi
+
 PROFILE="${AGENT_PROFILE:-osra-staging}"
 USER_NAME="${AGENT_USER:-osra-staging-deployer}"
 cred_file="${AWS_SHARED_CREDENTIALS_FILE:-$HOME/.aws/credentials}"

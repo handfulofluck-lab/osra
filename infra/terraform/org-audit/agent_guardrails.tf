@@ -26,13 +26,15 @@ locals {
   not_karim_or_backup = { ArnNotLike = { "aws:PrincipalArn" = [local.karim_sso_roles, local.production_backup] } }
 }
 
+# The added Mac deadline is a partial guard on requests carrying its SourceIdentity in this existing
+# production scope. It does not establish role attribution or cover separately delegated service work.
 resource "aws_organizations_policy" "agent_cannot_erase_evidence" {
   name        = "osra-agent-cannot-erase-evidence"
-  description = "No principal except Karim's Identity Center roles can erase audit evidence or backups in production."
+  description = "Production audit/backup protections plus the fixed deadline for SourceIdentity-attributed Mac access."
   type        = "SERVICE_CONTROL_POLICY"
   content = jsonencode({
     Version = "2012-10-17"
-    Statement = [
+    Statement = concat([local.mac_member_deadline_statement], [
       {
         Sid    = "AuditServices"
         Effect = "Deny"
@@ -111,7 +113,7 @@ resource "aws_organizations_policy" "agent_cannot_erase_evidence" {
         Resource  = ["arn:aws:iam::*:role/aws-reserved/*", local.production_backup]
         Condition = local.not_karim
       },
-    ]
+    ])
   })
 }
 

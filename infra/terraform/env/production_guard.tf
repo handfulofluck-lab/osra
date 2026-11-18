@@ -39,8 +39,8 @@ resource "terraform_data" "production_guard" {
       error_message = "production: alarms_enabled must be true with an alarm_email."
     }
     precondition {
-      condition     = var.db_customer_kms_key && var.backup_copy_vault_arn != "" && var.backup_copy_account_id != "" && !strcontains(var.backup_copy_vault_arn, ":${var.region}:") && strcontains(var.backup_copy_vault_arn, ":${var.backup_copy_account_id}:") && !contains(var.allowed_account_ids, var.backup_copy_account_id)
-      error_message = "production: database on its own KMS key, with a daily backup copied to a vault in ANOTHER account and ANOTHER region (#766 item 5)."
+      condition     = var.db_customer_kms_key && var.backup_copy_vault_arn != "" && (!var.backup_offsite_copy_enabled || (var.backup_copy_account_id != "" && !strcontains(var.backup_copy_vault_arn, ":${var.region}:") && strcontains(var.backup_copy_vault_arn, ":${var.backup_copy_account_id}:") && !contains(var.allowed_account_ids, var.backup_copy_account_id)))
+      error_message = "production: database on its own KMS key in the daily backup plan, and, unless backup_offsite_copy_enabled = false, a copy in a vault in ANOTHER account and ANOTHER region (#766 item 5)."
     }
     precondition {
       condition     = var.audit_logs_enabled

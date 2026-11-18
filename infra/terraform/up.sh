@@ -142,8 +142,8 @@ if [ "$OSRA_ENV" = production ]; then
   # The CLI calls below must run as the production role, as Terraform does, never as the profile itself.
   role=$(terraform -chdir="$HERE/env" output -raw deploy_role_arn)
   want_account=$(terraform -chdir="$HERE/env" output -raw allowed_account_id)
-  creds=$(aws sts assume-role --role-arn "$role" --role-session-name osra-production-migrate \
-    --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' --output text)
+  . "$HERE/lib/agent-source-identity.sh"
+  creds=$(agent_assume_production_role "$role" osra-production-migrate)
   read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN <<EOC
 $creds
 EOC

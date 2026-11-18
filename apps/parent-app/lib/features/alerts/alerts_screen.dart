@@ -18,6 +18,7 @@ import '../../theme/app_tokens.dart';
 import '../children/child_detail_screen.dart' show AlertTile;
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
+import '../../widgets/error_retry_view.dart';
 import 'sos_alert_actions.dart';
 import '../map/family_map_screen.dart'
     show FamilyMapScreen, MapFocus, mapIsAvailable;
@@ -70,14 +71,12 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
         _hasMore = pageData.items.isNotEmpty && _items.length < pageData.total;
       });
     } on DioException catch (e) {
+      if (!mounted) return;
       final refused = ReadPermissionRequired.from(e);
       setState(() {
         _refused = refused;
-        // `e.message` is null for a rejected response that carried no message — the fake in the tests
-        // does exactly that — and a null `_error` renders the EMPTY state, so a 500 looked like "no
-        // alerts yet". Name the status instead of trusting the message to exist.
         _error = refused == null
-            ? (e.message ?? 'HTTP ${e.response?.statusCode ?? e.type.name}')
+            ? friendlyErrorText(context.l10n, e, () => context.l10n.alertsLoadFailed)
             : null;
       });
     } finally {
@@ -94,8 +93,11 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     } on DioException catch (e) {
       setState(() => _items.insert(index, alert));
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(context.l10n.acknowledgeFailed('${e.message}'))));
+        showErrorSnackBar(
+          context,
+          friendlyErrorText(context.l10n, e, () => context.l10n.acknowledgeFailed),
+          onRetry: () => _ack(alert, index),
+        );
       }
     }
   }
@@ -348,8 +350,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
           .showSnackBar(SnackBar(content: Text(l10n.appBlockedSnack)));
     } catch (e) {
       if (dialogContext.mounted) {
-        ScaffoldMessenger.of(dialogContext)
-            .showSnackBar(SnackBar(content: Text(l10n.blockFailed('$e'))));
+        showErrorSnackBar(
+          dialogContext,
+          friendlyErrorText(l10n, e, () => l10n.blockFailed),
+        );
       }
     }
   }
@@ -383,7 +387,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
               ),
             )
           : _error != null && _items.isEmpty
-              ? Center(child: Text(l10n.alertsLoadFailed('$_error')))
+              ? ErrorRetryView(message: _error!, onRetry: _loadMore)
               : RefreshIndicator(
                   onRefresh: () async {
                     setState(() {
