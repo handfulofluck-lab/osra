@@ -141,4 +141,18 @@ class PairQrPayloadTest {
         val original = PairQrPayload(code = "482916", apiBaseUrl = "http://10.0.2.2:3000")
         assertEquals(original, PairQrPayload.decode(original.encode()))
     }
+
+    @Test
+    fun `decodes a code typed with Arabic digits as Western digits (#771)`() {
+        val payload = PairQrPayload.decode(
+            "osra://pair?v=1&code=١٢٣٤٥٦&host=http%3A%2F%2F192.168.1.5%3A3000",
+        )
+        assertEquals("123456", payload.code)
+    }
+
+    @Test
+    fun `encodes Arabic digits as Western digits (#771)`() {
+        val encoded = PairQrPayload("١٢٣٤٥٦", "http://192.168.1.5:3000").encode()
+        assertTrue(encoded.contains("code=123456"))
+    }
 }

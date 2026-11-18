@@ -101,4 +101,46 @@ class ParentPinTest {
         ParentPin.verify("4729", stored, recording)
         assertEquals(1, calls)
     }
+
+    @Test
+    fun `a PIN set with Arabic digits opens with Western digits and the other way round (#771)`() {
+        val storedArabic = ParentPin.hash("١٢٣٤")
+        assertTrue(ParentPin.verify("1234", storedArabic))
+        assertTrue(ParentPin.verify("١٢٣٤", storedArabic))
+        val storedWestern = ParentPin.hash("4729")
+        assertTrue(ParentPin.verify("٤٧٢٩", storedWestern))
+        assertTrue(ParentPin.verify("۴۷۲۹", storedWestern))
+    }
+
+    @Test
+    fun `a PIN stored before the change from Arabic digits still opens and is upgraded (#771)`() {
+        val legacy = ParentPin.hashAsTyped("٤٧٢٩")
+        assertEquals(ParentPin.Match.LEGACY_FORM, ParentPin.verifyMatch("٤٧٢٩", legacy))
+        assertTrue(ParentPin.verify("٤٧٢٩", legacy))
+        // A legacy hash is of the Arabic string: Western input has no as-typed form to try, so it
+        // matches only after the PIN has been typed the same way once (and the store upgrades it).
+        assertEquals(ParentPin.Match.NONE, ParentPin.verifyMatch("4729", legacy))
+
+        val upgraded = ParentPin.upgradedStoredHashOnUse(ParentPin.Match.LEGACY_FORM, "٤٧٢٩")
+        assertTrue(upgraded != null)
+        assertEquals(ParentPin.Match.NORMALIZED, ParentPin.verifyMatch("4729", upgraded))
+        assertTrue(ParentPin.verify("٤٧٢٩", upgraded))
+        assertNull(ParentPin.upgradedStoredHashOnUse(ParentPin.Match.NORMALIZED, "4729"))
+    }
+
+    @Test
+    fun `a wrong PIN fails both paths in one call (#771)`() {
+        val legacy = ParentPin.hashAsTyped("٤٧٢٩")
+        assertEquals(ParentPin.Match.NONE, ParentPin.verifyMatch("٤٧٢٨", legacy))
+        assertEquals(ParentPin.Match.NONE, ParentPin.verifyMatch("9999", legacy))
+    }
+
+    @Test
+    fun `validation accepts Arabic digits and still refuses a weak PIN typed with them (#771)`() {
+        assertNull(ParentPin.validationError("٤٧٢٩"))
+        assertNull(ParentPin.validationError("۴۷۲۹"))
+        assertTrue(ParentPin.validationError("١٢٣٤") != null) // 1234 is a known weak PIN
+        assertTrue(ParentPin.validationError("٠٠٠٠") != null) // all the same digit
+        assertTrue(ParentPin.validationError("٤٧٢") != null) // too short
+    }
 }

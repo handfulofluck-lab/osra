@@ -674,8 +674,16 @@ POST /v1/devices/pair/claims/:claimId/poll     (NO auth; the poll secret is the 
   → 202 { status: "pending" } | 410 { error: "claim_denied" } | 428 (consent withdrawn) |
     201 { device, token, childId, familyId, hmacSecret }  — after Allow, exactly once
   token = device JWT, claims { sub: deviceId, deviceId, childId, familyId, role: "device" },
-  expiresIn "10y". The device row (status "online", lastSeen now) is created by this poll, never
-  earlier. An unknown claim, an expired one and a wrong secret are one answer, 404
+  expiresIn "10y". The device row (lastSeen now) is created by this poll, never earlier, as
+  **PENDING** (#790): `status: "offline"` and `pairedAt` null. It becomes the family's device — in
+  `GET /v1/devices`, `GET /v1/family/me`, the export and the family's device counts — on the first
+  request from it the API **accepts**, which sets `pairedAt` once (`middleware/pairedAt.ts`, one
+  global `onResponse` hook; a 401, a 403 for another device's id or any other refusal does not).
+  Until then it is absent from those reads and answers 404 to a parent's device reads; a pending row
+  whose `lastSeen` is 30 minutes old is deleted by `jobs/pendingDevices.ts`, with nothing raised to
+  the parent. Was: `status: "online"` at creation, which showed a phone whose first secret-proof was
+  refused as a working device (found by the Mac seat on #779).
+  An unknown claim, an expired one and a wrong secret are one answer, 404
   { error: "claim_not_found" }; the tenth wrong secret burns the claim and frees the code.
   Family/child ids come from the Redis payload, never from the client; only a sha256 of the poll
   secret is stored, and no device token or HMAC secret is ever written to Redis.
@@ -836,3 +844,42 @@ and are deleted explicitly in the GDPR erasure cascade.
 - `dotnet build` + xunit tests green.
 - Live re-run of scripts/e2e.mjs (backend up) still 32/32, plus a manual pairing
   round-trip: pair → claim with curl (device JWT) → GET rules with that token (200).
+
+
+## §15 Family plan entitlement (ADR-0041 D1/D3, #619)
+
+`family_purchases` stores a purchase's family, source, product, SHA-256 store-reference hash, status,
+finite expiry, renewal flag, last effective verification and cause. `(source, store_ref)` is unique;
+the raw store reference is never persisted or logged. Store changes are idempotent by effective time
+and cannot rebind a purchase to another family. `ended_at` records only the first transition into a
+revoking state; later verification cannot move that end forward. Serialization conflicts retry once.
+`Family.storeAccountId` is random 128-bit hex, created
+on first use, stable, and removed with the family and its purchase rows on erasure.
+
+```
+GET /v1/family/entitlement        (parent JWT; current family membership checked)
+  → { plan, until, source, manage_on }
+  owner only: also { store_account_id }
+
+No plan: { plan: null, until: null, source: null, manage_on: null }.
+Eligible: plan "family"; manage_on is the store, or null for a finite grant.
+```
+
+`active` is eligible only before expiry. `grace` and `on_hold` remain eligible while the store keeps
+that state, including after expiry, but only until `expires_at + 67 days`: the stores' documented
+60-day recovery limit plus 7 days for a late push. Past that lost-push ceiling the row is ineligible
+and one structured warning carries family id, source and hashed reference, never the raw token. The
+warning is emitted per `entitlement()` read past the ceiling, so the metric counts reads, not unique rows;
+once-per-row alerting belongs to #815. `expired` ends eligibility at the earlier of store expiry and the
+effective verification time; `revoked` and `refunded` end at their effective time. Once `ended_at` exists
+it only ever moves earlier. Among eligible rows,
+latest expiry wins, then latest verification. A null expiry is ineligible and logged without a store
+reference: there is no lifetime plan. When eligibility ends,
+`requirePlan` and the agent rule projection wait until the next family-local 10:00 before refusing
+premium enforcement; the response still reports the store's expiry. A premium route answers exactly
+`402 { error: "plan_required" }`.
+
+`PREMIUM_FEATURES` is the sole feature table and starts empty until maintainer decision M3. Agent rule
+reads, rule-sync publication and parent-write fan-out omit listed fields when enforcement has lapsed;
+the parent's stored rules and response remain intact. The local grant script requires a future expiry
+no more than 366 days away and has no public route. Its AWS CLI and SQL boundaries are fake-tested; no agent makes an AWS call.
