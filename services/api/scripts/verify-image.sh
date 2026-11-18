@@ -29,14 +29,19 @@ docker run --rm --network none --workdir /app/services/api "$IMAGE" node_modules
 #    `sh -c` rather than `--entrypoint test`: Alpine's test is a shell builtin, not a binary.
 docker run --rm "$IMAGE" sh -c 'test -f /app/services/api/dist/server.js'
 
-# 4. The RDS CA bundle is where production's DATABASE_URL says it is (`sslcert=/app/certs/rds-global-bundle.pem`,
-#    #766 item 3), it holds certificates, and the user the API runs as can read it and cannot write it. A missing
-#    file would only show at the first production boot. The decoy and the checker ship with it.
+# 4. The single eu-central-1 RDS root CA is where production's DATABASE_URL says it is
+#    (`sslcert=/app/certs/rds-eu-central-1-rsa2048-g1.pem`, #919 / #766 item 3), holds exactly one certificate
+#    (Prisma 5.22 loads only the first PEM block of sslcert), and the user the API runs as can read it and cannot
+#    write it. The reference global bundle, the decoy CA and the checker ship alongside it.
 docker run --rm "$IMAGE" sh -c '
   set -eu
+  r=/app/certs/rds-eu-central-1-rsa2048-g1.pem
   b=/app/certs/rds-global-bundle.pem
   # Every row says which one failed: a bare `test` under `set -e` stops the script with no line at all.
   no() { echo "image check 4: $1"; ls -ld /app/certs /app/certs/* 2>&1 || true; id; exit 1; }
+  test -r "$r" || no "the API user cannot read $r"
+  if test -w "$r"; then no "the API user can rewrite $r"; fi
+  test "$(grep -c "BEGIN CERTIFICATE" "$r")" -eq 1 || no "$r must hold exactly 1 certificate"
   test -r "$b" || no "the API user cannot read $b"
   # `if`, not `! test`: under `set -e` a negated command that fails does not stop the script.
   if test -w "$b"; then no "the API user can rewrite $b"; fi
@@ -53,5 +58,13 @@ out="$(docker run --rm --network none -e DATABASE_TLS_VERIFY=required \
   "$IMAGE" 2>&1 || true)"
 echo "$out" | grep -q "sslaccept=strict" || { echo "the image booted, or failed for another reason, on an unverified database URL:"; echo "$out" | tail -5; exit 1; }
 if echo "$out" | grep -q "image-check-pw"; then echo "the boot refusal printed the database password"; exit 1; fi
+
+# 4c. #919: pointing sslcert at the multi-certificate global bundle is also refused before any connection.
+out_bundle="$(docker run --rm --network none -e DATABASE_TLS_VERIFY=required \
+  -e DATABASE_URL="postgresql://u:image-check-pw@db.invalid:5432/x?sslmode=require&sslaccept=strict&sslcert=/app/certs/rds-global-bundle.pem" \
+  -e JWT_SECRET=image-check-not-a-dev-value -e VAULT_KEY=image-check -e CORS_ALLOW_ANY_ORIGIN=1 \
+  "$IMAGE" 2>&1 || true)"
+echo "$out_bundle" | grep -q "only the first certificate" || { echo "the image did not refuse a multi-certificate sslcert bundle:"; echo "$out_bundle" | tail -5; exit 1; }
+if echo "$out_bundle" | grep -q "image-check-pw"; then echo "the bundle boot refusal printed the database password"; exit 1; fi
 
 echo "verified: $IMAGE — node, prisma CLI, /app/services/api/dist/server.js and the RDS CA bundle are all present"

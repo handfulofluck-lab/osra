@@ -1,28 +1,33 @@
 #!/usr/bin/env node
 /**
  * Proves, against the real database, that this deployment verifies the database's certificate (#766 item 3,
- * release security gate #637, "data in transit").
+ * #919 single-root fix, release security gate #637, "data in transit").
  *
  * Run it where the API runs, with the API's own DATABASE_URL, e.g. as a one-off ECS task:
  *
  *   node scripts/check-db-tls.mjs
  *
- * Three connections, read-only (`select` on pg_stat_ssl for this session, nothing else):
+ * Four live connections, read-only (`select` on pg_stat_ssl for this session, nothing else), plus a check that
+ * `sslcert` is a single-certificate root CA file:
  *
- *   1. the URL as given              must CONNECT, and the session must be TLS
- *   2. the same URL, decoy CA        must be REFUSED  (the server's chain is checked against sslcert)
- *   3. the same URL, no CA bundle    must be REFUSED  (nothing outside sslcert is trusted for this server)
+ *   1. the URL as given                                        must CONNECT, session TLS=true, sslcert has 1 cert
+ *   2. the same URL, decoy CA                                  must be REFUSED  (chain checked against sslcert)
+ *   3. the same URL, no CA file                                must be REFUSED  (nothing outside sslcert trusted)
+ *   4. the same URL, 2-cert bundle [decoy CA, real CA]         must be REFUSED  (Prisma loads only the first cert;
+ *                                                                                a bundle with the wrong first cert fails)
  *
- * Row 1 alone proves nothing: `sslmode=require` passes it and verifies no certificate. Rows 2 and 3 are the
- * evidence. If either connects, the URL is not verifying and the script exits 1.
+ * Row 1 alone proves nothing: `sslmode=require` passes it and verifies no certificate. Rows 2, 3 and 4 are the
+ * evidence (#919: `rds-global-bundle.pem` had 114 roots with eu-central-1's `rds-ca-rsa2048-g1` at #100, and even
+ * `eu-central-1-bundle.pem` puts ECC384 before RSA2048).
  *
  * The URL holds the database password, so it is never printed: not on success, not on failure, and Prisma's own
  * error text is reduced to its last line before it is shown.
  *
- * Exit codes: 0 all three rows as expected · 1 a row is wrong · 2 the environment is not ready to be checked.
+ * Exit codes: 0 all rows as expected · 1 a row is wrong · 2 the environment is not ready to be checked.
  */
-import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 
@@ -48,6 +53,11 @@ const bundle = base.searchParams.get("sslcert");
 if (base.searchParams.get("sslmode") !== "require" || base.searchParams.get("sslaccept") !== "strict" || !bundle) {
   fail(1, "FAIL  the URL does not ask for verification: it needs sslmode=require, sslaccept=strict and sslcert=<CA bundle>");
 }
+if (!existsSync(bundle)) {
+  fail(1, `FAIL  sslcert file ${bundle} does not exist`);
+}
+
+const pemBlocks = (pem) => pem.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g) ?? [];
 
 function variant(change) {
   const url = new URL(base.href);
@@ -79,7 +89,14 @@ const row = (ok, text) => {
   console.log(`${ok ? "PASS" : "FAIL"}  ${text}`);
 };
 
-console.log(`check-db-tls: CA bundle ${bundle}`);
+const bundlePem = readFileSync(bundle, "utf8");
+const certs = pemBlocks(bundlePem);
+const decoyPem = readFileSync(DECOY, "utf8");
+
+console.log(`check-db-tls: CA file ${bundle} (${certs.length} certificate(s))`);
+if (certs.length !== 1) {
+  row(false, `0. sslcert must hold exactly 1 root certificate (Prisma loads only the first), found ${certs.length}`);
+}
 
 const real = await attempt(base.href);
 if (!real.connected) {
@@ -93,6 +110,21 @@ row(!decoy.connected, decoy.connected ? "2. with the decoy CA it CONNECTED: the 
 
 const none = await attempt(variant((p) => p.delete("sslcert")));
 row(!none.connected, none.connected ? "3. with no CA bundle it CONNECTED: something other than sslcert is trusted" : `3. with no CA bundle it is refused: ${none.reason}`);
+
+const tmpDir = mkdtempSync(join(tmpdir(), "check-db-tls-"));
+try {
+  const wrongFirstPath = join(tmpDir, "wrong-first-bundle.pem");
+  writeFileSync(wrongFirstPath, `${decoyPem.trim()}\n${bundlePem.trim()}\n`, "utf8");
+  const wrongFirst = await attempt(variant((p) => p.set("sslcert", wrongFirstPath)));
+  row(
+    !wrongFirst.connected,
+    wrongFirst.connected
+      ? "4. with a bundle whose first certificate is wrong (decoy before real CA) it CONNECTED"
+      : `4. with a bundle whose first certificate is wrong (decoy before real CA) it is refused: ${wrongFirst.reason}`,
+  );
+} finally {
+  rmSync(tmpDir, { recursive: true, force: true });
+}
 
 if (wrong > 0) fail(1, `check-db-tls: ${wrong} row(s) wrong. This deployment does not prove it verifies the database's certificate.`);
 console.log("check-db-tls: verified. The database's certificate chain and hostname are checked on every connection.");
