@@ -226,7 +226,8 @@ void main() {
     await pumpRules(tester, api);
     await openPicker(tester);
 
-    expect(find.textContaining('Could not load apps:'), findsOneWidget);
+    // #872 condition 1: a whole sentence with no placeholder, so nothing can be spliced into it.
+    expect(find.text("Couldn't load apps. Check your connection and try again."), findsOneWidget);
     expect(find.text('Retry'), findsOneWidget);
 
     fail = false;
@@ -406,7 +407,7 @@ void main() {
 
   /// A parent's own chips and rows show the app's name and icon, not the id. A stored id whose app the
   /// phone no longer reports is the one place the id still appears — it is the saved value, not a prompt.
-  testWidgets('the always-allowed chips show names, and a legacy id keeps itself only', (tester) async {
+  testWidgets('the always-allowed chips show names, and an app nothing reports says so', (tester) async {
     final api = FakeApiClient({
       ...standardRoutes(),
       'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1', alwaysAllowedApps: const [
@@ -418,7 +419,10 @@ void main() {
     await openAppsTab(tester);
 
     expect(find.text('Video'), findsWidgets);
-    expect(find.text('com.example.gone'), findsOneWidget);
+    // #872 condition 2 (Claude's data shape, 05:16Z): the name comes from the installed-apps report and
+    // the fallback is the Bureaus' line. Mutant: `apps[id]?.label ?? id` and the id is back on screen.
+    expect(find.text('App no longer installed'), findsWidgets);
+    expect(find.textContaining('com.example.gone'), findsNothing);
     expect(drainExceptions(tester), isEmpty);
   });
 

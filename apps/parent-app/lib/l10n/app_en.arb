@@ -557,12 +557,9 @@
   "installedAppsEmpty": "No apps reported yet",
   "installedAppsEmptyHint": "The list appears after the child device's next check-in (up to 15 minutes).",
   "installedAppsNoMatch": "No apps match your search.",
-  "installedAppsLoadFailed": "Could not load apps: {error}",
-  "@installedAppsLoadFailed": {
-    "placeholders": {
-      "error": { "type": "String" }
-    }
-  },
+  "installedAppsLoadFailed": "Couldn't load apps. Check your connection and try again.",
+  "appNoLongerInstalled": "App no longer installed",
+  "appNoLongerInstalledRemove": "App no longer installed. Remove",
   "installedAppsTruncated": "Showing the first {count} apps.",
   "@installedAppsTruncated": {
     "placeholders": {

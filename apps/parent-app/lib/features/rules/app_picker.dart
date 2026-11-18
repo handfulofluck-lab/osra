@@ -134,7 +134,7 @@ class _AppPickerState extends ConsumerState<AppPicker> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(l10n.installedAppsLoadFailed('$e'), textAlign: TextAlign.center),
+                Text(l10n.installedAppsLoadFailed, textAlign: TextAlign.center),
                 const SizedBox(height: AppSpace.sm),
                 TextButton(
                   onPressed: () {

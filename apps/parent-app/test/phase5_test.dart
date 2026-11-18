@@ -89,7 +89,10 @@ void main() {
 
       expect(find.text('Always allowed'), findsOneWidget);
       expect(find.text('These apps stay open during bedtime, school time, pause and routines.'), findsOneWidget);
-      expect(find.text('com.edu.app'), findsOneWidget);
+      // #872 condition 2: an always-allowed id the device does not report is named by the Bureaus' line,
+      // never by its package id. Mutant: `apps[id]?.label ?? id` and the id is back on the parent screen.
+      expect(find.text('App no longer installed'), findsOneWidget);
+      expect(find.textContaining('com.edu.app'), findsNothing);
     });
 
     testWidgets('add then remove an app; Save PUTs alwaysAllowedApps', (tester) async {

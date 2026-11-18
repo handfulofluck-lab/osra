@@ -2129,8 +2129,20 @@ abstract class AppLocalizations {
   /// No description provided for @installedAppsLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Could not load apps: {error}'**
-  String installedAppsLoadFailed(String error);
+  /// **'Couldn\'t load apps. Check your connection and try again.'**
+  String get installedAppsLoadFailed;
+
+  /// No description provided for @appNoLongerInstalled.
+  ///
+  /// In en, this message translates to:
+  /// **'App no longer installed'**
+  String get appNoLongerInstalled;
+
+  /// No description provided for @appNoLongerInstalledRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'App no longer installed. Remove'**
+  String get appNoLongerInstalledRemove;
 
   /// No description provided for @installedAppsTruncated.
   ///

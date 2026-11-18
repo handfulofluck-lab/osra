@@ -1234,9 +1234,14 @@ class AppLocalizationsAr extends AppLocalizations {
   String get installedAppsNoMatch => 'لا توجد تطبيقات تطابق بحثك.';
 
   @override
-  String installedAppsLoadFailed(String error) {
-    return 'تعذّر تحميل التطبيقات: $error';
-  }
+  String get installedAppsLoadFailed =>
+      'تعذّر تحميل التطبيقات المثبّتة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
+
+  @override
+  String get appNoLongerInstalled => 'تطبيق لم يعد مثبّتًا';
+
+  @override
+  String get appNoLongerInstalledRemove => 'تطبيق لم يعد مثبّتًا. إزالة';
 
   @override
   String installedAppsTruncated(int count) {

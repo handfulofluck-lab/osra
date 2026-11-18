@@ -1191,9 +1191,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get installedAppsNoMatch => 'No apps match your search.';
 
   @override
-  String installedAppsLoadFailed(String error) {
-    return 'Could not load apps: $error';
-  }
+  String get installedAppsLoadFailed =>
+      'Couldn\'t load apps. Check your connection and try again.';
+
+  @override
+  String get appNoLongerInstalled => 'App no longer installed';
+
+  @override
+  String get appNoLongerInstalledRemove => 'App no longer installed. Remove';
 
   @override
   String installedAppsTruncated(int count) {

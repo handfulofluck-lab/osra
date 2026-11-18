@@ -13,6 +13,7 @@ import '../../api/permission_errors.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import 'rules_behind_banner.dart';
+import 'app_display.dart';
 import 'app_picker.dart';
 import '../../theme/app_tokens.dart';
 import '../../widgets/layout_helpers.dart';
@@ -97,13 +98,14 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
     };
   }
 
+  // #872 condition 2, Claude's data shape (05:16Z): the name comes from the installed-apps report at
+  // display time; when nothing reports the id, the Bureaus' line and a "?" avatar replace it. The id is
+  // never shown to a parent — that was the finding.
   String _nameOf(Map<String, InstalledApp> apps, String packageId) =>
-      apps[packageId]?.label ?? packageId;
+      appDisplayName(context, apps, packageId);
 
-  Widget? _chipIcon(Map<String, InstalledApp> apps, String packageId) {
-    final app = apps[packageId];
-    return app == null ? null : AppIconBadge(app: app, size: 20);
-  }
+  Widget _chipIcon(Map<String, InstalledApp> apps, String packageId) =>
+      appDisplayAvatar(apps, packageId);
 
   void _applyLoaded(RuleSet ruleSet) {
     if (_loaded) return;
@@ -710,12 +712,21 @@ class _AppRuleTileState extends State<_AppRuleTile> {
           children: [
             Row(
               children: [
-                AppIconBadge(
-                  app: widget.app ?? InstalledApp(packageId: r.packageId, label: r.appName),
-                  size: 28,
-                ),
+                // #872 condition 2: a rule whose app nothing reports any more names itself with the
+                // Bureaus' line and a "?" avatar — the package id is not a name, and it was the finding.
+                appDisplayAvatar({if (widget.app != null) r.packageId: widget.app!}, r.packageId, size: 28),
                 const SizedBox(width: AppSpace.sm),
-                Expanded(child: Text(r.appName, style: Theme.of(context).textTheme.titleSmall),),
+                Expanded(
+                  child: Text(
+                    appDisplayName(
+                      context,
+                      {if (widget.app != null) r.packageId: widget.app!},
+                      r.packageId,
+                      savedName: r.appName,
+                    ),
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
                 IconButton(icon: const Icon(Icons.delete_outline), onPressed: widget.onRemove),
               ],
             ),
@@ -920,11 +931,8 @@ class _RoutineAppsField extends StatelessWidget {
                 for (final id in packageIds)
                   InputChip(
                     key: ValueKey('$keyPrefix-$id'),
-                    avatar: AppIconBadge(
-                      app: apps[id] ?? InstalledApp(packageId: id, label: id),
-                      size: 20,
-                    ),
-                    label: Text(apps[id]?.label ?? id),
+                    avatar: appDisplayAvatar(apps, id),
+                    label: Text(appDisplayName(context, apps, id)),
                     onDeleted: () => onRemove(id),
                   ),
               ],
