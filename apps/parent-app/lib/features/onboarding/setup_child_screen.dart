@@ -203,6 +203,9 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
           key: const ValueKey('onboardingConsentMethod'),
           initialValue: _method,
           isExpanded: true,
+          // See consent_step.dart: `isDense` defaults to true here and clips a wrapped selected value
+          // at large text (#874, Arabic Language Bureau).
+          isDense: false,
           decoration: InputDecoration(labelText: l10n.consentMethodLabel, border: const OutlineInputBorder()),
           items: [for (final m in _methods) DropdownMenuItem(value: m, child: Text(l10n.consentMethod(m)))],
           onChanged: _busy ? null : (v) => setState(() => _method = v ?? _methods.first),
@@ -212,6 +215,7 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
           key: const ValueKey('onboardingJurisdiction'),
           initialValue: _jurisdiction,
           isExpanded: true,
+          isDense: false,
           decoration: InputDecoration(labelText: l10n.jurisdictionLabel, border: const OutlineInputBorder()),
           items: [
             DropdownMenuItem(value: 'US', child: Text(l10n.regionUS)),

@@ -748,6 +748,38 @@ void main() {
         expectNoOverflow(tester, contextLabel: 'SetupChildScreen [${_caseLabel(matrix)}]');
       });
 
+      /// #874 (Arabic Language Bureau's frame at `49488d7e`): at AR 320 / 200 % the *selected* value of
+      /// the consent-method field was cut — «رسالة نصية مع تأكيد» read as «رسالة نصية». Cause:
+      /// `DropdownButtonFormField.isDense` defaults to true, which caps the inner box at
+      /// kMinInteractiveDimension (48 px) while the wrapped label needs 96. The label must be laid out
+      /// whole, not ellipsised and not clipped vertically.
+      testWidgets('SetupChildScreen consent method label [${_caseLabel(matrix)}]', (tester) async {
+        final l10n = lookupAppLocalizations(matrix.locale);
+        final api = FakeApiClient({
+          ...standardRoutes(
+            familyMe: {
+              ...familyMeTwoChildren(),
+              'children': <Map<String, dynamic>>[],
+              'devices': <Map<String, dynamic>>[],
+            },
+          ),
+        });
+        await pumpMatrix(tester, const SetupChildScreen(), matrix: matrix, api: api);
+
+        final label = find.text(l10n.consentMethodSmsPlus);
+        if (label.evaluate().isEmpty) {
+          await tester.scrollUntilVisible(
+            label,
+            200,
+            scrollable: find
+                .byWidgetPredicate((w) => w is Scrollable && w.axis == Axis.vertical)
+                .first,
+          );
+          await tester.pumpAndSettle();
+        }
+        expectTextNotClipped(tester, label, reason: 'consent method selected value (#874)');
+      });
+
       testWidgets('PairingQrScreen onboardingPairDone [${_caseLabel(matrix)}]', (tester) async {
         final l10n = lookupAppLocalizations(matrix.locale);
         final api = FakeApiClient({

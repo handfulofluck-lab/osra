@@ -693,6 +693,9 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
                 // is laid out inside the field; the `selectedItemBuilder` below lets it wrap there instead
                 // of being cut, which is what «رسالة نصية مع تأكيد» needed on the consent-method field.
                 isExpanded: true,
+                // #874: the default `isDense: true` caps the field at 48 px and clips the wrapped
+                // selected value at AR 320 / 200 % (Arabic Language Bureau's frame).
+                isDense: false,
                 decoration: InputDecoration(labelText: l10n.jurisdictionLabel, border: const OutlineInputBorder()),
                 items: [
                   DropdownMenuItem(value: 'US', child: Text(l10n.regionUS)),

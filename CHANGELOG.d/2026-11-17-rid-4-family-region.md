@@ -11,3 +11,10 @@
 - Not in this scope, raised for the Bureau: `consent_screen.dart:172` renders
   `consentStateMismatchDetail(record.jurisdiction, family.region)`, which puts the raw codes in a
   sentence. That is a separate string change and belongs with the wording batch.
+- **The selected value is no longer cut at large text (#874).** At AR 320 / 200 % the consent-method
+  field showed «رسالة نصية» for «رسالة نصية مع تأكيد»: `DropdownButtonFormField.isDense` defaults to
+  `true`, which caps the field's inner box at 48 px while the wrapped label needs 96. `isDense: false`
+  on the four consent/jurisdiction fields lets the field grow with the text; a new
+  `prb_layout_matrix_test.dart` row is red without it. The cost is visible: at 100 % each of these
+  four fields goes from 56 to 80 px tall, which changes frames the UI/UX Bureau reviewed.
+
