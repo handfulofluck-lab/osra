@@ -603,9 +603,8 @@ class AppLocalizationsAr extends AppLocalizations {
   String get rulesBehindHint => 'لم يستلم الهاتف هذا التغيير بعد.';
 
   @override
-  String rulesLoadFailed(String error) {
-    return 'تعذّر تحميل القواعد: $error';
-  }
+  String get rulesLoadFailed =>
+      'تعذّر تحميل القواعد. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
 
   @override
   String get noPerAppRules => 'لا توجد قواعد لكل تطبيق';
@@ -1297,9 +1296,8 @@ class AppLocalizationsAr extends AppLocalizations {
   String get thirtyDays => '30 يومًا';
 
   @override
-  String reportLoadFailed(String error) {
-    return 'تعذّر تحميل التقرير: $error';
-  }
+  String get reportLoadFailed =>
+      'تعذّر تحميل التقرير. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
 
   @override
   String noActivityDays(int days) {

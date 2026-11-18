@@ -102,9 +102,10 @@ class _UsageSection extends ConsumerWidget {
             height: 180,
             child: Center(child: CircularProgressIndicator(key: ValueKey('usageLoading'))),
           ),
+          // #841 condition 1 (UI/UX Bureau, 00:46Z): no `$e` reaches the screen. The localized sentence
+          // is whole and "Try again" is the action, so there is no detail line to append.
           error: (e, _) => _ErrorBody(
-            message: l10n.couldNotLoadScreenTime,
-            detail: '$e',
+            message: readErrorText(l10n, e, () => l10n.couldNotLoadScreenTime),
             onRetry: () => ref.invalidate(usageReportProvider(query)),
           ),
           data: (data) => _UsageBody(report: data, requestedDays: days),
@@ -296,7 +297,6 @@ class _BrowsingSection extends ConsumerWidget {
           // owner sentence is not followed by "DioException [bad response]: ...".
           error: (e, _) => _ErrorBody(
             message: readErrorText(l10n, e, () => l10n.couldNotLoadBrowsing),
-            detail: ReadPermissionRequired.isRefusal(e) ? '' : '$e',
             onRetry: () => ref.invalidate(webHistoryProvider(query)),
           ),
           data: (items) {
@@ -419,9 +419,8 @@ class _EmptyBody extends StatelessWidget {
 /// raw exception so a 403/500 is visible, not hidden behind a friendly line.
 class _ErrorBody extends StatelessWidget {
   final String message;
-  final String detail;
   final VoidCallback onRetry;
-  const _ErrorBody({required this.message, required this.detail, required this.onRetry});
+  const _ErrorBody({required this.message, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -430,9 +429,7 @@ class _ErrorBody extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // A refusal passes an empty detail: the message is the whole sentence, and appending a stray
-          // colon to it would look like a truncation bug.
-          Text(detail.isEmpty ? message : '$message: $detail'),
+          Text(message),
           const SizedBox(height: AppSpace.xs),
           TextButton(onPressed: onRetry, child: Text(context.l10n.tryAgain)),
         ],

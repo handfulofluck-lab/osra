@@ -216,7 +216,7 @@ class _MonitoringTogglesSectionState
               padding: EdgeInsets.all(AppSpace.lg),
               child: Center(child: CircularProgressIndicator())),
           error: (e, _) =>
-              Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed('$e'))),
+              Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed)),
           data: (ruleSet) {
             _applyLoaded(ruleSet);
             final draft = _draft!;
@@ -276,7 +276,7 @@ class ConcernsSection extends ConsumerWidget {
               padding: EdgeInsets.all(AppSpace.lg),
               child: Center(child: CircularProgressIndicator())),
           error: (e, _) =>
-              Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed('$e'))),
+              Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed)),
           data: (items) => items.isEmpty
               ? Padding(
                   padding: const EdgeInsets.symmetric(vertical: AppSpace.lg),
@@ -393,7 +393,7 @@ class CallsSmsSection extends ConsumerWidget {
               padding: EdgeInsets.all(AppSpace.lg),
               child: Center(child: CircularProgressIndicator())),
           error: (e, _) =>
-              Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed('$e'))),
+              Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed)),
           data: (items) {
             if (items.isEmpty) {
               return Padding(
@@ -563,7 +563,7 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
               padding: EdgeInsets.all(AppSpace.lg),
               child: Center(child: CircularProgressIndicator())),
           error: (e, _) =>
-              Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed('$e'))),
+              Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed)),
           data: (ruleSet) {
             _applyLoaded(ruleSet);
             final items = _items!;

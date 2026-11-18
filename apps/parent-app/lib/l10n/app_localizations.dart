@@ -1037,8 +1037,8 @@ abstract class AppLocalizations {
   /// No description provided for @rulesLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load rules: {error}'**
-  String rulesLoadFailed(String error);
+  /// **'Couldn\'t load rules. Check your connection and try again.'**
+  String get rulesLoadFailed;
 
   /// No description provided for @noPerAppRules.
   ///
@@ -2237,8 +2237,8 @@ abstract class AppLocalizations {
   /// No description provided for @reportLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load report: {error}'**
-  String reportLoadFailed(String error);
+  /// **'Couldn\'t load report. Check your connection and try again.'**
+  String get reportLoadFailed;
 
   /// No description provided for @noActivityDays.
   ///

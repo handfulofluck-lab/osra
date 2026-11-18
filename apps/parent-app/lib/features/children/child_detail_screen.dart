@@ -618,7 +618,7 @@ class _AppsTab extends ConsumerWidget {
     final now = familyWallClock(ref.watch(clockProvider)(), offset);
     return rules.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text(l10n.rulesLoadFailed('$e'))),
+      error: (e, _) => Center(child: Text(l10n.rulesLoadFailed)),
       data: (ruleSet) {
         if (ruleSet.appRules.isEmpty) return Center(child: Text(l10n.noPerAppRules));
         return ListView(

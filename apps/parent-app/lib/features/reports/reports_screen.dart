@@ -58,7 +58,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       ),
       body: summary.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(readErrorText(l10n, e, () => l10n.reportLoadFailed('$e')))),
+        error: (e, _) => Center(child: Text(readErrorText(l10n, e, () => l10n.reportLoadFailed))),
         data: (data) => data.isEmpty
             ? Center(child: Text(l10n.noActivityDays(_days)))
             : ListView(

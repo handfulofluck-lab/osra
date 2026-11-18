@@ -578,9 +578,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get rulesBehindHint => 'The phone hasn\'t picked this change up yet.';
 
   @override
-  String rulesLoadFailed(String error) {
-    return 'Failed to load rules: $error';
-  }
+  String get rulesLoadFailed =>
+      'Couldn\'t load rules. Check your connection and try again.';
 
   @override
   String get noPerAppRules => 'No per-app rules';
@@ -1254,9 +1253,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get thirtyDays => '30 days';
 
   @override
-  String reportLoadFailed(String error) {
-    return 'Failed to load report: $error';
-  }
+  String get reportLoadFailed =>
+      'Couldn\'t load report. Check your connection and try again.';
 
   @override
   String noActivityDays(int days) {

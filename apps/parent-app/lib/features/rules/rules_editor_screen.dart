@@ -181,7 +181,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
       ),
       body: rules.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(l10n.rulesLoadFailed('$e'))),
+        error: (e, _) => Center(child: Text(l10n.rulesLoadFailed)),
         data: (ruleSet) {
           _applyLoaded(ruleSet);
           return _buildTabs(context, showHeading: !titleInAppBar);

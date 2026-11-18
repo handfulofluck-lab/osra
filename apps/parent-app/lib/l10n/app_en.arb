@@ -276,12 +276,7 @@
   "@commandRefusedNotSupported": {"placeholders": {"command": {"type": "String"}, "device": {"type": "String"}}},
   "commandRefusedInvalidPayload": "The phone rejected this command's settings.",
   "rulesBehindHint": "The phone hasn't picked this change up yet.",
-  "rulesLoadFailed": "Failed to load rules: {error}",
-  "@rulesLoadFailed": {
-    "placeholders": {
-      "error": { "type": "String" }
-    }
-  },
+  "rulesLoadFailed": "Couldn't load rules. Check your connection and try again.",
   "noPerAppRules": "No per-app rules",
   "appActionBlock": "Block",
   "appActionTimeLimit": "Time limit",
@@ -600,12 +595,7 @@
   "screenTimeWebHistoryTooltip": "Screen time & web history",
   "sevenDays": "7 days",
   "thirtyDays": "30 days",
-  "reportLoadFailed": "Failed to load report: {error}",
-  "@reportLoadFailed": {
-    "placeholders": {
-      "error": { "type": "String" }
-    }
-  },
+  "reportLoadFailed": "Couldn't load report. Check your connection and try again.",
   "noActivityDays": "{days, plural, =1{No activity recorded in the last day} other{No activity recorded in the last {days} days}}",
   "@noActivityDays": {
     "placeholders": {
