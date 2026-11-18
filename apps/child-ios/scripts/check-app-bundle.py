@@ -303,23 +303,42 @@ def released_languages():
 
 LANGUAGES = released_languages()
 
+
+def shipped_catalogs():
+    """Every language the package's `Resources` carry (ADR-0042 D1a, #883).
+
+    Two lists, two meanings: the bundle must carry **every** catalog it has, while the app **offers** only the
+    released ones plus the family's `beta` list, which the server sends. A catalog compiled in but not declared is
+    invisible to iOS — it would fall back to English on the one phone that reads it — so both are checked here.
+    """
+    resources = os.path.join(ROOT, "Sources", "FamilyShieldAgent", "Resources")
+    return sorted(name[: -len(".lproj")] for name in os.listdir(resources) if name.endswith(".lproj"))
+
+
+CATALOGS = shipped_catalogs()
+
 # Source folder -> the bundle it builds, for the localization check (#654).
 LOCALIZED_SOURCES = {"App": "app", **EXTENSION_SOURCES}
 
 
 def check_localizations(bundle, name):
-    """#654: the bundle tells iOS it speaks English and Arabic, so iOS hands it the phone's language."""
+    """#654, ADR-0042 D1a: the bundle declares every catalog it carries, so iOS hands it the phone's language.
+
+    The released pair is the minimum a family can be offered; the five `beta` catalogs must still be declared and
+    present, or a tester family gets English on the one phone whose language is that catalog's.
+    """
     info_path = os.path.join(bundle, "Info.plist")
     if not os.path.isfile(info_path):
         fail(f"{name}: no Info.plist")
         return
     declared = read_plist(info_path).get("CFBundleLocalizations") or []
-    missing = [lang for lang in LANGUAGES if lang not in declared]
+    required = sorted(set(LANGUAGES) | set(CATALOGS))
+    missing = [lang for lang in required if lang not in declared]
     if missing:
         fail(f"{name}: CFBundleLocalizations = {declared!r}, missing {missing}")
     else:
-        ok(f"{name}: CFBundleLocalizations has {', '.join(LANGUAGES)}")
-    for lang in LANGUAGES:
+        ok(f"{name}: CFBundleLocalizations has {', '.join(required)}")
+    for lang in required:
         if not os.path.isdir(os.path.join(bundle, f"{lang}.lproj")):
             fail(f"{name}: no {lang}.lproj")
 
