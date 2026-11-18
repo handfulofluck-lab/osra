@@ -64,6 +64,7 @@
   "mfaCodeHelper": "Only if two-step verification is on for your account.",
   "signIn": "Sign in",
   "createAccount": "Create account",
+  "consentRequired": "To create an account, please tick this box.",
   "familyNameLabel": "Family name",
   "yourNameLabel": "Your name",
   "regionLabel": "Region",
@@ -275,12 +276,7 @@
   "@commandRefusedNotSupported": {"placeholders": {"command": {"type": "String"}, "device": {"type": "String"}}},
   "commandRefusedInvalidPayload": "The phone rejected this command's settings.",
   "rulesBehindHint": "The phone hasn't picked this change up yet.",
-  "rulesLoadFailed": "Failed to load rules: {error}",
-  "@rulesLoadFailed": {
-    "placeholders": {
-      "error": { "type": "String" }
-    }
-  },
+  "rulesLoadFailed": "Couldn't load rules. Check your connection and try again.",
   "noPerAppRules": "No per-app rules",
   "appActionBlock": "Block",
   "appActionTimeLimit": "Time limit",
@@ -599,12 +595,7 @@
   "screenTimeWebHistoryTooltip": "Screen time & web history",
   "sevenDays": "7 days",
   "thirtyDays": "30 days",
-  "reportLoadFailed": "Failed to load report: {error}",
-  "@reportLoadFailed": {
-    "placeholders": {
-      "error": { "type": "String" }
-    }
-  },
+  "reportLoadFailed": "Couldn't load report. Check your connection and try again.",
   "noActivityDays": "{days, plural, =1{No activity recorded in the last day} other{No activity recorded in the last {days} days}}",
   "@noActivityDays": {
     "placeholders": {
@@ -613,6 +604,8 @@
   },
   "appUsage": "App usage",
   "totalAverage": "Total {total} min · avg {avg} min/day",
+  "chartLegendRow": "{app}: {minutes} min",
+  "@chartLegendRow": {"placeholders": {"app": {"type": "String"}, "minutes": {"type": "int"}}},
   "@totalAverage": {
     "placeholders": {
       "total": { "type": "int" },
@@ -662,7 +655,7 @@
       "days": { "type": "int" }
     }
   },
-  "couldNotLoadScreenTime": "Could not load screen time",
+  "couldNotLoadScreenTime": "Could not load screen time. Check your connection and try again.",
   "noScreenTimeData": "{days, plural, =1{No screen time data in the last day} other{No screen time data in the last {days} days}}",
   "@noScreenTimeData": {
     "placeholders": {
@@ -693,7 +686,7 @@
   "browsingHistory": "Browsing history",
   "blockedOnly": "Blocked only",
   "showLabel": "Show",
-  "couldNotLoadBrowsing": "Could not load browsing history",
+  "couldNotLoadBrowsing": "Could not load browsing history. Check your connection and try again.",
   "noBlockedSites": "{days, plural, =1{No blocked sites in the last day} other{No blocked sites in the last {days} days}}",
   "@noBlockedSites": {
     "placeholders": {
@@ -808,6 +801,13 @@
   "callsAndTexts": "Phone calls & texts",
   "iosNoCallMonitoring": "iOS does not support phone-call or text monitoring.",
   "noCallsOrTexts": "No phone calls or texts yet",
+  "activityLockRow": "Device locked",
+  "activityLockRowDetail": "{count, plural, =0{The lock screen did not come up} =1{The lock screen came up once} other{The lock screen came up {count} times}}",
+  "@activityLockRowDetail": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
   "unknownNumber": "Unknown number",
   "trustedContacts": "Trusted contacts",
   "trustedContactsDesc": "Numbers here never raise social concerns.",
@@ -852,7 +852,7 @@
   "couldNotLoadChild": "Could not load this child",
   "noDevicesForChild": "No devices registered for this child",
   "deliveryExplanation": "A command is confirmed only when the child device reports back. Delivered means the device collected it; it has not confirmed it ran.",
-  "couldNotLoadCommandHistory": "Could not load command history",
+  "couldNotLoadCommandHistory": "Could not load command history. Check your connection and try again.",
   "createdEvent": "Created {time}",
   "@createdEvent": {
     "placeholders": {
@@ -946,7 +946,7 @@
   "onboardingSignInBody": "This account controls your child's protection. Sign in, or create your family account below.",
   "onboardingWrongPassword": "The email or password is incorrect. Check it and try again.",
   "onboardingInvalidMfaCode": "That authentication code was not accepted. Check the code and try again.",
-  "onboardingNoNetwork": "Cannot reach the server. Check the server address and your internet connection, then try again.",
+  "onboardingNoNetwork": "Couldn't connect to OSRA. Check your internet connection, then try again.",
   "onboardingChildTitle": "Add your child",
   "onboardingChildIntro": "Enter your child's name and birth year. Choose how you gave parental consent — the server requires consent before a child can be added.",
   "onboardingChildNameRequired": "Enter your child's name.",
@@ -1412,5 +1412,16 @@
   "setupMonitoringConsent": "A flagged message excerpt is kept for 90 days and an alert for 12 months. Nothing is read from an app you untick.",
   "setupMonitoringContinue": "Continue",
   "appRuleHiddenOnIphone": "On the iPhone, this app is hidden instead of showing the OSRA screen.",
-  "@appRuleHiddenOnIphone": {"description": "ADR-0037 decision 3: under a blocked app rule when the child has an iPhone, where a blocked app id is hidden rather than shielded. Arabic is a draft pending Karim's review."}
+  "@appRuleHiddenOnIphone": {"description": "ADR-0037 decision 3: under a blocked app rule when the child has an iPhone, where a blocked app id is hidden rather than shielded. Arabic is a draft pending Karim's review."},
+  "webSiteNamesOnlyNote": "Names of sites and online services this phone connected to, not the pages opened. Kept for 90 days.",
+  "webSiteVisits": "{count, plural, =1{Visited once} other{Visited {count} times}}",
+  "@webSiteVisits": {"placeholders": {"count": {"type": "int"}}},
+  "webSiteSeenRange": "{first} to {last}",
+  "@webSiteSeenRange": {"placeholders": {"first": {"type": "String"}, "last": {"type": "String"}}},
+  "webSitesSummary": "{count, plural, =0{No sites visited} =1{1 site visited} other{{count} sites visited}}",
+  "@webSitesSummary": {"placeholders": {"count": {"type": "int"}}},
+  "showPassword": "Show password",
+  "hidePassword": "Hide password",
+  "passwordMinHint": "At least 12 characters.",
+  "familyNameHelper": "Other parents you invite will see this."
 }

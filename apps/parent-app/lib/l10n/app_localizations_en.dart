@@ -189,6 +189,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get createAccount => 'Create account';
 
   @override
+  String get consentRequired => 'To create an account, please tick this box.';
+
+  @override
   String get familyNameLabel => 'Family name';
 
   @override
@@ -575,9 +578,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get rulesBehindHint => 'The phone hasn\'t picked this change up yet.';
 
   @override
-  String rulesLoadFailed(String error) {
-    return 'Failed to load rules: $error';
-  }
+  String get rulesLoadFailed =>
+      'Couldn\'t load rules. Check your connection and try again.';
 
   @override
   String get noPerAppRules => 'No per-app rules';
@@ -1251,9 +1253,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get thirtyDays => '30 days';
 
   @override
-  String reportLoadFailed(String error) {
-    return 'Failed to load report: $error';
-  }
+  String get reportLoadFailed =>
+      'Couldn\'t load report. Check your connection and try again.';
 
   @override
   String noActivityDays(int days) {
@@ -1272,6 +1273,11 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String totalAverage(int total, int avg) {
     return 'Total $total min · avg $avg min/day';
+  }
+
+  @override
+  String chartLegendRow(String app, int minutes) {
+    return '$app: $minutes min';
   }
 
   @override
@@ -1361,7 +1367,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get couldNotLoadScreenTime => 'Could not load screen time';
+  String get couldNotLoadScreenTime =>
+      'Could not load screen time. Check your connection and try again.';
 
   @override
   String noScreenTimeData(int days) {
@@ -1414,7 +1421,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get showLabel => 'Show';
 
   @override
-  String get couldNotLoadBrowsing => 'Could not load browsing history';
+  String get couldNotLoadBrowsing =>
+      'Could not load browsing history. Check your connection and try again.';
 
   @override
   String noBlockedSites(int days) {
@@ -1627,6 +1635,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noCallsOrTexts => 'No phone calls or texts yet';
 
   @override
+  String get activityLockRow => 'Device locked';
+
+  @override
+  String activityLockRowDetail(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'The lock screen came up $count times',
+      one: 'The lock screen came up once',
+      zero: 'The lock screen did not come up',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get unknownNumber => 'Unknown number';
 
   @override
@@ -1709,7 +1732,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'A command is confirmed only when the child device reports back. Delivered means the device collected it; it has not confirmed it ran.';
 
   @override
-  String get couldNotLoadCommandHistory => 'Could not load command history';
+  String get couldNotLoadCommandHistory =>
+      'Could not load command history. Check your connection and try again.';
 
   @override
   String createdEvent(String time) {
@@ -1951,7 +1975,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get onboardingNoNetwork =>
-      'Cannot reach the server. Check the server address and your internet connection, then try again.';
+      'Couldn\'t connect to OSRA. Check your internet connection, then try again.';
 
   @override
   String get onboardingChildTitle => 'Add your child';
@@ -3124,4 +3148,48 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get appRuleHiddenOnIphone =>
       'On the iPhone, this app is hidden instead of showing the OSRA screen.';
+
+  @override
+  String get webSiteNamesOnlyNote =>
+      'Names of sites and online services this phone connected to, not the pages opened. Kept for 90 days.';
+
+  @override
+  String webSiteVisits(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Visited $count times',
+      one: 'Visited once',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String webSiteSeenRange(String first, String last) {
+    return '$first to $last';
+  }
+
+  @override
+  String webSitesSummary(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count sites visited',
+      one: '1 site visited',
+      zero: 'No sites visited',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get showPassword => 'Show password';
+
+  @override
+  String get hidePassword => 'Hide password';
+
+  @override
+  String get passwordMinHint => 'At least 12 characters.';
+
+  @override
+  String get familyNameHelper => 'Other parents you invite will see this.';
 }

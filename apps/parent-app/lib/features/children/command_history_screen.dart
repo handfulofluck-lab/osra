@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../api/permission_errors.dart';
 import '../../l10n/l10n.dart';
 import 'command_messages.dart';
 import '../../providers/family_provider.dart';
@@ -43,8 +44,7 @@ class CommandHistoryScreen extends ConsumerWidget {
       body: overview.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => _ErrorState(
-          title: l10n.couldNotLoadChild,
-          detail: '$e',
+          title: readErrorText(l10n, e, () => l10n.couldNotLoadChild),
           onRetry: () => ref.invalidate(familyProvider),
         ),
         data: (data) {
@@ -58,7 +58,16 @@ class CommandHistoryScreen extends ConsumerWidget {
               ),
             );
           }
-          return ListView(
+          return RefreshIndicator(
+            // #876: this list had no manual refresh either; the Retry button only existed on the error state.
+            onRefresh: () async {
+              ref.invalidate(familyProvider);
+              for (final device in devices) {
+                ref.invalidate(deviceCommandHistoryProvider(device.id));
+              }
+            },
+            child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(16),
             children: [
               Text(
@@ -71,6 +80,7 @@ class CommandHistoryScreen extends ConsumerWidget {
                 const SizedBox(height: 12),
               ],
             ],
+            ),
           );
         },
       ),
@@ -128,11 +138,9 @@ class _DeviceCommandSection extends ConsumerWidget {
                     style:
                         TextStyle(color: Theme.of(context).colorScheme.error),
                   ),
-                  const SizedBox(height: 2),
-                  Text('$e',
-                      style: Theme.of(context).textTheme.bodySmall,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis),
+                  // Ahmed's N1 on #841 (6967168641): this card still printed the raw exception under the
+                  // sentence, which the outer error state stopped doing in #841. The sentence and the Retry
+                  // button below are the whole message; there is nothing here a parent can act on.
                   TextButton.icon(
                     onPressed: () =>
                         ref.invalidate(deviceCommandHistoryProvider(device.id)),
@@ -207,13 +215,12 @@ class _CommandTile extends StatelessWidget {
 
 class _ErrorState extends StatelessWidget {
   final String title;
-  final String detail;
   final VoidCallback onRetry;
-  const _ErrorState(
-      {required this.title, required this.detail, required this.onRetry});
+  const _ErrorState({required this.title, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -226,7 +233,7 @@ class _ErrorState extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleMedium,
                 textAlign: TextAlign.center),
             const SizedBox(height: 4),
-            Text(detail,
+            Text(l10n.tryAgain,
                 style: Theme.of(context).textTheme.bodySmall,
                 textAlign: TextAlign.center,
                 maxLines: 4,

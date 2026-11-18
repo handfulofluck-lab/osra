@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:familyshield_parent/api/models.dart';
+import 'package:familyshield_parent/core/ltr_isolate.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/map/family_map_screen.dart';
@@ -125,5 +126,31 @@ void main() {
     expect(find.text('\u2066+15\u2069'), findsOneWidget);
     expect(find.text('\u2066+30\u2069'), findsOneWidget);
     expect(find.text('\u2066+60\u2069'), findsOneWidget);
+  });
+
+  group('ltrIsolateHost (#841 condition 2)', () {
+    test('stays isolated, and puts one break opportunity after each dot', () {
+      final value = ltrIsolateHost('a-very-long-learning-platform.example.co.uk');
+
+      expect(value.startsWith('\u2066'), isTrue, reason: 'first-strong isolate opener is still on the outside');
+      expect(value.endsWith('\u2069'), isTrue, reason: 'isolate closer is still the last character');
+      expect('\u200B'.allMatches(value).length, 3, reason: 'one per dot: .example .co .uk are three');
+      // Every zero-width space sits directly after a dot, never before one and never inside a label,
+      // so the longest unbreakable run is a single label ("example"), not the whole host.
+      for (var i = 0; i < value.length; i++) {
+        if (value[i] != '\u200B') continue;
+        expect(value[i - 1], '.');
+      }
+      expect(value.contains('…'), isFalse, reason: 'the host is never truncated');
+      // Nothing else about the name changes: stripping the markers gives the host back unchanged.
+      expect(value.replaceAll('\u200B', '').replaceAll('\u2066', '').replaceAll('\u2069', ''),
+          'a-very-long-learning-platform.example.co.uk');
+    });
+
+    testWidgets('an Arabic history row draws the host left to right, breakable at its dots', (tester) async {
+      // The rendering half lives in usage_history_test.dart, where the two report endpoints have fixtures;
+      // here the helper itself is the subject, and it is the one thing every row calls.
+      expect(ltrIsolateHost('a.example.co.uk'), '\u2066a.\u200Bexample.\u200Bco.\u200Buk\u2069');
+    });
   });
 }

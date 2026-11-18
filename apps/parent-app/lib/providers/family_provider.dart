@@ -203,6 +203,11 @@ abstract class RealtimeEffects {
   /// Issue #253: an open consent screen watches `consentStatusProvider(childId)`, which nothing else
   /// refreshes. Revocation is exactly the moment that screen must stop saying "consented".
   void invalidateConsent(String childId);
+
+  /// #876: the delivery list on a child page. The `rules_applied` frame means a command just completed, so
+  /// the list it belongs to is stale — refreshing it here is what turns "pending" into "delivered" without
+  /// adding a poll loop of its own.
+  void invalidateCommandHistory();
   void updateLiveActivity(LiveActivity activity);
 }
 
@@ -227,6 +232,9 @@ class RiverpodRealtimeEffects implements RealtimeEffects {
 
   @override
   void invalidateConsent(String childId) => _ref.invalidate(consentStatusProvider(childId));
+
+  @override
+  void invalidateCommandHistory() => _ref.invalidate(deviceCommandHistoryProvider);
 
   @override
   void updateLiveActivity(LiveActivity activity) =>
@@ -264,6 +272,13 @@ void applyRealtimeMessage(RealtimeEffects effects, Map<String, dynamic> msg) {
         final activity = LiveActivity.fromJson(Map<String, dynamic>.from(payload));
         effects.updateLiveActivity(activity);
       }
+    case 'rules_applied':
+      // #865: the family's lowest applied rules version reached what the server issued, so the
+      // "hasn't picked this change up yet" line (which reads that number) is stale from here on.
+      // #876: the same frame says the rules command that carried the change has landed, so the delivery
+      // list is stale too. Two indicators, one frame, no extra polling.
+      effects.invalidateFamily();
+      effects.invalidateCommandHistory();
   }
 }
 

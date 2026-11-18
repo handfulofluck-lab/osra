@@ -9,6 +9,8 @@ type FamilyScopedResource = {
   childId?: string;
   familyId?: string;
   child?: { familyId: string } | null;
+  /** Device rows only: null while the device is pending (#790). */
+  pairedAt?: Date | null;
 };
 
 interface RequireFamilyOptions {
@@ -25,6 +27,17 @@ interface RequireFamilyOptions {
    * child (ADR-0002, ADR-0003). Parent tokens stay family-scoped.
    */
   deviceAccess?: "family" | "own-child";
+  /**
+   * `model: "device"` only. Issue #790: a **pending** device (`pairedAt` null — it has never made a
+   * request this API accepted) answers 404 to a **parent** token, as if the row did not exist. The
+   * family's device list and count already exclude it, so a parent has no id to follow; this keeps the
+   * row out of reach for one that is guessed or held from before a re-pair.
+   *
+   * A device token is untouched: the pending phone must still reach its own routes, because that
+   * request is how it stops being pending (`middleware/pairedAt.ts`). Do not add this to the
+   * agent-write routes (`telemetry`, `commands`, `apps`, `push-token`) for that reason.
+   */
+  hidePending?: boolean;
 }
 
 const loaders: Record<
@@ -224,7 +237,7 @@ export async function guardianPermissions(req: FastifyRequest): Promise<string[]
  * For parent tokens the family is read from the current Parent row (and the session epoch is
  * checked), so a token minted for a family the parent has since left cannot be reused.
  */
-export function requireFamily({ param = "id", source = "params", model, deviceAccess = "family" }: RequireFamilyOptions) {
+export function requireFamily({ param = "id", source = "params", model, deviceAccess = "family", hidePending = false }: RequireFamilyOptions) {
   return async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
     let user = req.user as { sub?: string; jti?: string; iat?: number; familyId?: string; role?: string; purpose?: string; childId?: string } | undefined;
     if (!user?.familyId) {
@@ -292,6 +305,18 @@ export function requireFamily({ param = "id", source = "params", model, deviceAc
         await reply.code(403).send({ error: "cross_child_forbidden" });
         return;
       }
+    }
+    // #790: the row is in the caller's family, but a parent has never seen it — a pending device is
+    // invisible until it proves itself, so for a parent token it answers as one that does not exist.
+    // After the family check on purpose: a row outside the family is 403 whatever its state, so this
+    // option cannot turn a cross-family probe into a 404 oracle.
+    //
+    // `=== null`, not `== null`: only a row the server wrote as pending is hidden. The loader selects
+    // the whole row, so the column is always there in production; a caller that projected it away would
+    // get `undefined`, and reading that as pending would hide a real device from its parent.
+    if (hidePending && model === "device" && user.role !== "device" && resource.pairedAt === null) {
+      await reply.code(404).send({ error: "not_found" });
+      return;
     }
     (req as unknown as Record<string, unknown>)[model] = resource;
   };
