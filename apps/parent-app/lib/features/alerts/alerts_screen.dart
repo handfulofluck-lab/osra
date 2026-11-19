@@ -140,13 +140,16 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
               // family-wide, so it carries no line; the Block path already refetches the family.
               RulesBehindBanner(childId: alert.childId),
               Builder(builder: (_) {
-                final localizedBody = RestartAlertText.tryFormat(
-                      alert,
-                      l10n: l10n,
-                      localeName: dialogContext.localeName,
-                      now: widget.nowProvider?.call(),
-                    ) ??
-                    alert.body;
+                final isEnglish = dialogContext.localeName.startsWith('en');
+                final localizedBody = alert.category == 'device_restarted'
+                    ? (RestartAlertText.tryFormat(
+                          alert,
+                          l10n: l10n,
+                          localeName: dialogContext.localeName,
+                          now: widget.nowProvider?.call(),
+                        ) ??
+                        (isEnglish && alert.body.isNotEmpty ? alert.body : l10n.alertPushBodyGeneric))
+                    : alert.body;
                 if (localizedBody.isEmpty) return const SizedBox.shrink();
                 return Text(localizedBody);
               }),

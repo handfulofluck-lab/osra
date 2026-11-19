@@ -215,16 +215,37 @@ void main() {
       expect(visibleEn.body, formattedEn);
       expect(visibleAr.body, formattedAr);
 
-      // Non-curated IANA zone uses server-provided utcOffsetMinutes (e.g. Asia/Kathmandu UTC+5:45 = 345m).
-      final nonCurated = restartAlert(
+      // Valid IANA zone outside curated catalog spanning a DST clock change (Codex #930 review):
+      // Europe/Vilnius ends summer time (+03:00 -> +02:00) at 2026-10-25T01:00Z.
+      // Boot at 2026-10-24T21:15Z is 2026-10-25 00:15 (+03:00); read at 2026-10-25T21:30Z is 2026-10-25 23:30 (+02:00).
+      // Applying the boot's +03:00 offset to `now` would push the read to 2026-10-26 00:30 and wrongly say "yesterday".
+      final dstCrossZone = restartAlert(
+        bootedAtLocal: DateTime.utc(2026, 10, 24, 21, 15),
+        gapMinutes: 35,
+        severity: 'warning',
+        timeZone: 'Europe/Vilnius',
+        utcOffsetMinutes: 180,
+      );
+      final vilniusRead = DateTime.utc(2026, 10, 25, 21, 30);
+      expect(
+        RestartAlertText.tryFormat(dstCrossZone, l10n: en, localeName: 'en', now: vilniusRead),
+        '${ltrIsolate('Galaxy Z Flip4')} restarted at ${ltrIsolate('00:15')} and was back after 35 minutes.',
+      );
+      expect(
+        RestartAlertText.tryFormat(dstCrossZone, l10n: ar, localeName: 'ar', now: vilniusRead),
+        'أُعيد تشغيل ${ltrIsolate('Galaxy Z Flip4')} الساعة ${ltrIsolate('00:15')}، وعاد إلى العمل بعد 35 دقيقة.',
+      );
+
+      // Unknown zone name still falls back cleanly to server-provided utcOffsetMinutes.
+      final offsetFallback = restartAlert(
         bootedAtLocal: crossMidnightBoot,
         gapMinutes: 35,
         severity: 'warning',
-        timeZone: 'Asia/Kathmandu',
+        timeZone: 'Custom/Plus0545',
         utcOffsetMinutes: 345,
       );
       expect(
-        RestartAlertText.tryFormat(nonCurated, l10n: en, localeName: 'en', now: viewAt),
+        RestartAlertText.tryFormat(offsetFallback, l10n: en, localeName: 'en', now: viewAt),
         '${ltrIsolate('Galaxy Z Flip4')} restarted at ${ltrIsolate('01:15')} and was back after 35 minutes.',
       );
     });
@@ -344,6 +365,31 @@ void main() {
         find.text('أُعيد تشغيل ${ltrIsolate('Galaxy Z Flip4')} أمس الساعة ${ltrIsolate('23:30')}، وعاد إلى العمل بعد 40 دقيقة.'),
         findsOneWidget,
       );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('AlertsScreen Arabic dialog uses localized Bureau fallback on unkeyed legacy restart, never English body (#889)', (tester) async {
+      final legacyUnkeyed = Alert(
+        id: 'legacy-restart-1',
+        childId: 'child-1',
+        severity: 'warning',
+        category: 'device_restarted',
+        title: 'Device restarted',
+        body: 'Pixel 7a restarted at 14:32 and was back after 40 minutes.',
+        createdAt: DateTime.utc(2026, 11, 19, 10, 32),
+        metadata: const {
+          'type': 'device_restarted',
+          'bootedAt': '2026-11-19T10:32:00.000Z',
+          'gapMinutes': 40,
+        },
+      );
+
+      await pumpAlerts(tester, const Locale('ar'), [legacyUnkeyed]);
+      await tester.tap(find.byType(AlertTile));
+      await tester.pumpAndSettle();
+
+      expect(find.text(ar.alertPushBodyGeneric), findsOneWidget);
+      expect(find.textContaining('Pixel 7a restarted'), findsNothing);
       expect(tester.takeException(), isNull);
     });
   });

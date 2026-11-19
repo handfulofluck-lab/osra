@@ -1,4 +1,6 @@
 import 'package:intl/intl.dart';
+import 'package:timezone/data/latest.dart' as tz_data;
+import 'package:timezone/timezone.dart' as tz;
 
 import '../api/models.dart';
 import '../core/digits.dart';
@@ -81,7 +83,26 @@ class RestartAlertText {
   }) =>
       tryParse(alert)?.format(l10n, localeName: localeName, now: now);
 
-  DateTime _inFamilyZone(DateTime instant, TimezoneOption? knownTz) {
+  static bool _tzInitialized = false;
+
+  static tz.Location? _resolveLocation(String? timeZone) {
+    if (timeZone == null || timeZone.isEmpty) return null;
+    if (!_tzInitialized) {
+      tz_data.initializeTimeZones();
+      _tzInitialized = true;
+    }
+    try {
+      return tz.getLocation(timeZone);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  DateTime _inFamilyZone(DateTime instant, tz.Location? ianaLocation, TimezoneOption? knownTz) {
+    if (ianaLocation != null) {
+      final zoned = tz.TZDateTime.from(instant.toUtc(), ianaLocation);
+      return DateTime.utc(zoned.year, zoned.month, zoned.day, zoned.hour, zoned.minute, zoned.second);
+    }
     if (knownTz != null) {
       return instant.toUtc().add(Duration(minutes: knownTz.effectiveOffsetMinutes(instant)));
     }
@@ -92,9 +113,10 @@ class RestartAlertText {
   }
 
   String format(AppLocalizations l10n, {required String localeName, DateTime? now}) {
-    final knownTz = timeZone != null ? findKnownTimezone(timeZone!) : null;
-    final familyBoot = _inFamilyZone(bootedAt, knownTz);
-    final familyNow = _inFamilyZone(now ?? DateTime.now(), knownTz);
+    final ianaLocation = _resolveLocation(timeZone);
+    final knownTz = (ianaLocation == null && timeZone != null) ? findKnownTimezone(timeZone!) : null;
+    final familyBoot = _inFamilyZone(bootedAt, ianaLocation, knownTz);
+    final familyNow = _inFamilyZone(now ?? DateTime.now(), ianaLocation, knownTz);
     // Pure Gregorian day step in UTC avoids any local phone DST anomaly on yesterday comparison.
     final yesterday = DateTime.utc(familyNow.year, familyNow.month, familyNow.day - 1);
 
