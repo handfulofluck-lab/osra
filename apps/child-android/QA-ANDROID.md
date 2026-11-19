@@ -118,3 +118,15 @@ Total: 48 JVM tests.
   next flush cycle).
 - Unlock counter is process-local (lost on process death); watermark/anchor logic only guards
   Room-persisted events.
+
+## Web filter recovery
+
+A paired child agent with active consent records a loss incident if its running web filter is
+revoked. The agent opens the recovery screen from the existing app-blocking surface and offers
+the system reconnect flow. The recovery screen leaves device unlock, calls, emergency access and
+active parent lock and ring controls available. A successful tunnel start clears the incident.
+Consent withdrawal and unpairing also clear the incident.
+
+Check the VPN dialog policy, incident lifecycle and parent app-rule overrides with the Play and
+Full JVM suites. The handset row covers authorized setup and reconnect, the parent notification,
+and emergency access. A passing JVM suite leaves that handset row open.

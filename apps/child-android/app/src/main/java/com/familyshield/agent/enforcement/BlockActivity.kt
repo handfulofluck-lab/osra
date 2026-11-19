@@ -9,6 +9,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Bundle
+import android.net.VpnService
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
@@ -45,6 +47,8 @@ import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.DeviceUnlinker
 import com.familyshield.agent.network.dto.AlertDto
+import com.familyshield.agent.vpn.FilterVpnService
+import com.familyshield.agent.vpn.VpnState
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -88,6 +92,27 @@ class BlockActivity : ComponentActivity() {
         },
     )
 
+    private val vpnConsent = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        VpnState.endOwnConsent()
+        if (result.resultCode == RESULT_OK && VpnState.isFilterLost(this, settings, consent)) {
+            FilterVpnService.start(this)
+        }
+    }
+
+    private fun reconnectFilter() {
+        if (!VpnState.isFilterLost(this, settings, consent)) {
+            finish()
+            return
+        }
+        val prompt = VpnService.prepare(this)
+        if (prompt == null) {
+            FilterVpnService.start(this)
+        } else {
+            VpnState.beginOwnConsent()
+            runCatching { vpnConsent.launch(prompt) }.onFailure { VpnState.endOwnConsent() }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         @Suppress("DEPRECATION")
@@ -119,8 +144,10 @@ class BlockActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF131318)) {
                     // Keyed on the package so the "Request sent" state belongs to one app, not to the
                     // instance: a second block starts with a fresh button.
-                    key(request.packageId) {
-                        BlockScreen(
+                    key(request.packageId, request.reason) {
+                        if (request.reason == REASON_FILTER_LOST) {
+                            FilterRecoveryScreen(onReconnect = ::reconnectFilter)
+                        } else BlockScreen(
                             appLabel = appLabel,
                             timeLimit = request.timeLimit,
                             window = request.window,
@@ -142,8 +169,11 @@ class BlockActivity : ComponentActivity() {
      */
     private val unlinkedReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action != DeviceUnlinker.ACTION_UNLINKED) return
-            if (!settings.isPairedSync()) finish()
+            when (intent?.action) {
+                DeviceUnlinker.ACTION_UNLINKED -> if (!settings.isPairedSync()) finish()
+                VpnState.ACTION_FILTER_LOSS_CHANGED ->
+                    if (request.reason == REASON_FILTER_LOST) closeIfNoLongerBlocked()
+            }
         }
     }
 
@@ -152,7 +182,7 @@ class BlockActivity : ComponentActivity() {
         ContextCompat.registerReceiver(
             this,
             unlinkedReceiver,
-            IntentFilter(DeviceUnlinker.ACTION_UNLINKED),
+            IntentFilter(DeviceUnlinker.ACTION_UNLINKED).apply { addAction(VpnState.ACTION_FILTER_LOSS_CHANGED) },
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
     }
@@ -186,6 +216,10 @@ class BlockActivity : ComponentActivity() {
      * the bug this closes.
      */
     private fun closeIfNoLongerBlocked() {
+        if (request.reason == REASON_FILTER_LOST) {
+            if (!VpnState.isFilterLost(this, settings, consent)) finish()
+            return
+        }
         val pkg = session.request.packageId
         val decision = rules.verdict(pkg).decision
         if (BlockRecheckPolicy.decide(pkg, decision) == BlockRecheckPolicy.Action.FINISH) {
@@ -205,6 +239,7 @@ class BlockActivity : ComponentActivity() {
         // onCreate — so a second block of the same or another app never incremented the parent's row.
         // `session.apply` above has already replaced `request`, so this reports the block in front.
         reportBlockedAttempt(request.packageId, request.reason)
+        if (request.reason == REASON_FILTER_LOST) closeIfNoLongerBlocked()
     }
 
     private fun applyIntent(intent: Intent) {
@@ -238,7 +273,8 @@ class BlockActivity : ComponentActivity() {
      * pushes again, so a child tapping a blocked app ten times reads "10 attempts" and one notification.
      */
     private fun reportBlockedAttempt(pkg: String, reason: String) {
-        if (consent.isPaused()) return // before AttemptCounter.next: the count is persisted, not just posted
+        // Recovery has one incident alert from the VPN service, independent of app attempts.
+        if (reason == REASON_FILTER_LOST || consent.isPaused()) return
         val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString()
         val attempts = AttemptCounter.next(this, "app", pkg, day)
         scope.launch {
@@ -299,6 +335,7 @@ class BlockActivity : ComponentActivity() {
 
         /** Reason value: the app's daily time limit is used up. */
         const val REASON_TIME_LIMIT: String = "time_limit"
+        const val REASON_FILTER_LOST: String = "filter_lost"
     }
 }
 
@@ -314,6 +351,25 @@ private fun windowFrom(intent: Intent): WindowReason? {
     val ends = intent.getStringExtra(BlockActivity.EXTRA_WINDOW_ENDS) ?: return null
     val parsed = runCatching { WindowKind.valueOf(kind) }.getOrNull() ?: return null
     return WindowReason(parsed, intent.getStringExtra(BlockActivity.EXTRA_WINDOW_NAME), ends)
+}
+
+@Composable
+private fun FilterRecoveryScreen(onReconnect: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(32.dp),
+        verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = stringResource(R.string.setup_web_filter_disconnected),
+            style = MaterialTheme.typography.headlineMedium,
+            color = Color.White,
+            textAlign = TextAlign.Center,
+        )
+        Button(onClick = onReconnect) {
+            Text(stringResource(R.string.setup_web_filter_reconnect))
+        }
+    }
 }
 
 @Composable

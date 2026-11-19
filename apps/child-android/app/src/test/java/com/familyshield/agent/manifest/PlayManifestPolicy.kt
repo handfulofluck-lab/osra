@@ -86,6 +86,7 @@ object PlayManifestPolicy {
         ),
         RequiredQuery("com.android.phone.EmergencyDialer.DIAL", null, "#83 emergency-dialer exemption — S1 depends on it"),
         RequiredQuery("android.intent.action.DIAL", null, "#83 emergency-dialer exemption — S1 depends on it"),
+        RequiredQuery("android.net.VpnService", null, "VPN provider classification also covers apps without launcher activities"),
     )
 
     const val MONITORING_FLAG = "isMonitoringTool"

@@ -53,6 +53,7 @@ import com.familyshield.agent.security.TamperScreenPolicy
 import com.familyshield.agent.security.TamperState
 import com.familyshield.agent.social.SocialCapture
 import com.familyshield.agent.telemetry.UsageReporter
+import com.familyshield.agent.vpn.VpnState
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -205,6 +206,14 @@ class AccessibilityMonitorService : AccessibilityService() {
         override fun onReceive(context: android.content.Context?, intent: Intent?) = packageFacts.refresh()
     }
 
+    private val filterLossReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: Intent?) {
+            if (intent?.action == VpnState.ACTION_FILTER_LOSS_CHANGED &&
+                VpnState.isFilterLost(this@AccessibilityMonitorService, settings, consentState)
+            ) enforceFilterRecovery(windowSnapshot().activePackage)
+        }
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         // Issue #231 review: this callback is the system telling us it has bound the service, so it
@@ -223,6 +232,15 @@ class AccessibilityMonitorService : AccessibilityService() {
             addDataScheme("package")
         }
         runCatching { registerReceiver(packageChangeReceiver, filter) }
+        ContextCompat.registerReceiver(
+            this,
+            filterLossReceiver,
+            IntentFilter(VpnState.ACTION_FILTER_LOSS_CHANGED),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        if (VpnState.isFilterLost(this, settings, consentState)) {
+            enforceFilterRecovery(windowSnapshot().activePackage)
+        }
         calls.onConnected()
         media.onConnected()
         rules.addRulesChangedListener(rulesChanged)
@@ -277,6 +295,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         // service is gone — the child turning accessibility off is exactly when that window exists.
         cancelDeferredRaise()
         runCatching { unregisterReceiver(packageChangeReceiver) }
+        runCatching { unregisterReceiver(filterLossReceiver) }
         super.onDestroy()
     }
 
@@ -349,6 +368,10 @@ class AccessibilityMonitorService : AccessibilityService() {
             cancelDeferredRaise()
             return
         }
+        if (VpnState.isFilterLost(this, settings, consentState) && enforceFilterRecovery(foreground)) {
+            cancelDeferredRaise()
+            return
+        }
         // Usage and social capture belong to the app actually in front; our own overlay and the
         // unresolved framework package are neither.
         if (foreground != null && foreground != packageName) {
@@ -369,6 +392,19 @@ class AccessibilityMonitorService : AccessibilityService() {
         // Issue #460: the launcher may be the Home we asked for, so the deferred block screen goes on
         // top of it. Called after the block step, which may have deferred a new raise this event.
         advanceDeferredRaise(foreground ?: eventPkg)
+    }
+
+    private fun enforceFilterRecovery(foreground: String?): Boolean {
+        if (foreground.isNullOrBlank() || foreground == packageName ||
+            EssentialPackages.isEssential(foreground, packageFacts) ||
+            foreground == TamperScreenPolicy.VPN_DIALOG_PACKAGE && VpnState.hasPendingOwnConsent()
+        ) return false
+        // Leave the existing lock, ring and device unlock surfaces in control.
+        if (LockState.isActive(this) || Ringer.isRinging ||
+            getSystemService(android.app.KeyguardManager::class.java)?.isKeyguardLocked == true
+        ) return false
+        blocker.showFilterRecovery(foreground)
+        return true
     }
 
     /**
@@ -802,6 +838,8 @@ class AccessibilityMonitorService : AccessibilityService() {
             agentServiceDescription = getString(com.familyshield.agent.R.string.accessibility_description),
             ourLocationActive = permissionWindowLocationActive ?: locationGrantedNow(),
             ourSpecialAccess = specialAccessLatch ?: specialAccessHeld(),
+            filterProtectionActive = !consentState.isPaused() && VpnState.isEnabled(this),
+            ownVpnConsentPending = VpnState.hasPendingOwnConsent(),
         )
         if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) return // no filter to bypass yet
         if (!TamperScreenPolicy.shouldGuard(screen, pinStore.isConfigured(), TamperState.graceUntil(this), now)) return
@@ -886,6 +924,8 @@ class AccessibilityMonitorService : AccessibilityService() {
                             agentServiceDescription = getString(com.familyshield.agent.R.string.accessibility_description),
                             ourLocationActive = permissionWindowLocationActive ?: locationGrantedNow(),
                             ourSpecialAccess = specialAccessLatch ?: specialAccessHeld(),
+                            filterProtectionActive = !consentState.isPaused() && VpnState.isEnabled(this),
+                            ownVpnConsentPending = VpnState.hasPendingOwnConsent(),
                         )
                         if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) {
                             screen = TamperScreen.NONE
