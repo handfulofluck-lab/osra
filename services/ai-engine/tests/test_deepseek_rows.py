@@ -303,3 +303,19 @@ def test_a_run_that_crosses_the_peak_boundary_bills_both_periods(tmp_path):
     assert spend["off_peak"]["tokens_in"] == 1_000_000
     # 1M at the peak rate plus 1M at the off-peak rate, not 2M at either.
     assert summary["cost"]["usd_upper_bound"] == pytest.approx((0.30 + 0.15), abs=1e-4)
+
+def test_a_malformed_singular_label_or_category_is_refused(tmp_path):
+    """Hydrogen's #923 finding: the guard existed but nothing pinned the shapes it exists for. A `label`
+    or `category` that is present and is not a non-blank string cannot be read as "no labels" — that is
+    the one shape `--cleared-by` allows, so anything broken must be refused instead of cleared."""
+    for row in (
+        {"id": "1", "text": "x", "label": 5},
+        {"id": "1", "text": "x", "label": "   "},
+        {"id": "1", "text": "x", "category": []},
+        {"id": "1", "text": "x", "category": ""},
+    ):
+        refused = policy_refusal(row, cleared_by="READY")
+        assert refused is not None and refused.startswith("malformed"), f"{row} was permitted: {refused}"
+    # And the well-formed cases still behave: a real singular label is checked, an absent one is cleared.
+    assert "outside the allowed set" in policy_refusal({"id": "1", "text": "x", "label": "self_harm"}, cleared_by="READY")
+    assert policy_refusal({"id": "1", "text": "x"}, cleared_by="READY") is None
