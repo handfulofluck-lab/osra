@@ -28,7 +28,9 @@ import '../../push/sos_fix_text.dart';
 /// Alerts feed: grouped by day, severity-colored, swipe-to-acknowledge with
 /// optimistic removal, detail dialog per category, and paged "load more".
 class AlertsScreen extends ConsumerStatefulWidget {
-  const AlertsScreen({super.key});
+  const AlertsScreen({super.key, @visibleForTesting this.nowProvider});
+
+  final DateTime Function()? nowProvider;
 
   @override
   ConsumerState<AlertsScreen> createState() => _AlertsScreenState();
@@ -142,6 +144,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                       alert,
                       l10n: l10n,
                       localeName: dialogContext.localeName,
+                      now: widget.nowProvider?.call(),
                     ) ??
                     alert.body;
                 if (localizedBody.isEmpty) return const SizedBox.shrink();

@@ -40,6 +40,8 @@ void main() {
     required int gapMinutes,
     String model = 'Galaxy Z Flip4',
     String severity = 'info',
+    String? timeZone,
+    int? utcOffsetMinutes,
   }) =>
       Alert(
         id: 'alert-restart-1',
@@ -57,6 +59,8 @@ void main() {
             'model': model,
             'bootedAt': bootedAtLocal.toUtc().toIso8601String(),
             'gapMinutes': gapMinutes,
+            if (timeZone != null) 'timeZone': timeZone,
+            if (utcOffsetMinutes != null) 'utcOffsetMinutes': utcOffsetMinutes,
           },
         },
       );
@@ -148,11 +152,91 @@ void main() {
       expect(fallbackAr.title, ar.alertDeviceRestartedTitle);
       expect(fallbackAr.body, ar.alertPushBodyGeneric);
       expect(fallbackAr.body, isNot(contains('SERVER ENGLISH')));
+
+      // Empty model or un-keyed metadata must never synthesize English 'A phone' on Arabic UI (#889 / Antigravity).
+      final emptyModel = restartAlert(
+        bootedAtLocal: DateTime.utc(2026, 11, 19, 10, 32),
+        gapMinutes: 40,
+        model: '   ',
+        severity: 'warning',
+        timeZone: 'Asia/Dubai',
+      );
+      final unkeyed = Alert(
+        id: 'legacy-867',
+        childId: 'child-1',
+        severity: 'warning',
+        category: 'device_restarted',
+        title: 'Device restarted',
+        body: 'A phone restarted at 14:32 and was back after 40 minutes.',
+        metadata: {
+          'type': 'device_restarted',
+          'bootedAt': '2026-11-19T10:32:00.000Z',
+          'gapMinutes': 40,
+        },
+      );
+      expect(RestartAlertText.tryParse(emptyModel), isNull);
+      expect(RestartAlertText.tryParse(unkeyed), isNull);
+
+      final emptyVisibleAr = VisibleAlert.from(emptyModel, l10n: ar, isEnglish: false, now: now);
+      final unkeyedVisibleAr = VisibleAlert.from(unkeyed, l10n: ar, isEnglish: false, now: now);
+      expect(emptyVisibleAr.body, ar.alertPushBodyGeneric);
+      expect(emptyVisibleAr.body, isNot(contains('A phone')));
+      expect(unkeyedVisibleAr.body, ar.alertPushBodyGeneric);
+      expect(unkeyedVisibleAr.body, isNot(contains('A phone')));
+    });
+
+    test('family timezone governs clock and yesterday/today across midnight even when phone clock differs (#889)', () {
+      // Codex scenario: Dubai family (UTC+4). Boot at 19:30 UTC (23:30 Dubai on 18 Nov),
+      // viewed at 21:30 UTC (01:30 Dubai on 19 Nov). In UTC both instants share 18 Nov ("today at 19:30");
+      // in Dubai the boot happened "yesterday at 23:30".
+      final crossMidnightBoot = DateTime.utc(2026, 11, 18, 19, 30);
+      final viewAt = DateTime.utc(2026, 11, 18, 21, 30);
+      final alert = restartAlert(
+        bootedAtLocal: crossMidnightBoot,
+        gapMinutes: 40,
+        severity: 'warning',
+        timeZone: 'Asia/Dubai',
+        utcOffsetMinutes: 240,
+      );
+
+      final formattedEn = RestartAlertText.tryFormat(alert, l10n: en, localeName: 'en', now: viewAt);
+      final formattedAr = RestartAlertText.tryFormat(alert, l10n: ar, localeName: 'ar', now: viewAt);
+      expect(
+        formattedEn,
+        '${ltrIsolate('Galaxy Z Flip4')} restarted yesterday at ${ltrIsolate('23:30')} and was back after 40 minutes.',
+      );
+      expect(
+        formattedAr,
+        'أُعيد تشغيل ${ltrIsolate('Galaxy Z Flip4')} أمس الساعة ${ltrIsolate('23:30')}، وعاد إلى العمل بعد 40 دقيقة.',
+      );
+
+      final visibleEn = VisibleAlert.from(alert, l10n: en, isEnglish: true, now: viewAt);
+      final visibleAr = VisibleAlert.from(alert, l10n: ar, isEnglish: false, now: viewAt);
+      expect(visibleEn.body, formattedEn);
+      expect(visibleAr.body, formattedAr);
+
+      // Non-curated IANA zone uses server-provided utcOffsetMinutes (e.g. Asia/Kathmandu UTC+5:45 = 345m).
+      final nonCurated = restartAlert(
+        bootedAtLocal: crossMidnightBoot,
+        gapMinutes: 35,
+        severity: 'warning',
+        timeZone: 'Asia/Kathmandu',
+        utcOffsetMinutes: 345,
+      );
+      expect(
+        RestartAlertText.tryFormat(nonCurated, l10n: en, localeName: 'en', now: viewAt),
+        '${ltrIsolate('Galaxy Z Flip4')} restarted at ${ltrIsolate('01:15')} and was back after 35 minutes.',
+      );
     });
   });
 
   group('AlertsScreen device_restarted UI (#889, 320 px / 200 %)', () {
-    Future<void> pumpAlerts(WidgetTester tester, Locale locale, List<Alert> items) async {
+    Future<void> pumpAlerts(
+      WidgetTester tester,
+      Locale locale,
+      List<Alert> items, {
+      DateTime Function()? nowProvider,
+    }) async {
       tester.view.physicalSize = const Size(320, 568);
       tester.view.devicePixelRatio = 1.0;
       tester.platformDispatcher.textScaleFactorTestValue = 2.0;
@@ -187,7 +271,7 @@ void main() {
       await tester.pumpWidget(ProviderScope(
         overrides: [apiClientProvider.overrideWithValue(api)],
         child: localizedTestApp(
-          const AlertsScreen(),
+          AlertsScreen(nowProvider: nowProvider),
           locale: locale,
           textDirection: locale.languageCode == 'ar' ? TextDirection.rtl : TextDirection.ltr,
         ),
@@ -228,6 +312,38 @@ void main() {
 
       expect(find.textContaining('and was back after about 3 hours.'), findsOneWidget);
       expect(find.text('SERVER FALLBACK'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('AlertsScreen dialog renders family timezone across midnight in EN and AR (#889)', (tester) async {
+      final crossMidnightAlert = restartAlert(
+        bootedAtLocal: DateTime.utc(2026, 11, 18, 19, 30),
+        gapMinutes: 40,
+        severity: 'warning',
+        timeZone: 'Asia/Dubai',
+        utcOffsetMinutes: 240,
+      );
+      DateTime fixedNow() => DateTime.utc(2026, 11, 18, 21, 30);
+
+      await pumpAlerts(tester, const Locale('en'), [crossMidnightAlert], nowProvider: fixedNow);
+      await tester.tap(find.byType(AlertTile));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('${ltrIsolate('Galaxy Z Flip4')} restarted yesterday at ${ltrIsolate('23:30')} and was back after 40 minutes.'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.text(en.close));
+      await tester.pumpAndSettle();
+
+      await pumpAlerts(tester, const Locale('ar'), [crossMidnightAlert], nowProvider: fixedNow);
+      await tester.tap(find.byType(AlertTile));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('أُعيد تشغيل ${ltrIsolate('Galaxy Z Flip4')} أمس الساعة ${ltrIsolate('23:30')}، وعاد إلى العمل بعد 40 دقيقة.'),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     });
   });

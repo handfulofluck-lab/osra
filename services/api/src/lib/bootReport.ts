@@ -136,9 +136,11 @@ function newBoot(bootedAt: Date, bootCount: number | null, lastSeen: Date | null
   const previousLastSeen = lastSeen ?? null;
   // Only a `lastSeen` strictly before the boot is a gap. A phone whose clock is behind, or whose previous
   // report came from the same second as the boot, has no measurable downtime — 0, never a negative number.
+  // Floor whole elapsed minutes so <60s stays "in less than a minute" (`gapMinutes=0`) and 29m45s stays `info`
+  // until full 30m reaches `warning` (#889 Bureau thresholds).
   const gapMinutes =
     previousLastSeen && previousLastSeen.getTime() < bootedAt.getTime()
-      ? Math.round((bootedAt.getTime() - previousLastSeen.getTime()) / 60_000)
+      ? Math.floor((bootedAt.getTime() - previousLastSeen.getTime()) / 60_000)
       : 0;
   return {
     kind: "new_boot",
@@ -165,6 +167,8 @@ interface ZonedCalendarParts {
   year: number;
   month: number;
   day: number;
+  hour: number;
+  minute: number;
   clock: string;
 }
 
@@ -185,11 +189,15 @@ function zonedCalendarParts(date: Date, timeZone: string): ZonedCalendarParts {
     }).formatToParts(date);
     const num = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((p) => p.type === type)?.value ?? 0);
     const pad = (n: number) => String(n).padStart(2, "0");
+    const hour = num("hour");
+    const minute = num("minute");
     return {
       year: num("year"),
       month: num("month"),
       day: num("day"),
-      clock: `${pad(num("hour"))}:${pad(num("minute"))}`,
+      hour,
+      minute,
+      clock: `${pad(hour)}:${pad(minute)}`,
     };
   };
   try {
@@ -197,6 +205,23 @@ function zonedCalendarParts(date: Date, timeZone: string): ZonedCalendarParts {
   } catch {
     return extract("UTC");
   }
+}
+
+/**
+ * Computes the family timezone's UTC offset in minutes at [date] (falling back to 0 / UTC for unknown zones).
+ * Passed alongside `timeZone` in `bodyParams` so mobile clients without full IANA tables render exact family clocks (#889).
+ */
+export function zonedUtcOffsetMinutes(date: Date, timeZone: string): number {
+  const parts = zonedCalendarParts(date, timeZone);
+  const wallMs = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute);
+  const utcMinuteMs = Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate(),
+    date.getUTCHours(),
+    date.getUTCMinutes(),
+  );
+  return Math.round((wallMs - utcMinuteMs) / 60_000);
 }
 
 export function bootClock(bootedAt: Date, timeZone: string): string {

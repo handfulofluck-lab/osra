@@ -5,6 +5,7 @@ import {
   bootClock,
   bootReportBody,
   decideBootReport,
+  zonedUtcOffsetMinutes,
 } from "../src/lib/bootReport.js";
 
 /**
@@ -143,13 +144,34 @@ describe("boot report (#867)", () => {
     expect(decide({ lastSeen: new Date("2026-11-17T10:01:00Z") })).toMatchObject({ gapMinutes: 0 });
   });
 
-  it("warns at exactly the silence window and only below it is info", () => {
+  it("warns at exactly the silence window and floors elapsed seconds below both 1m and 30m (#889)", () => {
     expect(RESTART_WARNING_GAP_MINUTES).toBe(30);
-    const gapMinutes = (minutes: number) => decide({ lastSeen: new Date(bootedAt.getTime() - minutes * 60_000) });
-    expect(gapMinutes(30)).toMatchObject({ gapMinutes: 30, severity: "warning" });
+    const gapSeconds = (seconds: number) => decide({ lastSeen: new Date(bootedAt.getTime() - seconds * 1_000) });
+    const gapMinutes = (minutes: number) => gapSeconds(minutes * 60);
+
+    // 45s and 59s stay < 1 minute (`gapMinutes: 0` -> "in less than a minute"); 60s becomes 1 minute.
+    expect(gapSeconds(45)).toMatchObject({ gapMinutes: 0, severity: "info" });
+    expect(gapSeconds(59)).toMatchObject({ gapMinutes: 0, severity: "info" });
+    expect(gapSeconds(60)).toMatchObject({ gapMinutes: 1, severity: "info" });
+    // 90s floors to 1 minute instead of rounding up to 2.
+    expect(gapSeconds(90)).toMatchObject({ gapMinutes: 1, severity: "info" });
+
+    // 29m45s stays `info` (`gapMinutes: 29`), never rounding up to the 30m warning threshold.
+    expect(gapSeconds(29 * 60 + 45)).toMatchObject({ gapMinutes: 29, severity: "info" });
     expect(gapMinutes(29)).toMatchObject({ gapMinutes: 29, severity: "info" });
-    // Rounds to whole minutes: 90 seconds down reads as 2 minutes, the wall clock a parent would say.
-    expect(gapMinutes(1.5)).toMatchObject({ gapMinutes: 2 });
+    expect(gapMinutes(30)).toMatchObject({ gapMinutes: 30, severity: "warning" });
+
+    // End-to-end English body check at 45s vs 60s.
+    const r45 = gapSeconds(45);
+    if (r45.kind !== "new_boot") throw new Error("expected new_boot");
+    expect(bootReportBody(r45, "Pixel 7a", "UTC", now)).toBe("Pixel 7a restarted at 10:00 and was back in less than a minute.");
+    const r60 = gapSeconds(60);
+    if (r60.kind !== "new_boot") throw new Error("expected new_boot");
+    expect(bootReportBody(r60, "Pixel 7a", "UTC", now)).toBe("Pixel 7a restarted at 10:00 and was back after 1 minute.");
+
+    expect(zonedUtcOffsetMinutes(bootedAt, "Asia/Dubai")).toBe(240);
+    expect(zonedUtcOffsetMinutes(bootedAt, "UTC")).toBe(0);
+    expect(zonedUtcOffsetMinutes(bootedAt, "Invalid/Zone")).toBe(0);
   });
 
   it("renders the restart in the family's clock with today/yesterday/date and gap rounding (#867, #889)", () => {

@@ -3,14 +3,15 @@ import 'package:intl/intl.dart';
 import '../api/models.dart';
 import '../core/digits.dart';
 import '../core/ltr_isolate.dart';
+import '../features/settings/timezone_catalog.dart';
 import '../l10n/l10n.dart';
 
 /// Issue #889: shared formatter for `device_restarted` alert bodies across the Alerts detail dialog
 /// and push notifications (`VisibleAlert`), enforcing the Bureau date, rounding, isolation, and
-/// Western-digit rules:
-/// - Same day as [now] in local time: `alertAtTime`.
-/// - Yesterday in local time: `alertYesterdayAtTime`.
-/// - Older dates: `alertOnDateAtTime`, omitting the year when it matches [now]'s year.
+/// Western-digit rules in the family's timezone:
+/// - Same day as [now] in the family zone: `alertAtTime`.
+/// - Yesterday in the family zone: `alertYesterdayAtTime`.
+/// - Older dates: `alertOnDateAtTime`, omitting the year when it matches [now]'s year in that zone.
 /// - `{device}` and `{time}` (`24h HH:mm` Western digits) wrapped with `ltrIsolate`.
 /// - `< 1` min renders the `=0` clause; `1..119` min stay minutes; `>= 120` min round to the nearest
 ///   hour (`30m+` rounds up) in hours.
@@ -18,44 +19,58 @@ class RestartAlertText {
   final String model;
   final DateTime bootedAt;
   final int gapMinutes;
+  final String? timeZone;
+  final int? utcOffsetMinutes;
 
   const RestartAlertText({
     required this.model,
     required this.bootedAt,
     required this.gapMinutes,
+    this.timeZone,
+    this.utcOffsetMinutes,
   });
 
-  /// Extracts restart fields from `metadata['bodyParams']` (when validated `bodyKey` matches) or
-  /// falls back to top-level `metadata` fields. Returns null when required fields are absent/invalid.
+  /// Extracts restart fields from `metadata['bodyParams']` only when `bodyKey == 'alertBodyDeviceRestarted'`
+  /// and required fields (`model`, `bootedAt`, `gapMinutes`) are present and non-empty. Never substitutes
+  /// an English `'A phone'` placeholder, so Arabic UI falls back cleanly via `alertPushBodyGeneric`.
   static RestartAlertText? tryParse(Alert alert) {
     final bodyKey = alert.metadata['bodyKey']?.toString();
-    if (bodyKey != 'alertBodyDeviceRestarted' && alert.category != 'device_restarted') {
+    if (bodyKey != 'alertBodyDeviceRestarted') {
       return null;
     }
     final rawParams = alert.metadata['bodyParams'];
-    final source = rawParams is Map ? Map<String, dynamic>.from(rawParams) : alert.metadata;
+    if (rawParams is! Map) return null;
+    final source = Map<String, dynamic>.from(rawParams);
 
-    final rawBoot = (source['bootedAt'] ?? alert.metadata['bootedAt'])?.toString();
+    final rawModel = source['model']?.toString().trim() ?? '';
+    if (rawModel.isEmpty) return null;
+
+    final rawBoot = source['bootedAt']?.toString();
     final bootedAt = rawBoot == null ? null : DateTime.tryParse(rawBoot);
     if (bootedAt == null) return null;
 
-    final rawGap = source['gapMinutes'] ?? alert.metadata['gapMinutes'];
-    final gapMinutes = switch (rawGap) {
-      int n => n,
-      num n => n.round(),
-      String s => int.tryParse(s),
-      _ => null,
-    };
+    final gapMinutes = _parseInt(source['gapMinutes']);
     if (gapMinutes == null) return null;
 
-    final rawModel = (source['model'] ?? alert.metadata['model'])?.toString().trim() ?? '';
-    final model = rawModel.isNotEmpty ? rawModel : 'A phone';
+    final rawZone = source['timeZone']?.toString().trim();
+    final timeZone = (rawZone != null && rawZone.isNotEmpty) ? rawZone : null;
+    final utcOffsetMinutes = _parseInt(source['utcOffsetMinutes']);
+
     return RestartAlertText(
-      model: model,
+      model: rawModel,
       bootedAt: bootedAt,
       gapMinutes: gapMinutes < 0 ? 0 : gapMinutes,
+      timeZone: timeZone,
+      utcOffsetMinutes: utcOffsetMinutes,
     );
   }
+
+  static int? _parseInt(Object? raw) => switch (raw) {
+        int n => n,
+        num n => n.round(),
+        String s => int.tryParse(s),
+        _ => null,
+      };
 
   /// Formats [alert] in the parent's locale if valid restart parameters exist; otherwise null.
   static String? tryFormat(
@@ -66,25 +81,37 @@ class RestartAlertText {
   }) =>
       tryParse(alert)?.format(l10n, localeName: localeName, now: now);
 
+  DateTime _inFamilyZone(DateTime instant, TimezoneOption? knownTz) {
+    if (knownTz != null) {
+      return instant.toUtc().add(Duration(minutes: knownTz.effectiveOffsetMinutes(instant)));
+    }
+    if (utcOffsetMinutes != null) {
+      return instant.toUtc().add(Duration(minutes: utcOffsetMinutes!));
+    }
+    return instant.toLocal();
+  }
+
   String format(AppLocalizations l10n, {required String localeName, DateTime? now}) {
-    final localBoot = bootedAt.toLocal();
-    final localNow = (now ?? DateTime.now()).toLocal();
-    final yesterday = DateTime(localNow.year, localNow.month, localNow.day - 1);
+    final knownTz = timeZone != null ? findKnownTimezone(timeZone!) : null;
+    final familyBoot = _inFamilyZone(bootedAt, knownTz);
+    final familyNow = _inFamilyZone(now ?? DateTime.now(), knownTz);
+    // Pure Gregorian day step in UTC avoids any local phone DST anomaly on yesterday comparison.
+    final yesterday = DateTime.utc(familyNow.year, familyNow.month, familyNow.day - 1);
 
     final isolatedDevice = ltrIsolate(model);
-    final clock = normalizeDigits(DateFormat('HH:mm', 'en').format(localBoot));
+    final clock = normalizeDigits(DateFormat('HH:mm', 'en').format(familyBoot));
     final isolatedClock = ltrIsolate(clock);
 
     final String when;
-    if (_sameDay(localBoot, localNow)) {
+    if (_sameDay(familyBoot, familyNow)) {
       when = l10n.alertAtTime(isolatedClock);
-    } else if (_sameDay(localBoot, yesterday)) {
+    } else if (_sameDay(familyBoot, yesterday)) {
       when = l10n.alertYesterdayAtTime(isolatedClock);
     } else {
       final isArabic = localeName.toLowerCase().startsWith('ar');
-      final sameYear = localBoot.year == localNow.year;
+      final sameYear = familyBoot.year == familyNow.year;
       final pattern = isArabic ? (sameYear ? 'd MMMM' : 'd MMMM y') : (sameYear ? 'd MMM' : 'd MMM y');
-      final dateLabel = normalizeDigits(DateFormat(pattern, isArabic ? 'ar' : 'en').format(localBoot));
+      final dateLabel = normalizeDigits(DateFormat(pattern, isArabic ? 'ar' : 'en').format(familyBoot));
       when = l10n.alertOnDateAtTime(dateLabel, isolatedClock);
     }
 
