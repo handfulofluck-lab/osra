@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 import FamilyShieldAgent
 
 /// #739, catalogue row **KP01**, the rows the seed made possible: a pasted PIN, a PIN longer than the app accepts,
@@ -58,17 +59,27 @@ final class PinRulesSeededTests: XCTestCase {
         XCTAssertTrue(app.secureTextFields["pin.new"].exists, "the setup screen stays put after a refusal")
     }
 
-    /// Catalogue E12, the pasted case: a value typed straight in as a block behaves like a typed one. This is the
-    /// path that a character-by-character field can silently truncate, and the app filters to digits and six
-    /// characters elsewhere — the PIN field must be the one that refuses rather than truncates.
-    func testAPastedPinIsJudgedLikeATypedOne() {
+    /// Catalogue E12, the pasted case: a value arriving in one block must be judged by the same rules as a typed
+    /// one. The PIN field uses a number pad, so a *typed* letter is impossible and the first version of this row was
+    /// testing nothing — the character never arrived. A real paste can carry anything, so that is what this does:
+    /// twelve digits through the pasteboard must be refused as too long rather than silently truncated to eight.
+    func testAPastedValueIsJudgedByTheSameRulesRatherThanTruncated() {
         let app = launchSeeded()
-        type("20a85", into: app.secureTextFields["pin.new"])
-        type("20a85", into: app.secureTextFields["pin.repeat"])
+        UIPasteboard.general.string = "123456789012"
+
+        let field = app.secureTextFields["pin.new"]
+        field.press(forDuration: 1.2)
+        let paste = app.menuItems["Paste"]
+        guard paste.waitForExistence(timeout: 5) else {
+            return XCTFail("the paste menu did not appear; this row cannot judge pasting until it does")
+        }
+        paste.tap()
+
+        type("123456789012", into: app.secureTextFields["pin.repeat"])
         save(app)
 
-        XCTAssertTrue(app.staticTexts[L10n.tr("pin_not_digits")].waitForExistence(timeout: 5),
-                      "a PIN with a letter must be refused as not digits, not silently cleaned")
+        XCTAssertTrue(app.staticTexts[L10n.tr("pin_too_long")].waitForExistence(timeout: 5),
+                      "a pasted twelve-digit value must be refused as too long, not truncated to eight")
     }
 
     /// Catalogue KP01, "attempt limit survives a relaunch": the count lives in the app-group defaults, so a killed
@@ -137,9 +148,12 @@ final class PinRulesSeededTests: XCTestCase {
         type(goodPin, into: app.secureTextFields["pin.new"])
         type(goodPin, into: app.secureTextFields["pin.repeat"])
 
-        let saveButton = app.buttons["pin.save"]
-        saveButton.tap()
-        saveButton.tap()
+        // A coordinate tap, not an element tap: after the first tap the button no longer exists, so a second
+        // element tap failed with "No matches found" — which was the app behaving correctly and the row measuring
+        // the wrong thing. The same screen point twice is what a fast double tap by a person actually is.
+        let point = app.buttons["pin.save"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        point.tap()
+        point.tap()
 
         XCTAssertTrue(app.staticTexts["status.paired"].waitForExistence(timeout: 20),
                       "a double tap on save must still land on the status screen")
