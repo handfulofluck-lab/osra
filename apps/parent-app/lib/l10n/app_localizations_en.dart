@@ -3210,4 +3210,49 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get digestPrefsTimezoneEmpty => 'No matching time zones';
+
+  @override
+  String get alertDeviceRestartedTitle => 'Device restarted';
+
+  @override
+  String get alertCategoryDeviceRestarted => 'Device restart';
+
+  @override
+  String alertAtTime(String time) {
+    return 'at $time';
+  }
+
+  @override
+  String alertYesterdayAtTime(String time) {
+    return 'yesterday at $time';
+  }
+
+  @override
+  String alertOnDateAtTime(String date, String time) {
+    return 'on $date at $time';
+  }
+
+  @override
+  String alertDeviceRestartedBodyMinutes(
+      String device, String when, int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: 'after $minutes minutes',
+      one: 'after 1 minute',
+      zero: 'in less than a minute',
+    );
+    return '$device restarted $when and was back $_temp0.';
+  }
+
+  @override
+  String alertDeviceRestartedBodyHours(String device, String when, int hours) {
+    String _temp0 = intl.Intl.pluralLogic(
+      hours,
+      locale: localeName,
+      other: '$hours hours',
+      one: '1 hour',
+    );
+    return '$device restarted $when and was back after about $_temp0.';
+  }
 }

@@ -1,0 +1,1 @@
+- Localized `device_restarted` alert titles, category chip, and formatted timestamp/downtime bodies in English and Arabic with Western digits and LRI/PDI isolation (`#889`); suppressed push notifications for `info` restarts (`< 30m` gap) while keeping alert rows, unread counts, and `warning` restart pushes.

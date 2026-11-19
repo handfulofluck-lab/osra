@@ -1074,5 +1074,12 @@
   "familyInviteFailed": "تعذّر إرسال الدعوة. تحقّق من عنوان البريد الإلكتروني ثم حاول مرة أخرى.",
   "digestPrefsTimezonePickerTitle": "اختيار المنطقة الزمنية",
   "digestPrefsTimezoneSearchHint": "ابحث باسم مدينة أو بفرق التوقيت، مثل: دبي أو GMT+4",
-  "digestPrefsTimezoneEmpty": "لا توجد مناطق زمنية مطابقة"
+  "digestPrefsTimezoneEmpty": "لا توجد مناطق زمنية مطابقة",
+  "alertDeviceRestartedTitle": "أُعيد تشغيل الجهاز",
+  "alertCategoryDeviceRestarted": "إعادة تشغيل الجهاز",
+  "alertAtTime": "الساعة {time}",
+  "alertYesterdayAtTime": "أمس الساعة {time}",
+  "alertOnDateAtTime": "يوم {date} الساعة {time}",
+  "alertDeviceRestartedBodyMinutes": "أُعيد تشغيل {device} {when}، وعاد إلى العمل بعد {minutes, plural, =0{أقل من دقيقة} =1{دقيقة} =2{دقيقتين} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}.",
+  "alertDeviceRestartedBodyHours": "أُعيد تشغيل {device} {when}، وعاد إلى العمل بعد نحو {hours, plural, =1{ساعة} =2{ساعتين} few{{hours} ساعات} many{{hours} ساعة} other{{hours} ساعة}}."
 }

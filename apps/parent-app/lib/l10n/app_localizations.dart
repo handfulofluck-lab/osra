@@ -5323,6 +5323,49 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No matching time zones'**
   String get digestPrefsTimezoneEmpty;
+
+  /// No description provided for @alertDeviceRestartedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Device restarted'**
+  String get alertDeviceRestartedTitle;
+
+  /// No description provided for @alertCategoryDeviceRestarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Device restart'**
+  String get alertCategoryDeviceRestarted;
+
+  /// No description provided for @alertAtTime.
+  ///
+  /// In en, this message translates to:
+  /// **'at {time}'**
+  String alertAtTime(String time);
+
+  /// No description provided for @alertYesterdayAtTime.
+  ///
+  /// In en, this message translates to:
+  /// **'yesterday at {time}'**
+  String alertYesterdayAtTime(String time);
+
+  /// No description provided for @alertOnDateAtTime.
+  ///
+  /// In en, this message translates to:
+  /// **'on {date} at {time}'**
+  String alertOnDateAtTime(String date, String time);
+
+  /// No description provided for @alertDeviceRestartedBodyMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{device} restarted {when} and was back {minutes, plural, =0{in less than a minute} =1{after 1 minute} other{after {minutes} minutes}}.'**
+  String alertDeviceRestartedBodyMinutes(
+      String device, String when, int minutes);
+
+  /// No description provided for @alertDeviceRestartedBodyHours.
+  ///
+  /// In en, this message translates to:
+  /// **'{device} restarted {when} and was back after about {hours, plural, =1{1 hour} other{{hours} hours}}.'**
+  String alertDeviceRestartedBodyHours(String device, String when, int hours);
 }
 
 class _AppLocalizationsDelegate

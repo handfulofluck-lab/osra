@@ -22,12 +22,15 @@ import '../../widgets/error_retry_view.dart';
 import 'sos_alert_actions.dart';
 import '../map/family_map_screen.dart'
     show FamilyMapScreen, MapFocus, mapIsAvailable;
+import '../../push/restart_alert_text.dart';
 import '../../push/sos_fix_text.dart';
 
 /// Alerts feed: grouped by day, severity-colored, swipe-to-acknowledge with
 /// optimistic removal, detail dialog per category, and paged "load more".
 class AlertsScreen extends ConsumerStatefulWidget {
-  const AlertsScreen({super.key});
+  const AlertsScreen({super.key, @visibleForTesting this.nowProvider});
+
+  final DateTime Function()? nowProvider;
 
   @override
   ConsumerState<AlertsScreen> createState() => _AlertsScreenState();
@@ -147,7 +150,27 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   RulesBehindBanner(childId: alert.childId),
                   // #755 Arabic Bureau (6868533968): SOS already states the event in its localized title and
                   // place lines, so never repeat the child agent's raw English sentence.
-                  if (alert.category != 'sos' && alert.body.isNotEmpty) Text(alert.body),
+                  // #889 Arabic Bureau (6997818132): an unkeyed restart row in Arabic renders no body at all
+                  // inside the app dialog (the title already states it), never raw English or the push prompt.
+                  Builder(builder: (_) {
+                    final isEnglish = dialogContext.localeName.startsWith('en');
+                    final String localizedBody;
+                    if (alert.category == 'sos') {
+                      localizedBody = '';
+                    } else if (alert.category == 'device_restarted') {
+                      localizedBody = RestartAlertText.tryFormat(
+                            alert,
+                            l10n: l10n,
+                            localeName: dialogContext.localeName,
+                            now: widget.nowProvider?.call(),
+                          ) ??
+                          (isEnglish ? alert.body : '');
+                    } else {
+                      localizedBody = alert.body;
+                    }
+                    if (localizedBody.isEmpty) return const SizedBox.shrink();
+                    return Text(localizedBody);
+                  }),
                   // #672: where, in words and in the Bureau's sentence, in the alert the parent opened
                   // deliberately — the lock screen carries neither. The coordinates are isolated (LRI/PDI)
                   // so they keep their order in Arabic; the accuracy clause only when the fix has one.
