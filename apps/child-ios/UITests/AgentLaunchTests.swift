@@ -1,4 +1,5 @@
 import XCTest
+import FamilyShieldAgent
 
 /// #739: the UI-test target and its smoke case. This is the skeleton Claude approved: it proves the harness
 /// launches the real app on the CI simulator and reaches a screen by accessibility identifier, before any
