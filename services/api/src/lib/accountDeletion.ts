@@ -67,6 +67,10 @@ export const FAMILY_SCOPED_DELETES: Record<string, (s: FamilyScope) => unknown> 
   digestRecipient: (s) => ({ familyId: s.familyId }),
   digestSend: (s) => ({ familyId: s.familyId }),
   digestPrefs: (s) => ({ familyId: s.familyId }),
+  // Issue #890: per-family scan counters. Aggregates with no child id in them, but they are still the
+  // family's usage and they go with it — the §4 guard is right to refuse a new familyId model that
+  // nobody decided about.
+  aiScanUsage: (s) => ({ familyId: s.familyId }),
   mfaResetRequest: (s) => ({ parentId: { in: s.parentIds } }),
   parentPushToken: (s) => ({ parentId: { in: s.parentIds } }),
   parentMfaRecoveryCode: (s) => ({ parentId: { in: s.parentIds } }),

@@ -617,7 +617,10 @@ export async function authRoutes(app: FastifyInstance) {
   /** The two witnesses decision 6 asks about, counted for a family before anything is written. */
   const familyWitnesses = async (familyId: string, parentId: string) => {
     const [devices, parents] = await Promise.all([
-      prisma.device.count({ where: { child: { familyId } } }),
+      // Issue #790: a pending device is not a witness. It was created by an approved claim whose phone
+      // has not yet made one accepted request, so it is neither the family's device (the list and the
+      // count elsewhere exclude it) nor something that can receive and show the reset code.
+      prisma.device.count({ where: { child: { familyId }, pairedAt: { not: null } } }),
       prisma.parent.count({ where: { familyId, id: { not: parentId }, role: { in: ["owner", "co-parent"] } } }),
     ]);
     return { devices, parents, any: devices > 0 || parents > 0 };
@@ -793,7 +796,9 @@ export async function authRoutes(app: FastifyInstance) {
 
     const [parent, devices] = await Promise.all([
       prisma.parent.findUnique({ where: { id: request.parentId }, select: { displayName: true } }),
-      prisma.device.findMany({ where: { child: { familyId: request.familyId } }, select: { id: true } }),
+      // #790: the reset code is shown by a phone that can prove it is the family's device. A pending
+      // row would be handed a command the app never told the parent about, so it is not a recipient.
+      prisma.device.findMany({ where: { child: { familyId: request.familyId }, pairedAt: { not: null } }, select: { id: true } }),
     ]);
     const code = devices.length > 0 ? generateResetCode() : null;
     const confirmedAt = new Date();

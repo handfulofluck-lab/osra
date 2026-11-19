@@ -53,7 +53,8 @@ void main() {
     await pumpAlerts(tester, api);
 
     final l10n = lookupAppLocalizations(const Locale('en'));
-    expect(find.textContaining('Failed to load alerts'), findsOneWidget);
+    expect(find.text(l10n.alertsLoadFailed), findsOneWidget);
+    expect(find.textContaining('500'), findsNothing);
     expect(find.text(l10n.readPermissionRequired), findsNothing);
   });
 

@@ -80,8 +80,7 @@ class ConsentScreen extends ConsumerWidget {
       body: status.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => _ConsentError(
-          message: l10n.consentLoadFailed,
-          detail: '$e',
+          message: friendlyErrorText(l10n, e, () => l10n.consentLoadFailed),
           onRetry: () => ref.invalidate(consentStatusProvider(childId)),
         ),
         data: (data) => RefreshIndicator(
@@ -636,10 +635,8 @@ class _Detail extends StatelessWidget {
 
 class _ConsentError extends StatelessWidget {
   final String message;
-  final String detail;
   final VoidCallback onRetry;
-  const _ConsentError(
-      {required this.message, required this.detail, required this.onRetry});
+  const _ConsentError({required this.message, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -653,10 +650,6 @@ class _ConsentError extends StatelessWidget {
             const Icon(Icons.cloud_off, size: 32),
             const SizedBox(height: AppSpace.sm),
             Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: AppSpace.xs),
-            Text(detail,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: AppSpace.md),
             OutlinedButton(onPressed: onRetry, child: Text(l10n.retry)),
           ],

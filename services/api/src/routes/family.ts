@@ -68,7 +68,18 @@ export async function familyRoutes(app: FastifyInstance) {
       where: { id: user.familyId },
       include: {
         parents: true,
-        children: { include: { devices: true, ruleSet: true, consents: true, geofences: true } },
+        children: {
+          include: {
+            // Issue #790: a pending device (`pairedAt` null — an approved claim whose phone has not yet
+            // made one accepted request) is not in the parent's envelope. The app draws these rows as the
+            // family's phones, and the flat `devices` list below is built from them, so excluding it here
+            // covers the child cards and the flat list the same way `GET /v1/devices` does.
+            devices: { where: { pairedAt: { not: null } } },
+            ruleSet: true,
+            consents: true,
+            geofences: true,
+          },
+        },
       },
     });
     if (!family) return reply.code(404).send({ error: "family_not_found" });
@@ -370,7 +381,17 @@ export async function familyRoutes(app: FastifyInstance) {
       include: {
         parents: true,
         children: {
-          include: { devices: true, ruleSet: true, consents: true, geofences: true, alerts: true, pairingDecisions: true },
+          include: {
+            // #790: the export is the parent's record of their family, and a pending device was never
+            // part of it — it is a row an approved claim created and no accepted request has confirmed.
+            // Same filter as `/me`, so the export cannot show a phone the app does not.
+            devices: { where: { pairedAt: { not: null } } },
+            ruleSet: true,
+            consents: true,
+            geofences: true,
+            alerts: true,
+            pairingDecisions: true,
+          },
         },
       },
     });
