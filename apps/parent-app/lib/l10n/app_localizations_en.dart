@@ -364,7 +364,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get consentMethodCreditCard => 'Credit card';
 
   @override
-  String get jurisdictionLabel => 'Jurisdiction';
+  String get jurisdictionLabel => 'Where does your family live?';
 
   @override
   String get childNameLabel => 'Child name';
