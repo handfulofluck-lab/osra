@@ -22,6 +22,29 @@ object RingPolicy {
 
     /** Restore only if nobody changed the stream meanwhile (the parent's max is not a value the child chose). */
     fun restoreVolume(previous: Int, current: Int, ringLevel: Int): Int = if (current == ringLevel) previous else current
+
+    /** What a volume change during a ring should do. */
+    enum class VolumeVerdict {
+        /** The ring is at or above its floor, or there is no floor to defend: do nothing. */
+        IGNORE,
+
+        /** The stream fell below the floor (osra-security#42): raise it back and count the attempt. */
+        RESTORE,
+    }
+
+    /**
+     * osra-security#42: while a ring is active the alarm stream must not stay below the level the parent's
+     * ring set. Ahmed's ruling: *"If the volume can fall while the ring stays active, a child can silence
+     * the parent's ring with the volume keys and no PIN."* The guard only acts downward — a child or the OS
+     * raising the stream is not something to correct, and [floor] <= 0 means there is nothing to defend.
+     *
+     * Pure so the JVM suite holds the three cases a device row would otherwise be the only evidence for.
+     */
+    fun volumeVerdict(current: Int, floor: Int): VolumeVerdict = when {
+        floor <= 0 -> VolumeVerdict.IGNORE
+        current < floor -> VolumeVerdict.RESTORE
+        else -> VolumeVerdict.IGNORE
+    }
 }
 
 /**
