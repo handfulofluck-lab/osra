@@ -1,0 +1,1 @@
+- **Parent app**: Surface iPhone app-group Block controls, iPhone setup guidance, and direct Apps-tab rule editing from `ChildDetailScreen` Apps tab (#937).
