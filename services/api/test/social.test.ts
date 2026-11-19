@@ -157,7 +157,9 @@ describe("social routes", () => {
     const res = await postScan(app, scanBody());
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ flagged: true, severity: "warning" });
+    // #938 B3: the union keeps the higher severity. The text hits the local self-harm list, which is
+    // critical by policy, so the model's "warning" no longer downgrades it.
+    expect(res.json()).toMatchObject({ flagged: true, severity: "critical" });
     expect(prismaMock.socialEvent.create).toHaveBeenCalledTimes(1);
     expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
     // One retry on the way out, and still no throw: a unique-index race is not a scan failure either.
@@ -216,13 +218,13 @@ describe("social routes", () => {
 
     const res = await postScan(app, scanBody());
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ flagged: true, severity: "warning", concernTypes: ["self_harm"] });
+    expect(res.json()).toEqual({ flagged: true, severity: "critical", concernTypes: ["self_harm"] });
 
     // The vault row stores the AES-GCM payload — plaintext must never appear.
     const cipher = prismaMock.socialEvent.create.mock.calls[0][0] as {
       data: { previewCipher: string; severity: string; concernTypes: string[]; app: string; contact: string; childId: string };
     };
-    expect(cipher.data).toMatchObject({ childId: CHILD.id, app: "whatsapp", contact: "bully-1", severity: "warning", concernTypes: ["self_harm"] });
+    expect(cipher.data).toMatchObject({ childId: CHILD.id, app: "whatsapp", contact: "bully-1", severity: "critical", concernTypes: ["self_harm"] });
     expect(cipher.data.previewCipher).not.toContain(FLAGGED_TEXT);
     const payload = JSON.parse(cipher.data.previewCipher) as Parameters<typeof decryptForFamily>[0];
     expect(decryptForFamily(payload, VAULT_KEY)).toBe(FLAGGED_TEXT);
@@ -289,6 +291,86 @@ describe("social routes", () => {
       expect.objectContaining({ data: expect.objectContaining({ concernTypes: expect.arrayContaining(["self_harm"]) }) }),
     );
     expect(prismaMock.alert.create).toHaveBeenCalled();
+    await app.close();
+  });
+
+  // #863: the child sent Arabic insults and drug words over WhatsApp and nothing reached the parent.
+  // These rows pin the two halves of the fix: the local list now reads Arabic, and a local hit survives a
+  // model answer of "not flagged" instead of being suppressed by it.
+  it("the local fallback reads Arabic insults, drug words and self-harm phrasing (#863)", async () => {
+    const app = await buildApp(socialRoutes, "/v1/social");
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNREFUSED"); }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({ id: "a-1" });
+
+    const cases: Array<[string, string]> = [
+      ["غبي وما أحد يحبك", "cyberbullying"],
+      ["أريد أن أموت", "self_harm"],
+      ["عندي حشيش في الشارع", "substance_use"],
+      ["he offered me weed after school", "substance_use"],
+    ];
+    for (const [text, concern] of cases) {
+      prismaMock.socialEvent.create.mockClear();
+      const res = await postScan(app, scanBody({ text }));
+      expect(res.statusCode).toBe(200);
+      expect(res.json().flagged, text).toBe(true);
+      expect(prismaMock.socialEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ concernTypes: expect.arrayContaining([concern]) }) }),
+      );
+    }
+    await app.close();
+  });
+
+  it("a local hit is not suppressed by a model that answered \"not flagged\" (#863)", async () => {
+    const app = await buildApp(socialRoutes, "/v1/social");
+    // The engine is reachable and says safe — the rules layer did exactly this for Arabic.
+    vi.stubGlobal("fetch", aiOk({ flagged: false, severity: "info", categories: { safe: 0.99 } }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({ id: "a-1" });
+
+    const res = await postScan(app, scanBody({ text: "أريد أن أموت" }));
+    expect(res.statusCode).toBe(200);
+    expect(res.json().flagged).toBe(true);
+    expect(prismaMock.alert.create).toHaveBeenCalled();
+    await app.close();
+  });
+
+  // Antigravity's #938 B2: token boundaries. Each of these is a real word whose stem appears in the
+  // Arabic list, and each once raised a false drug or bullying alert to a parent.
+  it("Arabic stems do not fire inside ordinary words (#938 B2)", async () => {
+    const app = await buildApp(socialRoutes, "/v1/social");
+    vi.stubGlobal("fetch", aiOk({ flagged: false, severity: "info", categories: { safe: 0.99 } }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({ id: "a-1" });
+
+    const benign = [
+      "فيبدأ الدرس بعد الجرس",
+      "قميص خمري جديد",
+      "نشاهد مباراة رغبي الليلة",
+    ];
+    for (const text of benign) {
+      prismaMock.socialEvent.create.mockClear();
+      const res = await postScan(app, scanBody({ text }));
+      expect(res.statusCode).toBe(200);
+      expect(res.json().flagged, text).toBe(false);
+      expect(prismaMock.socialEvent.create).not.toHaveBeenCalled();
+    }
+    await app.close();
+  });
+
+  it("a mixed message keeps the critical concern the model missed (#938 B3)", async () => {
+    const app = await buildApp(socialRoutes, "/v1/social");
+    // The model sees the English insult and stops there; the Arabic clause is a self-harm statement.
+    vi.stubGlobal("fetch", aiOk({ flagged: true, severity: "warning", categories: { cyberbullying: 0.9, safe: 0.1 } }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({ id: "a-1" });
+
+    const text = "you loser, أريد أن أموت";
+    const res = await postScan(app, scanBody({ text }));
+    expect(res.statusCode).toBe(200);
+    expect(res.json().flagged).toBe(true);
+    expect(res.json().severity).toBe("critical");
+    expect(res.json().concernTypes).toEqual(expect.arrayContaining(["cyberbullying", "self_harm"]));
     await app.close();
   });
 
@@ -367,8 +449,8 @@ describe("social routes", () => {
       expect(res.statusCode).toBe(200);
       expect(res.json()).toEqual({
         results: [
-          { ok: true, flagged: true, severity: "warning", concernTypes: ["self_harm"] },
-          { ok: true, flagged: true, severity: "warning", concernTypes: ["self_harm"] },
+          { ok: true, flagged: true, severity: "critical", concernTypes: ["self_harm"] },
+          { ok: true, flagged: true, severity: "critical", concernTypes: ["self_harm"] },
         ],
       });
       expect(prismaMock.socialEvent.create).toHaveBeenCalledTimes(2);
@@ -447,7 +529,8 @@ describe("social routes", () => {
       prismaMock.child.findUnique.mockResolvedValue(CHILD);
       const res = await postScan(app, scanBody());
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ flagged: true, severity: "warning", concernTypes: ["self_harm"] });
+      // #938 B3: the union keeps the higher severity, so the local self-harm hit makes this critical.
+      expect(res.json()).toEqual({ flagged: true, severity: "critical", concernTypes: ["self_harm"] });
       expect(prismaMock.socialEvent.create).toHaveBeenCalledTimes(1);
       await app.close();
     });
