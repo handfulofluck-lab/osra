@@ -1,0 +1,94 @@
+import XCTest
+
+/// #739: KP01's screens, reached through the Debug-only seed (Claude's decision 1, Ahmed's five conditions).
+///
+/// The argument strings are spelled here rather than imported on purpose: the constants live inside the app's
+/// `#if DEBUG` code, and Ahmed's condition 2 keeps those strings out of a Release binary, so the test carries its
+/// own copy instead of forcing them into shared code.
+final class PinSetupSeededTests: XCTestCase {
+
+    private let seedArgument = "-OSRAUITestSeed"
+    private let pinSetup = "pin-setup"
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
+
+    private func seededApp() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = [seedArgument, pinSetup]
+        return app
+    }
+
+    /// The seed lands on the parent-PIN setup screen rather than the pairing form: that is what a stored identity
+    /// and no PIN means to the root view.
+    func testTheSeedLandsOnTheParentPinSetupScreen() {
+        let app = seededApp()
+        app.launch()
+
+        XCTAssertTrue(app.secureTextFields["pin.new"].waitForExistence(timeout: 30),
+                      "the PIN setup screen never appeared")
+        XCTAssertTrue(app.secureTextFields["pin.repeat"].exists)
+        XCTAssertTrue(app.buttons["pin.save"].exists)
+    }
+
+    /// The setup screen's own rules, driven through the screen: an empty save is refused, a mismatched confirmation
+    /// is refused, and the error is the Bureau's line rather than a crash or a silent pass.
+    func testAnEmptyAndAMismatchedPinAreBothRefused() {
+        let app = seededApp()
+        app.launch()
+
+        let new = app.secureTextFields["pin.new"]
+        XCTAssertTrue(new.waitForExistence(timeout: 30))
+
+        app.buttons["pin.save"].tap()
+        XCTAssertTrue(app.staticTexts["pin.setError"].waitForExistence(timeout: 5),
+                      "an empty PIN must be refused with a message")
+
+        new.tap()
+        new.typeText("2085")
+        let repeatField = app.secureTextFields["pin.repeat"]
+        repeatField.tap()
+        repeatField.typeText("5082")
+        app.buttons["pin.save"].tap()
+
+        XCTAssertTrue(app.staticTexts["pin.setError"].exists, "a mismatched confirmation must be refused")
+        XCTAssertTrue(app.secureTextFields["pin.new"].exists, "the screen stays put after a refusal")
+    }
+
+    /// Ahmed's condition 5: the seed never stands in for the parent PIN. With a PIN set, the repair action must
+    /// still ask for it — the seed alone must not open a gated action.
+    func testTheSeedDoesNotStandInForTheParentPin() {
+        let app = seededApp()
+        app.launch()
+
+        let new = app.secureTextFields["pin.new"]
+        XCTAssertTrue(new.waitForExistence(timeout: 30))
+        new.tap()
+        // A PIN the app accepts: "1234" is on its weak list and the button refuses it, which is correct
+        // behaviour and was this row's first failure — the test data was wrong, not the screen.
+        new.typeText("2085")
+        let repeatField = app.secureTextFields["pin.repeat"]
+        repeatField.tap()
+        repeatField.typeText("2085")
+        app.buttons["pin.save"].tap()
+        XCTAssertFalse(app.staticTexts["pin.setError"].exists, "the setup screen refused the PIN")
+
+        // The status screen draws in a Form, which builds its rows lazily: the first section proves the screen
+        // arrived, then the repair row is scrolled into view. Asserting on a row below the fold without scrolling
+        // was this row's second failure.
+        XCTAssertTrue(app.staticTexts["status.paired"].waitForExistence(timeout: 20),
+                      "the status screen did not follow the PIN save")
+
+        let repair = app.buttons["status.repair"]
+        for _ in 0..<4 {
+            if repair.exists { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(repair.waitForExistence(timeout: 5), "the repair action is not on the status screen")
+        repair.tap()
+
+        XCTAssertTrue(app.secureTextFields["pin.gate"].waitForExistence(timeout: 10),
+                      "a gated action opened without asking for the parent PIN")
+    }
+}
