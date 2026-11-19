@@ -12,7 +12,35 @@
     <Version>0.1.0</Version>
     <AssemblyVersion>0.1.0.1</AssemblyVersion>
     <FileVersion>0.1.0.1</FileVersion>
+    <OsraApiBase Condition="'$(OsraApiBase)' == ''">https://api.osratech.com</OsraApiBase>
   </PropertyGroup>
+  <Target Name="GenerateBuildEndpoint" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <_NormalizedOsraApiBase>$([System.String]::Copy('$(OsraApiBase)').Trim().TrimEnd('/'))</_NormalizedOsraApiBase>
+      <_OsraApiBaseValid>$([System.Text.RegularExpressions.Regex]::IsMatch('$(_NormalizedOsraApiBase)', '^https://[A-Za-z0-9.-]+(?::[0-9]{1,5})?(?:/[A-Za-z0-9._~:/?#\[\]@!$&amp;()*+,;=-]*)?$'))</_OsraApiBaseValid>
+      <_GeneratedBuildEndpointFile>$(IntermediateOutputPath)BuildEndpoint.g.cs</_GeneratedBuildEndpointFile>
+      <_GeneratedBuildEndpointSource>// &lt;auto-generated /&gt;
+namespace FamilyShield.Agent.Services%3B
+
+internal static class BuildEndpoint
+{
+    public const string ApiBase = "$(_NormalizedOsraApiBase)"%3B
+}
+</_GeneratedBuildEndpointSource>
+    </PropertyGroup>
+    <Error Code="OSRA001"
+           Condition="'$(_OsraApiBaseValid)' != 'True'"
+           Text="OsraApiBase must be a valid https:// URL without whitespace or quotes (received '$(OsraApiBase)')." />
+    <WriteLinesToFile File="$(_GeneratedBuildEndpointFile)"
+                      Lines="$(_GeneratedBuildEndpointSource)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <Compile Remove="$(_GeneratedBuildEndpointFile)" />
+      <Compile Include="$(_GeneratedBuildEndpointFile)" />
+      <FileWrites Include="$(_GeneratedBuildEndpointFile)" />
+    </ItemGroup>
+  </Target>
   <ItemGroup>
     <Using Include="Microsoft.Extensions.Configuration" />
     <Using Include="Microsoft.Extensions.DependencyInjection" />

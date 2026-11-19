@@ -11,6 +11,8 @@ internal static class ServiceHostComposition
         services.AddSingleton<SessionProcess>();
         services.AddSingleton<ITrayLauncher>(provider => provider.GetRequiredService<SessionProcess>());
         services.AddSingleton<ITrayProcessDiscovery>(provider => provider.GetRequiredService<SessionProcess>());
+        services.AddSingleton<ITrayActivationGate>(serviceProvider => new ServiceTrayActivationGate(
+            () => config is not null || serviceProvider.GetRequiredService<RuntimeCoordinator>().RuntimeStarted));
         services.AddSingleton<TraySupervisor>();
         services.AddSingleton<ITrayProcessRegistry>(provider => provider.GetRequiredService<TraySupervisor>());
         services.AddHostedService(provider => provider.GetRequiredService<TraySupervisor>());
@@ -42,5 +44,10 @@ internal static class ServiceHostComposition
             },
         });
         DesktopRuntime.AddServiceTransport(services, transportConfig);
+    }
+
+    private sealed class ServiceTrayActivationGate(Func<bool> isReady) : ITrayActivationGate
+    {
+        public bool IsReady => isReady();
     }
 }

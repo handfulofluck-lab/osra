@@ -1,0 +1,87 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <!-- Per-machine MSI per ADR-0041 D6 (installed to ProgramFiles64Folder\OSRA; uninstall/modify requires Administrator UAC). -->
+  <Package Name="OSRA"
+           Manufacturer="OSRA"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="B7E4F3D2-9A61-4C5E-8B1A-2D3F4E5A6C7B"
+           Scope="perMachine">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed."
+                  Schedule="afterInstallInitialize" />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Locale-independent well-known SID properties for localized Windows installations. -->
+    <util:QueryWindowsWellKnownSIDs />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="OSRA" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="OSRA" />
+    </StandardDirectory>
+
+    <Feature Id="ProductFeature" Title="OSRA" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+      <ComponentGroupRef Id="HarvestedPayloads" />
+    </Feature>
+
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <!-- Restrict install directory writes to SYSTEM and Administrators so a child account cannot tamper with binaries or config. -->
+      <Component Id="InstallDirPermissions" Guid="8E51A1C4-43A2-4918-9A4C-52B1E13C1D01">
+        <CreateFolder>
+          <util:PermissionEx User="[WIX_ACCOUNT_LOCALSYSTEM]" GenericAll="yes" />
+          <util:PermissionEx User="[WIX_ACCOUNT_ADMINISTRATORS]" GenericAll="yes" />
+          <util:PermissionEx User="[WIX_ACCOUNT_USERS]" GenericRead="yes" GenericExecute="yes" />
+        </CreateFolder>
+      </Component>
+
+      <Component Id="OsraServiceComponent">
+        <File Id="OsraServiceExe" Source="$(var.PublishDir)\OSRA.Service.exe" KeyPath="yes" />
+        <ServiceInstall Id="OsraServiceInstall"
+                        Name="OSRA Service"
+                        DisplayName="OSRA Service"
+                        Description="OSRA parental safety enforcement service."
+                        Type="ownProcess"
+                        Start="auto"
+                        Account="LocalSystem"
+                        ErrorControl="normal"
+                        Vital="yes">
+          <util:ServiceConfig FirstFailureActionType="restart"
+                              SecondFailureActionType="restart"
+                              ThirdFailureActionType="restart"
+                              RestartServiceDelayInSeconds="5"
+                              ResetPeriodInDays="1" />
+        </ServiceInstall>
+        <ServiceControl Id="OsraServiceControl"
+                        Name="OSRA Service"
+                        Start="install"
+                        Stop="both"
+                        Remove="uninstall"
+                        Wait="yes" />
+      </Component>
+
+      <!-- OSRA Service (TraySupervisor) launches and tracks the per-session tray PID once paired; no duplicate HKLM Run key. -->
+      <Component Id="OsraTrayComponent">
+        <File Id="OsraTrayExe" Source="$(var.PublishDir)\OSRA.exe" KeyPath="yes" />
+      </Component>
+
+      <Component Id="StartMenuShortcut" Directory="ApplicationProgramsFolder" Guid="C2B917B0-1284-4094-A31B-8B8E00F1E84D">
+        <Shortcut Id="OsraStartMenuShortcut"
+                  Name="OSRA"
+                  Target="[INSTALLFOLDER]OSRA.exe"
+                  WorkingDirectory="INSTALLFOLDER" />
+        <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
+        <RegistryValue Root="HKLM" Key="Software\OSRA\Installer" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="HarvestedPayloads" Directory="INSTALLFOLDER">
+      <Files Include="$(var.PublishDir)\**">
+        <Exclude Files="$(var.PublishDir)\OSRA.Service.exe" />
+        <Exclude Files="$(var.PublishDir)\OSRA.exe" />
+        <Exclude Files="$(var.PublishDir)\*.pdb" />
+      </Files>
+    </ComponentGroup>
+  </Package>
+</Wix>
