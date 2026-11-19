@@ -24,9 +24,10 @@ And once, from the source tree (an unsigned build embeds no entitlements):
      app group group.com.osratech.child.
   6. each extension's Info.plist names "$(PRODUCT_MODULE_NAME).<Class>" and declares <Class> in its own sources (#561).
 And for the app and each .appex, built and in the source tree:
-  7. Info.plist lists en and ar in CFBundleLocalizations, and the bundle carries en.lproj and ar.lproj (#654: an
-     extension that declares only English gets English from iOS, so the block screen stayed English on an
-     Arabic phone).
+  7. Info.plist lists the released languages and every catalog the build carries in CFBundleLocalizations, and the
+     bundle carries each one's lproj (#654: an extension that declares only English gets English from iOS, so the
+     block screen stayed English on an Arabic phone; ADR-0042 D1a: a catalog compiled in but not declared is
+     invisible to iOS).
 
 It prints what it found, so the CI log shows the bundle list, and exits 1 on any mismatch.
 """

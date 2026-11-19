@@ -342,7 +342,7 @@ public enum RuleSyncer {
     @discardableResult
     public static func syncNow(client: RuleSyncClient = RuleSyncClient(), enforce: Bool = true,
                                apply: Apply? = nil,
-                               recordLanguages: ([String]) -> Void = { SharedLanguage.recordEnabled($0) },
+                               recordLanguages: ([String]) -> Void = { SharedLanguage.setEnabled($0) },
                                reportApplied: ReportApplied = { await LocationClient().reportAppliedRulesVersion($0, $1) }) async -> Outcome {
         guard let identity = AgentIdentityStore.load() else { return .notPaired }
         do {

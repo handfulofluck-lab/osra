@@ -26,8 +26,17 @@ public enum L10n {
         return args.isEmpty ? format : String(format: format, locale: Locale(identifier: language), arguments: args)
     }
 
-    /// The package's table for one language, English when the build does not carry that language.
+    /// The package's table for one language, the base language when the build does not carry that language.
+    ///
+    /// Never `Bundle.module` itself: its own localization is chosen by the **system** language, so an enabled tag
+    /// with no catalog of its own (a newer server, a typo) would hand the app's text back to the phone while the
+    /// shield drew English (D4).
     public static func bundle(for language: String) -> Bundle {
-        Bundle.module.path(forResource: language, ofType: "lproj").flatMap(Bundle.init(path:)) ?? Bundle.module
+        if let table = Bundle.module.path(forResource: language, ofType: "lproj").flatMap(Bundle.init(path:)) {
+            return table
+        }
+        if language == SharedLanguage.base { return Bundle.module }
+        return Bundle.module.path(forResource: SharedLanguage.base, ofType: "lproj").flatMap(Bundle.init(path:))
+            ?? Bundle.module
     }
 }

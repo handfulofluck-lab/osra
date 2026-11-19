@@ -339,6 +339,28 @@ final class RuleSyncTests: XCTestCase {
         XCTAssertEqual(recorded, [["en", "ar", "fr"]])
     }
 
+    /// The default recorder must be the one that writes the app group. With the closure injected in every other
+    /// row, replacing the default with a no-op would leave this suite green (found in a fresh-eyes review).
+    func testSyncNowWritesTheEnabledListIntoTheAppGroupByDefault() async throws {
+        pair()
+        let defaults = UserDefaults(suiteName: AgentIdentityStore.suiteName)!
+        let hadList = defaults.stringArray(forKey: SharedLanguage.enabledKey)
+        let hadLanguage = defaults.string(forKey: SharedLanguage.key)
+        defer {
+            if let hadList { defaults.set(hadList, forKey: SharedLanguage.enabledKey) }
+            else { defaults.removeObject(forKey: SharedLanguage.enabledKey) }
+            if let hadLanguage { defaults.set(hadLanguage, forKey: SharedLanguage.key) }
+            else { defaults.removeObject(forKey: SharedLanguage.key) }
+        }
+        defaults.removeObject(forKey: SharedLanguage.enabledKey)
+
+        StubProtocol.response = (200, rules(languages: ["en", "ar", "fr"]))
+        _ = await RuleSyncer.syncNow(client: stubbedClient, enforce: false)
+
+        XCTAssertEqual(defaults.stringArray(forKey: SharedLanguage.enabledKey), ["en", "ar", "fr"],
+                       "the default recorder is wired to the app group, not only to a test closure")
+    }
+
     /// A server before the switch sends none, and then the phone keeps whatever it has: an older API must not be
     /// able to blank the list and drop a tester family back to English mid-session.
     func testAPayloadWithoutTheFieldRecordsNothing() async throws {

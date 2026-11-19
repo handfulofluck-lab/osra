@@ -56,9 +56,24 @@ public enum SharedLanguage {
         return normalised(stored.isEmpty ? released : stored)
     }
 
-    /// Records the enabled list the server sent. An empty or blank list is not a list: it leaves the last one,
-    /// because a server that has nothing to say must not drop a family back to English. The base language is always
-    /// kept, so a payload that forgets it cannot leave the app with nothing to draw.
+    /// Records the enabled list the server sent **and re-records the language**. An empty or blank list is not a
+    /// list: it leaves the last one, because a server that has nothing to say must not drop a family back to
+    /// English. The base language is always kept, so a payload that forgets it cannot leave the app with nothing to
+    /// draw.
+    ///
+    /// The second write is the point of a **served** switch (D1a): `stored` wins over the system list, so a family
+    /// whose `beta` language is switched on would otherwise keep the language recorded at launch until the app was
+    /// next started cold.
+    public static func setEnabled(_ languages: [String],
+                                  preferences: [String] = Locale.preferredLanguages,
+                                  defaults: UserDefaults? = UserDefaults(suiteName: AgentIdentityStore.suiteName)) {
+        let list = usable(languages)
+        guard !list.isEmpty else { return }
+        defaults?.set(normalised(list), forKey: enabledKey)
+        record(preferences, defaults: defaults)
+    }
+
+    /// Records only the list, without touching the recorded language.
     public static func recordEnabled(_ languages: [String],
                                      defaults: UserDefaults? = UserDefaults(suiteName: AgentIdentityStore.suiteName)) {
         let list = usable(languages)

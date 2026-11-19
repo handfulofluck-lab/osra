@@ -94,6 +94,33 @@ final class SharedLanguageTests: XCTestCase {
         XCTAssertEqual(ShieldText.resolvedLanguage(stored: "ar", enabled: ["en", "ar"], fallback: { "en" }), "ar")
         XCTAssertEqual(ShieldText.resolvedLanguage(stored: "fr", enabled: ["en", "ar"], fallback: { "en" }), "en")
     }
+
+    // MARK: - The served switch takes effect without a relaunch
+
+    /// D1a is a **served** switch: when the rules turn `beta` on for a family, the app must start drawing that
+    /// language at the next sync. `stored` wins over the system list, so writing the list alone left the family on
+    /// the language recorded at launch until the app was next started cold.
+    func testANewlyEnabledLanguageTakesEffectAtTheNextSync() {
+        SharedLanguage.recordEnabled(["en", "ar"], defaults: suite)
+        SharedLanguage.record(["en-US"], defaults: suite)
+        XCTAssertEqual(SharedLanguage.current(enabled: SharedLanguage.enabledLanguages(defaults: suite),
+                                              stored: SharedLanguage.stored(defaults: suite),
+                                              preferences: ["fr-FR", "en"]), "en", "before the switch widens")
+
+        SharedLanguage.setEnabled(["en", "ar", "fr"], preferences: ["fr-FR", "en"], defaults: suite)
+        XCTAssertEqual(SharedLanguage.stored(defaults: suite), "fr", "the newly enabled language is recorded")
+        XCTAssertEqual(SharedLanguage.current(enabled: SharedLanguage.enabledLanguages(defaults: suite),
+                                              stored: SharedLanguage.stored(defaults: suite),
+                                              preferences: ["fr-FR", "en"]), "fr")
+    }
+
+    /// D4: an enabled tag the build has no catalog for (a newer server, a typo) draws the base language — not the
+    /// phone's, which is what `Bundle.module` on its own would give.
+    func testAnEnabledTagWithNoCatalogDrawsTheBaseLanguage() {
+        let table = L10n.bundle(for: "de")
+        XCTAssertEqual(table.localizedString(forKey: "block_title_blocked", value: nil, table: nil),
+                       L10n.tr("block_title_blocked", language: "en"))
+    }
 }
 
 /// ADR-0042 D1a (#883), the wiring: `L10n.tr` must draw in the language the **enabled list** allows, not in the

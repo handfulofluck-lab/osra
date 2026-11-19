@@ -67,7 +67,7 @@ public struct ShieldText: Equatable {
         return nil
     }
 
-    /// The screen's text for `window` in `language` ("en" or "ar"; anything else falls back to English).
+    /// The screen's text for `window` in `language` — any catalog the build carries; a language with no table draws English.
     public static func make(window: Window?, language: String) -> ShieldText {
         let table = strings(for: language)
         var subtitle: String?
