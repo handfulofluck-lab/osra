@@ -34,7 +34,11 @@ enum UITestSeed {
                                      familyId: "uitest-seed-family",
                                      hmacSecret: nil,
                                      childName: "UITest Child")
-        // Ahmed's condition 5: no parent PIN is written, so every gate still asks for one.
+        // Every seeded launch starts clean: the previous row's identity and parent PIN go first, so the rows do not
+        // depend on the order the suite runs in. Clearing is not the same as standing in for the PIN — there is no
+        // PIN at all afterwards, so every gate still asks for one (Ahmed's condition 5).
+        AgentIdentityStore.clear()
+        AgentIdentityStore.clearOrphanedSecrets()
         return store(identity)
     }
 }

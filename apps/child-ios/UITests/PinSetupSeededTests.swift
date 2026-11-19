@@ -74,8 +74,18 @@ final class PinSetupSeededTests: XCTestCase {
         app.buttons["pin.save"].tap()
         XCTAssertFalse(app.staticTexts["pin.setError"].exists, "the setup screen refused the PIN")
 
+        // The status screen draws in a Form, which builds its rows lazily: the first section proves the screen
+        // arrived, then the repair row is scrolled into view. Asserting on a row below the fold without scrolling
+        // was this row's second failure.
+        XCTAssertTrue(app.staticTexts["status.paired"].waitForExistence(timeout: 20),
+                      "the status screen did not follow the PIN save")
+
         let repair = app.buttons["status.repair"]
-        XCTAssertTrue(repair.waitForExistence(timeout: 15), "the status screen did not follow the PIN save")
+        for _ in 0..<4 {
+            if repair.exists { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(repair.waitForExistence(timeout: 5), "the repair action is not on the status screen")
         repair.tap()
 
         XCTAssertTrue(app.secureTextFields["pin.gate"].waitForExistence(timeout: 10),
