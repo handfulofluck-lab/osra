@@ -38,9 +38,13 @@ public enum SharedLanguage {
     }
 
     /// Records the language for `preferences` in the app group.
+    ///
+    /// The enabled list is read from the **same** store this writes to: reading it from the app group while writing
+    /// somewhere else made the two disagree, which is every test's seam and, in production, the difference between
+    /// a family getting a `beta` language at the next sync and at the next launch.
     public static func record(_ preferences: [String] = Locale.preferredLanguages,
                               defaults: UserDefaults? = UserDefaults(suiteName: AgentIdentityStore.suiteName)) {
-        defaults?.set(language(for: preferences), forKey: key)
+        defaults?.set(language(for: preferences, enabled: enabledLanguages(defaults: defaults)), forKey: key)
     }
 
     /// The last recorded language, if any.
