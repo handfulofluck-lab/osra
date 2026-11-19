@@ -17,6 +17,7 @@ import {
   stopDeviceSilenceScheduler,
 } from "../src/jobs/deviceSilence.js";
 import { deviceRoutes } from "../src/routes/devices.js";
+import { RESTART_WARNING_GAP_MINUTES } from "../src/lib/bootReport.js";
 import { MockRedis, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
 import { expectKeyedAlertBody } from "./alertBody.js";
 
@@ -35,6 +36,13 @@ const NOW = new Date("2026-10-17T12:00:00.000Z");
 
 describe("device-silence watch (plan 1.9 finding: a wiped agent cannot alert, the server must)", () => {
   beforeEach(() => resetPrismaMock());
+
+  // #867: two numbers that must move together. At this gap the parent would also have received
+  // `device_silent`; if they drift, a restart either claims an alarm that never came or stays quiet on
+  // one that did. The restart alert's own rows live in test/boot-report.test.ts.
+  it("the restart alert's warning floor is the silence watch's own window (#867)", () => {
+    expect(RESTART_WARNING_GAP_MINUTES).toBe(SILENT_MIN_SAFE_MINUTES);
+  });
 
   it("pure rule: online + unseen for longer than the window", () => {
     expect(isSilent("online", new Date(NOW.getTime() - 31 * 60_000), NOW, 30)).toBe(true);

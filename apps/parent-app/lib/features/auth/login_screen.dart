@@ -12,6 +12,7 @@ import '../../providers/server_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../onboarding/onboarding_messages.dart';
 import 'auth_messages.dart';
+import 'create_account_screen.dart';
 import 'mfa_recovery_screen.dart';
 
 /// Sign-in screen with an expandable registration form. Navigation after a
@@ -42,19 +43,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _code = TextEditingController();
-  final _displayName = TextEditingController();
-  final _familyName = TextEditingController();
   bool _obscured = true;
   bool _serverTouched = false;
   String? _serverError;
-  String _region = 'US';
-
-  /// A register-form problem caught before the request (see [registerFormProblem]).
-  String? _formError;
-
-  /// The last button pressed was Register, so its error shows beside that button, inside the
-  /// expanded section, rather than above Sign in where a parent filling the form cannot see it.
-  bool _registering = false;
 
   @override
   void initState() {
@@ -68,8 +59,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     _email.dispose();
     _password.dispose();
     _code.dispose();
-    _displayName.dispose();
-    _familyName.dispose();
     super.dispose();
   }
 
@@ -85,14 +74,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return url;
   }
 
-  /// What the parent reads for [AuthState.error]. A rejected field and a taken email are named on
-  /// both screens; anything else keeps the existing split (the wizard names the causes a
-  /// non-engineer can fix, the plain screen shows the server's string).
+  /// What the parent reads for [AuthState.error]: localized sentences on both
+  /// the onboarding wizard and plain sign-in, never raw server codes or exceptions.
   String? _authErrorText(AppLocalizations l10n, String? raw) {
     if (raw == null) return null;
     if (raw.startsWith(kValidationFailedPrefix)) return authFieldError(l10n, raw);
     if (raw == 'email_taken') return l10n.registerEmailTaken;
-    return widget.onboarding ? onboardingAuthError(l10n, raw) : raw;
+    return onboardingAuthError(l10n, raw);
   }
 
   Future<void> _submit(Future<void> Function() action) async {
@@ -145,7 +133,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!_serverTouched && _server.text != serverUrl) {
       _server.text = serverUrl;
     }
-    final errorText = _formError ?? _authErrorText(l10n, auth.error);
+    final errorText = _authErrorText(l10n, auth.error);
     final builtIn = widget.builtIn ?? kDefaultServerUrl;
     final locked = isServerLocked(builtIn);
     final showServer = showServerField(debug: widget.debug ?? kDebugMode, builtIn: builtIn);
@@ -257,6 +245,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     labelText: l10n.passwordLabel,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                     suffixIcon: IconButton(
+                      key: const ValueKey('togglePassword'),
+                      tooltip: _obscured ? l10n.showPassword : l10n.hidePassword,
                       icon: Icon(_obscured ? Icons.visibility : Icons.visibility_off),
                       onPressed: () => setState(() => _obscured = !_obscured),
                     ),
@@ -274,7 +264,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                   ),
                 ),
-                if (errorText != null && !_registering) ...[
+                if (errorText != null) ...[
                   const SizedBox(height: AppSpace.md),
                   Text(errorText,
                       key: const ValueKey('loginError'),
@@ -285,10 +275,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   onPressed: auth.loading
                       ? null
                       : () async {
-                          setState(() {
-                            _registering = false;
-                            _formError = null;
-                          });
                           if (await _saveServer() == null) return;
                           await _submit(() => ref.read(authProvider.notifier).login(_email.text.trim(), _password.text, normalizeDigits(_code.text)));
                         },
@@ -304,85 +290,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: Text(l10n.mfaRecoveryLink),
                 ),
                 const SizedBox(height: AppSpace.sm),
-                ExpansionTile(
-                  title: Text(l10n.createAccount),
-                  childrenPadding: const EdgeInsets.symmetric(horizontal: AppSpace.lg),
-                  children: [
-                    // The section has no email or password of its own; say so, with the rule the
-                    // server enforces, before the parent finds out from an error.
-                    Text(
-                      l10n.registerFieldsHint,
-                      key: const ValueKey('registerFieldsHint'),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant),
-                    ),
-                    const SizedBox(height: AppSpace.md),
-                    TextField(
-                      controller: _familyName,
-                      decoration: InputDecoration(
-                        labelText: l10n.familyNameLabel,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
-                      ),
-                    ),
-                    const SizedBox(height: AppSpace.md),
-                    TextField(
-                      controller: _displayName,
-                      decoration: InputDecoration(
-                        labelText: l10n.yourNameLabel,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
-                      ),
-                    ),
-                    const SizedBox(height: AppSpace.md),
-                    DropdownButtonFormField<String>(
-                      initialValue: _region,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        labelText: l10n.regionLabel,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
-                      ),
-                      items: [
-                        DropdownMenuItem(value: 'US', child: Text(l10n.regionUS)),
-                        DropdownMenuItem(value: 'EU', child: Text(l10n.regionEU)),
-                        DropdownMenuItem(value: 'UK', child: Text(l10n.regionUK)),
-                        DropdownMenuItem(value: 'OTHER', child: Text(l10n.regionOther)),
-                      ],
-                      onChanged: (v) => setState(() => _region = v ?? 'US'),
-                    ),
-                    const SizedBox(height: AppSpace.md),
-                    if (errorText != null && _registering) ...[
-                      Text(errorText,
-                          key: const ValueKey('registerError'),
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.danger)),
-                      const SizedBox(height: AppSpace.md),
-                    ],
-                    OutlinedButton(
-                      onPressed: auth.loading
-                          ? null
-                          : () async {
-                              final problem = registerFormProblem(
-                                l10n,
-                                email: _email.text.trim(),
-                                password: _password.text,
-                                displayName: _displayName.text.trim(),
-                                familyName: _familyName.text.trim(),
-                              );
-                              setState(() {
-                                _registering = true;
-                                _formError = problem;
-                              });
-                              if (problem != null) return;
-                              if (await _saveServer() == null) return;
-                              await _submit(() => ref.read(authProvider.notifier).register(
-                                    email: _email.text.trim(),
-                                    password: _password.text,
-                                    displayName: _displayName.text.trim(),
-                                    familyName: _familyName.text.trim(),
-                                    region: _region,
-                                  ));
-                            },
-                      child: Text(l10n.register),
-                    ),
-                    const SizedBox(height: AppSpace.lg),
-                  ],
+                TextButton(
+                  key: const ValueKey('openCreateAccount'),
+                  // ADR-0043 D6 (UI/UX Bureau): sign-up is its own page, opened from one line here,
+                  // not an expansion tile that also holds someone else's sign-in error.
+                  onPressed: () async {
+                    // The server is applied before the page opens, exactly as Sign in does: the page's
+                    // consent read must not go to an empty base URL on an unlocked build.
+                    if (await _saveServer() == null) return;
+                    if (!context.mounted) return;
+                    await Navigator.of(context).push<void>(MaterialPageRoute(
+                      builder: (_) => CreateAccountScreen(onboarding: widget.onboarding),
+                    ));
+                  },
+                  child: Text(l10n.createAccount),
                 ),
               ],
             ),

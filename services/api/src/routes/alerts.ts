@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
+import { redactedBlockedSiteKey, redactBlockedSiteHost, siteNamesEnabled } from "../lib/siteNames.js";
 import { raiseAlertOnce } from "../lib/alerts.js";
 import { sanitizeAlertMetadata, withoutAlertLocation } from "../lib/alertLocation.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
@@ -129,6 +130,12 @@ export async function alertsRoutes(app: FastifyInstance) {
 
     const effectiveDeviceId = deviceId ?? auth.device?.id;
 
+    // Claude's ruling on #841 finding 5: while the site-name flag is off, a blocked site is a count with no
+    // host. The parent keeps the attempt; nothing in the row names a site, and the dedupe key groups by day.
+    const redactSite = category === "web_threat" && !siteNamesEnabled();
+    const safeMetadata = redactSite ? redactBlockedSiteHost(metadata) : metadata;
+    const safeDedupeKey = redactSite ? redactedBlockedSiteKey() : dedupeKey;
+
     // Phase 2a: one path creates the row, publishes the WS event and pushes to the parents' phones.
     // Issue #225: a repeated dedupeKey is a retry, not a new alert — 200 with the existing row.
     const { alert, deduplicated } = await raiseAlertOnce({
@@ -137,13 +144,15 @@ export async function alertsRoutes(app: FastifyInstance) {
       deviceId: effectiveDeviceId,
       severity,
       category,
-      title,
-      body,
+      // A redacted web_threat carries no client text either: the title and body are free text that could
+      // name a site, so the server owns both while the flag is off (Fable's blocker B).
+      title: redactSite ? "Blocked site opened" : title,
+      body: redactSite ? "Your child tried to open a blocked site." : body,
       // Issue #672: an SOS may carry where it was sent from, as the five flat keys the agent writes.
       // The location is normalised here — or dropped, keeping every other key — and never rejects the
       // alert: an SOS with no usable fix is still an SOS a parent must receive.
-      metadata: sanitizeAlertMetadata(metadata),
-      dedupeKey,
+      metadata: sanitizeAlertMetadata(safeMetadata),
+      dedupeKey: safeDedupeKey,
       attemptCount,
       childName: child.displayName,
     });

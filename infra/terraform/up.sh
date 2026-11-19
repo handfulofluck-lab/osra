@@ -132,6 +132,8 @@ if [ "$OSRA_ENV" = production ]; then
   sg=$(terraform -chdir="$HERE/env" output -raw api_security_group_id)
   log_group=$(terraform -chdir="$HERE/env" output -raw log_group_name)
   db_id=$(terraform -chdir="$HERE/env" output -raw rds_identifier)
+  backup_vault=$(terraform -chdir="$HERE/env" output -raw backup_vault_name 2>/dev/null || true)
+  backup_role=$(terraform -chdir="$HERE/env" output -raw backup_role_arn 2>/dev/null || true)
   # Read here, with the profile's credentials: after the switch to the role below, Terraform's S3 backend
   # (in the management account) cannot be read, and this output came back empty (15 Nov production run:
   # "refusing: production has no db-admin task definition" right after the snapshot).
@@ -140,8 +142,8 @@ if [ "$OSRA_ENV" = production ]; then
   # The CLI calls below must run as the production role, as Terraform does, never as the profile itself.
   role=$(terraform -chdir="$HERE/env" output -raw deploy_role_arn)
   want_account=$(terraform -chdir="$HERE/env" output -raw allowed_account_id)
-  creds=$(aws sts assume-role --role-arn "$role" --role-session-name osra-production-migrate \
-    --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' --output text)
+  . "$HERE/lib/agent-source-identity.sh"
+  creds=$(agent_assume_production_role "$role" osra-production-migrate)
   read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN <<EOC
 $creds
 EOC
@@ -153,12 +155,28 @@ EOC
     exit 1
   fi
 
-  # A manual snapshot before every production migration: point-in-time restore exists, but a named
-  # snapshot is the one-step way back from a migration that went wrong.
-  snap="$db_id-pre-migrate-$(date -u +%Y%m%d%H%M%S)"
-  echo "==> snapshot $snap"
-  aws rds create-db-snapshot --db-instance-identifier "$db_id" --db-snapshot-identifier "$snap" >/dev/null
-  aws rds wait db-snapshot-available --db-snapshot-identifier "$snap"
+  # A backup before every production migration: point-in-time restore exists, but a named backup is the
+  # one-step way back from a migration that went wrong. It is an AWS Backup job, not a manual RDS snapshot:
+  # the organisation's control policy stops agents deleting snapshots, so a manual snapshot would outlive
+  # the privacy notice's 14 days. AWS Backup expires this one itself (#892 section 6).
+  if [ -z "$backup_vault" ] || [ -z "$backup_role" ]; then
+    echo "refusing: production has no backup vault or backup role output; the pre-migration backup needs both." >&2
+    exit 1
+  fi
+  db_arn=$(aws rds describe-db-instances --db-instance-identifier "$db_id" --query 'DBInstances[0].DBInstanceArn' --output text)
+  echo "==> pre-migration backup of $db_id (kept 14 days)"
+  job=$(aws backup start-backup-job --backup-vault-name "$backup_vault" --resource-arn "$db_arn" \
+    --iam-role-arn "$backup_role" --lifecycle DeleteAfterDays=14 \
+    --recovery-point-tags "Purpose=pre-migrate,Commit=$(git -C "$HERE" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)" \
+    --query BackupJobId --output text)
+  while :; do
+    state=$(aws backup describe-backup-job --backup-job-id "$job" --query State --output text)
+    case "$state" in
+      COMPLETED) echo "    backup job $job completed"; break ;;
+      FAILED|ABORTED|EXPIRED|PARTIAL) echo "refusing: pre-migration backup job $job ended $state; not migrating." >&2; exit 1 ;;
+      *) sleep 30 ;;
+    esac
+  done
 
   # Production migrates only: no demo family in the real database. The db-admin task (env/db_admin.tf)
   # runs the migration as the master user and grants the osra_api role the API connects as (#766 item 3).

@@ -12,6 +12,7 @@ import 'package:familyshield_parent/features/auth/login_screen.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
+import 'package:familyshield_parent/l10n/app_localizations.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/providers/onboarding_provider.dart';
 import 'package:familyshield_parent/providers/server_provider.dart';
@@ -125,7 +126,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.calls('POST', '/v1/auth/login'), hasLength(1));
-      expect(find.text('invalid_credentials'), findsOneWidget);
+      final en = lookupAppLocalizations(const Locale('en'));
+      expect(find.text(en.onboardingWrongPassword), findsOneWidget);
+      expect(find.text('invalid_credentials'), findsNothing);
     });
 
     // NOTE: success navigation is asserted by pumping the REAL app router
@@ -423,7 +426,7 @@ void main() {
       );
     });
 
-    testWidgets('an unknown refusal reason still names the code, not "queued"', (tester) async {
+    testWidgets('an unknown refusal reason shows a localized failure instead of the raw code or "queued" (R-ID-1)', (tester) async {
       final api = FakeApiClient({
         ...standardRoutes(),
         'POST /v1/devices/dev-1/command': (_) => {
@@ -437,7 +440,9 @@ void main() {
       await tester.tap(find.text('Lock'));
       await flushFakeHttp(tester);
 
-      expect(find.textContaining('some_new_reason'), findsOneWidget);
+      final en = lookupAppLocalizations(const Locale('en'));
+      expect(find.text(en.commandFailed), findsOneWidget);
+      expect(find.textContaining('some_new_reason'), findsNothing);
       expect(find.textContaining('queued'), findsNothing);
     });
   });
@@ -683,33 +688,21 @@ void main() {
       expect(tester.widget<SwitchListTile>(tile).value, isFalse);
     });
 
-    testWidgets('add and remove an app rule row', (tester) async {
+    testWidgets('remove an app rule row', (tester) async {
       final api = FakeApiClient(standardRoutes());
       await pumpRules(tester, api);
 
       await tester.tap(find.text('Apps'));
       await tester.pumpAndSettle();
-      expect(find.text('com.example.game'), findsOneWidget);
+      // U33 (#868): the row names the app and shows its icon; the package id is never shown, and the
+      // package-id dialog that used to add a rule is gone, so this row can only be removed here.
+      expect(find.text('Game'), findsOneWidget);
+      expect(find.text('com.example.game'), findsNothing);
 
-      // #172 grew the always-allowed block above the rule list, so "Add app rule" is below the fold on
-      // the 800x600 test surface. Dragging the list is the deterministic form (one scrollable, named by
-      // key, rather than "the first Scrollable on the screen").
-      await tester.drag(find.byKey(const ValueKey('appsRulesList')), const Offset(0, -260));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Add app rule'));
-      await tester.pumpAndSettle();
-      final dialog = find.byType(AlertDialog);
-      await tester.enterText(find.descendant(of: dialog, matching: find.byType(TextField)).first, 'Test App');
-      await tester.enterText(find.descendant(of: dialog, matching: find.byType(TextField)).last, 'com.test.app');
-      await tester.tap(find.descendant(of: dialog, matching: find.text('Add')));
-      await tester.pumpAndSettle();
-      expect(find.text('com.test.app'), findsOneWidget);
-
-      final gameCard = find.ancestor(of: find.text('com.example.game'), matching: find.byType(Card));
+      final gameCard = find.ancestor(of: find.text('Game'), matching: find.byType(Card));
       await tester.tap(find.descendant(of: gameCard, matching: find.byIcon(Icons.delete_outline)));
       await tester.pumpAndSettle();
-      expect(find.text('com.example.game'), findsNothing);
-      expect(find.text('com.test.app'), findsOneWidget);
+      expect(find.text('Game'), findsNothing);
     });
 
     testWidgets('Save PUTs the full ruleset with all four sections', (tester) async {

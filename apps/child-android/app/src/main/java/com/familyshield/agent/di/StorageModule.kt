@@ -7,6 +7,8 @@ import com.familyshield.agent.data.db.CommsEventDao
 import com.familyshield.agent.data.db.FamilyShieldDatabase
 import com.familyshield.agent.data.db.PendingPingDao
 import com.familyshield.agent.data.db.UsageEventDao
+import com.familyshield.agent.security.PinAttemptStorage
+import com.familyshield.agent.security.SecureStore
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -18,6 +20,19 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object StorageModule {
+    /**
+     * osra-security#24: the wrong-PIN count lives in the encrypted store, beside the PIN hash, so a reopened
+     * screen reads the same count. Bound here rather than taken as a `SecureStore` parameter so the store
+     * itself can be replaced in a JVM test with an in-memory map.
+     */
+    @Provides
+    @Singleton
+    fun providePinAttemptStorage(secureStore: SecureStore): PinAttemptStorage =
+        object : PinAttemptStorage {
+            override fun get(key: String): String? = secureStore.getString(key)
+            override fun put(key: String, value: String?) = secureStore.putString(key, value)
+        }
+
 
     /** The app-wide Room database. */
     @Provides

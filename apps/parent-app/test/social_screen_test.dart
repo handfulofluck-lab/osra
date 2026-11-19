@@ -64,6 +64,7 @@ void main() {
     List<Map<String, dynamic>> concerns = const [],
     List<Map<String, dynamic>> calls = const [],
     List<Map<String, dynamic>> sms = const [],
+    List<Map<String, dynamic>> locks = const [],
     Map<String, bool>? socialMonitoring,
     List<String>? contactAllowlist,
   }) =>
@@ -73,9 +74,12 @@ void main() {
         'GET /v1/social/events': (req) => req.query['childId'] == 'child-1'
             ? {'items': concerns, 'meta': {'total': concerns.length}}
             : {'items': <dynamic>[], 'meta': {'total': 0}},
-        'GET /v1/reports/activity': (req) => req.query['type'] == 'call'
-            ? {'items': calls, 'meta': {'total': calls.length}}
-            : {'items': sms, 'meta': {'total': sms.length}},
+        'GET /v1/reports/activity': (req) => switch (req.query['type']) {
+              'call' => {'items': calls, 'meta': {'total': calls.length}},
+              'sms' => {'items': sms, 'meta': {'total': sms.length}},
+              'lock_period' => {'items': locks, 'meta': {'total': locks.length}},
+              _ => {'items': <dynamic>[], 'meta': {'total': 0}},
+            },
       };
 
   Map<String, dynamic> concernJson({
@@ -335,13 +339,37 @@ void main() {
       await flushFakeHttp(tester);
 
       final gets = api.calls('GET', '/v1/reports/activity');
-      expect(gets, hasLength(2));
-      expect(gets.map((r) => r.query['type']), containsAll(['call', 'sms']));
+      expect(gets, hasLength(3));
+      expect(gets.map((r) => r.query['type']), containsAll(['call', 'sms', 'lock_period']));
+      expect(find.text('Device locked'), findsNothing);
+
       // Newest (sms, 1 min ago) renders above the older call.
       await reveal(tester, find.text('running late, see you at 5'));
       final smsTop = tester.getTopLeft(find.byIcon(Icons.sms_outlined));
       final callTop = tester.getTopLeft(find.byIcon(Icons.call_made));
       expect(smsTop.dy, lessThan(callTop.dy));
+    });
+
+    testWidgets('a lock period renders with the attempt count (#830)', (tester) async {
+      final api = FakeApiClient(socialRoutes(locks: [
+        {
+          'id': 'lock-1',
+          'type': 'lock_period',
+          'payload': {
+            'startedAt': '2026-11-15T18:00:00.000Z',
+            'endedAt': '2026-11-15T18:20:00.000Z',
+            'attempts': 5,
+            'mode': 'locked',
+          },
+          'ts': testNow.subtract(const Duration(minutes: 2)).toIso8601String(),
+        },
+      ]));
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+      await flushFakeHttp(tester);
+
+      await reveal(tester, find.text('Device locked'));
+      expect(find.text('Device locked'), findsOneWidget);
+      expect(find.text('The lock screen came up 5 times'), findsOneWidget);
     });
   });
 

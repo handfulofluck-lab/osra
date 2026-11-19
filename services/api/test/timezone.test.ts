@@ -3,7 +3,7 @@ import argon2 from "argon2";
 import { authRoutes } from "../src/routes/auth.js";
 import { familyRoutes } from "../src/routes/family.js";
 import { utcOffsetMinutes } from "../src/lib/digestSchedule.js";
-import { authHeader, buildApp, prismaMock, resetPrismaMock } from "./helpers.js";
+import { authHeader, buildApp, prismaMock, resetPrismaMock, SIGNUP_CONSENTS } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -32,6 +32,8 @@ describe("family timezone source (ADR-0020)", () => {
         fn({
           family: { create: familyCreate },
           parent: { create: vi.fn(async () => ({ id: "parent-1", email: "parent@example.com" })) },
+          // ADR-0043: the account and its acceptance row are written in the same transaction.
+          parentConsentEvent: { create: vi.fn(async () => ({ id: "pce-1" })) },
         }),
       );
     };
@@ -41,7 +43,7 @@ describe("family timezone source (ADR-0020)", () => {
     const ok = await app.inject({
       method: "POST",
       url: "/v1/auth/register",
-      payload: { email: "parent@example.com", password: "correct-horse-battery", displayName: "A", familyName: "F", region: "OTHER", timezone: "Asia/Dubai" },
+      payload: { email: "parent@example.com", password: "correct-horse-battery", displayName: "A", familyName: "F", region: "OTHER", timezone: "Asia/Dubai", consents: SIGNUP_CONSENTS },
     });
     expect(ok.statusCode).toBe(201);
     expect(familyCreate).toHaveBeenCalledWith({
@@ -53,7 +55,7 @@ describe("family timezone source (ADR-0020)", () => {
     const bad = await app.inject({
       method: "POST",
       url: "/v1/auth/register",
-      payload: { email: "second@example.com", password: "correct-horse-battery", displayName: "C", familyName: "G", region: "OTHER", timezone: "Mars/Olympus_Mons" },
+      payload: { email: "second@example.com", password: "correct-horse-battery", displayName: "C", familyName: "G", region: "OTHER", timezone: "Mars/Olympus_Mons", consents: SIGNUP_CONSENTS },
     });
     expect(bad.statusCode).toBe(201);
     const createData = (familyCreate as unknown as { mock: { calls: Array<[{ data: Record<string, unknown> }]> } }).mock.calls.at(-1)?.[0]?.data ?? {};
