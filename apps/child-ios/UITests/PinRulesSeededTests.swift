@@ -148,10 +148,14 @@ final class PinRulesSeededTests: XCTestCase {
         type(goodPin, into: app.secureTextFields["pin.new"])
         type(goodPin, into: app.secureTextFields["pin.repeat"])
 
-        // A coordinate tap, not an element tap: after the first tap the button no longer exists, so a second
-        // element tap failed with "No matches found" — which was the app behaving correctly and the row measuring
-        // the wrong thing. The same screen point twice is what a fast double tap by a person actually is.
-        let point = app.buttons["pin.save"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        // An **absolute** point, resolved before the first tap, not a coordinate bound to the element: a
+        // `coordinate(withNormalizedOffset:)` derived from the button re-resolves the element on every tap, so the
+        // second tap failed with "No matches found" once the screen had moved on — which is the app behaving
+        // correctly and the row measuring the wrong thing. Two taps at the same screen point is what a person's
+        // fast double tap is.
+        let frame = app.buttons["pin.save"].frame
+        let point = app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+            .withOffset(CGVector(dx: frame.midX, dy: frame.midY))
         point.tap()
         point.tap()
 
