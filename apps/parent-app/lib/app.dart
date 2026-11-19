@@ -115,7 +115,16 @@ final router = GoRouter(
     ),
     GoRoute(path: '/child/:id/reports', builder: (_, s) => ReportsScreen(childId: s.pathParameters['id']!)),
     GoRoute(path: '/child/:id/history', builder: (_, s) => UsageHistoryScreen(childId: s.pathParameters['id']!)),
-    GoRoute(path: '/child/:id/rules', builder: (_, s) => RulesEditorScreen(childId: s.pathParameters['id']!)),
+    GoRoute(
+      path: '/child/:id/rules',
+      builder: (_, s) => RulesEditorScreen(
+        childId: s.pathParameters['id']!,
+        initialTab: switch (s.uri.queryParameters['tab']) {
+          'apps' => 2,
+          _ => 0,
+        },
+      ),
+    ),
     GoRoute(path: '/child/:id/social', builder: (_, s) => SocialScreen(childId: s.pathParameters['id']!)),
     GoRoute(path: '/child/:id/searches', builder: (_, s) => SearchSafetyScreen(childId: s.pathParameters['id']!)),
     GoRoute(path: '/settings/digests', builder: (_, __) => const DigestPrefsScreen()),

@@ -629,9 +629,18 @@ class _AppsTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final rules = ref.watch(rulesProvider(childId));
+    final overview = ref.watch(familyProvider).valueOrNull;
+    final devices = overview?.devicesFor(childId) ?? const <Device>[];
+    final childHasIphone = devices.any((d) => d.platform == 'ios');
+    final childHasAndroid = devices.any((d) => d.platform == 'android');
+    final groupDevices = [
+      for (final d in devices)
+        if (d.setup?.groups?.isNotEmpty ?? false) d,
+    ];
+    final canManagePerAppRules = childHasAndroid || !childHasIphone;
     // #456: the clock is a provider so a row can pin the sentence to a weekday morning.
     // #476: and it is read on the family's clock, where the child's phone enforces the window.
-    final offset = ref.watch(familyProvider).valueOrNull?.family.utcOffsetMinutes;
+    final offset = overview?.family.utcOffsetMinutes;
     final now = familyWallClock(ref.watch(clockProvider)(), offset);
     return rules.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -640,10 +649,51 @@ class _AppsTab extends ConsumerWidget {
         onRetry: () => ref.invalidate(rulesProvider(childId)),
       ),
       data: (ruleSet) {
-        if (ruleSet.appRules.isEmpty) return Center(child: Text(l10n.noPerAppRules));
         return ListView(
+          padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.lg),
           children: [
-            for (final r in ruleSet.appRules)
+            if (groupDevices.isNotEmpty) ...[
+              for (final d in groupDevices)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: AppSpace.sm),
+                    child: AppGroupsSection(device: d),
+                  ),
+                ),
+              const SizedBox(height: AppSpace.sm),
+            ] else if (childHasIphone) ...[
+              Card(
+                key: const ValueKey('appsTabIphoneSetupCard'),
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpace.lg),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(l10n.appGroupsTitle, style: Theme.of(context).textTheme.titleSmall),
+                      const SizedBox(height: AppSpace.xs),
+                      Text(l10n.appGroupsBody, style: Theme.of(context).textTheme.bodySmall),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpace.sm),
+            ],
+            if (canManagePerAppRules) ...[
+              FilledButton.tonalIcon(
+                key: const ValueKey('appsTabManageAppsButton'),
+                onPressed: () => context.push('/child/$childId/rules?tab=apps'),
+                icon: const Icon(Icons.block, size: 18),
+                label: Text(l10n.editRules),
+              ),
+              const SizedBox(height: AppSpace.sm),
+            ],
+            if (ruleSet.appRules.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpace.lg),
+                child: Center(child: Text(l10n.noPerAppRules)),
+              )
+            else
+              for (final r in ruleSet.appRules)
               ListTile(
                 leading: Icon(switch (r.action) {
                   'block' => Icons.block,
