@@ -2810,11 +2810,11 @@ abstract class AppLocalizations {
   /// **'{count}h ago'**
   String relativeHoursAgo(int count);
 
-  /// No description provided for @alertTechnicalDetails.
+  /// No description provided for @alertChildLabel.
   ///
   /// In en, this message translates to:
-  /// **'Technical details'**
-  String get alertTechnicalDetails;
+  /// **'Child: {name}'**
+  String alertChildLabel(String name);
 
   /// No description provided for @relativeOverHoursAgo.
   ///
