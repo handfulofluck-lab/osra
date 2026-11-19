@@ -100,11 +100,50 @@ final installedAppsProvider = FutureProvider.family<InstalledAppsReport, String>
   final overview = await ref.watch(familyProvider.future);
   var report = const InstalledAppsReport();
   for (final device in overview.devicesFor(childId)) {
-    final res = await api.raw.get('/v1/devices/${device.id}/apps');
-    if (res.data is! Map) continue;
-    report = report.merge(InstalledAppsReport.fromJson(Map<String, dynamic>.from(res.data as Map)));
+    try {
+      final res = await api.raw.get('/v1/devices/${device.id}/apps');
+      if (res.data is! Map) continue;
+      report = report.merge(InstalledAppsReport.fromJson(Map<String, dynamic>.from(res.data as Map)));
+    } on DioException catch (e) {
+      // Antigravity's #872 finding 3: a `pending` device answers 404 here (`requireFamily hidePending`),
+      // and one sibling's 404 used to throw the whole future away — which hid the *first* phone's app
+      // names behind the "pending" line. Only "this phone has no report" is skippable; a 500 or an auth
+      // failure is a real load failure and stays one, exactly as in the per-device provider below.
+      if (e.response?.statusCode != 404) rethrow;
+    }
   }
   return report;
+});
+
+/// U33 (#868): the same inventory kept per device, so the picker can group rows under the device that
+/// reported them. Devices arrive in the family overview's order. One phone that fails to answer leaves
+/// its own group empty instead of emptying the whole picker — the other devices still list their apps.
+final installedAppsByDeviceProvider =
+    FutureProvider.family<List<DeviceApps>, String>((ref, childId) async {
+  final api = ref.watch(apiClientProvider);
+  final overview = await ref.watch(familyProvider.future);
+  final groups = <DeviceApps>[];
+  for (final device in overview.devicesFor(childId)) {
+    var report = const InstalledAppsReport();
+    try {
+      final res = await api.raw.get('/v1/devices/${device.id}/apps');
+      if (res.data is Map) {
+        report = InstalledAppsReport.fromJson(
+            Map<String, dynamic>.from(res.data as Map));
+      }
+    } on DioException catch (e) {
+      // Only "this phone has no report" is an empty group: the API answers 404 for a device that has
+      // never uploaded. Anything else (a 500, an auth failure) is a real load failure and stays one —
+      // the picker shows its error with a retry rather than an empty list that reads as "no apps".
+      if (e.response?.statusCode != 404) rethrow;
+    }
+    groups.add(DeviceApps(
+      deviceId: device.id,
+      label: device.model.trim().isEmpty ? device.platform : device.model.trim(),
+      report: report,
+    ));
+  }
+  return groups;
 });
 
 /// Latest location ping for one child (`GET /v1/location/:childId/latest`).

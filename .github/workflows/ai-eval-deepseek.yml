@@ -17,9 +17,9 @@ on:
         required: false
         default: "0"
       model:
-        description: "DeepSeek model id"
+        description: "DeepSeek model id (published id; `deepseek-flash` is DeepSeek-V4.1-Flash-1017)"
         required: false
-        default: "deepseek-chat"
+        default: "deepseek-flash"
       split:
         description: "Rows to score: the whole committed set, or one side of the template split"
         required: false

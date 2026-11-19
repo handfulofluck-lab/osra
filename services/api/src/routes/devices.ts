@@ -30,7 +30,7 @@ import { markDeviceRevoked } from "../lib/deviceRevocation.js";
 import { PAIR_CLAIM_RATE_LIMIT, PAIR_POLL_RATE_LIMIT } from "../lib/rateLimits.js";
 import { cleanDeviceText, decideClaim, markPaired, pollSecretMatches, readClaim, readClaimForCode, recordPollMiss, releaseClaim, reserveClaim, takeApprovedClaim } from "../lib/pairApproval.js";
 import { raiseAlertOnce } from "../lib/alerts.js";
-import { bootReportBody, decideBootReport } from "../lib/bootReport.js";
+import { bootReportBody, decideBootReport, zonedUtcOffsetMinutes } from "../lib/bootReport.js";
 import { encryptSecret } from "../lib/secretVault.js";
 // Re-exported for existing importers/tests; the constant and its contract live in lib/deviceToken.ts.
 export { DEVICE_TOKEN_TTL_SECONDS };
@@ -1046,14 +1046,15 @@ export async function deviceRoutes(app: FastifyInstance) {
       },
     });
     if (boot.kind === "new_boot" && bootFamilyId) {
-      // Issue #867: the restart itself, reported by the phone because the 30-minute silence window can never
-      // see a 1–2 minute gap. `raiseAlertOnce`, not `raiseAlert`: since #711 a `raiseAlert` producer must
-      // carry a localization `bodyKey`, and no parent-app string exists for a restart yet — the English
-      // title/body is the compatibility floor every un-updated app renders.
+      // Issue #867 / #889: the restart itself, reported by the phone because the 30-minute silence window
+      // can never see a 1–2 minute gap. Carries `bodyKey: "alertBodyDeviceRestarted"` so updated parent apps
+      // localize in the parent's language while `body` stays the English compatibility floor.
       try {
-        // The body is stored as English and read verbatim, so the clock in it has to be the family's
-        // (ADR-0017/ADR-0020), not the server's UTC.
+        // The fallback body is stored in English using the family's zone (ADR-0017/ADR-0020).
         const family = await prisma.family.findUnique({ where: { id: bootFamilyId }, select: { timezone: true } });
+        const familyTimeZone = family?.timezone?.trim() || "UTC";
+        const utcOffsetMinutes = zonedUtcOffsetMinutes(boot.bootedAt, familyTimeZone);
+        const rawModel = device.model?.trim() ?? "";
         await raiseAlertOnce({
           childId: device.childId,
           familyId: bootFamilyId,
@@ -1061,11 +1062,21 @@ export async function deviceRoutes(app: FastifyInstance) {
           severity: boot.severity,
           category: "device_restarted",
           title: "Device restarted",
-          body: bootReportBody(boot, device.model ?? "A phone", family?.timezone ?? "UTC"),
+          body: bootReportBody(boot, rawModel || "A phone", familyTimeZone, now),
+          bodyKey: "alertBodyDeviceRestarted",
+          params: {
+            model: rawModel,
+            bootedAt: boot.bootedAt.toISOString(),
+            gapMinutes: boot.gapMinutes,
+            timeZone: familyTimeZone,
+            utcOffsetMinutes,
+          },
           metadata: {
             type: "device_restarted",
             bootedAt: boot.bootedAt.toISOString(),
             gapMinutes: boot.gapMinutes,
+            timeZone: familyTimeZone,
+            utcOffsetMinutes,
             lastSeen: boot.previousLastSeen?.toISOString() ?? null,
           },
           // #225: two API instances can both read the pre-upload row and both decide "new boot"; keying on
