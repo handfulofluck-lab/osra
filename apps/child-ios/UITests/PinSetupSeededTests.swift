@@ -46,10 +46,10 @@ final class PinSetupSeededTests: XCTestCase {
                       "an empty PIN must be refused with a message")
 
         new.tap()
-        new.typeText("1234")
+        new.typeText("2085")
         let repeatField = app.secureTextFields["pin.repeat"]
         repeatField.tap()
-        repeatField.typeText("4321")
+        repeatField.typeText("5082")
         app.buttons["pin.save"].tap()
 
         XCTAssertTrue(app.staticTexts["pin.setError"].exists, "a mismatched confirmation must be refused")
@@ -65,11 +65,14 @@ final class PinSetupSeededTests: XCTestCase {
         let new = app.secureTextFields["pin.new"]
         XCTAssertTrue(new.waitForExistence(timeout: 30))
         new.tap()
-        new.typeText("1234")
+        // A PIN the app accepts: "1234" is on its weak list and the button refuses it, which is correct
+        // behaviour and was this row's first failure — the test data was wrong, not the screen.
+        new.typeText("2085")
         let repeatField = app.secureTextFields["pin.repeat"]
         repeatField.tap()
-        repeatField.typeText("1234")
+        repeatField.typeText("2085")
         app.buttons["pin.save"].tap()
+        XCTAssertFalse(app.staticTexts["pin.setError"].exists, "the setup screen refused the PIN")
 
         let repair = app.buttons["status.repair"]
         XCTAssertTrue(repair.waitForExistence(timeout: 15), "the status screen did not follow the PIN save")
