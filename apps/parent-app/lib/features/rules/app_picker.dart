@@ -344,7 +344,11 @@ class AppIconBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final letter = _firstLetter(app.label);
+    // #929 (Arabic Language Bureau): `?` is the Latin question mark. In an Arabic screen the badge
+    // draws the mirrored Arabic one (U+061F), so the only glyph on the badge belongs to the script the
+    // parent is reading. Nothing changes in English.
+    final missing = _firstLetter(app.label);
+    final letter = missing == '?' && Directionality.of(context) == TextDirection.rtl ? '؟' : missing;
     final avatar = Container(
       width: size,
       height: size,
