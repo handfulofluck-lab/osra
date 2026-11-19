@@ -45,6 +45,23 @@ interface Verdict { flagged: boolean; severity: Severity; concernTypes: string[]
 
 // NOTE: fail-open — when the AI engine is unreachable the scan falls back to a local
 // keyword/regex check so obvious self-harm language is never silently dropped.
+/** One Arabic letter, for the token boundaries the bare stems need (Antigravity, #938 B2). */
+const AR_LETTER = "[\\u0621-\\u064A\\u0640]";
+
+/**
+ * An Arabic term with token boundaries, allowing the inseparable proclitics a child actually types
+ * (`و ف ب ل ك`, and `ال`) on the left and **no letter** on the right.
+ *
+ * Without this, `فيب` (`vape`) matched `فيبدأ` ("so it starts"), `خمر` matched `خمري` (maroon) and
+ * `غبي` matched `رغبي` (rugby) — and because the local check now survives a model "safe", every one of
+ * those was a false drug or bullying alert to a parent. The negative rows in `social.test.ts` pin it.
+ */
+const arabicTerm = (alternation: string): RegExp =>
+  new RegExp(`(?<!${AR_LETTER})(?:[\\u0648\\u0641\\u0628\\u0644\\u0643])?(?:\\u0627\\u0644)?(?:${alternation})(?!${AR_LETTER})`);
+
+/** Ordering for the union's severity pick: a critical concern must never be downgraded to warning. */
+const SEVERITY_RANK: Record<"info" | "warning" | "critical", number> = { info: 0, warning: 1, critical: 2 };
+
 const LOCAL_PATTERNS: Array<{ pattern: RegExp; concern: string }> = [
   { pattern: /\b(kill yourself|kys|suicide|end (your|my) life|want to die|wanna die|self[- ]?harm)\b/i, concern: "self_harm" },
   { pattern: /\b(sext(?:ing)?\b|nudes?\b|send (me )?(pics|pictures|photos)|meet (up|me) (alone|in secret)|don't tell your (parents|mom|dad))\b/i, concern: "grooming" },
@@ -53,11 +70,11 @@ const LOCAL_PATTERNS: Array<{ pattern: RegExp; concern: string }> = [
   // words. A child writing in Arabic scored "safe" on the rules layer and on this list, which is the
   // failure the social scan exists to prevent. High-precision terms, not a lexicon: the word list is the
   // model's job, and this is the belt for when the model is unreachable or misses.
-  { pattern: /(أريد أن أموت|ابغى أموت|أؤذي نفسي|ايذي نفسي|انتحار)/, concern: "self_harm" },
+  { pattern: arabicTerm("أريد أن أموت|ابغى أموت|أؤذي نفسي|ايذي نفسي|انتحار"), concern: "self_harm" },
   { pattern: /\b(weed|hash|hashish|vape|vaping|vodka|beer|pills|xanax|cocaine|ketamine)\b/i, concern: "substance_use" },
-  { pattern: /(حشيش|مخدرات|فيب|خمر|فودكا)/, concern: "substance_use" },
-  { pattern: /(لا تخبر (أمك|أبوك|والديك)|سر بيننا)/, concern: "grooming" },
-  { pattern: /(غبي|قبيح|فاشل|ما أحد يحبك|ما احد يحبك|كلنا نكرهك)/, concern: "cyberbullying" },
+  { pattern: arabicTerm("حشيش|مخدرات|فيب|خمر|فودكا"), concern: "substance_use" },
+  { pattern: arabicTerm("لا تخبر (أمك|أبوك|والديك)|سر بيننا"), concern: "grooming" },
+  { pattern: arabicTerm("غبي|قبيح|فاشل|ما أحد يحبك|ما احد يحبك|كلنا نكرهك"), concern: "cyberbullying" },
 ];
 
 /**
@@ -204,12 +221,19 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
     : undefined;
   const ai = await analyzeWithAi(text, childAge);
   const local = localKeywordCheck(text);
-  // Union, not "model wins": a flagged model keeps its own severity and concern types, and a local
-  // hit the model missed still raises (see LOCAL_PATTERNS' note on #863).
+  // Union, not "model wins" (Antigravity, #938 B3): when both flag, the concern types are merged and the
+  // higher severity stands. The earlier short-circuit kept the model's verdict whole, so a mixed message
+  // ("you loser, أريد أن أموت") lost the Arabic self_harm clause and downgraded critical to warning.
   const verdict = ai.verdict?.flagged
-    ? ai.verdict
+    ? local.flagged
+      ? {
+          flagged: true,
+          severity: SEVERITY_RANK[ai.verdict.severity] >= SEVERITY_RANK[local.severity] ? ai.verdict.severity : local.severity,
+          concernTypes: [...new Set([...ai.verdict.concernTypes, ...local.concernTypes])].slice(0, 3),
+        }
+      : ai.verdict
     : local.flagged
-      ? { ...local, severity: ai.verdict?.severity === "critical" ? "critical" as const : local.severity }
+      ? local
       : ai.verdict ?? local;
   // Issue #890: the counter is written whether or not the capture is flagged — cost is paid on both — and
   // it counts the ATTEMPT, so a timeout against a paid engine is not recorded as a free scan.
