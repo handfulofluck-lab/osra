@@ -12,7 +12,13 @@
   "deleteAccountSelfStopsAccount": "حسابك وبيانات تسجيل دخولك. وتستمر العائلة في العمل من دونك.",
   "deleteAccountSelfStopsFamilyKept": "يبقى الأطفال تحت مراقبة بقية أفراد العائلة.",
   "deleteAccountTypeEmail": "اكتب بريدك الإلكتروني للتأكيد: {email}",
-  "@deleteAccountTypeEmail": {"placeholders": {"email": {"type": "String"}}},
+  "@deleteAccountTypeEmail": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
   "deleteAccountTypeHint": "لا يمكن التراجع عن الحذف.",
   "deleteAccountSubmit": "حذف الحساب",
   "deleteAccountBusy": "جارٍ الحذف…",
@@ -22,10 +28,9 @@
   "deleteAccountConsentHeld": "لديك سجلات موافقة لطفل في عائلة أخرى، لذا لا يمكن حذف هذا الحساب الآن.",
   "deleteAccountOnlyOwner": "مالك العائلة فقط يمكنه حذف العائلة.",
   "deleteAccountOwnerMustUseFamily": "هذا الحساب يملك العائلة، لذا استخدم حذف العائلة بدلًا من ذلك.",
-    "deleteAccountLoadFailed": "تعذّر تحميل عائلتك. تحقّق من اتصالك وحاول مجددًا.",
-"deleteAccountFailed": "لم يُحذف الحساب. {detail}",
-  "@deleteAccountFailed": {"placeholders": {"detail": {"type": "String"}}},
-"cancel": "إلغاء",
+  "deleteAccountLoadFailed": "تعذّر تحميل عائلتك. تحقّق من اتصالك وحاول مجددًا.",
+  "deleteAccountFailed": "تعذّر حذف حسابك. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
+  "cancel": "إلغاء",
   "save": "حفظ",
   "add": "إضافة",
   "continueLabel": "متابعة",
@@ -50,9 +55,11 @@
   "invalidServer": "أدخل عنوان خادم صالحًا، مثل http://192.168.1.5:3000",
   "emailLabel": "البريد الإلكتروني",
   "passwordLabel": "كلمة المرور",
-  "mfaCodeLabel": "رمز المصادقة (عند تفعيل المصادقة الثنائية)",
+  "mfaCodeLabel": "رمز تطبيق المصادقة",
+  "mfaCodeHelper": "مطلوب فقط إذا كان التحقق بخطوتين مفعّلًا في حسابك.",
   "signIn": "تسجيل الدخول",
   "createAccount": "إنشاء حساب",
+  "consentRequired": "لإنشاء حساب، يُرجى وضع علامة في هذه الخانة.",
   "familyNameLabel": "اسم العائلة",
   "yourNameLabel": "اسمك",
   "regionLabel": "المنطقة",
@@ -73,7 +80,7 @@
   "appearanceMenu": "المظهر",
   "digestPreferencesMenu": "تفضيلات الملخص",
   "signOutTooltip": "تسجيل الخروج",
-  "familyLoadFailed": "تعذّر تحميل العائلة: {error}",
+  "familyLoadFailed": "تعذّر تحميل بيانات عائلتك. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "noChildrenYet": "لا يوجد أطفال بعد — اضغط «إضافة طفل»",
   "addChild": "إضافة طفل",
   "statusOnline": "متصل",
@@ -94,16 +101,16 @@
   "resumeInternetBody": "ستعمل جميع التطبيقات والمواقع مرة أخرى.",
   "pause": "إيقاف",
   "resume": "استئناف",
-  "internetChangeFailed": "فشل تغيير حالة الإنترنت: {error}",
+  "internetChangeFailed": "تعذّر تغيير الوصول إلى الإنترنت. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "parentalConsent": "موافقة الوالدين",
   "childDetails": "بيانات الطفل",
   "consentNotice": "قبل إضافة طفل، نحتاج إلى التأكّد من أنك وليّ أمره.",
   "consentMethodLabel": "طريقة الموافقة",
-  "consentMethodSmsPlus": "رسالة نصية +",
+  "consentMethodSmsPlus": "رسالة نصية مع تأكيد",
   "consentMethodKba": "أسئلة معرفية",
   "consentMethodFaceMatch": "مطابقة الوجه",
   "consentMethodCreditCard": "بطاقة ائتمان",
-  "jurisdictionLabel": "الاختصاص القضائي",
+  "jurisdictionLabel": "أين تقيم عائلتك؟",
   "childNameLabel": "اسم الطفل",
   "birthYearLabel": "سنة الميلاد",
   "childFallback": "الطفل",
@@ -134,15 +141,15 @@
   "bonusTime": "وقت إضافي",
   "extraScreenTimeToday": "وقت شاشة إضافي لليوم فقط",
   "bonusGranted": "{minutes, plural, =1{مُنحت دقيقة إضافية واحدة اليوم} =2{مُنحت دقيقتان إضافيتان اليوم} few{مُنحت {minutes} دقائق إضافية اليوم} many{مُنحت {minutes} دقيقة إضافية اليوم} other{مُنحت {minutes} دقيقة إضافية اليوم}}",
-  "bonusFailed": "فشل منح الوقت الإضافي: {error}",
+  "bonusFailed": "تعذّر منح الوقت الإضافي. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "windDown": "الاسترخاء قبل النوم",
   "windDownBody": "يعرض الجهاز تنبيهًا لطيفًا للنوم، ثم يُقفل.",
   "windDownSubtitle": "تنبيه لطيف، ثم تُقفل الشاشة",
   "windDownConfirm": "{minutes, plural, =1{ستُقفل الشاشة على الجهاز بعد دقيقة واحدة} =2{ستُقفل الشاشة على الجهاز بعد دقيقتين} few{ستُقفل الشاشة على الجهاز بعد {minutes} دقائق} many{ستُقفل الشاشة على الجهاز بعد {minutes} دقيقة} other{ستُقفل الشاشة على الجهاز بعد {minutes} دقيقة}}",
-  "windDownFailed": "فشل بدء الاسترخاء: {error}",
+  "windDownFailed": "تعذّر بدء «الاسترخاء قبل النوم». تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "commandQueued": "تم وضع «{command}» في قائمة الانتظار لـ{device} — لم يؤكّد الجهاز تنفيذه بعد.",
   "netQueued": "تم وضع «{action}» في قائمة الانتظار لـ{device} — لم يؤكّد الجهاز تنفيذه بعد.",
-  "commandFailed": "فشل الأمر: {error}",
+  "commandFailed": "تعذّر إرسال الأمر. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "commandErrorForbidden": "لا تملك صلاحية إرسال «{command}» إلى {device}. يمكن لمالك العائلة منحك حق الوصول.",
   "commandErrorRateLimited": "لم يُرسل «{command}» إلى {device}: طلبات كثيرة الآن. حاول مرة أخرى بعد دقيقة.",
   "commandErrorConsentWithdrawn": "لم يُرسل «{command}» إلى {device}: لا توجد موافقة سارية لهذا الطفل، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل لمعرفة السبب.",
@@ -156,17 +163,17 @@
   "commandRefusedNotSupported": "«{command}» غير متاح على {device}: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.",
   "commandRefusedInvalidPayload": "رفض الهاتف إعدادات هذا الأمر.",
   "rulesBehindHint": "لم يستلم الهاتف هذا التغيير بعد.",
-  "rulesLoadFailed": "تعذّر تحميل القواعد: {error}",
+  "rulesLoadFailed": "تعذّر تحميل القواعد. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "noPerAppRules": "لا توجد قواعد لكل تطبيق",
   "appActionBlock": "حظر",
   "appActionTimeLimit": "حد زمني",
   "appActionAllow": "سماح",
-  "locationLoadFailed": "تعذّر تحميل الموقع: {error}",
+  "locationLoadFailed": "تعذّر تحميل الموقع الجغرافي. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "noLocationReported": "لم يُبلَّغ عن أي موقع بعد",
   "accuracyLabel": "الدقة ±{meters} م · {time}",
   "accuracyShort": "الدقة ±{meters} م",
   "mapPreview": "معاينة الخريطة",
-  "locationHistoryLoadFailed": "تعذّر تحميل السجل: {error}",
+  "locationHistoryLoadFailed": "تعذّر تحميل سجل المواقع الجغرافية. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "noLocationHistoryToday": "لا يوجد سجل مواقع لليوم",
   "todaysRoute": "مسار اليوم",
   "back15Tooltip": "رجوع 15 دقيقة",
@@ -182,11 +189,11 @@
   "familyNoParents": "لا يوجد أولياء أمور",
   "familyInviteMember": "دعوة فرد",
   "familyPendingInvites": "الدعوات المعلّقة",
-  "familyInvitesLoadFailed": "تعذّر تحميل الدعوات: {error}",
+  "familyInvitesLoadFailed": "تعذّر تحميل الدعوات. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "familyNoPendingInvites": "لا دعوات معلّقة",
   "familyRevokeInvite": "إلغاء الدعوة",
   "familyInviteRevoked": "أُلغيت دعوة {email}",
-  "familyRevokeFailed": "تعذّر الإلغاء: {error}",
+  "familyRevokeFailed": "تعذّر إلغاء الدعوة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "familyEnterEmail": "أدخل عنوان بريد إلكتروني",
   "familyInviteSent": "أُرسلت الدعوة",
   "familyEmailLabel": "البريد الإلكتروني",
@@ -213,7 +220,7 @@
   "familyMapLock": "قفل الجهاز",
   "familyMapRingQueued": "أُرسل أمر الرنين إلى {model} — ولم يؤكّده الجهاز بعد.",
   "familyMapLockQueued": "أُرسل أمر القفل إلى {model} — ولم يؤكّده الجهاز بعد.",
-  "familyMapCommandFailed": "فشل إرسال الأمر: {error}",
+  "familyMapCommandFailed": "تعذّر إرسال الأمر. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "familyMapNoChildren": "لا يوجد أطفال لعرضهم",
   "familyMapEnterLabel": "أدخل اسمًا للنطاق",
   "familyMapGeofenceAdded": "أُضيف النطاق \"{name}\"",
@@ -222,14 +229,14 @@
   "familyMapRadius": "نصف القطر: {meters} م",
   "familyMapMeters": "{meters} م",
   "familyMapCreate": "إنشاء",
-  "alertsLoadFailed": "تعذّر تحميل التنبيهات: {error}",
+  "alertsLoadFailed": "تعذّر تحميل التنبيهات. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "noRecentAlerts": "لا توجد تنبيهات حديثة",
   "acknowledgeTooltip": "تأكيد الاستلام",
   "ageRating": "التصنيف العمري: {rating}",
   "risks": "المخاطر",
   "saferAlternatives": "بدائل أكثر أمانًا",
   "noInsightsYet": "لا توجد رؤى لهذا التطبيق بعد",
-  "insightsLoadFailed": "تعذّر تحميل الرؤى: {error}",
+  "insightsLoadFailed": "تعذّر تحميل رؤى التطبيق. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "commandLock": "قفل",
   "commandUnlock": "فتح القفل",
   "commandRing": "رن",
@@ -253,7 +260,7 @@
   "alertsTitle": "التنبيهات",
   "noAlertsYet": "لا توجد تنبيهات بعد",
   "loadMore": "تحميل المزيد",
-  "acknowledgeFailed": "فشل تأكيد الاستلام: {error}",
+  "acknowledgeFailed": "تعذّر تأكيد استلام التنبيه. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "categoryLabel": "الفئة: {category}",
   "severityLabel": "الخطورة: {severity}",
   "timeLabel": "الوقت: {time}",
@@ -261,7 +268,7 @@
   "blockThisApp": "حظر هذا التطبيق",
   "allowedSnack": "تم السماح",
   "appBlockedSnack": "تم حظر التطبيق",
-  "blockFailed": "فشل الحظر: {error}",
+  "blockFailed": "تعذّر حظر التطبيق. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "severityCritical": "حرج",
   "severityWarning": "تحذير",
   "severityInfo": "معلومة",
@@ -335,10 +342,14 @@
   "showSystemApps": "إظهار تطبيقات النظام",
   "alreadyRuled": "له قاعدة بالفعل",
   "essentialAppRow": "مسموح دائمًا (ضروري للمكالمات والسلامة)",
-  "installedAppsEmpty": "لم يتم الإبلاغ عن أي تطبيقات بعد",
+  "installedAppsEmpty": "لم يُرسل جهاز الطفل قائمة تطبيقاته بعد",
   "installedAppsEmptyHint": "تظهر القائمة بعد تسجيل جهاز الطفل في المرة التالية (خلال 15 دقيقة كحد أقصى).",
   "installedAppsNoMatch": "لا توجد تطبيقات تطابق بحثك.",
-  "installedAppsLoadFailed": "تعذّر تحميل التطبيقات: {error}",
+  "installedAppsLoadFailed": "تعذّر تحميل التطبيقات المثبّتة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
+  "appNoLongerInstalled": "تطبيق لم يعد مثبّتًا",
+  "appNoLongerInstalledRemove": "تطبيق لم يعد مثبّتًا. إزالة",
+  "appNamePending": "الاسم غير متوفّر بعد",
+  "appNamePendingRemove": "الاسم غير متوفّر بعد. إزالة",
   "installedAppsTruncated": "عرض أول {count} تطبيقًا.",
   "addAlwaysAllowedTitle": "إضافة تطبيق مسموح دائمًا",
   "appNameLabel": "اسم التطبيق",
@@ -356,15 +367,16 @@
   "screenTimeWebHistoryTooltip": "وقت الشاشة وسجل الويب",
   "sevenDays": "7 أيام",
   "thirtyDays": "30 يومًا",
-  "reportLoadFailed": "تعذّر تحميل التقرير: {error}",
+  "reportLoadFailed": "تعذّر تحميل التقرير. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "noActivityDays": "{days, plural, =1{لم يُسجَّل أي نشاط خلال آخر يوم} =2{لم يُسجَّل أي نشاط خلال آخر يومين} few{لم يُسجَّل أي نشاط خلال آخر {days} أيام} many{لم يُسجَّل أي نشاط خلال آخر {days} يومًا} other{لم يُسجَّل أي نشاط خلال آخر {days} يوم}}",
   "appUsage": "استخدام التطبيقات",
   "totalAverage": "الإجمالي: {total, plural, =1{دقيقة واحدة} =2{دقيقتان} few{{total} دقائق} many{{total} دقيقة} other{{total} دقيقة}} · المتوسط: {avg, plural, =1{دقيقة واحدة يوميًا} =2{دقيقتان يوميًا} few{{avg} دقائق يوميًا} many{{avg} دقيقة يوميًا} other{{avg} دقيقة يوميًا}}",
+  "chartLegendRow": "{app}: {minutes, plural, =1{دقيقة واحدة} =2{دقيقتان} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}",
   "noAppUsage": "لم يُسجَّل أي استخدام للتطبيقات",
   "webSection": "الويب",
   "urlVisits": "{count, plural, =0{لا زيارات لمواقع} =1{زيارة واحدة لموقع} =2{زيارتان لموقعين} few{{count} زيارات لمواقع} many{{count} زيارة لموقع} other{{count} زيارة لموقع}}",
   "noBlockedDomains": "لا توجد نطاقات محظورة",
-  "blockedTimes": "{count, plural, one{تم الحظر مرة واحدة} two{تم الحظر مرتين} few{تم الحظر {count} مرات} many{تم الحظر {count} مرة} other{تم الحظر {count} مرة}}",
+  "blockedTimes": "{count, plural, one{حُظر مرة واحدة} two{حُظر مرتين} few{حُظر {count} مرات} many{حُظر {count} مرة} other{حُظر {count} مرة}}",
   "safeSearchForced": "تفعيل البحث الآمن على YouTube",
   "restrictedModeNote": "يتطلب الوضع المقيّد فحص HTTPS على حاسوب الطفل (راجع الدليل)",
   "socialAndCommunication": "التواصل والاتصالات",
@@ -373,7 +385,7 @@
   "smsCount": "{count, plural, =0{لا رسائل نصية} =1{رسالة نصية واحدة} =2{رسالتان نصيتان} few{{count} رسائل نصية} many{{count} رسالة نصية} other{{count} رسالة نصية}}",
   "screenTimeWebTitle": "وقت الشاشة والويب",
   "daysShort": "{days, plural, one{يوم} two{يومان} few{{days} أيام} many{{days} يومًا} other{{days} يوم}}",
-  "couldNotLoadScreenTime": "تعذّر تحميل وقت الشاشة",
+  "couldNotLoadScreenTime": "تعذّر تحميل وقت الشاشة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "noScreenTimeData": "{days, plural, =1{لا توجد بيانات وقت شاشة خلال آخر يوم} =2{لا توجد بيانات وقت شاشة خلال آخر يومين} few{لا توجد بيانات وقت شاشة خلال آخر {days} أيام} many{لا توجد بيانات وقت شاشة خلال آخر {days} يومًا} other{لا توجد بيانات وقت شاشة خلال آخر {days} يوم}}",
   "noScreenTimeRecorded": "{days, plural, =1{لم يُسجَّل وقت شاشة خلال آخر يوم} =2{لم يُسجَّل وقت شاشة خلال آخر يومين} few{لم يُسجَّل وقت شاشة خلال آخر {days} أيام} many{لم يُسجَّل وقت شاشة خلال آخر {days} يومًا} other{لم يُسجَّل وقت شاشة خلال آخر {days} يوم}}",
   "totalOverDays": "الإجمالي: {total, plural, =1{دقيقة واحدة} =2{دقيقتان} few{{total} دقائق} many{{total} دقيقة} other{{total} دقيقة}} خلال {count, plural, =1{يوم واحد} =2{يومين} few{{count} أيام} many{{count} يومًا} other{{count} يوم}}",
@@ -382,10 +394,10 @@
   "browsingHistory": "سجل التصفح",
   "blockedOnly": "المحظور فقط",
   "showLabel": "عرض",
-  "couldNotLoadBrowsing": "تعذّر تحميل سجل التصفح",
+  "couldNotLoadBrowsing": "تعذّر تحميل سجل التصفح. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "noBlockedSites": "{days, plural, =1{لا توجد مواقع محظورة خلال آخر يوم} =2{لا توجد مواقع محظورة خلال آخر يومين} few{لا توجد مواقع محظورة خلال آخر {days} أيام} many{لا توجد مواقع محظورة خلال آخر {days} يومًا} other{لا توجد مواقع محظورة خلال آخر {days} يوم}}",
   "noBrowsingHistory": "{days, plural, =1{لا يوجد سجل تصفح خلال آخر يوم} =2{لا يوجد سجل تصفح خلال آخر يومين} few{لا يوجد سجل تصفح خلال آخر {days} أيام} many{لا يوجد سجل تصفح خلال آخر {days} يومًا} other{لا يوجد سجل تصفح خلال آخر {days} يوم}}",
-  "showingLatestVisits": "تُعرض آخر {limit} زيارة — ارفع الحد لرؤية المزيد.",
+  "showingLatestVisits": "تُعرض آخر {limit} زيارة. اختر عددًا أكبر لرؤية المزيد.",
   "blocked": "محظور",
   "allowed": "مسموح",
   "dayTooltip": "{date}: {minutes, plural, =1{دقيقة واحدة} =2{دقيقتان} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}",
@@ -423,10 +435,10 @@
   "arabicAlwaysOn": "اللغة العربية مفعّلة دائمًا.",
   "monitoring": "المراقبة",
   "monitoringSaved": "تم حفظ المراقبة",
-  "saveFailed": "فشل الحفظ: {error}",
+  "saveFailed": "تعذّر حفظ التغييرات. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "saveMonitoring": "حفظ المراقبة",
   "concerns": "المخاوف",
-  "vaultTrustCopy": "تُشفَّر المقاطع بمفتاح عائلتك قبل مغادرة الجهاز وتُخزَّن مشفّرة على خادمك.",
+  "vaultTrustCopy": "تنتقل المقتطفات عبر اتصال مشفّر، وتُخزَّن مشفّرة على خوادم تطبيق أسرة.",
   "noConcernsDetected": "لم تُكتشف أي مخاوف",
   "unknownContact": "جهة اتصال غير معروفة",
   "unknownApp": "تطبيق غير معروف",
@@ -436,6 +448,8 @@
   "callsAndTexts": "المكالمات الهاتفية والرسائل",
   "iosNoCallMonitoring": "لا يدعم iOS مراقبة المكالمات الهاتفية والرسائل.",
   "noCallsOrTexts": "لا توجد مكالمات هاتفية أو رسائل بعد",
+  "activityLockRow": "الجهاز مقفل",
+  "activityLockRowDetail": "{count, plural, zero{لم تظهر شاشة القفل} one{ظهرت شاشة القفل مرة واحدة} two{ظهرت شاشة القفل مرتين} few{ظهرت شاشة القفل {count} مرات} many{ظهرت شاشة القفل {count} مرة} other{ظهرت شاشة القفل {count} مرة}}",
   "unknownNumber": "رقم غير معروف",
   "trustedContacts": "جهات اتصال موثوقة",
   "trustedContactsDesc": "الأرقام هنا لا تُثير مخاوف اجتماعية أبدًا.",
@@ -459,7 +473,7 @@
   "couldNotLoadChild": "تعذّر تحميل هذا الطفل",
   "noDevicesForChild": "لا توجد أجهزة مسجّلة لهذا الطفل",
   "deliveryExplanation": "لا يُعدّ الأمر مؤكدًا إلا عندما يردّ جهاز الطفل. يعني «تم التسليم» أن الجهاز استلمه، ولم يؤكّد تنفيذه.",
-  "couldNotLoadCommandHistory": "تعذّر تحميل سجل الأوامر",
+  "couldNotLoadCommandHistory": "تعذّر تحميل سجل الأوامر. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "createdEvent": "أُنشئ {time}",
   "deliveredEvent": "سُلّم {time}",
   "confirmedEvent": "أُكّد {time}",
@@ -513,13 +527,17 @@
   "mfaCodesIssuedAt": "أُنشئت في {date}",
   "@mfaCodesIssuedAt": {
     "placeholders": {
-      "date": { "type": "String" }
+      "date": {
+        "type": "String"
+      }
     }
   },
   "mfaRecoveryCodeSemantics": "رمز الاسترداد {index}",
   "@mfaRecoveryCodeSemantics": {
     "placeholders": {
-      "index": { "type": "int" }
+      "index": {
+        "type": "int"
+      }
     }
   },
   "mfaRecoveryLink": "هل فقدت تطبيق المصادقة؟",
@@ -538,7 +556,7 @@
   "onboardingSignInBody": "هذا الحساب يتحكم في حماية طفلك. سجّل الدخول، أو أنشئ حساب عائلتك أدناه.",
   "onboardingWrongPassword": "البريد الإلكتروني أو كلمة المرور غير صحيحة. تحقق منها وحاول مجددًا.",
   "onboardingInvalidMfaCode": "لم يُقبل رمز التحقق. تحقق من الرمز وحاول مجددًا.",
-  "onboardingNoNetwork": "تعذّر الوصول إلى الخادم. تحقق من عنوان الخادم واتصال الإنترنت ثم حاول مجددًا.",
+  "onboardingNoNetwork": "تعذّر الاتصال بخدمة أسرة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "onboardingChildTitle": "أضف طفلك",
   "onboardingChildIntro": "أدخل اسم طفلك وسنة ميلاده. اختر طريقة موافقة الوالدين — يحتاج الخادم إلى الموافقة قبل إضافة الطفل.",
   "onboardingChildNameRequired": "أدخل اسم طفلك.",
@@ -558,7 +576,9 @@
   "onboardingPairIntro": "افتح OSRA على هاتف {childName} واختر الإقران برمز.",
   "@onboardingPairIntro": {
     "placeholders": {
-      "childName": { "type": "String" }
+      "childName": {
+        "type": "String"
+      }
     }
   },
   "onboardingPairSteps": "امسح رمز QR هذا، أو اكتب الأرقام الستة أدناه إذا تعذّر على الكاميرا مسحه. لا حاجة إلى إعطاء كلمة المرور لمن يحمل الهاتف.",
@@ -570,7 +590,9 @@
   "pairingCodeSemantics": "رمز الإقران {code}",
   "@pairingCodeSemantics": {
     "placeholders": {
-      "code": { "type": "String" }
+      "code": {
+        "type": "String"
+      }
     }
   },
   "onboardingDoneStepTitle": "الإعداد",
@@ -583,7 +605,9 @@
   "onboardingFinishSetupBody": "أقرن هاتف {childName} لتبدأ الحماية.",
   "@onboardingFinishSetupBody": {
     "placeholders": {
-      "childName": { "type": "String" }
+      "childName": {
+        "type": "String"
+      }
     }
   },
   "onboardingPairNow": "أقرن الآن",
@@ -591,7 +615,9 @@
   "consentStatusSubtitle": "ما هو مسجّل حاليًا على الخادم بشأن {childName}؟",
   "@consentStatusSubtitle": {
     "placeholders": {
-      "childName": { "type": "String" }
+      "childName": {
+        "type": "String"
+      }
     }
   },
   "consentStateActive": "سارية",
@@ -604,26 +630,36 @@
   "consentStateExpiringDetail": "ينتهي هذا السجل في {date}. يتوقف الجمع والتنبيهات بعد ذلك التاريخ ما لم تُمنح الموافقة مجددًا.",
   "@consentStateExpiringDetail": {
     "placeholders": {
-      "date": { "type": "String" }
+      "date": {
+        "type": "String"
+      }
     }
   },
   "consentStateExpiredDetail": "انتهى هذا السجل في {date}. المراقبة وجمع البيانات متوقفان حتى تُمنح الموافقة مجددًا.",
   "@consentStateExpiredDetail": {
     "placeholders": {
-      "date": { "type": "String" }
+      "date": {
+        "type": "String"
+      }
     }
   },
   "consentStateRevokedDetail": "سُحبت الموافقة في {date}. المراقبة وجمع البيانات متوقفان حتى تُمنح الموافقة مجددًا.",
   "@consentStateRevokedDetail": {
     "placeholders": {
-      "date": { "type": "String" }
+      "date": {
+        "type": "String"
+      }
     }
   },
   "consentStateMismatchDetail": "اختصاص السجل ({record}) لا يطابق منطقة عائلتك ({family})، لذلك لا يمكنه السماح بالمراقبة.",
   "@consentStateMismatchDetail": {
     "placeholders": {
-      "record": { "type": "String" },
-      "family": { "type": "String" }
+      "record": {
+        "type": "String"
+      },
+      "family": {
+        "type": "String"
+      }
     }
   },
   "consentStateNoneDetail": "لا توجد موافقة والدين مسجّلة لهذا الطفل. المراقبة وجمع البيانات تتطلبان سجلًا ساريًا.",
@@ -641,31 +677,41 @@
   "consentHistoryGranted": "{method} · مُنحت في {date}",
   "@consentHistoryGranted": {
     "placeholders": {
-      "method": { "type": "String" },
-      "date": { "type": "String" }
+      "method": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
     }
   },
   "consentHistoryRevoked": "مسحوبة في {date}",
   "@consentHistoryRevoked": {
     "placeholders": {
-      "date": { "type": "String" }
+      "date": {
+        "type": "String"
+      }
     }
   },
   "consentHistoryExpired": "منتهية في {date}",
   "@consentHistoryExpired": {
     "placeholders": {
-      "date": { "type": "String" }
+      "date": {
+        "type": "String"
+      }
     }
   },
   "consentHistoryActive": "سارية",
-  "consentLoadFailed": "تعذّر تحميل سجل الموافقة. تحقّق من اتصالك وحاول مجددًا.",
+  "consentLoadFailed": "تعذّر تحميل سجل الموافقة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "consentGrantTitle": "منح الموافقة مجددًا",
   "consentGrantAction": "منح الموافقة",
   "consentGrantNote": "تبقى المراقبة متوقفة حتى يوجد سجل موافقة جديد. منح الموافقة مجددًا يستأنف الجمع على أجهزة هذا الطفل.",
   "consentGrantRegion": "يُسجَّل السجل بمنطقة عائلتك ({region}). السجل من منطقة أخرى لا يمكنه السماح بالمراقبة.",
   "@consentGrantRegion": {
     "placeholders": {
-      "region": { "type": "String" }
+      "region": {
+        "type": "String"
+      }
     }
   },
   "consentGrantDone": "سُجِّلت الموافقة. تستأنف المراقبة على أجهزة هذا الطفل.",
@@ -683,7 +729,9 @@
   "consentRevokeWarning": "سيؤدي هذا إلى إيقاف مراقبة {childName}. يبقى الجهاز مقترنًا، ويمكن منح الموافقة مجددًا لاحقًا.",
   "@consentRevokeWarning": {
     "placeholders": {
-      "childName": { "type": "String" }
+      "childName": {
+        "type": "String"
+      }
     }
   },
   "consentRevokeStopsTitle": "ما الذي يتوقف فورًا",
@@ -698,14 +746,18 @@
   "consentRevokeTypePrompt": "اكتب {childName} للتأكيد",
   "@consentRevokeTypePrompt": {
     "placeholders": {
-      "childName": { "type": "String" }
+      "childName": {
+        "type": "String"
+      }
     }
   },
   "consentRevokeTypeHint": "يجب أن يطابق الاسم.",
   "consentRevokeMismatch": "هذا لا يطابق {childName}.",
   "@consentRevokeMismatch": {
     "placeholders": {
-      "childName": { "type": "String" }
+      "childName": {
+        "type": "String"
+      }
     }
   },
   "consentRevokeSubmit": "سحب الموافقة الآن",
@@ -718,13 +770,15 @@
   "consentRevokeDevices": "{count, plural, =0{لم يكن أي جهاز متصلًا.} =1{أُضيفت إشارة الإيقاف لجهاز واحد.} other{أُضيفت إشارة الإيقاف لـ {count} أجهزة.}}",
   "@consentRevokeDevices": {
     "placeholders": {
-      "count": { "type": "int" }
+      "count": {
+        "type": "int"
+      }
     }
   },
   "consentChildNameMissing": "تعذّر تحميل اسم طفلك. ارجع وحاول مجددًا.",
   "refresh": "تحديث",
   "searchSafetyTitle": "أمان البحث",
-  "searchSafetyLoadFailed": "تعذّر تحميل نشاط البحث: {error}",
+  "searchSafetyLoadFailed": "تعذّر تحميل نشاط البحث. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "searchSafetyEmptyTitle": "لم يتم رصد أي عمليات بحث تستدعي الإبلاغ عنها",
   "searchSafetyEmptyBody": "فرض البحث الآمن وفحص المحتوى مُفعّلان في كل المتصفحات والتطبيقات المدعومة.",
   "searchSafetyVaultNotice": "تُحلَّل عبارات البحث للكشف عن مخاطر السلامة، وتُسجَّل النتائج عالية الخطورة في خزنة العائلة المشفّرة.",
@@ -734,7 +788,7 @@
   "searchSafetyViewVault": "عرض تفاصيل الخزنة",
   "searchSafetyVaultTitle": "بحث: \"{query}\"",
   "digestPrefsTitle": "تفضيلات الملخّص",
-  "digestPrefsLoadFailed": "تعذّر تحميل التفضيلات: {error}",
+  "digestPrefsLoadFailed": "تعذّر تحميل إعدادات الملخّص. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "digestPrefsDailyTitle": "ملخّص بريدي يومي",
   "digestPrefsDailyBody": "ملخّص قصير كل مساء",
   "digestPrefsWeeklyTitle": "ملخّص بريدي أسبوعي",
@@ -756,12 +810,12 @@
   "digestPrefsRendering": "جارٍ التجهيز…",
   "digestPrefsSendNow": "إرسال ملخّص تجريبي الآن",
   "digestPrefsSaved": "تم حفظ تفضيلات الملخّص",
-  "digestPrefsSaveFailed": "تعذّر الحفظ: {error}",
+  "digestPrefsSaveFailed": "تعذّر حفظ إعدادات الملخّص. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "digestPrefsTimezoneSet": "تم ضبط المنطقة الزمنية للملخّص على {zone}",
-  "digestPrefsTimezoneFailed": "لم تُحفَظ المنطقة الزمنية: {error}",
+  "digestPrefsTimezoneFailed": "تعذّر تحديث المنطقة الزمنية. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "digestPrefsTestTitle": "ملخّص تجريبي",
   "digestPrefsClose": "إغلاق",
-  "digestPrefsSendFailed": "تعذّر الإرسال: {error}",
+  "digestPrefsSendFailed": "تعذّر إرسال الملخّص التجريبي. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "digestPrefsNoDigests": "لم يُنشأ أي ملخّص",
   "digestPrefsChildFallback": "طفل",
   "mfaResetTitle": "إعادة تعيين التحقق بخطوتين",
@@ -782,7 +836,13 @@
   "mfaResetStageMailboxBody": "افتح رابط إعادة التعيين المرسل إلى بريد هذا الحساب خلال 30 دقيقة. فتح الرابط يُظهر رمزًا من 8 أرقام على هاتف طفلك. وإذا كان والد آخر هو من سيوافق بدلًا من ذلك، فعليه الموافقة من تطبيقه.",
   "mfaResetMailboxExpires": "الرابط صالح حتى {time}.",
   "mfaResetMailboxLinkGrace": "انتهت صلاحية الرابط في {time}. إذا فتحته قبل ذلك، فأدخل الرمز الآن: فهو صالح لمدة 10 دقائق من لحظة فتح الرابط.",
-  "@mfaResetMailboxLinkGrace": {"placeholders": {"time": {"type": "String"}}},
+  "@mfaResetMailboxLinkGrace": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "mfaResetCancelHint": "لإيقاف هذا الطلب، افتح رابط الإلغاء في أي بريد وصلك بشأنه. كما أن تسجيل دخولك بتطبيق المصادقة يلغيه.",
   "mfaResetStageWitnessTitle": "أدخل الرمز من هاتف طفلك",
   "mfaResetStageWitnessBody": "الرمز مكوّن من 8 أرقام وصلاحيته 10 دقائق.",
@@ -874,49 +934,75 @@
   "alertTitleInstallRequest": "طلب تثبيت تطبيق",
   "alertTitleUnknownContact": "تواصل من جهة غير معروفة",
   "alertTitleGeneric": "تنبيه",
-    "alertPushBodyGeneric": "افتح تطبيق أسرة لمشاهدة التفاصيل\nحماية لعائلتك بكل الأوقات",
-    "@alertSosWhereMinutes": {
-      "description": "#672, Arabic Language Bureau: the SOS fix named with its coordinates and its age (whole line per plural case). The coordinates are inserted wrapped in LRI/PDI by the app.",
-      "placeholders": {"n": {"type": "int"}, "coords": {"type": "String"}}
-    },
-    "alertSosWhereMinutes": "{n, plural, =1{آخر موقع: {coords}، قبل دقيقة} =2{آخر موقع: {coords}، قبل دقيقتين} few{آخر موقع: {coords}، قبل {n} دقائق} many{آخر موقع: {coords}، قبل {n} دقيقة} other{آخر موقع: {coords}، قبل {n} دقيقة}}",
-    "@alertSosWhereHours": {
-      "description": "#672, Arabic Language Bureau: the same line for a fix an hour or more old; hours round down, and the line says «more than» and carry \"about\".",
-      "placeholders": {"n": {"type": "int"}, "coords": {"type": "String"}}
-    },
-    "alertSosWhereHours": "{n, plural, =1{آخر موقع: {coords}، قبل أكثر من ساعة} =2{آخر موقع: {coords}، قبل أكثر من ساعتين} few{آخر موقع: {coords}، قبل أكثر من {n} ساعات} many{آخر موقع: {coords}، قبل أكثر من {n} ساعة} other{آخر موقع: {coords}، قبل أكثر من {n} ساعة}}",
-    "@alertSosLocationMinutes": {
-      "description": "Arabic Language Bureau, #743. Notification body: a location exists and is this old; no coordinates on a lock screen. Tap opens the alert.",
-      "placeholders": {"n": {"type": "int"}}
-    },
-  "alertTechnicalDetails": "التفاصيل التقنية",
-    "alertSosLocationMinutes": "{n, plural, =1{سُجّل آخر موقع قبل دقيقة. اضغط لعرضه.} =2{سُجّل آخر موقع قبل دقيقتين. اضغط لعرضه.} few{سُجّل آخر موقع قبل {n} دقائق. اضغط لعرضه.} many{سُجّل آخر موقع قبل {n} دقيقة. اضغط لعرضه.} other{سُجّل آخر موقع قبل {n} دقيقة. اضغط لعرضه.}}",
-    "@alertSosLocationHours": {
-      "description": "Arabic Language Bureau, #743. Notification body for a fix an hour or more old; says «more than», hours rounded down.",
-      "placeholders": {"n": {"type": "int"}}
-    },
-    "alertSosLocationHours": "{n, plural, =1{سُجّل آخر موقع قبل أكثر من ساعة. اضغط لعرضه.} =2{سُجّل آخر موقع قبل أكثر من ساعتين. اضغط لعرضه.} few{سُجّل آخر موقع قبل أكثر من {n} ساعات. اضغط لعرضه.} many{سُجّل آخر موقع قبل أكثر من {n} ساعة. اضغط لعرضه.} other{سُجّل آخر موقع قبل أكثر من {n} ساعة. اضغط لعرضه.}}",
-    "@alertLocationAccuracy": {
-      "description": "Arabic Language Bureau, #743. Detail line: how precise the fix is.",
-      "placeholders": {"m": {"type": "int"}}
-    },
-    "alertLocationAccuracy": "الدقة: نحو {m} م",
-    "@alertCopyCoordinates": {
-      "description": "Arabic Language Bureau, #743. Quiet action under Show on map; content is a verbal noun (R5)."
-    },
-    "alertCopyCoordinates": "نسخ الإحداثيات",
-    "@alertCoordinatesCopied": {
-      "description": "Arabic Language Bureau, #743. Short confirmation after the copy."
-    },
-    "alertCoordinatesCopied": "تم نسخ الإحداثيات",
-    "@alertOpenInMaps": {
-      "description": "Arabic Language Bureau, #743. Hands the point to the phone maps app when our own map cannot draw."
-    },
-    "alertOpenInMaps": "فتح في تطبيق الخرائط",
-    "@alertShowOnMap": {
-      "description": "#672, Arabic Language Bureau: opens the family map on the SOS fix."
-    },
-    "alertShowOnMap": "عرض على الخريطة",
+  "alertPushBodyGeneric": "افتح تطبيق أسرة لمشاهدة التفاصيل\nحماية لعائلتك بكل الأوقات",
+  "@alertSosWhereMinutes": {
+    "description": "#672, Arabic Language Bureau: the SOS fix named with its coordinates and its age (whole line per plural case). The coordinates are inserted wrapped in LRI/PDI by the app.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      },
+      "coords": {
+        "type": "String"
+      }
+    }
+  },
+  "alertSosWhereMinutes": "{n, plural, =1{آخر موقع: {coords}، قبل دقيقة} =2{آخر موقع: {coords}، قبل دقيقتين} few{آخر موقع: {coords}، قبل {n} دقائق} many{آخر موقع: {coords}، قبل {n} دقيقة} other{آخر موقع: {coords}، قبل {n} دقيقة}}",
+  "@alertSosWhereHours": {
+    "description": "#672, Arabic Language Bureau: the same line for a fix an hour or more old; hours round down, and the line says «more than» and carry \"about\".",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      },
+      "coords": {
+        "type": "String"
+      }
+    }
+  },
+  "alertSosWhereHours": "{n, plural, =1{آخر موقع: {coords}، قبل أكثر من ساعة} =2{آخر موقع: {coords}، قبل أكثر من ساعتين} few{آخر موقع: {coords}، قبل أكثر من {n} ساعات} many{آخر موقع: {coords}، قبل أكثر من {n} ساعة} other{آخر موقع: {coords}، قبل أكثر من {n} ساعة}}",
+  "@alertSosLocationMinutes": {
+    "description": "Arabic Language Bureau, #743. Notification body: a location exists and is this old; no coordinates on a lock screen. Tap opens the alert.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "alertChildLabel": "الطفل: {name}",
+  "alertSosLocationMinutes": "{n, plural, =1{سُجّل آخر موقع قبل دقيقة. اضغط لعرضه.} =2{سُجّل آخر موقع قبل دقيقتين. اضغط لعرضه.} few{سُجّل آخر موقع قبل {n} دقائق. اضغط لعرضه.} many{سُجّل آخر موقع قبل {n} دقيقة. اضغط لعرضه.} other{سُجّل آخر موقع قبل {n} دقيقة. اضغط لعرضه.}}",
+  "@alertSosLocationHours": {
+    "description": "Arabic Language Bureau, #743. Notification body for a fix an hour or more old; says «more than», hours rounded down.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "alertSosLocationHours": "{n, plural, =1{سُجّل آخر موقع قبل أكثر من ساعة. اضغط لعرضه.} =2{سُجّل آخر موقع قبل أكثر من ساعتين. اضغط لعرضه.} few{سُجّل آخر موقع قبل أكثر من {n} ساعات. اضغط لعرضه.} many{سُجّل آخر موقع قبل أكثر من {n} ساعة. اضغط لعرضه.} other{سُجّل آخر موقع قبل أكثر من {n} ساعة. اضغط لعرضه.}}",
+  "@alertLocationAccuracy": {
+    "description": "Arabic Language Bureau, #743. Detail line: how precise the fix is.",
+    "placeholders": {
+      "m": {
+        "type": "int"
+      }
+    }
+  },
+  "alertLocationAccuracy": "الدقة: نحو {m} م",
+  "@alertCopyCoordinates": {
+    "description": "Arabic Language Bureau, #743. Quiet action under Show on map; content is a verbal noun (R5)."
+  },
+  "alertCopyCoordinates": "نسخ الإحداثيات",
+  "@alertCoordinatesCopied": {
+    "description": "Arabic Language Bureau, #743. Short confirmation after the copy."
+  },
+  "alertCoordinatesCopied": "تم نسخ الإحداثيات",
+  "@alertOpenInMaps": {
+    "description": "Arabic Language Bureau, #743. Hands the point to the phone maps app when our own map cannot draw."
+  },
+  "alertOpenInMaps": "فتح في تطبيق الخرائط",
+  "@alertShowOnMap": {
+    "description": "#672, Arabic Language Bureau: opens the family map on the SOS fix."
+  },
+  "alertShowOnMap": "عرض على الخريطة",
   "riskSelfHarm": "إيذاء النفس",
   "riskSubstanceUse": "تعاطي المواد",
   "riskSubstanceAbuse": "إساءة استخدام المواد",
@@ -927,7 +1013,7 @@
   "riskViolence": "العنف",
   "riskHateSpeech": "خطاب الكراهية",
   "riskAiConcern": "محتوى مثير للقلق",
-  "phoneSetupOtherSpaceClone": "في هذا الهاتف مساحة ثانية لنسخ التطبيقات (Dual Messenger).",
+  "phoneSetupOtherSpaceClone": "هذا الهاتف يحتوي على مساحة أخرى مؤمنة، ربما تتيح هذه المساحة تشغيل أكثر من نسخة من نفس التطبيق، وقد لا يتمكن هذا التطبيق من مراقبتها طالما لم يتم إلغاء هذه الخاصية من قسم الإعدادات الخاصة بالهاتف.",
   "phoneSetupOtherSpaceWork": "في هذا الهاتف ملف عمل.",
   "phoneSetupOtherSpaceOther": "في هذا الهاتف مساحة أخرى، وقد لا يصل OSRA إلى التطبيقات داخلها.",
   "phoneSetupTitle": "إعداد الهاتف",
@@ -973,5 +1059,27 @@
   "setupMonitoringIntro": "يفحص تطبيق أسرة الرسائل في هذه التطبيقات بحثًا عن علامات التنمّر أو الاستدراج أو إيذاء النفس، وينبّهك عند رصد ما يثير القلق. اختر التطبيقات التي تريد مراقبتها، ويمكنك تغيير اختيارك في أي وقت من «القواعد».",
   "setupMonitoringConsent": "يُحفظ المقتطف من الرسالة المثيرة للقلق لمدة 90 يومًا، ويُحفظ التنبيه لمدة 12 شهرًا. لا يُقرأ أي شيء من تطبيق لم تختره.",
   "setupMonitoringContinue": "متابعة",
-  "appRuleHiddenOnIphone": "على هواتف آيفون، يُخفى هذا التطبيق بدلًا من عرض شاشة الحظر."
+  "appRuleHiddenOnIphone": "على هواتف آيفون، يُخفى هذا التطبيق بدلًا من عرض شاشة الحظر.",
+  "webSiteNamesOnlyNote": "أسماء المواقع والخدمات على الإنترنت التي وصل إليها هذا الهاتف، لا الصفحات التي فُتحت. تُحفظ لمدة 90 يومًا.",
+  "webSiteVisits": "{count, plural, zero{لا زيارات} one{زيارة واحدة} two{زيارتان} few{{count} زيارات} many{{count} زيارة} other{{count} زيارة}}",
+  "webSiteSeenRange": "من {first} إلى {last}",
+  "webSitesSummary": "عدد المواقع: {count}",
+  "showPassword": "إظهار كلمة المرور",
+  "hidePassword": "إخفاء كلمة المرور",
+  "passwordMinHint": "12 حرفًا على الأقل.",
+  "familyNameHelper": "سيظهر هذا الاسم لأولياء الأمور الآخرين الذين تدعوهم.",
+  "errorNoConnection": "لا يوجد اتصال بالإنترنت. تحقّق من الاتصال ثم حاول مرة أخرى.",
+  "authSignInFailed": "تعذّر تسجيل الدخول الآن. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
+  "authMfaReenrollRequired": "أُعيد تعيين التحقق بخطوتين، لكن إعداده لم يكتمل. إذا كانت شاشة الإعداد لا تزال مفتوحة، فافتح «هل فقدت تطبيق المصادقة؟»، وإلا فتواصل مع فريق الدعم.",
+  "familyInviteFailed": "تعذّر إرسال الدعوة. تحقّق من عنوان البريد الإلكتروني ثم حاول مرة أخرى.",
+  "digestPrefsTimezonePickerTitle": "اختيار المنطقة الزمنية",
+  "digestPrefsTimezoneSearchHint": "ابحث باسم مدينة أو بفرق التوقيت، مثل: دبي أو GMT+4",
+  "digestPrefsTimezoneEmpty": "لا توجد مناطق زمنية مطابقة",
+  "alertDeviceRestartedTitle": "أُعيد تشغيل الجهاز",
+  "alertCategoryDeviceRestarted": "إعادة تشغيل الجهاز",
+  "alertAtTime": "الساعة {time}",
+  "alertYesterdayAtTime": "أمس الساعة {time}",
+  "alertOnDateAtTime": "يوم {date} الساعة {time}",
+  "alertDeviceRestartedBodyMinutes": "أُعيد تشغيل {device} {when}، وعاد إلى العمل بعد {minutes, plural, =0{أقل من دقيقة} =1{دقيقة} =2{دقيقتين} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}.",
+  "alertDeviceRestartedBodyHours": "أُعيد تشغيل {device} {when}، وعاد إلى العمل بعد نحو {hours, plural, =1{ساعة} =2{ساعتين} few{{hours} ساعات} many{{hours} ساعة} other{{hours} ساعة}}."
 }

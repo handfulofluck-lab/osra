@@ -85,3 +85,15 @@ def parse_categories(content: str) -> Dict[str, float]:
         top_harmful = max(probs[c] for c in HARMFUL_CATEGORIES)
         probs["safe"] = round(max(0.0, 1.0 - top_harmful), 4)
     return probs
+
+def refused_probs() -> Dict[str, float]:
+    """What a refused or unreadable answer scores: flagged in every harmful category, and marked.
+
+    It lives beside `parse_categories` because it is the other half of reading an answer, and both
+    hosted scorers need it: a model that declines, or answers something that is not the JSON contract,
+    is a datapoint a run must be able to record rather than an exception that ends it.
+    """
+    probs = {c: 1.0 for c in HARMFUL_CATEGORIES}
+    probs["safe"] = 0.0
+    probs[REFUSED_KEY] = 1.0
+    return probs

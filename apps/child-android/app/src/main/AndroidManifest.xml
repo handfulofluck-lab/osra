@@ -222,12 +222,17 @@
              where opening OSRA finds it again until the ring screen has a way back, or a notification that
              stops the alarm. The block, lock and SOS screens have no such problem, and being alone in their
              own tasks is what stops them coming back behind each other. -->
+        <!-- #734 / #802 item 4: the ring screen owns the display while it is up. Not resizeable, so it cannot
+             be shrunk beside another app, and no picture-in-picture, so it cannot become a thumbnail the child
+             swipes away while the alarm keeps ringing. -->
         <activity android:name=".commands.RingActivity"
             android:exported="false"
             android:launchMode="singleTask"
             android:excludeFromRecents="true"
             android:showWhenLocked="true"
             android:turnScreenOn="true"
+            android:resizeableActivity="false"
+            android:supportsPictureInPicture="false"
             android:theme="@android:style/Theme.Material.NoActionBar"/>
 
         <!-- ADR-0031: the family-witness reset-code notice. Safe-direction (it restricts nothing), so

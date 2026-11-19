@@ -15,6 +15,7 @@ import { digestRoutes } from "./routes/digests.js";
 import { socialRoutes } from "./routes/social.js";
 import { contentRoutes } from "./routes/content.js";
 import { inviteRoutes } from "./routes/invites.js";
+import { linkPageRoutes } from "./routes/linkPages.js";
 import { insightsRoutes } from "./routes/insights.js";
 import { meRoutes } from "./routes/me.js";
 import { accountRoutes } from "./routes/account.js";
@@ -25,14 +26,19 @@ import { startUsageRollupScheduler } from "./jobs/usageRollup.js";
 import { startDeviceSilenceScheduler } from "./jobs/deviceSilence.js";
 import { startMfaResetExpiryScheduler } from "./jobs/mfaResetExpiry.js";
 import { startRevokedTokenPruneScheduler } from "./jobs/revokedTokenPrune.js";
+import { startPendingDeviceScheduler } from "./jobs/pendingDevices.js";
 import { sessionGuardHook } from "./middleware/sessionGuard.js";
+import { registerPairedAtHook } from "./middleware/pairedAt.js";
 import { healthRoutes } from "./routes/health.js";
+import { consentCopyRoutes } from "./routes/consentCopy.js";
 import { registerErrorHandler } from "./lib/errorHandler.js";
 import { registerIdleBudgetHook } from "./lib/idleBudget.js";
 import { registerClientHeader } from "./middleware/clientHeader.js";
 import { AUTH_RATE_LIMIT, registerRateLimits, trustProxyFromEnv } from "./lib/rateLimits.js";
 import { getRedis } from "./redis.js";
 import { LOGGER_SERIALIZERS } from "./lib/logRedaction.js";
+import { assertCorsConfigured } from "./lib/corsConfig.js";
+import { assertDatabaseTls } from "./lib/databaseTls.js";
 
 // Review 3.7: fail fast on missing/known-dev secrets instead of booting insecurely.
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -45,6 +51,10 @@ if (!JWT_SECRET || JWT_SECRET === "dev-secret-change-me" || JWT_SECRET === "e2e-
 if (!process.env.VAULT_KEY && process.env.NODE_ENV === "production") {
   throw new Error("VAULT_KEY must be set in production (snippet vault encryption key)");
 }
+
+// #766 item 3 / gate #637: with DATABASE_TLS_VERIFY=required, refuse a database URL that would not check the
+// server's certificate. It runs before the first connection below, so the password is never sent unverified.
+assertDatabaseTls(process.env);
 
 import { prisma } from "./db.js";
 import { assertPrismaClientInSync } from "./lib/schemaSync.js";
@@ -71,6 +81,10 @@ const app = Fastify({
 
 // Review API-1: CORS allowlist via env (comma-separated); unset = reflect (dev/test only, NOTE).
 const corsOrigins = process.env.CORS_ORIGIN?.split(",").map((o) => o.trim()).filter(Boolean);
+// #765 (Fable's review, B4): reflecting every origin with credentials is a development setting, so a
+// production boot refuses it unless the deployment says so on purpose. Staging and the CI image check set
+// CORS_ALLOW_ANY_ORIGIN=1; the production Terraform cannot (its guard requires a real CORS_ORIGIN).
+assertCorsConfigured(process.env);
 await app.register(cors, {
   origin: corsOrigins && corsOrigins.length > 0 ? corsOrigins : true,
   credentials: true,
@@ -91,6 +105,11 @@ app.addHook("preHandler", sessionGuardHook);
 // request records its build. CLIENT_POLICY ships empty, so nothing is refused.
 registerClientHeader(app);
 
+// Issue #790: a device created by an approved pairing claim is PENDING (`Device.pairedAt` null) and
+// invisible to its family until a request from it is accepted. The rule lives in one global hook rather
+// than in each device route: `middleware/pairedAt.ts` says why `onResponse` and not the preHandler.
+registerPairedAtHook(app);
+
 /**
  * Idle-request budget (roadmap 5.8): count authenticated device requests, per device per minute per route,
  * so the acceptance's "idle child phone ≤ 3 requests per 10 min" becomes a number instead of an impression.
@@ -105,6 +124,8 @@ registerIdleBudgetHook(app);
 registerErrorHandler(app);
 
 await app.register(healthRoutes);
+// ADR-0043 D3 / #846 part A: the sign-up copy, public because the app asks before anyone signs in.
+await app.register(consentCopyRoutes, { prefix: "/v1" });
 
 
 // Auth routes get a stricter bucket (review API-11): brute-force protection on register/login/reset.
@@ -129,6 +150,9 @@ await app.register(meRoutes, { prefix: "/v1/me" });
 // #442 PR 3: the public account-deletion pages (Play's web link). No session; the two POSTs carry
 // AUTH_RATE_LIMIT themselves.
 await app.register(accountRoutes, { prefix: "/v1/account" });
+// #789: the pages the mailed links open (/reset, /mfa/reset/confirm, /mfa/reset/cancel, /invite/accept,
+// /dashboard). Outside /v1 because the mails carry APP_PUBLIC_URL + these paths. A GET changes nothing.
+await app.register(linkPageRoutes);
 // ADR-0041 D2 / #620: Play purchase verification (a parent session) and the Pub/Sub push (its own OIDC
 // token). Both write the plan only through `lib/entitlement.ts`.
 await app.register(billingRoutes, { prefix: "/v1/billing" });
@@ -147,3 +171,5 @@ startDeviceSilenceScheduler();
 startMfaResetExpiryScheduler();
 // ADR-0032: single-logout records are pruned once the token they revoked could no longer be shown.
 startRevokedTokenPruneScheduler();
+// Issue #790: a pairing claim's device row is deleted if the phone never made an accepted request.
+startPendingDeviceScheduler();

@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/digits.dart';
 import '../../api/models.dart';
 import '../../l10n/l10n.dart';
+import '../../widgets/field_question.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../providers/onboarding_provider.dart';
@@ -56,7 +58,7 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
       setState(() => _error = l10n.onboardingChildNameRequired);
       return;
     }
-    final year = int.tryParse(_birthYear.text.trim());
+    final year = int.tryParse(normalizeDigits(_birthYear.text.trim()));
     final thisYear = DateTime.now().year;
     if (year == null || year < 1900 || year > thisYear) {
       setState(() => _error = l10n.onboardingBirthYearInvalid);
@@ -95,6 +97,7 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
     final leave = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: Text(l10n.onboardingLeaveTitle),
         content: Text(l10n.onboardingLeaveBody),
         actions: [
@@ -197,20 +200,29 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
         // before it can be translated; it stays English, as on the dashboard.
         Text(l10n.consentNotice, style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: AppSpace.md),
-        DropdownButtonFormField<String>(
+        FieldQuestion(
+          text: l10n.consentMethodLabel,
+          child: DropdownButtonFormField<String>(
           key: const ValueKey('onboardingConsentMethod'),
           initialValue: _method,
           isExpanded: true,
-          decoration: InputDecoration(labelText: l10n.consentMethodLabel, border: const OutlineInputBorder()),
+          // See consent_step.dart: `isDense` defaults to true here and clips a wrapped selected value
+          // at large text (#874, Arabic Language Bureau).
+          isDense: false,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
           items: [for (final m in _methods) DropdownMenuItem(value: m, child: Text(l10n.consentMethod(m)))],
           onChanged: _busy ? null : (v) => setState(() => _method = v ?? _methods.first),
+          ),
         ),
         const SizedBox(height: AppSpace.md),
-        DropdownButtonFormField<String>(
+        FieldQuestion(
+          text: l10n.jurisdictionLabel,
+          child: DropdownButtonFormField<String>(
           key: const ValueKey('onboardingJurisdiction'),
           initialValue: _jurisdiction,
           isExpanded: true,
-          decoration: InputDecoration(labelText: l10n.jurisdictionLabel, border: const OutlineInputBorder()),
+          isDense: false,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
           items: [
             DropdownMenuItem(value: 'US', child: Text(l10n.regionUS)),
             DropdownMenuItem(value: 'EU', child: Text(l10n.regionEU)),
@@ -218,6 +230,7 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
             DropdownMenuItem(value: 'OTHER', child: Text(l10n.regionOther)),
           ],
           onChanged: _busy ? null : (v) => setState(() => _jurisdiction = v ?? 'US'),
+          ),
         ),
         if (_error != null) ...[
           const SizedBox(height: AppSpace.md),
@@ -230,10 +243,13 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
         const SizedBox(height: AppSpace.lg),
         FilledButton(
           key: const ValueKey('onboardingAddChild'),
+          // #874 B6 (UI/UX Bureau): at the largest text the wrapped label ran into the rounded edge. The
+          // #862 pattern — a full-width button with a 52 px floor and a centred label — gives it the room.
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
           onPressed: _busy ? null : _createChild,
           child: _busy
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-              : Text(l10n.onboardingAddChildContinue),
+              : Text(l10n.onboardingAddChildContinue, textAlign: TextAlign.center),
         ),
         const SizedBox(height: AppSpace.md),
         Text(

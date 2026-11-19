@@ -1,0 +1,5 @@
+### Parent app — send today's location-history bounds in UTC (#869)
+
+- Convert the parent's local midnight and current time to UTC before sending the history request, matching the API's UTC/Z date contract while preserving the parent's local calendar day. Previously, local ISO strings omitted `Z` and could be refused with HTTP 400.
+- The actual-provider request regression fails on the old query. Existing no-location and safe-error handling are unchanged. This addresses the history query only: current-build history evidence, child uploads/permissions and A9 Locate remain open; shared friendly-error and Retry UI belongs to #871.
+- After folding `main@de04f9e6`, the author's targeted query/404 run passes 5 tests in UTC, the query row passes in Dubai, and `flutter analyze` is clean. Removing the end-bound conversion or substituting UTC midnight independently makes the regression fail. The earlier full Flutter suite passed 974 tests at base `1d61b9f4`; it was not rerun after this fold. These are software fixtures, not independent review, staging or a phone result.

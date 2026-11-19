@@ -37,12 +37,25 @@ function asRecord(payload: unknown): Record<string, unknown> {
   return payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
 }
 
-/** Pure JS aggregation over a window of ActivityEvents (spec: compute in JS, not SQL). */
-function aggregateActivityEvents(events: Array<{ type: string; payload: unknown }>): ActivityAggregate {
+/**
+ * Pure JS aggregation over a window of ActivityEvents (spec: compute in JS, not SQL).
+ *
+ * `includeUnblockedUrls` is the site-name flag (ADR-0043's sibling decision, #830/#841): while it is off,
+ * an unblocked `url` row is not browsing history anyone may see — not in the web report, not in the
+ * activity report, and not counted into this summary either. Blocked attempts stay; they are the parent's
+ * own rule reporting itself.
+ */
+function aggregateActivityEvents(
+  events: Array<{ type: string; payload: unknown }>,
+  includeUnblockedUrls = false,
+): ActivityAggregate {
   const appMinutes = new Map<string, number>();
   const blockedDomains = new Map<string, number>();
   let totalAppMinutes = 0;
-  let urlVisits = 0;
+  // #841 UI/UX condition 3: the label says "sites visited", so the count is **distinct hosts**, not URL
+  // events — ten visits to one site is one site. A blocked attempt is not a visit either: it has its own
+  // counter (`blockedHits`, `topBlockedDomains`), so it does not enter this set.
+  const visitedHosts = new Set<string>();
   let blockedHits = 0;
   let calls = 0;
   let sms = 0;
@@ -55,11 +68,19 @@ function aggregateActivityEvents(events: Array<{ type: string; payload: unknown 
       totalAppMinutes += minutes;
       appMinutes.set(app, (appMinutes.get(app) ?? 0) + minutes);
     } else if (event.type === "url") {
-      urlVisits += 1;
+      // Claude's ruling on #841 finding 5: with the flag off, no host is shown or counted — a blocked
+      // attempt included. Its **count** still feeds the safety score (the parent's own rule reporting
+      // itself), which is what "a count with no host is fine" allows.
+      if (!includeUnblockedUrls) {
+        if (payload.blocked === true) blockedHits += 1;
+        continue;
+      }
+      const host = typeof payload.domain === "string" && payload.domain ? payload.domain : "unknown";
       if (payload.blocked === true) {
         blockedHits += 1;
-        const domain = typeof payload.domain === "string" && payload.domain ? payload.domain : "unknown";
-        blockedDomains.set(domain, (blockedDomains.get(domain) ?? 0) + 1);
+        blockedDomains.set(host, (blockedDomains.get(host) ?? 0) + 1);
+      } else {
+        visitedHosts.add(host);
       }
     } else if (event.type === "call") {
       calls += 1;
@@ -71,7 +92,7 @@ function aggregateActivityEvents(events: Array<{ type: string; payload: unknown 
   return {
     totalAppMinutes,
     topApps: [...appMinutes.entries()].sort(byValueDesc).slice(0, TOP_LIMIT).map(([name, minutes]) => ({ name, minutes })),
-    urlVisits,
+    urlVisits: visitedHosts.size,
     topBlockedDomains: [...blockedDomains.entries()].sort(byValueDesc).slice(0, TOP_LIMIT).map(([domain, count]) => ({ domain, count })),
     blockedHits,
     calls,
@@ -80,10 +101,14 @@ function aggregateActivityEvents(events: Array<{ type: string; payload: unknown 
 }
 
 /** Aggregate a child's ActivityEvents over the trailing `days` days (#4). */
-export async function summarizeChildActivity(childId: string, days: number): Promise<ActivitySummary> {
+export async function summarizeChildActivity(
+  childId: string,
+  days: number,
+  options: { siteNames?: boolean } = {},
+): Promise<ActivitySummary> {
   const since = new Date(Date.now() - days * MS_PER_DAY);
   const events = await prisma.activityEvent.findMany({ where: { childId, ts: { gte: since } } });
-  const aggregate = aggregateActivityEvents(events);
+  const aggregate = aggregateActivityEvents(events, options.siteNames === true);
   const socialConcerns = await prisma.socialEvent.count({ where: { childId, createdAt: { gte: since } } });
   const { blockedHits: _blockedHits, ...summary } = aggregate;
   return { ...summary, socialConcerns };

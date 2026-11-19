@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 
@@ -116,3 +117,46 @@ String regionLabel(AppLocalizations l10n, String code) => switch (code) {
       'OTHER' => l10n.regionOther,
       _ => code,
     };
+
+/// Logs technical failure details only to debug logs so raw exceptions, status
+/// codes, and Dio types never appear on screen (R-ID-1).
+void logParentError(Object error) {
+  debugPrint('OSRA parent error: $error');
+}
+
+/// True when [error] looks like an offline socket, DNS, or timeout failure.
+bool isNetworkDioError(DioException error) {
+  if (error.type == DioExceptionType.connectionError ||
+      error.type == DioExceptionType.connectionTimeout ||
+      error.type == DioExceptionType.sendTimeout ||
+      error.type == DioExceptionType.receiveTimeout) {
+    return true;
+  }
+  final lower = '${error.message ?? ''} ${error.error ?? ''}'.toLowerCase();
+  return lower.contains('socket') ||
+      lower.contains('connection') ||
+      lower.contains('network') ||
+      lower.contains('timed out') ||
+      lower.contains('timeout') ||
+      lower.contains('failed host lookup');
+}
+
+/// Maps [error] to a plain localized sentence (R-ID-1): permission refusal,
+/// consent refusal, network/timeout failure, 5xx unavailability, or [fallback].
+String friendlyErrorText(
+  AppLocalizations l10n,
+  Object error,
+  String Function() fallback,
+) {
+  final refusal = error is DioException ? ReadPermissionRequired.from(error) : null;
+  if (refusal != null) return l10n.readPermissionRequired;
+  final consent = consentWriteError(l10n, error);
+  if (consent != null) return consent;
+  logParentError(error);
+  if (error is DioException) {
+    if (isNetworkDioError(error)) return l10n.errorNoConnection;
+    final status = error.response?.statusCode;
+    if (status != null && status >= 500) return fallback();
+  }
+  return fallback();
+}

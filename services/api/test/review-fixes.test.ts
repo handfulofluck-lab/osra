@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { totpAtCounter } from "../src/lib/totp.js";
 import { authRoutes } from "../src/routes/auth.js";
 import { insightsRoutes } from "../src/routes/insights.js";
-import { MockRedis, authHeader, buildApp, prismaMock, resetPrismaMock } from "./helpers.js";
+import { MockRedis, authHeader, buildApp, prismaMock, resetPrismaMock, SIGNUP_CONSENTS } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -71,7 +71,7 @@ describe("review fixes — auth hardening", () => {
     const reg = await app.inject({
       method: "POST",
       url: "/v1/auth/register",
-      payload: { email: "Mixed@Case.com", password: PASSWORD, displayName: "K", familyName: "F", region: "US" },
+      payload: { email: "Mixed@Case.com", password: PASSWORD, displayName: "K", familyName: "F", region: "US", consents: SIGNUP_CONSENTS },
     });
     expect(reg.statusCode).toBe(201);
     expect(prismaMock.parent.findUnique).toHaveBeenCalledWith({ where: { email: "mixed@case.com" } });

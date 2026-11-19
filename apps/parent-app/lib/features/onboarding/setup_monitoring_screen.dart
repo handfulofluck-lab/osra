@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../api/permission_errors.dart';
 import '../../l10n/l10n.dart';
+import '../../widgets/error_retry_view.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
@@ -55,8 +57,11 @@ class _SetupMonitoringScreenState extends ConsumerState<SetupMonitoringScreen> {
       if (mounted) context.go('/setup/done');
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(l10n.saveFailed('$e'))));
+        showErrorSnackBar(
+          context,
+          friendlyErrorText(l10n, e, () => l10n.saveFailed),
+          onRetry: _finish,
+        );
       }
     } finally {
       if (mounted) setState(() => _saving = false);

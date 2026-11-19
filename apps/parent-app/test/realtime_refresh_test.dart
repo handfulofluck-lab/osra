@@ -15,6 +15,8 @@ class RecordingEffects implements RealtimeEffects {
   int family = 0;
   final List<String> locations = [];
   final List<String> consents = [];
+  /// #876: the delivery lists a `rules_applied` frame also refreshes.
+  int commandHistory = 0;
   final List<LiveActivity> activities = [];
 
   @override
@@ -31,6 +33,9 @@ class RecordingEffects implements RealtimeEffects {
 
   @override
   void invalidateConsent(String childId) => consents.add(childId);
+
+  @override
+  void invalidateCommandHistory() => commandHistory++;
 
   @override
   void updateLiveActivity(LiveActivity activity) => activities.add(activity);
@@ -52,6 +57,26 @@ void main() {
       expect(effects.alerts, 1);
       expect(effects.unacknowledged, 1);
       expect(effects.family, 1);
+      expect(effects.locations, isEmpty);
+      expect(effects.consents, isEmpty);
+      expect(effects.activities, isEmpty);
+    });
+
+    test('rules_applied refreshes only the family overview (#865)', () {
+      final effects = RecordingEffects();
+      applyRealtimeMessage(effects, {
+        // The server's frame when the family's last reporting device catches up. It carries the number
+        // the banner already reads; the app re-reads the snapshot and nothing else.
+        'type': 'rules_applied',
+        'payload': {'childId': 'child-1', 'appliedRulesVersion': 7},
+      });
+
+      expect(effects.family, 1);
+      // #876: the same frame means the rules command landed, so the delivery list is refreshed as well.
+      expect(effects.commandHistory, 1);
+      // Mutant: widen this to alerts or a live activity and the counts below go red.
+      expect(effects.alerts, 0);
+      expect(effects.unacknowledged, 0);
       expect(effects.locations, isEmpty);
       expect(effects.consents, isEmpty);
       expect(effects.activities, isEmpty);

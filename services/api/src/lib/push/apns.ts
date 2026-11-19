@@ -1,6 +1,7 @@
 import { createSign } from "node:crypto";
 import { connect, type ClientHttp2Session } from "node:http2";
 import type { PushMessage, PushProvider, PushResult } from "./types.js";
+import { withBackoff } from "./retry.js";
 
 /**
  * Apple Push Notification service over HTTP/2 with token-based (p8) authentication — no SDK.
@@ -111,7 +112,13 @@ export function http2Transport(): ApnsTransport {
       });
       req.on("data", (c: Buffer) => chunks.push(c));
       req.on("end", () => resolve({ status, body: Buffer.concat(chunks).toString("utf8") }));
-      req.on("error", reject);
+      req.on("error", (err) => {
+        if (session && !session.closed && !session.destroyed) {
+          session.destroy();
+        }
+        session = null;
+        reject(err);
+      });
       req.end(body);
     });
 }
@@ -124,6 +131,7 @@ export class ApnsProvider implements PushProvider {
     private readonly cfg: ApnsConfig,
     private readonly transport: ApnsTransport = http2Transport(),
     private readonly now: () => number = () => Date.now(),
+    private readonly sleep?: (ms: number) => Promise<void>,
   ) {}
 
   private providerToken(): string {
@@ -172,9 +180,14 @@ export class ApnsProvider implements PushProvider {
       "apns-priority": message.dataOnly ? "5" : message.priority === "high" ? "10" : "5",
       ...(message.threadId ? { "apns-collapse-id": message.threadId.slice(0, 64) } : {}),
     };
+    // #842: one bounded, capped backoff for the connection-level failures (#843 retried once); the
+    // transport still disposes a dead HTTP/2 session on error, so the retry dials a fresh one.
     let res: { status: number; body: string };
     try {
-      res = await this.transport(this.cfg.host, `/3/device/${token}`, headers, JSON.stringify(ApnsProvider.buildPayload(message)));
+      res = await withBackoff(
+        () => this.transport(this.cfg.host, `/3/device/${token}`, headers, JSON.stringify(ApnsProvider.buildPayload(message))),
+        this.sleep ? { sleep: this.sleep } : {},
+      );
     } catch (err) {
       return { ok: false, invalidToken: false, reason: (err as Error).message };
     }

@@ -14,6 +14,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../../api/permission_errors.dart';
+import '../../widgets/error_retry_view.dart';
 import '../children/command_messages.dart';
 
 /// Marker hue per device status.
@@ -112,7 +113,10 @@ class FamilyMapScreen extends ConsumerWidget {
       ),
       body: family.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(readErrorText(context.l10n, e, () => context.l10n.familyLoadFailed('$e')))),
+        error: (e, _) => ErrorRetryView(
+          message: friendlyErrorText(context.l10n, e, () => context.l10n.familyLoadFailed),
+          onRetry: () => ref.invalidate(familyProvider),
+        ),
         data: (overview) => _MapBody(overview: overview, focus: focus),
       ),
     );
@@ -129,43 +133,46 @@ class ChildMapSheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(AppSpace.xl, 0, AppSpace.xl, AppSpace.xl),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(child.displayName, style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: AppSpace.sm),
-          Text(context.l10n.familyMapLastUpdate(
-            ping.timestamp == null
-                ? context.l10n.familyMapLastUpdateUnknown
-                : DateFormat.yMMMd(context.localeName).add_Hms().format(ping.timestamp!.toLocal()),
-          )),
-          const SizedBox(height: AppSpace.xs),
-          // NOTE: reverse geocoding is a non-goal; show raw coordinates as the address placeholder.
-          Text(ltrIsolate('${ping.lat.toStringAsFixed(6)}, ${ping.lng.toStringAsFixed(6)}')),
-          if (device != null && device!.batteryPct > 0) ...[
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(AppSpace.xl, 0, AppSpace.xl, AppSpace.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(child.displayName, style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: AppSpace.sm),
+            Text(context.l10n.familyMapLastUpdate(
+              ping.timestamp == null
+                  ? context.l10n.familyMapLastUpdateUnknown
+                  : DateFormat.yMMMd(context.localeName).add_Hms().format(ping.timestamp!.toLocal()),
+            )),
             const SizedBox(height: AppSpace.xs),
-            Text(context.l10n.familyMapBattery(device!.batteryPct)),
-          ],
-          const SizedBox(height: AppSpace.lg),
-          Row(
-            children: [
-              FilledButton.tonalIcon(
-                icon: const Icon(Icons.volume_up),
-                label: Text(context.l10n.familyMapRing),
-                onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'ring'),
-              ),
-              const SizedBox(width: AppSpace.md),
-              FilledButton.tonalIcon(
-                icon: const Icon(Icons.lock),
-                label: Text(context.l10n.familyMapLock),
-                onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'lock'),
-              ),
+            // NOTE: reverse geocoding is a non-goal; show raw coordinates as the address placeholder.
+            Text(ltrIsolate('${ping.lat.toStringAsFixed(6)}, ${ping.lng.toStringAsFixed(6)}')),
+            if (device != null && device!.batteryPct > 0) ...[
+              const SizedBox(height: AppSpace.xs),
+              Text(context.l10n.familyMapBattery(device!.batteryPct)),
             ],
-          ),
-        ],
+            const SizedBox(height: AppSpace.lg),
+            Wrap(
+              spacing: AppSpace.md,
+              runSpacing: AppSpace.sm,
+              children: [
+                FilledButton.tonalIcon(
+                  icon: const Icon(Icons.volume_up),
+                  label: Text(context.l10n.familyMapRing),
+                  onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'ring'),
+                ),
+                FilledButton.tonalIcon(
+                  icon: const Icon(Icons.lock),
+                  label: Text(context.l10n.familyMapLock),
+                  onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'lock'),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -383,13 +390,24 @@ class _MapBodyState extends ConsumerState<_MapBody> {
 
   void _showChildSheet(BuildContext context, WidgetRef ref, Child child, LocationPing ping) {
     final device = widget.overview.devicesFor(child.id).firstOrNull;
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => ChildMapSheet(child: child, ping: ping, device: device),
-    );
+    showChildMapSheet(context, child: child, ping: ping, device: device);
   }
 }
+
+/// Opens the child location marker bottom sheet using the production sheet
+/// configuration (`isScrollControlled: true`, drag handle).
+Future<void> showChildMapSheet(
+  BuildContext context, {
+  required Child child,
+  required LocationPing ping,
+  Device? device,
+}) =>
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => ChildMapSheet(child: child, ping: ping, device: device),
+    );
 
 /// Feature #21: fit the camera so all [points] are visible. No-ops without a
 /// controller or with fewer than two points; animateCamera failures are
@@ -484,15 +502,14 @@ class _GeofenceCreateDialogState extends ConsumerState<GeofenceCreateDialog> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(added)));
     } on DioException catch (e) {
       if (!mounted) return;
-      final body = e.response?.data;
       setState(() {
         _saving = false;
         // #434 review: this route is gated by `requirePermission("location")`, so a refusal here is
         // the same `permission_required` 403 every gated read uses — one sentence, no new copy.
-        _error = readErrorText(
+        _error = friendlyErrorText(
           context.l10n,
           e,
-          () => body is Map ? '${body['error'] ?? e.message}' : (e.message ?? ''),
+          () => context.l10n.saveFailed,
         );
       });
     }
@@ -501,44 +518,43 @@ class _GeofenceCreateDialogState extends ConsumerState<GeofenceCreateDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      scrollable: true,
       title: Text(context.l10n.familyMapAddGeofence),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (widget.children.length > 1)
-              Padding(
-                padding: const EdgeInsets.only(bottom: AppSpace.md),
-                child: DropdownButtonFormField<String>(
-                  initialValue: _childId,
-                  decoration: InputDecoration(labelText: context.l10n.familyMapChild, border: const OutlineInputBorder()),
-                  items: [for (final c in widget.children) DropdownMenuItem(value: c.id, child: Text(c.displayName))],
-                  onChanged: (v) => setState(() => _childId = v ?? widget.children.first.id),
-                ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.children.length > 1)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpace.md),
+              child: DropdownButtonFormField<String>(
+                initialValue: _childId,
+                decoration: InputDecoration(labelText: context.l10n.familyMapChild, border: const OutlineInputBorder()),
+                items: [for (final c in widget.children) DropdownMenuItem(value: c.id, child: Text(c.displayName))],
+                onChanged: (v) => setState(() => _childId = v ?? widget.children.first.id),
               ),
-            TextField(
-              controller: _label,
-              decoration: InputDecoration(labelText: context.l10n.familyMapLabelField, border: const OutlineInputBorder()),
             ),
-            const SizedBox(height: AppSpace.md),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(context.l10n.familyMapRadius(_radiusM.round())),
-            ),
-            Slider(
-              value: _radiusM,
-              min: 100,
-              max: 1000,
-              divisions: 18,
-              label: context.l10n.familyMapMeters(_radiusM.round()),
-              onChanged: (v) => setState(() => _radiusM = v),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: AppSpace.sm),
-              Text(_error!, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.tokens.danger)),
-            ],
+          TextField(
+            controller: _label,
+            decoration: InputDecoration(labelText: context.l10n.familyMapLabelField, border: const OutlineInputBorder()),
+          ),
+          const SizedBox(height: AppSpace.md),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: Text(context.l10n.familyMapRadius(_radiusM.round())),
+          ),
+          Slider(
+            value: _radiusM,
+            min: 100,
+            max: 1000,
+            divisions: 18,
+            label: context.l10n.familyMapMeters(_radiusM.round()),
+            onChanged: (v) => setState(() => _radiusM = v),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: AppSpace.sm),
+            Text(_error!, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.tokens.danger)),
           ],
-        ),
+        ],
       ),
       actions: [
         TextButton(onPressed: _saving ? null : () => Navigator.of(context).pop(), child: Text(context.l10n.cancel)),
