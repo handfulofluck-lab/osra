@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:familyshield_parent/features/children/child_detail_screen.dart';
+import 'package:familyshield_parent/app.dart' show appRoutes;
 import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
 import 'package:familyshield_parent/l10n/l10n.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
@@ -13,8 +12,6 @@ import 'fake_api_client.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-
-  setUp(() => FlutterSecureStorage.setMockInitialValues({}));
 
   const gamesId = '6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6B';
 
@@ -62,28 +59,17 @@ void main() {
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
+    tester.platformDispatcher.textScaleFactorTestValue = textScale;
     final router = GoRouter(
       initialLocation: '/child/child-1',
-      routes: [
-        GoRoute(
-          path: '/child/:id',
-          builder: (_, s) => ChildDetailScreen(childId: s.pathParameters['id']!),
-        ),
-        GoRoute(
-          path: '/child/:id/rules',
-          builder: (_, s) => RulesEditorScreen(
-            childId: s.pathParameters['id']!,
-            initialTab: switch (s.uri.queryParameters['tab']) {
-              'apps' => 2,
-              _ => 0,
-            },
-          ),
-        ),
-      ],
+      routes: appRoutes,
     );
+    addTearDown(() {
+      router.dispose();
+      tester.platformDispatcher.clearTextScaleFactorTestValue();
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
 
     await tester.pumpWidget(
       ProviderScope(
@@ -93,10 +79,6 @@ void main() {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           routerConfig: router,
-          builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
-            child: child!,
-          ),
         ),
       ),
     );
@@ -109,7 +91,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  group('#937 ChildDetailScreen Apps tab block routes', () {
+  group('#937 ChildDetailScreen Apps tab block routes (shipped appRoutes)', () {
     testWidgets('iPhone-only with reported groups exposes group Block switch directly in Apps tab', (tester) async {
       final rules = {...ruleSetPayload('child-1'), 'appRules': <Map<String, dynamic>>[]};
       final api = FakeApiClient({
@@ -162,7 +144,7 @@ void main() {
       expect(find.text('No per-app rules'), findsNothing);
     });
 
-    testWidgets('mixed iPhone + Android child exposes both group block controls and Apps-tab rules route', (tester) async {
+    testWidgets('mixed iPhone + Android child exposes both group block controls and shipped Rules Apps tab', (tester) async {
       final api = FakeApiClient({
         ...standardRoutes(
           familyMe: familyWithDevices([
@@ -192,7 +174,7 @@ void main() {
       expect(find.byKey(const ValueKey('pickInstalledApp')), findsOneWidget);
     });
 
-    testWidgets('Android-only empty state offers direct navigation to Rules Apps tab', (tester) async {
+    testWidgets('Android-only empty state navigates via shipped router to Rules Apps tab', (tester) async {
       final emptyRules = {...ruleSetPayload('child-1'), 'appRules': <Map<String, dynamic>>[]};
       final api = FakeApiClient({
         ...standardRoutes(familyMe: familyWithDevices([androidDevice()])),
