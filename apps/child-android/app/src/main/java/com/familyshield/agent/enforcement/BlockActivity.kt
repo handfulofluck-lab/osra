@@ -15,14 +15,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -146,7 +151,7 @@ class BlockActivity : ComponentActivity() {
                     // instance: a second block starts with a fresh button.
                     key(request.packageId, request.reason) {
                         if (request.reason == REASON_FILTER_LOST) {
-                            FilterRecoveryScreen(onReconnect = ::reconnectFilter)
+                            FilterRecoveryScreen(onReconnect = ::reconnectFilter, onExit = ::goHome)
                         } else BlockScreen(
                             appLabel = appLabel,
                             timeLimit = request.timeLimit,
@@ -354,20 +359,29 @@ private fun windowFrom(intent: Intent): WindowReason? {
 }
 
 @Composable
-private fun FilterRecoveryScreen(onReconnect: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(32.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = stringResource(R.string.setup_web_filter_disconnected),
-            style = MaterialTheme.typography.headlineMedium,
-            color = Color.White,
-            textAlign = TextAlign.Center,
-        )
-        Button(onClick = onReconnect) {
-            Text(stringResource(R.string.setup_web_filter_reconnect))
+private fun FilterRecoveryScreen(onReconnect: () -> Unit, onExit: () -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+        val viewportHeight = maxHeight
+        Column(
+            modifier = Modifier.fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .heightIn(min = viewportHeight)
+                .padding(32.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = stringResource(R.string.setup_web_filter_disconnected),
+                style = MaterialTheme.typography.headlineMedium,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+            )
+            Button(onClick = onReconnect) {
+                Text(stringResource(R.string.setup_web_filter_reconnect))
+            }
+            TextButton(onClick = onExit) {
+                Text(stringResource(R.string.block_exit_home), color = Color.White)
+            }
         }
     }
 }
