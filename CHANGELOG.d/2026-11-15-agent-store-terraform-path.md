@@ -8,3 +8,6 @@
 - `rotate-agent-key.sh` recognises store mode by the profile's shape rather than the helper's name. It stops before creating a key if the installed helper is missing, and `--check` prints the mode without rotating.
 - `production-secrets.sh` converts its temporary folder with `cygpath -m` on Windows, so `aws.exe` can read the
   `file://` values. The 15 Nov rotation needed a hand-set `TMPDIR` for this.
+- New CI check `infra/terraform/tests/move-agent-key.sh` (stubbed `aws`, `powershell.exe`, `cygpath`): a repoint that
+  would change the caller identity, or leave a helper that reads no key, fails and restores the previous
+  `credential_process` (Kimi on #821).
