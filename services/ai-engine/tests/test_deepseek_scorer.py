@@ -264,3 +264,31 @@ def test_one_http_client_is_created_for_the_whole_process(tmp_path, monkeypatch)
         scorer(text)
 
     assert len(made) == 1, f"expected one client for three rows, built {len(made)}"
+
+def test_the_cache_key_carries_the_thinking_mode(tmp_path):
+    """Antigravity's #923 pointer: this row was left unstaged on the branch, so the mutant that drops
+    `thinking` from `_cache_key(...)` survived. The mode changes the request body, so it changes what the
+    score *is*: a thinking-on run must not be served thinking-off answers from the disk cache."""
+    calls = []
+
+    def handler(request):
+        calls.append(json.loads(request.content))
+        return httpx.Response(200, json=_reply({"safe": 0.9}))
+
+    cache = str(tmp_path / "cache.json")
+    off = DeepSeekScorer(api_key="k", cache_path=cache, client=httpx.Client(transport=httpx.MockTransport(handler)), log=lambda _m: None)
+    off("same text")
+    assert len(calls) == 1
+
+    # Same model, same prompt, same text — only the mode differs, and that must miss.
+    on = DeepSeekScorer(
+        api_key="k",
+        cache_path=cache,
+        thinking=True,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        log=lambda _m: None,
+    )
+    on._cache = off._cache  # the same on-disk entries, not a re-read
+    on("same text")
+    assert len(calls) == 2, "a thinking-on run was served the thinking-off answer"
+    assert on.hits == 0

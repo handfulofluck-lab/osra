@@ -280,3 +280,26 @@ def test_omit_text_keeps_the_rows_out_of_the_log(tmp_path):
     entry = json.loads(open(output, encoding="utf-8").read())
     assert "text" not in entry
     assert set(entry) == {"id", "probs", "refused", "latency_ms", "tokens_in", "tokens_out"}
+
+def test_a_run_that_crosses_the_peak_boundary_bills_both_periods(tmp_path):
+    """F3 (Antigravity's #923 review): one `now()` at the end priced an eight-hour run at whichever side
+    of the boundary it finished on. Each row is now billed where it happened — 03:59Z is peak, 04:01Z is
+    off-peak, and both must appear."""
+    import datetime as dt
+
+    def handler(request):
+        return httpx.Response(200, json=_reply({"safe": 0.9}, prompt_tokens=1_000_000, completion_tokens=0))
+
+    clock = iter([
+        dt.datetime(2026, 11, 16, 3, 59, tzinfo=dt.timezone.utc),  # Monday, inside 01:00-04:00 peak
+        dt.datetime(2026, 11, 16, 4, 1, tzinfo=dt.timezone.utc),   # one minute later, off-peak
+    ])
+    scorer = _scorer(handler, tmp_path)
+    summary = score_rows([_row("a", "one"), _row("b", "two")], scorer, str(tmp_path / "out.jsonl"),
+                         now=lambda: next(clock))
+
+    spend = summary["cost"]["spend_by_period"]
+    assert spend["peak"]["tokens_in"] == 1_000_000
+    assert spend["off_peak"]["tokens_in"] == 1_000_000
+    # 1M at the peak rate plus 1M at the off-peak rate, not 2M at either.
+    assert summary["cost"]["usd_upper_bound"] == pytest.approx((0.30 + 0.15), abs=1e-4)

@@ -151,6 +151,13 @@ def policy_refusal(row: dict, cleared_by: Optional[str] = None) -> Optional[str]
         if not labels or len(labels) != len(raw):
             return "malformed labels field (empty or non-string entries)"
     else:
+        # A singular `label` / `category` carries the same meaning, so a malformed one must be refused
+        # too — otherwise `label: 5` or `label: "  "` reads as "no labels" and slips past the clearance.
+        for key in ("label", "category"):
+            if key in row and row[key] is not None:
+                value = row[key]
+                if not isinstance(value, str) or not value.strip():
+                    return f"malformed {key} field (expected a non-blank string)"
         labels = labels_of(row)
     if not labels:
         if cleared:
@@ -199,6 +206,7 @@ def score_rows(
     delay_seconds: float = 0.0,
     cleared_by: Optional[str] = None,
     include_text: bool = True,
+    now=None,
     sleep=time.sleep,
     log=None,
 ) -> Dict[str, Any]:
@@ -216,6 +224,9 @@ def score_rows(
     # accumulated against the period each call actually happened in. One `now()` at the end could price
     # an eight-hour run at whichever side of the boundary it finished on.
     spend = {"peak": [0, 0], "off_peak": [0, 0]}
+    # The clock is a seam so the peak boundary can be tested: a run that crosses 01:00, 04:00, 06:00 or
+    # 10:00 UTC must bill each row in the period it happened in (Antigravity's F3).
+    clock = now or (lambda: datetime.datetime.now(datetime.timezone.utc))
     started = time.monotonic()
     with open(output_path, "a", encoding="utf-8", newline="\n") as out:
         for row in rows:
@@ -242,7 +253,7 @@ def score_rows(
             )
             out.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
             out.flush()
-            period = price_period(datetime.datetime.now(datetime.timezone.utc))
+            period = price_period(clock())
             spend[period][0] += scorer.last_tokens_in
             spend[period][1] += scorer.last_tokens_out
             written += 1
