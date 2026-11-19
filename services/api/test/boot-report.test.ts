@@ -152,15 +152,39 @@ describe("boot report (#867)", () => {
     expect(gapMinutes(1.5)).toMatchObject({ gapMinutes: 2 });
   });
 
-  it("renders the restart in the family's clock and the gap in words", () => {
+  it("renders the restart in the family's clock with today/yesterday/date and gap rounding (#867, #889)", () => {
     const report = decide({ lastSeen: new Date("2026-11-17T09:58:00Z") });
     if (report.kind !== "new_boot") throw new Error("expected a new boot");
     // 10:00Z is 14:00 in Asia/Dubai (UTC+4), the family's clock the digest and "blocked now" also use.
     expect(bootClock(report.bootedAt, "Asia/Dubai")).toBe("14:00");
-    expect(bootReportBody(report, "Pixel 7a", "Asia/Dubai")).toBe("Pixel 7a restarted at 14:00, back after 2 minutes.");
-    expect(bootReportBody({ ...report, gapMinutes: 1 }, "Pixel 7a", "UTC")).toBe("Pixel 7a restarted at 10:00, back after 1 minute.");
-    // Zero is not printed as "0 minutes": there is no downtime to claim.
-    expect(bootReportBody({ ...report, gapMinutes: 0 }, "Pixel 7a", "UTC")).toBe("Pixel 7a restarted at 10:00.");
+    expect(bootReportBody(report, "Pixel 7a", "Asia/Dubai", now)).toBe(
+      "Pixel 7a restarted at 14:00 and was back after 2 minutes.",
+    );
+    expect(bootReportBody({ ...report, gapMinutes: 1 }, "Pixel 7a", "UTC", now)).toBe(
+      "Pixel 7a restarted at 10:00 and was back after 1 minute.",
+    );
+    // Zero gap uses "in less than a minute", never "0 minutes" (#889 Bureau rule).
+    expect(bootReportBody({ ...report, gapMinutes: 0 }, "Pixel 7a", "UTC", now)).toBe(
+      "Pixel 7a restarted at 10:00 and was back in less than a minute.",
+    );
+    // Yesterday vs older date (same year omits year; prior year includes year).
+    const nextDay = new Date("2026-11-18T08:00:00Z");
+    expect(bootReportBody({ ...report, gapMinutes: 119 }, "Pixel 7a", "UTC", nextDay)).toBe(
+      "Pixel 7a restarted yesterday at 10:00 and was back after 119 minutes.",
+    );
+    expect(bootReportBody({ ...report, gapMinutes: 120 }, "Pixel 7a", "UTC", new Date("2026-11-20T08:00:00Z"))).toBe(
+      "Pixel 7a restarted on 17 Nov at 10:00 and was back after about 2 hours.",
+    );
+    expect(bootReportBody({ ...report, gapMinutes: 149 }, "Pixel 7a", "UTC", new Date("2027-01-02T08:00:00Z"))).toBe(
+      "Pixel 7a restarted on 17 Nov 2026 at 10:00 and was back after about 2 hours.",
+    );
+    // >= 120 minutes rounds to the nearest hour (30m+ rounds up).
+    expect(bootReportBody({ ...report, gapMinutes: 150 }, "Pixel 7a", "UTC", now)).toBe(
+      "Pixel 7a restarted at 10:00 and was back after about 3 hours.",
+    );
+    expect(bootReportBody({ ...report, gapMinutes: 600 }, "Pixel 7a", "UTC", now)).toBe(
+      "Pixel 7a restarted at 10:00 and was back after about 10 hours.",
+    );
     // An unusable zone falls back to UTC rather than throwing inside the alert path.
     expect(bootClock(report.bootedAt, "Mars/Olympus")).toBe("10:00");
   });

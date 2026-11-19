@@ -158,24 +158,100 @@ function newBoot(bootedAt: Date, bootCount: number | null, lastSeen: Date | null
  * "blocked now" sentences already use; an unknown zone falls back to UTC rather than throwing inside the
  * alert path.
  */
-export function bootClock(bootedAt: Date, timeZone: string): string {
-  const format = (zone: string) =>
-    new Intl.DateTimeFormat("en-GB", { timeZone: zone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(bootedAt);
-  try {
-    return format(timeZone);
-  } catch {
-    return format("UTC");
-  }
+/** Short month names matching Dart `DateFormat('d MMM', 'en')` regardless of host ICU data. */
+const EN_SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+interface ZonedCalendarParts {
+  year: number;
+  month: number;
+  day: number;
+  clock: string;
 }
 
 /**
- * The sentence the parent reads, mirroring the silence alert's shape: the phone's model first, then what
- * happened. A zero gap is left out instead of printed as "0 minutes" — there is no downtime to report, and
- * a made-up number is the one thing a parent will act on.
+ * Extracts wall-clock calendar date and 24-hour `HH:mm` in the family's timezone, falling back to
+ * UTC when a stored zone string is unknown (#884, #889).
  */
-export function bootReportBody(report: Extract<BootReport, { kind: "new_boot" }>, model: string, timeZone: string): string {
-  const at = `restarted at ${bootClock(report.bootedAt, timeZone)}`;
-  if (report.gapMinutes <= 0) return `${model} ${at}.`;
-  const unit = report.gapMinutes === 1 ? "minute" : "minutes";
-  return `${model} ${at}, back after ${report.gapMinutes} ${unit}.`;
+function zonedCalendarParts(date: Date, timeZone: string): ZonedCalendarParts {
+  const extract = (zone: string): ZonedCalendarParts => {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: zone,
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(date);
+    const num = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return {
+      year: num("year"),
+      month: num("month"),
+      day: num("day"),
+      clock: `${pad(num("hour"))}:${pad(num("minute"))}`,
+    };
+  };
+  try {
+    return extract(timeZone);
+  } catch {
+    return extract("UTC");
+  }
+}
+
+export function bootClock(bootedAt: Date, timeZone: string): string {
+  return zonedCalendarParts(bootedAt, timeZone).clock;
+}
+
+function sameCalendarDay(a: { year: number; month: number; day: number }, b: { year: number; month: number; day: number }): boolean {
+  return a.year === b.year && a.month === b.month && a.day === b.day;
+}
+
+/**
+ * English fallback sentence mirroring the localized parent-app rules (#889):
+ * - Today in the family's zone: `restarted at HH:MM`; yesterday: `restarted yesterday at HH:MM`;
+ *   earlier: `restarted on 16 Nov at HH:MM` (with year when it differs from `now`'s year).
+ * - Gaps `< 1` min say `in less than a minute`; `1..119` min stay minutes; `>= 120` min round to the
+ *   nearest hour (`30m+` rounds up) with `about`.
+ */
+export function bootReportBody(
+  report: Extract<BootReport, { kind: "new_boot" }>,
+  model: string,
+  timeZone: string,
+  now: Date = new Date(),
+): string {
+  const bootParts = zonedCalendarParts(report.bootedAt, timeZone);
+  const nowParts = zonedCalendarParts(now, timeZone);
+  const yesterdayUtc = new Date(Date.UTC(nowParts.year, nowParts.month - 1, nowParts.day - 1));
+  const yesterdayParts = {
+    year: yesterdayUtc.getUTCFullYear(),
+    month: yesterdayUtc.getUTCMonth() + 1,
+    day: yesterdayUtc.getUTCDate(),
+  };
+
+  let when: string;
+  if (sameCalendarDay(bootParts, nowParts)) {
+    when = `at ${bootParts.clock}`;
+  } else if (sameCalendarDay(bootParts, yesterdayParts)) {
+    when = `yesterday at ${bootParts.clock}`;
+  } else {
+    const monthName = EN_SHORT_MONTHS[bootParts.month - 1] ?? "Jan";
+    const dateLabel = bootParts.year === nowParts.year
+      ? `${bootParts.day} ${monthName}`
+      : `${bootParts.day} ${monthName} ${bootParts.year}`;
+    when = `on ${dateLabel} at ${bootParts.clock}`;
+  }
+
+  let gapClause: string;
+  if (report.gapMinutes <= 0) {
+    gapClause = "in less than a minute";
+  } else if (report.gapMinutes === 1) {
+    gapClause = "after 1 minute";
+  } else if (report.gapMinutes < 120) {
+    gapClause = `after ${report.gapMinutes} minutes`;
+  } else {
+    const hours = Math.floor((report.gapMinutes + 30) / 60);
+    gapClause = `after about ${hours} ${hours === 1 ? "hour" : "hours"}`;
+  }
+  return `${model} restarted ${when} and was back ${gapClause}.`;
 }

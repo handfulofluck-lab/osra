@@ -22,6 +22,7 @@ import '../../widgets/error_retry_view.dart';
 import 'sos_alert_actions.dart';
 import '../map/family_map_screen.dart'
     show FamilyMapScreen, MapFocus, mapIsAvailable;
+import '../../push/restart_alert_text.dart';
 import '../../push/sos_fix_text.dart';
 
 /// Alerts feed: grouped by day, severity-colored, swipe-to-acknowledge with
@@ -136,7 +137,16 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
               // dialog a parent opens later to ask "did my last change land?". The feed itself is
               // family-wide, so it carries no line; the Block path already refetches the family.
               RulesBehindBanner(childId: alert.childId),
-              if (alert.body.isNotEmpty) Text(alert.body),
+              Builder(builder: (_) {
+                final localizedBody = RestartAlertText.tryFormat(
+                      alert,
+                      l10n: l10n,
+                      localeName: dialogContext.localeName,
+                    ) ??
+                    alert.body;
+                if (localizedBody.isEmpty) return const SizedBox.shrink();
+                return Text(localizedBody);
+              }),
               // #672: where, in words and in the Bureau's sentence, in the alert the parent opened
               // deliberately — the lock screen carries neither. The coordinates are isolated (LRI/PDI)
               // so they keep their order in Arabic; the accuracy clause only when the fix has one.

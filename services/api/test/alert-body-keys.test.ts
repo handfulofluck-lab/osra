@@ -3,7 +3,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { raiseAlert } from "../src/lib/alerts.js";
+import { raiseAlert, raiseAlertOnce } from "../src/lib/alerts.js";
 import { prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
@@ -206,6 +206,37 @@ describe("alert body keys (#711)", () => {
       source: "test",
       bodyKey: "alertBodySearchFlagged",
       bodyParams: { engine: "Google" },
+    });
+  });
+
+  it("round-trips alertBodyDeviceRestarted via raiseAlertOnce including gapMinutes=0 (#889)", async () => {
+    prismaMock.alert.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: "alert-3", ...data }));
+    const { alert } = await raiseAlertOnce({
+      childId: "child-1",
+      familyId: "fam-1",
+      deviceId: "dev-1",
+      severity: "info",
+      category: "device_restarted",
+      title: "Device restarted",
+      body: "Galaxy Z Flip4 restarted at 14:32 and was back in less than a minute.",
+      bodyKey: "alertBodyDeviceRestarted",
+      params: {
+        model: "Galaxy Z Flip4",
+        bootedAt: "2026-11-19T10:32:00.000Z",
+        gapMinutes: 0,
+      },
+      metadata: { type: "device_restarted" },
+      dedupeKey: "boot|2026-11-19T10:32:00.000Z|5",
+    });
+
+    expect(alert.metadata).toEqual({
+      type: "device_restarted",
+      bodyKey: "alertBodyDeviceRestarted",
+      bodyParams: {
+        model: "Galaxy Z Flip4",
+        bootedAt: "2026-11-19T10:32:00.000Z",
+        gapMinutes: 0,
+      },
     });
   });
 });

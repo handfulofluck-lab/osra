@@ -1046,14 +1046,13 @@ export async function deviceRoutes(app: FastifyInstance) {
       },
     });
     if (boot.kind === "new_boot" && bootFamilyId) {
-      // Issue #867: the restart itself, reported by the phone because the 30-minute silence window can never
-      // see a 1–2 minute gap. `raiseAlertOnce`, not `raiseAlert`: since #711 a `raiseAlert` producer must
-      // carry a localization `bodyKey`, and no parent-app string exists for a restart yet — the English
-      // title/body is the compatibility floor every un-updated app renders.
+      // Issue #867 / #889: the restart itself, reported by the phone because the 30-minute silence window
+      // can never see a 1–2 minute gap. Carries `bodyKey: "alertBodyDeviceRestarted"` so updated parent apps
+      // localize in the parent's language while `body` stays the English compatibility floor.
       try {
-        // The body is stored as English and read verbatim, so the clock in it has to be the family's
-        // (ADR-0017/ADR-0020), not the server's UTC.
+        // The fallback body is stored in English using the family's zone (ADR-0017/ADR-0020).
         const family = await prisma.family.findUnique({ where: { id: bootFamilyId }, select: { timezone: true } });
+        const model = device.model?.trim() ? device.model.trim() : "A phone";
         await raiseAlertOnce({
           childId: device.childId,
           familyId: bootFamilyId,
@@ -1061,7 +1060,13 @@ export async function deviceRoutes(app: FastifyInstance) {
           severity: boot.severity,
           category: "device_restarted",
           title: "Device restarted",
-          body: bootReportBody(boot, device.model ?? "A phone", family?.timezone ?? "UTC"),
+          body: bootReportBody(boot, model, family?.timezone ?? "UTC", now),
+          bodyKey: "alertBodyDeviceRestarted",
+          params: {
+            model,
+            bootedAt: boot.bootedAt.toISOString(),
+            gapMinutes: boot.gapMinutes,
+          },
           metadata: {
             type: "device_restarted",
             bootedAt: boot.bootedAt.toISOString(),

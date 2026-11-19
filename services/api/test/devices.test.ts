@@ -1456,8 +1456,13 @@ describe("device restart reporting (#867)", () => {
     expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
     const alert = prismaMock.alert.create.mock.calls[0][0].data as { severity: string; body: string; metadata: Record<string, unknown> };
     expect(alert.severity).toBe("info");
-    expect(alert.body).toMatch(/^Pixel 7a restarted at \d\d:\d\d, back after 2 minutes\.$/);
-    expect(alert.metadata).toMatchObject({ gapMinutes: 2 });
+    expect(alert.body).toMatch(/^Pixel 7a restarted (?:yesterday )?at \d\d:\d\d and was back after 2 minutes\.$/);
+    expect(alert.metadata).toMatchObject({
+      type: "device_restarted",
+      gapMinutes: 2,
+      bodyKey: "alertBodyDeviceRestarted",
+      bodyParams: { model: "Pixel 7a", gapMinutes: 2 },
+    });
     // The count that decided the restart is stored, so the next tick's comparison has it.
     expect(bootWrites()[0][0].data).toMatchObject({ lastBootCount: 8 });
     await app.close();
@@ -1517,7 +1522,7 @@ describe("device restart reporting (#867)", () => {
     // they already got instead of reading like a routine reboot.
     expect(alert.severity).toBe("warning");
     expect(alert.metadata.gapMinutes).toBe(40);
-    expect(alert.body).toMatch(/^Pixel 7a restarted at \d\d:\d\d, back after 40 minutes\.$/);
+    expect(alert.body).toMatch(/^Pixel 7a restarted (?:yesterday )?at \d\d:\d\d and was back after 40 minutes\.$/);
     await app.close();
   });
 
@@ -1571,8 +1576,8 @@ describe("device restart reporting (#867)", () => {
     const hhmm = (timeZone: string) =>
       new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(boot);
     expect(hhmm("Asia/Dubai")).not.toBe(hhmm("UTC"));
-    expect(alert.body).toContain(`restarted at ${hhmm("Asia/Dubai")}`);
-    expect(alert.body).not.toContain(`restarted at ${hhmm("UTC")}`);
+    expect(alert.body).toMatch(new RegExp(`^Pixel 7a restarted (?:yesterday )?at ${hhmm("Asia/Dubai")} and was back`));
+    expect(alert.body).not.toContain(`at ${hhmm("UTC")} `);
     await app.close();
   });
 

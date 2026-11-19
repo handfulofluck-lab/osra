@@ -1774,5 +1774,42 @@
   "familyInviteFailed": "Couldn't send invite. Check the email and try again.",
   "digestPrefsTimezonePickerTitle": "Choose time zone",
   "digestPrefsTimezoneSearchHint": "Search city or offset (for example Dubai, +4)",
-  "digestPrefsTimezoneEmpty": "No matching time zones"
+  "digestPrefsTimezoneEmpty": "No matching time zones",
+  "alertDeviceRestartedTitle": "Device restarted",
+  "alertCategoryDeviceRestarted": "Device restart",
+  "alertAtTime": "at {time}",
+  "@alertAtTime": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
+  "alertYesterdayAtTime": "yesterday at {time}",
+  "@alertYesterdayAtTime": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
+  "alertOnDateAtTime": "on {date} at {time}",
+  "@alertOnDateAtTime": {
+    "placeholders": {
+      "date": { "type": "String" },
+      "time": { "type": "String" }
+    }
+  },
+  "alertDeviceRestartedBodyMinutes": "{device} restarted {when} and was back {minutes, plural, =0{in less than a minute} =1{after 1 minute} other{after {minutes} minutes}}.",
+  "@alertDeviceRestartedBodyMinutes": {
+    "placeholders": {
+      "device": { "type": "String" },
+      "when": { "type": "String" },
+      "minutes": { "type": "int" }
+    }
+  },
+  "alertDeviceRestartedBodyHours": "{device} restarted {when} and was back after about {hours, plural, =1{1 hour} other{{hours} hours}}.",
+  "@alertDeviceRestartedBodyHours": {
+    "placeholders": {
+      "device": { "type": "String" },
+      "when": { "type": "String" },
+      "hours": { "type": "int" }
+    }
+  }
 }
