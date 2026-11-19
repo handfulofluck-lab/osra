@@ -9,7 +9,7 @@ import java.time.ZonedDateTime
 /**
  * Pure rule evaluation (no Android classes — runs on the JVM). Applies, in order:
  * always-allowed exemptions, the pause-internet flag, routine windows, per-app rules,
- * the default-category blocklist (Feature #1), the global screen-time limit (plus any
+ * default VPN app protection and the category blocklist, the global screen-time limit (plus any
  * bonus minutes granted today), the bedtime window, then the school-hours window.
  * Days are encoded 1=Monday .. 7=Sunday. Window bounds are "HH:mm" local
  * times and may wrap midnight (e.g. bedtime 21:00–07:00).
@@ -22,6 +22,7 @@ class RuleEngine {
      * the merged default-category blocklist ([blocklist], packageId -> blocked category),
      * the pause-internet flag ([pausedInternet], Feature #11) and bonus minutes granted today
      * ([bonusMinutes], Feature #10, added on top of the effective global daily limit).
+     * [declaresVpnService] supplies the current installed package classification when a default rule applies.
      */
     fun evaluate(
         ruleSet: RuleSetDto,
@@ -31,6 +32,7 @@ class RuleEngine {
         blocklist: Map<String, String> = emptyMap(),
         pausedInternet: Boolean = false,
         bonusMinutes: Int = 0,
+        declaresVpnService: () -> Boolean = { false },
     ): RuleRepository.Decision = evaluateWithReason(
         ruleSet,
         packageId,
@@ -39,6 +41,7 @@ class RuleEngine {
         blocklist,
         pausedInternet,
         bonusMinutes,
+        declaresVpnService,
     ).decision
 
     /**
@@ -56,6 +59,7 @@ class RuleEngine {
         blocklist: Map<String, String> = emptyMap(),
         pausedInternet: Boolean = false,
         bonusMinutes: Int = 0,
+        declaresVpnService: () -> Boolean = { false },
     ): Verdict {
         val local = now.toLocalDateTime()
         val time = local.toLocalTime()
@@ -90,11 +94,9 @@ class RuleEngine {
             }
         }
 
-        // 3. Default category protection (Feature #1): an app from the blocklist pack whose
-        // category is blocked is blocked. NOTE: ordering — alwaysAllowedApps and an explicit
-        // per-app "allow" beat the blocklist; the blocklist in turn beats the global time
-        // limit, bedtime and school-hours windows.
-        if (blocklist.containsKey(packageId)) return Verdict(RuleRepository.Decision.BLOCK) // category protection, not a window
+        // 3. Apply the category blocklist and VPN app protection after explicit parent allowances.
+        // These defaults take precedence over the global time limit, bedtime and school hours.
+        if (blocklist.containsKey(packageId) || declaresVpnService()) return Verdict(RuleRepository.Decision.BLOCK)
 
         // 4. Global screen-time limit (weekday vs weekend) plus today-only bonus minutes
         // (Feature #10): effectiveLimit = base daily limit + bonus.

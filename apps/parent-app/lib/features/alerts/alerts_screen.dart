@@ -66,6 +66,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
           .raw
           .get('/v1/alerts', queryParameters: {'page': _page + 1, 'limit': 20});
       final pageData = AlertsPage.fromJson(res.data);
+      final isFirstPage = _page == 0;
       setState(() {
         _page++;
         // De-dupe in case a live refresh raced us.
@@ -73,6 +74,14 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
         _items.addAll(pageData.items.where((a) => !known.contains(a.id)));
         _hasMore = pageData.items.isNotEmpty && _items.length < pageData.total;
       });
+      if (isFirstPage) {
+        final summary = ref.read(unacknowledgedAlertsProvider).valueOrNull;
+        ref.read(alertsSeenProvider.notifier).markFeedViewed(
+              pageData.items,
+              unackedTotalSnapshot: summary?.total,
+              unackedItemsSnapshot: summary?.items,
+            );
+      }
     } on DioException catch (e) {
       if (!mounted) return;
       final refused = ReadPermissionRequired.from(e);
@@ -92,6 +101,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     setState(() => _items.removeAt(index));
     try {
       await ref.read(apiClientProvider).raw.post('/v1/alerts/${alert.id}/ack');
+      ref.read(alertsSeenProvider.notifier).markAcknowledged(alert.id);
+      ref.invalidate(unacknowledgedAlertsProvider);
       ref.invalidate(unacknowledgedCountProvider);
     } on DioException catch (e) {
       setState(() => _items.insert(index, alert));
