@@ -292,6 +292,47 @@ describe("social routes", () => {
     await app.close();
   });
 
+  // #863: the child sent Arabic insults and drug words over WhatsApp and nothing reached the parent.
+  // These rows pin the two halves of the fix: the local list now reads Arabic, and a local hit survives a
+  // model answer of "not flagged" instead of being suppressed by it.
+  it("the local fallback reads Arabic insults, drug words and self-harm phrasing (#863)", async () => {
+    const app = await buildApp(socialRoutes, "/v1/social");
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNREFUSED"); }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({ id: "a-1" });
+
+    const cases: Array<[string, string]> = [
+      ["غبي وما أحد يحبك", "cyberbullying"],
+      ["أريد أن أموت", "self_harm"],
+      ["عندي حشيش في الشارع", "substance_use"],
+      ["he offered me weed after school", "substance_use"],
+    ];
+    for (const [text, concern] of cases) {
+      prismaMock.socialEvent.create.mockClear();
+      const res = await postScan(app, scanBody({ text }));
+      expect(res.statusCode).toBe(200);
+      expect(res.json().flagged, text).toBe(true);
+      expect(prismaMock.socialEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ concernTypes: expect.arrayContaining([concern]) }) }),
+      );
+    }
+    await app.close();
+  });
+
+  it("a local hit is not suppressed by a model that answered \"not flagged\" (#863)", async () => {
+    const app = await buildApp(socialRoutes, "/v1/social");
+    // The engine is reachable and says safe — the rules layer did exactly this for Arabic.
+    vi.stubGlobal("fetch", aiOk({ flagged: false, severity: "info", categories: { safe: 0.99 } }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({ id: "a-1" });
+
+    const res = await postScan(app, scanBody({ text: "أريد أن أموت" }));
+    expect(res.statusCode).toBe(200);
+    expect(res.json().flagged).toBe(true);
+    expect(prismaMock.alert.create).toHaveBeenCalled();
+    await app.close();
+  });
+
   it("throttles repeat alerts per app within 10 minutes but always writes the vault row", async () => {
     const app = await buildApp(socialRoutes, "/v1/social");
     vi.stubGlobal("fetch", aiOk({ flagged: true, severity: "warning", categories: { self_harm: 0.8, safe: 0.2 } }));

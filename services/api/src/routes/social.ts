@@ -49,9 +49,25 @@ const LOCAL_PATTERNS: Array<{ pattern: RegExp; concern: string }> = [
   { pattern: /\b(kill yourself|kys|suicide|end (your|my) life|want to die|wanna die|self[- ]?harm)\b/i, concern: "self_harm" },
   { pattern: /\b(sext(?:ing)?\b|nudes?\b|send (me )?(pics|pictures|photos)|meet (up|me) (alone|in secret)|don't tell your (parents|mom|dad))\b/i, concern: "grooming" },
   { pattern: /\b(ugly|loser|worthless|nobody likes you|die in a fire|everyone hates you)\b/i, concern: "cyberbullying" },
+  // #863: the fallback was English-only, and the run that found it sent **Arabic** insults and drug
+  // words. A child writing in Arabic scored "safe" on the rules layer and on this list, which is the
+  // failure the social scan exists to prevent. High-precision terms, not a lexicon: the word list is the
+  // model's job, and this is the belt for when the model is unreachable or misses.
+  { pattern: /(أريد أن أموت|ابغى أموت|أؤذي نفسي|ايذي نفسي|انتحار)/, concern: "self_harm" },
+  { pattern: /\b(weed|hash|hashish|vape|vaping|vodka|beer|pills|xanax|cocaine|ketamine)\b/i, concern: "substance_use" },
+  { pattern: /(حشيش|مخدرات|فيب|خمر|فودكا)/, concern: "substance_use" },
+  { pattern: /(لا تخبر (أمك|أبوك|والديك)|سر بيننا)/, concern: "grooming" },
+  { pattern: /(غبي|قبيح|فاشل|ما أحد يحبك|ما احد يحبك|كلنا نكرهك)/, concern: "cyberbullying" },
 ];
 
-/** Local keyword fallback used only when the AI engine cannot be reached. */
+/**
+ * Local keyword fallback: the belt when the AI engine is unreachable **or answers "not flagged"**.
+ *
+ * #863 is why it is no longer "only when the engine is down": the child sent Arabic insults and
+ * drug words over WhatsApp and nothing reached the parent. A model miss and an unreachable engine
+ * have the same consequence for the child, so a local hit now survives a model "no" — the alert
+ * throttle (one per app per 10 minutes) bounds the noise a false positive can cause.
+ */
 export function localKeywordCheck(text: string): Verdict {
   const concerns = [...new Set(
     LOCAL_PATTERNS.filter((p) => p.pattern.test(text)).map((p) => p.concern),
@@ -187,7 +203,14 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
     ? new Date().getFullYear() - (child as { birthYear: number }).birthYear
     : undefined;
   const ai = await analyzeWithAi(text, childAge);
-  const verdict = ai.verdict ?? localKeywordCheck(text);
+  const local = localKeywordCheck(text);
+  // Union, not "model wins": a flagged model keeps its own severity and concern types, and a local
+  // hit the model missed still raises (see LOCAL_PATTERNS' note on #863).
+  const verdict = ai.verdict?.flagged
+    ? ai.verdict
+    : local.flagged
+      ? { ...local, severity: ai.verdict?.severity === "critical" ? "critical" as const : local.severity }
+      : ai.verdict ?? local;
   // Issue #890: the counter is written whether or not the capture is flagged — cost is paid on both — and
   // it counts the ATTEMPT, so a timeout against a paid engine is not recorded as a free scan.
   await recordScanUsage(child.familyId, (child as { family?: { timezone?: string } | null }).family?.timezone, ai.attempted, log);
