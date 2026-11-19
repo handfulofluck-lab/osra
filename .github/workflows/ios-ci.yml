@@ -192,6 +192,20 @@ jobs:
             echo "::endgroup::"
           done
 
+      # #739, Ahmed's condition 3: the UI-test seed exists only in Debug. A Release binary that carries either the
+      # argument or the type is a CI failure, not a review note — the command is named in the PR body for him.
+      - name: Check the Release build carries no UI-test seed
+        working-directory: apps/child-ios
+        run: |
+          BIN=.build/appDerivedData/Build/Products/Release-iphonesimulator/OSRAAgent.app/OSRAAgent
+          if [ ! -f "$BIN" ]; then echo "::error::the Release simulator binary is missing"; exit 1; fi
+          # `grep -q` inside an `if` keeps its exit status out of the step, so nothing here swallows a failure.
+          if strings -a "$BIN" | grep -qE 'OSRAUITestSeed|uitest-seed'; then
+            echo "::error::the Release binary carries the UI-test seed"
+            exit 1
+          fi
+          echo "Release binary carries no UI-test seed"
+
       # The real Keychain, inside the simulator app: ad-hoc signed ("-", project.yml), so it carries its
       # entitlements and the shared access group (5.5 PR B). Debug, as tests run.
       - name: Run the Keychain tests inside the simulator app
