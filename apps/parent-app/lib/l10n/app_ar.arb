@@ -110,7 +110,7 @@
   "consentMethodKba": "أسئلة معرفية",
   "consentMethodFaceMatch": "مطابقة الوجه",
   "consentMethodCreditCard": "بطاقة ائتمان",
-  "jurisdictionLabel": "الاختصاص القضائي",
+  "jurisdictionLabel": "أين تقيم عائلتك؟",
   "childNameLabel": "اسم الطفل",
   "birthYearLabel": "سنة الميلاد",
   "childFallback": "الطفل",

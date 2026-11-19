@@ -385,7 +385,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get consentMethodCreditCard => 'بطاقة ائتمان';
 
   @override
-  String get jurisdictionLabel => 'الاختصاص القضائي';
+  String get jurisdictionLabel => 'أين تقيم عائلتك؟';
 
   @override
   String get childNameLabel => 'اسم الطفل';
