@@ -4,10 +4,12 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:familyshield_parent/core/ltr_isolate.dart';
 import 'package:familyshield_parent/features/settings/digest_prefs_screen.dart';
 import 'package:familyshield_parent/l10n/app_localizations.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/providers/onboarding_provider.dart';
+import 'package:familyshield_parent/widgets/field_question.dart';
 
 import 'fake_api_client.dart';
 import 'test_app.dart';
@@ -70,14 +72,14 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('digestEmailAddButton')));
       await tester.pumpAndSettle();
       expect(find.text(en.authEmailInvalid), findsNothing);
-      expect(find.byType(InputChip), findsNWidgets(2));
+      expect(find.byKey(const ValueKey('digestEmailChip-parent@example.com')), findsOneWidget);
+      expect(find.byKey(const ValueKey('digestEmailChip-grandma@example.com')), findsOneWidget);
 
-      // Remove one chip via InputChip delete button.
-      final chip = tester.widget<InputChip>(find.byKey(const ValueKey('digestEmailChip-grandma@example.com')));
-      chip.onDeleted!.call();
+      // Remove one chip via its delete button.
+      await tester.tap(find.byKey(const ValueKey('digestEmailRemove-grandma@example.com')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('digestEmailChip-grandma@example.com')), findsNothing);
-      expect(find.byType(InputChip), findsOneWidget);
+      expect(find.byKey(const ValueKey('digestEmailChip-parent@example.com')), findsOneWidget);
 
       // Typing a valid email without tapping Add still commits on Save.
       await tester.enterText(find.byKey(const ValueKey('digestEmailAddInput')), 'uncle@example.com');
@@ -97,8 +99,14 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('wraps long email chips cleanly at 320px width and 200% text scale in EN and AR', (tester) async {
+    testWidgets('wraps full email chips and FieldQuestion at 320px width and 200% text scale in EN and AR', (tester) async {
+      expect(
+        ltrIsolateEmail('grandma@example.com'),
+        '\u{2066}grandma@\u{200B}example.com\u{2069}',
+      );
+
       for (final (locale, dir) in [(const Locale('en'), TextDirection.ltr), (const Locale('ar'), TextDirection.rtl)]) {
+        final l10n = lookupAppLocalizations(locale);
         await tester.binding.setSurfaceSize(const Size(320, 568));
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -112,13 +120,22 @@ void main() {
         ));
         await tester.pumpAndSettle();
 
-        await tester.scrollUntilVisible(find.byType(InputChip), 150, scrollable: find.byType(Scrollable).first);
+        final chipFinder = find.byKey(const ValueKey('digestEmailChip-very.long.parent.address+family@subdomain.example.com'));
+        await tester.scrollUntilVisible(chipFinder, 150, scrollable: find.byType(Scrollable).first);
         await tester.pumpAndSettle();
-        expect(find.byType(InputChip), findsOneWidget);
+        expect(chipFinder, findsOneWidget);
+        expect(find.byType(InputChip), findsNothing);
+        final chipText = tester.widget<Text>(find.descendant(of: chipFinder, matching: find.byType(Text)));
+        expect(chipText.data, ltrIsolateEmail('very.long.parent.address+family@subdomain.example.com'));
+        expect(chipText.softWrap, isTrue);
 
         await tester.scrollUntilVisible(find.byKey(const ValueKey('digestEmailAddInput')), 150, scrollable: find.byType(Scrollable).first);
         await tester.pumpAndSettle();
-        expect(find.byKey(const ValueKey('digestEmailAddInput')), findsOneWidget);
+        expect(find.byType(FieldQuestion), findsOneWidget);
+        expect(find.descendant(of: find.byType(FieldQuestion), matching: find.text(l10n.familyEnterEmail)), findsOneWidget);
+        final addField = tester.widget<TextField>(find.byKey(const ValueKey('digestEmailAddInput')));
+        expect(addField.decoration?.labelText, isNull);
+        expect(addField.decoration?.isDense, isNot(true));
         expect(tester.takeException(), isNull);
       }
     });

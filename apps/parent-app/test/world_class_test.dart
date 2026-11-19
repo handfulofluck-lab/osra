@@ -234,6 +234,12 @@ void main() {
       await tester.pumpAndSettle();
 
       // The zone is loaded from /v1/family/me and shown as a city + offset, never raw IANA ids.
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('digestTimezone')),
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('digestTimezone')), findsOneWidget);
       expect(find.text('UTC (GMT+0)'), findsOneWidget);
       expect(find.text('18:00'), findsOneWidget);

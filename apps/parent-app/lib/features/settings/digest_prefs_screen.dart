@@ -6,9 +6,11 @@ import '../../providers/auth_provider.dart';
 import '../../providers/world_class_provider.dart';
 import '../../api/models.dart' show DigestRecipientStatus;
 import '../../api/permission_errors.dart';
+import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/app_tokens.dart';
 import '../../widgets/error_retry_view.dart';
+import '../../widgets/field_question.dart';
 import 'timezone_catalog.dart';
 
 /// Feature #5: digest notification preferences — daily/weekly email and push
@@ -284,10 +286,9 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
                   runSpacing: AppSpace.xs,
                   children: [
                     for (final email in _emailsList)
-                      InputChip(
+                      _DigestEmailChip(
                         key: ValueKey('digestEmailChip-$email'),
-                        visualDensity: VisualDensity.compact,
-                        label: Text(email, softWrap: true),
+                        email: email,
                         onDeleted: () => setState(() {
                           _emailsList = _emailsList.where((e) => e != email).toList();
                         }),
@@ -296,26 +297,27 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
                 ),
               ],
               const SizedBox(height: AppSpace.sm),
-              TextField(
-                key: const ValueKey('digestEmailAddInput'),
-                controller: _emailInput,
-                keyboardType: TextInputType.emailAddress,
-                textInputAction: TextInputAction.done,
-                onChanged: (_) {
-                  if (_emailError != null) setState(() => _emailError = null);
-                },
-                onSubmitted: (_) => _addPendingEmail(),
-                decoration: InputDecoration(
-                  labelText: l10n.familyEnterEmail,
-                  errorText: _emailError,
-                  errorMaxLines: 2,
-                  border: const OutlineInputBorder(),
-                  isDense: true,
-                  suffixIcon: IconButton(
-                    key: const ValueKey('digestEmailAddButton'),
-                    icon: const Icon(Icons.add),
-                    tooltip: l10n.digestPrefsAddEmail,
-                    onPressed: _addPendingEmail,
+              FieldQuestion(
+                text: l10n.familyEnterEmail,
+                child: TextField(
+                  key: const ValueKey('digestEmailAddInput'),
+                  controller: _emailInput,
+                  keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.done,
+                  onChanged: (_) {
+                    if (_emailError != null) setState(() => _emailError = null);
+                  },
+                  onSubmitted: (_) => _addPendingEmail(),
+                  decoration: InputDecoration(
+                    errorText: _emailError,
+                    errorMaxLines: 2,
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      key: const ValueKey('digestEmailAddButton'),
+                      icon: const Icon(Icons.add),
+                      tooltip: l10n.digestPrefsAddEmail,
+                      onPressed: _addPendingEmail,
+                    ),
                   ),
                 ),
               ),
@@ -345,7 +347,7 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(r.email, style: Theme.of(context).textTheme.bodyMedium),
+                              Text(ltrIsolateEmail(r.email), style: Theme.of(context).textTheme.bodyMedium),
                               if (r.isUnsent)
                                 Text(
                                   l10n.digestPrefsNotSent,
@@ -545,6 +547,55 @@ class _TimezonePickerSheetState extends State<_TimezonePickerSheet> {
                         );
                       },
                     ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A removable email chip whose address wraps across lines at 320 px / 200 %
+/// text scale (`#902` Arabic Language Bureau finding: Material `InputChip` locks
+/// its label to one line and clips the address mid-word).
+class _DigestEmailChip extends StatelessWidget {
+  const _DigestEmailChip({
+    super.key,
+    required this.email,
+    required this.onDeleted,
+  });
+
+  final String email;
+  final VoidCallback onDeleted;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Material(
+      color: tokens.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        side: BorderSide(color: tokens.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.sm, AppSpace.xs, 0, AppSpace.xs),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                ltrIsolateEmail(email),
+                softWrap: true,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+            IconButton(
+              key: ValueKey('digestEmailRemove-$email'),
+              icon: const Icon(Icons.close, size: 18),
+              tooltip: MaterialLocalizations.of(context).deleteButtonTooltip,
+              onPressed: onDeleted,
+              visualDensity: VisualDensity.compact,
             ),
           ],
         ),

@@ -499,10 +499,12 @@ void main() {
       expect(find.text('الإشعارات الفورية'), findsOneWidget);
       // The buttons sit below the fold at 320x568 and a ListView builds lazily, so they are reached by
       // scrolling -- an assertion that fails without it is testing the viewport, not the copy.
-      await tester.drag(find.byType(ListView), const Offset(0, -400));
+      await tester.scrollUntilVisible(find.text('حفظ التفضيلات'), 150, scrollable: find.byType(Scrollable).first);
       await tester.pumpAndSettle();
       expect(find.text('حفظ التفضيلات'), findsOneWidget);
       // The send hour and timezone are separate fields, not one run-on line.
+      await tester.scrollUntilVisible(find.text('ساعة الإرسال'), -150, scrollable: find.byType(Scrollable).first);
+      await tester.pumpAndSettle();
       expect(find.text('ساعة الإرسال'), findsOneWidget);
       expect(find.text('18:00'), findsOneWidget);
       expectRtlAndNoOverflow(tester);
@@ -532,7 +534,11 @@ void main() {
       await tester.pumpAndSettle();
 
       // The rows sit under the switches and the email field, and a ListView builds lazily at 320x568.
-      await tester.drag(find.byType(ListView), const Offset(0, -200));
+      await tester.scrollUntilVisible(
+        find.text('أرسلنا رابط التأكيد. لن يصل الملخّص إلى هذا العنوان قبل تأكيده.'),
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
       expect(find.text('أرسلنا رابط التأكيد. لن يصل الملخّص إلى هذا العنوان قبل تأكيده.'), findsOneWidget);
       expect(find.byKey(const ValueKey('digestRecipient-grandma@example.com')), findsOneWidget);
