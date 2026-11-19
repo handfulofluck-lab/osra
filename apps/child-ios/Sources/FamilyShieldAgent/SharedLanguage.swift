@@ -85,8 +85,14 @@ public enum SharedLanguage {
         defaults?.set(normalised(list), forKey: enabledKey)
     }
 
-    /// Trims, drops blanks and duplicates, and guarantees the base language first. One list, one meaning, wherever
+    /// Trims, validates, drops duplicates, and guarantees the base language first. One list, one meaning, wherever
     /// it comes from: the compiled default, the app group, or the server.
+    ///
+    /// The list is **server-supplied** (ADR-0042 D1a), so a tag is kept only when it has the shape of a language tag
+    /// — letters and digits joined by hyphens, a 2–3 letter primary subtag, no separators, no `..`, bounded length,
+    /// and at most `maxEnabled` of them. Anything else is dropped exactly like a tag with no catalog: the base
+    /// language is used, and the rest of the payload is still honoured. A tag is never allowed to reach a bundle
+    /// lookup or the shared app group as free text.
     public static func normalised(_ languages: [String]) -> [String] {
         var seen = Set<String>()
         var rest: [String] = []
@@ -94,11 +100,30 @@ public enum SharedLanguage {
             guard tag != base, seen.insert(tag).inserted else { continue }
             rest.append(tag)
         }
-        return [base] + rest
+        return [base] + rest.prefix(maxEnabled - 1)
     }
 
-    /// The tags that say something: trimmed, non-empty. Everything else is the same as not sent.
+    /// How many languages one family may have: the build carries seven, so the rest is slack for a newer server.
+    /// A payload beyond this is truncated, never rejected wholesale.
+    public static let maxEnabled = 16
+
+    /// The tags that say something: trimmed, non-empty and shaped like a language tag. Everything else is the same
+    /// as not sent.
     private static func usable(_ languages: [String]) -> [String] {
-        languages.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        languages
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { isLanguageTag($0) }
+    }
+
+    /// `en`, `ar`, `fr`, `pt-BR`, `zh-Hant-TW`: 2–3 letters, then hyphen-separated alphanumeric subtags of 1–8.
+    /// Deliberately ASCII only: a tag is a lookup key for a directory name, not display text.
+    static func isLanguageTag(_ tag: String) -> Bool {
+        guard (2...35).contains(tag.count) else { return false }
+        let parts = tag.split(separator: "-", omittingEmptySubsequences: false)
+        guard let first = parts.first, (2...3).contains(first.count),
+              first.allSatisfy({ $0.isASCII && $0.isLetter }) else { return false }
+        return parts.dropFirst().allSatisfy { part in
+            (1...8).contains(part.count) && part.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) }
+        }
     }
 }

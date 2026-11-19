@@ -121,6 +121,80 @@ final class SharedLanguageTests: XCTestCase {
         XCTAssertEqual(table.localizedString(forKey: "block_title_blocked", value: nil, table: nil),
                        L10n.tr("block_title_blocked", language: "en"))
     }
+
+    /// The fallback must be the base **table**, not `Bundle.module`: on an English runner both give the same string,
+    /// so the row compares the two bundles by path, which is the only way D4's failure mode can go red here.
+    func testTheMissingTableFallbackIsTheBaseBundleNotThePackageBundle() {
+        XCTAssertEqual(L10n.bundle(for: "de").bundlePath, L10n.bundle(for: SharedLanguage.base).bundlePath)
+        XCTAssertNotEqual(L10n.bundle(for: "de").bundlePath, Bundle.module.bundlePath)
+    }
+
+    // MARK: - The list is server-supplied, so a tag is validated
+
+    /// A payload is not trusted text: only a tag shaped like a language tag is kept, and the rest of the list is
+    /// still honoured. Before this, any string reached the app group and a bundle lookup.
+    func testOnlyTagsShapedLikeLanguageTagsAreKept() {
+        XCTAssertEqual(SharedLanguage.normalised(["../evil", "fr/../..", "/etc/passwd", "", "  ", "fr"]),
+                       ["en", "fr"])
+        XCTAssertEqual(SharedLanguage.normalised(["FR"]), ["en", "FR"], "case is the caller's, not ours to rewrite")
+        XCTAssertEqual(SharedLanguage.normalised(["pt-BR", "zh-Hant-TW"]), ["en", "pt-BR", "zh-Hant-TW"])
+        XCTAssertFalse(SharedLanguage.isLanguageTag(String(repeating: "a", count: 200)))
+    }
+
+    func testTheListIsBoundedSoAPayloadCannotGrowItWithoutLimit() {
+        let many = (0..<40).map { "l\($0)" }
+        XCTAssertEqual(SharedLanguage.normalised(many).count, SharedLanguage.maxEnabled)
+    }
+
+    /// Unpairing hands the phone to nobody: the served list and the language it recorded belonged to the family that
+    /// paired, and a leftover `beta` language would follow the next family until its first sync.
+    func testUnpairingForgetsTheLanguageState() {
+        let shared = UserDefaults(suiteName: AgentIdentityStore.suiteName)!
+        let hadList = shared.stringArray(forKey: SharedLanguage.enabledKey)
+        let hadLanguage = shared.string(forKey: SharedLanguage.key)
+        defer {
+            if let hadList { shared.set(hadList, forKey: SharedLanguage.enabledKey) }
+            else { shared.removeObject(forKey: SharedLanguage.enabledKey) }
+            if let hadLanguage { shared.set(hadLanguage, forKey: SharedLanguage.key) }
+            else { shared.removeObject(forKey: SharedLanguage.key) }
+        }
+        SharedLanguage.setEnabled(["en", "ar", "fr"], preferences: ["fr-FR"], defaults: shared)
+        XCTAssertEqual(SharedLanguage.stored(defaults: shared), "fr")
+
+        AgentIdentityStore.clear()
+
+        XCTAssertNil(shared.stringArray(forKey: SharedLanguage.enabledKey))
+        XCTAssertNil(shared.string(forKey: SharedLanguage.key))
+    }
+
+    /// The point of shipping five catalogs: a beta language must actually draw its own text through the code path the
+    /// app renders with. Every other positive row was `en`/`ar`, so returning the base table for anything else would
+    /// have stayed green.
+    func testAnEnabledBetaLanguageDrawsItsOwnText() {
+        let shared = UserDefaults(suiteName: AgentIdentityStore.suiteName)!
+        let hadList = shared.stringArray(forKey: SharedLanguage.enabledKey)
+        let hadLanguage = shared.string(forKey: SharedLanguage.key)
+        defer {
+            if let hadList { shared.set(hadList, forKey: SharedLanguage.enabledKey) }
+            else { shared.removeObject(forKey: SharedLanguage.enabledKey) }
+            if let hadLanguage { shared.set(hadLanguage, forKey: SharedLanguage.key) }
+            else { shared.removeObject(forKey: SharedLanguage.key) }
+        }
+        SharedLanguage.setEnabled(["en", "ar", "fr"], preferences: ["fr-FR", "en"], defaults: shared)
+
+        let french = L10n.tr("block_title_blocked", language: "fr")
+        XCTAssertNotEqual(french, L10n.tr("block_title_blocked", language: "en"))
+        XCTAssertEqual(L10n.tr("block_title_blocked"), french, "the app draws the enabled language's own table")
+    }
+
+    /// And the block screen, which runs in another process with its own lookup: a beta language must reach it too, or
+    /// a tester family sees one language in the app and English behind the shield — the half-enabled screen D1a
+    /// forbids.
+    func testTheShieldDrawsABetaLanguageToo() {
+        let french = ShieldText.make(window: nil, language: "fr").title
+        XCTAssertEqual(french, L10n.tr("block_title_blocked", language: "fr"))
+        XCTAssertNotEqual(french, ShieldText.make(window: nil, language: "en").title)
+    }
 }
 
 /// ADR-0042 D1a (#883), the wiring: `L10n.tr` must draw in the language the **enabled list** allows, not in the
