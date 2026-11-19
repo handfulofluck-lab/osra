@@ -142,8 +142,13 @@ final class SharedLanguageTests: XCTestCase {
     }
 
     func testTheListIsBoundedSoAPayloadCannotGrowItWithoutLimit() {
-        let many = (0..<40).map { "l\($0)" }
+        // 26 distinct two-letter tags, which is well past the cap and every one of them valid.
+        let many = (0..<40).map { index -> String in
+            let first = Character(UnicodeScalar(97 + index % 26)!)
+            return "\(first)a"
+        }
         XCTAssertEqual(SharedLanguage.normalised(many).count, SharedLanguage.maxEnabled)
+        XCTAssertEqual(SharedLanguage.normalised(many).first, SharedLanguage.base)
     }
 
     /// Unpairing hands the phone to nobody: the served list and the language it recorded belonged to the family that
