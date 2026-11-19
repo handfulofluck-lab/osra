@@ -687,12 +687,12 @@ class _AppsTab extends ConsumerWidget {
               ),
               const SizedBox(height: AppSpace.sm),
             ],
-            if (ruleSet.appRules.isEmpty)
+            if (ruleSet.appRules.isEmpty && canManagePerAppRules)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: AppSpace.lg),
                 child: Center(child: Text(l10n.noPerAppRules)),
               )
-            else
+            else if (ruleSet.appRules.isNotEmpty)
               for (final r in ruleSet.appRules)
               ListTile(
                 leading: Icon(switch (r.action) {

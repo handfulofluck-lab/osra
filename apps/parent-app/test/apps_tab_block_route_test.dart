@@ -111,7 +111,7 @@ void main() {
 
   group('#937 ChildDetailScreen Apps tab block routes', () {
     testWidgets('iPhone-only with reported groups exposes group Block switch directly in Apps tab', (tester) async {
-      final rules = ruleSetPayload('child-1');
+      final rules = {...ruleSetPayload('child-1'), 'appRules': <Map<String, dynamic>>[]};
       final api = FakeApiClient({
         ...standardRoutes(
           familyMe: familyWithDevices([
@@ -132,6 +132,7 @@ void main() {
       expect(find.byKey(const ValueKey('appGroupsSection')), findsOneWidget);
       expect(find.text('App groups on this iPhone'), findsOneWidget);
       expect(find.byKey(const ValueKey('appsTabManageAppsButton')), findsNothing);
+      expect(find.text('No per-app rules'), findsNothing);
 
       await tester.tap(find.byKey(const ValueKey('appGroup-$gamesId')));
       await tester.pumpAndSettle();
@@ -143,9 +144,10 @@ void main() {
     });
 
     testWidgets('iPhone-only without reported groups shows group setup guidance instead of a dead end', (tester) async {
+      final emptyRules = {...ruleSetPayload('child-1'), 'appRules': <Map<String, dynamic>>[]};
       final api = FakeApiClient({
         ...standardRoutes(familyMe: familyWithDevices([iphoneDevice()])),
-        'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1'),
+        'GET /v1/rules/child-1': (_) => emptyRules,
       });
 
       await pumpAppsTab(tester, api);
@@ -157,6 +159,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(const ValueKey('appsTabManageAppsButton')), findsNothing);
+      expect(find.text('No per-app rules'), findsNothing);
     });
 
     testWidgets('mixed iPhone + Android child exposes both group block controls and Apps-tab rules route', (tester) async {
