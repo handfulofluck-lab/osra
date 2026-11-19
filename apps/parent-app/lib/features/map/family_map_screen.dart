@@ -8,11 +8,13 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../../api/permission_errors.dart';
+import '../../widgets/error_retry_view.dart';
 import '../children/command_messages.dart';
 
 /// Marker hue per device status.
@@ -27,8 +29,55 @@ double _statusHue(String status) => switch (status) {
 /// and a tap-through bottom sheet with Ring/Lock device commands. Live
 /// updates arrive over [wsProvider]. A '+' app-bar button (or a map long-press)
 /// opens the create-geofence dialog (#23).
+/// #598: on iOS the Google Maps SDK aborts in `checkServicePreconditions` when `GMSServices.provideAPIKey`
+/// was never called, and the parent app has no iOS key plumbing yet — opening the map crashed the app.
+///
+/// The key is compiled in (`--dart-define=MAPS_API_KEY=…`, which CI supplies from a secret and which the iOS
+/// `AppDelegate` reads from the same value via `Info.plist`). When it is absent there is nothing to draw, so
+/// the screen says so instead of constructing a `GoogleMap` and aborting.
+const String kMapsApiKey = String.fromEnvironment('MAPS_API_KEY');
+
+/// True when this build can draw a map on [platform]. Android gets its key from the Gradle manifest, which
+/// the Dart side cannot see, so it is assumed present there; iOS is the platform with the crash, and the
+/// platform whose key has to be compiled in.
+bool mapIsAvailable(TargetPlatform platform, {String key = kMapsApiKey}) =>
+    platform != TargetPlatform.iOS || key.isNotEmpty;
+
+/// Issue #672: a point the map was opened **for** — an SOS alert's fix. The map is the same screen the
+/// tab shows; a focus only decides where the camera starts and adds one marker, so there is no second map.
+@immutable
+class MapFocus {
+  final LatLng position;
+
+  /// The marker's caption — "SOS, 3m ago" — so a parent who forgot which tap brought them here can still
+  /// read it, and so the pin says what it is rather than opening an empty bubble (#672 UI/UX review).
+  final String label;
+
+  /// The fix's horizontal accuracy in metres, when the phone reported one: drawn as the accuracy circle
+  /// the child pins already draw. Null means the circle is not drawn — never a guessed radius.
+  final double? accuracyM;
+
+  const MapFocus({required this.position, this.label = '', this.accuracyM});
+
+  /// From the fix an alert carried. The one conversion the alerts screen needs, so it never imports
+  /// `google_maps_flutter` to open the map.
+  factory MapFocus.fromFix(AlertFix fix, {String label = '', double? accuracyM}) =>
+      MapFocus(position: LatLng(fix.lat, fix.lng), label: label, accuracyM: accuracyM ?? fix.accuracyM);
+}
+
+/// Where a map visit starts, and how close: the alert's fix when the map was opened for one, else the first
+/// child's latest ping, else the world. Pure so the rule is held without a Google Map (#672).
+({LatLng target, double zoom}) initialCameraFor(MapFocus? focus, LatLng? firstPing) {
+  if (focus != null) return (target: focus.position, zoom: 16);
+  if (firstPing != null) return (target: firstPing, zoom: 14);
+  return (target: const LatLng(0, 0), zoom: 2);
+}
+
 class FamilyMapScreen extends ConsumerWidget {
-  const FamilyMapScreen({super.key});
+  const FamilyMapScreen({super.key, this.focus});
+
+  /// Issue #672: set when the map was opened on an alert's fix. Absent for the tab.
+  final MapFocus? focus;
 
   /// Center for a new fence: the first child's latest ping, else 0,0 — a
   /// long-press on the map overrides this with the tapped point.
@@ -64,8 +113,11 @@ class FamilyMapScreen extends ConsumerWidget {
       ),
       body: family.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(readErrorText(context.l10n, e, () => context.l10n.familyLoadFailed('$e')))),
-        data: (overview) => _MapBody(overview: overview),
+        error: (e, _) => ErrorRetryView(
+          message: friendlyErrorText(context.l10n, e, () => context.l10n.familyLoadFailed),
+          onRetry: () => ref.invalidate(familyProvider),
+        ),
+        data: (overview) => _MapBody(overview: overview, focus: focus),
       ),
     );
   }
@@ -81,43 +133,46 @@ class ChildMapSheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(AppSpace.xl, 0, AppSpace.xl, AppSpace.xl),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(child.displayName, style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: AppSpace.sm),
-          Text(context.l10n.familyMapLastUpdate(
-            ping.timestamp == null
-                ? context.l10n.familyMapLastUpdateUnknown
-                : DateFormat.yMMMd(context.localeName).add_Hms().format(ping.timestamp!.toLocal()),
-          )),
-          const SizedBox(height: AppSpace.xs),
-          // NOTE: reverse geocoding is a non-goal; show raw coordinates as the address placeholder.
-          Text('${ping.lat.toStringAsFixed(6)}, ${ping.lng.toStringAsFixed(6)}'),
-          if (device != null && device!.batteryPct > 0) ...[
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(AppSpace.xl, 0, AppSpace.xl, AppSpace.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(child.displayName, style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: AppSpace.sm),
+            Text(context.l10n.familyMapLastUpdate(
+              ping.timestamp == null
+                  ? context.l10n.familyMapLastUpdateUnknown
+                  : DateFormat.yMMMd(context.localeName).add_Hms().format(ping.timestamp!.toLocal()),
+            )),
             const SizedBox(height: AppSpace.xs),
-            Text(context.l10n.familyMapBattery(device!.batteryPct)),
-          ],
-          const SizedBox(height: AppSpace.lg),
-          Row(
-            children: [
-              FilledButton.tonalIcon(
-                icon: const Icon(Icons.volume_up),
-                label: Text(context.l10n.familyMapRing),
-                onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'ring'),
-              ),
-              const SizedBox(width: AppSpace.md),
-              FilledButton.tonalIcon(
-                icon: const Icon(Icons.lock),
-                label: Text(context.l10n.familyMapLock),
-                onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'lock'),
-              ),
+            // NOTE: reverse geocoding is a non-goal; show raw coordinates as the address placeholder.
+            Text(ltrIsolate('${ping.lat.toStringAsFixed(6)}, ${ping.lng.toStringAsFixed(6)}')),
+            if (device != null && device!.batteryPct > 0) ...[
+              const SizedBox(height: AppSpace.xs),
+              Text(context.l10n.familyMapBattery(device!.batteryPct)),
             ],
-          ),
-        ],
+            const SizedBox(height: AppSpace.lg),
+            Wrap(
+              spacing: AppSpace.md,
+              runSpacing: AppSpace.sm,
+              children: [
+                FilledButton.tonalIcon(
+                  icon: const Icon(Icons.volume_up),
+                  label: Text(context.l10n.familyMapRing),
+                  onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'ring'),
+                ),
+                FilledButton.tonalIcon(
+                  icon: const Icon(Icons.lock),
+                  label: Text(context.l10n.familyMapLock),
+                  onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'lock'),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -157,7 +212,10 @@ class ChildMapSheet extends ConsumerWidget {
 
 class _MapBody extends ConsumerStatefulWidget {
   final FamilyOverview overview;
-  const _MapBody({required this.overview});
+  const _MapBody({required this.overview, this.focus});
+
+  /// Issue #672: the alert's fix this visit is about, when there is one.
+  final MapFocus? focus;
 
   @override
   ConsumerState<_MapBody> createState() => _MapBodyState();
@@ -174,7 +232,11 @@ class _MapBodyState extends ConsumerState<_MapBody> {
 
   /// Feature #21: fit the camera so every child marker is visible. Runs once,
   /// only when there is more than one child with a ping.
+  ///
+  /// #672: skipped when the map was opened on an alert's fix — the parent asked for that pin, not for the
+  /// whole family, and fitting would zoom out until it disappeared among the others.
   void _maybeFit() {
+    if (widget.focus != null) return;
     if (_fitDone || _points.length < 2) return;
     _fitDone = true;
     unawaited(fitCameraToChildren(_controller, _points));
@@ -216,6 +278,34 @@ class _MapBodyState extends ConsumerState<_MapBody> {
     _points = points;
     _maybeFit();
 
+    // #672: the alert's fix is drawn whatever the children's pings say — the whole point of the visit is a
+    // point in the past, and a child whose last ping is elsewhere must not hide it.
+    final focus = widget.focus;
+    if (focus != null) {
+      markers.add(Marker(
+        markerId: const MarkerId('alert-fix'),
+        position: focus.position,
+        // The marker helper takes a hue, not a colour, so the `danger` token cannot be applied directly;
+        // hueRed is the same red the token carries (#672 UI/UX review, noted in the PR).
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        infoWindow: InfoWindow(title: focus.label),
+      ));
+      // The accuracy circle the child pins already draw: a parent deciding whether the point is a house or
+      // a street needs to know how sure the fix is (#672 UI/UX review).
+      final accuracy = focus.accuracyM;
+      if (accuracy != null && accuracy > 0) {
+        circles.add(Circle(
+          circleId: const CircleId('alert-fix-accuracy'),
+          center: focus.position,
+          radius: accuracy,
+          fillColor: context.tokens.danger.withValues(alpha: 0.12),
+          strokeColor: context.tokens.danger,
+          strokeWidth: 1,
+        ));
+      }
+    }
+    final camera = initialCameraFor(focus, firstPing);
+
     // #406 / Claude's ruling: a refused location or geofence read shows ONE banner over the map, not an error
     // screen and not one per child. The map, its markers and the long-press stay exactly as they are; other
     // errors keep today's silent behaviour.
@@ -226,10 +316,29 @@ class _MapBodyState extends ConsumerState<_MapBody> {
       ],
     ]);
 
+    if (!mapIsAvailable(Theme.of(context).platform)) {
+      // #598: no key means no map view, not a crash. The copy is an existing approved string rather than a
+      // new English one — the specific sentence ("Map unavailable in this build") needs the Arabic Language
+      // Bureau, and shipping English here would be the raw-key class of bug the localization tests exist for.
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpace.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.map_outlined, size: 48),
+              const SizedBox(height: AppSpace.sm),
+              Text(context.l10n.phoneSetupStateUnavailable, textAlign: TextAlign.center),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Stack(
       children: [
         GoogleMap(
-          initialCameraPosition: CameraPosition(target: firstPing ?? const LatLng(0, 0), zoom: firstPing == null ? 2 : 14),
+          initialCameraPosition: CameraPosition(target: camera.target, zoom: camera.zoom),
           markers: markers,
           circles: circles,
           onMapCreated: (c) {
@@ -281,13 +390,24 @@ class _MapBodyState extends ConsumerState<_MapBody> {
 
   void _showChildSheet(BuildContext context, WidgetRef ref, Child child, LocationPing ping) {
     final device = widget.overview.devicesFor(child.id).firstOrNull;
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => ChildMapSheet(child: child, ping: ping, device: device),
-    );
+    showChildMapSheet(context, child: child, ping: ping, device: device);
   }
 }
+
+/// Opens the child location marker bottom sheet using the production sheet
+/// configuration (`isScrollControlled: true`, drag handle).
+Future<void> showChildMapSheet(
+  BuildContext context, {
+  required Child child,
+  required LocationPing ping,
+  Device? device,
+}) =>
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => ChildMapSheet(child: child, ping: ping, device: device),
+    );
 
 /// Feature #21: fit the camera so all [points] are visible. No-ops without a
 /// controller or with fewer than two points; animateCamera failures are
@@ -382,15 +502,14 @@ class _GeofenceCreateDialogState extends ConsumerState<GeofenceCreateDialog> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(added)));
     } on DioException catch (e) {
       if (!mounted) return;
-      final body = e.response?.data;
       setState(() {
         _saving = false;
         // #434 review: this route is gated by `requirePermission("location")`, so a refusal here is
         // the same `permission_required` 403 every gated read uses — one sentence, no new copy.
-        _error = readErrorText(
+        _error = friendlyErrorText(
           context.l10n,
           e,
-          () => body is Map ? '${body['error'] ?? e.message}' : (e.message ?? ''),
+          () => context.l10n.saveFailed,
         );
       });
     }
@@ -399,44 +518,43 @@ class _GeofenceCreateDialogState extends ConsumerState<GeofenceCreateDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      scrollable: true,
       title: Text(context.l10n.familyMapAddGeofence),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (widget.children.length > 1)
-              Padding(
-                padding: const EdgeInsets.only(bottom: AppSpace.md),
-                child: DropdownButtonFormField<String>(
-                  initialValue: _childId,
-                  decoration: InputDecoration(labelText: context.l10n.familyMapChild, border: const OutlineInputBorder()),
-                  items: [for (final c in widget.children) DropdownMenuItem(value: c.id, child: Text(c.displayName))],
-                  onChanged: (v) => setState(() => _childId = v ?? widget.children.first.id),
-                ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.children.length > 1)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpace.md),
+              child: DropdownButtonFormField<String>(
+                initialValue: _childId,
+                decoration: InputDecoration(labelText: context.l10n.familyMapChild, border: const OutlineInputBorder()),
+                items: [for (final c in widget.children) DropdownMenuItem(value: c.id, child: Text(c.displayName))],
+                onChanged: (v) => setState(() => _childId = v ?? widget.children.first.id),
               ),
-            TextField(
-              controller: _label,
-              decoration: InputDecoration(labelText: context.l10n.familyMapLabelField, border: const OutlineInputBorder()),
             ),
-            const SizedBox(height: AppSpace.md),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(context.l10n.familyMapRadius(_radiusM.round())),
-            ),
-            Slider(
-              value: _radiusM,
-              min: 100,
-              max: 1000,
-              divisions: 18,
-              label: context.l10n.familyMapMeters(_radiusM.round()),
-              onChanged: (v) => setState(() => _radiusM = v),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: AppSpace.sm),
-              Text(_error!, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.tokens.danger)),
-            ],
+          TextField(
+            controller: _label,
+            decoration: InputDecoration(labelText: context.l10n.familyMapLabelField, border: const OutlineInputBorder()),
+          ),
+          const SizedBox(height: AppSpace.md),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: Text(context.l10n.familyMapRadius(_radiusM.round())),
+          ),
+          Slider(
+            value: _radiusM,
+            min: 100,
+            max: 1000,
+            divisions: 18,
+            label: context.l10n.familyMapMeters(_radiusM.round()),
+            onChanged: (v) => setState(() => _radiusM = v),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: AppSpace.sm),
+            Text(_error!, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.tokens.danger)),
           ],
-        ),
+        ],
       ),
       actions: [
         TextButton(onPressed: _saving ? null : () => Navigator.of(context).pop(), child: Text(context.l10n.cancel)),

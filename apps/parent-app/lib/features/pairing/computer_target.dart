@@ -1,3 +1,9 @@
+/// Compile-time switch gating the Mac pairing option while the Mac agent is not yet ready for
+/// families (UI/UX Bureau 6910845231 / 6960604329). Pass `--dart-define=ENABLE_MAC_PAIRING=true`
+/// when enabling Mac pairing.
+const bool kEnableMacPairing =
+    bool.fromEnvironment('ENABLE_MAC_PAIRING', defaultValue: false);
+
 /// ADR-0041 D5.1: the two computer clients the parent can pair from the child page.
 ///
 /// The only thing the parent's choice changes is the copy on [PairingQrScreen] and the download address:
@@ -8,10 +14,11 @@ enum ComputerTarget {
 
   const ComputerTarget(this.path);
 
-  /// The page path on osratech.com. `/mac`, not `/macos`: that is the address ADR-0041 D4 names, and it is
-  /// the one the parent reads aloud or types on the computer.
+  /// The platform path segment.
   final String path;
 
-  /// What the parent sees and sends. No scheme and no trailing slash: it is read and typed by hand.
-  String get address => 'osratech.com/$path';
+  /// What the parent sees and copies. UI/UX Bureau (6910861301): `osratech.com/windows` and `/mac`
+  /// answer 404 today while `/download` answers 200, so both platforms point to `osratech.com/download`
+  /// until the dedicated pages exist.
+  String get address => 'osratech.com/download';
 }

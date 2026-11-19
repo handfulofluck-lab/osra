@@ -1,0 +1,61 @@
+name: site-pages
+
+# Publishes `site/` to GitHub Pages at osratech.com. AWS refused the CloudFront account verification
+# (case answered 2026-11-12), so the S3 + CloudFront stack in infra/terraform/site cannot serve the
+# site; this is the route the maintainer chose instead. It runs ONLY when someone starts it by hand:
+# a merge to main never publishes. The site moves back to CloudFront if AWS ever verifies the account.
+#
+# What goes out is exactly `site/` on main, after the design gate passes, minus `site/android/`
+# (the Full app's download page), which must not be public before its release security gate is signed,
+# Arabic pages (site/ar/) go out with the English ones; any new Arabic needs the Arabic Language Bureau's line.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "publish" to put site/ from main on osratech.com'
+        required: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: site-pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main' && inputs.confirm == 'publish'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: The site matches the design tokens
+        run: |
+          set -o pipefail
+          node scripts/check-site-design.mjs | tee /dev/stderr | grep -q '^site design: .* match docs/design/tokens.json'
+      - name: Assemble what is published
+        run: |
+          mkdir -p _site
+          cp -R site/. _site/
+          rm -rf _site/android
+          test ! -e _site/android
+          # The Arabic marketing pages are signed by the Arabic Language Bureau (#670) and published with the rest.
+          test -f _site/ar/index.html
+          test -f _site/privacy/index.html
+          test -f _site/delete-account/index.html
+          printf 'osratech.com\n' > _site/CNAME
+          touch _site/.nojekyll
+          find _site -type f | sort
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4

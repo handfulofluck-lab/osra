@@ -7,8 +7,8 @@ namespace FamilyShield.Agent.Services;
 
 /// <summary>
 /// Feature #3 HTTPS inspection, enabled only when FS_HTTPS_INSPECT=1. Generates (once) a
-/// self-signed "FamilyShield Test Root" RSA-2048 CA, exports it to
-/// %LOCALAPPDATA%\FamilyShield\rootCert.pfx, and installs the public key into the
+/// self-signed "OSRA Test Root" RSA-2048 CA, exports it to
+/// %LOCALAPPDATA%\OSRA\rootCert.pfx, and installs the public key into the
 /// CurrentUser\Root store so browsers trust the per-site certs the proxy mints.
 /// </summary>
 /// <remarks>
@@ -35,12 +35,10 @@ public static class HttpsInterception
     public const string InsecureEnvVar = "FS_HTTPS_INSPECT_ALLOW_INSECURE";
 
     /// <summary>Subject simple name stamped on the generated root CA.</summary>
-    public const string RootCertSubject = "FamilyShield Test Root";
+    public const string RootCertSubject = "OSRA Test Root";
 
-    /// <summary>Default PFX path: %LOCALAPPDATA%\FamilyShield\rootCert.pfx.</summary>
-    public static string PfxPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "FamilyShield", "rootCert.pfx");
+    /// <summary>Default PFX path: %LOCALAPPDATA%\OSRA\rootCert.pfx.</summary>
+    public static string PfxPath => Path.Combine(DataFolder.DefaultPath, "rootCert.pfx");
 
     /// <summary>True when FS_HTTPS_INSPECT=1.</summary>
     public static bool IsEnabled =>
@@ -131,7 +129,7 @@ public static class HttpsInterception
         var path = string.IsNullOrWhiteSpace(pfxPath) ? PfxPath : pfxPath;
         try
         {
-            var cert = File.Exists(path) ? Load(path) : GenerateAndExport(path);
+            var cert = LoadOrGenerate(path);
             InstallToUserRootStore(cert);
             return cert;
         }
@@ -141,6 +139,15 @@ public static class HttpsInterception
             return null;
         }
     }
+
+    /// <summary>
+    /// Loads an existing root PFX unchanged when present, otherwise generates and exports a new
+    /// root. The store-install step stays in <see cref="EnsureRootCertificate"/> so tests can
+    /// exercise the load-vs-generate decision against isolated temp files without touching the
+    /// CurrentUser\Root store. An existing PFX is never deleted, replaced or regenerated.
+    /// </summary>
+    internal static X509Certificate2 LoadOrGenerate(string path) =>
+        File.Exists(path) ? Load(path) : GenerateAndExport(path);
 
     /// <summary>Loads the root CA from the PFX (private key included).</summary>
     private static X509Certificate2 Load(string path) => new(path);

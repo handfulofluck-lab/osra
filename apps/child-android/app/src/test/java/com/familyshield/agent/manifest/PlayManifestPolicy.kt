@@ -54,6 +54,10 @@ object PlayManifestPolicy {
         "android.permission.SEND_SMS" to "same Play SMS policy as READ_SMS — Full-only",
         "android.permission.WRITE_CALL_LOG" to "same Play Call-Log policy as READ_CALL_LOG — Full-only",
         "android.permission.PROCESS_OUTGOING_CALLS" to "same Play Call-Log policy as READ_CALL_LOG — Full-only",
+        // ADR-0039 R3: the Full build installs its own updates, so it needs this. Play forbids it outside an
+        // approved updater, and the store artefact must never carry it — a leaked `REQUEST_INSTALL_PACKAGES` in
+        // the Play build is a policy rejection, not a warning.
+        "android.permission.REQUEST_INSTALL_PACKAGES" to "ADR-0039 R3 — self-update is Full only; Play forbids it",
     )
 
     /** Intent actions that may only be registered by the Full artefact. */
@@ -82,6 +86,7 @@ object PlayManifestPolicy {
         ),
         RequiredQuery("com.android.phone.EmergencyDialer.DIAL", null, "#83 emergency-dialer exemption — S1 depends on it"),
         RequiredQuery("android.intent.action.DIAL", null, "#83 emergency-dialer exemption — S1 depends on it"),
+        RequiredQuery("android.net.VpnService", null, "VPN provider classification also covers apps without launcher activities"),
     )
 
     const val MONITORING_FLAG = "isMonitoringTool"

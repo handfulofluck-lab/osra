@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { raiseAlert } from "../lib/alerts.js";
@@ -7,6 +7,7 @@ import { registerRawBodyParser, authenticateInternalRequest } from "../lib/inter
 import { checkActiveConsent } from "../lib/consent.js";
 import { requireFamily, requireGuardianRead, requireParent } from "../middleware/requireFamily.js";
 import { decryptSnippet, encryptSnippet } from "../lib/snippetVault.js";
+import { isValidTimeZone } from "../lib/digestSchedule.js";
 
 const ScanSchema = z.object({
   childId: z.string().min(1),
@@ -44,13 +45,46 @@ interface Verdict { flagged: boolean; severity: Severity; concernTypes: string[]
 
 // NOTE: fail-open — when the AI engine is unreachable the scan falls back to a local
 // keyword/regex check so obvious self-harm language is never silently dropped.
+/** One Arabic letter, for the token boundaries the bare stems need (Antigravity, #938 B2). */
+const AR_LETTER = "[\\u0621-\\u064A\\u0640]";
+
+/**
+ * An Arabic term with token boundaries, allowing the inseparable proclitics a child actually types
+ * (`و ف ب ل ك`, and `ال`) on the left and **no letter** on the right.
+ *
+ * Without this, `فيب` (`vape`) matched `فيبدأ` ("so it starts"), `خمر` matched `خمري` (maroon) and
+ * `غبي` matched `رغبي` (rugby) — and because the local check now survives a model "safe", every one of
+ * those was a false drug or bullying alert to a parent. The negative rows in `social.test.ts` pin it.
+ */
+const arabicTerm = (alternation: string): RegExp =>
+  new RegExp(`(?<!${AR_LETTER})(?:[\\u0648\\u0641\\u0628\\u0644\\u0643])?(?:\\u0627\\u0644)?(?:${alternation})(?!${AR_LETTER})`);
+
+/** Ordering for the union's severity pick: a critical concern must never be downgraded to warning. */
+const SEVERITY_RANK: Record<"info" | "warning" | "critical", number> = { info: 0, warning: 1, critical: 2 };
+
 const LOCAL_PATTERNS: Array<{ pattern: RegExp; concern: string }> = [
   { pattern: /\b(kill yourself|kys|suicide|end (your|my) life|want to die|wanna die|self[- ]?harm)\b/i, concern: "self_harm" },
   { pattern: /\b(sext(?:ing)?\b|nudes?\b|send (me )?(pics|pictures|photos)|meet (up|me) (alone|in secret)|don't tell your (parents|mom|dad))\b/i, concern: "grooming" },
   { pattern: /\b(ugly|loser|worthless|nobody likes you|die in a fire|everyone hates you)\b/i, concern: "cyberbullying" },
+  // #863: the fallback was English-only, and the run that found it sent **Arabic** insults and drug
+  // words. A child writing in Arabic scored "safe" on the rules layer and on this list, which is the
+  // failure the social scan exists to prevent. High-precision terms, not a lexicon: the word list is the
+  // model's job, and this is the belt for when the model is unreachable or misses.
+  { pattern: arabicTerm("أريد أن أموت|ابغى أموت|أؤذي نفسي|ايذي نفسي|انتحار"), concern: "self_harm" },
+  { pattern: /\b(weed|hash|hashish|vape|vaping|vodka|beer|pills|xanax|cocaine|ketamine)\b/i, concern: "substance_use" },
+  { pattern: arabicTerm("حشيش|مخدرات|فيب|خمر|فودكا"), concern: "substance_use" },
+  { pattern: arabicTerm("لا تخبر (أمك|أبوك|والديك)|سر بيننا"), concern: "grooming" },
+  { pattern: arabicTerm("غبي|قبيح|فاشل|ما أحد يحبك|ما احد يحبك|كلنا نكرهك"), concern: "cyberbullying" },
 ];
 
-/** Local keyword fallback used only when the AI engine cannot be reached. */
+/**
+ * Local keyword fallback: the belt when the AI engine is unreachable **or answers "not flagged"**.
+ *
+ * #863 is why it is no longer "only when the engine is down": the child sent Arabic insults and
+ * drug words over WhatsApp and nothing reached the parent. A model miss and an unreachable engine
+ * have the same consequence for the child, so a local hit now survives a model "no" — the alert
+ * throttle (one per app per 10 minutes) bounds the noise a false positive can cause.
+ */
 export function localKeywordCheck(text: string): Verdict {
   const concerns = [...new Set(
     LOCAL_PATTERNS.filter((p) => p.pattern.test(text)).map((p) => p.concern),
@@ -76,10 +110,16 @@ function aiVerdictFrom(data: unknown): Verdict | null {
   return { flagged: d.flagged, severity, concernTypes };
 }
 
-/** Call the AI engine /analyze with a 5 s timeout; null on any failure (caller falls back). */
-async function analyzeWithAi(text: string, childAge?: number): Promise<Verdict | null> {
+/**
+ * Call the AI engine /analyze with a 5 s timeout; `verdict: null` on any failure (caller falls back).
+ *
+ * `attempted` is whether a request left this process, not whether it was answered (#897 review, Fable's
+ * point a): a call that reached the engine and timed out after five seconds was still paid for, and for a
+ * cost floor under-counting is the unsafe direction.
+ */
+async function analyzeWithAi(text: string, childAge?: number): Promise<{ verdict: Verdict | null; attempted: boolean }> {
   const base = process.env.AI_ENGINE_URL;
-  if (!base) return null;
+  if (!base) return { verdict: null, attempted: false };
   try {
     const res = await fetch(`${base.replace(/\/$/, "")}/analyze`, {
       method: "POST",
@@ -87,10 +127,14 @@ async function analyzeWithAi(text: string, childAge?: number): Promise<Verdict |
       body: JSON.stringify({ text, context: "message", ...(childAge !== undefined ? { child_age: childAge } : {}) }),
       signal: AbortSignal.timeout(AI_TIMEOUT_MS),
     });
-    if (!res.ok) return null;
-    return aiVerdictFrom(await res.json());
-  } catch {
-    return null;
+    if (!res.ok) return { verdict: null, attempted: true };
+    return { verdict: aiVerdictFrom(await res.json()), attempted: true };
+  } catch (err) {
+    // A connection that never opened (refused, DNS) cost nothing; one that opened and then ran past the
+    // 5 s timeout was paid for. `AbortSignal.timeout` surfaces as TimeoutError, and an aborted read as
+    // AbortError, so those two count as attempts and everything else does not.
+    const name = (err as { name?: string } | null)?.name;
+    return { verdict: null, attempted: name === "TimeoutError" || name === "AbortError" };
   }
 }
 
@@ -101,11 +145,58 @@ type ScanItemResult =
   | { ok: true; flagged: boolean; severity: Severity; concernTypes: string[] }
   | { ok: false; reason: string; status: number; body?: Record<string, unknown> };
 
+/** `yyyy-mm-dd` in the family's own zone; the unit a monthly cost figure is summed from. */
+export function localDay(now: Date, timeZone: string): string {
+  const zone = isValidTimeZone(timeZone) ? timeZone : "UTC";
+  return new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
+
+/**
+ * Issue #890 (pricing): count one classified capture against its family's day.
+ *
+ * Two counters because they cost different amounts: every scan is classified (local patterns first, which
+ * are free), and only the ones that reached the engine are a bill. What this measures is **volume per
+ * family**, not spend: the engine decides internally whether its own model or Bedrock answered, and that
+ * split is invisible here (#897 review, Fable's point b — `stage1`/`escalations` need the engine to report
+ * which stage answered, which is its own change).
+ *
+ * Best-effort by contract, and the caller awaits it so the row exists by the time the response is sent: a
+ * counter must never turn a served scan into a 500, and a lost increment is a rounding error in a monthly
+ * figure. The timezone comes from the child row the route already read, so this costs one upsert and no
+ * extra query.
+ */
+async function recordScanUsage(
+  familyId: string,
+  timeZone: string | null | undefined,
+  attemptedAi: boolean,
+  log?: FastifyRequest["log"],
+): Promise<void> {
+  const day = localDay(new Date(), timeZone ?? "UTC");
+  const write = () =>
+    prisma.aiScanUsage.upsert({
+      where: { familyId_day: { familyId, day } },
+      create: { familyId, day, scans: 1, aiCalls: attemptedAi ? 1 : 0 },
+      update: { scans: { increment: 1 }, ...(attemptedAi ? { aiCalls: { increment: 1 } } : {}) },
+    });
+  try {
+    await write();
+  } catch (err) {
+    // A batch runs its items concurrently, so several first-scans of a day can race the unique index and
+    // the losers would be a few short every morning. One retry turns the race into a normal increment;
+    // anything else is logged and dropped, never raised into the scan.
+    try {
+      await write();
+    } catch (retryErr) {
+      log?.warn({ err: err ?? retryErr, familyId }, "scan usage counter failed");
+    }
+  }
+}
+
 /**
  * Scans one capture: ownership, consent, the verdict, the vault write and the throttled alert. Shared
  * by the single-item body and each item of a batch (#490), so the checks are identical for both.
  */
-async function scanOne(input: unknown, device: ScanDevice): Promise<ScanItemResult> {
+async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest["log"]): Promise<ScanItemResult> {
   const parsed = ScanSchema.safeParse(input);
   if (!parsed.success) return { ok: false, reason: "invalid_item", status: 400, body: { error: parsed.error.flatten() } };
   const { childId, deviceId, app: appName, contact, text } = parsed.data;
@@ -115,7 +206,8 @@ async function scanOne(input: unknown, device: ScanDevice): Promise<ScanItemResu
     if (deviceId && deviceId !== device.id) return { ok: false, reason: "device_mismatch", status: 400 };
   }
 
-  const child = await prisma.child.findUnique({ where: { id: childId } });
+  // The family's zone rides the lookup the route already does, so the day key costs no second query.
+  const child = await prisma.child.findUnique({ where: { id: childId }, include: { family: { select: { timezone: true } } } });
   if (!child) return { ok: false, reason: "child_not_found", status: 404 };
   // ADR-0008 §2b: withdrawal of consent stops collection.
   const consent = await checkActiveConsent(childId);
@@ -127,7 +219,25 @@ async function scanOne(input: unknown, device: ScanDevice): Promise<ScanItemResu
   const childAge = typeof (child as { birthYear?: number }).birthYear === "number"
     ? new Date().getFullYear() - (child as { birthYear: number }).birthYear
     : undefined;
-  const verdict = (await analyzeWithAi(text, childAge)) ?? localKeywordCheck(text);
+  const ai = await analyzeWithAi(text, childAge);
+  const local = localKeywordCheck(text);
+  // Union, not "model wins" (Antigravity, #938 B3): when both flag, the concern types are merged and the
+  // higher severity stands. The earlier short-circuit kept the model's verdict whole, so a mixed message
+  // ("you loser, أريد أن أموت") lost the Arabic self_harm clause and downgraded critical to warning.
+  const verdict = ai.verdict?.flagged
+    ? local.flagged
+      ? {
+          flagged: true,
+          severity: SEVERITY_RANK[ai.verdict.severity] >= SEVERITY_RANK[local.severity] ? ai.verdict.severity : local.severity,
+          concernTypes: [...new Set([...ai.verdict.concernTypes, ...local.concernTypes])].slice(0, 3),
+        }
+      : ai.verdict
+    : local.flagged
+      ? local
+      : ai.verdict ?? local;
+  // Issue #890: the counter is written whether or not the capture is flagged — cost is paid on both — and
+  // it counts the ATTEMPT, so a timeout against a paid engine is not recorded as a free scan.
+  await recordScanUsage(child.familyId, (child as { family?: { timezone?: string } | null }).family?.timezone, ai.attempted, log);
   if (!verdict.flagged) {
     return { ok: true, flagged: false, severity: "info", concernTypes: [] };
   }
@@ -154,6 +264,8 @@ async function scanOne(input: unknown, device: ScanDevice): Promise<ScanItemResu
       category,
       title: `Social concern in ${appName}`,
       body: `${contact || "A contact"} sent a flagged message on ${appName}`,
+      bodyKey: "alertBodySocialConcern",
+      params: { app: appName, ...(contact ? { contact } : {}) },
       metadata: { app: appName, contact, concernTypes: verdict.concernTypes },
       childName: child.displayName,
     });
@@ -185,12 +297,12 @@ export async function socialRoutes(app: FastifyInstance) {
       // reach the agent's 30 s read timeout, so a slow engine would fail a batch the server had already
       // stored, and the retry would store it twice. `Promise.all` keeps the order, and the alert
       // throttle is an atomic SET NX, so same-app items still raise at most one alert.
-      const scanned = await Promise.all(batch.data.items.map((item) => scanOne(item, auth.device)));
+      const scanned = await Promise.all(batch.data.items.map((item) => scanOne(item, auth.device, req.log)));
       // A failed item carries its reason only; status codes belong to the single-item body.
       const results = scanned.map((r) => (r.ok ? r : { ok: false, reason: r.reason }));
       return { results };
     }
-    const single = await scanOne(req.body, auth.device);
+    const single = await scanOne(req.body, auth.device, req.log);
     if (!single.ok) {
       return reply.code(single.status).send(single.body ?? { error: single.reason });
     }

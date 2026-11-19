@@ -8,7 +8,7 @@ import { decryptSecret, encryptSecret } from "../src/lib/secretVault.js";
 import { totpAtCounter } from "../src/lib/totp.js";
 import { setEmailSender, type EmailMessage, type EmailSender } from "../src/lib/email/index.js";
 import { getRedis } from "../src/redis.js";
-import { MockRedis, authHeader, buildApp, prismaMock, resetPrismaMock } from "./helpers.js";
+import { MockRedis, SIGNUP_CONSENTS, authHeader, buildApp, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -21,11 +21,13 @@ vi.mock("ioredis", async () => {
 
 const PASSWORD = "CorrectHorseBatteryStaple!";
 const registerBody = {
-  email: "demo@familyshield.dev",
+  email: "demo@osratech.com",
   password: PASSWORD,
   displayName: "Demo Parent",
   familyName: "Demo Family",
   region: "US",
+  // ADR-0043 D3: required — an account may not exist without its acceptance row.
+  consents: SIGNUP_CONSENTS,
 };
 
 class CaptureSender implements EmailSender {
@@ -484,7 +486,7 @@ describe("auth routes", () => {
     const unknown = await app.inject({
       method: "POST",
       url: "/v1/auth/reset/request",
-      payload: { email: "ghost@familyshield.dev" },
+      payload: { email: "ghost@osratech.com" },
     });
     expect(unknown.statusCode).toBe(200);
     expect(unknown.json().ok).toBe(true);
@@ -837,7 +839,7 @@ describe("auth routes", () => {
     prismaMock.parent.findUnique.mockResolvedValue(null);
     redis.set.mockRejectedValueOnce(new Error("redis unavailable"));
     const unknown = await app.inject({
-      method: "POST", url: "/v1/auth/reset/request", payload: { email: "ghost@familyshield.dev" },
+      method: "POST", url: "/v1/auth/reset/request", payload: { email: "ghost@osratech.com" },
     });
     expect(unknown.statusCode).toBe(503);
     expect(unknown.json()).toEqual(known.json());
@@ -1163,5 +1165,12 @@ describe("auth routes", () => {
     const missing = await app.inject({ method: "POST", url: "/v1/auth/token/refresh", payload: {} });
     expect(missing.statusCode).toBe(400);
     await app.close();
+  });
+
+  // #608: the demo account a tester logs in with must say OSRA, never FamilyShield. This pins the
+  // fixture so a planted revert of the email fails here rather than in a user-facing flow.
+  it("#608: the demo fixture email is demo@osratech.com (no familyshield in the demo account)", () => {
+    expect(registerBody.email).toBe("demo@osratech.com");
+    expect(registerBody.email).not.toMatch(/familyshield/i);
   });
 });

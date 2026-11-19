@@ -1,0 +1,15 @@
+{
+  "id": "SC-1.1",
+  "title": "Example wait and cropped evidence",
+  "pair": "A",
+  "package": "com.osratech.child.full",
+  "apiHealthUrl": "http://127.0.0.1:3000/health",
+  "timeoutSeconds": 120,
+  "steps": [
+    { "type": "wait", "seconds": 1 },
+    { "type": "screencap", "name": "lock-screen.png" }
+  ],
+  "measurements": [
+    { "name": "screenshot has height", "actual": "screencap.1.height", "comparator": "gte", "limit": 1 }
+  ]
+}

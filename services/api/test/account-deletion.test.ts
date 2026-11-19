@@ -112,6 +112,7 @@ describe("DELETE /v1/family — the owner deletes the whole family", () => {
     // Every family-scoped and parent-scoped table, by name. Mutant: drop an entry from FAMILY_SCOPED_DELETES.
     const parentIds = { in: [OWNER.id, CO.id] };
     expect(prismaMock.familyInvite.deleteMany).toHaveBeenCalledWith({ where: { familyId: "fam-1" } });
+    expect(prismaMock.familyPurchase.deleteMany).toHaveBeenCalledWith({ where: { familyId: "fam-1" } });
     expect(prismaMock.digestRecipient.deleteMany).toHaveBeenCalledWith({ where: { familyId: "fam-1" } });
     expect(prismaMock.digestSend.deleteMany).toHaveBeenCalledWith({ where: { familyId: "fam-1" } });
     expect(prismaMock.digestPrefs.deleteMany).toHaveBeenCalledWith({ where: { familyId: "fam-1" } });
@@ -335,7 +336,11 @@ describe("§4 coverage guard: no table escapes the deletion by being forgotten",
   it("G1 every model with a familyId, parentId or childId is erased or kept with a reason", () => {
     // Mutant: remove `digestRecipient` from FAMILY_SCOPED_DELETES, and this row names it.
     expect(scoped.length).toBeGreaterThan(15); // the parse found the schema, not an empty file
-    const decided = new Set<string>([...CHILD_SCOPED_DELETE_ORDER, ...Object.keys(FAMILY_SCOPED_DELETES), ...Object.keys(KEPT_ON_DELETION)]);
+    // A parent-scoped table is also a decided table: G2 checks it against the parent maps, and a row that
+    // is explicitly deleted with its parent has not "been forgotten" by this guard. `parentConsentEvent`
+    // (#846 step 2, ADR-0043 D2) is the first model whose only scope is `parentId`, which is why this set
+    // was missing it — the guard still requires every model to appear in one of the four maps.
+    const decided = new Set<string>([...CHILD_SCOPED_DELETE_ORDER, ...Object.keys(FAMILY_SCOPED_DELETES), ...Object.keys(PARENT_SCOPED_DELETES), ...Object.keys(KEPT_ON_DELETION)]);
     expect(scoped.filter((name) => !decided.has(name))).toEqual([]);
   });
 

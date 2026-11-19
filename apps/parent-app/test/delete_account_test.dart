@@ -73,7 +73,7 @@ void main() {
     expect(find.textContaining('deletes your whole family'), findsOneWidget);
     expect(find.textContaining('The family and its children stay.'), findsNothing);
 
-    await confirmWith(tester, 'qa@familyshield.dev');
+    await confirmWith(tester, 'qa@osratech.com');
 
     expect(api.client.calls('DELETE', '/v1/family'), hasLength(1));
     expect(api.client.calls('DELETE', '/v1/me'), isEmpty);
@@ -96,7 +96,7 @@ void main() {
     expect(find.textContaining('deletes your account and signs you out'), findsOneWidget);
     expect(find.textContaining('deletes your whole family'), findsNothing);
 
-    await confirmWith(tester, 'qa@familyshield.dev');
+    await confirmWith(tester, 'qa@osratech.com');
 
     expect(api.client.calls('DELETE', '/v1/me'), hasLength(1));
     expect(api.client.calls('DELETE', '/v1/family'), isEmpty);
@@ -114,7 +114,7 @@ void main() {
     expect(button().onPressed, isNull, reason: 'empty confirmation');
 
     // Mutant: compare the raw strings and `QA@…` with a trailing space leaves the button dead.
-    await tester.enterText(find.byKey(const ValueKey('deleteAccountConfirm')), '  QA@FamilyShield.dev  ');
+    await tester.enterText(find.byKey(const ValueKey('deleteAccountConfirm')), '  QA@Osratech.com  ');
     await tester.pump();
     expect(button().onPressed, isNotNull);
 
@@ -128,7 +128,7 @@ void main() {
       onDelete: (_) => const FakeHttpError(409, {'error': 'consent_records_held'}),
     );
     await pumpScreen(tester, api);
-    await confirmWith(tester, 'qa@familyshield.dev');
+    await confirmWith(tester, 'qa@osratech.com');
 
     expect(find.byKey(const ValueKey('deleteAccountError')), findsOneWidget);
     expect(find.textContaining('consent records for a child in another family'), findsOneWidget);

@@ -18,13 +18,19 @@ final socialEventsProvider = FutureProvider.family<List<SocialConcernEvent>, Str
   return _itemsOf(res.data, SocialConcernEvent.fromJson);
 });
 
-/// Merged call + SMS timeline for one child, newest first (feature #6):
+/// Merged call, SMS and lock-period timeline for one child, newest first (features #6, #830):
 /// fetches `GET /v1/reports/activity` once per type and sorts by `ts`.
 final activityProvider = FutureProvider.family<List<ActivityEvent>, String>((ref, childId) async {
   final api = ref.watch(apiClientProvider);
   final calls = await api.raw.get('/v1/reports/activity', queryParameters: {'childId': childId, 'type': 'call', 'limit': 100});
   final sms = await api.raw.get('/v1/reports/activity', queryParameters: {'childId': childId, 'type': 'sms', 'limit': 100});
-  final items = [..._itemsOf(calls.data, ActivityEvent.fromJson), ..._itemsOf(sms.data, ActivityEvent.fromJson)];
+  // #830: one row per lock period, with the number of times the child met the overlay.
+  final locks = await api.raw.get('/v1/reports/activity', queryParameters: {'childId': childId, 'type': 'lock_period', 'limit': 100});
+  final items = [
+    ..._itemsOf(calls.data, ActivityEvent.fromJson),
+    ..._itemsOf(sms.data, ActivityEvent.fromJson),
+    ..._itemsOf(locks.data, ActivityEvent.fromJson),
+  ];
   final epoch = DateTime.fromMillisecondsSinceEpoch(0);
   items.sort((a, b) => (b.ts ?? epoch).compareTo(a.ts ?? epoch));
   return items;

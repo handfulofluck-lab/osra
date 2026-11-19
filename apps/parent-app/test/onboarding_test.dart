@@ -33,7 +33,7 @@ void main() {
   Map<String, dynamic> parentJson() => {
         'id': 'par-1',
         'familyId': 'fam-1',
-        'email': 'qa@familyshield.dev',
+        'email': 'qa@osratech.com',
         'displayName': 'QA Parent',
         'role': 'owner',
         'mfaEnabled': false,
@@ -159,7 +159,7 @@ void main() {
 
   Future<void> signIn(WidgetTester tester, {String password = 'good-password'}) async {
     await tester.enterText(fieldByLabel('Server'), 'http://testserver');
-    await tester.enterText(fieldByLabel('Email'), 'qa@familyshield.dev');
+    await tester.enterText(fieldByLabel('Email'), 'qa@osratech.com');
     await tester.enterText(fieldByLabel('Password'), password);
     final button = find.widgetWithText(FilledButton, 'Sign in');
     await tester.ensureVisible(button);
@@ -341,6 +341,15 @@ void main() {
     await tester.enterText(find.byKey(const ValueKey('onboardingChildName')), 'Alex');
     await tester.enterText(find.byKey(const ValueKey('onboardingBirthYear')), '2014');
     final add = find.byKey(const ValueKey('onboardingAddChild'));
+    // #874: the question now sits above each dropdown and wraps, so on a 320 px screen the button is
+    // below the built range; scroll to it as prb_layout_matrix_test.dart already does.
+    if (add.evaluate().isEmpty) {
+      await tester.scrollUntilVisible(
+        add,
+        200,
+        scrollable: find.byWidgetPredicate((w) => w is Scrollable && w.axis == Axis.vertical).first,
+      );
+    }
     await tester.ensureVisible(add);
     await tester.pumpAndSettle();
     await tester.tap(add);
@@ -406,7 +415,8 @@ void main() {
       await signIn(tester);
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Cannot reach the server'), findsOneWidget);
+      // UI/UX Bureau (#862 condition 4): a parent has no server address to check.
+      expect(find.textContaining("Couldn't connect to OSRA"), findsOneWidget);
     });
 
     testWidgets('a child-creation refusal names the consent problem', (tester) async {
@@ -427,7 +437,16 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey('onboardingChildName')), 'Alex');
       await tester.enterText(find.byKey(const ValueKey('onboardingBirthYear')), '2014');
       final add = find.byKey(const ValueKey('onboardingAddChild'));
-      await tester.ensureVisible(add);
+      // #874: the question now sits above each dropdown and wraps, so on a 320 px screen the button is
+    // below the built range; scroll to it as prb_layout_matrix_test.dart already does.
+    if (add.evaluate().isEmpty) {
+      await tester.scrollUntilVisible(
+        add,
+        200,
+        scrollable: find.byWidgetPredicate((w) => w is Scrollable && w.axis == Axis.vertical).first,
+      );
+    }
+    await tester.ensureVisible(add);
       await tester.pumpAndSettle();
       await tester.tap(add);
       await flush(tester);

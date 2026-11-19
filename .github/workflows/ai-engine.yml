@@ -1,7 +1,7 @@
 name: AI engine
 
 # The Python AI engine and its evaluation set. Until 2026-10-24 this was the `ai-engine` job of ci.yml and ran
-# on every pull request; now it runs when the engine changes, on main when it changes, and nightly on main
+# on every pull request; now it runs when the engine changes, on main when it changes, and weekly on main
 # whatever changed. Nothing outside `services/ai-engine/` is read by this job. `scripts/check-ci-paths.mjs`
 # keeps the two lists identical and makes sure they name this file.
 on:
@@ -15,7 +15,7 @@ on:
       - "services/ai-engine/**"
       - ".github/workflows/ai-engine.yml"
   schedule:
-    - cron: "11 2 * * *"
+    - cron: "11 2 * * 1"
   workflow_dispatch:
 
 concurrency:

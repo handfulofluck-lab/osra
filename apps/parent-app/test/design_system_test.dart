@@ -49,6 +49,19 @@ void main() {
     String day(int i) => DateTime.utc(2026, 9, 1).add(Duration(days: i)).toIso8601String().substring(0, 10);
     return FakeApiClient({
       ...standardRoutes(),
+      // ADR-0043 D6: the sign-up page reads its one consent sentence from the server.
+      'GET /v1/consent-copy': (_) => {
+            'textVersion': 'signup-v1',
+            'purposes': [
+              {
+                'key': 'terms_privacy',
+                'required': true,
+                'text': 'I am an adult and the parent. I accept the OSRA [Terms of Use](https://osratech.com/terms) and I have read the [Privacy Policy](https://osratech.com/privacy).',
+                'textHash': 'sha256',
+                'links': {'terms': 'https://osratech.com/terms', 'privacy': 'https://osratech.com/privacy'},
+              },
+            ],
+          },
       'GET /v1/reports/summary': (_) => {
             'totalAppMinutes': 300,
             'topApps': [
@@ -116,7 +129,7 @@ void main() {
             'dailyEmail': true,
             'weeklyEmail': false,
             'pushEnabled': true,
-            'emails': ['qa@familyshield.dev'],
+            'emails': ['qa@osratech.com'],
           },
       // Family screen: one pending invite with every permission, so the
       // longest subtitle it can render is on screen at 320 px.
@@ -124,7 +137,7 @@ void main() {
             'items': [
               {
                 'id': 'inv-1',
-                'email': 'grandma@familyshield.dev',
+                'email': 'grandma@osratech.com',
                 'role': 'guardian',
                 'status': 'pending',
                 'permissions': ['rules', 'location', 'alerts', 'social'],
@@ -132,7 +145,7 @@ void main() {
               },
               {
                 'id': 'inv-2',
-                'email': 'accepted@familyshield.dev',
+                'email': 'accepted@osratech.com',
                 'role': 'co-parent',
                 'status': 'accepted',
                 'permissions': ['rules'],
@@ -408,17 +421,29 @@ void main() {
       expect(Theme.of(tester.element(find.byType(LoginScreen))).brightness, Brightness.dark);
 
       final scrollable = find.byType(Scrollable).first;
+      // The page now saves the server before it opens (as Sign in does), so an empty field would stop the
+      // navigation; the fake's base URL is what a dev build accepts.
+      final serverField = find.ancestor(of: find.text('Server'), matching: find.byType(TextField));
+      if (serverField.evaluate().isNotEmpty) {
+        await tester.scrollUntilVisible(serverField.first, -100, scrollable: scrollable);
+        await tester.enterText(serverField.first, 'http://testserver');
+        await tester.pumpAndSettle();
+      }
       await tester.scrollUntilVisible(find.text('Create account'), 100, scrollable: scrollable);
       await tester.tap(find.text('Create account'));
       await tester.pumpAndSettle();
+      // ADR-0043 D6: sign-up is its own page now; its fields and consent box render at 320 wide.
       expect(find.text('Family name'), findsOneWidget);
-      expect(find.text('Register'), findsOneWidget);
+      expect(find.byKey(const ValueKey('createAccountButton')), findsOneWidget);
+      expect(find.byType(Checkbox), findsOneWidget);
       final registerExceptions = drainExceptions(tester);
       expect(
         registerExceptions,
         isEmpty,
         reason: registerExceptions.map((e) => e is FlutterError ? e.toStringDeep() : '$e').join('\n'),
       );
+      await tester.pageBack();
+      await tester.pumpAndSettle();
 
       await tester.scrollUntilVisible(
         find.byKey(const ValueKey('lostAuthenticator')),
@@ -444,7 +469,7 @@ void main() {
       await tester.pumpWidget(themedApp(const FamilyScreen(), designApi()));
       await tester.pumpAndSettle();
       expect(find.text('Parents'), findsOneWidget);
-      expect(find.text('grandma@familyshield.dev'), findsOneWidget);
+      expect(find.text('grandma@osratech.com'), findsOneWidget);
 
       await tester.tap(find.text('Invite member'));
       await tester.pumpAndSettle();

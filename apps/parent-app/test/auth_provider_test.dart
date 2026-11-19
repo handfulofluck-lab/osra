@@ -13,7 +13,7 @@ const _familyMe = {
   'parent': {
     'id': 'par-1',
     'familyId': 'fam-1',
-    'email': 'demo@familyshield.dev',
+    'email': 'demo@osratech.com',
     'displayName': 'Demo Parent',
     'role': 'owner',
     'mfaEnabled': false,
@@ -116,47 +116,47 @@ void main() {
   });
 
   test('successful login sets isAuthenticated and loads family', () async {
-    await container.read(authProvider.notifier).login('demo@familyshield.dev', 'good-password');
+    await container.read(authProvider.notifier).login('demo@osratech.com', 'good-password');
     final state = container.read(authProvider);
     expect(state.isAuthenticated, isTrue);
     expect(state.loading, isFalse);
-    expect(state.parent?.email, 'demo@familyshield.dev');
+    expect(state.parent?.email, 'demo@osratech.com');
     expect(state.family?.name, 'Demo Family');
     expect(state.family?.region, 'US');
   });
 
   test('failed login (401) sets error and stays logged out', () async {
-    await container.read(authProvider.notifier).login('demo@familyshield.dev', 'wrong-password');
+    await container.read(authProvider.notifier).login('demo@osratech.com', 'wrong-password');
     final state = container.read(authProvider);
     expect(state.isAuthenticated, isFalse);
     expect(state.error, 'invalid_credentials');
   });
 
   test('successful login stores the refresh token for 401 retries', () async {
-    await container.read(authProvider.notifier).login('demo@familyshield.dev', 'good-password');
+    await container.read(authProvider.notifier).login('demo@osratech.com', 'good-password');
     expect(container.read(authProvider).isAuthenticated, isTrue);
     final refresh = await const FlutterSecureStorage().read(key: 'refresh');
     expect(refresh, 'refresh-token');
   });
 
   test('login sends the MFA code only when non-empty', () async {
-    await container.read(authProvider.notifier).login('demo@familyshield.dev', 'good-password');
+    await container.read(authProvider.notifier).login('demo@osratech.com', 'good-password');
     expect(api.loginBody, isNotNull);
     expect(api.loginBody!.containsKey('code'), isFalse);
 
-    await container.read(authProvider.notifier).login('demo@familyshield.dev', 'good-password', ' 123456 ');
+    await container.read(authProvider.notifier).login('demo@osratech.com', 'good-password', ' 123456 ');
     expect(api.loginBody!['code'], '123456');
   });
 
   test('401 with an mfa error shows Invalid authentication code', () async {
-    await container.read(authProvider.notifier).login('demo@familyshield.dev', 'mfa-password');
+    await container.read(authProvider.notifier).login('demo@osratech.com', 'mfa-password');
     final state = container.read(authProvider);
     expect(state.isAuthenticated, isFalse);
     expect(state.error, 'Invalid authentication code');
   });
 
   test('#183: mfa_reenroll_required is reported as a missing authenticator, not a wrong code', () async {
-    await container.read(authProvider.notifier).login('demo@familyshield.dev', 'reenroll-password');
+    await container.read(authProvider.notifier).login('demo@osratech.com', 'reenroll-password');
     final state = container.read(authProvider);
     expect(state.isAuthenticated, isFalse);
     expect(state.error, isNot('Invalid authentication code'));
@@ -172,7 +172,7 @@ void main() {
 
   test('logout returns to the logged-out state', () async {
     final notifier = container.read(authProvider.notifier);
-    await notifier.login('demo@familyshield.dev', 'good-password');
+    await notifier.login('demo@osratech.com', 'good-password');
     expect(container.read(authProvider).isAuthenticated, isTrue);
     await notifier.logout();
     final state = container.read(authProvider);

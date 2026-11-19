@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../core/digits.dart';
 import '../../api/models.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
@@ -22,9 +23,9 @@ import 'pair_qr_payload.dart';
 /// app scans it, and the typed six-digit code remains the fallback (roadmap
 /// item 3.2). In [onboarding] mode the same screen is the wizard's pairing step.
 ///
-/// With [computer] set it is the same code and the same Allow / Deny claim, for a Windows or Mac client
-/// (ADR-0041 D5): a computer has no camera, so the QR gives way to the download address and its
-/// "Send the link" action.
+/// With [computer] set it is the same code and the same Allow / Deny claim, for a Windows or Mac computer
+/// (ADR-0041 D5): a computer has no camera, so the QR gives way to the download address and a Copy link
+/// action.
 class PairingQrScreen extends ConsumerStatefulWidget {
   const PairingQrScreen({
     super.key,
@@ -114,7 +115,8 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
         data: {'childId': widget.childId},
       );
       final data = Map<String, dynamic>.from(res.data as Map);
-      final code = data['code'] as String?;
+      final rawCode = data['code'];
+      final code = rawCode is String ? normalizeDigits(rawCode) : null;
       final expiresAt = DateTime.tryParse(data['expiresAt'] as String? ?? '') ??
           _now.add(kPairCodeTtl);
       if (code == null || !RegExp(r'^\d{6}$').hasMatch(code)) {
@@ -270,24 +272,14 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
             Text(l10n.sendTheLinkLine,
                 style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: AppSpace.sm),
-            Wrap(
-              alignment: WrapAlignment.end,
-              spacing: AppSpace.sm,
-              runSpacing: AppSpace.sm,
-              children: [
-                OutlinedButton.icon(
-                  key: const ValueKey('computerCopyLink'),
-                  onPressed: () => _copyLink(address),
-                  icon: const Icon(Icons.copy, size: 18),
-                  label: Text(l10n.copyLink),
-                ),
-                FilledButton.tonalIcon(
-                  key: const ValueKey('computerSendLink'),
-                  onPressed: () => _sendLink(address),
-                  icon: const Icon(Icons.send, size: 18),
-                  label: Text(l10n.sendTheLink),
-                ),
-              ],
+            Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: FilledButton.tonalIcon(
+                key: const ValueKey('computerCopyLink'),
+                onPressed: () => _copyLink(address),
+                icon: const Icon(Icons.copy, size: 18),
+                label: Text(l10n.copyLink),
+              ),
             ),
           ],
         ),
@@ -300,16 +292,6 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(context.l10n.linkCopied)));
-    }
-  }
-
-  /// "Send the link" with what the app has: no share plugin ships in this app and ADR-0041 D5.1 allows the
-  /// clipboard plus a line saying where to paste it. The line is on the card above this button.
-  Future<void> _sendLink(String address) async {
-    await Clipboard.setData(ClipboardData(text: address));
-    if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(context.l10n.sendLinkCopied)));
     }
   }
 
@@ -486,7 +468,7 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
             Text(
                 widget.computer == null
                     ? l10n.pairClaimBody(device)
-                    : l10n.pairClaimBodyComputer(device),
+                    : l10n.pairClaimBodyComputer('\u{2068}$device\u{2069}'),
                 key: const ValueKey('pairClaimBody')),
             // Issue #81: the phone detected that OSRA's data was cleared on it (`pm clear`).
             if (claim['dataCleared'] == true) ...[

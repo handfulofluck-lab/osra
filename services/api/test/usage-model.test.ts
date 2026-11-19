@@ -10,6 +10,7 @@ import {
   bucketEvents,
   locationRetentionDays,
   alertRetentionDays,
+  recordActivityUsage,
   rollupDay,
   screenTimeTodayFromDb,
   usageSeries,
@@ -47,17 +48,17 @@ describe("usage model — bucketing (Phase 2c, ADR-0013)", () => {
     expect(visits).toEqual([]);
   });
 
-  it("turns url events into WebVisit rows, deriving the domain from the url when absent", () => {
+  it("turns url events into host-only WebVisit rows and drops values with no host", () => {
     const { visits } = bucketEvents([
       { ts: "2026-10-15T10:00:00Z", type: "url", payload: { url: "https://Example.COM/a?b=1", blocked: true, category: "games" } },
       { ts: "2026-10-15T10:01:00Z", type: "url", payload: { domain: "News.Site" } },
       { ts: "2026-10-15T10:02:00Z", type: "url", payload: { url: "not a url" } },
       { ts: "garbage", type: "url", payload: { domain: "dropped.invalid-ts" } },
     ]);
+    // #841: the path and query are never stored, and a value with no host is not a visit.
     expect(visits.map((v) => [v.domain, v.blocked, v.category, v.url])).toEqual([
-      ["example.com", true, "games", "https://Example.COM/a?b=1"],
-      ["news.site", false, "", ""],
-      ["unknown", false, "", "not a url"],
+      ["example.com", true, "games", "example.com"],
+      ["news.site", false, "", "news.site"],
     ]);
   });
 
@@ -127,7 +128,9 @@ describe("usage model — reads and rollup", () => {
     }
     const now = new Date("2026-10-16T02:00:00Z");
     const out = await applyRetention(now, { RETENTION_DAYS: "90", ROLLUP_RETENTION_DAYS: "365" } as NodeJS.ProcessEnv);
-    expect(out).toEqual({ activityEvents: 2, webVisits: 2, socialEvents: 2, locationPings: 2, usageDays: 2, alerts: 2 });
+    // #841: the url rows are deleted a second time against the 90-day site-name window; both counts
+    // add into `activityEvents`, so the mock's 2 + 2 is reported as 4.
+    expect(out).toEqual({ activityEvents: 4, webVisits: 2, socialEvents: 2, locationPings: 2, usageDays: 2, alerts: 2, alertLocations: expect.any(Number) });
     const rawCutoff = new Date(now.getTime() - 90 * 86_400_000);
     // ADR-0028 decision 5 (#238): location history stops at 30 days even when the raw window is 90.
     // This assertion used to expect `rawCutoff` for locationPing; that was the old decision, so the
@@ -140,8 +143,28 @@ describe("usage model — reads and rollup", () => {
     expect(prismaMock.appUsageDaily.deleteMany).toHaveBeenCalledWith({ where: { day: { lt: new Date("2025-10-16T00:00:00.000Z") } } });
     // A too-short window is refused (never below 7 days), and rollups never outlive-less than raw.
     const guard = await applyRetention(now, { RETENTION_DAYS: "1", ROLLUP_RETENTION_DAYS: "3" } as NodeJS.ProcessEnv);
-    expect(guard.activityEvents).toBe(2);
-    expect(prismaMock.activityEvent.deleteMany).toHaveBeenLastCalledWith({ where: { ts: { lt: rawCutoff } } });
+    expect(guard.activityEvents).toBe(4);
+    expect(prismaMock.activityEvent.deleteMany).toHaveBeenCalledWith({ where: { ts: { lt: rawCutoff } } });
+    expect(prismaMock.activityEvent.deleteMany).toHaveBeenCalledWith({ where: { type: "url", ts: { lt: rawCutoff } } });
+  });
+
+  it("applyRetention keeps site names to 90 days even when RETENTION_DAYS is raised (#830, Fable B1)", async () => {
+    for (const m of ["activityEvent", "webVisit", "socialEvent", "locationPing", "appUsageDaily", "alert"] as const) {
+      prismaMock[m].deleteMany.mockResolvedValue({ count: 0 });
+    }
+    const now = new Date("2026-11-12T02:00:00Z");
+    await applyRetention(now, { RETENTION_DAYS: "365", ROLLUP_RETENTION_DAYS: "365" } as NodeJS.ProcessEnv);
+    const day = 86_400_000;
+    const siteCutoff = new Date(now.getTime() - 90 * day);
+    expect(prismaMock.webVisit.deleteMany).toHaveBeenCalledWith({ where: { ts: { lt: siteCutoff } } });
+    // The other raw rows keep the configured year, so the two windows are not interchangeable.
+    expect(prismaMock.activityEvent.deleteMany).toHaveBeenCalledWith({
+      where: { ts: { lt: new Date(now.getTime() - 365 * day) } },
+    });
+    // #841: url rows in the raw log are site names too, so they follow the 90-day window.
+    expect(prismaMock.activityEvent.deleteMany).toHaveBeenCalledWith({
+      where: { type: "url", ts: { lt: siteCutoff } },
+    });
   });
 
   it("applyRetention keeps alerts for 365 days: a 366-day-old alert goes, a 364-day-old one stays (Play decision 10 B)", async () => {
@@ -156,6 +179,40 @@ describe("usage model — reads and rollup", () => {
     const day = 86_400_000;
     expect(new Date(now.getTime() - 366 * day) < alertCutoff).toBe(true);
     expect(new Date(now.getTime() - 364 * day) < alertCutoff).toBe(false);
+  });
+
+  /**
+   * Issue #672 review (Fable B2, ADR-0028 decision 5): coordinates must not outlive the 30-day location
+   * window inside an alert kept for up to a year. The alert stays — a parent must not lose the record of an
+   * SOS — and only the five location keys go.
+   */
+  it("applyRetention removes the location keys from an alert older than the location window and keeps the alert", async () => {
+    for (const m of ["activityEvent", "webVisit", "socialEvent", "locationPing", "appUsageDaily", "alert"] as const) {
+      prismaMock[m].deleteMany.mockResolvedValue({ count: 0 });
+    }
+    const now = new Date("2026-11-12T02:00:00Z");
+    prismaMock.alert.findMany.mockResolvedValue([
+      { id: "old-with-place", metadata: { deviceId: "dev-1", lat: 25.2769, lng: 51.5211, accuracyM: 12, takenAt: "2026-09-01T10:00:00.000Z", ageSeconds: 60, note: "sos" } },
+      { id: "old-without-place", metadata: { deviceId: "dev-1" } },
+    ]);
+    prismaMock.alert.update.mockResolvedValue({});
+
+    const out = await applyRetention(now, { RETENTION_DAYS: "90", ROLLUP_RETENTION_DAYS: "365" } as NodeJS.ProcessEnv);
+
+    const locationCutoff = new Date(now.getTime() - 30 * 86_400_000);
+    expect(prismaMock.alert.findMany).toHaveBeenCalledWith({
+      where: { createdAt: { lt: locationCutoff } },
+      select: { id: true, metadata: true },
+    });
+    // Only the row that had a place is written, and its other keys survive the strip.
+    expect(prismaMock.alert.update).toHaveBeenCalledTimes(1);
+    expect(prismaMock.alert.update).toHaveBeenCalledWith({
+      where: { id: "old-with-place" },
+      data: { metadata: { deviceId: "dev-1", note: "sos" } },
+    });
+    expect(out.alertLocations).toBe(1);
+    // The alert itself is not deleted by this step: that stays the 365-day rule's job.
+    expect(prismaMock.alert.deleteMany).toHaveBeenCalledTimes(1);
   });
 
   it("the alert window may be lowered but never raised past 365 (Play decision 10 B)", async () => {
@@ -236,6 +293,53 @@ describe("usage model — reads and rollup", () => {
   });
 });
 
+/**
+ * #841 Fable m11: the route now gates before this hook, so the hook's own filter is a backstop. A direct
+ * call with the flag off must still drop an unblocked name — otherwise the backstop is decoration.
+ */
+describe("#841 the rollup hook is a real backstop", () => {
+  beforeEach(() => resetPrismaMock());
+
+  it("drops an unblocked name when the flag is off, called directly", async () => {
+    prismaMock.webVisit.createMany.mockResolvedValue({ count: 1 });
+    const out = await recordActivityUsage(
+      "child-1",
+      "dev-1",
+      [{ ts: "2026-10-15T10:00:00Z", type: "url", payload: { url: "example.com", blocked: false } }],
+      { siteNames: false },
+    );
+    expect(out.visits).toBe(0);
+    expect(prismaMock.webVisit.createMany).not.toHaveBeenCalled();
+  });
+
+  it("stores nothing for a blocked attempt when the flag is off, called directly (finding-5 ruling)", async () => {
+    prismaMock.webVisit.createMany.mockResolvedValue({ count: 1 });
+    const out = await recordActivityUsage(
+      "child-1",
+      "dev-1",
+      [{ ts: "2026-10-15T10:00:00Z", type: "url", payload: { url: "https://bad.example/secret-path?token=1", blocked: true } }],
+      { siteNames: false },
+    );
+    expect(out.visits).toBe(0);
+    expect(prismaMock.webVisit.createMany).not.toHaveBeenCalled();
+  });
+
+  it("drops an excluded host sent as a URL when called directly, and a value with no host", async () => {
+    prismaMock.webVisit.createMany.mockResolvedValue({ count: 0 });
+    const out = await recordActivityUsage(
+      "child-1",
+      "dev-1",
+      [
+        { ts: "2026-10-15T10:00:00Z", type: "url", payload: { domain: "https://api.osratech.com/v1/me", url: "https://api.osratech.com/v1/me", blocked: true } },
+        { ts: "2026-10-15T10:00:01Z", type: "url", payload: { url: "://", blocked: true } },
+      ],
+      { siteNames: false },
+    );
+    expect(out.visits).toBe(0);
+    expect(prismaMock.webVisit.createMany).not.toHaveBeenCalled();
+  });
+});
+
 describe("usage rollup scheduler", () => {
   beforeEach(() => resetPrismaMock());
 
@@ -289,9 +393,9 @@ describe("usage model — ingestion hooks and routes", () => {
       create: { childId: "child-1", deviceId: "dev-1", day: DAY, app: "YouTube", minutes: 12 },
       update: { minutes: { increment: 12 } },
     });
-    expect(prismaMock.webVisit.createMany).toHaveBeenCalledWith({
-      data: [{ childId: "child-1", deviceId: "dev-1", ts: new Date("2026-10-15T10:01:00Z"), domain: "example.com", url: "https://example.com/x", blocked: true, category: "" }],
-    });
+    // #841 + Claude's finding-5 ruling: with the flag off no host is stored, so the blocked url in this
+    // batch produces no WebVisit row; the app_usage row above is still folded.
+    expect(prismaMock.webVisit.createMany).not.toHaveBeenCalled();
 
     prismaMock.appUsageDaily.upsert.mockRejectedValueOnce(new Error("db down"));
     const again = await app.inject({ method: "POST", url: "/v1/devices/dev-1/activity", headers: deviceHeader(app), payload: { events: [{ type: "app_usage", payload: { app: "X", minutes: 1 } }] } });
@@ -348,6 +452,9 @@ describe("usage model — ingestion hooks and routes", () => {
   });
 
   it("GET /reports/usage and /reports/web are family-scoped and validated", async () => {
+    // This row is about scoping and validation, not the flag: with the flag off the web report is empty
+    // by design (Claude's finding-5 ruling), so the read is exercised with site names on.
+    process.env.SITE_NAMES_ENABLED = "true";
     const app = await buildApp(reportsRoutes, "/v1/reports");
     prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", familyId: "fam-1" });
     prismaMock.appUsageDaily.findMany.mockResolvedValue([{ day: utcDay(), app: "YouTube", minutes: 9, deviceId: "d" }]);
@@ -370,6 +477,7 @@ describe("usage model — ingestion hooks and routes", () => {
     expect(bad.statusCode).toBe(400);
     const badWeb = await app.inject({ method: "GET", url: "/v1/reports/web?childId=child-1&days=91", headers: authHeader(app) });
     expect(badWeb.statusCode).toBe(400);
+    delete process.env.SITE_NAMES_ENABLED;
     await app.close();
   });
 });

@@ -10,7 +10,10 @@ import { canWakeDevice } from "./push/notify.js";
  * header and the body stays the same array older agents expect.
  *
  * The agent clamps the value to 30–900 s and polls every 60 s whatever the header says while the
- * screen is on, so a child using the phone still gets a lock within a minute if a push is lost.
+ * screen is on, so a child using the phone still gets a lock within a minute if a push is lost. Since
+ * #673 it polls every 10 s while a lock or a pause is up: the overlay keeps the screen on, and that is
+ * exactly when a parent is waiting to lift the restriction — the Flip4's `resume_internet` waited 52 s
+ * for the 60 s cap on 12 Nov.
  */
 export const POLL_AFTER_HEADER = "X-Poll-After";
 

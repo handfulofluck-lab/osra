@@ -5,6 +5,9 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../api/permission_errors.dart';
+import '../../core/ltr_isolate.dart';
+import '../../widgets/error_retry_view.dart';
 import '../../l10n/l10n.dart';
 import 'command_messages.dart';
 import '../../providers/auth_provider.dart';
@@ -14,6 +17,7 @@ import '../../providers/family_provider.dart';
 import '../rules/rules_behind_banner.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
+import '../../widgets/layout_helpers.dart';
 import '../dashboard/dashboard_screen.dart' show formatLastSeen;
 import '../pairing/add_computer_screen.dart';
 import '../pairing/pair_qr_screen.dart';
@@ -22,7 +26,6 @@ import '../social/social_screen.dart' show SocialSectionsView;
 import 'app_groups_section.dart';
 import 'phone_setup_section.dart';
 import 'command_history_screen.dart' show formatCommandTime;
-import '../../api/permission_errors.dart';
 
 /// Per-child detail view with Overview / Apps / Social / Location / Alerts tabs.
 class ChildDetailScreen extends ConsumerWidget {
@@ -38,52 +41,91 @@ class ChildDetailScreen extends ConsumerWidget {
       length: 5,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(child?.displayName ?? l10n.childFallback),
-          // NOTE: scrollable — five labels no longer fit at 320px width.
-          bottom: TabBar(
-            isScrollable: true,
-            tabs: [
-              Tab(text: l10n.tabOverview),
-              Tab(text: l10n.tabApps),
-              Tab(text: l10n.tabSocial),
-              Tab(text: l10n.tabLocation),
-              Tab(text: l10n.tabAlerts),
-            ],
+          toolbarHeight: MediaQuery.textScalerOf(context).scale(kToolbarHeight + AppSpace.lg),
+          // NOTE: ellipsis at 1.35/2.0 text scale is accepted here because the full name stands in Overview directly below.
+          title: Text(
+            child?.displayName ?? l10n.childFallback,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          // NOTE: scrollable — five labels no longer fit at 320px width; height scales with text (B4).
+          bottom: FadingScrollableTabBar(
+            tabBar: TabBar(
+              isScrollable: true,
+              tabs: FadingScrollableTabBar.scaledTabs(context, [
+                l10n.tabOverview,
+                l10n.tabApps,
+                l10n.tabSocial,
+                l10n.tabLocation,
+                l10n.tabAlerts,
+              ]),
+            ),
           ),
           actions: [
-            IconButton(
-              tooltip: l10n.reportsTooltip,
-              icon: const Icon(Icons.insights),
-              onPressed: () => context.push('/child/$childId/reports'),
-            ),
-            IconButton(
-              key: const ValueKey('searchSafetyButton'),
-              tooltip: l10n.searchSafetyTooltip,
-              icon: const Icon(Icons.saved_search_outlined),
-              onPressed: () => context.push('/child/$childId/searches'),
-            ),
-            // NOTE: the label clips at the left edge under about 360px (review
-            // render 03, 320px Arabic), so the narrow bar keeps the same action
-            // as a tooltipped icon -- the shape the other two actions use.
-            // The key stays on both so a test reaches the action at any width.
+            // NOTE: below 360px fold the three actions into one overflow menu so scale 1.0 fits the child name without truncation.
             if (MediaQuery.sizeOf(context).width < 360)
+              PopupMenuButton<String>(
+                key: const ValueKey('childActionsMenu'),
+                onSelected: (v) => context.push('/child/$childId/$v'),
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: 'reports',
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.insights),
+                        const SizedBox(width: AppSpace.sm),
+                        Flexible(child: Text(l10n.reportsTooltip)),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'searches',
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.saved_search_outlined),
+                        const SizedBox(width: AppSpace.sm),
+                        Flexible(child: Text(l10n.searchSafetyTooltip)),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'rules',
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.rule),
+                        const SizedBox(width: AppSpace.sm),
+                        Flexible(child: Text(l10n.editRules)),
+                      ],
+                    ),
+                  ),
+                ],
+              )
+            else ...[
+              IconButton(
+                tooltip: l10n.reportsTooltip,
+                icon: const Icon(Icons.insights),
+                onPressed: () => context.push('/child/$childId/reports'),
+              ),
+              IconButton(
+                key: const ValueKey('searchSafetyButton'),
+                tooltip: l10n.searchSafetyTooltip,
+                icon: const Icon(Icons.saved_search_outlined),
+                onPressed: () => context.push('/child/$childId/searches'),
+              ),
               IconButton(
                 key: const ValueKey('editRulesButton'),
                 tooltip: l10n.editRules,
                 icon: const Icon(Icons.rule),
-                onPressed: () => context.push('/child/$childId/rules'),
-              )
-            else
-              TextButton.icon(
-                key: const ValueKey('editRulesButton'),
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(
+                  minWidth: kMinInteractiveDimension,
+                  minHeight: kMinInteractiveDimension,
                 ),
                 onPressed: () => context.push('/child/$childId/rules'),
-                icon: const Icon(Icons.rule, size: 18),
-                label: Text(l10n.editRules),
               ),
+            ],
           ],
         ),
         body: TabBarView(
@@ -112,17 +154,37 @@ class _OverviewTab extends ConsumerWidget {
     final devices = overview?.devicesFor(childId) ?? const <Device>[];
     final internetPaused = ref.watch(internetPausedProvider(childId)).valueOrNull ?? false;
     if (overview == null) return const Center(child: CircularProgressIndicator());
-    return ListView(
-      padding: const EdgeInsets.all(AppSpace.lg),
-      children: [
-        if (child != null)
-          Card(
-            child: ListTile(
-              leading: CircleAvatar(child: Text(child.initials)),
-              title: Text(child.displayName),
-              subtitle: Text(l10n.bornYear(child.birthYear)),
+    return RefreshIndicator(
+      // #876: the delivery line on this tab had no way to be refreshed by hand — pulling down did nothing.
+      onRefresh: () async {
+        ref.invalidate(familyProvider);
+        for (final device in devices) {
+          ref.invalidate(deviceCommandHistoryProvider(device.id));
+        }
+      },
+      child: SingleChildScrollView(
+      // The pull gesture needs something scrollable even when the content fits: `AlwaysScrollable` keeps it
+      // working on a short page and at a large text scale alike.
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (child != null) ...[
+            Card(
+              child: ListTile(
+                leading: CircleAvatar(child: Text(child.initials)),
+                title: Text(child.displayName),
+                subtitle: Text(l10n.bornYear(child.birthYear)),
+              ),
             ),
-          ),
+            const SizedBox(height: AppSpace.sm),
+            FilledButton.tonal(
+              key: const ValueKey('overviewEditRulesButton'),
+              onPressed: () => context.push('/child/$childId/rules'),
+              child: Text(l10n.editRules),
+            ),
+          ],
         // NOTE: simplest entry — the chevron jumps to the Social tab instead
         // of pushing the standalone /child/:id/social route.
         Card(
@@ -175,7 +237,10 @@ class _OverviewTab extends ConsumerWidget {
                       _ => Icons.devices_other,
                     }),
                     title: Text(d.model),
-                    subtitle: Text('${d.platform} ${d.osVersion} · ${_statusLabel(context, d)}'),
+                    subtitle: Text(switch (formatDevicePlatformLabel(d.platform, d.osVersion)) {
+                      '' => _statusLabel(context, d),
+                      final platformLabel => '$platformLabel · ${_statusLabel(context, d)}',
+                    }),
                     trailing: d.batteryPct > 0
                         ? Chip(
                             visualDensity: VisualDensity.compact,
@@ -270,6 +335,8 @@ class _OverviewTab extends ConsumerWidget {
           ),
         ),
       ],
+      ),
+    ),
     );
   }
 
@@ -361,13 +428,19 @@ class _BonusTimeCardState extends ConsumerState<_BonusTimeCard> {
     } on DioException catch (e) {
       // #441 review: the bonus route runs `requireConsent` too, so a 428 needs the sentence, not '$e'.
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(readErrorText(l10n, e, () => l10n.bonusFailed('$e'))),
-        ));
+        showErrorSnackBar(
+          context,
+          friendlyErrorText(l10n, e, () => l10n.bonusFailed),
+          onRetry: () => _grant(minutes),
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.bonusFailed('$e'))));
+        showErrorSnackBar(
+          context,
+          friendlyErrorText(l10n, e, () => l10n.bonusFailed),
+          onRetry: () => _grant(minutes),
+        );
       }
     } finally {
       if (mounted) setState(() => _granting = false);
@@ -396,7 +469,7 @@ class _BonusTimeCardState extends ConsumerState<_BonusTimeCard> {
                 for (final minutes in const [15, 30, 60])
                   OutlinedButton(
                     onPressed: _granting ? null : () => _grant(minutes),
-                    child: Text('+$minutes'),
+                    child: Text(ltrIsolate('+$minutes')),
                   ),
               ],
             ),
@@ -419,6 +492,7 @@ class _WindDownCard extends ConsumerWidget {
     final minutes = await showDialog<int>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: Text(l10n.windDown),
         content: Text(l10n.windDownBody),
         actions: [
@@ -442,13 +516,17 @@ class _WindDownCard extends ConsumerWidget {
     } on DioException catch (e) {
       // #441 review: wind-down is a `controls.ts` write like the others.
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(readErrorText(l10n, e, () => l10n.windDownFailed('$e'))),
-        ));
+        showErrorSnackBar(
+          context,
+          friendlyErrorText(l10n, e, () => l10n.windDownFailed),
+        );
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.windDownFailed('$e'))));
+        showErrorSnackBar(
+          context,
+          friendlyErrorText(l10n, e, () => l10n.windDownFailed),
+        );
       }
     }
   }
@@ -509,7 +587,10 @@ Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, St
     }
   } catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.commandFailed('$e'))));
+      showErrorSnackBar(
+        context,
+        friendlyErrorText(l10n, e, () => l10n.commandFailed),
+      );
     }
   }
 }
@@ -537,16 +618,19 @@ Future<void> _toggleInternet(BuildContext context, WidgetRef ref, String childId
       );
     }
   } on ControlsRefusal catch (r) {
-    // Issue #437 A2: a refused pause/resume says why, through the same mapping every write uses;
-    // anything unmapped keeps the old message rather than inventing one.
+    // Issue #437 A2: a refused pause/resume says why, through the same mapping every write uses.
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(readErrorText(l10n, r.error, () => l10n.commandFailed('${r.error}'))),
-      ));
+      showErrorSnackBar(
+        context,
+        friendlyErrorText(l10n, r.error, () => l10n.commandFailed),
+      );
     }
   } catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.commandFailed('$e'))));
+      showErrorSnackBar(
+        context,
+        friendlyErrorText(l10n, e, () => l10n.commandFailed),
+      );
     }
   }
 }
@@ -565,7 +649,10 @@ class _AppsTab extends ConsumerWidget {
     final now = familyWallClock(ref.watch(clockProvider)(), offset);
     return rules.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text(l10n.rulesLoadFailed('$e'))),
+      error: (e, _) => ErrorRetryView(
+        message: friendlyErrorText(l10n, e, () => l10n.rulesLoadFailed),
+        onRetry: () => ref.invalidate(rulesProvider(childId)),
+      ),
       data: (ruleSet) {
         if (ruleSet.appRules.isEmpty) return Center(child: Text(l10n.noPerAppRules));
         return ListView(
@@ -640,7 +727,12 @@ class _LocationTab extends ConsumerWidget {
     final ping = ref.watch(locationProvider(childId));
     return ping.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text(l10n.locationLoadFailed('$e'))),
+      // #850: never show exception text to a parent. A read refused for permission says so; anything
+      // else is the plain localized line, with no error detail.
+      error: (e, _) => ErrorRetryView(
+        message: friendlyErrorText(l10n, e, () => l10n.locationLoadFailed),
+        onRetry: () => ref.invalidate(locationProvider(childId)),
+      ),
       data: (p) => ListView(
         padding: const EdgeInsets.all(AppSpace.lg),
         children: [
@@ -650,7 +742,7 @@ class _LocationTab extends ConsumerWidget {
             Card(
               child: ListTile(
                 leading: const Icon(Icons.location_on),
-                title: Text('${p.lat.toStringAsFixed(6)}, ${p.lng.toStringAsFixed(6)}'),
+                title: Text(ltrIsolate('${p.lat.toStringAsFixed(6)}, ${p.lng.toStringAsFixed(6)}')),
                 subtitle: Text(l10n.accuracyLabel(
                   p.accuracyM.round(),
                   p.timestamp == null
@@ -728,7 +820,11 @@ class _HistoryScrubberState extends ConsumerState<_HistoryScrubber> {
       error: (e, _) => Card(
           child: ListTile(
         leading: const Icon(Icons.history),
-        title: Text(readErrorText(l10n, e, () => l10n.locationHistoryLoadFailed('$e'))),
+        title: Text(friendlyErrorText(l10n, e, () => l10n.locationHistoryLoadFailed)),
+        trailing: TextButton(
+          onPressed: () => ref.invalidate(locationHistoryProvider(widget.childId)),
+          child: Text(l10n.retry),
+        ),
       )),
       data: (pings) {
         if (pings.isEmpty) {
@@ -766,10 +862,10 @@ class _HistoryScrubberState extends ConsumerState<_HistoryScrubber> {
                     Expanded(
                       child: Text(
                         ts == null
-                            ? '${ping.lat.toStringAsFixed(5)}, ${ping.lng.toStringAsFixed(5)} · ${l10n.accuracyUnknown}'
+                            ? '${ltrIsolate('${ping.lat.toStringAsFixed(5)}, ${ping.lng.toStringAsFixed(5)}')} · ${l10n.accuracyUnknown}'
                             : '${DateFormat.Hm(context.localeName).format(ts.toLocal())} · '
-                                '${ping.lat.toStringAsFixed(5)}, ${ping.lng.toStringAsFixed(5)} · '
-                                '±${ping.accuracyM.round()} m',
+                                '${ltrIsolate('${ping.lat.toStringAsFixed(5)}, ${ping.lng.toStringAsFixed(5)}')} · '
+                                '${l10n.accuracyShort(ping.accuracyM.round())}',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ),
@@ -794,7 +890,10 @@ class _AlertsTab extends ConsumerWidget {
     final alerts = ref.watch(alertsProvider(AlertFilter(childId: childId)));
     return alerts.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text(l10n.alertsLoadFailed('$e'))),
+      error: (e, _) => ErrorRetryView(
+        message: friendlyErrorText(l10n, e, () => l10n.alertsLoadFailed),
+        onRetry: () => ref.invalidate(alertsProvider(AlertFilter(childId: childId))),
+      ),
       data: (page) {
         if (page.items.isEmpty) return Center(child: Text(l10n.noRecentAlerts));
         return ListView(
@@ -803,6 +902,9 @@ class _AlertsTab extends ConsumerWidget {
               AlertTile(alert: a, onAck: () async {
                 try {
                   await ref.read(apiClientProvider).raw.post('/v1/alerts/${a.id}/ack');
+                  ref.read(alertsSeenProvider.notifier).markAcknowledged(a.id);
+                  ref.invalidate(unacknowledgedAlertsProvider);
+                  ref.invalidate(unacknowledgedCountProvider);
                 } catch (_) {}
                 ref.invalidate(alertsProvider);
               }),
@@ -839,7 +941,10 @@ class _AppInsightSheet extends ConsumerWidget {
       ),
       error: (e, _) => Padding(
         padding: const EdgeInsets.all(AppSpace.xl),
-        child: Text(l10n.insightsLoadFailed('$e')),
+        child: ErrorRetryView(
+          message: friendlyErrorText(l10n, e, () => l10n.insightsLoadFailed),
+          onRetry: () => ref.invalidate(appInsightsProvider(packageId)),
+        ),
       ),
       data: (data) {
         if (data == null) {
@@ -904,7 +1009,7 @@ class AlertTile extends StatelessWidget {
     return Card(
       child: ListTile(
         leading: Icon(Icons.circle, color: severityColor(alert.severity, context), size: 14),
-        title: Text(l10n.alertTitleFor(alert.category, alert.title, isEnglish: context.localeName.startsWith('en'), tamperType: alert.metadata['type']?.toString()), maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(l10n.alertTitleFor(alert.category, alert.title, isEnglish: context.localeName.startsWith('en'), tamperType: alert.metadata['type']?.toString()), maxLines: 2, overflow: TextOverflow.ellipsis),
         subtitle: Text('${l10n.alertCategory(alert.category)} · $when'),
         trailing: onAck == null ? null : IconButton(icon: const Icon(Icons.check), tooltip: l10n.acknowledgeTooltip, onPressed: onAck),
         onTap: onTap,

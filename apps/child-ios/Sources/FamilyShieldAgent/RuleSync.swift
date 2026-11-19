@@ -113,6 +113,8 @@ public struct RuleSyncClient {
     public enum SyncError: Error, Equatable {
         case httpError(status: Int)
         case unusableResponse
+        /// #690: `401 device_revoked`, the parent removed this phone.
+        case deviceRevoked
     }
 
     public func fetch(for identity: AgentIdentity) async throws -> RuleSet {
@@ -123,6 +125,7 @@ public struct RuleSyncClient {
         request.timeoutInterval = 30
         let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if DeviceRevocation.isRevoked(status: status, body: data) { throw SyncError.deviceRevoked }
         // 428 means consent was withdrawn: the device must stop enforcing, which the caller does by clearing.
         guard status == 200 else { throw SyncError.httpError(status: status) }
         guard let rules = try? JSONDecoder().decode(RuleSet.self, from: data) else { throw SyncError.unusableResponse }
@@ -262,6 +265,14 @@ public enum ShieldPolicy: Equatable {
         return routine.blockedApps.isEmpty ? .none : .only(routine.blockedApps)
     }
 
+    /// Whether every website is shielded too. "Everything except the allowed apps" has to include the web: the
+    /// app-category shield does not cover the built-in browser, so without this a child reached any site at
+    /// bedtime (child-escape run, iPhone 13, 13 Nov). The allowed apps stay usable; their web pages do not.
+    public var shieldsAllWeb: Bool {
+        if case .allExcept = self { return true }
+        return false
+    }
+
     /// `decide` with the rules stored by the last sync.
     public static func current(activity: String, weekday: Int) -> ShieldPolicy {
         decide(activity: activity, weekday: weekday, alwaysAllowed: RuleStore.alwaysAllowedApps(),
@@ -312,7 +323,7 @@ public enum RuleSyncer {
 
     /// The real apply: Screen Time, where the frameworks exist; nil (nothing applied) elsewhere.
     public static var defaultApply: Apply? {
-        #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+        #if os(iOS)
         return { try ScreenTimeController().applyRules($0) }
         #else
         return nil
@@ -345,10 +356,14 @@ public enum RuleSyncer {
             return .synced(rules)
         } catch RuleSyncClient.SyncError.httpError(status: 428) {
             RuleStore.clear()
-            #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+            #if os(iOS)
             if enforce { ScreenTimeController().clearRules() }
             #endif
             return .consentWithdrawn
+        } catch RuleSyncClient.SyncError.deviceRevoked {
+            // #690: the parent removed this phone. Nothing stays paired or enforced; the app shows pairing.
+            DeviceRevocation.unpair()
+            return .notPaired
         } catch {
             return .failed(String(describing: error))
         }

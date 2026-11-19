@@ -6,6 +6,7 @@ import { requireConsent } from "../middleware/requireConsent.js";
 import { checkActiveConsent } from "../lib/consent.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
+import { familyAppliedVersion } from "../lib/rulesApplied.js";
 import { defaultRuleSetRow } from "../lib/defaultRules.js";
 import { setupFor } from "../lib/capabilities.js";
 import { getRedis } from "../redis.js";
@@ -14,6 +15,7 @@ import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
 import { isValidTimeZone, utcOffsetMinutes } from "../lib/digestSchedule.js";
 import { ReauthSchema, checkReauth, consentHeldElsewhere, eraseFamilyData } from "../lib/accountDeletion.js";
 import { AUTH_RATE_LIMIT } from "../lib/rateLimits.js";
+import { entitlement, storeAccountIdFor } from "../lib/entitlement.js";
 
 const ConsentCreateSchema = z.object({
   method: z.enum(["sms_plus", "kba", "face_match", "credit_card"]),
@@ -48,6 +50,17 @@ type AuthedUser = { sub: string; familyId: string };
 const sanitizeParent = ({ passwordHash: _ph, mfaSecret: _ms, mfaRecoveryCodes: _mrc, ...rest }: Record<string, unknown>) => rest;
 
 export async function familyRoutes(app: FastifyInstance) {
+  /** Every guardian reads the plan; only the owner receives the id used to make a store purchase. */
+  app.get("/entitlement", { preHandler: requireParent }, async (req, reply) => {
+    const user = req.user as AuthedUser;
+    const parent = await prisma.parent.findUnique({ where: { id: user.sub }, select: { familyId: true, role: true } });
+    if (!parent) return reply.code(404).send({ error: "parent_not_found" });
+    if (parent.familyId !== user.familyId) return reply.code(403).send({ error: "forbidden" });
+    const plan = await entitlement(parent.familyId);
+    if (parent.role !== "owner") return plan;
+    return { ...plan, store_account_id: await storeAccountIdFor(parent.familyId) };
+  });
+
   /** Return the authenticated parent's family envelope: family, parents, children (with devices) and a flat device list. */
   app.get("/me", { preHandler: requireParent }, async (req, reply) => {
     const user = req.user as AuthedUser;
@@ -55,7 +68,18 @@ export async function familyRoutes(app: FastifyInstance) {
       where: { id: user.familyId },
       include: {
         parents: true,
-        children: { include: { devices: true, ruleSet: true, consents: true, geofences: true } },
+        children: {
+          include: {
+            // Issue #790: a pending device (`pairedAt` null — an approved claim whose phone has not yet
+            // made one accepted request) is not in the parent's envelope. The app draws these rows as the
+            // family's phones, and the flat `devices` list below is built from them, so excluding it here
+            // covers the child cards and the flat list the same way `GET /v1/devices` does.
+            devices: { where: { pairedAt: { not: null } } },
+            ruleSet: true,
+            consents: true,
+            geofences: true,
+          },
+        },
       },
     });
     if (!family) return reply.code(404).send({ error: "family_not_found" });
@@ -94,14 +118,15 @@ export async function familyRoutes(app: FastifyInstance) {
         }
         // Issue #475: the pair the rule screens compare, on the request the app already makes. The child
         // endpoint answers the same two numbers from the same rule — one row asserts they agree.
-        const reported = c.devices
-          .map((d) => (d as { appliedRulesVersion?: number | null }).appliedRulesVersion)
-          .filter((v): v is number => typeof v === "number");
         return {
           ...c,
           screenTimeTodayMinutes,
           rulesVersion: (c as { ruleSet?: { rulesVersion?: number } | null }).ruleSet?.rulesVersion ?? null,
-          appliedRulesVersion: reported.length > 0 ? Math.min(...reported) : null,
+          // #865: one reduction for the whole app — the same function the telemetry push fires on, so the
+          // number a parent is shown and the number the push announces cannot drift apart.
+          appliedRulesVersion: familyAppliedVersion(
+            c.devices.map((d) => (d as { appliedRulesVersion?: number | null }).appliedRulesVersion),
+          ),
           // Issue #601: the parent app's device cards and its "Phone setup" block read this envelope, not
           // `GET /v1/devices`, so the setup projection has to travel here too — the same `setupFor` call as
           // `devices.ts` (list and detail), so the two cannot disagree. A device with no report carries
@@ -114,7 +139,8 @@ export async function familyRoutes(app: FastifyInstance) {
       }),
     );
     const devices = children.flatMap((c) => c.devices);
-    const { parents: _parents, ...familyRest } = family;
+    // The purchase-account id has exactly one read: the owner's entitlement response above.
+    const { parents: _parents, storeAccountId: _storeAccountId, ...familyRest } = family;
     // ADR-0014 amendment, decision 2: a guardian without `location` must not receive the family's
     // geofences through this broad read after the narrow `GET /v1/location/geofences/:childId`
     // refuses them. Owners, co-parents and device tokens are unwithheld (`guardianPermissions` is
@@ -211,16 +237,13 @@ export async function familyRoutes(app: FastifyInstance) {
       prisma.ruleSet.findUnique({ where: { childId }, select: { rulesVersion: true } }),
       prisma.device.findMany({ where: { childId }, select: { appliedRulesVersion: true } }),
     ]);
-    const reported = devices
-      .map((d) => d.appliedRulesVersion)
-      .filter((v): v is number => typeof v === "number");
     return {
       ...child,
       rulesVersion: ruleSet?.rulesVersion ?? null,
       // The MINIMUM of the children's devices, because the warning is about a phone that is behind: with
       // two handsets, one having the change is not enough. Null when no device has ever reported, which
       // the app renders as nothing rather than as a warning.
-      appliedRulesVersion: reported.length > 0 ? Math.min(...reported) : null,
+      appliedRulesVersion: familyAppliedVersion(devices.map((d) => d.appliedRulesVersion)),
     };
   });
 
@@ -358,12 +381,22 @@ export async function familyRoutes(app: FastifyInstance) {
       include: {
         parents: true,
         children: {
-          include: { devices: true, ruleSet: true, consents: true, geofences: true, alerts: true, pairingDecisions: true },
+          include: {
+            // #790: the export is the parent's record of their family, and a pending device was never
+            // part of it — it is a row an approved claim created and no accepted request has confirmed.
+            // Same filter as `/me`, so the export cannot show a phone the app does not.
+            devices: { where: { pairedAt: { not: null } } },
+            ruleSet: true,
+            consents: true,
+            geofences: true,
+            alerts: true,
+            pairingDecisions: true,
+          },
         },
       },
     });
     if (!family) return reply.code(404).send({ error: "family_not_found" });
-    reply.header("Content-Disposition", `attachment; filename="familyshield-export-${family.id}.json"`);
+    reply.header("Content-Disposition", `attachment; filename="osra-export-${family.id}.json"`);
     // Strip internal secrets and push tokens from the export too.
     const exportChildren = family.children.map((c) => ({
       ...c,

@@ -235,7 +235,7 @@ void main() {
 
       await expectLater(
         client.raw.post('/v1/auth/mfa/reset/status', data: {
-          'email': 'qa@familyshield.dev',
+          'email': 'qa@osratech.com',
           'password': 'wrong',
           'requestId': 'req-1',
         }),

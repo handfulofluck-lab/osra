@@ -247,9 +247,9 @@ void main() {
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
       // the real label is "+15", not "+15 min" — read, not guessed — and it sits below the fold
-      await tester.ensureVisible(find.text('+15'));
+      await tester.ensureVisible(find.text('\u2066+15\u2069'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('+15'));
+      await tester.tap(find.text('\u2066+15\u2069'));
       await tester.pumpAndSettle();
 
       expect(api.calls('POST', '/v1/controls/children/child-1/bonus'), hasLength(1));
@@ -319,7 +319,9 @@ void main() {
       await pumpScreen(
           tester, const CommandHistoryScreen(childId: 'child-1'), api);
 
-      expect(find.text('Could not load command history'), findsOneWidget);
+      // #841 condition 1: the message is now a whole sentence (Arabic Bureau's line, English mirroring it),
+      // so the row matches the sentence the app actually ships rather than the fragment it used to show.
+      expect(find.text('Could not load command history. Check your connection and try again.'), findsOneWidget);
       expect(calls, 1);
 
       await tester.tap(find.text('Retry'));
@@ -327,9 +329,27 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(calls, 2);
-      expect(find.text('Could not load command history'), findsNothing);
+      expect(find.text('Could not load command history. Check your connection and try again.'), findsNothing);
       expect(find.text('Confirmed by device'), findsOneWidget);
     });
+
+  /// Ahmed's N1 on #841 (6967168641): the inner history card printed the raw exception under the sentence,
+  /// which the outer error state no longer does. Mutant: put the `Text('$e')` back and this row goes red —
+  /// it is a different code path from the summary row #841 fixed, which is how it survived that review.
+  testWidgets('a failed device history prints the sentence and Retry, never the exception', (tester) async {
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/devices/dev-1/commands/history': (_) => const FakeHttpError(500),
+    });
+    await pumpScreen(tester, const CommandHistoryScreen(childId: 'child-1'), api);
+
+    expect(find.text('Could not load command history. Check your connection and try again.'), findsWidgets);
+    expect(find.text('Retry'), findsWidgets);
+    for (final raw in ['DioException', 'Exception', 'bad response', ': null', 'null']) {
+      expect(find.textContaining(raw), findsNothing, reason: 'raw "$raw" reached the screen');
+    }
+  });
+
 
     testWidgets('layout survives a long device model at 320x568',
         (tester) async {

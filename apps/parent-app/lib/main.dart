@@ -6,9 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
+import 'core/date_formatting.dart';
 import 'push/background_push.dart';
 
-void main() {
+Future<void> main() async {
+  await configureDateFormatting();
   WidgetsFlutterBinding.ensureInitialized();
   // Registered before the first frame so a wake that arrives while the app is
   // starting still has a handler (#360). Not awaited: on a build with no

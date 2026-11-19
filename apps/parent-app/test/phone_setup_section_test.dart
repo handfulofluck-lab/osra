@@ -157,7 +157,9 @@ void main() {
 
   testWidgets('ADR-0041 D5.5: an administrator account warns, and a report without the fact says nothing',
       (tester) async {
-    await pump(tester, device(features: {DeviceSetup.accountAdminKey: 'degraded'}));
+    // The wire name is ADR-0041 D5.5's and #679's; pin it literally so the constant cannot drift.
+    expect(DeviceSetup.accountAdminKey, 'child_account_admin');
+    await pump(tester, device(features: {'child_account_admin': 'degraded'}));
     expect(find.byKey(const ValueKey('computerAdminWarning')), findsOneWidget);
     expect(
         find.text("Protection is weak on this computer because your child's account is an administrator."),

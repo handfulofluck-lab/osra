@@ -233,8 +233,8 @@ abstract class AppLocalizations {
   /// No description provided for @deleteAccountFailed.
   ///
   /// In en, this message translates to:
-  /// **'The account was not deleted. {detail}'**
-  String deleteAccountFailed(String detail);
+  /// **'Couldn\'t delete your account. Check your connection and try again.'**
+  String get deleteAccountFailed;
 
   /// No description provided for @cancel.
   ///
@@ -389,8 +389,14 @@ abstract class AppLocalizations {
   /// No description provided for @mfaCodeLabel.
   ///
   /// In en, this message translates to:
-  /// **'Authentication code (if MFA is on)'**
+  /// **'Authenticator code'**
   String get mfaCodeLabel;
+
+  /// No description provided for @mfaCodeHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'Only if two-step verification is on for your account.'**
+  String get mfaCodeHelper;
 
   /// No description provided for @signIn.
   ///
@@ -403,6 +409,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Create account'**
   String get createAccount;
+
+  /// No description provided for @consentRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'To create an account, please tick this box.'**
+  String get consentRequired;
 
   /// No description provided for @familyNameLabel.
   ///
@@ -527,8 +539,8 @@ abstract class AppLocalizations {
   /// No description provided for @familyLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load family: {error}'**
-  String familyLoadFailed(String error);
+  /// **'Couldn\'t load your family. Check your connection and try again.'**
+  String get familyLoadFailed;
 
   /// No description provided for @noChildrenYet.
   ///
@@ -653,8 +665,8 @@ abstract class AppLocalizations {
   /// No description provided for @internetChangeFailed.
   ///
   /// In en, this message translates to:
-  /// **'Internet change failed: {error}'**
-  String internetChangeFailed(String error);
+  /// **'Couldn\'t change internet access. Check your connection and try again.'**
+  String get internetChangeFailed;
 
   /// No description provided for @parentalConsent.
   ///
@@ -683,7 +695,7 @@ abstract class AppLocalizations {
   /// No description provided for @consentMethodSmsPlus.
   ///
   /// In en, this message translates to:
-  /// **'SMS +'**
+  /// **'Text message plus confirmation'**
   String get consentMethodSmsPlus;
 
   /// No description provided for @consentMethodKba.
@@ -707,7 +719,7 @@ abstract class AppLocalizations {
   /// No description provided for @jurisdictionLabel.
   ///
   /// In en, this message translates to:
-  /// **'Jurisdiction'**
+  /// **'Where does your family live?'**
   String get jurisdictionLabel;
 
   /// No description provided for @childNameLabel.
@@ -893,8 +905,8 @@ abstract class AppLocalizations {
   /// No description provided for @bonusFailed.
   ///
   /// In en, this message translates to:
-  /// **'Bonus failed: {error}'**
-  String bonusFailed(String error);
+  /// **'Couldn\'t add bonus time. Check your connection and try again.'**
+  String get bonusFailed;
 
   /// No description provided for @windDown.
   ///
@@ -923,8 +935,8 @@ abstract class AppLocalizations {
   /// No description provided for @windDownFailed.
   ///
   /// In en, this message translates to:
-  /// **'Wind down failed: {error}'**
-  String windDownFailed(String error);
+  /// **'Couldn\'t start wind-down. Check your connection and try again.'**
+  String get windDownFailed;
 
   /// No description provided for @commandQueued.
   ///
@@ -941,8 +953,8 @@ abstract class AppLocalizations {
   /// No description provided for @commandFailed.
   ///
   /// In en, this message translates to:
-  /// **'Command failed: {error}'**
-  String commandFailed(String error);
+  /// **'Couldn\'t send the command. Check your connection and try again.'**
+  String get commandFailed;
 
   /// No description provided for @commandErrorForbidden.
   ///
@@ -1025,8 +1037,8 @@ abstract class AppLocalizations {
   /// No description provided for @rulesLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load rules: {error}'**
-  String rulesLoadFailed(String error);
+  /// **'Couldn\'t load rules. Check your connection and try again.'**
+  String get rulesLoadFailed;
 
   /// No description provided for @noPerAppRules.
   ///
@@ -1055,8 +1067,8 @@ abstract class AppLocalizations {
   /// No description provided for @locationLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load location: {error}'**
-  String locationLoadFailed(String error);
+  /// **'Couldn\'t load location. Check your connection and try again.'**
+  String get locationLoadFailed;
 
   /// No description provided for @noLocationReported.
   ///
@@ -1070,6 +1082,12 @@ abstract class AppLocalizations {
   /// **'Accuracy ±{meters} m · {time}'**
   String accuracyLabel(int meters, String time);
 
+  /// No description provided for @accuracyShort.
+  ///
+  /// In en, this message translates to:
+  /// **'±{meters} m'**
+  String accuracyShort(int meters);
+
   /// No description provided for @mapPreview.
   ///
   /// In en, this message translates to:
@@ -1079,8 +1097,8 @@ abstract class AppLocalizations {
   /// No description provided for @locationHistoryLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load history: {error}'**
-  String locationHistoryLoadFailed(String error);
+  /// **'Couldn\'t load location history. Check your connection and try again.'**
+  String get locationHistoryLoadFailed;
 
   /// No description provided for @noLocationHistoryToday.
   ///
@@ -1175,8 +1193,8 @@ abstract class AppLocalizations {
   /// No description provided for @familyInvitesLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load invites: {error}'**
-  String familyInvitesLoadFailed(String error);
+  /// **'Couldn\'t load invites. Check your connection and try again.'**
+  String get familyInvitesLoadFailed;
 
   /// No description provided for @familyNoPendingInvites.
   ///
@@ -1199,8 +1217,8 @@ abstract class AppLocalizations {
   /// No description provided for @familyRevokeFailed.
   ///
   /// In en, this message translates to:
-  /// **'Revoke failed: {error}'**
-  String familyRevokeFailed(String error);
+  /// **'Couldn\'t revoke invite. Check your connection and try again.'**
+  String get familyRevokeFailed;
 
   /// No description provided for @familyEnterEmail.
   ///
@@ -1361,8 +1379,8 @@ abstract class AppLocalizations {
   /// No description provided for @familyMapCommandFailed.
   ///
   /// In en, this message translates to:
-  /// **'Command failed: {error}'**
-  String familyMapCommandFailed(String error);
+  /// **'Couldn\'t send the command. Check your connection and try again.'**
+  String get familyMapCommandFailed;
 
   /// No description provided for @familyMapNoChildren.
   ///
@@ -1415,8 +1433,8 @@ abstract class AppLocalizations {
   /// No description provided for @alertsLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load alerts: {error}'**
-  String alertsLoadFailed(String error);
+  /// **'Couldn\'t load alerts. Check your connection and try again.'**
+  String get alertsLoadFailed;
 
   /// No description provided for @noRecentAlerts.
   ///
@@ -1457,8 +1475,8 @@ abstract class AppLocalizations {
   /// No description provided for @insightsLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load insights: {error}'**
-  String insightsLoadFailed(String error);
+  /// **'Couldn\'t load app insights. Check your connection and try again.'**
+  String get insightsLoadFailed;
 
   /// No description provided for @commandLock.
   ///
@@ -1601,8 +1619,8 @@ abstract class AppLocalizations {
   /// No description provided for @acknowledgeFailed.
   ///
   /// In en, this message translates to:
-  /// **'Acknowledge failed: {error}'**
-  String acknowledgeFailed(String error);
+  /// **'Couldn\'t dismiss alert. Check your connection and try again.'**
+  String get acknowledgeFailed;
 
   /// No description provided for @categoryLabel.
   ///
@@ -1649,8 +1667,8 @@ abstract class AppLocalizations {
   /// No description provided for @blockFailed.
   ///
   /// In en, this message translates to:
-  /// **'Block failed: {error}'**
-  String blockFailed(String error);
+  /// **'Couldn\'t block app. Check your connection and try again.'**
+  String get blockFailed;
 
   /// No description provided for @severityCritical.
   ///
@@ -2111,8 +2129,32 @@ abstract class AppLocalizations {
   /// No description provided for @installedAppsLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Could not load apps: {error}'**
-  String installedAppsLoadFailed(String error);
+  /// **'Couldn\'t load installed apps. Check your connection and try again.'**
+  String get installedAppsLoadFailed;
+
+  /// No description provided for @appNoLongerInstalled.
+  ///
+  /// In en, this message translates to:
+  /// **'App no longer installed'**
+  String get appNoLongerInstalled;
+
+  /// No description provided for @appNoLongerInstalledRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'App no longer installed. Remove'**
+  String get appNoLongerInstalledRemove;
+
+  /// No description provided for @appNamePending.
+  ///
+  /// In en, this message translates to:
+  /// **'Name not available yet'**
+  String get appNamePending;
+
+  /// No description provided for @appNamePendingRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Name not available yet. Remove'**
+  String get appNamePendingRemove;
 
   /// No description provided for @installedAppsTruncated.
   ///
@@ -2219,8 +2261,8 @@ abstract class AppLocalizations {
   /// No description provided for @reportLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load report: {error}'**
-  String reportLoadFailed(String error);
+  /// **'Couldn\'t load report. Check your connection and try again.'**
+  String get reportLoadFailed;
 
   /// No description provided for @noActivityDays.
   ///
@@ -2239,6 +2281,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Total {total} min · avg {avg} min/day'**
   String totalAverage(int total, int avg);
+
+  /// No description provided for @chartLegendRow.
+  ///
+  /// In en, this message translates to:
+  /// **'{app}: {minutes} min'**
+  String chartLegendRow(String app, int minutes);
 
   /// No description provided for @noAppUsage.
   ///
@@ -2321,7 +2369,7 @@ abstract class AppLocalizations {
   /// No description provided for @couldNotLoadScreenTime.
   ///
   /// In en, this message translates to:
-  /// **'Could not load screen time'**
+  /// **'Could not load screen time. Check your connection and try again.'**
   String get couldNotLoadScreenTime;
 
   /// No description provided for @noScreenTimeData.
@@ -2375,7 +2423,7 @@ abstract class AppLocalizations {
   /// No description provided for @couldNotLoadBrowsing.
   ///
   /// In en, this message translates to:
-  /// **'Could not load browsing history'**
+  /// **'Could not load browsing history. Check your connection and try again.'**
   String get couldNotLoadBrowsing;
 
   /// No description provided for @noBlockedSites.
@@ -2621,8 +2669,8 @@ abstract class AppLocalizations {
   /// No description provided for @saveFailed.
   ///
   /// In en, this message translates to:
-  /// **'Save failed: {error}'**
-  String saveFailed(String error);
+  /// **'Couldn\'t save changes. Check your connection and try again.'**
+  String get saveFailed;
 
   /// No description provided for @saveMonitoring.
   ///
@@ -2639,7 +2687,7 @@ abstract class AppLocalizations {
   /// No description provided for @vaultTrustCopy.
   ///
   /// In en, this message translates to:
-  /// **'Snippets are encrypted with your family key before leaving the device and stored encrypted on your server.'**
+  /// **'Excerpts travel over an encrypted connection and are stored encrypted on OSRA\'s servers.'**
   String get vaultTrustCopy;
 
   /// No description provided for @noConcernsDetected.
@@ -2696,6 +2744,18 @@ abstract class AppLocalizations {
   /// **'No phone calls or texts yet'**
   String get noCallsOrTexts;
 
+  /// No description provided for @activityLockRow.
+  ///
+  /// In en, this message translates to:
+  /// **'Device locked'**
+  String get activityLockRow;
+
+  /// No description provided for @activityLockRowDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{The lock screen did not come up} =1{The lock screen came up once} other{The lock screen came up {count} times}}'**
+  String activityLockRowDetail(int count);
+
   /// No description provided for @unknownNumber.
   ///
   /// In en, this message translates to:
@@ -2749,6 +2809,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count}h ago'**
   String relativeHoursAgo(int count);
+
+  /// No description provided for @alertChildLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Child: {name}'**
+  String alertChildLabel(String name);
+
+  /// No description provided for @relativeOverHoursAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'more than {count}h ago'**
+  String relativeOverHoursAgo(int count);
 
   /// No description provided for @relativeDaysAgo.
   ///
@@ -2831,7 +2903,7 @@ abstract class AppLocalizations {
   /// No description provided for @couldNotLoadCommandHistory.
   ///
   /// In en, this message translates to:
-  /// **'Could not load command history'**
+  /// **'Could not load command history. Check your connection and try again.'**
   String get couldNotLoadCommandHistory;
 
   /// No description provided for @createdEvent.
@@ -3245,7 +3317,7 @@ abstract class AppLocalizations {
   /// No description provided for @onboardingNoNetwork.
   ///
   /// In en, this message translates to:
-  /// **'Cannot reach the server. Check the server address and your internet connection, then try again.'**
+  /// **'Couldn\'t connect to OSRA. Check your internet connection, then try again.'**
   String get onboardingNoNetwork;
 
   /// No description provided for @onboardingChildTitle.
@@ -3869,8 +3941,8 @@ abstract class AppLocalizations {
   /// No description provided for @searchSafetyLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load search activity: {error}'**
-  String searchSafetyLoadFailed(String error);
+  /// **'Couldn\'t load search activity. Check your connection and try again.'**
+  String get searchSafetyLoadFailed;
 
   /// No description provided for @searchSafetyEmptyTitle.
   ///
@@ -3929,8 +4001,8 @@ abstract class AppLocalizations {
   /// No description provided for @digestPrefsLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load preferences: {error}'**
-  String digestPrefsLoadFailed(String error);
+  /// **'Couldn\'t load digest settings. Check your connection and try again.'**
+  String get digestPrefsLoadFailed;
 
   /// No description provided for @digestPrefsDailyTitle.
   ///
@@ -4061,8 +4133,8 @@ abstract class AppLocalizations {
   /// No description provided for @digestPrefsSaveFailed.
   ///
   /// In en, this message translates to:
-  /// **'Save failed: {error}'**
-  String digestPrefsSaveFailed(String error);
+  /// **'Couldn\'t save digest settings. Check your connection and try again.'**
+  String get digestPrefsSaveFailed;
 
   /// No description provided for @digestPrefsTimezoneSet.
   ///
@@ -4073,8 +4145,8 @@ abstract class AppLocalizations {
   /// No description provided for @digestPrefsTimezoneFailed.
   ///
   /// In en, this message translates to:
-  /// **'Timezone not saved: {error}'**
-  String digestPrefsTimezoneFailed(String error);
+  /// **'Couldn\'t update time zone. Check your connection and try again.'**
+  String get digestPrefsTimezoneFailed;
 
   /// No description provided for @digestPrefsTestTitle.
   ///
@@ -4091,8 +4163,8 @@ abstract class AppLocalizations {
   /// No description provided for @digestPrefsSendFailed.
   ///
   /// In en, this message translates to:
-  /// **'Send failed: {error}'**
-  String digestPrefsSendFailed(String error);
+  /// **'Couldn\'t send test digest. Check your connection and try again.'**
+  String get digestPrefsSendFailed;
 
   /// No description provided for @digestPrefsNoDigests.
   ///
@@ -4766,6 +4838,60 @@ abstract class AppLocalizations {
   /// **'Open OSRA to see the details.\nProtecting your family at all times.'**
   String get alertPushBodyGeneric;
 
+  /// #672: the SOS fix named with its coordinates and its age, one whole line per plural case (Arabic Language Bureau rule). The app wraps {coords} in LRI/PDI so the pair keeps its order in a right-to-left line.
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, =1{Last location: {coords}, 1 min ago} other{Last location: {coords}, {n} min ago}}'**
+  String alertSosWhereMinutes(int n, String coords);
+
+  /// #672: the same line for a fix an hour or more old; hours round down and the line says «more than».
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, =1{Last location: {coords}, more than 1 hour ago} other{Last location: {coords}, more than {n} hours ago}}'**
+  String alertSosWhereHours(int n, String coords);
+
+  /// #672, UI/UX Bureau: the notification body. A location exists and is this old — no coordinates on a lock screen; a tap opens the alert.
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, =1{Location from 1 min ago. Tap to see it on the map.} other{Location from {n} min ago. Tap to see it on the map.}}'**
+  String alertSosLocationMinutes(int n);
+
+  /// #672: the notification body for a fix an hour or more old; hours round down and the line says «more than».
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, =1{Location from more than 1 hour ago. Tap to see it on the map.} other{Location from more than {n} hours ago. Tap to see it on the map.}}'**
+  String alertSosLocationHours(int n);
+
+  /// #672, UI/UX Bureau: the detail line's accuracy clause, shown only when the fix carries one.
+  ///
+  /// In en, this message translates to:
+  /// **'accurate to about {m} m'**
+  String alertLocationAccuracy(int m);
+
+  /// #672, UI/UX Bureau: quiet action in the SOS alert's detail; copies five decimals, left to right.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy coordinates'**
+  String get alertCopyCoordinates;
+
+  /// #672: short confirmation after Copy coordinates.
+  ///
+  /// In en, this message translates to:
+  /// **'Coordinates copied'**
+  String get alertCoordinatesCopied;
+
+  /// #672, UI/UX Bureau: hands the fix to the phone's own maps app, for a build whose in-app map cannot draw.
+  ///
+  /// In en, this message translates to:
+  /// **'Open in Maps'**
+  String get alertOpenInMaps;
+
+  /// #672: the SOS alert's action that opens the family map on its fix.
+  ///
+  /// In en, this message translates to:
+  /// **'Show on map'**
+  String get alertShowOnMap;
+
   /// No description provided for @riskSelfHarm.
   ///
   /// In en, this message translates to:
@@ -4826,19 +4952,19 @@ abstract class AppLocalizations {
   /// **'Concerning content'**
   String get riskAiConcern;
 
-  /// Phone setup row (osra-security#6): the capability report's profiles.kinds holds clone. Arabic is a draft pending Karim's review.
+  /// Phone setup row (osra-security#6): the capability report's profiles.kinds holds clone. Arabic wording by Karim (2026-11-11).
   ///
   /// In en, this message translates to:
-  /// **'This phone has a second space for cloned apps (Dual Messenger).'**
+  /// **'This phone has another secure space that may run cloned apps (more than one copy of the same app). OSRA may not be able to monitor it until it is turned off in the phone\'s Settings.'**
   String get phoneSetupOtherSpaceClone;
 
-  /// Phone setup row (osra-security#6): profiles.kinds holds work. Arabic is a draft pending Karim's review.
+  /// Phone setup row (osra-security#6): profiles.kinds holds work. Arabic approved by Karim.
   ///
   /// In en, this message translates to:
   /// **'This phone has a work profile.'**
   String get phoneSetupOtherSpaceWork;
 
-  /// Phone setup row (osra-security#6): profiles.kinds holds other or secure_folder. Arabic is a draft pending Karim's review.
+  /// Phone setup row (osra-security#6): profiles.kinds holds other or secure_folder. Arabic approved by Karim.
   ///
   /// In en, this message translates to:
   /// **'This phone has another space. OSRA may not reach the apps inside it.'**
@@ -5108,97 +5234,218 @@ abstract class AppLocalizations {
   /// **'On the iPhone, this app is hidden instead of showing the OSRA screen.'**
   String get appRuleHiddenOnIphone;
 
-  /// ADR-0041 D5.1: the Devices-header action on the child page that pairs a Windows or Mac client (#627). Arabic pending the Language Bureau.
+  /// No description provided for @webSiteNamesOnlyNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Names of sites and online services this phone connected to, not the pages opened. Kept for 90 days.'**
+  String get webSiteNamesOnlyNote;
+
+  /// No description provided for @webSiteVisits.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Visited once} other{Visited {count} times}}'**
+  String webSiteVisits(int count);
+
+  /// No description provided for @webSiteSeenRange.
+  ///
+  /// In en, this message translates to:
+  /// **'{first} to {last}'**
+  String webSiteSeenRange(String first, String last);
+
+  /// No description provided for @webSitesSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No sites visited} =1{1 site visited} other{{count} sites visited}}'**
+  String webSitesSummary(int count);
+
+  /// No description provided for @showPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Show password'**
+  String get showPassword;
+
+  /// No description provided for @hidePassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide password'**
+  String get hidePassword;
+
+  /// No description provided for @passwordMinHint.
+  ///
+  /// In en, this message translates to:
+  /// **'At least 12 characters.'**
+  String get passwordMinHint;
+
+  /// No description provided for @familyNameHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'Other parents you invite will see this.'**
+  String get familyNameHelper;
+
+  /// No description provided for @errorNoConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'No internet connection. Check your connection and try again.'**
+  String get errorNoConnection;
+
+  /// No description provided for @authSignInFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t sign in right now. Check your connection and try again.'**
+  String get authSignInFailed;
+
+  /// No description provided for @authMfaReenrollRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Two-step verification was reset but not finished. Open \"Lost your authenticator?\" if you still have the setup screen open; otherwise contact support.'**
+  String get authMfaReenrollRequired;
+
+  /// No description provided for @familyInviteFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t send invite. Check the email and try again.'**
+  String get familyInviteFailed;
+
+  /// No description provided for @digestPrefsTimezonePickerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose time zone'**
+  String get digestPrefsTimezonePickerTitle;
+
+  /// No description provided for @digestPrefsTimezoneSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search city or offset (for example Dubai, +4)'**
+  String get digestPrefsTimezoneSearchHint;
+
+  /// No description provided for @digestPrefsTimezoneEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No matching time zones'**
+  String get digestPrefsTimezoneEmpty;
+
+  /// No description provided for @alertDeviceRestartedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Device restarted'**
+  String get alertDeviceRestartedTitle;
+
+  /// No description provided for @alertCategoryDeviceRestarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Device restart'**
+  String get alertCategoryDeviceRestarted;
+
+  /// No description provided for @alertAtTime.
+  ///
+  /// In en, this message translates to:
+  /// **'at {time}'**
+  String alertAtTime(String time);
+
+  /// No description provided for @alertYesterdayAtTime.
+  ///
+  /// In en, this message translates to:
+  /// **'yesterday at {time}'**
+  String alertYesterdayAtTime(String time);
+
+  /// No description provided for @alertOnDateAtTime.
+  ///
+  /// In en, this message translates to:
+  /// **'on {date} at {time}'**
+  String alertOnDateAtTime(String date, String time);
+
+  /// No description provided for @alertDeviceRestartedBodyMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{device} restarted {when} and was back {minutes, plural, =0{in less than a minute} =1{after 1 minute} other{after {minutes} minutes}}.'**
+  String alertDeviceRestartedBodyMinutes(
+      String device, String when, int minutes);
+
+  /// No description provided for @alertDeviceRestartedBodyHours.
+  ///
+  /// In en, this message translates to:
+  /// **'{device} restarted {when} and was back after about {hours, plural, =1{1 hour} other{{hours} hours}}.'**
+  String alertDeviceRestartedBodyHours(String device, String when, int hours);
+
+  /// ADR-0041 D5.1: the Devices-header action on the child page that pairs a Windows or Mac computer (#627).
   ///
   /// In en, this message translates to:
   /// **'Add a computer'**
   String get addAComputer;
 
-  /// ADR-0041 D5.1: heading of the Windows or Mac choice (#627). Arabic pending the Language Bureau.
+  /// ADR-0041 D5.1: heading of the Windows or Mac choice (#627).
   ///
   /// In en, this message translates to:
   /// **'Which computer are you adding?'**
   String get computerSelectPrompt;
 
-  /// ADR-0041 D5.1: the Windows choice. A product name, so it is not translated (#627).
+  /// ADR-0041 D5.1: the Windows choice (#627).
   ///
   /// In en, this message translates to:
   /// **'Windows'**
   String get computerWindows;
 
-  /// ADR-0041 D5.1: the Mac choice. A product name, so it is not translated (#627).
+  /// ADR-0041 D5.1: the Mac choice (#627).
   ///
   /// In en, this message translates to:
   /// **'Mac'**
   String get computerMac;
 
-  /// ADR-0041 D5.2/D5.5: who installs the computer client, on the platform choice and on the code screen (#627). Arabic pending the Language Bureau.
+  /// ADR-0041 D5.2/D5.5: who installs OSRA on the computer, on the platform choice and on the code screen (#627, UI/UX 6838258198).
   ///
   /// In en, this message translates to:
-  /// **'An administrator of that computer — you — installs the client. Your child keeps a standard account.'**
+  /// **'Install OSRA on the computer from your own administrator account. Your child keeps a standard account.'**
   String get computerAdminInstallNote;
 
-  /// ADR-0041 D5.1: what to do with the code when the pairing is for a computer, in place of the QR instructions (#627). Arabic pending the Language Bureau.
+  /// ADR-0041 D5.1: what to do with the code when the pairing is for a computer, in place of the QR instructions (#627).
   ///
   /// In en, this message translates to:
   /// **'Open the address below on the computer, install OSRA there, then type this code on the computer.'**
   String get computerPairIntro;
 
-  /// ADR-0041 D4/D5.1: label above osratech.com/windows or osratech.com/mac (#627). Arabic pending the Language Bureau.
+  /// ADR-0041 D4/D5.1: label above osratech.com/download (#627, UI/UX 6910861301).
   ///
   /// In en, this message translates to:
   /// **'Address to open on the computer'**
   String get computerDownloadAddress;
 
-  /// ADR-0041 D5.1: copies the download address (#627). Arabic pending the Language Bureau.
+  /// ADR-0041 D5.1: copies the download address (#627).
   ///
   /// In en, this message translates to:
   /// **'Copy link'**
   String get copyLink;
 
-  /// ADR-0041 D5.1: snackbar after copying the download address (#627). Arabic pending the Language Bureau.
+  /// ADR-0041 D5.1: snackbar after copying the download address (#627).
   ///
   /// In en, this message translates to:
   /// **'Link copied'**
   String get linkCopied;
 
-  /// ADR-0041 D5.1: the visible line that stands in for a system share sheet because the app ships no share plugin (#627). Arabic pending the Language Bureau.
+  /// ADR-0041 D5.1: helper line under the download address (#627, UI/UX 6838258198).
   ///
   /// In en, this message translates to:
-  /// **'Send the link to yourself, or type it into the computer\'s browser.'**
+  /// **'Type this address in the computer\'s browser, or paste it into a message to yourself.'**
   String get sendTheLinkLine;
 
-  /// ADR-0041 D5.1: the share action; it copies the address for the parent to paste, and the line above says so (#627). Arabic pending the Language Bureau.
-  ///
-  /// In en, this message translates to:
-  /// **'Send the link'**
-  String get sendTheLink;
-
-  /// ADR-0041 D5.1: snackbar after the send-the-link action copies the address (#627). Arabic pending the Language Bureau.
-  ///
-  /// In en, this message translates to:
-  /// **'Link copied. Paste it into a message to send it to yourself or the computer.'**
-  String get sendLinkCopied;
-
-  /// ADR-0041 D5.1/D5.3: the Allow card when the pairing code is for a computer (#627). Arabic pending the Language Bureau.
+  /// ADR-0041 D5.1/D5.3: the Allow card when the pairing code is for a computer (#627).
   ///
   /// In en, this message translates to:
   /// **'{device} wants to be paired. Allow it only if it is the computer in front of you.'**
   String pairClaimBodyComputer(String device);
 
-  /// ADR-0041 D5.3: the Allow result when the pairing code is for a computer (#627). Arabic pending the Language Bureau.
+  /// ADR-0041 D5.3: the Allow result when the pairing code is for a computer (#627).
   ///
   /// In en, this message translates to:
   /// **'Allowed. The computer is finishing pairing…'**
   String get pairClaimAllowedComputer;
 
-  /// ADR-0041 D5.3: the Deny result when the pairing code is for a computer (#627). Arabic pending the Language Bureau.
+  /// ADR-0041 D5.3: the Deny result when the pairing code is for a computer (#627).
   ///
   /// In en, this message translates to:
   /// **'Declined. Make a new code to pair a computer.'**
   String get pairClaimDeniedComputer;
 
-  /// ADR-0041 D5.5, verbatim from the ADR: shown on the computer's card when its capability report says the child's own account is an administrator (#627). Arabic pending the Language Bureau.
+  /// ADR-0041 D5.5, verbatim from the ADR: shown on the computer's card when its capability report says the child's own account is an administrator (#627).
   ///
   /// In en, this message translates to:
   /// **'Protection is weak on this computer because your child\'s account is an administrator.'**

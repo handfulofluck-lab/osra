@@ -33,17 +33,27 @@ void main() {
 
   setUp(() => currentNow = DateTime.utc(2026, 1, 1, 12, 0, 0));
 
-  FakeApiClient computerApi() {
+  FakeApiClient computerApi({Map<String, dynamic>? claimResponse}) {
     final routes = standardRoutes();
     routes['POST /v1/devices/pair'] = (_) => {
           'code': '482916',
           'expiresAt': currentNow.add(kPairCodeTtl).toUtc().toIso8601String(),
         };
+    if (claimResponse != null) {
+      routes['GET /v1/devices/pair/482916/claim'] = (_) => claimResponse;
+    }
     return FakeApiClient(routes);
   }
 
-  Future<void> pump(WidgetTester tester, FakeApiClient api, Widget home,
-      {Size? surface}) async {
+  Future<void> pump(
+    WidgetTester tester,
+    FakeApiClient api,
+    Widget home, {
+    Size? surface,
+    Locale locale = const Locale('en'),
+    TextDirection? textDirection,
+    double textScaleFactor = 1.0,
+  }) async {
     if (surface != null) {
       tester.view.physicalSize = surface;
       tester.view.devicePixelRatio = 1.0;
@@ -52,9 +62,13 @@ void main() {
         tester.view.resetDevicePixelRatio();
       });
     }
+    if (textScaleFactor != 1.0) {
+      tester.platformDispatcher.textScaleFactorTestValue = textScaleFactor;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    }
     await tester.pumpWidget(ProviderScope(
       overrides: [apiClientProvider.overrideWithValue(api)],
-      child: localizedTestApp(home),
+      child: localizedTestApp(home, locale: locale, textDirection: textDirection),
     ));
     await flushFakeHttp(tester);
   }
@@ -70,7 +84,17 @@ void main() {
       .widget<SelectableText>(find.byKey(const ValueKey('computerAddress')))
       .data;
 
-  testWidgets('(a) the child page offers Add a computer, which opens the platform choice',
+  List<Object> drainExceptions(WidgetTester tester) {
+    final exceptions = <Object>[];
+    while (true) {
+      final e = tester.takeException();
+      if (e == null) break;
+      exceptions.add(e);
+    }
+    return exceptions;
+  }
+
+  testWidgets('(a) the child page offers Add a computer; Mac stays hidden unless enabled',
       (tester) async {
     final api = computerApi();
     await pump(tester, api, const ChildDetailScreen(childId: 'child-1'));
@@ -83,6 +107,18 @@ void main() {
 
     expect(find.byType(AddComputerScreen), findsOneWidget);
     expect(find.byKey(const ValueKey('addComputer-windows')), findsOneWidget);
+    expect(find.byKey(const ValueKey('addComputer-macos')), findsNothing);
+    expect(find.text('Windows'), findsOneWidget);
+    expect(find.text('Mac'), findsNothing);
+
+    await unmount(tester);
+
+    await pump(
+      tester,
+      api,
+      AddComputerScreen(childId: 'child-1', clock: () => currentNow, macEnabled: true),
+    );
+    expect(find.byKey(const ValueKey('addComputer-windows')), findsOneWidget);
     expect(find.byKey(const ValueKey('addComputer-macos')), findsOneWidget);
     expect(find.text('Windows'), findsOneWidget);
     expect(find.text('Mac'), findsOneWidget);
@@ -90,7 +126,7 @@ void main() {
     await unmount(tester);
   });
 
-  testWidgets('(b) choosing Windows shows the existing pairing code and osratech.com/windows',
+  testWidgets('(b) choosing Windows shows the existing pairing code and osratech.com/download',
       (tester) async {
     final api = computerApi();
     await pump(tester, api, AddComputerScreen(childId: 'child-1', clock: () => currentNow));
@@ -102,27 +138,31 @@ void main() {
     expect(api.calls('POST', '/v1/devices/pair'), hasLength(1));
     expect(api.calls('POST', '/v1/devices/pair').single.body['childId'], 'child-1');
     expect(find.text('482916'), findsOneWidget);
-    expect(shownAddress(tester), 'osratech.com/windows');
+    expect(shownAddress(tester), 'osratech.com/download');
     // A computer has no camera: the QR is a phone-only affordance.
     expect(find.byKey(const ValueKey('pairingQr')), findsNothing);
 
     await unmount(tester);
   });
 
-  testWidgets('(c) choosing Mac shows osratech.com/mac', (tester) async {
+  testWidgets('(c) choosing Mac (when enabled) shows osratech.com/download', (tester) async {
     final api = computerApi();
-    await pump(tester, api, AddComputerScreen(childId: 'child-1', clock: () => currentNow));
+    await pump(
+      tester,
+      api,
+      AddComputerScreen(childId: 'child-1', clock: () => currentNow, macEnabled: true),
+    );
 
     await tester.tap(find.byKey(const ValueKey('addComputer-macos')));
     await flushFakeHttp(tester);
 
     expect(find.text('482916'), findsOneWidget);
-    expect(shownAddress(tester), 'osratech.com/mac');
+    expect(shownAddress(tester), 'osratech.com/download');
 
     await unmount(tester);
   });
 
-  testWidgets('(d) Copy link and Send the link both put the address on the clipboard',
+  testWidgets('(d) Copy link puts the download address on the clipboard with the send helper line',
       (tester) async {
     final calls = <MethodCall>[];
     tester.binding.defaultBinaryMessenger
@@ -142,52 +182,122 @@ void main() {
             if (c.method == 'Clipboard.setData') (c.arguments as Map)['text'] as String,
         ];
 
+    expect(find.byKey(const ValueKey('computerSendLink')), findsNothing);
+    expect(
+      find.text("Type this address in the computer's browser, or paste it into a message to yourself."),
+      findsOneWidget,
+    );
+
     await tester.tap(find.byKey(const ValueKey('computerCopyLink')));
     await tester.pump();
-    expect(copied(), ['osratech.com/windows']);
+    expect(copied(), ['osratech.com/download']);
     expect(find.text('Link copied'), findsOneWidget);
-    // A snackbar queues behind the one on screen, so wait for the first to leave before the next action.
-    for (var i = 0; i < 10 && tester.any(find.byType(SnackBar)); i++) {
-      await tester.pump(const Duration(seconds: 1));
-    }
-    expect(find.byType(SnackBar), findsNothing);
-
-    // No share plugin ships in this app (ADR-0041 D5.1 allows the clipboard plus the line that says so),
-    // so "Send the link" must still hand over the address itself.
-    await tester.tap(find.byKey(const ValueKey('computerSendLink')));
-    await tester.pump();
-    expect(copied(), ['osratech.com/windows', 'osratech.com/windows']);
-    expect(
-        find.text('Link copied. Paste it into a message to send it to yourself or the computer.'),
-        findsOneWidget);
-    expect(find.text('Send the link to yourself, or type it into the computer\'s browser.'),
-        findsOneWidget);
     await tester.pump(const Duration(seconds: 5));
 
     await unmount(tester);
   });
 
-  testWidgets('(f) the platform choice and the code layout at 320x568 without an exception',
+  testWidgets('(e) Arabic computer claim isolates the Latin computer name with FSI/PDI',
+      (tester) async {
+    final api = computerApi(claimResponse: const {
+      'status': 'pending',
+      'claimId': 'cl-1',
+      'platform': 'windows',
+      'deviceName': 'DESKTOP-BPQENI5',
+      'osVersion': '11',
+    });
+    await pump(
+      tester,
+      api,
+      PairingQrScreen(childId: 'child-1', clock: () => currentNow, computer: ComputerTarget.windows),
+      locale: const Locale('ar'),
+      textDirection: TextDirection.rtl,
+    );
+
+    await tester.pump(const Duration(seconds: 2));
+    await flushFakeHttp(tester);
+
+    expect(find.textContaining('\u{2068}DESKTOP-BPQENI5\u{2069}'), findsOneWidget);
+
+    await unmount(tester);
+  });
+
+  testWidgets('(f) the platform choice and the code layout at 320x568 and 200% text scale (EN & AR)',
       (tester) async {
     final api = computerApi();
-    await pump(tester, api, AddComputerScreen(childId: 'child-1', clock: () => currentNow),
-        surface: const Size(320, 568));
-    expect(find.byKey(const ValueKey('addComputer-windows')), findsOneWidget);
+    await pump(
+      tester,
+      api,
+      AddComputerScreen(childId: 'child-1', clock: () => currentNow),
+      surface: const Size(320, 568),
+      textScaleFactor: 2.0,
+    );
+    final windowsTileEn = find.byKey(const ValueKey('addComputer-windows'));
+    await tester.scrollUntilVisible(
+      windowsTileEn,
+      150,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.ensureVisible(windowsTileEn);
+    await tester.pumpAndSettle();
+    expect(windowsTileEn, findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('addComputer-windows')));
+    await tester.tap(windowsTileEn);
     await flushFakeHttp(tester);
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('pairingCode')),
+      150,
+      scrollable: find.byType(Scrollable).last,
+    );
     expect(find.text('482916'), findsOneWidget);
-    expect(find.text('osratech.com/windows'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('computerAddress')),
+      150,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(shownAddress(tester), 'osratech.com/download');
+    expect(drainExceptions(tester), isEmpty);
 
-    final exceptions = <Object>[];
-    while (true) {
-      final e = tester.takeException();
-      if (e == null) break;
-      exceptions.add(e);
-    }
-    expect(exceptions, isEmpty);
+    await unmount(tester);
+
+    await pump(
+      tester,
+      api,
+      AddComputerScreen(childId: 'child-1', clock: () => currentNow),
+      surface: const Size(320, 568),
+      locale: const Locale('ar'),
+      textDirection: TextDirection.rtl,
+      textScaleFactor: 2.0,
+    );
+    final windowsTileAr = find.byKey(const ValueKey('addComputer-windows'));
+    await tester.scrollUntilVisible(
+      windowsTileAr,
+      150,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.ensureVisible(windowsTileAr);
+    await tester.pumpAndSettle();
+    expect(windowsTileAr, findsOneWidget);
+
+    await tester.tap(windowsTileAr);
+    await flushFakeHttp(tester);
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('pairingCode')),
+      150,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('482916'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('computerAddress')),
+      150,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(shownAddress(tester), 'osratech.com/download');
+    expect(drainExceptions(tester), isEmpty);
 
     await unmount(tester);
   });

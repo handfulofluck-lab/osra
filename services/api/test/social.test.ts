@@ -2,12 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHmac } from "node:crypto";
 import { signV2 } from "../src/lib/internalAuth.js";
 import { decryptForFamily, encryptForFamily } from "@familyshield/crypto";
-import { socialRoutes } from "../src/routes/social.js";
+import { localDay, socialRoutes } from "../src/routes/social.js";
 import { deviceRoutes } from "../src/routes/devices.js";
 import { reportsRoutes } from "../src/routes/reports.js";
 import { rulesRoutes } from "../src/routes/rules.js";
 import { getRedis } from "../src/redis.js";
 import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
+import { expectKeyedAlertBody } from "./alertBody.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -20,7 +21,7 @@ vi.mock("ioredis", async () => {
 
 const SECRET = "test-internal-secret";
 const VAULT_KEY = Buffer.alloc(32, 7).toString("base64");
-const CHILD = { id: "child-1", familyId: "fam-1", birthYear: 2012 };
+const CHILD = { id: "child-1", familyId: "fam-1", birthYear: 2012, family: { timezone: "Asia/Dubai" } };
 const FLAGGED_TEXT = "seriously you should kill yourself";
 
 const sign = (raw: string) => createHmac("sha256", SECRET).update(raw).digest("hex");
@@ -99,6 +100,115 @@ describe("social routes", () => {
     await app.close();
   });
 
+  it("counts each scan against the family's own day (#890 cost accounting)", async () => {
+    // The pricing debate needs "measured cost per family"; this row is what makes it a query. The counters
+    // are per family-local day, because a UTC date would move a Dubai family's evening into tomorrow.
+    const app = await buildApp(socialRoutes, "/v1/social");
+    vi.stubGlobal("fetch", aiOk({ flagged: false, severity: "info", categories: { safe: 0.9 } }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.family.findUnique.mockResolvedValue({ timezone: "Asia/Dubai" });
+
+    await postScan(app, scanBody({ text: "want to play soccer later?" }));
+
+    expect(prismaMock.aiScanUsage.upsert).toHaveBeenCalledTimes(1);
+    const call = prismaMock.aiScanUsage.upsert.mock.calls[0][0] as {
+      where: { familyId_day: { familyId: string; day: string } };
+      create: { scans: number; aiCalls: number };
+      update: Record<string, unknown>;
+    };
+    expect(call.where.familyId_day.familyId).toBe("fam-1");
+    expect(call.where.familyId_day.day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(call.create).toMatchObject({ scans: 1, aiCalls: 1 });
+    expect(call.update).toEqual({ scans: { increment: 1 }, aiCalls: { increment: 1 } });
+    await app.close();
+  });
+
+  it("a scan the engine never answered is a scan but not a model call (#890)", async () => {
+    // The fallback path is free: counting it as an AI call would overstate every family's bill, and the
+    // whole point of the counter is to be the number a price is set from.
+    const app = await buildApp(socialRoutes, "/v1/social");
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNREFUSED"); }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.family.findUnique.mockResolvedValue({ timezone: "UTC" });
+
+    await postScan(app, scanBody({ text: "want to play soccer later?" }));
+
+    const call = prismaMock.aiScanUsage.upsert.mock.calls[0][0] as {
+      create: { scans: number; aiCalls: number };
+      update: Record<string, unknown>;
+    };
+    expect(call.create).toMatchObject({ scans: 1, aiCalls: 0 });
+    // The mutant — always incrementing aiCalls — would bill a family for an engine that never ran.
+    expect(call.update).toEqual({ scans: { increment: 1 } });
+    await app.close();
+  });
+
+  it("a broken counter cannot fail the scan or lose the alert (#897 review, u5)", async () => {
+    // The route is the child-safety path: a scan that 500s is a message never classified and an alert never
+    // raised. The counter is allowed to fail; the verdict and the alert are not. Mutant: let the counter's
+    // error escape (or move the write above the verdict) and this row goes red.
+    const app = await buildApp(socialRoutes, "/v1/social");
+    vi.stubGlobal("fetch", aiOk({ flagged: true, severity: "warning", categories: { self_harm: 0.9 } }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.socialEvent.create.mockResolvedValue({ id: "se-1" });
+    prismaMock.alert.create.mockResolvedValue({ id: "a-1" });
+    prismaMock.aiScanUsage.upsert.mockRejectedValue(new Error("counter down"));
+
+    const res = await postScan(app, scanBody());
+
+    expect(res.statusCode).toBe(200);
+    // #938 B3: the union keeps the higher severity. The text hits the local self-harm list, which is
+    // critical by policy, so the model's "warning" no longer downgrades it.
+    expect(res.json()).toMatchObject({ flagged: true, severity: "critical" });
+    expect(prismaMock.socialEvent.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    // One retry on the way out, and still no throw: a unique-index race is not a scan failure either.
+    expect(prismaMock.aiScanUsage.upsert).toHaveBeenCalledTimes(2);
+    await app.close();
+  });
+
+  it("the day key is the family's zone, and a broken zone falls back to UTC (#897 review, u4/u9)", () => {
+    // 21:30 UTC is 01:30 the next day in Dubai. A UTC key would file that scan under yesterday, and a
+    // monthly figure would drift by a day per family without anyone seeing it. Tested on the pure function
+    // rather than through the route: fake timers stall the rate limiter's own timers, and the property under
+    // test is the arithmetic, not the transport.
+    expect(localDay(new Date("2026-11-17T21:30:00Z"), "Asia/Dubai")).toBe("2026-11-18");
+    expect(localDay(new Date("2026-11-17T21:30:00Z"), "UTC")).toBe("2026-11-17");
+    // A zone the database should never hold: fall back to UTC, do not throw inside the scan path.
+    expect(() => localDay(new Date("2026-11-17T21:30:00Z"), "Mars/Olympus")).not.toThrow();
+    expect(localDay(new Date("2026-11-17T21:30:00Z"), "Mars/Olympus")).toBe("2026-11-17");
+  });
+
+  it("the counter's day is the family's, taken from the child row the route already read", async () => {
+    // The route-level half of the same claim: the key written for a Dubai family is the Dubai day, and the
+    // zone came from the query that already ran (no second family lookup on the scan path).
+    const app = await buildApp(socialRoutes, "/v1/social");
+    vi.stubGlobal("fetch", aiOk({ flagged: false, severity: "info", categories: { safe: 0.9 } }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+
+    await postScan(app, scanBody({ text: "want to play soccer later?" }));
+
+    const call = prismaMock.aiScanUsage.upsert.mock.calls[0][0] as { where: { familyId_day: { day: string } } };
+    expect(call.where.familyId_day.day).toBe(localDay(new Date(), "Asia/Dubai"));
+    expect(prismaMock.family.findUnique).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("a scan whose engine call timed out is still a model attempt (#897 review, point a)", async () => {
+    // A request that reached the engine and ran past the 5 s timeout was paid for; recording it as a free
+    // local-pattern scan under-counts every family, which is the unsafe direction for a cost floor.
+    const app = await buildApp(socialRoutes, "/v1/social");
+    const timeout = Object.assign(new Error("timed out"), { name: "TimeoutError" });
+    vi.stubGlobal("fetch", vi.fn(async () => { throw timeout; }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+
+    await postScan(app, scanBody({ text: "want to play soccer later?" }));
+
+    const call = prismaMock.aiScanUsage.upsert.mock.calls[0][0] as { create: { scans: number; aiCalls: number } };
+    expect(call.create).toMatchObject({ scans: 1, aiCalls: 1 });
+    await app.close();
+  });
+
   it("flags risky text: vault row holds only ciphertext, alert has no preview snippet", async () => {
     const app = await buildApp(socialRoutes, "/v1/social");
     vi.stubGlobal("fetch", aiOk({ flagged: true, severity: "warning", categories: { self_harm: 0.8, safe: 0.2 } }));
@@ -108,25 +218,50 @@ describe("social routes", () => {
 
     const res = await postScan(app, scanBody());
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ flagged: true, severity: "warning", concernTypes: ["self_harm"] });
+    expect(res.json()).toEqual({ flagged: true, severity: "critical", concernTypes: ["self_harm"] });
 
     // The vault row stores the AES-GCM payload — plaintext must never appear.
     const cipher = prismaMock.socialEvent.create.mock.calls[0][0] as {
       data: { previewCipher: string; severity: string; concernTypes: string[]; app: string; contact: string; childId: string };
     };
-    expect(cipher.data).toMatchObject({ childId: CHILD.id, app: "whatsapp", contact: "bully-1", severity: "warning", concernTypes: ["self_harm"] });
+    expect(cipher.data).toMatchObject({ childId: CHILD.id, app: "whatsapp", contact: "bully-1", severity: "critical", concernTypes: ["self_harm"] });
     expect(cipher.data.previewCipher).not.toContain(FLAGGED_TEXT);
     const payload = JSON.parse(cipher.data.previewCipher) as Parameters<typeof decryptForFamily>[0];
     expect(decryptForFamily(payload, VAULT_KEY)).toBe(FLAGGED_TEXT);
 
-    // The alert metadata carries app/contact/concernTypes only — no snippet.
+    // The alert metadata carries app/contact/concernTypes and localization values — no snippet.
     const alertData = prismaMock.alert.create.mock.calls[0][0] as { data: Record<string, unknown> };
     expect(alertData.data.category).toBe("social_concern");
-    expect(alertData.data.metadata).toEqual({ app: "whatsapp", contact: "bully-1", concernTypes: ["self_harm"] });
+    expect(alertData.data.metadata).toEqual({
+      app: "whatsapp",
+      contact: "bully-1",
+      concernTypes: ["self_harm"],
+      bodyKey: "alertBodySocialConcern",
+      bodyParams: { app: "whatsapp", contact: "bully-1" },
+    });
+    expectKeyedAlertBody(alertData.data, "alertBodySocialConcern", { app: "whatsapp", contact: "bully-1" });
     expect(alertData.data.metadata).not.toHaveProperty("preview");
 
     // The family realtime channel received the alert.
     expect(familyAlertPublishes().length).toBe(1);
+    await app.close();
+  });
+
+  it("a scan with no contact carries no contact param, so the app never renders a placeholder (Fable n4)", async () => {
+    // The English body says "A contact"; the PARAM must not. If the producer filled the param with the
+    // English placeholder, a parent reading Arabic would see an English sentence fragment inside it.
+    const app = await buildApp(socialRoutes, "/v1/social");
+    vi.stubGlobal("fetch", aiOk({ flagged: true, severity: "warning", categories: { self_harm: 0.9 } }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.socialEvent.create.mockResolvedValue({ id: "event-nc" });
+    prismaMock.alert.create.mockResolvedValue({ id: "a-nc" });
+
+    const res = await postScan(app, scanBody({ contact: "" }));
+    expect(res.statusCode).toBe(200);
+
+    const alertData = (prismaMock.alert.create.mock.calls[0][0] as { data: Record<string, unknown> }).data;
+    expect((alertData.metadata as { bodyParams: unknown }).bodyParams).toEqual({ app: "whatsapp" });
+    expect((alertData.metadata as { bodyParams: Record<string, unknown> }).bodyParams).not.toHaveProperty("contact");
     await app.close();
   });
 
@@ -156,6 +291,86 @@ describe("social routes", () => {
       expect.objectContaining({ data: expect.objectContaining({ concernTypes: expect.arrayContaining(["self_harm"]) }) }),
     );
     expect(prismaMock.alert.create).toHaveBeenCalled();
+    await app.close();
+  });
+
+  // #863: the child sent Arabic insults and drug words over WhatsApp and nothing reached the parent.
+  // These rows pin the two halves of the fix: the local list now reads Arabic, and a local hit survives a
+  // model answer of "not flagged" instead of being suppressed by it.
+  it("the local fallback reads Arabic insults, drug words and self-harm phrasing (#863)", async () => {
+    const app = await buildApp(socialRoutes, "/v1/social");
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNREFUSED"); }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({ id: "a-1" });
+
+    const cases: Array<[string, string]> = [
+      ["غبي وما أحد يحبك", "cyberbullying"],
+      ["أريد أن أموت", "self_harm"],
+      ["عندي حشيش في الشارع", "substance_use"],
+      ["he offered me weed after school", "substance_use"],
+    ];
+    for (const [text, concern] of cases) {
+      prismaMock.socialEvent.create.mockClear();
+      const res = await postScan(app, scanBody({ text }));
+      expect(res.statusCode).toBe(200);
+      expect(res.json().flagged, text).toBe(true);
+      expect(prismaMock.socialEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ concernTypes: expect.arrayContaining([concern]) }) }),
+      );
+    }
+    await app.close();
+  });
+
+  it("a local hit is not suppressed by a model that answered \"not flagged\" (#863)", async () => {
+    const app = await buildApp(socialRoutes, "/v1/social");
+    // The engine is reachable and says safe — the rules layer did exactly this for Arabic.
+    vi.stubGlobal("fetch", aiOk({ flagged: false, severity: "info", categories: { safe: 0.99 } }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({ id: "a-1" });
+
+    const res = await postScan(app, scanBody({ text: "أريد أن أموت" }));
+    expect(res.statusCode).toBe(200);
+    expect(res.json().flagged).toBe(true);
+    expect(prismaMock.alert.create).toHaveBeenCalled();
+    await app.close();
+  });
+
+  // Antigravity's #938 B2: token boundaries. Each of these is a real word whose stem appears in the
+  // Arabic list, and each once raised a false drug or bullying alert to a parent.
+  it("Arabic stems do not fire inside ordinary words (#938 B2)", async () => {
+    const app = await buildApp(socialRoutes, "/v1/social");
+    vi.stubGlobal("fetch", aiOk({ flagged: false, severity: "info", categories: { safe: 0.99 } }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({ id: "a-1" });
+
+    const benign = [
+      "فيبدأ الدرس بعد الجرس",
+      "قميص خمري جديد",
+      "نشاهد مباراة رغبي الليلة",
+    ];
+    for (const text of benign) {
+      prismaMock.socialEvent.create.mockClear();
+      const res = await postScan(app, scanBody({ text }));
+      expect(res.statusCode).toBe(200);
+      expect(res.json().flagged, text).toBe(false);
+      expect(prismaMock.socialEvent.create).not.toHaveBeenCalled();
+    }
+    await app.close();
+  });
+
+  it("a mixed message keeps the critical concern the model missed (#938 B3)", async () => {
+    const app = await buildApp(socialRoutes, "/v1/social");
+    // The model sees the English insult and stops there; the Arabic clause is a self-harm statement.
+    vi.stubGlobal("fetch", aiOk({ flagged: true, severity: "warning", categories: { cyberbullying: 0.9, safe: 0.1 } }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({ id: "a-1" });
+
+    const text = "you loser, أريد أن أموت";
+    const res = await postScan(app, scanBody({ text }));
+    expect(res.statusCode).toBe(200);
+    expect(res.json().flagged).toBe(true);
+    expect(res.json().severity).toBe("critical");
+    expect(res.json().concernTypes).toEqual(expect.arrayContaining(["cyberbullying", "self_harm"]));
     await app.close();
   });
 
@@ -234,8 +449,8 @@ describe("social routes", () => {
       expect(res.statusCode).toBe(200);
       expect(res.json()).toEqual({
         results: [
-          { ok: true, flagged: true, severity: "warning", concernTypes: ["self_harm"] },
-          { ok: true, flagged: true, severity: "warning", concernTypes: ["self_harm"] },
+          { ok: true, flagged: true, severity: "critical", concernTypes: ["self_harm"] },
+          { ok: true, flagged: true, severity: "critical", concernTypes: ["self_harm"] },
         ],
       });
       expect(prismaMock.socialEvent.create).toHaveBeenCalledTimes(2);
@@ -314,7 +529,8 @@ describe("social routes", () => {
       prismaMock.child.findUnique.mockResolvedValue(CHILD);
       const res = await postScan(app, scanBody());
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ flagged: true, severity: "warning", concernTypes: ["self_harm"] });
+      // #938 B3: the union keeps the higher severity, so the local self-harm hit makes this critical.
+      expect(res.json()).toEqual({ flagged: true, severity: "critical", concernTypes: ["self_harm"] });
       expect(prismaMock.socialEvent.create).toHaveBeenCalledTimes(1);
       await app.close();
     });
@@ -372,6 +588,9 @@ describe("activity ingest and reports", () => {
   it("ingests an activity batch with a device JWT (202) and persists via createMany", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockResolvedValue({ id: "dev-1", childId: "child-1", child: { familyId: "fam-1" } });
+    // #841: an unblocked url is kept only with the site-name flag on; with it off this batch would be
+    // reduced to the call row, which `site-names.test.ts` asserts separately.
+    vi.stubEnv("SITE_NAMES_ENABLED", "true");
 
     const res = await app.inject({
       method: "POST",
@@ -387,9 +606,10 @@ describe("activity ingest and reports", () => {
     expect(res.statusCode).toBe(202);
     const data = (prismaMock.activityEvent.createMany.mock.calls[0][0] as { data: Array<Record<string, unknown>> }).data;
     expect(data).toHaveLength(2);
-    expect(data[0]).toMatchObject({ childId: "child-1", deviceId: "dev-1", type: "url", payload: { url: "https://example.com" } });
+    expect(data[0]).toMatchObject({ childId: "child-1", deviceId: "dev-1", type: "url", payload: { url: "example.com", domain: "example.com", blocked: false } });
     expect(data[0].ts).toBeInstanceOf(Date);
     expect(data[1]).toMatchObject({ type: "call" });
+    vi.unstubAllEnvs();
     await app.close();
   });
 
@@ -435,9 +655,31 @@ describe("activity ingest and reports", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(prismaMock.activityEvent.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { childId: "child-1", type: "call" }, orderBy: { ts: "desc" }, take: 200 }),
+      expect.objectContaining({
+        where: expect.objectContaining({ childId: "child-1", type: "call" }),
+        orderBy: { ts: "desc" },
+        take: 200,
+      }),
     );
     expect(res.json().items).toEqual([{ id: "ae-1", type: "call" }]);
+    await app.close();
+  });
+
+  it("#830: the activity report accepts type=lock_period", async () => {
+    const app = await buildApp(reportsRoutes, "/v1/reports");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.activityEvent.findMany.mockResolvedValue([{ id: "lp-1", type: "lock_period" }]);
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/reports/activity?childId=child-1&type=lock_period",
+      headers: authHeader(app),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(prismaMock.activityEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ childId: "child-1", type: "lock_period" }) }),
+    );
+    expect(res.json().items).toEqual([{ id: "lp-1", type: "lock_period" }]);
     await app.close();
   });
 

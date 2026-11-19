@@ -28,8 +28,20 @@ private val Context.familyShieldDataStore: DataStore<Preferences> by preferences
 class AgentSettings @Inject constructor(
     @ApplicationContext private val context: Context,
     private val secure: com.familyshield.agent.security.SecureStore,
+    /** osra-security#24: the wrong-PIN count, cleared with the pairing that owned it (#792, Antigravity B2). */
+    private val pinAttempts: com.familyshield.agent.security.PinAttemptStore,
 ) {
     private val store = context.familyShieldDataStore
+
+    /**
+     * The secure pairing writes, with the store bound in. Every write is verified by reading it back before this
+     * class touches plaintext DataStore or its in-memory caches (osra-security#8 F2 follow-up).
+     */
+    private val secureWriter = com.familyshield.agent.security.SecureStoreWriter(
+        unreadable = { secure.unreadable },
+        putString = { key, value -> secure.putString(key, value) },
+        getString = { key -> secure.getString(key) },
+    )
 
     @Volatile private var deviceIdCache: String? = null
     @Volatile private var childIdCache: String? = null
@@ -62,13 +74,16 @@ class AgentSettings @Inject constructor(
      * Plan 1.8: the device JWT and the per-device HMAC secret live in the keystore-backed
      * [com.familyshield.agent.security.SecureStore]. A value still in plaintext DataStore from an
      * older build is migrated on first read (copied into the encrypted store, then removed).
+     *
+     * Fail-closed (osra-security#8 F2 follow-up): a broken store reads back absent, so the migration is not recorded
+     * and the plaintext copy is **kept** — deleting it would destroy the only credential the phone holds.
      */
     private suspend fun readSecret(plainKey: Preferences.Key<String>, secureKey: String): String? {
         secure.getString(secureKey)?.let { return it }
         val legacy = read(plainKey) ?: return null
-        secure.putString(secureKey, legacy)
+        val migrated = secureWriter.migrate(secureKey, legacy) ?: return null
         store.edit { it.remove(plainKey) }
-        return legacy
+        return migrated
     }
 
     /** Persists the latest rule set JSON. */
@@ -177,10 +192,17 @@ class AgentSettings @Inject constructor(
     /** True when a device JWT is stored (paired). */
     suspend fun isPaired(): Boolean = deviceToken() != null
 
-    /** Persists the pairing result (§14.2) and refreshes the interceptor caches. */
-    suspend fun savePairing(baseUrl: String, deviceJwt: String, deviceId: String, childId: String, hmacSecret: String? = null) {
-        secure.putString(SECURE_DEVICE_TOKEN, deviceJwt)
-        if (hmacSecret != null) secure.putString(SECURE_HMAC_SECRET, hmacSecret)
+    /** True when the encrypted store could not be opened at all (fail-closed); the pairing claim flags this. */
+    fun secureStoreUnreadable(): Boolean = secure.unreadable
+
+    /**
+     * Persists the pairing result (§14.2) and refreshes the interceptor caches. Returns false — and writes nothing,
+     * cache or DataStore — when the encrypted store is unreadable or the write does not read back, so a broken store
+     * can never report the phone paired in memory.
+     */
+    suspend fun savePairing(baseUrl: String, deviceJwt: String, deviceId: String, childId: String, hmacSecret: String? = null): Boolean {
+        secure.reopenIfUnreadable()
+        if (!secureWriter.writePairing(SECURE_DEVICE_TOKEN, deviceJwt, SECURE_HMAC_SECRET, hmacSecret)) return false
         store.edit {
             it[KEY_BASE_URL] = baseUrl
             it.remove(KEY_DEVICE_TOKEN)
@@ -195,6 +217,7 @@ class AgentSettings @Inject constructor(
         if (hmacSecret != null) hmacCache = hmacSecret
         baseUrlLoaded = true
         tokenLoaded = true
+        return true
     }
 
     /** Clears pairing state (re-pair); rules/HMAC stay. */
@@ -222,11 +245,21 @@ class AgentSettings @Inject constructor(
         }
         // Issue #227: a re-pair is a new device enrolment; its first guard attempt opens a new window.
         TamperState.clearGuardAttemptWindow(context)
+// S2 (osra-security#39): the open lock period and the day's blocked-attempt counts belong to the
+        // enrolment. Left behind, the next child's first lock reports the previous child's period and the
+        // next blocked app reports their count — across enrolments, possibly across families.
+        com.familyshield.agent.enforcement.LockPeriodTracker.clear(context)
+        com.familyshield.agent.enforcement.AttemptCounter.clear(context)
+        // osra-security#24 / #792 (Antigravity B2): and a new enrolment inherits no wrong-PIN debt. Left
+        // behind, eight tries from the previous PIN would refuse the new one during the old window and lock
+        // for an hour on the first typo afterwards.
+        pinAttempts.clear()
         baseUrlCache = null
         tokenCache = null
         deviceIdCache = null
         childIdCache = null
         tokenLoaded = true // loaded, and known to be null
+        com.familyshield.agent.vpn.VpnState.clearFilterLoss(context)
     }
 
     /**

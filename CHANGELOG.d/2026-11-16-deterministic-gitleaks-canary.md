@@ -1,0 +1,2 @@
+### CI — deterministic gitleaks fixture-allowlist canary (refs #767)
+- `.github/workflows/workflow-lint.yml` now probes `.gitleaks.toml`'s fixture allowlist with a fixed, runtime-assembled vowel-free canary (`35` chars, Shannon entropy `4.82` bits/char) instead of `openssl rand -hex 20`, eliminating intermittent `generic-api-key` stopword/entropy flakes seen on unrelated PRs (#727, #831) while keeping Step 1's tree scan clean.

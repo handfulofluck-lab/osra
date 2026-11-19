@@ -187,7 +187,12 @@ void main() {
     testWidgets('reports', (tester) async {
       await pumpArabic(tester, const ReportsScreen(childId: 'child-1'), arabicApi());
       expect(find.text('التقارير'), findsOneWidget);
-      expect(find.text('الإجمالي: 300 دقيقة · المتوسط: 43 دقيقة يوميًا'), findsOneWidget);
+      // #841 (Arabic Language Bureau, 22:22Z): at 320 px the total and the average do not share a line, so
+      // they are drawn as two lines with **no** separator — a «·» left at the end of an RTL line reads as a
+      // stray mark. Both halves are asserted, so a regression that drops one cannot pass as "split".
+      expect(find.text('الإجمالي: 300 دقيقة'), findsOneWidget);
+      expect(find.text('المتوسط: 43 دقيقة يوميًا'), findsOneWidget);
+      expect(find.textContaining('·'), findsNothing);
       expectRtlAndNoOverflow(tester);
     });
 
@@ -280,30 +285,6 @@ void main() {
     Set<String> messageKeys(Map<String, dynamic> arb) =>
         {for (final k in arb.keys) if (!k.startsWith('@')) k};
 
-    // Keys whose Arabic the Arabic Language Bureau writes and we never do (#604, AGENTS.md). A key may sit
-    // here only while app_ar.arb genuinely lacks it: the assertions below fail on a typo (not an English key)
-    // and on a stale entry (a key that has Arabic again), so the list cannot quietly outlive the gap. The app
-    // falls back to the English template for these, which is visible; what it must never do is show an
-    // English sentence from a file that claims to be Arabic.
-    const pendingArabic = <String>{
-      'addAComputer',
-      'computerSelectPrompt',
-      'computerWindows',
-      'computerMac',
-      'computerAdminInstallNote',
-      'computerPairIntro',
-      'computerDownloadAddress',
-      'copyLink',
-      'linkCopied',
-      'sendTheLinkLine',
-      'sendTheLink',
-      'sendLinkCopied',
-      'pairClaimBodyComputer',
-      'pairClaimAllowedComputer',
-      'pairClaimDeniedComputer',
-      'computerAdminWarning',
-    };
-
     test('every English message has a non-empty Arabic translation', () {
       final en = readArb('app_en.arb');
       final ar = readArb('app_ar.arb');
@@ -311,16 +292,11 @@ void main() {
       final empty = <String>[];
       for (final key in messageKeys(en)) {
         if (!ar.containsKey(key)) {
-          if (!pendingArabic.contains(key)) missing.add(key);
+          missing.add(key);
         } else if ((ar[key] as String?)?.trim().isEmpty ?? true) {
           empty.add(key);
         }
       }
-      expect(pendingArabic.difference(messageKeys(en)), isEmpty,
-          reason: 'pendingArabic names keys app_en.arb does not have');
-      expect(pendingArabic.where(ar.containsKey), isEmpty,
-          reason: 'these keys have Arabic now and must leave pendingArabic: '
-              '${pendingArabic.where(ar.containsKey).join(', ')}');
       expect(missing, isEmpty, reason: 'app_ar.arb is missing: ${missing.join(', ')}');
       expect(empty, isEmpty, reason: 'app_ar.arb has empty values: ${empty.join(', ')}');
       expect(messageKeys(ar).difference(messageKeys(en)), isEmpty,
@@ -348,9 +324,6 @@ void main() {
       final ar = readArb('app_ar.arb');
       final placeholder = RegExp(r'\{([A-Za-z][A-Za-z0-9_]*)[,}]');
       for (final key in messageKeys(en)) {
-        // A pendingArabic key has no Arabic yet; the completeness row above owns whether that is allowed,
-        // and this row's question ("do the placeholders agree?") only exists where both sides do.
-        if (!ar.containsKey(key)) continue;
         final enNames = {
           for (final m in placeholder.allMatches(en[key] as String)) m.group(1)!,
         };
@@ -610,6 +583,16 @@ void main() {
       expect(ar.serverLabel, 'الخادم (السيرفر)');
       expect(ar.totalAverage(300, 43), 'الإجمالي: 300 دقيقة · المتوسط: 43 دقيقة يوميًا');
       expect(ar.digestPrefsPushBody, 'إرسال التنبيهات الحرجة كإشعارات فورية');
+      // #570: Karim's clone-space sentence (2026-11-11), pinned in both locales.
+      expect(
+        ar.phoneSetupOtherSpaceClone,
+        'هذا الهاتف يحتوي على مساحة أخرى مؤمنة، ربما تتيح هذه المساحة تشغيل أكثر من نسخة من نفس التطبيق، وقد لا يتمكن هذا التطبيق من مراقبتها طالما لم يتم إلغاء هذه الخاصية من قسم الإعدادات الخاصة بالهاتف.',
+      );
+      final en = await AppLocalizations.delegate.load(const Locale('en'));
+      expect(
+        en.phoneSetupOtherSpaceClone,
+        'This phone has another secure space that may run cloned apps (more than one copy of the same app). OSRA may not be able to monitor it until it is turned off in the phone\'s Settings.',
+      );
     });
 
     test('the screen-time value reads used-then-limit', () async {
@@ -746,6 +729,15 @@ void main() {
       // reads as itself instead of an empty label.
       expect(en.alertCategory('not_a_category'), 'not_a_category');
       expect(ar.alertCategory('not_a_category'), 'not_a_category');
+
+      // #889: device_restarted is emitted by the telemetry route rather than InternalAlertSchema,
+      // and must still translate both its chip label and alert title cleanly in EN & AR.
+      expect(en.alertCategory('device_restarted'), en.alertCategoryDeviceRestarted);
+      expect(ar.alertCategory('device_restarted'), ar.alertCategoryDeviceRestarted);
+      expect(ar.alertCategory('device_restarted'), isNot('device_restarted'));
+      expect(en.alertTitleFor('device_restarted', 'SERVER', isEnglish: true), en.alertDeviceRestartedTitle);
+      expect(ar.alertTitleFor('device_restarted', 'SERVER', isEnglish: false), ar.alertDeviceRestartedTitle);
+      expect(ar.alertTitleFor('device_restarted', 'SERVER', isEnglish: false), isNot('SERVER'));
     });
 
     test('search risk tags are localized, with the raw key only as a fallback', () async {
@@ -803,28 +795,32 @@ void main() {
       expect(rect.width, greaterThan(0));
     }
 
-    testWidgets('320x568: the action is a tooltipped icon and still opens the rules editor', (tester) async {
+    testWidgets('320x568: actions fold into the overflow menu and still open the rules editor', (tester) async {
       await pumpChildDetail(tester, 320);
-      final action = find.byKey(const ValueKey('editRulesButton'));
-      expect(action, findsOneWidget);
-      // The compact shape: an icon with the label as its tooltip, not a text
-      // button that runs out of room.
-      expect(tester.widget<IconButton>(action).tooltip, 'تعديل القواعد');
+      final menu = find.byKey(const ValueKey('childActionsMenu'));
+      expect(menu, findsOneWidget);
       expect(find.widgetWithText(TextButton, 'تعديل القواعد'), findsNothing);
-      expectInsideAppBar(tester, action);
+      expectInsideAppBar(tester, menu);
       expect(drainExceptions(tester), isEmpty);
 
-      await tester.tap(action);
+      await tester.tap(menu);
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(
+        of: find.byType(PopupMenuItem<String>),
+        matching: find.text('تعديل القواعد'),
+      ));
       await tester.pumpAndSettle();
       expect(find.byType(RulesEditorScreen), findsOneWidget);
     });
 
     for (final width in <double>[360, 375, 411]) {
-      testWidgets('${width.toInt()}px: the label shows in full and opens the rules editor', (tester) async {
+      testWidgets('${width.toInt()}px: top bar has tooltipped icon and overview tab has tonal button', (tester) async {
         await pumpChildDetail(tester, width);
         final action = find.byKey(const ValueKey('editRulesButton'));
         expect(action, findsOneWidget);
-        expect(find.widgetWithText(TextButton, 'تعديل القواعد'), findsOneWidget);
+        expect(tester.widget<IconButton>(action).tooltip, 'تعديل القواعد');
+        expect(find.widgetWithText(TextButton, 'تعديل القواعد'), findsNothing);
+        expect(find.widgetWithText(FilledButton, 'تعديل القواعد'), findsOneWidget);
         expectInsideAppBar(tester, action);
         expect(drainExceptions(tester), isEmpty);
 

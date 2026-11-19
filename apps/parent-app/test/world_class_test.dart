@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:familyshield_parent/api/models.dart' show LiveActivity, wellbeingColor;
+import 'package:familyshield_parent/core/ltr_isolate.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/reports/reports_screen.dart';
@@ -73,10 +74,11 @@ void main() {
 
       // Web section: visits, blocked domains and the #7 YouTube NOTE.
       final scrollable = find.byType(Scrollable).first;
-      await tester.scrollUntilVisible(find.text('tiktok.com'), 200, scrollable: scrollable);
+      await tester.scrollUntilVisible(find.text(ltrIsolateHost('tiktok.com')), 200, scrollable: scrollable);
       await tester.pumpAndSettle();
-      expect(find.textContaining('42 URL visits'), findsOneWidget);
-      expect(find.text('tiktok.com'), findsOneWidget);
+      // #830: the card counts sites once site names replace addresses.
+      expect(find.textContaining('42 sites visited'), findsOneWidget);
+      expect(find.text(ltrIsolateHost('tiktok.com')), findsOneWidget);
       expect(find.textContaining('12× blocked'), findsOneWidget);
       expect(find.textContaining('YouTube search is forced to SafeSearch'), findsOneWidget);
       expect(find.textContaining('Restricted Mode needs HTTPS inspection'), findsOneWidget);
@@ -204,7 +206,7 @@ void main() {
                 'dailyEmail': true,
                 'weeklyEmail': false,
                 'pushEnabled': true,
-                'emails': ['qa@familyshield.dev'],
+                'emails': ['qa@osratech.com'],
               },
           'PUT /v1/digests/prefs': (_) => {'ok': true},
           // ADR-0020 / #101: the screen loads the family zone and PATCHes a change.
@@ -225,29 +227,33 @@ void main() {
               },
         });
 
-    testWidgets('timezone dropdown loads the family zone and PATCHes a change (ADR-0020)', (tester) async {
+    testWidgets('timezone picker shows city + GMT offset, searches, and PATCHes IANA id (R-ID-3)', (tester) async {
       final api = digestApi();
       await pumpScreen(tester, const DigestPrefsScreen(), api);
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
 
-      // The zone is loaded from /v1/family/me and shown as the current value.
+      // The zone is loaded from /v1/family/me and shown as a city + offset, never raw IANA ids.
       expect(find.byKey(const ValueKey('digestTimezone')), findsOneWidget);
+      expect(find.text('UTC (GMT+0)'), findsOneWidget);
       expect(find.text('18:00'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('digestTimezone')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Asia/Dubai').last);
+      await tester.enterText(find.byKey(const ValueKey('digestTimezoneSearch')), 'Dubai');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Dubai (GMT+4)').last);
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
 
       final patches = api.calls('PATCH', '/v1/family/me');
       expect(patches, hasLength(1));
       expect(patches.single.body['timezone'], 'Asia/Dubai');
-      expect(find.textContaining('Digest timezone set to Asia/Dubai'), findsOneWidget);
+      expect(find.textContaining('Digest timezone set to Dubai (GMT+4)'), findsOneWidget);
+      expect(find.textContaining('Asia/Dubai'), findsNothing);
     });
 
-    testWidgets('a zone outside the curated list is shown, not replaced by UTC (#108)', (tester) async {
+    testWidgets('a zone outside the curated list is pinned at top cleanly without IANA text (#108, R-ID-3)', (tester) async {
       final api = FakeApiClient({
         ...standardRoutes(),
         'GET /v1/digests/prefs': (_) => {
@@ -264,10 +270,8 @@ void main() {
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
 
-      final dropdown = tester.widget<DropdownButtonFormField<String>>(
-        find.byKey(const ValueKey('digestTimezone')),
-      );
-      expect(dropdown.initialValue, 'Asia/Tokyo');
+      expect(find.text('Tokyo (GMT+9)'), findsOneWidget);
+      expect(find.text('Asia/Tokyo'), findsNothing);
       expect(find.text('18:00'), findsOneWidget);
       // The displayed value matches the server: no PATCH was needed to correct it.
       expect(api.calls('PATCH', '/v1/family/me'), isEmpty);
@@ -299,7 +303,7 @@ void main() {
       expect(puts.single.body['dailyEmail'], isTrue);
       expect(puts.single.body['weeklyEmail'], isTrue);
       expect(puts.single.body['pushEnabled'], isTrue);
-      expect(puts.single.body['emails'], ['qa@familyshield.dev']);
+      expect(puts.single.body['emails'], ['qa@osratech.com']);
       expect(find.text('Digest preferences saved'), findsOneWidget);
       // Run out the snackbar so no timer is left pending at test end.
       await tester.pump(const Duration(seconds: 5));
@@ -316,15 +320,15 @@ void main() {
               'dailyEmail': true,
               'weeklyEmail': false,
               'pushEnabled': true,
-              'emails': ['qa@familyshield.dev'],
+              'emails': ['qa@osratech.com'],
               'recipients': [
-                {'email': 'qa@familyshield.dev', 'status': 'confirmed'},
+                {'email': 'qa@osratech.com', 'status': 'confirmed'},
               ],
             },
         'PUT /v1/digests/prefs': (_) => {
               'ok': true,
               'recipients': [
-                {'email': 'qa@familyshield.dev', 'status': 'confirmed'},
+                {'email': 'qa@osratech.com', 'status': 'confirmed'},
                 {'email': 'grandma@example.com', 'status': 'pending'},
               ],
             },
@@ -336,9 +340,9 @@ void main() {
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
       expect(find.textContaining('Confirmation sent'), findsNothing);
-      expect(find.byKey(const ValueKey('digestRecipient-qa@familyshield.dev')), findsOneWidget);
+      expect(find.byKey(const ValueKey('digestRecipient-qa@osratech.com')), findsOneWidget);
 
-      await tester.enterText(find.byType(TextField), 'qa@familyshield.dev, grandma@example.com');
+      await tester.enterText(find.byType(TextField), 'qa@osratech.com, grandma@example.com');
       // The recipient rows push Save below the 600 px surface, so scroll it into view first.
       await tester.drag(find.byType(ListView), const Offset(0, -300));
       await tester.pumpAndSettle();
@@ -347,7 +351,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.calls('PUT', '/v1/digests/prefs').single.body['emails'],
-          ['qa@familyshield.dev', 'grandma@example.com']);
+          ['qa@osratech.com', 'grandma@example.com']);
       expect(find.byKey(const ValueKey('digestRecipient-grandma@example.com')), findsOneWidget);
       expect(find.textContaining('Confirmation sent'), findsOneWidget);
       // Run out the snackbar so no timer is left pending at test end.

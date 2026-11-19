@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:familyshield_parent/core/date_formatting.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/social/social_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
@@ -63,6 +64,7 @@ void main() {
     List<Map<String, dynamic>> concerns = const [],
     List<Map<String, dynamic>> calls = const [],
     List<Map<String, dynamic>> sms = const [],
+    List<Map<String, dynamic>> locks = const [],
     Map<String, bool>? socialMonitoring,
     List<String>? contactAllowlist,
   }) =>
@@ -72,9 +74,12 @@ void main() {
         'GET /v1/social/events': (req) => req.query['childId'] == 'child-1'
             ? {'items': concerns, 'meta': {'total': concerns.length}}
             : {'items': <dynamic>[], 'meta': {'total': 0}},
-        'GET /v1/reports/activity': (req) => req.query['type'] == 'call'
-            ? {'items': calls, 'meta': {'total': calls.length}}
-            : {'items': sms, 'meta': {'total': sms.length}},
+        'GET /v1/reports/activity': (req) => switch (req.query['type']) {
+              'call' => {'items': calls, 'meta': {'total': calls.length}},
+              'sms' => {'items': sms, 'meta': {'total': sms.length}},
+              'lock_period' => {'items': locks, 'meta': {'total': locks.length}},
+              _ => {'items': <dynamic>[], 'meta': {'total': 0}},
+            },
       };
 
   Map<String, dynamic> concernJson({
@@ -227,6 +232,20 @@ void main() {
       expect(puts.single.body['contactAllowlist'], ['15551234567']);
     });
 
+    testWidgets('Arabic digits are the same phone number (#771)', (tester) async {
+      final api = FakeApiClient(socialRoutes(contactAllowlist: const []));
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+      await flushFakeHttp(tester);
+
+      final phoneField = fieldByLabel('Phone number');
+      await reveal(tester, phoneField);
+      await tester.enterText(phoneField, '+١ (٥٥٥) ١٢٣-٤٥٦٧');
+      await tester.tap(find.byTooltip('Add'));
+      await tester.pumpAndSettle();
+      expect(find.text('15551234567'), findsOneWidget);
+      expect(find.text('+١ (٥٥٥) ١٢٣-٤٥٦٧'), findsNothing);
+    });
+
     testWidgets('removing a chip and saving PUTs the updated contactAllowlist', (tester) async {
       final api = FakeApiClient(socialRoutes(contactAllowlist: ['15550001122', '15553334445']));
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
@@ -269,14 +288,14 @@ void main() {
       expect(find.byIcon(Icons.call_made), findsOneWidget);
       expect(find.byIcon(Icons.call_received), findsOneWidget);
       expect(find.byIcon(Icons.sms_outlined), findsOneWidget);
-      expect(find.text('+15551234567'), findsOneWidget);
+      expect(find.text('\u2066+15551234567\u2069'), findsOneWidget);
       expect(find.text('01:35'), findsOneWidget);
       expect(find.text('00:12'), findsOneWidget);
       // 200-char body is capped at 120 chars.
       expect(find.text('${'x' * 120}…'), findsOneWidget);
       // Day groups: today and yesterday headers.
-      final today = DateFormat('EEEE, MMM d, yyyy').format(DateTime(base.year, base.month, base.day));
-      final yesterday = DateFormat('EEEE, MMM d, yyyy').format(DateTime(base.year, base.month, base.day - 1));
+      final today = DateFormat.yMMMMEEEEd().format(DateTime(base.year, base.month, base.day));
+      final yesterday = DateFormat.yMMMMEEEEd().format(DateTime(base.year, base.month, base.day - 1));
       expect(find.text(today), findsOneWidget);
       await reveal(tester, find.text(yesterday));
       expect(find.text(yesterday), findsOneWidget);
@@ -320,13 +339,37 @@ void main() {
       await flushFakeHttp(tester);
 
       final gets = api.calls('GET', '/v1/reports/activity');
-      expect(gets, hasLength(2));
-      expect(gets.map((r) => r.query['type']), containsAll(['call', 'sms']));
+      expect(gets, hasLength(3));
+      expect(gets.map((r) => r.query['type']), containsAll(['call', 'sms', 'lock_period']));
+      expect(find.text('Device locked'), findsNothing);
+
       // Newest (sms, 1 min ago) renders above the older call.
       await reveal(tester, find.text('running late, see you at 5'));
       final smsTop = tester.getTopLeft(find.byIcon(Icons.sms_outlined));
       final callTop = tester.getTopLeft(find.byIcon(Icons.call_made));
       expect(smsTop.dy, lessThan(callTop.dy));
+    });
+
+    testWidgets('a lock period renders with the attempt count (#830)', (tester) async {
+      final api = FakeApiClient(socialRoutes(locks: [
+        {
+          'id': 'lock-1',
+          'type': 'lock_period',
+          'payload': {
+            'startedAt': '2026-11-15T18:00:00.000Z',
+            'endedAt': '2026-11-15T18:20:00.000Z',
+            'attempts': 5,
+            'mode': 'locked',
+          },
+          'ts': testNow.subtract(const Duration(minutes: 2)).toIso8601String(),
+        },
+      ]));
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+      await flushFakeHttp(tester);
+
+      await reveal(tester, find.text('Device locked'));
+      expect(find.text('Device locked'), findsOneWidget);
+      expect(find.text('The lock screen came up 5 times'), findsOneWidget);
     });
   });
 
@@ -354,6 +397,21 @@ void main() {
       expect(find.text('No concerns detected'), findsOneWidget);
       await reveal(tester, find.text('No phone calls or texts yet'));
       expect(find.text('No phone calls or texts yet'), findsOneWidget);
+    });
+  });
+
+  group('Arabic dates', () {
+    testWidgets('the day header follows the locale order with Western digits', (tester) async {
+      await configureDateFormatting();
+      final api = FakeApiClient(socialRoutes(calls: [callJson(at: DateTime.utc(2026, 11, 14, 12))]));
+      await tester.pumpWidget(ProviderScope(
+        overrides: [apiClientProvider.overrideWithValue(api)],
+        child: localizedTestApp(const SocialScreen(childId: 'child-1'), locale: const Locale('ar')),
+      ));
+      await tester.pumpAndSettle();
+      await flushFakeHttp(tester);
+
+      await reveal(tester, find.text('السبت، 14 نوفمبر 2026'));
     });
   });
 }

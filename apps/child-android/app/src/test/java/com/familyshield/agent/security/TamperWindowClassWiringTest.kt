@@ -11,11 +11,22 @@ import org.junit.Test
  * TYPE_WINDOW_STATE_CHANGED and passes it only while that same package is in front. Source-text rows, the
  * `UnlinkedRefreshWiringTest` shape: the service cannot be started on the JVM.
  *
- * Mutants: drop the package check from the `windowClass =` argument → [the kept class is passed only for
- * the same package] goes red; take the class from every event type → [the class is kept from window-state
- * changes only] goes red.
+ * osra-security#29 (#817, Antigravity's Flip4 pass): "the last state change's class" was one global pair, so the
+ * search keyboard's state change erased Settings' class and the access pages lost their identity mid-search. The
+ * class is now kept per package ([lastClassByPkg]) and read back by the foreground package. The rows follow that:
+ * they assert the per-package map is written on a state change and read by package at both classify sites, and that
+ * no global pair is back.
+ *
+ * Mutants: read `lastClassByPkg` from the event's package instead of the foreground one → [the class is read for the
+ * package in front] goes red; take the class from every event type → [the class is kept from window-state changes
+ * only] goes red.
  */
 class TamperWindowClassWiringTest {
+
+    private companion object {
+        /** The line after the cover path, so a slice cannot end above the read it is looking for. */
+        const val NEXT_FUNCTION_ANCHOR = "\n    private fun removeGuardCover("
+    }
 
     private val service = sourceFile("app/src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt")
     private val guard = service.substringAfter("private fun guardProtectionScreens(").substringBefore("performGlobalAction(")
@@ -23,24 +34,61 @@ class TamperWindowClassWiringTest {
     @Test
     fun `the class is kept from window-state changes only`() {
         // missingDelimiterValue = "": without it, a guard with no state-change test would hand back the whole
-        // guard here, which still contains both assignments, and the row would pass.
+        // guard here, which still contains the assignment, and the row would pass.
         val kept = guard.substringAfter(
             "if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {",
             missingDelimiterValue = "",
         ).substringBefore("}")
-        assertTrue("the class comes from a state change", kept.contains("lastWindowClass = event.className?.toString()"))
-        assertTrue("with its package", kept.contains("lastWindowClassPkg = event.packageName?.toString()"))
+        assertTrue(
+            "the class is kept per package, from a state change",
+            kept.contains("lastClassByPkg[") && kept.contains("event.className?.toString()"),
+        )
         assertFalse(
-            "nowhere else in the guard is the class overwritten",
-            guard.substringAfter(kept).contains("lastWindowClass = "),
+            "the single global pair that the keyboard used to overwrite is not back",
+            guard.contains("lastWindowClass = ") || guard.contains("lastWindowClassPkg = "),
         )
     }
 
     @Test
-    fun `the kept class is passed only for the same package`() {
+    fun `the class is read for the package in front`() {
         assertTrue(
-            "a class from another package must not classify this window",
-            guard.contains("windowClass = lastWindowClass.takeIf { lastWindowClassPkg != null && lastWindowClassPkg == pkg }"),
+            "the guard passes the foreground package's own class, so an IME state change cannot erase it",
+            guard.contains("windowClass = pkg?.let { lastClassByPkg[it] }"),
+        )
+        // The cover path reads it the same way, still gated on the pane being the active one. Sliced to the function
+        // (Hydrogen's note): `service.contains` was satisfied by the guard's own occurrence, so deleting the cover
+        // path's read left this row green.
+        // Bounded by the next function rather than a closing brace: the cover path spans 70 lines with plenty of
+        // inner braces, so a closing-brace slice could end above the read it is meant to find.
+        val cover = service.substringAfter("private fun coverSharedProtectionScreens(", missingDelimiterValue = "")
+            .substringBefore(NEXT_FUNCTION_ANCHOR, missingDelimiterValue = "")
+        assertTrue(
+            "and the multi-window path does too",
+            cover.contains("pkg?.let { lastClassByPkg[it] }"),
+        )
+    }
+
+    /**
+     * Claude's item 1 on #817: reverting the service to pass the event's package into the latches left every test
+     * green, because the planted fault only moved the helper. This row drives the wiring: the service computes
+     * `latchPackage(pkg, pkgOfEvent)` once and hands that to **both** latches.
+     *
+     * Mutant: pass `pkgOfEvent` to either latch → this row goes red.
+     */
+    @Test
+    fun `the service latches on the package it chose, not on the raw event package`() {
+        assertTrue(
+            "the choice is made once, through the helper",
+            guard.contains("AccessibilityOffPolicy.latchPackage(pkg, pkgOfEvent)"),
+        )
+        val latchCalls = guard.substringAfter("val latchPkg =").substringBefore("if (!settings.isPairedSync())")
+        assertTrue(
+            "and both latches read it",
+            latchCalls.contains("packageName = latchPkg,"),
+        )
+        assertFalse(
+            "neither latch reads the event's package directly",
+            latchCalls.contains("packageName = pkgOfEvent,"),
         )
     }
 

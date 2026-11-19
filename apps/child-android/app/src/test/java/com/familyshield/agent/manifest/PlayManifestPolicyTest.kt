@@ -2,6 +2,7 @@ package com.familyshield.agent.manifest
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -30,6 +31,9 @@ class PlayManifestPolicyTest {
             </intent>
             <intent>
                 <action android:name="android.intent.action.DIAL" />
+            </intent>
+            <intent>
+                <action android:name="android.net.VpnService" />
             </intent>
         </queries>
     """.trimIndent()
@@ -129,6 +133,9 @@ class PlayManifestPolicyTest {
                     <action android:name="android.intent.action.MAIN" />
                     <category android:name="android.intent.category.HOME" />
                 </intent>
+                <intent>
+                    <action android:name="android.net.VpnService" />
+                </intent>
             </queries>
         """.trimIndent()
         val violations = PlayManifestPolicy.queryViolations(merged(queries = queries))
@@ -138,9 +145,45 @@ class PlayManifestPolicyTest {
     }
 
     @Test
+    fun `a missing VPN provider query fails the query check`() {
+        // Mutant: remove the VPN provider intent from the required queries.
+        val queries = requiredQueries.replace("android.net.VpnService", "com.example.OTHER_ACTION")
+        val violations = PlayManifestPolicy.queryViolations(merged(queries = queries))
+        assertTrue(violations.toString(), violations.single().contains("android.net.VpnService"))
+    }
+
+    @Test
     fun `a missing isMonitoringTool declaration fails the monitoring check`() {
         val violations = PlayManifestPolicy.monitoringViolations(merged(monitoringValue = ""))
         assertTrue(violations.toString(), violations.single().contains("isMonitoringTool"))
+    }
+
+    /**
+     * ADR-0039 R3: the four permissions Full may carry and Play must never carry, each named with the decision
+     * that forbids it. `REQUEST_INSTALL_PACKAGES` is the one that will actually arrive — Full installs its own
+     * updates — so it is the permission most likely to leak into the store build, and Play treats it as a
+     * policy rejection rather than a warning.
+     */
+    @Test
+    fun `the four Full-only permissions are each forbidden by name, with their decision`() {
+        val expected = mapOf(
+            "android.permission.REQUEST_INSTALL_PACKAGES" to "ADR-0039 R3",
+            "android.permission.READ_SMS" to "ADR-0021 decision 2",
+            "android.permission.READ_CALL_LOG" to "ADR-0021 decision 2",
+            "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" to "ADR-0016 §4",
+        )
+        for ((permission, decision) in expected) {
+            val reason = PlayManifestPolicy.FORBIDDEN_PERMISSIONS[permission]
+            assertNotNull("$permission must be on the deny list", reason)
+            assertTrue(
+                "$permission's reason must name $decision, so the failure explains itself",
+                reason!!.contains(decision),
+            )
+            assertFalse(
+                "$permission must not also be allowed",
+                PlayManifestPolicy.ALLOWED_PERMISSIONS.containsKey(permission),
+            )
+        }
     }
 
     /**

@@ -672,52 +672,51 @@ class _FinishResetDialogState extends ConsumerState<_FinishResetDialog> {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     return AlertDialog(
+      scrollable: true,
       title: Text(l10n.mfaResetFinishTitle),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(l10n.mfaResetFinishBody),
-            const SizedBox(height: AppSpace.md),
-            TextField(
-              key: const ValueKey('mfaResetFinishEmail'),
-              controller: _email,
-              keyboardType: TextInputType.emailAddress,
-              autofillHints: const [AutofillHints.email],
-              decoration: InputDecoration(
-                labelText: l10n.emailLabel,
-                border: const OutlineInputBorder(),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(l10n.mfaResetFinishBody),
+          const SizedBox(height: AppSpace.md),
+          TextField(
+            key: const ValueKey('mfaResetFinishEmail'),
+            controller: _email,
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email],
+            decoration: InputDecoration(
+              labelText: l10n.emailLabel,
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: AppSpace.md),
+          TextField(
+            key: const ValueKey('mfaResetFinishPassword'),
+            controller: _password,
+            obscureText: _obscured,
+            autofillHints: const [AutofillHints.password],
+            decoration: InputDecoration(
+              labelText: l10n.passwordLabel,
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                icon: Icon(_obscured ? Icons.visibility : Icons.visibility_off),
+                onPressed: () => setState(() => _obscured = !_obscured),
               ),
             ),
+            onSubmitted: (_) => _submit(),
+          ),
+          if (_failure != null) ...[
             const SizedBox(height: AppSpace.md),
-            TextField(
-              key: const ValueKey('mfaResetFinishPassword'),
-              controller: _password,
-              obscureText: _obscured,
-              autofillHints: const [AutofillHints.password],
-              decoration: InputDecoration(
-                labelText: l10n.passwordLabel,
-                border: const OutlineInputBorder(),
-                suffixIcon: IconButton(
-                  icon: Icon(_obscured ? Icons.visibility : Icons.visibility_off),
-                  onPressed: () => setState(() => _obscured = !_obscured),
-                ),
-              ),
-              onSubmitted: (_) => _submit(),
+            Text(
+              _failure!.kind == MfaResetFailureKind.validation
+                  ? l10n.mfaResetFieldsRequired
+                  : mfaResetFailureText(l10n, _failure!.kind),
+              key: const ValueKey('mfaResetFinishError'),
+              style: TextStyle(color: context.tokens.danger),
             ),
-            if (_failure != null) ...[
-              const SizedBox(height: AppSpace.md),
-              Text(
-                _failure!.kind == MfaResetFailureKind.validation
-                    ? l10n.mfaResetFieldsRequired
-                    : mfaResetFailureText(l10n, _failure!.kind),
-                key: const ValueKey('mfaResetFinishError'),
-                style: TextStyle(color: context.tokens.danger),
-              ),
-            ],
           ],
-        ),
+        ],
       ),
       actions: [
         TextButton(

@@ -33,6 +33,7 @@ import com.familyshield.agent.network.ServerUrls
 import com.familyshield.agent.security.AdminEnrolmentMessages
 import com.familyshield.agent.security.AdminEnrolmentPolicy
 import com.familyshield.agent.security.DeviceAdminManager
+import com.familyshield.agent.security.Digits
 import com.familyshield.agent.security.EnrolmentOutcome
 import com.familyshield.agent.security.ParentPin
 import com.familyshield.agent.security.ParentPinStore
@@ -112,11 +113,18 @@ class PairingActivity : ComponentActivity() {
 
     /** Plan 1.4: the OS VPN consent dialog; on OK the sinkhole starts and comes back on every boot. */
     private val vpnConsentLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        com.familyshield.agent.vpn.VpnState.endOwnConsent()
         if (result.resultCode == RESULT_OK) {
             com.familyshield.agent.vpn.VpnState.setEnabled(this, true)
             com.familyshield.agent.vpn.FilterVpnService.start(this)
         }
         lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
+    }
+
+    private fun launchVpnConsent(intent: Intent) {
+        com.familyshield.agent.vpn.VpnState.beginOwnConsent()
+        runCatching { vpnConsentLauncher.launch(intent) }
+            .onFailure { com.familyshield.agent.vpn.VpnState.endOwnConsent() }
     }
 
     /** ADR-0010: parent-PIN gate for Re-pair / Remove protection; RESULT_OK means the PIN was verified. */
@@ -460,7 +468,7 @@ class PairingActivity : ComponentActivity() {
             error.visibility = View.VISIBLE
             return
         }
-        val code = enteredCode.trim()
+        val code = Digits.normalize(enteredCode.trim())
         if (!code.matches(Regex("\\d{6}"))) {
             error.text = getString(R.string.pair_error_code)
             error.visibility = View.VISIBLE
@@ -484,11 +492,17 @@ class PairingActivity : ComponentActivity() {
             error.setTextColor(0xFFB00020.toInt())
             error.visibility = View.GONE
             result.onSuccess { pairing ->
-                settings.savePairing(pairing.baseUrl, pairing.token, pairing.deviceId, pairing.childId, pairing.hmacSecret)
-                startAgent()
-                // ADR-0010: the parent is holding the phone right now — this is the moment to set the PIN
-                // that gates every protection-removal action from here on.
-                if (pinStore.isConfigured()) showProtectionSetup() else showSetPin()
+                if (settings.savePairing(pairing.baseUrl, pairing.token, pairing.deviceId, pairing.childId, pairing.hmacSecret)) {
+                    startAgent()
+                    // ADR-0010: the parent is holding the phone right now — this is the moment to set the PIN
+                    // that gates every protection-removal action from here on.
+                    if (pinStore.isConfigured()) showProtectionSetup() else showSetPin()
+                } else {
+                    // osra-security#8 F2 follow-up: the secure store could not persist the pairing, so nothing
+                    // was started and nothing is cached as paired. The form already names the state above.
+                    error.text = getString(R.string.pairing_secure_store_failed)
+                    error.visibility = View.VISIBLE
+                }
             }.onFailure { e ->
                 error.text = userMessage(e)
                 error.visibility = View.VISIBLE
@@ -499,7 +513,7 @@ class PairingActivity : ComponentActivity() {
     /** ADR-0010 step 1: the parent chooses the PIN (4–8 digits, not a weak one). */
     private fun showSetPin() {
         replaceWith {
-            addView(label("${getString(R.string.pair_pin_title)} · ${getString(R.string.app_name_ar)}"))
+            addView(label(getString(R.string.title_brand_suffix, getString(R.string.pair_pin_title))))
             addView(
                 label(getString(R.string.pair_pin_body)),
             )
@@ -518,8 +532,8 @@ class PairingActivity : ComponentActivity() {
                 Button(this@PairingActivity).apply {
                     text = getString(R.string.pair_pin_save)
                     setOnClickListener {
-                        val p = pin.text.toString()
-                        val reason = ParentPin.validationError(p) ?: if (p != again.text.toString()) getString(R.string.pair_pin_mismatch) else null
+                        val p = Digits.normalize(pin.text.toString())
+                        val reason = ParentPin.validationError(p) ?: if (p != Digits.normalize(again.text.toString())) getString(R.string.pair_pin_mismatch) else null
                         if (reason != null) {
                             error.text = reason
                             error.visibility = View.VISIBLE
@@ -542,23 +556,17 @@ class PairingActivity : ComponentActivity() {
             return
         }
         replaceWith {
-            addView(label("Protect this device · أسرة"))
-            addView(
-                label(
-                    "On the next screen, tap \"Activate\" to give OSRA device-admin rights. With it, this app " +
-                        "cannot be uninstalled without the parent PIN and your parent can lock the device remotely. " +
-                        "Without it, protection is alert-only.",
-                ),
-            )
+            addView(label(getString(R.string.setup_protect_title)))
+            addView(label(getString(R.string.setup_protect_body)))
             addView(
                 Button(this@PairingActivity).apply {
-                    text = "Activate device admin"
+                    text = getString(R.string.setup_activate_admin)
                     setOnClickListener { launchAdminSheet() }
                 },
             )
             addView(
                 Button(this@PairingActivity).apply {
-                    text = "Skip for now (alert-only protection)"
+                    text = getString(R.string.setup_skip)
                     setOnClickListener { showComplete() }
                 },
             )
@@ -571,26 +579,30 @@ class PairingActivity : ComponentActivity() {
      * registry entry; it can only name the state and open the screen that goes through Knox.
      */
     private fun showStaleKnoxAdmin() {
-        val message = AdminEnrolmentMessages.forOutcome(EnrolmentOutcome.STALE_KNOX_ADMIN) ?: return
+        val message = AdminEnrolmentMessages.resForOutcome(EnrolmentOutcome.STALE_KNOX_ADMIN) ?: return
         replaceWith {
-            addView(label("${message.title} · أسرة").apply { setTextColor(0xFFB00020.toInt()) })
-            addView(label(message.body))
+            addView(
+                label(getString(R.string.title_brand_suffix, getString(message.titleRes))).apply {
+                    setTextColor(0xFFB00020.toInt())
+                },
+            )
+            addView(label(getString(message.bodyRes)))
             addView(label(message.recovery))
             addView(
                 Button(this@PairingActivity).apply {
-                    text = message.action
+                    text = getString(message.actionRes)
                     setOnClickListener { openDeviceAdminSettings() }
                 },
             )
             addView(
                 Button(this@PairingActivity).apply {
-                    text = "Try Activate again"
+                    text = getString(R.string.setup_try_activate_again)
                     setOnClickListener { launchAdminSheet() }
                 },
             )
             addView(
                 Button(this@PairingActivity).apply {
-                    text = "Continue without protection"
+                    text = getString(R.string.setup_continue_without)
                     setOnClickListener {
                         lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
                     }
@@ -610,9 +622,14 @@ class PairingActivity : ComponentActivity() {
         }
     }
 
-    /** Issue #81: this unpaired phone still holds our admin grant but no PIN — its OSRA data was cleared. */
+    /**
+     * Issue #81 and osra-security#8 F2 follow-up: an unpaired phone whose OSRA data was cleared while admin stayed
+     * active, or whose encrypted store failed closed, is recognised here and flags the next claim and the form notice.
+     */
     private fun dataClearedDetected(): Boolean =
-        WipeDetector.dataCleared(deviceAdmin.isAdminActive(), paired = false, pinConfigured = pinStore.isConfigured())
+        // osra-security#8 F2 follow-up: a fail-closed store is a wipe signature too, whatever the admin tier.
+        settings.secureStoreUnreadable() ||
+            WipeDetector.dataCleared(deviceAdmin.isAdminActive(), paired = false, pinConfigured = pinStore.isConfigured())
 
     /** Runs [action] only after the parent PIN is verified on the guard screen; no PIN yet → runs at once. */
     private fun requirePin(reason: String, action: () -> Unit) {
@@ -625,30 +642,32 @@ class PairingActivity : ComponentActivity() {
         val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
         if (!OnboardingPolicy.canComplete(rows)) { showChecklist(rows, firstRun = true); return }
         replaceWith {
-            addView(label("Setup complete"))
-            addView(label(OnboardingPolicy.progressLine(rows)).apply { setTextColor(0xFF2E7D32.toInt()) })
-            addView(label("The agent is now monitoring this device."))
+            addView(label(getString(R.string.setup_complete_title)))
+            addView(label(progressLine(rows)).apply { setTextColor(0xFF2E7D32.toInt()) })
+            addView(label(getString(R.string.setup_complete_body)))
             for (row in rows.filter { !it.granted }) addGrantRow(this, row) // the recommended ones still open
             // ADR-0021 B3: the Play artefact has no call-log/SMS permissions, so the invite and the button
             // exist only where the capability does; the notice below says what this build cannot capture.
             if (BuildConfig.CAPTURE_CALL_SMS) {
                 addView(
-                    label(
-                        "Optional: grant Call Log and SMS permissions so calls and messages are " +
-                            "logged for safety review (log-only; the agent never becomes the default dialer).",
-                    ),
+                    label(getString(R.string.setup_call_sms_invite)),
                 )
                 addView(
                     Button(this@PairingActivity).apply {
-                        text = "Grant call & SMS permissions"
+                        text = getString(R.string.setup_grant_call_sms)
                         setOnClickListener { commsPermissionLauncher.launch(COMMS_PERMISSIONS) }
                     },
                 )
             }
-            OnboardingPolicy.captureNotice(BuildConfig.CAPTURE_NOTIFICATIONS, BuildConfig.CAPTURE_CALL_SMS)?.let {
-                addView(label(it).apply { setTextColor(0xFF616161.toInt()) })
+            OnboardingPolicy.captureNoticeRes(BuildConfig.CAPTURE_NOTIFICATIONS, BuildConfig.CAPTURE_CALL_SMS)?.let {
+                addView(label(getString(it)).apply { setTextColor(0xFF616161.toInt()) })
             }
-            addView(Button(this@PairingActivity).apply { text = "Open status"; setOnClickListener { lifecycleScope.launch { showStatus() } } })
+            addView(
+                Button(this@PairingActivity).apply {
+                    text = getString(R.string.setup_open_status)
+                    setOnClickListener { lifecycleScope.launch { showStatus() } }
+                },
+            )
         }
     }
 
@@ -660,18 +679,34 @@ class PairingActivity : ComponentActivity() {
      */
     private fun showChecklist(rows: List<OnboardingPolicy.Row>, firstRun: Boolean) {
         replaceWith {
-            addView(label(if (firstRun) "Finish protecting this device · أسرة" else "Protection checklist · أسرة"))
             addView(
-                label(OnboardingPolicy.progressLine(rows)).apply {
+                label(
+                    getString(
+                        if (firstRun) R.string.setup_checklist_first_title else R.string.setup_checklist_title,
+                    ),
+                ),
+            )
+            addView(
+                label(progressLine(rows)).apply {
                     setTextColor(if (OnboardingPolicy.canComplete(rows)) 0xFF2E7D32.toInt() else 0xFFB00020.toInt())
                 },
             )
-            if (firstRun) addView(label("Each item below opens the one screen that grants it. Come back here after each one; the list re-checks itself."))
+            if (firstRun) addView(label(getString(R.string.setup_checklist_intro)))
             for (row in rows) addGrantRow(this, row)
             if (!firstRun) {
-                addView(Button(this@PairingActivity).apply { text = "Back"; setOnClickListener { lifecycleScope.launch { showStatus() } } })
+                addView(
+                    Button(this@PairingActivity).apply {
+                        text = getString(R.string.setup_back)
+                        setOnClickListener { lifecycleScope.launch { showStatus() } }
+                    },
+                )
             } else if (OnboardingPolicy.canComplete(rows)) {
-                addView(Button(this@PairingActivity).apply { text = "Done"; setOnClickListener { showComplete() } })
+                addView(
+                    Button(this@PairingActivity).apply {
+                        text = getString(R.string.setup_done)
+                        setOnClickListener { showComplete() }
+                    },
+                )
             }
         }
     }
@@ -679,21 +714,21 @@ class PairingActivity : ComponentActivity() {
     private fun addGrantRow(container: LinearLayout, row: OnboardingPolicy.Row) {
         val g = row.grant
         val mark = if (row.granted) "✓" else if (g.required) "⚠️" else "○"
-        val suffix = if (g.required) "" else " (recommended)"
+        val suffix = if (g.required) "" else " " + getString(R.string.setup_recommended)
         container.addView(
-            label("$mark ${g.title}$suffix").apply {
+            label("$mark ${getString(g.titleRes)}$suffix").apply {
                 setTextColor(if (row.granted) 0xFF2E7D32.toInt() else if (g.required) 0xFFB00020.toInt() else 0xFF616161.toInt())
             },
         )
         if (row.granted) return
-        container.addView(label(g.why))
+        container.addView(label(getString(g.whyRes)))
         OnboardingPolicy.oemHint(g, Build.MANUFACTURER)?.let { container.addView(label(it)) }
-        val button = Button(this).apply { text = "Grant: ${g.title}" }
+        val button = Button(this).apply { text = getString(R.string.setup_grant_button, getString(g.titleRes)) }
         when (g) {
             OnboardingPolicy.Grant.DEVICE_ADMIN -> button.setOnClickListener { launchAdminSheet() }
             OnboardingPolicy.Grant.WEB_FILTER -> button.setOnClickListener {
                 val prepare = android.net.VpnService.prepare(this)
-                if (prepare != null) vpnConsentLauncher.launch(prepare) else {
+                if (prepare != null) launchVpnConsent(prepare) else {
                     com.familyshield.agent.vpn.VpnState.setEnabled(this, true)
                     com.familyshield.agent.vpn.FilterVpnService.start(this)
                     lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
@@ -717,14 +752,14 @@ class PairingActivity : ComponentActivity() {
         val prepare = android.net.VpnService.prepare(this)
         if (prepare != null) {
             container.addView(
-                label("⚠️ Web filter not set up — allow the OSRA VPN (it only filters web addresses on this phone; nothing leaves the device).").apply {
+                label(getString(R.string.setup_web_filter_missing)).apply {
                     setTextColor(0xFFB00020.toInt())
                 },
             )
             container.addView(
                 Button(this).apply {
-                    text = "Set up web filter"
-                    setOnClickListener { vpnConsentLauncher.launch(prepare) }
+                    text = getString(R.string.setup_web_filter_setup)
+                    setOnClickListener { launchVpnConsent(prepare) }
                 },
             )
             return
@@ -733,14 +768,14 @@ class PairingActivity : ComponentActivity() {
             com.familyshield.agent.vpn.VpnState.setEnabled(this, true)
         }
         if (com.familyshield.agent.vpn.VpnState.isEstablished(this)) {
-            container.addView(label("✓ Web filter: connected (SafeSearch, blocked sites, pause-internet)"))
+            container.addView(label(getString(R.string.setup_web_filter_connected)))
         } else {
             container.addView(
-                label("⚠️ Web filter: not connected").apply { setTextColor(0xFFB00020.toInt()) },
+                label(getString(R.string.setup_web_filter_disconnected)).apply { setTextColor(0xFFB00020.toInt()) },
             )
             container.addView(
                 Button(this).apply {
-                    text = "Reconnect web filter"
+                    text = getString(R.string.setup_web_filter_reconnect)
                     setOnClickListener {
                         com.familyshield.agent.vpn.FilterVpnService.start(this@PairingActivity)
                         lifecycleScope.launch { kotlinx.coroutines.delay(800); if (settings.isPaired()) showStatus() }
@@ -800,21 +835,23 @@ class PairingActivity : ComponentActivity() {
 
             val tier = deviceAdmin.tier()
             replaceWith {
-                addView(label("This device is paired · أسرة"))
-                addView(label("Child: $childId\nDevice: $deviceId\nServer: $server"))
+                addView(label(getString(R.string.status_paired_title)))
+                addView(label(getString(R.string.status_identity, childId, deviceId, server)))
                 addView(
                     label(
-                        when (tier) {
-                            ProtectionTier.OWNER -> "\n✓ Protection: device owner (uninstall blocked by the OS)"
-                            ProtectionTier.ADMIN -> "\n✓ Protection: device admin (uninstall needs the parent PIN)"
-                            ProtectionTier.NONE -> "\n⚠️ Protection: alert-only — device admin is not active"
-                        },
+                        "\n" + getString(
+                            when (tier) {
+                                ProtectionTier.OWNER -> R.string.status_protection_owner
+                                ProtectionTier.ADMIN -> R.string.status_protection_admin
+                                ProtectionTier.NONE -> R.string.status_protection_alert_only
+                            },
+                        ),
                     ).apply { setTextColor(if (tier == ProtectionTier.NONE) 0xFFB00020.toInt() else 0xFF2E7D32.toInt()) },
                 )
                 if (tier == ProtectionTier.NONE) {
                     addView(
                         Button(this@PairingActivity).apply {
-                            text = "Activate device admin"
+                            text = getString(R.string.setup_activate_admin)
                             setOnClickListener { launchAdminSheet() }
                         },
                     )
@@ -825,7 +862,7 @@ class PairingActivity : ComponentActivity() {
                         ProtectionStatusNote.REMOVED_BY_PARENT
                     ) {
                         addView(
-                            label("\n" + AdminEnrolmentMessages.PARENT_REMOVAL_NOTE).apply {
+                            label("\n" + getString(R.string.admin_parent_removal_note)).apply {
                                 setTextColor(0xFF616161.toInt())
                             },
                         )
@@ -839,7 +876,7 @@ class PairingActivity : ComponentActivity() {
                     serviceRunning = isRunning,
                 )
                 addView(
-                    label(LocationStatusPolicy.line(locationStatus)).apply {
+                    label("\n" + getString(LocationStatusPolicy.lineRes(locationStatus))).apply {
                         setTextColor(
                             when (locationStatus) {
                                 LocationStatus.ACTIVE -> 0xFF2E7D32.toInt()
@@ -849,10 +886,10 @@ class PairingActivity : ComponentActivity() {
                         )
                     },
                 )
-                LocationStatusPolicy.actionLabel(locationStatus)?.let { action ->
+                LocationStatusPolicy.actionRes(locationStatus)?.let { action ->
                     addView(
                         Button(this@PairingActivity).apply {
-                            text = action
+                            text = getString(action)
                             setOnClickListener { onLocationStatusAction(locationStatus) }
                         },
                     )
@@ -860,30 +897,44 @@ class PairingActivity : ComponentActivity() {
 
                 addView(
                     Button(this@PairingActivity).apply {
-                        text = "Open accessibility settings"
+                        text = getString(R.string.status_open_accessibility)
                         setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                     },
                 )
                 val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
                 val missing = OnboardingPolicy.missingRequired(rows)
                 addView(
-                    label("\n" + OnboardingPolicy.progressLine(rows) + if (missing.isEmpty()) "" else "\nMissing: " + missing.joinToString { it.title }).apply {
+                    label(
+                        "\n" + progressLine(rows) +
+                            if (missing.isEmpty()) {
+                                ""
+                            } else {
+                                "\n" + getString(
+                                    R.string.status_missing,
+                                    missing.joinToString(getString(R.string.list_separator)) { getString(it.titleRes) },
+                                )
+                            },
+                    ).apply {
                         setTextColor(if (missing.isEmpty()) 0xFF2E7D32.toInt() else 0xFFB00020.toInt())
                     },
                 )
-                OnboardingPolicy.captureNotice(BuildConfig.CAPTURE_NOTIFICATIONS, BuildConfig.CAPTURE_CALL_SMS)?.let {
-                    addView(label(it).apply { setTextColor(0xFF616161.toInt()) })
+                OnboardingPolicy.captureNoticeRes(BuildConfig.CAPTURE_NOTIFICATIONS, BuildConfig.CAPTURE_CALL_SMS)?.let {
+                    addView(label(getString(it)).apply { setTextColor(0xFF616161.toInt()) })
                 }
                 addView(
                     Button(this@PairingActivity).apply {
-                        text = if (missing.isEmpty()) "Protection checklist" else "Finish protection (${missing.size} to grant)"
+                        text = if (missing.isEmpty()) {
+                            getString(R.string.setup_checklist_button)
+                        } else {
+                            resources.getQuantityString(R.plurals.setup_finish_protection, missing.size, missing.size)
+                        }
                         setOnClickListener { showChecklist(OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }, firstRun = false) }
                     },
                 )
                 addWebFilterRow(this)
                 addView(
                     Button(this@PairingActivity).apply {
-                        text = "Re-pair (parent PIN)"
+                        text = getString(R.string.status_repair)
                         setOnClickListener {
                             requirePin(TamperGuardActivity.REASON_REPAIR) {
                                 lifecycleScope.launch {
@@ -896,7 +947,7 @@ class PairingActivity : ComponentActivity() {
                 )
                 addView(
                     Button(this@PairingActivity).apply {
-                        text = "Remove protection (parent PIN)"
+                        text = getString(R.string.status_remove_protection)
                         setOnClickListener {
                             requirePin(TamperGuardActivity.REASON_REMOVE) {
                                 deviceAdmin.removeAdmin()
@@ -924,7 +975,9 @@ class PairingActivity : ComponentActivity() {
         withContext(Dispatchers.IO) {
             // NOTE: testers type "192.168.1.5:3000" without a scheme; OkHttp would reject it.
             // Fail closed when blank — the form requires a server URL (no built-in default).
-            val base = ServerUrls.normalize(serverUrl).ifBlank { throw IllegalArgumentException("Server URL is required") }
+            val base = ServerUrls.normalize(serverUrl).ifBlank {
+                throw IllegalArgumentException(getString(R.string.setup_error_server_url_required))
+            }
             // Captured once: the claim body and the fingerprint recorded after Allow must describe the
             // same report, or a resume would re-send one the server already stored.
             val capabilityReport = capabilityReporter.report()
@@ -957,7 +1010,8 @@ class PairingActivity : ComponentActivity() {
                         throw PairingRefusedException(getString(R.string.pair_in_use))
                     PairingApproval.ClaimStep.CONSENT_REQUIRED ->
                         throw PairingRefusedException(getString(R.string.pair_consent))
-                    PairingApproval.ClaimStep.FAILED -> throw IllegalStateException("server returned HTTP ${response.code}")
+                    PairingApproval.ClaimStep.FAILED ->
+                        throw IllegalStateException(getString(R.string.setup_error_http, response.code))
                 }
             }
             withContext(Dispatchers.Main) { onWaiting() }
@@ -991,7 +1045,7 @@ class PairingActivity : ComponentActivity() {
                     val deviceId = when (val device = json.opt("device")) {
                         is JSONObject -> device.getString("id")
                         is String -> device
-                        else -> throw IllegalStateException("pairing response has no device id")
+                        else -> throw IllegalStateException(getString(R.string.setup_error_no_device_id))
                     }
                     PairingResult(
                         baseUrl = base,
@@ -1009,7 +1063,7 @@ class PairingActivity : ComponentActivity() {
                 PairingApproval.PollStep.CONSENT_REQUIRED ->
                     throw PairingRefusedException(getString(R.string.pair_consent))
                 PairingApproval.PollStep.PENDING, PairingApproval.PollStep.FAILED ->
-                    throw IllegalStateException("pairing did not finish")
+                    throw IllegalStateException(getString(R.string.setup_error_unfinished))
             }
         }
 
@@ -1104,6 +1158,10 @@ class PairingActivity : ComponentActivity() {
     }
 
     private fun label(text: String): TextView = TextView(this).apply { this.text = text }
+
+    /** The header line, resolved in the phone's language from the policy's own decision. */
+    private fun progressLine(rows: List<OnboardingPolicy.Row>): String =
+        OnboardingPolicy.progressLineRes(rows).let { getString(it.textRes, it.done, it.total) }
 
     private fun editText(initial: String, inputType: Int): EditText =
         EditText(this).apply {

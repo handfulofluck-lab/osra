@@ -1,19 +1,6 @@
-### Parent app — "Add a computer" pairs a child's Windows or Mac from the child page (#627, ADR-0041 D5)
-- Child page → Devices → **Add a computer** → Windows or Mac → the existing pairing screen, now told which
-  computer it is for: the same `POST /v1/devices/pair` six-digit code, the same claim and Allow / Deny, the
-  download address `osratech.com/windows` or `osratech.com/mac` instead of a QR (a computer has no camera),
-  `Copy link`, and **Send the link**.
-- **Send the link** copies the address and says where to paste it: the app ships no share plugin and this PR adds
-  no dependency (ADR-0041 D5.1 allows the clipboard plus a visible line).
-- The child page shows the ADR's warning when a computer's capability report says the child's own account is an
-  administrator. **No client reports that fact yet** — the parent app reads the `account_admin` feature in the
-  `degraded` state, and nothing sends it, so the warning cannot appear today and is not guessed at.
-- New English strings only, pending the Arabic Language Bureau: `addAComputer`, `computerSelectPrompt`,
-  `computerWindows`, `computerMac`, `computerAdminInstallNote`, `computerPairIntro`, `computerDownloadAddress`,
-  `copyLink`, `linkCopied`, `sendTheLinkLine`, `sendTheLink`, `sendLinkCopied`, `pairClaimBodyComputer`,
-  `pairClaimAllowedComputer`, `pairClaimDeniedComputer`, `computerAdminWarning`. `app_ar.arb` carries the English
-  text under those keys for now (the ARB parity gate in `test/localization_test.dart` refuses a key present in
-  English only); the Bureau's lines replace them.
-- Tests: `test/add_computer_test.dart` (5 rows: the entry point, Windows, Mac, copy/send wiring, 320×568) and one
-  row in `test/phone_setup_section_test.dart` (warning present with the fact, absent without it, and the fact is
-  not also drawn as a raw-key chip).
+### Parent app — "Add a computer" pairs a child's Windows or Mac from the child page (#627, #657, ADR-0041 D5)
+- Child page → Devices → **Add a computer** → Windows (Mac is hidden behind `ENABLE_MAC_PAIRING`, default off per UI/UX Bureau) → the existing pairing screen, now told which computer it is for: the same `POST /v1/devices/pair` six-digit code, the same claim and Allow / Deny, the download address `osratech.com/download` instead of a QR (a computer has no camera), and a single **Copy link** button alongside the helper line (`Type this address in the computer's browser, or paste it into a message to yourself.`).
+- Arabic bidi isolation: `pairClaimBodyComputer` isolates the computer's Latin hostname with Unicode `FSI`/`PDI` (`\u2068...\u2069`) before passing it to the localized template.
+- The child page shows the ADR's warning when a computer's capability report says the child's own account is an administrator, reading the `child_account_admin` feature key in the `degraded` state. **No client reports that fact yet**, so the warning is ready for desktop agent wiring.
+- Localization (`app_en.arb` + `app_ar.arb`): added the 14 Bureau-reviewed English and Arabic strings (`addAComputer`, `computerSelectPrompt`, `computerWindows`, `computerMac`, `computerAdminInstallNote`, `computerPairIntro`, `computerDownloadAddress`, `copyLink`, `linkCopied`, `sendTheLinkLine`, `pairClaimBodyComputer`, `pairClaimAllowedComputer`, `pairClaimDeniedComputer`, `computerAdminWarning`), removed the temporary `pendingArabic` bypass in `test/localization_test.dart`, and dropped the unused `sendTheLink` / `sendLinkCopied` keys.
+- Tests: `test/add_computer_test.dart` covers default Windows-only / opt-in Mac visibility, `osratech.com/download` address rendering, single `Copy link` clipboard + `sendTheLinkLine` wiring, Arabic FSI hostname isolation on computer claim, and `320×568` at `200%` text scaling in EN and AR; `test/phone_setup_section_test.dart` pins the literal `child_account_admin` wire key (`f4`).
