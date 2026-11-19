@@ -368,7 +368,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('AlertsScreen Arabic dialog uses localized Bureau fallback on unkeyed legacy restart, never English body (#889)', (tester) async {
+    testWidgets('AlertsScreen Arabic dialog omits body on unkeyed legacy restart, never English body or push prompt (#889)', (tester) async {
       final legacyUnkeyed = Alert(
         id: 'legacy-restart-1',
         childId: 'child-1',
@@ -388,7 +388,8 @@ void main() {
       await tester.tap(find.byType(AlertTile));
       await tester.pumpAndSettle();
 
-      expect(find.text(ar.alertPushBodyGeneric), findsOneWidget);
+      expect(find.text(ar.alertDeviceRestartedTitle), findsNWidgets(2));
+      expect(find.text(ar.alertPushBodyGeneric), findsNothing);
       expect(find.textContaining('Pixel 7a restarted'), findsNothing);
       expect(tester.takeException(), isNull);
     });
