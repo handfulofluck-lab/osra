@@ -13,7 +13,7 @@ principle survives every re-cut, enforced at the merge (§6.5).
 
 | Agent | Role | May do | Must not do |
 |---|---|---|---|
-| **Kimi Code** (development lead) | Implements features and fixes; owns `main` and releases | Edit application code, tests, CI and docs; open and **merge** PRs (§6.5); tag and prepare releases | Merge unverified work, **including their own**; merge with a red gate; push to `main` (§6); act on a store account, entitlement or key |
+| **Kimi Code** (development lead) | Implements features and fixes; owns `main` and releases | Edit application code, tests, CI and docs; open and **merge** PRs (§6.5); tag and prepare releases | Merge unverified work, **including their own**; merge with a red gate; push to `main` (§6); act on a store account, entitlement or key (one exception: the AWS backup path in §6.6 item 7) |
 | **Claude** (architecture + testing, **team coordinator** from 2026-10-23) | Owns architecture decisions and **all testing**: runs the gates, tests PR claims, runs the hardware rows, with a detailed fix for every finding (§12). Coordinates the team: assigns members' tasks and is the one point of contact for technical questions | Decide architecture and record it as an ADR; review designs and diffs against their roadmap row; re-run every gate on a branch; run hardware rows on the leased phone (§9); verify TR rows and sign `Verified-sha:`; write tests, checklists, harnesses and test requests; assign and schedule members' work | Merge; push to `main`; write product code; verify its own PR; change the code under test to make a claim true; weaken or delete a failing check |
 | **Antigravity** | **Inactive from 2026-10-19** (maintainer), once the Group 1 hardware re-runs and TR-52 in flight at that time are filed. A silent member until the maintainer says otherwise: takes no new testing tasks and is not assigned any | Finish the rows already in flight; read | Take new rows; merge |
 | **Ahmed** (security + testing, from 2026-10-23; also the iOS child agent from 2026-10-24) | A human member in Doha, working with his own Claude Code agent from his own GitHub account (`ahmedyusseff`). Security reviews, penetration testing of our own code and test environments, threat modelling and testing, each finding with the fix he recommends (§12). From 2026-10-24 he also builds the iOS child agent, `apps/child-ios` (roadmap 5.5, #372), on the GitHub macOS runner | Open PRs from `ahmed/<roadmap-item>-<topic>` branches, including product code under `apps/child-ios/` and its CI workflow; review any PR (advisory); test on his own local stack, emulator or phone; test staging only in a window Claude schedules with him; report exploitable findings privately (§4) | Merge or switch on auto-merge; sign a verification other than as `— Ahmed` from his own account (from 2026-11-13 21:15Z he verifies and is an R3 security key alongside Fable, §6.6 rule 5; nothing else from his account counts, §6.4); sign as another member, including `— Claude`; use the physical test phone, production or real family data |
@@ -481,11 +481,12 @@ When a Bureau authors a user-visible PR itself, its line cites the maintainer's 
 7. **Unchanged:** release security gates #630 to #637 are signed `Security-signoff:` by Ahmed alone and only the
    maintainer overrides them in writing; K31, K31-Mac and Kimi do no AWS, store, secret or account work; Claude runs
    the after-merge check on every merge.
-   **One exception (Karim, 2026-11-14, #617 row 6878976334):** Kimi Code has the AWS API MCP server
-   (`aws-api-osra`, short-lived `osra-production` role sessions, no stored key of its own) as a **backup path,
-   used only when Karim asks Kimi directly**. Under it: infrastructure changes go through Terraform only (plan to a
-   file, read it, apply exactly that file), never the console or one-off API calls; no credential is printed,
-   copied or created. Everyday production work stays with the production-backend thread.
+   **One exception (Karim's decision of 2026-11-14, as Claude recorded it in #617 row 6878976334):** Kimi Code has
+   the AWS API MCP server (`aws-api-osra`, short-lived `osra-production` role sessions, no stored key of its own) as
+   a **backup path, used only when Karim asks Kimi directly**. Under it: read-only queries are allowed; every
+   change goes through Terraform only (plan to a file, read it, apply exactly that file), never the console or a
+   one-off write call; no credential is printed, copied or created. Everyday production work stays with the
+   production-backend thread.
 
 **Honest limit, as in §6.4:** one shared account means the gate checks the name in a signature, not who typed it.
 Team collaboration sync audits each signature against the signer's own session; forging another member's name is a
