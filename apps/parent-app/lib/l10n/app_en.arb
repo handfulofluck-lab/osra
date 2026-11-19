@@ -998,7 +998,12 @@
       }
     }
   },
-  "alertTechnicalDetails": "Technical details",
+  "alertChildLabel": "Child: {name}",
+  "@alertChildLabel": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
   "relativeOverHoursAgo": "more than {count}h ago",
   "@relativeOverHoursAgo": {
     "placeholders": {
