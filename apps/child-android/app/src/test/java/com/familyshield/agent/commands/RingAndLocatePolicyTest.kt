@@ -57,10 +57,11 @@ class RingAndLocatePolicyTest {
 
     /**
      * The wiring the device row would otherwise be the only evidence for: the focus hold, the alarm-stream
-     * watch and the verdict call all have to be in the ring path. Mutant: drop comments and delete any one
-     * of the real call sites (`holdFocus(app)` in `start()`, `AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)`,
-     * `watchVolume(app)` in `start()`, `stream != AudioManager.STREAM_ALARM`, etc.) and this row fails while
-     * every policy row above stays green.
+     * watch, the verdict call, and the stop cleanup all have to live inside their real functions. Mutants
+     * killed (`M3a`..`M3c`, `M4`..`M7`): replace `AUDIOFOCUS_GAIN` (`M3a`/`M3b`), drop `holdFocus(app)` in
+     * `start()` (`M3c`), drop `audio.requestAudioFocus(...)` in `holdFocus()` (`M4`), drop
+     * `ContextCompat.registerReceiver(...)` in `watchVolume()` (`M5`), or drop `releaseFocus(app)` (`M6`) /
+     * `stopWatchingVolume()` (`M7`) in `stopLocked()`. Each fails this row while every policy row stays green.
      */
     @Test
     fun `the ring holds audio focus and watches the alarm stream while it plays`() {
@@ -78,22 +79,64 @@ class RingAndLocatePolicyTest {
         }
 
         val code = source.replace(Regex("/\\*[\\s\\S]*?\\*/|//.*"), "")
-        val startBody = code.substringAfter("fun start(").substringBefore("fun stop(")
+
+        fun bodyOf(signature: String): String {
+            val start = code.indexOf(signature)
+            require(start >= 0) { "Function $signature not found in Ringer.kt" }
+            val openBrace = code.indexOf('{', start)
+            require(openBrace >= 0) { "Opening brace for $signature not found" }
+            var depth = 0
+            var inString = false
+            var escaped = false
+            for (i in openBrace until code.length) {
+                val ch = code[i]
+                if (inString) {
+                    if (escaped) {
+                        escaped = false
+                    } else if (ch == '\\') {
+                        escaped = true
+                    } else if (ch == '"') {
+                        inString = false
+                    }
+                    continue
+                }
+                when (ch) {
+                    '"' -> inString = true
+                    '{' -> depth += 1
+                    '}' -> {
+                        depth -= 1
+                        if (depth == 0) return code.substring(openBrace + 1, i)
+                    }
+                }
+            }
+            error("Unclosed brace for $signature")
+        }
+
+        val startBody = bodyOf("fun start(")
+        val stopLockedBody = bodyOf("fun stopLocked(")
+        val holdFocusBody = bodyOf("fun holdFocus(")
+        val releaseFocusBody = bodyOf("fun releaseFocus(")
+        val watchVolumeBody = bodyOf("fun watchVolume(")
+        val stopWatchingBody = bodyOf("fun stopWatchingVolume(")
 
         assertTrue("start() must acquire audio focus", startBody.contains("holdFocus(app)"))
-        assertTrue(
-            "the alarm must hold AUDIOFOCUS_GAIN, not transient",
-            code.contains("AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)"),
-        )
         assertTrue("start() must register the volume watch", startBody.contains("watchVolume(app)"))
         assertTrue(
-            "the ring must listen for volume changes",
-            code.contains("IntentFilter(\"android.media.VOLUME_CHANGED_ACTION\")"),
+            "the alarm must hold AUDIOFOCUS_GAIN, not transient",
+            holdFocusBody.contains("AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)"),
         )
-        assertTrue("only the alarm stream is watched", code.contains("stream != AudioManager.STREAM_ALARM"))
-        assertTrue("the decision is the pure policy's", code.contains("RingPolicy.volumeVerdict("))
-        assertTrue("the attempt is counted for the report", code.contains("volumeRestorations += 1"))
-        assertTrue("focus is released on stop", code.contains("abandonAudioFocusRequest"))
-        assertTrue("the watch is unregistered on stop", code.contains("unregisterReceiver"))
+        assertTrue("holdFocus() must actually request audio focus", holdFocusBody.contains("requestAudioFocus("))
+        assertTrue(
+            "the ring must listen for volume changes",
+            watchVolumeBody.contains("IntentFilter(\"android.media.VOLUME_CHANGED_ACTION\")"),
+        )
+        assertTrue("watchVolume() must register the BroadcastReceiver", watchVolumeBody.contains("registerReceiver("))
+        assertTrue("only the alarm stream is watched", watchVolumeBody.contains("stream != AudioManager.STREAM_ALARM"))
+        assertTrue("the decision is the pure policy's", watchVolumeBody.contains("RingPolicy.volumeVerdict("))
+        assertTrue("the attempt is counted for the report", watchVolumeBody.contains("volumeRestorations += 1"))
+        assertTrue("stopLocked() must release audio focus", stopLockedBody.contains("releaseFocus(app)"))
+        assertTrue("stopLocked() must unregister the volume watch", stopLockedBody.contains("stopWatchingVolume()"))
+        assertTrue("releaseFocus() must abandon the focus request", releaseFocusBody.contains("abandonAudioFocusRequest"))
+        assertTrue("stopWatchingVolume() must unregister the receiver", stopWatchingBody.contains("unregisterReceiver"))
     }
 }
