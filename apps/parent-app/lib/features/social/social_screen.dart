@@ -1,20 +1,22 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../core/date_formatting.dart';
 import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../rules/rules_behind_banner.dart';
 import '../../providers/social_provider.dart';
+import '../../core/digits.dart';
 import '../../theme/app_tokens.dart';
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
 import '../content/snippet_vault_modal.dart';
 import '../../api/permission_errors.dart';
+import '../../widgets/error_retry_view.dart';
 
 /// The eight social apps the Android agent can monitor via Accessibility
 /// (spec #2); apps absent from the RuleSet default to ON.
@@ -193,8 +195,11 @@ class _MonitoringTogglesSectionState
       }
     } on DioException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(l10n.saveFailed('${e.message}'))));
+        showErrorSnackBar(
+          context,
+          friendlyErrorText(l10n, e, () => l10n.saveFailed),
+          onRetry: _save,
+        );
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -214,8 +219,11 @@ class _MonitoringTogglesSectionState
           loading: () => const Padding(
               padding: EdgeInsets.all(AppSpace.lg),
               child: Center(child: CircularProgressIndicator())),
-          error: (e, _) =>
-              Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed('$e'))),
+          // Polish item 1 (Claude on #50): the sentence said "try again" and offered nothing to touch.
+          error: (e, _) => ErrorRetryView(
+            message: friendlyErrorText(l10n, e, () => l10n.rulesLoadFailed),
+            onRetry: () => ref.invalidate(rulesProvider(widget.childId)),
+          ),
           data: (ruleSet) {
             _applyLoaded(ruleSet);
             final draft = _draft!;
@@ -274,8 +282,10 @@ class ConcernsSection extends ConsumerWidget {
           loading: () => const Padding(
               padding: EdgeInsets.all(AppSpace.lg),
               child: Center(child: CircularProgressIndicator())),
-          error: (e, _) =>
-              Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed('$e'))),
+          error: (e, _) => ErrorRetryView(
+            message: friendlyErrorText(l10n, e, () => l10n.rulesLoadFailed),
+            onRetry: () => ref.invalidate(socialEventsProvider(childId)),
+          ),
           data: (items) => items.isEmpty
               ? Padding(
                   padding: const EdgeInsets.symmetric(vertical: AppSpace.lg),
@@ -391,8 +401,10 @@ class CallsSmsSection extends ConsumerWidget {
           loading: () => const Padding(
               padding: EdgeInsets.all(AppSpace.lg),
               child: Center(child: CircularProgressIndicator())),
-          error: (e, _) =>
-              Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed('$e'))),
+          error: (e, _) => ErrorRetryView(
+            message: friendlyErrorText(l10n, e, () => l10n.rulesLoadFailed),
+            onRetry: () => ref.invalidate(activityProvider(childId)),
+          ),
           data: (items) {
             if (items.isEmpty) {
               return Padding(
@@ -406,7 +418,7 @@ class CallsSmsSection extends ConsumerWidget {
             for (final e in items) {
               final day = e.ts == null
                   ? 'Unknown'
-                  : DateFormat('yyyy-MM-dd').format(e.ts!.toLocal());
+                  : dayKey(e.ts!.toLocal());
               if (!groups.containsKey(day)) {
                 groups[day] = [];
                 order.add(day);
@@ -428,9 +440,19 @@ class CallsSmsSection extends ConsumerWidget {
                     Card(
                       child: ListTile(
                         dense: true,
-                        leading: Icon(e.type == 'call' ? callIconFor(e.direction) : Icons.sms_outlined),
-                        title: Text(e.number == null ? l10n.unknownNumber : ltrIsolate(e.number!)),
-                        subtitle: e.type == 'sms'
+                        leading: Icon(e.type == 'lock_period'
+                            ? Icons.lock_outline
+                            : e.type == 'call'
+                                ? callIconFor(e.direction)
+                                : Icons.sms_outlined),
+                        title: Text(e.type == 'lock_period'
+                            ? l10n.activityLockRow
+                            : e.number == null
+                                ? l10n.unknownNumber
+                                : ltrIsolate(e.number!)),
+                        subtitle: e.type == 'lock_period'
+                            ? Text(l10n.activityLockRowDetail(_lockAttempts(e)))
+                            : e.type == 'sms'
                             ? Text(_truncateSms(e.bodyPreview))
                             // Roadmap 4.5: a brand name, so the same text in both languages and no new
                             // Arabic to approve (#523 ruled the phone side; the screen has to match).
@@ -451,8 +473,11 @@ class CallsSmsSection extends ConsumerWidget {
     if (key == 'Unknown') return context.l10n.unknown;
     final d = DateTime.tryParse(key);
     if (d == null) return key;
-    return DateFormat('EEEE, MMM d, yyyy', context.localeName).format(d);
+    return formatDayHeader(d, context.localeName);
   }
+
+  /// #830: the attempts a lock-period row carries; 0 when an older row has none.
+  int _lockAttempts(ActivityEvent e) => e.payload['attempts'] is int ? e.payload['attempts'] as int : 0;
 
   /// SMS previews are capped at 120 chars server-side; truncate defensively.
   String _truncateSms(String preview) =>
@@ -479,8 +504,10 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
     _items = List.of(ruleSet.contactAllowlist);
   }
 
-  /// Keep digits only — '+1 (555) 123-4567' becomes '15551234567'.
-  static String normalizePhone(String raw) => raw.replaceAll(RegExp(r'\D'), '');
+  /// Normalise the digit forms first, then keep digits only — '+1 (555) 123-4567' and the same
+  /// number typed with Arabic digits both become '15551234567' (#771).
+  static String normalizePhone(String raw) =>
+      normalizeDigits(raw).replaceAll(RegExp(r'\D'), '');
 
   void _add() {
     final digits = normalizePhone(_input.text);
@@ -515,8 +542,11 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
       }
     } on DioException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(l10n.saveFailed('${e.message}'))));
+        showErrorSnackBar(
+          context,
+          friendlyErrorText(l10n, e, () => l10n.saveFailed),
+          onRetry: _save,
+        );
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -546,8 +576,10 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
           loading: () => const Padding(
               padding: EdgeInsets.all(AppSpace.lg),
               child: Center(child: CircularProgressIndicator())),
-          error: (e, _) =>
-              Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed('$e'))),
+          error: (e, _) => ErrorRetryView(
+            message: friendlyErrorText(l10n, e, () => l10n.rulesLoadFailed),
+            onRetry: () => ref.invalidate(rulesProvider(widget.childId)),
+          ),
           data: (ruleSet) {
             _applyLoaded(ruleSet);
             final items = _items!;

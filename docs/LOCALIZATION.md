@@ -69,6 +69,13 @@ generic, so server English never reaches an Arabic screen.
 5. If the language is RTL, it needs no code change beyond step 1 — the layout rules below are
    direction-agnostic.
 
+## Dates and numbers (R9)
+
+- Use Western digits for every date and time on every surface, including Arabic. Do not emit Arabic-Indic digits.
+- `lib/core/date_formatting.dart` applies `DateFormat.useNativeDigitsByDefaultFor('ar', false)` and awaits locale-data initialization. App startup and the background notification isolate each call it once before any `DateFormat` is created.
+- Day headers call `formatDayHeader(date, context.localeName)`, which uses `DateFormat.yMMMMEEEEd`: day, then month, then year, with the locale's own punctuation and order. Do not replace it with the English `EEEE, MMM d, yyyy` pattern.
+- `test/arabic_date_format_test.dart`, `alerts_dialog_test.dart` and `social_screen_test.dart` exercise the direct, background and Arabic widget paths and reject every Arabic-Indic digit. Existing Arabic copy and number/plural paths are not changed by that rule's implementation.
+
 ## Email localization (#796)
 
 - Invitation roles use a whole sentence selected per language, never a wire value inserted into a sentence.
@@ -107,6 +114,15 @@ plurals alike.
 - `Row`, `Wrap`, `TabBar` and `AppBar` actions mirror automatically. Prefer `Wrap` over a
   fixed `Row` where translated labels are longer, and make tab bars scrollable when four or
   more labels must fit 320 px.
+
+### Typed list separators (#794)
+
+- Allowed/blocked domains, routine blocked/allowed apps and digest recipients accept Latin `,` and `;`,
+  Arabic U+060C and U+061B, and line breaks. The shared `splitLocalizedList` helper trims items and drops
+  empty ones; a parent is not asked to change keyboard to enter several items.
+- LRM/RLM/ALM (U+200E/U+200F/U+061C) are stripped only from domain input before its existing validation.
+  Email addresses and app package IDs retain those marks; in particular, the API still refuses an email
+  containing RLM. This changes parsing only, not any English or Arabic wording.
 - Directional icons (`Icons.chevron_left/right`, `arrow_*`) mirror from their
   `matchTextDirection` flag; check any icon that does not.
 - `apps/parent-app/android/app/src/main/AndroidManifest.xml` sets `android:supportsRtl="true"`

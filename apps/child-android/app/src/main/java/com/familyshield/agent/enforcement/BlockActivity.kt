@@ -69,6 +69,9 @@ class BlockActivity : ComponentActivity() {
     @Inject lateinit var settings: AgentSettings
     @Inject lateinit var appBlocker: AppBlocker
     @Inject lateinit var rules: RuleRepository
+    // S1 (osra-security#39): the same pause the filter service honours. Without it a blocked app tapped
+    // while consent is withdrawn still increments the persisted counter and posts a row.
+    @Inject lateinit var consent: com.familyshield.agent.data.ConsentState
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -107,6 +110,9 @@ class BlockActivity : ComponentActivity() {
         })
 
         applyIntent(intent)
+        // #830: every block the child meets is reported, not only the "Request access" tap, so the parent
+        // sees "tried to open X" with a growing attempt count.
+        reportBlockedAttempt(request.packageId, request.reason)
 
         setContent {
             MaterialTheme {
@@ -195,6 +201,10 @@ class BlockActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         applyIntent(intent)
+        // Hydrogen's #836 blocker: a `singleTask` reuse skipped the attempt report, which runs only in
+        // onCreate — so a second block of the same or another app never incremented the parent's row.
+        // `session.apply` above has already replaced `request`, so this reports the block in front.
+        reportBlockedAttempt(request.packageId, request.reason)
     }
 
     private fun applyIntent(intent: Intent) {
@@ -220,6 +230,34 @@ class BlockActivity : ComponentActivity() {
         }
         startActivity(homeIntent)
         finish()
+    }
+
+    /**
+     * #830: one grouped `app_blocked` row per app per UTC day. The count is monotonic
+     * ([AttemptCounter]); the server updates the existing row only when the count is higher and never
+     * pushes again, so a child tapping a blocked app ten times reads "10 attempts" and one notification.
+     */
+    private fun reportBlockedAttempt(pkg: String, reason: String) {
+        if (consent.isPaused()) return // before AttemptCounter.next: the count is persisted, not just posted
+        val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString()
+        val attempts = AttemptCounter.next(this, "app", pkg, day)
+        scope.launch {
+            runCatching {
+                api.postInternalAlert(
+                    AlertDto(
+                        childId = settings.childId(),
+                        deviceId = settings.deviceId(),
+                        severity = "info",
+                        category = "app_blocked",
+                        title = "Blocked app opened",
+                        body = "Your child tried to open a blocked app.",
+                        metadata = mapOf("packageId" to pkg, "reason" to reason),
+                        dedupeKey = AlertKeys.blockedApp(pkg, day),
+                        attemptCount = attempts,
+                    ),
+                )
+            }
+        }
     }
 
     /** POSTs an app_blocked alert for the blocked package; failures are swallowed (best effort). */

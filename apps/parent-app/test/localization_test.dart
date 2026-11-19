@@ -187,7 +187,12 @@ void main() {
     testWidgets('reports', (tester) async {
       await pumpArabic(tester, const ReportsScreen(childId: 'child-1'), arabicApi());
       expect(find.text('التقارير'), findsOneWidget);
-      expect(find.text('الإجمالي: 300 دقيقة · المتوسط: 43 دقيقة يوميًا'), findsOneWidget);
+      // #841 (Arabic Language Bureau, 22:22Z): at 320 px the total and the average do not share a line, so
+      // they are drawn as two lines with **no** separator — a «·» left at the end of an RTL line reads as a
+      // stray mark. Both halves are asserted, so a regression that drops one cannot pass as "split".
+      expect(find.text('الإجمالي: 300 دقيقة'), findsOneWidget);
+      expect(find.text('المتوسط: 43 دقيقة يوميًا'), findsOneWidget);
+      expect(find.textContaining('·'), findsNothing);
       expectRtlAndNoOverflow(tester);
     });
 
@@ -724,6 +729,15 @@ void main() {
       // reads as itself instead of an empty label.
       expect(en.alertCategory('not_a_category'), 'not_a_category');
       expect(ar.alertCategory('not_a_category'), 'not_a_category');
+
+      // #889: device_restarted is emitted by the telemetry route rather than InternalAlertSchema,
+      // and must still translate both its chip label and alert title cleanly in EN & AR.
+      expect(en.alertCategory('device_restarted'), en.alertCategoryDeviceRestarted);
+      expect(ar.alertCategory('device_restarted'), ar.alertCategoryDeviceRestarted);
+      expect(ar.alertCategory('device_restarted'), isNot('device_restarted'));
+      expect(en.alertTitleFor('device_restarted', 'SERVER', isEnglish: true), en.alertDeviceRestartedTitle);
+      expect(ar.alertTitleFor('device_restarted', 'SERVER', isEnglish: false), ar.alertDeviceRestartedTitle);
+      expect(ar.alertTitleFor('device_restarted', 'SERVER', isEnglish: false), isNot('SERVER'));
     });
 
     test('search risk tags are localized, with the raw key only as a fallback', () async {
@@ -781,28 +795,32 @@ void main() {
       expect(rect.width, greaterThan(0));
     }
 
-    testWidgets('320x568: the action is a tooltipped icon and still opens the rules editor', (tester) async {
+    testWidgets('320x568: actions fold into the overflow menu and still open the rules editor', (tester) async {
       await pumpChildDetail(tester, 320);
-      final action = find.byKey(const ValueKey('editRulesButton'));
-      expect(action, findsOneWidget);
-      // The compact shape: an icon with the label as its tooltip, not a text
-      // button that runs out of room.
-      expect(tester.widget<IconButton>(action).tooltip, 'تعديل القواعد');
+      final menu = find.byKey(const ValueKey('childActionsMenu'));
+      expect(menu, findsOneWidget);
       expect(find.widgetWithText(TextButton, 'تعديل القواعد'), findsNothing);
-      expectInsideAppBar(tester, action);
+      expectInsideAppBar(tester, menu);
       expect(drainExceptions(tester), isEmpty);
 
-      await tester.tap(action);
+      await tester.tap(menu);
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(
+        of: find.byType(PopupMenuItem<String>),
+        matching: find.text('تعديل القواعد'),
+      ));
       await tester.pumpAndSettle();
       expect(find.byType(RulesEditorScreen), findsOneWidget);
     });
 
     for (final width in <double>[360, 375, 411]) {
-      testWidgets('${width.toInt()}px: the label shows in full and opens the rules editor', (tester) async {
+      testWidgets('${width.toInt()}px: top bar has tooltipped icon and overview tab has tonal button', (tester) async {
         await pumpChildDetail(tester, width);
         final action = find.byKey(const ValueKey('editRulesButton'));
         expect(action, findsOneWidget);
-        expect(find.widgetWithText(TextButton, 'تعديل القواعد'), findsOneWidget);
+        expect(tester.widget<IconButton>(action).tooltip, 'تعديل القواعد');
+        expect(find.widgetWithText(TextButton, 'تعديل القواعد'), findsNothing);
+        expect(find.widgetWithText(FilledButton, 'تعديل القواعد'), findsOneWidget);
         expectInsideAppBar(tester, action);
         expect(drainExceptions(tester), isEmpty);
 

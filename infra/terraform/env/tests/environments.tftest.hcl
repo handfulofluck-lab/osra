@@ -97,6 +97,7 @@ override_data {
       vault_key_secret_arn           = "arn:aws:secretsmanager:eu-central-1:000000000000:secret:vault"
       demo_password_secret_arn       = "arn:aws:secretsmanager:eu-central-1:000000000000:secret:demo"
       fcm_service_account_secret_arn = "arn:aws:secretsmanager:eu-central-1:000000000000:secret:fcm"
+      apns_key_p8_secret_arn         = "arn:aws:secretsmanager:eu-central-1:000000000000:secret:apns"
       log_group_name                 = "/ecs/test-api"
       internal_hmac_secret_arn       = "arn:aws:secretsmanager:eu-central-1:000000000000:secret:hmac"
       execution_role_name            = "test-execution"
@@ -177,6 +178,10 @@ run "staging_defaults_are_unchanged" {
   assert {
     condition     = length(random_password.db) == 1 && length(aws_ecs_task_definition.db_admin) == 0 && contains([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.name], "REDIS_URL")
     error_message = "staging keeps Terraform-generated secrets and a plain REDIS_URL"
+  }
+  assert {
+    condition     = length([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.name if startswith(x.name, "APNS_")]) == 0 && !contains([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].secrets : x.name], "APNS_KEY_P8")
+    error_message = "with apns_enabled false the task carries no APNs setting (#695)"
   }
   assert {
     condition     = length(aws_flow_log.vpc) == 0 && length(aws_s3_bucket.access_logs) == 0 && length(aws_lb.main.access_logs) == 0
@@ -307,8 +312,8 @@ run "production_settings" {
     error_message = "production must set DATABASE_TLS_VERIFY=required (#777)"
   }
   assert {
-    condition     = length(aws_ecs_task_definition.db_admin) == 1 && strcontains(local.db_admin_script, "sslaccept=strict&sslcert=/app/certs/rds-global-bundle.pem") && !strcontains(local.db_admin_script, "verify-full")
-    error_message = "the db-admin task must exist and connect with Prisma's verifying TLS form"
+    condition     = length(aws_ecs_task_definition.db_admin) == 1 && strcontains(local.db_admin_script, "sslaccept=strict&sslcert=/app/certs/rds-eu-central-1-rsa2048-g1.pem") && !strcontains(local.db_admin_script, "rds-global-bundle.pem") && !strcontains(local.db_admin_script, "verify-full")
+    error_message = "the db-admin task must exist and connect with Prisma's verifying TLS form against the single eu-central-1 RDS root (#919)"
   }
   assert {
     condition     = [for x in jsondecode(aws_ecs_task_definition.db_admin[0].container_definitions)[0].secrets : x.valueFrom][0] == "arn:aws:secretsmanager:eu-central-1:000000000000:secret:rds-master:password::"
@@ -343,8 +348,8 @@ run "production_settings" {
     error_message = "production's database must use its own key and be in the daily backup plan (#766 item 5)"
   }
   assert {
-    condition     = one([for r in aws_backup_plan.main[0].rule : one([for c in r.copy_action : c.lifecycle[0].delete_after])]) == 90 && one([for r in aws_backup_plan.main[0].rule : r.lifecycle[0].delete_after]) <= 90
-    error_message = "backups and their off-site copies are deleted within 90 days (privacy policy)"
+    condition     = one([for r in aws_backup_plan.main[0].rule : one([for c in r.copy_action : c.lifecycle[0].delete_after])]) == 14 && one([for r in aws_backup_plan.main[0].rule : r.lifecycle[0].delete_after]) == 14
+    error_message = "backups and their off-site copies are deleted after 14 days (privacy notice, #892 section 6)"
   }
   assert {
     condition     = length(aws_cloudwatch_event_target.rds_key_danger) == 1 && strcontains(aws_cloudwatch_event_rule.rds_key_danger[0].event_pattern, "ScheduleKeyDeletion")
@@ -374,6 +379,41 @@ run "production_settings" {
     condition     = alltrue([for a in aws_cloudwatch_metric_alarm.family_plan : length(a.alarm_actions) == 1 && length(coalesce(a.ok_actions, [])) == 0])
     error_message = "family plan alarms mail on ALARM only, not on every return to OK (#816 R3)"
   }
+}
+
+run "apns_off_by_default_and_mapped_when_enabled" {
+  command = apply
+
+  variables {
+    api_image    = "example/api:test"
+    apns_enabled = true
+    apns_key_id  = "ABCDE12345"
+    apns_team_id = "FGHIJ67890"
+  }
+
+  assert {
+    condition = alltrue([
+      contains([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].secrets : x.name], "APNS_KEY_P8"),
+      one([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].secrets : x.valueFrom if x.name == "APNS_KEY_P8"]) == "arn:aws:secretsmanager:eu-central-1:000000000000:secret:apns",
+      one([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.value if x.name == "APNS_ENV"]) == "production",
+      one([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.value if x.name == "APNS_BUNDLE_ID"]) == "com.osratech.parent",
+      one([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.value if x.name == "APNS_DEVICE_BUNDLE_ID"]) == "com.osratech.child",
+      !contains([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.name], "APNS_KEY_P8"),
+    ])
+    error_message = "apns_enabled maps the key as a secrets entry only, the ids and bundle ids as settings, and the production endpoint (#695)"
+  }
+}
+
+run "apns_needs_both_ids" {
+  command = plan
+
+  variables {
+    api_image    = "example/api:test"
+    apns_enabled = true
+    apns_key_id  = "ABCDE12345"
+  }
+
+  expect_failures = [aws_ecs_task_definition.api]
 }
 
 run "failover_needs_two_nodes" {
@@ -1029,6 +1069,61 @@ run "production_requires_offsite_backup_copy" {
   }
 
   expect_failures = [terraform_data.production_guard]
+}
+
+# Closed-beta option (#892 section 6): the daily backup stays in Frankfurt, with no copy to eu-west-1.
+# The guard must accept it, the in-account plan and its 14-day lifecycle stay, and no copy_action is planned.
+run "production_offsite_copy_off" {
+  command = apply
+
+  variables {
+    environment                 = "production"
+    region                      = "eu-central-1"
+    api_image                   = "example/api:test"
+    api_cpu                     = 1024
+    api_memory                  = 2048
+    api_min_count               = 2
+    api_max_count               = 6
+    nat_gateway_count           = 2
+    db_instance_class           = "db.t4g.small"
+    db_multi_az                 = true
+    db_allocated_storage        = 50
+    db_max_allocated_storage    = 200
+    db_backup_retention_days    = 14
+    db_deletion_protection      = true
+    db_skip_final_snapshot      = false
+    db_performance_insights     = true
+    redis_num_nodes             = 2
+    redis_failover              = true
+    redis_transit_encryption    = true
+    alb_deletion_protection     = true
+    waf_enabled                 = true
+    alarms_enabled              = true
+    alarm_email                 = "alerts@example.test"
+    alarm_email_secondary       = "oncall@example.test"
+    secrets_out_of_band         = true
+    audit_logs_enabled          = true
+    db_customer_kms_key         = true
+    backup_copy_account_id      = "111111111111"
+    backup_copy_vault_arn       = "arn:aws:backup:eu-west-1:111111111111:backup-vault:osra-production-copy"
+    cors_origin                 = "https://app.example.test"
+    allowed_account_ids         = ["000000000000"]
+    assume_role_arn             = "arn:aws:iam::000000000000:role/test-deploy"
+    backup_offsite_copy_enabled = false
+  }
+
+  assert {
+    condition     = length(aws_backup_plan.main) == 1 && length(aws_backup_selection.rds) == 1
+    error_message = "with the off-site copy off, production still has its daily in-account backup plan"
+  }
+  assert {
+    condition     = alltrue([for r in aws_backup_plan.main[0].rule : length(r.copy_action) == 0 && r.lifecycle[0].delete_after == 14])
+    error_message = "backup_offsite_copy_enabled = false must plan no copy_action, and keep the 14-day lifecycle"
+  }
+  assert {
+    condition     = !strcontains(aws_kms_key.rds[0].policy, "BackupCopyAccountReads")
+    error_message = "with the off-site copy off, no other account may read the database key"
+  }
 }
 
 run "environment_must_be_staging_or_production" {

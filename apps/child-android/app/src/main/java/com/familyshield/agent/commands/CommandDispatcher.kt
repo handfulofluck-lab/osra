@@ -110,7 +110,25 @@ class CommandDispatcher @Inject constructor(
             // Issue #231: the refresh is accepted here, not awaited. refresh() has no failure signal
             // (it falls back to the cached set), so "ok" claims the request was taken up, not that
             // new rules arrived.
-            "rules_updated" -> { scope.launch { rules.refresh() }; CommandOutcome.Applied() }
+            // Issue #826: refreshing the store is not enough — the running filter keeps its old config
+            // until it reloads, so a parent's new blocked list took 10+ minutes to land. The reload is
+            // best-effort and comes after the refresh, so the filter reads the new set; a failed
+            // refresh still reloads from whatever is cached.
+            "rules_updated" -> {
+                scope.launch {
+                    val failed = refreshThenReload(
+                        refresh = { rules.refresh() },
+                        // #848 (Kimi): a rule edit must not revive a filter that is not running — that
+                        // would also undo a paused state or a consent the child has not given yet. The
+                        // refresh still lands; the next start applies it.
+                        reload = { com.familyshield.agent.vpn.FilterVpnService.reload(context, startIfStopped = false) },
+                    )
+                    // #826 happened because the parent's change was live nowhere and nothing said so.
+                    // A failed step is logged rather than swallowed.
+                    for (stage in failed) Log.w(TAG, "rules_updated: $stage failed; the change may not be live yet")
+                }
+                CommandOutcome.Applied()
+            }
             // Issue #231: starting the service is not a fix — LocationService acks once it has one.
             "locate_now" -> locateNow(commandId)
             // Feature #11: pause the internet — block everything except alwaysAllowedApps and
@@ -278,10 +296,34 @@ class CommandDispatcher @Inject constructor(
      * lock lands the moment the parent turns the accessibility service on, which is what makes the
      * screen hold (#389 review).
      */
+    /**
+     * #830: posts one `lock_period` activity row (start, end, attempts, mode). A period left open by a
+     * process death is posted with no end time rather than dropped. Failures are best effort: the lock
+     * itself must never depend on reporting.
+     */
+    private fun reportLockPeriod(period: com.familyshield.agent.enforcement.LockPeriodTracker.Period?) {
+        if (period == null) return
+        val payload = com.familyshield.agent.enforcement.LockPeriodTracker.payload(period)
+        scope.launch {
+            val deviceId = settings.deviceId() ?: return@launch
+            runCatching {
+                api.postActivityEvents(
+                    deviceId,
+                    com.familyshield.agent.network.dto.ActivityEventBatchDto(
+                        events = listOf(
+                            com.familyshield.agent.network.dto.ActivityEventDto(type = "lock_period", payload = payload),
+                        ),
+                    ),
+                )
+            }
+        }
+    }
+
     private fun lock(): CommandOutcome {
         // ADR-0010: a real screen lock when admin/owner permits it; the overlay stays up either way
         // so the child sees the "locked by your parent" screen and cannot swipe back to their apps.
         com.familyshield.agent.enforcement.LockState.set(context, LockActivity.MODE_LOCKED)
+        reportLockPeriod(com.familyshield.agent.enforcement.LockPeriodTracker.start(context, LockActivity.MODE_LOCKED))
         val adminLocked = deviceAdmin.lockNow()
         val outcome = EnforceabilityPolicy.lockOutcome(
             canOverlay = Settings.canDrawOverlays(context),
@@ -305,6 +347,7 @@ class CommandDispatcher @Inject constructor(
      */
     private fun pause(): CommandOutcome {
         com.familyshield.agent.enforcement.LockState.set(context, LockActivity.MODE_PAUSED)
+        reportLockPeriod(com.familyshield.agent.enforcement.LockPeriodTracker.start(context, LockActivity.MODE_PAUSED))
         val outcome = EnforceabilityPolicy.pauseOutcome(
             canOverlay = Settings.canDrawOverlays(context),
             accessibilityRunning = AccessibilityMonitorService.isRunning,
@@ -334,6 +377,7 @@ class CommandDispatcher @Inject constructor(
         windDownJob?.cancel()
         windDownJob = null
         com.familyshield.agent.enforcement.LockState.clear(context)
+        reportLockPeriod(com.familyshield.agent.enforcement.LockPeriodTracker.end(context))
         val showing = LockActivity.isShowing
         if (showing) {
             context.startActivity(
@@ -366,6 +410,7 @@ class CommandDispatcher @Inject constructor(
     private fun pauseInternet(): CommandOutcome {
         rules.setPausedInternet(true)
         com.familyshield.agent.enforcement.LockState.set(context, LockActivity.MODE_PAUSED_INTERNET)
+        reportLockPeriod(com.familyshield.agent.enforcement.LockPeriodTracker.start(context, LockActivity.MODE_PAUSED_INTERNET))
         val webFilterSetUp = com.familyshield.agent.vpn.VpnState.isEnabled(context) &&
             com.familyshield.agent.vpn.FilterVpnService.isPrepared(context)
         if (webFilterSetUp) {
@@ -395,6 +440,10 @@ class CommandDispatcher @Inject constructor(
     private fun resumeInternet() {
         rules.setPausedInternet(false)
         com.familyshield.agent.enforcement.LockState.clear(context)
+        // Hydrogen's #836 blocker: `unlock()` closes the lock period, but this path (resume_internet)
+        // cleared the state and never reported it, leaving a `paused_internet` period open until the
+        // next lock command. Close and report it here too.
+        reportLockPeriod(com.familyshield.agent.enforcement.LockPeriodTracker.end(context))
         if (com.familyshield.agent.vpn.VpnState.isEnabled(context)) {
             runCatching { com.familyshield.agent.vpn.FilterVpnService.start(context, com.familyshield.agent.vpn.FilterVpnService.MODE_DNS) }
         }
@@ -526,6 +575,20 @@ class CommandDispatcher @Inject constructor(
         internal const val RESET_CODE_NOTIFICATION_ID = 43
         private const val MIN_MINUTES = 1
         private const val MAX_MINUTES = 240
+
+        /**
+         * Issue #826: a rule refresh must reach the running filter, in that order. Kept here as a pure
+         * suspend function so the JVM suite can hold the ordering and the best-effort behaviour without
+         * a tunnel: a refresh that throws still reloads (from the cached set), and a reload that throws
+         * does not undo the refresh. Returns the steps that failed so the caller can say so (#848) —
+         * the silence is what made #826 last 10+ minutes.
+         */
+        internal suspend fun refreshThenReload(refresh: suspend () -> Unit, reload: suspend () -> Unit): List<String> {
+            val failed = mutableListOf<String>()
+            runCatching { refresh() }.onFailure { failed += "refresh" }
+            runCatching { reload() }.onFailure { failed += "reload" }
+            return failed
+        }
 
         /**
          * Issue #132: the `locate_now` pre-start gate, pure so the JVM suite holds it. A refused

@@ -1,0 +1,5 @@
+### Parent app — plain localized error messages and searchable city/GMT time zone picker (R-ID-1, R-ID-3)
+- Removed all 24 `{error}` and `{detail}` placeholders from `app_en.arb` and `app_ar.arb` and replaced raw exception / `DioException` / error-code strings (`e.toString()`, `e.message`, `'$e'`, unknown command reason codes) across parent-app screens and `AuthNotifier` with plain localized sentences while logging technical details only to `debugPrint`.
+- Extended `permission_errors.dart` with `friendlyErrorText` (permission refusals, consent refusals, network/timeout handling, 5xx fallback) and added shared `ErrorRetryView` / `showErrorSnackBar` helpers with Retry actions.
+- Replaced the raw IANA time-zone dropdown in `digest_prefs_screen.dart` with a searchable modal picker (`timezone_catalog.dart`) formatted as `City (GMT+offset)` (e.g. `Dubai (GMT+4)`), defaulting to the device's offset and pinning the family's current time zone first.
+- Pending `#604`: new/updated English strings for the Arabic Language Bureau are flagged on `#604` while the PR remains in `state:wip`.

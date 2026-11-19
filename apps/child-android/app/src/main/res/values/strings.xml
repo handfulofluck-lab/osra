@@ -61,6 +61,12 @@
     <string name="pair_pin_repeat">Repeat the PIN</string>
     <string name="pair_pin_save">Save PIN</string>
     <string name="pair_pin_mismatch">The two PINs differ.</string>
+    <!-- osra-security#24: the gate's own notice while a lockout is open. A plural rather than a sentence built in
+         code, so "1 minute" cannot read "1 minutes"; the Arabic value is the Arabic Language Bureau's line. -->
+    <plurals name="pin_locked_notice">
+        <item quantity="one">Too many tries. Try again in %1$d minute, or ask your parent.</item>
+        <item quantity="other">Too many tries. Try again in %1$d minutes, or ask your parent.</item>
+    </plurals>
     <string name="pair_qr_invalid">That QR code is not a valid OSRA pairing code. Enter the details manually or scan again.</string>
     <string name="pair_scan_empty">The scanner did not return a code. Enter the details manually or scan again.</string>
     <string name="pair_network_error">network error</string>

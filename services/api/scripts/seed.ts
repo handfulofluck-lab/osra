@@ -69,6 +69,10 @@ async function main() {
         model: "Pixel 7a",
         osVersion: "14",
         status: "online",
+        // Issue #790: the demo device is a family device the parent app draws and the probe checks the
+        // lists against, so it is paired from the start. Without this it would be pending, absent from
+        // `GET /v1/devices` and deleted by `jobs/pendingDevices.ts` half an hour after seeding.
+        pairedAt: new Date(),
         pushToken: "demo-token",
       },
     }));

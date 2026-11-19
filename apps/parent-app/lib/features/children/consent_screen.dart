@@ -10,6 +10,7 @@ import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart' show apiClientProvider;
 import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
+import '../../widgets/layout_helpers.dart';
 import 'consent_step.dart';
 
 /// Result of a completed withdrawal, carried back from the confirmation
@@ -79,8 +80,7 @@ class ConsentScreen extends ConsumerWidget {
       body: status.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => _ConsentError(
-          message: l10n.consentLoadFailed,
-          detail: '$e',
+          message: friendlyErrorText(l10n, e, () => l10n.consentLoadFailed),
           onRetry: () => ref.invalidate(consentStatusProvider(childId)),
         ),
         data: (data) => RefreshIndicator(
@@ -169,10 +169,23 @@ String _stateDetail(
     ConsentState.revoked =>
       l10n.consentStateRevokedDetail(formatConsentTime(context, at)),
     ConsentState.jurisdictionMismatch => l10n.consentStateMismatchDetail(
-        record?.jurisdiction ?? '', status.jurisdiction),
+        regionPlaceName(l10n, record?.jurisdiction ?? ''),
+        regionPlaceName(l10n, status.jurisdiction)),
     ConsentState.none => l10n.consentStateNoneDetail,
   };
 }
+
+/// R-ID-4: the mismatch line used to print the raw codes a server speaks in — "EU does not match UK" —
+/// which tells a parent nothing they can act on. The four regions the API issues are rendered with the
+/// same words the consent picker offers (the strings are unchanged); a value the app does not recognise
+/// becomes "Other" rather than being echoed back.
+String regionPlaceName(AppLocalizations l10n, String code) =>
+    switch (code.trim().toUpperCase()) {
+      'US' => l10n.regionUS,
+      'EU' => l10n.regionEU,
+      'UK' => l10n.regionUK,
+      _ => l10n.regionOther,
+    };
 
 IconData _stateIcon(ConsentState state) => switch (state) {
       ConsentState.active => Icons.verified_user_outlined,
@@ -258,9 +271,12 @@ class _CurrentRecordCard extends StatelessWidget {
             ),
             _Detail(
               label: l10n.consentJurisdictionLabel,
-              value: record.jurisdiction.isEmpty
-                  ? status.jurisdiction
-                  : record.jurisdiction,
+              // R-ID-4: the same mapping as the mismatch line — the field showed "US", which is a code
+              // the parent never chose to read. The label word itself is still the Bureau's to replace.
+              value: regionPlaceName(
+                l10n,
+                record.jurisdiction.isEmpty ? status.jurisdiction : record.jurisdiction,
+              ),
             ),
             _Detail(
               label: l10n.consentGrantedLabel,
@@ -487,36 +503,35 @@ class _GrantDialogState extends ConsumerState<_GrantDialog> {
     final l10n = context.l10n;
     final title = widget.renewal ? l10n.consentRenewTitle : l10n.consentGrantTitle;
     return AlertDialog(
+      scrollable: true,
       title: Text(title),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ConsentStep(
-              method: _method,
-              onMethodChanged: (m) => setState(() => _method = m),
-              // The add-child notice says "before you add a child", which is false
-              // on this screen: the child exists and already has a record. The
-              // override is the neutral line; the legal wording stays English.
-              notice: l10n.consentRegrantNotice,
-            ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ConsentStep(
+            method: _method,
+            onMethodChanged: (m) => setState(() => _method = m),
+            // The add-child notice says "before you add a child", which is false
+            // on this screen: the child exists and already has a record. The
+            // override is the neutral line; the legal wording stays English.
+            notice: l10n.consentRegrantNotice,
+          ),
+          const SizedBox(height: AppSpace.md),
+          Text(l10n.consentGrantRegion(regionLabel(l10n, widget.jurisdiction)),
+              style: Theme.of(context).textTheme.bodySmall),
+          if (_error != null) ...[
             const SizedBox(height: AppSpace.md),
-            Text(l10n.consentGrantRegion(regionLabel(l10n, widget.jurisdiction)),
-                style: Theme.of(context).textTheme.bodySmall),
-            if (_error != null) ...[
-              const SizedBox(height: AppSpace.md),
-              Text(
-                _error!,
-                key: const ValueKey('consentGrantError'),
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(color: context.tokens.danger),
-              ),
-            ],
+            Text(
+              _error!,
+              key: const ValueKey('consentGrantError'),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(color: context.tokens.danger),
+            ),
           ],
-        ),
+        ],
       ),
       actions: [
         TextButton(
@@ -601,6 +616,7 @@ class _WithdrawCard extends ConsumerWidget {
                 style: FilledButton.styleFrom(
                   backgroundColor: context.tokens.danger,
                   foregroundColor: context.tokens.onDanger,
+                  minimumSize: const Size.fromHeight(52),
                 ),
                 onPressed: () => _open(context, ref),
                 icon: const Icon(Icons.block, size: 18),
@@ -621,25 +637,13 @@ class _Detail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Aligned label/value pair: the label stays on the start side and the
-    // value wraps on the end side instead of truncating at narrow widths.
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpace.sm),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Text(label, style: Theme.of(context).textTheme.bodySmall),
-          ),
-          const SizedBox(width: AppSpace.md),
-          Expanded(
-            child: Text(
-              value,
-              style: Theme.of(context).textTheme.bodyMedium,
-              textAlign: TextAlign.end,
-            ),
-          ),
-        ],
+      child: LabelValueRow(
+        label: label,
+        value: value,
+        labelStyle: Theme.of(context).textTheme.bodySmall,
+        valueStyle: Theme.of(context).textTheme.bodyMedium,
       ),
     );
   }
@@ -647,10 +651,8 @@ class _Detail extends StatelessWidget {
 
 class _ConsentError extends StatelessWidget {
   final String message;
-  final String detail;
   final VoidCallback onRetry;
-  const _ConsentError(
-      {required this.message, required this.detail, required this.onRetry});
+  const _ConsentError({required this.message, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -664,10 +666,6 @@ class _ConsentError extends StatelessWidget {
             const Icon(Icons.cloud_off, size: 32),
             const SizedBox(height: AppSpace.sm),
             Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: AppSpace.xs),
-            Text(detail,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: AppSpace.md),
             OutlinedButton(onPressed: onRetry, child: Text(l10n.retry)),
           ],
@@ -855,7 +853,7 @@ class _ConsentRevokeScreenState extends ConsumerState<ConsentRevokeScreen> {
                   style: FilledButton.styleFrom(
                     backgroundColor: context.tokens.danger,
                     foregroundColor: context.tokens.onDanger,
-                    minimumSize: const Size.fromHeight(48),
+                    minimumSize: const Size.fromHeight(52),
                   ),
                   onPressed: (_busy || !_matches) ? null : _submit,
                   child: Text(_busy

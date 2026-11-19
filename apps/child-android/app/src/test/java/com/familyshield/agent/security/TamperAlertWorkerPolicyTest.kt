@@ -18,7 +18,12 @@ import org.junit.Test
  */
 class TamperAlertWorkerPolicyTest {
 
-    private fun key(type: String, eventAtMs: Long = 5_000L, window: GuardAttemptWindow.State? = null) =
+    private fun key(
+        type: String,
+        eventAtMs: Long = 5_000L,
+        window: GuardAttemptWindow.State? = null,
+        attemptCount: Int = 0,
+    ) =
         TamperAlertWorker.dedupeKeyFor(
             type = type,
             deviceId = "dev-1",
@@ -27,6 +32,7 @@ class TamperAlertWorkerPolicyTest {
             layout = "split",
             eventAtMs = eventAtMs,
             adminRemovedAtMs = 9_999L,
+            attemptCount = attemptCount,
         )
 
     @Test
@@ -86,5 +92,36 @@ class TamperAlertWorkerPolicyTest {
         // The poll reads the moment the service stamped, and builds the key with the same function.
         val fromPoll = TamperAlertDedupe.accessibilityOffKey("dev-9", at)
         assertEquals("one switch-off, one key, whichever reporter asks", fromPoll, fromUnbind)
+    }
+
+    /**
+     * Antigravity's Finding 1 on #792 (`S1` survived): the `TYPE_PIN_LOCKOUT` branch of `dedupeKeyFor` had no row, so
+     * **deleting it passed every suite** — and that branch is the regression my own claim 3 named. A row that cannot
+     * fail on the line it describes is worse than none, so this one drives the key it produces.
+     *
+     * Mutant: delete `TYPE_PIN_LOCKOUT -> TamperAlertDedupe.pinLockoutKey(...)` in `TamperAlertWorker.kt` → this row
+     * goes red (the key becomes null).
+     */
+    @Test
+    fun `a lockout keys on its own failure instant and its count`() {
+        val at = 5_000L
+        val first = key(TamperAlertWorker.TYPE_PIN_LOCKOUT, eventAtMs = at, attemptCount = 5)
+        assertTrue("the device is in it", first != null && first.contains("dev-1"))
+        assertTrue("the type is in it", first!!.contains(TamperAlertWorker.TYPE_PIN_LOCKOUT))
+        assertTrue("the failure instant is in it", first.contains("$at"))
+        assertTrue("the count is in it, so attempt N+1 is a new key", first.endsWith("|5"))
+        assertEquals(
+            "a WorkManager retry of attempt 5 is the same key, or it pages twice",
+            first,
+            key(TamperAlertWorker.TYPE_PIN_LOCKOUT, eventAtMs = at, attemptCount = 5),
+        )
+        assertTrue(
+            "the next lockout is a different key",
+            first != key(TamperAlertWorker.TYPE_PIN_LOCKOUT, eventAtMs = at + 60_000L, attemptCount = 5),
+        )
+        assertTrue(
+            "the next attempt inside one lockout is a different key",
+            first != key(TamperAlertWorker.TYPE_PIN_LOCKOUT, eventAtMs = at, attemptCount = 6),
+        )
     }
 }

@@ -134,6 +134,9 @@ class RuleRepository @Inject constructor(
     /** Feature #2: true unless the cached rule set explicitly disables social monitoring for [appKey] (absent key = enabled). */
     fun socialMonitoringEnabled(appKey: String): Boolean = cached?.socialMonitoring?.get(appKey) ?: true
 
+    /** #830 gating: true only after the server flag went on and the phone synced that rule set. */
+    fun siteNamesEnabled(): Boolean = cached?.siteNames == true
+
     /** Feature #27: the parent-curated contact allowlist; empty means unknown-contact alerting is disabled. */
     fun contactAllowlist(): List<String> = cached?.contactAllowlist ?: emptyList()
 
@@ -252,6 +255,14 @@ class RuleRepository @Inject constructor(
             }
             consent.onPollStatus(200)
             cached = updated
+            // #864/#922 (Antigravity's review): the category pack is a store of its own, and it feeds BOTH
+            // `blocklist.domains()` (the DNS sinkhole) and `blocklist.apps()` (`verdict`, RuleRepository.kt:116).
+            // Refreshing it here — under `refreshMutex`, after `cached = updated`, before the #444 C4 listeners
+            // run — makes a category change live on every path (command, worker, consent re-grant) whether or
+            // not the VPN tunnel is up, serializes the fetch instead of duplicating it, and keeps the listeners
+            // from observing a stale pack. `BlocklistStore.refresh` already rethrows CancellationException and
+            // swallows ordinary failures itself, so it is called directly rather than inside `runCatching`.
+            blocklist.refresh(updated.webFilter.blockedCategories)
             // Issue #475: the applied version moves only when the rules were actually PERSISTED. A failed
             // write with the version advanced would tell the parent the phone has rules it will lose on the
             // next process start — the same class of lie the feature exists to prevent.

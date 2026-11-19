@@ -203,6 +203,11 @@ async function stubApi({ neutral = true } = {}) {
         res.writeHead(status, { "content-type": "application/json" });
         res.end(JSON.stringify(payload));
       };
+      // ADR-0043 / #846 step 2: the runner reads the copy before it registers, and the body it sends must
+      // carry one of the versions this route serves.
+      if (req.method === "GET" && req.url.startsWith("/v1/consent-copy")) {
+        return send(200, { textVersion: "signup-v1", locale: "en", purposes: [{ key: "terms_privacy", required: true }] });
+      }
       if (req.method === "POST" && req.url === "/v1/auth/register") {
         return send(201, { token: state.token, refreshToken: "stub-refresh", parent: { id: "parent-1", email: body.email, displayName: body.displayName } });
       }
@@ -296,6 +301,11 @@ test("create sends the shapes the real routes take and prints one JSON object", 
   assert.ok(register.body.email.endsWith("@osratech.test"));
   assert.ok(register.body.password.length >= 12, "the route requires 12+ characters (routes/auth.ts:45)");
   assert.equal(register.body.region, "US");
+  // #846 step 2: a registration without the acceptance block is refused, so the runner must send the
+  // version the copy endpoint served — not a literal that would rot when the wording moves.
+  assert.equal(register.body.consents.termsPrivacy, true);
+  assert.equal(register.body.consents.textVersion, "signup-v1");
+  assert.equal(register.body.consents.locale, "en");
 
   const child = stub.calls.find((c) => c.url === "/v1/family/children");
   assert.equal(child.body.consent.jurisdiction, register.body.region, "the inline consent jurisdiction must equal the family region (routes/family.ts:170)");

@@ -22,6 +22,28 @@ class AppearanceScreen extends ConsumerWidget {
     final text = Theme.of(context).textTheme;
     final platform = MediaQuery.platformBrightnessOf(context);
     final deviceLanguage = Localizations.localeOf(context).languageCode == 'ar' ? l10n.arabic : l10n.english;
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
+    final labelStyle = text.labelLarge;
+    final availableWidth = MediaQuery.sizeOf(context).width - 2 * AppSpace.lg - 96;
+
+    double measureLabel(String label) {
+      final painter = TextPainter(
+        text: TextSpan(text: label, style: labelStyle),
+        maxLines: 1,
+        textDirection: direction,
+        textScaler: scaler,
+      )..layout();
+      return painter.width;
+    }
+
+    final maxLabelWidth = [
+      measureLabel(l10n.system),
+      measureLabel(l10n.light),
+      measureLabel(l10n.dark),
+    ].reduce((a, b) => a > b ? a : b);
+    final fitsSingleLine = availableWidth > 0 && maxLabelWidth * 3 <= availableWidth;
+
     return Scaffold(
       appBar: AppBar(title: Text(l10n.appearanceTitle)),
       body: ListView(
@@ -34,18 +56,88 @@ class AppearanceScreen extends ConsumerWidget {
             style: text.bodySmall?.copyWith(color: tokens.onSurfaceVariant),
           ),
           const SizedBox(height: AppSpace.md),
-          SegmentedButton<ThemeMode>(
-            key: const ValueKey('themeModeSelector'),
-            showSelectedIcon: false,
-            segments: [
-              ButtonSegment(value: ThemeMode.system, label: Text(l10n.system)),
-              ButtonSegment(value: ThemeMode.light, label: Text(l10n.light)),
-              ButtonSegment(value: ThemeMode.dark, label: Text(l10n.dark)),
-            ],
-            selected: {mode},
-            onSelectionChanged: (selection) =>
-                ref.read(themeModeProvider.notifier).setMode(selection.first),
-          ),
+          if (fitsSingleLine)
+            SegmentedButton<ThemeMode>(
+              key: const ValueKey('themeModeSelector'),
+              showSelectedIcon: false,
+              segments: [
+                ButtonSegment(value: ThemeMode.system, label: Text(l10n.system)),
+                ButtonSegment(value: ThemeMode.light, label: Text(l10n.light)),
+                ButtonSegment(value: ThemeMode.dark, label: Text(l10n.dark)),
+              ],
+              selected: {mode},
+              onSelectionChanged: (selection) =>
+                  ref.read(themeModeProvider.notifier).setMode(selection.first),
+            )
+          else
+            Column(
+              key: const ValueKey('themeModeSelector'),
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final (option, label) in [
+                  (ThemeMode.system, l10n.system),
+                  (ThemeMode.light, l10n.light),
+                  (ThemeMode.dark, l10n.dark),
+                ])
+                  Padding(
+                    padding: EdgeInsetsDirectional.only(
+                      bottom: option == ThemeMode.dark ? 0 : AppSpace.sm,
+                    ),
+                    child: Semantics(
+                      inMutuallyExclusiveGroup: true,
+                      selected: mode == option,
+                      button: true,
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(52),
+                          padding: const EdgeInsetsDirectional.symmetric(
+                            horizontal: AppSpace.lg,
+                            vertical: AppSpace.md,
+                          ),
+                          alignment: AlignmentDirectional.centerStart,
+                          backgroundColor:
+                              mode == option ? tokens.primaryContainer : null,
+                          foregroundColor: mode == option
+                              ? tokens.onPrimaryContainer
+                              : tokens.onSurface,
+                          side: BorderSide(
+                            color:
+                                mode == option ? tokens.primary : tokens.border,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                          ),
+                        ),
+                        onPressed: () =>
+                            ref.read(themeModeProvider.notifier).setMode(option),
+                        child: Row(
+                          children: [
+                            Icon(
+                              mode == option
+                                  ? Icons.radio_button_checked
+                                  : Icons.radio_button_unchecked,
+                              color: mode == option
+                                  ? tokens.primary
+                                  : tokens.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: AppSpace.md),
+                            Expanded(
+                              child: Text(
+                                label,
+                                style: labelStyle?.copyWith(
+                                  color: mode == option
+                                      ? tokens.onPrimaryContainer
+                                      : tokens.onSurface,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           const SizedBox(height: AppSpace.lg),
           Text(
             switch (mode) {

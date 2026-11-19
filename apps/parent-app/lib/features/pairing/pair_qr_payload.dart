@@ -17,6 +17,8 @@
 /// parent QR screen and the future child scanner can share it.
 library;
 
+import '../../core/digits.dart';
+
 /// The URI scheme and authority of a version-1 pairing payload.
 const String kPairQrScheme = 'osra';
 const String kPairQrAuthority = 'pair';
@@ -47,7 +49,8 @@ class PairQrPayload {
   /// the code must be six digits and the base URL must be an absolute
   /// `http(s)` URL with a host.
   String encode() {
-    if (!_codePattern.hasMatch(code)) {
+    final normalized = normalizeDigits(code);
+    if (!_codePattern.hasMatch(normalized)) {
       throw const FormatException('pairing code must be six digits');
     }
     if (!_isApiBaseUrl(apiBaseUrl)) {
@@ -60,7 +63,7 @@ class PairQrPayload {
       host: kPairQrAuthority,
       queryParameters: <String, String>{
         'v': '$kPairQrVersion',
-        'code': code,
+        'code': normalized,
         'host': apiBaseUrl,
       },
     );
@@ -82,7 +85,8 @@ class PairQrPayload {
       throw FormatException(
           'unsupported pairing payload version: ${version ?? 'missing'}');
     }
-    final code = uri.queryParameters['code'];
+    final rawCode = uri.queryParameters['code'];
+    final code = rawCode == null ? null : normalizeDigits(rawCode);
     if (code == null || !_codePattern.hasMatch(code)) {
       throw const FormatException('pairing payload has no six-digit code');
     }
