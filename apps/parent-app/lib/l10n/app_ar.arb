@@ -110,7 +110,7 @@
   "consentMethodKba": "أسئلة معرفية",
   "consentMethodFaceMatch": "مطابقة الوجه",
   "consentMethodCreditCard": "بطاقة ائتمان",
-  "jurisdictionLabel": "الاختصاص القضائي",
+  "jurisdictionLabel": "أين تقيم عائلتك؟",
   "childNameLabel": "اسم الطفل",
   "birthYearLabel": "سنة الميلاد",
   "childFallback": "الطفل",
@@ -345,7 +345,11 @@
   "installedAppsEmpty": "لم يُرسل جهاز الطفل قائمة تطبيقاته بعد",
   "installedAppsEmptyHint": "تظهر القائمة بعد تسجيل جهاز الطفل في المرة التالية (خلال 15 دقيقة كحد أقصى).",
   "installedAppsNoMatch": "لا توجد تطبيقات تطابق بحثك.",
-  "installedAppsLoadFailed": "تعذّر تحميل التطبيقات المثبتة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
+  "installedAppsLoadFailed": "تعذّر تحميل التطبيقات المثبّتة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
+  "appNoLongerInstalled": "تطبيق لم يعد مثبّتًا",
+  "appNoLongerInstalledRemove": "تطبيق لم يعد مثبّتًا. إزالة",
+  "appNamePending": "الاسم غير متوفّر بعد",
+  "appNamePendingRemove": "الاسم غير متوفّر بعد. إزالة",
   "installedAppsTruncated": "عرض أول {count} تطبيقًا.",
   "addAlwaysAllowedTitle": "إضافة تطبيق مسموح دائمًا",
   "appNameLabel": "اسم التطبيق",
@@ -963,7 +967,7 @@
       }
     }
   },
-  "alertTechnicalDetails": "التفاصيل التقنية",
+  "alertChildLabel": "الطفل: {name}",
   "alertSosLocationMinutes": "{n, plural, =1{سُجّل آخر موقع قبل دقيقة. اضغط لعرضه.} =2{سُجّل آخر موقع قبل دقيقتين. اضغط لعرضه.} few{سُجّل آخر موقع قبل {n} دقائق. اضغط لعرضه.} many{سُجّل آخر موقع قبل {n} دقيقة. اضغط لعرضه.} other{سُجّل آخر موقع قبل {n} دقيقة. اضغط لعرضه.}}",
   "@alertSosLocationHours": {
     "description": "Arabic Language Bureau, #743. Notification body for a fix an hour or more old; says «more than», hours rounded down.",
@@ -1070,5 +1074,12 @@
   "familyInviteFailed": "تعذّر إرسال الدعوة. تحقّق من عنوان البريد الإلكتروني ثم حاول مرة أخرى.",
   "digestPrefsTimezonePickerTitle": "اختيار المنطقة الزمنية",
   "digestPrefsTimezoneSearchHint": "ابحث باسم مدينة أو بفرق التوقيت، مثل: دبي أو GMT+4",
-  "digestPrefsTimezoneEmpty": "لا توجد مناطق زمنية مطابقة"
+  "digestPrefsTimezoneEmpty": "لا توجد مناطق زمنية مطابقة",
+  "alertDeviceRestartedTitle": "أُعيد تشغيل الجهاز",
+  "alertCategoryDeviceRestarted": "إعادة تشغيل الجهاز",
+  "alertAtTime": "الساعة {time}",
+  "alertYesterdayAtTime": "أمس الساعة {time}",
+  "alertOnDateAtTime": "يوم {date} الساعة {time}",
+  "alertDeviceRestartedBodyMinutes": "أُعيد تشغيل {device} {when}، وعاد إلى العمل بعد {minutes, plural, =0{أقل من دقيقة} =1{دقيقة} =2{دقيقتين} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}.",
+  "alertDeviceRestartedBodyHours": "أُعيد تشغيل {device} {when}، وعاد إلى العمل بعد نحو {hours, plural, =1{ساعة} =2{ساعتين} few{{hours} ساعات} many{{hours} ساعة} other{{hours} ساعة}}."
 }

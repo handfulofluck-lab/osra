@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:familyshield_parent/api/models.dart';
+import 'package:familyshield_parent/features/rules/app_picker.dart';
 import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
 import 'package:familyshield_parent/l10n/app_localizations.dart';
 import 'package:familyshield_parent/l10n/app_localizations_ar.dart';
@@ -11,9 +13,9 @@ import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'fake_api_client.dart';
 import 'test_app.dart';
 
-/// Roadmap 3.4: the Rules-editor app picker. Every test exercises the dialog
-/// against the network-free fake, including the empty state and Arabic RTL at
-/// the smallest supported surface (320×568).
+/// U33 (#868): the Rules-editor app picker — one full-screen multi-select list of the child's own
+/// reported apps. Every test runs against the network-free fake, including the empty state, the
+/// per-device grouping and Arabic RTL at the smallest supported surface (320×568).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -94,8 +96,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Finder picker() => find.byKey(const ValueKey('installedAppsPicker'));
-  Finder tile(String packageId) => find.byKey(ValueKey('installedApp-$packageId'));
+  Finder picker() => find.byKey(const ValueKey('appPicker'));
+  Finder tile(String packageId) => find.byKey(ValueKey('appPickerRow-$packageId'));
+  Finder checkbox(String packageId) => find.byKey(ValueKey('appPickerCheck-$packageId'));
 
   testWidgets('lists reported apps and hides system apps by default', (tester) async {
     final api = FakeApiClient(standardRoutes());
@@ -107,78 +110,92 @@ void main() {
     expect(tile('org.example.reader'), findsOneWidget);
     expect(tile('com.android.settings'), findsNothing);
 
-    await tester.tap(find.byKey(const ValueKey('installedAppsSystemFilter')));
+    await tester.tap(find.byKey(const ValueKey('appPickerSystemFilter')));
     await tester.pumpAndSettle();
     expect(tile('com.android.settings'), findsOneWidget);
     expect(drainExceptions(tester), isEmpty);
   });
 
-  testWidgets('search matches the label and the package id', (tester) async {
+  testWidgets('search matches the app name only, never the package id', (tester) async {
     final api = FakeApiClient(standardRoutes());
     await pumpRules(tester, api);
     await openPicker(tester);
 
-    await tester.enterText(find.byKey(const ValueKey('installedAppsSearch')), 'vid');
+    await tester.enterText(find.byKey(const ValueKey('appPickerSearch')), 'vid');
     await tester.pumpAndSettle();
     expect(tile('com.example.video'), findsOneWidget);
     expect(tile('com.example.game'), findsNothing);
     expect(tile('org.example.reader'), findsNothing);
 
-    await tester.enterText(find.byKey(const ValueKey('installedAppsSearch')), 'org.example');
+    // U33: the search is the parent's vocabulary. A package id — 'org.example' — is not an app name
+    // and no longer matches; that is the deliberate change from the #830-era picker, which matched it.
+    await tester.enterText(find.byKey(const ValueKey('appPickerSearch')), 'org.example');
     await tester.pumpAndSettle();
-    expect(tile('org.example.reader'), findsOneWidget);
-    expect(tile('com.example.video'), findsNothing);
-
-    await tester.enterText(find.byKey(const ValueKey('installedAppsSearch')), 'no such app');
-    await tester.pumpAndSettle();
+    expect(tile('org.example.reader'), findsNothing);
     expect(find.text('No apps match your search.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('appPickerNoMatch')), findsOneWidget);
   });
 
-  testWidgets('selecting an app adds an AppRule and the typed path stays available', (tester) async {
+  testWidgets('choosing two apps adds two rules and shows no package id', (tester) async {
     final api = FakeApiClient(standardRoutes());
     await pumpRules(tester, api);
-    await openAppsTab(tester);
+    await openPicker(tester);
 
-    // #172 grew the always-allowed block above the rule list, so these sit below the fold on the
-    // 800x600 test surface; drag the list rather than shrink the assertions.
-    await tester.drag(find.byKey(const ValueKey('appsRulesList')), const Offset(0, -260));
-    await tester.pumpAndSettle();
-    expect(find.text("Choose from child's apps"), findsOneWidget);
-    expect(find.text('Add app rule'), findsOneWidget);
-
-    await tester.tap(find.byKey(const ValueKey('pickInstalledApp')));
-    await flushFakeHttp(tester);
-    await tester.pumpAndSettle();
     await tester.tap(tile('com.example.video'));
     await tester.pumpAndSettle();
+    await tester.tap(tile('org.example.reader'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Checkbox>(checkbox('com.example.video')).value, isTrue);
+    expect(tester.widget<Checkbox>(checkbox('org.example.reader')).value, isTrue);
 
+    await tester.tap(find.byKey(const ValueKey('appPickerConfirm')));
+    await tester.pumpAndSettle();
     expect(picker(), findsNothing);
-    expect(find.text('Video'), findsOneWidget); // the new rule card
+    // The two new rows exist; the PUT below is what proves their contents — the rule list is lazy, so
+    // a card below the fold is not in the element tree to be found by text.
+    expect(find.text('Video'), findsOneWidget);
+    // U33: the typed path is gone — no "Add app rule" button and no package id on any row.
+    expect(find.text('Add app rule'), findsNothing);
+    expect(find.text('com.example.video'), findsNothing);
+    expect(find.text('org.example.reader'), findsNothing);
 
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     final puts = api.calls('PUT', '/v1/rules/child-1');
     expect(puts, hasLength(1));
     final rules = (puts.single.body['appRules'] as List).cast<Map<String, dynamic>>();
-    final video = rules.firstWhere((r) => r['packageId'] == 'com.example.video');
-    expect(video['appName'], 'Video');
-    expect(video['action'], 'allow');
+    expect(rules.map((r) => r['packageId']), containsAll(<String>['com.example.video', 'org.example.reader']));
+    expect(rules.firstWhere((r) => r['packageId'] == 'com.example.video')['appName'], 'Video');
+    expect(rules.firstWhere((r) => r['packageId'] == 'org.example.reader')['action'], 'allow');
   });
 
-  testWidgets('an already-ruled app is disabled with a check mark and cannot be added twice', (tester) async {
+  testWidgets('the confirm button is disabled until something is chosen', (tester) async {
+    final api = FakeApiClient(standardRoutes());
+    await pumpRules(tester, api);
+    await openPicker(tester);
+
+    expect(tester.widget<FilledButton>(find.byKey(const ValueKey('appPickerConfirm'))).onPressed, isNull);
+    await tester.tap(tile('com.example.video'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(find.byKey(const ValueKey('appPickerConfirm'))).onPressed, isNotNull);
+  });
+
+  testWidgets('an already-ruled app is disabled and cannot be added twice', (tester) async {
     final api = FakeApiClient(standardRoutes());
     await pumpRules(tester, api);
     await openPicker(tester);
 
     final game = tile('com.example.game');
     expect(tester.widget<ListTile>(game).enabled, isFalse);
-    expect(find.descendant(of: game, matching: find.byIcon(Icons.check_circle)), findsOneWidget);
+    expect(tester.widget<Checkbox>(checkbox('com.example.game')).onChanged, isNull);
+    // The rule state is the subtitle the parent reads: a 60-minute daily limit in this fixture.
+    expect(find.text('Daily limit: 60 min'), findsOneWidget);
 
     await tester.tap(game);
     await tester.pumpAndSettle();
-    expect(picker(), findsOneWidget); // tapping a ruled app does not pop
+    expect(picker(), findsOneWidget); // tapping a ruled app does not close the picker
 
-    await tester.tap(find.byKey(const ValueKey('installedAppsClose')));
+    await tester.tap(find.byType(CloseButton));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
@@ -196,7 +213,10 @@ void main() {
 
     expect(find.text('No apps reported yet'), findsOneWidget);
     expect(find.textContaining('next check-in'), findsOneWidget);
-    expect(find.byKey(const ValueKey('installedAppsList')), findsNothing);
+    expect(find.byKey(const ValueKey('appPickerEmpty')), findsOneWidget);
+    expect(find.byKey(const ValueKey('appPickerList')), findsNothing);
+    // No text-field fallback anywhere in the empty state.
+    expect(find.byType(TextField), findsOneWidget); // the search field, and only it
   });
 
   testWidgets('a failed inventory load shows the error and offers a retry', (tester) async {
@@ -236,19 +256,17 @@ void main() {
     expect(tile('com.example.video'), findsOneWidget);
     expect(tile('com.android.settings'), findsNothing);
 
-    await tester.tap(find.byKey(const ValueKey('installedAppsSystemFilter')));
+    await tester.tap(find.byKey(const ValueKey('appPickerSystemFilter')));
     await tester.pumpAndSettle();
     expect(tile('com.android.settings'), findsOneWidget);
 
-    // The dialog's ListTile and the rules screen behind it both stay inside 320 px.
+    // The full-screen list and the confirm bar both stay inside 320 px.
     expect(drainExceptions(tester), isEmpty);
   });
 
   /// Issue #199 item 5: an app the phone reported as essential is shown as "Always allowed (needed for
-  /// calls and safety)" and cannot be selected — a rule on the dialer would silently do nothing. A row
-  /// with **no** essential value (an older agent) keeps today's behaviour: selectable, package id shown.
-  testWidgets('an essential app cannot be selected, and an unreported one still can', (tester) async {
-    // The fixture reports the dialer as essential and says nothing about the browser.
+  /// calls and safety)" and cannot be selected — a rule on the dialer would silently do nothing.
+  testWidgets('an essential app cannot be selected, and an ordinary one can', (tester) async {
     final payload = installedAppsPayload(apps: [
       {...installedAppJson('com.google.android.dialer', 'Phone'), 'essential': true},
       installedAppJson('com.example.browser', 'Browser'),
@@ -259,21 +277,272 @@ void main() {
     });
 
     await pumpRules(tester, api);
-    await openAppsTab(tester);
-    // The always-allowed block above grew (#172), so the picker button is below the fold at 800x600.
-    await tester.drag(find.byKey(const ValueKey('appsRulesList')), const Offset(0, -260));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('pickInstalledApp')));
-    await flushFakeHttp(tester);
-    await tester.pumpAndSettle();
+    await openPicker(tester);
 
-    // The essential row is labelled and disabled.
     expect(find.text('Always allowed (needed for calls and safety)'), findsOneWidget);
-    final dialerRow = tester.widget<ListTile>(find.byKey(const ValueKey('installedApp-com.google.android.dialer')));
+    final dialerRow = tester.widget<ListTile>(tile('com.google.android.dialer'));
     expect(dialerRow.enabled, isFalse);
-    final browserRow = tester.widget<ListTile>(find.byKey(const ValueKey('installedApp-com.example.browser')));
+    final browserRow = tester.widget<ListTile>(tile('com.example.browser'));
     expect(browserRow.enabled, isTrue);
-    expect(find.text('com.example.browser'), findsOneWidget); // unreported: package id, as today
+    // U33: an app with no rule and no essential flag shows its name and nothing technical — the
+    // #830-era picker printed the package id under every row.
+    expect(find.text('com.example.browser'), findsNothing);
+  });
+
+  /// U33: the icon arrives from the server as a URL. Until it does the row draws a letter avatar in the
+  /// brand tint; an empty string is not a URL and must not be requested.
+  testWidgets('a missing icon draws a letter avatar and an icon URL draws an image', (tester) async {
+    final payload = installedAppsPayload(apps: [
+      installedAppJson('com.example.video', 'Video'),
+      {...installedAppJson('com.example.music', 'Music'), 'iconUrl': 'https://cdn.example/apps/music.webp'},
+      {...installedAppJson('com.example.blank', 'Blank'), 'iconUrl': ''},
+    ]);
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/devices/dev-1/apps': (_) => payload,
+    });
+    await pumpRules(tester, api);
+    await openPicker(tester);
+
+    final videoRow = find.byKey(const ValueKey('appPickerRow-com.example.video'));
+    expect(find.descendant(of: videoRow, matching: find.text('V')), findsOneWidget);
+    expect(find.descendant(of: videoRow, matching: find.byType(Image)), findsNothing);
+
+    final musicRow = find.byKey(const ValueKey('appPickerRow-com.example.music'));
+    expect(find.descendant(of: musicRow, matching: find.byType(Image)), findsOneWidget);
+
+    // An empty iconUrl is "no icon yet", not a request for the current page.
+    final blankRow = find.byKey(const ValueKey('appPickerRow-com.example.blank'));
+    expect(find.descendant(of: blankRow, matching: find.byType(Image)), findsNothing);
+    expect(find.descendant(of: blankRow, matching: find.text('B')), findsOneWidget);
+  });
+
+  /// U33: with more than one reporting device the rows are grouped under the device, the same app
+  /// appears once in each group, and ticking it in one group ticks it in the other.
+  testWidgets('two devices group their apps and share the tick', (tester) async {
+    final api = FakeApiClient({
+      ...standardRoutes(familyMe: familyMeMixedDevices()),
+      'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(),
+      'GET /v1/devices/dev-3/apps': (_) => installedAppsPayload(apps: [
+            installedAppJson('com.example.video', 'Video'),
+            installedAppJson('com.example.maps', 'Maps'),
+          ]),
+    });
+    await pumpRules(tester, api);
+    await openPicker(tester);
+
+    expect(find.byKey(const ValueKey('appPickerGroup-dev-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('appPickerGroup-dev-3')), findsOneWidget);
+    expect(find.text('iPhone 13'), findsOneWidget);
+    expect(find.text('Galaxy Tab'), findsOneWidget);
+
+    // Video is reported by both devices: two rows, one tick.
+    expect(find.byKey(const ValueKey('appPickerRow-com.example.video')), findsNWidgets(2));
+    await tester.tap(find.byKey(const ValueKey('appPickerRow-com.example.video')).first);
+    await tester.pumpAndSettle();
+    for (final box in tester.widgetList<Checkbox>(checkbox('com.example.video'))) {
+      expect(box.value, isTrue);
+    }
+    expect(drainExceptions(tester), isEmpty);
+  });
+
+  /// Antigravity's three blockers on #872 at `fb8717f4`. Each row is written to fail on the mutant it names
+  /// in its comment, because the first pass of this feature shipped with all three alive.
+  group('Antigravity #872 blockers', () {
+    // The chip that carries a fallback sentence is not an `InputChip` any more: that widget cannot lay a
+    // label out over two lines (#872, Codex's AR 320/200 % frames). The assertions below therefore read
+    // what the parent sees and hears — the sentence and the remove control's announcement — not a widget
+    // class, so the row survives the shape changing again.
+    Finder chipShowing(String text) => find.ancestor(
+          of: find.text(text),
+          matching: find.byWidgetPredicate((w) => w.runtimeType.toString() == '_FallbackChip'),
+        );
+
+    testWidgets('the remove action announces the state the chip shows, absent and pending', (tester) async {
+      // M3: strip all three `deleteButtonTooltipMessage`/`tooltip` calls and this row goes red. It was the
+      // mutant that survived 83/83 before — the labels were in the ARBs and never asserted on a widget.
+      final absent = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1', alwaysAllowedApps: const ['com.example.gone']),
+        'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(),
+      });
+      await pumpRules(tester, absent);
+      await openAppsTab(tester);
+      expect(chipShowing('App no longer installed'), findsOneWidget);
+      expect(
+        find.descendant(of: chipShowing('App no longer installed'), matching: find.byTooltip('App no longer installed. Remove')),
+        findsOneWidget,
+      );
+
+      final pending = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1', alwaysAllowedApps: const ['com.example.gone']),
+        'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(apps: const [], reportedAt: null),
+      });
+      await pumpRules(tester, pending);
+      await openAppsTab(tester);
+      expect(chipShowing('Name not available yet'), findsOneWidget);
+      expect(
+        find.descendant(of: chipShowing('Name not available yet'), matching: find.byTooltip('Name not available yet. Remove')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a rule with a real saved name draws its letter, not "?", and no state tooltip', (tester) async {
+      // Finding 2: the avatar was built from the report alone, so a rule that knows its name drew "?" and
+      // announced "Name not available yet" over a row titled "WhatsApp".
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/rules/child-1': (_) {
+          final payload = ruleSetPayload('child-1');
+          payload['appRules'] = [
+            {'packageId': 'com.whatsapp', 'appName': 'WhatsApp', 'action': 'block'},
+          ];
+          return payload;
+        },
+        'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(apps: const [], reportedAt: null),
+      });
+      await pumpRules(tester, api);
+      await openAppsTab(tester);
+
+      expect(find.text('WhatsApp'), findsOneWidget);
+      expect(find.text('?'), findsNothing, reason: 'a saved name is a name');
+      final remove = tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.delete_outline));
+      expect(remove.tooltip, isNull);
+    });
+
+    testWidgets("one device answering 404 does not hide the other device's names", (tester) async {
+      // Finding 3a: the merged provider had no 404 catch, so a `pending` sibling threw the whole future and
+      // the first phone's names fell back to the pending line.
+      final api = FakeApiClient({
+        ...standardRoutes(familyMe: familyMeMixedDevices()),
+        'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1', alwaysAllowedApps: const ['com.example.video']),
+        'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(),
+        'GET /v1/devices/dev-3/apps': (_) => const FakeHttpError(404),
+      });
+      await pumpRules(tester, api);
+      await openAppsTab(tester);
+
+      expect(find.text('Video'), findsWidgets);
+      expect(find.text('Name not available yet'), findsNothing);
+    });
+
+    testWidgets('a truncated report is not "confirmed absent"', (tester) async {
+      // Finding 3b: `truncated` was ignored, so an app missing from a cut-short list read as uninstalled.
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1', alwaysAllowedApps: const ['com.example.gone']),
+        'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(apps: const [], truncated: true),
+      });
+      await pumpRules(tester, api);
+      await openAppsTab(tester);
+
+      expect(find.text('Name not available yet'), findsWidgets);
+      expect(find.text('App no longer installed'), findsNothing);
+    });
+  });
+
+  /// Codex's #872 finding ("pending versus confirmed absence"): before any device sends its app list, a
+  /// missing name means we do not know yet — not that the app was removed. The two lines are different on
+  /// purpose, and saying the wrong one claims something the parent will act on.
+  testWidgets('no report yet says the name is pending, and never that the app is gone', (tester) async {
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1', alwaysAllowedApps: const ['com.example.gone']),
+      // A report that exists but carries no `reportedAt`: no device has checked in with its list.
+      'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(apps: const [], reportedAt: null),
+    });
+    await pumpRules(tester, api);
+    await openAppsTab(tester);
+
+    // Mutant: one fallback line for both states, and this row reads «App no longer installed» before any
+    // device has reported — a statement about the child's phone that nothing has supported.
+    expect(find.text('Name not available yet'), findsWidgets);
+    expect(find.text('App no longer installed'), findsNothing);
+    expect(find.textContaining('com.example.gone'), findsNothing);
+  });
+
+  /// #872 conditions 3, 4 and 5 (UI/UX Bureau): each has its own row so the next reader can see what a
+  /// regression looks like.
+  testWidgets('a device that reports nothing keeps its header and says so', (tester) async {
+    // Mutant: `if (visible.isEmpty) continue;` — the whole group is skipped and the second phone vanishes.
+    final api = FakeApiClient({
+      ...standardRoutes(familyMe: familyMeMixedDevices()),
+      'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(),
+      'GET /v1/devices/dev-3/apps': (_) => installedAppsPayload(apps: const []),
+    });
+    await pumpRules(tester, api);
+    await openPicker(tester);
+
+    expect(find.byKey(const ValueKey('appPickerGroup-dev-3')), findsOneWidget);
+    expect(find.text('Galaxy Tab'), findsOneWidget);
+    expect(find.byKey(const ValueKey('appPickerGroupEmpty-dev-3')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('appPickerGroupEmpty-dev-3')),
+        matching: find.text('No apps reported yet'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets("a truncated inventory says so above that device's apps", (tester) async {
+    // Mutant: drop the notice and a cut list reads as "this app is not installed", which is a different
+    // and wrong statement.
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(
+            apps: [
+              installedAppJson('com.example.video', 'Video'),
+              installedAppJson('com.example.maps', 'Maps'),
+            ],
+            truncated: true,
+          ),
+    });
+    await pumpRules(tester, api);
+    await openPicker(tester);
+
+    final notice = find.byKey(const ValueKey('appPickerTruncated-dev-1'));
+    expect(notice, findsOneWidget);
+    expect(
+      find.descendant(of: notice, matching: find.text('Showing the first 2 apps.')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the confirm button says Save, not "Add app"', (tester) async {
+    // Mutant: put `l10n.addApp` back — the label says one app after several are ticked.
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(),
+    });
+    await pumpRules(tester, api);
+    await openPicker(tester);
+
+    final confirm = find.byKey(const ValueKey('appPickerConfirm'));
+    expect(find.descendant(of: confirm, matching: find.text('Save')), findsOneWidget);
+    expect(find.text('Add app'), findsNothing);
+  });
+
+  /// A parent's own chips and rows show the app's name and icon, not the id. A stored id whose app the
+  /// phone no longer reports is the one place the id still appears — it is the saved value, not a prompt.
+  testWidgets('the always-allowed chips show names, and an app nothing reports says so', (tester) async {
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1', alwaysAllowedApps: const [
+            'com.example.video',
+            'com.example.gone',
+          ]),
+    });
+    await pumpRules(tester, api);
+    await openAppsTab(tester);
+
+    expect(find.text('Video'), findsWidgets);
+    // #872 condition 2 (Claude's data shape, 05:16Z): the name comes from the installed-apps report and
+    // the fallback is the Bureaus' line. Mutant: `apps[id]?.label ?? id` and the id is back on screen.
+    expect(find.text('App no longer installed'), findsWidgets);
+    expect(find.textContaining('com.example.gone'), findsNothing);
+    expect(drainExceptions(tester), isEmpty);
   });
 
   /// Karim's approved Q9 (2026-10-31 09:13Z), pinned as a literal the way #486 pins its lines. A
@@ -281,5 +550,116 @@ void main() {
   /// shipping text he did not approve.
   test('the approved Arabic for the essential row is pinned verbatim', () {
     expect(AppLocalizationsAr().essentialAppRow, 'مسموح دائمًا (ضروري للمكالمات والسلامة)');
+  });
+
+  /// The picker is reachable from the always-allowed list too, and it is the same widget there.
+  testWidgets('the always-allowed Add app button opens the same picker', (tester) async {
+    final api = FakeApiClient(standardRoutes());
+    await pumpRules(tester, api);
+    await openAppsTab(tester);
+
+    final addApp = find.widgetWithText(OutlinedButton, 'Add app');
+    await tester.ensureVisible(addApp);
+    await tester.pumpAndSettle();
+    await tester.tap(addApp);
+    await flushFakeHttp(tester);
+    await tester.pumpAndSettle();
+    expect(picker(), findsOneWidget);
+    expect(find.byType(AppPicker), findsOneWidget);
+  });
+
+  /// #872: the routine chip is the third place a package id used to reach a parent's eye, and it was
+  /// the one the pending/absent split did not assert for itself — it was covered only through the
+  /// shared helper. These two tests pin the chip's own branch: same routine, same missing id, opposite
+  /// sentences depending on whether the child's phone has reported its app list at all.
+  Future<void> openRoutinesTab(WidgetTester tester) async {
+    final controller = DefaultTabController.of(tester.element(find.byType(TabBar)));
+    controller.animateTo(3);
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> openHomeworkRoutine(WidgetTester tester) async {
+    await openRoutinesTab(tester);
+    await tester.tap(find.text('Homework'));
+    await tester.pumpAndSettle();
+  }
+
+  Finder routineBlockedChip(String packageId) => find.byKey(ValueKey('routineBlocked-$packageId'));
+
+  testWidgets('a routine chip says the name is pending while no device has reported', (tester) async {
+    final routes = standardRoutes();
+    // No `reportedAt`: the phone has an inventory route but has never sent a list, so an id missing
+    // from it says nothing about the app.
+    routes['GET /v1/devices/dev-1/apps'] =
+        (_) => installedAppsPayload(apps: [installedAppJson('com.example.video', 'Video')], reportedAt: null);
+    final api = FakeApiClient(routes);
+    await pumpRules(tester, api);
+    await flushFakeHttp(tester);
+    await openHomeworkRoutine(tester);
+
+    final en = lookupAppLocalizations(const Locale('en'));
+    final chip = routineBlockedChip('com.example.game');
+    expect(chip, findsOneWidget);
+    expect(find.descendant(of: chip, matching: find.text(en.appNamePending)), findsOneWidget);
+    expect(find.descendant(of: chip, matching: find.byTooltip(en.appNamePendingRemove)), findsOneWidget);
+    expect(find.textContaining('com.example.game'), findsNothing);
+    expect(drainExceptions(tester), isEmpty);
+  });
+
+  testWidgets('the same routine chip says "no longer installed" once a report exists', (tester) async {
+    final routes = standardRoutes();
+    // A report exists and the routine's app is not in it: now the chip may say "no longer installed".
+    routes['GET /v1/devices/dev-1/apps'] =
+        (_) => installedAppsPayload(apps: [installedAppJson('com.example.video', 'Video')]);
+    final api = FakeApiClient(routes);
+    await pumpRules(tester, api);
+    await flushFakeHttp(tester);
+    await openHomeworkRoutine(tester);
+
+    final en = lookupAppLocalizations(const Locale('en'));
+    final chip = routineBlockedChip('com.example.game');
+    expect(chip, findsOneWidget);
+    // Mutant: `reportKnown` ignored in the chip and this reads the pending line while a report exists.
+    expect(find.descendant(of: chip, matching: find.text(en.appNoLongerInstalled)), findsOneWidget);
+    expect(find.descendant(of: chip, matching: find.byTooltip(en.appNoLongerInstalledRemove)), findsOneWidget);
+    expect(find.textContaining('com.example.game'), findsNothing);
+    expect(drainExceptions(tester), isEmpty);
+  });
+
+  /// Kimi's #872 review: the picker must never hand a package id to a caller as if it were a name.
+  /// An id no device reports comes back with an empty label — the widget does not know the name, the
+  /// avatar already draws `?` for it, and every screen renders the Bureaus' line instead of the id.
+  testWidgets('a saved id that nothing reports never comes back as its own label', (tester) async {
+    final api = FakeApiClient(standardRoutes());
+    List<InstalledApp>? chosen;
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: localizedTestApp(
+        Builder(
+          builder: (context) => TextButton(
+            onPressed: () async {
+              chosen = await showAppPicker(
+                context,
+                childId: 'child-1',
+                selected: {'com.example.gone'},
+              );
+            },
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await flushFakeHttp(tester);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('appPickerConfirm')));
+    await tester.pumpAndSettle();
+
+    expect(chosen, isNotNull);
+    final entry = chosen!.singleWhere((a) => a.packageId == 'com.example.gone');
+    expect(entry.label, isEmpty, reason: 'the package id must never travel as a label');
+    expect(entry.label, isNot('com.example.gone'));
   });
 }

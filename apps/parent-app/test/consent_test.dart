@@ -173,7 +173,9 @@ void main() {
 
       expect(stateLabel(tester), 'Active');
       expect(find.text('Knowledge-based questions'), findsOneWidget);
-      expect(find.text('US'), findsOneWidget);
+      // R-ID-4: the field renders the place, not the code.
+      expect(find.text('United States'), findsOneWidget);
+      expect(find.text('US'), findsNothing);
       expect(find.text('Consent method'), findsOneWidget);
       expect(find.text('Granted'), findsOneWidget);
       expect(find.text('No expiry'), findsOneWidget);
