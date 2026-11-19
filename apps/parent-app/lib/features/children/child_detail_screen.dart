@@ -888,6 +888,9 @@ class _AlertsTab extends ConsumerWidget {
               AlertTile(alert: a, onAck: () async {
                 try {
                   await ref.read(apiClientProvider).raw.post('/v1/alerts/${a.id}/ack');
+                  ref.read(alertsSeenProvider.notifier).markAcknowledged(a.id);
+                  ref.invalidate(unacknowledgedAlertsProvider);
+                  ref.invalidate(unacknowledgedCountProvider);
                 } catch (_) {}
                 ref.invalidate(alertsProvider);
               }),
