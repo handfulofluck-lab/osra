@@ -113,11 +113,18 @@ class PairingActivity : ComponentActivity() {
 
     /** Plan 1.4: the OS VPN consent dialog; on OK the sinkhole starts and comes back on every boot. */
     private val vpnConsentLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        com.familyshield.agent.vpn.VpnState.endOwnConsent()
         if (result.resultCode == RESULT_OK) {
             com.familyshield.agent.vpn.VpnState.setEnabled(this, true)
             com.familyshield.agent.vpn.FilterVpnService.start(this)
         }
         lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
+    }
+
+    private fun launchVpnConsent(intent: Intent) {
+        com.familyshield.agent.vpn.VpnState.beginOwnConsent()
+        runCatching { vpnConsentLauncher.launch(intent) }
+            .onFailure { com.familyshield.agent.vpn.VpnState.endOwnConsent() }
     }
 
     /** ADR-0010: parent-PIN gate for Re-pair / Remove protection; RESULT_OK means the PIN was verified. */
@@ -721,7 +728,7 @@ class PairingActivity : ComponentActivity() {
             OnboardingPolicy.Grant.DEVICE_ADMIN -> button.setOnClickListener { launchAdminSheet() }
             OnboardingPolicy.Grant.WEB_FILTER -> button.setOnClickListener {
                 val prepare = android.net.VpnService.prepare(this)
-                if (prepare != null) vpnConsentLauncher.launch(prepare) else {
+                if (prepare != null) launchVpnConsent(prepare) else {
                     com.familyshield.agent.vpn.VpnState.setEnabled(this, true)
                     com.familyshield.agent.vpn.FilterVpnService.start(this)
                     lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
@@ -752,7 +759,7 @@ class PairingActivity : ComponentActivity() {
             container.addView(
                 Button(this).apply {
                     text = getString(R.string.setup_web_filter_setup)
-                    setOnClickListener { vpnConsentLauncher.launch(prepare) }
+                    setOnClickListener { launchVpnConsent(prepare) }
                 },
             )
             return
