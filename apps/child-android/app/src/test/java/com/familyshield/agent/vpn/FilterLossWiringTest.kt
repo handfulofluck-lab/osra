@@ -15,7 +15,7 @@ class FilterLossWiringTest {
         // Mutant: move enqueue out of the if, so an ineligible or duplicate callback sends an alert.
         assertTrue(
             Regex(
-                """if \(VpnState\.recordFilterLoss\(this, settings, consent, hadEstablishedTunnel\)\) \{\s+""" +
+                """if \(VpnState\.recordFilterLoss\(this, settings, consent, hadEstablishedTunnel\.getAndSet\(false\)\)\) \{\s+""" +
                     """TamperAlertWorker\.enqueue\(this, TamperAlertWorker\.TYPE_VPN_REVOKED\)""",
             ).containsMatchIn(revoke),
         )
@@ -35,6 +35,7 @@ class FilterLossWiringTest {
         assertFalse(failed.contains("clearFilterLoss"))
         assertTrue(successful.contains("VpnState.clearFilterLoss(this)"))
         assertFalse(destruction.contains("clearFilterLoss"))
+        assertFalse(destruction.contains("hadEstablishedTunnel"))
         assertFalse(stopTunnel.contains("clearFilterLoss"))
         assertTrue(explicitStop.contains("VpnState.clearFilterLoss(this)"))
         assertTrue(stopCaller.substringBefore("if (!isRunning)").contains("VpnState.clearFilterLoss(context)"))

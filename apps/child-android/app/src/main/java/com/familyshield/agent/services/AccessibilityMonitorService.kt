@@ -26,6 +26,7 @@ import com.familyshield.agent.enforcement.AppBlocker
 import com.familyshield.agent.enforcement.BlockRaisePolicy
 import com.familyshield.agent.enforcement.BypassAlertFloor
 import com.familyshield.agent.enforcement.EssentialPackages
+import com.familyshield.agent.enforcement.FilterRecoveryPolicy
 import com.familyshield.agent.enforcement.LockEnforcementPolicy
 import com.familyshield.agent.enforcement.LockState
 import com.familyshield.agent.enforcement.OverlayRetryBudget
@@ -206,11 +207,11 @@ class AccessibilityMonitorService : AccessibilityService() {
         override fun onReceive(context: android.content.Context?, intent: Intent?) = packageFacts.refresh()
     }
 
+    private val filterRecoveryCovers = mutableMapOf<WindowBounds, PipCoverOverlay>()
+
     private val filterLossReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: Intent?) {
-            if (intent?.action == VpnState.ACTION_FILTER_LOSS_CHANGED &&
-                VpnState.isFilterLost(this@AccessibilityMonitorService, settings, consentState)
-            ) enforceFilterRecovery(windowSnapshot().activePackage)
+            if (intent?.action == VpnState.ACTION_FILTER_LOSS_CHANGED) refreshFilterRecovery()
         }
     }
 
@@ -238,9 +239,7 @@ class AccessibilityMonitorService : AccessibilityService() {
             IntentFilter(VpnState.ACTION_FILTER_LOSS_CHANGED),
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
-        if (VpnState.isFilterLost(this, settings, consentState)) {
-            enforceFilterRecovery(windowSnapshot().activePackage)
-        }
+        refreshFilterRecovery()
         calls.onConnected()
         media.onConnected()
         rules.addRulesChangedListener(rulesChanged)
@@ -291,6 +290,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         rules.removeRulesChangedListener(rulesChanged)
         pipCover.remove()
         guardCover.remove()
+        updateFilterRecoveryCovers(emptySet())
         // #460 review: a deferred raise posted inside the fallback window must not fire after the
         // service is gone — the child turning accessibility off is exactly when that window exists.
         cancelDeferredRaise()
@@ -311,6 +311,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         // package, and only the guard's cover needs it.
         if (event?.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
             coverSharedProtectionScreens()
+            refreshFilterRecovery()
             return
         }
         val eventPkg = event?.packageName?.toString() ?: return
@@ -363,12 +364,13 @@ class AccessibilityMonitorService : AccessibilityService() {
         // records, captures and enforces nothing.
         if (consentState.isPaused()) {
             pipCover.remove()
+            updateFilterRecoveryCovers(emptySet())
             // #460 review: consent withdrawn inside the fallback window must not still show a block
             // screen — ADR-0008 §3 says a paused agent records, captures and enforces nothing.
             cancelDeferredRaise()
             return
         }
-        if (VpnState.isFilterLost(this, settings, consentState) && enforceFilterRecovery(foreground)) {
+        if (enforceFilterRecovery(snapshot, foreground)) {
             cancelDeferredRaise()
             return
         }
@@ -394,17 +396,38 @@ class AccessibilityMonitorService : AccessibilityService() {
         advanceDeferredRaise(foreground ?: eventPkg)
     }
 
-    private fun enforceFilterRecovery(foreground: String?): Boolean {
-        if (foreground.isNullOrBlank() || foreground == packageName ||
-            EssentialPackages.isEssential(foreground, packageFacts) ||
-            foreground == TamperScreenPolicy.VPN_DIALOG_PACKAGE && VpnState.hasPendingOwnConsent()
-        ) return false
-        // Leave the existing lock, ring and device unlock surfaces in control.
-        if (LockState.isActive(this) || Ringer.isRinging ||
+    private fun refreshFilterRecovery() {
+        if (!VpnState.isFilterLost(this, settings, consentState)) {
+            updateFilterRecoveryCovers(emptySet())
+            return
+        }
+        val snapshot = windowSnapshot()
+        enforceFilterRecovery(snapshot, snapshot.activePackage)
+    }
+
+    private fun enforceFilterRecovery(snapshot: WindowSnapshot, foreground: String?): Boolean {
+        if (!VpnState.isFilterLost(this, settings, consentState) ||
+            LockState.isActive(this) || Ringer.isRinging ||
             getSystemService(android.app.KeyguardManager::class.java)?.isKeyguardLocked == true
-        ) return false
-        blocker.showFilterRecovery(foreground)
-        return true
+        ) {
+            updateFilterRecoveryCovers(emptySet())
+            return false
+        }
+        val ownConsentPending = VpnState.hasPendingOwnConsent()
+        val presentation = FilterRecoveryPolicy.presentation(snapshot, foreground) { pkg ->
+            pkg == packageName || EssentialPackages.isEssential(pkg, packageFacts) ||
+                pkg == TamperScreenPolicy.VPN_DIALOG_PACKAGE && ownConsentPending
+        }
+        updateFilterRecoveryCovers(presentation.coveredWindows)
+        presentation.blockedForeground?.let(blocker::showFilterRecovery)
+        return presentation.blockedForeground != null || presentation.coveredWindows.isNotEmpty()
+    }
+
+    private fun updateFilterRecoveryCovers(bounds: Set<WindowBounds>) {
+        (filterRecoveryCovers.keys - bounds).forEach { old -> filterRecoveryCovers.remove(old)?.remove() }
+        bounds.forEach { target ->
+            filterRecoveryCovers.getOrPut(target) { PipCoverOverlay(this) }.update(target)
+        }
     }
 
     /**

@@ -74,7 +74,7 @@ class FilterVpnService : VpnService() {
 
     private var tun: ParcelFileDescriptor? = null
     // A failed re-mode can close the old descriptor before Android delivers its revocation callback.
-    private var hadEstablishedTunnel = false
+    private val hadEstablishedTunnel = AtomicBoolean(false)
     private val lifecycleHandler by lazy { Handler(mainLooper) }
     private var mode: String = MODE_DNS
     private val running = AtomicBoolean(false)
@@ -92,7 +92,7 @@ class FilterVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
-                hadEstablishedTunnel = false
+                hadEstablishedTunnel.set(false)
                 stopTunnel()
                 VpnState.clearFilterLoss(this)
                 stopSelf()
@@ -116,11 +116,10 @@ class FilterVpnService : VpnService() {
         lifecycleHandler.post {
             Log.w(TAG, "VPN revoked")
             try {
-                if (VpnState.recordFilterLoss(this, settings, consent, hadEstablishedTunnel)) {
+                if (VpnState.recordFilterLoss(this, settings, consent, hadEstablishedTunnel.getAndSet(false))) {
                     TamperAlertWorker.enqueue(this, TamperAlertWorker.TYPE_VPN_REVOKED)
                 }
             } finally {
-                hadEstablishedTunnel = false
                 stopTunnel()
                 stopSelf()
             }
@@ -128,7 +127,8 @@ class FilterVpnService : VpnService() {
     }
 
     override fun onDestroy() {
-        hadEstablishedTunnel = false
+        // A system revoke can already be queued on the main looper. Keep this instance's
+        // established latch until that callback consumes it or an explicit stop clears it.
         stopTunnel()
         scope.cancel()
         workers.shutdownNow()
@@ -209,7 +209,7 @@ class FilterVpnService : VpnService() {
         tunnelMode = mode
         val gen = generation.incrementAndGet()
         pump = Thread({ pumpLoop(fd, gen) }, "osra-dns-sinkhole-$gen").also { it.isDaemon = true; it.start() }
-        hadEstablishedTunnel = true
+        hadEstablishedTunnel.set(true)
         VpnState.clearFilterLoss(this)
         Log.i(TAG, "tunnel up, mode=$mode")
     }
