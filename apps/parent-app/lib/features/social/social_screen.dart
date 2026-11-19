@@ -1,9 +1,9 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../core/date_formatting.dart';
 import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
@@ -219,8 +219,11 @@ class _MonitoringTogglesSectionState
           loading: () => const Padding(
               padding: EdgeInsets.all(AppSpace.lg),
               child: Center(child: CircularProgressIndicator())),
-          error: (e, _) =>
-              Text(friendlyErrorText(l10n, e, () => l10n.rulesLoadFailed)),
+          // Polish item 1 (Claude on #50): the sentence said "try again" and offered nothing to touch.
+          error: (e, _) => ErrorRetryView(
+            message: friendlyErrorText(l10n, e, () => l10n.rulesLoadFailed),
+            onRetry: () => ref.invalidate(rulesProvider(widget.childId)),
+          ),
           data: (ruleSet) {
             _applyLoaded(ruleSet);
             final draft = _draft!;
@@ -279,8 +282,10 @@ class ConcernsSection extends ConsumerWidget {
           loading: () => const Padding(
               padding: EdgeInsets.all(AppSpace.lg),
               child: Center(child: CircularProgressIndicator())),
-          error: (e, _) =>
-              Text(friendlyErrorText(l10n, e, () => l10n.rulesLoadFailed)),
+          error: (e, _) => ErrorRetryView(
+            message: friendlyErrorText(l10n, e, () => l10n.rulesLoadFailed),
+            onRetry: () => ref.invalidate(socialEventsProvider(childId)),
+          ),
           data: (items) => items.isEmpty
               ? Padding(
                   padding: const EdgeInsets.symmetric(vertical: AppSpace.lg),
@@ -400,8 +405,10 @@ class CallsSmsSection extends ConsumerWidget {
           loading: () => const Padding(
               padding: EdgeInsets.all(AppSpace.lg),
               child: Center(child: CircularProgressIndicator())),
-          error: (e, _) =>
-              Text(friendlyErrorText(l10n, e, () => l10n.rulesLoadFailed)),
+          error: (e, _) => ErrorRetryView(
+            message: friendlyErrorText(l10n, e, () => l10n.rulesLoadFailed),
+            onRetry: () => ref.invalidate(activityProvider(childId)),
+          ),
           data: (items) {
             if (items.isEmpty) {
               return Padding(
@@ -415,7 +422,7 @@ class CallsSmsSection extends ConsumerWidget {
             for (final e in items) {
               final day = e.ts == null
                   ? 'Unknown'
-                  : DateFormat('yyyy-MM-dd').format(e.ts!.toLocal());
+                  : dayKey(e.ts!.toLocal());
               if (!groups.containsKey(day)) {
                 groups[day] = [];
                 order.add(day);
@@ -470,7 +477,7 @@ class CallsSmsSection extends ConsumerWidget {
     if (key == 'Unknown') return context.l10n.unknown;
     final d = DateTime.tryParse(key);
     if (d == null) return key;
-    return DateFormat('EEEE, MMM d, yyyy', context.localeName).format(d);
+    return formatDayHeader(d, context.localeName);
   }
 
   /// #830: the attempts a lock-period row carries; 0 when an older row has none.
@@ -573,8 +580,10 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
           loading: () => const Padding(
               padding: EdgeInsets.all(AppSpace.lg),
               child: Center(child: CircularProgressIndicator())),
-          error: (e, _) =>
-              Text(friendlyErrorText(l10n, e, () => l10n.rulesLoadFailed)),
+          error: (e, _) => ErrorRetryView(
+            message: friendlyErrorText(l10n, e, () => l10n.rulesLoadFailed),
+            onRetry: () => ref.invalidate(rulesProvider(widget.childId)),
+          ),
           data: (ruleSet) {
             _applyLoaded(ruleSet);
             final items = _items!;

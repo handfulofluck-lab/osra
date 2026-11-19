@@ -43,6 +43,7 @@ export interface Geofence { id: UUID; childId: UUID; label: string; lat: number;
  * always carries the English `body` as a fallback for an app that does not know the key yet.
  */
 export const ALERT_BODY_KEYS = [
+  "alertBodyDeviceRestarted",
   "alertBodyDeviceSilent",
   "alertBodyGeofenceEnter",
   "alertBodyGeofenceExit",

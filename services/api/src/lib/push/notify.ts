@@ -37,6 +37,9 @@ export function shouldPush(alert: Pick<AlertLike, "severity" | "category" | "met
   if (!alert) return false;
   if (alert.category === "ring" && ringMetadataObject(alert.metadata).state === "parent_stopped") return false;
   const sev = (alert.severity as Severity) in SEVERITY_RANK ? (alert.severity as Severity) : "info";
+  // Issue #889 (UI/UX Bureau ruling): routine `info` restarts (< 30 min gap) stay in the Alerts list
+  // and unread badge without waking the parent's phone; `warning` restarts (>= 30 min gap) still push.
+  if (alert.category === "device_restarted" && sev === "info") return false;
   // SOS and tamper always wake the parent regardless of the floor.
   if (alert.category === "sos" || alert.category === "tamper") return true;
   return SEVERITY_RANK[sev] >= SEVERITY_RANK[min];

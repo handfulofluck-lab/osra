@@ -49,6 +49,7 @@ export type KeyedRaiseAlertInput = Omit<RaiseAlertInput, "bodyKey" | "params"> &
 };
 
 const ALERT_BODY_REQUIRED_PARAMS = {
+  alertBodyDeviceRestarted: ["model", "bootedAt", "gapMinutes", "timeZone"],
   alertBodyDeviceSilent: ["model", "minutes"],
   alertBodyGeofenceEnter: ["label", "radiusM"],
   alertBodyGeofenceExit: ["label", "radiusM"],

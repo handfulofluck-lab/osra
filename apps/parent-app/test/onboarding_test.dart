@@ -341,6 +341,15 @@ void main() {
     await tester.enterText(find.byKey(const ValueKey('onboardingChildName')), 'Alex');
     await tester.enterText(find.byKey(const ValueKey('onboardingBirthYear')), '2014');
     final add = find.byKey(const ValueKey('onboardingAddChild'));
+    // #874: the question now sits above each dropdown and wraps, so on a 320 px screen the button is
+    // below the built range; scroll to it as prb_layout_matrix_test.dart already does.
+    if (add.evaluate().isEmpty) {
+      await tester.scrollUntilVisible(
+        add,
+        200,
+        scrollable: find.byWidgetPredicate((w) => w is Scrollable && w.axis == Axis.vertical).first,
+      );
+    }
     await tester.ensureVisible(add);
     await tester.pumpAndSettle();
     await tester.tap(add);
@@ -428,7 +437,16 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey('onboardingChildName')), 'Alex');
       await tester.enterText(find.byKey(const ValueKey('onboardingBirthYear')), '2014');
       final add = find.byKey(const ValueKey('onboardingAddChild'));
-      await tester.ensureVisible(add);
+      // #874: the question now sits above each dropdown and wraps, so on a 320 px screen the button is
+    // below the built range; scroll to it as prb_layout_matrix_test.dart already does.
+    if (add.evaluate().isEmpty) {
+      await tester.scrollUntilVisible(
+        add,
+        200,
+        scrollable: find.byWidgetPredicate((w) => w is Scrollable && w.axis == Axis.vertical).first,
+      );
+    }
+    await tester.ensureVisible(add);
       await tester.pumpAndSettle();
       await tester.tap(add);
       await flush(tester);

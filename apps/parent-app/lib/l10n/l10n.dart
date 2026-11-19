@@ -97,6 +97,7 @@ extension AppLocalizationsLabels on AppLocalizations {
         'vpn_detected' => alertCategoryVpnDetected,
         'install_request' => alertCategoryInstallRequest,
         'unknown_contact' => alertCategoryUnknownContact,
+        'device_restarted' => alertCategoryDeviceRestarted,
         'ring' => alertTitleRing,
         _ => category,
       };
@@ -133,6 +134,7 @@ extension AppLocalizationsLabels on AppLocalizations {
         'vpn_detected' => alertTitleVpnDetected,
         'install_request' => alertTitleInstallRequest,
         'unknown_contact' => alertTitleUnknownContact,
+        'device_restarted' => alertDeviceRestartedTitle,
         'ring' => alertTitleRing,
         _ => isEnglish ? serverTitle : alertTitleGeneric,
       };

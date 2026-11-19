@@ -719,7 +719,7 @@ abstract class AppLocalizations {
   /// No description provided for @jurisdictionLabel.
   ///
   /// In en, this message translates to:
-  /// **'Jurisdiction'**
+  /// **'Where does your family live?'**
   String get jurisdictionLabel;
 
   /// No description provided for @childNameLabel.
@@ -2132,6 +2132,30 @@ abstract class AppLocalizations {
   /// **'Couldn\'t load installed apps. Check your connection and try again.'**
   String get installedAppsLoadFailed;
 
+  /// No description provided for @appNoLongerInstalled.
+  ///
+  /// In en, this message translates to:
+  /// **'App no longer installed'**
+  String get appNoLongerInstalled;
+
+  /// No description provided for @appNoLongerInstalledRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'App no longer installed. Remove'**
+  String get appNoLongerInstalledRemove;
+
+  /// No description provided for @appNamePending.
+  ///
+  /// In en, this message translates to:
+  /// **'Name not available yet'**
+  String get appNamePending;
+
+  /// No description provided for @appNamePendingRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Name not available yet. Remove'**
+  String get appNamePendingRemove;
+
   /// No description provided for @installedAppsTruncated.
   ///
   /// In en, this message translates to:
@@ -2786,11 +2810,11 @@ abstract class AppLocalizations {
   /// **'{count}h ago'**
   String relativeHoursAgo(int count);
 
-  /// No description provided for @alertTechnicalDetails.
+  /// No description provided for @alertChildLabel.
   ///
   /// In en, this message translates to:
-  /// **'Technical details'**
-  String get alertTechnicalDetails;
+  /// **'Child: {name}'**
+  String alertChildLabel(String name);
 
   /// No description provided for @relativeOverHoursAgo.
   ///
@@ -5341,6 +5365,49 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No matching time zones'**
   String get digestPrefsTimezoneEmpty;
+
+  /// No description provided for @alertDeviceRestartedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Device restarted'**
+  String get alertDeviceRestartedTitle;
+
+  /// No description provided for @alertCategoryDeviceRestarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Device restart'**
+  String get alertCategoryDeviceRestarted;
+
+  /// No description provided for @alertAtTime.
+  ///
+  /// In en, this message translates to:
+  /// **'at {time}'**
+  String alertAtTime(String time);
+
+  /// No description provided for @alertYesterdayAtTime.
+  ///
+  /// In en, this message translates to:
+  /// **'yesterday at {time}'**
+  String alertYesterdayAtTime(String time);
+
+  /// No description provided for @alertOnDateAtTime.
+  ///
+  /// In en, this message translates to:
+  /// **'on {date} at {time}'**
+  String alertOnDateAtTime(String date, String time);
+
+  /// No description provided for @alertDeviceRestartedBodyMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{device} restarted {when} and was back {minutes, plural, =0{in less than a minute} =1{after 1 minute} other{after {minutes} minutes}}.'**
+  String alertDeviceRestartedBodyMinutes(
+      String device, String when, int minutes);
+
+  /// No description provided for @alertDeviceRestartedBodyHours.
+  ///
+  /// In en, this message translates to:
+  /// **'{device} restarted {when} and was back after about {hours, plural, =1{1 hour} other{{hours} hours}}.'**
+  String alertDeviceRestartedBodyHours(String device, String when, int hours);
 }
 
 class _AppLocalizationsDelegate

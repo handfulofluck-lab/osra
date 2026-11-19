@@ -418,11 +418,28 @@ describe("notification policy", () => {
     err.mockRestore();
   });
 
-  it("applies the severity floor but always pushes SOS and tamper", () => {
+  it("applies the severity floor, always pushes SOS and tamper, and never pushes info restarts (#889)", async () => {
     expect(shouldPush({ severity: "info", category: "geofence" }, "warning")).toBe(false);
     expect(shouldPush({ severity: "warning", category: "ai_concern" }, "warning")).toBe(true);
     expect(shouldPush({ severity: "info", category: "sos" }, "critical")).toBe(true);
     expect(shouldPush({ severity: "info", category: "tamper" }, "critical")).toBe(true);
+    // UI/UX Bureau ruling (#889): `info` device_restarted alerts stay in-app only; `warning` restarts push.
+    expect(shouldPush({ severity: "info", category: "device_restarted" }, "info")).toBe(false);
+    expect(shouldPush({ severity: "warning", category: "device_restarted" }, "info")).toBe(true);
+
+    const provider = new FakeProvider();
+    setPushProviders([provider]);
+    prismaMock.digestPrefs.findUnique.mockResolvedValue(null);
+    prismaMock.parent.findMany.mockResolvedValue([{ id: "parent-1" }]);
+    prismaMock.parentPushToken.findMany.mockResolvedValue([{ id: "t1", parentId: "parent-1", token: "tok-1", platform: "android" }]);
+
+    const infoOutcome = await notifyParentsOfAlert("fam-1", { ...alert, severity: "info", category: "device_restarted" }, "Alex");
+    expect(infoOutcome).toEqual({ recipients: 0, delivered: 0, pruned: 0, skipped: "severity" });
+    expect(provider.sent).toHaveLength(0);
+
+    const warnOutcome = await notifyParentsOfAlert("fam-1", { ...alert, severity: "warning", category: "device_restarted" }, "Alex");
+    expect(warnOutcome).toEqual({ recipients: 1, delivered: 1, pruned: 0, skipped: null });
+    expect(provider.sent).toHaveLength(1);
   });
 
   it("fans out to every parent token in the family and prunes dead ones", async () => {

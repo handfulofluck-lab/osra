@@ -385,7 +385,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get consentMethodCreditCard => 'بطاقة ائتمان';
 
   @override
-  String get jurisdictionLabel => 'الاختصاص القضائي';
+  String get jurisdictionLabel => 'أين تقيم عائلتك؟';
 
   @override
   String get childNameLabel => 'اسم الطفل';
@@ -1220,7 +1220,19 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get installedAppsLoadFailed =>
-      'تعذّر تحميل التطبيقات المثبتة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
+      'تعذّر تحميل التطبيقات المثبّتة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
+
+  @override
+  String get appNoLongerInstalled => 'تطبيق لم يعد مثبّتًا';
+
+  @override
+  String get appNoLongerInstalledRemove => 'تطبيق لم يعد مثبّتًا. إزالة';
+
+  @override
+  String get appNamePending => 'الاسم غير متوفّر بعد';
+
+  @override
+  String get appNamePendingRemove => 'الاسم غير متوفّر بعد. إزالة';
 
   @override
   String installedAppsTruncated(int count) {
@@ -1819,7 +1831,9 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get alertTechnicalDetails => 'التفاصيل التقنية';
+  String alertChildLabel(String name) {
+    return 'الطفل: $name';
+  }
 
   @override
   String relativeOverHoursAgo(int count) {
@@ -3421,4 +3435,55 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get digestPrefsTimezoneEmpty => 'لا توجد مناطق زمنية مطابقة';
+
+  @override
+  String get alertDeviceRestartedTitle => 'أُعيد تشغيل الجهاز';
+
+  @override
+  String get alertCategoryDeviceRestarted => 'إعادة تشغيل الجهاز';
+
+  @override
+  String alertAtTime(String time) {
+    return 'الساعة $time';
+  }
+
+  @override
+  String alertYesterdayAtTime(String time) {
+    return 'أمس الساعة $time';
+  }
+
+  @override
+  String alertOnDateAtTime(String date, String time) {
+    return 'يوم $date الساعة $time';
+  }
+
+  @override
+  String alertDeviceRestartedBodyMinutes(
+      String device, String when, int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة',
+      many: '$minutes دقيقة',
+      few: '$minutes دقائق',
+      two: 'دقيقتين',
+      one: 'دقيقة',
+      zero: 'أقل من دقيقة',
+    );
+    return 'أُعيد تشغيل $device $when، وعاد إلى العمل بعد $_temp0.';
+  }
+
+  @override
+  String alertDeviceRestartedBodyHours(String device, String when, int hours) {
+    String _temp0 = intl.Intl.pluralLogic(
+      hours,
+      locale: localeName,
+      other: '$hours ساعة',
+      many: '$hours ساعة',
+      few: '$hours ساعات',
+      two: 'ساعتين',
+      one: 'ساعة',
+    );
+    return 'أُعيد تشغيل $device $when، وعاد إلى العمل بعد نحو $_temp0.';
+  }
 }

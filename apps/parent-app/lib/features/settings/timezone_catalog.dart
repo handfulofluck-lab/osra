@@ -148,6 +148,9 @@ final Map<String, TimezoneOption> _byId = {
   for (final tz in kCuratedTimezones) tz.id: tz,
 };
 
+/// Returns the curated timezone entry for [id], or `null` when [id] is outside [kCuratedTimezones].
+TimezoneOption? findKnownTimezone(String id) => _byId[id.trim()];
+
 String formatGmtOffset(int offsetMinutes) {
   if (offsetMinutes == 0) return 'GMT+0';
   final sign = offsetMinutes > 0 ? '+' : '-';

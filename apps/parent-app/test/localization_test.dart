@@ -776,6 +776,15 @@ void main() {
       // reads as itself instead of an empty label.
       expect(en.alertCategory('not_a_category'), 'not_a_category');
       expect(ar.alertCategory('not_a_category'), 'not_a_category');
+
+      // #889: device_restarted is emitted by the telemetry route rather than InternalAlertSchema,
+      // and must still translate both its chip label and alert title cleanly in EN & AR.
+      expect(en.alertCategory('device_restarted'), en.alertCategoryDeviceRestarted);
+      expect(ar.alertCategory('device_restarted'), ar.alertCategoryDeviceRestarted);
+      expect(ar.alertCategory('device_restarted'), isNot('device_restarted'));
+      expect(en.alertTitleFor('device_restarted', 'SERVER', isEnglish: true), en.alertDeviceRestartedTitle);
+      expect(ar.alertTitleFor('device_restarted', 'SERVER', isEnglish: false), ar.alertDeviceRestartedTitle);
+      expect(ar.alertTitleFor('device_restarted', 'SERVER', isEnglish: false), isNot('SERVER'));
     });
 
     test('search risk tags are localized, with the raw key only as a fallback', () async {
