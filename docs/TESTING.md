@@ -332,7 +332,7 @@ Six things to know before reading a failure:
 |---|---|
 | `FCM_SERVICE_ACCOUNT_JSON` (JSON or base64) or `FCM_SERVICE_ACCOUNT_FILE` | Enables parent push via FCM HTTP v1 (Android, web, and iOS through Firebase). |
 | `APNS_KEY_P8`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`, `APNS_ENV` | Enables direct APNs for native iOS tokens. `APNS_BUNDLE_ID` is the parent app (alert pushes). |
-| `APNS_DEVICE_BUNDLE_ID` | The iOS child agent's bundle id, the topic of the silent device wake (5.5 PR D). Unset, wakes to iPhones are not sent: under the parent topic Apple would refuse them with `DeviceTokenNotForTopic` and the token would be cleared as dead. Wakes go as `apns-push-type: background`, priority 5. |
+| `APNS_DEVICE_BUNDLE_ID` | The iOS child agent's bundle id, the topic of the silent device wake and the visible ring alert (5.5 PR D, #750). Unset, neither is sent: under the parent topic Apple would refuse them with `DeviceTokenNotForTopic` and the token would be cleared as dead. Non-ring wakes go as `apns-push-type: background`, priority 5; an iPhone `ring` is the one child alert push (`alert`, priority 10, time-sensitive, mutable content, `osra-ring` collapse, bundled loc-keys only). |
 | `PUSH_MIN_SEVERITY` (`info`\|`warning`\|`critical`, default `info`) | Severity floor; SOS and tamper always push. |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Enables real email. Without them emails are logged (dev) or a warning is logged (production); invites then echo `acceptToken` in dev only. |
 | `APP_PUBLIC_URL` | Base URL used in reset/invite/digest links (default `http://localhost:3000`). |
@@ -558,7 +558,7 @@ swift test list
 swift test
 ```
 
-The discovery step requires 225 macOS tests and names one case each from pairing, HMAC signing, rule
+The discovery step requires 302 macOS tests and names one case each from pairing, HMAC signing, rule
 interpretation and both localisation string suites. Five iOS-only authorization tests remain behind
 `#if os(iOS)` because `CLAuthorizationStatus.authorizedWhenInUse` is unavailable on macOS; the other location
 and client tests still run. Wrapping any additional portable source file in `#if os(iOS)` removes its tests and
@@ -1107,11 +1107,12 @@ mis-measure.
 
 First run on Karim's MacBook and iPhone 13, 11 Nov 2026 (#372). The ids are the decision-2B ones (#543).
 
-1. **Signing.** Sign the host app and its three extensions (`com.osratech.child`, `.Monitor`, `.ShieldConfiguration`,
-   `.ShieldAction`) with the paid team. All four need `com.apple.developer.family-controls` (development) and
-   `group.com.osratech.child`; the host also needs `aps-environment`.
+1. **Signing.** Sign the host app and its four extensions (`com.osratech.child`, `.Monitor`, `.ShieldConfiguration`,
+   `.ShieldAction`, `.RingService`) with the paid team. The host and the three Screen Time extensions need
+   `com.apple.developer.family-controls` (development) and `group.com.osratech.child`; the notification service
+   extension carries the app group only and must not claim Family Controls. The host also needs `aps-environment`.
 2. **App group, by hand.** Register `group.com.osratech.child` in the Apple developer portal and attach it to all
-   four ids before signing. Command-line signing cannot create an app group, so a CLI-only setup fails here.
+   five ids before signing. Command-line signing cannot create an app group, so a CLI-only setup fails here.
 3. **Child account.** The iPhone is signed in to a child Apple ID in the parent's Family Sharing; FamilyControls
    `.child` authorization needs it.
 4. **On the phone, Status screen:** tap **Turn on Screen Time** and approve the prompt; the row reads `On` and rule
@@ -1122,6 +1123,61 @@ First run on Karim's MacBook and iPhone 13, 11 Nov 2026 (#372). The ids are the 
    **App groups** asks for it: five wrong PINs lock it for 30 s. Make a group ("Games"), **Choose apps** (e.g.
    Calculator), **Add group**: the app shows the OSRA screen, not hidden, and **Ask parent** raises an alert on the
    parent side. An older bundle-id rule still hides its app. **Re-pair** also asks for the PIN.
+
+### iPhone ring (#750): KR01 and the §1 escape rows
+
+The Mac test bed owns these physical rows on the signed test iPhone; the author does not claim them from a simulator.
+Use the normal signed test pairing with consent and a parent PIN, and never write a PIN, device token or other secret
+into a screenshot or test log. AlarmKit is used on iOS 26 and later; no Critical Alerts entitlement is requested here.
+
+- **KR01:** with the Ring/Silent switch on, a Focus/Do Not Disturb enabled and volume zero, `ring` requests AlarmKit
+  authorization and alerts immediately. Check the permission prompt in English and Arabic. An older iOS returns a
+  failed command with `unsupported_os` and schedules nothing; the parent sees the localized iOS-update reason.
+- **Locked-phone ring push:** with OSRA Kids suspended, the phone locked and after force-quit, the iPhone `ring`
+  command is the one visible child push: a child-topic `alert`, priority 10, time-sensitive, mutable-content
+  notification carrying only the bundled `ring_notification_*` loc-keys and the `osra-ring` collapse key. Expect the
+  notification service extension to run its reduced `ring` drain, attempt the existing AlarmKit schedule, and never
+  show OSRA text or a command id. Record the actual no-tap behavior and delay on a locked phone, whether the
+  extension-process AlarmKit schedule succeeds, and the full-ring-on-open path. The notification fallback rings for
+  up to 30 seconds; it does not break the hardware Silent switch. A force-quit phone has no Apple-supported guarantee
+  of a newly scheduled long ring, so record exactly what iOS does rather than substituting a custom loop.
+- **The only stops:** the parent PIN, the parent's `stop_ring`, or 300 seconds. A correct PIN reports `pin_stopped`;
+  `stop_ring` records `parent_stopped` without another push; the cap reports `timed_out`. Five wrong PINs still lock
+  the PIN gate without stopping the alarm. Replaying a stopped `ring` command never schedules another alarm. Both
+  parent stop buttons include the latest applied ring UUID when known, ignoring failed and expired rows; an unavailable
+  history keeps the legacy no-payload meaning. A malformed target fails without stopping the current ring.
+- **No first-run PIN:** with no parent PIN configured, the active ring offers no setup-to-stop path. The parent's
+  `stop_ring` and the cap still work. A PIN configured by the parent before the ring is required for a phone-side stop.
+- **§1 escape rows:** dismissing the system alert, Home/swipe-up, the app switcher, Notification Centre, Control
+  Centre, the side button, force-quitting, rebooting and going offline are not stops. `alarmUpdates` re-arms a missing
+  active UUID and records each dismissal once. "Open OSRA Kids" returns to the PIN gate; no notification accepts PIN
+  input. `shield.requestTimes` and the other request-throttle state must remain unchanged. For the force-quit row,
+  dismiss the system alert after force-quitting and record the elapsed seconds until it rings again or returns to the
+  app. If a push or opening the app is needed, record that mechanism and its actual delay rather than infer it here.
+- **Restart and trusted time:** while alive, the monotonic deadline alone ends the ring, in either wall-clock direction.
+  After a reboot, wall-clock expiry alone never stops it: keep it pending with a fresh 300-second monotonic timeout and
+  retry. Only a positive server answer can end it. The API compares the first successful application acknowledgement
+  with its own clock and returns `retryAfterSeconds` while it is unexpired; an unacknowledged command stays pending.
+  The phone re-arms for that remainder. Network failure and
+  4xx/5xx responses stay pending. An accepted stop reports `afterRestart` and has its own parent line.
+- **Family removal:** unpairing, server revocation and consent withdrawal stop locally and send no ring alert.
+- **Pictures:** capture the ring view with the keyboard down and up, the largest ordinary text size, the system alert,
+  the visible locked-phone ring notification, the return notification on the lock screen and the AlarmKit permission
+  prompt, in light and dark, English and Arabic. Capture the parent's dismissal, PIN stop, parent stop, timeout and
+  restart lines too. The parent's unsupported-OS answer is a localized command result, not an alert in the feed.
+
+If a row fails, record the actual system behavior and do not substitute a custom notification loop. Critical Alerts
+is a named fallback whose entitlement request belongs to Karim. Every run ends with the ring stopped and the device,
+pairing and test data returned to their previous state.
+
+The existing manual `workflow_dispatch` accepts an optional `swift_test_filter` for focused red/green development
+runs (for example `Ring` or `RingPolicyTests`). It adds no trigger and does not replace the unfiltered PR jobs.
+For layout evidence, `ring_screenshots=true` runs `RingScreenshotsTests` after the ordinary iOS jobs pass and uploads
+English/Arabic, light/dark and large-text PNGs. Separate `xcodebuild -testLanguage en` and `-testLanguage ar` launches
+select the real package resource bundles; the fixture checks the selected language, measures that the ring title responds
+to Dynamic Type, and compares the PIN form's background pixel with the page. It uses a fake ring backend. Neither
+simulator preferences nor production localization are changed. This is not AlarmKit, permission-prompt, notification,
+keyboard or physical escape-row evidence. The Mac test bed still owns those rows.
 
 ## 5h. First-run pairing time (roadmap 3.2, proxy)
 

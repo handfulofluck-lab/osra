@@ -334,6 +334,25 @@ void main() {
       }
     });
 
+    test('ring dismissal count uses locale-aware decimal formatting', () {
+      final en = readArb('app_en.arb');
+      final enMeta = en['@alertBodyRingChildDismissed'] as Map<String, dynamic>;
+      final enPlaceholders = enMeta['placeholders'] as Map<String, dynamic>;
+      expect(
+        enPlaceholders['count']?['format'],
+        'decimalPattern',
+        reason: 'alertBodyRingChildDismissed count must use decimalPattern so rows never mix digit sets',
+      );
+      final ar = readArb('app_ar.arb');
+      final arMeta = ar['@alertBodyRingChildDismissed'] as Map<String, dynamic>?;
+      final arPlaceholders = arMeta?['placeholders'] as Map<String, dynamic>?;
+      expect(
+        arPlaceholders?['count']?['format'],
+        'decimalPattern',
+        reason: 'Arabic ring dismissal count must also use decimalPattern',
+      );
+    });
+
     test('the four alert-title keys are present and non-empty in both locales', () {
       final en = readArb('app_en.arb');
       final ar = readArb('app_ar.arb');
@@ -374,13 +393,31 @@ void main() {
           // them into a single column and every tile is laid out.
           alerts: [
             for (var i = 0; i < serverAlertCategories.length; i++)
-              alertJson(
-                'all-$i',
-                serverAlertCategories[i] == 'sos' ? 'critical' : 'warning',
-                serverAlertCategories[i],
-                'SERVER TITLE ${serverAlertCategories[i]}',
-                now.subtract(Duration(minutes: 5 * i)),
-              ),
+              if (serverAlertCategories[i] == 'ring')
+                {
+                  ...alertJson(
+                    'all-$i',
+                    'warning',
+                    'ring',
+                    'SERVER TITLE ring',
+                    now.subtract(Duration(minutes: 5 * i)),
+                  ),
+                  'body': 'The ring ended by itself after 5 minutes.',
+                  'metadata': {
+                    'state': 'timed_out',
+                    'ringId': 'ring-1',
+                    'bodyKey': 'alertBodyRingTimedOut',
+                    'bodyParams': {'ringId': 'ring-1'},
+                  },
+                }
+              else
+                alertJson(
+                  'all-$i',
+                  serverAlertCategories[i] == 'sos' ? 'critical' : 'warning',
+                  serverAlertCategories[i],
+                  'SERVER TITLE ${serverAlertCategories[i]}',
+                  now.subtract(Duration(minutes: 5 * i)),
+                ),
           ],
           unacked: serverAlertCategories.length,
         ),
@@ -399,13 +436,23 @@ void main() {
         expect(title, isNot(ar.alertTitleGeneric), reason: '"$category" fell through to the generic title');
         // The line under the title is the short label, through the same mapping
         // as the dialog -- render 03's finding was these 11 raw keys.
+        // UI/UX Bureau (#760): ring alerts show their localized body sentence in
+        // the subtitle instead of the category label.
         final label = ar.alertCategory(category);
         expect(label, isNot(category), reason: '"$category" still renders the raw key');
-        expect(
-          find.textContaining(RegExp('^${RegExp.escape(label)} · ')),
-          findsWidgets,
-          reason: '"$category" shows no "$label" label under its title',
-        );
+        if (category == 'ring') {
+          expect(
+            find.textContaining(ar.alertBodyRingTimedOut),
+            findsWidgets,
+            reason: '"$category" shows no localized body sentence under its title',
+          );
+        } else {
+          expect(
+            find.textContaining(RegExp('^${RegExp.escape(label)} · ')),
+            findsWidgets,
+            reason: '"$category" shows no "$label" label under its title',
+          );
+        }
         // Every tile is laid out in the feed's single day column, so the finder
         // sees all 13; a frame of 568 px holds only the first five, hence the
         // scroll before the geometry check. That is what makes this the render
@@ -691,7 +738,7 @@ void main() {
         expect(arTitle, isNot(ar.alertTitleGeneric), reason: 'ar "$category" fell through to the generic title');
         expect(arTitle, isNot('SERVER TITLE'), reason: 'ar "$category" leaked the server English title');
       }
-      expect(serverAlertCategories, hasLength(13));
+      expect(serverAlertCategories, hasLength(14));
     });
 
     /// `serverAlertCategories` is a copy of the server's enum, so it is checked

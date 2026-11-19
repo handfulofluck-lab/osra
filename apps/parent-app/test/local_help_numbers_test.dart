@@ -143,7 +143,7 @@ void main() {
   // the same emergency sentence the self-harm card already carries, in both languages, and the Arabic sets the urgent
   // case apart with «أما إذا … فـ» rather than a second «وإذا» — report for the one, call now for the other.
   test('the grooming card ends on the emergency sentence, in both languages', () {
-    final card = coachCardFor('grooming');
+    final card = coachCardFor('grooming')!;
     expect(card.body,
         endsWith('contact the police. If there is immediate danger, {emergency}.'));
     expect(
@@ -160,7 +160,7 @@ void main() {
 
   // The Bureau's own correction: a command that answers «إذا» takes «فـ». The tip read «… داهم، ابقَ …» since 13 Nov.
   test('the self-harm tip puts فـ before the command, not a comma', () {
-    final card = coachCardFor('self_harm');
+    final card = coachCardFor('self_harm')!;
     expect(card.tipsAr[3], 'إذا كان هناك خطر داهم فابقَ معه و{emergency}.');
     expect(card.tipsAr[3].contains('،'), isFalse,
         reason: 'a command answering «إذا» takes «فـ», not a comma');
@@ -170,7 +170,7 @@ void main() {
       'the coaching cards, and every Dart file under lib/, carry no number placeholder',
       () {
     const forbidden = ['[add local number]', '[أضف الرقم المحلي]'];
-    for (final card in [coachCardFor('self_harm'), coachCardFor('grooming')]) {
+    for (final card in [coachCardFor('self_harm')!, coachCardFor('grooming')!]) {
       for (final text in [
         card.title,
         card.titleAr,
@@ -204,7 +204,7 @@ void main() {
         const Locale('en', 'ZZ');
     addTearDown(tester.binding.platformDispatcher.clearLocaleTestValue);
     await tester.pumpWidget(localizedTestApp(
-      Scaffold(body: CoachCardSection(card: coachCardFor('self_harm'))),
+      Scaffold(body: CoachCardSection(card: coachCardFor('self_harm')!)),
     ));
     await tester.pumpAndSettle();
     await tester.tap(find.text('How to talk about this'));
@@ -220,7 +220,7 @@ void main() {
         const Locale('ar', 'ZZ');
     addTearDown(tester.binding.platformDispatcher.clearLocaleTestValue);
     await tester.pumpWidget(localizedTestApp(
-      Scaffold(body: CoachCardSection(card: coachCardFor('self_harm'))),
+      Scaffold(body: CoachCardSection(card: coachCardFor('self_harm')!)),
     ));
     await tester.pumpAndSettle();
     await tester.tap(find.text('How to talk about this'));
@@ -550,4 +550,4 @@ void main() {
 
 /// The shipped self-harm card, reached through the public lookup so the test
 /// fails if the card is ever detached from its category.
-CoachCard _selfHarmCard() => coachCardFor('self_harm');
+CoachCard _selfHarmCard() => coachCardFor('self_harm')!;

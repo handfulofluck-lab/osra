@@ -120,6 +120,18 @@ final class PairingTests: XCTestCase {
         XCTAssertNil(PairingClient.parseClaimResponse(Data("not json".utf8), baseURL: base))            // garbage
     }
 
+    /// #760: notification authorization must be requested at pairing, not only when the app goes to the
+    /// background during a ring. Otherwise iOS drops the first background ring push before the child has
+    /// ever seen a ring screen.
+    func testPairingRequestsNotificationPermission() throws {
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent/PairingView.swift")
+        let text = try String(contentsOf: source, encoding: .utf8)
+        // The call must sit in the onPaired closure, after the identity is saved and before the first sync.
+        XCTAssertTrue(text.contains("await RingNotifier.requestPermission()"),
+                      "pairing requests notification authorization so background pushes are not dropped")
+    }
+
     // MARK: - the parent approves each new device (plan 2.7)
 
     func testClaimStatusesMapToWhatTheFormShows() {

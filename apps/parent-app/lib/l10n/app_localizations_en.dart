@@ -3142,6 +3142,45 @@ class AppLocalizationsEn extends AppLocalizations {
       'On the iPhone, this app is hidden instead of showing the OSRA screen.';
 
   @override
+  String get alertTitleRing => 'Phone ring';
+
+  @override
+  String alertBodyRingChildDismissed(int count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'The ring alert was dismissed on the phone $countString times. It is still ringing.',
+      one: 'The ring alert was dismissed on the phone. It is ringing again.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get alertBodyRingPinStopped =>
+      'The ring was stopped on the phone with the parent PIN.';
+
+  @override
+  String get alertBodyRingParentStopped =>
+      'A parent stopped the ring from the OSRA app.';
+
+  @override
+  String get alertBodyRingTimedOut =>
+      'The ring ended by itself after 5 minutes.';
+
+  @override
+  String get alertBodyRingAfterRestart =>
+      'The ring ended after the phone was restarted.';
+
+  @override
+  String get commandRefusedRingUnsupportedOs =>
+      'This iPhone cannot ring yet. It needs iOS 26 or later.';
+
+  @override
   String get webSiteNamesOnlyNote =>
       'Names of sites and online services this phone connected to, not the pages opened. Kept for 90 days.';
 

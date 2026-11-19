@@ -35,6 +35,7 @@ BUNDLE_IDS = {
     "OSRAAgentMonitor": f"{APP_ID}.Monitor",
     "OSRAAgentShieldConfiguration": f"{APP_ID}.ShieldConfiguration",
     "OSRAAgentShieldAction": f"{APP_ID}.ShieldAction",
+    "OSRAAgentRingService": f"{APP_ID}.RingService",
     "OSRAAgentHostedTests": f"{APP_ID}.HostedTests",
     "FamilyShieldAgentIntegrationTests": f"{APP_ID}.IntegrationTests",
 }
@@ -44,6 +45,7 @@ ENTITLEMENTS = [
     "Extensions/Monitor/Monitor.entitlements",
     "Extensions/ShieldConfiguration/ShieldConfiguration.entitlements",
     "Extensions/ShieldAction/ShieldAction.entitlements",
+    "Extensions/RingService/RingService.entitlements",
 ]
 
 SWIFT_DIRS = ["Sources", "App", "Extensions", "HostedTests", "IntegrationTests", "Tests"]

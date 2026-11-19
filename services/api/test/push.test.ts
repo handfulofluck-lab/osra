@@ -1,15 +1,21 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { generateKeyPairSync } from "node:crypto";
-import { prismaMock, resetPrismaMock } from "./helpers.js";
+import { MockRedis, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", () => ({ prisma: prismaMock }));
 vi.mock("../src/realtime/gateway.js", () => ({ publishFamilyEvent: vi.fn(async () => undefined) }));
+vi.mock("ioredis", async () => {
+  const { MockRedis } = await import("./helpers.js");
+  return { Redis: MockRedis };
+});
 
 import { FcmProvider, buildAssertion } from "../src/lib/push/fcm.js";
+import { getRedis } from "../src/redis.js";
 import { ApnsProvider, buildProviderToken } from "../src/lib/push/apns.js";
 import { backoffDelay, isRetryableConnectionError, withBackoff } from "../src/lib/push/retry.js";
 import {
   buildParentAlertMessage,
+  buildDeviceRingMessage,
   buildDeviceWakeMessage,
   canWakeDevice,
   notifyDeviceWake,
@@ -19,7 +25,7 @@ import {
   shouldPush,
 } from "../src/lib/push/notify.js";
 import { enqueueDeviceCommand } from "../src/lib/deviceCommands.js";
-import { raiseAlert } from "../src/lib/alerts.js";
+import { raiseAlert, raiseAlertOnce } from "../src/lib/alerts.js";
 import { publishFamilyEvent } from "../src/realtime/gateway.js";
 import type { PushMessage, PushProvider, PushResult } from "../src/lib/push/types.js";
 
@@ -594,6 +600,12 @@ describe("the child device wake (#319)", () => {
     expect(ApnsProvider.buildPayload(buildDeviceWakeMessage()).aps).toEqual({ "content-available": 1 });
   });
 
+  it("APNs: a parent alert is a visible alert only and omits content-available (#760 review)", () => {
+    const payload = ApnsProvider.buildPayload(buildParentAlertMessage("ios"));
+    expect(payload.aps.alert).toEqual({ "title-loc-key": "PUSH_ALERT_TITLE", "loc-key": "PUSH_ALERT_BODY" });
+    expect(payload.aps["content-available"]).toBeUndefined();
+  });
+
   it("wakes the device row's own token, and a dead token is cleared from the row", async () => {
     const provider = new FakeProvider((token) => (token === "dead" ? { ok: false, invalidToken: true, reason: "UNREGISTERED" } : { ok: true }));
     setPushProviders([provider]);
@@ -912,5 +924,370 @@ describe("the wake log (#673, Claude a4 / Fable B1-B2)", () => {
     expect(lines).toContain("failed");
     expect(lines).toContain("reason=UNREGISTERED");
     expect(lines).toContain("tokenCleared=true");
+  });
+});
+
+describe("the iOS ring alert (#750)", () => {
+  beforeEach(() => {
+    resetPrismaMock();
+    setPushProviders(null);
+    setDeviceWakeSender(null);
+  });
+
+  /**
+   * A physical-device row proved a priority-5 background push does not wake a locked/suspended/
+   * force-quit iPhone, so an iOS `ring` is the one device push that is a visible alert. It is built
+   * only from the child bundle's localization keys — nothing else may travel to Apple.
+   * Mutants that fail here: a `w` wake marker or any id in `data`, a literal title/body, priority
+   * "normal", the `osra-wake` collapse key, or a missing time-sensitive interruption level.
+   */
+  it("builds an alert from loc-keys with empty data, the osra-ring collapse, high priority, time-sensitive interruption and bundled sound — and nothing else", () => {
+    const message = buildDeviceRingMessage();
+    expect(message).toEqual({
+      data: {},
+      locKeys: { titleKey: "ring_notification_title", bodyKey: "ring_notification_body" },
+      priority: "high",
+      threadId: "osra-ring",
+      collapseKey: "osra-ring",
+      interruptionLevel: "time-sensitive",
+      deviceTarget: true,
+      sound: "ring.wav",
+    });
+    // The exact toEqual above is the assertion that no command id, child id, wake marker or OSRA
+    // text exists; these spell out why for the reader.
+    expect(message.title).toBeUndefined();
+    expect(message.body).toBeUndefined();
+    expect(message.dataOnly).toBeUndefined();
+    expect(message.data).not.toHaveProperty("w");
+  });
+
+  /**
+   * The wire shape Claude ruled for #750. Mutants: parent topic, push-type background, priority 5,
+   * collapse "wake"/"osra-wake", missing interruption-level, missing mutable-content, a literal
+   * alert, no bundled sound, or missing content-available (the locked-phone wake must not be silent
+   * or deferred).
+   */
+  it("sends the ring as an alert push at priority 10 to the child topic: time-sensitive, mutable, loc-key alert, bundled sound, content-available, collapse osra-ring", async () => {
+    const calls: Array<{ path: string; headers: Record<string, string>; body: string }> = [];
+    const transport = async (_host: string, path: string, headers: Record<string, string>, body: string) => {
+      calls.push({ path, headers, body });
+      return { status: 200, body: "" };
+    };
+    const provider = new ApnsProvider(
+      {
+        keyP8: ec.privateKey,
+        keyId: "K",
+        teamId: "T",
+        bundleId: "com.osra.parent",
+        deviceBundleId: "com.osratech.child",
+        host: "https://api.sandbox.push.apple.com",
+      },
+      transport,
+    );
+    expect(await provider.send("child-token", buildDeviceRingMessage())).toEqual({ ok: true });
+    expect(calls[0].path).toBe("/3/device/child-token");
+    expect(calls[0].headers["apns-topic"]).toBe("com.osratech.child");
+    expect(calls[0].headers["apns-push-type"]).toBe("alert");
+    expect(calls[0].headers["apns-priority"]).toBe("10");
+    expect(calls[0].headers["apns-collapse-id"]).toBe("osra-ring");
+    const payload = JSON.parse(calls[0].body);
+    // No literal text and no custom data keys: `aps` is the whole body.
+    expect(payload).toEqual({
+      aps: {
+        alert: { "title-loc-key": "ring_notification_title", "loc-key": "ring_notification_body" },
+        sound: "ring.wav",
+        "thread-id": "osra-ring",
+        "mutable-content": 1,
+        "interruption-level": "time-sensitive",
+        "content-available": 1,
+      },
+    });
+    // The wake path beside it is untouched: still background, priority 5, content-available only.
+    await provider.send("child-token", buildDeviceWakeMessage());
+    expect(calls[1].headers["apns-topic"]).toBe("com.osratech.child");
+    expect(calls[1].headers["apns-push-type"]).toBe("background");
+    expect(calls[1].headers["apns-priority"]).toBe("5");
+    expect(JSON.parse(calls[1].body).aps).toEqual({ "content-available": 1 });
+  });
+
+  it("refuses the ring alert without APNS_DEVICE_BUNDLE_ID, without calling the token dead", async () => {
+    const calls: unknown[] = [];
+    const transport = async () => {
+      calls.push(1);
+      return { status: 400, body: JSON.stringify({ reason: "DeviceTokenNotForTopic" }) };
+    };
+    const provider = new ApnsProvider(
+      { keyP8: ec.privateKey, keyId: "K", teamId: "T", bundleId: "com.osra.parent", host: "https://api.sandbox.push.apple.com" },
+      transport,
+    );
+    // Sent under the parent topic, Apple would answer DeviceTokenNotForTopic and the token would be
+    // cleared — the same reason the wake refuses to send without the child topic.
+    expect(await provider.send("child-token", buildDeviceRingMessage())).toMatchObject({ ok: false, invalidToken: false });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("sends the visible ring alert only to an iPhone, and only for a ring command", async () => {
+    const iosSent: Array<{ token: string; message: PushMessage }> = [];
+    const ios: PushProvider = {
+      platform: "ios",
+      canWakeDevices: true,
+      async send(token: string, message: PushMessage): Promise<PushResult> {
+        iosSent.push({ token, message });
+        return { ok: true };
+      },
+    };
+    setPushProviders([ios]);
+    prismaMock.device.findUnique.mockResolvedValue({ id: "ios-1", pushToken: "5a".repeat(32), platform: "ios" });
+    expect(await notifyDeviceWake("ios-1", "cmd-1", "ring")).toEqual({ delivered: 1, clearedToken: false, skipped: null });
+    expect(iosSent).toHaveLength(1);
+    expect(iosSent[0].message).toEqual(buildDeviceRingMessage());
+  });
+
+  /**
+   * Every non-ring command on an iPhone, and every command including `ring` on Android, stays the
+   * exact background wake from #319. Mutant: branch on command type alone (drop the platform half)
+   * and the Android ring here goes out as a visible alert.
+   */
+  it("keeps lock, unlock, stop_ring, rules_updated on an iPhone — and ring on Android — on the exact existing background wake", async () => {
+    const android = new FakeProvider();
+    const iosSent: Array<{ token: string; message: PushMessage }> = [];
+    const ios: PushProvider = {
+      platform: "ios",
+      canWakeDevices: true,
+      async send(token: string, message: PushMessage): Promise<PushResult> {
+        iosSent.push({ token, message });
+        return { ok: true };
+      },
+    };
+    setPushProviders([android, ios]);
+    for (const type of ["lock", "unlock", "stop_ring", "rules_updated"]) {
+      prismaMock.device.findUnique.mockResolvedValue({ id: "ios-1", pushToken: "5a".repeat(32), platform: "ios" });
+      expect(await notifyDeviceWake("ios-1", "cmd-1", type)).toEqual({ delivered: 1, clearedToken: false, skipped: null });
+    }
+    prismaMock.device.findUnique.mockResolvedValue({ id: "dev-1", pushToken: "android-token", platform: "android" });
+    expect(await notifyDeviceWake("dev-1", "cmd-1", "ring")).toEqual({ delivered: 1, clearedToken: false, skipped: null });
+
+    const all = [...iosSent, ...android.sent];
+    expect(all.map((s) => s.token)).toEqual(["5a".repeat(32), "5a".repeat(32), "5a".repeat(32), "5a".repeat(32), "android-token"]);
+    for (const { message } of all) expect(message).toEqual(buildDeviceWakeMessage());
+  });
+
+  it("enqueueDeviceCommand passes the command id and type through the wake seam", async () => {
+    const seen: Array<[string, string, string]> = [];
+    setDeviceWakeSender(async (id, commandId, commandType) => {
+      seen.push([id, commandId!, commandType!]);
+      return { delivered: 1, clearedToken: false, skipped: null };
+    });
+    prismaMock.deviceCommand.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+      id: "cmd-1", createdAt: new Date(), status: "pending", attempts: 0, ...data,
+    }));
+
+    await enqueueDeviceCommand("dev-1", "ring", {}, { requestedBy: "parent-1" });
+    await enqueueDeviceCommand("dev-1", "lock", {}, { requestedBy: "parent-1" });
+    await enqueueDeviceCommand("dev-1", "rules_updated", { reason: "a" });
+    expect(seen).toEqual([
+      ["dev-1", "cmd-1", "ring"],
+      ["dev-1", "cmd-1", "lock"],
+      ["dev-1", "cmd-1", "rules_updated"],
+    ]);
+  });
+});
+
+
+describe("ring alert push policy", () => {
+  const ringId = "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6B";
+  const start = Date.parse("2026-11-14T00:00:00Z");
+
+  it("suppresses only parent_stopped", () => {
+    expect(shouldPush({ category: "ring", severity: "info", metadata: { state: "parent_stopped" } }, "info")).toBe(false);
+    expect(shouldPush({ category: "ring", severity: "info", metadata: { state: "pin_stopped" } }, "info")).toBe(true);
+    expect(shouldPush({ category: "ring", severity: "info", metadata: { state: "timed_out" } }, "info")).toBe(true);
+    expect(shouldPush({ category: "ring", severity: "warning", metadata: { state: "child_dismissed" } }, "info")).toBe(true);
+  });
+});
+
+describe("ring dismissal push coalescing", () => {
+  const ringId = "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6B";
+  const start = Date.parse("2026-11-14T00:00:00Z");
+  let provider: FakeProvider;
+  let pushTimes: number[];
+  let reservations: Map<string, { token: string; expiresAt: number }>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    resetPrismaMock();
+    pushTimes = [];
+    reservations = new Map();
+    provider = new FakeProvider(() => {
+      pushTimes.push((Date.now() - start) / 1000);
+      return { ok: true };
+    });
+    setPushProviders([provider]);
+    prismaMock.digestPrefs.findUnique.mockResolvedValue(null);
+    prismaMock.parent.findMany.mockResolvedValue([{ id: "parent-1" }]);
+    prismaMock.parentPushToken.findMany.mockResolvedValue([
+      { id: "token-1", parentId: "parent-1", token: "parent-token", platform: "android" },
+    ]);
+    prismaMock.alert.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+      id: `ring-alert-${prismaMock.alert.create.mock.calls.length}`, createdAt: new Date(), ...data,
+    }));
+    const redis = getRedis() as unknown as MockRedis;
+    redis.set.mockImplementation(async (key: string, token: string, ...args: unknown[]) => {
+      const current = reservations.get(key);
+      if (current && current.expiresAt > Date.now()) return null;
+      const ttl = Number(args[args.indexOf("EX") + 1]);
+      reservations.set(key, { token, expiresAt: Date.now() + ttl * 1000 });
+      return "OK";
+    });
+    redis.eval.mockImplementation(async (_script: string, _count: number, key: string, token: string) => {
+      if (reservations.get(key)?.token !== token) return 0;
+      reservations.delete(key);
+      return 1;
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    setPushProviders(null);
+  });
+
+  async function dismissal(seconds: number, count: number, id = ringId, familyId = "fam-1") {
+    vi.setSystemTime(start + seconds * 1000);
+    const body = count === 1
+      ? "The ring alert was dismissed on the phone. It is ringing again."
+      : `The ring alert was dismissed on the phone ${count} times. It is still ringing.`;
+    return raiseAlertOnce({
+      childId: "child-1", familyId, severity: "warning", category: "ring",
+      title: "Phone ring", body,
+      bodyKey: "alertBodyRingChildDismissed", params: { ringId: id, dismissalCount: count },
+      metadata: { state: "child_dismissed", ringId: id },
+      dedupeKey: `ring:${id}:child_dismissed:${count}`,
+    });
+  }
+
+  it("three dismissals in ten seconds create three alerts and one push", async () => {
+    await dismissal(0, 1);
+    await dismissal(5, 2);
+    await dismissal(10, 3);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(3);
+    expect(provider.sent).toHaveLength(1);
+    expect(JSON.stringify(provider.sent[0].message)).not.toContain(ringId);
+    expect(provider.sent[0].message.data).toEqual({ w: "1" });
+  });
+
+  it("times pushes from the last push, not the last recorded dismissal", async () => {
+    await dismissal(0, 1);
+    expect((await dismissal(30, 2)).alert).toBeDefined();
+    await dismissal(60, 3);
+    await dismissal(90, 4);
+    await dismissal(120, 5);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(5);
+    expect(pushTimes).toEqual([0, 60, 120]);
+  });
+
+  it("returns coalesced inside the window without losing the event", async () => {
+    await dismissal(0, 1);
+    const second = await dismissal(30, 2);
+    expect(second.deduplicated).toBe(false);
+    const stored = prismaMock.alert.create.mock.calls[1][0] as {
+      data: Parameters<typeof notifyParentsOfAlert>[1];
+    };
+    const outcome = await notifyParentsOfAlert("fam-1", { ...stored.data, id: "second-dismissal" });
+    expect(outcome.skipped).toBe("coalesced");
+    expect(provider.sent).toHaveLength(1);
+    expect(reservations.size).toBe(1);
+  });
+
+  it("does not coalesce different rings", async () => {
+    await dismissal(0, 1);
+    await dismissal(0, 1, "0E9D8C7B-6A5F-4E3D-8C2D-1A0F9E8D7C6B");
+    expect(provider.sent).toHaveLength(2);
+  });
+
+  it("does not coalesce different families or non-dismissal states", async () => {
+    await dismissal(0, 1);
+    await dismissal(0, 1, ringId, "fam-2");
+    await raiseAlertOnce({
+      childId: "child-1", familyId: "fam-1", severity: "info", category: "ring",
+      title: "Phone ring", body: "The ring ended by itself after 5 minutes.",
+      bodyKey: "alertBodyRingTimedOut", params: { ringId },
+      metadata: { state: "timed_out", ringId }, dedupeKey: `ring:${ringId}:timed_out`,
+    });
+    expect(provider.sent).toHaveLength(3);
+    expect(pushTimes).toEqual([0, 0, 0]);
+    expect(reservations.size).toBe(2);
+  });
+
+  it("releases the reservation after provider failure so a later dismissal can wake", async () => {
+    provider = new FakeProvider(() => {
+      pushTimes.push((Date.now() - start) / 1000);
+      return provider.sent.length === 1
+        ? { ok: false, invalidToken: false, reason: "temporary" }
+        : { ok: true };
+    });
+    setPushProviders([provider]);
+    const redis = getRedis() as unknown as MockRedis;
+    redis.eval.mockClear();
+    await dismissal(0, 1);
+    expect(redis.eval).toHaveBeenCalledTimes(1);
+    expect(reservations.size).toBe(0);
+    await dismissal(10, 2);
+    expect(provider.sent).toHaveLength(2);
+  });
+
+  it("sends rather than suppressing a parent wake when Redis is down", async () => {
+    const redis = getRedis() as unknown as MockRedis;
+    redis.set.mockRejectedValue(new Error("Redis unavailable"));
+    await dismissal(0, 1);
+    await dismissal(30, 2);
+    await dismissal(60, 3);
+    await dismissal(90, 4);
+    await dismissal(120, 5);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(5);
+    expect(pushTimes).toEqual([0, 30, 60, 90, 120]);
+  });
+
+  it("releases the reservation when a provider throws", async () => {
+    provider = new FakeProvider(() => {
+      if (provider.sent.length === 1) throw new Error("provider failed");
+      return { ok: true };
+    });
+    setPushProviders([provider]);
+    await dismissal(0, 1);
+    expect(reservations.size).toBe(0);
+    await dismissal(10, 2);
+    expect(provider.sent).toHaveLength(2);
+  });
+
+  it("does not delete a newer request's reservation after a failed send", async () => {
+    let failFirst: (() => void) | undefined;
+    provider = new FakeProvider(() => new Promise<PushResult>((resolve) => {
+      if (provider.sent.length === 1) {
+        failFirst = () => resolve({ ok: false, invalidToken: false, reason: "temporary" });
+      } else {
+        resolve({ ok: true });
+      }
+    }));
+    setPushProviders([provider]);
+    const event = (seconds: number, count: number) => ({
+      id: `restart-race-${count}`, childId: "child-1", severity: "warning", category: "ring",
+      title: "Phone ring", body: "The ring alert was dismissed on the phone. It is ringing again.",
+      metadata: { state: "child_dismissed", ringId }, createdAt: new Date(start + seconds * 1000),
+    });
+    vi.setSystemTime(start);
+    const first = notifyParentsOfAlert("fam-1", event(0, 1));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(provider.sent).toHaveLength(1);
+    vi.setSystemTime(start + 60_000);
+    const second = await notifyParentsOfAlert("fam-1", event(60, 2));
+    expect(second).toMatchObject({ delivered: 1, skipped: null });
+    expect(provider.sent).toHaveLength(2);
+    expect(reservations.size).toBe(1);
+    if (failFirst) failFirst();
+    await first;
+    expect(reservations.size).toBe(1);
+    vi.setSystemTime(start + 70_000);
+    await notifyParentsOfAlert("fam-1", event(70, 3));
+    expect(provider.sent).toHaveLength(2);
   });
 });

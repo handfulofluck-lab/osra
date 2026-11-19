@@ -210,7 +210,10 @@ class SnippetVaultModal extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 20),
-          CoachCardSection(card: coachCardFor('social_concern', concernTypes)),
+          Builder(builder: (_) {
+            final card = coachCardFor('social_concern', concernTypes: concernTypes);
+            return card == null ? const SizedBox.shrink() : CoachCardSection(card: card);
+          }),
         ],
       ),
     );

@@ -1,0 +1,286 @@
+import Foundation
+import OSLog
+
+#if os(iOS)
+import AlarmKit
+import AppIntents
+import SwiftUI
+
+enum RingAlarmLog {
+    private static let logger = Logger(subsystem: "com.osratech.child", category: "Ring")
+
+    static func info(_ message: String) {
+        logger.info("\(message, privacy: .public)")
+    }
+
+    static func error(_ operation: String, _ error: Error) {
+        let nsError = error as NSError
+        logger.error("\(operation, privacy: .public) failed type=\(String(describing: type(of: error)), privacy: .public) code=\(nsError.code, privacy: .public)")
+    }
+}
+
+@available(iOS 26.0, *)
+private struct RingAlarmMetadata: AlarmMetadata {}
+
+@available(iOS 26.0, *)
+struct OpenRingIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource {
+        LocalizedStringResource("ring_dismiss", table: "Localizable", bundle: .module)
+    }
+    static var openAppWhenRun: Bool { true }
+
+    func perform() async throws -> some IntentResult {
+        return .result()
+    }
+}
+
+@available(iOS 26.0, *)
+struct StopRingButtonIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource {
+        LocalizedStringResource("ring_dismiss", table: "Localizable", bundle: .module)
+    }
+    static var openAppWhenRun: Bool { true }
+
+    func perform() async throws -> some IntentResult {
+        _ = await RingController.shared.resume()
+        return .result()
+    }
+}
+#endif
+
+@MainActor
+public final class AlarmKitRingBackend: RingBackend {
+    private let leadTime: TimeInterval
+    private let chainInterval: TimeInterval
+    private let now: () -> Date
+    private let defaults: UserDefaults?
+    var activeAlarmIDs: Set<UUID> = []
+
+    public init(leadTime: TimeInterval = 5, chainInterval: TimeInterval = 6,
+                now: @escaping () -> Date = Date.init,
+                defaults: UserDefaults? = UserDefaults(suiteName: AgentIdentityStore.suiteName)) {
+        self.leadTime = leadTime
+        self.chainInterval = chainInterval
+        self.now = now
+        self.defaults = defaults
+        self.activeAlarmIDs = Self.loadActiveAlarmIDs(from: defaults)
+        Self.clearLegacyActiveCommandIDs(from: defaults)
+    }
+
+    public var available: Bool {
+        #if os(iOS)
+        if #available(iOS 26.0, *) { return true }
+        #endif
+        return false
+    }
+
+    public func requestAuthorization() async -> Bool {
+        #if os(iOS)
+        if #available(iOS 26.0, *) {
+            do {
+                let state = try await AlarmManager.shared.requestAuthorization()
+                RingAlarmLog.info("authorization state=\(String(describing: state))")
+                return state == .authorized
+            } catch {
+                RingAlarmLog.error("authorization", error)
+                return false
+            }
+        }
+        #endif
+        return false
+    }
+
+    public func schedule(_ id: UUID, until: Date? = nil) async throws {
+        #if os(iOS)
+        guard #available(iOS 26.0, *) else { throw RingCommandError.unsupportedOS }
+        do {
+            // Clearing any leftover chain before scheduling is best-effort: on a first ring,
+            // or after part of a previous chain has already fired, the ids do not exist yet.
+            try? await cancelAll(for: id, throwOnError: false)
+            activeAlarmIDs.subtract(sentinelIDs(for: id, until: nil))
+            activeAlarmIDs.insert(id)
+            persistActiveAlarmIDs()
+            let base = now()
+            let maxOffset = min(RingPolicy.duration, until?.timeIntervalSince(base) ?? RingPolicy.duration)
+            guard maxOffset > 0 else { return }
+            let offset = min(leadTime, maxOffset)
+            let fireDate = base.addingTimeInterval(offset)
+            RingAlarmLog.info("schedule fireDate=\(fireDate.timeIntervalSince1970) offset=\(offset) id=\(id.uuidString)")
+            let alert = AlarmPresentation.Alert(
+                title: LocalizedStringResource("ring_alarm_title", table: "Localizable", bundle: .module),
+                stopButton: AlarmButton(text: LocalizedStringResource("ring_dismiss", table: "Localizable", bundle: .module),
+                                        textColor: .white, systemImageName: "arrow.up.forward.app"),
+                secondaryButton: nil,
+                secondaryButtonBehavior: .custom)
+            let attributes = AlarmAttributes<RingAlarmMetadata>(
+                presentation: AlarmPresentation(alert: alert), metadata: RingAlarmMetadata(),
+                tintColor: Color(red: 11 / 255, green: 93 / 255, blue: 87 / 255))
+            let configuration: AlarmManager.AlarmConfiguration<RingAlarmMetadata> = .alarm(
+                schedule: .fixed(fireDate), attributes: attributes,
+                stopIntent: StopRingButtonIntent(), secondaryIntent: OpenRingIntent(), sound: .default)
+            _ = try await AlarmManager.shared.schedule(id: id, configuration: configuration)
+        } catch {
+            RingAlarmLog.error("schedule", error)
+            throw error
+        }
+        #else
+        throw RingCommandError.unsupportedOS
+        #endif
+    }
+
+    public func stop(_ id: UUID) async throws {
+        #if os(iOS)
+        if #available(iOS 26.0, *) {
+            try await cancelAll(for: id, throwOnError: true)
+            activeAlarmIDs.subtract(alarmIDs(for: id, until: nil))
+            persistActiveAlarmIDs()
+        }
+        #endif
+    }
+
+    public func isAlerting(_ id: UUID) async -> Bool {
+        #if os(iOS)
+        if #available(iOS 26.0, *) {
+            do {
+                let alarms = try AlarmManager.shared.alarms
+                return alarms.first(where: { $0.id == id })?.state == .alerting
+            } catch {
+                return false
+            }
+        }
+        #endif
+        return false
+    }
+
+    /// The alarm chain is a dismissal fallback, not a second voice. Once the main alarm is
+    /// alerting, remove the sentinels so one ring command cannot present several system alarms.
+    public func cancelSentinels(for id: UUID) async {
+        #if os(iOS)
+        if #available(iOS 26.0, *) {
+            let sentinels = sentinelIDs(for: id, until: nil)
+            let existing = (try? Set(AlarmManager.shared.alarms.map(\.id))) ?? []
+            for sentinel in sentinels where existing.contains(sentinel) {
+                try? AlarmManager.shared.cancel(id: sentinel)
+            }
+            activeAlarmIDs.subtract(sentinels)
+            persistActiveAlarmIDs()
+        }
+        #endif
+    }
+
+    public func scheduledIDs() async throws -> Set<UUID> {
+        #if os(iOS)
+        if #available(iOS 26.0, *) {
+            do {
+                let all = try Set(AlarmManager.shared.alarms.map(\.id))
+                return activeAlarmIDs.intersection(all)
+            } catch {
+                RingAlarmLog.error("scheduledIDs", error)
+                throw error
+            }
+        }
+        return []
+        #else
+        return []
+        #endif
+    }
+
+    public func updates() async -> AsyncStream<Set<UUID>> {
+        #if os(iOS)
+        if #available(iOS 26.0, *) {
+            let manager = AlarmManager.shared
+            return AsyncStream { continuation in
+                let task = Task {
+                    for await alarms in manager.alarmUpdates {
+                        let all = Set(alarms.map(\.id))
+                        continuation.yield(activeAlarmIDs.intersection(all))
+                    }
+                    continuation.finish()
+                }
+                continuation.onTermination = { _ in task.cancel() }
+            }
+        }
+        #endif
+        return AsyncStream { $0.finish() }
+    }
+}
+
+extension AlarmKitRingBackend {
+    static let activeAlarmIDsKey = "ring.alarmKit.activeAlarmIDs"
+    static let legacyActiveCommandIDsKey = "ring.alarmKit.activeCommandIDs"
+
+    private func persistActiveAlarmIDs() {
+        let strings = activeAlarmIDs.map { $0.uuidString }
+        defaults?.set(strings, forKey: Self.activeAlarmIDsKey)
+    }
+
+    private static func loadActiveAlarmIDs(from defaults: UserDefaults?) -> Set<UUID> {
+        guard let strings = defaults?.stringArray(forKey: activeAlarmIDsKey) else { return [] }
+        return Set(strings.compactMap { UUID(uuidString: $0) })
+    }
+
+    private static func clearLegacyActiveCommandIDs(from defaults: UserDefaults?) {
+        defaults?.removeObject(forKey: legacyActiveCommandIDsKey)
+    }
+
+    func chainDates(until: Date? = nil) -> [TimeInterval] {
+        let base = now()
+        let maxOffset = min(RingPolicy.duration, until?.timeIntervalSince(base) ?? RingPolicy.duration)
+        guard maxOffset > 0 else { return [] }
+        let firstOffset = min(leadTime, maxOffset)
+        var dates: [TimeInterval] = [firstOffset]
+        var offset = firstOffset + chainInterval
+        while offset <= maxOffset + .ulpOfOne {
+            dates.append(offset)
+            offset += chainInterval
+        }
+        return dates
+    }
+
+    func sentinelCount(until: Date? = nil) -> Int {
+        let base = now()
+        let maxOffset = min(RingPolicy.duration, until?.timeIntervalSince(base) ?? RingPolicy.duration)
+        guard leadTime < maxOffset else { return 0 }
+        return Int((maxOffset - leadTime) / chainInterval)
+    }
+
+    func sentinelIDs(for commandID: UUID, until: Date? = nil) -> [UUID] {
+        let count = sentinelCount(until: until)
+        guard count > 0 else { return [] }
+        return (1...count).map { sentinelID(for: commandID, index: $0) }
+    }
+
+    func sentinelID(for commandID: UUID, index: Int) -> UUID {
+        var hex = commandID.uuidString
+        let suffix = String(format: "%012x", index)
+        let prefixEnd = hex.index(hex.startIndex, offsetBy: 24)
+        hex = String(hex[..<prefixEnd]) + suffix
+        return UUID(uuidString: hex)!
+    }
+
+    func alarmIDs(for commandID: UUID, until: Date? = nil) -> Set<UUID> {
+        Set([commandID] + sentinelIDs(for: commandID, until: until))
+    }
+}
+
+extension AlarmKitRingBackend {
+    private func cancelAll(for id: UUID, throwOnError: Bool) async throws {
+        #if os(iOS)
+        if #available(iOS 26.0, *) {
+            let ids = alarmIDs(for: id, until: nil)
+            let existing = (try? Set(AlarmManager.shared.alarms.map(\.id))) ?? []
+            var firstError: Error?
+            for alarmID in ids {
+                guard existing.contains(alarmID) else { continue }
+                do {
+                    try AlarmManager.shared.cancel(id: alarmID)
+                } catch {
+                    RingAlarmLog.error("cancel \(alarmID.uuidString)", error)
+                    if throwOnError, firstError == nil { firstError = error }
+                }
+            }
+            if let firstError { throw firstError }
+        }
+        #endif
+    }
+}

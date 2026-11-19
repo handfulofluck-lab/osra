@@ -26,6 +26,7 @@ import { startUsageRollupScheduler } from "./jobs/usageRollup.js";
 import { startDeviceSilenceScheduler } from "./jobs/deviceSilence.js";
 import { startMfaResetExpiryScheduler } from "./jobs/mfaResetExpiry.js";
 import { startRevokedTokenPruneScheduler } from "./jobs/revokedTokenPrune.js";
+import { startRingRepushScheduler } from "./jobs/ringRepush.js";
 import { startPendingDeviceScheduler } from "./jobs/pendingDevices.js";
 import { sessionGuardHook } from "./middleware/sessionGuard.js";
 import { registerPairedAtHook } from "./middleware/pairedAt.js";
@@ -171,5 +172,8 @@ startDeviceSilenceScheduler();
 startMfaResetExpiryScheduler();
 // ADR-0032: single-logout records are pruned once the token they revoked could no longer be shown.
 startRevokedTokenPruneScheduler();
+// #760 redesign: re-push an un-acked ring command every 30 s so a locked/suspended iPhone keeps
+// receiving time-sensitive alerts until the app wakes or the command expires.
+startRingRepushScheduler();
 // Issue #790: a pairing claim's device row is deleted if the phone never made an accepted request.
 startPendingDeviceScheduler();

@@ -38,9 +38,11 @@ final class DeviceCommandsTests: XCTestCase {
 
     func testRuleAndConsentCommandsSyncTheRulesAndTheRestAreRefused() {
         XCTAssertEqual(CommandAction.forType("rules_updated"), .syncRules)
-        XCTAssertEqual(CommandAction.forType("consent_revoked"), .syncRules)
+        XCTAssertEqual(CommandAction.forType("consent_revoked"), .consentRevoked)
         XCTAssertEqual(CommandAction.forType("consent_granted"), .syncRules)
-        for type in ["lock", "unlock", "ring", "pause_internet", "show_reset_code", "something_new"] {
+        XCTAssertEqual(CommandAction.forType("ring"), .ring)
+        XCTAssertEqual(CommandAction.forType("stop_ring"), .stopRing)
+        for type in ["lock", "unlock", "pause_internet", "show_reset_code", "something_new"] {
             XCTAssertEqual(CommandAction.forType(type), .unsupported, type)
         }
     }
@@ -98,6 +100,31 @@ final class DeviceCommandsTests: XCTestCase {
         }
         XCTAssertTrue(result.consentWithdrawn)
         XCTAssertEqual(syncs, 1)
+    }
+
+    func testAPollAnswering428StopsTheRing() async {
+        pair()
+        StubProtocol.response = (428, json(["error": "parental_consent_required"]))
+        let ring = FakeRingCommands()
+        let result = await CommandDrainer.drainNow(client: CommandClient(session: StubProtocol.session),
+                                                   ring: ring) { .consentWithdrawn }
+        XCTAssertTrue(result.consentWithdrawn)
+        XCTAssertEqual(ring.consentWithdrawalCalls, 1)
+    }
+
+    func testConsentRevokedCommandStopsTheRingAndSyncs() async {
+        pair()
+        StubProtocol.responder = { request in
+            request.url?.path.hasSuffix("/commands") == true
+                ? (200, self.json([["id": "c1", "type": "consent_revoked"]]))
+                : (200, self.json([:]))
+        }
+        let ring = FakeRingCommands()
+        let result = await CommandDrainer.drainNow(client: CommandClient(session: StubProtocol.session),
+                                                   ring: ring) { .consentWithdrawn }
+        XCTAssertEqual(ring.consentWithdrawalCalls, 1)
+        XCTAssertTrue(result.consentWithdrawn)
+        XCTAssertEqual(result.handled, ["consent_revoked"])
     }
 
     func testUnpairedDoesNotPoll() async {
@@ -231,6 +258,27 @@ final class DeviceCommandsTests: XCTestCase {
         let unpaired = await PushTokenRegistrar.resendAfterServerCleared(session: StubProtocol.session)
         XCTAssertEqual(unpaired, .notPaired)
         XCTAssertTrue(StubProtocol.requests.isEmpty)
+    }
+
+    // MARK: - Peek and single-command claim (#760 device row)
+
+    func testAPeekPollAddsThePeekQueryItem() async throws {
+        pair()
+        StubProtocol.response = (200, json([]))
+        _ = try await CommandClient(session: StubProtocol.session).poll(try XCTUnwrap(AgentIdentityStore.load()), claim: false)
+        let components = URLComponents(url: try XCTUnwrap(StubProtocol.lastRequest?.url), resolvingAgainstBaseURL: false)
+        XCTAssertTrue(components?.queryItems?.contains(URLQueryItem(name: "ack", value: "1")) == true)
+        XCTAssertTrue(components?.queryItems?.contains(URLQueryItem(name: "peek", value: "1")) == true)
+    }
+
+    func testClaimPostsToTheCommandClaimPath() async throws {
+        pair()
+        StubProtocol.response = (200, json(["command": ["id": "c1", "type": "ring"]]))
+        try await CommandClient(session: StubProtocol.session).claim(try XCTUnwrap(AgentIdentityStore.load()), commandId: "c1")
+        let request = try XCTUnwrap(StubProtocol.lastRequest)
+        XCTAssertEqual(request.url?.path, "/v1/devices/dev-1/commands/c1/claim")
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer device-jwt")
     }
 
     // MARK: - The wake deadline

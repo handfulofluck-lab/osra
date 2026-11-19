@@ -199,7 +199,7 @@ describe("ADR-0034 claim 13 — a command the build cannot run is failed, not qu
  * Claude's verification of #527: three gaps a fault survived or a modified agent could use.
  *  - A1 rests on `client.app`, so the app must be the one this device is (a Pixel claiming `child-ios`
  *    would otherwise grey `lock_screen` out and have every lock refused from the table).
- *  - A6 lists `unlock` and `ring` with `lock` and `pause_internet` as failed at once on an iPhone.
+ *  - A6 lists `unlock` with `lock` and `pause_internet` as failed at once on an iPhone.
  *  - `GET /v1/devices/:id` must carry the setup projection (decision 3), not only the list.
  */
 describe("ADR-0034 A1/A6/decision 3 — verifier rows (#527)", () => {
@@ -247,7 +247,7 @@ describe("ADR-0034 A1/A6/decision 3 — verifier rows (#527)", () => {
     expect(written.capabilities).toMatchObject({ client: { app: "child-android" } });
   });
 
-  for (const command of ["unlock", "ring"]) {
+  for (const command of ["unlock"]) {
     it(`A6 — ${command} to an iPhone is failed with not_supported at once, whatever the report's age`, async () => {
       const app = await buildApp(deviceRoutes, "/v1/devices");
       prismaMock.device.findUnique.mockResolvedValue({
@@ -286,6 +286,42 @@ describe("ADR-0034 A1/A6/decision 3 — verifier rows (#527)", () => {
       expect(res.json()).toMatchObject({ published: true, status: "pending" });
     });
   }
+
+  it("an iPhone ring is queued rather than rejected by the build table", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({
+      ...DEVICE,
+      platform: "ios",
+      capabilities: capabilities({ client: { app: "child-ios", version: "0.1.0", build: 1, flavour: "testflight" }, features: {} }),
+      capabilitiesReportedAt: new Date(),
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/command",
+      headers: authHeader(app),
+      payload: { command: "ring" },
+    });
+
+    expect(res.json()).toMatchObject({ published: true, status: "pending" });
+    expect(prismaMock.deviceCommand.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: "ring" }) }),
+    );
+  });
+
+  it("an unknown command is refused by the existing command schema", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/command",
+      headers: authHeader(app),
+      payload: { command: "not_a_command" },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(prismaMock.deviceCommand.create).not.toHaveBeenCalled();
+  });
 
   it("decision 3 — GET /v1/devices/:id carries the setup projection, with the table's word", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");

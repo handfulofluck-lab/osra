@@ -65,3 +65,75 @@ final class L10nTests: XCTestCase {
         XCTAssertFalse(L10n.tr("pair_error_save", language: "en").contains("app group"), "no developer sentence for a family")
     }
 }
+
+
+extension L10nTests {
+    func testRingEnglishStringsFollowTheBureau() {
+        XCTAssertEqual(L10n.tr("ring_title", language: "en"), "Your parent is ringing this phone")
+        XCTAssertEqual(L10n.tr("ring_alarm_title", language: "en"), "Your parent is ringing this phone")
+        XCTAssertEqual(L10n.tr("ring_explanation", language: "en"),
+                       "Your parent is trying to find this phone or reach you. The ring stops when your parent stops it from their app or enters the parent PIN here. It stops by itself after 5 minutes.")
+        XCTAssertEqual(L10n.tr("ring_notification_body", language: "en"),
+                       "Open OSRA Kids so your parent can enter the parent PIN.")
+        XCTAssertEqual(L10n.tr("ring_dismiss", language: "en"), "Open OSRA Kids")
+        XCTAssertEqual(L10n.tr("ring_alert_ok", language: "en"), "OK")
+    }
+
+    func testRingArabicStringsFollowTheBureau() {
+        XCTAssertEqual(L10n.tr("ring_title", language: "ar"), "هذا الهاتف يرنّ بطلب من والدك أو والدتك")
+        XCTAssertEqual(L10n.tr("ring_alarm_title", language: "ar"), "هذا الهاتف يرنّ بطلب من والدك أو والدتك")
+        XCTAssertEqual(L10n.tr("ring_notification_title", language: "ar"), "هذا الهاتف يرنّ بطلب من والدك أو والدتك")
+        XCTAssertEqual(L10n.tr("ring_explanation", language: "ar"),
+                       "يحاول والدك أو والدتك العثور على هذا الهاتف أو التواصل معك. يتوقف الرنين عند إيقافه من تطبيق الوالدين، أو عند إدخال رمز PIN للوالدين هنا. ويتوقف تلقائيًا بعد 5 دقائق.")
+        XCTAssertEqual(L10n.tr("ring_pin_title", language: "ar"), "رمز PIN للوالدين")
+        XCTAssertEqual(L10n.tr("ring_notification_body", language: "ar"),
+                       "افتح تطبيق أسرة للأطفال ليُدخل والدك أو والدتك رمز PIN للوالدين.")
+        XCTAssertEqual(L10n.tr("ring_dismiss", language: "ar"), "فتح تطبيق أسرة للأطفال")
+        XCTAssertEqual(L10n.tr("ring_alert_ok", language: "ar"), "حسنًا")
+    }
+
+    func testAlarmPermissionIsLocalizedWithTheApprovedLines() throws {
+        let app = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("App")
+        let en = try XCTUnwrap(NSDictionary(contentsOfFile: app.appendingPathComponent("en.lproj/InfoPlist.strings").path) as? [String: String])
+        let ar = try XCTUnwrap(NSDictionary(contentsOfFile: app.appendingPathComponent("ar.lproj/InfoPlist.strings").path) as? [String: String])
+        XCTAssertEqual(en["NSAlarmKitUsageDescription"],
+                       "OSRA Kids rings this phone out loud when your parent rings it, even in Silent mode, in a Focus, or with the volume turned down.")
+        XCTAssertEqual(ar["NSAlarmKitUsageDescription"],
+                       "يُصدر تطبيق أسرة للأطفال رنينًا مسموعًا على هذا الهاتف عندما يطلب والدك أو والدتك ذلك، حتى في النمط الصامت، أو عند تشغيل تركيز، أو عند خفض مستوى الصوت.")
+    }
+
+    /// #760: if the notification service extension does not run, iOS falls back to the keys in the
+    /// app's own bundle. Keep those two keys identical to the package's Bureau-approved strings.
+    func testRingNotificationStringsAreAlsoInTheAppBundle() throws {
+        let app = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("App")
+        let appEn = try XCTUnwrap(NSDictionary(contentsOfFile: app.appendingPathComponent("en.lproj/Localizable.strings").path) as? [String: String])
+        let appAr = try XCTUnwrap(NSDictionary(contentsOfFile: app.appendingPathComponent("ar.lproj/Localizable.strings").path) as? [String: String])
+        let packageEn = try table("en")
+        let packageAr = try table("ar")
+        for key in ["ring_notification_title", "ring_notification_body"] {
+            XCTAssertEqual(appEn[key], packageEn[key], "en app bundle drift for \(key)")
+            XCTAssertEqual(appAr[key], packageAr[key], "ar app bundle drift for \(key)")
+        }
+    }
+
+    /// #760 device row: the notification service extension schedules AlarmKit in its own process, so iOS
+    /// requires the usage description in the extension's Info.plist and localized InfoPlist.strings too.
+    func testAlarmPermissionIsAlsoInTheRingServiceExtension() throws {
+        let ext = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Extensions/RingService")
+        let info = try XCTUnwrap(NSDictionary(contentsOfFile: ext.appendingPathComponent("Info.plist").path) as? [String: Any])
+        XCTAssertEqual(info["NSAlarmKitUsageDescription"] as? String,
+                       "OSRA Kids rings this phone out loud when your parent rings it, even in Silent mode, in a Focus, or with the volume turned down.")
+        let en = try XCTUnwrap(NSDictionary(contentsOfFile: ext.appendingPathComponent("en.lproj/InfoPlist.strings").path) as? [String: String])
+        let ar = try XCTUnwrap(NSDictionary(contentsOfFile: ext.appendingPathComponent("ar.lproj/InfoPlist.strings").path) as? [String: String])
+        XCTAssertEqual(en["NSAlarmKitUsageDescription"],
+                       "OSRA Kids rings this phone out loud when your parent rings it, even in Silent mode, in a Focus, or with the volume turned down.")
+        XCTAssertEqual(ar["NSAlarmKitUsageDescription"],
+                       "يُصدر تطبيق أسرة للأطفال رنينًا مسموعًا على هذا الهاتف عندما يطلب والدك أو والدتك ذلك، حتى في النمط الصامت، أو عند تشغيل تركيز، أو عند خفض مستوى الصوت.")
+    }
+}

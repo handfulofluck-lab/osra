@@ -109,7 +109,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   /// appRule to the child's ruleset) and Allow (just dismiss) actions.
   void _showDetail(Alert alert) {
     // Feature #16: conversation-coach card for AI/social alert categories.
-    final coachCard = coachCardFor(alert.category, _concernTypesOf(alert));
+    // UI/UX Bureau (#760): no coach card for ring alerts; fallback is opt-in.
+    final coachCard = coachCardFor(alert.category, concernTypes: _concernTypesOf(alert));
     showDialog(
       context: context,
       builder: (dialogContext) {
@@ -147,7 +148,9 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   // Issue #475 follow-up (Claude's ruling): the line is scoped to THIS alert's child, in the
                   // dialog a parent opens later to ask "did my last change land?". The feed itself is
                   // family-wide, so it carries no line; the Block path already refetches the family.
-                  RulesBehindBanner(childId: alert.childId),
+                  // UI/UX Bureau (#760): a ring alert is not a rules-sync event, so the banner reads as a
+                  // false failure.
+                  if (alert.category != 'ring') RulesBehindBanner(childId: alert.childId),
                   // #755 Arabic Bureau (6868533968): SOS already states the event in its localized title and
                   // place lines, so never repeat the child agent's raw English sentence.
                   // #889 Arabic Bureau (6997818132): an unkeyed restart row in Arabic renders no body at all
@@ -166,7 +169,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                           ) ??
                           (isEnglish ? alert.body : '');
                     } else {
-                      localizedBody = alert.body;
+                      // UI/UX Bureau (#760): a ring body is the Bureau's sentence, never raw metadata.
+                      localizedBody = alertBodyFor(alert, l10n);
                     }
                     if (localizedBody.isEmpty) return const SizedBox.shrink();
                     return Text(localizedBody);
@@ -229,7 +233,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                         .add_Hms()
                         .format(alert.createdAt!.toLocal()))),
                   const Divider(),
-                  CoachCardSection(card: coachCard),
+                  if (coachCard != null) CoachCardSection(card: coachCard),
                 ],
               );
             },

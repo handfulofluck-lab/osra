@@ -13,9 +13,9 @@
 > `AgentIdentityStore` (11 new tests in `PairingTests.swift`). Still requires a
 > macOS run of `swift test` and the Xcode wrapper project before shipping.
 
-## Build status (updated 2026-10-24, roadmap 5.5, #372)
+## Build status (updated 2026-11-14, roadmap 5.5, #372 and #750)
 
-**The agent now builds as an installable app with its three extensions, on the GitHub macOS runner.**
+**The agent now builds as an installable app with its four extensions, on the GitHub macOS runner.**
 `ios-ci.yml` (macOS 26, the newest Xcode on the image) does this on every change under `apps/child-ios/`:
 
 1. Builds the `FamilyShieldAgent` package for the simulator and runs its XCTest target, as before.
@@ -24,11 +24,12 @@
 3. Builds the `OSRAAgent` scheme **unsigned** (`CODE_SIGNING_ALLOWED=NO`, Release) for
    `generic/platform=iOS Simulator` and `generic/platform=iOS`.
 4. Runs `scripts/check-app-bundle.py` on both builds. It fails the job unless:
-   - `PlugIns/` holds exactly the three `.appex` bundles;
+   - `PlugIns/` holds exactly the four `.appex` bundles;
    - each `.appex` has the expected `NSExtensionPointIdentifier` and `NSExtensionPrincipalClass`, and
      its binary defines that class;
-   - all four `.entitlements` files carry `com.apple.developer.family-controls` and
-     `group.com.osratech.child`. An unsigned build embeds no entitlements, so this reads the source files.
+   - every `.entitlements` file carries `group.com.osratech.child`, the three Screen Time extensions also
+     carry `com.apple.developer.family-controls`, and the notification service extension carries the app
+     group only. An unsigned build embeds no entitlements, so this reads the source files.
 
 | Target | Kind | Bundle id | Principal class | Extension point |
 |---|---|---|---|---|
@@ -36,6 +37,7 @@
 | `OSRAAgentMonitor` | app extension (`Extensions/Monitor/`) | `com.osratech.child.Monitor` | `OSRAAgentMonitor.DeviceActivityMonitorExtension` (subclass of the package's `FamilyShieldDeviceActivityMonitor`, #561) | `com.apple.deviceactivity.monitor-extension` |
 | `OSRAAgentShieldConfiguration` | app extension (`Extensions/ShieldConfiguration/`) | `com.osratech.child.ShieldConfiguration` | `OSRAAgentShieldConfiguration.ShieldConfigurationExtension` (subclass of `FamilyShieldConfigurationDataSource`) | `com.apple.ManagedSettingsUI.shield-configuration-service` |
 | `OSRAAgentShieldAction` | app extension (`Extensions/ShieldAction/`) | `com.osratech.child.ShieldAction` | `OSRAAgentShieldAction.ShieldActionExtension` (subclass of `FamilyShieldShieldActionDelegate`) | `com.apple.ManagedSettings.shield-action-service` |
+| `OSRAAgentRingService` | notification service extension (`Extensions/RingService/`, #750) | `com.osratech.child.RingService` | `OSRAAgentRingService.RingServiceExtension` | `com.apple.usernotifications.service` |
 
 - **The principal classes stay in the package.** They are `public` and carry `@objc(<name>)`, so the
   runtime finds them under the unqualified name in `Info.plist`. Each extension's one source file

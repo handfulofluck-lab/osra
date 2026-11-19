@@ -49,6 +49,13 @@ final class OSRAAgentAppDelegate: NSObject, UIApplicationDelegate {
         LocationController.capabilityReport = { CapabilityReport.live(location: $0) }
         LocationController.shared.startIfAllowed()
         Task { await LocationController.shared.reportGrant() }
+        Task {
+            if AgentIdentityStore.load() != nil {
+                await RingController.shared.resume()
+            } else {
+                await RingController.shared.stopForUnpair()
+            }
+        }
         return true
     }
 

@@ -31,6 +31,24 @@ export interface PushMessage {
   locKeys?: { titleKey: string; bodyKey: string };
   /** FCM `collapse_key` for Android; one wake reads every unseen alert, so repeated wakes are redundant. */
   collapseKey?: string;
+  /**
+   * iOS interruption level (#750): how the alert breaks through Focus and the lock screen. Apple
+   * defines exactly these four levels; APNs maps the value to the payload's `interruption-level`
+   * field. Only the device ring sets it today (`time-sensitive`).
+   */
+  interruptionLevel?: "passive" | "active" | "time-sensitive" | "critical";
+  /**
+   * iOS bundled notification sound file name (#760 redesign). When set, APNs plays the file from the
+   * app bundle instead of the default sound. The iPhone ring uses `ring.wav`.
+   */
+  sound?: string;
+  /**
+   * True → the message targets a child device under its own APNs topic (`deviceBundleId`), not the
+   * parent app's — the iOS ring alert (#750). The device wake marks itself with `dataOnly` instead;
+   * this is its alert-shaped sibling, so the APNs provider needs the same child-topic routing and
+   * the same refusal to send when the child topic is unconfigured.
+   */
+  deviceTarget?: boolean;
 }
 
 export type PushResult =

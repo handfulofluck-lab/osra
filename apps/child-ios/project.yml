@@ -4,13 +4,14 @@
 # directory (CI pins the XcodeGen version in .github/workflows/ios-ci.yml). Review changes here,
 # not in a project.pbxproj diff.
 #
-# Four app targets, all linking the FamilyShieldAgent package in this directory, plus two hosted test
+# Five app targets, all linking the FamilyShieldAgent package in this directory, plus two hosted test
 # targets run inside the simulator app: the Keychain tests (OSRAAgentHostedTests) and the live API tests
 # (FamilyShieldAgentIntegrationTests, scheme OSRAAgentIntegration):
 #   OSRAAgent                      the host app (App/)
 #   OSRAAgentMonitor               Device Activity monitor extension (Extensions/Monitor/)
 #   OSRAAgentShieldConfiguration   Shield configuration extension (Extensions/ShieldConfiguration/)
 #   OSRAAgentShieldAction          Shield action extension (Extensions/ShieldAction/)
+#   OSRAAgentRingService           Notification Service extension for the ring push (Extensions/RingService/)
 #
 # Bundle ids are final (decision 2B, 29 Oct): the app is com.osratech.child, as on Android (#452),
 # each extension com.osratech.child.<Target>, app group group.com.osratech.child.
@@ -65,6 +66,7 @@ targets:
       - target: OSRAAgentMonitor
       - target: OSRAAgentShieldConfiguration
       - target: OSRAAgentShieldAction
+      - target: OSRAAgentRingService
 
   OSRAAgentMonitor:
     type: app-extension
@@ -105,6 +107,25 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.osratech.child.ShieldAction
         INFOPLIST_FILE: Extensions/ShieldAction/Info.plist
         CODE_SIGN_ENTITLEMENTS: Extensions/ShieldAction/ShieldAction.entitlements
+    dependencies:
+      - package: FamilyShieldAgent
+
+  # #760 redesign: answers the server's visible ring push. A physical-device row proved a priority-5
+  # background push cannot wake a locked/suspended/force-quit iPhone, so the ring push is a
+  # time-sensitive alert with a bundled sound; this service extension localizes the title/body and
+  # preserves the sound, but does not call AlarmKit or poll the command channel. App-group
+  # entitlements only: it touches no Screen Time API, so it holds no family-controls entitlement.
+  OSRAAgentRingService:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Extensions/RingService
+        excludes: ["*.plist", "*.entitlements"]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.osratech.child.RingService
+        INFOPLIST_FILE: Extensions/RingService/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Extensions/RingService/RingService.entitlements
     dependencies:
       - package: FamilyShieldAgent
 
