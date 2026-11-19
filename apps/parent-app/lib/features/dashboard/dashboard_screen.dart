@@ -31,7 +31,7 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final family = ref.watch(familyProvider);
-    final unread = ref.watch(unacknowledgedCountProvider);
+    final unread = ref.watch(alertsBadgeCountProvider);
     // ADR-0031 step 3b: a signed-in owner/co-parent is told on open that
     // someone needs a witness. A guardian's 403 becomes an empty list in the
     // provider, so this is absent rather than an error.
