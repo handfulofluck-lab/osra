@@ -101,10 +101,11 @@ class RuleRepository @Inject constructor(
      */
     fun verdict(packageId: String): Verdict {
         val ruleSet = cached
+        val paired = settings.isPairedSync()
         return decideWithReason(
             packageId = packageId,
             ruleSet = ruleSet,
-            paired = settings.isPairedSync(),
+            paired = paired,
             consentPaused = consent.isPaused(),
             essential = { EssentialPackages.isEssential(it, packageFacts) },
         ) { rules ->
@@ -116,6 +117,7 @@ class RuleRepository @Inject constructor(
                 blocklist.apps(),
                 pausedInternet = pausedInternet,
                 bonusMinutes = bonusMinutes(),
+                declaresVpnService = { paired && packageFacts.declaresVpnService(packageId) },
             )
         }
     }

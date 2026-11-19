@@ -13,9 +13,15 @@ package com.familyshield.agent.security
  * verb in English or Arabic second. A Settings page that merely lists apps, or the admin list without
  * our row expanded, is not a tamper screen.
  */
-enum class TamperScreen { NONE, DEACTIVATE_ADMIN, UNINSTALL, APP_INFO, PROTECTION_SETTINGS, SPECIAL_ACCESS, PRIVATE_DNS, SPACE_SETUP }
+enum class TamperScreen { NONE, DEACTIVATE_ADMIN, UNINSTALL, APP_INFO, PROTECTION_SETTINGS, SPECIAL_ACCESS, PRIVATE_DNS, SPACE_SETUP, VPN_CONSENT }
 
 object TamperScreenPolicy {
+
+    const val VPN_DIALOG_PACKAGE = "com.android.vpndialogs"
+
+    // Android platform strings, VpnDialogs/res/values{,-ar}/strings.xml.
+    private val VPN_CONSENT_TITLES = setOf("connection request", "طلب الاتصال")
+    private val VPN_DISCONNECT_ACTIONS = setOf("disconnect", "قطع الاتصال")
 
     /** System packages that host the three screens (AOSP, Google and Samsung variants). */
     private val SYSTEM_PACKAGES = setOf(
@@ -236,7 +242,7 @@ object TamperScreenPolicy {
      * reads the texts of only those windows.
      */
     fun mayHostProtectionScreen(packageName: String?): Boolean =
-        packageName != null && (packageName in SYSTEM_PACKAGES || SPACE_SETUP_SCREENS.any { it.first == packageName })
+        packageName != null && (packageName in SYSTEM_PACKAGES || packageName == VPN_DIALOG_PACKAGE || SPACE_SETUP_SCREENS.any { it.first == packageName })
 
     /**
      * Classifies a foreground window. [packageName] is the window's package; [texts] every visible
@@ -275,7 +281,24 @@ object TamperScreenPolicy {
          * as [ourAdminActive] and [ourLocationActive].
          */
         ourSpecialAccess: Set<SpecialAccess> = emptySet(),
+        filterProtectionActive: Boolean = false,
+        ownVpnConsentPending: Boolean = false,
     ): TamperScreen {
+        if (packageName == VPN_DIALOG_PACKAGE) {
+            if (!filterProtectionActive) return TamperScreen.NONE
+            val dialogText = texts.filterNotNull().map { normalize(it.toString()) }
+            val label = normalize(agentLabel)
+            val mentionsAgent = label.isNotEmpty() && dialogText.any { it.contains(label) }
+            val managesFilter = simpleName(windowClass) == "ManageDialog" && mentionsAgent
+            val requestsConsent = simpleName(windowClass) == "ConfirmDialog" ||
+                dialogText.any { it in VPN_CONSENT_TITLES }
+            return when {
+                managesFilter && dialogText.any { it in VPN_DISCONNECT_ACTIONS } -> TamperScreen.VPN_CONSENT
+                requestsConsent && !(ownVpnConsentPending && (dialogText.isEmpty() || mentionsAgent)) ->
+                    TamperScreen.VPN_CONSENT
+                else -> TamperScreen.NONE
+            }
+        }
         if (packageName != null && (packageName to simpleName(windowClass)) in SPACE_SETUP_SCREENS) {
             return TamperScreen.SPACE_SETUP
         }
