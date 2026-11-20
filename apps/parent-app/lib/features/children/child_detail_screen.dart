@@ -568,6 +568,11 @@ Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, St
       );
       return;
     }
+    // F1 (review 7039886009): no re-read here. A POST that queues the command answers `{status: "pending"}`
+    // before the phone has even received it, so asking for `/latest` at that moment returns the same 404 or
+    // the same older fix — a wasted request dressed up as a refresh. The fresh fix arrives when the phone
+    // publishes its ping: the `location` message on `/v1/ws` calls `invalidateLocation` (`family_provider.dart`
+    // `applyRealtimeMessage`), which is what a parent sees the tab update on.
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(l10n.commandQueued(l10n.commandType(command), device.model))),
     );
@@ -766,6 +771,32 @@ class _LocationTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final ping = ref.watch(locationProvider(childId));
+    // #869: the app could *show* a `locate_now` in a device's command history but had no way to send one, so
+    // "Locate the child" had nothing behind it. It sits here, next to the state a parent reads when there is no
+    // position, rather than in the device-command row — that row already wraps to three lines at 320 px and one
+    // more button pushed an existing control out of the tapped area.
+    //
+    // F2 (review 7039886009): a child can have more than one phone. One unlabelled button wired to the first
+    // device would leave every other device unreachable, and the parent could not tell which phone was asked,
+    // so there is one button per device and each names its phone when there is more than one.
+    final devices = ref.watch(familyProvider).valueOrNull?.devicesFor(childId) ?? const <Device>[];
+    final locate = devices.isEmpty
+        ? null
+        : Wrap(
+            spacing: AppSpace.sm,
+            runSpacing: AppSpace.xs,
+            children: [
+              for (final d in devices)
+                OutlinedButton.icon(
+                  key: ValueKey('locateNow-${d.id}'),
+                  onPressed: () => _sendCommand(context, ref, d, 'locate_now'),
+                  icon: const Icon(Icons.my_location, size: 18),
+                  label: Text(devices.length == 1
+                      ? l10n.commandLocateNow
+                      : '${l10n.commandLocateNow} (${ltrIsolate(d.model)})'),
+                ),
+            ],
+          );
     return ping.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       // #850: never show exception text to a parent. A read refused for permission says so; anything
@@ -777,6 +808,10 @@ class _LocationTab extends ConsumerWidget {
       data: (p) => ListView(
         padding: const EdgeInsets.all(AppSpace.lg),
         children: [
+          if (locate != null) ...[
+            Align(alignment: AlignmentDirectional.centerStart, child: locate),
+            const SizedBox(height: AppSpace.sm),
+          ],
           if (p == null)
             Text(l10n.noLocationReported)
           else ...[
