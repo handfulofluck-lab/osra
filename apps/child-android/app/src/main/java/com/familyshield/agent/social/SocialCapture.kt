@@ -28,10 +28,15 @@ class SocialCapture internal constructor(
         rules: RuleRepository,
         queue: SocialScanQueue,
         consent: ConsentState,
+        @dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context,
     ) : this(
         isPausedProvider = { consent.isPaused() },
         socialMonitoringProvider = { appKey -> rules.socialMonitoringEnabled(appKey) },
-        enqueueCapture = { appKey, contact, msg, _ -> queue.enqueue(appKey, contact, msg) },
+        enqueueCapture = { appKey, contact, msg, _ ->
+            if (TestChatCaptureGate.allows(context, appKey, contact)) {
+                queue.enqueue(appKey, contact, msg)
+            }
+        },
     )
 
     private val lock = Any()
