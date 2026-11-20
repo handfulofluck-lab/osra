@@ -20,6 +20,8 @@ import com.familyshield.agent.enforcement.CallAudioMode
 import com.familyshield.agent.enforcement.CallBlockPolicy
 import com.familyshield.agent.enforcement.CallNotice
 import com.familyshield.agent.enforcement.CallParcel
+import com.familyshield.agent.enforcement.EssentialPackages
+import com.familyshield.agent.enforcement.IncomingRingWindow
 import com.familyshield.agent.security.TamperAlertWorker
 
 /**
@@ -43,10 +45,14 @@ class CallEnforcer(
     private val declineIntents = HashMap<String, PendingIntent>()
     private val hangUpIntents = HashMap<String, PendingIntent>()
     private var cover: View? = null
+    @Volatile private var ringUntilMs = 0L
     private var ticking = false
 
     private val modeListener: Any? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        AudioManager.OnModeChangedListener { mode -> apply(policy.onAudioMode(map(mode), isBlocked, now())) }
+        AudioManager.OnModeChangedListener { mode ->
+            apply(policy.onAudioMode(map(mode), isBlocked, now()))
+            if (map(mode) != CallAudioMode.NORMAL) ringUntilMs = 0L
+        }
     } else {
         null
     }
@@ -54,6 +60,7 @@ class CallEnforcer(
     private val tick = object : Runnable {
         override fun run() {
             apply(policy.onAudioMode(currentMode(), isBlocked, now()))
+            if (currentMode() != CallAudioMode.NORMAL) ringUntilMs = 0L
             if (policy.coverShown || currentMode() != CallAudioMode.NORMAL) {
                 main.postDelayed(this, TICK_MS)
             } else {
@@ -98,6 +105,20 @@ class CallEnforcer(
         }
         // The mode first, so the policy judges the notice in the current call state.
         apply(policy.onAudioMode(currentMode(), isBlocked, now()))
+        parcel?.let { p ->
+            IncomingRingWindow.next(
+                isCall = p.isCall,
+                hasDecline = p.hasDecline,
+                hasHangUp = p.hasHangUp,
+                mode = currentMode(),
+                nowMs = now(),
+                fromDefaultDialer = IncomingRingWindow.fromTrustedSource(
+                    pkg = pkg,
+                    defaultDialer = defaultDialerPackage(),
+                    platformInCallUi = EssentialPackages.inCallUi,
+                ),
+            )?.let { ringUntilMs = it }
+        }
         apply(policy.onNotification(CallNotice(pkg, parcel), isBlocked, isEssential, now()))
     }
 
@@ -169,6 +190,12 @@ class CallEnforcer(
     }
 
     private fun currentMode(): CallAudioMode = map(runCatching { audio?.mode }.getOrNull() ?: AudioManager.MODE_NORMAL)
+
+    fun isRinging(): Boolean =
+        IncomingRingWindow.isRinging(currentMode(), now(), ringUntilMs, blockedRingActive = policy.blockedRingActive)
+
+    private fun defaultDialerPackage(): String? =
+        runCatching { service.getSystemService(android.telecom.TelecomManager::class.java)?.defaultDialerPackage }.getOrNull()
 
     private fun map(mode: Int): CallAudioMode = when (mode) {
         AudioManager.MODE_NORMAL -> CallAudioMode.NORMAL

@@ -101,6 +101,17 @@ object EssentialPackages {
     )
 
     /**
+     * Platform in-call UI packages that post an incoming call's notification (`#851` / `#828`).
+     * On One UI, `com.samsung.android.incallui` posts the incoming-call `CATEGORY_CALL` notice while
+     * `TelecomManager.defaultDialerPackage` answers `com.samsung.android.dialer`.
+     */
+    val inCallUi: Set<String> = setOf(
+        "com.android.incallui",
+        "com.google.android.incallui",
+        "com.samsung.android.incallui",
+    )
+
+    /**
      * True when [packageId] is on the static essential set.
      *
      * NOTE: a name is a *hint* here, not a role. `com.anything.dialer` is NOT exempt by name — review

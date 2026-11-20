@@ -86,6 +86,13 @@ class CallBlockPolicy(
 
     val coverShown: Boolean get() = coverUntilMs != null
 
+    /**
+     * True while a blocked (or locked non-essential) app's ring owns the screen or audio mode
+     * (`osra-security#33`), so `MODE_RINGTONE` from a blocked VoIP app cannot exempt the shade.
+     */
+    val blockedRingActive: Boolean
+        get() = coverShown || (mode == CallAudioMode.RINGTONE && ringPkg != null && !nonBlockedPostedDuringRing)
+
     /** One accessibility notification event (the agent's own package is filtered out by the caller). */
     fun onNotification(
         notice: CallNotice,

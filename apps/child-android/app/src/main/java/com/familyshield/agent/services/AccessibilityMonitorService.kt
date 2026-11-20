@@ -50,6 +50,7 @@ import com.familyshield.agent.security.TamperAlertWorker
 import com.familyshield.agent.security.TamperGuardActivity
 import com.familyshield.agent.security.TamperGuardTaskActivity
 import com.familyshield.agent.security.TamperScreen
+import com.familyshield.agent.security.ShadePolicy
 import com.familyshield.agent.security.TamperScreenPolicy
 import com.familyshield.agent.security.TamperState
 import com.familyshield.agent.social.SocialCapture
@@ -142,6 +143,12 @@ class AccessibilityMonitorService : AccessibilityService() {
     private var ringRecheck: Runnable? = null
     private val ringRecheckHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
+    private enum class ShadePulse { STATE, LATE, CONTENT }
+
+    private var shadeRecheck: Runnable? = null
+    private var shadeLateRecheck: Runnable? = null
+    private var shadeContentRecheck: Runnable? = null
+
     /** osra-security#7: the window the gate was last opened over; a state change from any other is a new screen. */
     private var guardedWindowId = -1
     /**
@@ -181,11 +188,11 @@ class AccessibilityMonitorService : AccessibilityService() {
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
     private val deferredRaise = Runnable { raiseDeferredIfDue() }
 
-    /** Issue #444: a blocked app's calls are declined, covered, hung up or reported ([CallBlockPolicy]). */
+    /** Issue #444 / osra-security#33: non-essential calls are blocked both under app rules and under active device lock/pause. */
     private val calls by lazy {
         CallEnforcer(
             this,
-            isBlocked = { rules.evaluate(it) != RuleRepository.Decision.ALLOW },
+            isBlocked = { LockState.isActive(this) || rules.evaluate(it) != RuleRepository.Decision.ALLOW },
             isEssential = { EssentialPackages.isEssential(it, packageFacts) },
             floor = bypassFloor,
         )
@@ -196,9 +203,9 @@ class AccessibilityMonitorService : AccessibilityService() {
         android.os.Handler(android.os.Looper.getMainLooper()).post { media.onRulesChanged() }
     }
 
-    /** Issue #444 C4: a blocked app's media audio is paused, however it was started ([MediaBlockPolicy]). */
+    /** Issue #444 C4 / osra-security#33: non-essential media sessions also pause while locked or paused. */
     private val media by lazy {
-        MediaEnforcer(this, isBlocked = { rules.evaluate(it) != RuleRepository.Decision.ALLOW })
+        MediaEnforcer(this, isBlocked = { LockState.isActive(this) || rules.evaluate(it) != RuleRepository.Decision.ALLOW })
     }
 
     /** Issue #132: log a refused start once per reason, not once per 60 s accessibility event. */
@@ -326,6 +333,12 @@ class AccessibilityMonitorService : AccessibilityService() {
         // component.
         ringRecheck?.let { ringRecheckHandler.removeCallbacks(it) }
         ringRecheck = null
+        shadeRecheck?.let { ringRecheckHandler.removeCallbacks(it) }
+        shadeRecheck = null
+        shadeLateRecheck?.let { ringRecheckHandler.removeCallbacks(it) }
+        shadeLateRecheck = null
+        shadeContentRecheck?.let { ringRecheckHandler.removeCallbacks(it) }
+        shadeContentRecheck = null
         calls.onDestroy()
         media.onDestroy()
         rules.removeRulesChangedListener(rulesChanged)
@@ -359,6 +372,30 @@ class AccessibilityMonitorService : AccessibilityService() {
         }
         val eventPkg = event?.packageName?.toString() ?: return
         calls.onEvent()
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            ShadePolicy.shouldCollapse(
+                locked = LockState.isActive(this),
+                packageName = eventPkg,
+                className = event.className?.toString(),
+                apiLevel = android.os.Build.VERSION.SDK_INT,
+                callRinging = calls.isRinging(),
+            )
+        ) {
+            performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
+            scheduleShadeRecheck(delayMs = SHADE_RECHECK_MS, slot = ShadePulse.STATE)
+            scheduleShadeRecheck(delayMs = SHADE_LATE_RECHECK_MS, slot = ShadePulse.LATE)
+        }
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
+            ShadePolicy.shouldCollapseOnContentChange(
+                locked = LockState.isActive(this),
+                packageName = eventPkg,
+                lastKnownClass = lastClassByPkg[eventPkg],
+                apiLevel = android.os.Build.VERSION.SDK_INT,
+                callRinging = calls.isRinging(),
+            )
+        ) {
+            scheduleShadeRecheck(delayMs = SHADE_CONTENT_RECHECK_MS, slot = ShadePulse.CONTENT)
+        }
         // osra-security#7: before the own-window return below, which our gate's events take.
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
             TamperScreenPolicy.mayHostProtectionScreen(eventPkg)
@@ -369,6 +406,16 @@ class AccessibilityMonitorService : AccessibilityService() {
         // the policy must recognise — and the return used to skip both.
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             event.className?.toString()?.let { lastClassByPkg[eventPkg] = it }
+            val nextSystemUi = ShadePolicy.nextSystemUiClass(
+                current = lastClassByPkg[ShadePolicy.SHADE_PACKAGE],
+                eventPkg = eventPkg,
+                eventClass = event.className?.toString(),
+            )
+            if (nextSystemUi == null) {
+                lastClassByPkg.remove(ShadePolicy.SHADE_PACKAGE)
+            } else {
+                lastClassByPkg[ShadePolicy.SHADE_PACKAGE] = nextSystemUi
+            }
         }
         if (eventPkg == packageName) {
             // Issue #284: our own block screen is in front and this stream never records our package, so
@@ -793,6 +840,31 @@ class AccessibilityMonitorService : AccessibilityService() {
         }.onFailure { Log.w(TAG, "could not bring the ring screen back (#734)", it) }
     }
 
+    private fun scheduleShadeRecheck(delayMs: Long, slot: ShadePulse) {
+        if (shadePulse(slot) != null) return
+        val task = Runnable {
+            setShadePulse(slot, null)
+            if (!ShadePolicy.shouldRecheck(LockState.isActive(this), calls.isRinging())) return@Runnable
+            performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
+        }
+        setShadePulse(slot, task)
+        ringRecheckHandler.postDelayed(task, delayMs)
+    }
+
+    private fun shadePulse(slot: ShadePulse): Runnable? = when (slot) {
+        ShadePulse.STATE -> shadeRecheck
+        ShadePulse.LATE -> shadeLateRecheck
+        ShadePulse.CONTENT -> shadeContentRecheck
+    }
+
+    private fun setShadePulse(slot: ShadePulse, task: Runnable?) {
+        when (slot) {
+            ShadePulse.STATE -> shadeRecheck = task
+            ShadePulse.LATE -> shadeLateRecheck = task
+            ShadePulse.CONTENT -> shadeContentRecheck = task
+        }
+    }
+
     /** One delayed re-check at the end of the debounce; it does nothing if the ring has stopped by then. */
     private fun scheduleRingRecheck() {
         if (ringRecheck != null) return
@@ -872,6 +944,7 @@ class AccessibilityMonitorService : AccessibilityService() {
             )
         }
         if (!settings.isPairedSync()) return
+        if (!TamperScreenPolicy.mayHostProtectionScreen(pkg)) return
         val now = System.currentTimeMillis()
         // #533 review: suppress only while the gate is in front or still coming up — never while the guarded
         // screen is back in front of a gate that has gone away (Recents → Settings inside the old 1.5 s).
@@ -1083,6 +1156,10 @@ class AccessibilityMonitorService : AccessibilityService() {
 
     companion object {
         private const val TAG = "AccessibilityMonitor"
+
+        internal const val SHADE_RECHECK_MS = 250L
+        internal const val SHADE_LATE_RECHECK_MS = 700L
+        internal const val SHADE_CONTENT_RECHECK_MS = 300L
 
         /**
          * Issue #231 review: true while the system holds this service bound, set from
