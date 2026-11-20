@@ -28,8 +28,17 @@ final class PinRulesSeededTests: XCTestCase {
         return app
     }
 
-    private func type(_ text: String, into field: XCUIElement) {
+    /// Taps, waits for the field to actually take focus, then types.
+    ///
+    /// The bare `tap(); typeText()` failed once with *"Neither element nor any descendant has keyboard focus"* — a
+    /// tap landing while a sheet was still settling. That is the harness being impatient, not the app misbehaving,
+    /// so the wait belongs here rather than in a retry of the whole case.
+    private func type(_ text: String, into field: XCUIElement, in app: XCUIApplication) {
+        XCTAssertTrue(field.waitForExistence(timeout: 10), "the field never appeared")
+        let deadline = Date().addingTimeInterval(5)
+        while !field.isHittable && Date() < deadline { usleep(100_000) }
         field.tap()
+        _ = app.keyboards.element.waitForExistence(timeout: 3)   // the keyboard attaching is the focus signal
         field.typeText(text)
     }
 
@@ -39,8 +48,8 @@ final class PinRulesSeededTests: XCTestCase {
 
     /// Save on the seeded screen, so the later rows start from a status screen with a PIN set.
     private func setUpPin(_ app: XCUIApplication) {
-        type(goodPin, into: app.secureTextFields["pin.new"])
-        type(goodPin, into: app.secureTextFields["pin.repeat"])
+        type(goodPin, into: app.secureTextFields["pin.new"], in: app)
+        type(goodPin, into: app.secureTextFields["pin.repeat"], in: app)
         save(app)
         XCTAssertTrue(app.staticTexts["status.paired"].waitForExistence(timeout: 20),
                       "the status screen did not follow a valid PIN")
@@ -50,8 +59,8 @@ final class PinRulesSeededTests: XCTestCase {
     /// screen stays where it is so the parent can correct it.
     func testAPinLongerThanEightDigitsIsRefused() {
         let app = launchSeeded()
-        type("123456789", into: app.secureTextFields["pin.new"])
-        type("123456789", into: app.secureTextFields["pin.repeat"])
+        type("123456789", into: app.secureTextFields["pin.new"], in: app)
+        type("123456789", into: app.secureTextFields["pin.repeat"], in: app)
         save(app)
 
         XCTAssertTrue(app.staticTexts[L10n.tr("pin_too_long")].waitForExistence(timeout: 5),
@@ -75,7 +84,7 @@ final class PinRulesSeededTests: XCTestCase {
         }
         paste.tap()
 
-        type("123456789012", into: app.secureTextFields["pin.repeat"])
+        type("123456789012", into: app.secureTextFields["pin.repeat"], in: app)
         save(app)
 
         XCTAssertTrue(app.staticTexts[L10n.tr("pin_too_long")].waitForExistence(timeout: 5),
@@ -105,7 +114,7 @@ final class PinRulesSeededTests: XCTestCase {
         }
 
         func wrongPin() {
-            type("9999", into: app.secureTextFields["pin.gate"])
+            type("9999", into: app.secureTextFields["pin.gate"], in: app)
             app.buttons["pin.continue"].tap()
         }
 
@@ -162,9 +171,7 @@ final class PinRulesSeededTests: XCTestCase {
         }
 
         func wrongPin(_ pin: String) {
-            let field = app.secureTextFields["pin.gate"]
-            field.tap()
-            field.typeText(pin)
+            type(pin, into: app.secureTextFields["pin.gate"], in: app)
             app.buttons["pin.continue"].tap()
         }
 
@@ -176,9 +183,7 @@ final class PinRulesSeededTests: XCTestCase {
         // Mid-entry means a *half-typed* field, not an empty one: two digits go in and Continue is never tapped,
         // so the app is left exactly as a child would leave it when they press home. Ahmed asked for this and he
         // was right — the previous version spent an attempt and then left no partial entry behind.
-        let partial = app.secureTextFields["pin.gate"]
-        partial.tap()
-        partial.typeText("99")
+        type("99", into: app.secureTextFields["pin.gate"], in: app)
 
         XCUIDevice.shared.press(.home)
         app.activate()
@@ -204,8 +209,8 @@ final class PinRulesSeededTests: XCTestCase {
     /// and that is what it asserts.
     func testAFastDoubleTapOnSaveDoesNotCrashOrStall() {
         let app = launchSeeded()
-        type(goodPin, into: app.secureTextFields["pin.new"])
-        type(goodPin, into: app.secureTextFields["pin.repeat"])
+        type(goodPin, into: app.secureTextFields["pin.new"], in: app)
+        type(goodPin, into: app.secureTextFields["pin.repeat"], in: app)
 
         // An **absolute** point, resolved before the first tap, not a coordinate bound to the element: a
         // `coordinate(withNormalizedOffset:)` derived from the button re-resolves the element on every tap, so the
