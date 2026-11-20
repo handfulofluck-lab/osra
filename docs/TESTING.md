@@ -407,6 +407,11 @@ off, the read route still answers but returns `counting: false` and `withinBudge
 
 | `main-guard.yml` | Detects a commit on `main` that did not arrive through a pull request |
 
+The verified-gate policy self-test checks Neon’s `neon/` author prefix and `— Neon` ordinary signature.
+It covers both directions of the cross-family restriction with Antigravity and Hydrogen, preserves their
+existing cross-family pairing, and checks that Neon cannot supply an R3 security key. The signer-fixture
+check accepts Neon’s signature from the shared agent account and rejects it from other accounts.
+
 The Mac phase1 tooling has a fake-only suite beside the org-audit tests:
 `python3 -B -m unittest discover -s infra/terraform/org-audit/tests -p 'test_agent*.py'`.
 The CI setup disables the Terraform output wrapper: isolated test environments intentionally omit
