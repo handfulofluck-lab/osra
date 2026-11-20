@@ -1,5 +1,6 @@
 package com.familyshield.agent.enforcement
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -29,13 +30,16 @@ interface PackageFacts {
      */
     fun homePackages(): Set<String> = emptySet()
 
+    /** Whether this package declares a service guarded by the platform VPN binding permission. */
+    fun declaresVpnService(pkg: String): Boolean = false
+
     /** Drops any cached answers; the accessibility service calls it when a package is installed/removed. */
     fun refresh() = Unit
 }
 
 /**
- * [PackageFacts] backed by PackageManager/TelecomManager, with both lookups cached: the accessibility
- * service asks on every window event, so an uncached version would do binder calls in a hot path.
+ * [PackageFacts] backed by PackageManager/TelecomManager. System flags and role lookups are cached
+ * because the accessibility service asks on every window event.
  */
 class AndroidPackageFacts(private val context: Context) : PackageFacts {
     private val systemCache = ConcurrentHashMap<String, Boolean>()
@@ -79,6 +83,18 @@ class AndroidPackageFacts(private val context: Context) : PackageFacts {
         }
     }
 
+    /** Read current package metadata so a verdict can cover an installation or update before its broadcast arrives. */
+    @Suppress("DEPRECATION") // The flag-based overload also supports Android 8–12.
+    override fun declaresVpnService(pkg: String): Boolean = packageDeclaresVpnService(pkg, context.packageName) {
+        val services = runCatching {
+            context.packageManager.getPackageInfo(
+                it,
+                PackageManager.GET_SERVICES or PackageManager.MATCH_DISABLED_COMPONENTS,
+            ).services
+        }.getOrNull()
+        services.orEmpty().asSequence().map { service -> service.permission }
+    }
+
     /** Drop every cache — called when a package is installed, replaced or removed. */
     override fun refresh() {
         roles = null
@@ -113,3 +129,9 @@ class AndroidPackageFacts(private val context: Context) : PackageFacts {
         val EmergencyDialerIntent = Intent("com.android.phone.EmergencyDialer.DIAL")
     }
 }
+
+internal fun packageDeclaresVpnService(
+    packageId: String,
+    ownPackage: String,
+    servicePermissions: (String) -> Sequence<String?>,
+): Boolean = packageId != ownPackage && servicePermissions(packageId).any { it == Manifest.permission.BIND_VPN_SERVICE }
