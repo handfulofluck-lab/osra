@@ -22,12 +22,20 @@ class WindowOwnershipCaptureTest {
         override val className: CharSequence? = "android.widget.TextView",
         override val isEditable: Boolean = false,
         override val isFocused: Boolean = false,
-        override val isVisibleToUser: Boolean = true,
+        private val visibleToUser: Boolean = true,
     ) : ReadableNode {
+        var visibilityReads: Int = 0
+            private set
         var textReads: Int = 0
             private set
         var childReads: Int = 0
             private set
+
+        override val isVisibleToUser: Boolean
+            get() {
+                visibilityReads++
+                return visibleToUser
+            }
 
         override val text: CharSequence?
             get() {
@@ -38,7 +46,7 @@ class WindowOwnershipCaptureTest {
         override val contentDescription: CharSequence?
             get() {
                 textReads++
-                return rawContentDesc
+                return null
             }
 
         override val childCount: Int
@@ -52,7 +60,8 @@ class WindowOwnershipCaptureTest {
             return children.getOrNull(index)
         }
 
-        fun totalInspectionCount(): Int = textReads + childReads + children.sumOf { it.totalInspectionCount() }
+        fun totalInspectionCount(): Int =
+            visibilityReads + textReads + childReads + children.sumOf { it.totalInspectionCount() }
     }
 
     private fun monitoredChatTree(rootPkg: String?): SpyReadableNode = SpyReadableNode(
@@ -179,5 +188,59 @@ class WindowOwnershipCaptureTest {
         )
         assertFalse(rootInvoked)
         assertTrue(enqueued.isEmpty())
+    }
+
+    @Test
+    fun `mixed-window descendants with foreign or missing owners have zero reads while owned siblings capture`() {
+        val enqueued = mutableListOf<Triple<String, String?, String>>()
+        var earlySourceAcquired = false
+        val capture = SocialCapture(
+            isPausedProvider = { false },
+            socialMonitoringProvider = { it == "whatsapp" },
+            enqueueCapture = { appKey, contact, text, _ -> enqueued.add(Triple(appKey, contact, text)) },
+        )
+
+        // Early-exit mismatch on eventPackage must not even invoke eventSourceProvider.
+        assertFalse(
+            capture.captureFromWindow(
+                foregroundPackage = "com.whatsapp",
+                eventPackage = "com.android.systemui",
+                activeRootProvider = { monitoredChatTree("com.whatsapp") },
+                eventSourceProvider = {
+                    earlySourceAcquired = true
+                    monitoredChatTree("com.whatsapp")
+                },
+                nowMs = 5_000L,
+            ),
+        )
+        assertFalse(earlySourceAcquired)
+
+        // Mixed tree: owned WhatsApp root + siblings alongside foreign autofill & unknown-owner subtrees.
+        val foreignAutofillLeaf = SpyReadableNode(packageName = "com.bank.autofill", rawText = "secret card 4111")
+        val foreignSubtree = SpyReadableNode(packageName = "com.bank.autofill", children = listOf(foreignAutofillLeaf))
+        val nullOwnerSubtree = SpyReadableNode(packageName = null, rawText = "system dialog pin")
+        val mixedRoot = SpyReadableNode(
+            packageName = "com.whatsapp",
+            children = listOf(
+                SpyReadableNode("com.whatsapp", rawText = "Alex"),
+                foreignSubtree,
+                nullOwnerSubtree,
+                SpyReadableNode("com.whatsapp", rawText = "meet me alone at 9pm tonight and do not tell mom"),
+            ),
+        )
+
+        assertTrue(
+            capture.captureFromWindow(
+                foregroundPackage = "com.whatsapp",
+                eventPackage = "com.whatsapp",
+                activeRootProvider = { mixedRoot },
+                nowMs = 15_000L,
+            ),
+        )
+        assertEquals(0, foreignSubtree.totalInspectionCount())
+        assertEquals(0, foreignAutofillLeaf.totalInspectionCount())
+        assertEquals(0, nullOwnerSubtree.totalInspectionCount())
+        assertEquals(1, enqueued.size)
+        assertFalse(enqueued.single().third.contains("4111"))
     }
 }

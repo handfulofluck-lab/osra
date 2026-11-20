@@ -20,10 +20,16 @@ class AccessibilitySearchCaptureContractTest {
         override val className: CharSequence? = "android.widget.TextView",
         override val isEditable: Boolean = false,
         override val isFocused: Boolean = false,
-        override val isVisibleToUser: Boolean = true,
+        private val visibleToUser: Boolean = true,
     ) : ReadableNode {
         var reads: Int = 0
             private set
+
+        override val isVisibleToUser: Boolean
+            get() {
+                reads++
+                return visibleToUser
+            }
 
         override val text: CharSequence?
             get() {
@@ -189,5 +195,43 @@ class AccessibilitySearchCaptureContractTest {
             ),
         )
         assertTrue(enqueued.isEmpty())
+
+        // Mixed-window descendant regression + lazy eventSource acquisition after early-exit checks.
+        var sourceAcquiredOnMismatch = false
+        assertFalse(
+            capture.captureFromWindow(
+                foregroundPackage = "com.android.chrome",
+                eventPackage = "com.android.systemui",
+                activeRootProvider = { chromeResultsTree("com.android.chrome") },
+                eventSourceProvider = {
+                    sourceAcquiredOnMismatch = true
+                    chromeResultsTree("com.android.chrome")
+                },
+                nowMs = 10_000L,
+            ),
+        )
+        assertFalse(sourceAcquiredOnMismatch)
+
+        val foreignOverlayNode = SpyNode("com.android.autofill", rawText = "https://www.google.com/search?q=stolen+query")
+        val unknownDescendantNode = SpyNode(null, rawText = "private overlay")
+        val mixedChromeRoot = SpyNode(
+            packageName = "com.android.chrome",
+            children = listOf(
+                foreignOverlayNode,
+                unknownDescendantNode,
+                SpyNode("com.android.chrome", rawText = "physics revision - Google Search"),
+            ),
+        )
+        assertTrue(
+            capture.captureFromWindow(
+                foregroundPackage = "com.android.chrome",
+                eventPackage = "com.android.chrome",
+                activeRootProvider = { mixedChromeRoot },
+                nowMs = 20_000L,
+            ),
+        )
+        assertEquals(0, foreignOverlayNode.totalReads())
+        assertEquals(0, unknownDescendantNode.totalReads())
+        assertEquals(listOf("google" to "physics revision"), enqueued)
     }
 }

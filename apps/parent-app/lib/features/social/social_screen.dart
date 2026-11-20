@@ -160,6 +160,7 @@ class MonitoringTogglesSection extends ConsumerStatefulWidget {
 class _MonitoringTogglesSectionState
     extends ConsumerState<MonitoringTogglesSection> {
   Map<String, bool>? _draft;
+  bool? _searchDraft;
   bool _saving = false;
 
   void _applyLoaded(RuleSet ruleSet) {
@@ -168,6 +169,7 @@ class _MonitoringTogglesSectionState
       for (final a in kSocialApps)
         a.appKey: ruleSet.socialMonitoring[a.appKey] ?? true
     };
+    _searchDraft = ruleSet.searchMonitoring;
   }
 
   Future<void> _save() async {
@@ -180,8 +182,9 @@ class _MonitoringTogglesSectionState
           const RuleSet();
       final body = ruleSet.toJson();
       // NOTE: merge server-side map under the local draft so keys we do not
-      // render here (future apps) survive the PATCH-merge.
+      // render here (future apps) survive the PUT/PATCH merge.
       body['socialMonitoring'] = {...ruleSet.socialMonitoring, ...draft};
+      body['searchMonitoring'] = _searchDraft ?? ruleSet.searchMonitoring;
       await ref
           .read(apiClientProvider)
           .raw
@@ -237,6 +240,14 @@ class _MonitoringTogglesSectionState
                     value: draft[a.appKey] ?? true,
                     onChanged: (v) => setState(() => draft[a.appKey] = v),
                   ),
+                SwitchListTile(
+                  key: const ValueKey('search-monitoring-toggle'),
+                  dense: true,
+                  title: Text(l10n.searchSafetyTitle),
+                  secondary: const Icon(Icons.search),
+                  value: _searchDraft ?? ruleSet.searchMonitoring,
+                  onChanged: (v) => setState(() => _searchDraft = v),
+                ),
                 Align(
                   alignment: AlignmentDirectional.centerEnd,
                   child: FilledButton(

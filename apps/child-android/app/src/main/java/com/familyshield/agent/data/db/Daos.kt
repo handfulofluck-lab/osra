@@ -94,4 +94,10 @@ interface PendingScanDao {
 
     @Query("DELETE FROM pending_scans WHERE createdAt < :olderThanMs OR attempts >= :maxAttempts")
     suspend fun purge(olderThanMs: Long, maxAttempts: Int): Int
+
+    @Query("DELETE FROM pending_scans WHERE source = :source")
+    suspend fun deleteBySource(source: String): Int
+
+    @Query("DELETE FROM pending_scans WHERE createdAt < :beforeMs")
+    suspend fun deleteBefore(beforeMs: Long): Int
 }

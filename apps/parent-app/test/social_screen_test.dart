@@ -166,8 +166,32 @@ void main() {
       final social = Map<String, dynamic>.from(puts.single.body['socialMonitoring'] as Map);
       expect(social['whatsapp'], isFalse);
       expect(social.keys, hasLength(kSocialApps.length));
-      expect(puts.single.body.keys, containsAll(['screenTime', 'webFilter', 'appRules', 'routines', 'socialMonitoring']));
+      expect(puts.single.body['searchMonitoring'], isFalse);
+      expect(puts.single.body.keys, containsAll(['screenTime', 'webFilter', 'appRules', 'routines', 'socialMonitoring', 'searchMonitoring']));
       expect(find.text('Monitoring saved'), findsOneWidget);
+    });
+
+    testWidgets('search monitoring defaults OFF and saves explicit parent opt-in', (tester) async {
+      final api = FakeApiClient(socialRoutes());
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+      await flushFakeHttp(tester);
+
+      final toggle = find.byKey(const ValueKey('search-monitoring-toggle'));
+      await tester.ensureVisible(toggle);
+      await tester.pumpAndSettle();
+      expect(tester.widget<SwitchListTile>(toggle).value, isFalse);
+
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+
+      await tester.tap(find.text('Save monitoring'));
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      final puts = api.calls('PUT', '/v1/rules/child-1');
+      expect(puts, hasLength(1));
+      expect(puts.single.body['searchMonitoring'], isTrue);
     });
   });
 
@@ -205,6 +229,7 @@ void main() {
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
       await flushFakeHttp(tester);
 
+      await reveal(tester, find.text('No concerns detected'));
       expect(find.text('No concerns detected'), findsOneWidget);
     });
   });

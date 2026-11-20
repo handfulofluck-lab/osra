@@ -48,20 +48,19 @@ class AccessibilitySearchCapture internal constructor(
     ) {
         if (consent != null && consent.isPaused()) return // ADR-0008 §3
         if (rules != null && !rules.searchMonitoringEnabled()) return
-        val eventSourceNode = event.source
         captureFromWindow(
             foregroundPackage = foregroundPackage,
             eventPackage = event.packageName?.toString(),
             activeRootProvider = { activeRootProvider?.invoke()?.let(::PlatformReadableNode) },
-            eventSourceProvider = { eventSourceNode?.let(::PlatformReadableNode) },
+            eventSourceProvider = { event.source?.let(::PlatformReadableNode) },
             nowMs = nowMs,
         )
     }
 
     /**
      * Pure capture flow operating on [ReadableNode]s (`osra-security#44` & `#45`). Enforces consent,
-     * explicit opt-in, and verified window ownership before any node/text access, and enqueues
-     * submitted queries to the durable queue without URLs.
+     * explicit opt-in, event package ownership, and debounce before acquiring sources inside `try/finally`,
+     * and verifies descendant ownership before inspecting any text or children.
      */
     internal fun captureFromWindow(
         foregroundPackage: String?,
@@ -73,14 +72,17 @@ class AccessibilitySearchCapture internal constructor(
         if (isPausedProvider()) return false
         if (!searchMonitoringEnabledProvider()) return false
         val pkg = foregroundPackage?.takeIf { SearchQueryParser.isSupportedPackage(it) } ?: return false
+        if (eventPackage != pkg) return false
         synchronized(lock) {
             if (nowMs - lastScanAtMs < SCAN_DEBOUNCE_MS) return false
         }
 
-        val activeRoot = activeRootProvider()
-        val eventSource = eventSourceProvider()
+        var activeRoot: ReadableNode? = null
+        var eventSource: ReadableNode? = null
         val nodes = ArrayList<SearchNodeSnapshot>(64)
         try {
+            activeRoot = activeRootProvider()
+            eventSource = eventSourceProvider()
             val verifiedRoot = WindowOwnershipPolicy.selectVerifiedRoot(
                 expectedPackage = pkg,
                 eventPackage = eventPackage,
@@ -93,7 +95,7 @@ class AccessibilitySearchCapture internal constructor(
                 if (nowMs - lastScanAtMs < SCAN_DEBOUNCE_MS) return false
                 lastScanAtMs = nowMs
             }
-            collectNodes(verifiedRoot, nodes, depth = 0)
+            collectNodes(verifiedRoot, pkg, nodes, depth = 0)
         } finally {
             runCatching { activeRoot?.recycle() }
             if (eventSource !== activeRoot) {
@@ -116,8 +118,10 @@ class AccessibilitySearchCapture internal constructor(
         return true
     }
 
-    private fun collectNodes(node: ReadableNode?, out: MutableList<SearchNodeSnapshot>, depth: Int) {
-        if (node == null || depth > MAX_DEPTH || out.size >= MAX_NODES || !node.isVisibleToUser) return
+    private fun collectNodes(node: ReadableNode?, expectedPackage: String, out: MutableList<SearchNodeSnapshot>, depth: Int) {
+        if (node == null || depth > MAX_DEPTH || out.size >= MAX_NODES) return
+        if (node.packageName != expectedPackage) return
+        if (!node.isVisibleToUser) return
         val text = node.text?.toString() ?: node.contentDescription?.toString()
         if (!text.isNullOrBlank()) {
             out.add(
@@ -133,7 +137,7 @@ class AccessibilitySearchCapture internal constructor(
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
             try {
-                collectNodes(child, out, depth + 1)
+                collectNodes(child, expectedPackage, out, depth + 1)
             } finally {
                 runCatching { child.recycle() }
             }

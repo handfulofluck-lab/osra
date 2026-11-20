@@ -1,15 +1,20 @@
 package com.familyshield.agent.social
 
 import com.familyshield.agent.comms.Allowlist
+import com.familyshield.agent.comms.CommsConsentPolicy
+import com.familyshield.agent.comms.CommsWatermarkPolicy
 import com.familyshield.agent.data.AgentSettings
+import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
+import com.familyshield.agent.data.db.AgentStateDao
+import com.familyshield.agent.data.db.AgentStateEntity
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.AlertDto
 import com.familyshield.agent.network.dto.SearchEventDto
 import com.familyshield.agent.network.dto.SocialScanBatchDto
 import com.familyshield.agent.network.dto.SocialScanDto
-import java.time.Instant
 import java.security.MessageDigest
+import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
@@ -17,6 +22,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -25,10 +31,9 @@ import kotlinx.coroutines.sync.withLock
 /**
  * Feature #2/#17 social scan queue: batches redacted captures for 3 s, dedupes by content hash,
  * caps the send rate at [MAX_SENDS_PER_MINUTE] and HMAC-POSTs the batch, six captures per request
- * (#490), to POST /v1/social/scan (the server runs the AI scan and raises alerts). On 200 nothing extra happens
- * here — flagged content surfaces as server-side alerts. A numeric contact (e.g. an unsaved
- * WhatsApp number) is also checked against the Feature #27 allowlist; an unknown number raises a
- * throttled unknown_contact alert (1 per hour per number, allowlist empty = disabled).
+ * (#490), to POST /v1/social/scan (the server runs the AI scan and raises alerts). Also durably
+ * queues opted-in submitted search queries (`SOURCE_SEARCH`, `osra-security#45`), honoring
+ * [ConsentState] pause/approval-epoch transitions across enqueue and upload.
  */
 @Singleton
 class SocialScanQueue internal constructor(
@@ -38,7 +43,14 @@ class SocialScanQueue internal constructor(
     private val deviceIdProvider: suspend () -> String?,
     private val allowlistProvider: () -> List<String>,
     private val searchMonitoringEnabledProvider: () -> Boolean,
+    private val consentPausedProvider: () -> Boolean,
+    private val consentEpochProvider: () -> Long,
+    private val consentResumedAtProvider: () -> Long,
+    private val getStoredConsentEpoch: suspend () -> Long?,
+    private val setStoredConsentEpoch: suspend (Long) -> Unit,
     private val retryScheduler: () -> Unit,
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    private val flushDelayMs: Long = FLUSH_DELAY_MS,
 ) {
     @Inject
     constructor(
@@ -46,6 +58,8 @@ class SocialScanQueue internal constructor(
         settings: AgentSettings,
         rules: RuleRepository,
         dao: com.familyshield.agent.data.db.PendingScanDao,
+        agentStateDao: AgentStateDao,
+        consent: ConsentState,
         @dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context,
     ) : this(
         api = api,
@@ -54,9 +68,13 @@ class SocialScanQueue internal constructor(
         deviceIdProvider = { settings.deviceId() },
         allowlistProvider = { rules.contactAllowlist() },
         searchMonitoringEnabledProvider = { rules.searchMonitoringEnabled() },
+        consentPausedProvider = { consent.isPaused() },
+        consentEpochProvider = { consent.pauseEpoch() },
+        consentResumedAtProvider = { consent.resumedAtMs() },
+        getStoredConsentEpoch = { agentStateDao.get(KEY_SCAN_CONSENT_EPOCH) },
+        setStoredConsentEpoch = { epoch -> agentStateDao.set(AgentStateEntity(KEY_SCAN_CONSENT_EPOCH, epoch)) },
         retryScheduler = { ScanFlushWorker.scheduleRetry(context) },
     )
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
     private val recentHashes = LinkedHashMap<String, Long>() // insertion-ordered for pruning
     private val sendTimestamps = ArrayDeque<Long>()
@@ -65,34 +83,28 @@ class SocialScanQueue internal constructor(
 
     /**
      * Queues one capture **durably** (plan 2.6: a Room row, so a kill, a reboot or an offline stretch
-     * loses nothing) and flushes after [FLUSH_DELAY_MS] of quiet. Dedupe and the send-rate cap are
+     * loses nothing) and flushes after [flushDelayMs] of quiet. Dedupe, consent, and rate cap are
      * applied before the row is written. [source] is where the text came from (screen / notification).
      */
     fun enqueue(app: String, contact: String?, text: String, nowMs: Long = System.currentTimeMillis(), source: String = ScanQueuePolicy.SOURCE_SCREEN) {
-        if (text.isBlank()) return
+        if (text.isBlank() || consentPausedProvider()) return
         val hash = dedupeHash(app, contact, text)
         scope.launch {
-            enqueueLocked(app = app, contact = contact, text = text, nowMs = nowMs, source = source, hash = hash)
-            if (flushJob == null) {
-                flushJob = scope.launch { delay(FLUSH_DELAY_MS); flush() }
-            }
+            enqueueLocked(app = app, contact = contact, text = text, nowMs = nowMs, source = source, hash = hash, scheduleFlush = true)
         }
     }
 
     /**
      * Queues a confirmed submitted search query **durably** in `pending_scans` (`osra-security#45`, ADR-0039)
-     * without URL data. Respects [searchMonitoringEnabledProvider] and flushes after [FLUSH_DELAY_MS].
+     * without URL data. Respects [consentPausedProvider] and [searchMonitoringEnabledProvider] and flushes after [flushDelayMs].
      */
     fun enqueueSearch(engine: String, query: String, nowMs: Long = System.currentTimeMillis()) {
         if (engine.isBlank() || query.isBlank()) return
-        if (!searchMonitoringEnabledProvider()) return
+        if (consentPausedProvider() || !searchMonitoringEnabledProvider()) return
         val hash = dedupeHash("search:$engine", null, query)
         scope.launch {
-            if (!searchMonitoringEnabledProvider()) return@launch
-            enqueueLocked(app = engine, contact = null, text = query, nowMs = nowMs, source = ScanQueuePolicy.SOURCE_SEARCH, hash = hash)
-            if (flushJob == null) {
-                flushJob = scope.launch { delay(FLUSH_DELAY_MS); flush() }
-            }
+            if (consentPausedProvider() || !searchMonitoringEnabledProvider()) return@launch
+            enqueueLocked(app = engine, contact = null, text = query, nowMs = nowMs, source = ScanQueuePolicy.SOURCE_SEARCH, hash = hash, scheduleFlush = true)
         }
     }
 
@@ -104,10 +116,10 @@ class SocialScanQueue internal constructor(
         nowMs: Long,
         source: String,
     ): Boolean {
-        if (app.isBlank() || text.isBlank()) return false
+        if (app.isBlank() || text.isBlank() || consentPausedProvider()) return false
         if (source == ScanQueuePolicy.SOURCE_SEARCH && !searchMonitoringEnabledProvider()) return false
         val hash = dedupeHash(if (source == ScanQueuePolicy.SOURCE_SEARCH) "search:$app" else app, contact, text)
-        return enqueueLocked(app = app, contact = contact, text = text, nowMs = nowMs, source = source, hash = hash)
+        return enqueueLocked(app = app, contact = contact, text = text, nowMs = nowMs, source = source, hash = hash, scheduleFlush = false)
     }
 
     private suspend fun enqueueLocked(
@@ -117,31 +129,70 @@ class SocialScanQueue internal constructor(
         nowMs: Long,
         source: String,
         hash: String,
+        scheduleFlush: Boolean,
     ): Boolean = mutex.withLock {
+        val epochAtEntry = consentEpochProvider()
+        if (consentPausedProvider()) return@withLock false
+        if (source == ScanQueuePolicy.SOURCE_SEARCH && !searchMonitoringEnabledProvider()) return@withLock false
         val last = recentHashes[hash]
         if (last != null && nowMs - last < DEDUPE_WINDOW_MS) return@withLock false
         if (!withinRateLimit(sendTimestamps, nowMs, RATE_WINDOW_MS, MAX_SENDS_PER_MINUTE)) {
             return@withLock false // NOTE: over rate — drop; the next user action re-captures.
         }
+        // Re-check consent & epoch immediately before inserting so a withdrawal racing enqueue writes nothing.
+        if (consentPausedProvider() || consentEpochProvider() != epochAtEntry) return@withLock false
+        if (runCatching { getStoredConsentEpoch() }.getOrNull() == null) {
+            runCatching { setStoredConsentEpoch(epochAtEntry) }
+        }
         recentHashes[hash] = nowMs
         pruneLocked(nowMs)
-        runCatching {
+        val inserted = runCatching {
             dao.insert(com.familyshield.agent.data.db.PendingScanEntity(app = app, contact = contact, text = text, source = source, createdAt = nowMs))
         }.isSuccess
+        if (inserted && scheduleFlush && (flushJob == null || flushJob?.isActive != true)) {
+            flushJob = scope.launch { delay(flushDelayMs); flush() }
+        }
+        inserted
     }
 
     /**
      * Sends the oldest queued rows (serialized), [ScanQueuePolicy.ITEMS_PER_REQUEST] per request (#490).
-     * Search rows (`SOURCE_SEARCH`) are sent to `POST /v1/content/search-event` only while search opt-in
-     * remains active, and dropped locally if opt-in is revoked (`osra-security#45`).
-     * A row is deleted when the server answers `ok` for it, kept with `attempts + 1` otherwise, and purged
-     * by [ScanQueuePolicy.shouldKeep]'s limits; when a network failure leaves rows behind, [retryScheduler]
-     * schedules a network-constrained retry.
+     * Honors [consentPausedProvider], approval-epoch resets (`CommsConsentPolicy`), and cleans up all
+     * pending search rows (`SOURCE_SEARCH`) across the entire queue when search monitoring is opted out.
+     * When a network failure leaves rows behind, [retryScheduler] schedules a network-constrained retry.
      */
     suspend fun flush() {
         mutex.withLock {
-            flushJob?.cancel()
+            val callerJob = currentCoroutineContext()[Job]
+            if (flushJob != null && flushJob !== callerJob) {
+                flushJob?.cancel()
+            }
             flushJob = null
+
+            // Clean up all pending search rows (even beyond BATCH_SIZE) whenever opt-in is absent/revoked.
+            if (!searchMonitoringEnabledProvider()) {
+                runCatching { dao.deleteBySource(ScanQueuePolicy.SOURCE_SEARCH) }
+            }
+
+            if (consentPausedProvider()) return@withLock
+            val epoch = consentEpochProvider()
+            val storedEpoch = CommsWatermarkPolicy.normalize(runCatching { getStoredConsentEpoch() }.getOrNull())
+            CommsConsentPolicy.resetTo(
+                storedEpoch = storedEpoch,
+                epoch = epoch,
+                paused = false,
+                resumedAtMs = consentResumedAtProvider(),
+            )?.let { restartFrom ->
+                // Purge captures created under a revoked consent epoch before uploading anything under the new grant.
+                runCatching { dao.deleteBefore(restartFrom) }
+                runCatching { setStoredConsentEpoch(epoch) }
+                recentHashes.clear()
+            } ?: run {
+                if (storedEpoch == null && epoch == 0L) {
+                    runCatching { setStoredConsentEpoch(0L) }
+                }
+            }
+
             val now = System.currentTimeMillis()
             runCatching { dao.purge(now - ScanQueuePolicy.MAX_AGE_MS, ScanQueuePolicy.MAX_ATTEMPTS) }
             val batch = runCatching { dao.oldest(ScanQueuePolicy.BATCH_SIZE) }.getOrDefault(emptyList())
@@ -153,6 +204,7 @@ class SocialScanQueue internal constructor(
             var anyNetworkFailure = false
 
             if (socialRows.isNotEmpty()) {
+                if (consentPausedProvider() || consentEpochProvider() != epoch) return@withLock
                 // #490 / #967: one request per ITEMS_PER_REQUEST rows with top-level deviceId envelope for HMAC;
                 // each row is settled by its own answer, so one bad capture never drops the others.
                 val outcome = ScanBatchSender<com.familyshield.agent.data.db.PendingScanEntity>(
@@ -175,10 +227,14 @@ class SocialScanQueue internal constructor(
 
             if (searchRows.isNotEmpty()) {
                 if (!searchMonitoringEnabledProvider()) {
-                    // Opt-in absent or revoked before flush: purge queued search rows without uploading.
-                    for (row in searchRows) runCatching { dao.delete(row.id) }
+                    runCatching { dao.deleteBySource(ScanQueuePolicy.SOURCE_SEARCH) }
                 } else {
                     for (row in searchRows) {
+                        if (consentPausedProvider() || consentEpochProvider() != epoch) break
+                        if (!searchMonitoringEnabledProvider()) {
+                            runCatching { dao.deleteBySource(ScanQueuePolicy.SOURCE_SEARCH) }
+                            break
+                        }
                         try {
                             api.postSearchEvent(
                                 SearchEventDto(
@@ -253,6 +309,8 @@ class SocialScanQueue internal constructor(
     }
 
     companion object {
+        const val KEY_SCAN_CONSENT_EPOCH: String = "scan_consent_epoch"
+
         /** Quiet period before a batch is flushed. */
         const val FLUSH_DELAY_MS: Long = 3000L
 

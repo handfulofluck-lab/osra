@@ -281,10 +281,15 @@ void main() {
       final api = FakeApiClient(standardRoutes());
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
 
-      expect(
-        find.text('Excerpts travel over an encrypted connection and are stored encrypted on OSRA\'s servers.'),
-        findsOneWidget,
+      final scrollable = find.descendant(
+        of: find.byKey(const ValueKey('socialSectionsList')),
+        matching: find.byWidgetPredicate((w) => w is Scrollable && w.axis == Axis.vertical),
       );
+      final banner = find.text('Excerpts travel over an encrypted connection and are stored encrypted on OSRA\'s servers.');
+      await tester.scrollUntilVisible(banner, 150, scrollable: scrollable);
+      await tester.pumpAndSettle();
+
+      expect(banner, findsOneWidget);
     });
   });
 }

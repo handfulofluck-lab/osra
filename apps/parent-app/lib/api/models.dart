@@ -710,6 +710,8 @@ class RuleSet {
   final List<AppRule> appRules;
   final List<Routine> routines;
   final Map<String, bool> socialMonitoring;
+  /// ADR-0039 / osra-security#45: explicit parent opt-in for Full search-query capture (default false).
+  final bool searchMonitoring;
   final List<String> contactAllowlist;
   final List<String> alwaysAllowedApps;
 
@@ -727,6 +729,7 @@ class RuleSet {
     this.appRules = const [],
     this.routines = const [],
     this.socialMonitoring = const {},
+    this.searchMonitoring = false,
     this.contactAllowlist = const [],
     this.alwaysAllowedApps = const [],
     this.appGroupRules = const [],
@@ -761,6 +764,7 @@ class RuleSet {
       socialMonitoring: {
         for (final e in social.entries) e.key: e.value == true
       },
+      searchMonitoring: root['searchMonitoring'] == true,
       contactAllowlist: _strList(root['contactAllowlist']),
       alwaysAllowedApps: _strList(root['alwaysAllowedApps']),
       appGroupRules: [
@@ -778,6 +782,7 @@ class RuleSet {
         'appRules': [for (final r in appRules) r.toJson()],
         'routines': [for (final r in routines) r.toJson()],
         'socialMonitoring': socialMonitoring,
+        'searchMonitoring': searchMonitoring,
         'contactAllowlist': contactAllowlist,
         'alwaysAllowedApps': alwaysAllowedApps,
         'appGroupRules': [for (final r in appGroupRules) r.toJson()],
@@ -819,6 +824,7 @@ class RuleSet {
     List<AppRule>? appRules,
     List<Routine>? routines,
     Map<String, bool>? socialMonitoring,
+    bool? searchMonitoring,
     List<String>? contactAllowlist,
     List<String>? alwaysAllowedApps,
     List<AppGroupRule>? appGroupRules,
@@ -831,6 +837,7 @@ class RuleSet {
         appRules: appRules ?? this.appRules,
         routines: routines ?? this.routines,
         socialMonitoring: socialMonitoring ?? this.socialMonitoring,
+        searchMonitoring: searchMonitoring ?? this.searchMonitoring,
         contactAllowlist: contactAllowlist ?? this.contactAllowlist,
         alwaysAllowedApps: alwaysAllowedApps ?? this.alwaysAllowedApps,
         appGroupRules: appGroupRules ?? this.appGroupRules,

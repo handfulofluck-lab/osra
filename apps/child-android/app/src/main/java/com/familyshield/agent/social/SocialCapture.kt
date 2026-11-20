@@ -45,19 +45,20 @@ class SocialCapture internal constructor(
         activeRootProvider: (() -> AccessibilityNodeInfo?)? = null,
     ) {
         if (isPausedProvider()) return // ADR-0008 §3
-        val eventSourceNode = event.source
         captureFromWindow(
             foregroundPackage = foregroundPackage,
             eventPackage = event.packageName?.toString(),
             activeRootProvider = { activeRootProvider?.invoke()?.let(::PlatformReadableNode) },
-            eventSourceProvider = { eventSourceNode?.let(::PlatformReadableNode) },
+            eventSourceProvider = { event.source?.let(::PlatformReadableNode) },
             nowMs = nowMs,
         )
     }
 
     /**
      * Pure capture flow operating on [ReadableNode]s (`osra-security#44`). Declines collection
-     * immediately without reading any text or children when window ownership is missing or mismatched.
+     * immediately without acquiring or reading any nodes when eligibility or event owner fails,
+     * acquires window sources strictly inside the `try/finally` cleanup block, and verifies
+     * descendant ownership before reading text or traversing children.
      */
     internal fun captureFromWindow(
         foregroundPackage: String?,
@@ -69,12 +70,15 @@ class SocialCapture internal constructor(
         if (isPausedProvider()) return false // ADR-0008 §3
         val appKey = foregroundPackage?.let(MonitoredApps::appKeyFor) ?: return false
         if (!socialMonitoringProvider(appKey)) return false
+        if (eventPackage != foregroundPackage) return false
         synchronized(lock) {
             if (!SocialHeuristics.shouldCapture(lastCaptureAt[SocialHeuristics.debounceKey(appKey)], nowMs)) return false
         }
-        val activeRoot = activeRootProvider()
-        val eventSource = eventSourceProvider()
+        var activeRoot: ReadableNode? = null
+        var eventSource: ReadableNode? = null
         try {
+            activeRoot = activeRootProvider()
+            eventSource = eventSourceProvider()
             val verifiedRoot = WindowOwnershipPolicy.selectVerifiedRoot(
                 expectedPackage = foregroundPackage,
                 eventPackage = eventPackage,
@@ -87,7 +91,7 @@ class SocialCapture internal constructor(
             ) ?: return false
 
             val texts = ArrayList<String>()
-            collectVisibleText(verifiedRoot, StringBuilder(), texts)
+            collectVisibleText(verifiedRoot, foregroundPackage, StringBuilder(), texts)
             val (contact, candidates) = SocialHeuristics.extractCandidates(texts)
             val redacted = candidates.mapNotNull { candidate ->
                 TextRedaction.redact(candidate).takeIf { it.isNotBlank() }
@@ -109,9 +113,11 @@ class SocialCapture internal constructor(
         }
     }
 
-    /** Depth-first collection of visible text/content-desc, stopping at [MAX_CAPTURE_CHARS]. */
-    private fun collectVisibleText(node: ReadableNode?, budget: StringBuilder, out: MutableList<String>) {
-        if (node == null || !node.isVisibleToUser || budget.length >= MAX_CAPTURE_CHARS) return
+    /** Depth-first collection of visible text/content-desc for verified descendants only, stopping at [MAX_CAPTURE_CHARS]. */
+    private fun collectVisibleText(node: ReadableNode?, expectedPackage: String, budget: StringBuilder, out: MutableList<String>) {
+        if (node == null || budget.length >= MAX_CAPTURE_CHARS) return
+        if (node.packageName != expectedPackage) return
+        if (!node.isVisibleToUser) return
         val text = node.text?.toString() ?: node.contentDescription?.toString()
         if (!text.isNullOrBlank()) {
             out.add(text)
@@ -119,7 +125,7 @@ class SocialCapture internal constructor(
         }
         for (i in 0 until node.childCount) {
             val child = node.getChild(i)
-            collectVisibleText(child, budget, out)
+            collectVisibleText(child, expectedPackage, budget, out)
             child?.recycle()
             if (budget.length >= MAX_CAPTURE_CHARS) return
         }

@@ -308,7 +308,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
     final l10n = context.l10n;
     final st = _draft.screenTime;
     void update(ScreenTimeRule Function(ScreenTimeRule) f) =>
-        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: f(st), webFilter: _draft.webFilter, appRules: _draft.appRules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
+        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: f(st), webFilter: _draft.webFilter, appRules: _draft.appRules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, searchMonitoring: _draft.searchMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
 
     Widget timeTile(String label, String value, ValueChanged<TimeOfDay> onPicked) => Padding(
           padding: const EdgeInsets.symmetric(vertical: AppSpace.xxs),
@@ -399,7 +399,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
     final l10n = context.l10n;
     final wf = _draft.webFilter;
     void update(WebFilterRule Function(WebFilterRule) f) =>
-        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: f(wf), appRules: _draft.appRules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
+        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: f(wf), appRules: _draft.appRules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, searchMonitoring: _draft.searchMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
 
     // Recommended categories first, then any legacy extras still editable.
     final categories = [...kRecommendedCategories, for (final c in _kCategories) if (!kRecommendedCategories.contains(c)) c];
@@ -487,10 +487,10 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
             .any((d) => d.childId == widget.childId && d.platform == 'android') ??
         false;
     void update(List<AppRule> rules) =>
-        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: _draft.webFilter, appRules: rules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
+        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: _draft.webFilter, appRules: rules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, searchMonitoring: _draft.searchMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
 
     void updateAlwaysAllowed(List<String> apps) =>
-        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: _draft.webFilter, appRules: _draft.appRules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: apps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
+        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: _draft.webFilter, appRules: _draft.appRules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, searchMonitoring: _draft.searchMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: apps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
 
     return ListView(
       key: const ValueKey('appsRulesList'),
@@ -667,7 +667,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
   Widget _buildRoutines() {
     final l10n = context.l10n;
     void update(List<Routine> routines) =>
-        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: _draft.webFilter, appRules: _draft.appRules, routines: routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
+        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: _draft.webFilter, appRules: _draft.appRules, routines: routines, socialMonitoring: _draft.socialMonitoring, searchMonitoring: _draft.searchMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
 
     Future<void> edit([Routine? existing]) async {
       final result = await showDialog<Routine>(

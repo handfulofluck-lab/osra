@@ -17,11 +17,18 @@ import com.familyshield.agent.network.dto.SearchEventDto
 import com.familyshield.agent.network.dto.SocialScanBatchDto
 import com.familyshield.agent.network.dto.SocialScanBatchResultDto
 import com.familyshield.agent.network.dto.SocialScanDto
+import com.familyshield.agent.network.dto.SocialScanItemResultDto
 import com.familyshield.agent.network.dto.TelemetryDto
 import com.familyshield.agent.social.ScanQueuePolicy
 import com.familyshield.agent.social.SocialScanQueue
 import java.io.IOException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -32,7 +39,9 @@ import retrofit2.Response
  * Contract tests for `osra-security#45`:
  * - default-off (`absent` / `null` / `false`) and revoked `searchMonitoring` opt-in
  * - minimal payload (`SearchEventDto` & `ParsedSearch` drop URL data)
- * - durable `pending_scans` queue delivery and process-restart recovery.
+ * - consent pause & approval-epoch enforcement during enqueue & upload
+ * - full opt-out cleanup beyond `BATCH_SIZE` in a realistic mixed backlog + re-enable path
+ * - delayed `flushJob` lifecycle without self-cancellation and process-restart recovery.
  */
 class SearchDurableQueueTest {
 
@@ -65,19 +74,35 @@ class SearchDurableQueueTest {
             rows.removeAll { it.createdAt < olderThanMs || it.attempts >= maxAttempts }
             return before - rows.size
         }
+
+        override suspend fun deleteBySource(source: String): Int {
+            val before = rows.size
+            rows.removeAll { it.source == source }
+            return before - rows.size
+        }
+
+        override suspend fun deleteBefore(beforeMs: Long): Int {
+            val before = rows.size
+            rows.removeAll { it.createdAt < beforeMs }
+            return before - rows.size
+        }
     }
 
     private class FakeSearchApi : ApiService {
         var offline = false
         val postedSearches = mutableListOf<SearchEventDto>()
+        val postedSocialBatches = mutableListOf<SocialScanBatchDto>()
 
         override suspend fun postSearchEvent(event: SearchEventDto) {
             if (offline) throw IOException("network unavailable")
             postedSearches.add(event)
         }
 
-        override suspend fun postSocialScanBatch(batch: SocialScanBatchDto): SocialScanBatchResultDto =
-            SocialScanBatchResultDto()
+        override suspend fun postSocialScanBatch(batch: SocialScanBatchDto): SocialScanBatchResultDto {
+            if (offline) throw IOException("network unavailable")
+            postedSocialBatches.add(batch)
+            return SocialScanBatchResultDto(batch.items.map { SocialScanItemResultDto(ok = true) })
+        }
 
         override suspend fun postInternalAlert(alert: AlertDto) {}
         override suspend fun getRules(childId: String): RuleSetDto = throw UnsupportedOperationException()
@@ -119,10 +144,14 @@ class SearchDurableQueueTest {
     }
 
     @Test
-    fun `durable queue rejects absent opt-in, recovers across restart when enabled, and purges if revoked`() = runBlocking {
+    fun `durable queue honors consent epoch, purges all search rows beyond batch size on opt-out, and recovers across restart`() = runBlocking {
         val dao = FakePendingScanDao()
         val api = FakeSearchApi()
         var optIn = false
+        var paused = false
+        var epoch = 0L
+        var resumedAtMs = 0L
+        var storedEpoch: Long? = null
         var retryCount = 0
 
         fun newQueueInstance(): SocialScanQueue = SocialScanQueue(
@@ -132,6 +161,11 @@ class SearchDurableQueueTest {
             deviceIdProvider = { "dev-1" },
             allowlistProvider = { emptyList() },
             searchMonitoringEnabledProvider = { optIn },
+            consentPausedProvider = { paused },
+            consentEpochProvider = { epoch },
+            consentResumedAtProvider = { resumedAtMs },
+            getStoredConsentEpoch = { storedEpoch },
+            setStoredConsentEpoch = { storedEpoch = it },
             retryScheduler = { retryCount++ },
         )
 
@@ -140,38 +174,109 @@ class SearchDurableQueueTest {
         assertFalse(q1.enqueueForFlush(app = "google", contact = null, text = "science fair", nowMs = 1_000L, source = ScanQueuePolicy.SOURCE_SEARCH))
         assertEquals(0, dao.count())
 
-        // 2. Opt-in enabled while offline: durable row persists with attempts bumped and retry scheduled.
+        // 2. Opt-in enabled while offline: durable row persists, then delivers after restart when online.
         optIn = true
         api.offline = true
-        assertTrue(q1.enqueueForFlush(app = "google", contact = null, text = "science fair", nowMs = System.currentTimeMillis(), source = ScanQueuePolicy.SOURCE_SEARCH))
-        assertEquals(1, dao.count())
-        assertEquals(ScanQueuePolicy.SOURCE_SEARCH, dao.rows.single().source)
-
+        val baseNow = System.currentTimeMillis()
+        assertTrue(q1.enqueueForFlush(app = "google", contact = null, text = "science fair", nowMs = baseNow, source = ScanQueuePolicy.SOURCE_SEARCH))
         q1.flush()
         assertTrue(api.postedSearches.isEmpty())
-        assertEquals(1, dao.count())
         assertEquals(1, dao.rows.single().attempts)
         assertEquals(1, retryCount)
 
-        // 3. Simulated process restart with fresh SocialScanQueue over the same DAO while online: delivers minimal query.
         api.offline = false
         val restartedQueue = newQueueInstance()
         restartedQueue.flush()
         assertEquals(0, dao.count())
         assertEquals(1, api.postedSearches.size)
-        val sent = api.postedSearches.single()
-        assertEquals("child-1", sent.childId)
-        assertEquals("dev-1", sent.deviceId)
-        assertEquals("google", sent.engine)
-        assertEquals("science fair", sent.query)
+        assertEquals("google", api.postedSearches.single().engine)
+        assertEquals("science fair", api.postedSearches.single().query)
 
-        // 4. Opt-in revoked before flush after restart: deletes queued search row without posting.
-        assertTrue(restartedQueue.enqueueForFlush(app = "youtube", contact = null, text = "coding tutorial", nowMs = System.currentTimeMillis(), source = ScanQueuePolicy.SOURCE_SEARCH))
-        assertEquals(1, dao.count())
+        // 3. Realistic mixed backlog > BATCH_SIZE (55 older social rows + 5 newer search rows):
+        //    revoking search opt-out deletes ALL pending search rows (even past BATCH_SIZE=50),
+        //    while social rows continue flushing; re-enabling opt-in captures again.
+        for (i in 1..55) {
+            dao.insert(PendingScanEntity(app = "whatsapp", contact = "Alex", text = "msg $i", source = ScanQueuePolicy.SOURCE_SCREEN, createdAt = baseNow + i))
+        }
+        for (j in 1..5) {
+            dao.insert(PendingScanEntity(app = "youtube", contact = null, text = "query $j", source = ScanQueuePolicy.SOURCE_SEARCH, createdAt = baseNow + 100 + j))
+        }
+        assertEquals(60, dao.count())
         optIn = false
-        val postRevokeQueue = newQueueInstance()
-        postRevokeQueue.flush()
+        restartedQueue.flush()
+        assertTrue("all search rows past BATCH_SIZE must be purged on opt-out", dao.rows.none { it.source == ScanQueuePolicy.SOURCE_SEARCH })
+        assertEquals(5, dao.count()) // 5 remaining social rows after BATCH_SIZE=50 flushed
+        assertTrue(api.postedSearches.size == 1) // no revoked searches sent
+
+        optIn = true
+        restartedQueue.flush()
         assertEquals(0, dao.count())
-        assertEquals(1, api.postedSearches.size)
+        // Advance beyond SocialScanQueue.RATE_WINDOW_MS (60s) after flushing the 55-item backlog (> 30/min cap).
+        val postBacklogNow = System.currentTimeMillis() + SocialScanQueue.RATE_WINDOW_MS + 10_000L
+        assertTrue(restartedQueue.enqueueForFlush(app = "youtube", contact = null, text = "re-enabled query", nowMs = postBacklogNow, source = ScanQueuePolicy.SOURCE_SEARCH))
+        restartedQueue.flush()
+        assertEquals(2, api.postedSearches.size)
+        assertEquals("re-enabled query", api.postedSearches.last().query)
+
+        // 4. Consent pause & epoch transition: rows queued under revoked epoch never upload after re-grant.
+        assertTrue(restartedQueue.enqueueForFlush(app = "google", contact = null, text = "pre-revoke search", nowMs = postBacklogNow + 300, source = ScanQueuePolicy.SOURCE_SEARCH))
+        assertTrue(restartedQueue.enqueueForFlush(app = "whatsapp", contact = "Alex", text = "pre-revoke chat", nowMs = postBacklogNow + 301, source = ScanQueuePolicy.SOURCE_SCREEN))
+        paused = true
+        epoch = 1L
+        val sentBeforePause = api.postedSearches.size
+        val socialBeforePause = api.postedSocialBatches.sumOf { it.items.size }
+        assertFalse(restartedQueue.enqueueForFlush(app = "google", contact = null, text = "paused search", nowMs = postBacklogNow + 350, source = ScanQueuePolicy.SOURCE_SEARCH))
+        restartedQueue.flush()
+        assertEquals(sentBeforePause, api.postedSearches.size)
+        assertEquals(socialBeforePause, api.postedSocialBatches.sumOf { it.items.size })
+
+        resumedAtMs = postBacklogNow + 400
+        paused = false
+        assertTrue(restartedQueue.enqueueForFlush(app = "google", contact = null, text = "post-regrant search", nowMs = postBacklogNow + 450, source = ScanQueuePolicy.SOURCE_SEARCH))
+        restartedQueue.flush()
+        assertEquals(0, dao.count())
+        assertEquals(sentBeforePause + 1, api.postedSearches.size)
+        assertEquals("post-regrant search", api.postedSearches.last().query)
+        assertEquals(socialBeforePause, api.postedSocialBatches.sumOf { it.items.size })
+    }
+
+    @Test
+    fun `delayed flush job completes end-to-end for enqueue and enqueueSearch without self-cancelling`() = runBlocking {
+        val dao = FakePendingScanDao()
+        val api = FakeSearchApi()
+        var storedEpoch: Long? = null
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val queue = SocialScanQueue(
+                api = api,
+                dao = dao,
+                childIdProvider = { "child-1" },
+                deviceIdProvider = { "dev-1" },
+                allowlistProvider = { emptyList() },
+                searchMonitoringEnabledProvider = { true },
+                consentPausedProvider = { false },
+                consentEpochProvider = { 0L },
+                consentResumedAtProvider = { 0L },
+                getStoredConsentEpoch = { storedEpoch },
+                setStoredConsentEpoch = { storedEpoch = it },
+                retryScheduler = {},
+                scope = testScope,
+                flushDelayMs = 40L,
+            )
+
+            queue.enqueue(app = "whatsapp", contact = "Alex", text = "delayed social msg", nowMs = System.currentTimeMillis())
+            queue.enqueueSearch(engine = "google", query = "delayed search query", nowMs = System.currentTimeMillis())
+
+            withTimeout(5_000L) {
+                while (dao.count() > 0 || api.postedSocialBatches.isEmpty() || api.postedSearches.isEmpty()) {
+                    delay(20L)
+                }
+            }
+            assertEquals("delayed search query", api.postedSearches.single().query)
+            assertEquals("delayed social msg", api.postedSocialBatches.single().items.single().text)
+            assertEquals("dev-1", api.postedSocialBatches.single().deviceId)
+        } finally {
+            testScope.cancel()
+        }
     }
 }
