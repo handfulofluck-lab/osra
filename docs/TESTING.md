@@ -678,6 +678,17 @@ Family Controls or TestFlight. Those need an Apple account, and roadmap 5.1 / 5.
 
 ## 5. Hardware verification (physical device)
 
+### Stop a parent-initiated ring (#866)
+
+The parent can choose **Stop ringing** beside Ring on a child device card or in the
+map callout. The action sends a stop to the selected device. The confirmation says
+the command is queued while the device has not acknowledged it.
+
+The widget rows in `apps/parent-app/test/stop_ring_test.dart` load an acknowledged
+ring on a synthetic device. They cover the two parent entry points and the queued
+message. During a scheduled handset check, confirm that the selected phone stops
+and that its command history records the acknowledgement.
+
 ### 5.0 One lease at a time (binding — `AGENTS.md` §9)
 
 The handset is the maintainer's Samsung Galaxy Z Flip4, `adb` serial **R5CW116Y6GF**, attached to this

@@ -1,6 +1,9 @@
 package com.familyshield.agent.data
 
+import android.content.Context
 import android.util.Log
+import com.familyshield.agent.vpn.VpnState
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -50,6 +53,7 @@ object ConsentPolicy {
 @Singleton
 class ConsentState @Inject constructor(
     private val settings: AgentSettings,
+    @ApplicationContext private val context: Context,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -119,6 +123,7 @@ class ConsentState @Inject constructor(
         if (next) {
             paused = true
             pauseEpoch += 1 // after the flag: a harvest seeing the new epoch also sees paused == true
+            VpnState.clearFilterLoss(context)
         } else {
             resumedAtMs = System.currentTimeMillis()
             paused = false // after the time: a harvest seeing paused == false also sees the new resumedAtMs
