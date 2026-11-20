@@ -135,6 +135,11 @@ run "staging_defaults_are_unchanged" {
   }
 
   assert {
+    condition     = length(aws_vpc_endpoint.staging_qa_bedrock) == 0 && length(aws_ecs_service.staging_qa_analyzer) == 0 && !contains([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.name], "OSRA_STAGING_QA_ANALYZER_ENABLED")
+    error_message = "staging QA creates no endpoint, service or API gate unless explicitly requested"
+  }
+
+  assert {
     condition     = length(aws_cloudwatch_log_metric_filter.family_plan) == 0 && length(aws_cloudwatch_metric_alarm.family_plan) == 0
     error_message = "with alarms_enabled false there are no family plan filters or alarms (#816)"
   }
@@ -194,6 +199,61 @@ run "staging_defaults_are_unchanged" {
   assert {
     condition     = aws_vpc_security_group_egress_rule.api_https.from_port == 443 && aws_vpc_security_group_egress_rule.api_https.to_port == 443 && aws_vpc_security_group_egress_rule.api_to_rds.from_port == 5432 && aws_vpc_security_group_egress_rule.api_to_redis.from_port == 6379
     error_message = "API tasks may leave only on 443, plus PostgreSQL and Redis inside the VPC (#766 item 6)"
+  }
+}
+
+run "armed_qa_analyzer_plans_only_the_private_scoped_route" {
+  command = plan
+
+  variables {
+    api_image           = "example/api:test"
+    allowed_account_ids = [format("%012d", 0)]
+    staging_qa_analyzer = {
+      armed               = true
+      image_digest        = "sha256:${sha256("qa-image")}"
+      frankfurt_vpc_cidr  = format("%d.%d.%d.%d/%d", 10, 40, 0, 0, 24)
+      prompt_secret_arn   = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-prompt", 0)
+      approval_secret_arn = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-approval", 0)
+      pairing_secret_arn  = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-pairing", 0)
+    }
+  }
+
+  override_resource {
+    target          = aws_vpc_endpoint.staging_qa_bedrock[0]
+    override_during = plan
+
+    values = {
+      id = "vpce-test"
+      dns_entry = [{
+        dns_name       = "vpce-test.example.internal"
+        hosted_zone_id = "ZTEST"
+      }]
+    }
+  }
+
+  assert {
+    condition     = aws_vpc_endpoint.staging_qa_bedrock[0].region == "eu-central-1" && aws_vpc_endpoint.staging_qa_bedrock[0].vpc_endpoint_type == "Interface" && !one(aws_ecs_service.staging_qa_analyzer[0].network_configuration).assign_public_ip
+    error_message = "the service stays private and the model endpoint remains in Frankfurt"
+  }
+
+  assert {
+    condition = jsondecode(aws_iam_role_policy.staging_qa_analyzer_task[0].policy).Statement == [{
+      Effect   = "Allow"
+      Action   = "bedrock:InvokeModel"
+      Resource = "arn:aws:bedrock:eu-central-1::foundation-model/openai.gpt-oss-20b-1:0"
+      Condition = {
+        StringEquals = {
+          "aws:RequestedRegion" = "eu-central-1"
+          "aws:SourceVpce"      = "vpce-test"
+        }
+      }
+    }]
+    error_message = "the task may invoke only GPT OSS 20B through the one Frankfurt endpoint"
+  }
+
+  assert {
+    condition     = one([for s in jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].secrets : s.valueFrom if s.name == "OSRA_STAGING_QA_SYSTEM_PROMPT"]) == var.staging_qa_analyzer.prompt_secret_arn && !contains([for s in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].secrets : s.name], "OSRA_STAGING_QA_SYSTEM_PROMPT")
+    error_message = "only the analyzer receives a reference to the approved prompt"
   }
 }
 
