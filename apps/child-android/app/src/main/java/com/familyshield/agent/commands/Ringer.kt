@@ -44,6 +44,7 @@ object Ringer {
     private var focusRequest: AudioFocusRequest? = null
     private var volumeWatch: BroadcastReceiver? = null
     private var watchedApp: Context? = null
+    private var ringSessionId: Long = 0L
 
     /** How many times the stream was pushed back up during the ring. Read by the ack/report path. */
     @Volatile var volumeRestorations: Int = 0
@@ -81,6 +82,7 @@ object Ringer {
                 return
             }
             player = p
+            ringSessionId = maxOf(ringSessionId + 1, System.currentTimeMillis())
             volumeRestorations = 0
             holdFocus(app)
             watchVolume(app)
@@ -130,7 +132,40 @@ object Ringer {
             }
             previousVolume = -1
         }
+        val attempts = volumeRestorations
+        val sessionId = ringSessionId
+        volumeRestorations = 0
         isRinging = false
+        if (RingPolicy.shouldReportVolumeAttempts(attempts)) {
+            reportVolumeAttempts(app, attempts, sessionId)
+        }
+    }
+
+    private fun reportVolumeAttempts(app: Context, attempts: Int, sessionId: Long) {
+        scope.launch {
+            runCatching {
+                val entry = dagger.hilt.android.EntryPointAccessors.fromApplication(
+                    app,
+                    com.familyshield.agent.di.WorkerEntryPoint::class.java,
+                )
+                val settings = entry.agentSettings()
+                val childId = settings.childId() ?: return@launch
+                val deviceId = settings.deviceId()
+                entry.apiService().postInternalAlert(
+                    com.familyshield.agent.network.dto.AlertDto(
+                        childId = childId,
+                        deviceId = deviceId,
+                        severity = "info",
+                        category = "ring_volume",
+                        title = "Tried to turn the ring down",
+                        body = RingPolicy.ringVolumeAlertBody(attempts),
+                        metadata = mapOf("type" to "ring_volume", "count" to attempts.toString()),
+                        dedupeKey = RingPolicy.ringVolumeDedupeKey(deviceId, sessionId),
+                        attemptCount = attempts,
+                    ),
+                )
+            }.onFailure { Log.w(TAG, "ring_volume alert not posted: ${it.message}") }
+        }
     }
 
     /** `AUDIOFOCUS_GAIN`, not transient or may-duck: another app must not be able to lower the ring. */

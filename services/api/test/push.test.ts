@@ -913,4 +913,32 @@ describe("the wake log (#673, Claude a4 / Fable B1-B2)", () => {
     expect(lines).toContain("reason=UNREGISTERED");
     expect(lines).toContain("tokenCleared=true");
   });
+
+  it("keeps info ring_volume alerts in the Alerts list without pushing (osra-security#42, UI/UX 7015553552)", async () => {
+    expect(shouldPush({ severity: "info", category: "ring_volume" }, "info")).toBe(false);
+    expect(shouldPush({ severity: "warning", category: "ring_volume" }, "info")).toBe(true);
+
+    const provider = new FakeProvider();
+    setPushProviders([provider]);
+    prismaMock.digestPrefs.findUnique.mockResolvedValue(null);
+    prismaMock.parent.findMany.mockResolvedValue([{ id: "parent-1" }]);
+    prismaMock.parentPushToken.findMany.mockResolvedValue([
+      { id: "t1", parentId: "parent-1", token: "tok-1", platform: "android" },
+    ]);
+
+    const outcome = await notifyParentsOfAlert(
+      "fam-1",
+      {
+        id: "alert-ring-1",
+        childId: "child-1",
+        severity: "info",
+        category: "ring_volume",
+        title: "Tried to turn the ring down",
+        body: "Tried to turn down the ring volume 5 times. The phone kept ringing.",
+      },
+      "Alex",
+    );
+    expect(outcome).toEqual({ recipients: 0, delivered: 0, pruned: 0, skipped: "severity" });
+    expect(provider.sent).toHaveLength(0);
+  });
 });
