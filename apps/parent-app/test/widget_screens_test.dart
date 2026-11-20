@@ -705,20 +705,43 @@ void main() {
       expect(find.text('Game'), findsNothing);
     });
 
-    testWidgets('Save PUTs the full ruleset with all four sections', (tester) async {
-      final api = FakeApiClient(standardRoutes());
+    testWidgets('Save retries removal of the final app rule after a refusal', (tester) async {
+      var saveAttempts = 0;
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'PATCH /v1/rules/child-1': (request) {
+          saveAttempts++;
+          if (saveAttempts == 1) {
+            return const FakeHttpError(428, {'error': 'parental_consent_required'});
+          }
+          return request.body;
+        },
+      });
       await pumpRules(tester, api);
+
+      await tester.tap(find.text('Apps'));
+      await tester.pumpAndSettle();
+      final gameCard = find.ancestor(of: find.text('Game'), matching: find.byType(Card));
+      await tester.tap(find.descendant(of: gameCard, matching: find.byIcon(Icons.delete_outline)));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
 
-      final puts = api.calls('PUT', '/v1/rules/child-1');
-      expect(puts, hasLength(1));
-      final body = puts.single.body;
-      expect(body.keys, containsAll(['screenTime', 'webFilter', 'appRules', 'routines']));
-      expect((body['screenTime'] as Map)['dailyLimitMinutes'], 120);
-      expect(body['appRules'], hasLength(1));
-      expect(body['routines'], hasLength(1));
+      final firstSave = api.calls('PATCH', '/v1/rules/child-1');
+      expect(firstSave, hasLength(1));
+      expect(firstSave.single.body, {'appRules': <Object>[]});
+      expect(find.byType(MaterialBanner), findsOneWidget);
+      expect(find.text('Rules saved'), findsNothing);
+
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      // Advancing the saved baseline before the request succeeds empties this retry.
+      final saves = api.calls('PATCH', '/v1/rules/child-1');
+      expect(saves, hasLength(2));
+      expect(saves.last.body, {'appRules': <Object>[]});
+      expect(find.byType(MaterialBanner), findsNothing);
       expect(find.text('Rules saved'), findsOneWidget);
     });
   });
@@ -774,9 +797,9 @@ void main() {
       // The uncheck is part of the draft and is what gets saved.
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
-      final puts = api.calls('PUT', '/v1/rules/child-1');
-      expect(puts, hasLength(1));
-      expect((puts.single.body['webFilter'] as Map)['blockedCategories'], isEmpty);
+      final patches = api.calls('PATCH', '/v1/rules/child-1');
+      expect(patches, hasLength(1));
+      expect((patches.single.body['webFilter'] as Map)['blockedCategories'], isEmpty);
     });
 
     testWidgets('cancel on the confirm dialog keeps all 13 checked', (tester) async {
@@ -794,7 +817,7 @@ void main() {
         await reveal(tester, categoryTile(c));
         expect(categoryChecked(tester, c), isTrue, reason: '$c should stay checked');
       }
-      expect(api.calls('PUT', '/v1/rules/child-1'), isEmpty);
+      expect(api.calls('PATCH', '/v1/rules/child-1'), isEmpty);
     });
 
     testWidgets('partial selection shows the switch OFF; turning ON checks all 13', (tester) async {
