@@ -1,20 +1,20 @@
-### iOS — the launch case retries a simulator start once; every escape row stays red on its first failure (#739)
-- A simulator launch timeout has cost two runs: #932 at a fold, and #949 where the smoke case failed before any app
-  code ran. Both were the runner failing to get the app up, not the app failing once up.
-- The retry is bounded to the one case that measures a start: `AgentLaunchTests` runs with
-  `-retry-tests-on-failure -test-iterations 2`, and nothing else does. The escape rows run in a second invocation with
-  `-skip-testing:OSRAAgentUITests/AgentLaunchTests` and no retry flags, so an assertion failure there is red at its
-  first iteration.
-- **A green job no longer hides a launch failure.** A passing case is run once, so two "started" lines mean the first
-  attempt failed and the retry is why the job is green. A step reads the saved log and, when that happens, posts a
-  warning annotation and a row in the job summary saying so.
-- **The first attempt is preserved:** both invocations write `-resultBundlePath` bundles and the launch log is kept,
-  and all of it is uploaded as `ios-ui-results-<run>-<attempt>` (7 days), so the retry's evidence survives the run.
-- **The trade-off, stated rather than assumed:** a launch flake that happens inside a seeded row's `setUp` is no longer
-  absorbed, and will fail the job. That is deliberate — the bound is the case we have evidence for. If a seeded row
-  shows the same runner failure, the fix is to extend the bound with that evidence, not to retry the suite.
+### iOS — one retry, and only when the simulator failed to launch the app (#739)
+- A simulator launch timeout has cost two runs: #932 at a fold, and #949 where the smoke case failed with
+  `Timed out while launching application via Xcode` *before any app code ran*. Both were the runner, not the app.
+- **The first result is classified before anything is retried.** The launch case runs once, with no retry flags. If it
+  passes, nothing else happens. If it fails and the log carries a launch failure (`Timed out while launching
+  application`, `Failed to launch`, `FBSOpenApplicationServiceErrorDomain`, `Unable to launch`, `launch services`),
+  that one case runs a second time. If it fails for any other reason — an assertion, a missing element, a timeout
+  inside the test body — the step exits red on the **first** result and nothing is retried.
+- The escape rows never retry: they run in a second invocation with `-skip-testing:OSRAAgentUITests/AgentLaunchTests`
+  and no retry flags, so an assertion failure there is red at its first iteration.
+- **A green job says which of the two happened.** The step writes a row to the job summary: "Passed on its first run"
+  or "First run failed while launching the app on the simulator; retried once". A retry is therefore never silent.
+- **Both results are preserved:** `launch-1` and `launch-2` each keep a `.xcresult` and a log, next to the escape
+  rows' bundle, and all of it is uploaded as `ios-ui-results-<run>-<attempt>` for 7 days.
+- **The trade-off, stated rather than assumed:** a launch flake inside a seeded row's `setUp` is not absorbed and will
+  fail the job. The bound is the one case we have evidence for; widening it later needs that evidence.
 - Split out of #949 at Ahmed's request (his 7030240643), so a test change and a CI change are reviewed separately.
-- Verified: the workflow lints clean and both invocations name the same scheme and derived-data path, so the second
-  run reuses the build rather than compiling twice. **The retry has not fired in a real run yet**, because every case
-  passed on its first iteration at the head that introduced it. The recipe that would prove the bound is in the PR
-  body: plant an assertion failure in a seeded row and the job must go red with no second iteration.
+- Verified: `check-workflows --strict` is clean. **Neither path has fired in a real run yet** — every run since has
+  passed on its first launch. The recipe that proves both halves is in the PR body: restore the bare
+  `-retry-tests-on-failure` and plant an assertion failure in the launch case, which must now go red first.

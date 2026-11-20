@@ -223,50 +223,67 @@ jobs:
       # shield rows stay on the device. Same runner, same simulator, same triggers and concurrency group as
       # the rest of this job: no new job, no new schedule, no new path filter.
       # The launch timeout is the one failure this runner produces by itself; it cost two runs already (#932 at
-      # a fold, #949 before any app code ran). It is retried, and only it: the retry flags are on this one case,
-      # so an assertion failure in any escape row is red on its first iteration, which is the whole point.
-      - name: Run the launch smoke case, retrying a simulator start once
+      # a fold, #949 before any app code ran). But a blanket retry also forgives a real app assertion that
+      # happens to pass on a second launch, so this classifies the FIRST result before deciding: a failure whose
+      # log shows the app never launched is retried once, and anything else exits red on its first result.
+      - name: Run the launch smoke case, retrying only a simulator start failure
         working-directory: apps/child-ios
         run: |
           DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for r,l in d.items() if "iOS" in r for x in l if x["name"].startswith("iPhone")))')"
           echo "Simulator: $DEVICE_ID"
           mkdir -p .build/uiResults
-          # pipefail, so tee cannot turn a failed run into a green step.
-          set -o pipefail
-          xcodebuild test \
-            -project OSRAAgent.xcodeproj \
-            -scheme OSRAAgentUI \
-            -destination "id=$DEVICE_ID" \
-            -derivedDataPath .build/uiDerivedData \
-            -only-testing:OSRAAgentUITests/AgentLaunchTests \
-            -retry-tests-on-failure \
-            -test-iterations 2 \
-            -resultBundlePath .build/uiResults/launch-smoke.xcresult \
-            2>&1 | tee .build/uiResults/launch-smoke.log
+          RESULTS=.build/uiResults
+          run_launch() {
+            xcodebuild test \
+              -project OSRAAgent.xcodeproj \
+              -scheme OSRAAgentUI \
+              -destination "id=$DEVICE_ID" \
+              -derivedDataPath .build/uiDerivedData \
+              -only-testing:OSRAAgentUITests/AgentLaunchTests \
+              -resultBundlePath "$RESULTS/$1.xcresult" \
+              2>&1 | tee "$RESULTS/$1.log"
+          }
 
-      # A green job that hid a launch failure is the thing Codex objected to, so say when that happened. A case
-      # that passes is run once; two starts means the first attempt failed and the retry is why the job is green.
-      - name: Say whether the launch case needed its retry
+          # pipefail so tee cannot turn a failed run green; `set +e` only long enough to read the exit status,
+          # because the whole point of this step is to look at the failure before acting on it.
+          set -o pipefail
+          set +e
+          run_launch launch-1
+          first=$?
+          set -e
+          if [ "$first" -eq 0 ]; then
+            echo "the launch case passed on its first run; nothing was retried"
+            exit 0
+          fi
+
+          # The signatures of a simulator that never got the app up. Anything else — an XCTAssert failure, a
+          # missing element, a timeout inside the test body — is the app or the row, and is not retried.
+          if ! grep -qiE 'timed out while launching application|failed to launch|FBSOpenApplicationServiceErrorDomain|unable to launch|launch services' "$RESULTS/launch-1.log"; then
+            echo "::error::the launch case failed on its own assertions, not on a simulator start. Not retrying: this is the regression the retry must never hide."
+            exit "$first"
+          fi
+
+          echo "::warning title=Simulator launch flake::the first run failed while launching the app on the simulator, so that case is retried once. Both result bundles are kept; read launch-1 before believing the green."
+          echo "first run: simulator start failure" > "$RESULTS/retried"
+          run_launch launch-2
+
+      # A green job must not hide which of the two things happened, so say it on the run instead of only in a log.
+      - name: Say what the launch case did
         if: always()
         working-directory: apps/child-ios
         run: |
-          LOG=.build/uiResults/launch-smoke.log
-          if [ ! -f "$LOG" ]; then echo "no launch log: the step did not start"; exit 0; fi
-          # awk, not `grep -c`: awk exits 0 on no match, so the count needs no `|| true` to hide a failure.
-          STARTS="$(awk '/Test Case .-\[AgentLaunchTests testTheAppLaunchesToThePairingScreen\] started\./ { n++ } END { print n + 0 }' "$LOG")"
-          echo "the launch case started $STARTS time(s)"
-          RETRIED=no
-          if [ "$STARTS" -gt 1 ]; then RETRIED=yes; fi
+          RESULTS=.build/uiResults
           {
             echo "### Launch smoke case"
             echo ""
-            echo "| started | retried |"
-            echo "|---|---|"
-            echo "| $STARTS | $RETRIED |"
+            if [ -f "$RESULTS/retried" ]; then
+              echo "First run failed **while launching the app on the simulator**; the case was retried once and the job follows that second run. Both bundles and both logs are uploaded."
+            elif [ -f "$RESULTS/launch-1.log" ]; then
+              echo "Passed on its first run; no retry was used."
+            else
+              echo "Did not run."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ "$STARTS" -gt 1 ]; then
-            echo "::warning title=Simulator launch flake::the launch case needed its retry, so this run absorbed a simulator start failure. The first attempt is in launch-smoke.xcresult and launch-smoke.log. An app-start regression that recovers on a second launch looks exactly like this, so read the first attempt before believing the green."
-          fi
 
       - name: Run the escape rows (KP01's screens) inside the simulator, with no retry
         working-directory: apps/child-ios
