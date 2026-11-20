@@ -618,7 +618,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
           Padding(
             key: const ValueKey('iosAppsExplained'),
             padding: const EdgeInsets.only(bottom: AppSpace.sm),
-            child: Text(l10n.appGroupsBody, style: Theme.of(context).textTheme.bodyMedium),
+            child: Text(l10n.appGroupsEditorNote, style: Theme.of(context).textTheme.bodyMedium),
           ),
         // U33 (#868): the only way to add a rule is the picker — the package-id dialog is gone, because
         // an app the phone has not reported is not one a parent can meaningfully rule on yet.

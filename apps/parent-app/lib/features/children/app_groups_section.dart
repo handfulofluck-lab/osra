@@ -73,7 +73,6 @@ class _AppGroupsSectionState extends ConsumerState<AppGroupsSection> {
         children: [
           Text(l10n.appGroupsTitle, style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: AppSpace.xxs),
-          Text(l10n.appGroupsBody, style: Theme.of(context).textTheme.bodySmall),
           for (final g in groups)
             SwitchListTile(
               key: ValueKey('appGroup-${g.id}'),
@@ -85,6 +84,11 @@ class _AppGroupsSectionState extends ConsumerState<AppGroupsSection> {
               // Disabled until the rules are loaded, and while this group's change is being saved.
               onChanged: rules == null || _saving.contains(g.id) ? null : (v) => _set(g.id, v),
             ),
+          // U40 (`appGroupsBlockOnlyAdds`): a switch here can add a block but never lift one set on the
+          // phone itself, so the line sits under the whole list. The Bureau's first choice is an on-and-
+          // greyed switch for a group the phone reports as blocked; the phone does not report that state
+          // yet, so this is its second wording.
+          Text(l10n.appGroupsBlockOnlyAdds, style: Theme.of(context).textTheme.bodySmall),
         ],
       ),
     );

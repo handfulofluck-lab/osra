@@ -1216,6 +1216,14 @@ class AppLocalizationsAr extends AppLocalizations {
       'تظهر القائمة بعد تسجيل جهاز الطفل في المرة التالية (خلال 15 دقيقة كحد أقصى).';
 
   @override
+  String get appPickerIosEmptyTitle => 'لم تُختر أي تطبيقات بعد';
+
+  @override
+  String appPickerIosEmptyBody(String child) {
+    return 'افتح تطبيق أسرة على آيفون $child واختر التطبيقات التي تريد إدارتها، وستظهر هنا.';
+  }
+
+  @override
   String get installedAppsNoMatch => 'لا توجد تطبيقات تطابق بحثك.';
 
   @override
@@ -3293,8 +3301,18 @@ class AppLocalizationsAr extends AppLocalizations {
   String get appGroupsTitle => 'مجموعات التطبيقات على آيفون الطفل';
 
   @override
-  String get appGroupsBody =>
-      'تُنشأ المجموعات على آيفون الطفل باستخدام رمز PIN للوالدين. عند حظر مجموعة من هنا، تُحجب تطبيقاتها على آيفون الطفل.';
+  String get appsTabAndroidHeading => 'تطبيقات أندرويد';
+
+  @override
+  String get appsTabIphoneHeading => 'تطبيقات آيفون';
+
+  @override
+  String get appGroupsEditorNote =>
+      'تُدار تطبيقات آيفون من تبويب «التطبيقات». تنطبق القواعد في هذه الشاشة على تطبيقات أندرويد فقط.';
+
+  @override
+  String get appGroupsBlockOnlyAdds =>
+      'إيقاف هذا المفتاح لا يرفع الحظر عن تطبيقات حُظرت من جهاز آيفون نفسه.';
 
   @override
   String appGroupsCounts(Object apps, Object categories, Object sites) {

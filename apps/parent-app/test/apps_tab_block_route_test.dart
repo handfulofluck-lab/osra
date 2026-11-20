@@ -135,13 +135,50 @@ void main() {
       await pumpAppsTab(tester, api);
 
       expect(find.byKey(const ValueKey('appsTabIphoneSetupCard')), findsOneWidget);
-      expect(find.text('App groups on this iPhone'), findsOneWidget);
+      // U42 (#953): the iPhone empty state, with the child's name isolated so it survives an Arabic line.
+      expect(find.text('No apps chosen yet'), findsOneWidget);
       expect(
-        find.text("Groups are made on the child's iPhone, behind the parent PIN. Block one here and the iPhone shields its apps."),
+        find.text('Open Osra on \u2066Omar\u2069\'s iPhone and choose the apps you want to manage. '
+            'They\'ll appear here.'),
         findsOneWidget,
       );
+      expect(find.textContaining('PIN'), findsNothing, reason: 'U42: no PIN copy on any screen');
       expect(find.byKey(const ValueKey('appsTabManageAppsButton')), findsNothing);
       expect(find.text('No per-app rules'), findsNothing);
+    });
+
+    testWidgets('platform headings appear only for a child with both an Android phone and an iPhone', (tester) async {
+      Future<void> pumpWith(List<Map<String, dynamic>> devices) async {
+        final api = FakeApiClient({
+          ...standardRoutes(familyMe: familyWithDevices(devices)),
+          'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1'),
+          'GET /v1/devices/child/child-1/apps': (_) => {
+                'apps': [
+                  {'packageId': 'com.example.chat', 'label': 'Chat App'},
+                ],
+              },
+        });
+        await pumpAppsTab(tester, api);
+      }
+
+      final iphoneWithGroups = iphoneDevice(groups: [
+        {'id': gamesId, 'label': 'Games', 'apps': 4, 'categories': 1, 'sites': 0},
+      ]);
+
+      await pumpWith([iphoneWithGroups, androidDevice()]);
+      expect(find.byKey(const ValueKey('appsTabIphoneHeading')), findsOneWidget);
+      expect(find.byKey(const ValueKey('appsTabAndroidHeading')), findsOneWidget);
+      expect(find.text('iPhone apps'), findsOneWidget);
+      expect(find.text('Android apps'), findsOneWidget);
+
+      await pumpWith([iphoneWithGroups]);
+      expect(find.byKey(const ValueKey('appsTabIphoneHeading')), findsNothing,
+          reason: 'one platform needs no heading: the tab is about one list');
+      expect(find.byKey(const ValueKey('appsTabAndroidHeading')), findsNothing);
+
+      await pumpWith([androidDevice()]);
+      expect(find.byKey(const ValueKey('appsTabAndroidHeading')), findsNothing);
+      expect(find.byKey(const ValueKey('appsTabIphoneHeading')), findsNothing);
     });
 
     testWidgets('mixed iPhone + Android child exposes both group block controls and shipped Rules Apps tab', (tester) async {
