@@ -705,8 +705,18 @@ void main() {
       expect(find.text('Game'), findsNothing);
     });
 
-    testWidgets('Save patches the app rules when the final rule is removed', (tester) async {
-      final api = FakeApiClient(standardRoutes());
+    testWidgets('Save retries removal of the final app rule after a refusal', (tester) async {
+      var saveAttempts = 0;
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'PATCH /v1/rules/child-1': (request) {
+          saveAttempts++;
+          if (saveAttempts == 1) {
+            return const FakeHttpError(428, {'error': 'parental_consent_required'});
+          }
+          return request.body;
+        },
+      });
       await pumpRules(tester, api);
 
       await tester.tap(find.text('Apps'));
@@ -718,9 +728,20 @@ void main() {
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
 
-      final patches = api.calls('PATCH', '/v1/rules/child-1');
-      expect(patches, hasLength(1));
-      expect(patches.single.body, {'appRules': <Object>[]});
+      final firstSave = api.calls('PATCH', '/v1/rules/child-1');
+      expect(firstSave, hasLength(1));
+      expect(firstSave.single.body, {'appRules': <Object>[]});
+      expect(find.byType(MaterialBanner), findsOneWidget);
+      expect(find.text('Rules saved'), findsNothing);
+
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      // Advancing the saved baseline before the request succeeds empties this retry.
+      final saves = api.calls('PATCH', '/v1/rules/child-1');
+      expect(saves, hasLength(2));
+      expect(saves.last.body, {'appRules': <Object>[]});
+      expect(find.byType(MaterialBanner), findsNothing);
       expect(find.text('Rules saved'), findsOneWidget);
     });
   });

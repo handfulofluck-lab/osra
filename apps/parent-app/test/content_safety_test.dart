@@ -434,8 +434,10 @@ void main() {
 
       final patches = api.calls('PATCH', '/v1/rules/child-1');
       expect(patches, hasLength(1));
-      final webFilter = Map<String, dynamic>.from(patches.single.body['webFilter'] as Map);
-      expect(webFilter['youtubeRestrictedMode'], 'moderate');
+      // Sending the entire web filter would overwrite settings edited elsewhere.
+      expect(patches.single.body, {
+        'webFilter': {'youtubeRestrictedMode': 'moderate'},
+      });
     });
 
     testWidgets('renders off selected when API returns off on reload', (tester) async {
