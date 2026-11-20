@@ -83,6 +83,14 @@ timestamp), dashboard, map-sheet, call/SMS and bonus-time widgets with an Arabic
 Removing any one of the seven `ltrIsolate` calls must turn its corresponding row red. These are widget
 tests, not a phone run; no device claim or API access is used.
 
+For rules save compatibility (#951), run
+`flutter test test/rules_editor_limits_test.dart test/content_safety_test.dart test/installed_apps_picker_test.dart`
+from `apps/parent-app`. A saved, overlapping school schedule must survive an unrelated app edit.
+The editor sends a PATCH with the changed fields. A newly edited school window is still sent in
+full for server validation. App and YouTube edits leave the rest of the ruleset in place, and
+an empty school-day list stays empty on load. On staging, save and read back one app, web and
+YouTube edit on the signed parent app before marking the handset row passed.
+
 For Arabic and Latin list separators, run `flutter test test/localized_list_test.dart` from
 `apps/parent-app` (#794). Its nine tests cover the shared splitter and real Arabic-locale widgets for
 allowed/blocked domains, routine blocked/allowed apps and digest recipients. Each field saves both

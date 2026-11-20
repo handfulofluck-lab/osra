@@ -366,7 +366,7 @@ void main() {
   testWidgets('a 428 on a rule save says why in the banner, not the raw code', (tester) async {
     final api = FakeApiClient({
       ...standardRoutes(),
-      'PUT /v1/rules/child-1': (_) => const FakeHttpError(428, {'error': 'parental_consent_required'}),
+      'PATCH /v1/rules/child-1': (_) => const FakeHttpError(428, {'error': 'parental_consent_required'}),
     });
     await pumpScreen(tester, const RulesEditorScreen(childId: 'child-1'), api);
     await flushFakeHttp(tester);
@@ -376,7 +376,7 @@ void main() {
     await flushFakeHttp(tester);
     await tester.pumpAndSettle();
 
-    expect(api.calls('PUT', '/v1/rules/child-1'), hasLength(1));
+    expect(api.calls('PATCH', '/v1/rules/child-1'), hasLength(1));
     expect(
       find.descendant(
         of: find.byType(MaterialBanner),
@@ -399,7 +399,7 @@ void main() {
           'safeSearchEnforced': true,
           'youtubeRestrictedMode': 'strict',
         }),
-        'PUT /v1/rules/child-1': (req) => req.body,
+        'PATCH /v1/rules/child-1': (req) => req.body,
       });
 
       await pumpScreen(tester, const RulesEditorScreen(childId: 'child-1'), api);
@@ -432,9 +432,9 @@ void main() {
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
 
-      final puts = api.calls('PUT', '/v1/rules/child-1');
-      expect(puts, hasLength(1));
-      final webFilter = Map<String, dynamic>.from(puts.single.body['webFilter'] as Map);
+      final patches = api.calls('PATCH', '/v1/rules/child-1');
+      expect(patches, hasLength(1));
+      final webFilter = Map<String, dynamic>.from(patches.single.body['webFilter'] as Map);
       expect(webFilter['youtubeRestrictedMode'], 'moderate');
     });
 

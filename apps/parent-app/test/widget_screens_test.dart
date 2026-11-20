@@ -705,20 +705,22 @@ void main() {
       expect(find.text('Game'), findsNothing);
     });
 
-    testWidgets('Save PUTs the full ruleset with all four sections', (tester) async {
+    testWidgets('Save patches the app rules when the final rule is removed', (tester) async {
       final api = FakeApiClient(standardRoutes());
       await pumpRules(tester, api);
+
+      await tester.tap(find.text('Apps'));
+      await tester.pumpAndSettle();
+      final gameCard = find.ancestor(of: find.text('Game'), matching: find.byType(Card));
+      await tester.tap(find.descendant(of: gameCard, matching: find.byIcon(Icons.delete_outline)));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
 
-      final puts = api.calls('PUT', '/v1/rules/child-1');
-      expect(puts, hasLength(1));
-      final body = puts.single.body;
-      expect(body.keys, containsAll(['screenTime', 'webFilter', 'appRules', 'routines']));
-      expect((body['screenTime'] as Map)['dailyLimitMinutes'], 120);
-      expect(body['appRules'], hasLength(1));
-      expect(body['routines'], hasLength(1));
+      final patches = api.calls('PATCH', '/v1/rules/child-1');
+      expect(patches, hasLength(1));
+      expect(patches.single.body, {'appRules': <Object>[]});
       expect(find.text('Rules saved'), findsOneWidget);
     });
   });
@@ -774,9 +776,9 @@ void main() {
       // The uncheck is part of the draft and is what gets saved.
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
-      final puts = api.calls('PUT', '/v1/rules/child-1');
-      expect(puts, hasLength(1));
-      expect((puts.single.body['webFilter'] as Map)['blockedCategories'], isEmpty);
+      final patches = api.calls('PATCH', '/v1/rules/child-1');
+      expect(patches, hasLength(1));
+      expect((patches.single.body['webFilter'] as Map)['blockedCategories'], isEmpty);
     });
 
     testWidgets('cancel on the confirm dialog keeps all 13 checked', (tester) async {
@@ -794,7 +796,7 @@ void main() {
         await reveal(tester, categoryTile(c));
         expect(categoryChecked(tester, c), isTrue, reason: '$c should stay checked');
       }
-      expect(api.calls('PUT', '/v1/rules/child-1'), isEmpty);
+      expect(api.calls('PATCH', '/v1/rules/child-1'), isEmpty);
     });
 
     testWidgets('partial selection shows the switch OFF; turning ON checks all 13', (tester) async {
