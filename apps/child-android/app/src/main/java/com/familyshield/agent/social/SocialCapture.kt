@@ -21,6 +21,7 @@ class SocialCapture @Inject constructor(
     private val rules: RuleRepository,
     private val queue: SocialScanQueue,
     private val consent: ConsentState,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
 ) {
     private val lock = Any()
     private val lastCaptureAt = HashMap<String, Long>()
@@ -46,6 +47,7 @@ class SocialCapture @Inject constructor(
         }
         val (contact, message) = SocialHeuristics.extractContactAndMessage(texts)
         val redacted = message?.let { TextRedaction.redact(it) } ?: return
+        if (!TestChatCaptureGate.allows(context, appKey, contact)) return
         queue.enqueue(appKey, contact, redacted)
     }
 
