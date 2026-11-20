@@ -128,6 +128,7 @@ class IncomingRingWindowTest {
         assertEquals(emptyList<CallAction>(), enforcer1.onAudioMode(mode1, now1))
 
         // Ordering 2: MODE_RINGTONE -> notice -> MODE_IN_CALL -> 20 s tick.
+        // R1 fail-closed check: RINGTONE with no owner yet returns false; once dialer posts, isRinging() becomes true.
         IncomingRingWindow.resetForTest()
         var mode2 = CallAudioMode.RINGTONE
         var now2 = 5_000L
@@ -140,10 +141,10 @@ class IncomingRingWindowTest {
             clock = { now2 },
         )
         assertEquals(emptyList<CallAction>(), enforcer2.onAudioMode(mode2, now2))
-        assertTrue(enforcer2.isRinging(now2))
+        assertFalse("RINGTONE with no owner at all must fail closed", enforcer2.isRinging(now2))
         now2 = 5_300L
         assertEquals(emptyList<CallAction>(), enforcer2.onNotification(dialer, ringParcel, nowMs = now2))
-        assertTrue(enforcer2.isRinging(now2))
+        assertTrue("trusted dialer post opens RINGTONE exemption", enforcer2.isRinging(now2))
         mode2 = CallAudioMode.IN_CALL
         now2 = 7_000L
         assertEquals(emptyList<CallAction>(), enforcer2.onAudioMode(mode2, now2))
@@ -155,9 +156,69 @@ class IncomingRingWindowTest {
     }
 
     @Test
+    fun `osra-security 48 R1 - non-CATEGORY_CALL blocked ring and ownerless RINGTONE fail closed while dialer CATEGORY_CALL opens`() {
+        // Mutants (Ahmed R1, osra-security#48):
+        // - M_R1a: return `true` on `mode == RINGTONE` without `trustedRingOwner` -> ownerless RINGTONE exempts shade.
+        // - M_R1b: skip `lastPost` on non-`CATEGORY_CALL` parcel -> blocked VoIP app posting non-call notice before
+        //   RINGTONE gets no cover and leaves `isRinging()` open.
+        assertFalse(IncomingRingWindow.isRinging(CallAudioMode.RINGTONE, 1_000L, 0L, blockedRingActive = false, trustedRingOwner = false))
+        assertTrue(IncomingRingWindow.isRinging(CallAudioMode.RINGTONE, 1_000L, 0L, blockedRingActive = false, trustedRingOwner = true))
+
+        val dialer = "com.samsung.android.dialer"
+        val incallUi = "com.samsung.android.incallui"
+        val meet = "com.google.android.apps.tachyon"
+        val essential = setOf(dialer, incallUi)
+        var mode = CallAudioMode.NORMAL
+        var nowMs = 1_000L
+        val enforcer = CallEnforcer.Coordinator(
+            ownPackage = "com.osratech.child",
+            isBlocked = { pkg -> AccessibilityMonitorService.isNonEssentialBlocked(pkg in essential, lockedOrRuleBlocked = true) },
+            isEssential = { it in essential },
+            defaultDialerProvider = { dialer },
+            modeProvider = { mode },
+            clock = { nowMs },
+        )
+
+        // Row 1: under lock, blocked package posts non-CATEGORY_CALL notice, then RINGTONE -> ShowRingCover + isRinging()==false.
+        val nonCallParcel = CallParcel(isCall = false, hasDecline = false, hasHangUp = false, ongoing = true, postedAt = 1_000L)
+        assertEquals(emptyList<CallAction>(), enforcer.onNotification(meet, nonCallParcel, nowMs = nowMs))
+        mode = CallAudioMode.RINGTONE
+        nowMs = 1_200L
+        assertEquals(listOf(CallAction.ShowRingCover), enforcer.onAudioMode(mode, nowMs))
+        assertFalse(enforcer.isRinging(nowMs))
+        mode = CallAudioMode.NORMAL
+        nowMs = 2_000L
+        assertEquals(listOf(CallAction.RemoveRingCover), enforcer.onAudioMode(mode, nowMs))
+
+        // Row 2: RINGTONE with no owner at all -> isRinging()==false.
+        nowMs = 10_000L
+        mode = CallAudioMode.RINGTONE
+        assertEquals(emptyList<CallAction>(), enforcer.onAudioMode(mode, nowMs))
+        assertFalse(enforcer.isRinging(nowMs))
+        mode = CallAudioMode.NORMAL
+        nowMs = 11_000L
+        enforcer.onAudioMode(mode, nowMs)
+
+        // Row 3: dialer CATEGORY_CALL, then RINGTONE -> isRinging()==true, nothing declined, covered, hung up, or reported.
+        nowMs = 20_000L
+        val dialerCall = CallParcel(isCall = true, hasDecline = true, hasHangUp = false, ongoing = true, postedAt = 20_000L)
+        assertEquals(emptyList<CallAction>(), enforcer.onNotification(dialer, dialerCall, nowMs = nowMs))
+        mode = CallAudioMode.RINGTONE
+        nowMs = 20_200L
+        assertEquals(emptyList<CallAction>(), enforcer.onAudioMode(mode, nowMs))
+        assertTrue(enforcer.isRinging(nowMs))
+        mode = CallAudioMode.IN_CALL
+        nowMs = 22_000L
+        assertEquals(emptyList<CallAction>(), enforcer.onAudioMode(mode, nowMs))
+        assertFalse(enforcer.isRinging(nowMs))
+        nowMs = 45_000L
+        assertEquals(emptyList<CallAction>(), enforcer.onAudioMode(mode, nowMs))
+    }
+
+    @Test
     fun `a blocked or locked non-essential app ring never opens the shade exemption even in MODE_RINGTONE`() {
         // Mutant M3 (osra-security#33): return true on CallAudioMode.RINGTONE without checking blockedRingActive.
-        assertFalse(IncomingRingWindow.isRinging(CallAudioMode.RINGTONE, 1_000, 0L, blockedRingActive = true))
+        assertFalse(IncomingRingWindow.isRinging(CallAudioMode.RINGTONE, 1_000, 0L, blockedRingActive = true, trustedRingOwner = true))
         assertFalse(IncomingRingWindow.isRinging(CallAudioMode.NORMAL, 1_000, 20_000L, blockedRingActive = true))
 
         val lockedNonEssential = "com.google.android.apps.tachyon"
@@ -410,7 +471,8 @@ class IncomingRingWindowTest {
     @Test
     fun `CallEnforcer, NotificationCaptureService and AccessibilityMonitorService wire the production entry points`() {
         val enforcerSource = source("apps/child-android/app/src/main/java/com/familyshield/agent/services/CallEnforcer.kt")
-        assertTrue(enforcerSource.contains("IncomingRingWindow.isSharedRinging(modeProvider(), nowMs, blockedRingActive = policy.blockedRingActive)"))
+        assertTrue(enforcerSource.contains("IncomingRingWindow.isSharedRinging("))
+        assertTrue(enforcerSource.contains("trustedRingOwner = trustedOwner"))
         assertTrue(enforcerSource.contains("policy.onAudioMode(mode, isBlocked, nowMs, isEssential)"))
 
         val listenerSource = source("apps/child-android/app/src/full/java/com/familyshield/agent/services/NotificationCaptureService.kt")

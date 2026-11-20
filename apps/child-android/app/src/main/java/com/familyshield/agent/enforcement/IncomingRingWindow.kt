@@ -221,10 +221,17 @@ object IncomingRingWindow {
         mode: CallAudioMode,
         nowMs: Long,
         blockedRingActive: Boolean = false,
+        trustedRingOwner: Boolean = false,
     ): Boolean {
         expireIfDue(nowMs)
         val until = synchronized(lock) { sharedState.ringUntilMs }
-        return isRinging(mode, nowMs, until, blockedRingActive = blockedRingActive)
+        return isRinging(
+            mode = mode,
+            nowMs = nowMs,
+            ringUntilMs = until,
+            blockedRingActive = blockedRingActive,
+            trustedRingOwner = trustedRingOwner,
+        )
     }
 
     fun fromTrustedSource(pkg: String, defaultDialer: String?, platformInCallUi: Set<String>): Boolean =
@@ -235,10 +242,12 @@ object IncomingRingWindow {
         nowMs: Long,
         ringUntilMs: Long,
         blockedRingActive: Boolean = false,
+        trustedRingOwner: Boolean = false,
     ): Boolean {
         if (blockedRingActive) return false
         return when {
-            mode == CallAudioMode.RINGTONE -> true
+            // osra-security#48 R1: fail closed on MODE_RINGTONE — exempt only when a trusted platform call owns the ring.
+            mode == CallAudioMode.RINGTONE -> trustedRingOwner
             mode == CallAudioMode.NORMAL -> nowMs < ringUntilMs
             else -> false
         }

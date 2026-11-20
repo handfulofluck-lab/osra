@@ -240,20 +240,18 @@ class CallBlockPolicyTest {
     }
 
     @Test
-    fun `osra-security 48 - non-call parcels neither claim a ring nor drop an active ring cover`() {
-        // Mutant M48d: update lastPost / nonBlockedPostedDuringRing before checking `parcel.isCall` ->
-        // a blocked app's non-call notification covers RINGTONE, or an allowed chat message drops the ring cover.
+    fun `osra-security 48 R1 - blocked non-CATEGORY_CALL post before RINGTONE still covers ring while allowed chat never drops cover`() {
+        // Mutants:
+        // - M48d: skip `lastPost = posted` on `parcel != null && !parcel.isCall` -> blocked VoIP app posting a
+        //   non-CATEGORY_CALL notice right before RINGTONE gets no cover and leaves `blockedRingActive == false`.
+        // - M48e: run `if (!blocked)` before checking `parcel.isCall` -> an allowed chat message drops an active ring cover.
         val p = CallBlockPolicy()
         assertEquals(emptyList<CallAction>(), p.post(meet, message, now = 100L))
-        assertEquals(emptyList<CallAction>(), p.mode(CallAudioMode.RINGTONE, now = 500L))
-        assertFalse(p.coverShown)
-        assertFalse(p.blockedRingActive)
-        p.mode(CallAudioMode.NORMAL, now = 1_000L)
-
-        assertEquals(listOf(CallAction.Decline(meet), CallAction.ShowRingCover), p.post(meet, ring(postedAt = 11L), now = 2_000L))
-        p.mode(CallAudioMode.RINGTONE, now = 2_200L)
+        assertEquals(listOf(CallAction.ShowRingCover), p.mode(CallAudioMode.RINGTONE, now = 500L))
         assertTrue(p.coverShown)
-        assertEquals("non-call chat message must not drop call cover", emptyList<CallAction>(), p.post(chat, message, now = 2_400L))
+        assertTrue(p.blockedRingActive)
+        assertEquals(meet, p.currentRingOwner)
+        assertEquals("non-call chat message must not drop call cover", emptyList<CallAction>(), p.post(chat, message, now = 700L))
         assertTrue(p.coverShown)
         assertTrue(p.blockedRingActive)
     }

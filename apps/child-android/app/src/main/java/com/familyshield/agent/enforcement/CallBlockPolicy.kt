@@ -91,6 +91,9 @@ class CallBlockPolicy(
 
     val coverShown: Boolean get() = coverUntilMs != null
 
+    /** The package currently attributed to an active `MODE_RINGTONE`, or `null` when unknown (`osra-security#48` R1). */
+    val currentRingOwner: String? get() = if (mode == CallAudioMode.RINGTONE) ringPkg else null
+
     /**
      * True while a blocked (or locked non-essential) app's ring owns the screen or audio mode
      * (`osra-security#33`, `osra-security#48`), so `MODE_RINGTONE` from a blocked VoIP app cannot exempt
@@ -106,12 +109,16 @@ class CallBlockPolicy(
         isEssential: (String) -> Boolean,
         nowMs: Long,
     ): List<CallAction> {
-        val parcel = notice.parcel
-        // osra-security#48: bind state only to confirmed call parcels or lock-screen redacted (null-parcel) events.
-        if (parcel != null && !parcel.isCall) return emptyList()
         val out = ArrayList<CallAction>()
         val pkg = notice.pkg
         val blocked = effectivelyBlocked(pkg, isBlocked, isEssential)
+        val posted = Posted(pkg, blocked, nowMs)
+        // osra-security#48 R1: always record lastPost so a blocked VoIP app whose incoming notice is not
+        // CATEGORY_CALL is still identified if AudioManager enters MODE_RINGTONE immediately afterwards, while
+        // non-call parcels (`parcel != null && !parcel.isCall`) never mutate active ring/call ownership or covers.
+        lastPost = posted
+        val parcel = notice.parcel
+        if (parcel != null && !parcel.isCall) return out
         if (!blocked) {
             // An allowed app, the dialer or an emergency app posted: whatever is ringing is theirs, not blocked.
             if (mode == CallAudioMode.RINGTONE) {
@@ -121,8 +128,6 @@ class CallBlockPolicy(
             }
             if (coverShown) out += removeCover()
         }
-        val posted = Posted(pkg, blocked, nowMs)
-        lastPost = posted
         // B5 (#449 review): the mode listener may report RINGTONE before the ring's own notification event.
         // A blocked post that arrives during a ring nobody owns yet takes it, and the cover goes up.
         if (blocked && mode == CallAudioMode.RINGTONE && ringPkg == null && !nonBlockedPostedDuringRing) {

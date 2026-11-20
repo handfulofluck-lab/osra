@@ -87,8 +87,22 @@ class CallEnforcer(
             return if (preActions.isEmpty()) postActions else preActions + postActions
         }
 
-        fun isRinging(nowMs: Long = clock()): Boolean =
-            IncomingRingWindow.isSharedRinging(modeProvider(), nowMs, blockedRingActive = policy.blockedRingActive)
+        fun isRinging(nowMs: Long = clock()): Boolean {
+            val ringOwner = policy.currentRingOwner
+            val trustedOwner = ringOwner != null &&
+                !policy.blockedRingActive &&
+                IncomingRingWindow.fromTrustedSource(
+                    pkg = ringOwner,
+                    defaultDialer = defaultDialerProvider(),
+                    platformInCallUi = EssentialPackages.inCallUi,
+                )
+            return IncomingRingWindow.isSharedRinging(
+                mode = modeProvider(),
+                nowMs = nowMs,
+                blockedRingActive = policy.blockedRingActive,
+                trustedRingOwner = trustedOwner,
+            )
+        }
     }
 
     private val audio = service.getSystemService(AudioManager::class.java)
