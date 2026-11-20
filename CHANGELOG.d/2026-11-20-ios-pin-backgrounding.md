@@ -12,7 +12,3 @@
   row re-opens the action when the sheet is gone.
 - Verified: passed on the simulator in 49.1 s, then rewritten for the reviewer's finding; the rewritten row's first
   execution is the pull request.
-- **The UI-test step retries a failing case once** (`-retry-tests-on-failure -test-iterations 2`). A simulator
-  launch timeout has now cost two runs — #932 at a fold and #949 here, failing before any app code ran. One retry
-  absorbs it, and a real regression fails both iterations and still goes red; that is the trade-off, stated rather
-  than assumed.

@@ -173,6 +173,13 @@ final class PinRulesSeededTests: XCTestCase {
         XCTAssertTrue(app.staticTexts[L10n.tr("pin_wrong", 4)].waitForExistence(timeout: 5),
                       "the first wrong attempt must leave four tries")
 
+        // Mid-entry means a *half-typed* field, not an empty one: two digits go in and Continue is never tapped,
+        // so the app is left exactly as a child would leave it when they press home. Ahmed asked for this and he
+        // was right — the previous version spent an attempt and then left no partial entry behind.
+        let partial = app.secureTextFields["pin.gate"]
+        partial.tap()
+        partial.typeText("99")
+
         XCUIDevice.shared.press(.home)
         app.activate()
 
