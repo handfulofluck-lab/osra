@@ -2130,7 +2130,7 @@ abstract class AppLocalizations {
   ///
   /// In en, this message translates to:
   /// **'Open Osra on {child}\'s iPhone and choose the apps you want to manage. They\'ll appear here.'**
-  String appPickerIosEmptyBody(String child);
+  String appPickerIosEmptyBody(Object child);
 
   /// No description provided for @installedAppsNoMatch.
   ///

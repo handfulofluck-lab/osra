@@ -1176,7 +1176,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appPickerIosEmptyTitle => 'No apps chosen yet';
 
   @override
-  String appPickerIosEmptyBody(String child) {
+  String appPickerIosEmptyBody(Object child) {
     return 'Open Osra on $child\'s iPhone and choose the apps you want to manage. They\'ll appear here.';
   }
 

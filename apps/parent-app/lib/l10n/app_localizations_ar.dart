@@ -1219,7 +1219,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get appPickerIosEmptyTitle => 'لم تُختر أي تطبيقات بعد';
 
   @override
-  String appPickerIosEmptyBody(String child) {
+  String appPickerIosEmptyBody(Object child) {
     return 'افتح تطبيق أسرة على آيفون $child واختر التطبيقات التي تريد إدارتها، وستظهر هنا.';
   }
 
