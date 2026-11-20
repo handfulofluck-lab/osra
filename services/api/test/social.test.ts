@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createHmac } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { signV2 } from "../src/lib/internalAuth.js";
 import { decryptForFamily, encryptForFamily } from "@familyshield/crypto";
 import { localDay, socialRoutes } from "../src/routes/social.js";
@@ -85,6 +85,57 @@ describe("social routes", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("scores only the approved notification fixture and writes a model-only alert", async () => {
+    const fixture = "The group wants to leave one classmate out of every lunch table.";
+    const deviceId = "qa-device-fixture";
+    const syntheticKey = randomBytes(32).toString("hex");
+    vi.stubEnv("OSRA_DEPLOYMENT_SCOPE", "staging");
+    vi.stubEnv("OSRA_STAGING_QA_ANALYZER_ENABLED", "1");
+    vi.stubEnv("OSRA_STAGING_QA_DEVICE_ID", deviceId);
+    vi.stubEnv("OSRA_STAGING_QA_CHILD_ID", CHILD.id);
+    vi.stubEnv("OSRA_STAGING_QA_EXPIRES_AT", new Date(Date.now() + 15 * 60 * 1000).toISOString());
+    vi.stubEnv("OSRA_STAGING_QA_FIXTURE_SHA256", createHash("sha256").update(fixture).digest("hex"));
+    vi.stubEnv("OSRA_STAGING_QA_ANALYZER_URL", "http://ai-engine.osra-qa.internal:8000");
+    const analyze = vi.fn(async (_url: URL, options: RequestInit) => {
+      const request = JSON.parse(String(options.body)) as { text: string; trace_id: string };
+      return { ok: true, json: async () => ({
+        trace_id: request.trace_id, model: "openai.gpt-oss-20b-1:0", region: "eu-central-1",
+        flagged: true, severity: "warning", categories: { cyberbullying: 0.9, safe: 0.1 },
+      }) };
+    });
+    vi.stubGlobal("fetch", analyze);
+    prismaMock.device.findUnique.mockResolvedValue({ id: deviceId, childId: CHILD.id, internalSecret: syntheticKey });
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.socialEvent.create.mockResolvedValue({ id: "synthetic-event" });
+    prismaMock.alert.create.mockResolvedValue({ id: "synthetic-alert" });
+    const app = await buildApp(socialRoutes, "/v1/social");
+    const scan = (body: Record<string, unknown>) => {
+      const raw = JSON.stringify({ deviceId, items: [scanBody({ deviceId, source: "notification", ...body })] });
+      return app.inject({ method: "POST", url: "/v1/social/scan",
+        headers: { "content-type": "application/json", ...signV2(syntheticKey, raw) }, payload: raw });
+    };
+    try {
+      const unapproved = await scan({ text: "Hello from the test fixture." });
+      expect(unapproved.statusCode).toBe(200);
+      expect(unapproved.json().results[0]).toMatchObject({ flagged: false });
+      expect(analyze).not.toHaveBeenCalled();
+
+      const res = await scan({ text: fixture });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().results[0]).toMatchObject({ flagged: true, concernTypes: ["cyberbullying"] });
+      expect(analyze).toHaveBeenCalledTimes(1);
+      const [url, options] = analyze.mock.calls[0];
+      expect(url.href).toBe("http://ai-engine.osra-qa.internal:8000/analyze/staging-qa");
+      expect(options.redirect).toBe("error");
+      expect(JSON.parse(String(options.body))).toEqual({ text: fixture, trace_id: expect.any(String) });
+      expect(prismaMock.socialEvent.create).toHaveBeenCalledTimes(1);
+      expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    } finally {
+      await app.close();
+    }
   });
 
   it("returns {flagged:false} for clean text and writes no alert or vault row", async () => {
