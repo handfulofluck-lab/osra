@@ -189,3 +189,24 @@ variable "guardduty_enabled" {
   type        = bool
   default     = false
 }
+
+variable "staging_qa_analyzer_publisher_enabled" {
+  description = "Create the isolated Stockholm QA analyzer image repository and its dedicated GitHub OIDC publisher."
+  type        = bool
+  default     = false
+
+  validation {
+    condition = !var.staging_qa_analyzer_publisher_enabled || (
+      var.environment == "staging" &&
+      var.region == "eu-north-1" &&
+      var.project == "osra" &&
+      var.assume_role_arn == "" &&
+      length(var.allowed_account_ids) == 1 &&
+      can(regex("^[0-9]{12}$", one(var.allowed_account_ids))) &&
+      var.github_repo == "handfulofluck-lab/osra" &&
+      var.github_owner_id != "" &&
+      var.github_repo_id != ""
+    )
+    error_message = "The QA analyzer publisher requires the pinned Stockholm staging account and immutable OSRA GitHub OIDC subject."
+  }
+}
