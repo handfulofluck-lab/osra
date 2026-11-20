@@ -31,6 +31,10 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
+    // The action lives on the Location tab, next to the state a parent reads when there is no position.
+    await tester.tap(find.text('Location'));
+    await tester.pumpAndSettle();
+
     final locate = find.text('Locate now');
     expect(locate, findsOneWidget,
         reason: 'the parent must be able to ask for a position at all');
@@ -58,13 +62,18 @@ void main() {
       ...standardRoutes(),
       'POST $deviceCommandPath': (_) => {
             'status': 'failed',
-            'reason': 'background_location_not_authorized',
+            // The agent's real vocabulary (`command_messages.dart:31`), not a token I invented: the
+            // first version of this row used a made-up reason and silently exercised the fallback.
+            'reason': 'background_location_missing',
           },
     });
     await tester.pumpWidget(ProviderScope(
       overrides: [apiClientProvider.overrideWithValue(api)],
       child: localizedTestApp(const ChildDetailScreen(childId: 'child-1')),
     ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Location'));
     await tester.pumpAndSettle();
 
     final locate = find.text('Locate now');

@@ -297,14 +297,6 @@ class _OverviewTab extends ConsumerWidget {
                           icon: const Icon(Icons.play_circle, size: 18),
                           label: Text(l10n.resume),
                         ),
-                        // #869: the parent app could *show* a `locate_now` in the command history but had no way
-                        // to send one, so "Locate the child" had nothing behind it. The label is the Bureau's
-                        // existing line; the refusal reasons already exist on the server (`locationGrant.ts`).
-                        TextButton.icon(
-                          onPressed: () => _sendCommand(context, ref, d, 'locate_now'),
-                          icon: const Icon(Icons.my_location, size: 18),
-                          label: Text(l10n.commandLocateNow),
-                        ),
                         TextButton.icon(
                           onPressed: () => _toggleInternet(context, ref, childId, internetPaused, d),
                           icon: Icon(internetPaused ? Icons.wifi : Icons.wifi_off, size: 18),
@@ -777,6 +769,18 @@ class _LocationTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final ping = ref.watch(locationProvider(childId));
+    // #869: the app could *show* a `locate_now` in a device's command history but had no way to send one, so
+    // "Locate the child" had nothing behind it. It sits here, next to the state a parent reads when there is no
+    // position, rather than in the device-command row — that row already wraps to three lines at 320 px and one
+    // more button pushed an existing control out of the tapped area.
+    final device = ref.watch(familyProvider).valueOrNull?.devicesFor(childId).firstOrNull;
+    final locate = device == null
+        ? null
+        : OutlinedButton.icon(
+            onPressed: () => _sendCommand(context, ref, device, 'locate_now'),
+            icon: const Icon(Icons.my_location, size: 18),
+            label: Text(l10n.commandLocateNow),
+          );
     return ping.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       // #850: never show exception text to a parent. A read refused for permission says so; anything
@@ -788,6 +792,10 @@ class _LocationTab extends ConsumerWidget {
       data: (p) => ListView(
         padding: const EdgeInsets.all(AppSpace.lg),
         children: [
+          if (locate != null) ...[
+            Align(alignment: AlignmentDirectional.centerStart, child: locate),
+            const SizedBox(height: AppSpace.sm),
+          ],
           if (p == null)
             Text(l10n.noLocationReported)
           else ...[
