@@ -1,4 +1,6 @@
 import { prisma } from "../db.js";
+import { hostOf, isExcludedSiteHost } from "./siteNames.js";
+import { usageSeries, type UsageDay } from "./usageModel.js";
 
 /** Public summary shape for GET /reports/summary (#4). */
 export interface ActivitySummary {
@@ -14,9 +16,9 @@ export interface ActivitySummary {
 /** Full aggregate including internal counters used by the wellbeing score. */
 interface ActivityAggregate {
   totalAppMinutes: number;
-  topApps: Array<{ name: string; minutes: number }>;
-  urlVisits: number;
-  topBlockedDomains: Array<{ domain: string; count: number }>;
+  appMinutes: Map<string, number>;
+  visitedHosts: Set<string>;
+  blockedDomains: Map<string, number>;
   blockedHits: number;
   calls: number;
   sms: number;
@@ -75,7 +77,11 @@ function aggregateActivityEvents(
         if (payload.blocked === true) blockedHits += 1;
         continue;
       }
-      const host = typeof payload.domain === "string" && payload.domain ? payload.domain : "unknown";
+      const rawHost = typeof payload.domain === "string" && payload.domain
+        ? payload.domain
+        : typeof payload.url === "string" ? payload.url : "";
+      const host = hostOf(rawHost) || (typeof payload.domain === "string" && payload.domain ? payload.domain.trim().toLowerCase() : "unknown");
+      if (host !== "unknown" && isExcludedSiteHost(host)) continue;
       if (payload.blocked === true) {
         blockedHits += 1;
         blockedDomains.set(host, (blockedDomains.get(host) ?? 0) + 1);
@@ -88,30 +94,107 @@ function aggregateActivityEvents(
       sms += 1;
     }
   }
-  const byValueDesc = (a: [string, number], b: [string, number]) => b[1] - a[1];
   return {
     totalAppMinutes,
-    topApps: [...appMinutes.entries()].sort(byValueDesc).slice(0, TOP_LIMIT).map(([name, minutes]) => ({ name, minutes })),
-    urlVisits: visitedHosts.size,
-    topBlockedDomains: [...blockedDomains.entries()].sort(byValueDesc).slice(0, TOP_LIMIT).map(([domain, count]) => ({ domain, count })),
+    appMinutes,
+    visitedHosts,
+    blockedDomains,
     blockedHits,
     calls,
     sms,
   };
 }
 
-/** Aggregate a child's ActivityEvents over the trailing `days` days (#4). */
+/**
+ * Aggregate a child's activity over the trailing `days` days (#4, #830 row 5).
+ *
+ * Device telemetry (`POST /v1/devices/:id/telemetry`) writes durable per-day totals and per-app minutes to
+ * `AppUsageDaily` without writing `ActivityEvent` rows (and live heartbeats are skipped from `ActivityEvent`
+ * on purpose), while persistent `POST /v1/devices/:id/activity` batches write both `ActivityEvent` and
+ * `AppUsageDaily` / `WebVisit`. Reading `ActivityEvent` alone left `ReportsScreen` (`/v1/reports/summary`)
+ * showing 9 min while `/v1/reports/usage` held 2,797 min on staging (19 Nov). Reconciling with `Math.max`
+ * per resolved app label and per blocked host avoids double-counting batches that wrote both tables.
+ */
 export async function summarizeChildActivity(
   childId: string,
   days: number,
   options: { siteNames?: boolean } = {},
 ): Promise<ActivitySummary> {
-  const since = new Date(Date.now() - days * MS_PER_DAY);
-  const events = await prisma.activityEvent.findMany({ where: { childId, ts: { gte: since } } });
-  const aggregate = aggregateActivityEvents(events, options.siteNames === true);
-  const socialConcerns = await prisma.socialEvent.count({ where: { childId, createdAt: { gte: since } } });
-  const { blockedHits: _blockedHits, ...summary } = aggregate;
-  return { ...summary, socialConcerns };
+  const now = new Date();
+  const since = new Date(now.getTime() - days * MS_PER_DAY);
+  const siteNames = options.siteNames === true;
+  const [rawEvents, series, deviceApps, webRows, rawSocialConcerns] = await Promise.all([
+    prisma.activityEvent.findMany({ where: { childId, ts: { gte: since } } }),
+    usageSeries(childId, days, now),
+    prisma.deviceApp.findMany({ where: { device: { childId } }, select: { packageId: true, label: true } }),
+    siteNames
+      ? prisma.webVisit.findMany({ where: { childId, ts: { gte: since } }, select: { domain: true, blocked: true } })
+      : Promise.resolve([]),
+    prisma.socialEvent.count({ where: { childId, createdAt: { gte: since } } }),
+  ]);
+  const events = rawEvents ?? [];
+  const socialConcerns = rawSocialConcerns ?? 0;
+  const aggregate = aggregateActivityEvents(events, siteNames);
+
+  const labelByPackage = new Map<string, string>();
+  for (const row of deviceApps ?? []) {
+    if (typeof row?.packageId === "string" && row.packageId.trim() && typeof row?.label === "string" && row.label.trim()) {
+      labelByPackage.set(row.packageId.trim(), row.label.trim());
+    }
+  }
+  const displayNameOf = (raw: string) => labelByPackage.get(raw) ?? raw;
+
+  const rollupTotal = series.reduce((sum: number, day: UsageDay) => sum + day.minutes, 0);
+  const rollupApps = new Map<string, number>();
+  for (const day of series) {
+    for (const entry of day.apps) {
+      const name = displayNameOf(entry.app);
+      rollupApps.set(name, (rollupApps.get(name) ?? 0) + entry.minutes);
+    }
+  }
+  const eventApps = new Map<string, number>();
+  for (const [rawApp, minutes] of aggregate.appMinutes) {
+    const name = displayNameOf(rawApp);
+    eventApps.set(name, (eventApps.get(name) ?? 0) + minutes);
+  }
+  const mergedApps = new Map<string, number>();
+  for (const name of new Set([...rollupApps.keys(), ...eventApps.keys()])) {
+    const minutes = Math.max(rollupApps.get(name) ?? 0, eventApps.get(name) ?? 0);
+    if (minutes > 0) mergedApps.set(name, minutes);
+  }
+  const mergedPerAppSum = [...mergedApps.values()].reduce((sum, m) => sum + m, 0);
+  const totalAppMinutes = Math.max(rollupTotal, aggregate.totalAppMinutes, mergedPerAppSum);
+
+  const visitedHosts = new Set<string>(aggregate.visitedHosts);
+  const blockedDomains = new Map<string, number>(aggregate.blockedDomains);
+  if (siteNames) {
+    const webBlockedCounts = new Map<string, number>();
+    for (const visit of webRows ?? []) {
+      const host = hostOf(String(visit?.domain ?? ""));
+      if (!host || host === "unknown" || isExcludedSiteHost(host)) continue;
+      if (visit.blocked === true) {
+        webBlockedCounts.set(host, (webBlockedCounts.get(host) ?? 0) + 1);
+      } else {
+        visitedHosts.add(host);
+      }
+    }
+    for (const [host, count] of webBlockedCounts) {
+      blockedDomains.set(host, Math.max(blockedDomains.get(host) ?? 0, count));
+    }
+  }
+
+  const byValueDesc = (a: [string, number], b: [string, number]) => b[1] - a[1];
+  return {
+    totalAppMinutes,
+    topApps: [...mergedApps.entries()].sort(byValueDesc).slice(0, TOP_LIMIT).map(([name, minutes]) => ({ name, minutes })),
+    urlVisits: siteNames ? visitedHosts.size : 0,
+    topBlockedDomains: siteNames
+      ? [...blockedDomains.entries()].sort(byValueDesc).slice(0, TOP_LIMIT).map(([domain, count]) => ({ domain, count }))
+      : [],
+    socialConcerns,
+    calls: aggregate.calls,
+    sms: aggregate.sms,
+  };
 }
 
 /** Current calendar week in ISO YYYY-Www form (used as the default wellbeing week label). */
@@ -130,14 +213,21 @@ export function currentIsoWeek(now = new Date()): string {
  * child's daily limit across the window), social concerns, and blocked-site hits.
  */
 export async function computeWellbeingScore(childId: string, week: string, days = 7): Promise<WellbeingScore> {
-  const child = await prisma.child.findUnique({ where: { id: childId }, include: { ruleSet: true } });
+  const now = new Date();
+  const since = new Date(now.getTime() - days * MS_PER_DAY);
+  const [child, rawEvents, series, rawSocialConcerns] = await Promise.all([
+    prisma.child.findUnique({ where: { id: childId }, include: { ruleSet: true } }),
+    prisma.activityEvent.findMany({ where: { childId, ts: { gte: since } } }),
+    usageSeries(childId, days, now),
+    prisma.socialEvent.count({ where: { childId, createdAt: { gte: since } } }),
+  ]);
   const dailyLimit = child?.ruleSet?.dailyLimitMinutes ?? DEFAULT_DAILY_LIMIT_MINUTES;
-  const since = new Date(Date.now() - days * MS_PER_DAY);
-  const events = await prisma.activityEvent.findMany({ where: { childId, ts: { gte: since } } });
-  const aggregate = aggregateActivityEvents(events);
-  const socialConcerns = await prisma.socialEvent.count({ where: { childId, createdAt: { gte: since } } });
+  const aggregate = aggregateActivityEvents(rawEvents ?? []);
+  const rollupTotal = series.reduce((sum: number, day: UsageDay) => sum + day.minutes, 0);
+  const effectiveMinutes = Math.max(rollupTotal, aggregate.totalAppMinutes);
+  const socialConcerns = rawSocialConcerns ?? 0;
   // NOTE: usageRatio above 0.5 of the allowed budget starts costing points.
-  const usageRatio = aggregate.totalAppMinutes / (dailyLimit * days || 1);
+  const usageRatio = effectiveMinutes / (dailyLimit * days || 1);
   const usage = 30 * Math.max(0, usageRatio - 0.5) * 2;
   const social = 5 * socialConcerns;
   const safety = 3 * aggregate.blockedHits;

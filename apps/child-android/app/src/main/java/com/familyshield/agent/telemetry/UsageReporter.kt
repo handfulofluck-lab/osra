@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.BatteryManager
 import android.os.Build
+import android.os.PowerManager
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.familyshield.agent.comms.CommsConsentPolicy
@@ -34,6 +36,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Records foreground-app transitions (Room `usage_events`) and periodically aggregates
@@ -54,9 +58,12 @@ class UsageReporter @Inject constructor(
     private val capabilities: CapabilityReporter,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val uploadMutex = Mutex()
 
     @Volatile private var lastPkg: String? = null
     @Volatile private var lastTs: Long = 0L
+    @Volatile private var activeForegroundPkg: String? = null
+    @Volatile private var lastUploadElapsedMs: Long = 0L
     private val unlockCounter = AtomicInteger(0)
 
     /** Records one foreground transition at [ts] (epoch millis); safe to call on the main thread. */
@@ -65,6 +72,7 @@ class UsageReporter @Inject constructor(
         val prevTs = lastTs
         lastPkg = pkg
         lastTs = ts
+        activeForegroundPkg = pkg
         // Issue #265: the foreground package is still tracked while paused -- the lock overlay's "what
         // is open now" and the live-activity payload read it, and that is not collection.
         if (consent.isPaused()) return
@@ -80,7 +88,12 @@ class UsageReporter @Inject constructor(
         if (prevPkg == null || prevPkg != pkg || ts - prevTs > 60_000L) {
             unlockCounter.incrementAndGet()
         }
-        scope.launch { db.usageEventDao().insert(UsageEventEntity(packageId = pkg, timestamp = ts)) }
+        scope.launch {
+            db.usageEventDao().insert(UsageEventEntity(packageId = pkg, timestamp = ts))
+            if (shouldFlushActiveSession(SystemClock.elapsedRealtime(), lastUploadElapsedMs)) {
+                aggregateAndUpload()
+            }
+        }
     }
 
     /**
@@ -98,6 +111,7 @@ class UsageReporter @Inject constructor(
      * accounting learns that the blocked app has stopped being used.
      */
     fun recordOwnWindow(ts: Long) {
+        activeForegroundPkg = null
         // Same gate as [recordForeground]: a withdrawn window is not collected, and the counters are
         // not advanced while paused (ADR-0008 §3, #266 review D1).
         if (consent.isPaused()) return
@@ -109,8 +123,8 @@ class UsageReporter @Inject constructor(
     }
 
     /** Aggregates the usage since the last successful run and uploads the delta; no-op without a device id. */
-    suspend fun aggregateAndUpload() {
-        val deviceId = settings.deviceId() ?: return
+    suspend fun aggregateAndUpload(): Unit = uploadMutex.withLock {
+        val deviceId = settings.deviceId() ?: return@withLock
         val dao = db.usageEventDao()
         val stateDao = db.agentStateDao()
         // Issue #265: the same epoch rule the comms streams use (#257), not a copy of it. While consent
@@ -137,10 +151,12 @@ class UsageReporter @Inject constructor(
             // re-grant cannot upload it as the first minute of the new one (#266's rule).
             settings.setUsageRemainderMs(emptyMap())
         }
-        if (consent.isPaused()) return // ADR-0008 §3: no telemetry while consent is withdrawn
-        val watermark = stateDao.get(KEY_WATERMARK) ?: dao.oldestTimestamp() ?: return
+        if (consent.isPaused()) return@withLock // ADR-0008 §3: no telemetry while consent is withdrawn
         val windowEnd = System.currentTimeMillis()
-        val events = dao.since(watermark)
+        val watermark = stateDao.get(KEY_WATERMARK) ?: dao.oldestTimestamp() ?: windowEnd.also {
+            stateDao.set(AgentStateEntity(KEY_WATERMARK, it))
+        }
+        val events = dao.since(watermark).filter { it.timestamp <= windowEnd }
 
         val window = computePerAppMinutes(events, windowEnd, ownPackage = context.packageName, carriedMs = settings.usageRemainderMs())
         val perApp = window.minutes.toMutableMap()
@@ -148,10 +164,10 @@ class UsageReporter @Inject constructor(
 
         val unlocks = unlockCounter.getAndSet(0)
         val total = perApp.values.sum()
-        // NOTE: anchor the cleanup to the last aggregated event. Events arriving between the
-        // snapshot above and this delete would otherwise be removed unsent (previously the
-        // delete/watermark used windowEnd, which raced with concurrent inserts).
-        val newWatermark = (events.lastOrNull()?.timestamp ?: windowEnd) + 1
+        // NOTE: anchor the cleanup to max(lastEvent, windowEnd) + 1 so concurrent inserts after windowEnd
+        // survive, and re-insert a continuation anchor at newWatermark when a child app is still open on an
+        // interactive screen (#830 row 5).
+        val newWatermark = maxOf((events.lastOrNull()?.timestamp ?: windowEnd) + 1, windowEnd + 1)
         // Always POST: even idle, batteryPct is the device heartbeat that keeps
         // lastSeen/battery fresh for the parent app.
         try {
@@ -173,6 +189,7 @@ class UsageReporter @Inject constructor(
                     bootCount = BootClock.bootCountNow(context),
                 ),
             )
+            lastUploadElapsedMs = SystemClock.elapsedRealtime()
             // Issue #221: the periodic upload also counts as a report, so the expedited path does not
             // re-send the same value on the next resume.
             settings.recordReportedLocationGrant(grant)
@@ -181,6 +198,17 @@ class UsageReporter @Inject constructor(
             recordCapabilities(report)
             // NOTE: watermark moves only on success...
             dao.deleteOlderThan(newWatermark)
+            if (dao.since(newWatermark).isEmpty()) {
+                continuationPackage(
+                    events = events,
+                    ownPackage = context.packageName,
+                    activeForegroundPkg = activeForegroundPkg,
+                    screenInteractive = isScreenInteractive(),
+                    consentPaused = consent.isPaused(),
+                )?.let { pkg ->
+                    dao.insert(UsageEventEntity(packageId = pkg, timestamp = newWatermark))
+                }
+            }
             stateDao.set(AgentStateEntity(KEY_WATERMARK, newWatermark))
             // Issue #276: the sub-minute remainder moves in the same success step as the watermark, so
             // a failed POST recomputes the same window from the same carry — neither lost nor doubled.
@@ -224,6 +252,35 @@ class UsageReporter @Inject constructor(
 
     /** Last foreground package recorded by the accessibility stream, or null before the first transition. */
     fun currentForeground(): String? = lastPkg
+
+    /**
+     * Local 4-minute foreground heartbeat while the screen is interactive (#830 row 5). Keeps continuous
+     * video/reading sessions under [MAX_GAP_MS] without counting new unlocks, and flushes every 5 min while active.
+     */
+    fun recordActiveHeartbeat(ts: Long) {
+        if (consent.isPaused() || !isScreenInteractive()) return
+        val pkg = activeForegroundPkg?.takeIf { it.isNotEmpty() && it != context.packageName } ?: return
+        rules.onForegroundEvent(pkg, ts)
+        scope.launch {
+            db.usageEventDao().insert(UsageEventEntity(packageId = pkg, timestamp = ts))
+            if (shouldFlushActiveSession(SystemClock.elapsedRealtime(), lastUploadElapsedMs)) {
+                aggregateAndUpload()
+            }
+        }
+    }
+
+    /** Closes the active foreground interval at screen-off and flushes the completed session immediately (#830 row 5). */
+    suspend fun onScreenOff(ts: Long) {
+        activeForegroundPkg = null
+        if (consent.isPaused()) return
+        rules.onForegroundEnded(ts)
+        db.usageEventDao().insert(UsageEventEntity(packageId = context.packageName, timestamp = ts))
+        aggregateAndUpload()
+    }
+
+    private fun isScreenInteractive(): Boolean = runCatching {
+        (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isInteractive ?: true
+    }.getOrDefault(true)
 
     /** Current battery percentage from the system BatteryManager, or null when unknown. */
     private fun currentBatteryPct(): Int? {

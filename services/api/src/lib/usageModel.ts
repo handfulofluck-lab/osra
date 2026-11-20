@@ -250,7 +250,7 @@ export interface UsageDay {
 export async function usageSeries(childId: string, days: number, at: Date = new Date()): Promise<UsageDay[]> {
   const today = utcDay(at);
   const from = new Date(today.getTime() - (days - 1) * MS_PER_DAY);
-  const rows = await prisma.appUsageDaily.findMany({ where: { childId, day: { gte: from, lte: today } } });
+  const rows = (await prisma.appUsageDaily.findMany({ where: { childId, day: { gte: from, lte: today } } })) ?? [];
   const byDay = new Map<string, UsageDay>();
   for (let i = 0; i < days; i += 1) {
     const d = dayKey(new Date(from.getTime() + i * MS_PER_DAY));
