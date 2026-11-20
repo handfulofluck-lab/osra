@@ -69,7 +69,7 @@ class TestChatCaptureGateTest {
     }
 
     @Test
-    fun `both capture paths gate before queue enqueue`() {
+    fun `all capture and call paths gate before queueing or recording`() {
         val appDir = findAppDir()
         val notifSrc = File(appDir, "src/full/java/com/familyshield/agent/services/NotificationCaptureService.kt").readText()
         val socialSrc = File(appDir, "src/main/java/com/familyshield/agent/social/SocialCapture.kt").readText()
@@ -78,6 +78,25 @@ class TestChatCaptureGateTest {
         val notifEnqueueIdx = notifSrc.indexOf("queue.enqueue(")
         assertTrue("NotificationCaptureService must call TestChatCaptureGate.allows", notifGateIdx >= 0)
         assertTrue("NotificationCaptureService must gate before queue.enqueue", notifGateIdx < notifEnqueueIdx)
+
+        val callFnStart = notifSrc.indexOf("private fun trackWhatsAppCall(")
+        val callFnEnd = notifSrc.indexOf("private fun scheduleSettle(")
+        assertTrue("trackWhatsAppCall must exist", callFnStart in 0 until callFnEnd)
+        val callFn = notifSrc.substring(callFnStart, callFnEnd)
+        val callGateIdx = callFn.indexOf("TestChatCaptureGate.allows(this, WHATSAPP_KEY, snapshot.title)")
+        val callPostedIdx = callFn.indexOf("tracker.posted(")
+        val callRecordGateIdx = callFn.indexOf("TestChatCaptureGate.allows(this, WHATSAPP_KEY, it.contact)")
+        val callRecordIdx = callFn.indexOf("comms.recordCall(")
+        assertTrue("trackWhatsAppCall must gate posted calls before tracker.posted", callGateIdx in 0 until callPostedIdx)
+        assertTrue("trackWhatsAppCall must gate emitted call rows before comms.recordCall", callRecordGateIdx in 0 until callRecordIdx)
+
+        val settleStart = notifSrc.indexOf("private fun settle(")
+        val settleEnd = notifSrc.indexOf("companion object {")
+        assertTrue("settle must exist", settleStart in 0 until settleEnd)
+        val settleFn = notifSrc.substring(settleStart, settleEnd)
+        val settleGateIdx = settleFn.indexOf("TestChatCaptureGate.allows(this, WHATSAPP_KEY, it.contact)")
+        val settleRecordIdx = settleFn.indexOf("comms.recordCall(")
+        assertTrue("settle must gate emitted call rows before comms.recordCall", settleGateIdx in 0 until settleRecordIdx)
 
         val socialGateIdx = socialSrc.indexOf("TestChatCaptureGate.allows(")
         val socialEnqueueIdx = socialSrc.indexOf("queue.enqueue(")

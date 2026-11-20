@@ -95,8 +95,10 @@ class NotificationCaptureService : NotificationListenerService() {
         if (MonitoredApps.appKeyFor(sbn.packageName.orEmpty()) != WHATSAPP_KEY) return
         val now = System.currentTimeMillis()
         val snapshot = whatsAppSnapshotOf(sbn, rankingMap)
+        if (!removed && !TestChatCaptureGate.allows(this, WHATSAPP_KEY, snapshot.title)) return
         val rows = if (removed) tracker.removed(snapshot.key, now) else tracker.posted(snapshot, now)
-        rows.forEach { comms.recordCall(it, now) }
+        rows.filter { TestChatCaptureGate.allows(this, WHATSAPP_KEY, it.contact) }
+            .forEach { comms.recordCall(it, now) }
         scheduleSettle()
     }
 
@@ -109,7 +111,9 @@ class NotificationCaptureService : NotificationListenerService() {
     private fun settle() {
         val now = System.currentTimeMillis()
         if (consentState.isPaused()) return
-        tracker.settle(now).forEach { comms.recordCall(it, now) }
+        tracker.settle(now)
+            .filter { TestChatCaptureGate.allows(this, WHATSAPP_KEY, it.contact) }
+            .forEach { comms.recordCall(it, now) }
         scheduleSettle()
     }
 
