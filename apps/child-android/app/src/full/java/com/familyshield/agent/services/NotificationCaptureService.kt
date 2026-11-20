@@ -1,6 +1,7 @@
 package com.familyshield.agent.services
 
 import android.app.Notification
+import android.media.AudioManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -8,8 +9,12 @@ import android.service.notification.NotificationListenerService
 import android.service.notification.NotificationListenerService.Ranking
 import android.service.notification.NotificationListenerService.RankingMap
 import android.service.notification.StatusBarNotification
+import android.telecom.TelecomManager
 import com.familyshield.agent.comms.CommsLogger
 import com.familyshield.agent.data.ConsentState
+import com.familyshield.agent.enforcement.CallAudioMode
+import com.familyshield.agent.enforcement.EssentialPackages
+import com.familyshield.agent.enforcement.IncomingRingWindow
 import com.familyshield.agent.social.MonitoredApps
 import com.familyshield.agent.social.NotificationCapturePolicy
 import com.familyshield.agent.social.ScanQueuePolicy
@@ -54,16 +59,65 @@ class NotificationCaptureService : NotificationListenerService() {
     private val settleRunnable = Runnable { settle() }
 
     override fun onNotificationPosted(sbn: StatusBarNotification, rankingMap: RankingMap) {
+        trackPlatformCallWindow(sbn, removed = false)
         if (!consentState.isPaused()) trackWhatsAppCall(sbn, rankingMap, removed = false)
         capture(sbn, removed = false)
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification, rankingMap: RankingMap) {
+        // osra-security#43 (Ahmed B1): end the silent/DND incoming-call shade exemption as soon as the
+        // trusted call notification is removed (declined, missed, or cancelled), keeping 45 s only as an upper bound.
+        trackPlatformCallWindow(sbn, removed = true)
         // The scan policy drops removals (a swipe is not a message), but the call is made so the rule is
         // exercised on the real path instead of only in the unit suite. A call removal is the opposite: it
         // is where the duration comes from, so it goes to the tracker first.
         if (!consentState.isPaused()) trackWhatsAppCall(sbn, rankingMap, removed = true)
         capture(sbn, removed = true)
+    }
+
+    /**
+     * osra-security#43: content-free call-window tracking for [IncomingRingWindow]. Reads only package, key,
+     * category, and whether Decline / Hang-up extras are present — never title, text, or caller identity.
+     */
+    private fun trackPlatformCallWindow(sbn: StatusBarNotification, removed: Boolean) {
+        val pkg = sbn.packageName.orEmpty()
+        if (pkg.isEmpty() || pkg == packageName) return
+        val n = sbn.notification
+        val category = n?.category
+        val isCall = category == Notification.CATEGORY_CALL
+        if (removed) {
+            IncomingRingWindow.recordRemovedNotice(pkg = pkg, key = sbn.key, isCall = isCall)
+            return
+        }
+        val isMissedCall = category == Notification.CATEGORY_MISSED_CALL
+        if (!isCall && !isMissedCall) return
+        val extras = n?.extras
+        val hasDecline = extras?.containsKey(EXTRA_DECLINE) == true && extras.get(EXTRA_DECLINE) != null
+        val hasHangUp = extras?.containsKey(EXTRA_HANG_UP) == true && extras.get(EXTRA_HANG_UP) != null
+        val defaultDialer = runCatching { getSystemService(TelecomManager::class.java)?.defaultDialerPackage }.getOrNull()
+        val rawMode = runCatching { getSystemService(AudioManager::class.java)?.mode }.getOrNull() ?: AudioManager.MODE_NORMAL
+        val mode = when (rawMode) {
+            AudioManager.MODE_NORMAL -> CallAudioMode.NORMAL
+            AudioManager.MODE_RINGTONE -> CallAudioMode.RINGTONE
+            AudioManager.MODE_IN_CALL -> CallAudioMode.IN_CALL
+            AudioManager.MODE_IN_COMMUNICATION -> CallAudioMode.IN_COMMUNICATION
+            else -> CallAudioMode.OTHER
+        }
+        IncomingRingWindow.recordPostedNotice(
+            pkg = pkg,
+            key = sbn.key,
+            isCall = isCall,
+            isMissedCall = isMissedCall,
+            hasDecline = hasDecline,
+            hasHangUp = hasHangUp,
+            mode = mode,
+            nowMs = System.currentTimeMillis(),
+            fromTrustedSource = IncomingRingWindow.fromTrustedSource(
+                pkg = pkg,
+                defaultDialer = defaultDialer,
+                platformInCallUi = EssentialPackages.inCallUi,
+            ),
+        )
     }
 
     override fun onDestroy() {
@@ -113,6 +167,8 @@ class NotificationCaptureService : NotificationListenerService() {
 
     companion object {
         private const val WHATSAPP_KEY = "whatsapp"
+        private const val EXTRA_DECLINE = "android.declineIntent"
+        private const val EXTRA_HANG_UP = "android.hangUpIntent"
 
         /** The platform-to-policy mapping ADR-0016 calls the only unverified line; kept tiny on purpose. */
         fun snapshotOf(sbn: StatusBarNotification, removed: Boolean = false): NotificationCapturePolicy.Snapshot {

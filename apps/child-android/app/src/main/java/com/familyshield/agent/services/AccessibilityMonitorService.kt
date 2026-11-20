@@ -27,6 +27,7 @@ import com.familyshield.agent.enforcement.BlockRaisePolicy
 import com.familyshield.agent.enforcement.BypassAlertFloor
 import com.familyshield.agent.enforcement.EssentialPackages
 import com.familyshield.agent.enforcement.FilterRecoveryPolicy
+import com.familyshield.agent.enforcement.IncomingRingWindow
 import com.familyshield.agent.enforcement.LockEnforcementPolicy
 import com.familyshield.agent.enforcement.LockState
 import com.familyshield.agent.enforcement.OverlayRetryBudget
@@ -290,6 +291,9 @@ class AccessibilityMonitorService : AccessibilityService() {
         refreshFilterRecovery()
         calls.onConnected()
         media.onConnected()
+        IncomingRingWindow.setOnWindowClosed {
+            ringRecheckHandler.post { collapseShadeAfterRingEnded() }
+        }
         rules.addRulesChangedListener(rulesChanged)
     }
 
@@ -339,6 +343,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         shadeLateRecheck = null
         shadeContentRecheck?.let { ringRecheckHandler.removeCallbacks(it) }
         shadeContentRecheck = null
+        IncomingRingWindow.setOnWindowClosed(null)
         calls.onDestroy()
         media.onDestroy()
         rules.removeRulesChangedListener(rulesChanged)
@@ -1149,6 +1154,22 @@ class AccessibilityMonitorService : AccessibilityService() {
             } finally {
                 runCatching { child.recycle() }
             }
+        }
+    }
+
+    private fun collapseShadeAfterRingEnded() {
+        if (!isRunning) return
+        if (ShadePolicy.shouldCollapse(
+                locked = LockState.isActive(this),
+                packageName = ShadePolicy.SHADE_PACKAGE,
+                className = lastClassByPkg[ShadePolicy.SHADE_PACKAGE],
+                apiLevel = Build.VERSION.SDK_INT,
+                callRinging = calls.isRinging(),
+            )
+        ) {
+            performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
+            scheduleShadeRecheck(delayMs = SHADE_RECHECK_MS, slot = ShadePulse.STATE)
+            scheduleShadeRecheck(delayMs = SHADE_LATE_RECHECK_MS, slot = ShadePulse.LATE)
         }
     }
 
