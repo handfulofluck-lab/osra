@@ -76,6 +76,14 @@ class UsageReporter @Inject constructor(
         // Issue #265: the foreground package is still tracked while paused -- the lock overlay's "what
         // is open now" and the live-activity payload read it, and that is not collection.
         if (consent.isPaused()) return
+        // System UI (keyguard, notification shade, AOD) is not a child app: close the previous app's
+        // gap instead of accruing hours of lockscreen time onto `com.android.systemui`.
+        if (pkg == SYSTEM_UI_PACKAGE) {
+            rules.onForegroundEnded(ts)
+            val own = context.packageName
+            scope.launch { db.usageEventDao().insert(UsageEventEntity(packageId = own, timestamp = ts)) }
+            return
+        }
         // `rules.onForegroundEvent` is NOT enforcement: `RuleRepository.decide` returns ALLOW while
         // consent is paused, so it only feeds the daily minute counter (`UsageCounters`, which saves to
         // settings). Calling it while paused credited the withdrawn window to the app that was open, and
@@ -461,7 +469,7 @@ class UsageReporter @Inject constructor(
             // #284: our own package is skipped by name, not by that set. Android counts the block
             // screen as foreground time like any activity, and the parent's report is about the
             // child's apps — its total is still recorded below, so the running counter stays right.
-            if (pkg == context.packageName || pkg in eventPackages || perApp.containsKey(pkg)) continue
+            if (pkg == context.packageName || pkg == SYSTEM_UI_PACKAGE || pkg in eventPackages || perApp.containsKey(pkg)) continue
             val delta = UsageStatsDelta.deltaForUpload(total, lastSeen[pkg], rollover, hasSnapshot)
             if (delta > 0) perApp[pkg] = (perApp[pkg] ?: 0) + delta
         }
@@ -479,6 +487,8 @@ class UsageReporter @Inject constructor(
 
         /** Issue #265: the consent epoch last applied to this stream, separate from the comms ones. */
         private const val KEY_CONSENT_EPOCH = "telemetry_consent_epoch"
+
+        private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
 
         private const val TAG = "UsageReporter"
     }

@@ -26,27 +26,51 @@ class SocialCapture @Inject constructor(
     private val lastCaptureAt = HashMap<String, Long>()
 
     /** Entry point from AccessibilityMonitorService; cheap no-op for unmonitored packages. */
-    fun onAccessibilityEvent(event: AccessibilityEvent, nowMs: Long = System.currentTimeMillis()) {
+    fun onAccessibilityEvent(
+        event: AccessibilityEvent,
+        nowMs: Long = System.currentTimeMillis(),
+        foregroundPackage: String? = null,
+        activeRootProvider: (() -> AccessibilityNodeInfo?)? = null,
+    ) {
         if (consent.isPaused()) return // ADR-0008 §3
-        val pkg = event.packageName?.toString() ?: return
-        val appKey = MonitoredApps.appKeyFor(pkg) ?: return
+        val (_, appKey) = SocialHeuristics.resolveMonitoredApp(
+            foregroundPackage = foregroundPackage,
+            eventPackage = event.packageName?.toString(),
+        ) ?: return
         if (!rules.socialMonitoringEnabled(appKey)) return
+        synchronized(lock) {
+            if (!SocialHeuristics.shouldCapture(lastCaptureAt[SocialHeuristics.debounceKey(appKey)], nowMs)) return
+        }
+        val texts = ArrayList<String>()
+        val activeRoot = activeRootProvider?.invoke()
+        if (activeRoot != null) {
+            try {
+                collectVisibleText(activeRoot, StringBuilder(), texts)
+            } finally {
+                activeRoot.recycle()
+            }
+        } else {
+            val root = event.source
+            if (root != null) {
+                try {
+                    collectVisibleText(root, StringBuilder(), texts)
+                } finally {
+                    root.recycle()
+                }
+            }
+        }
+        val (contact, candidates) = SocialHeuristics.extractCandidates(texts)
+        val redacted = candidates.mapNotNull { candidate ->
+            TextRedaction.redact(candidate).takeIf { it.isNotBlank() }
+        }
+        if (redacted.isEmpty()) return
         synchronized(lock) {
             if (!SocialHeuristics.shouldCapture(lastCaptureAt[SocialHeuristics.debounceKey(appKey)], nowMs)) return
             lastCaptureAt[SocialHeuristics.debounceKey(appKey)] = nowMs
         }
-        val texts = ArrayList<String>()
-        val root = event.source
-        if (root != null) {
-            try {
-                collectVisibleText(root, StringBuilder(), texts)
-            } finally {
-                root.recycle()
-            }
+        for (msg in redacted) {
+            queue.enqueue(appKey, contact, msg)
         }
-        val (contact, message) = SocialHeuristics.extractContactAndMessage(texts)
-        val redacted = message?.let { TextRedaction.redact(it) } ?: return
-        queue.enqueue(appKey, contact, redacted)
     }
 
     /** Depth-first collection of visible text/content-desc, stopping at [MAX_CAPTURE_CHARS]. */

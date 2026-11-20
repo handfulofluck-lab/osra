@@ -176,6 +176,8 @@ class Reporting830WiringTest {
         assertTrue(a11y.contains("usage.onScreenOff("))
         assertTrue(a11y.contains("FilterVpnService.flushIfRunning("))
         assertTrue(a11y.contains("usage.recordActiveHeartbeat("))
+        assertTrue(a11y.contains("search.onAccessibilityEvent("))
+        assertTrue(a11y.contains("activeRootProvider = rootProvider"))
     }
 
     private fun source(relative: String): String {

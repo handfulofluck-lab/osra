@@ -16,6 +16,16 @@ data class SocialScanDto(
     val source: String = "screen",
 )
 
+/** Search query capture from Full-flavor supported surfaces for POST /v1/content/search-event (#939, ADR-0039). */
+data class SearchEventDto(
+    val childId: String,
+    val deviceId: String,
+    val engine: String,
+    val query: String,
+    val url: String? = null,
+    val timestamp: String? = null,
+)
+
 /** #490: one flush as one request — at most `ScanQueuePolicy.ITEMS_PER_REQUEST` captures. */
 data class SocialScanBatchDto(val items: List<SocialScanDto>)
 

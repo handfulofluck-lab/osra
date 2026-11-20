@@ -136,6 +136,9 @@ class RuleRepository @Inject constructor(
     /** Feature #2: true unless the cached rule set explicitly disables social monitoring for [appKey] (absent key = enabled). */
     fun socialMonitoringEnabled(appKey: String): Boolean = cached?.socialMonitoring?.get(appKey) ?: true
 
+    /** ADR-0039 / #939: true unless the cached rule set explicitly disables search monitoring. */
+    fun searchMonitoringEnabled(): Boolean = cached?.searchMonitoring ?: true
+
     /** #830 gating: true only after the server flag went on and the phone synced that rule set. */
     fun siteNamesEnabled(): Boolean = cached?.siteNames == true
 

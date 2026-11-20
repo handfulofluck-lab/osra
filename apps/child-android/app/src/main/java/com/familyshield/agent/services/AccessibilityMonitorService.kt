@@ -52,6 +52,7 @@ import com.familyshield.agent.security.TamperGuardTaskActivity
 import com.familyshield.agent.security.TamperScreen
 import com.familyshield.agent.security.TamperScreenPolicy
 import com.familyshield.agent.security.TamperState
+import com.familyshield.agent.content.SearchCapture
 import com.familyshield.agent.social.SocialCapture
 import com.familyshield.agent.telemetry.FOREGROUND_HEARTBEAT_MS
 import com.familyshield.agent.telemetry.UsageReporter
@@ -66,6 +67,7 @@ class AccessibilityMonitorService : AccessibilityService() {
     @Inject lateinit var blocker: AppBlocker
     @Inject lateinit var usage: UsageReporter
     @Inject lateinit var social: SocialCapture
+    @Inject lateinit var search: SearchCapture
     @Inject lateinit var settings: AgentSettings
     @Inject lateinit var consentState: ConsentState
     @Inject lateinit var pinStore: ParentPinStore
@@ -421,7 +423,21 @@ class AccessibilityMonitorService : AccessibilityService() {
         // unresolved framework package are neither.
         if (foreground != null && foreground != packageName) {
             // Feature #2/#17: social/chat text capture for monitored apps (no-op elsewhere).
-            social.onAccessibilityEvent(event)
+            val nowMs = System.currentTimeMillis()
+            val rootProvider: () -> AccessibilityNodeInfo? = { runCatching { rootInActiveWindow }.getOrNull() }
+            social.onAccessibilityEvent(
+                event,
+                nowMs = nowMs,
+                foregroundPackage = foreground,
+                activeRootProvider = rootProvider,
+            )
+            // ADR-0039 / #939: Full-only search query capture (Play binds NoopSearchCapture).
+            search.onAccessibilityEvent(
+                event,
+                foregroundPackage = foreground,
+                activeRootProvider = rootProvider,
+                nowMs = nowMs,
+            )
             if (foreground != eventPkg) Log.i(TAG, "event package $eventPkg, window in front $foreground (#165)")
             usage.recordForeground(foreground, System.currentTimeMillis())
         } else if (foreground == packageName) {

@@ -38,10 +38,18 @@ const PREVIEW_MAX_CHARS = 240;
 type Severity = "info" | "warning" | "critical";
 interface Verdict { flagged: boolean; severity: Severity; concernTypes: string[] }
 
+const SEVERITY_RANK: Record<Severity, number> = { info: 0, warning: 1, critical: 2 };
+const AR_LETTER = "[\\u0621-\\u064A\\u0640]";
+const arabicSearchTerm = (alternation: string): RegExp =>
+  new RegExp(`(?<!${AR_LETTER})(?:[\\u0648\\u0641\\u0628\\u0644\\u0643])?(?:\\u0627\\u0644)?(?:${alternation})(?!${AR_LETTER})`);
+
 const SEARCH_LOCAL_PATTERNS: Array<{ pattern: RegExp; concern: string }> = [
   { pattern: /\b((how (to|can I|do I)|ways to|want to)\s+(kill myself|commit suicide|end my life)|suicide methods|painless (ways to die|death|suicide)|ways to die|kill myself)\b/i, concern: "self_harm" },
+  { pattern: arabicSearchTerm("انتحار|أريد أن أموت|ابغى أموت|طرق الانتحار"), concern: "self_harm" },
   { pattern: /\b(buy (guns?|glock|ammo|drugs|weed|fentanyl)|how to make a bomb|pipe bomb)\b/i, concern: "substance_abuse" },
-  { pattern: /\b(free porn|hentai|xxx|sex video|nude pics)\b/i, concern: "adult_content" },
+  { pattern: /\b(free porn|pornography|pornhub|xvideos|xnxx|xhamster|redtube|youporn|hentai|xxx|nsfw|sex videos?|sexual videos?|nude (pics?|photos?|videos?|girls?|boys?)|naked (girls?|women|men|pics?))\b/i, concern: "adult_content" },
+  { pattern: /\bporn\b/i, concern: "adult_content" },
+  { pattern: arabicSearchTerm("سكس|افلام سكس|أفلام سكس|اباحية|إباحية|بورن|صور عارية|نيك"), concern: "adult_content" },
   { pattern: /\b(how to hack|ddos tool|dox someone)\b/i, concern: "cyberbullying" },
 ];
 
@@ -130,7 +138,21 @@ export async function contentRoutes(app: FastifyInstance) {
       ? new Date().getFullYear() - child.birthYear
       : undefined;
 
-    const verdict = (await analyzeContentWithAi(query, "search", childAge)) ?? localSearchCheck(query);
+    const ai = await analyzeContentWithAi(query, "search", childAge);
+    const local = localSearchCheck(query);
+    // Union of AI and local pattern check (matching #938 social scan): a local hit is never
+    // overridden by an English-only or safe model verdict.
+    const verdict: Verdict = ai?.flagged
+      ? local.flagged
+        ? {
+            flagged: true,
+            severity: SEVERITY_RANK[ai.severity] >= SEVERITY_RANK[local.severity] ? ai.severity : local.severity,
+            concernTypes: [...new Set([...ai.concernTypes, ...local.concernTypes])].slice(0, 3),
+          }
+        : ai
+      : local.flagged
+        ? local
+        : ai ?? local;
     if (!verdict.flagged) {
       return reply.code(200).send({ flagged: false, severity: "info" as Severity, concernTypes: [] });
     }

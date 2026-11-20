@@ -29,6 +29,15 @@ object SiteVisitGate {
         "time.android.com",
         "time.google.com",
         "android.clients.google.com",
+        "use-application-dns.net",
+        "dns.google",
+        "dns.google.com",
+        "cloudflare-dns.com",
+        "mozilla.cloudflare-dns.com",
+        "1dot1dot1dot1.cloudflare-dns.com",
+        "chrome.cloudflare-dns.com",
+        "dns.quad9.net",
+        "doh.opendns.com",
     )
 
     /**

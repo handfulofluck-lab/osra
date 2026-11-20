@@ -8,6 +8,7 @@ import com.familyshield.agent.network.dto.InstalledAppsDto
 import com.familyshield.agent.network.dto.LocationPingBatchDto
 import com.familyshield.agent.network.dto.PushTokenDto
 import com.familyshield.agent.network.dto.RuleSetDto
+import com.familyshield.agent.network.dto.SearchEventDto
 import com.familyshield.agent.network.dto.SocialScanBatchDto
 import com.familyshield.agent.network.dto.SocialScanBatchResultDto
 import com.familyshield.agent.network.dto.SocialScanDto
@@ -110,6 +111,10 @@ interface ApiService {
     /** #490: scans a whole flush in one request; each item is answered on its own, in order. */
     @POST("v1/social/scan")
     suspend fun postSocialScanBatch(@Body batch: SocialScanBatchDto): SocialScanBatchResultDto
+
+    /** Reports a submitted web/video search query from the Full build (#939, ADR-0039); HMAC-signed by SignatureInterceptor. */
+    @POST("v1/content/search-event")
+    suspend fun postSearchEvent(@Body event: SearchEventDto)
 
     /** Uploads a batch of call/SMS (Feature #6) or app_usage live-activity (Feature #29) events (device JWT). */
     @POST("v1/devices/{id}/activity")

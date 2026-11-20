@@ -293,5 +293,37 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
     expect(body.severity).toBe("critical");
     expect(body.concernTypes).toContain("self_harm");
   });
+
+  it("flags EN & AR sexual search queries even when AI engine returns safe (union, #939)", async () => {
+    process.env.AI_ENGINE_URL = "http://ai.local";
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ flagged: false, severity: "info", categories: { safe: 0.99 } }),
+    }) as unknown as typeof fetch;
+
+    for (const [idx, query] of ["porn videos", "sexual videos free", "افلام سكس"].entries()) {
+      prismaMock.alert.create.mockResolvedValue({ id: `alert-s-${idx}`, childId: CHILD.id });
+      prismaMock.socialEvent.create.mockResolvedValue({ id: `event-s-${idx}` });
+      const res = await postSearchEvent(app, {
+        childId: CHILD.id,
+        engine: "google",
+        query,
+      });
+      expect(res.statusCode).toBe(201);
+      const body = res.json();
+      expect(body.flagged).toBe(true);
+      expect(body.concernTypes).toContain("adult_content");
+    }
+
+    // Benign query when AI returns safe remains unflagged.
+    const benign = await postSearchEvent(app, {
+      childId: CHILD.id,
+      engine: "google",
+      query: "how to bake sourdough bread",
+    });
+    expect(benign.statusCode).toBe(200);
+    expect(benign.json().flagged).toBe(false);
+    delete process.env.AI_ENGINE_URL;
+  });
 });
 

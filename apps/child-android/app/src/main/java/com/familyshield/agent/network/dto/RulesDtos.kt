@@ -26,6 +26,10 @@ data class RuleSetDto(
      */
     val socialMonitoring: Map<String, Boolean> = emptyMap(),
     /**
+     * ADR-0039 / #939: whether search capture is enabled (null/absent = enabled by default).
+     */
+    val searchMonitoring: Boolean? = null,
+    /**
      * Feature #27: parent-curated known contacts (phone numbers, any format). An EMPTY list means
      * unknown-contact alerting is disabled (no alerts raised).
      */
