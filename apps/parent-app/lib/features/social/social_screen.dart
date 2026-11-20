@@ -161,6 +161,7 @@ class _MonitoringTogglesSectionState
   Map<String, bool>? _draft;
   final Set<String> _dirtyApps = {};
   bool? _searchOverride;
+  int _draftRevision = 0;
   bool _saving = false;
 
   void _applyLoaded(RuleSet ruleSet) {
@@ -176,6 +177,7 @@ class _MonitoringTogglesSectionState
     final l10n = context.l10n;
     final draft = _draft;
     if (draft == null) return;
+    final savedRevision = _draftRevision;
     setState(() => _saving = true);
     try {
       final ruleSet = ref.read(rulesProvider(widget.childId)).valueOrNull ??
@@ -198,9 +200,11 @@ class _MonitoringTogglesSectionState
           .read(apiClientProvider)
           .raw
           .patch('/v1/rules/${widget.childId}', data: body);
-      _dirtyApps.clear();
-      _searchOverride = null;
-      _draft = null;
+      if (_draftRevision == savedRevision) {
+        _dirtyApps.clear();
+        _searchOverride = null;
+        _draft = null;
+      }
       ref.invalidate(rulesProvider(widget.childId));
       // Issue #475 follow-up: a rule write must refresh the family snapshot too (#501 review).
       ref.invalidate(familyProvider);
@@ -250,10 +254,13 @@ class _MonitoringTogglesSectionState
                     title: Text(a.label),
                     secondary: Icon(socialAppIcon(a.appKey)),
                     value: draft[a.appKey] ?? true,
-                    onChanged: (v) => setState(() {
-                      _dirtyApps.add(a.appKey);
-                      draft[a.appKey] = v;
-                    }),
+                    onChanged: _saving
+                        ? null
+                        : (v) => setState(() {
+                              _draftRevision++;
+                              _dirtyApps.add(a.appKey);
+                              draft[a.appKey] = v;
+                            }),
                   ),
                 SwitchListTile(
                   key: const ValueKey('search-monitoring-toggle'),
@@ -261,7 +268,12 @@ class _MonitoringTogglesSectionState
                   title: Text(l10n.searchSafetyTitle),
                   secondary: const Icon(Icons.search),
                   value: _searchOverride ?? ruleSet.searchMonitoring,
-                  onChanged: (v) => setState(() => _searchOverride = v),
+                  onChanged: _saving
+                      ? null
+                      : (v) => setState(() {
+                            _draftRevision++;
+                            _searchOverride = v;
+                          }),
                 ),
                 Align(
                   alignment: AlignmentDirectional.centerEnd,
@@ -524,6 +536,7 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
   final _input = TextEditingController();
   List<String>? _items;
   bool _dirty = false;
+  int _draftRevision = 0;
   bool _saving = false;
 
   void _applyLoaded(RuleSet ruleSet) {
@@ -537,9 +550,11 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
       normalizeDigits(raw).replaceAll(RegExp(r'\D'), '');
 
   void _add() {
+    if (_saving) return;
     final digits = normalizePhone(_input.text);
     if (digits.isEmpty) return;
     setState(() {
+      _draftRevision++;
       _dirty = true;
       final items = _items ??= <String>[];
       if (!items.contains(digits)) items.add(digits);
@@ -551,13 +566,16 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
     final l10n = context.l10n;
     final items = _items;
     if (items == null) return;
+    final savedRevision = _draftRevision;
     setState(() => _saving = true);
     try {
       await ref.read(apiClientProvider).raw.patch(
         '/v1/rules/${widget.childId}',
         data: {'contactAllowlist': List.of(items)},
       );
-      _dirty = false;
+      if (_draftRevision == savedRevision) {
+        _dirty = false;
+      }
       ref.invalidate(rulesProvider(widget.childId));
       // Issue #475 follow-up: a rule write must refresh the family snapshot too (#501 review).
       ref.invalidate(familyProvider);
@@ -620,16 +638,20 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
                         InputChip(
                           visualDensity: VisualDensity.compact,
                           label: Text(n),
-                          onDeleted: () => setState(() {
-                            _dirty = true;
-                            items.remove(n);
-                          }),
+                          onDeleted: _saving
+                              ? null
+                              : () => setState(() {
+                                    _draftRevision++;
+                                    _dirty = true;
+                                    items.remove(n);
+                                  }),
                         ),
                     ],
                   ),
                 const SizedBox(height: AppSpace.sm),
                 TextField(
                   controller: _input,
+                  enabled: !_saving,
                   keyboardType: TextInputType.phone,
                   decoration: InputDecoration(
                     labelText: l10n.phoneNumberLabel,
@@ -638,9 +660,9 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
                     suffixIcon: IconButton(
                         icon: const Icon(Icons.add),
                         tooltip: l10n.add,
-                        onPressed: _add),
+                        onPressed: _saving ? null : _add),
                   ),
-                  onSubmitted: (_) => _add(),
+                  onSubmitted: _saving ? null : (_) => _add(),
                 ),
                 const SizedBox(height: AppSpace.sm),
                 Align(

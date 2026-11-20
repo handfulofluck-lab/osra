@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -258,6 +260,41 @@ void main() {
       expect(patches, hasLength(1));
       expect(patches.single.body['searchMonitoring'], isTrue);
     });
+
+    testWidgets('osra-security#57: monitoring choices are disabled during a delayed save', (tester) async {
+      final completer = Completer<Object?>();
+      final routes = socialRoutes(socialMonitoring: {'whatsapp': true});
+      routes['PATCH /v1/rules/child-1'] = (_) => FakeDeferred(completer.future);
+      final api = FakeApiClient(routes);
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+      await flushFakeHttp(tester);
+
+      final searchToggle = find.byKey(const ValueKey('search-monitoring-toggle'));
+      await tester.ensureVisible(searchToggle);
+      await tester.pumpAndSettle();
+      await tester.tap(searchToggle);
+      await tester.pumpAndSettle();
+      expect(tester.widget<SwitchListTile>(searchToggle).value, isTrue);
+
+      await tester.tap(find.text('Save monitoring'));
+      await tester.pump();
+
+      // While PATCH is in flight, both switches and Save button are disabled and ignore taps.
+      expect(tester.widget<SwitchListTile>(searchToggle).onChanged, isNull);
+      expect(tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'WhatsApp')).onChanged, isNull);
+      final saveBtn = find.widgetWithText(FilledButton, 'Saving…');
+      expect(tester.widget<FilledButton>(saveBtn).onPressed, isNull);
+      await tester.tap(searchToggle, warnIfMissed: false);
+      await tester.pump();
+      expect(tester.widget<SwitchListTile>(searchToggle).value, isTrue);
+
+      completer.complete({'ok': true});
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<SwitchListTile>(searchToggle).onChanged, isNotNull);
+      expect(find.text('Monitoring saved'), findsOneWidget);
+    });
   });
 
   group('Concerns vault', () {
@@ -355,6 +392,34 @@ void main() {
       final patch = api.calls('PATCH', '/v1/rules/child-1').single;
       expect(patch.body['contactAllowlist'], ['15553334445']);
       expect(patch.body.containsKey('searchMonitoring'), isFalse);
+    });
+
+    testWidgets('osra-security#57: allowlist mutations are disabled during a delayed save', (tester) async {
+      final completer = Completer<Object?>();
+      final routes = socialRoutes(contactAllowlist: ['15550001122']);
+      routes['PATCH /v1/rules/child-1'] = (_) => FakeDeferred(completer.future);
+      final api = FakeApiClient(routes);
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+      await flushFakeHttp(tester);
+
+      await reveal(tester, find.text('Save allowlist'));
+      await tester.tap(find.text('Save allowlist'));
+      await tester.pump();
+
+      final chip = find.widgetWithText(InputChip, '15550001122');
+      expect(tester.widget<InputChip>(chip).onDeleted, isNull);
+      final phoneField = fieldByLabel('Phone number');
+      expect(tester.widget<TextField>(phoneField).enabled, isFalse);
+      final addBtn = find.ancestor(of: find.byIcon(Icons.add), matching: find.byType(IconButton));
+      expect(tester.widget<IconButton>(addBtn).onPressed, isNull);
+      expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Saving…')).onPressed, isNull);
+
+      completer.complete({'ok': true});
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<InputChip>(chip).onDeleted, isNotNull);
+      expect(find.text('Allowlist saved'), findsOneWidget);
     });
   });
 
