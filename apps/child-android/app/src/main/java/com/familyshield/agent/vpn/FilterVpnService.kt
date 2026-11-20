@@ -99,6 +99,7 @@ class FilterVpnService : VpnService() {
                 return START_NOT_STICKY
             }
             ACTION_RELOAD -> { reloadConfig(); return START_STICKY }
+            ACTION_FLUSH_VISITS -> { flushSiteVisits(); return START_STICKY }
         }
         val wanted = intent?.getStringExtra(EXTRA_MODE) ?: VpnState.mode(this)
         startForegroundCompat()
@@ -272,7 +273,13 @@ class FilterVpnService : VpnService() {
                         DnsMessage.buildSink(query, q)
                     }
                 }
-                DnsFilterPolicy.Action.REWRITE -> rewrite(query, q, d.target!!)
+                DnsFilterPolicy.Action.REWRITE -> {
+                    // #830 row 5: SafeSearch and YouTube Restricted Mode are enabled by default for every child,
+                    // so Google, Bing, DuckDuckGo and YouTube lookups take REWRITE rather than FORWARD. Record the
+                    // queried host (gated by SiteVisitGate); the CNAME target stays excluded by SiteVisitGate.
+                    recordSiteVisit(q.name, blocked = false)
+                    rewrite(query, q, d.target!!)
+                }
             }
         }
         if (reply == null) return
@@ -493,7 +500,7 @@ class FilterVpnService : VpnService() {
          * dozen names; [SITE_VISIT_FLUSH_MS] bounds how long a name waits, and [SITE_VISIT_BATCH_MAX] is
          * the cap the server also enforces.
          */
-        private const val SITE_VISIT_FLUSH_MS = 60_000L
+        private const val SITE_VISIT_FLUSH_MS = 15_000L
         private const val SITE_VISIT_BATCH_MAX = 20
         /**
          * The mode of the tunnel that is **actually established**, or null when there is none.
@@ -512,6 +519,7 @@ class FilterVpnService : VpnService() {
         const val MODE_SINKHOLE_ALL = "sinkhole_all"
         const val ACTION_STOP = "com.familyshield.agent.vpn.STOP"
         const val ACTION_RELOAD = "com.familyshield.agent.vpn.RELOAD"
+        const val ACTION_FLUSH_VISITS = "com.familyshield.agent.vpn.FLUSH_VISITS"
         const val EXTRA_MODE = "mode"
         private const val TUN_ADDR = "10.111.222.1"
         private const val TUN_ADDR6 = "fd00:6f73:7261::1"
@@ -533,6 +541,12 @@ class FilterVpnService : VpnService() {
             if (!isPrepared(context)) return
             val i = Intent(context, FilterVpnService::class.java).putExtra(EXTRA_MODE, mode)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(i) else context.startService(i)
+        }
+
+        /** Flushes any queued site visits when the screen turns off (#830 row 5); no-op when stopped. */
+        fun flushIfRunning(context: Context) {
+            if (!isRunning) return
+            runCatching { context.startService(Intent(context, FilterVpnService::class.java).setAction(ACTION_FLUSH_VISITS)) }
         }
 
         /**

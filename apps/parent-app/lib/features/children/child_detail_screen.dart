@@ -287,6 +287,11 @@ class _OverviewTab extends ConsumerWidget {
                           label: Text(l10n.ring),
                         ),
                         TextButton.icon(
+                          onPressed: () => _sendCommand(context, ref, d, 'stop_ring'),
+                          icon: const Icon(Icons.notifications_off_outlined, size: 18),
+                          label: Text(l10n.commandStopRing),
+                        ),
+                        TextButton.icon(
                           onPressed: () => _sendCommand(context, ref, d, 'lock'),
                           icon: const Icon(Icons.lock, size: 18),
                           label: Text(l10n.lock),

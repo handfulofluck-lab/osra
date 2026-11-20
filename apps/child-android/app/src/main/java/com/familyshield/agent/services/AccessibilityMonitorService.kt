@@ -53,7 +53,9 @@ import com.familyshield.agent.security.TamperScreen
 import com.familyshield.agent.security.TamperScreenPolicy
 import com.familyshield.agent.security.TamperState
 import com.familyshield.agent.social.SocialCapture
+import com.familyshield.agent.telemetry.FOREGROUND_HEARTBEAT_MS
 import com.familyshield.agent.telemetry.UsageReporter
+import com.familyshield.agent.vpn.FilterVpnService
 import com.familyshield.agent.vpn.VpnState
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -207,6 +209,36 @@ class AccessibilityMonitorService : AccessibilityService() {
         override fun onReceive(context: android.content.Context?, intent: Intent?) = packageFacts.refresh()
     }
 
+    /** #830 row 5: periodic local foreground heartbeat while interactive; stops completely while screen is off. */
+    private val foregroundHeartbeat = object : Runnable {
+        override fun run() {
+            val interactive = runCatching {
+                getSystemService(android.os.PowerManager::class.java)?.isInteractive ?: false
+            }.getOrDefault(false)
+            if (!interactive) return
+            usage.recordActiveHeartbeat(System.currentTimeMillis())
+            main.postDelayed(this, FOREGROUND_HEARTBEAT_MS)
+        }
+    }
+
+    private fun scheduleForegroundHeartbeat() {
+        main.removeCallbacks(foregroundHeartbeat)
+        main.postDelayed(foregroundHeartbeat, FOREGROUND_HEARTBEAT_MS)
+    }
+
+    private val screenStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: Intent?) {
+            when (intent?.action) {
+                Intent.ACTION_SCREEN_OFF -> {
+                    main.removeCallbacks(foregroundHeartbeat)
+                    serviceScope.launch { usage.onScreenOff(System.currentTimeMillis()) }
+                    FilterVpnService.flushIfRunning(this@AccessibilityMonitorService)
+                }
+                Intent.ACTION_SCREEN_ON -> scheduleForegroundHeartbeat()
+            }
+        }
+    }
+
     private val filterRecoveryCovers = mutableMapOf<WindowBounds, PipCoverOverlay>()
 
     private val filterLossReceiver = object : BroadcastReceiver() {
@@ -233,6 +265,15 @@ class AccessibilityMonitorService : AccessibilityService() {
             addDataScheme("package")
         }
         runCatching { registerReceiver(packageChangeReceiver, filter) }
+        val screenFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON)
+        }
+        runCatching { registerReceiver(screenStateReceiver, screenFilter) }
+        val interactiveNow = runCatching {
+            getSystemService(android.os.PowerManager::class.java)?.isInteractive ?: false
+        }.getOrDefault(false)
+        if (interactiveNow) scheduleForegroundHeartbeat()
         ContextCompat.registerReceiver(
             this,
             filterLossReceiver,
@@ -294,6 +335,8 @@ class AccessibilityMonitorService : AccessibilityService() {
         // #460 review: a deferred raise posted inside the fallback window must not fire after the
         // service is gone — the child turning accessibility off is exactly when that window exists.
         cancelDeferredRaise()
+        main.removeCallbacks(foregroundHeartbeat)
+        runCatching { unregisterReceiver(screenStateReceiver) }
         runCatching { unregisterReceiver(packageChangeReceiver) }
         runCatching { unregisterReceiver(filterLossReceiver) }
         super.onDestroy()

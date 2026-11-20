@@ -95,7 +95,7 @@ void main() {
       expect(find.textContaining('com.edu.app'), findsNothing);
     });
 
-    testWidgets('add then remove an app; Save PUTs alwaysAllowedApps', (tester) async {
+    testWidgets('add then remove an app; Save patches alwaysAllowedApps', (tester) async {
       final api = rulesApi();
       await openAppsTab(tester, api);
 
@@ -108,16 +108,16 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.widgetWithText(InputChip, 'Video'), findsOneWidget);
 
-      // Save → PUT carries both apps, by package id.
+      // Save → PATCH carries both apps, by package id.
       await tester.tap(find.text('Save'));
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
-      var puts = api.calls('PUT', '/v1/rules/child-1');
-      expect(puts, hasLength(1));
-      expect(puts.single.body['alwaysAllowedApps'], ['com.edu.app', 'com.example.video']);
+      var patches = api.calls('PATCH', '/v1/rules/child-1');
+      expect(patches, hasLength(1));
+      expect(patches.single.body['alwaysAllowedApps'], ['com.edu.app', 'com.example.video']);
       await runOutSnackbar(tester);
 
-      // Remove the chip, save again → PUT carries only the remaining app.
+      // Remove the chip, save again → PATCH carries only the remaining app.
       final chip = find.widgetWithText(InputChip, 'Video');
       await tester.tap(find.descendant(of: chip, matching: find.byIcon(Icons.clear)));
       await tester.pumpAndSettle();
@@ -126,9 +126,9 @@ void main() {
       await tester.tap(find.text('Save'));
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
-      puts = api.calls('PUT', '/v1/rules/child-1');
-      expect(puts, hasLength(2));
-      expect(puts.last.body['alwaysAllowedApps'], ['com.edu.app']);
+      patches = api.calls('PATCH', '/v1/rules/child-1');
+      expect(patches, hasLength(2));
+      expect(patches.last.body['alwaysAllowedApps'], ['com.edu.app']);
       await runOutSnackbar(tester);
     });
   });

@@ -165,6 +165,11 @@ class ChildMapSheet extends ConsumerWidget {
                   onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'ring'),
                 ),
                 FilledButton.tonalIcon(
+                  icon: const Icon(Icons.notifications_off_outlined),
+                  label: Text(context.l10n.commandStopRing),
+                  onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'stop_ring'),
+                ),
+                FilledButton.tonalIcon(
                   icon: const Icon(Icons.lock),
                   label: Text(context.l10n.familyMapLock),
                   onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'lock'),
@@ -194,10 +199,12 @@ class ChildMapSheet extends ConsumerWidget {
         );
         return;
       }
-      // Two explicit keys rather than a capitalised command name (#419): upper-casing a
-      // localized word is not a translation.
-      final queued = command == 'lock' ? l10n.familyMapLockQueued : l10n.familyMapRingQueued;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(queued(device.model))));
+      final queued = switch (command) {
+        'lock' => l10n.familyMapLockQueued(device.model),
+        'ring' => l10n.familyMapRingQueued(device.model),
+        _ => l10n.commandQueued(l10n.commandType(command), device.model),
+      };
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(queued)));
     } on DioException catch (e) {
       if (context.mounted) {
         // #434: the keys are the shapes the routes actually send — a `permission_required` 403,
