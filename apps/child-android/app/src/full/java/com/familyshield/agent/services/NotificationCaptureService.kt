@@ -76,47 +76,41 @@ class NotificationCaptureService : NotificationListenerService() {
     }
 
     /**
-     * osra-security#43: content-free call-window tracking for [IncomingRingWindow]. Reads only package, key,
-     * category, and whether Decline / Hang-up extras are present — never title, text, or caller identity.
+     * osra-security#43 / osra-security#49: content-free call-window tracking for [IncomingRingWindow]. Reads
+     * only package, key, category, and whether Decline / Hang-up extras are present — never title, text, or
+     * caller identity.
      */
     private fun trackPlatformCallWindow(sbn: StatusBarNotification, removed: Boolean) {
         val pkg = sbn.packageName.orEmpty()
         if (pkg.isEmpty() || pkg == packageName) return
         val n = sbn.notification
         val category = n?.category
-        val isCall = category == Notification.CATEGORY_CALL
-        if (removed) {
-            IncomingRingWindow.recordRemovedNotice(pkg = pkg, key = sbn.key, isCall = isCall)
-            return
-        }
-        val isMissedCall = category == Notification.CATEGORY_MISSED_CALL
-        if (!isCall && !isMissedCall) return
-        val extras = n?.extras
+        val extras = if (removed) null else n?.extras
         val hasDecline = extras?.containsKey(EXTRA_DECLINE) == true && extras.get(EXTRA_DECLINE) != null
         val hasHangUp = extras?.containsKey(EXTRA_HANG_UP) == true && extras.get(EXTRA_HANG_UP) != null
-        val defaultDialer = runCatching { getSystemService(TelecomManager::class.java)?.defaultDialerPackage }.getOrNull()
-        val rawMode = runCatching { getSystemService(AudioManager::class.java)?.mode }.getOrNull() ?: AudioManager.MODE_NORMAL
-        val mode = when (rawMode) {
-            AudioManager.MODE_NORMAL -> CallAudioMode.NORMAL
-            AudioManager.MODE_RINGTONE -> CallAudioMode.RINGTONE
-            AudioManager.MODE_IN_CALL -> CallAudioMode.IN_CALL
-            AudioManager.MODE_IN_COMMUNICATION -> CallAudioMode.IN_COMMUNICATION
-            else -> CallAudioMode.OTHER
+        val defaultDialer = if (removed) null else {
+            runCatching { getSystemService(TelecomManager::class.java)?.defaultDialerPackage }.getOrNull()
         }
-        IncomingRingWindow.recordPostedNotice(
+        val mode = if (removed) CallAudioMode.NORMAL else {
+            when (runCatching { getSystemService(AudioManager::class.java)?.mode }.getOrNull() ?: AudioManager.MODE_NORMAL) {
+                AudioManager.MODE_NORMAL -> CallAudioMode.NORMAL
+                AudioManager.MODE_RINGTONE -> CallAudioMode.RINGTONE
+                AudioManager.MODE_IN_CALL -> CallAudioMode.IN_CALL
+                AudioManager.MODE_IN_COMMUNICATION -> CallAudioMode.IN_COMMUNICATION
+                else -> CallAudioMode.OTHER
+            }
+        }
+        trackCallWindowNotice(
+            ownPackage = packageName,
             pkg = pkg,
             key = sbn.key,
-            isCall = isCall,
-            isMissedCall = isMissedCall,
+            category = category,
             hasDecline = hasDecline,
             hasHangUp = hasHangUp,
+            removed = removed,
+            defaultDialer = defaultDialer,
             mode = mode,
             nowMs = System.currentTimeMillis(),
-            fromTrustedSource = IncomingRingWindow.fromTrustedSource(
-                pkg = pkg,
-                defaultDialer = defaultDialer,
-                platformInCallUi = EssentialPackages.inCallUi,
-            ),
         )
     }
 
@@ -169,6 +163,43 @@ class NotificationCaptureService : NotificationListenerService() {
         private const val WHATSAPP_KEY = "whatsapp"
         private const val EXTRA_DECLINE = "android.declineIntent"
         private const val EXTRA_HANG_UP = "android.hangUpIntent"
+
+        internal fun trackCallWindowNotice(
+            ownPackage: String,
+            pkg: String,
+            key: String?,
+            category: String?,
+            hasDecline: Boolean,
+            hasHangUp: Boolean,
+            removed: Boolean,
+            defaultDialer: String?,
+            mode: CallAudioMode,
+            nowMs: Long,
+        ) {
+            if (pkg.isEmpty() || pkg == ownPackage) return
+            val isCall = category == Notification.CATEGORY_CALL
+            if (removed) {
+                IncomingRingWindow.recordRemovedNotice(pkg = pkg, key = key, isCall = isCall, nowMs = nowMs)
+                return
+            }
+            val isMissedCall = category == Notification.CATEGORY_MISSED_CALL
+            if (!isCall && !isMissedCall) return
+            IncomingRingWindow.recordPostedNotice(
+                pkg = pkg,
+                key = key,
+                isCall = isCall,
+                isMissedCall = isMissedCall,
+                hasDecline = hasDecline,
+                hasHangUp = hasHangUp,
+                mode = mode,
+                nowMs = nowMs,
+                fromTrustedSource = IncomingRingWindow.fromTrustedSource(
+                    pkg = pkg,
+                    defaultDialer = defaultDialer,
+                    platformInCallUi = EssentialPackages.inCallUi,
+                ),
+            )
+        }
 
         /** The platform-to-policy mapping ADR-0016 calls the only unverified line; kept tiny on purpose. */
         fun snapshotOf(sbn: StatusBarNotification, removed: Boolean = false): NotificationCapturePolicy.Snapshot {

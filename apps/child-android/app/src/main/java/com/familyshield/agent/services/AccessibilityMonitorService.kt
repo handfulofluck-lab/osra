@@ -149,6 +149,7 @@ class AccessibilityMonitorService : AccessibilityService() {
     private var shadeRecheck: Runnable? = null
     private var shadeLateRecheck: Runnable? = null
     private var shadeContentRecheck: Runnable? = null
+    private var ringWindowExpiry: Runnable? = null
 
     /** osra-security#7: the window the gate was last opened over; a state change from any other is a new screen. */
     private var guardedWindowId = -1
@@ -189,11 +190,16 @@ class AccessibilityMonitorService : AccessibilityService() {
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
     private val deferredRaise = Runnable { raiseDeferredIfDue() }
 
-    /** Issue #444 / osra-security#33: non-essential calls are blocked both under app rules and under active device lock/pause. */
+    /** Issue #444 / osra-security#33 / osra-security#48: non-essential calls are blocked under app rules and active lock/pause; essential packages stay exempt. */
     private val calls by lazy {
         CallEnforcer(
             this,
-            isBlocked = { LockState.isActive(this) || rules.evaluate(it) != RuleRepository.Decision.ALLOW },
+            isBlocked = {
+                isNonEssentialBlocked(
+                    isEssential = EssentialPackages.isEssential(it, packageFacts),
+                    lockedOrRuleBlocked = LockState.isActive(this) || rules.evaluate(it) != RuleRepository.Decision.ALLOW,
+                )
+            },
             isEssential = { EssentialPackages.isEssential(it, packageFacts) },
             floor = bypassFloor,
         )
@@ -204,9 +210,17 @@ class AccessibilityMonitorService : AccessibilityService() {
         android.os.Handler(android.os.Looper.getMainLooper()).post { media.onRulesChanged() }
     }
 
-    /** Issue #444 C4 / osra-security#33: non-essential media sessions also pause while locked or paused. */
+    /** Issue #444 C4 / osra-security#33 / osra-security#48: non-essential media sessions also pause while locked or paused. */
     private val media by lazy {
-        MediaEnforcer(this, isBlocked = { LockState.isActive(this) || rules.evaluate(it) != RuleRepository.Decision.ALLOW })
+        MediaEnforcer(
+            this,
+            isBlocked = {
+                isNonEssentialBlocked(
+                    isEssential = EssentialPackages.isEssential(it, packageFacts),
+                    lockedOrRuleBlocked = LockState.isActive(this) || rules.evaluate(it) != RuleRepository.Decision.ALLOW,
+                )
+            },
+        )
     }
 
     /** Issue #132: log a refused start once per reason, not once per 60 s accessibility event. */
@@ -291,9 +305,27 @@ class AccessibilityMonitorService : AccessibilityService() {
         refreshFilterRecovery()
         calls.onConnected()
         media.onConnected()
-        IncomingRingWindow.setOnWindowClosed {
-            ringRecheckHandler.post { collapseShadeAfterRingEnded() }
-        }
+        bindRingWindowCallbacks(
+            scheduler = object : IncomingRingWindow.Scheduler {
+                override fun schedule(delayMs: Long, action: () -> Unit) {
+                    ringWindowExpiry?.let { ringRecheckHandler.removeCallbacks(it) }
+                    val task = Runnable {
+                        ringWindowExpiry = null
+                        action()
+                    }
+                    ringWindowExpiry = task
+                    ringRecheckHandler.postDelayed(task, delayMs.coerceAtLeast(0L))
+                }
+
+                override fun cancel() {
+                    ringWindowExpiry?.let { ringRecheckHandler.removeCallbacks(it) }
+                    ringWindowExpiry = null
+                }
+            },
+            onClosed = {
+                ringRecheckHandler.post { collapseShadeAfterRingEnded() }
+            },
+        )
         rules.addRulesChangedListener(rulesChanged)
     }
 
@@ -343,7 +375,9 @@ class AccessibilityMonitorService : AccessibilityService() {
         shadeLateRecheck = null
         shadeContentRecheck?.let { ringRecheckHandler.removeCallbacks(it) }
         shadeContentRecheck = null
-        IncomingRingWindow.setOnWindowClosed(null)
+        ringWindowExpiry?.let { ringRecheckHandler.removeCallbacks(it) }
+        ringWindowExpiry = null
+        IncomingRingWindow.unbindCallbacks()
         calls.onDestroy()
         media.onDestroy()
         rules.removeRulesChangedListener(rulesChanged)
@@ -1158,14 +1192,12 @@ class AccessibilityMonitorService : AccessibilityService() {
     }
 
     private fun collapseShadeAfterRingEnded() {
-        if (!isRunning) return
-        if (ShadePolicy.shouldCollapse(
-                locked = LockState.isActive(this),
-                packageName = ShadePolicy.SHADE_PACKAGE,
-                className = lastClassByPkg[ShadePolicy.SHADE_PACKAGE],
-                apiLevel = Build.VERSION.SDK_INT,
-                callRinging = calls.isRinging(),
-            )
+        collapseShadeOnRingClosed(
+            isRunning = isRunning,
+            locked = LockState.isActive(this),
+            lastSystemUiClass = lastClassByPkg[ShadePolicy.SHADE_PACKAGE],
+            apiLevel = Build.VERSION.SDK_INT,
+            callRinging = calls.isRinging(),
         ) {
             performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
             scheduleShadeRecheck(delayMs = SHADE_RECHECK_MS, slot = ShadePulse.STATE)
@@ -1181,6 +1213,37 @@ class AccessibilityMonitorService : AccessibilityService() {
         internal const val SHADE_RECHECK_MS = 250L
         internal const val SHADE_LATE_RECHECK_MS = 700L
         internal const val SHADE_CONTENT_RECHECK_MS = 300L
+
+        internal fun isNonEssentialBlocked(isEssential: Boolean, lockedOrRuleBlocked: Boolean): Boolean =
+            !isEssential && lockedOrRuleBlocked
+
+        internal fun bindRingWindowCallbacks(
+            scheduler: IncomingRingWindow.Scheduler,
+            onClosed: () -> Unit,
+        ) {
+            IncomingRingWindow.bindCallbacks(onClosed = onClosed, expiryScheduler = scheduler)
+        }
+
+        internal fun collapseShadeOnRingClosed(
+            isRunning: Boolean,
+            locked: Boolean,
+            lastSystemUiClass: String?,
+            apiLevel: Int,
+            callRinging: Boolean,
+            onCollapse: () -> Unit,
+        ) {
+            if (!isRunning) return
+            if (ShadePolicy.shouldCollapse(
+                    locked = locked,
+                    packageName = ShadePolicy.SHADE_PACKAGE,
+                    className = lastSystemUiClass,
+                    apiLevel = apiLevel,
+                    callRinging = callRinging,
+                )
+            ) {
+                onCollapse()
+            }
+        }
 
         /**
          * Issue #231 review: true while the system holds this service bound, set from

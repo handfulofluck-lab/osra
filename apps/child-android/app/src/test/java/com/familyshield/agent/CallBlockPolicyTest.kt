@@ -204,4 +204,57 @@ class CallBlockPolicyTest {
         p.mode(CallAudioMode.NORMAL, now = 70_000L)
         assertEquals("the next ring is blocked", CallAction.Decline(meet), p.post(meet, ring(postedAt = 7L), now = 80_000L).first())
     }
+
+    @Test
+    fun `osra-security 48 - permitted platform calls under lock are never declined, covered, hung up or reported in either ordering`() {
+        val incallUi = "com.samsung.android.incallui"
+        val lockWideBlocked: (String) -> Boolean = { true }
+        val platformEssential: (String) -> Boolean = { it == dialer || it == incallUi }
+
+        // Ordering A: notice -> MODE_RINGTONE -> MODE_IN_CALL -> tick past reportAfterMs.
+        // Mutants:
+        // - M48a: infer blockedRingActive from `ringPkg != null` -> blockedRingActive turns true at RINGTONE here.
+        // - M48b: omit `isEssential` in onAudioMode / adopt -> connected call sets callExempt=false and emits ReportCall.
+        val orderA = CallBlockPolicy()
+        assertEquals(emptyList<CallAction>(), orderA.onNotification(CallNotice(incallUi, ring()), lockWideBlocked, platformEssential, 1_000L))
+        assertEquals(emptyList<CallAction>(), orderA.onAudioMode(CallAudioMode.RINGTONE, lockWideBlocked, 1_200L, platformEssential))
+        assertFalse(orderA.blockedRingActive)
+        assertFalse(orderA.coverShown)
+        assertEquals(emptyList<CallAction>(), orderA.onAudioMode(CallAudioMode.IN_CALL, lockWideBlocked, 3_000L, platformEssential))
+        assertEquals(emptyList<CallAction>(), orderA.onNotification(CallNotice(incallUi, ongoing), lockWideBlocked, platformEssential, 3_500L))
+        assertEquals(emptyList<CallAction>(), orderA.tick(30_000L))
+
+        // Ordering B: MODE_RINGTONE -> notice -> MODE_IN_CALL (even when a blocked VoIP app posted right before RINGTONE).
+        // Mutant M48c: keep stale blocked `ringPkg` when a permitted platform call posts during RINGTONE ->
+        // RINGTONE -> IN_CALL adopts `meet` and emits ReportCall(meet).
+        val orderB = CallBlockPolicy()
+        orderB.onNotification(CallNotice(meet, parcel = null), lockWideBlocked, platformEssential, 500L)
+        assertEquals(listOf(CallAction.ShowRingCover), orderB.onAudioMode(CallAudioMode.RINGTONE, lockWideBlocked, 800L, platformEssential))
+        assertTrue(orderB.blockedRingActive)
+        assertEquals(listOf(CallAction.RemoveRingCover), orderB.onNotification(CallNotice(dialer, ring()), lockWideBlocked, platformEssential, 1_000L))
+        assertFalse(orderB.blockedRingActive)
+        assertFalse(orderB.coverShown)
+        assertEquals(emptyList<CallAction>(), orderB.onAudioMode(CallAudioMode.IN_CALL, lockWideBlocked, 2_500L, platformEssential))
+        assertEquals(emptyList<CallAction>(), orderB.onNotification(CallNotice(dialer, ongoing), lockWideBlocked, platformEssential, 3_000L))
+        assertEquals(emptyList<CallAction>(), orderB.tick(30_000L))
+    }
+
+    @Test
+    fun `osra-security 48 - non-call parcels neither claim a ring nor drop an active ring cover`() {
+        // Mutant M48d: update lastPost / nonBlockedPostedDuringRing before checking `parcel.isCall` ->
+        // a blocked app's non-call notification covers RINGTONE, or an allowed chat message drops the ring cover.
+        val p = CallBlockPolicy()
+        assertEquals(emptyList<CallAction>(), p.post(meet, message, now = 100L))
+        assertEquals(emptyList<CallAction>(), p.mode(CallAudioMode.RINGTONE, now = 500L))
+        assertFalse(p.coverShown)
+        assertFalse(p.blockedRingActive)
+        p.mode(CallAudioMode.NORMAL, now = 1_000L)
+
+        assertEquals(listOf(CallAction.Decline(meet), CallAction.ShowRingCover), p.post(meet, ring(postedAt = 11L), now = 2_000L))
+        p.mode(CallAudioMode.RINGTONE, now = 2_200L)
+        assertTrue(p.coverShown)
+        assertEquals("non-call chat message must not drop call cover", emptyList<CallAction>(), p.post(chat, message, now = 2_400L))
+        assertTrue(p.coverShown)
+        assertTrue(p.blockedRingActive)
+    }
 }
