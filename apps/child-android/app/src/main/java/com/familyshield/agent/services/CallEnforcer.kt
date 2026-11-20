@@ -9,6 +9,7 @@ import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.Gravity
 import android.view.View
@@ -47,12 +48,17 @@ class CallEnforcer(
         private val defaultDialerProvider: () -> String?,
         private val modeProvider: () -> CallAudioMode,
         private val clock: () -> Long = System::currentTimeMillis,
+        private val elapsedClock: () -> Long = clock,
     ) {
         internal val policy = CallBlockPolicy(floor = floor)
 
-        fun onAudioMode(mode: CallAudioMode, nowMs: Long = clock()): List<CallAction> {
+        fun onAudioMode(
+            mode: CallAudioMode,
+            nowMs: Long = clock(),
+            nowElapsedMs: Long = elapsedClock(),
+        ): List<CallAction> {
             val actions = policy.onAudioMode(mode, isBlocked, nowMs, isEssential)
-            if (mode != CallAudioMode.NORMAL) IncomingRingWindow.clearSharedWindow(nowMs)
+            if (mode != CallAudioMode.NORMAL) IncomingRingWindow.clearSharedWindow(nowElapsedMs)
             return actions
         }
 
@@ -61,11 +67,12 @@ class CallEnforcer(
             parcel: CallParcel?,
             isMissedCall: Boolean = false,
             nowMs: Long = clock(),
+            nowElapsedMs: Long = elapsedClock(),
         ): List<CallAction> {
             if (pkg.isEmpty() || pkg == ownPackage) return emptyList()
             val mode = modeProvider()
             val preActions = policy.onAudioMode(mode, isBlocked, nowMs, isEssential)
-            if (mode != CallAudioMode.NORMAL) IncomingRingWindow.clearSharedWindow(nowMs)
+            if (mode != CallAudioMode.NORMAL) IncomingRingWindow.clearSharedWindow(nowElapsedMs)
             if (parcel != null || isMissedCall) {
                 IncomingRingWindow.recordPostedNotice(
                     pkg = pkg,
@@ -75,7 +82,7 @@ class CallEnforcer(
                     hasDecline = parcel?.hasDecline == true,
                     hasHangUp = parcel?.hasHangUp == true,
                     mode = mode,
-                    nowMs = nowMs,
+                    nowMs = nowElapsedMs,
                     fromTrustedSource = IncomingRingWindow.fromTrustedSource(
                         pkg = pkg,
                         defaultDialer = defaultDialerProvider(),
@@ -87,7 +94,7 @@ class CallEnforcer(
             return if (preActions.isEmpty()) postActions else preActions + postActions
         }
 
-        fun isRinging(nowMs: Long = clock()): Boolean {
+        fun isRinging(nowElapsedMs: Long = elapsedClock()): Boolean {
             val ringOwner = policy.currentRingOwner
             val trustedOwner = ringOwner != null &&
                 !policy.blockedRingActive &&
@@ -98,7 +105,7 @@ class CallEnforcer(
                 )
             return IncomingRingWindow.isSharedRinging(
                 mode = modeProvider(),
-                nowMs = nowMs,
+                nowMs = nowElapsedMs,
                 blockedRingActive = policy.blockedRingActive,
                 trustedRingOwner = trustedOwner,
             )
@@ -120,13 +127,14 @@ class CallEnforcer(
         defaultDialerProvider = ::defaultDialerPackage,
         modeProvider = ::currentMode,
         clock = ::now,
+        elapsedClock = ::nowElapsed,
     )
 
     private val policy: CallBlockPolicy get() = coordinator.policy
 
     private val modeListener: Any? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         AudioManager.OnModeChangedListener { mode ->
-            apply(coordinator.onAudioMode(map(mode), now()))
+            apply(coordinator.onAudioMode(map(mode), now(), nowElapsed()))
         }
     } else {
         null
@@ -135,7 +143,7 @@ class CallEnforcer(
     private val tick = object : Runnable {
         override fun run() {
             val current = currentMode()
-            apply(coordinator.onAudioMode(current, now()))
+            apply(coordinator.onAudioMode(current, now(), nowElapsed()))
             if (policy.coverShown || current != CallAudioMode.NORMAL) {
                 main.postDelayed(this, TICK_MS)
             } else {
@@ -179,7 +187,15 @@ class CallEnforcer(
             )
         }
         val isMissedCall = notification?.category == Notification.CATEGORY_MISSED_CALL
-        apply(coordinator.onNotification(pkg = pkg, parcel = parcel, isMissedCall = isMissedCall, nowMs = now()))
+        apply(
+            coordinator.onNotification(
+                pkg = pkg,
+                parcel = parcel,
+                isMissedCall = isMissedCall,
+                nowMs = now(),
+                nowElapsedMs = nowElapsed(),
+            ),
+        )
     }
 
     /**
@@ -187,7 +203,7 @@ class CallEnforcer(
      * and the tick cover it, so the binder read is skipped on the window-content hot path (#449 review).
      */
     fun onEvent() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) apply(coordinator.onAudioMode(currentMode(), now()))
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) apply(coordinator.onAudioMode(currentMode(), now(), nowElapsed()))
     }
 
     private fun apply(actions: List<CallAction>) {
@@ -251,7 +267,7 @@ class CallEnforcer(
 
     private fun currentMode(): CallAudioMode = map(runCatching { audio?.mode }.getOrNull() ?: AudioManager.MODE_NORMAL)
 
-    fun isRinging(): Boolean = coordinator.isRinging(now())
+    fun isRinging(): Boolean = coordinator.isRinging(nowElapsed())
 
     private fun defaultDialerPackage(): String? =
         runCatching { service.getSystemService(android.telecom.TelecomManager::class.java)?.defaultDialerPackage }.getOrNull()
@@ -265,6 +281,7 @@ class CallEnforcer(
     }
 
     private fun now() = System.currentTimeMillis()
+    private fun nowElapsed() = SystemClock.elapsedRealtime()
 
     @Suppress("DEPRECATION")
     private fun android.os.Bundle.parcelable(key: String): PendingIntent? =

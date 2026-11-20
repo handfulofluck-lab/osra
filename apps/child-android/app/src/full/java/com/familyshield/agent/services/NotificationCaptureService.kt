@@ -5,6 +5,7 @@ import android.media.AudioManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.service.notification.NotificationListenerService
 import android.service.notification.NotificationListenerService.Ranking
 import android.service.notification.NotificationListenerService.RankingMap
@@ -100,6 +101,7 @@ class NotificationCaptureService : NotificationListenerService() {
                 else -> CallAudioMode.OTHER
             }
         }
+        // osra-security#50: measure arrival on the monotonic clock (`elapsedRealtime`), never `sbn.postTime` or wall clock.
         trackCallWindowNotice(
             ownPackage = packageName,
             pkg = pkg,
@@ -110,7 +112,7 @@ class NotificationCaptureService : NotificationListenerService() {
             removed = removed,
             defaultDialer = defaultDialer,
             mode = mode,
-            nowMs = System.currentTimeMillis(),
+            nowMs = SystemClock.elapsedRealtime(),
         )
     }
 

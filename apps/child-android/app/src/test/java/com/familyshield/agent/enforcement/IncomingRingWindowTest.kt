@@ -224,27 +224,31 @@ class IncomingRingWindowTest {
         val lockedNonEssential = "com.google.android.apps.tachyon"
         val incallUi = "com.samsung.android.incallui"
         var mode = CallAudioMode.NORMAL
+        var nowMs = 500L
         val enforcer = CallEnforcer.Coordinator(
             ownPackage = "com.osratech.child",
             isBlocked = { it != incallUi },
             isEssential = { it == incallUi },
             defaultDialerProvider = { "com.samsung.android.dialer" },
             modeProvider = { mode },
+            clock = { nowMs },
         )
 
         val actions = enforcer.onNotification(
             lockedNonEssential,
             CallParcel(isCall = true, hasDecline = true, hasHangUp = true, ongoing = true, postedAt = 100L),
-            nowMs = 500L,
+            nowMs = nowMs,
         )
         assertEquals(listOf(CallAction.Decline(lockedNonEssential), CallAction.ShowRingCover), actions)
         mode = CallAudioMode.RINGTONE
-        enforcer.onAudioMode(mode, 600L)
-        assertFalse(enforcer.isRinging(600L))
+        nowMs = 600L
+        enforcer.onAudioMode(mode, nowMs)
+        assertFalse(enforcer.isRinging(nowMs))
 
         // Real platform call arriving during that ring drops the cover and restores the exemption.
-        assertEquals(listOf(CallAction.RemoveRingCover), enforcer.onNotification(incallUi, parcel = null, nowMs = 700L))
-        assertTrue(enforcer.isRinging(700L))
+        nowMs = 700L
+        assertEquals(listOf(CallAction.RemoveRingCover), enforcer.onNotification(incallUi, parcel = null, nowMs = nowMs))
+        assertTrue(enforcer.isRinging(nowMs))
     }
 
     @Test
@@ -393,8 +397,79 @@ class IncomingRingWindowTest {
 
         // At 55_000L (45 s after initial ring), timer fires without any NotificationListenerService removal.
         nowMs = 10_000L + IncomingRingWindow.WINDOW_MS
-        IncomingRingWindow.expireIfDue(nowMs)
+        IncomingRingWindow.setClockForTest { nowMs }
+        scheduler.pendingAction!!.invoke()
         assertFalse(enforcer.isRinging(nowMs))
+        assertEquals(1, shadeDismissals)
+    }
+
+    @Test
+    fun `osra-security 50 - backward wall-clock jump never extends monotonic deadline and early timer wake re-arms then closes`() {
+        // Mutants (osra-security#50):
+        // - M10a: evaluate IncomingRingWindow deadlines on wall clock (`clock`) instead of `elapsedClock` ->
+        //   moving wall clock backwards by 1 hour keeps `isRinging()` true past 45 s elapsed.
+        // - M10b: call `expireIfDue` once in timer without re-arming when `nowElapsed < ringUntilMs` ->
+        //   an early handler wakeup returns without expiring AND without scheduling the remaining delay,
+        //   leaving `shadeDismissals == 0` when the deadline subsequently passes without an event.
+        val scheduler = FakeScheduler()
+        var wallMs = 1_700_000_000_000L
+        var monoMs = 100_000L
+        var shadeDismissals = 0
+        IncomingRingWindow.setClockForTest { monoMs }
+
+        lateinit var enforcer: CallEnforcer.Coordinator
+        AccessibilityMonitorService.bindRingWindowCallbacks(
+            scheduler = scheduler,
+            onClosed = {
+                AccessibilityMonitorService.collapseShadeOnRingClosed(
+                    isRunning = true,
+                    locked = true,
+                    lastSystemUiClass = "com.android.systemui.shade.NotificationShadeWindowView",
+                    apiLevel = 34,
+                    callRinging = enforcer.isRinging(),
+                    onCollapse = { shadeDismissals++ },
+                )
+            },
+        )
+
+        val dialer = "com.google.android.dialer"
+        enforcer = CallEnforcer.Coordinator(
+            ownPackage = "com.osratech.child",
+            isBlocked = { it != dialer },
+            isEssential = { it == dialer },
+            defaultDialerProvider = { dialer },
+            modeProvider = { CallAudioMode.NORMAL },
+            clock = { wallMs },
+            elapsedClock = { monoMs },
+        )
+
+        // Notice carries a future/skewed postedAt, and opens at monoMs = 100_000 -> fixed deadline 145_000.
+        val skewedParcel = CallParcel(isCall = true, hasDecline = true, hasHangUp = false, ongoing = true, postedAt = wallMs + 999_999L)
+        enforcer.onNotification(dialer, skewedParcel)
+        val fixedDeadline = 100_000L + IncomingRingWindow.WINDOW_MS
+        assertEquals(fixedDeadline, IncomingRingWindow.currentStateForTest().ringUntilMs)
+        assertEquals(IncomingRingWindow.WINDOW_MS, scheduler.scheduledDelayMs)
+        assertEquals(1, scheduler.scheduleCount)
+
+        // System wall clock jumps BACKWARDS by 1 hour while monotonic clock advances by 30 s (to 130_000).
+        wallMs -= 3_600_000L
+        monoMs = 130_000L
+        assertTrue(enforcer.isRinging())
+
+        // Timer wakes 15 s early (e.g. uptime/coalescing skew at monoMs = 130_000 < 145_000):
+        // must keep the original 145_000 deadline, NOT close yet, and re-arm for the remaining 15_000 ms.
+        scheduler.pendingAction!!.invoke()
+        assertEquals(fixedDeadline, IncomingRingWindow.currentStateForTest().ringUntilMs)
+        assertEquals(15_000L, scheduler.scheduledDelayMs)
+        assertEquals(2, scheduler.scheduleCount)
+        assertEquals(0, shadeDismissals)
+        assertTrue(enforcer.isRinging())
+
+        // Monotonic clock reaches 145_000 while wall clock is STILL 1 hour in the past:
+        // re-armed timer fires, expires the window, and collapses the shade immediately.
+        monoMs = fixedDeadline
+        scheduler.pendingAction!!.invoke()
+        assertFalse(enforcer.isRinging())
         assertEquals(1, shadeDismissals)
     }
 
@@ -474,9 +549,12 @@ class IncomingRingWindowTest {
         assertTrue(enforcerSource.contains("IncomingRingWindow.isSharedRinging("))
         assertTrue(enforcerSource.contains("trustedRingOwner = trustedOwner"))
         assertTrue(enforcerSource.contains("policy.onAudioMode(mode, isBlocked, nowMs, isEssential)"))
+        assertTrue(enforcerSource.contains("elapsedClock = ::nowElapsed"))
+        assertTrue(enforcerSource.contains("SystemClock.elapsedRealtime()"))
 
         val listenerSource = source("apps/child-android/app/src/full/java/com/familyshield/agent/services/NotificationCaptureService.kt")
         assertTrue(listenerSource.contains("trackCallWindowNotice("))
+        assertTrue(listenerSource.contains("nowMs = SystemClock.elapsedRealtime()"))
         assertTrue(listenerSource.contains("IncomingRingWindow.recordRemovedNotice("))
         assertTrue(listenerSource.contains("IncomingRingWindow.recordPostedNotice("))
 
