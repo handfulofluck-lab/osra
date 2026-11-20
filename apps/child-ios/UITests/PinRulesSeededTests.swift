@@ -28,8 +28,17 @@ final class PinRulesSeededTests: XCTestCase {
         return app
     }
 
-    private func type(_ text: String, into field: XCUIElement) {
+    /// Taps, waits for the field to actually take focus, then types.
+    ///
+    /// The bare `tap(); typeText()` failed once with *"Neither element nor any descendant has keyboard focus"* — a
+    /// tap landing while a sheet was still settling. That is the harness being impatient, not the app misbehaving,
+    /// so the wait belongs here rather than in a retry of the whole case.
+    private func type(_ text: String, into field: XCUIElement, in app: XCUIApplication) {
+        XCTAssertTrue(field.waitForExistence(timeout: 10), "the field never appeared")
+        let deadline = Date().addingTimeInterval(5)
+        while !field.isHittable && Date() < deadline { usleep(100_000) }
         field.tap()
+        _ = app.keyboards.element.waitForExistence(timeout: 3)   // the keyboard attaching is the focus signal
         field.typeText(text)
     }
 
@@ -39,8 +48,8 @@ final class PinRulesSeededTests: XCTestCase {
 
     /// Save on the seeded screen, so the later rows start from a status screen with a PIN set.
     private func setUpPin(_ app: XCUIApplication) {
-        type(goodPin, into: app.secureTextFields["pin.new"])
-        type(goodPin, into: app.secureTextFields["pin.repeat"])
+        type(goodPin, into: app.secureTextFields["pin.new"], in: app)
+        type(goodPin, into: app.secureTextFields["pin.repeat"], in: app)
         save(app)
         XCTAssertTrue(app.staticTexts["status.paired"].waitForExistence(timeout: 20),
                       "the status screen did not follow a valid PIN")
@@ -50,8 +59,8 @@ final class PinRulesSeededTests: XCTestCase {
     /// screen stays where it is so the parent can correct it.
     func testAPinLongerThanEightDigitsIsRefused() {
         let app = launchSeeded()
-        type("123456789", into: app.secureTextFields["pin.new"])
-        type("123456789", into: app.secureTextFields["pin.repeat"])
+        type("123456789", into: app.secureTextFields["pin.new"], in: app)
+        type("123456789", into: app.secureTextFields["pin.repeat"], in: app)
         save(app)
 
         XCTAssertTrue(app.staticTexts[L10n.tr("pin_too_long")].waitForExistence(timeout: 5),
@@ -75,7 +84,7 @@ final class PinRulesSeededTests: XCTestCase {
         }
         paste.tap()
 
-        type("123456789012", into: app.secureTextFields["pin.repeat"])
+        type("123456789012", into: app.secureTextFields["pin.repeat"], in: app)
         save(app)
 
         XCTAssertTrue(app.staticTexts[L10n.tr("pin_too_long")].waitForExistence(timeout: 5),
@@ -105,7 +114,7 @@ final class PinRulesSeededTests: XCTestCase {
         }
 
         func wrongPin() {
-            type("9999", into: app.secureTextFields["pin.gate"])
+            type("9999", into: app.secureTextFields["pin.gate"], in: app)
             app.buttons["pin.continue"].tap()
         }
 
@@ -130,11 +139,66 @@ final class PinRulesSeededTests: XCTestCase {
         }
         repair.tap()
         XCTAssertTrue(relaunched.secureTextFields["pin.gate"].waitForExistence(timeout: 10))
-        type("9999", into: relaunched.secureTextFields["pin.gate"])
+        type("9999", into: relaunched.secureTextFields["pin.gate"], in: relaunched)
         relaunched.buttons["pin.continue"].tap()
 
         XCTAssertTrue(relaunched.staticTexts[L10n.tr("pin_wrong", 2)].waitForExistence(timeout: 5),
                       "the third wrong attempt must leave two tries: the count did not survive the relaunch")
+    }
+
+    /// Catalogue KP01, "backgrounding the app mid-entry": a child who leaves the app with a half-typed PIN and comes
+    /// back must find the gate still asking, and must not get the attempts they already spent back.
+    ///
+    /// **The first version of this row asserted nothing**, and Antigravity and Ahmed both caught it: it typed two
+    /// digits, backgrounded, and then checked "four tries left" — but a typed digit spends nothing, because
+    /// `ParentPinStore.check` runs only when Continue is tapped. Four was what a fresh counter also reports, so a
+    /// non-persistent lockout passed it. This version **spends an attempt before backgrounding** and requires three
+    /// left afterwards, which only holds if the count survived.
+    func testBackgroundingMidEntryNeitherBypassesNorResetsTheGate() {
+        let app = launchSeeded()
+        setUpPin(app)
+
+        func openGate() {
+            let repair = app.buttons["status.repair"]
+            for _ in 0..<4 {
+                if repair.exists { break }
+                app.swipeUp()
+            }
+            XCTAssertTrue(repair.waitForExistence(timeout: 5), "the gated action is not on the status screen")
+            repair.tap()
+            XCTAssertTrue(app.secureTextFields["pin.gate"].waitForExistence(timeout: 10),
+                          "the gate did not appear")
+        }
+
+        func wrongPin(_ pin: String) {
+            type(pin, into: app.secureTextFields["pin.gate"], in: app)
+            app.buttons["pin.continue"].tap()
+        }
+
+        openGate()
+        wrongPin("0000")
+        XCTAssertTrue(app.staticTexts[L10n.tr("pin_wrong", 4)].waitForExistence(timeout: 5),
+                      "the first wrong attempt must leave four tries")
+
+        // Mid-entry means a *half-typed* field, not an empty one: two digits go in and Continue is never tapped,
+        // so the app is left exactly as a child would leave it when they press home. Ahmed asked for this and he
+        // was right — the previous version spent an attempt and then left no partial entry behind.
+        type("99", into: app.secureTextFields["pin.gate"], in: app)
+
+        XCUIDevice.shared.press(.home)
+        app.activate()
+
+        // "No crash, no pass" is the requirement, not "the sheet survives": iOS may dismiss a presented sheet when
+        // the app goes to the background, and the status screen behind it is not gated — the action is.
+        if !app.secureTextFields["pin.gate"].exists {
+            XCTAssertTrue(app.staticTexts["status.paired"].waitForExistence(timeout: 15),
+                          "the app did not come back from the background")
+            openGate()
+        }
+
+        wrongPin("0000")
+        XCTAssertTrue(app.staticTexts[L10n.tr("pin_wrong", 3)].waitForExistence(timeout: 5),
+                      "the attempt spent before backgrounding must still be spent: three tries, not four")
     }
 
     /// Catalogue E13, fast taps: two taps on save with no wait between them must not crash and must not leave the
@@ -145,8 +209,8 @@ final class PinRulesSeededTests: XCTestCase {
     /// and that is what it asserts.
     func testAFastDoubleTapOnSaveDoesNotCrashOrStall() {
         let app = launchSeeded()
-        type(goodPin, into: app.secureTextFields["pin.new"])
-        type(goodPin, into: app.secureTextFields["pin.repeat"])
+        type(goodPin, into: app.secureTextFields["pin.new"], in: app)
+        type(goodPin, into: app.secureTextFields["pin.repeat"], in: app)
 
         // An **absolute** point, resolved before the first tap, not a coordinate bound to the element: a
         // `coordinate(withNormalizedOffset:)` derived from the button re-resolves the element on every tap, so the
