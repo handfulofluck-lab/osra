@@ -10,6 +10,8 @@ import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
 import '../../core/date_formatting.dart';
+import '../../core/digits.dart';
+import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
@@ -24,6 +26,41 @@ import '../map/family_map_screen.dart'
     show FamilyMapScreen, MapFocus, mapIsAvailable;
 import '../../push/restart_alert_text.dart';
 import '../../push/sos_fix_text.dart';
+
+/// U45: formats the alert detail dialog timestamp using the #889 time keys
+/// (`alertAtTime`, `alertYesterdayAtTime`, `alertOnDateAtTime`), 24-hour
+/// `HH:mm` without seconds, Western `0-9` digits, and LRI/PDI isolation.
+@visibleForTesting
+String formatAlertDetailTime(
+  DateTime createdAt, {
+  required AppLocalizations l10n,
+  required String localeName,
+  DateTime? now,
+}) {
+  final localTime = createdAt.toLocal();
+  final refLocal = (now ?? DateTime.now()).toLocal();
+  final localDay = DateTime.utc(localTime.year, localTime.month, localTime.day);
+  final today = DateTime.utc(refLocal.year, refLocal.month, refLocal.day);
+  final yesterday = DateTime.utc(refLocal.year, refLocal.month, refLocal.day - 1);
+
+  final clock = normalizeDigits(DateFormat('HH:mm', 'en').format(localTime));
+  final isolatedClock = ltrIsolate(clock);
+
+  if (localDay == today) {
+    return l10n.alertAtTime(isolatedClock);
+  }
+  if (localDay == yesterday) {
+    return l10n.alertYesterdayAtTime(isolatedClock);
+  }
+  final isArabic = localeName.toLowerCase().startsWith('ar');
+  final sameYear = localTime.year == refLocal.year;
+  final pattern =
+      isArabic ? (sameYear ? 'd MMMM' : 'd MMMM y') : (sameYear ? 'd MMM' : 'd MMM y');
+  final dateLabel = normalizeDigits(
+    DateFormat(pattern, isArabic ? 'ar' : 'en').format(localTime),
+  );
+  return l10n.alertOnDateAtTime(dateLabel, isolatedClock);
+}
 
 /// Alerts feed: grouped by day, severity-colored, swipe-to-acknowledge with
 /// optimistic removal, detail dialog per category, and paged "load more".
@@ -232,13 +269,19 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   const SizedBox(height: AppSpace.sm),
                   if (childName != null && childName.isNotEmpty)
                     Text(l10n.alertChildLabel(childName)),
-                  Text(
-                      '${l10n.categoryLabel(l10n.alertCategory(alert.category))} · '
-                      '${l10n.severityLabel(l10n.severityName(alert.severity))}'),
+                  Text(l10n.categoryLabel(l10n.alertCategory(alert.category))),
                   if (alert.createdAt != null)
-                    Text(l10n.timeLabel(DateFormat.yMMMd(dialogContext.localeName)
-                        .add_Hms()
-                        .format(alert.createdAt!.toLocal()))),
+                    Text(
+                      l10n.timeLabel(
+                        formatAlertDetailTime(
+                          alert.createdAt!,
+                          l10n: l10n,
+                          localeName: dialogContext.localeName,
+                          now: widget.nowProvider?.call(),
+                        ),
+                      ),
+                      key: const ValueKey('alert-detail-time'),
+                    ),
                   const Divider(),
                   CoachCardSection(card: coachCard),
                 ],

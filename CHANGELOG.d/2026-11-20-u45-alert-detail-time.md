@@ -1,0 +1,1 @@
+- Parent app alert detail dialog (U45): formatted alert timestamps with the #889 relative time keys (`alertAtTime`, `alertYesterdayAtTime`, `alertOnDateAtTime`) in 24-hour `HH:mm` without seconds (Western digits + LRI/PDI isolation) and removed the `Severity` row (`apps/parent-app/lib/features/alerts/alerts_screen.dart`).
