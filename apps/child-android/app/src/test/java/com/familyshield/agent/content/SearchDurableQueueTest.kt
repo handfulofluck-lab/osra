@@ -47,6 +47,7 @@ class SearchDurableQueueTest {
 
     private class FakePendingScanDao : PendingScanDao {
         private var nextId = 1L
+        var failDeleteBefore: Boolean = false
         val rows = mutableListOf<PendingScanEntity>()
 
         override suspend fun insert(scan: PendingScanEntity): Long {
@@ -82,6 +83,7 @@ class SearchDurableQueueTest {
         }
 
         override suspend fun deleteBefore(beforeMs: Long): Int {
+            if (failDeleteBefore) throw IOException("cleanup failed")
             val before = rows.size
             rows.removeAll { it.createdAt < beforeMs }
             return before - rows.size
@@ -278,5 +280,54 @@ class SearchDurableQueueTest {
         } finally {
             testScope.cancel()
         }
+    }
+
+    @Test
+    fun `osra-security#56 unknown prior epoch leaves epoch unset on enqueue and aborts uploads if cleanup fails`() = runBlocking {
+        val dao = FakePendingScanDao()
+        val api = FakeSearchApi()
+        var storedEpoch: Long? = null
+        val epoch = 1L
+        val resumedAtMs = System.currentTimeMillis()
+
+        // Pre-existing capture queued before a persisted epoch existed.
+        dao.insert(PendingScanEntity(app = "google", contact = null, text = "pre-grant search", source = ScanQueuePolicy.SOURCE_SEARCH, createdAt = resumedAtMs - 1_000L))
+        dao.insert(PendingScanEntity(app = "whatsapp", contact = "Alex", text = "pre-grant chat", source = ScanQueuePolicy.SOURCE_SCREEN, createdAt = resumedAtMs - 500L))
+
+        val queue = SocialScanQueue(
+            api = api,
+            dao = dao,
+            childIdProvider = { "child-1" },
+            deviceIdProvider = { "dev-1" },
+            allowlistProvider = { emptyList() },
+            searchMonitoringEnabledProvider = { true },
+            consentPausedProvider = { false },
+            consentEpochProvider = { epoch },
+            consentResumedAtProvider = { resumedAtMs },
+            getStoredConsentEpoch = { storedEpoch },
+            setStoredConsentEpoch = { storedEpoch = it },
+            retryScheduler = {},
+        )
+
+        // Enqueueing while storedEpoch is null must not stamp storedEpoch ahead of backlog cleanup.
+        assertTrue(queue.enqueueForFlush(app = "google", contact = null, text = "post-grant search", nowMs = resumedAtMs + 100L, source = ScanQueuePolicy.SOURCE_SEARCH))
+        assertEquals(null, storedEpoch)
+        assertEquals(3, dao.count())
+
+        // Simulated deleteBefore cleanup failure must prevent epoch advancement and all uploads.
+        dao.failDeleteBefore = true
+        queue.flush()
+        assertEquals(null, storedEpoch)
+        assertTrue("cleanup failure must block search uploads", api.postedSearches.isEmpty())
+        assertTrue("cleanup failure must block social uploads", api.postedSocialBatches.isEmpty())
+        assertEquals(3, dao.count())
+
+        // Once cleanup succeeds, pre-grant rows are purged, epoch advances, and only post-grant capture uploads.
+        dao.failDeleteBefore = false
+        queue.flush()
+        assertEquals(1L, storedEpoch)
+        assertEquals(0, dao.count())
+        assertEquals("post-grant search", api.postedSearches.single().query)
+        assertTrue(api.postedSocialBatches.isEmpty())
     }
 }

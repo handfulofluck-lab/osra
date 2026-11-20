@@ -148,17 +148,29 @@ export async function contentRoutes(app: FastifyInstance) {
     const ai = await analyzeContentWithAi(query, "search", childAge);
     const local = localSearchCheck(query);
     // Union of AI and local pattern check (matching #938 social scan): a local hit is never
-    // overridden by an English-only or safe model verdict.
+    // overridden by an English-only or safe model verdict, and critical categories drive
+    // alert routing from the full union before metadata bounds are applied (osra-security#55).
+    const fullConcerns = [
+      ...new Set([
+        ...(ai?.flagged ? ai.concernTypes : []),
+        ...(local.flagged ? local.concernTypes : []),
+      ]),
+    ];
+    const hasCriticalSelfHarm = fullConcerns.includes("self_harm");
+    const boundedConcerns = [
+      ...fullConcerns.filter((c) => c === "self_harm"),
+      ...fullConcerns.filter((c) => c !== "self_harm"),
+    ].slice(0, 3);
     const verdict: Verdict = ai?.flagged
       ? local.flagged
         ? {
             flagged: true,
             severity: SEVERITY_RANK[ai.severity] >= SEVERITY_RANK[local.severity] ? ai.severity : local.severity,
-            concernTypes: [...new Set([...ai.concernTypes, ...local.concernTypes])].slice(0, 3),
+            concernTypes: boundedConcerns,
           }
-        : ai
+        : { ...ai, concernTypes: boundedConcerns }
       : local.flagged
-        ? local
+        ? { ...local, concernTypes: boundedConcerns }
         : ai ?? local;
     if (!verdict.flagged) {
       return reply.code(200).send({ flagged: false, severity: "info" as Severity, concernTypes: [] });
@@ -191,7 +203,7 @@ export async function contentRoutes(app: FastifyInstance) {
         familyId: child.familyId,
         deviceId: effectiveDeviceId,
         severity: verdict.severity,
-        category: verdict.concernTypes.includes("self_harm") ? "self_harm" : "ai_concern",
+        category: hasCriticalSelfHarm ? "self_harm" : "ai_concern",
         title: `Search query concern on ${engine}`,
         body: `A concerning search was conducted on ${engine}`,
         bodyKey: "alertBodySearchFlagged",

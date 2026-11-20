@@ -146,8 +146,7 @@ String formatDurationMmSs(int seconds) {
 }
 
 /// Section (a): per-app monitoring switches, initialized from
-/// RuleSet.socialMonitoring (absent = ON); Save PUTs the full ruleset with
-/// the merged socialMonitoring map.
+/// RuleSet.socialMonitoring (absent = ON); Save PATCHes only the edited fields.
 class MonitoringTogglesSection extends ConsumerStatefulWidget {
   final String childId;
   const MonitoringTogglesSection({super.key, required this.childId});
@@ -160,16 +159,17 @@ class MonitoringTogglesSection extends ConsumerStatefulWidget {
 class _MonitoringTogglesSectionState
     extends ConsumerState<MonitoringTogglesSection> {
   Map<String, bool>? _draft;
-  bool? _searchDraft;
+  final Set<String> _dirtyApps = {};
+  bool? _searchOverride;
   bool _saving = false;
 
   void _applyLoaded(RuleSet ruleSet) {
-    if (_draft != null) return;
-    _draft = {
-      for (final a in kSocialApps)
-        a.appKey: ruleSet.socialMonitoring[a.appKey] ?? true
-    };
-    _searchDraft = ruleSet.searchMonitoring;
+    final draft = _draft ??= <String, bool>{};
+    for (final a in kSocialApps) {
+      if (!_dirtyApps.contains(a.appKey)) {
+        draft[a.appKey] = ruleSet.socialMonitoring[a.appKey] ?? true;
+      }
+    }
   }
 
   Future<void> _save() async {
@@ -180,15 +180,27 @@ class _MonitoringTogglesSectionState
     try {
       final ruleSet = ref.read(rulesProvider(widget.childId)).valueOrNull ??
           const RuleSet();
-      final body = ruleSet.toJson();
-      // NOTE: merge server-side map under the local draft so keys we do not
-      // render here (future apps) survive the PUT/PATCH merge.
-      body['socialMonitoring'] = {...ruleSet.socialMonitoring, ...draft};
-      body['searchMonitoring'] = _searchDraft ?? ruleSet.searchMonitoring;
+      final body = <String, dynamic>{};
+      if (_dirtyApps.isNotEmpty || _searchOverride == null) {
+        // NOTE: merge server-side map under only the dirtied local toggles so
+        // unrelated fields and search opt-in/out are never overwritten.
+        body['socialMonitoring'] = _dirtyApps.isNotEmpty
+            ? {
+                ...ruleSet.socialMonitoring,
+                for (final k in _dirtyApps) k: draft[k]!,
+              }
+            : {...ruleSet.socialMonitoring, ...draft};
+      }
+      if (_searchOverride != null) {
+        body['searchMonitoring'] = _searchOverride;
+      }
       await ref
           .read(apiClientProvider)
           .raw
-          .put('/v1/rules/${widget.childId}', data: body);
+          .patch('/v1/rules/${widget.childId}', data: body);
+      _dirtyApps.clear();
+      _searchOverride = null;
+      _draft = null;
       ref.invalidate(rulesProvider(widget.childId));
       // Issue #475 follow-up: a rule write must refresh the family snapshot too (#501 review).
       ref.invalidate(familyProvider);
@@ -238,15 +250,18 @@ class _MonitoringTogglesSectionState
                     title: Text(a.label),
                     secondary: Icon(socialAppIcon(a.appKey)),
                     value: draft[a.appKey] ?? true,
-                    onChanged: (v) => setState(() => draft[a.appKey] = v),
+                    onChanged: (v) => setState(() {
+                      _dirtyApps.add(a.appKey);
+                      draft[a.appKey] = v;
+                    }),
                   ),
                 SwitchListTile(
                   key: const ValueKey('search-monitoring-toggle'),
                   dense: true,
                   title: Text(l10n.searchSafetyTitle),
                   secondary: const Icon(Icons.search),
-                  value: _searchDraft ?? ruleSet.searchMonitoring,
-                  onChanged: (v) => setState(() => _searchDraft = v),
+                  value: _searchOverride ?? ruleSet.searchMonitoring,
+                  onChanged: (v) => setState(() => _searchOverride = v),
                 ),
                 Align(
                   alignment: AlignmentDirectional.centerEnd,
@@ -496,7 +511,7 @@ class CallsSmsSection extends ConsumerWidget {
 }
 
 /// Section (c): trusted-contact allowlist chip editor; numbers are
-/// normalized to digits before saving via PUT rules contactAllowlist.
+/// normalized to digits before saving via narrow PATCH rules contactAllowlist.
 class AllowlistSection extends ConsumerStatefulWidget {
   final String childId;
   const AllowlistSection({super.key, required this.childId});
@@ -508,10 +523,11 @@ class AllowlistSection extends ConsumerStatefulWidget {
 class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
   final _input = TextEditingController();
   List<String>? _items;
+  bool _dirty = false;
   bool _saving = false;
 
   void _applyLoaded(RuleSet ruleSet) {
-    if (_items != null) return;
+    if (_dirty) return;
     _items = List.of(ruleSet.contactAllowlist);
   }
 
@@ -524,6 +540,7 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
     final digits = normalizePhone(_input.text);
     if (digits.isEmpty) return;
     setState(() {
+      _dirty = true;
       final items = _items ??= <String>[];
       if (!items.contains(digits)) items.add(digits);
       _input.clear();
@@ -536,14 +553,11 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
     if (items == null) return;
     setState(() => _saving = true);
     try {
-      final ruleSet = ref.read(rulesProvider(widget.childId)).valueOrNull ??
-          const RuleSet();
-      final body = ruleSet.toJson();
-      body['contactAllowlist'] = List.of(items);
-      await ref
-          .read(apiClientProvider)
-          .raw
-          .put('/v1/rules/${widget.childId}', data: body);
+      await ref.read(apiClientProvider).raw.patch(
+        '/v1/rules/${widget.childId}',
+        data: {'contactAllowlist': List.of(items)},
+      );
+      _dirty = false;
       ref.invalidate(rulesProvider(widget.childId));
       // Issue #475 follow-up: a rule write must refresh the family snapshot too (#501 review).
       ref.invalidate(familyProvider);
@@ -606,7 +620,10 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
                         InputChip(
                           visualDensity: VisualDensity.compact,
                           label: Text(n),
-                          onDeleted: () => setState(() => items.remove(n)),
+                          onDeleted: () => setState(() {
+                            _dirty = true;
+                            items.remove(n);
+                          }),
                         ),
                     ],
                   ),

@@ -718,4 +718,68 @@ describe("parent rule-write fan-out with no enforceable plan", () => {
       await app.close();
     }
   });
+
+  it("osra-security#54: PATCH omits searchMonitoring from update when absent and preserves safe default on create", async () => {
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    try {
+      prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
+      // Earlier read observed true before a concurrent opt-out updated the DB.
+      prismaMock.ruleSet.findUnique.mockResolvedValue({
+        id: "rs-1",
+        childId: CHILD_ID,
+        dailyLimitMinutes: 120,
+        weekendLimitMinutes: 180,
+        bedtimeStart: "21:00",
+        bedtimeEnd: "07:00",
+        schoolHoursStart: "08:00",
+        schoolHoursEnd: "15:00",
+        schoolDays: [1, 2, 3, 4, 5],
+        blockedCategories: [],
+        allowedDomains: [],
+        blockedDomains: [],
+        safeSearchEnforced: true,
+        youtubeRestrictedMode: "strict",
+        appRules: [],
+        routines: [],
+        appGroupRules: [],
+        alwaysAllowedApps: [],
+        socialMonitoring: {},
+        searchMonitoring: true,
+        contactAllowlist: [],
+        rulesVersion: 1,
+      });
+      prismaMock.ruleSet.upsert.mockResolvedValue({
+        id: "rs-1",
+        childId: CHILD_ID,
+        socialMonitoring: { whatsapp: false },
+        searchMonitoring: false,
+        rulesVersion: 2,
+      });
+      prismaMock.device.findMany.mockResolvedValue([]);
+
+      const omittedRes = await app.inject({
+        method: "PATCH",
+        url: `/v1/rules/${CHILD_ID}`,
+        headers: authHeader(app),
+        payload: { socialMonitoring: { whatsapp: false } },
+      });
+      expect(omittedRes.statusCode).toBe(200);
+      const omittedCall = prismaMock.ruleSet.upsert.mock.calls.at(-1)![0];
+      expect("searchMonitoring" in omittedCall.update).toBe(false);
+      expect(omittedCall.create.searchMonitoring).toBe(false);
+
+      const explicitRes = await app.inject({
+        method: "PATCH",
+        url: `/v1/rules/${CHILD_ID}`,
+        headers: authHeader(app),
+        payload: { searchMonitoring: true },
+      });
+      expect(explicitRes.statusCode).toBe(200);
+      const explicitCall = prismaMock.ruleSet.upsert.mock.calls.at(-1)![0];
+      expect(explicitCall.update.searchMonitoring).toBe(true);
+      expect(explicitCall.create.searchMonitoring).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
 });

@@ -141,9 +141,6 @@ class SocialScanQueue internal constructor(
         }
         // Re-check consent & epoch immediately before inserting so a withdrawal racing enqueue writes nothing.
         if (consentPausedProvider() || consentEpochProvider() != epochAtEntry) return@withLock false
-        if (runCatching { getStoredConsentEpoch() }.getOrNull() == null) {
-            runCatching { setStoredConsentEpoch(epochAtEntry) }
-        }
         recentHashes[hash] = nowMs
         pruneLocked(nowMs)
         val inserted = runCatching {
@@ -176,21 +173,22 @@ class SocialScanQueue internal constructor(
 
             if (consentPausedProvider()) return@withLock
             val epoch = consentEpochProvider()
-            val storedEpoch = CommsWatermarkPolicy.normalize(runCatching { getStoredConsentEpoch() }.getOrNull())
-            CommsConsentPolicy.resetTo(
+            val storedEpochResult = runCatching { getStoredConsentEpoch() }
+            if (storedEpochResult.isFailure) return@withLock
+            val storedEpoch = CommsWatermarkPolicy.normalize(storedEpochResult.getOrNull())
+            val restartFrom = CommsConsentPolicy.resetTo(
                 storedEpoch = storedEpoch,
                 epoch = epoch,
                 paused = false,
                 resumedAtMs = consentResumedAtProvider(),
-            )?.let { restartFrom ->
-                // Purge captures created under a revoked consent epoch before uploading anything under the new grant.
-                runCatching { dao.deleteBefore(restartFrom) }
-                runCatching { setStoredConsentEpoch(epoch) }
+            )
+            if (restartFrom != null) {
+                // Purge captures created under a revoked consent epoch before advancing epoch or permitting a send (#56).
+                if (runCatching { dao.deleteBefore(restartFrom) }.isFailure) return@withLock
+                if (runCatching { setStoredConsentEpoch(epoch) }.isFailure) return@withLock
                 recentHashes.clear()
-            } ?: run {
-                if (storedEpoch == null && epoch == 0L) {
-                    runCatching { setStoredConsentEpoch(0L) }
-                }
+            } else if (storedEpoch == null && epoch == 0L) {
+                if (runCatching { setStoredConsentEpoch(0L) }.isFailure) return@withLock
             }
 
             val now = System.currentTimeMillis()

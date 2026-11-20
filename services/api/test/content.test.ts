@@ -348,5 +348,41 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
     expect(benign.json().flagged).toBe(false);
     delete process.env.AI_ENGINE_URL;
   });
+
+  it("osra-security#55: derives self_harm alert category from full union and preserves it under concern bounds", async () => {
+    process.env.AI_ENGINE_URL = "http://ai.local";
+    try {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          flagged: true,
+          severity: "warning",
+          categories: { violence: 0.9, hate: 0.85, harassment: 0.8 },
+        }),
+      }) as unknown as typeof fetch;
+
+      prismaMock.alert.create.mockResolvedValue({ id: "alert-union-sh", childId: CHILD.id });
+      prismaMock.socialEvent.create.mockResolvedValue({ id: "event-union-sh" });
+
+      const res = await postSearchEvent(app, {
+        childId: CHILD.id,
+        engine: "google",
+        query: "how can I kill myself tonight",
+      });
+
+      expect(res.statusCode).toBe(201);
+      const body = res.json();
+      expect(body.severity).toBe("critical");
+      expect(body.concernTypes.length).toBeLessThanOrEqual(3);
+      expect(body.concernTypes).toContain("self_harm");
+
+      const alertData = prismaMock.alert.create.mock.calls.at(-1)![0].data;
+      expect(alertData.category).toBe("self_harm");
+      expect(alertData.severity).toBe("critical");
+      expect(alertData.metadata.concernTypes).toContain("self_harm");
+    } finally {
+      delete process.env.AI_ENGINE_URL;
+    }
+  });
 });
 

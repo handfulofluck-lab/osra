@@ -235,10 +235,14 @@ export async function rulesRoutes(app: FastifyInstance) {
       appGroupRules: patch.appGroupRules ?? current.appGroupRules ?? [],
       alwaysAllowedApps: patch.alwaysAllowedApps ?? current.alwaysAllowedApps ?? [],
       socialMonitoring: patch.socialMonitoring ?? current.socialMonitoring,
-      searchMonitoring: patch.searchMonitoring ?? current.searchMonitoring,
+      searchMonitoring: patch.searchMonitoring,
       contactAllowlist: patch.contactAllowlist ?? current.contactAllowlist,
     };
-    const validated = RuleSetInputSchema.safeParse({ ...merged, allowOverlap: patch.allowOverlap });
+    const validated = RuleSetInputSchema.safeParse({
+      ...merged,
+      ...(patch.searchMonitoring !== undefined ? { searchMonitoring: patch.searchMonitoring } : {}),
+      allowOverlap: patch.allowOverlap,
+    });
     if (!validated.success) return reply.code(400).send({ error: validated.error.flatten() });
     // allowOverlap is an input-only flag (not persisted), so re-checking overlap on every
     // patch would reject unrelated updates to a ruleset created with allowOverlap: true.
@@ -250,10 +254,15 @@ export async function rulesRoutes(app: FastifyInstance) {
       const overlap = overlapError(validated.data);
       if (overlap) return reply.code(400).send(overlap);
     }
+    const updateData = {
+      // Omit searchMonitoring when absent from PATCH so concurrent opt-outs remain intact atomically (#54).
+      ...toRow({ ...validated.data, searchMonitoring: patch.searchMonitoring as boolean | undefined }, childId),
+      rulesVersion: { increment: 1 },
+    };
     const row = await prisma.ruleSet.upsert({
       where: { childId },
-      create: toRow(validated.data, childId),
-      update: { ...toRow(validated.data, childId), rulesVersion: { increment: 1 } },
+      create: toRow({ ...validated.data, searchMonitoring: (patch.searchMonitoring as boolean | undefined) ?? false }, childId),
+      update: updateData,
     });
     const api = toApiRuleSet(row as unknown as Record<string, unknown>);
     await publishJson(`child:${childId}:rules`, await filterAgentRules(childId, api));
