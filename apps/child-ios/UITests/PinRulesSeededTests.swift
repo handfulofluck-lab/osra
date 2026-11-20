@@ -267,7 +267,24 @@ final class PinRulesSeededTests: XCTestCase {
     ///
     /// The mutants this catches are the bound and the branch: `freeAttempts` moved from 5 to 6, or the `locked`
     /// return in `ParentPinStore.check` deleted, leaves the fifth attempt saying `pin_wrong 1` and this row red.
-    func testTheFifthWrongPinLocksTheGateRatherThanLeavingOneTry() {
+    /// Catalogue KP01, "the gate locks after five wrong PINs" and "the locked line counts down": one row, because
+    /// both are about the same five failures.
+    ///
+    /// **Why one row rather than two** (Antigravity's B2, `7043304116`): the seeded app never idles, so XCUITest
+    /// waited its 60-second animation timeout on every interaction and a single wrong-PIN submission cost about six
+    /// minutes. Two rows meant ten submissions and the job's 30-minute ceiling; one row means five, and both
+    /// assertions keep their own mutant. The animation wait itself is fixed at the source in `UITestSeed.apply`.
+    ///
+    /// **The mutants this row still kills:**
+    /// - `PinLockout.freeAttempts` from 5 to 6, or the `locked` return in `ParentPinStore.check` deleted: the fifth
+    ///   attempt then says `pin_wrong 1` and the lock assertion goes red.
+    /// - `check` returning `firstDelay` instead of `remaining`, or the view keeping its first `message`: both renders
+    ///   say the same number and the countdown assertion goes red.
+    ///
+    /// The countdown half never parses a numeral out of the sentence — the Arabic `one` and `two` arms have none — it
+    /// asks whether the line is a *member* of the shorter delays. The second tap has to land inside the 30-second
+    /// window (after it, a further failure would return 60), so the row waits 1.5 s to guarantee a tick.
+    func testTheGateLocksOnTheFifthWrongPinAndCountsDownInsideTheLock() {
         let app = launchSeeded()
         setUpPin(app)
         openGate(in: app)
@@ -283,33 +300,7 @@ final class PinRulesSeededTests: XCTestCase {
                       "the fifth wrong PIN must lock the gate with the app's first delay, not offer a sixth try")
         XCTAssertTrue(app.secureTextFields["pin.gate"].exists,
                       "a locked gate keeps its field: nothing is wiped and the parent can still reach it")
-    }
-
-    /// Catalogue KP01, "the locked line counts down": while locked the PIN is not compared, so a second tap inside
-    /// the first delay must report the **remaining** time. The line therefore changes to one of the shorter delays
-    /// the catalogue already has, instead of repeating the first delay as if nothing had passed.
-    ///
-    /// The mutants: `check` returning `firstDelay` instead of `remaining`, or the view keeping its first `message`,
-    /// both leave the gate saying the same number twice and this row red. The row never parses a numeral out of the
-    /// sentence — the Arabic `one` and `two` arms have no numeral — it asks whether the line is a *member* of the
-    /// shorter delays instead.
-    ///
-    /// The second tap has to land inside the 30-second window (after it, a further failure would return 60), so the
-    /// row waits 1.5 s to guarantee a tick and then taps once.
-    func testTheLockedLineCountsDownOnASecondTap() {
-        let app = launchSeeded()
-        setUpPin(app)
-        openGate(in: app)
-
-        for _ in 0..<PinLockout.freeAttempts {
-            submitWrongPin(into: app)
-        }
-
-        let message = app.staticTexts[A11yID.pinGateMessage]
-        XCTAssertTrue(message.waitForExistence(timeout: 5), "the gate did not report its lock")
-        XCTAssertEqual(message.label, L10n.tr("pin_locked", Int(PinLockout.firstDelay)),
-                       "the lock must start at the app's first delay")
-        let locked = message.label
+        let locked = app.staticTexts[A11yID.pinGateMessage].label
 
         Thread.sleep(forTimeInterval: 1.5)
         app.buttons["pin.continue"].tap()

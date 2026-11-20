@@ -12,3 +12,14 @@
 - The gate sequence (swipe to repair, open the gate, submit a wrong PIN) moved into shared helpers so the relaunch
   row and the two new rows cannot drift apart.
 - No app code changed and no new user-facing text: every assertion is against a line the catalogue already renders.
+
+### Follow-up: the two lock rows became one, and a seeded launch no longer animates (#739)
+- The first version was two rows, each reaching the lock from a fresh seeded launch. Antigravity measured what that
+  cost: with every request failing against the seed's discard port the status screen never idles, so XCUITest paid its
+  60-second animation timeout on **every** interaction and one wrong-PIN submission took about six minutes. Ten
+  submissions hit the job's 30-minute ceiling; five do not.
+- The two rows are now one (`testTheGateLocksOnTheFifthWrongPinAndCountsDownInsideTheLock`). Both mutants still die:
+  `freeAttempts` 5 → 6 fails the lock assertion, and `check` returning `firstDelay` instead of `remaining` fails the
+  countdown assertion.
+- The wait itself is fixed where it belongs: `UITestSeed.apply` turns animations off for a **seeded launch only**. The
+  file is `#if DEBUG`, the call is inside the argument guard, and nothing changes in Release or without the argument.
