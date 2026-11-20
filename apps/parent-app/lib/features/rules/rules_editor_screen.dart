@@ -242,7 +242,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
 
   Widget _buildSaveFooter(BuildContext context, AppLocalizations l10n) {
     final tokens = context.tokens;
-    final maxFooterHeight = MediaQuery.sizeOf(context).height * 0.45;
+    final maxFooterHeight = MediaQuery.sizeOf(context).height * 0.56;
     return SafeArea(
       top: false,
       child: ConstrainedBox(
@@ -254,42 +254,44 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
             border: Border(top: BorderSide(color: tokens.border)),
           ),
           padding: const EdgeInsets.fromLTRB(AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.sm),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (_error != null) ...[
-                  _SaveErrorBanner(
-                    message: _error!,
-                    saving: _saving,
-                    onRetry: _save,
-                    onDismiss: () => setState(() => _error = null),
-                  ),
-                  const SizedBox(height: AppSpace.sm),
-                ],
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    key: const ValueKey('rules-save-button'),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 52),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_error != null) ...[
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: _SaveErrorBanner(
+                      message: _error!,
+                      saving: _saving,
+                      onRetry: _save,
+                      onDismiss: () => setState(() => _error = null),
                     ),
-                    onPressed: (_saved != null && !_saving) ? _save : null,
-                    child: _saving
-                        ? SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: tokens.onPrimary,
-                            ),
-                          )
-                        : Text(l10n.save),
                   ),
                 ),
+                const SizedBox(height: AppSpace.sm),
               ],
-            ),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  key: const ValueKey('rules-save-button'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 52),
+                  ),
+                  onPressed: (_saved != null && !_saving) ? _save : null,
+                  child: _saving
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: tokens.onPrimary,
+                          ),
+                        )
+                      : Text(l10n.save),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1145,7 +1147,7 @@ class _SaveErrorBanner extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppRadius.md),
           border: Border.all(color: tokens.danger),
         ),
-        padding: const EdgeInsets.all(AppSpace.md),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpace.md, vertical: AppSpace.sm),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1164,7 +1166,7 @@ class _SaveErrorBanner extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: AppSpace.sm),
+            const SizedBox(height: AppSpace.xs),
             Align(
               alignment: AlignmentDirectional.centerEnd,
               child: Wrap(

@@ -170,21 +170,29 @@ void main() {
   });
 
   for (final dark in [false, true]) {
-    testWidgets('Arabic save error banner renders at 320px/200% without overflow (dark=$dark)', (tester) async {
-      final api = FakeApiClient({
-        ...standardRoutes(),
-        'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1'),
-        'PATCH /v1/rules/child-1': (_) => const FakeHttpError(500),
+    for (final offline in [true, false]) {
+      testWidgets('Arabic save error banner renders at 320px/200% with uncut Save button (dark=$dark, offline=$offline)', (tester) async {
+        final api = FakeApiClient({
+          ...standardRoutes(),
+          'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1'),
+          'PATCH /v1/rules/child-1': (_) => offline ? const FakeNetworkError() : const FakeHttpError(500),
+        });
+
+        await pumpEditor(tester, api, locale: const Locale('ar'), dark: dark, width: 320, textScale: 2.0);
+        final l10n = lookupAppLocalizations(const Locale('ar'));
+        final saveBtn = find.byKey(const ValueKey('rules-save-button'));
+        await tester.tap(saveBtn);
+        await tester.pumpAndSettle();
+
+        expect(find.text(offline ? l10n.saveFailed : l10n.saveFailedServer), findsOneWidget);
+        final retryFinder = find.byKey(const ValueKey('rules-save-retry'));
+        expect(retryFinder, findsOneWidget);
+        final saveRect = tester.getRect(saveBtn);
+        expect(saveRect.height, greaterThanOrEqualTo(52.0));
+        expect(saveRect.bottom, lessThanOrEqualTo(720.0));
+        expect(tester.getRect(retryFinder).bottom, lessThanOrEqualTo(saveRect.top));
+        expect(tester.takeException(), isNull);
       });
-
-      await pumpEditor(tester, api, locale: const Locale('ar'), dark: dark, width: 320, textScale: 2.0);
-      final l10n = lookupAppLocalizations(const Locale('ar'));
-      await tester.tap(find.byKey(const ValueKey('rules-save-button')));
-      await tester.pumpAndSettle();
-
-      expect(find.text(l10n.saveFailedServer), findsOneWidget);
-      expect(find.byKey(const ValueKey('rules-save-retry')), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
+    }
   }
 }
