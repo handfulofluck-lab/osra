@@ -116,6 +116,26 @@ void main() {
     expect(drainExceptions(tester), isEmpty);
   });
 
+  /// #953, the P0 half: the preinstalled chip filters browsing, not searching. Before this, a parent who typed
+  /// the name of a preinstalled app — YouTube on basically every Android image — got the no-match line, with no
+  /// hint that a switch they had never been told about was hiding it.
+  testWidgets('search reaches a preinstalled app without touching the filter (#953)',
+      (tester) async {
+    final api = FakeApiClient(standardRoutes());
+    await pumpRules(tester, api);
+    await openPicker(tester);
+
+    // the chip is off, so browsing excludes it — that part is unchanged
+    expect(tile('com.android.settings'), findsNothing);
+
+    await tester.enterText(find.byKey(const ValueKey('appPickerSearch')), 'settings');
+    await tester.pumpAndSettle();
+
+    expect(tile('com.android.settings'), findsOneWidget,
+        reason: 'typing a name must find it without knowing the chip exists');
+    expect(drainExceptions(tester), isEmpty);
+  });
+
   testWidgets('search matches the app name only, never the package id', (tester) async {
     final api = FakeApiClient(standardRoutes());
     await pumpRules(tester, api);
