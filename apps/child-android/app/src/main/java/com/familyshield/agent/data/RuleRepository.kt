@@ -136,8 +136,8 @@ class RuleRepository @Inject constructor(
     /** Feature #2: true unless the cached rule set explicitly disables social monitoring for [appKey] (absent key = enabled). */
     fun socialMonitoringEnabled(appKey: String): Boolean = cached?.socialMonitoring?.get(appKey) ?: true
 
-    /** ADR-0039 / #939: true unless the cached rule set explicitly disables search monitoring. */
-    fun searchMonitoringEnabled(): Boolean = cached?.searchMonitoring ?: true
+    /** ADR-0039 / osra-security#45: true only when the cached rule set explicitly enables search monitoring. */
+    fun searchMonitoringEnabled(): Boolean = isSearchMonitoringEnabled(cached)
 
     /** #830 gating: true only after the server flag went on and the phone synced that rule set. */
     fun siteNamesEnabled(): Boolean = cached?.siteNames == true
@@ -320,6 +320,9 @@ class RuleRepository @Inject constructor(
          * decision path and the overlay guard cannot drift apart.
          */
         fun isEssentialApp(packageId: String): Boolean = EssentialPackages.isEssential(packageId)
+
+        /** ADR-0039 / osra-security#45: Search capture requires an explicit parent opt-in (`searchMonitoring == true`). */
+        fun isSearchMonitoringEnabled(ruleSet: RuleSetDto?): Boolean = ruleSet?.searchMonitoring == true
 
         /**
          * #276: the persisted snapshot is milliseconds now, but a build before it wrote whole

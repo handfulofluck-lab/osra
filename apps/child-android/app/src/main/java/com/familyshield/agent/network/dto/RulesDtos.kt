@@ -26,7 +26,7 @@ data class RuleSetDto(
      */
     val socialMonitoring: Map<String, Boolean> = emptyMap(),
     /**
-     * ADR-0039 / #939: whether search capture is enabled (null/absent = enabled by default).
+     * ADR-0039 / osra-security#45: whether search capture is explicitly enabled (null/absent/false = disabled).
      */
     val searchMonitoring: Boolean? = null,
     /**

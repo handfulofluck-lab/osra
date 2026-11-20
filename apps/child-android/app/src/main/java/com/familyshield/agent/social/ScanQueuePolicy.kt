@@ -31,6 +31,7 @@ object ScanQueuePolicy {
 
     const val SOURCE_SCREEN = "screen"
     const val SOURCE_NOTIFICATION = "notification"
+    const val SOURCE_SEARCH = "search"
 
     /**
      * Builds the capture from a notification's fields: [title] is the sender (or the group), the

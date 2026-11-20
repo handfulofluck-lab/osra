@@ -54,6 +54,7 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
     process.env.INTERNAL_HMAC_SECRET = SECRET;
     process.env.VAULT_KEY = Buffer.alloc(32, 7).toString("base64");
     prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ searchMonitoring: true });
 
     app = await buildApp(async (instance) => {
       await instance.register(contentRoutes, { prefix: "/v1/content" });
@@ -136,11 +137,9 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
     );
   });
 
-  it("the search alert's params are exactly the engine, so the URL never reaches the rendered sentence (Fable n5)", async () => {
-    // The URL is in the alert's `metadata` for the vault and the history list, and must NOT be in
-    // `bodyParams`: those are what the app substitutes into the sentence it shows a parent and into the
-    // push. `toEqual` cannot tell `{ engine }` from `{ engine, url: undefined }`, so this row sends a URL
-    // that exists and compares with `toStrictEqual`.
+  it("the search alert's params are exactly the engine and unneeded URL is dropped (Fable n5, #45)", async () => {
+    // Even if an older caller sends `url`, the schema drops it so URL data never reaches metadata,
+    // persistence, or `bodyParams`.
     prismaMock.alert.create.mockResolvedValue({ id: "alert-p", childId: CHILD.id });
     prismaMock.socialEvent.create.mockResolvedValue({ id: "event-p" });
 
@@ -154,7 +153,31 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
 
     const data = prismaMock.alert.create.mock.calls[0][0].data as { metadata?: Record<string, unknown> };
     expect((data.metadata as { bodyParams: unknown }).bodyParams).toStrictEqual({ engine: "google" });
-    expect(JSON.stringify(data.metadata?.bodyParams)).not.toContain("http");
+    expect(data.metadata?.url).toBeUndefined();
+    expect(JSON.stringify(data.metadata)).not.toContain("http");
+  });
+
+  it("osra-security#45: rejects search-event when searchMonitoring rule is absent or disabled (403)", async () => {
+    prismaMock.ruleSet.findUnique.mockResolvedValueOnce(null);
+    const absent = await postSearchEvent(app, {
+      childId: CHILD.id,
+      engine: "google",
+      query: "how to kill myself",
+    });
+    expect(absent.statusCode).toBe(403);
+    expect(absent.json()).toEqual({ error: "search_monitoring_disabled" });
+
+    prismaMock.ruleSet.findUnique.mockResolvedValueOnce({ searchMonitoring: false });
+    const disabled = await postSearchEvent(app, {
+      childId: CHILD.id,
+      engine: "google",
+      query: "how to kill myself",
+    });
+    expect(disabled.statusCode).toBe(403);
+    expect(disabled.json()).toEqual({ error: "search_monitoring_disabled" });
+
+    expect(prismaMock.socialEvent.create).not.toHaveBeenCalled();
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
   });
 
   it("analyzes YouTube watch event and flags dangerous title (201)", async () => {

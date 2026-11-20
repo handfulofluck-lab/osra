@@ -13,7 +13,6 @@ const SearchEventSchema = z.object({
   deviceId: z.string().optional(),
   engine: z.string().min(1),
   query: z.string().min(1),
-  url: z.string().optional(),
   timestamp: z.string().optional(),
 });
 
@@ -115,7 +114,7 @@ export async function contentRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: parsed.error.flatten() });
     }
 
-    const { childId, deviceId, engine, query, url } = parsed.data;
+    const { childId, deviceId, engine, query } = parsed.data;
 
     if (auth.device) {
       if (auth.device.childId && auth.device.childId !== childId) {
@@ -133,6 +132,14 @@ export async function contentRoutes(app: FastifyInstance) {
     if (!child) return reply.code(404).send({ error: "child_not_found" });
     // ADR-0008 §2b: withdrawal of consent stops collection.
     if (!(await assertProcessingAllowed(childId, reply))) return;
+    // ADR-0039 / osra-security#45: require explicit parent opt-in for search query ingestion.
+    const ruleSet = await prisma.ruleSet.findUnique({
+      where: { childId },
+      select: { searchMonitoring: true },
+    });
+    if (ruleSet?.searchMonitoring !== true) {
+      return reply.code(403).send({ error: "search_monitoring_disabled" });
+    }
 
     const childAge = child.birthYear
       ? new Date().getFullYear() - child.birthYear
@@ -189,7 +196,7 @@ export async function contentRoutes(app: FastifyInstance) {
         body: `A concerning search was conducted on ${engine}`,
         bodyKey: "alertBodySearchFlagged",
         params: { engine },
-        metadata: { engine, concernTypes: verdict.concernTypes, url },
+        metadata: { engine, concernTypes: verdict.concernTypes },
         childName: child.displayName,
       });
       alertId = alert.id;

@@ -16,13 +16,12 @@ data class SocialScanDto(
     val source: String = "screen",
 )
 
-/** Search query capture from Full-flavor supported surfaces for POST /v1/content/search-event (#939, ADR-0039). */
+/** Minimal submitted search query payload for POST /v1/content/search-event (osra-security#45). */
 data class SearchEventDto(
     val childId: String,
     val deviceId: String,
     val engine: String,
     val query: String,
-    val url: String? = null,
     val timestamp: String? = null,
 )
 

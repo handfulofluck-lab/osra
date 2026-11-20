@@ -399,6 +399,7 @@ model RuleSet {
   alwaysAllowedApps   String[] @default([])
   bonusMinutesToday   Int      @default(0)
   socialMonitoring    Json     @default("{}")
+  searchMonitoring    Boolean  @default(false)
   contactAllowlist    String[] @default([])
   appRules            Json     @default("[]")
   routines            Json     @default("[]")

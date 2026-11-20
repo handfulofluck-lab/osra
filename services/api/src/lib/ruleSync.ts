@@ -51,6 +51,7 @@ export function toApiRuleSet(row: Record<string, unknown>) {
      */
     siteNames: siteNamesEnabled(),
     socialMonitoring: (row.socialMonitoring as Record<string, boolean>) ?? {},
+    searchMonitoring: row.searchMonitoring === true,
     contactAllowlist: (row.contactAllowlist as string[]) ?? [],
     updatedAt: row.updatedAt,
     // Issue #475: the version the parent app compares against what the device has applied. Older rows

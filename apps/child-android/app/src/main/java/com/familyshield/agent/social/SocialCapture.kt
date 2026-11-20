@@ -2,6 +2,9 @@ package com.familyshield.agent.social
 
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.familyshield.agent.content.PlatformReadableNode
+import com.familyshield.agent.content.ReadableNode
+import com.familyshield.agent.content.WindowOwnershipPolicy
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
 import javax.inject.Inject
@@ -9,19 +12,28 @@ import javax.inject.Singleton
 
 /**
  * Feature #2/#17 social capture: extension of the accessibility pipeline. When the foreground
- * package maps to a monitored app (whatsapp/instagram/tiktok/snapchat/twitter/discord/roblox/line)
- * and the rule set does not opt that app out (absent socialMonitoring key = enabled), the visible
- * node tree is walked (text + content-description, visible nodes only, capped at
- * [MAX_CAPTURE_CHARS] chars per event), a likely contact + message candidate are extracted,
- * the message is redacted (TextRedaction) and queued for server-side AI scanning
- * (SocialScanQueue). Debounced to one capture per package per 1500 ms.
+ * package maps to a monitored app and the rule set does not opt that app out, verifies window
+ * ownership across all input sources (`osra-security#44`) before walking visible text (up to
+ * [MAX_CAPTURE_CHARS] chars per event), redacts and queues for server-side AI scanning.
+ * Debounced to one capture per package per 1500 ms.
  */
 @Singleton
-class SocialCapture @Inject constructor(
-    private val rules: RuleRepository,
-    private val queue: SocialScanQueue,
-    private val consent: ConsentState,
+class SocialCapture internal constructor(
+    private val isPausedProvider: () -> Boolean,
+    private val socialMonitoringProvider: (String) -> Boolean,
+    private val enqueueCapture: (appKey: String, contact: String?, text: String, nowMs: Long) -> Unit,
 ) {
+    @Inject
+    constructor(
+        rules: RuleRepository,
+        queue: SocialScanQueue,
+        consent: ConsentState,
+    ) : this(
+        isPausedProvider = { consent.isPaused() },
+        socialMonitoringProvider = { appKey -> rules.socialMonitoringEnabled(appKey) },
+        enqueueCapture = { appKey, contact, msg, _ -> queue.enqueue(appKey, contact, msg) },
+    )
+
     private val lock = Any()
     private val lastCaptureAt = HashMap<String, Long>()
 
@@ -32,49 +44,73 @@ class SocialCapture @Inject constructor(
         foregroundPackage: String? = null,
         activeRootProvider: (() -> AccessibilityNodeInfo?)? = null,
     ) {
-        if (consent.isPaused()) return // ADR-0008 §3
-        val (_, appKey) = SocialHeuristics.resolveMonitoredApp(
+        if (isPausedProvider()) return // ADR-0008 §3
+        val eventSourceNode = event.source
+        captureFromWindow(
             foregroundPackage = foregroundPackage,
             eventPackage = event.packageName?.toString(),
-        ) ?: return
-        if (!rules.socialMonitoringEnabled(appKey)) return
+            activeRootProvider = { activeRootProvider?.invoke()?.let(::PlatformReadableNode) },
+            eventSourceProvider = { eventSourceNode?.let(::PlatformReadableNode) },
+            nowMs = nowMs,
+        )
+    }
+
+    /**
+     * Pure capture flow operating on [ReadableNode]s (`osra-security#44`). Declines collection
+     * immediately without reading any text or children when window ownership is missing or mismatched.
+     */
+    internal fun captureFromWindow(
+        foregroundPackage: String?,
+        eventPackage: String?,
+        activeRootProvider: () -> ReadableNode?,
+        eventSourceProvider: () -> ReadableNode? = { null },
+        nowMs: Long = System.currentTimeMillis(),
+    ): Boolean {
+        if (isPausedProvider()) return false // ADR-0008 §3
+        val appKey = foregroundPackage?.let(MonitoredApps::appKeyFor) ?: return false
+        if (!socialMonitoringProvider(appKey)) return false
         synchronized(lock) {
-            if (!SocialHeuristics.shouldCapture(lastCaptureAt[SocialHeuristics.debounceKey(appKey)], nowMs)) return
+            if (!SocialHeuristics.shouldCapture(lastCaptureAt[SocialHeuristics.debounceKey(appKey)], nowMs)) return false
         }
-        val texts = ArrayList<String>()
-        val activeRoot = activeRootProvider?.invoke()
-        if (activeRoot != null) {
-            try {
-                collectVisibleText(activeRoot, StringBuilder(), texts)
-            } finally {
-                activeRoot.recycle()
+        val activeRoot = activeRootProvider()
+        val eventSource = eventSourceProvider()
+        try {
+            val verifiedRoot = WindowOwnershipPolicy.selectVerifiedRoot(
+                expectedPackage = foregroundPackage,
+                eventPackage = eventPackage,
+                isPackageEligible = { pkg ->
+                    val key = MonitoredApps.appKeyFor(pkg) ?: return@selectVerifiedRoot false
+                    socialMonitoringProvider(key)
+                },
+                activeRoot = activeRoot,
+                eventSource = eventSource,
+            ) ?: return false
+
+            val texts = ArrayList<String>()
+            collectVisibleText(verifiedRoot, StringBuilder(), texts)
+            val (contact, candidates) = SocialHeuristics.extractCandidates(texts)
+            val redacted = candidates.mapNotNull { candidate ->
+                TextRedaction.redact(candidate).takeIf { it.isNotBlank() }
             }
-        } else {
-            val root = event.source
-            if (root != null) {
-                try {
-                    collectVisibleText(root, StringBuilder(), texts)
-                } finally {
-                    root.recycle()
-                }
+            if (redacted.isEmpty()) return false
+            synchronized(lock) {
+                if (!SocialHeuristics.shouldCapture(lastCaptureAt[SocialHeuristics.debounceKey(appKey)], nowMs)) return false
+                lastCaptureAt[SocialHeuristics.debounceKey(appKey)] = nowMs
             }
-        }
-        val (contact, candidates) = SocialHeuristics.extractCandidates(texts)
-        val redacted = candidates.mapNotNull { candidate ->
-            TextRedaction.redact(candidate).takeIf { it.isNotBlank() }
-        }
-        if (redacted.isEmpty()) return
-        synchronized(lock) {
-            if (!SocialHeuristics.shouldCapture(lastCaptureAt[SocialHeuristics.debounceKey(appKey)], nowMs)) return
-            lastCaptureAt[SocialHeuristics.debounceKey(appKey)] = nowMs
-        }
-        for (msg in redacted) {
-            queue.enqueue(appKey, contact, msg)
+            for (msg in redacted) {
+                enqueueCapture(appKey, contact, msg, nowMs)
+            }
+            return true
+        } finally {
+            runCatching { activeRoot?.recycle() }
+            if (eventSource !== activeRoot) {
+                runCatching { eventSource?.recycle() }
+            }
         }
     }
 
     /** Depth-first collection of visible text/content-desc, stopping at [MAX_CAPTURE_CHARS]. */
-    private fun collectVisibleText(node: AccessibilityNodeInfo?, budget: StringBuilder, out: MutableList<String>) {
+    private fun collectVisibleText(node: ReadableNode?, budget: StringBuilder, out: MutableList<String>) {
         if (node == null || !node.isVisibleToUser || budget.length >= MAX_CAPTURE_CHARS) return
         val text = node.text?.toString() ?: node.contentDescription?.toString()
         if (!text.isNullOrBlank()) {

@@ -28,11 +28,10 @@ data class SearchNodeSnapshot(
     val isFocused: Boolean = false,
 )
 
-/** Extracted search event ready for `POST /v1/content/search-event`. */
+/** Extracted search event ready for enqueueing to `POST /v1/content/search-event` (osra-security#45). */
 data class ParsedSearch(
     val engine: String,
     val query: String,
-    val url: String? = null,
 )
 
 /**
@@ -135,15 +134,16 @@ object SearchQueryParser {
         }
         val value = extractQueryParam(rawQuery, paramName) ?: return null
         val cleaned = normalizeQuery(value) ?: return null
-        return ParsedSearch(engine = engine, query = cleaned, url = withScheme.take(512))
+        return ParsedSearch(engine = engine, query = cleaned)
     }
 
     /** Extracts a submitted search from the visible accessibility nodes of [packageId]. */
     fun extractFromNodes(packageId: String?, nodes: List<SearchNodeSnapshot>): ParsedSearch? {
         if (!isSupportedPackage(packageId) || nodes.isEmpty()) return null
 
-        // 1. Exact search URL in any node (Chrome url_bar, WebView, SBrowser URL bar).
+        // 1. Exact search URL in any non-focused node (Chrome url_bar, WebView, SBrowser URL bar).
         for (node in nodes) {
+            if (node.isFocused) continue
             parseSearchUrl(node.text)?.let { return it }
         }
 

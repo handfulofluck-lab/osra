@@ -22,6 +22,7 @@ export const DEFAULT_RULESET = {
   alwaysAllowedApps: [],
   bonusMinutesToday: 0,
   socialMonitoring: {} as Record<string, boolean>,
+  searchMonitoring: false,
   contactAllowlist: [] as string[],
 };
 
@@ -47,6 +48,7 @@ export function defaultRuleSetRow(childId: string) {
     alwaysAllowedApps: DEFAULT_RULESET.alwaysAllowedApps,
     bonusMinutesToday: DEFAULT_RULESET.bonusMinutesToday,
     socialMonitoring: DEFAULT_RULESET.socialMonitoring,
+    searchMonitoring: DEFAULT_RULESET.searchMonitoring,
     contactAllowlist: DEFAULT_RULESET.contactAllowlist,
   };
 }

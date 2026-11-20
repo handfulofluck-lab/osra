@@ -109,14 +109,20 @@ class SearchQueryParserTest {
         val playImpl = source("apps/child-android/app/src/play/java/com/familyshield/agent/content/NoopSearchCapture.kt")
         assertTrue("Play build must bind NoopSearchCapture", playImpl.contains("= Unit"))
         assertFalse("Play build must never call postSearchEvent", playImpl.contains("postSearchEvent"))
+        assertFalse("Play build must never enqueue search events", playImpl.contains("enqueueSearch"))
 
         val fullImpl = source("apps/child-android/app/src/full/java/com/familyshield/agent/content/AccessibilitySearchCapture.kt")
-        val pauseIdx = fullImpl.indexOf("if (consent.isPaused()) return")
-        val ruleIdx = fullImpl.indexOf("if (!rules.searchMonitoringEnabled()) return")
+        val pauseIdx = fullImpl.indexOf("if (consent != null && consent.isPaused()) return")
+        val ruleIdx = fullImpl.indexOf("if (rules != null && !rules.searchMonitoringEnabled()) return")
+        val ownerIdx = fullImpl.indexOf("WindowOwnershipPolicy.selectVerifiedRoot(")
         val collectIdx = fullImpl.indexOf("collectNodes(")
         assertTrue("Full search capture checks consent pause before collecting nodes", pauseIdx in 0 until collectIdx)
         assertTrue("Full search capture checks rule flag before collecting nodes", ruleIdx in 0 until collectIdx)
-        assertTrue("Full search capture calls postSearchEvent", fullImpl.contains("api.postSearchEvent("))
+        assertTrue("Full search capture verifies window ownership before collecting nodes", ownerIdx in 0 until collectIdx)
+        assertTrue("Full search capture enqueues through the durable SocialScanQueue", fullImpl.contains("queue.enqueueSearch("))
+
+        val queueImpl = source("apps/child-android/app/src/main/java/com/familyshield/agent/social/SocialScanQueue.kt")
+        assertTrue("Durable scan queue uploads queued search rows to postSearchEvent", queueImpl.contains("api.postSearchEvent("))
     }
 
     private fun source(relative: String): String {

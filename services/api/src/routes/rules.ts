@@ -85,6 +85,8 @@ const RuleSetInputSchema = z.object({
   // NOTE: socialMonitoring maps app names (whatsapp, tiktok, ...) to capture-enabled flags;
   // contactAllowlist holds normalized phone numbers that bypass social scanning (#27).
   socialMonitoring: z.record(z.boolean()).default({}),
+  // Optional on PUT: writers that do not yet expose this toggle preserve existing opt-in state (#45).
+  searchMonitoring: z.boolean().optional(),
   contactAllowlist: z.array(z.string()).default([]),
 });
 
@@ -97,6 +99,7 @@ const RuleSetPatchSchema = z.object({
   alwaysAllowedApps: z.array(z.string()).optional(),
   allowOverlap: z.boolean().optional(),
   socialMonitoring: z.record(z.boolean()).optional(),
+  searchMonitoring: z.boolean().optional(),
   contactAllowlist: z.array(z.string()).optional(),
 });
 
@@ -150,6 +153,7 @@ function toRow(data: z.infer<typeof RuleSetInputSchema>, childId: string) {
     ...(data.appGroupRules !== undefined && { appGroupRules: data.appGroupRules }),
     alwaysAllowedApps: data.alwaysAllowedApps,
     socialMonitoring: data.socialMonitoring,
+    ...(data.searchMonitoring !== undefined && { searchMonitoring: data.searchMonitoring }),
     contactAllowlist: data.contactAllowlist,
   };
 }
@@ -231,6 +235,7 @@ export async function rulesRoutes(app: FastifyInstance) {
       appGroupRules: patch.appGroupRules ?? current.appGroupRules ?? [],
       alwaysAllowedApps: patch.alwaysAllowedApps ?? current.alwaysAllowedApps ?? [],
       socialMonitoring: patch.socialMonitoring ?? current.socialMonitoring,
+      searchMonitoring: patch.searchMonitoring ?? current.searchMonitoring,
       contactAllowlist: patch.contactAllowlist ?? current.contactAllowlist,
     };
     const validated = RuleSetInputSchema.safeParse({ ...merged, allowOverlap: patch.allowOverlap });
