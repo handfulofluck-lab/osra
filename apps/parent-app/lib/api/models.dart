@@ -1173,6 +1173,7 @@ class Alert {
   final Map<String, dynamic> metadata;
   final DateTime? createdAt;
   final bool acknowledged;
+  final int attemptCount;
 
   const Alert({
     required this.id,
@@ -1185,6 +1186,7 @@ class Alert {
     this.metadata = const {},
     this.createdAt,
     this.acknowledged = false,
+    this.attemptCount = 1,
   });
 
   factory Alert.fromJson(Map<String, dynamic> json) => Alert(
@@ -1200,6 +1202,7 @@ class Alert {
             : const {},
         createdAt: DateTime.tryParse(_str(json['createdAt'])),
         acknowledged: _bool(json['acknowledged']),
+        attemptCount: _int(json['attemptCount'], 1),
       );
 
   /// Issue #672: the fix an SOS carried, or null. Every other category has none — this reads metadata

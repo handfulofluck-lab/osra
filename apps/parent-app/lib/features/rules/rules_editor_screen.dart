@@ -57,7 +57,8 @@ double limitSliderPosition(int minutes) => minutes.toDouble().clamp(kLimitSlider
 
 class RulesEditorScreen extends ConsumerStatefulWidget {
   final String childId;
-  const RulesEditorScreen({super.key, required this.childId});
+  final int initialTab;
+  const RulesEditorScreen({super.key, required this.childId, this.initialTab = 0});
 
   @override
   ConsumerState<RulesEditorScreen> createState() => _RulesEditorScreenState();
@@ -269,6 +270,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
   Widget _editorBody(AppLocalizations l10n) {
     return DefaultTabController(
       length: 4,
+      initialIndex: widget.initialTab.clamp(0, 3),
       child: Column(
         children: [
           FadingScrollableTabBar(
