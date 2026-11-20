@@ -275,7 +275,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
                     style: FilledButton.styleFrom(
                       minimumSize: const Size(double.infinity, 52),
                     ),
-                    onPressed: (_loaded && !_saving) ? _save : null,
+                    onPressed: (_saved != null && !_saving) ? _save : null,
                     child: _saving
                         ? SizedBox(
                             width: 18,

@@ -83,7 +83,7 @@ void main() {
     final api = FakeApiClient({
       ...standardRoutes(),
       'GET /v1/rules/child-1': (_) => payload,
-      'PUT /v1/rules/child-1': (_) {
+      'PATCH /v1/rules/child-1': (_) {
         putAttempts++;
         if (putAttempts == 1) return const FakeNetworkError();
         return {'ok': true};
@@ -130,7 +130,7 @@ void main() {
     final api = FakeApiClient({
       ...standardRoutes(),
       'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1'),
-      'PUT /v1/rules/child-1': (_) {
+      'PATCH /v1/rules/child-1': (_) {
         call++;
         if (call == 1) {
           return const FakeHttpError(503, {'error': 'internal_db_timeout', 'requestId': 'req-998877'});
@@ -174,7 +174,7 @@ void main() {
       final api = FakeApiClient({
         ...standardRoutes(),
         'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1'),
-        'PUT /v1/rules/child-1': (_) => const FakeHttpError(500),
+        'PATCH /v1/rules/child-1': (_) => const FakeHttpError(500),
       });
 
       await pumpEditor(tester, api, locale: const Locale('ar'), dark: dark, width: 320, textScale: 2.0);
