@@ -47,6 +47,27 @@ void main() {
           InternetState.partial);
     });
 
+    // Antigravity's F1 (7052763165): the command TYPE has to match the action that was requested. An acked
+    // `resume_internet` says the opposite of "internet paused", so it can never confirm a pause.
+    test('an acknowledged resume does not confirm a pause', () {
+      expect(
+        internetStateFor(requested: true, newestPerDevice: [row('acked', type: 'resume_internet')]),
+        InternetState.waiting,
+        reason: 'the only acknowledged command did the opposite of what was requested',
+      );
+    });
+
+    test('one device paused and one still on its old resume is partial, never confirmed', () {
+      expect(
+        internetStateFor(requested: true, newestPerDevice: [
+          row('acked'),
+          row('acked', type: 'resume_internet', minutesAgo: 5),
+        ]),
+        InternetState.partial,
+        reason: 'the second device has no row for the pause request, so it is unknown, not confirmed',
+      );
+    });
+
     test('no devices at all is waiting, never confirmed', () {
       expect(internetStateFor(requested: true, newestPerDevice: const []), InternetState.waiting);
     });

@@ -20,8 +20,9 @@ enum InternetState {
   /// Every device that reported has acknowledged the newest request.
   confirmed,
 
-  /// Some acknowledged and some did not, or nothing acknowledged and something failed. A mixed or refused
-  /// result stays visible rather than being rounded to one side.
+  /// Some acknowledged and some did not — including a device that has no row for the requested action at all —
+  /// or nothing acknowledged and something failed. A mixed, unknown or refused result stays visible rather than
+  /// being rounded to one side.
   partial,
 }
 
@@ -37,15 +38,22 @@ InternetState internetStateFor({
 }) {
   if (!requested) return InternetState.inactive;
   if (newestPerDevice.isEmpty) return InternetState.waiting;
+  // Only a row for the action that was requested can say anything about it. A device whose newest internet row
+  // is a `resume_internet` has not answered a pause request at all — counting it would report "confirmed" on the
+  // strength of the command that did the opposite (Antigravity's F1, 7052763165).
+  final expected = requested ? 'pause_internet' : 'resume_internet';
   var acked = 0;
   var settledWithoutAck = 0;
   for (final command in newestPerDevice) {
+    if (command.type != expected) continue;
     if (command.status == 'acked') {
       acked++;
     } else if (command.status == 'failed' || command.status == 'expired') {
       settledWithoutAck++;
     }
   }
+  // Confirmed means EVERY device acknowledged THIS request. A device with no row for it is not confirmed, so it
+  // cannot be rounded away: with one ack and one unknown the parent sees `partial`, not success.
   if (acked == newestPerDevice.length) return InternetState.confirmed;
   if (acked > 0 || settledWithoutAck > 0) return InternetState.partial;
   return InternetState.waiting;
