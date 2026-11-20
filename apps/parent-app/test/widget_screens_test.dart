@@ -731,7 +731,7 @@ void main() {
       final firstSave = api.calls('PATCH', '/v1/rules/child-1');
       expect(firstSave, hasLength(1));
       expect(firstSave.single.body, {'appRules': <Object>[]});
-      expect(find.byType(MaterialBanner), findsOneWidget);
+      expect(find.byKey(const ValueKey('rules-save-error-banner')), findsOneWidget);
       expect(find.text('Rules saved'), findsNothing);
 
       await tester.tap(find.text('Save'));
@@ -741,7 +741,7 @@ void main() {
       final saves = api.calls('PATCH', '/v1/rules/child-1');
       expect(saves, hasLength(2));
       expect(saves.last.body, {'appRules': <Object>[]});
-      expect(find.byType(MaterialBanner), findsNothing);
+      expect(find.byKey(const ValueKey('rules-save-error-banner')), findsNothing);
       expect(find.text('Rules saved'), findsOneWidget);
     });
   });

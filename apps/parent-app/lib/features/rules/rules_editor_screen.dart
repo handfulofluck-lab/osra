@@ -210,6 +210,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
           return _buildTabs(context, showHeading: !appBarMetrics.fits);
         },
       ),
+      bottomNavigationBar: rules.valueOrNull != null ? _buildSaveFooter(context, l10n) : null,
     );
   }
 
@@ -235,7 +236,6 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
         if (showHeading) _pageHeading(context, l10n),
         RulesBehindBanner(childId: widget.childId),
         Expanded(child: _editorBody(l10n)),
-        _buildSaveFooter(context, l10n),
       ],
     );
   }
