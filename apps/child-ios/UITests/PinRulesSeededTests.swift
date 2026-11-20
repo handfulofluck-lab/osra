@@ -139,7 +139,7 @@ final class PinRulesSeededTests: XCTestCase {
         }
         repair.tap()
         XCTAssertTrue(relaunched.secureTextFields["pin.gate"].waitForExistence(timeout: 10))
-        type("9999", into: relaunched.secureTextFields["pin.gate"])
+        type("9999", into: relaunched.secureTextFields["pin.gate"], in: relaunched)
         relaunched.buttons["pin.continue"].tap()
 
         XCTAssertTrue(relaunched.staticTexts[L10n.tr("pin_wrong", 2)].waitForExistence(timeout: 5),
