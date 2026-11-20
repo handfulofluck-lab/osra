@@ -1,7 +1,5 @@
-import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,17 +17,6 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  const child = Child(
-      id: 'child-1', familyId: 'fam-1', displayName: 'Alex', birthYear: 2013);
-  const device = Device(
-    id: 'dev-1',
-    childId: 'child-1',
-    platform: 'android',
-    model: 'Pixel 7a',
-    osVersion: '14',
-    status: 'online',
-    batteryPct: 55,
-  );
   const deviceCommandPath = '/v1/devices/dev-1/command';
 
   testWidgets('the device card can ask the phone for its location',
