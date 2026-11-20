@@ -293,8 +293,8 @@ class _OverviewTab extends ConsumerWidget {
                         _PendingAwareControl(
                           deviceId: d.id,
                           command: 'pause',
-                          child: TextButton.icon(
-                            onPressed: () => _sendCommand(context, ref, d, 'pause'),
+                          builder: (waiting) => TextButton.icon(
+                            onPressed: waiting ? null : () => _sendCommand(context, ref, d, 'pause'),
                             icon: const Icon(Icons.pause_circle, size: 18),
                             label: Text(l10n.pause),
                           ),
@@ -302,8 +302,8 @@ class _OverviewTab extends ConsumerWidget {
                         _PendingAwareControl(
                           deviceId: d.id,
                           command: 'resume',
-                          child: TextButton.icon(
-                            onPressed: () => _sendCommand(context, ref, d, 'resume'),
+                          builder: (waiting) => TextButton.icon(
+                            onPressed: waiting ? null : () => _sendCommand(context, ref, d, 'resume'),
                             icon: const Icon(Icons.play_circle, size: 18),
                             label: Text(l10n.resume),
                           ),
@@ -354,28 +354,35 @@ class _OverviewTab extends ConsumerWidget {
 /// idle. `pending` means the server has the row; `delivered` means the phone fetched it and has not acted yet;
 /// only `acked` (or a refusal) means the parent knows the outcome.
 ///
-/// The control is wrapped rather than replaced, so the label, the icon and the ordering in the row stay exactly
-/// as they are — this adds a state, it does not rename anything. The words are the catalogue's existing
-/// `statusPending` line, so no new copy is introduced here.
+/// The control is rebuilt rather than wrapped, because a wrapper cannot disable it: `IgnorePointer` stops touch
+/// but leaves the button focusable and enabled to TalkBack, VoiceOver, Switch Access and the keyboard's
+/// Enter/Space (Antigravity's F2, 7049793348). Passing `waiting` to the builder lets the button itself take
+/// `onPressed: null`, which is the one state every input method honours.
+///
+/// Only the **newest** command of this type decides. Scanning the whole history would keep the control blocked
+/// by an old row that never settled while a newer one had already been acknowledged (F1).
 class _PendingAwareControl extends ConsumerWidget {
   final String deviceId;
   final String command;
-  final Widget child;
-  const _PendingAwareControl({required this.deviceId, required this.command, required this.child});
+  final Widget Function(bool waiting) builder;
+  const _PendingAwareControl({required this.deviceId, required this.command, required this.builder});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final history = ref.watch(deviceCommandHistoryProvider(deviceId)).valueOrNull ?? const <DeviceCommand>[];
-    final waiting = history.any((c) =>
-        c.type == command && (c.status == 'pending' || c.status == 'delivered'));
-    if (!waiting) return child;
+    DeviceCommand? newest;
+    for (final c in history) {
+      if (c.type != command) continue;
+      final after = newest?.createdAt;
+      if (newest == null || after == null || (c.createdAt?.isAfter(after) ?? false)) newest = c;
+    }
+    final waiting = newest != null && (newest.status == 'pending' || newest.status == 'delivered');
+    final button = builder(waiting);
+    if (!waiting) return button;
     return Tooltip(
+      key: ValueKey('controlPending-$command'),
       message: context.l10n.statusPending,
-      child: Opacity(
-        key: ValueKey('controlPending-$command'),
-        opacity: 0.55,
-        child: IgnorePointer(child: child),
-      ),
+      child: button,
     );
   }
 }

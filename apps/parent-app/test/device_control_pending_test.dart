@@ -63,6 +63,19 @@ void main() {
         reason: 'delivered means it reached the queue, not that the handset acted on it');
   });
 
+  // Antigravity's F1 (7049793348): only the NEWEST command of a type decides. An old row that never settled
+  // must not keep the button blocked after a newer one was acknowledged.
+  testWidgets('a stale unconfirmed row does not outvote a newer acknowledged one', (tester) async {
+    final now = DateTime.now();
+    await pump(tester, history([
+      commandJson('c4', 'pause', 'acked', now),
+      commandJson('c5', 'pause', 'pending', now.subtract(const Duration(minutes: 2))),
+    ]));
+
+    expect(find.byKey(const ValueKey('controlPending-pause')), findsNothing,
+        reason: 'the newest pause was acknowledged; an older pending row must not block the control');
+  });
+
   testWidgets('a confirmed command leaves the control usable', (tester) async {
     await pump(tester, history([
       commandJson('c3', 'pause', 'acked', DateTime.now()),
@@ -70,5 +83,19 @@ void main() {
 
     expect(find.byKey(const ValueKey('controlPending-pause')), findsNothing,
         reason: 'an acknowledged command is done; the parent can send another');
+  });
+
+  // Antigravity's F2 (7049793348): the button itself must be disabled, not merely covered. `IgnorePointer`
+  // stops touch but leaves a TextButton enabled for TalkBack, VoiceOver, Switch Access and Enter/Space, so the
+  // check is on the button's own `onPressed`, which is the state every input method honours.
+  testWidgets('the pending control is disabled for every input method, not just touch', (tester) async {
+    final now = DateTime.now();
+    await pump(tester, history([commandJson('c6', 'pause', 'pending', now)]));
+
+    final button = tester.widget<TextButton>(
+      find.ancestor(of: find.text('Pause'), matching: find.byType(TextButton)).first,
+    );
+    expect(button.onPressed, isNull,
+        reason: 'a pending control must be unusable from a screen reader or the keyboard too');
   });
 }
