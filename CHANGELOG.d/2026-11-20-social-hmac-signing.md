@@ -1,0 +1,1 @@
+﻿- Fix client v2 HMAC signing for \/v1/social/scan\, \/v1/content/search-event\, and \/v1/content/youtube-watch\ in \SignatureInterceptor\ so staging social/content uploads are authenticated (osra-security#46).
