@@ -257,6 +257,55 @@ run "armed_qa_analyzer_plans_only_the_private_scoped_route" {
   }
 }
 
+run "disarmed_qa_analyzer_has_no_model_or_api_access" {
+  command = plan
+
+  variables {
+    api_image           = "example/api:test"
+    allowed_account_ids = [format("%012d", 0)]
+    staging_qa_analyzer = {
+      image_digest        = "sha256:${sha256("qa-image")}"
+      frankfurt_vpc_cidr  = format("%d.%d.%d.%d/%d", 10, 40, 0, 0, 24)
+      prompt_secret_arn   = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-prompt", 0)
+      approval_secret_arn = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-approval", 0)
+      pairing_secret_arn  = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-pairing", 0)
+    }
+  }
+
+  override_resource {
+    target          = aws_vpc_endpoint.staging_qa_bedrock[0]
+    override_during = plan
+
+    values = {
+      id = "vpce-test"
+      dns_entry = [{
+        dns_name       = "vpce-test.example.internal"
+        hosted_zone_id = "ZTEST"
+      }]
+    }
+  }
+
+  assert {
+    condition     = length(aws_ecs_service.staging_qa_analyzer) == 1 && length(aws_iam_role_policy.staging_qa_analyzer_task) == 0
+    error_message = "staging can keep the analyzer provisioned without granting model access"
+  }
+
+  assert {
+    condition     = one([for item in jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].environment : item.value if item.name == "OSRA_STAGING_QA_ANALYZER_ENABLED"]) == "0" && length(jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].secrets) == 0
+    error_message = "a disarmed analyzer has a disabled endpoint and receives no fixture secrets"
+  }
+
+  assert {
+    condition = !anytrue([
+      for item in concat(
+        jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment,
+        jsondecode(aws_ecs_task_definition.api.container_definitions)[0].secrets
+      ) : startswith(item.name, "OSRA_STAGING_QA_") || item.name == "OSRA_DEPLOYMENT_SCOPE"
+    ])
+    error_message = "a disarmed analyzer adds no QA environment variables or secrets to the API"
+  }
+}
+
 run "production_settings" {
   command = apply
 
