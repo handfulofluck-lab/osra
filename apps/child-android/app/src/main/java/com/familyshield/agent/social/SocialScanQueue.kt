@@ -149,18 +149,17 @@ class SocialScanQueue internal constructor(
             val childId = childIdProvider()
             val deviceId = deviceIdProvider()
             if (childId == null || deviceId == null) return@withLock // not paired: keep the rows for after pairing
-
             val (searchRows, socialRows) = batch.partition { it.source == ScanQueuePolicy.SOURCE_SEARCH }
             var anyNetworkFailure = false
 
             if (socialRows.isNotEmpty()) {
-                // #490: one request per ITEMS_PER_REQUEST rows, not one per row; each row is settled by its
-                // own answer, so one bad capture never drops the others.
+                // #490 / #967: one request per ITEMS_PER_REQUEST rows with top-level deviceId envelope for HMAC;
+                // each row is settled by its own answer, so one bad capture never drops the others.
                 val outcome = ScanBatchSender<com.familyshield.agent.data.db.PendingScanEntity>(
                     toDto = { row ->
                         SocialScanDto(childId = childId, deviceId = deviceId, app = row.app, contact = row.contact, text = row.text, source = row.source)
                     },
-                    post = { items -> api.postSocialScanBatch(SocialScanBatchDto(items)).results },
+                    post = { items -> api.postSocialScanBatch(SocialScanBatchDto(deviceId = deviceId, items = items)).results },
                     isPermanentRejection = { e -> e is retrofit2.HttpException && e.code() in 400..499 && e.code() != 429 },
                 ).send(socialRows)
                 for (row in outcome.sent) {
