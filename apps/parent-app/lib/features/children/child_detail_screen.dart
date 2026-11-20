@@ -297,6 +297,14 @@ class _OverviewTab extends ConsumerWidget {
                           icon: const Icon(Icons.play_circle, size: 18),
                           label: Text(l10n.resume),
                         ),
+                        // #869: the parent app could *show* a `locate_now` in the command history but had no way
+                        // to send one, so "Locate the child" had nothing behind it. The label is the Bureau's
+                        // existing line; the refusal reasons already exist on the server (`locationGrant.ts`).
+                        TextButton.icon(
+                          onPressed: () => _sendCommand(context, ref, d, 'locate_now'),
+                          icon: const Icon(Icons.my_location, size: 18),
+                          label: Text(l10n.commandLocateNow),
+                        ),
                         TextButton.icon(
                           onPressed: () => _toggleInternet(context, ref, childId, internetPaused, d),
                           icon: Icon(internetPaused ? Icons.wifi : Icons.wifi_off, size: 18),
@@ -568,6 +576,9 @@ Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, St
       );
       return;
     }
+    // #869: a queued `locate_now` only reaches the parent's screen if the location read is asked again; the
+    // command POST refreshes the delivery card, not the fix.
+    if (command == 'locate_now') ref.invalidate(locationProvider(device.childId));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(l10n.commandQueued(l10n.commandType(command), device.model))),
     );
