@@ -85,9 +85,9 @@ void main() {
       await tester.tap(find.text(arabic.save));
       await flushFakeHttp(tester);
 
-      final puts = api.calls('PUT', '/v1/rules/child-1');
-      expect(puts, isNotEmpty);
-      expect(puts.last.body['webFilter'][field], expected);
+      final patches = api.calls('PATCH', '/v1/rules/child-1');
+      expect(patches, isNotEmpty);
+      expect(patches.last.body['webFilter'][field], expected);
     }
 
     Future<void> openWebFilter(WidgetTester tester, FakeApiClient api) async {
