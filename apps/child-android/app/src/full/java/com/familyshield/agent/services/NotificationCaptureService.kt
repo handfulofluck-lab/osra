@@ -14,6 +14,7 @@ import com.familyshield.agent.social.MonitoredApps
 import com.familyshield.agent.social.NotificationCapturePolicy
 import com.familyshield.agent.social.ScanQueuePolicy
 import com.familyshield.agent.social.SocialScanQueue
+import com.familyshield.agent.social.TestChatCaptureGate
 import com.familyshield.agent.social.WhatsAppCallPolicy
 import com.familyshield.agent.social.WhatsAppCallTracker
 import dagger.hilt.android.AndroidEntryPoint
@@ -74,6 +75,7 @@ class NotificationCaptureService : NotificationListenerService() {
     private fun capture(sbn: StatusBarNotification, removed: Boolean) {
         if (consentState.isPaused()) return
         val capture = NotificationCapturePolicy.decide(snapshotOf(sbn, removed)) ?: return
+        if (!TestChatCaptureGate.allows(this, capture.appKey, capture.contact)) return
         queue.enqueue(
             app = capture.appKey,
             contact = capture.contact,
