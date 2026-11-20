@@ -138,7 +138,7 @@ void main() {
       // U42 (#953): the iPhone empty state, with the child's name isolated so it survives an Arabic line.
       expect(find.text('No apps chosen yet'), findsOneWidget);
       expect(
-        find.text('Open Osra on \u2066Omar\u2069\'s iPhone and choose the apps you want to manage. '
+        find.text('Open OSRA on \u2066Omar\u2069\'s iPhone and choose the apps you want to manage. '
             'They\'ll appear here.'),
         findsOneWidget,
       );
@@ -179,6 +179,23 @@ void main() {
       await pumpWith([androidDevice()]);
       expect(find.byKey(const ValueKey('appsTabAndroidHeading')), findsNothing);
       expect(find.byKey(const ValueKey('appsTabIphoneHeading')), findsNothing);
+    });
+
+    // F1 (UI/UX Bureau 7043461404, Arabic Bureau 7043544512): a mixed family sees the iPhone heading even when the
+    // iPhone has reported no groups, because the empty card would otherwise read as being about all the child's apps
+    // while an Android list with apps sits under it.
+    testWidgets('a mixed family sees the iPhone heading above the empty card too', (tester) async {
+      final api = FakeApiClient({
+        ...standardRoutes(familyMe: familyWithDevices([iphoneDevice(), androidDevice()])),
+        'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1'),
+      });
+
+      await pumpAppsTab(tester, api);
+
+      expect(find.byKey(const ValueKey('appsTabIphoneSetupCard')), findsOneWidget);
+      expect(find.byKey(const ValueKey('appsTabIphoneHeading')), findsOneWidget,
+          reason: 'the heading must not depend on the iPhone having groups');
+      expect(find.byKey(const ValueKey('appsTabAndroidHeading')), findsOneWidget);
     });
 
     testWidgets('mixed iPhone + Android child exposes both group block controls and shipped Rules Apps tab', (tester) async {

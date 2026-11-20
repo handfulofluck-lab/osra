@@ -670,7 +670,7 @@
   "installedAppsEmpty": "No apps reported yet",
   "installedAppsEmptyHint": "The list appears after the child device's next check-in (up to 15 minutes).",
   "appPickerIosEmptyTitle": "No apps chosen yet",
-  "appPickerIosEmptyBody": "Open Osra on {child}'s iPhone and choose the apps you want to manage. They'll appear here.",
+  "appPickerIosEmptyBody": "Open OSRA on {child}'s iPhone and choose the apps you want to manage. They'll appear here.",
   "installedAppsNoMatch": "No apps match your search.",
   "installedAppsLoadFailed": "Couldn't load installed apps. Check your connection and try again.",
   "appNoLongerInstalled": "App no longer installed",

@@ -12,3 +12,13 @@
 - Every string is the wording the two Bureaus approved (Arabic Language Bureau `7038515313` and `7038534975`, UI/UX
   Bureau `7038528676` and `7032920246`), transcribed without edits. The child's name is wrapped in a first-strong
   isolate so it stays in place inside an Arabic line.
+- **F1 (UI/UX Bureau `7043461404`, Arabic Bureau `7043544512`):** in a mixed family the "iPhone apps" heading now
+  sits above the iPhone empty card too, not only above reported groups. Without it the card read as being about all
+  the child's apps while an Android list with apps sat underneath. A new widget row pumps a mixed family with no
+  groups and requires both headings.
+- **Brand casing, on the UI/UX Bureau's own correction:** the English empty state reads "Open OSRA on …". The
+  Arabic needs no change for that — Arabic writes the brand in Arabic letters inside a sentence.
+- **The Arabic empty state names the children's app:** «تطبيق أسرة للأطفال», not bare «تطبيق أسرة», which is the
+  parent's app and would have sent a parent looking for the wrong one. The Arabic Language Bureau's line, verbatim.
+- **`appGroupsCounts` breaks only at the «·» separator:** non-breaking spaces after each label's colon, so at 200 %
+  a count can no longer be split from its label. The words are unchanged.

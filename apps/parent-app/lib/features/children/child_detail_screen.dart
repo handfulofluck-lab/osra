@@ -661,7 +661,10 @@ class _AppsTab extends ConsumerWidget {
         return ListView(
           padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.lg),
           children: [
-            if (mixedFamily && groupDevices.isNotEmpty)
+            // F1 (UI/UX Bureau 7043461404, Arabic Bureau 7043544512): a mixed family always sees both headings, in
+            // both states. Without the iPhone heading above the empty card, the card reads as being about all the
+            // child's apps while an Android list with apps sits directly under it.
+            if (mixedFamily)
               Padding(
                 key: const ValueKey('appsTabIphoneHeading'),
                 padding: const EdgeInsetsDirectional.fromSTEB(0, AppSpace.sm, 0, AppSpace.xs),

@@ -1177,7 +1177,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String appPickerIosEmptyBody(Object child) {
-    return 'Open Osra on $child\'s iPhone and choose the apps you want to manage. They\'ll appear here.';
+    return 'Open OSRA on $child\'s iPhone and choose the apps you want to manage. They\'ll appear here.';
   }
 
   @override
