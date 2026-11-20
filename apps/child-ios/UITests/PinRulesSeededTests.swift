@@ -138,56 +138,55 @@ final class PinRulesSeededTests: XCTestCase {
     }
 
     /// Catalogue KP01, "backgrounding the app mid-entry": a child who leaves the app with a half-typed PIN and comes
-    /// back must find the gate still asking. Backgrounding must not count as an answer, and it must not lose the
-    /// attempts already spent.
+    /// back must find the gate still asking, and must not get the attempts they already spent back.
     ///
-    /// The evidence is two-part on purpose: the gate is still there afterwards **and** the next wrong PIN reports
-    /// four tries left, which is only true if the earlier state survived the trip to the background.
+    /// **The first version of this row asserted nothing**, and Antigravity and Ahmed both caught it: it typed two
+    /// digits, backgrounded, and then checked "four tries left" — but a typed digit spends nothing, because
+    /// `ParentPinStore.check` runs only when Continue is tapped. Four was what a fresh counter also reports, so a
+    /// non-persistent lockout passed it. This version **spends an attempt before backgrounding** and requires three
+    /// left afterwards, which only holds if the count survived.
     func testBackgroundingMidEntryNeitherBypassesNorResetsTheGate() {
         let app = launchSeeded()
         setUpPin(app)
 
-        let repair = app.buttons["status.repair"]
-        for _ in 0..<4 {
-            if repair.exists { break }
-            app.swipeUp()
+        func openGate() {
+            let repair = app.buttons["status.repair"]
+            for _ in 0..<4 {
+                if repair.exists { break }
+                app.swipeUp()
+            }
+            XCTAssertTrue(repair.waitForExistence(timeout: 5), "the gated action is not on the status screen")
+            repair.tap()
+            XCTAssertTrue(app.secureTextFields["pin.gate"].waitForExistence(timeout: 10),
+                          "the gate did not appear")
         }
-        XCTAssertTrue(repair.waitForExistence(timeout: 5))
-        repair.tap()
 
-        let gate = app.secureTextFields["pin.gate"]
-        XCTAssertTrue(gate.waitForExistence(timeout: 10), "the gate did not appear")
-        gate.tap()
-        gate.typeText("99")   // half a PIN, then leave
+        func wrongPin(_ pin: String) {
+            let field = app.secureTextFields["pin.gate"]
+            field.tap()
+            field.typeText(pin)
+            app.buttons["pin.continue"].tap()
+        }
+
+        openGate()
+        wrongPin("0000")
+        XCTAssertTrue(app.staticTexts[L10n.tr("pin_wrong", 4)].waitForExistence(timeout: 5),
+                      "the first wrong attempt must leave four tries")
 
         XCUIDevice.shared.press(.home)
         app.activate()
 
-        // The requirement is "no crash, no pass", not "the sheet survives". iOS may dismiss a presented sheet when
-        // the app goes to the background, and the status screen behind it is not gated — the *action* is. So the
-        // row re-opens the action if the sheet went away, and asserts the two things that matter: it still asks,
-        // and the attempts already spent are still spent.
-        XCTAssertTrue(app.staticTexts["status.paired"].waitForExistence(timeout: 15) || app.secureTextFields["pin.gate"].exists,
-                      "the app did not come back from the background")
-
+        // "No crash, no pass" is the requirement, not "the sheet survives": iOS may dismiss a presented sheet when
+        // the app goes to the background, and the status screen behind it is not gated — the action is.
         if !app.secureTextFields["pin.gate"].exists {
-            let again = app.buttons["status.repair"]
-            for _ in 0..<4 {
-                if again.exists { break }
-                app.swipeUp()
-            }
-            XCTAssertTrue(again.waitForExistence(timeout: 5), "the gated action is gone after backgrounding")
-            again.tap()
+            XCTAssertTrue(app.staticTexts["status.paired"].waitForExistence(timeout: 15),
+                          "the app did not come back from the background")
+            openGate()
         }
-        XCTAssertTrue(app.secureTextFields["pin.gate"].waitForExistence(timeout: 10),
-                      "the gated action must still ask for the PIN after backgrounding")
 
-        let field = app.secureTextFields["pin.gate"]
-        field.tap()
-        field.typeText("0000")
-        app.buttons["pin.continue"].tap()
-        XCTAssertTrue(app.staticTexts[L10n.tr("pin_wrong", 4)].waitForExistence(timeout: 5),
-                      "the first wrong attempt after backgrounding must leave four tries")
+        wrongPin("0000")
+        XCTAssertTrue(app.staticTexts[L10n.tr("pin_wrong", 3)].waitForExistence(timeout: 5),
+                      "the attempt spent before backgrounding must still be spent: three tries, not four")
     }
 
     /// Catalogue E13, fast taps: two taps on save with no wait between them must not crash and must not leave the
