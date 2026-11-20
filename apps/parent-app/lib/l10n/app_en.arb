@@ -956,6 +956,7 @@
   "monitoring": "Monitoring",
   "monitoringSaved": "Monitoring saved",
   "saveFailed": "Couldn't save changes. Check your connection and try again.",
+  "saveFailedServer": "Couldn't save your changes. Your changes are still here — try again.",
   "saveMonitoring": "Save monitoring",
   "concerns": "Concerns",
   "vaultTrustCopy": "Excerpts travel over an encrypted connection and are stored encrypted on OSRA's servers.",

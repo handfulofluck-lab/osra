@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1590,6 +1591,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get saveFailed =>
       'Couldn\'t save changes. Check your connection and try again.';
+
+  @override
+  String get saveFailedServer =>
+      'Couldn\'t save your changes. Your changes are still here — try again.';
 
   @override
   String get saveMonitoring => 'Save monitoring';
@@ -3234,7 +3239,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String alertDeviceRestartedBodyMinutes(
-      String device, String when, int minutes) {
+    String device,
+    String when,
+    int minutes,
+  ) {
     String _temp0 = intl.Intl.pluralLogic(
       minutes,
       locale: localeName,

@@ -22,8 +22,19 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.familyshield.agent.ui.pairing.ChecklistCopy
+import com.familyshield.agent.ui.pairing.ChecklistRowUi
+import com.familyshield.agent.ui.pairing.OnboardingChecklistScreen
+import com.familyshield.agent.ui.pairing.OnboardingLoadingScreen
+import com.familyshield.agent.ui.pairing.OnboardingPermissionStepScreen
+import com.familyshield.agent.ui.pairing.OnboardingWelcomeScreen
+import com.familyshield.agent.ui.pairing.PermissionStepCopy
+import com.familyshield.agent.ui.pairing.WelcomeCopy
+import com.familyshield.agent.ui.theme.OsraTheme
 import com.familyshield.agent.commands.CommandPollWorker
 import com.familyshield.agent.comms.CommsCapture
 import com.familyshield.agent.data.AgentSettings
@@ -245,9 +256,15 @@ class PairingActivity : ComponentActivity() {
         val typedServer = savedInstanceState?.getString(KEY_TYPED_SERVER).orEmpty()
         val typedCode = savedInstanceState?.getString(KEY_TYPED_CODE).orEmpty()
         val typedName = savedInstanceState?.getString(KEY_TYPED_NAME).orEmpty()
+        welcomeCompleted = savedInstanceState?.getBoolean(KEY_WELCOME_COMPLETED, false) ?: false
         // NOTE: reading the token (not the cache) — a fresh process has empty caches.
         lifecycleScope.launch {
-            if (settings.isPaired()) showStatus() else showForm(typedServer, typedCode, typedName, scanned = restoredScan)
+            when {
+                settings.isPaired() -> showStatus()
+                welcomeCompleted || restoredScan != null || typedServer.isNotEmpty() || typedCode.isNotEmpty() || typedName.isNotEmpty() ->
+                    showForm(typedServer, typedCode, typedName, scanned = restoredScan)
+                else -> showWelcome(typedServer, typedCode, typedName, scanned = restoredScan)
+            }
         }
     }
 
@@ -256,6 +273,9 @@ class PairingActivity : ComponentActivity() {
      * [showForm]). Both refresh paths check it, so neither can replace a half-typed pairing form.
      */
     @Volatile private var statusScreenShown = false
+    private var welcomeCompleted = false
+    private var forceChecklistView = false
+    private val skippedPermissionSteps = mutableSetOf<OnboardingPolicy.Grant>()
 
     /**
      * Issue #471: the unlink runs in the agent, not here, so this screen used to keep showing the
@@ -296,6 +316,7 @@ class PairingActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
+        outState.putBoolean(KEY_WELCOME_COMPLETED, welcomeCompleted)
         val review = scanFlow.state as? PairingScanFlow.State.Review
         if (review != null) outState.putString(KEY_SCANNED_QR, review.payload.encode())
         formServer?.let { outState.putString(KEY_TYPED_SERVER, it.text.toString()) }
@@ -323,10 +344,37 @@ class PairingActivity : ComponentActivity() {
 
     // ---- states ----
 
+    private fun showWelcome(
+        prefillServer: String = "",
+        prefillCode: String = "",
+        prefillName: String = "",
+        scanned: PairQrPayload? = null,
+    ) {
+        statusScreenShown = false
+        val brand = "${getString(R.string.app_name)} · ${getString(R.string.app_name_ar)}"
+        replaceWithCompose {
+            OnboardingWelcomeScreen(
+                copy = WelcomeCopy(
+                    brandLabel = brand,
+                    title = getString(R.string.setup_welcome_title),
+                    body = getString(R.string.setup_welcome_body),
+                    start = getString(R.string.setup_welcome_start),
+                ),
+                onStart = {
+                    welcomeCompleted = true
+                    showForm(prefillServer, prefillCode, prefillName, scanned = scanned)
+                },
+            )
+        }
+    }
+
     private fun showLoading() {
-        replaceWith {
-            addView(label(getString(R.string.pair_title)))
-            addView(ProgressBar(this@PairingActivity))
+        val brand = "${getString(R.string.app_name)} · ${getString(R.string.app_name_ar)}"
+        replaceWithCompose {
+            OnboardingLoadingScreen(
+                brandLabel = brand,
+                title = getString(R.string.pair_title),
+            )
         }
     }
 
@@ -678,36 +726,110 @@ class PairingActivity : ComponentActivity() {
      * not "complete" (and the status screen says so) until the required rows are green.
      */
     private fun showChecklist(rows: List<OnboardingPolicy.Row>, firstRun: Boolean) {
-        replaceWith {
-            addView(
-                label(
-                    getString(
-                        if (firstRun) R.string.setup_checklist_first_title else R.string.setup_checklist_title,
-                    ),
-                ),
-            )
-            addView(
-                label(progressLine(rows)).apply {
-                    setTextColor(if (OnboardingPolicy.canComplete(rows)) 0xFF2E7D32.toInt() else 0xFFB00020.toInt())
+        statusScreenShown = false
+        val nextStep = if (forceChecklistView) null else nextUngrantedPermissionStep(rows)
+        if (nextStep != null) {
+            showPermissionStep(rows, nextStep, firstRun)
+            return
+        }
+        forceChecklistView = false
+        val brand = "${getString(R.string.app_name)} · ${getString(R.string.app_name_ar)}"
+        val copy = ChecklistCopy(
+            brandLabel = brand,
+            title = getString(
+                if (firstRun) R.string.setup_checklist_first_title else R.string.setup_checklist_title,
+            ),
+            progressLine = progressLine(rows),
+            canComplete = OnboardingPolicy.canComplete(rows),
+            intro = if (firstRun) getString(R.string.setup_checklist_intro) else null,
+            rows = rows.map { row ->
+                val g = row.grant
+                ChecklistRowUi(
+                    title = getString(g.titleRes),
+                    whyOneSentence = getString(g.whyRes),
+                    granted = row.granted,
+                    required = g.required,
+                    optionalBadge = if (g.required) null else getString(R.string.setup_recommended),
+                    oemHint = OnboardingPolicy.oemHint(g, Build.MANUFACTURER),
+                    grantLabel = getString(R.string.setup_grant_button, getString(g.titleRes)),
+                    onGrant = { triggerGrant(g) },
+                )
+            },
+            footerLabel = when {
+                !firstRun -> getString(R.string.setup_back)
+                OnboardingPolicy.canComplete(rows) -> getString(R.string.setup_done)
+                else -> null
+            },
+            onFooterClick = when {
+                !firstRun -> { { lifecycleScope.launch { showStatus() } } }
+                OnboardingPolicy.canComplete(rows) -> { { showComplete() } }
+                else -> null
+            },
+        )
+        replaceWithCompose {
+            OnboardingChecklistScreen(copy = copy)
+        }
+    }
+
+    private fun nextUngrantedPermissionStep(rows: List<OnboardingPolicy.Row>): OnboardingPolicy.Row? =
+        rows.firstOrNull { !it.granted && it.grant.required && it.grant !in skippedPermissionSteps }
+            ?: rows.firstOrNull { !it.granted && it.grant !in skippedPermissionSteps }
+
+    private fun showPermissionStep(
+        rows: List<OnboardingPolicy.Row>,
+        row: OnboardingPolicy.Row,
+        firstRun: Boolean,
+    ) {
+        val g = row.grant
+        val brand = "${getString(R.string.app_name)} · ${getString(R.string.app_name_ar)}"
+        val copy = PermissionStepCopy(
+            brandLabel = brand,
+            progressLine = progressLine(rows),
+            title = getString(g.titleRes),
+            whyOneSentence = getString(g.whyRes),
+            grantButton = getString(R.string.setup_grant_button, getString(g.titleRes)),
+            optionalBadge = if (g.required) null else getString(R.string.setup_recommended),
+            oemHint = OnboardingPolicy.oemHint(g, Build.MANUFACTURER),
+            skipLabel = if (!g.required) getString(R.string.setup_skip) else null,
+            checklistLabel = getString(R.string.setup_checklist_button),
+        )
+        replaceWithCompose {
+            OnboardingPermissionStepScreen(
+                copy = copy,
+                onGrant = { triggerGrant(g) },
+                onSkip = if (!g.required) {
+                    {
+                        skippedPermissionSteps.add(g)
+                        val remaining = nextUngrantedPermissionStep(rows)
+                        if (remaining != null) showPermissionStep(rows, remaining, firstRun)
+                        else lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
+                    }
+                } else null,
+                onOpenChecklist = {
+                    forceChecklistView = true
+                    showChecklist(rows, firstRun)
                 },
             )
-            if (firstRun) addView(label(getString(R.string.setup_checklist_intro)))
-            for (row in rows) addGrantRow(this, row)
-            if (!firstRun) {
-                addView(
-                    Button(this@PairingActivity).apply {
-                        text = getString(R.string.setup_back)
-                        setOnClickListener { lifecycleScope.launch { showStatus() } }
-                    },
-                )
-            } else if (OnboardingPolicy.canComplete(rows)) {
-                addView(
-                    Button(this@PairingActivity).apply {
-                        text = getString(R.string.setup_done)
-                        setOnClickListener { showComplete() }
-                    },
-                )
+        }
+    }
+
+    private fun triggerGrant(g: OnboardingPolicy.Grant) {
+        when (g) {
+            OnboardingPolicy.Grant.DEVICE_ADMIN -> launchAdminSheet()
+            OnboardingPolicy.Grant.WEB_FILTER -> {
+                val prepare = android.net.VpnService.prepare(this)
+                if (prepare != null) launchVpnConsent(prepare) else {
+                    com.familyshield.agent.vpn.VpnState.setEnabled(this, true)
+                    com.familyshield.agent.vpn.FilterVpnService.start(this)
+                    lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
+                }
             }
+            OnboardingPolicy.Grant.LOCATION -> {
+                val hasAny = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                if (hasAny && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) backgroundLocationLauncher.launch(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                else requestLocationPermission()
+            }
+            else -> grants.fixIntent(g)?.let { runCatching { startActivity(it) } }
         }
     }
 
@@ -723,23 +845,9 @@ class PairingActivity : ComponentActivity() {
         if (row.granted) return
         container.addView(label(getString(g.whyRes)))
         OnboardingPolicy.oemHint(g, Build.MANUFACTURER)?.let { container.addView(label(it)) }
-        val button = Button(this).apply { text = getString(R.string.setup_grant_button, getString(g.titleRes)) }
-        when (g) {
-            OnboardingPolicy.Grant.DEVICE_ADMIN -> button.setOnClickListener { launchAdminSheet() }
-            OnboardingPolicy.Grant.WEB_FILTER -> button.setOnClickListener {
-                val prepare = android.net.VpnService.prepare(this)
-                if (prepare != null) launchVpnConsent(prepare) else {
-                    com.familyshield.agent.vpn.VpnState.setEnabled(this, true)
-                    com.familyshield.agent.vpn.FilterVpnService.start(this)
-                    lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
-                }
-            }
-            OnboardingPolicy.Grant.LOCATION -> button.setOnClickListener {
-                val hasAny = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-                if (hasAny && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) backgroundLocationLauncher.launch(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-                else requestLocationPermission()
-            }
-            else -> button.setOnClickListener { grants.fixIntent(g)?.let { runCatching { startActivity(it) } } }
+        val button = Button(this).apply {
+            text = getString(R.string.setup_grant_button, getString(g.titleRes))
+            setOnClickListener { triggerGrant(g) }
         }
         container.addView(button)
     }
@@ -1153,8 +1261,34 @@ class PairingActivity : ComponentActivity() {
     // ---- view helpers ----
 
     private fun replaceWith(build: LinearLayout.() -> Unit) {
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        root.setPadding(pad, pad, pad, pad)
         root.removeAllViews()
         root.build()
+    }
+
+    private fun replaceWithCompose(content: @androidx.compose.runtime.Composable () -> Unit) {
+        root.setPadding(0, 0, 0, 0)
+        root.removeAllViews()
+        root.addView(
+            ComposeView(this).apply {
+                setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                )
+                setContent {
+                    OsraTheme.OsraTheme {
+                        content()
+                    }
+                }
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                1f,
+            ),
+        )
     }
 
     private fun label(text: String): TextView = TextView(this).apply { this.text = text }
@@ -1199,6 +1333,7 @@ class PairingActivity : ComponentActivity() {
         private const val KEY_TYPED_SERVER = "typed_pair_server"
         private const val KEY_TYPED_CODE = "typed_pair_code"
         private const val KEY_TYPED_NAME = "typed_pair_name"
+        private const val KEY_WELCOME_COMPLETED = "welcome_completed"
 
         /** Feature #6 runtime permissions (declared in the manifest; prompted, not required). */
         private val COMMS_PERMISSIONS = arrayOf(
