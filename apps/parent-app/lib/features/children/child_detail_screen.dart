@@ -287,15 +287,26 @@ class _OverviewTab extends ConsumerWidget {
                           icon: const Icon(Icons.lock_open, size: 18),
                           label: Text(l10n.unlock),
                         ),
-                        TextButton.icon(
-                          onPressed: () => _sendCommand(context, ref, d, 'pause'),
-                          icon: const Icon(Icons.pause_circle, size: 18),
-                          label: Text(l10n.pause),
+                        // #969: a command that is queued but unconfirmed must not look idle. The pause/resume
+                        // controls are the two that leave a parent wondering whether anything happened, because
+                        // the POST answers `{status: pending}` before the handset has seen it.
+                        _PendingAwareControl(
+                          deviceId: d.id,
+                          command: 'pause',
+                          child: TextButton.icon(
+                            onPressed: () => _sendCommand(context, ref, d, 'pause'),
+                            icon: const Icon(Icons.pause_circle, size: 18),
+                            label: Text(l10n.pause),
+                          ),
                         ),
-                        TextButton.icon(
-                          onPressed: () => _sendCommand(context, ref, d, 'resume'),
-                          icon: const Icon(Icons.play_circle, size: 18),
-                          label: Text(l10n.resume),
+                        _PendingAwareControl(
+                          deviceId: d.id,
+                          command: 'resume',
+                          child: TextButton.icon(
+                            onPressed: () => _sendCommand(context, ref, d, 'resume'),
+                            icon: const Icon(Icons.play_circle, size: 18),
+                            label: Text(l10n.resume),
+                          ),
                         ),
                         TextButton.icon(
                           onPressed: () => _toggleInternet(context, ref, childId, internetPaused, d),
@@ -339,6 +350,36 @@ class _OverviewTab extends ConsumerWidget {
 /// Compact latest-command line on a device card. It reports the durable
 /// queue's state; a pending or delivered-but-unacked command is never called
 /// "sent".
+/// #969: a control whose command is queued but not yet confirmed by the handset says so, instead of looking
+/// idle. `pending` means the server has the row; `delivered` means the phone fetched it and has not acted yet;
+/// only `acked` (or a refusal) means the parent knows the outcome.
+///
+/// The control is wrapped rather than replaced, so the label, the icon and the ordering in the row stay exactly
+/// as they are — this adds a state, it does not rename anything. The words are the catalogue's existing
+/// `statusPending` line, so no new copy is introduced here.
+class _PendingAwareControl extends ConsumerWidget {
+  final String deviceId;
+  final String command;
+  final Widget child;
+  const _PendingAwareControl({required this.deviceId, required this.command, required this.child});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final history = ref.watch(deviceCommandHistoryProvider(deviceId)).valueOrNull ?? const <DeviceCommand>[];
+    final waiting = history.any((c) =>
+        c.type == command && (c.status == 'pending' || c.status == 'delivered'));
+    if (!waiting) return child;
+    return Tooltip(
+      message: context.l10n.statusPending,
+      child: Opacity(
+        key: ValueKey('controlPending-$command'),
+        opacity: 0.55,
+        child: IgnorePointer(child: child),
+      ),
+    );
+  }
+}
+
 class _DeviceDeliverySummary extends ConsumerWidget {
   final String deviceId;
   final String deviceModel;
