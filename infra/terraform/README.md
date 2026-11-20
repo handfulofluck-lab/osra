@@ -372,6 +372,34 @@ aws ecr get-login-password --region eu-north-1 \
 docker buildx build --platform linux/arm64 -f services/api/Dockerfile --tag "${REPO}:${SHA}" --push .
 ```
 
+### Staging QA analyzer image
+
+Enable `staging_qa_analyzer_publisher_enabled` in the reviewed Stockholm staging **base**
+configuration. Pin the staging account in `allowed_account_ids` and retain the existing
+immutable GitHub OIDC subject. This creates the separate immutable `osra-staging/qa-ai-engine`
+repository and a publisher that can push and verify images in that repository only.
+
+After base is applied and the repository settings are approved, pass the references directly
+to GitHub so the account-bearing values stay masked in job logs. These references confer no
+access by themselves. GitHub Actions obtains short-lived credentials through OIDC.
+
+```bash
+terraform -chdir=infra/terraform/base output -raw staging_qa_analyzer_repository_url \
+  | gh secret set AWS_STAGING_QA_ANALYZER_REPOSITORY --repo handfulofluck-lab/osra
+terraform -chdir=infra/terraform/base output -raw staging_qa_analyzer_publish_role_arn \
+  | gh secret set AWS_STAGING_QA_ANALYZER_PUBLISH_ROLE_ARN --repo handfulofluck-lab/osra
+```
+
+Once the reviewed staging QA adapter and publisher workflow are on `main`, dispatch
+the publisher with `gh workflow run staging-qa-analyzer-publish.yml --ref main`. The run tags
+the `linux/amd64` image with the full commit SHA and verifies the registry digest, architecture
+and revision. A rerun verifies and reports the existing image for the same commit.
+
+Use the digest from the successful run summary for `staging_qa_analyzer.image_digest` in
+the separately reviewed staging **env** plan. Publishing does not start the analyzer,
+arm capture, or change the API. Provision the approved prompt, fixture approval and QA
+pairing through the separate private runtime configuration.
+
 ## Seed data is part of `up`, and mandatory
 
 The database does not survive `down`, and the API exits at boot when its Prisma client and the
