@@ -33,13 +33,30 @@ final class PinRulesSeededTests: XCTestCase {
     /// The bare `tap(); typeText()` failed once with *"Neither element nor any descendant has keyboard focus"* — a
     /// tap landing while a sheet was still settling. That is the harness being impatient, not the app misbehaving,
     /// so the wait belongs here rather than in a retry of the whole case.
+    ///
+    /// **Keystrokes go through the application, not the element** (Antigravity's B2 fix, `7043304116`). That fix
+    /// turns animations off for a seeded launch; with the focus animation gone, the element-level `typeText` is
+    /// dispatched before the field is first responder and the row dies on its first character. Typing through
+    /// `app` sends the keys to whatever is focused — the field this line just tapped — and the value check below is
+    /// what keeps that honest: if the characters went nowhere, this fails here, with a sentence that says which
+    /// field and why, instead of further down on an assertion about the app.
     private func type(_ text: String, into field: XCUIElement, in app: XCUIApplication) {
         XCTAssertTrue(field.waitForExistence(timeout: 10), "the field never appeared")
         let deadline = Date().addingTimeInterval(5)
         while !field.isHittable && Date() < deadline { usleep(100_000) }
         field.tap()
-        _ = app.keyboards.element.waitForExistence(timeout: 3)   // the keyboard attaching is the focus signal
-        field.typeText(text)
+        if !app.keyboards.element.waitForExistence(timeout: 3) {
+            // Without the focus animation the first tap can land before the field is ready to take it. One more tap
+            // is the smallest remedy, and it cannot hide a wrong value — only a tap that never registered.
+            field.tap()
+            _ = app.keyboards.element.waitForExistence(timeout: 3)
+        }
+        let before = (field.value as? String) ?? ""
+        app.typeText(text)
+        let typed = Date().addingTimeInterval(3)
+        while ((field.value as? String) ?? "") == before && Date() < typed { usleep(100_000) }
+        XCTAssertNotEqual((field.value as? String) ?? "", before,
+                          "no character reached the field: the tap did not give it focus")
     }
 
     private func save(_ app: XCUIApplication) {
