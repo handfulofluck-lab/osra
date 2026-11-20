@@ -33,6 +33,8 @@ class ChildDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // #935: keep the live /v1/ws channel subscribed so `command_acked` updates delivery status immediately.
+    ref.watch(wsProvider);
     final overview = ref.watch(familyProvider).valueOrNull;
     final child = overview?.children.where((c) => c.id == childId).firstOrNull;
     final l10n = context.l10n;

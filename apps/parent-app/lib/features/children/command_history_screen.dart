@@ -37,6 +37,8 @@ class CommandHistoryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // #935: keep the live /v1/ws channel subscribed so `command_acked` refreshes rows immediately.
+    ref.watch(wsProvider);
     final l10n = context.l10n;
     final overview = ref.watch(familyProvider);
     return Scaffold(

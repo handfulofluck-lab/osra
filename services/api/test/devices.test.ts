@@ -1616,3 +1616,128 @@ describe("device restart reporting (#867)", () => {
     await app.close();
   });
 });
+
+/**
+ * #935: when a child device acknowledges a command (`POST /v1/devices/:id/commands/:commandId/ack`),
+ * publish `command_acked` on the family channel so the parent app clears "pending" right away.
+ *
+ * Mutants (AGENTS.md §3):
+ * - M1: Remove `publishFamilyEvent(..., { type: "command_acked", ... })` in `devices.ts`:
+ *       the publish test below fails RED.
+ * - M2: Forward `row.payload` or `detail` in the frame payload:
+ *       the non-leak assertions below fail RED.
+ */
+describe("command ack push (#935)", () => {
+  const redis = () => getRedis() as unknown as import("./helpers.js").MockRedis;
+
+  beforeEach(() => {
+    resetPrismaMock();
+  });
+
+  const ack = (
+    app: Awaited<ReturnType<typeof buildApp>>,
+    commandId: string,
+    payload: Record<string, unknown>,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `/v1/devices/dev-1/commands/${commandId}/ack`,
+      headers: deviceHeader(app),
+      payload,
+    });
+
+  it("publishes command_acked on the family channel without payload or detail", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: "cmd-1",
+      deviceId: "dev-1",
+      type: "resume_internet",
+      status: "acked",
+      payload: { secret: "12345678" },
+      result: { note: "FilterVpn: tunnel up" },
+      createdAt: new Date("2026-11-20T12:00:00Z"),
+      ackedAt: new Date("2026-11-20T12:00:02Z"),
+    });
+    redis().publish.mockClear();
+
+    const res = await ack(app, "cmd-1", { status: "ok", detail: { note: "FilterVpn: tunnel up" } });
+    expect(res.statusCode).toBe(200);
+    expect(redis().publish).toHaveBeenCalledWith("family:fam-1:events", expect.stringContaining('"command_acked"'));
+
+    const frame = JSON.parse(redis().publish.mock.calls.at(-1)![1] as string);
+    expect(frame).toEqual({
+      type: "command_acked",
+      payload: {
+        deviceId: "dev-1",
+        commandId: "cmd-1",
+        type: "resume_internet",
+        status: "acked",
+        childId: "child-1",
+      },
+    });
+    expect(JSON.stringify(frame)).not.toContain("12345678");
+    expect(JSON.stringify(frame)).not.toContain("FilterVpn");
+    await app.close();
+  });
+
+  it("publishes command_acked with status failed when the device reports failure", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: "cmd-2",
+      deviceId: "dev-1",
+      type: "lock",
+      status: "failed",
+      payload: {},
+      result: { reason: "permission_missing" },
+      createdAt: new Date("2026-11-20T12:00:00Z"),
+      ackedAt: new Date("2026-11-20T12:00:02Z"),
+    });
+    redis().publish.mockClear();
+
+    const res = await ack(app, "cmd-2", { status: "failed", detail: { reason: "permission_missing" } });
+    expect(res.statusCode).toBe(200);
+    const frame = JSON.parse(redis().publish.mock.calls.at(-1)![1] as string);
+    expect(frame.type).toBe("command_acked");
+    expect(frame.payload.status).toBe("failed");
+    expect(JSON.stringify(frame)).not.toContain("permission_missing");
+    await app.close();
+  });
+
+  it("does not publish when no delivered command matches (404)", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 0 });
+    redis().publish.mockClear();
+
+    const res = await ack(app, "cmd-missing", { status: "ok" });
+    expect(res.statusCode).toBe(404);
+    expect(redis().publish).not.toHaveBeenCalledWith("family:fam-1:events", expect.stringContaining('"command_acked"'));
+    await app.close();
+  });
+
+  it("still returns 200 when redis publish fails", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: "cmd-3",
+      deviceId: "dev-1",
+      type: "pause",
+      status: "acked",
+      payload: {},
+      result: {},
+      createdAt: new Date("2026-11-20T12:00:00Z"),
+      ackedAt: new Date("2026-11-20T12:00:02Z"),
+    });
+    redis().publish.mockRejectedValueOnce(new Error("redis down"));
+
+    const res = await ack(app, "cmd-3", { status: "ok" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().command.id).toBe("cmd-3");
+    await app.close();
+  });
+});
