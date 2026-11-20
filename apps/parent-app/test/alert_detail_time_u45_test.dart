@@ -14,15 +14,20 @@ import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'fake_api_client.dart';
 import 'test_app.dart';
 
-/// UI/UX Bureau U45 (7043461726 / 7043472688): alert detail dialog timestamps use
-/// the #889 relative keys (`alertAtTime`, `alertYesterdayAtTime`, `alertOnDateAtTime`)
-/// in 24-hour `HH:mm` without seconds (Western digits + LRI/PDI), and drop the `Severity` row.
+/// UI/UX Bureau U45 (7043461726 / 7043472688 / 7045608971 / 7045621132): alert detail dialog
+/// timestamps use `alertDetailSent` + the `#889` relative keys in 24-hour `HH:mm` without seconds
+/// (localized month via `localeName`, Western digits + LRI/PDI), drop the `Severity` row, and keep
+/// `CoachCardSection` compact inside narrow / 200% dialogs without mid-word breaks or fold clips.
 ///
 /// Mutants (AGENTS.md §3):
 /// - M1: Restore `DateFormat.yMMMd(...).add_Hms().format(...)` in `AlertsScreen._showDetail`:
 ///       both `formatAlertDetailTime` / widget time assertions (`no seconds`, `#889 key`) fail RED.
 /// - M2: Restore `'${l10n.severityLabel(l10n.severityName(alert.severity))}'` in `_showDetail`:
 ///       `find.textContaining('Severity')` and `find.textContaining('الخطورة')` fail RED.
+/// - M3: Hardcode `isArabic ? 'ar' : 'en'` in `formatAlertDetailTime`:
+///       the `tr`/`id`/`ms`/`fr`/`ur` localeName test fails RED (`fr`/`tr`/`ur` fall back to English `'Nov'`).
+/// - M4: Use `l10n.timeLabel(...)` instead of `l10n.alertDetailSent(...)` in `_showDetail`:
+///       EN (`Sent ...`, no `Time:`) and AR (`أُرسل ...`, no `الوقت:`) widget assertions fail RED.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -120,6 +125,25 @@ void main() {
         expect(arabicIndicDigits.hasMatch(s), isFalse, reason: s);
       }
     });
+
+    test('formats non-EN/non-AR launch locales (tr, id, ms, fr, ur) using localeName months and Western digits', () {
+      final sample = DateTime(2026, 11, 14, 16, 8, 43);
+      final fr = formatAlertDetailTime(sample, l10n: en, localeName: 'fr', now: refNow);
+      final tr = formatAlertDetailTime(sample, l10n: en, localeName: 'tr', now: refNow);
+      final ur = formatAlertDetailTime(sample, l10n: en, localeName: 'ur', now: refNow);
+      final id = formatAlertDetailTime(sample, l10n: en, localeName: 'id', now: refNow);
+      final ms = formatAlertDetailTime(sample, l10n: en, localeName: 'ms', now: refNow);
+
+      expect(fr, isNot(contains('Nov')));
+      expect(fr.toLowerCase(), contains('nov.'));
+      expect(tr, contains('Kas'));
+      expect(ur, contains('14 '));
+      expect(ur, isNot(contains('Nov')));
+      for (final s in [fr, tr, ur, id, ms]) {
+        expect(secondsRe.hasMatch(s), isFalse, reason: s);
+        expect(arabicIndicDigits.hasMatch(s), isFalse, reason: s);
+      }
+    });
   });
 
   group('AlertsScreen U45 dialog layout at 320x568 / 200%', () {
@@ -178,7 +202,7 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('EN dialog shows Category without Severity and relative #889 time without seconds',
+    testWidgets('EN dialog shows Category without Severity and Sent #889 time without Time: or seconds',
         (tester) async {
       final en = lookupAppLocalizations(const Locale('en'));
       await pumpAlert(
@@ -189,15 +213,30 @@ void main() {
 
       expect(find.text(en.categoryLabel(en.alertCategoryTamper)), findsOneWidget);
       expect(find.textContaining('Severity'), findsNothing);
+      expect(find.textContaining('Time:'), findsNothing);
 
       final timeText =
           tester.widget<Text>(find.byKey(const ValueKey('alert-detail-time'))).data!;
-      expect(timeText, 'Time: at \u{2066}18:09\u{2069}');
+      expect(timeText, 'Sent at \u{2066}18:09\u{2069}');
       expect(secondsRe.hasMatch(timeText), isFalse, reason: timeText);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('AR dialog shows الفئة without الخطورة and Western-digit #889 time without seconds',
+    testWidgets('EN dialog shows Sent yesterday at HH:mm for yesterday alerts', (tester) async {
+      await pumpAlert(
+        tester,
+        locale: const Locale('en'),
+        createdAt: DateTime(2026, 11, 19, 16, 8, 43),
+      );
+
+      final timeText =
+          tester.widget<Text>(find.byKey(const ValueKey('alert-detail-time'))).data!;
+      expect(timeText, 'Sent yesterday at \u{2066}16:08\u{2069}');
+      expect(find.textContaining('Time:'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('AR dialog shows الفئة without الخطورة and أُرسل #889 time without الوقت: or seconds',
         (tester) async {
       final ar = lookupAppLocalizations(const Locale('ar'));
       await pumpAlert(
@@ -208,11 +247,27 @@ void main() {
 
       expect(find.text(ar.categoryLabel(ar.alertCategoryTamper)), findsOneWidget);
       expect(find.textContaining('الخطورة'), findsNothing);
+      expect(find.textContaining('الوقت:'), findsNothing);
 
       final timeText =
           tester.widget<Text>(find.byKey(const ValueKey('alert-detail-time'))).data!;
-      expect(timeText, 'الوقت: يوم 14 نوفمبر الساعة \u{2066}16:08\u{2069}');
+      expect(timeText, 'أُرسل يوم 14 نوفمبر الساعة \u{2066}16:08\u{2069}');
       expect(secondsRe.hasMatch(timeText), isFalse, reason: timeText);
+      expect(arabicIndicDigits.hasMatch(timeText), isFalse, reason: timeText);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('AR dialog shows أُرسل أمس الساعة HH:mm for yesterday alerts', (tester) async {
+      await pumpAlert(
+        tester,
+        locale: const Locale('ar'),
+        createdAt: DateTime(2026, 11, 19, 16, 8, 43),
+      );
+
+      final timeText =
+          tester.widget<Text>(find.byKey(const ValueKey('alert-detail-time'))).data!;
+      expect(timeText, 'أُرسل أمس الساعة \u{2066}16:08\u{2069}');
+      expect(find.textContaining('الوقت:'), findsNothing);
       expect(arabicIndicDigits.hasMatch(timeText), isFalse, reason: timeText);
       expect(tester.takeException(), isNull);
     });

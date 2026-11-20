@@ -56,8 +56,10 @@ String formatAlertDetailTime(
   final sameYear = localTime.year == refLocal.year;
   final pattern =
       isArabic ? (sameYear ? 'd MMMM' : 'd MMMM y') : (sameYear ? 'd MMM' : 'd MMM y');
+  final resolvedLocale =
+      DateFormat.localeExists(localeName) ? localeName : (isArabic ? 'ar' : 'en');
   final dateLabel = normalizeDigits(
-    DateFormat(pattern, isArabic ? 'ar' : 'en').format(localTime),
+    DateFormat(pattern, resolvedLocale).format(localTime),
   );
   return l10n.alertOnDateAtTime(dateLabel, isolatedClock);
 }
@@ -164,6 +166,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
         final l10n = dialogContext.l10n;
         return AlertDialog(
           scrollable: true,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           title: Row(
             children: [
               Icon(Icons.circle,
@@ -272,7 +275,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   Text(l10n.categoryLabel(l10n.alertCategory(alert.category))),
                   if (alert.createdAt != null)
                     Text(
-                      l10n.timeLabel(
+                      l10n.alertDetailSent(
                         formatAlertDetailTime(
                           alert.createdAt!,
                           l10n: l10n,
@@ -283,7 +286,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                       key: const ValueKey('alert-detail-time'),
                     ),
                   const Divider(),
-                  CoachCardSection(card: coachCard),
+                  CoachCardSection(card: coachCard, compact: true),
                 ],
               );
             },
