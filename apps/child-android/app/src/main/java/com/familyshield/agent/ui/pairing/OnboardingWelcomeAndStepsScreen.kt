@@ -170,17 +170,18 @@ fun OnboardingPermissionStepScreen(
             .fillMaxSize()
             .background(palette.page)
             .systemBarsPadding()
-            .verticalScroll(scroll)
-            .padding(horizontal = OsraTokens.spaces.xl, vertical = OsraTokens.spaces.lg),
+            .padding(horizontal = OsraTokens.spaces.lg, vertical = OsraTokens.spaces.md),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween,
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scroll),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            OsraBrandMark(brandLabel = copy.brandLabel)
-            Spacer(modifier = Modifier.height(OsraTokens.spaces.md))
+            OsraBrandMark(brandLabel = copy.brandLabel, compact = true)
+            Spacer(modifier = Modifier.height(OsraTokens.spaces.sm))
             Text(
                 text = copy.progressLine,
                 style = MaterialTheme.typography.bodySmall.copy(
@@ -191,7 +192,7 @@ fun OnboardingPermissionStepScreen(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
             )
-            Spacer(modifier = Modifier.height(OsraTokens.spaces.lg))
+            Spacer(modifier = Modifier.height(OsraTokens.spaces.md))
 
             Surface(
                 modifier = Modifier
@@ -207,8 +208,8 @@ fun OnboardingPermissionStepScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(OsraTokens.spaces.lg),
-                    verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.md),
+                        .padding(OsraTokens.spaces.md),
+                    verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.sm),
                 ) {
                     copy.optionalBadge?.let { badge ->
                         Box(
@@ -265,11 +266,11 @@ fun OnboardingPermissionStepScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(OsraTokens.spaces.xl))
+        Spacer(modifier = Modifier.height(OsraTokens.spaces.md))
 
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.sm),
+            verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.xs),
         ) {
             Button(
                 onClick = onGrant,
@@ -330,15 +331,15 @@ fun OnboardingPermissionStepScreen(
 }
 
 @Composable
-private fun OsraBrandMark(brandLabel: String) {
+private fun OsraBrandMark(brandLabel: String, compact: Boolean = false) {
     val palette = OsraTheme.LocalOsraPalette.current
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.sm),
+        verticalArrangement = Arrangement.spacedBy(if (compact) OsraTokens.spaces.xs else OsraTokens.spaces.sm),
     ) {
         Box(
             modifier = Modifier
-                .size(64.dp)
+                .size(if (compact) 48.dp else 64.dp)
                 .clip(CircleShape)
                 .background(palette.tint)
                 .border(1.5.dp, palette.primary, CircleShape),
@@ -347,7 +348,7 @@ private fun OsraBrandMark(brandLabel: String) {
             Image(
                 painter = painterResource(id = R.drawable.ic_app_foreground),
                 contentDescription = brandLabel,
-                modifier = Modifier.size(44.dp),
+                modifier = Modifier.size(if (compact) 32.dp else 44.dp),
             )
         }
         Text(
