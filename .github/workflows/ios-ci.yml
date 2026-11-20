@@ -222,15 +222,74 @@ jobs:
       # #739: the escape rows that need no Family Controls. KP01's xcui half drives the real screens; the
       # shield rows stay on the device. Same runner, same simulator, same triggers and concurrency group as
       # the rest of this job: no new job, no new schedule, no new path filter.
-      - name: Run the UI tests (KP01's screens) inside the simulator
+      # The launch timeout is the one failure this runner produces by itself; it cost two runs already (#932 at
+      # a fold, #949 before any app code ran). It is retried, and only it: the retry flags are on this one case,
+      # so an assertion failure in any escape row is red on its first iteration, which is the whole point.
+      - name: Run the launch smoke case, retrying a simulator start once
         working-directory: apps/child-ios
         run: |
           DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for r,l in d.items() if "iOS" in r for x in l if x["name"].startswith("iPhone")))')"
           echo "Simulator: $DEVICE_ID"
-          # A launch timeout on this runner is a simulator flake, not a regression: it has cost two runs already
-          # (#932 at a fold, #949 before any app code ran). One retry per failing case absorbs it; a real
-          # regression fails both iterations and still goes red.
-          xcodebuild test             -project OSRAAgent.xcodeproj             -scheme OSRAAgentUI             -destination "id=$DEVICE_ID"             -derivedDataPath .build/uiDerivedData             -retry-tests-on-failure             -test-iterations 2
+          mkdir -p .build/uiResults
+          # pipefail, so tee cannot turn a failed run into a green step.
+          set -o pipefail
+          xcodebuild test \
+            -project OSRAAgent.xcodeproj \
+            -scheme OSRAAgentUI \
+            -destination "id=$DEVICE_ID" \
+            -derivedDataPath .build/uiDerivedData \
+            -only-testing:OSRAAgentUITests/AgentLaunchTests \
+            -retry-tests-on-failure \
+            -test-iterations 2 \
+            -resultBundlePath .build/uiResults/launch-smoke.xcresult \
+            2>&1 | tee .build/uiResults/launch-smoke.log
+
+      # A green job that hid a launch failure is the thing Codex objected to, so say when that happened. A case
+      # that passes is run once; two starts means the first attempt failed and the retry is why the job is green.
+      - name: Say whether the launch case needed its retry
+        if: always()
+        working-directory: apps/child-ios
+        run: |
+          LOG=.build/uiResults/launch-smoke.log
+          if [ ! -f "$LOG" ]; then echo "no launch log: the step did not start"; exit 0; fi
+          # awk, not `grep -c`: awk exits 0 on no match, so the count needs no `|| true` to hide a failure.
+          STARTS="$(awk '/Test Case .-\[AgentLaunchTests testTheAppLaunchesToThePairingScreen\] started\./ { n++ } END { print n + 0 }' "$LOG")"
+          echo "the launch case started $STARTS time(s)"
+          RETRIED=no
+          if [ "$STARTS" -gt 1 ]; then RETRIED=yes; fi
+          {
+            echo "### Launch smoke case"
+            echo ""
+            echo "| started | retried |"
+            echo "|---|---|"
+            echo "| $STARTS | $RETRIED |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$STARTS" -gt 1 ]; then
+            echo "::warning title=Simulator launch flake::the launch case needed its retry, so this run absorbed a simulator start failure. The first attempt is in launch-smoke.xcresult and launch-smoke.log. An app-start regression that recovers on a second launch looks exactly like this, so read the first attempt before believing the green."
+          fi
+
+      - name: Run the escape rows (KP01's screens) inside the simulator, with no retry
+        working-directory: apps/child-ios
+        run: |
+          DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for r,l in d.items() if "iOS" in r for x in l if x["name"].startswith("iPhone")))')"
+          echo "Simulator: $DEVICE_ID"
+          xcodebuild test \
+            -project OSRAAgent.xcodeproj \
+            -scheme OSRAAgentUI \
+            -destination "id=$DEVICE_ID" \
+            -derivedDataPath .build/uiDerivedData \
+            -skip-testing:OSRAAgentUITests/AgentLaunchTests \
+            -resultBundlePath .build/uiResults/escape-rows.xcresult
+
+      # The first attempt has to outlive the log, or "preserve the first result" is only a promise.
+      - name: Keep the UI-test result bundles and the launch log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ui-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/child-ios/.build/uiResults/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Check the built app holds its three extensions and the entitlements
         working-directory: apps/child-ios
