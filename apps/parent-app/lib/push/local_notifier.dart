@@ -4,6 +4,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../api/models.dart';
 import '../l10n/l10n.dart';
 import 'restart_alert_text.dart';
+import 'ring_volume_alert_text.dart';
 import 'sos_fix_text.dart';
 
 /// The visible half of an alert: what the parent reads on the lock screen.
@@ -49,6 +50,12 @@ class VisibleAlert {
             l10n: l10n,
             localeName: isEnglish ? 'en' : 'ar',
             now: now,
+          ) ??
+          l10n.alertPushBodyGeneric;
+    } else if (alert.category == 'ring_volume') {
+      body = RingVolumeAlertText.tryFormat(
+            alert,
+            l10n: l10n,
           ) ??
           l10n.alertPushBodyGeneric;
     } else {

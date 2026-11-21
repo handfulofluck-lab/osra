@@ -1816,5 +1816,21 @@
       "when": { "type": "String" },
       "hours": { "type": "int" }
     }
+  },
+  "alertRingVolumeTitle": "Tried to turn the ring down",
+  "@alertRingVolumeTitle": {
+    "description": "osra-security#42 (UI/UX Bureau 7015553552): title for one-per-ring volume-down attempt alert."
+  },
+  "alertCategoryRingVolume": "Ring volume",
+  "@alertCategoryRingVolume": {
+    "description": "osra-security#42 (UI/UX Bureau 7015553552): category chip label for ring_volume alerts."
+  },
+  "alertRingVolumeBody": "{child} tried to turn down the ring volume {count, plural, =1{once} other{{count} times}}. The phone kept ringing.",
+  "@alertRingVolumeBody": {
+    "description": "osra-security#42 (UI/UX Bureau 7015553552): one-per-ring alert body; wrap {child} in U+2068..U+2069 and use Western digits for {count}.",
+    "placeholders": {
+      "child": { "type": "String" },
+      "count": { "type": "int" }
+    }
   }
 }

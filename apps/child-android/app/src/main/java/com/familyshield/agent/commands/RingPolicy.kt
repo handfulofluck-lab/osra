@@ -45,6 +45,18 @@ object RingPolicy {
         current < floor -> VolumeVerdict.RESTORE
         else -> VolumeVerdict.IGNORE
     }
+
+    /** osra-security#42 / #944 (UI/UX 7015553552): one alert per ring, only if at least one restoration occurred. */
+    fun shouldReportVolumeAttempts(restorations: Int): Boolean = restorations > 0
+
+    fun ringVolumeAlertBody(count: Int): String = if (count == 1) {
+        "Tried to turn down the ring volume once. The phone kept ringing."
+    } else {
+        "Tried to turn down the ring volume $count times. The phone kept ringing."
+    }
+
+    fun ringVolumeDedupeKey(deviceId: String?, ringSessionId: Long): String =
+        "${deviceId ?: "unknown"}|ring_volume|$ringSessionId"
 }
 
 /**

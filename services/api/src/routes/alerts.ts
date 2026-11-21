@@ -35,6 +35,7 @@ const InternalAlertSchema = z.object({
     "vpn_detected",
     "install_request",
     "unknown_contact",
+    "ring_volume",
   ]),
   title: z.string().min(1),
   body: z.string().min(1),
