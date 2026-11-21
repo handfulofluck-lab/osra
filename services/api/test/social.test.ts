@@ -585,6 +585,121 @@ describe("social routes", () => {
       expect(prismaMock.socialEvent.create).toHaveBeenCalledTimes(1);
       await app.close();
     });
+
+    /**
+     * Per-device v2 HMAC regression coverage for #967 (tracked in osra-security#46):
+     * `postScan` above signs with the global service secret (`caller: "ai-engine"`), which bypasses
+     * per-device secret lookup in `authenticateInternalRequest`. These four cases exercise the real
+     * child-agent wire path (per-device `internalSecret`, no `x-familyshield-caller`, no `x-device-id`).
+     *
+     * Mutants killed:
+     * - Removing root `deviceId` from the batch envelope turns case 1 into 401 `invalid_signature` (proven in case 2).
+     * - Removing the `device.childId !== childId` or `deviceId !== device.id` check in `scanOne` lets the
+     *   foreign items in case 3 pass instead of returning `cross_child_forbidden` / `device_mismatch`.
+     */
+    describe("per-device v2 HMAC batch authentication (#967)", () => {
+      const DEVICE_SECRET = "test-device-a-hmac-secret";
+      const DEVICE_A = { id: "dev-a", childId: CHILD.id, internalSecret: DEVICE_SECRET };
+
+      function mockPairedDevice() {
+        prismaMock.device.findUnique.mockImplementation((async (args: { where: { id: string } }) =>
+          args.where.id === DEVICE_A.id ? DEVICE_A : null) as never);
+      }
+
+      it("accepts the #967 root-deviceId batch envelope signed with the device's own secret", async () => {
+        const app = await buildApp(socialRoutes, "/v1/social");
+        mockPairedDevice();
+        vi.stubGlobal("fetch", flaggedAi());
+        prismaMock.child.findUnique.mockResolvedValue(CHILD);
+        const raw = JSON.stringify({
+          deviceId: DEVICE_A.id,
+          items: [scanBody({ deviceId: DEVICE_A.id, source: "notification" })],
+        });
+        const res = await app.inject({
+          method: "POST",
+          url: "/v1/social/scan",
+          headers: { "content-type": "application/json", ...signV2(DEVICE_SECRET, raw) },
+          payload: raw,
+        });
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({
+          results: [{ ok: true, flagged: true, severity: "critical", concernTypes: ["self_harm"] }],
+        });
+        await app.close();
+      });
+
+      it("rejects a batch without root deviceId under per-device v2 HMAC with 401 invalid_signature", async () => {
+        const app = await buildApp(socialRoutes, "/v1/social");
+        mockPairedDevice();
+        const raw = JSON.stringify({
+          items: [scanBody({ deviceId: DEVICE_A.id, source: "notification" })],
+        });
+        const res = await app.inject({
+          method: "POST",
+          url: "/v1/social/scan",
+          headers: { "content-type": "application/json", ...signV2(DEVICE_SECRET, raw) },
+          payload: raw,
+        });
+        expect(res.statusCode).toBe(401);
+        expect(res.json()).toEqual({ error: "invalid_signature", reason: "invalid_signature" });
+        await app.close();
+      });
+
+      it("refuses foreign childId and foreign deviceId items inside a valid device-A batch without dropping valid items", async () => {
+        const app = await buildApp(socialRoutes, "/v1/social");
+        mockPairedDevice();
+        const fetchMock = aiOk({ flagged: false, severity: "info", categories: { safe: 1 } });
+        vi.stubGlobal("fetch", fetchMock);
+        prismaMock.child.findUnique.mockResolvedValue(CHILD);
+        const raw = JSON.stringify({
+          deviceId: DEVICE_A.id,
+          items: [
+            scanBody({ deviceId: DEVICE_A.id, text: "benign message" }),
+            scanBody({ childId: "child-other", deviceId: DEVICE_A.id, text: "foreign child" }),
+            scanBody({ deviceId: "dev-other", text: "foreign device" }),
+          ],
+        });
+        const res = await app.inject({
+          method: "POST",
+          url: "/v1/social/scan",
+          headers: { "content-type": "application/json", ...signV2(DEVICE_SECRET, raw) },
+          payload: raw,
+        });
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({
+          results: [
+            { ok: true, flagged: false, severity: "info", concernTypes: [] },
+            { ok: false, reason: "cross_child_forbidden" },
+            { ok: false, reason: "device_mismatch" },
+          ],
+        });
+        // Codex (#970 7062553658): rejected entries must never invoke the analyzer or create stored side effects.
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body ?? "{}"))).toMatchObject({
+          text: "benign message",
+        });
+        expect(prismaMock.socialEvent.create).not.toHaveBeenCalled();
+        expect(prismaMock.alert.create).not.toHaveBeenCalled();
+        await app.close();
+      });
+
+      it("preserves single-item compatibility under per-device v2 HMAC", async () => {
+        const app = await buildApp(socialRoutes, "/v1/social");
+        mockPairedDevice();
+        vi.stubGlobal("fetch", aiOk({ flagged: false, severity: "info", categories: { safe: 1 } }));
+        prismaMock.child.findUnique.mockResolvedValue(CHILD);
+        const raw = JSON.stringify(scanBody({ deviceId: DEVICE_A.id, text: "benign single" }));
+        const res = await app.inject({
+          method: "POST",
+          url: "/v1/social/scan",
+          headers: { "content-type": "application/json", ...signV2(DEVICE_SECRET, raw) },
+          payload: raw,
+        });
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({ flagged: false, severity: "info", concernTypes: [] });
+        await app.close();
+      });
+    });
   });
 
   it("lists vault events decrypted, newest first, with filters", async () => {
