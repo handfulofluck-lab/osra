@@ -1,0 +1,1 @@
+- Parent app (iPhone): the app now asks iOS for a push address at launch and waits briefly for it before registering, so parents receive alerts as push notifications (#558).

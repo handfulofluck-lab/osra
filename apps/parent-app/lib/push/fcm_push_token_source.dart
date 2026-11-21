@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 
 import 'push_registration.dart';
 
@@ -20,10 +21,41 @@ import 'push_registration.dart';
 /// The distinction between "not configured" and "refused" is the whole reason [PushPermission]
 /// has three values, so this source is careful never to collapse them.
 class FcmPushTokenSource implements PushTokenSource {
-  FcmPushTokenSource({Future<void> Function()? ensureInitialized})
-      : _ensureInitialized = ensureInitialized ?? _initializeDefault;
+  FcmPushTokenSource({
+    Future<void> Function()? ensureInitialized,
+    Future<String?> Function()? apnsToken,
+    bool? waitForApns,
+    Duration apnsRetryDelay = const Duration(milliseconds: 500),
+    int apnsAttempts = 10,
+  })  : _ensureInitialized = ensureInitialized ?? _initializeDefault,
+        _apnsToken = apnsToken ?? (() => FirebaseMessaging.instance.getAPNSToken()),
+        _waitForApns = waitForApns ?? (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS),
+        _apnsRetryDelay = apnsRetryDelay,
+        _apnsAttempts = apnsAttempts;
 
   final Future<void> Function() _ensureInitialized;
+
+  /// #558: on iOS FCM can only mint a token once APNs has handed the app its device token, which
+  /// arrives asynchronously after `registerForRemoteNotifications()` (AppDelegate.swift). Asking
+  /// `getToken()` before that throws `apns-token-not-set`, which used to end registration silently.
+  final Future<String?> Function() _apnsToken;
+  final bool _waitForApns;
+  final Duration _apnsRetryDelay;
+  final int _apnsAttempts;
+
+  /// Waits, briefly, for the APNs device token. True when it arrived.
+  Future<bool> _apnsReady() async {
+    for (var i = 0; i < _apnsAttempts; i++) {
+      try {
+        final apns = await _apnsToken();
+        if (apns != null && apns.isNotEmpty) return true;
+      } catch (_) {
+        // Not yet available; try again after the delay.
+      }
+      if (i < _apnsAttempts - 1) await Future<void>.delayed(_apnsRetryDelay);
+    }
+    return false;
+  }
 
   /// Set once initialisation has succeeded, so a build without config pays for the failure
   /// exactly once rather than on every poll and every sign-in.
@@ -71,6 +103,7 @@ class FcmPushTokenSource implements PushTokenSource {
   @override
   Future<String?> token() async {
     if (!await _available()) return null;
+    if (_waitForApns && !await _apnsReady()) return null;
     try {
       return await FirebaseMessaging.instance.getToken();
     } catch (_) {
