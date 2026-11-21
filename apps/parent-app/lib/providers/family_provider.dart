@@ -10,6 +10,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../api/models.dart';
 import 'auth_provider.dart';
+import 'controls_provider.dart';
 import 'world_class_provider.dart';
 
 import '../api/permission_errors.dart';
@@ -425,6 +426,7 @@ abstract class RealtimeEffects {
   /// the list it belongs to is stale — refreshing it here is what turns "pending" into "delivered" without
   /// adding a poll loop of its own.
   void invalidateCommandHistory();
+  void invalidateChildInternetStatus(String? childId);
   void updateLiveActivity(LiveActivity activity);
 }
 
@@ -446,6 +448,15 @@ class RiverpodRealtimeEffects implements RealtimeEffects {
 
   @override
   void invalidateFamily() => _ref.invalidate(familyProvider);
+
+  @override
+  void invalidateChildInternetStatus(String? childId) {
+    if (childId == null) {
+      _ref.invalidate(childInternetStatusProvider);
+      return;
+    }
+    _ref.invalidate(childInternetStatusProvider(childId));
+  }
 
   @override
   void invalidateLocation(String childId) => _ref.invalidate(locationProvider(childId));
@@ -504,6 +515,11 @@ void applyRealtimeMessage(RealtimeEffects effects, Map<String, dynamic> msg) {
       // summary and command history are stale right away rather than waiting ~15 s.
       effects.invalidateCommandHistory();
       effects.invalidateFamily();
+      final payload = msg['payload'];
+      if (payload is Map && (payload['type'] == 'pause_internet' || payload['type'] == 'resume_internet')) {
+        final childId = payload['childId'];
+        effects.invalidateChildInternetStatus(childId is String ? childId : null);
+      }
   }
 }
 

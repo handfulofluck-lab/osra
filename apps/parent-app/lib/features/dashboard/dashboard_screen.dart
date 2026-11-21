@@ -22,6 +22,7 @@ import '../../widgets/error_retry_view.dart';
 import '../auth/mfa_reset_approval_screen.dart';
 import '../auth/mfa_reset_messages.dart';
 import '../children/consent_step.dart';
+import '../children/internet_state.dart';
 
 /// Parent dashboard: grid of child cards with live status, pull-to-refresh
 /// and a consent-first "Add child" flow.
@@ -151,6 +152,7 @@ class DashboardScreen extends ConsumerWidget {
             onRefresh: () async {
               ref.invalidate(familyProvider);
               ref.invalidate(mfaResetPendingProvider);
+              ref.invalidate(childInternetStatusProvider);
             },
             child: banners.isEmpty
                 ? content
@@ -529,21 +531,37 @@ class WellbeingRow extends StatelessWidget {
   }
 }
 
-/// One-tap "pause the internet" pill (Feature #11): red "Paused" when the
-/// child's internet is sinkholed, green "Internet" otherwise. Tapping toggles
-/// via a confirm dialog; the flip is optimistic and reverts on error.
+/// Shows the outcome of the latest child-wide pause or resume request.
 class InternetPill extends ConsumerWidget {
   final Child child;
   const InternetPill({super.key, required this.child});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final paused = ref.watch(internetPausedProvider(child.id)).valueOrNull ?? false;
+    final status = ref.watch(childInternetStatusProvider(child.id)).valueOrNull ?? const ChildInternetStatus();
+    final l10n = context.l10n;
     final tokens = context.tokens;
-    final color = paused ? tokens.danger : tokens.ok;
-    return InkWell(
+    final (label, color, icon) = switch (status.state) {
+      InternetState.inactive => (l10n.internet, tokens.ok, Icons.wifi),
+      InternetState.waiting => (
+          status.paused ? l10n.internetPausing : l10n.internetResuming,
+          tokens.onSurfaceVariant,
+          Icons.hourglass_empty,
+        ),
+      InternetState.confirmed => status.paused
+          ? (l10n.internetPauseConfirmed, tokens.danger, Icons.wifi_off)
+          : (l10n.internetResumeConfirmed, tokens.ok, Icons.wifi),
+      InternetState.partial => (
+          status.hasAcknowledgedDevice
+              ? (status.paused ? l10n.internetPausePartial : l10n.internetResumePartial)
+              : (status.paused ? l10n.internetPauseUnconfirmed : l10n.internetResumeUnconfirmed),
+          tokens.severityWarningText,
+          Icons.warning_amber,
+        ),
+    };
+    final pill = InkWell(
       borderRadius: BorderRadius.circular(AppRadius.md),
-      onTap: () => toggleInternetWithConfirm(context, ref, child, paused),
+      onTap: () => toggleInternetWithConfirm(context, ref, child, status.paused),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: AppSpace.sm, vertical: AppSpace.xs),
         decoration: BoxDecoration(
@@ -554,12 +572,24 @@ class InternetPill extends ConsumerWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(paused ? Icons.wifi_off : Icons.wifi, size: 14, color: color),
+            Icon(icon, size: 14, color: color),
             const SizedBox(width: AppSpace.xs),
-            Text(paused ? context.l10n.paused : context.l10n.internet, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: color)),
+            Flexible(child: Text(label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: color))),
           ],
         ),
       ),
+    );
+    if (status.state != InternetState.partial) return pill;
+    return Wrap(
+      spacing: AppSpace.xs,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        pill,
+        TextButton(
+          onPressed: () => context.push('/child/${child.id}/commands'),
+          child: Text(l10n.commandDeliveryTitle),
+        ),
+      ],
     );
   }
 }
