@@ -648,7 +648,8 @@ describe("social routes", () => {
       it("refuses foreign childId and foreign deviceId items inside a valid device-A batch without dropping valid items", async () => {
         const app = await buildApp(socialRoutes, "/v1/social");
         mockPairedDevice();
-        vi.stubGlobal("fetch", aiOk({ flagged: false, severity: "info", categories: { safe: 1 } }));
+        const fetchMock = aiOk({ flagged: false, severity: "info", categories: { safe: 1 } });
+        vi.stubGlobal("fetch", fetchMock);
         prismaMock.child.findUnique.mockResolvedValue(CHILD);
         const raw = JSON.stringify({
           deviceId: DEVICE_A.id,
@@ -672,6 +673,13 @@ describe("social routes", () => {
             { ok: false, reason: "device_mismatch" },
           ],
         });
+        // Codex (#970 7062553658): rejected entries must never invoke the analyzer or create stored side effects.
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body ?? "{}"))).toMatchObject({
+          text: "benign message",
+        });
+        expect(prismaMock.socialEvent.create).not.toHaveBeenCalled();
+        expect(prismaMock.alert.create).not.toHaveBeenCalled();
         await app.close();
       });
 
