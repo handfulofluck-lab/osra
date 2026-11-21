@@ -26,8 +26,14 @@ enum InternetState {
   partial,
 }
 
-/// Which of [InternetState] describes the latest request, given one entry per device from
+/// Which of [InternetState] describes the latest request, given its action and one entry per device from
 /// `internetRequest.devices`.
+///
+/// **[action] is the request's own action — `pause`, `resume`, or null when no request exists.** It is not the
+/// same as `paused`: a resume can be pending, refused or unconfirmed just as a pause can, and calling that
+/// "nothing is happening" would be the same false claim in the other direction (Codex, `7060793626`). Derive it
+/// as `internetRequest?.action`, and fall back to `paused == true ? 'pause' : null` only for an older server —
+/// that fallback carries no device statuses, so it can reach `waiting` but never `confirmed`.
 ///
 /// **Only `acked` counts as confirmed.** `delivered` means the phone fetched the command, not that it acted.
 /// `failed` and `expired` mean it did not. `unconfirmed` means the window closed while the phone held the
@@ -37,10 +43,10 @@ enum InternetState {
 /// An empty list is [InternetState.waiting], never `confirmed`: a child with no paired devices must not read as
 /// success.
 InternetState internetStateFor({
-  required bool paused,
+  required String? action,
   required List<String> deviceStatuses,
 }) {
-  if (!paused) return InternetState.inactive;
+  if (action == null) return InternetState.inactive;
   if (deviceStatuses.isEmpty) return InternetState.waiting;
   var acked = 0;
   var settledWithoutAck = 0;
