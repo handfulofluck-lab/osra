@@ -788,7 +788,9 @@ export async function deviceRoutes(app: FastifyInstance) {
     }).device;
     const familyId = device?.child?.familyId ?? (user as { familyId?: string }).familyId;
     if (familyId) {
-      await publishFamilyEvent(familyId, {
+      // Best-effort after the durable DB write (#968 review): the shared Redis client has no command
+      // timeout, so awaiting publish could stall the device's HTTP 200 ack even though the ack is saved.
+      void publishFamilyEvent(familyId, {
         type: "command_acked",
         payload: {
           deviceId: id,

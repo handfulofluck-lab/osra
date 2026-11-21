@@ -1740,4 +1740,44 @@ describe("command ack push (#935)", () => {
     expect(res.json().command.id).toBe("cmd-3");
     await app.close();
   });
+
+  it("returns 200 promptly even when redis publish is stalled, and catches late rejection (#968)", async () => {
+    // Mutant: restoring `await publishFamilyEvent(...)` in devices.ts causes the ack to wait on the
+    // unresolved publish promise, so the race below resolves to "timed_out" and this row fails.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: "cmd-stalled",
+      deviceId: "dev-1",
+      type: "resume_internet",
+      status: "acked",
+      payload: {},
+      result: {},
+      createdAt: new Date("2026-11-20T12:00:00Z"),
+      ackedAt: new Date("2026-11-20T12:00:02Z"),
+    });
+    let rejectPublish!: (err: Error) => void;
+    const stalledPublish = new Promise<number>((_resolve, reject) => {
+      rejectPublish = reject;
+    });
+    redis().publish.mockClear();
+    redis().publish.mockReturnValueOnce(stalledPublish);
+
+    const outcome = await Promise.race([
+      ack(app, "cmd-stalled", { status: "ok" }),
+      new Promise<"timed_out">((resolve) => setTimeout(() => resolve("timed_out"), 200)),
+    ]);
+
+    expect(outcome).not.toBe("timed_out");
+    const res = outcome as Awaited<ReturnType<typeof ack>>;
+    expect(res.statusCode).toBe(200);
+    expect(res.json().command.id).toBe("cmd-stalled");
+    expect(redis().publish).toHaveBeenCalledWith("family:fam-1:events", expect.stringContaining('"command_acked"'));
+
+    // Settle the stalled publish with a rejection after the HTTP reply already returned: must be caught cleanly.
+    rejectPublish(new Error("redis stalled then closed"));
+    await new Promise((resolve) => setImmediate(resolve));
+    await app.close();
+  });
 });
