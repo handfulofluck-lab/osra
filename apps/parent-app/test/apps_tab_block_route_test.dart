@@ -171,13 +171,17 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(RulesEditorScreen), findsOneWidget);
-      // #931: the action selector stacks when its three labels cannot each hold one line, which makes the
-      // Apps tab taller than a phone screen. The picker is the last row on that tab, so scroll to it rather
-      // than assuming the ListView built it inside the viewport.
+      // #931 and main both found that the Apps tab can be taller than a phone screen once the action
+      // selector stacks, so the picker — the last row on the tab — is scrolled to rather than assumed to
+      // be built inside the viewport. Main's finder is kept: it targets the vertical scrollable inside
+      // the TabBarView, which is narrower than matching every down-axis Scrollable.
       await tester.scrollUntilVisible(
         find.byKey(const ValueKey('pickInstalledApp')),
-        200,
-        scrollable: find.byWidgetPredicate((w) => w is Scrollable && w.axisDirection == AxisDirection.down),
+        150,
+        scrollable: find.descendant(
+          of: find.byType(TabBarView),
+          matching: find.byWidgetPredicate((w) => w is Scrollable && w.axis == Axis.vertical),
+        ),
       );
       expect(find.byKey(const ValueKey('pickInstalledApp')), findsOneWidget);
     });

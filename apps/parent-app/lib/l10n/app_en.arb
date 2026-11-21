@@ -956,6 +956,7 @@
   "monitoring": "Monitoring",
   "monitoringSaved": "Monitoring saved",
   "saveFailed": "Couldn't save changes. Check your connection and try again.",
+  "saveFailedServer": "Couldn't save your changes. Your changes are still here — try again.",
   "saveMonitoring": "Save monitoring",
   "concerns": "Concerns",
   "vaultTrustCopy": "Excerpts travel over an encrypted connection and are stored encrypted on OSRA's servers.",
@@ -1390,7 +1391,8 @@
   "digestPrefsPushTitle": "Push notifications",
   "digestPrefsPushBody": "Critical alerts as push messages",
   "digestPrefsEmailsLabel": "Digest emails",
-  "digestPrefsEmailsHelper": "For the digest summary (separate addresses with commas)",
+  "digestPrefsEmailsHelper": "For the digest summary",
+  "digestPrefsAddEmail": "Add email",
   "digestPrefsConfirmationSent": "Confirmation sent — this address gets no digest until it is confirmed",
   "digestPrefsNotSent": "Not sent. Save again to retry.",
   "digestPrefsConfirmationLimited": "Not sent yet: too many confirmations are waiting. Try again tomorrow.",
@@ -1799,6 +1801,12 @@
     "placeholders": {
       "date": { "type": "String" },
       "time": { "type": "String" }
+    }
+  },
+  "alertDetailSent": "Sent {when}",
+  "@alertDetailSent": {
+    "placeholders": {
+      "when": { "type": "String" }
     }
   },
   "alertDeviceRestartedBodyMinutes": "{device} restarted {when} and was back {minutes, plural, =0{in less than a minute} =1{after 1 minute} other{after {minutes} minutes}}.",
