@@ -76,6 +76,21 @@ void main() {
     expect(videoSwitch.value, isFalse);
   });
 
+  // #961 (Codex for UI/UX, 7062778997): the counts must NOT be the tile's subtitle. As a subtitle they sat
+  // between the Block label and the switch — about 110 px at 320 px / 200 % — which is narrower than one
+  // label-and-count segment, so it split. This row fails if the counts go back inside the SwitchListTile.
+  testWidgets('the counts sit under the tile at full width, not in its subtitle', (tester) async {
+    await pump(tester, iphone(groups: twoGroups));
+
+    expect(find.byKey(ValueKey('appGroupCounts-$games')), findsOneWidget);
+    final counts = find.text('Apps 3 · Categories 1 · Websites 0');
+    expect(counts, findsOneWidget);
+    expect(find.ancestor(of: counts, matching: find.byType(SwitchListTile)), findsNothing,
+        reason: 'a subtitle is squeezed by the Block label and the switch; the counts need the card width');
+    expect(find.descendant(of: find.byType(SwitchListTile), matching: find.text('Games')), findsOneWidget,
+        reason: 'the group name stays on the tile');
+  });
+
   testWidgets('the switch list carries the "adds only" line, under every switch', (tester) async {
     await pump(tester, iphone(groups: twoGroups));
     const line = "Turning this switch off doesn't lift a block set on the iPhone itself.";

@@ -22,3 +22,8 @@
   parent's app and would have sent a parent looking for the wrong one. The Arabic Language Bureau's line, verbatim.
 - **`appGroupsCounts` breaks only at the «·» separator:** non-breaking spaces after each label's colon, so at 200 %
   a count can no longer be split from its label. The words are unchanged.
+- **The counts are full-width under each group tile, not its subtitle** (Codex for UI/UX, `7062778997`). As a
+  subtitle they sat between the Block label and the switch — about 110 px at 320 px and 200 % — which is narrower than
+  one label-and-count segment, so the line split no matter how the spaces were set. The group name and Block stay on
+  the `SwitchListTile`, the counts move beneath it inside the same `MergeSemantics`, and a widget row fails if they
+  ever go back into the subtitle.

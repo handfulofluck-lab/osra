@@ -74,15 +74,31 @@ class _AppGroupsSectionState extends ConsumerState<AppGroupsSection> {
           Text(l10n.appGroupsTitle, style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: AppSpace.xxs),
           for (final g in groups)
-            SwitchListTile(
-              key: ValueKey('appGroup-${g.id}'),
-              contentPadding: EdgeInsets.zero,
-              title: Text(g.label),
-              subtitle: Text(l10n.appGroupsCounts(g.apps, g.categories, g.sites)),
-              secondary: Text(l10n.appGroupsBlock),
-              value: rules != null && appGroupBlocked(rules, g.id),
-              // Disabled until the rules are loaded, and while this group's change is being saved.
-              onChanged: rules == null || _saving.contains(g.id) ? null : (v) => _set(g.id, v),
+            // #961 (Codex for UI/UX, 7062778997): the counts are full-width under the tile, not its subtitle.
+            // As a subtitle they sat between the Block label and the switch, about 110 px at 320 px / 200 %,
+            // and one label-and-count segment is wider than that, so it split across lines no matter how the
+            // spaces were set. MergeSemantics keeps "Group X, Block, counts" one thing to a screen reader.
+            MergeSemantics(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SwitchListTile(
+                    key: ValueKey('appGroup-${g.id}'),
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(g.label),
+                    secondary: Text(l10n.appGroupsBlock),
+                    value: rules != null && appGroupBlocked(rules, g.id),
+                    // Disabled until the rules are loaded, and while this group's change is being saved.
+                    onChanged: rules == null || _saving.contains(g.id) ? null : (v) => _set(g.id, v),
+                  ),
+                  Padding(
+                    key: ValueKey('appGroupCounts-${g.id}'),
+                    padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.sm, 0, AppSpace.sm, AppSpace.xs),
+                    child: Text(l10n.appGroupsCounts(g.apps, g.categories, g.sites),
+                        style: Theme.of(context).textTheme.bodySmall),
+                  ),
+                ],
+              ),
             ),
           // U40 (`appGroupsBlockOnlyAdds`): a switch here can add a block but never lift one set on the
           // phone itself, so the line sits under the whole list. The Bureau's first choice is an on-and-
