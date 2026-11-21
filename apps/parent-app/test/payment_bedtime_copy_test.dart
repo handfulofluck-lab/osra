@@ -113,6 +113,13 @@ void main() {
     await tester.ensureVisible(iosExplained);
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('iosAppsExplained')), findsOneWidget);
+    // U40/#953: the sentence names where iPhone apps are managed and what this screen covers, and U42
+    // forbids any mention of a PIN. The approved English (7038528676) is used as written.
+    expect(
+      find.text('Manage iPhone apps from the Apps tab. The rules on this screen apply to Android apps only.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('PIN'), findsNothing, reason: 'U42: no PIN copy on any screen');
   });
 
   testWidgets("a child with an iPhone and an Android tablet keeps the picker and both sentences (#643)", (tester) async {
