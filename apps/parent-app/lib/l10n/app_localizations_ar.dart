@@ -3450,45 +3450,45 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get alertTitleSocialConcern => 'تنبيه سلامة اجتماعية';
+  String get alertTitleSocialConcern => 'تنبيه سلامة في التواصل';
 
   @override
-  String get alertTitleGamingChat => 'تنبيه محادثة ألعاب';
+  String get alertTitleGamingChat => 'تنبيه في محادثات الألعاب';
 
   @override
-  String get alertCategorySocialConcern => 'السلامة الاجتماعية';
+  String get alertCategorySocialConcern => 'السلامة في التواصل';
 
   @override
   String get alertCategoryGamingChat => 'محادثات الألعاب';
 
   @override
   String socialAlertFlaggedInApp(String app) {
-    return 'مُعلَّم للمراجعة في $app';
+    return 'رُصد في $app ما يستدعي المراجعة';
   }
 
   @override
-  String get socialAlertOpenActivity => 'فتح النشاط الاجتماعي';
+  String get socialAlertOpenActivity => 'فتح نشاط التواصل';
 
   @override
   String get socialAlertPreviewNoPermissionTitle => 'المعاينة غير متاحة لحسابك';
 
   @override
   String get socialAlertPreviewNoPermissionBody =>
-      'اطلب من مالك العائلة تفعيل صلاحية النشاط الاجتماعي لعرض المعاينة المحمية. تبقى تفاصيل التنبيه ودليل المحادثة متاحة هنا.';
+      'اطلب من مالك العائلة منحك صلاحية «التواصل» لعرض المعاينة المشفّرة. ما زالت تفاصيل التنبيه وإرشادات الحديث مع طفلك متاحة هنا.';
 
   @override
-  String get socialAlertPreviewExpiredTitle => 'المعاينة لم تعد متاحة';
+  String get socialAlertPreviewExpiredTitle => 'لم تعد المعاينة متاحة';
 
   @override
   String get socialAlertPreviewExpiredBody =>
-      'انتهت صلاحية المعاينة المحمية أو لم تُحفظ لهذا التنبيه. تبقى تفاصيل التنبيه ودليل المحادثة محفوظة هنا.';
+      'انتهت صلاحية المعاينة المشفّرة أو لم تُحفظ لهذا التنبيه. ما زالت تفاصيل التنبيه وإرشادات الحديث مع طفلك محفوظة هنا.';
 
   @override
   String get socialAlertUnavailableTitle => 'التنبيه غير متاح';
 
   @override
   String get socialAlertUnavailableBody =>
-      'تعذّر العثور على هذا التنبيه. افتح التنبيهات لمراجعة النشاط الأخير.';
+      'تعذّر العثور على هذا التنبيه. افتح «التنبيهات» لمراجعة النشاط الأخير.';
 
   @override
   String get socialAlertViewAll => 'كل التنبيهات';
