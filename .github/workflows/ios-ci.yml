@@ -258,33 +258,25 @@ jobs:
             exit 0
           fi
 
-          # Evidence functions, no regex escaping: `error: -[` is a fixed string, and `Failing tests:` is a
-          # generic XCTest FOOTER that appears for a launch failure too (Codex, 7062415705, archived #949 run).
-          # Treating the footer as an assertion is what made the intended launch retry never run.
-          has_assertion() { grep -qF 'XCTAssert' "$1" || grep -qF 'error: -[' "$1"; }
-          has_launch() { grep -qiE 'timed out while launching application|failed to launch|FBSOpenApplicationServiceErrorDomain|unable to launch the application' "$1"; }
-
-          a=0; l=0
-          has_assertion "$RESULTS/launch-1.log" && a=1
-          has_launch "$RESULTS/launch-1.log" && l=1
-
-          # Both kinds of evidence: ambiguous. Keep the first failure red rather than guess which one to trust.
-          if [ "$a" -eq 1 ] && [ "$l" -eq 1 ]; then
-            echo "::error::the first run shows both an assertion and a launch failure. Ambiguous, so it stays red on the first result."
-            status fail-ambiguous
-            exit "$first"
-          fi
-          if [ "$a" -eq 1 ]; then
-            echo "::error::the launch case failed on its own assertions. Not retrying: this is the regression the retry must never hide."
-            status fail-assertion
-            exit "$first"
-          fi
-          # No launch evidence either: not something this retry is entitled to absorb.
-          if [ "$l" -eq 0 ]; then
-            echo "::error::the first run failed for a reason that is neither an assertion nor a launch failure; not retrying."
-            status fail-other
-            exit "$first"
-          fi
+          # The classification is a SCRIPT, not inline shell: three review rounds found three defects here
+          # (a `printf` with two backslashes, the generic `Failing tests:` footer read as an assertion, and the
+          # retry's own failure never classified), and a script is the part that can be tested. Its fixtures run
+          # in the workflow-lint job (apps/child-ios/scripts/test-classify-launch-failure.sh).
+          verdict="$(bash scripts/classify-launch-failure.sh "$RESULTS/launch-1.log")"
+          case "$verdict" in
+            ambiguous)
+              echo "::error::the first run shows both an assertion and a launch failure. Ambiguous, so it stays red on the first result."
+              status fail-ambiguous
+              exit "$first" ;;
+            assertion)
+              echo "::error::the launch case failed on its own assertions. Not retrying: this is the regression the retry must never hide."
+              status fail-assertion
+              exit "$first" ;;
+            other)
+              echo "::error::the first run failed for a reason that is neither an assertion nor a launch failure; not retrying."
+              status fail-other
+              exit "$first" ;;
+          esac
 
           echo "::warning title=Simulator launch flake::the first run failed while launching the app on the simulator, so that case is retried once. Both result bundles are kept; read launch-1 before believing the green."
           set +e
@@ -292,9 +284,9 @@ jobs:
           second=$?
           set -e
           if [ "$second" -ne 0 ]; then
-            # Classify the SECOND failure too: a retry that dies on an assertion is not "launch failed twice", and
-            # the summary must not attribute it to the simulator (Codex, 7062415705 finding 2).
-            if has_assertion "$RESULTS/launch-2.log"; then
+            # Classify the SECOND log too: a retry that dies on an assertion is not "launch failed twice".
+            second_verdict="$(bash scripts/classify-launch-failure.sh "$RESULTS/launch-2.log")"
+            if [ "$second_verdict" = "assertion" ]; then
               echo "::error::the retry failed on its own assertions after a launch failure. Red, and the summary will say assertion, not launch."
               status fail-assertion-on-retry
             else

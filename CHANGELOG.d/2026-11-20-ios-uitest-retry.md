@@ -18,3 +18,15 @@
 - Verified: `check-workflows --strict` is clean. **Neither path has fired in a real run yet** — every run since has
   passed on its first launch. The recipe that proves both halves is in the PR body: restore the bare
   `-retry-tests-on-failure` and plant an assertion failure in the launch case, which must now go red first.
+
+### The classifier became a script, because three reviews found three defects in it (#739)
+- The retry decision lived in inline workflow shell, where nothing could test it. Three review rounds found three
+  defects there, each invisible to every other check: a `printf` whose format carried two backslashes, the generic
+  `Failing tests:` footer read as an assertion (which suppressed the very retry the workflow exists for), and the
+  retry's own failure never classified, so a retry that died on an assertion was reported as the simulator failing.
+- `apps/child-ios/scripts/classify-launch-failure.sh` now prints one word — `assertion`, `launch`, `ambiguous` or
+  `other` — and the workflow branches on it. `apps/child-ios/scripts/test-classify-launch-failure.sh` runs six
+  fixtures taken from real runs and review fixtures, and the existing **workflow-lint** job runs it: no new job, no
+  new trigger, no simulator.
+- **Both kinds of evidence stay red.** A log carrying an assertion and a launch failure is `ambiguous`, not a guess,
+  and the retry's second log is classified as well, so "failed twice while launching" is only said when it is true.
