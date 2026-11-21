@@ -234,6 +234,12 @@ void main() {
       await tester.pumpAndSettle();
 
       // The zone is loaded from /v1/family/me and shown as a city + offset, never raw IANA ids.
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('digestTimezone')),
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('digestTimezone')), findsOneWidget);
       expect(find.text('UTC (GMT+0)'), findsOneWidget);
       expect(find.text('18:00'), findsOneWidget);
@@ -290,9 +296,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.widget<SwitchListTile>(weekly).value, isTrue);
 
-      // The email field now carries a helper line (#344 review), so Save sits
-      // just below the 600 px default surface.
-      await tester.ensureVisible(find.text('Save preferences'));
+      // The email chips/input push Save below the 600 px default surface.
+      await tester.scrollUntilVisible(find.text('Save preferences'), 150, scrollable: find.byType(Scrollable).first);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Save preferences'));
       await flushFakeHttp(tester);
@@ -342,7 +347,10 @@ void main() {
       expect(find.textContaining('Confirmation sent'), findsNothing);
       expect(find.byKey(const ValueKey('digestRecipient-qa@osratech.com')), findsOneWidget);
 
-      await tester.enterText(find.byType(TextField), 'qa@osratech.com, grandma@example.com');
+      // Add grandma@example.com via the R-ID-10 single-email chip input while keeping the existing chip.
+      await tester.enterText(find.byKey(const ValueKey('digestEmailAddInput')), 'grandma@example.com');
+      await tester.tap(find.byKey(const ValueKey('digestEmailAddButton')));
+      await tester.pumpAndSettle();
       // The recipient rows push Save below the 600 px surface, so scroll it into view first.
       await tester.drag(find.byType(ListView), const Offset(0, -300));
       await tester.pumpAndSettle();

@@ -298,7 +298,7 @@ class _OverviewTab extends ConsumerWidget {
                           builder: (waiting) => TextButton.icon(
                             onPressed: waiting ? null : () => _sendCommand(context, ref, d, 'pause'),
                             icon: const Icon(Icons.pause_circle, size: 18),
-                            label: Text(l10n.pause),
+                            label: Text(l10n.commandPauseDevice),
                           ),
                         ),
                         _PendingAwareControl(
@@ -307,13 +307,13 @@ class _OverviewTab extends ConsumerWidget {
                           builder: (waiting) => TextButton.icon(
                             onPressed: waiting ? null : () => _sendCommand(context, ref, d, 'resume'),
                             icon: const Icon(Icons.play_circle, size: 18),
-                            label: Text(l10n.resume),
+                            label: Text(l10n.commandResumeDevice),
                           ),
                         ),
                         TextButton.icon(
                           onPressed: () => _toggleInternet(context, ref, childId, internetPaused, d),
                           icon: Icon(internetPaused ? Icons.wifi : Icons.wifi_off, size: 18),
-                          label: Text(internetPaused ? l10n.resumeNet : l10n.pauseNet),
+                          label: Text(internetPaused ? l10n.commandResumeInternet : l10n.commandPauseInternet),
                         ),
                       ],
                     ),

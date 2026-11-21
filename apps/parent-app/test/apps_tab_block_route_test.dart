@@ -225,6 +225,14 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(RulesEditorScreen), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('pickInstalledApp')),
+        150,
+        scrollable: find.descendant(
+          of: find.byType(TabBarView),
+          matching: find.byWidgetPredicate((w) => w is Scrollable && w.axis == Axis.vertical),
+        ),
+      );
       expect(find.byKey(const ValueKey('pickInstalledApp')), findsOneWidget);
     });
 

@@ -114,6 +114,11 @@
     <!-- The `· أسرة` tail drops in Arabic: the Arabic title is already Arabic (sweep, 13 Nov). -->
     <string name="title_brand_suffix">%1$s</string>
 
+    <!-- U44 (#952): Arabic Language Bureau approved welcome screen copy. -->
+    <string name="setup_welcome_title">لنبدأ إعداد هذا الهاتف</string>
+    <string name="setup_welcome_body">بضع خطوات ليساعد والدك أو والدتك في الحفاظ على أمان هذا الهاتف.</string>
+    <string name="setup_welcome_start">البدء</string>
+
     <string name="setup_protect_title">احمِ هذا الجهاز</string>
     <string name="setup_protect_body">في الشاشة التالية، اضغط «تفعيل» ليصبح تطبيق أسرة للأطفال مسؤول الجهاز. بذلك لا يمكن إلغاء تثبيته دون رمز PIN للوالدين، ويمكن قفل الجهاز عن بُعد من تطبيق الوالدين. وبدونه تقتصر الحماية على التنبيه.</string>
     <string name="setup_activate_admin">فعّل مسؤول الجهاز</string>

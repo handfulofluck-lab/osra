@@ -108,6 +108,10 @@ void main() {
     // so a plain finder is `findsNothing` whether the picker exists or not — and this row is the only one
     // that fails when the fix is removed.
     expect(find.byKey(const ValueKey('pickInstalledApp'), skipOffstage: false), findsNothing);
+    final iosExplained = find.byKey(const ValueKey('iosAppsExplained'), skipOffstage: false);
+    expect(iosExplained, findsOneWidget);
+    await tester.ensureVisible(iosExplained);
+    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('iosAppsExplained')), findsOneWidget);
     // U40/#953: the sentence names where iPhone apps are managed and what this screen covers, and U42
     // forbids any mention of a PIN. The approved English (7038528676) is used as written.

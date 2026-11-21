@@ -76,6 +76,19 @@ void main() {
         reason: 'the newest pause was acknowledged; an older pending row must not block the control');
   });
 
+  // #969: the defect was that "Resume" and "Resume net" sat side by side and neither said what it reached.
+  // The four scoped labels already exist in both catalogs, so this needs no new copy — only that the card uses
+  // them. This row fails if the card goes back to the ambiguous pair.
+  testWidgets('the card names the scope of each control', (tester) async {
+    await pump(tester, history(const []));
+
+    expect(find.text('Pause device'), findsOneWidget, reason: 'the per-handset pause names its scope');
+    expect(find.text('Resume device'), findsOneWidget);
+    expect(find.text('Pause internet'), findsOneWidget, reason: 'the child-wide pause names its scope');
+    expect(find.text('Pause net'), findsNothing, reason: 'the ambiguous label is gone');
+    expect(find.text('Resume net'), findsNothing);
+  });
+
   testWidgets('a confirmed command leaves the control usable', (tester) async {
     await pump(tester, history([
       commandJson('c3', 'pause', 'acked', DateTime.now()),
@@ -93,7 +106,7 @@ void main() {
     await pump(tester, history([commandJson('c6', 'pause', 'pending', now)]));
 
     final button = tester.widget<TextButton>(
-      find.ancestor(of: find.text('Pause'), matching: find.byType(TextButton)).first,
+      find.ancestor(of: find.text('Pause device'), matching: find.byType(TextButton)).first,
     );
     expect(button.onPressed, isNull,
         reason: 'a pending control must be unusable from a screen reader or the keyboard too');

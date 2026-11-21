@@ -2684,6 +2684,12 @@ abstract class AppLocalizations {
   /// **'Couldn\'t save changes. Check your connection and try again.'**
   String get saveFailed;
 
+  /// No description provided for @saveFailedServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t save your changes. Your changes are still here — try again.'**
+  String get saveFailedServer;
+
   /// No description provided for @saveMonitoring.
   ///
   /// In en, this message translates to:
@@ -4061,8 +4067,14 @@ abstract class AppLocalizations {
   /// No description provided for @digestPrefsEmailsHelper.
   ///
   /// In en, this message translates to:
-  /// **'For the digest summary (separate addresses with commas)'**
+  /// **'For the digest summary'**
   String get digestPrefsEmailsHelper;
+
+  /// No description provided for @digestPrefsAddEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Add email'**
+  String get digestPrefsAddEmail;
 
   /// No description provided for @digestPrefsConfirmationSent.
   ///

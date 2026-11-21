@@ -1600,6 +1600,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Couldn\'t save changes. Check your connection and try again.';
 
   @override
+  String get saveFailedServer =>
+      'Couldn\'t save your changes. Your changes are still here — try again.';
+
+  @override
   String get saveMonitoring => 'Save monitoring';
 
   @override
@@ -2431,8 +2435,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get digestPrefsEmailsLabel => 'Digest emails';
 
   @override
-  String get digestPrefsEmailsHelper =>
-      'For the digest summary (separate addresses with commas)';
+  String get digestPrefsEmailsHelper => 'For the digest summary';
+
+  @override
+  String get digestPrefsAddEmail => 'Add email';
 
   @override
   String get digestPrefsConfirmationSent =>
