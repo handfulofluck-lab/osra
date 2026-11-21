@@ -4055,8 +4055,14 @@ abstract class AppLocalizations {
   /// No description provided for @digestPrefsEmailsHelper.
   ///
   /// In en, this message translates to:
-  /// **'For the digest summary (separate addresses with commas)'**
+  /// **'For the digest summary'**
   String get digestPrefsEmailsHelper;
+
+  /// No description provided for @digestPrefsAddEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Add email'**
+  String get digestPrefsAddEmail;
 
   /// No description provided for @digestPrefsConfirmationSent.
   ///
@@ -5359,6 +5365,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'on {date} at {time}'**
   String alertOnDateAtTime(String date, String time);
+
+  /// No description provided for @alertDetailSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent {when}'**
+  String alertDetailSent(String when);
 
   /// No description provided for @alertDeviceRestartedBodyMinutes.
   ///

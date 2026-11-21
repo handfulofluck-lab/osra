@@ -2427,8 +2427,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get digestPrefsEmailsLabel => 'Digest emails';
 
   @override
-  String get digestPrefsEmailsHelper =>
-      'For the digest summary (separate addresses with commas)';
+  String get digestPrefsEmailsHelper => 'For the digest summary';
+
+  @override
+  String get digestPrefsAddEmail => 'Add email';
 
   @override
   String get digestPrefsConfirmationSent =>
@@ -3234,6 +3236,11 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String alertOnDateAtTime(String date, String time) {
     return 'on $date at $time';
+  }
+
+  @override
+  String alertDetailSent(String when) {
+    return 'Sent $when';
   }
 
   @override
