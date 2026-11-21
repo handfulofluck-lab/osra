@@ -3482,4 +3482,28 @@ class AppLocalizationsAr extends AppLocalizations {
     );
     return 'أُعيد تشغيل $device $when، وعاد إلى العمل بعد نحو $_temp0.';
   }
+
+  @override
+  String get alertRingVolumeTitle => 'محاولة لخفض صوت الرنين';
+
+  @override
+  String get alertCategoryRingVolume => 'صوت الرنين';
+
+  @override
+  String alertRingVolumeBody(String child, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'سُجّلت $count محاولة لخفض صوت الرنين على هاتف $child، وظلّ الهاتف يرنّ.',
+      many:
+          'سُجّلت $count محاولة لخفض صوت الرنين على هاتف $child، وظلّ الهاتف يرنّ.',
+      few:
+          'سُجّلت $count محاولات لخفض صوت الرنين على هاتف $child، وظلّ الهاتف يرنّ.',
+      two: 'سُجّلت محاولتان لخفض صوت الرنين على هاتف $child، وظلّ الهاتف يرنّ.',
+      one:
+          'سُجّلت محاولة واحدة لخفض صوت الرنين على هاتف $child، وظلّ الهاتف يرنّ.',
+    );
+    return '$_temp0';
+  }
 }

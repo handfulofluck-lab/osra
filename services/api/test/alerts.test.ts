@@ -791,3 +791,48 @@ describe("SOS location on an internal alert (issue #672)", () => {
     await app.close();
   });
 });
+
+describe("ring_volume internal alert (osra-security#42, #944)", () => {
+  beforeEach(() => {
+    resetPrismaMock();
+    process.env.INTERNAL_HMAC_SECRET = SECRET;
+  });
+
+  it("accepts POST /v1/alerts/internal with category ring_volume, info severity, attemptCount, and metadata", async () => {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({
+      id: "a-ring-vol-1",
+      category: "ring_volume",
+      severity: "info",
+      attemptCount: 5,
+    });
+
+    const raw = JSON.stringify({
+      childId: CHILD.id,
+      deviceId: "dev-1",
+      severity: "info",
+      category: "ring_volume",
+      title: "Tried to turn the ring down",
+      body: "Tried to turn down the ring volume 5 times. The phone kept ringing.",
+      metadata: { type: "ring_volume", count: "5" },
+      dedupeKey: "dev-1|ring_volume|1",
+      attemptCount: 5,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/alerts/internal",
+      headers: { "content-type": "application/json", ...signV2(SECRET, raw, { caller: "ai-engine" }) },
+      payload: raw,
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    const created = prismaMock.alert.create.mock.calls[0][0].data as Record<string, unknown>;
+    expect(created.category).toBe("ring_volume");
+    expect(created.severity).toBe("info");
+    expect(created.attemptCount).toBe(5);
+    expect(created.metadata).toEqual({ type: "ring_volume", count: "5" });
+    await app.close();
+  });
+});

@@ -25,6 +25,7 @@ import 'sos_alert_actions.dart';
 import '../map/family_map_screen.dart'
     show FamilyMapScreen, MapFocus, mapIsAvailable;
 import '../../push/restart_alert_text.dart';
+import '../../push/ring_volume_alert_text.dart';
 import '../../push/sos_fix_text.dart';
 
 /// U45: formats the alert detail dialog timestamp using the #889 time keys
@@ -214,6 +215,13 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                             l10n: l10n,
                             localeName: dialogContext.localeName,
                             now: widget.nowProvider?.call(),
+                          ) ??
+                          (isEnglish ? alert.body : '');
+                    } else if (alert.category == 'ring_volume') {
+                      localizedBody = RingVolumeAlertText.tryFormat(
+                            alert,
+                            l10n: l10n,
+                            childName: childName,
                           ) ??
                           (isEnglish ? alert.body : '');
                     } else {

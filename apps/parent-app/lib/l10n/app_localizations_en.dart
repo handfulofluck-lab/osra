@@ -3284,4 +3284,21 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$device restarted $when and was back after about $_temp0.';
   }
+
+  @override
+  String get alertRingVolumeTitle => 'Tried to turn the ring down';
+
+  @override
+  String get alertCategoryRingVolume => 'Ring volume';
+
+  @override
+  String alertRingVolumeBody(String child, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count times',
+      one: 'once',
+    );
+    return '$child tried to turn down the ring volume $_temp0. The phone kept ringing.';
+  }
 }

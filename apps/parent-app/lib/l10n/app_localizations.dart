@@ -5414,6 +5414,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{device} restarted {when} and was back after about {hours, plural, =1{1 hour} other{{hours} hours}}.'**
   String alertDeviceRestartedBodyHours(String device, String when, int hours);
+
+  /// osra-security#42 (UI/UX Bureau 7015553552): title for one-per-ring volume-down attempt alert.
+  ///
+  /// In en, this message translates to:
+  /// **'Tried to turn the ring down'**
+  String get alertRingVolumeTitle;
+
+  /// osra-security#42 (UI/UX Bureau 7015553552): category chip label for ring_volume alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Ring volume'**
+  String get alertCategoryRingVolume;
+
+  /// osra-security#42 (UI/UX Bureau 7015553552): one-per-ring alert body; wrap {child} in U+2068..U+2069 and use Western digits for {count}.
+  ///
+  /// In en, this message translates to:
+  /// **'{child} tried to turn down the ring volume {count, plural, =1{once} other{{count} times}}. The phone kept ringing.'**
+  String alertRingVolumeBody(String child, int count);
 }
 
 class _AppLocalizationsDelegate

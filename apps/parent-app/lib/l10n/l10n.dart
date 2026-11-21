@@ -32,6 +32,7 @@ const serverAlertCategories = <String>[
   'vpn_detected',
   'install_request',
   'unknown_contact',
+  'ring_volume',
 ];
 
 /// Human labels for values that cross the API boundary. Unknown values fall
@@ -94,6 +95,7 @@ extension AppLocalizationsLabels on AppLocalizations {
         'vpn_detected' => alertCategoryVpnDetected,
         'install_request' => alertCategoryInstallRequest,
         'unknown_contact' => alertCategoryUnknownContact,
+        'ring_volume' => alertCategoryRingVolume,
         'device_restarted' => alertCategoryDeviceRestarted,
         _ => category,
       };
@@ -130,6 +132,7 @@ extension AppLocalizationsLabels on AppLocalizations {
         'vpn_detected' => alertTitleVpnDetected,
         'install_request' => alertTitleInstallRequest,
         'unknown_contact' => alertTitleUnknownContact,
+        'ring_volume' => alertRingVolumeTitle,
         'device_restarted' => alertDeviceRestartedTitle,
         _ => isEnglish ? serverTitle : alertTitleGeneric,
       };

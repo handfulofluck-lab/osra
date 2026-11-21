@@ -319,19 +319,140 @@ void main() {
       }
     });
 
+    int findMatchingBrace(String s, int openBraceIndex) {
+      var depth = 1;
+      for (var i = openBraceIndex + 1; i < s.length; i++) {
+        final ch = s[i];
+        if (ch == "'" && i + 1 < s.length) {
+          final next = s[i + 1];
+          if (next == "'") {
+            i++;
+            continue;
+          }
+          if (next == '{' || next == '}') {
+            i += 2;
+            while (i < s.length) {
+              if (s[i] == "'") {
+                if (i + 1 < s.length && s[i + 1] == "'") {
+                  i += 2;
+                  continue;
+                }
+                break;
+              }
+              i++;
+            }
+            continue;
+          }
+        }
+        if (ch == '{') {
+          depth++;
+        } else if (ch == '}') {
+          depth--;
+          if (depth == 0) return i;
+        }
+      }
+      throw FormatException('Unclosed ICU brace in: $s');
+    }
+
+    /// Extracts argument placeholders from an ICU MessageFormat string without
+    /// misclassifying plural/select branch literals (such as `=1{once}`) as
+    /// variable placeholders.
+    Set<String> extractIcuPlaceholders(String message) {
+      final result = <String>{};
+      final headRe = RegExp(r'^\s*([A-Za-z][A-Za-z0-9_]*)\s*(?:,(.*))?$', dotAll: true);
+      final typeRe = RegExp(r'^\s*([A-Za-z]+)\s*(?:,(.*))?$', dotAll: true);
+      final offsetRe = RegExp(r'^\s*offset:\s*\d+\s*');
+      final selectorRe = RegExp(r'^\s*([^\s{]+)\s*');
+
+      var i = 0;
+      while (i < message.length) {
+        final ch = message[i];
+        if (ch == "'" && i + 1 < message.length) {
+          final next = message[i + 1];
+          if (next == "'") {
+            i += 2;
+            continue;
+          }
+          if (next == '{' || next == '}') {
+            i += 2;
+            while (i < message.length) {
+              if (message[i] == "'") {
+                if (i + 1 < message.length && message[i + 1] == "'") {
+                  i += 2;
+                  continue;
+                }
+                i++;
+                break;
+              }
+              i++;
+            }
+            continue;
+          }
+        }
+        if (ch != '{') {
+          i++;
+          continue;
+        }
+        final closeIdx = findMatchingBrace(message, i);
+        final inner = message.substring(i + 1, closeIdx);
+        final head = headRe.firstMatch(inner);
+        if (head != null) {
+          result.add(head.group(1)!);
+          final tail = head.group(2);
+          if (tail != null) {
+            final typeMatch = typeRe.firstMatch(tail);
+            final type = typeMatch?.group(1)?.toLowerCase();
+            if (type == 'plural' || type == 'select' || type == 'selectordinal') {
+              var branches = typeMatch!.group(2) ?? '';
+              final off = offsetRe.firstMatch(branches);
+              if (off != null) {
+                branches = branches.substring(off.end);
+              }
+              var j = 0;
+              while (j < branches.length) {
+                final sel = selectorRe.firstMatch(branches.substring(j));
+                if (sel == null) break;
+                j += sel.end;
+                if (j >= branches.length || branches[j] != '{') break;
+                final branchEnd = findMatchingBrace(branches, j);
+                result.addAll(extractIcuPlaceholders(branches.substring(j + 1, branchEnd)));
+                j = branchEnd + 1;
+              }
+            }
+          }
+        }
+        i = closeIdx + 1;
+      }
+      return result;
+    }
+
     test('placeholders match between English and Arabic', () {
       final en = readArb('app_en.arb');
       final ar = readArb('app_ar.arb');
-      final placeholder = RegExp(r'\{([A-Za-z][A-Za-z0-9_]*)[,}]');
       for (final key in messageKeys(en)) {
-        final enNames = {
-          for (final m in placeholder.allMatches(en[key] as String)) m.group(1)!,
-        };
-        final arNames = {
-          for (final m in placeholder.allMatches((ar[key] as String?) ?? '')) m.group(1)!,
-        };
+        final enNames = extractIcuPlaceholders(en[key] as String);
+        final arNames = extractIcuPlaceholders((ar[key] as String?) ?? '');
         expect(arNames, enNames, reason: 'placeholder mismatch for "$key"');
       }
+    });
+
+    test('ICU placeholder extractor handles plural branch literals and catches dropped vars', () {
+      expect(
+        extractIcuPlaceholders(
+          '{child} tried to turn down the ring volume {count, plural, =1{once} other{{count} times}}. The phone kept ringing.',
+        ),
+        {'child', 'count'},
+      );
+      final en = readArb('app_en.arb');
+      final ar = readArb('app_ar.arb');
+      expect(extractIcuPlaceholders(en['alertRingVolumeBody'] as String), {'child', 'count'});
+      expect(extractIcuPlaceholders(ar['alertRingVolumeBody'] as String), {'child', 'count'});
+      expect(extractIcuPlaceholders('{a, select, foo{{b}} other{bar}}'), {'a', 'b'});
+      // Mutant: dropping {child} from a plural branch must produce a different placeholder set.
+      expect(
+        extractIcuPlaceholders('{count, plural, =1{once} other{{count} times}}'),
+        isNot({'child', 'count'}),
+      );
     });
 
     test('the four alert-title keys are present and non-empty in both locales', () {
@@ -364,7 +485,7 @@ void main() {
   /// reviews the new Arabic titles in one render instead of taking the mapping's
   /// word for it. Each title is asserted as the feed is scrolled, and the frame
   /// is the same 320×568 RTL one as the other screens.
-  group('Alert titles, all 13 server categories (Arabic, 320×568)', () {
+  group('Alert titles, all 14 server categories (Arabic, 320×568)', () {
     FakeApiClient allCategoriesApi() {
       final now = DateTime.now();
       return FakeApiClient({
@@ -698,7 +819,7 @@ void main() {
         expect(arTitle, isNot(ar.alertTitleGeneric), reason: 'ar "$category" fell through to the generic title');
         expect(arTitle, isNot('SERVER TITLE'), reason: 'ar "$category" leaked the server English title');
       }
-      expect(serverAlertCategories, hasLength(13));
+      expect(serverAlertCategories, hasLength(14));
     });
 
     /// `serverAlertCategories` is a copy of the server's enum, so it is checked

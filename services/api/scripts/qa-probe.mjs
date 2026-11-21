@@ -868,7 +868,7 @@ console.log("\n── I. agent alert category coverage ──");
 for (const category of [
   "web_threat", "app_blocked", "screen_time_exceeded", "geofence", "sos", "ai_concern",
   "cyberbullying", "self_harm", "grooming", // server enum today
-  "tamper", "vpn_detected", "install_request", "unknown_contact", // sent by the agents
+  "tamper", "vpn_detected", "install_request", "unknown_contact", "ring_volume", // sent by the agents
 ]) {
   const res = await call("POST", "/v1/alerts/internal", {
     hmac: true,

@@ -138,5 +138,32 @@ class RingAndLocatePolicyTest {
         assertTrue("stopLocked() must unregister the volume watch", stopLockedBody.contains("stopWatchingVolume()"))
         assertTrue("releaseFocus() must abandon the focus request", releaseFocusBody.contains("abandonAudioFocusRequest"))
         assertTrue("stopWatchingVolume() must unregister the receiver", stopWatchingBody.contains("unregisterReceiver"))
+        assertTrue(
+            "stopLocked() only reports ring_volume when volumeRestorations > 0",
+            stopLockedBody.contains("RingPolicy.shouldReportVolumeAttempts(") &&
+                stopLockedBody.contains("reportVolumeAttempts("),
+        )
+        val reportBody = bodyOf("fun reportVolumeAttempts(")
+        assertTrue("reportVolumeAttempts() sets category ring_volume", reportBody.contains("category = \"ring_volume\""))
+        assertTrue("reportVolumeAttempts() sets severity info (Alerts list only)", reportBody.contains("severity = \"info\""))
+        assertTrue("reportVolumeAttempts() posts via postInternalAlert", reportBody.contains("postInternalAlert("))
+    }
+
+    @Test
+    fun `ring_volume alert policy fires once per ring only when volume was restored`() {
+        assertFalse(RingPolicy.shouldReportVolumeAttempts(0))
+        assertTrue(RingPolicy.shouldReportVolumeAttempts(1))
+        assertTrue(RingPolicy.shouldReportVolumeAttempts(5))
+
+        assertEquals(
+            "Tried to turn down the ring volume once. The phone kept ringing.",
+            RingPolicy.ringVolumeAlertBody(1),
+        )
+        assertEquals(
+            "Tried to turn down the ring volume 5 times. The phone kept ringing.",
+            RingPolicy.ringVolumeAlertBody(5),
+        )
+        assertEquals("dev-1|ring_volume|101", RingPolicy.ringVolumeDedupeKey("dev-1", 101L))
+        assertEquals("dev-1|ring_volume|102", RingPolicy.ringVolumeDedupeKey("dev-1", 102L))
     }
 }

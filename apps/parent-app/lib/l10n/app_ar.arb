@@ -1089,5 +1089,8 @@
   "alertOnDateAtTime": "يوم {date} الساعة {time}",
   "alertDetailSent": "أُرسل {when}",
   "alertDeviceRestartedBodyMinutes": "أُعيد تشغيل {device} {when}، وعاد إلى العمل بعد {minutes, plural, =0{أقل من دقيقة} =1{دقيقة} =2{دقيقتين} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}.",
-  "alertDeviceRestartedBodyHours": "أُعيد تشغيل {device} {when}، وعاد إلى العمل بعد نحو {hours, plural, =1{ساعة} =2{ساعتين} few{{hours} ساعات} many{{hours} ساعة} other{{hours} ساعة}}."
+  "alertDeviceRestartedBodyHours": "أُعيد تشغيل {device} {when}، وعاد إلى العمل بعد نحو {hours, plural, =1{ساعة} =2{ساعتين} few{{hours} ساعات} many{{hours} ساعة} other{{hours} ساعة}}.",
+  "alertRingVolumeTitle": "محاولة لخفض صوت الرنين",
+  "alertCategoryRingVolume": "صوت الرنين",
+  "alertRingVolumeBody": "{count, plural, =1{سُجّلت محاولة واحدة لخفض صوت الرنين على هاتف {child}، وظلّ الهاتف يرنّ.} =2{سُجّلت محاولتان لخفض صوت الرنين على هاتف {child}، وظلّ الهاتف يرنّ.} few{سُجّلت {count} محاولات لخفض صوت الرنين على هاتف {child}، وظلّ الهاتف يرنّ.} many{سُجّلت {count} محاولة لخفض صوت الرنين على هاتف {child}، وظلّ الهاتف يرنّ.} other{سُجّلت {count} محاولة لخفض صوت الرنين على هاتف {child}، وظلّ الهاتف يرنّ.}}"
 }
