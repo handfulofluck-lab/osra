@@ -499,6 +499,11 @@ void applyRealtimeMessage(RealtimeEffects effects, Map<String, dynamic> msg) {
       // list is stale too. Two indicators, one frame, no extra polling.
       effects.invalidateFamily();
       effects.invalidateCommandHistory();
+    case 'command_acked':
+      // #935: a child device acknowledged a command (lock, pause, resume, etc.), so the delivery
+      // summary and command history are stale right away rather than waiting ~15 s.
+      effects.invalidateCommandHistory();
+      effects.invalidateFamily();
   }
 }
 
