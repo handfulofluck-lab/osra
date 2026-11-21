@@ -96,6 +96,10 @@ run "staging_defaults_are_unchanged" {
     error_message = "staging keeps the publish and Bedrock evaluation roles"
   }
   assert {
+    condition     = length(aws_ecr_repository.staging_qa_analyzer) == 0 && length(aws_iam_role.staging_qa_analyzer_publish) == 0
+    error_message = "the staging analyzer publisher is opt-in"
+  }
+  assert {
     condition     = length(aws_budgets_budget.monthly) == 0
     error_message = "staging's budget is managed outside Terraform"
   }
@@ -111,6 +115,60 @@ run "staging_defaults_are_unchanged" {
     condition     = length(aws_secretsmanager_secret_version.jwt_secret) == 1 && length(aws_secretsmanager_secret.api_db_password) == 0
     error_message = "staging keeps Terraform-generated JWT and vault values"
   }
+}
+
+run "staging_qa_analyzer_publishes_to_one_immutable_repository" {
+  command = plan
+
+  variables {
+    allowed_account_ids                   = [format("%012d", 0)]
+    github_repo                           = "handfulofluck-lab/osra"
+    github_owner_id                       = "1"
+    github_repo_id                        = "2"
+    staging_qa_analyzer_publisher_enabled = true
+  }
+
+  override_resource {
+    target          = aws_ecr_repository.staging_qa_analyzer[0]
+    override_during = plan
+
+    values = {
+      arn = "arn:aws:ecr:eu-north-1:000000000000:repository/osra-staging/qa-ai-engine"
+    }
+  }
+
+  assert {
+    condition     = aws_ecr_repository.staging_qa_analyzer[0].name == "osra-staging/qa-ai-engine" && aws_ecr_repository.staging_qa_analyzer[0].image_tag_mutability == "IMMUTABLE" && one(aws_ecr_repository.staging_qa_analyzer[0].image_scanning_configuration).scan_on_push
+    error_message = "the analyzer repository must use immutable tags and scan images on push"
+  }
+  assert {
+    condition     = aws_iam_role.staging_qa_analyzer_publish[0].name == "osra-staging-qa-analyzer-publish"
+    error_message = "the analyzer must have a separate staging publisher role"
+  }
+  assert {
+    condition = length(jsondecode(aws_iam_role_policy.staging_qa_analyzer_publish[0].policy).Statement) == 2 && alltrue([
+      for statement in jsondecode(aws_iam_role_policy.staging_qa_analyzer_publish[0].policy).Statement :
+      alltrue([for action in statement.Action : startswith(action, "ecr:") && !endswith(action, "*")]) &&
+      (
+        toset(statement.Action) == toset(["ecr:GetAuthorizationToken"])
+        ? toset(statement.Resource) == toset(["*"])
+        : toset(statement.Resource) == toset([aws_ecr_repository.staging_qa_analyzer[0].arn])
+      )
+    ])
+    error_message = "apart from the registry login, publisher operations must be explicit and limited to the analyzer repository"
+  }
+}
+
+run "staging_qa_analyzer_publisher_requires_a_pinned_account" {
+  command = plan
+
+  variables {
+    github_repo                           = "handfulofluck-lab/osra"
+    github_owner_id                       = "1"
+    github_repo_id                        = "2"
+    staging_qa_analyzer_publisher_enabled = true
+  }
+  expect_failures = [var.staging_qa_analyzer_publisher_enabled]
 }
 
 run "production_settings" {
@@ -153,6 +211,10 @@ run "production_settings" {
   assert {
     condition     = length(aws_iam_role.bedrock_eval) == 0 && length(aws_iam_role.publish) == 1 && output.bedrock_eval_role_arn == ""
     error_message = "production publishes images over OIDC but has no Bedrock evaluation role"
+  }
+  assert {
+    condition     = length(aws_ecr_repository.staging_qa_analyzer) == 0 && length(aws_iam_role.staging_qa_analyzer_publish) == 0
+    error_message = "production must not have the staging QA analyzer repository or publisher"
   }
   assert {
     condition     = length(aws_secretsmanager_secret.internal_hmac_secret) == 1 && length(aws_secretsmanager_secret_version.internal_hmac_secret) == 0 && length(random_password.internal_hmac) == 0 && output.internal_hmac_secret_fingerprint == ""

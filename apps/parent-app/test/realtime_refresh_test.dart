@@ -82,6 +82,30 @@ void main() {
       expect(effects.activities, isEmpty);
     });
 
+    // Mutant M3 (#935): remove `case 'command_acked':` in `applyRealtimeMessage` and both
+    // `command_acked` tests (this unit test and the ProviderContainer refetch test below) fail RED.
+    test('command_acked refreshes command history and family overview only (#935)', () {
+      final effects = RecordingEffects();
+      applyRealtimeMessage(effects, {
+        'type': 'command_acked',
+        'payload': {
+          'deviceId': 'dev-1',
+          'commandId': 'cmd-1',
+          'type': 'resume_internet',
+          'status': 'acked',
+          'childId': 'child-1',
+        },
+      });
+
+      expect(effects.commandHistory, 1);
+      expect(effects.family, 1);
+      expect(effects.alerts, 0);
+      expect(effects.unacknowledged, 0);
+      expect(effects.locations, isEmpty);
+      expect(effects.consents, isEmpty);
+      expect(effects.activities, isEmpty);
+    });
+
     test('a location invalidates that child and the family overview', () {
       final effects = RecordingEffects();
       applyRealtimeMessage(effects, {
@@ -238,6 +262,40 @@ void main() {
       // from the cache: one request, and the value is unchanged.
       expect(await container.read(unacknowledgedCountProvider.future), 0);
       expect(api.calls('GET', '/v1/alerts').where((r) => r.query['ack'] == 'false'), hasLength(1));
+    });
+
+    test('command_acked moves deviceCommandHistoryProvider from pending to acked immediately (#935)', () async {
+      var status = 'pending';
+      final cmdApi = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/devices/dev-1/commands/history': (_) => {
+              'items': [
+                commandJson(
+                  'cmd-1',
+                  'resume_internet',
+                  status,
+                  DateTime.now(),
+                  ackedAt: status == 'acked' ? DateTime.now() : null,
+                ),
+              ],
+            },
+      });
+      final cmdContainer = ProviderContainer(overrides: [apiClientProvider.overrideWithValue(cmdApi)]);
+      addTearDown(cmdContainer.dispose);
+
+      final before = await cmdContainer.read(deviceCommandHistoryProvider('dev-1').future);
+      expect(before.single.status, 'pending');
+      expect(cmdApi.calls('GET', '/v1/devices/dev-1/commands/history'), hasLength(1));
+
+      status = 'acked';
+      applyRealtimeMessage(cmdContainer.read(_effectsProvider), {
+        'type': 'command_acked',
+        'payload': {'deviceId': 'dev-1', 'commandId': 'cmd-1', 'type': 'resume_internet', 'status': 'acked'},
+      });
+
+      final after = await cmdContainer.read(deviceCommandHistoryProvider('dev-1').future);
+      expect(after.single.status, 'acked');
+      expect(cmdApi.calls('GET', '/v1/devices/dev-1/commands/history'), hasLength(2));
     });
   });
 }

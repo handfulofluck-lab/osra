@@ -8,6 +8,7 @@ import { checkActiveConsent } from "../lib/consent.js";
 import { requireFamily, requireGuardianRead, requireParent } from "../middleware/requireFamily.js";
 import { decryptSnippet, encryptSnippet } from "../lib/snippetVault.js";
 import { isValidTimeZone } from "../lib/digestSchedule.js";
+import { STAGING_QA_MODEL, STAGING_QA_REGION, stagingQaModel, stagingQaModelEnabled, type StagingQaModel } from "../lib/stagingQaModel.js";
 
 const ScanSchema = z.object({
   childId: z.string().min(1),
@@ -138,6 +139,27 @@ async function analyzeWithAi(text: string, childAge?: number): Promise<{ verdict
   }
 }
 
+async function analyzeStagingFixture(text: string, qa: StagingQaModel): Promise<{ verdict: Verdict | null; attempted: boolean }> {
+  try {
+    const res = await fetch(qa.endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text, trace_id: qa.traceId }),
+      redirect: "error",
+      signal: AbortSignal.timeout(2600),
+    });
+    if (!res.ok) return { verdict: null, attempted: true };
+    const scored = await res.json() as Record<string, unknown>;
+    if (scored?.trace_id !== qa.traceId || scored.model !== STAGING_QA_MODEL || scored.region !== STAGING_QA_REGION) {
+      return { verdict: null, attempted: true };
+    }
+    return { verdict: aiVerdictFrom(scored), attempted: true };
+  } catch (err) {
+    const name = (err as { name?: string } | null)?.name;
+    return { verdict: null, attempted: name === "TimeoutError" || name === "AbortError" };
+  }
+}
+
 type ScanDevice = { id: string; childId: string } | null | undefined;
 
 /** One item's outcome. `status` and `body` keep the single-item response exactly as it was. */
@@ -199,7 +221,7 @@ async function recordScanUsage(
 async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest["log"]): Promise<ScanItemResult> {
   const parsed = ScanSchema.safeParse(input);
   if (!parsed.success) return { ok: false, reason: "invalid_item", status: 400, body: { error: parsed.error.flatten() } };
-  const { childId, deviceId, app: appName, contact, text } = parsed.data;
+  const { childId, deviceId, app: appName, contact, text, source } = parsed.data;
 
   if (device) {
     if (device.childId !== childId) return { ok: false, reason: "cross_child_forbidden", status: 400 };
@@ -219,7 +241,10 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
   const childAge = typeof (child as { birthYear?: number }).birthYear === "number"
     ? new Date().getFullYear() - (child as { birthYear: number }).birthYear
     : undefined;
-  const ai = await analyzeWithAi(text, childAge);
+  const qa = stagingQaModel({ device, deviceId, childId, app: appName, source, text });
+  const ai = qa ? await analyzeStagingFixture(text, qa)
+    : stagingQaModelEnabled() ? { verdict: null, attempted: false }
+      : await analyzeWithAi(text, childAge);
   const local = localKeywordCheck(text);
   // Union, not "model wins" (Antigravity, #938 B3): when both flag, the concern types are merged and the
   // higher severity stands. The earlier short-circuit kept the model's verdict whole, so a mixed message
@@ -238,13 +263,23 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
   // Issue #890: the counter is written whether or not the capture is flagged — cost is paid on both — and
   // it counts the ATTEMPT, so a timeout against a paid engine is not recorded as a free scan.
   await recordScanUsage(child.familyId, (child as { family?: { timezone?: string } | null }).family?.timezone, ai.attempted, log);
+  const qaProof = qa && {
+    traceId: qa.traceId,
+    fixtureNumber: qa.fixtureNumber,
+    model: STAGING_QA_MODEL,
+    region: STAGING_QA_REGION,
+    fallback: ai.verdict === null,
+    modelFlagged: ai.verdict?.flagged ?? null,
+    rulesFlagged: local.flagged,
+  };
   if (!verdict.flagged) {
+    if (qaProof) log?.info(qaProof, "staging QA scan resolved without alert");
     return { ok: true, flagged: false, severity: "info", concernTypes: [] };
   }
 
   // The snippet vault always records flagged messages; alerts are throttled separately.
   const previewCipher = encryptSnippet(text.slice(0, PREVIEW_MAX_CHARS));
-  await prisma.socialEvent.create({
+  const event = await prisma.socialEvent.create({
     data: { childId, app: appName, contact, severity: verdict.severity, previewCipher, concernTypes: verdict.concernTypes },
   });
 
@@ -252,11 +287,12 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
   // happens so parents can still review the full snippet history in /v1/social/events.
   const throttleKey = `social:alert:${childId}:${appName.toLowerCase()}`;
   const throttled = await getRedis().set(throttleKey, "1", "EX", THROTTLE_SECONDS, "NX") !== "OK";
+  let alertId: string | undefined;
   if (!throttled) {
     const category = GAMING_APPS.has(appName.toLowerCase()) ? "gaming_chat" : "social_concern";
     // Alerts never carry the message snippet — metadata is app/contact/concernTypes only;
     // the decrypted preview stays exclusively in the encrypted vault (#24).
-    await raiseAlert({
+    const alert = await raiseAlert({
       childId,
       familyId: child.familyId,
       deviceId,
@@ -269,7 +305,9 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
       metadata: { app: appName, contact, concernTypes: verdict.concernTypes },
       childName: child.displayName,
     });
+    alertId = alert?.id;
   }
+  if (qaProof) log?.info({ ...qaProof, socialEventId: event?.id, alertId, throttled }, "staging QA scan resolved");
   return { ok: true, flagged: true, severity: verdict.severity, concernTypes: verdict.concernTypes };
 }
 
