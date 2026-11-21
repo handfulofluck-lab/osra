@@ -199,6 +199,12 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('digestTimezone')),
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
       expect(find.text('الرياض (GMT+3)'), findsOneWidget);
       expect(find.text('Asia/Riyadh'), findsNothing);
       final chosenText = tester.widget<Text>(
@@ -207,8 +213,6 @@ void main() {
       expect(chosenText.maxLines, 2);
       expect(chosenText.overflow, isNull);
 
-      await tester.drag(find.byType(ListView), const Offset(0, -350));
-      await tester.pumpAndSettle();
       await tester.ensureVisible(find.byKey(const ValueKey('digestTimezone')));
       await tester.tap(find.byKey(const ValueKey('digestTimezone')));
       await tester.pumpAndSettle();

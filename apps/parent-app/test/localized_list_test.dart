@@ -190,26 +190,7 @@ void main() {
     });
 
 
-    Future<void> saveDigestEmails(
-      WidgetTester tester,
-      FakeApiClient api,
-      String input,
-      List<String> expected,
-    ) async {
-      await tester.enterText(fieldByLabel(arabic.digestPrefsEmailsLabel), input);
-      await tester.ensureVisible(find.text(arabic.digestPrefsSave));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(arabic.digestPrefsSave));
-      await flushFakeHttp(tester);
-
-      final puts = api.calls('PUT', '/v1/digests/prefs');
-      expect(puts, isNotEmpty);
-      expect(puts.last.body['emails'], expected);
-      await tester.pump(const Duration(seconds: 5));
-      await tester.pumpAndSettle();
-    }
-
-    testWidgets('digest recipients save Arabic and Latin comma-separated items', (tester) async {
+    testWidgets('digest recipients add and remove single-email chips cleanly in Arabic (R-ID-10)', (tester) async {
       final api = FakeApiClient({
         ...standardRoutes(),
         'GET /v1/digests/prefs': (_) => {
@@ -223,8 +204,22 @@ void main() {
       });
       await pumpScreen(tester, const DigestPrefsScreen(), api);
 
-      await saveDigestEmails(tester, api, 'a.com، b.com', ['a.com', 'b.com']);
-      await saveDigestEmails(tester, api, 'a.com, b.com،c.com', ['a.com', 'b.com', 'c.com']);
+      expect(find.byKey(const ValueKey('digestEmailChip-qa@osratech.com')), findsOneWidget);
+      await tester.enterText(find.byKey(const ValueKey('digestEmailAddInput')), 'grandma@example.com');
+      await tester.tap(find.byKey(const ValueKey('digestEmailAddButton')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('digestEmailChip-grandma@example.com')), findsOneWidget);
+
+      await tester.scrollUntilVisible(find.text(arabic.digestPrefsSave), 150, scrollable: find.byType(Scrollable).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(arabic.digestPrefsSave));
+      await flushFakeHttp(tester);
+
+      final puts = api.calls('PUT', '/v1/digests/prefs');
+      expect(puts, isNotEmpty);
+      expect(puts.last.body['emails'], ['qa@osratech.com', 'grandma@example.com']);
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
     });
   });
 }
