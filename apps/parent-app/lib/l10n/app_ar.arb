@@ -1081,5 +1081,19 @@
   "alertYesterdayAtTime": "أمس الساعة {time}",
   "alertOnDateAtTime": "يوم {date} الساعة {time}",
   "alertDeviceRestartedBodyMinutes": "أُعيد تشغيل {device} {when}، وعاد إلى العمل بعد {minutes, plural, =0{أقل من دقيقة} =1{دقيقة} =2{دقيقتين} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}.",
-  "alertDeviceRestartedBodyHours": "أُعيد تشغيل {device} {when}، وعاد إلى العمل بعد نحو {hours, plural, =1{ساعة} =2{ساعتين} few{{hours} ساعات} many{{hours} ساعة} other{{hours} ساعة}}."
+  "alertDeviceRestartedBodyHours": "أُعيد تشغيل {device} {when}، وعاد إلى العمل بعد نحو {hours, plural, =1{ساعة} =2{ساعتين} few{{hours} ساعات} many{{hours} ساعة} other{{hours} ساعة}}.",
+  "alertDetailSent": "أُرسل {when}",
+  "alertTitleSocialConcern": "تنبيه سلامة اجتماعية",
+  "alertTitleGamingChat": "تنبيه محادثة ألعاب",
+  "alertCategorySocialConcern": "السلامة الاجتماعية",
+  "alertCategoryGamingChat": "محادثات الألعاب",
+  "socialAlertFlaggedInApp": "مُعلَّم للمراجعة في {app}",
+  "socialAlertOpenActivity": "فتح النشاط الاجتماعي",
+  "socialAlertPreviewNoPermissionTitle": "المعاينة غير متاحة لحسابك",
+  "socialAlertPreviewNoPermissionBody": "اطلب من مالك العائلة تفعيل صلاحية النشاط الاجتماعي لعرض المعاينة المحمية. تبقى تفاصيل التنبيه ودليل المحادثة متاحة هنا.",
+  "socialAlertPreviewExpiredTitle": "المعاينة لم تعد متاحة",
+  "socialAlertPreviewExpiredBody": "انتهت صلاحية المعاينة المحمية أو لم تُحفظ لهذا التنبيه. تبقى تفاصيل التنبيه ودليل المحادثة محفوظة هنا.",
+  "socialAlertUnavailableTitle": "التنبيه غير متاح",
+  "socialAlertUnavailableBody": "تعذّر العثور على هذا التنبيه. افتح التنبيهات لمراجعة النشاط الأخير.",
+  "socialAlertViewAll": "كل التنبيهات"
 }

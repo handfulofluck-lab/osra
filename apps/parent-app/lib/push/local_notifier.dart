@@ -3,6 +3,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../api/models.dart';
 import '../l10n/l10n.dart';
+import 'notification_tap.dart';
 import 'restart_alert_text.dart';
 import 'sos_fix_text.dart';
 
@@ -107,8 +108,42 @@ class FlutterLocalNotifier implements LocalNotifier {
           requestSoundPermission: false,
         ),
       ),
+      onDidReceiveNotificationResponse: (response) {
+        notificationTapController.recordTap(response.payload);
+      },
     );
     _ready = true;
+  }
+
+  /// #972: wires foreground/warm notification taps and captures a cold-start launch tap
+  /// so GoRouter opens `/alerts/:id` once authentication finishes.
+  static Future<void> registerTapHandlers({
+    FlutterLocalNotificationsPlugin? plugin,
+    NotificationTapController? controller,
+  }) async {
+    final p = plugin ?? FlutterLocalNotificationsPlugin();
+    final tapController = controller ?? notificationTapController;
+    try {
+      await p.initialize(
+        settings: const InitializationSettings(
+          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          iOS: DarwinInitializationSettings(
+            requestAlertPermission: false,
+            requestBadgePermission: false,
+            requestSoundPermission: false,
+          ),
+        ),
+        onDidReceiveNotificationResponse: (response) {
+          tapController.recordTap(response.payload);
+        },
+      );
+      final launch = await p.getNotificationAppLaunchDetails();
+      if (launch != null && launch.didNotificationLaunchApp) {
+        tapController.recordTap(launch.notificationResponse?.payload);
+      }
+    } catch (_) {
+      // Headless test environments or unsupported desktop platforms have no plugin channel.
+    }
   }
 
   @override

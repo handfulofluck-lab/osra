@@ -1,0 +1,381 @@
+import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:familyshield_parent/api/models.dart';
+import 'package:familyshield_parent/core/date_formatting.dart';
+import 'package:familyshield_parent/features/alerts/alert_detail_screen.dart';
+import 'package:familyshield_parent/features/alerts/alerts_screen.dart';
+import 'package:familyshield_parent/l10n/l10n.dart';
+import 'package:familyshield_parent/providers/auth_provider.dart';
+import 'package:familyshield_parent/providers/onboarding_provider.dart';
+import 'package:familyshield_parent/push/notification_tap.dart';
+import 'package:familyshield_parent/theme/app_theme.dart';
+
+import 'fake_api_client.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  final fixedNow = DateTime(2026, 11, 21, 10, 0);
+  final alertTime = DateTime(2026, 11, 21, 9, 5);
+
+  setUpAll(() async {
+    await configureDateFormatting();
+  });
+
+  setUp(() {
+    FlutterSecureStorage.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({});
+    notificationTapController.clear();
+  });
+
+  Alert sampleSocialAlert({
+    String id = 'alert-social-1',
+    String category = 'social_concern',
+    String app = 'whatsapp',
+    List<String> concernTypes = const ['cyberbullying'],
+  }) =>
+      Alert(
+        id: id,
+        childId: 'child-1',
+        deviceId: 'dev-1',
+        category: category,
+        severity: 'warning',
+        title: '$app concern (warning)',
+        body: 'Flagged message (${concernTypes.join(', ')})',
+        metadata: {
+          'app': app,
+          'contact': 'Test Group',
+          'concernTypes': concernTypes,
+        },
+        createdAt: alertTime,
+      );
+
+  FakeApiClient apiWith({
+    List<Map<String, dynamic>>? alerts,
+    Object? socialEvents,
+  }) =>
+      FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/alerts': (_) => {
+              'items': alerts ??
+                  [
+                    {
+                      'id': 'alert-social-1',
+                      'childId': 'child-1',
+                      'deviceId': 'dev-1',
+                      'category': 'social_concern',
+                      'severity': 'warning',
+                      'title': 'whatsapp concern (warning)',
+                      'body': 'Flagged message (cyberbullying)',
+                      'metadata': {
+                        'app': 'whatsapp',
+                        'contact': 'Test Group',
+                        'concernTypes': ['cyberbullying'],
+                      },
+                      'createdAt': alertTime.toUtc().toIso8601String(),
+                    },
+                  ],
+              'meta': {'total': 1, 'page': 1, 'limit': 20},
+            },
+        'GET /v1/social/events': (_) {
+          if (socialEvents is DioException) throw socialEvents;
+          return {
+            'items': socialEvents ??
+                [
+                  {
+                    'id': 'evt-1',
+                    'childId': 'child-1',
+                    'app': 'whatsapp',
+                    'contact': 'Test Group',
+                    'severity': 'warning',
+                    'concernTypes': ['cyberbullying'],
+                    'preview': 'Synthetic vault excerpt only shown in Social activity',
+                    'createdAt': alertTime.toUtc().toIso8601String(),
+                  },
+                ],
+          };
+        },
+      });
+
+  Future<void> pumpDetail(
+    WidgetTester tester, {
+    required FakeApiClient api,
+    String alertId = 'alert-social-1',
+    Alert? initialAlert,
+    String lang = 'en',
+    bool dark = false,
+    double textScale = 1.0,
+    List<String>? navigatedTo,
+  }) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    tester.platformDispatcher.textScaleFactorTestValue = textScale;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+      tester.platformDispatcher.clearTextScaleFactorTestValue();
+    });
+
+    final router = GoRouter(
+      initialLocation: '/alerts/$alertId',
+      routes: [
+        GoRoute(
+          path: '/alerts',
+          builder: (_, __) {
+            navigatedTo?.add('/alerts');
+            return const Scaffold(body: Text('ALL_ALERTS_LIST'));
+          },
+        ),
+        GoRoute(
+          path: '/alerts/:id',
+          builder: (_, s) => AlertDetailScreen(
+            alertId: s.pathParameters['id']!,
+            initialAlert: initialAlert,
+            nowProvider: () => fixedNow,
+          ),
+        ),
+        GoRoute(
+          path: '/child/:id/social',
+          builder: (_, s) {
+            final path = '/child/${s.pathParameters['id']}/social';
+            navigatedTo?.add(path);
+            return Scaffold(body: Text('SOCIAL_SCREEN:${s.pathParameters['id']}'));
+          },
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: MaterialApp.router(
+        routerConfig: router,
+        locale: Locale(lang),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        themeMode: dark ? ThemeMode.dark : ThemeMode.light,
+      ),
+    ));
+    await tester.pumpAndSettle();
+  }
+
+  group('AlertDetailScreen (#972)', () {
+    testWidgets('shows localized hierarchy, never leaks vault excerpt, and opens Social activity',
+        (tester) async {
+      final visited = <String>[];
+      await pumpDetail(
+        tester,
+        api: apiWith(),
+        initialAlert: sampleSocialAlert(),
+        navigatedTo: visited,
+      );
+
+      expect(find.text('Social safety alert'), findsOneWidget);
+      expect(find.byKey(const ValueKey('alertDetailAppChip')), findsOneWidget);
+      expect(find.text('Cyberbullying'), findsOneWidget);
+      expect(find.byKey(const ValueKey('alertDetailChildDevice')), findsOneWidget);
+      expect(find.textContaining('Alex'), findsOneWidget);
+      expect(find.textContaining('Pixel 7a'), findsOneWidget);
+      expect(find.textContaining('09:05'), findsOneWidget);
+      expect(find.textContaining('Flagged for review in'), findsOneWidget);
+      // Security invariant: vault excerpt must NEVER appear on the alert detail screen.
+      expect(find.textContaining('Synthetic vault excerpt'), findsNothing);
+      // Raw English server body must not leak.
+      expect(find.textContaining('Flagged message'), findsNothing);
+      // Conversation guide is present.
+      expect(find.text('How to talk about this'), findsOneWidget);
+
+      // Tapping Open Social activity reaches the existing authorized Social surface.
+      await tester.tap(find.byKey(const ValueKey('alertDetailOpenSocial')));
+      await tester.pumpAndSettle();
+      expect(visited, contains('/child/child-1/social'));
+      expect(find.text('SOCIAL_SCREEN:child-1'), findsOneWidget);
+    });
+
+    testWidgets('shows gaming chat title for gaming_chat alerts', (tester) async {
+      await pumpDetail(
+        tester,
+        api: apiWith(socialEvents: [
+          {
+            'id': 'evt-2',
+            'childId': 'child-1',
+            'app': 'discord',
+            'contact': 'Squad',
+            'severity': 'warning',
+            'concernTypes': ['grooming'],
+            'preview': 'Hidden excerpt',
+            'createdAt': alertTime.toUtc().toIso8601String(),
+          },
+        ]),
+        initialAlert: sampleSocialAlert(
+          category: 'gaming_chat',
+          app: 'discord',
+          concernTypes: const ['grooming'],
+        ),
+      );
+
+      expect(find.text('Gaming chat alert'), findsOneWidget);
+      expect(find.byKey(const ValueKey('alertDetailConcern-grooming')), findsOneWidget);
+      expect(find.textContaining('Hidden excerpt'), findsNothing);
+    });
+
+    testWidgets('missing social permission shows unavailable-for-account state and hides CTA',
+        (tester) async {
+      // Mutant: dropping the 403 permission_required branch in resolveSocialPreviewAvailability
+      // would show expired or the Open Social activity CTA instead of the permission message.
+      final forbidden = DioException(
+        requestOptions: RequestOptions(path: '/v1/social/events'),
+        response: Response(
+          requestOptions: RequestOptions(path: '/v1/social/events'),
+          statusCode: 403,
+          data: {'error': 'permission_required', 'permission': 'social'},
+        ),
+        type: DioExceptionType.badResponse,
+      );
+      await pumpDetail(
+        tester,
+        api: apiWith(socialEvents: forbidden),
+        initialAlert: sampleSocialAlert(),
+      );
+
+      expect(find.byKey(const ValueKey('alertDetailPreviewNoPerm')), findsOneWidget);
+      expect(find.text('Preview unavailable for your account'), findsOneWidget);
+      expect(find.byKey(const ValueKey('alertDetailOpenSocial')), findsNothing);
+      expect(find.text('How to talk about this'), findsOneWidget);
+    });
+
+    testWidgets('empty vault shows preview-no-longer-available state and keeps guide usable',
+        (tester) async {
+      await pumpDetail(
+        tester,
+        api: apiWith(socialEvents: const <Map<String, dynamic>>[]),
+        initialAlert: sampleSocialAlert(),
+      );
+
+      expect(find.byKey(const ValueKey('alertDetailPreviewExpired')), findsOneWidget);
+      expect(find.text('Preview no longer available'), findsOneWidget);
+      expect(find.byKey(const ValueKey('alertDetailOpenSocial')), findsNothing);
+      expect(find.text('How to talk about this'), findsOneWidget);
+    });
+
+    testWidgets('unavailable alert id keeps /alerts reachable', (tester) async {
+      final visited = <String>[];
+      await pumpDetail(
+        tester,
+        api: apiWith(alerts: const []),
+        alertId: 'missing-id',
+        navigatedTo: visited,
+      );
+
+      expect(find.byKey(const ValueKey('alertDetailUnavailable')), findsOneWidget);
+      expect(find.text('Alert unavailable'), findsOneWidget);
+      await tester.tap(find.text('All alerts'));
+      await tester.pumpAndSettle();
+      expect(visited, contains('/alerts'));
+    });
+
+    testWidgets('200% text scale scrolls cleanly to primary CTA in EN/AR light and dark',
+        (tester) async {
+      for (final lang in const ['en', 'ar']) {
+        for (final dark in const [false, true]) {
+          await pumpDetail(
+            tester,
+            api: apiWith(),
+            initialAlert: sampleSocialAlert(),
+            lang: lang,
+            dark: dark,
+            textScale: 2.0,
+          );
+          final cta = find.byKey(const ValueKey('alertDetailOpenSocial'));
+          await tester.scrollUntilVisible(
+            cta,
+            150,
+            scrollable: find.byType(Scrollable).first,
+          );
+          await tester.pumpAndSettle();
+          expect(cta, findsOneWidget);
+          expect(tester.takeException(), isNull);
+        }
+      }
+    });
+
+    testWidgets('tapping a social_concern row on AlertsScreen opens full-screen AlertDetailScreen',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(ProviderScope(
+        overrides: [apiClientProvider.overrideWithValue(apiWith())],
+        child: MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: AppTheme.light,
+          home: AlertsScreen(nowProvider: () => fixedNow),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Social safety alert').first);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDetailScreen), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+    });
+  });
+
+  group('NotificationTapController (#972 cold-start & warm-start auth gate)', () {
+    test('preserves tapped alertId until authenticated, then consumes once', () {
+      // Mutant: consuming pendingAlertId while authenticated == false drops a cold-start
+      // notification tap across /login and fails the second assertion below.
+      final ctrl = NotificationTapController();
+      ctrl.recordTap('alert-social-1');
+      expect(ctrl.pendingAlertId, 'alert-social-1');
+
+      // Before sign-in: must NOT redirect or consume the queued id.
+      expect(
+        resolveNotificationAlertRedirect(
+          authenticated: false,
+          onboardingComplete: true,
+          onboardingStep: OnboardingStep.none,
+          controller: ctrl,
+        ),
+        isNull,
+      );
+      expect(ctrl.pendingAlertId, 'alert-social-1');
+
+      // After sign-in: opens /alerts/:id and clears queue so Back does not loop.
+      expect(
+        resolveNotificationAlertRedirect(
+          authenticated: true,
+          onboardingComplete: true,
+          onboardingStep: OnboardingStep.none,
+          controller: ctrl,
+        ),
+        '/alerts/alert-social-1',
+      );
+      expect(ctrl.pendingAlertId, isNull);
+    });
+
+    test('rejects empty or route-injection payloads', () {
+      final ctrl = NotificationTapController();
+      ctrl.recordTap('');
+      ctrl.recordTap('   ');
+      ctrl.recordTap('../settings');
+      ctrl.recordTap('id?x=1');
+      ctrl.recordTap('id#frag');
+      expect(ctrl.pendingAlertId, isNull);
+    });
+  });
+}

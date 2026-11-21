@@ -6,6 +6,8 @@ import 'features/dashboard/dashboard_screen.dart';
 import 'features/children/child_detail_screen.dart';
 import 'features/children/command_history_screen.dart';
 import 'features/children/consent_screen.dart';
+import 'api/models.dart';
+import 'features/alerts/alert_detail_screen.dart';
 import 'features/alerts/alerts_screen.dart';
 import 'features/auth/mfa_reset_approval_screen.dart';
 import 'features/family/family_screen.dart';
@@ -31,6 +33,7 @@ import 'providers/auth_provider.dart';
 import 'providers/locale_provider.dart';
 import 'providers/onboarding_provider.dart';
 import 'providers/theme_provider.dart';
+import 'push/notification_tap.dart';
 import 'theme/app_theme.dart';
 
 const _setupRoutes = {'/welcome', '/sign-in', '/setup/child', '/setup/pair', '/setup/monitoring', '/setup/done'};
@@ -93,13 +96,24 @@ final List<RouteBase> appRoutes = [
     builder: (_, s) => MfaResetApprovalLink(requestId: s.uri.queryParameters['requestId'] ?? ''),
   ),
   GoRoute(path: '/alerts', builder: (_, __) => const AlertsScreen()),
+  GoRoute(
+    path: '/alerts/:id',
+    builder: (_, s) => AlertDetailScreen(
+      alertId: s.pathParameters['id']!,
+      initialAlert: s.extra is Alert ? s.extra as Alert : null,
+    ),
+  ),
   GoRoute(path: '/map', builder: (_, __) => const FamilyMapScreen()),
   GoRoute(path: '/family', builder: (_, __) => const FamilyScreen()),
 ];
 
 final router = GoRouter(
   initialLocation: '/starting',
-  refreshListenable: Listenable.merge([authRouterListenable, onboardingRouterListenable]),
+  refreshListenable: Listenable.merge([
+    authRouterListenable,
+    onboardingRouterListenable,
+    notificationTapController,
+  ]),
   redirect: (context, state) {
     final container = ProviderScope.containerOf(context);
     final auth = container.read(authProvider);
@@ -117,9 +131,35 @@ final router = GoRouter(
     if (onboarding.complete) {
       // A completed setup never shows the wizard again, even if the flag and
       // a stale step were both written by an older build.
-      if (setupRoute || location == '/starting') return auth.isAuthenticated ? '/' : '/login';
+      if (setupRoute || location == '/starting') {
+        if (!auth.isAuthenticated) return '/login';
+        return resolveNotificationAlertRedirect(
+              authenticated: true,
+              onboardingComplete: true,
+              onboardingStep: onboarding.step,
+              controller: notificationTapController,
+            ) ??
+            '/';
+      }
       if (!auth.isAuthenticated && location != '/login') return '/login';
-      if (auth.isAuthenticated && location == '/login') return '/';
+      if (auth.isAuthenticated && location == '/login') {
+        return resolveNotificationAlertRedirect(
+              authenticated: true,
+              onboardingComplete: true,
+              onboardingStep: onboarding.step,
+              controller: notificationTapController,
+            ) ??
+            '/';
+      }
+      if (auth.isAuthenticated) {
+        final tapTarget = resolveNotificationAlertRedirect(
+          authenticated: true,
+          onboardingComplete: true,
+          onboardingStep: onboarding.step,
+          controller: notificationTapController,
+        );
+        if (tapTarget != null && tapTarget != location) return tapTarget;
+      }
       return null;
     }
 
@@ -133,7 +173,22 @@ final router = GoRouter(
 
     if (onboarding.step == OnboardingStep.none) {
       // A signed-in account that predates the wizard is not forced through it.
-      if (setupRoute || location == '/login' || location == '/starting') return '/';
+      if (setupRoute || location == '/login' || location == '/starting') {
+        return resolveNotificationAlertRedirect(
+              authenticated: true,
+              onboardingComplete: false,
+              onboardingStep: onboarding.step,
+              controller: notificationTapController,
+            ) ??
+            '/';
+      }
+      final tapTarget = resolveNotificationAlertRedirect(
+        authenticated: true,
+        onboardingComplete: false,
+        onboardingStep: onboarding.step,
+        controller: notificationTapController,
+      );
+      if (tapTarget != null && tapTarget != location) return tapTarget;
       return null;
     }
 

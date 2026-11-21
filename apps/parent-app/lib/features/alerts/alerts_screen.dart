@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart' show launchUrl, LaunchMode;
 
 import '../../api/permission_errors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
@@ -19,6 +20,7 @@ import '../children/child_detail_screen.dart' show AlertTile;
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
 import '../../widgets/error_retry_view.dart';
+import 'alert_detail_screen.dart';
 import 'sos_alert_actions.dart';
 import '../map/family_map_screen.dart'
     show FamilyMapScreen, MapFocus, mapIsAvailable;
@@ -119,6 +121,25 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   /// Feature #8: an install_request alert offers Block (append a block
   /// appRule to the child's ruleset) and Allow (just dismiss) actions.
   void _showDetail(Alert alert) {
+    // #972: social/gaming chat alerts open the dedicated full-screen scrollable detail route
+    // so 200% text size, authorized Social activity action, and unavailable-preview states stay accessible.
+    if (isSocialAlertCategory(alert.category)) {
+      final router = GoRouter.maybeOf(context);
+      if (router != null) {
+        router.push('/alerts/${Uri.encodeComponent(alert.id)}', extra: alert);
+      } else {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => AlertDetailScreen(
+              alertId: alert.id,
+              initialAlert: alert,
+              nowProvider: widget.nowProvider,
+            ),
+          ),
+        );
+      }
+      return;
+    }
     // Feature #16: conversation-coach card for AI/social alert categories.
     final coachCard = coachCardFor(alert.category, _concernTypesOf(alert));
     showDialog(
