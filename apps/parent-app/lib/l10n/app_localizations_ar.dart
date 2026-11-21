@@ -610,7 +610,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get appActionTimeLimit => 'حد زمني';
 
   @override
-  String get appActionAllow => 'سماح';
+  String get appActionAllow => 'السماح';
 
   @override
   String get locationLoadFailed =>
@@ -945,7 +945,7 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get allowAction => 'سماح';
+  String get allowAction => 'السماح';
 
   @override
   String get blockThisApp => 'حظر هذا التطبيق';
@@ -1244,7 +1244,16 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String installedAppsTruncated(int count) {
-    return 'عرض أول $count تطبيقًا.';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'عرض أول $count تطبيق',
+      many: 'عرض أول $count تطبيقًا',
+      few: 'عرض أول $count تطبيقات',
+      two: 'عرض أول تطبيقين',
+      one: 'عرض أول تطبيق',
+    );
+    return '$_temp0';
   }
 
   @override

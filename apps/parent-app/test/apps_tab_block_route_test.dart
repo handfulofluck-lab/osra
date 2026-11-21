@@ -225,6 +225,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(RulesEditorScreen), findsOneWidget);
+      // #931 and main both found that the Apps tab can be taller than a phone screen once the action
+      // selector stacks, so the picker — the last row on the tab — is scrolled to rather than assumed to
+      // be built inside the viewport. Main's finder is kept: it targets the vertical scrollable inside
+      // the TabBarView, which is narrower than matching every down-axis Scrollable.
       await tester.scrollUntilVisible(
         find.byKey(const ValueKey('pickInstalledApp')),
         150,
