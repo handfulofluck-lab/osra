@@ -1,0 +1,107 @@
+/* OSRA Kids iPhone, tr: Language Bureau DRAFT, not yet read by a native speaker. Mirrors en.lproj at main 5a59d182 line by line. Lands on main only behind the ADR-0042 D1a served switch. */
+/* #511: the iPhone block screen, the same wording as the Android agent (values/strings.xml). */
+"block_title_blocked" = "Bu uygulamayı ebeveynin engelledi";
+"block_request_access" = "İzin iste";
+"block_exit_home" = "Uygulamayı kapat";
+/* %1$@ is the window (Bedtime, or the routine's name), %2$@ its end time (HH:MM). */
+"block_window_line" = "%1$@ nedeniyle engelli (bitiş: %2$@)";
+"block_window_bedtime" = "Uyku vakti";
+
+/* The app's own screens (5.5, Arabic Language Bureau sheet, approved by Karim 2026-11-12 11:20Z). Plurals are in Localizable.stringsdict. */
+"pair_section_title" = "OSRA Kids";
+"pair_server_field" = "Sunucu adresi (ör. 192.168.1.5:3000)";
+"pair_code_field" = "6 haneli eşleme kodu";
+"pair_name_field" = "Cihaz adı (isteğe bağlı)";
+"pair_button" = "Bu cihazı eşle";
+"pair_button_busy" = "Eşleniyor…";
+"pair_hint" = "Ebeveyninden OSRA ebeveyn uygulamasında görünen eşleme kodunu iste.";
+"pair_waiting" = "Ebeveyninin kendi telefonunda “İzin ver” düğmesine dokunması bekleniyor…";
+"pair_title" = "Cihazı eşle";
+"pair_error_server" = "Geçerli bir sunucu adresi gir, ör. 192.168.1.5:3000";
+"pair_error_code" = "6 haneli eşleme kodunu gir.";
+"pair_error_invalid" = "Kod geçersiz veya süresi dolmuş. Ebeveyninden yeni bir kod iste.";
+"pair_error_claimed" = "Bu kod zaten başka bir telefonda kullanılıyor. Ebeveyninden yeni bir kod iste.";
+"pair_error_denied" = "Ebeveynin bu telefonu reddetti. Bu bir yanlışlıksa ondan yeni bir kod iste.";
+"pair_error_expired" = "Ebeveynin bu telefona izin vermeden kodun süresi doldu. Ondan yeni bir kod iste.";
+"pair_error_consent" = "Bu telefonun eşlenebilmesi için ebeveyninin OSRA uygulamasında izin vermesi gerekiyor.";
+"pair_error_network" = "Sunucuya ulaşılamıyor. Adresi ve ağ bağlantısını kontrol et.";
+"pair_error_response" = "Sunucudan beklenmeyen bir yanıt geldi. Sunucu adresini kontrol et.";
+"pair_error_http" = "Sunucu isteği reddetti (HTTP %d).";
+"pair_error_save" = "Eşleme bu telefona kaydedilemedi. Tekrar dene.";
+"status_title" = "Durum";
+"status_paired" = "Eşlendi";
+"status_child" = "Çocuk";
+"status_server" = "Sunucu";
+"status_technical_details" = "Teknik ayrıntılar";
+"status_device" = "Cihaz";
+"screen_time" = "Ekran Süresi";
+"screen_time_on" = "Açık";
+"screen_time_off" = "Kapalı";
+"screen_time_not_allowed" = "İzin verilmedi";
+"screen_time_button" = "Ekran Süresi’ni aç";
+"screen_time_footer_off" = "Ebeveynlerinin uygulama sınırları ve engelleri için Ekran Süresi gerekir. “Ekran Süresi’ni aç” düğmesine dokun ve izin ver.";
+"screen_time_footer_on" = "Ebeveynlerinin uygulama sınırları ve engelleri bu cihazda uygulanıyor.";
+"screen_time_footer_denied" = "Ekran Süresi’ne izin verilmedi, bu yüzden ebeveynlerinin sınırları uygulanmıyor. “Ekran Süresi’ni aç” düğmesine yeniden dokun veya bir ebeveyninden Ayarlar > Ekran Süresi’ni açıp OSRA Kids’e izin vermesini iste.";
+"location" = "Konum";
+"location_always" = "Her zaman";
+"location_while_in_use" = "Uygulamayı kullanırken (“Her zaman” gerekli)";
+"location_off" = "Kapalı";
+"location_allow" = "Konuma izin ver";
+"location_open_settings" = "Ayarlar’ı aç";
+"location_footer" = "Bu cihaz belirgin bir mesafe hareket ettiğinde ebeveynlerin onu haritalarında görür ve belirledikleri yerler için uyarı alır. Önce “Uygulamayı Kullanırken İzin Ver” seçeneğini, sonra “Her Zaman İzin Ver Olarak Değiştir” seçeneğini seç.";
+"groups" = "Uygulama grupları";
+"groups_status_footer" = "Yalnızca ebeveynler: engellenecek uygulamaları buradan seçin. Engellenen uygulamalar “İzin iste” düğmeli OSRA ekranını gösterir.";
+"repair_button" = "Bu cihazı yeniden eşle";
+"repair_title" = "Yeniden eşle";
+"pin_set_title" = "Ebeveyn PIN’i belirleyin";
+"pin_parent" = "Ebeveyn PIN’i";
+"pin_new_field" = "Yeni PIN (4-8 hane)";
+"pin_repeat_field" = "PIN’i tekrar girin";
+"pin_save" = "PIN’i kaydet";
+"pin_set_reason" = "OSRA Kids’i yalnızca bir ebeveynin değiştirebilmesi veya bu telefonu yeniden eşleyebilmesi için bir ebeveyn PIN’i belirleyin.";
+"pin_set_footer" = "Yalnızca ebeveynler. PIN, bu telefondaki uygulama gruplarını ve yeniden eşlemeyi korur. Bu telefonda kalır ve hiçbir yere gönderilmez.";
+"pin_mismatch" = "İki PIN birbirinden farklı.";
+"pin_save_failed" = "PIN kaydedilemedi. Tekrar deneyin.";
+"pin_continue" = "Devam";
+"pin_parents_only" = "Yalnızca ebeveynler.";
+"pin_too_short" = "PIN en az 4 haneli olmalı.";
+"pin_too_long" = "PIN en fazla 8 haneli olmalı.";
+"pin_not_digits" = "PIN yalnızca rakamlardan oluşmalı.";
+"pin_same_digit" = "Tüm haneleri aynı olmayan bir PIN seçin.";
+"pin_weak" = "Tahmin edilmesi daha zor bir PIN seçin.";
+"groups_empty" = "Henüz grup yok.";
+"groups_blocked" = "Engellendi";
+"groups_chosen" = "Seçilenler";
+"groups_counts" = "Uygulama: %1$d · Kategori: %2$d · Web sitesi: %3$d";
+"groups_nothing" = "Hiçbir şey seçilmedi";
+"groups_change" = "Uygulamaları değiştir";
+"groups_delete" = "Grubu sil";
+"groups_empty_footer" = "Hiçbir şey seçilmediği için bu grup hiçbir şeyi engellemiyor. Yeniden seçmek için “Uygulamaları değiştir” düğmesine dokunun.";
+"groups_by_parent" = "Ebeveyn uygulamasından engellendi.";
+"groups_new" = "Yeni grup";
+"groups_name_field" = "Grup adı, ör. Oyunlar";
+"groups_choose" = "Uygulama seç";
+"groups_add" = "Grup ekle";
+"groups_new_footer" = "En fazla 40 karakter. Engellenen uygulamalar “İzin iste” düğmeli OSRA ekranını gösterir.";
+"groups_error_choose" = "En az bir uygulama, kategori veya web sitesi seçin.";
+"groups_error_name" = "Gruba bir ad verin.";
+"groups_error_max" = "En fazla 20 grup olabilir.";
+
+/* #602 Status screen: child name, last sync, Sync now (Bureau, approved by Karim 2026-11-12 12:55Z). */
+"status_child_name" = "Çocuk";
+"status_last_synced" = "Son eşitleme: %@";
+"status_never_synced" = "Henüz eşitlenmedi";
+"status_sync_stale" = "Son eşitlemenin üzerinden %@ geçti. İnternet bağlantısını kontrol et, sonra “Şimdi eşitle” düğmesine dokun.";
+"status_sync_now" = "Şimdi eşitle";
+"status_syncing" = "Eşitleniyor…";
+"status_sync_failed" = "Sunucuya ulaşılamadı. Biraz sonra tekrar dene.";
+"status_sync_note" = "OSRA Kids kapalıyken ebeveyninin yaptığı bir değişikliğin ulaşması birkaç dakika sürebilir. Uygulamayı açarsan veya “Şimdi eşitle” düğmesine dokunursan değişiklik hemen gelir.";
+
+/* #880 alarm permission step and denied row, #881 default block-screen subtitle (English drafts by the UI/UX Bureau, 17 Nov). Key names proposed; rename to match the code. */
+"alarm_setup_title" = "Ebeveyninin bu telefonu çaldırmasına izin ver";
+"alarm_setup_body" = "Böylece telefon kaybolursa ebeveynin onu yüksek sesle çaldırabilir.";
+"alarm_setup_allow" = "Çaldırmaya izin ver";
+"alarm_setup_not_now" = "Şimdi değil";
+"alarm_denied_row" = "Bu iPhone’da çaldırma kapalı.";
+"alarm_denied_button" = "Ayarlar’dan aç";
+"block_subtitle_default" = "Ebeveynine sormak için “İzin iste” düğmesine dokun.";

@@ -24,9 +24,10 @@ And once, from the source tree (an unsigned build embeds no entitlements):
      app group group.com.osratech.child.
   6. each extension's Info.plist names "$(PRODUCT_MODULE_NAME).<Class>" and declares <Class> in its own sources (#561).
 And for the app and each .appex, built and in the source tree:
-  7. Info.plist lists en and ar in CFBundleLocalizations, and the bundle carries en.lproj and ar.lproj (#654: an
-     extension that declares only English gets English from iOS, so the block screen stayed English on an
-     Arabic phone).
+  7. Info.plist lists the released languages and every catalog the build carries in CFBundleLocalizations, and the
+     bundle carries each one's lproj (#654: an extension that declares only English gets English from iOS, so the
+     block screen stayed English on an Arabic phone; ADR-0042 D1a: a catalog compiled in but not declared is
+     invisible to iOS).
 
 It prints what it found, so the CI log shows the bundle list, and exits 1 on any mismatch.
 """
@@ -285,25 +286,60 @@ def check_principal_sources():
             fail(f"{folder}: no `class {cls}:` in its own Swift files")
 
 
-LANGUAGES = ["en", "ar"]
+def released_languages():
+    """The compiled-in released list, read from `SharedLanguage.released` (ADR-0042 D1a, #883).
+
+    The app and this check must not keep two copies of the language list: the build offers exactly what the
+    code declares, so the script reads the declaration rather than naming en and ar a second time.
+    """
+    path = os.path.join(ROOT, "Sources", "FamilyShieldAgent", "SharedLanguage.swift")
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    match = re.search(r"public static let released\s*=\s*\[([^\]]*)\]", text)
+    if not match:
+        fail(f"SharedLanguage.swift: no `public static let released = [...]`")
+        return ["en", "ar"]
+    return re.findall(r'"([^"]+)"', match.group(1))
+
+
+LANGUAGES = released_languages()
+
+
+def shipped_catalogs():
+    """Every language the package's `Resources` carry (ADR-0042 D1a, #883).
+
+    Two lists, two meanings: the bundle must carry **every** catalog it has, while the app **offers** only the
+    released ones plus the family's `beta` list, which the server sends. A catalog compiled in but not declared is
+    invisible to iOS — it would fall back to English on the one phone that reads it — so both are checked here.
+    """
+    resources = os.path.join(ROOT, "Sources", "FamilyShieldAgent", "Resources")
+    return sorted(name[: -len(".lproj")] for name in os.listdir(resources) if name.endswith(".lproj"))
+
+
+CATALOGS = shipped_catalogs()
 
 # Source folder -> the bundle it builds, for the localization check (#654).
 LOCALIZED_SOURCES = {"App": "app", **EXTENSION_SOURCES}
 
 
 def check_localizations(bundle, name):
-    """#654: the bundle tells iOS it speaks English and Arabic, so iOS hands it the phone's language."""
+    """#654, ADR-0042 D1a: the bundle declares every catalog it carries, so iOS hands it the phone's language.
+
+    The released pair is the minimum a family can be offered; the five `beta` catalogs must still be declared and
+    present, or a tester family gets English on the one phone whose language is that catalog's.
+    """
     info_path = os.path.join(bundle, "Info.plist")
     if not os.path.isfile(info_path):
         fail(f"{name}: no Info.plist")
         return
     declared = read_plist(info_path).get("CFBundleLocalizations") or []
-    missing = [lang for lang in LANGUAGES if lang not in declared]
+    required = sorted(set(LANGUAGES) | set(CATALOGS))
+    missing = [lang for lang in required if lang not in declared]
     if missing:
         fail(f"{name}: CFBundleLocalizations = {declared!r}, missing {missing}")
     else:
-        ok(f"{name}: CFBundleLocalizations has {', '.join(LANGUAGES)}")
-    for lang in LANGUAGES:
+        ok(f"{name}: CFBundleLocalizations has {', '.join(required)}")
+    for lang in required:
         if not os.path.isdir(os.path.join(bundle, f"{lang}.lproj")):
             fail(f"{name}: no {lang}.lproj")
 

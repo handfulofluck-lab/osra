@@ -1,0 +1,107 @@
+/* OSRA Kids iPhone, ur: Language Bureau DRAFT, not yet read by a native speaker. Mirrors en.lproj at main 5a59d182 line by line. Lands on main only behind the ADR-0042 D1a served switch. */
+/* #511: the iPhone block screen, the same wording as the Android agent (values/strings.xml). */
+"block_title_blocked" = "آپ کے والدین نے یہ ایپ بلاک کر دی ہے";
+"block_request_access" = "اجازت مانگیں";
+"block_exit_home" = "ایپ بند کریں";
+/* %1$@ is the window (Bedtime, or the routine's name), %2$@ its end time (HH:MM). */
+"block_window_line" = "%1$@ کی وجہ سے %2$@ تک بلاک ہے";
+"block_window_bedtime" = "سونے کا وقت";
+
+/* The app's own screens (5.5, Arabic Language Bureau sheet, approved by Karim 2026-11-12 11:20Z). Plurals are in Localizable.stringsdict. */
+"pair_section_title" = "OSRA Kids";
+"pair_server_field" = "سرور کا پتہ (مثلاً 192.168.1.5:3000)";
+"pair_code_field" = "جوڑنے کا 6 ہندسوں کا کوڈ";
+"pair_name_field" = "آلے کا نام (اختیاری)";
+"pair_button" = "یہ آلہ جوڑیں";
+"pair_button_busy" = "جوڑا جا رہا ہے…";
+"pair_hint" = "اپنے والدین سے وہ جوڑنے کا کوڈ مانگیں جو ان کی OSRA ایپ میں دکھائی دیتا ہے۔";
+"pair_waiting" = "انتظار ہے کہ آپ کے والدین اپنے فون پر “اجازت دیں” کو تھپتھپائیں…";
+"pair_title" = "آلہ جوڑیں";
+"pair_error_server" = "درست سرور کا پتہ درج کریں، مثلاً 192.168.1.5:3000";
+"pair_error_code" = "جوڑنے کا 6 ہندسوں کا کوڈ درج کریں۔";
+"pair_error_invalid" = "کوڈ غلط ہے یا اس کی میعاد ختم ہو چکی ہے۔ اپنے والدین سے نیا کوڈ مانگیں۔";
+"pair_error_claimed" = "یہ کوڈ پہلے ہی کسی دوسرے فون پر استعمال ہو رہا ہے۔ اپنے والدین سے نیا کوڈ مانگیں۔";
+"pair_error_denied" = "آپ کے والدین نے اس فون کو مسترد کر دیا۔ اگر یہ غلطی سے ہوا ہے تو ان سے نیا کوڈ مانگیں۔";
+"pair_error_expired" = "آپ کے والدین کے اجازت دینے سے پہلے کوڈ کی میعاد ختم ہو گئی۔ ان سے نیا کوڈ مانگیں۔";
+"pair_error_consent" = "یہ فون جوڑنے سے پہلے آپ کے والدین کو OSRA ایپ میں رضامندی دینا ہوگی۔";
+"pair_error_network" = "سرور سے رابطہ نہیں ہو سکا۔ پتہ اور نیٹ ورک جانچیں۔";
+"pair_error_response" = "سرور سے غیر متوقع جواب ملا۔ سرور کا پتہ جانچیں۔";
+"pair_error_http" = "سرور نے درخواست مسترد کر دی (HTTP %d)۔";
+"pair_error_save" = "جوڑنے کی معلومات اس فون پر محفوظ نہیں ہو سکیں۔ دوبارہ کوشش کریں۔";
+"status_title" = "صورتحال";
+"status_paired" = "جڑا ہوا";
+"status_child" = "بچہ";
+"status_server" = "سرور";
+"status_technical_details" = "تکنیکی تفصیلات";
+"status_device" = "آلہ";
+"screen_time" = "اسکرین ٹائم";
+"screen_time_on" = "آن";
+"screen_time_off" = "آف";
+"screen_time_not_allowed" = "اجازت نہیں دی گئی";
+"screen_time_button" = "اسکرین ٹائم آن کریں";
+"screen_time_footer_off" = "آپ کے والدین کی ایپ کی حدود اور بلاکس کے لیے اسکرین ٹائم ضروری ہے۔ “اسکرین ٹائم آن کریں” کو تھپتھپائیں اور اجازت دیں۔";
+"screen_time_footer_on" = "آپ کے والدین کی ایپ کی حدود اور بلاکس اس آلے پر نافذ ہیں۔";
+"screen_time_footer_denied" = "اسکرین ٹائم کی اجازت نہیں دی گئی، اس لیے آپ کے والدین کی حدود نافذ نہیں ہیں۔ “اسکرین ٹائم آن کریں” کو دوبارہ تھپتھپائیں، یا اپنے والدین میں سے کسی سے کہیں کہ سیٹنگ > اسکرین ٹائم کھول کر OSRA Kids کو اجازت دیں۔";
+"location" = "مقام";
+"location_always" = "ہمیشہ";
+"location_while_in_use" = "ایپ استعمال کرتے وقت (“ہمیشہ” درکار ہے)";
+"location_off" = "آف";
+"location_allow" = "مقام کی اجازت دیں";
+"location_open_settings" = "سیٹنگ کھولیں";
+"location_footer" = "جب یہ آلہ نمایاں فاصلہ طے کرتا ہے تو آپ کے والدین اسے اپنے نقشے پر دیکھتے ہیں، اور اپنی مقرر کردہ جگہوں کے الرٹس پاتے ہیں۔ پہلے “Allow While Using App” اور پھر “Change to Always Allow” منتخب کریں۔";
+"groups" = "ایپ گروپس";
+"groups_status_footer" = "صرف والدین کے لیے: بلاک کرنے والی ایپس یہاں منتخب کریں۔ بلاک شدہ ایپس “اجازت مانگیں” کے ساتھ OSRA کی اسکرین دکھاتی ہیں۔";
+"repair_button" = "یہ آلہ دوبارہ جوڑیں";
+"repair_title" = "دوبارہ جوڑیں";
+"pin_set_title" = "والدین کا PIN مقرر کریں";
+"pin_parent" = "والدین کا PIN";
+"pin_new_field" = "نیا PIN (4 سے 8 ہندسے)";
+"pin_repeat_field" = "PIN دوبارہ درج کریں";
+"pin_save" = "PIN محفوظ کریں";
+"pin_set_reason" = "والدین کا PIN مقرر کریں تاکہ صرف والدین ہی OSRA Kids میں تبدیلی کر سکیں یا اس فون کو دوبارہ جوڑ سکیں۔";
+"pin_set_footer" = "صرف والدین کے لیے۔ PIN اس فون پر ایپ گروپس اور دوبارہ جوڑنے کے عمل کی حفاظت کرتا ہے۔ یہ اسی فون پر رہتا ہے اور کہیں نہیں بھیجا جاتا۔";
+"pin_mismatch" = "دونوں PIN ایک جیسے نہیں ہیں۔";
+"pin_save_failed" = "PIN محفوظ نہیں ہو سکا۔ دوبارہ کوشش کریں۔";
+"pin_continue" = "جاری رکھیں";
+"pin_parents_only" = "صرف والدین کے لیے۔";
+"pin_too_short" = "PIN کم از کم 4 ہندسوں کا ہونا چاہیے۔";
+"pin_too_long" = "PIN زیادہ سے زیادہ 8 ہندسوں کا ہونا چاہیے۔";
+"pin_not_digits" = "PIN میں صرف ہندسے ہونے چاہییں۔";
+"pin_same_digit" = "ایسا PIN منتخب کریں جس کے تمام ہندسے ایک جیسے نہ ہوں۔";
+"pin_weak" = "ایسا PIN منتخب کریں جس کا اندازہ لگانا زیادہ مشکل ہو۔";
+"groups_empty" = "ابھی کوئی گروپ نہیں۔";
+"groups_blocked" = "بلاک شدہ";
+"groups_chosen" = "منتخب شدہ";
+"groups_counts" = "ایپس %1$d · زمرے %2$d · ویب سائٹس %3$d";
+"groups_nothing" = "کچھ منتخب نہیں کیا گیا";
+"groups_change" = "ایپس تبدیل کریں";
+"groups_delete" = "گروپ حذف کریں";
+"groups_empty_footer" = "کچھ منتخب نہیں کیا گیا، اس لیے یہ گروپ کچھ بلاک نہیں کرتا۔ دوبارہ منتخب کرنے کے لیے “ایپس تبدیل کریں” کو تھپتھپائیں۔";
+"groups_by_parent" = "والدین کی ایپ سے بلاک کیا گیا۔";
+"groups_new" = "نیا گروپ";
+"groups_name_field" = "گروپ کا نام، مثلاً گیمز";
+"groups_choose" = "ایپس منتخب کریں";
+"groups_add" = "گروپ شامل کریں";
+"groups_new_footer" = "زیادہ سے زیادہ 40 حروف۔ بلاک شدہ ایپس “اجازت مانگیں” کے ساتھ OSRA کی اسکرین دکھاتی ہیں۔";
+"groups_error_choose" = "کم از کم ایک ایپ، زمرہ یا ویب سائٹ منتخب کریں۔";
+"groups_error_name" = "گروپ کو ایک نام دیں۔";
+"groups_error_max" = "زیادہ سے زیادہ 20 گروپس ہو سکتے ہیں۔";
+
+/* #602 Status screen: child name, last sync, Sync now (Bureau, approved by Karim 2026-11-12 12:55Z). */
+"status_child_name" = "بچہ";
+"status_last_synced" = "آخری سنک: %@";
+"status_never_synced" = "ابھی تک سنک نہیں ہوا";
+"status_sync_stale" = "%@ سے سنک نہیں ہوا۔ انٹرنیٹ کنکشن جانچیں، پھر “ابھی سنک کریں” کو تھپتھپائیں۔";
+"status_sync_now" = "ابھی سنک کریں";
+"status_syncing" = "سنک ہو رہا ہے…";
+"status_sync_failed" = "سرور سے رابطہ نہیں ہو سکا۔ تھوڑی دیر بعد دوبارہ کوشش کریں۔";
+"status_sync_note" = "جب OSRA Kids بند ہو تو آپ کے والدین کی کی گئی تبدیلی پہنچنے میں چند منٹ لگ سکتے ہیں۔ ایپ کھولنے یا “ابھی سنک کریں” کو تھپتھپانے سے یہ فوراً آ جاتی ہے۔";
+
+/* #880 alarm permission step and denied row, #881 default block-screen subtitle (English drafts by the UI/UX Bureau, 17 Nov). Key names proposed; rename to match the code. */
+"alarm_setup_title" = "اپنے والدین کو اس فون کی گھنٹی بجانے دیں";
+"alarm_setup_body" = "تاکہ فون گم ہو جائے تو آپ کے والدین اس کی گھنٹی زور سے بجا سکیں۔";
+"alarm_setup_allow" = "گھنٹی کی اجازت دیں";
+"alarm_setup_not_now" = "ابھی نہیں";
+"alarm_denied_row" = "اس iPhone پر گھنٹی بند ہے۔";
+"alarm_denied_button" = "سیٹنگ میں آن کریں";
+"block_subtitle_default" = "اپنے والدین سے پوچھنے کے لیے “اجازت مانگیں” کو تھپتھپائیں۔";

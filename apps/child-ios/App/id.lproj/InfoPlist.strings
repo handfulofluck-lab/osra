@@ -1,0 +1,6 @@
+/* OSRA Kids iPhone, id: Language Bureau DRAFT, not yet read by a native speaker. Mirrors en.lproj at main 5a59d182 line by line. Lands on main only behind the ADR-0042 D1a served switch. */
+/* Home-screen name (Karim, 11 Nov). Keep in step with App/Info.plist. */
+"CFBundleDisplayName" = "OSRA Kids";
+/* Location permission prompts (5.5 PR E). Keep in step with App/Info.plist. */
+"NSLocationWhenInUseUsageDescription" = "OSRA membagikan lokasi perangkat ini kepada orang tuamu, agar mereka dapat melihatnya di peta dan mendapat peringatan untuk tempat yang mereka tentukan.";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "OSRA membagikan lokasi perangkat ini kepada orang tuamu saat perangkat berpindah cukup jauh, bahkan ketika aplikasi ditutup, agar peta dan peringatan tempat mereka tetap berfungsi.";
