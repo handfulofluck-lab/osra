@@ -116,6 +116,26 @@ void main() {
     expect(drainExceptions(tester), isEmpty);
   });
 
+  /// #953, the P0 half: the preinstalled chip filters browsing, not searching. Before this, a parent who typed
+  /// the name of a preinstalled app — YouTube on basically every Android image — got the no-match line, with no
+  /// hint that a switch they had never been told about was hiding it.
+  testWidgets('search reaches a preinstalled app without touching the filter (#953)',
+      (tester) async {
+    final api = FakeApiClient(standardRoutes());
+    await pumpRules(tester, api);
+    await openPicker(tester);
+
+    // the chip is off, so browsing excludes it — that part is unchanged
+    expect(tile('com.android.settings'), findsNothing);
+
+    await tester.enterText(find.byKey(const ValueKey('appPickerSearch')), 'settings');
+    await tester.pumpAndSettle();
+
+    expect(tile('com.android.settings'), findsOneWidget,
+        reason: 'typing a name must find it without knowing the chip exists');
+    expect(drainExceptions(tester), isEmpty);
+  });
+
   testWidgets('search matches the app name only, never the package id', (tester) async {
     final api = FakeApiClient(standardRoutes());
     await pumpRules(tester, api);
@@ -151,7 +171,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('appPickerConfirm')));
     await tester.pumpAndSettle();
     expect(picker(), findsNothing);
-    // The two new rows exist; the PUT below is what proves their contents — the rule list is lazy, so
+    // The two new rows exist; the PATCH below is what proves their contents — the rule list is lazy, so
     // a card below the fold is not in the element tree to be found by text.
     expect(find.text('Video'), findsOneWidget);
     // U33: the typed path is gone — no "Add app rule" button and no package id on any row.
@@ -161,9 +181,9 @@ void main() {
 
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
-    final puts = api.calls('PUT', '/v1/rules/child-1');
-    expect(puts, hasLength(1));
-    final rules = (puts.single.body['appRules'] as List).cast<Map<String, dynamic>>();
+    final patches = api.calls('PATCH', '/v1/rules/child-1');
+    expect(patches, hasLength(1));
+    final rules = (patches.single.body['appRules'] as List).cast<Map<String, dynamic>>();
     expect(rules.map((r) => r['packageId']), containsAll(<String>['com.example.video', 'org.example.reader']));
     expect(rules.firstWhere((r) => r['packageId'] == 'com.example.video')['appName'], 'Video');
     expect(rules.firstWhere((r) => r['packageId'] == 'org.example.reader')['action'], 'allow');
@@ -199,8 +219,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
-    final rules = (api.calls('PUT', '/v1/rules/child-1').single.body['appRules'] as List).cast<Map<String, dynamic>>();
-    expect(rules.where((r) => r['packageId'] == 'com.example.game'), hasLength(1));
+    final patch = api.calls('PATCH', '/v1/rules/child-1').single.body;
+    expect(patch.containsKey('appRules'), isFalse);
   });
 
   testWidgets('an empty inventory says so and points at the next check-in', (tester) async {

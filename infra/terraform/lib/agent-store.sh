@@ -2,6 +2,21 @@
 # DPAPI store that agent-credential.ps1 reads. The pair goes to PowerShell on stdin (printf is a shell
 # builtin, so neither value appears in any process's arguments) and is encrypted for the current Windows user.
 AGENT_STORE="${AGENT_STORE:-$HOME/.aws/osra-agent.dpapi}"
+# The helper the profile runs lives beside the store, outside any git checkout (Fable on #821): whatever
+# branch is checked out must not decide the script that hands out the key. No space allowed in its path,
+# because credential_process cannot quote it for Terraform's AWS SDK (it passes quotes literally).
+AGENT_HELPER="${AGENT_HELPER:-$HOME/.aws/osra-agent-credential.ps1}"
+# Matches both the installed name and the pre-#821 in-repo name, so a profile moved earlier still counts.
+AGENT_HELPER_PATTERN='agent-credential\.ps1'
+
+# Copies the repository's helper to AGENT_HELPER and prints the credential_process line for it.
+agent_helper_install() { # repo_helper
+  local win
+  cp "$1" "$AGENT_HELPER"
+  win=$(cygpath -w "$AGENT_HELPER")
+  case "$win" in *" "*) echo "helper path has a space, credential_process cannot carry it: $win" >&2; return 1 ;; esac
+  printf 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File %s' "$win"
+}
 
 agent_store_write() { # id secret
   local win
@@ -15,7 +30,7 @@ agent_store_write() { # id secret
 agent_store_id() {
   local win helper
   win=$(cygpath -w "$AGENT_STORE")
-  helper=$(cygpath -w "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/agent-credential.ps1")
+  helper=$(cygpath -w "$AGENT_HELPER")
   OSRA_STORE="$win" OSRA_HELPER="$helper" powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \
     '$ErrorActionPreference = "Stop"; (& $env:OSRA_HELPER -Store $env:OSRA_STORE | ConvertFrom-Json).AccessKeyId' | tr -d '\r'
 }

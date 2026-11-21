@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show Color, Colors;
 
@@ -404,6 +406,9 @@ class ScreenTimeRule {
     final school = json['schoolHours'] is Map
         ? Map<String, dynamic>.from(json['schoolHours'] as Map)
         : const <String, dynamic>{};
+    final rawDays = school['days'];
+    final days = _intList(rawDays);
+    final hasSchoolDays = days.isNotEmpty || (rawDays is List && rawDays.isEmpty);
     return ScreenTimeRule(
       dailyLimitMinutes: _int(json['dailyLimitMinutes'], 180),
       weekendLimitMinutes: _int(json['weekendLimitMinutes'], 240),
@@ -411,9 +416,7 @@ class ScreenTimeRule {
       bedtimeEnd: _str(json['bedtimeEnd'], '07:00'),
       schoolStart: _str(school['start'], '08:00'),
       schoolEnd: _str(school['end'], '15:00'),
-      schoolDays: _intList(school['days']).isEmpty
-          ? const [1, 2, 3, 4, 5]
-          : _intList(school['days']),
+      schoolDays: hasSchoolDays ? days : const [1, 2, 3, 4, 5],
     );
   }
 
@@ -768,7 +771,7 @@ class RuleSet {
     );
   }
 
-  /// Full PUT body — the server PATCH-merges, so we always send everything.
+  /// The complete ruleset body.
   Map<String, dynamic> toJson() => {
         'screenTime': screenTime.toJson(),
         'webFilter': webFilter.toJson(),
@@ -778,6 +781,35 @@ class RuleSet {
         'contactAllowlist': contactAllowlist,
         'alwaysAllowedApps': alwaysAllowedApps,
         'appGroupRules': [for (final r in appGroupRules) r.toJson()],
+      };
+
+  /// Changes to send to the server's rules PATCH endpoint.
+  ///
+  /// The endpoint merges screen time and web filter by field. Keep an
+  /// unchanged bedtime or school window out of the patch so the API only
+  /// checks for overlap when a parent edits a schedule.
+  Map<String, dynamic> changesFrom(RuleSet saved) {
+    final before = saved.toJson();
+    final after = toJson();
+    final patch = _changedFields(before, after);
+    for (final section in ['screenTime', 'webFilter']) {
+      if (!patch.containsKey(section)) continue;
+      patch[section] = _changedFields(
+        before[section] as Map<String, dynamic>,
+        after[section] as Map<String, dynamic>,
+      );
+    }
+    return patch;
+  }
+
+  static Map<String, dynamic> _changedFields(
+    Map<String, dynamic> before,
+    Map<String, dynamic> after,
+  ) =>
+      {
+        for (final field in after.entries)
+          if (jsonEncode(before[field.key]) != jsonEncode(field.value))
+            field.key: field.value,
       };
 
   /// A copy with only the fields given changed; every other field, [appGroupRules] included, is kept.
@@ -1173,6 +1205,7 @@ class Alert {
   final Map<String, dynamic> metadata;
   final DateTime? createdAt;
   final bool acknowledged;
+  final int attemptCount;
 
   const Alert({
     required this.id,
@@ -1185,6 +1218,7 @@ class Alert {
     this.metadata = const {},
     this.createdAt,
     this.acknowledged = false,
+    this.attemptCount = 1,
   });
 
   factory Alert.fromJson(Map<String, dynamic> json) => Alert(
@@ -1200,6 +1234,7 @@ class Alert {
             : const {},
         createdAt: DateTime.tryParse(_str(json['createdAt'])),
         acknowledged: _bool(json['acknowledged']),
+        attemptCount: _int(json['attemptCount'], 1),
       );
 
   /// Issue #672: the fix an SOS carried, or null. Every other category has none — this reads metadata

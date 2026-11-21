@@ -1802,6 +1802,12 @@
       "time": { "type": "String" }
     }
   },
+  "alertDetailSent": "Sent {when}",
+  "@alertDetailSent": {
+    "placeholders": {
+      "when": { "type": "String" }
+    }
+  },
   "alertDeviceRestartedBodyMinutes": "{device} restarted {when} and was back {minutes, plural, =0{in less than a minute} =1{after 1 minute} other{after {minutes} minutes}}.",
   "@alertDeviceRestartedBodyMinutes": {
     "placeholders": {

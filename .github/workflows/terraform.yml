@@ -33,6 +33,10 @@ jobs:
       - name: secret generators
         run: bash tests/secret-gen.sh
 
+      # move-agent-key-to-store.sh's repoint keeps the same identity or restores the old line (#821). Stubs only.
+      - name: agent key repoint
+        run: bash tests/move-agent-key.sh
+
       # -backend=false skips the S3 backend, so this needs no AWS credentials and no base state.
       # `terraform test` runs each stack's tests/*.tftest.hcl against a MOCKED AWS provider (#714): no
       # credentials, nothing created. They pin staging's settings and production's (Multi-AZ, backups, TLS,

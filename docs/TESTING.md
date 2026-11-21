@@ -83,6 +83,14 @@ timestamp), dashboard, map-sheet, call/SMS and bonus-time widgets with an Arabic
 Removing any one of the seven `ltrIsolate` calls must turn its corresponding row red. These are widget
 tests, not a phone run; no device claim or API access is used.
 
+For rules save compatibility (#951), run
+`flutter test test/rules_editor_limits_test.dart test/content_safety_test.dart test/installed_apps_picker_test.dart`
+from `apps/parent-app`. A saved, overlapping school schedule must survive an unrelated app edit.
+The editor sends a PATCH with the changed fields. A newly edited school window is still sent in
+full for server validation. App and YouTube edits leave the rest of the ruleset in place, and
+an empty school-day list stays empty on load. On staging, save and read back one app, web and
+YouTube edit on the signed parent app before marking the handset row passed.
+
 For Arabic and Latin list separators, run `flutter test test/localized_list_test.dart` from
 `apps/parent-app` (#794). Its nine tests cover the shared splitter and real Arabic-locale widgets for
 allowed/blocked domains, routine blocked/allowed apps and digest recipients. Each field saves both
@@ -399,6 +407,11 @@ off, the read route still answers but returns `counting: false` and `withinBudge
 
 | `main-guard.yml` | Detects a commit on `main` that did not arrive through a pull request |
 
+The verified-gate policy self-test checks Neon’s `neon/` author prefix and `— Neon` ordinary signature.
+It covers both directions of the cross-family restriction with Antigravity and Hydrogen, preserves their
+existing cross-family pairing, and checks that Neon cannot supply an R3 security key. The signer-fixture
+check accepts Neon’s signature from the shared agent account and rejects it from other accounts.
+
 The Mac phase1 tooling has a fake-only suite beside the org-audit tests:
 `python3 -B -m unittest discover -s infra/terraform/org-audit/tests -p 'test_agent*.py'`.
 The CI setup disables the Terraform output wrapper: isolated test environments intentionally omit
@@ -678,6 +691,17 @@ Family Controls or TestFlight. Those need an Apple account, and roadmap 5.1 / 5.
 
 ## 5. Hardware verification (physical device)
 
+### Stop a parent-initiated ring (#866)
+
+The parent can choose **Stop ringing** beside Ring on a child device card or in the
+map callout. The action sends a stop to the selected device. The confirmation says
+the command is queued while the device has not acknowledged it.
+
+The widget rows in `apps/parent-app/test/stop_ring_test.dart` load an acknowledged
+ring on a synthetic device. They cover the two parent entry points and the queued
+message. During a scheduled handset check, confirm that the selected phone stops
+and that its command history records the acknowledgement.
+
 ### 5.0 One lease at a time (binding — `AGENTS.md` §9)
 
 The handset is the maintainer's Samsung Galaxy Z Flip4, `adb` serial **R5CW116Y6GF**, attached to this
@@ -940,6 +964,21 @@ adb shell ping -c1 www.wikipedia.org   # → "unknown host" (NXDOMAIN in pause m
 `ping` through the shell uses the system resolver and so goes through the tunnel like any app; it is
 the quickest proof. What a DNS sinkhole cannot do (Private DNS set to a host, an in-app DoH resolver,
 IP literals) is listed in ADR-0015 and must not be reported as a bug.
+
+For the child-wide Pause and Resume controls, read `GET /v1/controls/children/:id/status` after
+each request. The existing `paused` field reports the requested setting. Its optional
+`internetRequest` contains the request ID, generation, action, localizable timestamp and exact
+command receipt for each device. A pending command reports `expired` at its deadline. A delivered
+command reports `unconfirmed` at that deadline if it received no acknowledgement. Verify that a
+newer request gets a new ID and that missing or newly paired devices show unknown. Check the actual
+allowed app and site separately after Resume.
+
+For the first staging rollout, drain the legacy API tasks before serving traffic from this version.
+The legacy API writes the Redis requested state, while this version prefers the durable operation
+when it exists. Before a rollback, reconcile Redis for children with durable operations and keep
+other children's legacy state. Before rolling forward again, retire the pre-rollback snapshots for
+those children and preserve the command history so the latest legacy action remains visible until
+the next durable request. Confirm the cutover and rollback steps on staging before wider rollout.
 
 ## 5d. Guided onboarding on hardware (plan 1.6)
 

@@ -3235,6 +3235,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String alertDetailSent(String when) {
+    return 'Sent $when';
+  }
+
+  @override
   String alertDeviceRestartedBodyMinutes(
       String device, String when, int minutes) {
     String _temp0 = intl.Intl.pluralLogic(

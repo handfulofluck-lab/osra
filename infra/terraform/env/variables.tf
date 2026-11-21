@@ -407,3 +407,46 @@ variable "backup_copy_vault_arn" {
     error_message = "backup_copy_vault_arn must be a backup vault ARN in an EU region."
   }
 }
+variable "staging_qa_analyzer" {
+  description = "Optional staging-only synthetic QA analyzer. Secret references are Stockholm ARNs with operator-provisioned values."
+  type = object({
+    image_digest        = string
+    frankfurt_vpc_cidr  = string
+    prompt_secret_arn   = string
+    approval_secret_arn = string
+    pairing_secret_arn  = string
+    armed               = optional(bool, false)
+  })
+  default  = null
+  nullable = true
+
+  validation {
+    condition = var.staging_qa_analyzer == null ? true : (
+      var.environment == "staging" &&
+      var.region == "eu-north-1" &&
+      var.assume_role_arn == "" &&
+      length(var.allowed_account_ids) == 1 &&
+      can(regex("^sha256:[a-f0-9]{64}$", var.staging_qa_analyzer.image_digest)) &&
+      can(cidrnetmask(var.staging_qa_analyzer.frankfurt_vpc_cidr))
+    )
+    error_message = "QA analyzer requires Stockholm staging, a pinned account and image digest, and an IPv4 CIDR for the Frankfurt endpoint VPC."
+  }
+
+  validation {
+    condition = var.staging_qa_analyzer == null ? true : (
+      length(toset([
+        var.staging_qa_analyzer.prompt_secret_arn,
+        var.staging_qa_analyzer.approval_secret_arn,
+        var.staging_qa_analyzer.pairing_secret_arn,
+      ])) == 3 &&
+      alltrue([
+        for arn in [
+          var.staging_qa_analyzer.prompt_secret_arn,
+          var.staging_qa_analyzer.approval_secret_arn,
+          var.staging_qa_analyzer.pairing_secret_arn,
+        ] : startswith(arn, "arn:aws:secretsmanager:eu-north-1:${try(tolist(var.allowed_account_ids)[0], "")}:secret:")
+      ])
+    )
+    error_message = "QA prompt, approval, and pairing must use separate full Secrets Manager references in the pinned Stockholm staging account."
+  }
+}
