@@ -38,6 +38,21 @@ expect archived_flake launch
 } > "$tmp/real_launch_timeout.log"
 expect real_launch_timeout launch
 
+# An XCTest failure that never says `XCTAssert` — "failed: caught error" — is still an assertion failure.
+# Treating only `XCTAssert` as evidence let this classify as `other`, and with a launch line present, as `launch`
+# and be retried (Antigravity, 19:33Z).
+{
+  echo "PinRulesSeededTests.swift:51: error: -[OSRAAgentUITests.PinRulesSeededTests testX] : failed: caught error: UI testing failure - no matches found"
+} > "$tmp/non_xctassert_failure.log"
+expect non_xctassert_failure assertion
+
+# The same non-launch XCTest failure alongside launch noise: two kinds of evidence, so ambiguous and never retried.
+{
+  echo "PinRulesSeededTests.swift:51: error: -[OSRAAgentUITests.PinRulesSeededTests testX] : failed: caught error: UI testing failure - no matches found"
+  echo "Failed to launch"
+} > "$tmp/non_xctassert_plus_launch.log"
+expect non_xctassert_plus_launch ambiguous
+
 # A real assertion failure, with unrelated Launch Services noise alongside it (Codex 7060451632).
 {
   echo "t = 1.2s Unable to bootstrap the Launch Services database: 0x2d"

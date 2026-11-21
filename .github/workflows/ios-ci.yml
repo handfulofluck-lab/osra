@@ -286,12 +286,19 @@ jobs:
           if [ "$second" -ne 0 ]; then
             # Classify the SECOND log too: a retry that dies on an assertion is not "launch failed twice".
             second_verdict="$(bash scripts/classify-launch-failure.sh "$RESULTS/launch-2.log")"
-            if [ "$second_verdict" = "assertion" ]; then
-              echo "::error::the retry failed on its own assertions after a launch failure. Red, and the summary will say assertion, not launch."
-              status fail-assertion-on-retry
-            else
-              status fail-launch-twice
-            fi
+            case "$second_verdict" in
+              assertion)
+                echo "::error::the retry failed on its own assertions after a launch failure. Red, and the summary will say assertion, not launch."
+                status fail-assertion-on-retry ;;
+              ambiguous)
+                echo "::error::the retry shows both an assertion and a launch failure. Red, and the summary will say so rather than blaming the simulator."
+                status fail-ambiguous-on-retry ;;
+              launch)
+                status fail-launch-twice ;;
+              *)
+                echo "::error::the retry failed for a reason that is neither an assertion nor a launch failure. Red."
+                status fail-other-on-retry ;;
+            esac
             exit "$second"
           fi
           status fail-launch-then-pass
@@ -316,6 +323,8 @@ jobs:
             fail-assertion) text="**Failed on its own assertions** and was not retried. Red, as it should be." ;;
             fail-ambiguous) text="**Both an assertion and a launch failure** in the first log; kept red on the first result rather than guessing." ;;
             fail-assertion-on-retry) text="Retried once after a launch failure, then **failed on its own assertions**. Both bundles kept." ;;
+            fail-ambiguous-on-retry) text="Retried once after a launch failure, then showed **both an assertion and a launch failure**. Red, and not attributed to the simulator." ;;
+            fail-other-on-retry) text="Retried once after a launch failure, then failed for **neither an assertion nor a launch reason**. Red." ;;
             fail-other) text="**Failed for neither an assertion nor a launch reason** and was not retried. Read \`launch-1.log\`." ;;
             *) text="Did not run (no outcome recorded)." ;;
           esac

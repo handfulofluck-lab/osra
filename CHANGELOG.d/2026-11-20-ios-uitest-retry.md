@@ -30,3 +30,11 @@
   new trigger, no simulator.
 - **Both kinds of evidence stay red.** A log carrying an assertion and a launch failure is `ambiguous`, not a guess,
   and the retry's second log is classified as well, so "failed twice while launching" is only said when it is true.
+- **Assertion evidence is wider than `XCTAssert` (Antigravity, 19:33Z).** XCTest prints failures that never say
+  `XCTAssert` — "failed: caught error", an expectation, a UI-testing failure — and treating only `XCTAssert` as
+  evidence let one of those classify as `launch` and be retried. Any `error: -[` line that does not match a launch
+  pattern is now assertion evidence too; the launch pattern is filtered out first, so a genuine launch timeout —
+  which XCTest also formats as `error: -[` — stays a launch failure. Two fixtures cover it.
+- **The retry's own verdict has four outcomes, not two.** `ambiguous` and `other` second failures were mislabelled
+  `fail-launch-twice` and blamed on the simulator; they now record `fail-ambiguous-on-retry` and
+  `fail-other-on-retry`, and the summary prints which.
