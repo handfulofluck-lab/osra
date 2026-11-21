@@ -103,6 +103,11 @@
          title is already Arabic. -->
     <string name="title_brand_suffix">%1$s · أسرة</string>
 
+    <!-- U44 (#952): branded Compose welcome screen before setup steps. -->
+    <string name="setup_welcome_title">Let\'s set up this phone</string>
+    <string name="setup_welcome_body">A few steps so your parent can help keep this phone safe.</string>
+    <string name="setup_welcome_start">Start</string>
+
     <!-- PairingActivity: "protect this device", setup complete, the checklist and the status screen. -->
     <string name="setup_protect_title">Protect this device · أسرة</string>
     <string name="setup_protect_body">On the next screen, tap \"Activate\" to give OSRA device-admin rights. With it, this app cannot be uninstalled without the parent PIN and your parent can lock the device remotely. Without it, protection is alert-only.</string>

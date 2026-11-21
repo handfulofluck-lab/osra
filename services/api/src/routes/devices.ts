@@ -780,6 +780,29 @@ export async function deviceRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const row = await ackDeviceCommand(id, commandId, parsed.data.status, parsed.data.detail);
     if (!row) return reply.code(404).send({ error: "no_delivered_command" });
+    // #935: push `command_acked` on the family channel so the parent app refreshes command delivery
+    // within seconds instead of staying on "pending". Never carry `row.payload` (may hold a witness
+    // code before clearing) or free-text `detail`.
+    const device = (req as unknown as {
+      device?: { childId?: string; child?: { familyId?: string } };
+    }).device;
+    const familyId = device?.child?.familyId ?? (user as { familyId?: string }).familyId;
+    if (familyId) {
+      // Best-effort after the durable DB write (#968 review): the shared Redis client has no command
+      // timeout, so awaiting publish could stall the device's HTTP 200 ack even though the ack is saved.
+      void publishFamilyEvent(familyId, {
+        type: "command_acked",
+        payload: {
+          deviceId: id,
+          commandId: row.id,
+          type: row.type,
+          status: row.status,
+          ...(device?.childId ? { childId: device.childId } : {}),
+        },
+      }).catch((err) => {
+        req.log.warn({ err, familyId, deviceId: id, commandId: row.id }, "command_acked publish failed");
+      });
+    }
     return { command: row };
   });
 

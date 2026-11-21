@@ -1216,6 +1216,14 @@ class AppLocalizationsAr extends AppLocalizations {
       'تظهر القائمة بعد تسجيل جهاز الطفل في المرة التالية (خلال 15 دقيقة كحد أقصى).';
 
   @override
+  String get appPickerIosEmptyTitle => 'لم تُختر أي تطبيقات بعد';
+
+  @override
+  String appPickerIosEmptyBody(Object child) {
+    return 'افتح تطبيق أسرة للأطفال على آيفون $child واختر التطبيقات التي تريد إدارتها، وستظهر هنا.';
+  }
+
+  @override
   String get installedAppsNoMatch => 'لا توجد تطبيقات تطابق بحثك.';
 
   @override
@@ -1723,6 +1731,10 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get saveFailed =>
       'تعذّر حفظ التغييرات. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
+
+  @override
+  String get saveFailedServer =>
+      'تعذّر حفظ التغييرات. ما زالت تغييراتك هنا، فحاول مرة أخرى.';
 
   @override
   String get saveMonitoring => 'حفظ المراقبة';
@@ -2594,11 +2606,14 @@ class AppLocalizationsAr extends AppLocalizations {
   String get digestPrefsEmailsLabel => 'عناوين البريد الإلكتروني';
 
   @override
-  String get digestPrefsEmailsHelper => 'لتلقي الملخّص (افصل بينها بفواصل)';
+  String get digestPrefsEmailsHelper => 'يُرسَل الملخّص إلى هذه العناوين.';
+
+  @override
+  String get digestPrefsAddEmail => 'إضافة عنوان بريد إلكتروني';
 
   @override
   String get digestPrefsConfirmationSent =>
-      'تم إرسال رابط التأكيد — لن يستلم هذا العنوان أي ملخّص قبل التأكيد';
+      'أرسلنا رابط التأكيد. لن يصل الملخّص إلى هذا العنوان قبل تأكيده.';
 
   @override
   String get digestPrefsNotSent => 'لم يُرسَل. احفظ مرة أخرى للمحاولة.';
@@ -3293,12 +3308,22 @@ class AppLocalizationsAr extends AppLocalizations {
   String get appGroupsTitle => 'مجموعات التطبيقات على آيفون الطفل';
 
   @override
-  String get appGroupsBody =>
-      'تُنشأ المجموعات على آيفون الطفل باستخدام رمز PIN للوالدين. عند حظر مجموعة من هنا، تُحجب تطبيقاتها على آيفون الطفل.';
+  String get appsTabAndroidHeading => 'تطبيقات أندرويد';
+
+  @override
+  String get appsTabIphoneHeading => 'تطبيقات آيفون';
+
+  @override
+  String get appGroupsEditorNote =>
+      'تُدار تطبيقات آيفون من تبويب «التطبيقات». تنطبق القواعد في هذه الشاشة على تطبيقات أندرويد فقط.';
+
+  @override
+  String get appGroupsBlockOnlyAdds =>
+      'إيقاف هذا المفتاح لا يرفع الحظر عن تطبيقات حُظرت من جهاز آيفون نفسه.';
 
   @override
   String appGroupsCounts(Object apps, Object categories, Object sites) {
-    return 'التطبيقات: $apps · الفئات: $categories · المواقع: $sites';
+    return 'التطبيقات: $apps · الفئات: $categories · المواقع: $sites';
   }
 
   @override
@@ -3412,6 +3437,11 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String alertOnDateAtTime(String date, String time) {
     return 'يوم $date الساعة $time';
+  }
+
+  @override
+  String alertDetailSent(String when) {
+    return 'أُرسل $when';
   }
 
   @override

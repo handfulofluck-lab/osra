@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
@@ -19,17 +20,36 @@ void main() {
 
   setUp(() => FlutterSecureStorage.setMockInitialValues({}));
 
-  Future<FakeApiClient> pumpWith(WidgetTester tester, {required int daily, required int weekend}) async {
+  Future<FakeApiClient> pumpWith(
+    WidgetTester tester, {
+    required int daily,
+    required int weekend,
+    bool legacyOverlap = false,
+  }) async {
     final payload = ruleSetPayload('child-1');
     payload['screenTime'] = {
       ...Map<String, dynamic>.from(payload['screenTime'] as Map),
       'dailyLimitMinutes': daily,
       'weekendLimitMinutes': weekend,
+      if (legacyOverlap) ...{
+        'bedtimeStart': '14:00',
+        'bedtimeEnd': '07:00',
+        'schoolHours': {
+          'start': '08:00',
+          'end': '15:00',
+          'days': [1, 2, 3, 4, 5],
+        },
+      },
     };
     final api = FakeApiClient({
       ...standardRoutes(),
       'GET /v1/rules/child-1': (_) => payload,
-      'PUT /v1/rules/child-1': (_) => {'ok': true},
+      if (legacyOverlap)
+        'PUT /v1/rules/child-1': (_) =>
+            const FakeHttpError(400, {'error': 'schedule_overlap'}),
+      'PATCH /v1/rules/child-1': (req) => req.body.containsKey('screenTime')
+          ? const FakeHttpError(400, {'error': 'schedule_overlap'})
+          : {'ok': true},
     });
     await tester.pumpWidget(ProviderScope(
       overrides: [apiClientProvider.overrideWithValue(api)],
@@ -37,11 +57,6 @@ void main() {
     ));
     await tester.pumpAndSettle();
     return api;
-  }
-
-  Map<String, dynamic> savedScreenTime(FakeApiClient api) {
-    final put = api.requests.lastWhere((r) => r.method == 'PUT' && r.path == '/v1/rules/child-1');
-    return Map<String, dynamic>.from((put.data as Map)['screenTime'] as Map);
   }
 
   for (final (daily, weekend) in [(1440, 1440), (0, 0), (5, 900)]) {
@@ -59,11 +74,54 @@ void main() {
 
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
-      final saved = savedScreenTime(api);
-      expect(saved['dailyLimitMinutes'], daily, reason: 'saving another rule must not rewrite the limit');
-      expect(saved['weekendLimitMinutes'], weekend);
+      final patch = api.calls('PATCH', '/v1/rules/child-1').single.body;
+      expect(patch.containsKey('screenTime'), isFalse);
     });
   }
+
+  testWidgets('app edit saves without resubmitting a saved overlapping schedule', (tester) async {
+    final api = await pumpWith(tester, daily: 120, weekend: 180, legacyOverlap: true);
+    await tester.tap(find.text('Apps'));
+    await tester.pumpAndSettle();
+
+    final block = find.text('Block');
+    final appList = find.descendant(
+      of: find.byKey(const ValueKey('appsRulesList')),
+      matching: find.byWidgetPredicate((widget) => widget is Scrollable && widget.axis == Axis.vertical),
+    );
+    await tester.scrollUntilVisible(block, 150, scrollable: appList);
+    await tester.tap(block);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(api.calls('PUT', '/v1/rules/child-1'), isEmpty);
+    final patch = api.calls('PATCH', '/v1/rules/child-1').single.body;
+    expect(patch.keys, ['appRules']);
+    expect((patch['appRules'] as List).single['action'], 'block');
+    expect(find.text('Rules saved'), findsOneWidget);
+  });
+
+  test('an explicitly disabled school window retains its empty days', () {
+    final screenTime = ScreenTimeRule.fromJson({
+      'schoolHours': {'start': '08:00', 'end': '15:00', 'days': <int>[]},
+    });
+    expect(screenTime.schoolDays, isEmpty);
+    expect((screenTime.toJson()['schoolHours'] as Map)['days'], isEmpty);
+    expect(ScreenTimeRule.fromJson({}).schoolDays, [1, 2, 3, 4, 5]);
+  });
+
+  test('a changed school window remains intact in the patch', () {
+    const beginning = RuleSet();
+    final edited = beginning.copyWith(
+      screenTime: const ScreenTimeRule(schoolStart: '09:00', schoolDays: [1, 3]),
+    );
+    expect(edited.changesFrom(beginning), {
+      'screenTime': {
+        'schoolHours': {'start': '09:00', 'end': '15:00', 'days': [1, 3]},
+      },
+    });
+  });
 
   test('limitSliderPosition clamps only out-of-range values', () {
     expect(limitSliderPosition(1440), kLimitSliderMax);
