@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../api/models.dart';
 import '../../l10n/l10n.dart';
+import '../../providers/clock_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../map/family_map_screen.dart';
 
@@ -39,7 +42,7 @@ double _distanceMeters(
   final timestamp = fix.timestamp;
   if (timestamp == null || !_validPosition(fix.lat, fix.lng)) return null;
   final age = now.difference(timestamp);
-  if (age.isNegative || age > _placeLabelMaxAge) return null;
+  if (age.isNegative || age >= _placeLabelMaxAge) return null;
   if (!fix.accuracyM.isFinite || fix.accuracyM <= 0) return null;
 
   ({String name, bool at})? best;
@@ -66,7 +69,7 @@ double _distanceMeters(
   return best;
 }
 
-class ChildLocationRow extends StatelessWidget {
+class ChildLocationRow extends ConsumerStatefulWidget {
   const ChildLocationRow({
     super.key,
     required this.child,
@@ -80,8 +83,35 @@ class ChildLocationRow extends StatelessWidget {
   final List<Geofence> places;
   final bool refused;
 
+  @override
+  ConsumerState<ChildLocationRow> createState() => _ChildLocationRowState();
+}
+
+class _ChildLocationRowState extends ConsumerState<ChildLocationRow> {
+  Timer? _expiryTimer;
+  DateTime? _scheduledExpiry;
+
+  void _scheduleExpiry(DateTime? expiry, DateTime now) {
+    if (expiry == _scheduledExpiry) return;
+    _expiryTimer?.cancel();
+    _scheduledExpiry = expiry;
+    _expiryTimer = expiry == null
+        ? null
+        : Timer(expiry.difference(now), () {
+            _scheduledExpiry = null;
+            setState(() {});
+          });
+  }
+
+  @override
+  void dispose() {
+    _expiryTimer?.cancel();
+    super.dispose();
+  }
+
   Future<void> _openMap(BuildContext context, LocationPing location) async {
     final platform = Theme.of(context).platform;
+    final childName = widget.child.displayName;
     if (!mapIsAvailable(platform)) {
       final uri = platformMapPinUri(
         platform,
@@ -99,7 +129,7 @@ class ChildLocationRow extends StatelessWidget {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => FamilyMapScreen(
-            focus: MapFocus.fromPing(location, label: child.displayName)),
+            focus: MapFocus.fromPing(location, label: childName)),
       ),
     );
   }
@@ -107,14 +137,19 @@ class ChildLocationRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final latest = fix;
+    final latest = widget.fix;
+    final refused = widget.refused;
+    final now = ref.watch(clockProvider)();
     final location =
         !refused && latest != null && _validPosition(latest.lat, latest.lng)
             ? latest
             : null;
     final place = location == null
         ? null
-        : savedPlaceForFix(location, places, DateTime.now());
+        : savedPlaceForFix(location, widget.places, now);
+    _scheduleExpiry(
+        place == null ? null : location?.timestamp?.add(_placeLabelMaxAge),
+        now);
     final label = switch (place) {
       (name: final name, at: true) => l10n.childLocationAtPlace(name),
       (name: final name, at: false) => l10n.childLocationNearPlace(name),
@@ -153,7 +188,7 @@ class ChildLocationRow extends StatelessWidget {
     return Semantics(
       button: true,
       child: InkWell(
-        key: ValueKey('child-location-map-${child.id}'),
+        key: ValueKey('child-location-map-${widget.child.id}'),
         onTap: () => _openMap(context, location),
         child: ConstrainedBox(
           constraints:

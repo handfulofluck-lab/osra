@@ -2,6 +2,7 @@ import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/features/dashboard/child_location_row.dart';
 import 'package:familyshield_parent/features/map/family_map_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
+import 'package:familyshield_parent/providers/clock_provider.dart';
 import 'package:familyshield_parent/providers/family_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -76,6 +77,7 @@ void main() {
     await tester.pumpWidget(ProviderScope(
       overrides: [
         apiClientProvider.overrideWithValue(FakeApiClient(standardRoutes())),
+        clockProvider.overrideWithValue(tester.binding.clock.now),
         familyProvider.overrideWith((_) async =>
             throw StateError('Map data omitted from this fixture')),
       ],
@@ -94,7 +96,8 @@ void main() {
 
   testWidgets('saved place action preserves the exact fix on the family map',
       (tester) async {
-    final recent = _fix(DateTime.now().subtract(const Duration(minutes: 1)),
+    final recent = _fix(
+        tester.binding.clock.now().subtract(const Duration(minutes: 1)),
         latitude: 34.000012345);
     await pumpRow(tester, fix: recent);
 
@@ -109,10 +112,31 @@ void main() {
     expect(map.focus?.isAlert, isFalse);
   });
 
+  testWidgets('saved place label expires on screen and a new fix resets it',
+      (tester) async {
+    final clock = tester.binding.clock;
+    await pumpRow(tester,
+        fix: _fix(clock.now().subtract(const Duration(minutes: 14))));
+    expect(find.text('At Home'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 30));
+    await pumpRow(tester,
+        fix: _fix(clock.now().subtract(const Duration(minutes: 13))));
+    expect(find.text('At Home'), findsOneWidget);
+
+    await tester.pump(const Duration(minutes: 1));
+    expect(find.text('At Home'), findsOneWidget);
+    await tester.pump(const Duration(minutes: 1));
+    expect(find.text('At Home'), findsNothing);
+    expect(find.text('Show on map'), findsOneWidget);
+    expect(find.byKey(const ValueKey('child-location-map-child-1')),
+        findsOneWidget);
+  });
+
   testWidgets(
       'a permission refusal removes the tap even if an old fix was cached',
       (tester) async {
-    await pumpRow(tester, fix: _fix(DateTime.now()), refused: true);
+    await pumpRow(tester, fix: _fix(tester.binding.clock.now()), refused: true);
     expect(
         find.byKey(const ValueKey('child-location-map-child-1')), findsNothing);
     expect(find.textContaining('Home'), findsNothing);
