@@ -136,7 +136,7 @@ void main() {
   testWidgets('Arabic renders the heading, the counts and the adds-only line', (tester) async {
     await pump(tester, iphone(groups: twoGroups), locale: const Locale('ar'));
     expect(find.text('مجموعات التطبيقات على آيفون الطفل'), findsOneWidget);
-    expect(find.text('التطبيقات: 3 · الفئات: 1 · المواقع: 0'), findsOneWidget);
+    expect(find.text('التطبيقات: 3 · الفئات: 1 · المواقع: 0'), findsOneWidget);
     // The Arabic Language Bureau's line (7038515313), used as written.
     expect(find.text('إيقاف هذا المفتاح لا يرفع الحظر عن تطبيقات حُظرت من جهاز آيفون نفسه.'), findsOneWidget);
   });

@@ -3316,7 +3316,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String appGroupsCounts(Object apps, Object categories, Object sites) {
-    return 'التطبيقات: $apps · الفئات: $categories · المواقع: $sites';
+    return 'التطبيقات: $apps · الفئات: $categories · المواقع: $sites';
   }
 
   @override

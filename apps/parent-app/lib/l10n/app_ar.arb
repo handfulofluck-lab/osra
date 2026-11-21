@@ -1057,7 +1057,7 @@
   "appsTabIphoneHeading": "تطبيقات آيفون",
   "appGroupsEditorNote": "تُدار تطبيقات آيفون من تبويب «التطبيقات». تنطبق القواعد في هذه الشاشة على تطبيقات أندرويد فقط.",
   "appGroupsBlockOnlyAdds": "إيقاف هذا المفتاح لا يرفع الحظر عن تطبيقات حُظرت من جهاز آيفون نفسه.",
-  "appGroupsCounts": "التطبيقات: {apps} · الفئات: {categories} · المواقع: {sites}",
+  "appGroupsCounts": "التطبيقات: {apps} · الفئات: {categories} · المواقع: {sites}",
   "appGroupsBlock": "حظر",
   "appGroupsSaveFailed": "تعذّر حفظ التغيير. حاول مرة أخرى.",
   "setupMonitoringTitle": "أي التطبيقات تريد أن يراقبها تطبيق أسرة؟",
