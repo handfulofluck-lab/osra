@@ -28,8 +28,10 @@ enum InternetState {
 
 /// Which of [InternetState] describes [requested] given one row per device ([newestPerDevice]).
 ///
-/// **What the caller must pass** (Codex, `7056040915`): the rows belonging to the **latest Pause or Resume
-/// request**, identified by the command ids the aggregate returns. A device's *newest* row is only a stopgap —
+/// **What the caller must pass** (Codex, `7056040915`): one entry **per device**, holding the row belonging to the
+/// **latest Pause or Resume request** — identified by the command ids the aggregate returns — or `null` when that
+/// device has no row for it. `null` entries must be kept: dropping them shortens the list, and a child with two
+/// phones where one never answered would read as `confirmed`. A device's *newest* row is only a stopgap —
 /// `newestInternetCommand` below — and it is the weaker reading: on a cold device its newest internet row can
 /// belong to an older request, which is why the aggregate ties its answer to command ids rather than to time.
 ///
@@ -38,7 +40,7 @@ enum InternetState {
 /// child with no devices, or a phone that has not reported, must not read as success.
 InternetState internetStateFor({
   required bool requested,
-  required List<DeviceCommand> newestPerDevice,
+  required List<DeviceCommand?> newestPerDevice,
 }) {
   if (!requested) return InternetState.inactive;
   if (newestPerDevice.isEmpty) return InternetState.waiting;
@@ -49,6 +51,7 @@ InternetState internetStateFor({
   var acked = 0;
   var settledWithoutAck = 0;
   for (final command in newestPerDevice) {
+    if (command == null) continue;   // a device with no row for this request is unknown, not confirmed
     if (command.type != expected) continue;
     if (command.status == 'acked') {
       acked++;
@@ -71,8 +74,8 @@ InternetState internetStateFor({
 /// screen usable until that lands, and nothing should be built on top of it that assumes request identity.
 ///
 /// Returns null when that device has neither, so the caller can tell "this device has no row yet" from "its
-/// newest row says pending" — the first is unknown, the second is waiting, and only the second belongs in the
-/// list [internetStateFor] reads.
+/// newest row says pending". The first is unknown and still belongs in the list [internetStateFor] reads, **as a
+/// null entry** — omitting it would let the remaining devices round the answer up.
 DeviceCommand? newestInternetCommand(List<DeviceCommand> history) {
   DeviceCommand? newest;
   for (final command in history) {

@@ -68,6 +68,21 @@ void main() {
       );
     });
 
+    // Antigravity's F2 (7056262604): a device with no row for the request is UNKNOWN, and must stay in the list
+    // as a null entry. Dropping it shortens the list and lets the remaining devices round the answer up.
+    test('a device with no row for the request keeps it partial, not confirmed', () {
+      expect(
+        internetStateFor(requested: true, newestPerDevice: [row('acked'), null]),
+        InternetState.partial,
+        reason: 'one phone answered, one never received the request: that is not success',
+      );
+    });
+
+    test('a null entry alone is waiting, never confirmed', () {
+      expect(internetStateFor(requested: true, newestPerDevice: [null]),
+          InternetState.waiting);
+    });
+
     test('no devices at all is waiting, never confirmed', () {
       expect(internetStateFor(requested: true, newestPerDevice: const []), InternetState.waiting);
     });
