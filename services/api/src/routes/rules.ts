@@ -204,19 +204,19 @@ export async function rulesRoutes(app: FastifyInstance) {
     const overlap = overlapError(parsed.data);
     if (overlap) return reply.code(400).send(overlap);
     const { childId } = req.params as { childId: string };
-    const existing = await prisma.ruleSet.findUnique({ where: { childId }, select: { searchMonitoring: true } });
-    // Issue #475: the bump is part of the write statement, so a saved ruleset and its version cannot
-    // disagree even if two parents write at once.
+    // Issue #475 & osra-security#59: keep both version/revision bumps atomic inside the upsert write
+    // rather than comparing against a prior findUnique read (omitted searchMonitoring preserves both).
     const row = await prisma.ruleSet.upsert({
       where: { childId },
       create: {
         ...toRow(parsed.data, childId),
+        searchMonitoring: parsed.data.searchMonitoring === true,
         searchMonitoringRevision: parsed.data.searchMonitoring === true ? 1 : 0,
       },
       update: {
         ...toRow(parsed.data, childId),
         rulesVersion: { increment: 1 },
-        ...(parsed.data.searchMonitoring !== undefined && parsed.data.searchMonitoring !== (existing?.searchMonitoring ?? false)
+        ...(parsed.data.searchMonitoring !== undefined
           ? { searchMonitoringRevision: { increment: 1 } }
           : {}),
       },

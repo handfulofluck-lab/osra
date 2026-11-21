@@ -782,6 +782,37 @@ describe("parent rule-write fan-out with no enforceable plan", () => {
       expect(explicitCall.update.searchMonitoringRevision).toEqual({ increment: 1 });
       expect(explicitCall.create.searchMonitoring).toBe(true);
       expect(explicitCall.create.searchMonitoringRevision).toBe(1);
+
+      // PUT with omitted searchMonitoring preserves both columns in update and defaults false/0 on create;
+      // PUT with explicit searchMonitoring atomically increments searchMonitoringRevision without reading existing.
+      prismaMock.ruleSet.findUnique.mockClear();
+      const putOmitted = await app.inject({
+        method: "PUT",
+        url: `/v1/rules/${CHILD_ID}`,
+        headers: authHeader(app),
+        payload: validRuleSet,
+      });
+      expect(putOmitted.statusCode).toBe(200);
+      expect(prismaMock.ruleSet.findUnique).not.toHaveBeenCalled();
+      const putOmittedCall = prismaMock.ruleSet.upsert.mock.calls.at(-1)![0];
+      expect("searchMonitoring" in putOmittedCall.update).toBe(false);
+      expect("searchMonitoringRevision" in putOmittedCall.update).toBe(false);
+      expect(putOmittedCall.create.searchMonitoring).toBe(false);
+      expect(putOmittedCall.create.searchMonitoringRevision).toBe(0);
+
+      const putExplicit = await app.inject({
+        method: "PUT",
+        url: `/v1/rules/${CHILD_ID}`,
+        headers: authHeader(app),
+        payload: { ...validRuleSet, searchMonitoring: true },
+      });
+      expect(putExplicit.statusCode).toBe(200);
+      expect(prismaMock.ruleSet.findUnique).not.toHaveBeenCalled();
+      const putExplicitCall = prismaMock.ruleSet.upsert.mock.calls.at(-1)![0];
+      expect(putExplicitCall.update.searchMonitoring).toBe(true);
+      expect(putExplicitCall.update.searchMonitoringRevision).toEqual({ increment: 1 });
+      expect(putExplicitCall.create.searchMonitoring).toBe(true);
+      expect(putExplicitCall.create.searchMonitoringRevision).toBe(1);
     } finally {
       await app.close();
     }
