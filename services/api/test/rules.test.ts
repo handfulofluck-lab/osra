@@ -718,4 +718,103 @@ describe("parent rule-write fan-out with no enforceable plan", () => {
       await app.close();
     }
   });
+
+  it("osra-security#54: PATCH omits searchMonitoring from update when absent and preserves safe default on create", async () => {
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    try {
+      prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
+      // Earlier read observed true before a concurrent opt-out updated the DB.
+      prismaMock.ruleSet.findUnique.mockResolvedValue({
+        id: "rs-1",
+        childId: CHILD_ID,
+        dailyLimitMinutes: 120,
+        weekendLimitMinutes: 180,
+        bedtimeStart: "21:00",
+        bedtimeEnd: "07:00",
+        schoolHoursStart: "08:00",
+        schoolHoursEnd: "15:00",
+        schoolDays: [1, 2, 3, 4, 5],
+        blockedCategories: [],
+        allowedDomains: [],
+        blockedDomains: [],
+        safeSearchEnforced: true,
+        youtubeRestrictedMode: "strict",
+        appRules: [],
+        routines: [],
+        appGroupRules: [],
+        alwaysAllowedApps: [],
+        socialMonitoring: {},
+        searchMonitoring: true,
+        contactAllowlist: [],
+        rulesVersion: 1,
+      });
+      prismaMock.ruleSet.upsert.mockResolvedValue({
+        id: "rs-1",
+        childId: CHILD_ID,
+        socialMonitoring: { whatsapp: false },
+        searchMonitoring: false,
+        rulesVersion: 2,
+      });
+      prismaMock.device.findMany.mockResolvedValue([]);
+
+      const omittedRes = await app.inject({
+        method: "PATCH",
+        url: `/v1/rules/${CHILD_ID}`,
+        headers: authHeader(app),
+        payload: { socialMonitoring: { whatsapp: false } },
+      });
+      expect(omittedRes.statusCode).toBe(200);
+      const omittedCall = prismaMock.ruleSet.upsert.mock.calls.at(-1)![0];
+      expect("searchMonitoring" in omittedCall.update).toBe(false);
+      expect("searchMonitoringRevision" in omittedCall.update).toBe(false);
+      expect(omittedCall.create.searchMonitoring).toBe(false);
+      expect(omittedCall.create.searchMonitoringRevision).toBe(0);
+
+      const explicitRes = await app.inject({
+        method: "PATCH",
+        url: `/v1/rules/${CHILD_ID}`,
+        headers: authHeader(app),
+        payload: { searchMonitoring: true },
+      });
+      expect(explicitRes.statusCode).toBe(200);
+      const explicitCall = prismaMock.ruleSet.upsert.mock.calls.at(-1)![0];
+      expect(explicitCall.update.searchMonitoring).toBe(true);
+      expect(explicitCall.update.searchMonitoringRevision).toEqual({ increment: 1 });
+      expect(explicitCall.create.searchMonitoring).toBe(true);
+      expect(explicitCall.create.searchMonitoringRevision).toBe(1);
+
+      // PUT with omitted searchMonitoring preserves both columns in update and defaults false/0 on create;
+      // PUT with explicit searchMonitoring atomically increments searchMonitoringRevision without reading existing.
+      prismaMock.ruleSet.findUnique.mockClear();
+      const putOmitted = await app.inject({
+        method: "PUT",
+        url: `/v1/rules/${CHILD_ID}`,
+        headers: authHeader(app),
+        payload: validRuleSet,
+      });
+      expect(putOmitted.statusCode).toBe(200);
+      expect(prismaMock.ruleSet.findUnique).not.toHaveBeenCalled();
+      const putOmittedCall = prismaMock.ruleSet.upsert.mock.calls.at(-1)![0];
+      expect("searchMonitoring" in putOmittedCall.update).toBe(false);
+      expect("searchMonitoringRevision" in putOmittedCall.update).toBe(false);
+      expect(putOmittedCall.create.searchMonitoring).toBe(false);
+      expect(putOmittedCall.create.searchMonitoringRevision).toBe(0);
+
+      const putExplicit = await app.inject({
+        method: "PUT",
+        url: `/v1/rules/${CHILD_ID}`,
+        headers: authHeader(app),
+        payload: { ...validRuleSet, searchMonitoring: true },
+      });
+      expect(putExplicit.statusCode).toBe(200);
+      expect(prismaMock.ruleSet.findUnique).not.toHaveBeenCalled();
+      const putExplicitCall = prismaMock.ruleSet.upsert.mock.calls.at(-1)![0];
+      expect(putExplicitCall.update.searchMonitoring).toBe(true);
+      expect(putExplicitCall.update.searchMonitoringRevision).toEqual({ increment: 1 });
+      expect(putExplicitCall.create.searchMonitoring).toBe(true);
+      expect(putExplicitCall.create.searchMonitoringRevision).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
 });

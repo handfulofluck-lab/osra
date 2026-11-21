@@ -268,8 +268,10 @@ class FilterVpnService : VpnService() {
                 DnsFilterPolicy.Action.SINK -> {
                     if (config.pausedInternet) DnsMessage.buildNxDomain(query, q) else {
                         Log.i(TAG, "sink ${q.name} (${d.reason})")
-                        recordSiteVisit(q.name, blocked = true)
-                        reportBlockedSite(q.name, d.reason)
+                        if (d.reason != DnsFilterPolicy.REASON_DOH_BYPASS) {
+                            recordSiteVisit(q.name, blocked = true)
+                            reportBlockedSite(q.name, d.reason)
+                        }
                         DnsMessage.buildSink(query, q)
                     }
                 }

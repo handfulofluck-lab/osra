@@ -134,4 +134,20 @@ class DnsFilterPolicyTest {
         assertEquals(Action.FORWARD, DnsFilterPolicy.decide("", Config(pausedInternet = true)).action)
         assertEquals("example.com", DnsFilterPolicy.normalize(" *.Example.COM. "))
     }
+
+    @Test
+    fun `doh bypass and canary hosts sink when filtering is active so incognito uses vpn dns`() {
+        val active = Config(categoryDomains = mapOf("pornhub.com" to "pornography"))
+        for (host in listOf("use-application-dns.net", "dns.google", "cloudflare-dns.com", "dns.quad9.net")) {
+            val d = DnsFilterPolicy.decide(host, active)
+            assertEquals("$host must sink when filtering active", Action.SINK, d.action)
+            assertEquals(DnsFilterPolicy.REASON_DOH_BYPASS, d.reason)
+        }
+        // Inactive filter forwards normally; explicit allow overrides.
+        assertEquals(Action.FORWARD, DnsFilterPolicy.decide("dns.google", Config()).action)
+        assertEquals(
+            Action.FORWARD,
+            DnsFilterPolicy.decide("dns.google", active.copy(allowedDomains = listOf("dns.google"))).action,
+        )
+    }
 }

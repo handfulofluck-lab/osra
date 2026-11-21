@@ -60,6 +60,8 @@ class UsageReporter @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val uploadMutex = Mutex()
 
+    private val foregroundTracker = ForegroundSessionTracker()
+
     @Volatile private var lastPkg: String? = null
     @Volatile private var lastTs: Long = 0L
     @Volatile private var activeForegroundPkg: String? = null
@@ -72,10 +74,20 @@ class UsageReporter @Inject constructor(
         val prevTs = lastTs
         lastPkg = pkg
         lastTs = ts
-        activeForegroundPkg = pkg
+        // PR #958 review: System UI (keyguard, notification shade, AOD) must clear activeForegroundPkg
+        // immediately — even while consent is paused — so subsequent telemetry never attributes usage to System UI.
+        activeForegroundPkg = foregroundTracker.onForeground(pkg, ts, SYSTEM_UI_PACKAGE)
         // Issue #265: the foreground package is still tracked while paused -- the lock overlay's "what
         // is open now" and the live-activity payload read it, and that is not collection.
         if (consent.isPaused()) return
+        // System UI (keyguard, notification shade, AOD) is not a child app: close the previous app's
+        // gap instead of accruing hours of lockscreen time onto `com.android.systemui`.
+        if (pkg == SYSTEM_UI_PACKAGE) {
+            rules.onForegroundEnded(ts)
+            val own = context.packageName
+            scope.launch { db.usageEventDao().insert(UsageEventEntity(packageId = own, timestamp = ts)) }
+            return
+        }
         // `rules.onForegroundEvent` is NOT enforcement: `RuleRepository.decide` returns ALLOW while
         // consent is paused, so it only feeds the daily minute counter (`UsageCounters`, which saves to
         // settings). Calling it while paused credited the withdrawn window to the app that was open, and
@@ -111,6 +123,7 @@ class UsageReporter @Inject constructor(
      * accounting learns that the blocked app has stopped being used.
      */
     fun recordOwnWindow(ts: Long) {
+        foregroundTracker.onOwnWindow()
         activeForegroundPkg = null
         // Same gate as [recordForeground]: a withdrawn window is not collected, and the counters are
         // not advanced while paused (ADR-0008 §3, #266 review D1).
@@ -271,6 +284,7 @@ class UsageReporter @Inject constructor(
 
     /** Closes the active foreground interval at screen-off and flushes the completed session immediately (#830 row 5). */
     suspend fun onScreenOff(ts: Long) {
+        foregroundTracker.onScreenOff()
         activeForegroundPkg = null
         if (consent.isPaused()) return
         rules.onForegroundEnded(ts)
@@ -461,7 +475,7 @@ class UsageReporter @Inject constructor(
             // #284: our own package is skipped by name, not by that set. Android counts the block
             // screen as foreground time like any activity, and the parent's report is about the
             // child's apps — its total is still recorded below, so the running counter stays right.
-            if (pkg == context.packageName || pkg in eventPackages || perApp.containsKey(pkg)) continue
+            if (pkg == context.packageName || pkg == SYSTEM_UI_PACKAGE || pkg in eventPackages || perApp.containsKey(pkg)) continue
             val delta = UsageStatsDelta.deltaForUpload(total, lastSeen[pkg], rollover, hasSnapshot)
             if (delta > 0) perApp[pkg] = (perApp[pkg] ?: 0) + delta
         }
@@ -479,6 +493,8 @@ class UsageReporter @Inject constructor(
 
         /** Issue #265: the consent epoch last applied to this stream, separate from the comms ones. */
         private const val KEY_CONSENT_EPOCH = "telemetry_consent_epoch"
+
+        private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
 
         private const val TAG = "UsageReporter"
     }

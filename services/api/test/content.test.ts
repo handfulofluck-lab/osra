@@ -20,7 +20,8 @@ const CHILD = { id: "child-1", familyId: "fam-1", birthYear: 2012 };
 const sign = (raw: string) => createHmac("sha256", SECRET).update(raw).digest("hex");
 
 function postSearchEvent(app: Awaited<ReturnType<typeof buildApp>>, body: Record<string, unknown>, sig?: string) {
-  const raw = JSON.stringify(body);
+  const payloadBody = "searchMonitoringRevision" in body ? body : { searchMonitoringRevision: 1, ...body };
+  const raw = JSON.stringify(payloadBody);
   return app.inject({
     method: "POST",
     url: "/v1/content/search-event",
@@ -54,6 +55,7 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
     process.env.INTERNAL_HMAC_SECRET = SECRET;
     process.env.VAULT_KEY = Buffer.alloc(32, 7).toString("base64");
     prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ searchMonitoring: true, searchMonitoringRevision: 1 });
 
     app = await buildApp(async (instance) => {
       await instance.register(contentRoutes, { prefix: "/v1/content" });
@@ -136,11 +138,9 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
     );
   });
 
-  it("the search alert's params are exactly the engine, so the URL never reaches the rendered sentence (Fable n5)", async () => {
-    // The URL is in the alert's `metadata` for the vault and the history list, and must NOT be in
-    // `bodyParams`: those are what the app substitutes into the sentence it shows a parent and into the
-    // push. `toEqual` cannot tell `{ engine }` from `{ engine, url: undefined }`, so this row sends a URL
-    // that exists and compares with `toStrictEqual`.
+  it("the search alert's params are exactly the engine and unneeded URL is dropped (Fable n5, #45)", async () => {
+    // Even if an older caller sends `url`, the schema drops it so URL data never reaches metadata,
+    // persistence, or `bodyParams`.
     prismaMock.alert.create.mockResolvedValue({ id: "alert-p", childId: CHILD.id });
     prismaMock.socialEvent.create.mockResolvedValue({ id: "event-p" });
 
@@ -154,7 +154,53 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
 
     const data = prismaMock.alert.create.mock.calls[0][0].data as { metadata?: Record<string, unknown> };
     expect((data.metadata as { bodyParams: unknown }).bodyParams).toStrictEqual({ engine: "google" });
-    expect(JSON.stringify(data.metadata?.bodyParams)).not.toContain("http");
+    expect(data.metadata?.url).toBeUndefined();
+    expect(JSON.stringify(data.metadata)).not.toContain("http");
+  });
+
+  it("osra-security#45: rejects search-event when searchMonitoring rule is absent or disabled (403)", async () => {
+    prismaMock.ruleSet.findUnique.mockResolvedValueOnce(null);
+    const absent = await postSearchEvent(app, {
+      childId: CHILD.id,
+      engine: "google",
+      query: "how to kill myself",
+    });
+    expect(absent.statusCode).toBe(403);
+    expect(absent.json()).toEqual({ error: "search_monitoring_disabled" });
+
+    prismaMock.ruleSet.findUnique.mockResolvedValueOnce({ searchMonitoring: false, searchMonitoringRevision: 2 });
+    const disabled = await postSearchEvent(app, {
+      childId: CHILD.id,
+      engine: "google",
+      query: "how to kill myself",
+    });
+    expect(disabled.statusCode).toBe(403);
+    expect(disabled.json()).toEqual({ error: "search_monitoring_disabled" });
+
+    // osra-security#59: search captured under rev N (1) when server is now enabled at N+2 (3) after an offline
+    // opt-out/re-enable cycle must be refused (409) with zero vault or alert writes; omitted revision is refused too.
+    prismaMock.ruleSet.findUnique.mockResolvedValueOnce({ searchMonitoring: true, searchMonitoringRevision: 3 });
+    const staleRev = await postSearchEvent(app, {
+      childId: CHILD.id,
+      engine: "google",
+      query: "how to kill myself",
+      searchMonitoringRevision: 1,
+    });
+    expect(staleRev.statusCode).toBe(409);
+    expect(staleRev.json()).toEqual({ error: "stale_search_grant" });
+
+    prismaMock.ruleSet.findUnique.mockResolvedValueOnce({ searchMonitoring: true, searchMonitoringRevision: 3 });
+    const omittedRev = await postSearchEvent(app, {
+      childId: CHILD.id,
+      engine: "google",
+      query: "how to kill myself",
+      searchMonitoringRevision: undefined,
+    });
+    expect(omittedRev.statusCode).toBe(409);
+    expect(omittedRev.json()).toEqual({ error: "stale_search_grant" });
+
+    expect(prismaMock.socialEvent.create).not.toHaveBeenCalled();
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
   });
 
   it("analyzes YouTube watch event and flags dangerous title (201)", async () => {
@@ -292,6 +338,74 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
     expect(body.flagged).toBe(true);
     expect(body.severity).toBe("critical");
     expect(body.concernTypes).toContain("self_harm");
+  });
+
+  it("flags EN & AR sexual search queries even when AI engine returns safe (union, #939)", async () => {
+    process.env.AI_ENGINE_URL = "http://ai.local";
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ flagged: false, severity: "info", categories: { safe: 0.99 } }),
+    }) as unknown as typeof fetch;
+
+    for (const [idx, query] of ["porn videos", "sexual videos free", "افلام سكس"].entries()) {
+      prismaMock.alert.create.mockResolvedValue({ id: `alert-s-${idx}`, childId: CHILD.id });
+      prismaMock.socialEvent.create.mockResolvedValue({ id: `event-s-${idx}` });
+      const res = await postSearchEvent(app, {
+        childId: CHILD.id,
+        engine: "google",
+        query,
+      });
+      expect(res.statusCode).toBe(201);
+      const body = res.json();
+      expect(body.flagged).toBe(true);
+      expect(body.concernTypes).toContain("adult_content");
+    }
+
+    // Benign query when AI returns safe remains unflagged.
+    const benign = await postSearchEvent(app, {
+      childId: CHILD.id,
+      engine: "google",
+      query: "how to bake sourdough bread",
+    });
+    expect(benign.statusCode).toBe(200);
+    expect(benign.json().flagged).toBe(false);
+    delete process.env.AI_ENGINE_URL;
+  });
+
+  it("osra-security#55: derives self_harm alert category from full union and preserves it under concern bounds", async () => {
+    process.env.AI_ENGINE_URL = "http://ai.local";
+    try {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          flagged: true,
+          severity: "warning",
+          categories: { violence: 0.9, hate: 0.85, harassment: 0.8 },
+        }),
+      }) as unknown as typeof fetch;
+
+      prismaMock.alert.create.mockResolvedValue({ id: "alert-union-sh", childId: CHILD.id });
+      prismaMock.socialEvent.create.mockResolvedValue({ id: "event-union-sh" });
+
+      const res = await postSearchEvent(app, {
+        childId: CHILD.id,
+        engine: "google",
+        query: "how can I kill myself tonight",
+      });
+
+      expect(res.statusCode).toBe(201);
+      const body = res.json();
+      expect(body.severity).toBe("critical");
+      expect(body.concernTypes.length).toBeLessThanOrEqual(3);
+      expect(body.concernTypes).toContain("self_harm");
+
+      const alertData = prismaMock.alert.create.mock.calls.at(-1)![0].data;
+      expect(alertData.category).toBe("self_harm");
+      expect(alertData.severity).toBe("critical");
+      expect(alertData.metadata.concernTypes).toContain("self_harm");
+    } finally {
+      delete process.env.AI_ENGINE_URL;
+    }
   });
 });
 

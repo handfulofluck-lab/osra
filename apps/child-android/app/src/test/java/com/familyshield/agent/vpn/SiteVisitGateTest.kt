@@ -42,6 +42,8 @@ class SiteVisitGateTest {
             "restrict.youtube.com",
             "connectivitycheck.gstatic.com",
             "time.android.com",
+            "use-application-dns.net",
+            "dns.google",
             "",
         )) {
             assertTrue("$host should be excluded", SiteVisitGate.isExcludedHost(host))

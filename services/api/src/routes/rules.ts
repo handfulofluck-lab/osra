@@ -85,6 +85,8 @@ const RuleSetInputSchema = z.object({
   // NOTE: socialMonitoring maps app names (whatsapp, tiktok, ...) to capture-enabled flags;
   // contactAllowlist holds normalized phone numbers that bypass social scanning (#27).
   socialMonitoring: z.record(z.boolean()).default({}),
+  // Optional on PUT: writers that do not yet expose this toggle preserve existing opt-in state (#45).
+  searchMonitoring: z.boolean().optional(),
   contactAllowlist: z.array(z.string()).default([]),
 });
 
@@ -97,6 +99,7 @@ const RuleSetPatchSchema = z.object({
   alwaysAllowedApps: z.array(z.string()).optional(),
   allowOverlap: z.boolean().optional(),
   socialMonitoring: z.record(z.boolean()).optional(),
+  searchMonitoring: z.boolean().optional(),
   contactAllowlist: z.array(z.string()).optional(),
 });
 
@@ -150,6 +153,7 @@ function toRow(data: z.infer<typeof RuleSetInputSchema>, childId: string) {
     ...(data.appGroupRules !== undefined && { appGroupRules: data.appGroupRules }),
     alwaysAllowedApps: data.alwaysAllowedApps,
     socialMonitoring: data.socialMonitoring,
+    ...(data.searchMonitoring !== undefined && { searchMonitoring: data.searchMonitoring }),
     contactAllowlist: data.contactAllowlist,
   };
 }
@@ -200,12 +204,22 @@ export async function rulesRoutes(app: FastifyInstance) {
     const overlap = overlapError(parsed.data);
     if (overlap) return reply.code(400).send(overlap);
     const { childId } = req.params as { childId: string };
-    // Issue #475: the bump is part of the write statement, so a saved ruleset and its version cannot
-    // disagree even if two parents write at once.
+    // Issue #475 & osra-security#59: keep both version/revision bumps atomic inside the upsert write
+    // rather than comparing against a prior findUnique read (omitted searchMonitoring preserves both).
     const row = await prisma.ruleSet.upsert({
       where: { childId },
-      create: toRow(parsed.data, childId),
-      update: { ...toRow(parsed.data, childId), rulesVersion: { increment: 1 } },
+      create: {
+        ...toRow(parsed.data, childId),
+        searchMonitoring: parsed.data.searchMonitoring === true,
+        searchMonitoringRevision: parsed.data.searchMonitoring === true ? 1 : 0,
+      },
+      update: {
+        ...toRow(parsed.data, childId),
+        rulesVersion: { increment: 1 },
+        ...(parsed.data.searchMonitoring !== undefined
+          ? { searchMonitoringRevision: { increment: 1 } }
+          : {}),
+      },
     });
     const api = toApiRuleSet(row as unknown as Record<string, unknown>);
     await publishJson(`child:${childId}:rules`, await filterAgentRules(childId, api));
@@ -231,9 +245,14 @@ export async function rulesRoutes(app: FastifyInstance) {
       appGroupRules: patch.appGroupRules ?? current.appGroupRules ?? [],
       alwaysAllowedApps: patch.alwaysAllowedApps ?? current.alwaysAllowedApps ?? [],
       socialMonitoring: patch.socialMonitoring ?? current.socialMonitoring,
+      searchMonitoring: patch.searchMonitoring,
       contactAllowlist: patch.contactAllowlist ?? current.contactAllowlist,
     };
-    const validated = RuleSetInputSchema.safeParse({ ...merged, allowOverlap: patch.allowOverlap });
+    const validated = RuleSetInputSchema.safeParse({
+      ...merged,
+      ...(patch.searchMonitoring !== undefined ? { searchMonitoring: patch.searchMonitoring } : {}),
+      allowOverlap: patch.allowOverlap,
+    });
     if (!validated.success) return reply.code(400).send({ error: validated.error.flatten() });
     // allowOverlap is an input-only flag (not persisted), so re-checking overlap on every
     // patch would reject unrelated updates to a ruleset created with allowOverlap: true.
@@ -245,10 +264,19 @@ export async function rulesRoutes(app: FastifyInstance) {
       const overlap = overlapError(validated.data);
       if (overlap) return reply.code(400).send(overlap);
     }
+    const updateData = {
+      // Omit searchMonitoring when absent from PATCH so concurrent opt-outs remain intact atomically (#54).
+      ...toRow({ ...validated.data, searchMonitoring: patch.searchMonitoring as boolean | undefined }, childId),
+      rulesVersion: { increment: 1 },
+      ...(patch.searchMonitoring !== undefined ? { searchMonitoringRevision: { increment: 1 } } : {}),
+    };
     const row = await prisma.ruleSet.upsert({
       where: { childId },
-      create: toRow(validated.data, childId),
-      update: { ...toRow(validated.data, childId), rulesVersion: { increment: 1 } },
+      create: {
+        ...toRow({ ...validated.data, searchMonitoring: (patch.searchMonitoring as boolean | undefined) ?? false }, childId),
+        searchMonitoringRevision: patch.searchMonitoring === true ? 1 : 0,
+      },
+      update: updateData,
     });
     const api = toApiRuleSet(row as unknown as Record<string, unknown>);
     await publishJson(`child:${childId}:rules`, await filterAgentRules(childId, api));

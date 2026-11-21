@@ -22,7 +22,10 @@ export interface Device { id: UUID; childId: UUID; platform: Platform; model: st
 export interface RuleSet { id: UUID; childId: UUID; screenTime: ScreenTimeRule;
   webFilter: WebFilterRule; appRules: AppRule[]; routines: Routine[]; updatedAt: ISODate;
   /** ADR-0037 PR B3: iPhone app groups the parent blocks, by the id the phone reported. */
-  appGroupRules?: AppGroupRule[]; }
+  appGroupRules?: AppGroupRule[];
+  /** ADR-0039 / osra-security#45: explicit parent opt-in for Full search-query capture (default false). */
+  searchMonitoring?: boolean;
+  searchMonitoringRevision?: number; }
 /** ADR-0037 PR B3: a rule on an iPhone app group (`DeviceSetup.groups`). Only `block` for now; limits are PR C. */
 export interface AppGroupRule { groupId: UUID; action: "block"; }
 export interface ScreenTimeRule { dailyLimitMinutes: number; weekendLimitMinutes: number;

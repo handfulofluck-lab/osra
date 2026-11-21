@@ -14,6 +14,34 @@ internal const val FOREGROUND_HEARTBEAT_MS: Long = 4L * 60L * 1000L
 /** Minimum elapsed interval between active-session uploads; idle phones add zero extra requests (roadmap 5.8). */
 internal const val ACTIVE_UPLOAD_INTERVAL_MS: Long = 5L * 60L * 1000L
 
+/**
+ * Pure state machine for foreground transition tracking across child apps, System UI, own overlay windows,
+ * and screen-off events (`UsageReporter` delegates here so foreground transitions can be JVM-tested).
+ */
+internal class ForegroundSessionTracker {
+    @Volatile var lastPkg: String? = null
+        private set
+    @Volatile var lastTs: Long = 0L
+        private set
+    @Volatile var activeForegroundPkg: String? = null
+        private set
+
+    fun onForeground(pkg: String, ts: Long, systemUiPackage: String): String? {
+        lastPkg = pkg
+        lastTs = ts
+        activeForegroundPkg = if (pkg == systemUiPackage) null else pkg
+        return activeForegroundPkg
+    }
+
+    fun onOwnWindow() {
+        activeForegroundPkg = null
+    }
+
+    fun onScreenOff() {
+        activeForegroundPkg = null
+    }
+}
+
 internal fun shouldFlushActiveSession(nowElapsedMs: Long, lastUploadElapsedMs: Long): Boolean =
     nowElapsedMs - lastUploadElapsedMs >= ACTIVE_UPLOAD_INTERVAL_MS
 

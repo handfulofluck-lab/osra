@@ -31,6 +31,22 @@ object ScanQueuePolicy {
 
     const val SOURCE_SCREEN = "screen"
     const val SOURCE_NOTIFICATION = "notification"
+    const val SOURCE_SEARCH = "search"
+
+    /** Tags a queued search with its durable opt-in revision (`osra-security#59`). */
+    fun searchSource(revision: Long = 0L): String =
+        if (revision <= 0L) SOURCE_SEARCH else "$SOURCE_SEARCH:$revision"
+
+    /** True for any legacy or revision-tagged search row. */
+    fun isSearchSource(source: String): Boolean =
+        source == SOURCE_SEARCH || source.startsWith("$SOURCE_SEARCH:")
+
+    /** Parses the bound grant revision from a tagged search row (`search:<rev>`), or null for untagged/invalid rows. */
+    fun parseSearchRevision(source: String): Long? {
+        val prefix = "$SOURCE_SEARCH:"
+        if (!source.startsWith(prefix)) return null
+        return source.substring(prefix.length).toLongOrNull()?.takeIf { it > 0L }
+    }
 
     /**
      * Builds the capture from a notification's fields: [title] is the sender (or the group), the

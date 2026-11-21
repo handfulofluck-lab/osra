@@ -1,5 +1,8 @@
 package com.familyshield.agent.data
 
+import com.familyshield.agent.data.db.AgentStateDao
+import com.familyshield.agent.data.db.AgentStateEntity
+import com.familyshield.agent.data.db.PendingScanDao
 import com.familyshield.agent.data.db.UsageEventDao
 import com.familyshield.agent.enforcement.EssentialPackages
 import com.familyshield.agent.enforcement.PackageFacts
@@ -41,7 +44,10 @@ class RuleRepository @Inject constructor(
     private val consent: ConsentState,
     /** The OS view of a package (issue #165): the essential gate consults the HOME role, not just names. */
     private val packageFacts: PackageFacts,
+    private val agentStateDao: AgentStateDao,
+    private val pendingScanDao: PendingScanDao,
 ) {
+
     /** Outcome of evaluating a package against the active rule set. */
     enum class Decision { ALLOW, BLOCK, TIME_LIMIT_REACHED }
 
@@ -56,6 +62,7 @@ class RuleRepository @Inject constructor(
      * nearly empty counters over a good snapshot — the same bypass as the restart, one event earlier.
      */
     private val startupDone = CompletableDeferred<Unit>()
+    private val searchOptIn = SearchOptInCoordinator(agentStateDao, pendingScanDao)
 
     @Volatile private var cached: RuleSetDto? = null
 
@@ -86,7 +93,9 @@ class RuleRepository @Inject constructor(
             // A DataStore read error must not kill this coroutine before the counters are rebuilt (#287
             // review R1): the persist gate would stay shut for the life of the process, nothing would be
             // saved, and the next restart would lose the day — the bypass this file now closes.
-            cached = runCatching { loadFromDisk() }.getOrNull()
+            val loaded = runCatching { loadFromDisk() }.getOrNull()
+            searchOptIn.onStartupLoaded(loaded)
+            cached = loaded
             rebuildCounters()
             refresh()
         }
@@ -135,6 +144,15 @@ class RuleRepository @Inject constructor(
 
     /** Feature #2: true unless the cached rule set explicitly disables social monitoring for [appKey] (absent key = enabled). */
     fun socialMonitoringEnabled(appKey: String): Boolean = cached?.socialMonitoring?.get(appKey) ?: true
+
+    /** ADR-0039 / osra-security#45 & #59: true only after a fresh server sync grants searchMonitoring with committed state. */
+    fun searchMonitoringEnabled(): Boolean = searchOptIn.isSearchMonitoringEnabled(cached)
+
+    /** True once a server rules sync has resolved this process's search opt-in/rev state (`osra-security#59`). */
+    fun searchSyncConfirmed(): Boolean = searchOptIn.isFreshSyncConfirmed()
+
+    /** Server-verified search opt-in revision (`osra-security#59`). */
+    fun searchOptInRevision(): Long = searchOptIn.currentRevision()
 
     /** #830 gating: true only after the server flag went on and the phone synced that rule set. */
     fun siteNamesEnabled(): Boolean = cached?.siteNames == true
@@ -256,6 +274,8 @@ class RuleRepository @Inject constructor(
                 return@withLock cached
             }
             consent.onPollStatus(200)
+            val previous = cached
+            searchOptIn.onRulesFetched(previous = previous, updated = updated)
             cached = updated
             // #864/#922 (Antigravity's review): the category pack is a store of its own, and it feeds BOTH
             // `blocklist.domains()` (the DNS sinkhole) and `blocklist.apps()` (`verdict`, RuleRepository.kt:116).
@@ -292,6 +312,7 @@ class RuleRepository @Inject constructor(
      * an unlinked phone should do: nothing to enforce, nothing to block.
      */
     suspend fun forgetRules() {
+        searchOptIn.onForgetRules()
         cached = null
         settings.forgetRules()
     }
@@ -308,6 +329,11 @@ class RuleRepository @Inject constructor(
     }
 
     companion object {
+        const val KEY_SEARCH_OPT_IN_REV: String = "search_opt_in_rev"
+        const val KEY_SEARCH_OPT_IN_ENABLED: String = "search_opt_in_enabled"
+        const val KEY_SEARCH_PURGE_PENDING: String = "search_purge_pending"
+        const val KEY_SEARCH_RULES_VERSION: String = "search_rules_version"
+
         private val LONG_MAP: java.lang.reflect.Type =
             Types.newParameterizedType(Map::class.java, String::class.java, Long::class.javaObjectType)
 
@@ -317,6 +343,9 @@ class RuleRepository @Inject constructor(
          * decision path and the overlay guard cannot drift apart.
          */
         fun isEssentialApp(packageId: String): Boolean = EssentialPackages.isEssential(packageId)
+
+        /** ADR-0039 / osra-security#45: Search capture requires an explicit parent opt-in (`searchMonitoring == true`). */
+        fun isSearchMonitoringEnabled(ruleSet: RuleSetDto?): Boolean = ruleSet?.searchMonitoring == true
 
         /**
          * #276: the persisted snapshot is milliseconds now, but a build before it wrote whole

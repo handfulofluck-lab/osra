@@ -65,6 +65,27 @@ object DnsFilterPolicy {
     /** The enforcement hosts themselves must never be rewritten or sunk, or the rewrite loops. */
     private val ENFORCEMENT_HOSTS = setOf(GOOGLE_SAFE, BING_SAFE, DDG_SAFE, YT_STRICT, YT_MODERATE)
 
+    /** Internal reason when sinking browser DoH bootstrap/canary hosts so system/VPN DNS stays in control. */
+    const val REASON_DOH_BYPASS = "doh_bypass_prevent"
+
+    /** Public DoH resolver & canary hostnames bypassed by Chrome/browsers in Incognito when unsunk. */
+    private val DOH_BYPASS_HOSTS = setOf(
+        "use-application-dns.net",
+        "dns.google",
+        "dns.google.com",
+        "dns64.dns.google",
+        "cloudflare-dns.com",
+        "mozilla.cloudflare-dns.com",
+        "1dot1dot1dot1.cloudflare-dns.com",
+        "chrome.cloudflare-dns.com",
+        "dns.quad9.net",
+        "dns9.quad9.net",
+        "doh.opendns.com",
+        "dns.adguard.com",
+        "dns.adguard-dns.com",
+        "dns.nextdns.io",
+    )
+
     fun decide(qname: String, config: Config): Decision {
         val name = normalize(qname)
         if (name.isEmpty()) return Decision.FORWARD
@@ -81,12 +102,21 @@ object DnsFilterPolicy {
         // nothing blocks them they resolve normally.
         if (name in ENFORCEMENT_HOSTS) return Decision.FORWARD
 
+        // When any web filter or SafeSearch/YouTube rule is active, sink DoH canary/resolver bootstrap
+        // hosts so Chrome (normal and Incognito) falls back cleanly to the VPN DNS filter.
+        val ytMode = config.youtubeMode.trim().lowercase()
+        val filteringActive = config.blocked.isNotEmpty() || config.categories.isNotEmpty() ||
+            config.safeSearch || ytMode == "strict" || ytMode == "moderate"
+        if (filteringActive && DOH_BYPASS_HOSTS.any { matches(name, it) }) {
+            return Decision(Action.SINK, reason = REASON_DOH_BYPASS)
+        }
+
         if (config.safeSearch) {
             if (isGoogleSearchHost(name)) return Decision(Action.REWRITE, GOOGLE_SAFE, "safesearch")
             if (BING_HOSTS.any { name == it }) return Decision(Action.REWRITE, BING_SAFE, "safesearch")
             if (DDG_HOSTS.any { name == it }) return Decision(Action.REWRITE, DDG_SAFE, "safesearch")
         }
-        when (config.youtubeMode.trim().lowercase()) {
+        when (ytMode) {
             "strict" -> if (YOUTUBE_HOSTS.any { name == it }) return Decision(Action.REWRITE, YT_STRICT, "youtube_strict")
             "moderate" -> if (YOUTUBE_HOSTS.any { name == it }) return Decision(Action.REWRITE, YT_MODERATE, "youtube_moderate")
         }

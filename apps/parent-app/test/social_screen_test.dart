@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -150,7 +152,7 @@ void main() {
       }
     });
 
-    testWidgets('flip + save PUTs the merged socialMonitoring map', (tester) async {
+    testWidgets('flip + save PATCHes the merged socialMonitoring map and omits untouched searchMonitoring', (tester) async {
       final api = FakeApiClient(socialRoutes(socialMonitoring: {'whatsapp': true}));
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
       await flushFakeHttp(tester);
@@ -161,12 +163,136 @@ void main() {
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
 
-      final puts = api.calls('PUT', '/v1/rules/child-1');
-      expect(puts, hasLength(1));
-      final social = Map<String, dynamic>.from(puts.single.body['socialMonitoring'] as Map);
+      final patches = api.calls('PATCH', '/v1/rules/child-1');
+      expect(patches, hasLength(1));
+      final social = Map<String, dynamic>.from(patches.single.body['socialMonitoring'] as Map);
       expect(social['whatsapp'], isFalse);
-      expect(social.keys, hasLength(kSocialApps.length));
-      expect(puts.single.body.keys, containsAll(['screenTime', 'webFilter', 'appRules', 'routines', 'socialMonitoring']));
+      expect(patches.single.body.containsKey('searchMonitoring'), isFalse);
+      expect(find.text('Monitoring saved'), findsOneWidget);
+    });
+
+    testWidgets('osra-security#53: refreshed opt-out survives unrelated local edits and explicit search toggle saves', (tester) async {
+      var serverSearch = true;
+      final routes = socialRoutes(socialMonitoring: {'whatsapp': true});
+      routes['GET /v1/rules/child-1'] = (_) => ruleSetPayload('child-1')
+        ..['socialMonitoring'] = {'whatsapp': true}
+        ..['searchMonitoring'] = serverSearch;
+      final api = FakeApiClient(routes);
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+      await flushFakeHttp(tester);
+
+      final searchToggle = find.byKey(const ValueKey('search-monitoring-toggle'));
+      await tester.ensureVisible(searchToggle);
+      await tester.pumpAndSettle();
+      expect(tester.widget<SwitchListTile>(searchToggle).value, isTrue);
+
+      // Concurrent opt-out happens on server while parent toggles only WhatsApp locally.
+      serverSearch = false;
+      final whatsappTile = find.widgetWithText(SwitchListTile, 'WhatsApp');
+      await tester.scrollUntilVisible(whatsappTile, -150, scrollable: socialScrollable());
+      await tester.pumpAndSettle();
+      await tester.tap(whatsappTile);
+      await tester.pumpAndSettle();
+
+      // Trigger a rules reload (e.g. from Save allowlist invalidation) while WhatsApp is still dirty.
+      final allowlistBtn = find.text('Save allowlist');
+      await reveal(tester, allowlistBtn);
+      await tester.tap(allowlistBtn);
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      // Allowlist save used narrow PATCH omitting searchMonitoring & socialMonitoring.
+      final allowlistPatch = api.calls('PATCH', '/v1/rules/child-1').single;
+      expect(allowlistPatch.body.keys, ['contactAllowlist']);
+      expect(allowlistPatch.body.containsKey('searchMonitoring'), isFalse);
+
+      // Refreshed rule shows searchMonitoring=false (opt-out) while preserving dirty WhatsApp=false.
+      await tester.scrollUntilVisible(whatsappTile, -150, scrollable: socialScrollable());
+      await tester.pumpAndSettle();
+      expect(tester.widget<SwitchListTile>(whatsappTile).value, isFalse);
+      await tester.ensureVisible(searchToggle);
+      await tester.pumpAndSettle();
+      expect(tester.widget<SwitchListTile>(searchToggle).value, isFalse);
+
+      final saveMonitoringBtn = find.text('Save monitoring');
+      await tester.ensureVisible(saveMonitoringBtn);
+      await tester.pumpAndSettle();
+      await tester.tap(saveMonitoringBtn);
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      final monitoringPatch = api.calls('PATCH', '/v1/rules/child-1').last;
+      expect(monitoringPatch.body['socialMonitoring'], {'whatsapp': false});
+      expect(monitoringPatch.body.containsKey('searchMonitoring'), isFalse);
+
+      // Explicitly toggling search monitoring sends searchMonitoring in narrow PATCH.
+      await tester.ensureVisible(searchToggle);
+      await tester.pumpAndSettle();
+      await tester.tap(searchToggle);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save monitoring'));
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      final explicitPatch = api.calls('PATCH', '/v1/rules/child-1').last;
+      expect(explicitPatch.body, {'searchMonitoring': true});
+    });
+
+    testWidgets('search monitoring defaults OFF and saves explicit parent opt-in', (tester) async {
+      final api = FakeApiClient(socialRoutes());
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+      await flushFakeHttp(tester);
+
+      final toggle = find.byKey(const ValueKey('search-monitoring-toggle'));
+      await tester.ensureVisible(toggle);
+      await tester.pumpAndSettle();
+      expect(tester.widget<SwitchListTile>(toggle).value, isFalse);
+
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+
+      await tester.tap(find.text('Save monitoring'));
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      final patches = api.calls('PATCH', '/v1/rules/child-1');
+      expect(patches, hasLength(1));
+      expect(patches.single.body['searchMonitoring'], isTrue);
+    });
+
+    testWidgets('osra-security#57: monitoring choices are disabled during a delayed save', (tester) async {
+      final completer = Completer<Object?>();
+      final routes = socialRoutes(socialMonitoring: {'whatsapp': true});
+      routes['PATCH /v1/rules/child-1'] = (_) => FakeDeferred(completer.future);
+      final api = FakeApiClient(routes);
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+      await flushFakeHttp(tester);
+
+      final searchToggle = find.byKey(const ValueKey('search-monitoring-toggle'));
+      await tester.ensureVisible(searchToggle);
+      await tester.pumpAndSettle();
+      await tester.tap(searchToggle);
+      await tester.pumpAndSettle();
+      expect(tester.widget<SwitchListTile>(searchToggle).value, isTrue);
+
+      await tester.tap(find.text('Save monitoring'));
+      await tester.pump();
+
+      // While PATCH is in flight, both switches and Save button are disabled and ignore taps.
+      expect(tester.widget<SwitchListTile>(searchToggle).onChanged, isNull);
+      expect(tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'WhatsApp')).onChanged, isNull);
+      final saveBtn = find.widgetWithText(FilledButton, 'Saving…');
+      expect(tester.widget<FilledButton>(saveBtn).onPressed, isNull);
+      await tester.tap(searchToggle, warnIfMissed: false);
+      await tester.pump();
+      expect(tester.widget<SwitchListTile>(searchToggle).value, isTrue);
+
+      completer.complete({'ok': true});
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<SwitchListTile>(searchToggle).onChanged, isNotNull);
       expect(find.text('Monitoring saved'), findsOneWidget);
     });
   });
@@ -205,12 +331,13 @@ void main() {
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
       await flushFakeHttp(tester);
 
+      await reveal(tester, find.text('No concerns detected'));
       expect(find.text('No concerns detected'), findsOneWidget);
     });
   });
 
   group('Contact allowlist', () {
-    testWidgets('add normalizes digits and save PUTs contactAllowlist', (tester) async {
+    testWidgets('add normalizes digits and save PATCHes contactAllowlist without searchMonitoring', (tester) async {
       final api = FakeApiClient(socialRoutes(contactAllowlist: const []));
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
       await flushFakeHttp(tester);
@@ -227,9 +354,10 @@ void main() {
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
 
-      final puts = api.calls('PUT', '/v1/rules/child-1');
-      expect(puts, hasLength(1));
-      expect(puts.single.body['contactAllowlist'], ['15551234567']);
+      final patches = api.calls('PATCH', '/v1/rules/child-1');
+      expect(patches, hasLength(1));
+      expect(patches.single.body['contactAllowlist'], ['15551234567']);
+      expect(patches.single.body.containsKey('searchMonitoring'), isFalse);
     });
 
     testWidgets('Arabic digits are the same phone number (#771)', (tester) async {
@@ -246,7 +374,7 @@ void main() {
       expect(find.text('+١ (٥٥٥) ١٢٣-٤٥٦٧'), findsNothing);
     });
 
-    testWidgets('removing a chip and saving PUTs the updated contactAllowlist', (tester) async {
+    testWidgets('removing a chip and saving PATCHes the updated contactAllowlist', (tester) async {
       final api = FakeApiClient(socialRoutes(contactAllowlist: ['15550001122', '15553334445']));
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
       await flushFakeHttp(tester);
@@ -261,7 +389,37 @@ void main() {
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
 
-      expect(api.calls('PUT', '/v1/rules/child-1').single.body['contactAllowlist'], ['15553334445']);
+      final patch = api.calls('PATCH', '/v1/rules/child-1').single;
+      expect(patch.body['contactAllowlist'], ['15553334445']);
+      expect(patch.body.containsKey('searchMonitoring'), isFalse);
+    });
+
+    testWidgets('osra-security#57: allowlist mutations are disabled during a delayed save', (tester) async {
+      final completer = Completer<Object?>();
+      final routes = socialRoutes(contactAllowlist: ['15550001122']);
+      routes['PATCH /v1/rules/child-1'] = (_) => FakeDeferred(completer.future);
+      final api = FakeApiClient(routes);
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+      await flushFakeHttp(tester);
+
+      await reveal(tester, find.text('Save allowlist'));
+      await tester.tap(find.text('Save allowlist'));
+      await tester.pump();
+
+      final chip = find.widgetWithText(InputChip, '15550001122');
+      expect(tester.widget<InputChip>(chip).onDeleted, isNull);
+      final phoneField = fieldByLabel('Phone number');
+      expect(tester.widget<TextField>(phoneField).enabled, isFalse);
+      final addBtn = find.ancestor(of: find.byIcon(Icons.add), matching: find.byType(IconButton));
+      expect(tester.widget<IconButton>(addBtn).onPressed, isNull);
+      expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Saving…')).onPressed, isNull);
+
+      completer.complete({'ok': true});
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<InputChip>(chip).onDeleted, isNotNull);
+      expect(find.text('Allowlist saved'), findsOneWidget);
     });
   });
 

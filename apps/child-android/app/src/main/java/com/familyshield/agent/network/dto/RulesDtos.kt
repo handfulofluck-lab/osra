@@ -26,6 +26,14 @@ data class RuleSetDto(
      */
     val socialMonitoring: Map<String, Boolean> = emptyMap(),
     /**
+     * ADR-0039 / osra-security#45: whether search capture is explicitly enabled (null/absent/false = disabled).
+     */
+    val searchMonitoring: Boolean? = null,
+    /**
+     * osra-security#59: monotonic server grant revision bumped whenever `searchMonitoring` changes.
+     */
+    val searchMonitoringRevision: Int = 0,
+    /**
      * Feature #27: parent-curated known contacts (phone numbers, any format). An EMPTY list means
      * unknown-contact alerting is disabled (no alerts raised).
      */
