@@ -63,24 +63,36 @@ def strip_fences(content: str) -> str:
     return match.group(1) if match else text
 
 
-def parse_categories(content: str) -> Dict[str, float]:
-    """Turn the model's reply into a probability per category, or raise if it is unusable.
+def _unique_json_members(pairs):
+    result = dict(pairs)
+    if len(result) != len(pairs):
+        raise ValueError("duplicate keys in classifier reply")
+    return result
 
-    Missing categories are 0.0 rather than an error: a model that answers six of eight has still read
-    the message, and a run of 1,000 rows should not die on one omission. Values are clamped to 0..1 and
-    a non-numeric value is an error — silently treating `"high"` as 0.0 would report a miss as a model
-    failure rather than a prompt problem.
+
+def parse_categories(content: str, *, strict: bool = False) -> Dict[str, float]:
+    """Parse published probabilities, keeping the existing lenient behavior for evaluations.
+
+    Strict runtime receipts require every category exactly once and preserve the supplied scores.
+    Evaluation callers still clamp numeric scores and tolerate missing categories.
     """
-    payload = json.loads(strip_fences(content))
+    payload = json.loads(
+        strip_fences(content),
+        object_pairs_hook=_unique_json_members if strict else None,
+    )
     categories = payload.get("categories") if isinstance(payload, dict) else None
     if not isinstance(categories, dict):
-        raise ValueError(f"reply has no 'categories' object: {content[:200]!r}")
+        raise ValueError("reply has no 'categories' object")
+    if strict and (set(payload) != {"categories"} or set(categories) != set(CATEGORIES)):
+        raise ValueError("reply does not contain exactly the published categories")
     probs: Dict[str, float] = {}
     for name in CATEGORIES:
         value = categories.get(name, 0.0)
         if not isinstance(value, (int, float)) or isinstance(value, bool):
-            raise ValueError(f"category {name!r} is not a number: {value!r}")
-        probs[name] = round(min(1.0, max(0.0, float(value))), 4)
+            raise ValueError("a category probability is not a number")
+        if strict and not 0 <= value <= 1:
+            raise ValueError("a category probability is outside the published range")
+        probs[name] = float(value) if strict else round(min(1.0, max(0.0, float(value))), 4)
     if "safe" not in categories:
         top_harmful = max(probs[c] for c in HARMFUL_CATEGORIES)
         probs["safe"] = round(max(0.0, 1.0 - top_harmful), 4)
