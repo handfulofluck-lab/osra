@@ -66,7 +66,7 @@ class RulesEditorScreen extends ConsumerStatefulWidget {
 
 class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
   RuleSet _draft = const RuleSet();
-  bool _loaded = false;
+  RuleSet? _saved;
   bool _saving = false;
   String? _error;
   final _allowedDomains = TextEditingController();
@@ -114,24 +114,31 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
       appDisplayAvatar(apps, packageId);
 
   void _applyLoaded(RuleSet ruleSet) {
-    if (_loaded) return;
-    _loaded = true;
+    if (_saved != null) return;
+    _saved = ruleSet;
     _draft = ruleSet;
     _allowedDomains.text = ruleSet.webFilter.allowedDomains.join(', ');
     _blockedDomains.text = ruleSet.webFilter.blockedDomains.join(', ');
   }
 
   Future<void> _save() async {
+    final saved = _saved;
+    if (saved == null || _saving) return;
+    final submitted = _draft;
     final l10n = context.l10n;
     setState(() {
       _saving = true;
       _error = null;
     });
     try {
-      // NOTE: the server PATCH-merges, so we always send the full object.
-      await ref.read(apiClientProvider).raw.put('/v1/rules/${widget.childId}', data: _draft.toJson());
+      await ref.read(apiClientProvider).raw.patch(
+        '/v1/rules/${widget.childId}',
+        data: submitted.changesFrom(saved),
+      );
+      if (!mounted) return;
+      _saved = submitted;
       ref.invalidate(rulesProvider(widget.childId));
-      // Issue #475: the PUT bumped `rulesVersion` on the server, and the banner compares that number with
+      // Issue #475: saving bumps `rulesVersion` on the server, and the banner compares that number with
       // what the phone applied. Without this the family snapshot still carries the pre-save version, so
       // right after Save `applied == rules` and the line the parent just earned never appears — which is
       // exactly the "I changed it, why is Meet still blocked?" moment it exists for.
@@ -147,6 +154,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.rulesSaved)));
       }
     } on DioException catch (e) {
+      if (!mounted) return;
       // Issue #437: a rule write can be refused for consent (`428`); anything else maps cleanly.
       setState(() => _error = friendlyErrorText(
             l10n,
@@ -211,7 +219,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
           if (_saving)
             const Padding(padding: EdgeInsets.all(AppSpace.lg), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))
           else
-            FilledButton(onPressed: _loaded ? _save : null, child: Text(l10n.save)),
+            FilledButton(onPressed: _saved != null ? _save : null, child: Text(l10n.save)),
           const SizedBox(width: AppSpace.sm),
         ],
       ),

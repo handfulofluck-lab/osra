@@ -72,6 +72,11 @@ resource "aws_ecs_task_definition" "api" {
         # telemetry that filled memory would make revocation writes fail. Logouts answering 5xx because of a
         # counter is the trade this flag refuses. Staging carries it so #346's reviewer can measure the Flip4.
         var.environment == "staging" ? [{ name = "IDLE_BUDGET_COUNTING", value = "1" }] : [],
+        local.staging_qa_armed ? [
+          { name = "OSRA_DEPLOYMENT_SCOPE", value = "staging" },
+          { name = "OSRA_STAGING_QA_ANALYZER_ENABLED", value = "1" },
+          { name = "OSRA_STAGING_QA_ANALYZER_URL", value = "http://${local.staging_qa_dns}:8000" },
+        ] : [],
         # APNs (#695). Always the production APNs endpoint: TestFlight and store builds carry
         # aps-environment=production, and a sandbox token sent there fails with BadDeviceToken. Key and team
         # ids are not secrets but stay out of the repo; they come from tfvars.
@@ -113,6 +118,10 @@ resource "aws_ecs_task_definition" "api" {
         try(data.terraform_remote_state.base.outputs.internal_hmac_secret_arn, "") != "" ? [
           { name = "INTERNAL_HMAC_SECRET", valueFrom = data.terraform_remote_state.base.outputs.internal_hmac_secret_arn },
         ] : [],
+        local.staging_qa_armed ? concat(local.staging_qa_approval, [
+          { name = "OSRA_STAGING_QA_CHILD_ID", valueFrom = "${var.staging_qa_analyzer.pairing_secret_arn}:child_id::" },
+          { name = "OSRA_STAGING_QA_DEVICE_ID", valueFrom = "${var.staging_qa_analyzer.pairing_secret_arn}:device_id::" },
+        ]) : [],
       )
 
       logConfiguration = {
@@ -299,6 +308,8 @@ resource "aws_ecs_service" "api" {
     aws_elasticache_replication_group.main,
     aws_lb_listener.http,
     aws_secretsmanager_secret_version.database_url,
+    aws_ecs_service.staging_qa_analyzer,
+    aws_iam_role_policy.staging_qa_api_execution,
   ]
 
   tags = {

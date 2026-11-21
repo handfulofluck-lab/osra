@@ -5384,6 +5384,12 @@ abstract class AppLocalizations {
   /// **'on {date} at {time}'**
   String alertOnDateAtTime(String date, String time);
 
+  /// No description provided for @alertDetailSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent {when}'**
+  String alertDetailSent(String when);
+
   /// No description provided for @alertDeviceRestartedBodyMinutes.
   ///
   /// In en, this message translates to:
