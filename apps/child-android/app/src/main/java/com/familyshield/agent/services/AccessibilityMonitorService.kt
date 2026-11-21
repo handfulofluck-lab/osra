@@ -50,6 +50,7 @@ import com.familyshield.agent.security.TamperAlertWorker
 import com.familyshield.agent.security.TamperGuardActivity
 import com.familyshield.agent.security.TamperGuardTaskActivity
 import com.familyshield.agent.security.TamperScreen
+import com.familyshield.agent.security.ShadePolicy
 import com.familyshield.agent.security.TamperScreenPolicy
 import com.familyshield.agent.security.TamperState
 import com.familyshield.agent.social.SocialCapture
@@ -141,6 +142,19 @@ class AccessibilityMonitorService : AccessibilityService() {
     /** #734 / #802 V2: the one delayed re-check at the end of the debounce, if one is pending. */
     private var ringRecheck: Runnable? = null
     private val ringRecheckHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /**
+     * #851 blockers (Antigravity, Android 14): the shade can outlive the first dismiss — the expansion
+     * animation overrides frame 1, a touchless `expandNotificationsPanel()` settles after ~550 ms with no
+     * content event, and a mid-close swipe re-catch emits only content changes. Three fixed-deadline
+     * pulses: state change → 250 ms, late state pulse → 700 ms (past SystemUI's expand animator), content
+     * change under systemui → 300 ms.
+     */
+    private enum class ShadePulse { STATE, LATE, CONTENT }
+
+    private var shadeRecheck: Runnable? = null
+    private var shadeLateRecheck: Runnable? = null
+    private var shadeContentRecheck: Runnable? = null
 
     /** osra-security#7: the window the gate was last opened over; a state change from any other is a new screen. */
     private var guardedWindowId = -1
@@ -326,6 +340,13 @@ class AccessibilityMonitorService : AccessibilityService() {
         // component.
         ringRecheck?.let { ringRecheckHandler.removeCallbacks(it) }
         ringRecheck = null
+        // #851: no shade re-check outlives the service either.
+        shadeRecheck?.let { ringRecheckHandler.removeCallbacks(it) }
+        shadeRecheck = null
+        shadeLateRecheck?.let { ringRecheckHandler.removeCallbacks(it) }
+        shadeLateRecheck = null
+        shadeContentRecheck?.let { ringRecheckHandler.removeCallbacks(it) }
+        shadeContentRecheck = null
         calls.onDestroy()
         media.onDestroy()
         rules.removeRulesChangedListener(rulesChanged)
@@ -359,6 +380,38 @@ class AccessibilityMonitorService : AccessibilityService() {
         }
         val eventPkg = event?.packageName?.toString() ?: return
         calls.onEvent()
+        // #828: a lock or pause must not leave the notification shade usable. It still opened over the
+        // lock overlay on the Flip4, so every notification was readable and inline Reply worked. Collapse
+        // it as it opens; the phone app, the emergency dialer and a ringing call are not the shade.
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            ShadePolicy.shouldCollapse(
+                locked = LockState.isActive(this),
+                packageName = eventPkg,
+                className = event.className?.toString(),
+                apiLevel = android.os.Build.VERSION.SDK_INT,
+                callRinging = calls.isRinging(),
+            )
+        ) {
+            performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
+            // The expansion animation can override frame 1 and leave NotificationShade focused with no
+            // second window-state event, so two fixed-deadline re-checks follow the first dismiss: one
+            // at 250 ms, one at 700 ms for a touchless panel expansion that settles after ~550 ms.
+            scheduleShadeRecheck(delayMs = SHADE_RECHECK_MS, slot = ShadePulse.STATE)
+            scheduleShadeRecheck(delayMs = SHADE_LATE_RECHECK_MS, slot = ShadePulse.LATE)
+        }
+        // A shade that closes mid-animation is caught again while only content changes arrive; the last
+        // window class names the dialog, so the volume panel and the power menu stay excluded.
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
+            ShadePolicy.shouldCollapseOnContentChange(
+                locked = LockState.isActive(this),
+                packageName = eventPkg,
+                lastKnownClass = lastClassByPkg[eventPkg],
+                apiLevel = android.os.Build.VERSION.SDK_INT,
+                callRinging = calls.isRinging(),
+            )
+        ) {
+            scheduleShadeRecheck(delayMs = SHADE_CONTENT_RECHECK_MS, slot = ShadePulse.CONTENT)
+        }
         // osra-security#7: before the own-window return below, which our gate's events take.
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
             TamperScreenPolicy.mayHostProtectionScreen(eventPkg)
@@ -793,7 +846,38 @@ class AccessibilityMonitorService : AccessibilityService() {
         }.onFailure { Log.w(TAG, "could not bring the ring screen back (#734)", it) }
     }
 
-    /** One delayed re-check at the end of the debounce; it does nothing if the ring has stopped by then. */
+    /**
+     * #851: a **fixed-deadline** follow-up that re-checks the lock and the ring before sending the
+     * dismiss again. A slot already pending is left alone, exactly like [scheduleRingRecheck]: a burst of
+     * events must not push the deadline out. The trailing-edge version did — a thumb held on the shade
+     * delivers a content change every ~100 ms and starved the 300 ms collapse indefinitely (Antigravity,
+     * round 3).
+     */
+    private fun scheduleShadeRecheck(delayMs: Long, slot: ShadePulse) {
+        if (shadePulse(slot) != null) return
+        val task = Runnable {
+            setShadePulse(slot, null)
+            if (!ShadePolicy.shouldRecheck(LockState.isActive(this), calls.isRinging())) return@Runnable
+            performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
+        }
+        setShadePulse(slot, task)
+        ringRecheckHandler.postDelayed(task, delayMs)
+    }
+
+    private fun shadePulse(slot: ShadePulse): Runnable? = when (slot) {
+        ShadePulse.STATE -> shadeRecheck
+        ShadePulse.LATE -> shadeLateRecheck
+        ShadePulse.CONTENT -> shadeContentRecheck
+    }
+
+    private fun setShadePulse(slot: ShadePulse, task: Runnable?) {
+        when (slot) {
+            ShadePulse.STATE -> shadeRecheck = task
+            ShadePulse.LATE -> shadeLateRecheck = task
+            ShadePulse.CONTENT -> shadeContentRecheck = task
+        }
+    }
+
     private fun scheduleRingRecheck() {
         if (ringRecheck != null) return
         val task = Runnable {
@@ -872,6 +956,11 @@ class AccessibilityMonitorService : AccessibilityService() {
             )
         }
         if (!settings.isPairedSync()) return
+        // #851 blocker 1 (Antigravity, Android 14): without this, guardProtectionScreens reads
+        // rootInActiveWindow and collectTexts for *every* package — including systemui's teardown
+        // events — and a synchronous binder stall while the shade detaches ANR'd the service and left
+        // the shade open. classify() already returns NONE for these packages, so this only skips work.
+        if (!TamperScreenPolicy.mayHostProtectionScreen(pkg)) return
         val now = System.currentTimeMillis()
         // #533 review: suppress only while the gate is in front or still coming up — never while the guarded
         // screen is back in front of a gate that has gone away (Recents → Settings inside the old 1.5 s).
@@ -1083,6 +1172,12 @@ class AccessibilityMonitorService : AccessibilityService() {
 
     companion object {
         private const val TAG = "AccessibilityMonitor"
+
+        /** #851: fixed-deadline pulses after the first dismiss, after a touchless expansion, and on a
+         *  shade content change. */
+        internal const val SHADE_RECHECK_MS = 250L
+        internal const val SHADE_LATE_RECHECK_MS = 700L
+        internal const val SHADE_CONTENT_RECHECK_MS = 300L
 
         /**
          * Issue #231 review: true while the system holds this service bound, set from
