@@ -251,21 +251,40 @@ jobs:
           run_launch launch-1
           first=$?
           set -e
+          status() { printf '%s\\n' "$1" > "$RESULTS/launch.status"; }
           if [ "$first" -eq 0 ]; then
             echo "the launch case passed on its first run; nothing was retried"
+            status pass
             exit 0
           fi
 
-          # The signatures of a simulator that never got the app up. Anything else — an XCTAssert failure, a
-          # missing element, a timeout inside the test body — is the app or the row, and is not retried.
-          if ! grep -qiE 'timed out while launching application|failed to launch|FBSOpenApplicationServiceErrorDomain|unable to launch|launch services' "$RESULTS/launch-1.log"; then
-            echo "::error::the launch case failed on its own assertions, not on a simulator start. Not retrying: this is the regression the retry must never hide."
+          # An assertion failure is red on its first result, whether or not the log also mentions launching.
+          # A simulator that never got the app up can emit unrelated Launch Services noise, and a real assertion
+          # failure can sit in the same log (Codex, 7060451632) — so this check runs FIRST and wins outright.
+          if grep -qiE 'Failing tests:|XCTAssert|Test Case .* failed' "$RESULTS/launch-1.log"; then
+            echo "::error::the launch case failed on its own assertions. Not retrying: this is the regression the retry must never hide."
+            status fail-assertion
+            exit "$first"
+          fi
+
+          # Only a positive statement that the app never launched earns a retry. `launch services` is deliberately
+          # NOT in this list: it is the incidental diagnostic Codex's fixture showed can accompany an assertion.
+          if ! grep -qiE 'timed out while launching application|failed to launch|FBSOpenApplicationServiceErrorDomain|unable to launch the application' "$RESULTS/launch-1.log"; then
+            echo "::error::the first run failed for a reason that is neither an assertion nor a launch failure; not retrying."
+            status fail-other
             exit "$first"
           fi
 
           echo "::warning title=Simulator launch flake::the first run failed while launching the app on the simulator, so that case is retried once. Both result bundles are kept; read launch-1 before believing the green."
-          echo "first run: simulator start failure" > "$RESULTS/retried"
+          set +e
           run_launch launch-2
+          second=$?
+          set -e
+          if [ "$second" -ne 0 ]; then
+            status fail-launch-twice
+            exit "$second"
+          fi
+          status fail-launch-then-pass
 
       # A green job must not hide which of the two things happened, so say it on the run instead of only in a log.
       - name: Say what the launch case did
@@ -273,16 +292,21 @@ jobs:
         working-directory: apps/child-ios
         run: |
           RESULTS=.build/uiResults
+          if [ -f "$RESULTS/launch.status" ]; then outcome="$(cat "$RESULTS/launch.status")"; else outcome=did-not-run; fi
+          case "$outcome" in
+            pass) text="Passed on its first run; no retry was used." ;;
+            fail-launch-then-pass) text="First run failed **while launching the app on the simulator**; the case was retried once and passed. Both bundles are kept." ;;
+            fail-launch-twice) text="**Failed twice**, both times while launching the app on the simulator. Red, as it should be." ;;
+            fail-assertion) text="**Failed on its own assertions** and was not retried. Red, as it should be." ;;
+            fail-other) text="**Failed for neither an assertion nor a launch reason** and was not retried. Read \`launch-1.log\`." ;;
+            *) text="Did not run (no outcome recorded)." ;;
+          esac
           {
             echo "### Launch smoke case"
             echo ""
-            if [ -f "$RESULTS/retried" ]; then
-              echo "First run failed **while launching the app on the simulator**; the case was retried once and the job follows that second run. Both bundles and both logs are uploaded."
-            elif [ -f "$RESULTS/launch-1.log" ]; then
-              echo "Passed on its first run; no retry was used."
-            else
-              echo "Did not run."
-            fi
+            echo "$text"
+            echo ""
+            echo "Recorded outcome: \`$outcome\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run the escape rows (KP01's screens) inside the simulator, with no retry
