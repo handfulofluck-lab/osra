@@ -79,8 +79,7 @@ class AccessibilitySearchCapture internal constructor(
 
         var activeRoot: ReadableNode? = null
         var eventSource: ReadableNode? = null
-        val nodes = ArrayList<SearchNodeSnapshot>(16)
-        val nonControlVisibleCount: Int
+        val nodes = ArrayList<SearchNodeSnapshot>(8)
         try {
             activeRoot = activeRootProvider()
             eventSource = eventSourceProvider()
@@ -96,7 +95,7 @@ class AccessibilitySearchCapture internal constructor(
                 if (nowMs - lastScanAtMs < SCAN_DEBOUNCE_MS) return false
                 lastScanAtMs = nowMs
             }
-            nonControlVisibleCount = collectNodes(verifiedRoot, pkg, nodes, depth = 0, totalVisited = intArrayOf(0))
+            collectNodes(verifiedRoot, pkg, nodes, depth = 0, totalVisited = intArrayOf(0))
         } finally {
             runCatching { activeRoot?.recycle() }
             if (eventSource !== activeRoot) {
@@ -107,7 +106,6 @@ class AccessibilitySearchCapture internal constructor(
         val parsed = SearchQueryParser.extractFromNodes(
             packageId = pkg,
             nodes = nodes,
-            hasAppResultsContent = nonControlVisibleCount >= 3,
         ) ?: return false
         val dedupeKey = SearchQueryParser.dedupeKey(parsed)
         synchronized(lock) {
@@ -124,8 +122,8 @@ class AccessibilitySearchCapture internal constructor(
     }
 
     /**
-     * Collects text strictly from provenance-verified controls ([SearchQueryParser.isVerifiedControlMetadata]);
-     * ordinary content descendants are counted for results-structure gating without reading their text.
+     * Collects text strictly from provenance-verified native browser address controls
+     * ([SearchQueryParser.isVerifiedControlMetadata]); all other nodes are traversed without reading text.
      */
     private fun collectNodes(
         node: ReadableNode?,
@@ -133,15 +131,14 @@ class AccessibilitySearchCapture internal constructor(
         out: MutableList<SearchNodeSnapshot>,
         depth: Int,
         totalVisited: IntArray,
-    ): Int {
-        if (node == null || depth > MAX_DEPTH || totalVisited[0] >= MAX_NODES) return 0
-        if (node.packageName != expectedPackage) return 0
-        if (!node.isVisibleToUser) return 0
+    ) {
+        if (node == null || depth > MAX_DEPTH || totalVisited[0] >= MAX_NODES) return
+        if (node.packageName != expectedPackage) return
+        if (!node.isVisibleToUser) return
         totalVisited[0]++
 
         val viewId = node.viewIdResourceName
         val className = node.className?.toString()
-        var nonControlVisible = 0
         if (SearchQueryParser.isVerifiedControlMetadata(expectedPackage, viewId, className)) {
             val text = node.text?.toString() ?: node.contentDescription?.toString()
             if (!text.isNullOrBlank()) {
@@ -155,19 +152,16 @@ class AccessibilitySearchCapture internal constructor(
                     ),
                 )
             }
-        } else if (depth > 0) {
-            nonControlVisible = 1
         }
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
             try {
-                nonControlVisible += collectNodes(child, expectedPackage, out, depth + 1, totalVisited)
+                collectNodes(child, expectedPackage, out, depth + 1, totalVisited)
             } finally {
                 runCatching { child.recycle() }
             }
             if (totalVisited[0] >= MAX_NODES) break
         }
-        return nonControlVisible
     }
 
     companion object {

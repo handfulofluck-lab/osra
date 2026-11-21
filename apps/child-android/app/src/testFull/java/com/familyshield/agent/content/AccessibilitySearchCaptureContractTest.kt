@@ -225,8 +225,7 @@ class AccessibilitySearchCaptureContractTest {
                 foreignOverlayNode,
                 unknownDescendantNode,
                 ordinaryPageLink,
-                SpyNode("com.android.chrome", rawText = "google.com", viewIdResourceName = "com.android.chrome:id/url_bar"),
-                SpyNode("com.android.chrome", rawText = "physics revision - Google Search", className = "android.webkit.WebView"),
+                SpyNode("com.android.chrome", rawText = "https://www.google.com/search?q=physics+revision", viewIdResourceName = "com.android.chrome:id/url_bar"),
             ),
         )
         assertTrue(
@@ -239,22 +238,24 @@ class AccessibilitySearchCaptureContractTest {
         )
         assertEquals(0, foreignOverlayNode.totalReads())
         assertEquals(0, unknownDescendantNode.totalReads())
+        assertEquals(0, ordinaryPageLink.textReads)
         assertEquals(listOf("google" to "physics revision"), enqueued)
 
-        // osra-security#58: ordinary page content in a browser (even containing search URLs or SERP suffixes)
-        // never triggers text collection on ordinary nodes and never enqueues without verified control provenance.
+        // osra-security#58: WebView SERP titles and ordinary page content in a browser
+        // never trigger text collection on WebView/ordinary nodes and never enqueue without a results URL in url_bar.
         val pageSearchUrl = SpyNode("com.android.chrome", rawText = "https://www.google.com/search?q=spoofed+url+in+article")
         val pageSpoofedTitle = SpyNode("com.android.chrome", rawText = "secret query - Google Search")
+        val webViewNode = SpyNode(
+            "com.android.chrome",
+            rawText = "fake - Google Search",
+            className = "android.webkit.WebView",
+            children = listOf(pageSearchUrl, pageSpoofedTitle),
+        )
         val articleChromeRoot = SpyNode(
             packageName = "com.android.chrome",
             children = listOf(
-                SpyNode("com.android.chrome", rawText = "https://example.com/news", viewIdResourceName = "com.android.chrome:id/url_bar"),
-                SpyNode(
-                    "com.android.chrome",
-                    rawText = "fake - Google Search",
-                    className = "android.webkit.WebView",
-                    children = listOf(pageSearchUrl, pageSpoofedTitle),
-                ),
+                SpyNode("com.android.chrome", rawText = "https://www.google.com", viewIdResourceName = "com.android.chrome:id/url_bar"),
+                webViewNode,
             ),
         )
         assertFalse(
@@ -265,7 +266,7 @@ class AccessibilitySearchCaptureContractTest {
                 nowMs = 400_000L,
             ),
         )
-        // Zero text/contentDescription reads on ordinary page TextViews when URL bar provenance is absent/unrelated.
+        assertEquals(0, webViewNode.textReads)
         assertEquals(0, pageSearchUrl.textReads)
         assertEquals(0, pageSpoofedTitle.textReads)
         assertEquals(1, enqueued.size)

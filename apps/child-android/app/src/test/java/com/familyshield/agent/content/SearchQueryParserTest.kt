@@ -43,7 +43,7 @@ class SearchQueryParserTest {
     }
 
     @Test
-    fun `extracts submitted search from chrome URL bar, SERP title or unfocused search field, never focused typing`() {
+    fun `extracts submitted search strictly from verified browser URL bar, never WebView or focused typing`() {
         val urlNodes = listOf(
             SearchNodeSnapshot("www.google.com/search?q=adult+content+check", viewIdResourceName = "com.android.chrome:id/url_bar"),
             SearchNodeSnapshot("Results", className = "android.widget.TextView"),
@@ -52,46 +52,32 @@ class SearchQueryParserTest {
         assertEquals("google", urlParsed?.engine)
         assertEquals("adult content check", urlParsed?.query)
 
-        val nodes = listOf(
+        // osra-security#58: WebView SERP titles even alongside google.com in the address bar lack proof of search submission.
+        val webViewNodes = listOf(
             SearchNodeSnapshot("google.com", viewIdResourceName = "com.android.chrome:id/url_bar"),
             SearchNodeSnapshot("adult video query - Google Search", className = "android.webkit.WebView"),
             SearchNodeSnapshot("result 1", className = "android.widget.TextView"),
-            SearchNodeSnapshot("result 2", className = "android.widget.TextView"),
         )
-        val parsed = SearchQueryParser.extractFromNodes("com.android.chrome", nodes)
-        assertEquals("google", parsed?.engine)
-        assertEquals("adult video query", parsed?.query)
+        assertNull(SearchQueryParser.extractFromNodes("com.android.chrome", webViewNodes))
 
         // Focused EditText while child is mid-typing must NOT emit partial queries.
         val typingNodes = listOf(
-            SearchNodeSnapshot("com.android.chrome"),
-            SearchNodeSnapshot("youtube.com", viewIdResourceName = "com.android.chrome:id/url_bar"),
-            SearchNodeSnapshot("po", viewIdResourceName = "search_src_text", isEditable = true, isFocused = true),
-            SearchNodeSnapshot("Trending", className = "android.widget.TextView"),
-            SearchNodeSnapshot("Shorts", className = "android.widget.TextView"),
+            SearchNodeSnapshot("https://www.google.com/search?q=po", viewIdResourceName = "com.android.chrome:id/url_bar", isEditable = true, isFocused = true),
+            SearchNodeSnapshot("Results", className = "android.widget.TextView"),
         )
         assertNull(SearchQueryParser.extractFromNodes("com.android.chrome", typingNodes))
     }
 
     @Test
-    fun `unfocused youtube search field beside results captures query, skipping placeholders`() {
-        val placeholderOnly = listOf(
-            SearchNodeSnapshot("Search YouTube", viewIdResourceName = "com.google.android.youtube:id/search_src_text", isEditable = true),
-            SearchNodeSnapshot("Home"),
-            SearchNodeSnapshot("Shorts"),
-            SearchNodeSnapshot("Subscriptions"),
-        )
-        assertNull(SearchQueryParser.extractFromNodes("com.google.android.youtube", placeholderOnly))
-
-        val results = listOf(
+    fun `osra-security#58 leaves unverified dedicated search apps off when lacking an app-owned results marker`() {
+        val ytNodes = listOf(
             SearchNodeSnapshot("minecraft tutorial", viewIdResourceName = "com.google.android.youtube:id/search_src_text", isEditable = true, isFocused = false),
             SearchNodeSnapshot("Minecraft survival guide"),
             SearchNodeSnapshot("10:21"),
             SearchNodeSnapshot("1.2M views"),
         )
-        val parsed = SearchQueryParser.extractFromNodes("com.google.android.youtube", results)
-        assertEquals("youtube", parsed?.engine)
-        assertEquals("minecraft tutorial", parsed?.query)
+        assertFalse(SearchQueryParser.isSupportedPackage("com.google.android.youtube"))
+        assertNull(SearchQueryParser.extractFromNodes("com.google.android.youtube", ytNodes))
     }
 
     @Test
