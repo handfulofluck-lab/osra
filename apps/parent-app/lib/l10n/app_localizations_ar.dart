@@ -3482,4 +3482,54 @@ class AppLocalizationsAr extends AppLocalizations {
     );
     return 'أُعيد تشغيل $device $when، وعاد إلى العمل بعد نحو $_temp0.';
   }
+
+  @override
+  String get addAComputer => 'إضافة كمبيوتر';
+
+  @override
+  String get computerSelectPrompt => 'ما نوع الكمبيوتر المراد إضافته؟';
+
+  @override
+  String get computerWindows => 'ويندوز';
+
+  @override
+  String get computerMac => 'ماك';
+
+  @override
+  String get computerAdminInstallNote =>
+      'ثبّت تطبيق أسرة للأطفال على الكمبيوتر من حساب المسؤول الخاص بك. ويبقى حساب طفلك حسابًا قياسيًا.';
+
+  @override
+  String get computerPairIntro =>
+      'افتح العنوان أدناه على الكمبيوتر، وثبّت تطبيق أسرة للأطفال عليه، ثم اكتب هذا الرمز على الكمبيوتر.';
+
+  @override
+  String get computerDownloadAddress => 'العنوان المطلوب فتحه على الكمبيوتر';
+
+  @override
+  String get copyLink => 'نسخ الرابط';
+
+  @override
+  String get linkCopied => 'تم نسخ الرابط';
+
+  @override
+  String get sendTheLinkLine =>
+      'اكتب هذا العنوان في متصفح الكمبيوتر، أو الصقه في رسالة إلى نفسك.';
+
+  @override
+  String pairClaimBodyComputer(String device) {
+    return 'يطلب $device الإقران. اسمح به فقط إذا كان هو الكمبيوتر الذي أمامك.';
+  }
+
+  @override
+  String get pairClaimAllowedComputer =>
+      'تم السماح. يُكمل الكمبيوتر الإقران الآن…';
+
+  @override
+  String get pairClaimDeniedComputer =>
+      'تم الرفض. أنشئ رمزًا جديدًا لإقران كمبيوتر.';
+
+  @override
+  String get computerAdminWarning =>
+      'الحماية ضعيفة على هذا الكمبيوتر لأن حساب طفلك حساب مسؤول.';
 }

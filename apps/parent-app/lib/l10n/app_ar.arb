@@ -1089,5 +1089,19 @@
   "alertOnDateAtTime": "يوم {date} الساعة {time}",
   "alertDetailSent": "أُرسل {when}",
   "alertDeviceRestartedBodyMinutes": "أُعيد تشغيل {device} {when}، وعاد إلى العمل بعد {minutes, plural, =0{أقل من دقيقة} =1{دقيقة} =2{دقيقتين} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}.",
-  "alertDeviceRestartedBodyHours": "أُعيد تشغيل {device} {when}، وعاد إلى العمل بعد نحو {hours, plural, =1{ساعة} =2{ساعتين} few{{hours} ساعات} many{{hours} ساعة} other{{hours} ساعة}}."
+  "alertDeviceRestartedBodyHours": "أُعيد تشغيل {device} {when}، وعاد إلى العمل بعد نحو {hours, plural, =1{ساعة} =2{ساعتين} few{{hours} ساعات} many{{hours} ساعة} other{{hours} ساعة}}.",
+  "addAComputer": "إضافة كمبيوتر",
+  "computerSelectPrompt": "ما نوع الكمبيوتر المراد إضافته؟",
+  "computerWindows": "ويندوز",
+  "computerMac": "ماك",
+  "computerAdminInstallNote": "ثبّت تطبيق أسرة للأطفال على الكمبيوتر من حساب المسؤول الخاص بك. ويبقى حساب طفلك حسابًا قياسيًا.",
+  "computerPairIntro": "افتح العنوان أدناه على الكمبيوتر، وثبّت تطبيق أسرة للأطفال عليه، ثم اكتب هذا الرمز على الكمبيوتر.",
+  "computerDownloadAddress": "العنوان المطلوب فتحه على الكمبيوتر",
+  "copyLink": "نسخ الرابط",
+  "linkCopied": "تم نسخ الرابط",
+  "sendTheLinkLine": "اكتب هذا العنوان في متصفح الكمبيوتر، أو الصقه في رسالة إلى نفسك.",
+  "pairClaimBodyComputer": "يطلب {device} الإقران. اسمح به فقط إذا كان هو الكمبيوتر الذي أمامك.",
+  "pairClaimAllowedComputer": "تم السماح. يُكمل الكمبيوتر الإقران الآن…",
+  "pairClaimDeniedComputer": "تم الرفض. أنشئ رمزًا جديدًا لإقران كمبيوتر.",
+  "computerAdminWarning": "الحماية ضعيفة على هذا الكمبيوتر لأن حساب طفلك حساب مسؤول."
 }

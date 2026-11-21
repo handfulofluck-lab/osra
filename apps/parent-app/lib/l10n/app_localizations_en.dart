@@ -3284,4 +3284,54 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$device restarted $when and was back after about $_temp0.';
   }
+
+  @override
+  String get addAComputer => 'Add a computer';
+
+  @override
+  String get computerSelectPrompt => 'Which computer are you adding?';
+
+  @override
+  String get computerWindows => 'Windows';
+
+  @override
+  String get computerMac => 'Mac';
+
+  @override
+  String get computerAdminInstallNote =>
+      'Install OSRA on the computer from your own administrator account. Your child keeps a standard account.';
+
+  @override
+  String get computerPairIntro =>
+      'Open the address below on the computer, install OSRA there, then type this code on the computer.';
+
+  @override
+  String get computerDownloadAddress => 'Address to open on the computer';
+
+  @override
+  String get copyLink => 'Copy link';
+
+  @override
+  String get linkCopied => 'Link copied';
+
+  @override
+  String get sendTheLinkLine =>
+      'Type this address in the computer\'s browser, or paste it into a message to yourself.';
+
+  @override
+  String pairClaimBodyComputer(String device) {
+    return '$device wants to be paired. Allow it only if it is the computer in front of you.';
+  }
+
+  @override
+  String get pairClaimAllowedComputer =>
+      'Allowed. The computer is finishing pairing…';
+
+  @override
+  String get pairClaimDeniedComputer =>
+      'Declined. Make a new code to pair a computer.';
+
+  @override
+  String get computerAdminWarning =>
+      'Protection is weak on this computer because your child\'s account is an administrator.';
 }
