@@ -33,6 +33,14 @@ object ScanQueuePolicy {
     const val SOURCE_NOTIFICATION = "notification"
     const val SOURCE_SEARCH = "search"
 
+    /** Tags a queued search with its durable opt-in revision (`osra-security#59`). */
+    fun searchSource(revision: Long = 0L): String =
+        if (revision <= 0L) SOURCE_SEARCH else "$SOURCE_SEARCH:$revision"
+
+    /** True for any legacy or revision-tagged search row. */
+    fun isSearchSource(source: String): Boolean =
+        source == SOURCE_SEARCH || source.startsWith("$SOURCE_SEARCH:")
+
     /**
      * Builds the capture from a notification's fields: [title] is the sender (or the group), the
      * message is the newest of [messages] (MessagingStyle) when present, else [bigText]/[text].

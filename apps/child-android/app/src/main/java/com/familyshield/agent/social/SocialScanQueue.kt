@@ -43,6 +43,9 @@ class SocialScanQueue internal constructor(
     private val deviceIdProvider: suspend () -> String?,
     private val allowlistProvider: () -> List<String>,
     private val searchMonitoringEnabledProvider: () -> Boolean,
+    private val searchOptInRevisionProvider: () -> Long = { 0L },
+    private val getSearchPurgePending: suspend () -> Boolean = { false },
+    private val setSearchPurgePending: suspend (Boolean) -> Unit = {},
     private val consentPausedProvider: () -> Boolean,
     private val consentEpochProvider: () -> Long,
     private val consentResumedAtProvider: () -> Long,
@@ -68,6 +71,15 @@ class SocialScanQueue internal constructor(
         deviceIdProvider = { settings.deviceId() },
         allowlistProvider = { rules.contactAllowlist() },
         searchMonitoringEnabledProvider = { rules.searchMonitoringEnabled() },
+        searchOptInRevisionProvider = { rules.searchOptInRevision() },
+        getSearchPurgePending = {
+            (agentStateDao.get(RuleRepository.KEY_SEARCH_PURGE_PENDING) ?: 0L) != 0L
+        },
+        setSearchPurgePending = { pending ->
+            agentStateDao.set(
+                AgentStateEntity(RuleRepository.KEY_SEARCH_PURGE_PENDING, if (pending) 1L else 0L),
+            )
+        },
         consentPausedProvider = { consent.isPaused() },
         consentEpochProvider = { consent.pauseEpoch() },
         consentResumedAtProvider = { consent.resumedAtMs() },
@@ -117,8 +129,9 @@ class SocialScanQueue internal constructor(
         source: String,
     ): Boolean {
         if (app.isBlank() || text.isBlank() || consentPausedProvider()) return false
-        if (source == ScanQueuePolicy.SOURCE_SEARCH && !searchMonitoringEnabledProvider()) return false
-        val hash = dedupeHash(if (source == ScanQueuePolicy.SOURCE_SEARCH) "search:$app" else app, contact, text)
+        val isSearch = ScanQueuePolicy.isSearchSource(source)
+        if (isSearch && !searchMonitoringEnabledProvider()) return false
+        val hash = dedupeHash(if (isSearch) "search:$app" else app, contact, text)
         return enqueueLocked(app = app, contact = contact, text = text, nowMs = nowMs, source = source, hash = hash, scheduleFlush = false)
     }
 
@@ -132,19 +145,40 @@ class SocialScanQueue internal constructor(
         scheduleFlush: Boolean,
     ): Boolean = mutex.withLock {
         val epochAtEntry = consentEpochProvider()
+        val isSearch = ScanQueuePolicy.isSearchSource(source)
+        val searchRevAtEntry = if (isSearch) searchOptInRevisionProvider() else 0L
+        val persistedSource = if (isSearch) ScanQueuePolicy.searchSource(searchRevAtEntry) else source
         if (consentPausedProvider()) return@withLock false
-        if (source == ScanQueuePolicy.SOURCE_SEARCH && !searchMonitoringEnabledProvider()) return@withLock false
+        if (isSearch && !searchMonitoringEnabledProvider()) return@withLock false
         val last = recentHashes[hash]
         if (last != null && nowMs - last < DEDUPE_WINDOW_MS) return@withLock false
         if (!withinRateLimit(sendTimestamps, nowMs, RATE_WINDOW_MS, MAX_SENDS_PER_MINUTE)) {
             return@withLock false // NOTE: over rate — drop; the next user action re-captures.
         }
-        // Re-check consent & epoch immediately before inserting so a withdrawal racing enqueue writes nothing.
+        if (isSearch) {
+            // Require any pending search opt-out purge to clear cleanly before admitting a newly granted row (#59).
+            val pendingRes = runCatching { getSearchPurgePending() }
+            if (pendingRes.isFailure) return@withLock false
+            if (pendingRes.getOrNull() == true) {
+                val cleared = if (searchRevAtEntry > 0L) {
+                    runCatching { dao.deleteStaleSearches(persistedSource) }.isSuccess
+                } else {
+                    runCatching { dao.deleteAllSearches() }.isSuccess
+                }
+                if (!cleared || runCatching { setSearchPurgePending(false) }.isFailure) {
+                    return@withLock false
+                }
+            }
+        }
+        // Re-check consent, opt-in, and revision immediately before inserting so a concurrent opt-out writes nothing.
         if (consentPausedProvider() || consentEpochProvider() != epochAtEntry) return@withLock false
+        if (isSearch && (!searchMonitoringEnabledProvider() || searchOptInRevisionProvider() != searchRevAtEntry)) {
+            return@withLock false
+        }
         recentHashes[hash] = nowMs
         pruneLocked(nowMs)
         val inserted = runCatching {
-            dao.insert(com.familyshield.agent.data.db.PendingScanEntity(app = app, contact = contact, text = text, source = source, createdAt = nowMs))
+            dao.insert(com.familyshield.agent.data.db.PendingScanEntity(app = app, contact = contact, text = text, source = persistedSource, createdAt = nowMs))
         }.isSuccess
         if (inserted && scheduleFlush && (flushJob == null || flushJob?.isActive != true)) {
             flushJob = scope.launch { delay(flushDelayMs); flush() }
@@ -166,12 +200,21 @@ class SocialScanQueue internal constructor(
             }
             flushJob = null
 
-            // Clean up all pending search rows (even beyond BATCH_SIZE) whenever opt-in is absent/revoked.
+            // Clean up all pending search rows (even beyond BATCH_SIZE) whenever opt-in is absent/revoked (#59).
+            var searchPurgeFailed = false
             if (!searchMonitoringEnabledProvider()) {
-                runCatching { dao.deleteBySource(ScanQueuePolicy.SOURCE_SEARCH) }
+                runCatching { setSearchPurgePending(true) }
+                if (runCatching { dao.deleteAllSearches() }.isSuccess) {
+                    runCatching { setSearchPurgePending(false) }
+                } else {
+                    searchPurgeFailed = true
+                }
             }
 
-            if (consentPausedProvider()) return@withLock
+            if (consentPausedProvider()) {
+                if (searchPurgeFailed) retryScheduler()
+                return@withLock
+            }
             val epoch = consentEpochProvider()
             val storedEpochResult = runCatching { getStoredConsentEpoch() }
             if (storedEpochResult.isFailure) return@withLock
@@ -194,12 +237,18 @@ class SocialScanQueue internal constructor(
             val now = System.currentTimeMillis()
             runCatching { dao.purge(now - ScanQueuePolicy.MAX_AGE_MS, ScanQueuePolicy.MAX_ATTEMPTS) }
             val batch = runCatching { dao.oldest(ScanQueuePolicy.BATCH_SIZE) }.getOrDefault(emptyList())
-            if (batch.isEmpty()) return@withLock
+            if (batch.isEmpty()) {
+                if (searchPurgeFailed) retryScheduler()
+                return@withLock
+            }
             val childId = childIdProvider()
             val deviceId = deviceIdProvider()
-            if (childId == null || deviceId == null) return@withLock // not paired: keep the rows for after pairing
-            val (searchRows, socialRows) = batch.partition { it.source == ScanQueuePolicy.SOURCE_SEARCH }
-            var anyNetworkFailure = false
+            if (childId == null || deviceId == null) {
+                if (searchPurgeFailed) retryScheduler()
+                return@withLock // not paired: keep the rows for after pairing
+            }
+            val (searchRows, socialRows) = batch.partition { ScanQueuePolicy.isSearchSource(it.source) }
+            var anyNetworkFailure = searchPurgeFailed
 
             if (socialRows.isNotEmpty()) {
                 if (consentPausedProvider() || consentEpochProvider() != epoch) return@withLock
@@ -223,14 +272,49 @@ class SocialScanQueue internal constructor(
                 if (outcome.failed.isNotEmpty()) anyNetworkFailure = true
             }
 
-            if (searchRows.isNotEmpty()) {
+            if (searchRows.isNotEmpty() || !searchPurgeFailed) {
                 if (!searchMonitoringEnabledProvider()) {
-                    runCatching { dao.deleteBySource(ScanQueuePolicy.SOURCE_SEARCH) }
+                    if (!searchPurgeFailed && runCatching { dao.deleteAllSearches() }.isFailure) {
+                        runCatching { setSearchPurgePending(true) }
+                        anyNetworkFailure = true
+                    }
                 } else {
-                    for (row in searchRows) {
+                    val activeRev = searchOptInRevisionProvider()
+                    val activeSource = ScanQueuePolicy.searchSource(activeRev)
+                    val pendingRes = runCatching { getSearchPurgePending() }
+                    val pendingPurge = pendingRes.getOrNull() == true
+                    val hasStaleSearches = searchRows.any { it.source != activeSource }
+                    var eligibleSearchRows: List<com.familyshield.agent.data.db.PendingScanEntity> = searchRows
+                    if (pendingRes.isFailure) {
+                        eligibleSearchRows = emptyList()
+                        anyNetworkFailure = true
+                    } else if (pendingPurge || hasStaleSearches) {
+                        val cleaned = if (activeRev > 0L) {
+                            runCatching { dao.deleteStaleSearches(activeSource) }.isSuccess
+                        } else {
+                            runCatching { dao.deleteAllSearches() }.isSuccess
+                        }
+                        if (!cleaned || runCatching { setSearchPurgePending(false) }.isFailure) {
+                            eligibleSearchRows = emptyList()
+                            anyNetworkFailure = true
+                        } else {
+                            eligibleSearchRows = if (activeRev > 0L) {
+                                searchRows.filter { it.source == activeSource }
+                            } else {
+                                emptyList()
+                            }
+                        }
+                    }
+
+                    for (row in eligibleSearchRows) {
                         if (consentPausedProvider() || consentEpochProvider() != epoch) break
-                        if (!searchMonitoringEnabledProvider()) {
-                            runCatching { dao.deleteBySource(ScanQueuePolicy.SOURCE_SEARCH) }
+                        if (!searchMonitoringEnabledProvider() || searchOptInRevisionProvider() != activeRev) {
+                            runCatching { setSearchPurgePending(true) }
+                            if (runCatching { dao.deleteAllSearches() }.isSuccess) {
+                                runCatching { setSearchPurgePending(false) }
+                            } else {
+                                anyNetworkFailure = true
+                            }
                             break
                         }
                         try {

@@ -35,20 +35,42 @@ data class ParsedSearch(
 )
 
 /**
- * Pure JVM parser + dedupe policy for search safety (#939, ADR-0039).
+ * Pure JVM parser + dedupe policy for search safety (#939, ADR-0039, `osra-security#58`).
  *
- * Extracts submitted queries from:
- *  1. Search results URLs (Google search URLs with q=, Bing, DuckDuckGo, Yahoo p=, YouTube search_query=).
- *  2. SERP page titles ("<query> - Google Search", "<query> - بحث Google", "<query> - Bing").
- *  3. Unfocused search-box / submitted query nodes when a browser is on a search host or inside
- *     YouTube / Google Search results. Focused editable fields are ignored so half-typed keystrokes
- *     never flood the endpoint.
+ * Restricts search extraction strictly to provenance-verified controls:
+ *  1. Verified browser address-bar controls ([BROWSER_ADDRESS_BAR_IDS] owned by a supported browser
+ *     package) carrying an exact search-results URL (`q=`, `p=`, `search_query=`).
+ *  2. Verified browser `WebView` SERP title nodes ONLY when paired with a verified address bar
+ *     confirming the matching search-engine host (`google.*`, `bing.com`, `duckduckgo.com`).
+ *  3. Dedicated app search controls ([APP_SEARCH_FIELD_IDS] owned by a supported app in [APP_ENGINES])
+ *     when unfocused beside rendered results structure.
+ *
+ * Ordinary page nodes (`TextView`, rendered HTML content, unfocused page inputs, or missing
+ * address-bar provenance) are ignored and never collected.
  */
 object SearchQueryParser {
 
     const val MIN_QUERY_LEN: Int = 2
     const val MAX_QUERY_LEN: Int = 200
     const val DEDUPE_WINDOW_MS: Long = 5 * 60_000L
+
+    private val BROWSER_ADDRESS_BAR_IDS: Set<String> = setOf(
+        "url_bar",
+        "url_bar_text",
+        "location_bar_edit_text",
+        "omnibox_text",
+        "mozac_browser_toolbar_url_view",
+        "search_box_text",
+    )
+
+    private val APP_SEARCH_FIELD_IDS: Set<String> = setOf(
+        "search_src_text",
+        "search_plate",
+        "search_box",
+        "search_edit_frame",
+        "googleapp_search_box",
+        "search_query",
+    )
 
     private val BROWSER_PACKAGES: Set<String> = setOf(
         "com.android.chrome",
@@ -137,45 +159,101 @@ object SearchQueryParser {
         return ParsedSearch(engine = engine, query = cleaned)
     }
 
-    /** Extracts a submitted search from the visible accessibility nodes of [packageId]. */
-    fun extractFromNodes(packageId: String?, nodes: List<SearchNodeSnapshot>): ParsedSearch? {
+    /** True when raw node metadata identifies a proven browser address control, browser WebView container, or app search field. */
+    fun isVerifiedControlMetadata(
+        packageId: String?,
+        viewIdResourceName: String?,
+        className: CharSequence?,
+    ): Boolean {
+        val pkg = packageId?.takeIf { isSupportedPackage(it) } ?: return false
+        val cls = className?.toString()
+        if (pkg in BROWSER_PACKAGES) {
+            if (cls == "android.webkit.WebView") return true
+            return verifiedResourceId(pkg, viewIdResourceName, BROWSER_ADDRESS_BAR_IDS)
+        }
+        return pkg in APP_ENGINES && verifiedResourceId(pkg, viewIdResourceName, APP_SEARCH_FIELD_IDS)
+    }
+
+    /** True when [node] is a verified native browser address control owned by [packageId]. */
+    fun isVerifiedBrowserAddressControl(packageId: String?, node: SearchNodeSnapshot): Boolean =
+        packageId != null &&
+            packageId in BROWSER_PACKAGES &&
+            node.className != "android.webkit.WebView" &&
+            verifiedResourceId(packageId, node.viewIdResourceName, BROWSER_ADDRESS_BAR_IDS)
+
+    /** True when [node] is a top-level `WebView` container inside a supported browser window. */
+    fun isVerifiedBrowserWebViewContainer(packageId: String?, node: SearchNodeSnapshot): Boolean =
+        packageId != null &&
+            packageId in BROWSER_PACKAGES &&
+            node.className == "android.webkit.WebView"
+
+    /** True when [node] is an app-specific search control owned by a dedicated app in [APP_ENGINES]. */
+    fun isVerifiedAppSearchField(packageId: String?, node: SearchNodeSnapshot): Boolean =
+        packageId != null &&
+            packageId in APP_ENGINES &&
+            verifiedResourceId(packageId, node.viewIdResourceName, APP_SEARCH_FIELD_IDS)
+
+    private fun verifiedResourceId(
+        packageId: String,
+        viewIdResourceName: String?,
+        allowedIds: Set<String>,
+    ): Boolean {
+        val raw = viewIdResourceName?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+        val colon = raw.indexOf(":id/")
+        val entryName = if (colon >= 0) {
+            if (raw.substring(0, colon) != packageId) return false
+            raw.substring(colon + 4)
+        } else {
+            if (raw.contains(':')) return false
+            raw
+        }
+        return entryName in allowedIds
+    }
+
+    /** Extracts a submitted search strictly from provenance-verified controls of [packageId]. */
+    fun extractFromNodes(
+        packageId: String?,
+        nodes: List<SearchNodeSnapshot>,
+        hasAppResultsContent: Boolean? = null,
+    ): ParsedSearch? {
         if (!isSupportedPackage(packageId) || nodes.isEmpty()) return null
 
-        // 1. Exact search URL in any non-focused node (Chrome url_bar, WebView, SBrowser URL bar).
-        for (node in nodes) {
-            if (node.isFocused) continue
-            parseSearchUrl(node.text)?.let { return it }
-        }
+        if (packageId in BROWSER_PACKAGES) {
+            val addressNodes = nodes.filter { !it.isFocused && isVerifiedBrowserAddressControl(packageId, it) }
+            if (addressNodes.isEmpty()) return null
 
-        // 2. Search-page window/tab title (`"<query> - Google Search"`, etc.).
-        for (node in nodes) {
-            val trimmed = node.text.trim()
-            for (suffix in SEARCH_TITLE_SUFFIXES) {
-                if (trimmed.endsWith(suffix) && trimmed.length > suffix.length + 1) {
-                    val raw = trimmed.removeSuffix(suffix)
-                    val query = normalizeQuery(raw) ?: continue
-                    val engine = when {
-                        suffix.contains("Bing") -> "bing"
-                        suffix.contains("DuckDuckGo") -> "duckduckgo"
-                        else -> "google"
+            // 1. Exact search results URL directly inside the verified browser address control.
+            for (node in addressNodes) {
+                parseSearchUrl(node.text)?.let { return it }
+            }
+
+            // 2. Verified WebView SERP title paired with a verified address bar confirming the matching search host.
+            val addressEngine = detectBrowserEngineHint(addressNodes) ?: return null
+            val webViewNodes = nodes.filter { isVerifiedBrowserWebViewContainer(packageId, it) }
+            for (node in webViewNodes) {
+                val trimmed = node.text.trim()
+                for (suffix in SEARCH_TITLE_SUFFIXES) {
+                    if (trimmed.endsWith(suffix) && trimmed.length > suffix.length + 1) {
+                        val engine = when {
+                            suffix.contains("Bing") -> "bing"
+                            suffix.contains("DuckDuckGo") -> "duckduckgo"
+                            else -> "google"
+                        }
+                        if (engine != addressEngine) continue
+                        val query = normalizeQuery(trimmed.removeSuffix(suffix)) ?: continue
+                        return ParsedSearch(engine = engine, query = query)
                     }
-                    return ParsedSearch(engine = engine, query = query)
                 }
             }
+            return null
         }
 
-        // 3. Dedicated app or active search engine page with unfocused search field.
-        val engineHint = APP_ENGINES[packageId] ?: detectBrowserEngineHint(nodes) ?: return null
-        if (nodes.size < 4) return null // wait until results/screen content are visible, not empty search home
+        // 3. Dedicated search app: verified app search control alongside non-empty results structure.
+        val engineHint = APP_ENGINES[packageId] ?: return null
+        val resultsPresent = hasAppResultsContent ?: (nodes.size >= 4)
+        if (!resultsPresent) return null
         for (node in nodes) {
-            if (node.isFocused) continue
-            val isSearchField = node.isEditable ||
-                (node.className?.endsWith("EditText") == true) ||
-                (node.viewIdResourceName?.let { id ->
-                    id.contains("search_src_text") || id.contains("search_plate") ||
-                        id.contains("search_box") || id.contains("query") || id.contains("search_query")
-                } == true)
-            if (!isSearchField) continue
+            if (node.isFocused || !isVerifiedAppSearchField(packageId, node)) continue
             val query = normalizeQuery(node.text) ?: continue
             if (looksLikeUrlOrHost(query)) continue
             return ParsedSearch(engine = engineHint, query = query)
@@ -193,10 +271,11 @@ object SearchQueryParser {
         for (node in nodes) {
             val lower = node.text.trim().lowercase().removePrefix("https://").removePrefix("http://")
             val host = lower.substringBefore('/').substringBefore('?').substringBefore(':')
+            val path = if (lower.contains('/')) "/" + lower.substringAfter('/').substringBefore('?') else ""
+            if (path.isNotEmpty() && path != "/" && !path.startsWith("/search") && !path.startsWith("/m/search")) continue
             if (GOOGLE_SEARCH_HOST_RE.matches(host)) return "google"
             if (host == "www.bing.com" || host == "bing.com") return "bing"
             if (host == "duckduckgo.com" || host == "www.duckduckgo.com") return "duckduckgo"
-            if (host == "m.youtube.com" || host == "www.youtube.com") return "youtube"
         }
         return null
     }

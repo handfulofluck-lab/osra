@@ -95,6 +95,68 @@ class SearchQueryParserTest {
     }
 
     @Test
+    fun `osra-security#58 drops ordinary browser content, spoofed titles, and foreign control IDs without provenance`() {
+        // Ordinary TextView or WebView carrying a search URL without a verified browser address control must be dropped.
+        assertNull(
+            SearchQueryParser.extractFromNodes(
+                "com.android.chrome",
+                listOf(
+                    SearchNodeSnapshot("https://www.google.com/search?q=spoofed+page+link", className = "android.widget.TextView"),
+                    SearchNodeSnapshot("Results", className = "android.widget.TextView"),
+                ),
+            ),
+        )
+
+        // Spoofed SERP title on WebView when url_bar shows another domain (or non-search path) must be dropped.
+        assertNull(
+            SearchQueryParser.extractFromNodes(
+                "com.android.chrome",
+                listOf(
+                    SearchNodeSnapshot("https://example.com/blog", viewIdResourceName = "com.android.chrome:id/url_bar"),
+                    SearchNodeSnapshot("private query - Google Search", className = "android.webkit.WebView"),
+                    SearchNodeSnapshot("Result 1"),
+                    SearchNodeSnapshot("Result 2"),
+                ),
+            ),
+        )
+        assertNull(
+            SearchQueryParser.extractFromNodes(
+                "com.android.chrome",
+                listOf(
+                    SearchNodeSnapshot("https://docs.google.com/document/d/1", viewIdResourceName = "com.android.chrome:id/url_bar"),
+                    SearchNodeSnapshot("notes - Google Search", className = "android.webkit.WebView"),
+                ),
+            ),
+        )
+
+        // Unverified browser page EditText on a Google host must be ignored.
+        assertNull(
+            SearchQueryParser.extractFromNodes(
+                "com.android.chrome",
+                listOf(
+                    SearchNodeSnapshot("https://www.google.com", viewIdResourceName = "com.android.chrome:id/url_bar"),
+                    SearchNodeSnapshot("spoofed form input", className = "android.widget.EditText", isEditable = true),
+                    SearchNodeSnapshot("r1"),
+                    SearchNodeSnapshot("r2"),
+                ),
+            ),
+        )
+
+        // Foreign resource package ID on dedicated search app must be rejected.
+        assertNull(
+            SearchQueryParser.extractFromNodes(
+                "com.google.android.youtube",
+                listOf(
+                    SearchNodeSnapshot("minecraft tutorial", viewIdResourceName = "com.evil.overlay:id/search_src_text", isEditable = true),
+                    SearchNodeSnapshot("r1"),
+                    SearchNodeSnapshot("r2"),
+                    SearchNodeSnapshot("r3"),
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun `dedupe quiet window suppresses duplicate search within 5 minutes`() {
         val keyA = SearchQueryParser.dedupeKey(ParsedSearch("google", "Test Query"))
         val keyB = SearchQueryParser.dedupeKey(ParsedSearch("google", "test query"))

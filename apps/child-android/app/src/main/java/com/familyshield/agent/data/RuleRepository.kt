@@ -1,5 +1,8 @@
 package com.familyshield.agent.data
 
+import com.familyshield.agent.data.db.AgentStateDao
+import com.familyshield.agent.data.db.AgentStateEntity
+import com.familyshield.agent.data.db.PendingScanDao
 import com.familyshield.agent.data.db.UsageEventDao
 import com.familyshield.agent.enforcement.EssentialPackages
 import com.familyshield.agent.enforcement.PackageFacts
@@ -41,7 +44,10 @@ class RuleRepository @Inject constructor(
     private val consent: ConsentState,
     /** The OS view of a package (issue #165): the essential gate consults the HOME role, not just names. */
     private val packageFacts: PackageFacts,
+    private val agentStateDao: AgentStateDao,
+    private val pendingScanDao: PendingScanDao,
 ) {
+
     /** Outcome of evaluating a package against the active rule set. */
     enum class Decision { ALLOW, BLOCK, TIME_LIMIT_REACHED }
 
@@ -58,6 +64,7 @@ class RuleRepository @Inject constructor(
     private val startupDone = CompletableDeferred<Unit>()
 
     @Volatile private var cached: RuleSetDto? = null
+    @Volatile private var cachedSearchOptInRevision: Long = 0L
 
     /** Issue #444 C4: told after each successful rule sync, so a newly blocked app that is playing is paused. */
     private val rulesChangedListeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
@@ -86,7 +93,9 @@ class RuleRepository @Inject constructor(
             // A DataStore read error must not kill this coroutine before the counters are rebuilt (#287
             // review R1): the persist gate would stay shut for the life of the process, nothing would be
             // saved, and the next restart would lose the day — the bypass this file now closes.
+            cachedSearchOptInRevision = runCatching { agentStateDao?.get(KEY_SEARCH_OPT_IN_REV) }.getOrNull() ?: 0L
             cached = runCatching { loadFromDisk() }.getOrNull()
+            cached?.let { recordSearchOptInTransitionLocked(previous = null, updated = it) }
             rebuildCounters()
             refresh()
         }
@@ -138,6 +147,9 @@ class RuleRepository @Inject constructor(
 
     /** ADR-0039 / osra-security#45: true only when the cached rule set explicitly enables search monitoring. */
     fun searchMonitoringEnabled(): Boolean = isSearchMonitoringEnabled(cached)
+
+    /** Durable search opt-in revision (`osra-security#59`) separating earlier queued searches from later grants. */
+    fun searchOptInRevision(): Long = cachedSearchOptInRevision
 
     /** #830 gating: true only after the server flag went on and the phone synced that rule set. */
     fun siteNamesEnabled(): Boolean = cached?.siteNames == true
@@ -259,6 +271,8 @@ class RuleRepository @Inject constructor(
                 return@withLock cached
             }
             consent.onPollStatus(200)
+            val previous = cached
+            recordSearchOptInTransitionLocked(previous = previous, updated = updated)
             cached = updated
             // #864/#922 (Antigravity's review): the category pack is a store of its own, and it feeds BOTH
             // `blocklist.domains()` (the DNS sinkhole) and `blocklist.apps()` (`verdict`, RuleRepository.kt:116).
@@ -295,8 +309,45 @@ class RuleRepository @Inject constructor(
      * an unlinked phone should do: nothing to enforce, nothing to block.
      */
     suspend fun forgetRules() {
+        recordSearchOptInDisabledLocked()
         cached = null
         settings.forgetRules()
+    }
+
+    /**
+     * Persists a pending search purge flag and rotates [cachedSearchOptInRevision] whenever
+     * `searchMonitoring` transitions (`osra-security#59`), so any pre-opt-out search rows remain
+     * disqualified even across process restart or re-grant before a flush runs.
+     */
+    private suspend fun recordSearchOptInTransitionLocked(previous: RuleSetDto?, updated: RuleSetDto) {
+        val persistedRev = runCatching { agentStateDao?.get(KEY_SEARCH_OPT_IN_REV) }.getOrNull()
+        if (persistedRev != null && persistedRev > cachedSearchOptInRevision) {
+            cachedSearchOptInRevision = persistedRev
+        }
+        val persistedEnabled = runCatching { agentStateDao?.get(KEY_SEARCH_OPT_IN_ENABLED) }.getOrNull() == 1L
+        val wasEnabled = isSearchMonitoringEnabled(previous) || persistedEnabled
+        val nowEnabled = isSearchMonitoringEnabled(updated)
+        if (!nowEnabled && wasEnabled) {
+            recordSearchOptInDisabledLocked()
+        } else if (nowEnabled && !wasEnabled) {
+            val nextRev = maxOf(persistedRev ?: 0L, cachedSearchOptInRevision) + 1L
+            cachedSearchOptInRevision = nextRev
+            runCatching { agentStateDao?.set(AgentStateEntity(KEY_SEARCH_OPT_IN_REV, nextRev)) }
+            runCatching { agentStateDao?.set(AgentStateEntity(KEY_SEARCH_OPT_IN_ENABLED, 1L)) }
+        }
+    }
+
+    private suspend fun recordSearchOptInDisabledLocked() {
+        val persistedRev = runCatching { agentStateDao?.get(KEY_SEARCH_OPT_IN_REV) }.getOrNull() ?: 0L
+        val nextRev = maxOf(persistedRev, cachedSearchOptInRevision) + 1L
+        cachedSearchOptInRevision = nextRev
+        runCatching { agentStateDao?.set(AgentStateEntity(KEY_SEARCH_PURGE_PENDING, 1L)) }
+        runCatching { agentStateDao?.set(AgentStateEntity(KEY_SEARCH_OPT_IN_REV, nextRev)) }
+        runCatching { agentStateDao?.set(AgentStateEntity(KEY_SEARCH_OPT_IN_ENABLED, 0L)) }
+        val scanDao = pendingScanDao
+        if (scanDao != null && runCatching { scanDao.deleteAllSearches() }.isSuccess) {
+            runCatching { agentStateDao?.set(AgentStateEntity(KEY_SEARCH_PURGE_PENDING, 0L)) }
+        }
     }
 
     /** Returns the most recently known rule set, loading it from disk if necessary. */
@@ -311,6 +362,10 @@ class RuleRepository @Inject constructor(
     }
 
     companion object {
+        const val KEY_SEARCH_OPT_IN_REV: String = "search_opt_in_rev"
+        const val KEY_SEARCH_OPT_IN_ENABLED: String = "search_opt_in_enabled"
+        const val KEY_SEARCH_PURGE_PENDING: String = "search_purge_pending"
+
         private val LONG_MAP: java.lang.reflect.Type =
             Types.newParameterizedType(Map::class.java, String::class.java, Long::class.javaObjectType)
 

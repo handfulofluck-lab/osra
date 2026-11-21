@@ -48,6 +48,7 @@ class SearchDurableQueueTest {
     private class FakePendingScanDao : PendingScanDao {
         private var nextId = 1L
         var failDeleteBefore: Boolean = false
+        var failDeleteSearches: Boolean = false
         val rows = mutableListOf<PendingScanEntity>()
 
         override suspend fun insert(scan: PendingScanEntity): Long {
@@ -79,6 +80,20 @@ class SearchDurableQueueTest {
         override suspend fun deleteBySource(source: String): Int {
             val before = rows.size
             rows.removeAll { it.source == source }
+            return before - rows.size
+        }
+
+        override suspend fun deleteAllSearches(): Int {
+            if (failDeleteSearches) throw IOException("search purge failed")
+            val before = rows.size
+            rows.removeAll { ScanQueuePolicy.isSearchSource(it.source) }
+            return before - rows.size
+        }
+
+        override suspend fun deleteStaleSearches(activeSource: String): Int {
+            if (failDeleteSearches) throw IOException("stale search purge failed")
+            val before = rows.size
+            rows.removeAll { ScanQueuePolicy.isSearchSource(it.source) && it.source != activeSource }
             return before - rows.size
         }
 
@@ -329,5 +344,76 @@ class SearchDurableQueueTest {
         assertEquals(0, dao.count())
         assertEquals("post-grant search", api.postedSearches.single().query)
         assertTrue(api.postedSocialBatches.isEmpty())
+    }
+
+    @Test
+    fun `osra-security#59 opt-out pending purge and revision isolation survive cleanup failure and re-grant before flush`() = runBlocking {
+        val dao = FakePendingScanDao()
+        val api = FakeSearchApi()
+        var optIn = true
+        var searchRev = 1L
+        var searchPurgePending = false
+        var storedEpoch: Long? = 0L
+        var retryCount = 0
+
+        fun newQueue(): SocialScanQueue = SocialScanQueue(
+            api = api,
+            dao = dao,
+            childIdProvider = { "child-1" },
+            deviceIdProvider = { "dev-1" },
+            allowlistProvider = { emptyList() },
+            searchMonitoringEnabledProvider = { optIn },
+            searchOptInRevisionProvider = { searchRev },
+            getSearchPurgePending = { searchPurgePending },
+            setSearchPurgePending = { searchPurgePending = it },
+            consentPausedProvider = { false },
+            consentEpochProvider = { 0L },
+            consentResumedAtProvider = { 0L },
+            getStoredConsentEpoch = { storedEpoch },
+            setStoredConsentEpoch = { storedEpoch = it },
+            retryScheduler = { retryCount++ },
+        )
+
+        val q1 = newQueue()
+        val baseNow = System.currentTimeMillis()
+        assertTrue(q1.enqueueForFlush(app = "google", contact = null, text = "pre-optout query", nowMs = baseNow, source = ScanQueuePolicy.SOURCE_SEARCH))
+        assertEquals(ScanQueuePolicy.searchSource(1L), dao.rows.single().source)
+
+        // Rule transition opts out cleanly and later re-grants BEFORE flush runs, recording durable pending purge + rev 2.
+        optIn = false
+        searchPurgePending = true
+        searchRev = 2L
+
+        // Cleanup failure during ordinary opt-out flush keeps pending purge armed, sends nothing, and schedules retry.
+        dao.failDeleteSearches = true
+        q1.flush()
+        assertTrue(searchPurgePending)
+        assertTrue(api.postedSearches.isEmpty())
+        assertEquals(1, retryCount)
+
+        // Re-grant happens while purge is still pending and DAO still fails: enqueue refuses until purge clears,
+        // and flush refuses to upload even if a new rev-2 row exists alongside stale rev-1 rows until purge succeeds.
+        optIn = true
+        assertFalse(q1.enqueueForFlush(app = "youtube", contact = null, text = "blocked while purge dirty", nowMs = baseNow + 1_000L, source = ScanQueuePolicy.SOURCE_SEARCH))
+
+        dao.failDeleteSearches = false
+        // Re-granted enqueue succeeds once purge clears stale rev-1 row cleanly.
+        assertTrue(q1.enqueueForFlush(app = "youtube", contact = null, text = "post-regrant query", nowMs = baseNow + 2_000L, source = ScanQueuePolicy.SOURCE_SEARCH))
+        assertFalse(searchPurgePending)
+        assertEquals(ScanQueuePolicy.searchSource(2L), dao.rows.single().source)
+
+        // Also verify flush directly invalidates any stray stale rev-1 row BEFORE sending rev-2 on a failing-then-recovered DAO.
+        dao.insert(PendingScanEntity(app = "google", contact = null, text = "stray pre-optout", source = ScanQueuePolicy.searchSource(1L), createdAt = baseNow))
+        searchPurgePending = true
+        dao.failDeleteSearches = true
+        newQueue().flush()
+        assertTrue(searchPurgePending)
+        assertTrue("failed stale purge must block all search uploads", api.postedSearches.isEmpty())
+
+        dao.failDeleteSearches = false
+        newQueue().flush()
+        assertFalse(searchPurgePending)
+        assertEquals(0, dao.count())
+        assertEquals(listOf("post-regrant query"), api.postedSearches.map { it.query })
     }
 }

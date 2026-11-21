@@ -98,6 +98,12 @@ interface PendingScanDao {
     @Query("DELETE FROM pending_scans WHERE source = :source")
     suspend fun deleteBySource(source: String): Int
 
+    @Query("DELETE FROM pending_scans WHERE source = 'search' OR source LIKE 'search:%'")
+    suspend fun deleteAllSearches(): Int
+
+    @Query("DELETE FROM pending_scans WHERE (source = 'search' OR source LIKE 'search:%') AND source != :activeSource")
+    suspend fun deleteStaleSearches(activeSource: String): Int
+
     @Query("DELETE FROM pending_scans WHERE createdAt < :beforeMs")
     suspend fun deleteBefore(beforeMs: Long): Int
 }

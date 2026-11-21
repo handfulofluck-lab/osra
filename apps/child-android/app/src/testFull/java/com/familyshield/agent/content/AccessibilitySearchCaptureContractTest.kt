@@ -24,6 +24,8 @@ class AccessibilitySearchCaptureContractTest {
     ) : ReadableNode {
         var reads: Int = 0
             private set
+        var textReads: Int = 0
+            private set
 
         override val isVisibleToUser: Boolean
             get() {
@@ -34,12 +36,14 @@ class AccessibilitySearchCaptureContractTest {
         override val text: CharSequence?
             get() {
                 reads++
+                textReads++
                 return rawText
             }
 
         override val contentDescription: CharSequence?
             get() {
                 reads++
+                textReads++
                 return null
             }
 
@@ -214,12 +218,15 @@ class AccessibilitySearchCaptureContractTest {
 
         val foreignOverlayNode = SpyNode("com.android.autofill", rawText = "https://www.google.com/search?q=stolen+query")
         val unknownDescendantNode = SpyNode(null, rawText = "private overlay")
+        val ordinaryPageLink = SpyNode("com.android.chrome", rawText = "https://www.google.com/search?q=page+body+link")
         val mixedChromeRoot = SpyNode(
             packageName = "com.android.chrome",
             children = listOf(
                 foreignOverlayNode,
                 unknownDescendantNode,
-                SpyNode("com.android.chrome", rawText = "physics revision - Google Search"),
+                ordinaryPageLink,
+                SpyNode("com.android.chrome", rawText = "google.com", viewIdResourceName = "com.android.chrome:id/url_bar"),
+                SpyNode("com.android.chrome", rawText = "physics revision - Google Search", className = "android.webkit.WebView"),
             ),
         )
         assertTrue(
@@ -233,5 +240,34 @@ class AccessibilitySearchCaptureContractTest {
         assertEquals(0, foreignOverlayNode.totalReads())
         assertEquals(0, unknownDescendantNode.totalReads())
         assertEquals(listOf("google" to "physics revision"), enqueued)
+
+        // osra-security#58: ordinary page content in a browser (even containing search URLs or SERP suffixes)
+        // never triggers text collection on ordinary nodes and never enqueues without verified control provenance.
+        val pageSearchUrl = SpyNode("com.android.chrome", rawText = "https://www.google.com/search?q=spoofed+url+in+article")
+        val pageSpoofedTitle = SpyNode("com.android.chrome", rawText = "secret query - Google Search")
+        val articleChromeRoot = SpyNode(
+            packageName = "com.android.chrome",
+            children = listOf(
+                SpyNode("com.android.chrome", rawText = "https://example.com/news", viewIdResourceName = "com.android.chrome:id/url_bar"),
+                SpyNode(
+                    "com.android.chrome",
+                    rawText = "fake - Google Search",
+                    className = "android.webkit.WebView",
+                    children = listOf(pageSearchUrl, pageSpoofedTitle),
+                ),
+            ),
+        )
+        assertFalse(
+            capture.captureFromWindow(
+                foregroundPackage = "com.android.chrome",
+                eventPackage = "com.android.chrome",
+                activeRootProvider = { articleChromeRoot },
+                nowMs = 400_000L,
+            ),
+        )
+        // Zero text/contentDescription reads on ordinary page TextViews when URL bar provenance is absent/unrelated.
+        assertEquals(0, pageSearchUrl.textReads)
+        assertEquals(0, pageSpoofedTitle.textReads)
+        assertEquals(1, enqueued.size)
     }
 }
