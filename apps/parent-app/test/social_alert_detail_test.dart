@@ -372,7 +372,7 @@ void main() {
       final ctrl = NotificationTapController();
       ctrl.recordTap('');
       ctrl.recordTap('   ');
-      ctrl.recordTap('../settings');
+      ctrl.recordTap('bad/segment');
       ctrl.recordTap('id?x=1');
       ctrl.recordTap('id#frag');
       expect(ctrl.pendingAlertId, isNull);
