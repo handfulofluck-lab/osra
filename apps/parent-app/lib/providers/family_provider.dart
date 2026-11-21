@@ -60,6 +60,34 @@ final alertsProvider = FutureProvider.family<AlertsPage, AlertFilter>((ref, filt
   return AlertsPage.fromJson(res.data);
 });
 
+/// Resolves a single alert by [alertId] within the guardian's authorized `/v1/alerts` scope,
+/// checking page 1 via [alertsProvider] first and paginating subsequent pages before returning `null`.
+final alertByIdProvider = FutureProvider.family<Alert?, String>((ref, alertId) async {
+  const pageLimit = 50;
+  const maxPages = 20;
+  final firstPage = await ref.watch(alertsProvider(const AlertFilter()).future);
+  final firstHit = firstPage.items.where((a) => a.id == alertId).firstOrNull;
+  if (firstHit != null) return firstHit;
+
+  var seen = firstPage.items.length;
+  final total = firstPage.total;
+  if (seen == 0 || seen >= total) return null;
+
+  final api = ref.watch(apiClientProvider);
+  for (var page = 2; page <= maxPages && seen < total; page++) {
+    final res = await api.raw.get(
+      '/v1/alerts',
+      queryParameters: {'page': page, 'limit': pageLimit},
+    );
+    final nextPage = AlertsPage.fromJson(res.data);
+    if (nextPage.items.isEmpty) break;
+    final hit = nextPage.items.where((a) => a.id == alertId).firstOrNull;
+    if (hit != null) return hit;
+    seen += nextPage.items.length;
+  }
+  return null;
+});
+
 /// Snapshot of unacknowledged alerts returned by `GET /v1/alerts?ack=false`.
 class UnacknowledgedAlertsSummary {
   final int total;

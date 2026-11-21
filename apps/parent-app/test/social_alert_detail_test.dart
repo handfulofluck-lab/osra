@@ -333,6 +333,185 @@ void main() {
       expect(find.byType(AlertDetailScreen), findsOneWidget);
       expect(find.byType(AlertDialog), findsNothing);
     });
+
+    testWidgets(
+        'Finding 1: regular app_blocked alert entered via notification tap renders general presentation without Social CTA',
+        (tester) async {
+      // Mutant: removing `if (!isSocialAlertCategory(alert.category))` renders
+      // _SocialAlertDetailBody with Open Social activity and queries /v1/social/events.
+      var socialEventsCalls = 0;
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/alerts': (_) => {
+              'items': [
+                {
+                  'id': 'alert-blocked-1',
+                  'childId': 'child-1',
+                  'deviceId': 'dev-1',
+                  'category': 'app_blocked',
+                  'severity': 'info',
+                  'title': 'Blocked app attempt',
+                  'body': 'TikTok was blocked by your schedule.',
+                  'metadata': {'app': 'tiktok'},
+                  'createdAt': alertTime.toUtc().toIso8601String(),
+                },
+              ],
+              'meta': {'total': 1, 'page': 1, 'limit': 50},
+            },
+        'GET /v1/social/events': (_) {
+          socialEventsCalls++;
+          return {'items': []};
+        },
+      });
+
+      await pumpDetail(tester, api: api, alertId: 'alert-blocked-1');
+      expect(find.byKey(const ValueKey('alertDetailGeneralScroll')), findsOneWidget);
+      expect(find.byKey(const ValueKey('alertDetailBody')), findsOneWidget);
+      expect(find.text('TikTok was blocked by your schedule.'), findsOneWidget);
+      expect(find.byKey(const ValueKey('alertDetailOpenSocial')), findsNothing);
+      expect(find.byKey(const ValueKey('alertDetailFraming')), findsNothing);
+      expect(socialEventsCalls, 0);
+    });
+
+    testWidgets(
+        'Finding 2: connection timeout on Social preview shows inline retry while keeping alert summary visible, and recovers on tap',
+        (tester) async {
+      // Mutant: returning SocialPreviewAvailability.expired on non-permission errors
+      // shows alertDetailPreviewExpired instead of alertDetailPreviewRetry.
+      var attempt = 0;
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/alerts': (_) => {
+              'items': [
+                {
+                  'id': 'alert-social-1',
+                  'childId': 'child-1',
+                  'deviceId': 'dev-1',
+                  'category': 'social_concern',
+                  'severity': 'warning',
+                  'title': 'whatsapp concern (warning)',
+                  'body': 'Flagged message (cyberbullying)',
+                  'metadata': {
+                    'app': 'whatsapp',
+                    'contact': 'Test Group',
+                    'concernTypes': ['cyberbullying'],
+                  },
+                  'createdAt': alertTime.toUtc().toIso8601String(),
+                },
+              ],
+              'meta': {'total': 1, 'page': 1, 'limit': 50},
+            },
+        'GET /v1/social/events': (_) {
+          attempt++;
+          if (attempt == 1) {
+            throw DioException(
+              requestOptions: RequestOptions(path: '/v1/social/events'),
+              type: DioExceptionType.connectionTimeout,
+            );
+          }
+          return {
+            'items': [
+              {
+                'id': 'evt-1',
+                'childId': 'child-1',
+                'app': 'whatsapp',
+                'contact': 'Test Group',
+                'severity': 'warning',
+                'concernTypes': ['cyberbullying'],
+                'preview': 'Synthetic vault excerpt only shown in Social activity',
+                'createdAt': alertTime.toUtc().toIso8601String(),
+              },
+            ],
+          };
+        },
+      });
+
+      await pumpDetail(tester, api: api, alertId: 'alert-social-1');
+      // Alert summary stays visible; expiry copy must NOT appear on timeout.
+      expect(find.byKey(const ValueKey('alertDetailTitle')), findsOneWidget);
+      expect(find.byKey(const ValueKey('alertDetailAppChip')), findsOneWidget);
+      expect(find.byKey(const ValueKey('alertDetailFraming')), findsOneWidget);
+      expect(find.byKey(const ValueKey('alertDetailPreviewExpired')), findsNothing);
+      expect(find.byKey(const ValueKey('alertDetailPreviewRetry')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('alertDetailPreviewRetryButton')));
+      await tester.pumpAndSettle();
+
+      expect(attempt, 2);
+      expect(find.byKey(const ValueKey('alertDetailPreviewRetry')), findsNothing);
+      expect(find.byKey(const ValueKey('alertDetailOpenSocial')), findsOneWidget);
+    });
+
+    testWidgets(
+        'Finding 3: older alert outside page 1 of 50 entered via notification tap paginates and renders readable detail',
+        (tester) async {
+      // Mutant: searching only page 1 of alertsProvider renders alertDetailUnavailable
+      // for alert-older-62 on page 2.
+      final requestedPages = <int>[];
+      final page1Items = List.generate(
+        50,
+        (i) => {
+          'id': 'alert-recent-$i',
+          'childId': 'child-1',
+          'deviceId': 'dev-1',
+          'category': 'app_blocked',
+          'severity': 'info',
+          'title': 'Recent alert $i',
+          'body': 'Recent body $i',
+          'metadata': const <String, dynamic>{},
+          'createdAt': alertTime.toUtc().toIso8601String(),
+        },
+      );
+      final page2Items = [
+        {
+          'id': 'alert-older-62',
+          'childId': 'child-1',
+          'deviceId': 'dev-1',
+          'category': 'social_concern',
+          'severity': 'warning',
+          'title': 'whatsapp concern (warning)',
+          'body': 'Flagged message (cyberbullying)',
+          'metadata': {
+            'app': 'whatsapp',
+            'contact': 'Older Group',
+            'concernTypes': ['cyberbullying'],
+          },
+          'createdAt': alertTime.toUtc().toIso8601String(),
+        },
+      ];
+
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/alerts': (opts) {
+          final page = (opts.query['page'] as int?) ?? 1;
+          requestedPages.add(page);
+          return {
+            'items': page == 1 ? page1Items : page2Items,
+            'meta': {'total': 51, 'page': page, 'limit': 50},
+          };
+        },
+        'GET /v1/social/events': (_) => {
+              'items': [
+                {
+                  'id': 'evt-older',
+                  'childId': 'child-1',
+                  'app': 'whatsapp',
+                  'contact': 'Older Group',
+                  'severity': 'warning',
+                  'concernTypes': ['cyberbullying'],
+                  'preview': 'Synthetic older vault excerpt',
+                  'createdAt': alertTime.toUtc().toIso8601String(),
+                },
+              ],
+            },
+      });
+
+      await pumpDetail(tester, api: api, alertId: 'alert-older-62');
+      expect(requestedPages, [1, 2]);
+      expect(find.byKey(const ValueKey('alertDetailUnavailable')), findsNothing);
+      expect(find.byKey(const ValueKey('alertDetailScroll')), findsOneWidget);
+      expect(find.byKey(const ValueKey('alertDetailOpenSocial')), findsOneWidget);
+    });
   });
 
   group('NotificationTapController (#972 cold-start & warm-start auth gate)', () {

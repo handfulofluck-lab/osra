@@ -32,6 +32,9 @@ enum SocialPreviewAvailability {
 
   /// Vault query succeeded, but no matching encrypted preview is stored or it has expired.
   expired,
+
+  /// Transient network, timeout, or server failure while checking the Social preview endpoint.
+  transientError,
 }
 
 /// Formats an alert's local timestamp using the #889 / U45 calendar-day keys without seconds,
@@ -78,7 +81,7 @@ SocialPreviewAvailability resolveSocialPreviewAvailability(
           return SocialPreviewAvailability.noPermission;
         }
       }
-      return SocialPreviewAvailability.expired;
+      return SocialPreviewAvailability.transientError;
     },
     data: (events) {
       if (events.isEmpty) return SocialPreviewAvailability.expired;
@@ -110,9 +113,9 @@ class AlertDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final canPop = Navigator.of(context).canPop();
-    final alertsAsync = initialAlert != null
-        ? AsyncValue<List<Alert>>.data([initialAlert!])
-        : ref.watch(alertsProvider(const AlertFilter())).whenData((page) => page.items);
+    final alertAsync = initialAlert != null
+        ? AsyncValue<Alert?>.data(initialAlert)
+        : ref.watch(alertByIdProvider(alertId));
 
     void openAllAlerts() {
       if (canPop) {
@@ -131,14 +134,17 @@ class AlertDetailScreen extends ConsumerWidget {
         ),
         title: Text(l10n.alertsTitle),
       ),
-      body: alertsAsync.when(
+      body: alertAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, _) => Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             ErrorRetryView(
               message: friendlyErrorText(l10n, err, () => l10n.alertsLoadFailed),
-              onRetry: () => ref.invalidate(alertsProvider(const AlertFilter())),
+              onRetry: () {
+                ref.invalidate(alertsProvider(const AlertFilter()));
+                ref.invalidate(alertByIdProvider(alertId));
+              },
             ),
             const SizedBox(height: AppSpace.sm),
             OutlinedButton(
@@ -147,10 +153,16 @@ class AlertDetailScreen extends ConsumerWidget {
             ),
           ],
         ),
-        data: (alerts) {
-          final alert = alerts.where((a) => a.id == alertId).firstOrNull;
+        data: (alert) {
           if (alert == null) {
             return _AlertUnavailableView(onOpenAllAlerts: () => context.go('/alerts'));
+          }
+          if (!isSocialAlertCategory(alert.category)) {
+            return _GeneralAlertDetailBody(
+              alert: alert,
+              showAllAlertsButton: !canPop,
+              nowProvider: nowProvider,
+            );
           }
           return _SocialAlertDetailBody(
             alert: alert,
@@ -349,7 +361,7 @@ class _SocialAlertDetailBody extends ConsumerWidget {
           ),
           const SizedBox(height: AppSpace.lg),
         ],
-        // 3. Primary Social activity action OR preview-availability callout (inside scroll for 200%).
+        // 3. Primary Social activity action OR preview-availability / retry callout (inside scroll for 200%).
         if (availability == SocialPreviewAvailability.available)
           SizedBox(
             width: double.infinity,
@@ -359,6 +371,15 @@ class _SocialAlertDetailBody extends ConsumerWidget {
               icon: const Icon(Icons.lock_open_rounded, size: 18),
               label: Text(l10n.socialAlertOpenActivity),
             ),
+          )
+        else if (availability == SocialPreviewAvailability.transientError)
+          _PreviewRetryCard(
+            message: friendlyErrorText(
+              l10n,
+              eventsAsync.error ?? Exception('preview_unavailable'),
+              () => l10n.alertsLoadFailed,
+            ),
+            onRetry: () => ref.invalidate(socialEventsProvider(alert.childId)),
           )
         else
           _PreviewUnavailableCard(availability: availability),
@@ -433,6 +454,168 @@ class _PreviewUnavailableCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _PreviewRetryCard extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _PreviewRetryCard({
+    required this.message,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = context.tokens;
+    final l10n = context.l10n;
+    return Container(
+      key: const ValueKey('alertDetailPreviewRetry'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpace.md),
+      decoration: BoxDecoration(
+        color: tokens.surfaceVariant,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: tokens.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.cloud_off_outlined, size: 20, color: tokens.onSurfaceVariant),
+              const SizedBox(width: AppSpace.sm),
+              Expanded(
+                child: Text(
+                  message,
+                  style: theme.textTheme.bodyMedium?.copyWith(color: tokens.onSurfaceVariant),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.sm),
+          FilledButton.tonalIcon(
+            key: const ValueKey('alertDetailPreviewRetryButton'),
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh, size: 18),
+            label: Text(l10n.retry),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// General full-screen presentation for non-social alerts opened via `/alerts/:id`
+/// (e.g., `app_blocked`, `tamper`, `web_blocked`). Never queries Social previews or shows
+/// the Social activity CTA.
+class _GeneralAlertDetailBody extends ConsumerWidget {
+  final Alert alert;
+  final bool showAllAlertsButton;
+  final DateTime Function()? nowProvider;
+
+  const _GeneralAlertDetailBody({
+    required this.alert,
+    required this.showAllAlertsButton,
+    this.nowProvider,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final tokens = context.tokens;
+    final l10n = context.l10n;
+    final isEnglish = context.localeName.startsWith('en');
+
+    final overview = ref.watch(familyProvider).valueOrNull;
+    final child = overview?.children.where((c) => c.id == alert.childId).firstOrNull;
+    final device = alert.deviceId != null
+        ? overview?.devices.where((d) => d.id == alert.deviceId).firstOrNull
+        : null;
+
+    final title = l10n.alertTitleFor(
+      alert.category,
+      alert.title,
+      isEnglish: isEnglish,
+      tamperType: alert.metadata['type']?.toString(),
+    );
+    final sevDot = tokens.severityDot(alert.severity);
+    final contextParts = <String>[
+      if (child != null && child.displayName.isNotEmpty) child.displayName,
+      if (device != null && device.model.isNotEmpty) ltrIsolate(device.model),
+    ];
+    final coachCard = coachCardFor(alert.category, const []);
+
+    return ListView(
+      key: const ValueKey('alertDetailGeneralScroll'),
+      padding: const EdgeInsets.all(AppSpace.lg),
+      children: [
+        RulesBehindBanner(childId: alert.childId),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: Icon(Icons.notifications_active_outlined, color: sevDot, size: 24),
+            ),
+            const SizedBox(width: AppSpace.sm),
+            Expanded(
+              child: Text(
+                title,
+                key: const ValueKey('alertDetailTitle'),
+                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpace.md),
+        if (contextParts.isNotEmpty) ...[
+          Text(
+            contextParts.join(' · '),
+            key: const ValueKey('alertDetailChildDevice'),
+            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: AppSpace.xs),
+        ],
+        if (alert.createdAt != null) ...[
+          Text(
+            formatAlertLocalTime(
+              alert.createdAt!,
+              l10n: l10n,
+              localeName: context.localeName,
+              now: nowProvider?.call(),
+            ),
+            key: const ValueKey('alertDetailTime'),
+            style: theme.textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant),
+          ),
+          const SizedBox(height: AppSpace.md),
+        ],
+        if (alert.body.trim().isNotEmpty) ...[
+          Text(
+            alert.body,
+            key: const ValueKey('alertDetailBody'),
+            style: theme.textTheme.bodyLarge,
+          ),
+          const SizedBox(height: AppSpace.lg),
+        ],
+        const Divider(),
+        CoachCardSection(card: coachCard),
+        if (showAllAlertsButton) ...[
+          const SizedBox(height: AppSpace.lg),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              key: const ValueKey('alertDetailAllAlerts'),
+              onPressed: () => context.go('/alerts'),
+              child: Text(l10n.socialAlertViewAll),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
