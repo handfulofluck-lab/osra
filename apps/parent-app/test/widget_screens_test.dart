@@ -541,17 +541,17 @@ void main() {
       expect(find.text('Paused'), findsNothing);
     });
 
-    testWidgets('child detail Pause net button POSTs the pause endpoint', (tester) async {
+    testWidgets('child detail Pause internet button POSTs the pause endpoint', (tester) async {
       final api = pausedApi(startPaused: false);
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
-      await tester.ensureVisible(find.text('Pause net'));
+      await tester.ensureVisible(find.text('Pause internet'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Pause net'));
+      await tester.tap(find.text('Pause internet'));
       await flushFakeHttp(tester);
 
       expect(api.calls('POST', '/v1/controls/children/child-1/pause'), hasLength(1));
-      expect(find.text('Resume net'), findsOneWidget);
+      expect(find.text('Resume internet'), findsOneWidget);
       // Run out the snackbar so no timer is left pending at test end.
       await tester.pump(const Duration(seconds: 5));
       await tester.pumpAndSettle();
