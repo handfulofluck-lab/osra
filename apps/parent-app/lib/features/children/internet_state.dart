@@ -1,89 +1,57 @@
-import '../../api/models.dart';
-
 /// #969: what a parent can actually say about a child's internet pause.
 ///
-/// The dashboard chip reads `GET /v1/controls/children/:id/status`, which reports whether the command was
-/// **sent** (`controls.ts:25-59`). It has never reported whether a handset applied it, so a red "internet
-/// paused" could sit over a phone that was still online — Codex's report, and the reason this type exists.
+/// The dashboard chip used to read only `paused` from `GET /v1/controls/children/:id/status`, which reports
+/// whether the command was **sent**. That could sit red over a phone that was still online — Codex's report.
 ///
-/// The per-device confirmation is already on the wire: `pause_internet` and `resume_internet` fan out as one
-/// `DeviceCommand` per device with `pending → delivered → acked|failed|expired`. This maps one newest row per
-/// device plus the requested flag into the only four things a parent can be told truthfully.
+/// The aggregate now answers the question directly (`services/api/src/lib/childInternet.ts`,
+/// `latestChildInternet`): the response carries `internetRequest.devices[]`, one entry per device **of this
+/// request**, each with the status of its own command id. The server has already done the part a client cannot:
+/// a device that never received this request comes back `unknown`, and a command whose window closed is
+/// `expired` or `unconfirmed` rather than silently pending.
+///
+/// This file maps those statuses to the only four things a parent can be told truthfully. It reads no
+/// timestamps and makes no guesses: the input *is* the answer to "what did each phone say about this request".
 enum InternetState {
   /// No pause was requested, or the requested pause has been lifted.
   inactive,
 
-  /// Requested, and no device has acknowledged it yet. Also the answer when a device's rows are unknown,
-  /// because "we do not know yet" must not be shown as either outcome.
+  /// Requested, and no device has settled it yet — every entry is `pending`, `delivered` or `unknown`.
   waiting,
 
-  /// Every device that reported has acknowledged the newest request.
+  /// Every device on the request acknowledged it.
   confirmed,
 
-  /// Some acknowledged and some did not — including a device that has no row for the requested action at all —
-  /// or nothing acknowledged and something failed. A mixed, unknown or refused result stays visible rather than
-  /// being rounded to one side.
+  /// Some acknowledged and some did not, or nothing acknowledged and something failed, expired or was never
+  /// confirmed. A mixed, unknown or refused result stays visible rather than being rounded to one side.
   partial,
 }
 
-/// Which of [InternetState] describes [requested] given one row per device ([newestPerDevice]).
+/// Which of [InternetState] describes the latest request, given one entry per device from
+/// `internetRequest.devices`.
 ///
-/// **What the caller must pass** (Codex, `7056040915`): one entry **per device**, holding the row belonging to the
-/// **latest Pause or Resume request** — identified by the command ids the aggregate returns — or `null` when that
-/// device has no row for it. `null` entries must be kept: dropping them shortens the list, and a child with two
-/// phones where one never answered would read as `confirmed`. A device's *newest* row is only a stopgap —
-/// `newestInternetCommand` below — and it is the weaker reading: on a cold device its newest internet row can
-/// belong to an older request, which is why the aggregate ties its answer to command ids rather than to time.
+/// **Only `acked` counts as confirmed.** `delivered` means the phone fetched the command, not that it acted.
+/// `failed` and `expired` mean it did not. `unconfirmed` means the window closed while the phone held the
+/// command — the server's own word for "we asked, it never said" — and `unknown` means this device was not on
+/// the request at all. None of those may round up.
 ///
-/// Only an `acked` row counts as confirmed: `delivered` means the phone fetched the command, not that it acted,
-/// and `failed`/`expired` mean the opposite of confirmed. An empty list is `waiting`, never `confirmed` — a
-/// child with no devices, or a phone that has not reported, must not read as success.
+/// An empty list is [InternetState.waiting], never `confirmed`: a child with no paired devices must not read as
+/// success.
 InternetState internetStateFor({
-  required bool requested,
-  required List<DeviceCommand?> newestPerDevice,
+  required bool paused,
+  required List<String> deviceStatuses,
 }) {
-  if (!requested) return InternetState.inactive;
-  if (newestPerDevice.isEmpty) return InternetState.waiting;
-  // Only a row for the action that was requested can say anything about it. A device whose newest internet row
-  // is a `resume_internet` has not answered a pause request at all — counting it would report "confirmed" on the
-  // strength of the command that did the opposite (Antigravity's F1, 7052763165).
-  final expected = requested ? 'pause_internet' : 'resume_internet';
+  if (!paused) return InternetState.inactive;
+  if (deviceStatuses.isEmpty) return InternetState.waiting;
   var acked = 0;
   var settledWithoutAck = 0;
-  for (final command in newestPerDevice) {
-    if (command == null) continue;   // a device with no row for this request is unknown, not confirmed
-    if (command.type != expected) continue;
-    if (command.status == 'acked') {
+  for (final status in deviceStatuses) {
+    if (status == 'acked') {
       acked++;
-    } else if (command.status == 'failed' || command.status == 'expired') {
+    } else if (status == 'failed' || status == 'expired' || status == 'unconfirmed') {
       settledWithoutAck++;
     }
   }
-  // Confirmed means EVERY device acknowledged THIS request. A device with no row for it is not confirmed, so it
-  // cannot be rounded away: with one ack and one unknown the parent sees `partial`, not success.
-  if (acked == newestPerDevice.length) return InternetState.confirmed;
+  if (acked == deviceStatuses.length) return InternetState.confirmed;
   if (acked > 0 || settledWithoutAck > 0) return InternetState.partial;
   return InternetState.waiting;
-}
-
-/// The newest `pause_internet`/`resume_internet` row for one device, taken from that device's history.
-///
-/// **A stopgap, not the contract.** It reads time, not request identity, so a device whose newest internet row
-/// belongs to an older Pause/Resume reports that older answer. The aggregate Codex is building returns the
-/// command ids of the latest request, which is the correct input for [internetStateFor]; this helper keeps the
-/// screen usable until that lands, and nothing should be built on top of it that assumes request identity.
-///
-/// Returns null when that device has neither, so the caller can tell "this device has no row yet" from "its
-/// newest row says pending". The first is unknown and still belongs in the list [internetStateFor] reads, **as a
-/// null entry** — omitting it would let the remaining devices round the answer up.
-DeviceCommand? newestInternetCommand(List<DeviceCommand> history) {
-  DeviceCommand? newest;
-  for (final command in history) {
-    if (command.type != 'pause_internet' && command.type != 'resume_internet') continue;
-    final previous = newest?.createdAt;
-    if (newest == null || previous == null || (command.createdAt?.isAfter(previous) ?? false)) {
-      newest = command;
-    }
-  }
-  return newest;
 }
