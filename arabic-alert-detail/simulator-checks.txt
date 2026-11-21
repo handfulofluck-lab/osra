@@ -1,0 +1,9 @@
+PR980 pr980-e04b454f-ar-light-100-available visible frame
+PR980 pr980-e04b454f-ar-light-100-no-permission visible frame
+PR980 pr980-e04b454f-ar-light-200-available visible frame
+PR980 pr980-e04b454f-ar-light-200-no-permission visible frame
+PR980 pr980-e04b454f-ar-dark-100-available visible frame
+PR980 pr980-e04b454f-ar-dark-100-no-permission visible frame
+PR980 pr980-e04b454f-ar-dark-200-available visible frame
+PR980 pr980-e04b454f-ar-dark-200-no-permission visible frame
+00:07 +1: All tests passed!
