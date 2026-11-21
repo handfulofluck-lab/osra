@@ -968,9 +968,17 @@ IP literals) is listed in ADR-0015 and must not be reported as a bug.
 For the child-wide Pause and Resume controls, read `GET /v1/controls/children/:id/status` after
 each request. The existing `paused` field reports the requested setting. Its optional
 `internetRequest` contains the request ID, generation, action, localizable timestamp and exact
-command receipt for each device. Verify that a newer request gets a new ID, that a delivered
-command stays unconfirmed until the device acknowledges it, and that missing or newly paired
-devices show unknown. Check the actual allowed app and site separately after Resume.
+command receipt for each device. A pending command reports `expired` at its deadline. A delivered
+command reports `unconfirmed` at that deadline if it received no acknowledgement. Verify that a
+newer request gets a new ID and that missing or newly paired devices show unknown. Check the actual
+allowed app and site separately after Resume.
+
+For the first staging rollout, drain the legacy API tasks before serving traffic from this version.
+The legacy API writes the Redis requested state, while this version prefers the durable operation
+when it exists. Before a rollback, reconcile Redis for children with durable operations and keep
+other children's legacy state. Before rolling forward again, retire the pre-rollback snapshots for
+those children and preserve the command history so the latest legacy action remains visible until
+the next durable request. Confirm the cutover and rollback steps on staging before wider rollout.
 
 ## 5d. Guided onboarding on hardware (plan 1.6)
 

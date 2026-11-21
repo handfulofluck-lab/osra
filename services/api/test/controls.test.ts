@@ -260,6 +260,43 @@ describe("controls routes (features #10/#11)", () => {
     }
   });
 
+  it.each([
+    { commandStatus: "pending", expiredStatus: "expired" },
+    { commandStatus: "delivered", expiredStatus: "unconfirmed" },
+  ])("reports $commandStatus as $expiredStatus at the exact expiry", async ({ commandStatus, expiredStatus }) => {
+    const app = await buildFullApp();
+    const commands = wireInternetOperation();
+    prismaMock.device.findMany.mockResolvedValue([DEVICES[0]]);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-21T03:00:00.000Z"));
+    try {
+      const result = await app.inject({ method: "POST", url: `${INTERNET_PATH}/resume`, headers: authHeader(app) });
+      expect(result.statusCode).toBe(200);
+      expect(commands).toHaveLength(1);
+      const [command] = commands;
+      command.status = commandStatus;
+      const expiresAt = command.expiresAt as Date;
+      const status = () => app.inject({ url: `${INTERNET_PATH}/status`, headers: authHeader(app) });
+
+      vi.setSystemTime(expiresAt.getTime() - 1);
+      const before = await status();
+      expect(before.statusCode).toBe(200);
+      expect(before.json().internetRequest.devices).toEqual([
+        { deviceId: DEVICES[0].id, commandId: command.id, status: commandStatus },
+      ]);
+
+      vi.setSystemTime(expiresAt);
+      const atExpiry = await status();
+      expect(atExpiry.statusCode).toBe(200);
+      expect(atExpiry.json().internetRequest.devices).toEqual([
+        { deviceId: DEVICES[0].id, commandId: command.id, status: expiredStatus },
+      ]);
+    } finally {
+      vi.useRealTimers();
+      await app.close();
+    }
+  });
+
   it("records the requested state with no command receipts when there are no target devices", async () => {
     const app = await buildFullApp();
     const commands = wireInternetOperation();
