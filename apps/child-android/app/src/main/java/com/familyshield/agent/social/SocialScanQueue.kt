@@ -92,7 +92,7 @@ class SocialScanQueue @Inject constructor(
                 toDto = { row ->
                     SocialScanDto(childId = childId, deviceId = deviceId, app = row.app, contact = row.contact, text = row.text, source = row.source)
                 },
-                post = { items -> api.postSocialScanBatch(SocialScanBatchDto(items)).results },
+                post = { items -> api.postSocialScanBatch(SocialScanBatchDto(deviceId = deviceId, items = items)).results },
                 isPermanentRejection = { e -> e is retrofit2.HttpException && e.code() in 400..499 && e.code() != 429 },
             ).send(batch)
             for (row in outcome.sent) {

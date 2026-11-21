@@ -6,6 +6,35 @@ import com.familyshield.agent.data.db.UsageEventEntity
 internal const val MAX_GAP_MS: Long = 5L * 60L * 1000L
 
 /**
+ * Local foreground heartbeat while the screen is interactive (#830 row 5): strictly below [MAX_GAP_MS] so a
+ * continuous video or reading session with zero window transitions never loses minutes to the 5-minute gap cap.
+ */
+internal const val FOREGROUND_HEARTBEAT_MS: Long = 4L * 60L * 1000L
+
+/** Minimum elapsed interval between active-session uploads; idle phones add zero extra requests (roadmap 5.8). */
+internal const val ACTIVE_UPLOAD_INTERVAL_MS: Long = 5L * 60L * 1000L
+
+internal fun shouldFlushActiveSession(nowElapsedMs: Long, lastUploadElapsedMs: Long): Boolean =
+    nowElapsedMs - lastUploadElapsedMs >= ACTIVE_UPLOAD_INTERVAL_MS
+
+/**
+ * Returns the foreground child package to re-anchor at `newWatermark` when an upload window closes (#830 row 5),
+ * or null when nothing should continue (consent paused, screen off, or the agent's own block/lock window in front).
+ */
+internal fun continuationPackage(
+    events: List<UsageEventEntity>,
+    ownPackage: String,
+    activeForegroundPkg: String?,
+    screenInteractive: Boolean,
+    consentPaused: Boolean,
+): String? {
+    if (consentPaused || !screenInteractive) return null
+    val active = activeForegroundPkg?.takeIf { it.isNotEmpty() && it != ownPackage } ?: return null
+    val tail = events.lastOrNull()?.packageId ?: active
+    return if (tail == ownPackage) null else tail
+}
+
+/**
  * One aggregated window: whole minutes per app, the sub-minute ms left over for the next window, and
  * the packages this window's own events credited time to.
  */

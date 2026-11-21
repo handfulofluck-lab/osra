@@ -33,6 +33,8 @@ class ChildDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // #935: keep the live /v1/ws channel subscribed so `command_acked` updates delivery status immediately.
+    ref.watch(wsProvider);
     final overview = ref.watch(familyProvider).valueOrNull;
     final child = overview?.children.where((c) => c.id == childId).firstOrNull;
     final l10n = context.l10n;
@@ -273,6 +275,11 @@ class _OverviewTab extends ConsumerWidget {
                           label: Text(l10n.ring),
                         ),
                         TextButton.icon(
+                          onPressed: () => _sendCommand(context, ref, d, 'stop_ring'),
+                          icon: const Icon(Icons.notifications_off_outlined, size: 18),
+                          label: Text(l10n.commandStopRing),
+                        ),
+                        TextButton.icon(
                           onPressed: () => _sendCommand(context, ref, d, 'lock'),
                           icon: const Icon(Icons.lock, size: 18),
                           label: Text(l10n.lock),
@@ -282,20 +289,31 @@ class _OverviewTab extends ConsumerWidget {
                           icon: const Icon(Icons.lock_open, size: 18),
                           label: Text(l10n.unlock),
                         ),
-                        TextButton.icon(
-                          onPressed: () => _sendCommand(context, ref, d, 'pause'),
-                          icon: const Icon(Icons.pause_circle, size: 18),
-                          label: Text(l10n.pause),
+                        // #969: a command that is queued but unconfirmed must not look idle. The pause/resume
+                        // controls are the two that leave a parent wondering whether anything happened, because
+                        // the POST answers `{status: pending}` before the handset has seen it.
+                        _PendingAwareControl(
+                          deviceId: d.id,
+                          command: 'pause',
+                          builder: (waiting) => TextButton.icon(
+                            onPressed: waiting ? null : () => _sendCommand(context, ref, d, 'pause'),
+                            icon: const Icon(Icons.pause_circle, size: 18),
+                            label: Text(l10n.commandPauseDevice),
+                          ),
                         ),
-                        TextButton.icon(
-                          onPressed: () => _sendCommand(context, ref, d, 'resume'),
-                          icon: const Icon(Icons.play_circle, size: 18),
-                          label: Text(l10n.resume),
+                        _PendingAwareControl(
+                          deviceId: d.id,
+                          command: 'resume',
+                          builder: (waiting) => TextButton.icon(
+                            onPressed: waiting ? null : () => _sendCommand(context, ref, d, 'resume'),
+                            icon: const Icon(Icons.play_circle, size: 18),
+                            label: Text(l10n.commandResumeDevice),
+                          ),
                         ),
                         TextButton.icon(
                           onPressed: () => _toggleInternet(context, ref, childId, internetPaused, d),
                           icon: Icon(internetPaused ? Icons.wifi : Icons.wifi_off, size: 18),
-                          label: Text(internetPaused ? l10n.resumeNet : l10n.pauseNet),
+                          label: Text(internetPaused ? l10n.commandResumeInternet : l10n.commandPauseInternet),
                         ),
                       ],
                     ),
@@ -334,6 +352,43 @@ class _OverviewTab extends ConsumerWidget {
 /// Compact latest-command line on a device card. It reports the durable
 /// queue's state; a pending or delivered-but-unacked command is never called
 /// "sent".
+/// #969: a control whose command is queued but not yet confirmed by the handset says so, instead of looking
+/// idle. `pending` means the server has the row; `delivered` means the phone fetched it and has not acted yet;
+/// only `acked` (or a refusal) means the parent knows the outcome.
+///
+/// The control is rebuilt rather than wrapped, because a wrapper cannot disable it: `IgnorePointer` stops touch
+/// but leaves the button focusable and enabled to TalkBack, VoiceOver, Switch Access and the keyboard's
+/// Enter/Space (Antigravity's F2, 7049793348). Passing `waiting` to the builder lets the button itself take
+/// `onPressed: null`, which is the one state every input method honours.
+///
+/// Only the **newest** command of this type decides. Scanning the whole history would keep the control blocked
+/// by an old row that never settled while a newer one had already been acknowledged (F1).
+class _PendingAwareControl extends ConsumerWidget {
+  final String deviceId;
+  final String command;
+  final Widget Function(bool waiting) builder;
+  const _PendingAwareControl({required this.deviceId, required this.command, required this.builder});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final history = ref.watch(deviceCommandHistoryProvider(deviceId)).valueOrNull ?? const <DeviceCommand>[];
+    DeviceCommand? newest;
+    for (final c in history) {
+      if (c.type != command) continue;
+      final after = newest?.createdAt;
+      if (newest == null || after == null || (c.createdAt?.isAfter(after) ?? false)) newest = c;
+    }
+    final waiting = newest != null && (newest.status == 'pending' || newest.status == 'delivered');
+    final button = builder(waiting);
+    if (!waiting) return button;
+    return Tooltip(
+      key: ValueKey('controlPending-$command'),
+      message: context.l10n.statusPending,
+      child: button,
+    );
+  }
+}
+
 class _DeviceDeliverySummary extends ConsumerWidget {
   final String deviceId;
   final String deviceModel;
@@ -563,6 +618,11 @@ Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, St
       );
       return;
     }
+    // F1 (review 7039886009): no re-read here. A POST that queues the command answers `{status: "pending"}`
+    // before the phone has even received it, so asking for `/latest` at that moment returns the same 404 or
+    // the same older fix — a wasted request dressed up as a refresh. The fresh fix arrives when the phone
+    // publishes its ping: the `location` message on `/v1/ws` calls `invalidateLocation` (`family_provider.dart`
+    // `applyRealtimeMessage`), which is what a parent sees the tab update on.
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(l10n.commandQueued(l10n.commandType(command), device.model))),
     );
@@ -629,9 +689,18 @@ class _AppsTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final rules = ref.watch(rulesProvider(childId));
+    final overview = ref.watch(familyProvider).valueOrNull;
+    final devices = overview?.devicesFor(childId) ?? const <Device>[];
+    final childHasIphone = devices.any((d) => d.platform == 'ios');
+    final childHasAndroid = devices.any((d) => d.platform == 'android');
+    final groupDevices = [
+      for (final d in devices)
+        if (d.setup?.groups?.isNotEmpty ?? false) d,
+    ];
+    final canManagePerAppRules = childHasAndroid || !childHasIphone;
     // #456: the clock is a provider so a row can pin the sentence to a weekday morning.
     // #476: and it is read on the family's clock, where the child's phone enforces the window.
-    final offset = ref.watch(familyProvider).valueOrNull?.family.utcOffsetMinutes;
+    final offset = overview?.family.utcOffsetMinutes;
     final now = familyWallClock(ref.watch(clockProvider)(), offset);
     return rules.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -640,10 +709,51 @@ class _AppsTab extends ConsumerWidget {
         onRetry: () => ref.invalidate(rulesProvider(childId)),
       ),
       data: (ruleSet) {
-        if (ruleSet.appRules.isEmpty) return Center(child: Text(l10n.noPerAppRules));
         return ListView(
+          padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.lg),
           children: [
-            for (final r in ruleSet.appRules)
+            if (groupDevices.isNotEmpty) ...[
+              for (final d in groupDevices)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: AppSpace.sm),
+                    child: AppGroupsSection(device: d),
+                  ),
+                ),
+              const SizedBox(height: AppSpace.sm),
+            ] else if (childHasIphone) ...[
+              Card(
+                key: const ValueKey('appsTabIphoneSetupCard'),
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpace.lg),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(l10n.appGroupsTitle, style: Theme.of(context).textTheme.titleSmall),
+                      const SizedBox(height: AppSpace.xs),
+                      Text(l10n.appGroupsBody, style: Theme.of(context).textTheme.bodySmall),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpace.sm),
+            ],
+            if (canManagePerAppRules) ...[
+              FilledButton.tonalIcon(
+                key: const ValueKey('appsTabManageAppsButton'),
+                onPressed: () => context.push('/child/$childId/rules?tab=apps'),
+                icon: const Icon(Icons.block, size: 18),
+                label: Text(l10n.editRules),
+              ),
+              const SizedBox(height: AppSpace.sm),
+            ],
+            if (ruleSet.appRules.isEmpty && canManagePerAppRules)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpace.lg),
+                child: Center(child: Text(l10n.noPerAppRules)),
+              )
+            else if (ruleSet.appRules.isNotEmpty)
+              for (final r in ruleSet.appRules)
               ListTile(
                 leading: Icon(switch (r.action) {
                   'block' => Icons.block,
@@ -711,6 +821,32 @@ class _LocationTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final ping = ref.watch(locationProvider(childId));
+    // #869: the app could *show* a `locate_now` in a device's command history but had no way to send one, so
+    // "Locate the child" had nothing behind it. It sits here, next to the state a parent reads when there is no
+    // position, rather than in the device-command row — that row already wraps to three lines at 320 px and one
+    // more button pushed an existing control out of the tapped area.
+    //
+    // F2 (review 7039886009): a child can have more than one phone. One unlabelled button wired to the first
+    // device would leave every other device unreachable, and the parent could not tell which phone was asked,
+    // so there is one button per device and each names its phone when there is more than one.
+    final devices = ref.watch(familyProvider).valueOrNull?.devicesFor(childId) ?? const <Device>[];
+    final locate = devices.isEmpty
+        ? null
+        : Wrap(
+            spacing: AppSpace.sm,
+            runSpacing: AppSpace.xs,
+            children: [
+              for (final d in devices)
+                OutlinedButton.icon(
+                  key: ValueKey('locateNow-${d.id}'),
+                  onPressed: () => _sendCommand(context, ref, d, 'locate_now'),
+                  icon: const Icon(Icons.my_location, size: 18),
+                  label: Text(devices.length == 1
+                      ? l10n.commandLocateNow
+                      : '${l10n.commandLocateNow} (${ltrIsolate(d.model)})'),
+                ),
+            ],
+          );
     return ping.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       // #850: never show exception text to a parent. A read refused for permission says so; anything
@@ -722,6 +858,10 @@ class _LocationTab extends ConsumerWidget {
       data: (p) => ListView(
         padding: const EdgeInsets.all(AppSpace.lg),
         children: [
+          if (locate != null) ...[
+            Align(alignment: AlignmentDirectional.centerStart, child: locate),
+            const SizedBox(height: AppSpace.sm),
+          ],
           if (p == null)
             Text(l10n.noLocationReported)
           else ...[
@@ -888,6 +1028,9 @@ class _AlertsTab extends ConsumerWidget {
               AlertTile(alert: a, onAck: () async {
                 try {
                   await ref.read(apiClientProvider).raw.post('/v1/alerts/${a.id}/ack');
+                  ref.read(alertsSeenProvider.notifier).markAcknowledged(a.id);
+                  ref.invalidate(unacknowledgedAlertsProvider);
+                  ref.invalidate(unacknowledgedCountProvider);
                 } catch (_) {}
                 ref.invalidate(alertsProvider);
               }),

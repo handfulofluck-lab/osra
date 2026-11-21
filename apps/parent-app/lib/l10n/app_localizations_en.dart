@@ -364,7 +364,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get consentMethodCreditCard => 'Credit card';
 
   @override
-  String get jurisdictionLabel => 'Jurisdiction';
+  String get jurisdictionLabel => 'Where does your family live?';
 
   @override
   String get childNameLabel => 'Child name';
@@ -1180,6 +1180,18 @@ class AppLocalizationsEn extends AppLocalizations {
       'Couldn\'t load installed apps. Check your connection and try again.';
 
   @override
+  String get appNoLongerInstalled => 'App no longer installed';
+
+  @override
+  String get appNoLongerInstalledRemove => 'App no longer installed. Remove';
+
+  @override
+  String get appNamePending => 'Name not available yet';
+
+  @override
+  String get appNamePendingRemove => 'Name not available yet. Remove';
+
+  @override
   String installedAppsTruncated(int count) {
     return 'Showing the first $count apps.';
   }
@@ -1580,6 +1592,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Couldn\'t save changes. Check your connection and try again.';
 
   @override
+  String get saveFailedServer =>
+      'Couldn\'t save your changes. Your changes are still here — try again.';
+
+  @override
   String get saveMonitoring => 'Save monitoring';
 
   @override
@@ -1664,7 +1680,9 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get alertTechnicalDetails => 'Technical details';
+  String alertChildLabel(String name) {
+    return 'Child: $name';
+  }
 
   @override
   String relativeOverHoursAgo(int count) {
@@ -2409,8 +2427,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get digestPrefsEmailsLabel => 'Digest emails';
 
   @override
-  String get digestPrefsEmailsHelper =>
-      'For the digest summary (separate addresses with commas)';
+  String get digestPrefsEmailsHelper => 'For the digest summary';
+
+  @override
+  String get digestPrefsAddEmail => 'Add email';
 
   @override
   String get digestPrefsConfirmationSent =>
@@ -3196,4 +3216,54 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get digestPrefsTimezoneEmpty => 'No matching time zones';
+
+  @override
+  String get alertDeviceRestartedTitle => 'Device restarted';
+
+  @override
+  String get alertCategoryDeviceRestarted => 'Device restart';
+
+  @override
+  String alertAtTime(String time) {
+    return 'at $time';
+  }
+
+  @override
+  String alertYesterdayAtTime(String time) {
+    return 'yesterday at $time';
+  }
+
+  @override
+  String alertOnDateAtTime(String date, String time) {
+    return 'on $date at $time';
+  }
+
+  @override
+  String alertDetailSent(String when) {
+    return 'Sent $when';
+  }
+
+  @override
+  String alertDeviceRestartedBodyMinutes(
+      String device, String when, int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: 'after $minutes minutes',
+      one: 'after 1 minute',
+      zero: 'in less than a minute',
+    );
+    return '$device restarted $when and was back $_temp0.';
+  }
+
+  @override
+  String alertDeviceRestartedBodyHours(String device, String when, int hours) {
+    String _temp0 = intl.Intl.pluralLogic(
+      hours,
+      locale: localeName,
+      other: '$hours hours',
+      one: '1 hour',
+    );
+    return '$device restarted $when and was back after about $_temp0.';
+  }
 }

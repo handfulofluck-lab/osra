@@ -31,7 +31,7 @@ import os
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from eval.banks import HARMFUL_CATEGORIES
-from eval.prompt import REFUSED_KEY, SYSTEM_PROMPT, cache_key, parse_categories
+from eval.prompt import REFUSED_KEY, SYSTEM_PROMPT, cache_key, parse_categories, refused_probs
 
 DEFAULT_REGION = "eu-central-1"  # production's region (ADR-0030)
 DEFAULT_CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".bedrock-cache.json")
@@ -67,14 +67,6 @@ def check_route(model_id: str, region: str) -> None:
     raise BedrockUnavailable(
         f"model {model_id!r} uses the {head!r} route; ADR-0033 allows in-region IDs and the eu. profile only"
     )
-
-
-def refused_probs() -> Dict[str, float]:
-    """What a refused or unreadable answer scores: flagged in every harmful category, and marked."""
-    probs = {c: 1.0 for c in HARMFUL_CATEGORIES}
-    probs["safe"] = 0.0
-    probs[REFUSED_KEY] = 1.0
-    return probs
 
 
 def _env_float(name: str) -> Optional[float]:

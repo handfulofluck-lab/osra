@@ -34,20 +34,28 @@ void main() {
     expect(find.byKey(const ValueKey('add-payment-app')), findsOneWidget);
   });
 
-  testWidgets('the payment shortcut opens the add dialog prefilled with the first suggestion', (tester) async {
+  /// U33 (#868): the shortcut no longer opens a package-id dialog. It opens the same app picker as
+  /// every other app choice, so the parent still picks a real, named app.
+  testWidgets('the payment shortcut opens the app picker, not a typed package field', (tester) async {
     await pumpEditor(tester);
     await tester.tap(find.byKey(const ValueKey('add-payment-app')));
     await tester.pumpAndSettle();
-    expect(find.text(walletSuggestions.first), findsOneWidget);
+    expect(find.byKey(const ValueKey('appPicker')), findsOneWidget);
+    expect(find.textContaining('Package ID'), findsNothing);
   });
 
-  /// Claude's #486 review: with only Google's wallet in the child's inventory, the shortcut must offer
-  /// that name — prefilling Samsung's on a Pixel offers a package that is not installed.
-  testWidgets('the shortcut prefills the first suggestion the child actually has', (tester) async {
+  /// U33 (#868), carrying #486's ruling forward: with Google's wallet in the child's inventory, the
+  /// shortcut must put that app at the top of the list — a shortcut that opens with an app the phone
+  /// does not have is the bug #486 reported. 'Bank' sorts first by name, so only the pin can lift
+  /// 'Wallet' above it.
+  testWidgets('the shortcut puts the wallet app the child has at the top', (tester) async {
     final api = FakeApiClient({
       ...standardRoutes(),
       'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(
-            apps: [installedAppJson('com.google.android.apps.walletnfcrel', 'Wallet')],
+            apps: [
+              installedAppJson('com.google.android.apps.walletnfcrel', 'Wallet'),
+              installedAppJson('com.example.bank', 'Bank'),
+            ],
           ),
     });
     await tester.pumpWidget(ProviderScope(
@@ -62,11 +70,11 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('add-payment-app')));
     await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsOneWidget);
-    final field = tester.widget<TextField>(
-      find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)),
-    );
-    expect(field.controller?.text, 'com.google.android.apps.walletnfcrel');
+
+    final wallet = find.byKey(const ValueKey('appPickerRow-com.google.android.apps.walletnfcrel'));
+    final bank = find.byKey(const ValueKey('appPickerRow-com.example.bank'));
+    expect(wallet, findsOneWidget);
+    expect(tester.getTopLeft(wallet).dy, lessThan(tester.getTopLeft(bank).dy));
   });
 
   /// Karim's approved Arabic, pinned as literals (#486 review). If a generator, a merge or a well-meaning
@@ -100,6 +108,10 @@ void main() {
     // so a plain finder is `findsNothing` whether the picker exists or not — and this row is the only one
     // that fails when the fix is removed.
     expect(find.byKey(const ValueKey('pickInstalledApp'), skipOffstage: false), findsNothing);
+    final iosExplained = find.byKey(const ValueKey('iosAppsExplained'), skipOffstage: false);
+    expect(iosExplained, findsOneWidget);
+    await tester.ensureVisible(iosExplained);
+    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('iosAppsExplained')), findsOneWidget);
   });
 

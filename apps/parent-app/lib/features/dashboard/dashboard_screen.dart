@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import '../../api/models.dart';
 import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
+import '../../widgets/field_question.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/controls_provider.dart';
 import '../../providers/family_provider.dart';
@@ -30,7 +31,7 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final family = ref.watch(familyProvider);
-    final unread = ref.watch(unacknowledgedCountProvider);
+    final unread = ref.watch(alertsBadgeCountProvider);
     // ADR-0031 step 3b: a signed-in owner/co-parent is told on open that
     // someone needs a witness. A guardian's 403 becomes an empty list in the
     // provider, so this is absent rather than an error.
@@ -692,16 +693,36 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
                 onMethodChanged: (m) => setState(() => _method = m),
               ),
               const SizedBox(height: AppSpace.md),
-              DropdownButtonFormField<String>(
+              FieldQuestion(
+                text: l10n.jurisdictionLabel,
+                child: DropdownButtonFormField<String>(
+                key: const ValueKey('addChildJurisdiction'),
                 initialValue: _jurisdiction,
-                decoration: InputDecoration(labelText: l10n.jurisdictionLabel, border: const OutlineInputBorder()),
+                // #874 B6 (UI/UX Bureau): `isExpanded` false sized the button to its widest item, so at
+                // 200 % text the field overflowed by 27 px (82 px at 320 px / 200 %). Expanded, the label
+                // is laid out inside the field; the `selectedItemBuilder` below lets it wrap there instead
+                // of being cut, which is what «رسالة نصية مع تأكيد» needed on the consent-method field.
+                isExpanded: true,
+                // #874: the default `isDense: true` caps the field at 48 px and clips the wrapped
+                // selected value at AR 320 / 200 % (Arabic Language Bureau's frame).
+                isDense: false,
+                decoration: const InputDecoration(border: OutlineInputBorder()),
                 items: [
                   DropdownMenuItem(value: 'US', child: Text(l10n.regionUS)),
                   DropdownMenuItem(value: 'EU', child: Text(l10n.regionEU)),
                   DropdownMenuItem(value: 'UK', child: Text(l10n.regionUK)),
                   DropdownMenuItem(value: 'OTHER', child: Text(l10n.regionOther)),
                 ],
+                // Same order as `items`: the family region is a place name, so the selected value may take
+                // two lines rather than one line with an ellipsis.
+                selectedItemBuilder: (context) => [
+                  Text(l10n.regionUS),
+                  Text(l10n.regionEU),
+                  Text(l10n.regionUK),
+                  Text(l10n.regionOther),
+                ],
                 onChanged: (v) => setState(() => _jurisdiction = v ?? 'US'),
+                ),
               ),
             ] else ...[
               TextField(

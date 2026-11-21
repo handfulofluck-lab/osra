@@ -85,9 +85,9 @@ void main() {
       await tester.tap(find.text(arabic.save));
       await flushFakeHttp(tester);
 
-      final puts = api.calls('PUT', '/v1/rules/child-1');
-      expect(puts, isNotEmpty);
-      expect(puts.last.body['webFilter'][field], expected);
+      final patches = api.calls('PATCH', '/v1/rules/child-1');
+      expect(patches, isNotEmpty);
+      expect(patches.last.body['webFilter'][field], expected);
     }
 
     Future<void> openWebFilter(WidgetTester tester, FakeApiClient api) async {
@@ -168,105 +168,29 @@ void main() {
       );
     });
 
-    Future<void> saveRoutineApps(
-      WidgetTester tester,
-      FakeApiClient api, {
-      required String label,
-      required String field,
-      required String input,
-      required List<String> expected,
-    }) async {
+    /// U33 (#868): the routine's app lists are no longer typed. The two comma-separated fields (and
+    /// their Arabic comma handling, #794) are gone with them: a routine's apps are picked from the
+    /// child's own list. This is the removal pinned, not a weakened version of the old rows.
+    testWidgets('the routine dialog has no comma-separated app field', (tester) async {
+      final api = FakeApiClient(standardRoutes());
+      await pumpScreen(tester, const RulesEditorScreen(childId: 'child-1'), api);
+      await tester.tap(find.text(arabic.tabRoutines));
+      await tester.pumpAndSettle();
+
       await tester.ensureVisible(find.text(arabic.addRoutine));
       await tester.pumpAndSettle();
       await tester.tap(find.text(arabic.addRoutine));
       await tester.pumpAndSettle();
 
       final dialog = find.byType(AlertDialog);
-      await tester.enterText(
-        find.descendant(of: dialog, matching: fieldByLabel(arabic.nameLabel)),
-        'Localized list',
-      );
-      await tester.enterText(find.descendant(of: dialog, matching: fieldByLabel(label)), input);
-      await tester.tap(find.descendant(of: dialog, matching: find.text(arabic.save)));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(arabic.save));
-      await flushFakeHttp(tester);
-
-      final puts = api.calls('PUT', '/v1/rules/child-1');
-      expect(puts, isNotEmpty);
-      expect(puts.last.body['routines'].last[field], expected);
-    }
-
-    Future<void> openRoutines(WidgetTester tester, FakeApiClient api) async {
-      await pumpScreen(tester, const RulesEditorScreen(childId: 'child-1'), api);
-      await tester.tap(find.text(arabic.tabRoutines));
-      await tester.pumpAndSettle();
-    }
-
-    testWidgets('routine blocked apps save Arabic and Latin comma-separated items', (tester) async {
-      final api = FakeApiClient(standardRoutes());
-      await openRoutines(tester, api);
-
-      await saveRoutineApps(
-        tester,
-        api,
-        label: arabic.blockedAppsLabel,
-        field: 'blockedApps',
-        input: 'a.com، b.com',
-        expected: ['a.com', 'b.com'],
-      );
-      await saveRoutineApps(
-        tester,
-        api,
-        label: arabic.blockedAppsLabel,
-        field: 'blockedApps',
-        input: 'a.com, b.com،c.com',
-        expected: ['a.com', 'b.com', 'c.com'],
-      );
+      expect(find.descendant(of: dialog, matching: fieldByLabel(arabic.blockedAppsLabel)), findsNothing);
+      expect(find.descendant(of: dialog, matching: fieldByLabel(arabic.allowedAppsLabel)), findsNothing);
+      // Both lists open the picker instead.
+      expect(find.descendant(of: dialog, matching: find.text(arabic.chooseInstalledApp)), findsNWidgets(2));
     });
 
-    testWidgets('routine allowed apps save Arabic and Latin comma-separated items', (tester) async {
-      final api = FakeApiClient(standardRoutes());
-      await openRoutines(tester, api);
 
-      await saveRoutineApps(
-        tester,
-        api,
-        label: arabic.allowedAppsLabel,
-        field: 'allowedApps',
-        input: 'a.com، b.com',
-        expected: ['a.com', 'b.com'],
-      );
-      await saveRoutineApps(
-        tester,
-        api,
-        label: arabic.allowedAppsLabel,
-        field: 'allowedApps',
-        input: 'a.com, b.com،c.com',
-        expected: ['a.com', 'b.com', 'c.com'],
-      );
-    });
-
-    Future<void> saveDigestEmails(
-      WidgetTester tester,
-      FakeApiClient api,
-      String input,
-      List<String> expected,
-    ) async {
-      await tester.enterText(fieldByLabel(arabic.digestPrefsEmailsLabel), input);
-      await tester.ensureVisible(find.text(arabic.digestPrefsSave));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(arabic.digestPrefsSave));
-      await flushFakeHttp(tester);
-
-      final puts = api.calls('PUT', '/v1/digests/prefs');
-      expect(puts, isNotEmpty);
-      expect(puts.last.body['emails'], expected);
-      await tester.pump(const Duration(seconds: 5));
-      await tester.pumpAndSettle();
-    }
-
-    testWidgets('digest recipients save Arabic and Latin comma-separated items', (tester) async {
+    testWidgets('digest recipients add and remove single-email chips cleanly in Arabic (R-ID-10)', (tester) async {
       final api = FakeApiClient({
         ...standardRoutes(),
         'GET /v1/digests/prefs': (_) => {
@@ -280,8 +204,22 @@ void main() {
       });
       await pumpScreen(tester, const DigestPrefsScreen(), api);
 
-      await saveDigestEmails(tester, api, 'a.com، b.com', ['a.com', 'b.com']);
-      await saveDigestEmails(tester, api, 'a.com, b.com،c.com', ['a.com', 'b.com', 'c.com']);
+      expect(find.byKey(const ValueKey('digestEmailChip-qa@osratech.com')), findsOneWidget);
+      await tester.enterText(find.byKey(const ValueKey('digestEmailAddInput')), 'grandma@example.com');
+      await tester.tap(find.byKey(const ValueKey('digestEmailAddButton')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('digestEmailChip-grandma@example.com')), findsOneWidget);
+
+      await tester.scrollUntilVisible(find.text(arabic.digestPrefsSave), 150, scrollable: find.byType(Scrollable).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(arabic.digestPrefsSave));
+      await flushFakeHttp(tester);
+
+      final puts = api.calls('PUT', '/v1/digests/prefs');
+      expect(puts, isNotEmpty);
+      expect(puts.last.body['emails'], ['qa@osratech.com', 'grandma@example.com']);
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
     });
   });
 }

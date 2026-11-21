@@ -101,10 +101,11 @@ class RuleRepository @Inject constructor(
      */
     fun verdict(packageId: String): Verdict {
         val ruleSet = cached
+        val paired = settings.isPairedSync()
         return decideWithReason(
             packageId = packageId,
             ruleSet = ruleSet,
-            paired = settings.isPairedSync(),
+            paired = paired,
             consentPaused = consent.isPaused(),
             essential = { EssentialPackages.isEssential(it, packageFacts) },
         ) { rules ->
@@ -116,6 +117,7 @@ class RuleRepository @Inject constructor(
                 blocklist.apps(),
                 pausedInternet = pausedInternet,
                 bonusMinutes = bonusMinutes(),
+                declaresVpnService = { paired && packageFacts.declaresVpnService(packageId) },
             )
         }
     }
@@ -255,6 +257,14 @@ class RuleRepository @Inject constructor(
             }
             consent.onPollStatus(200)
             cached = updated
+            // #864/#922 (Antigravity's review): the category pack is a store of its own, and it feeds BOTH
+            // `blocklist.domains()` (the DNS sinkhole) and `blocklist.apps()` (`verdict`, RuleRepository.kt:116).
+            // Refreshing it here — under `refreshMutex`, after `cached = updated`, before the #444 C4 listeners
+            // run — makes a category change live on every path (command, worker, consent re-grant) whether or
+            // not the VPN tunnel is up, serializes the fetch instead of duplicating it, and keeps the listeners
+            // from observing a stale pack. `BlocklistStore.refresh` already rethrows CancellationException and
+            // swallows ordinary failures itself, so it is called directly rather than inside `runCatching`.
+            blocklist.refresh(updated.webFilter.blockedCategories)
             // Issue #475: the applied version moves only when the rules were actually PERSISTED. A failed
             // write with the version advanced would tell the parent the phone has rules it will lose on the
             // next process start — the same class of lie the feature exists to prevent.

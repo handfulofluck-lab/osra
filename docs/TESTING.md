@@ -83,6 +83,14 @@ timestamp), dashboard, map-sheet, call/SMS and bonus-time widgets with an Arabic
 Removing any one of the seven `ltrIsolate` calls must turn its corresponding row red. These are widget
 tests, not a phone run; no device claim or API access is used.
 
+For rules save compatibility (#951), run
+`flutter test test/rules_editor_limits_test.dart test/content_safety_test.dart test/installed_apps_picker_test.dart`
+from `apps/parent-app`. A saved, overlapping school schedule must survive an unrelated app edit.
+The editor sends a PATCH with the changed fields. A newly edited school window is still sent in
+full for server validation. App and YouTube edits leave the rest of the ruleset in place, and
+an empty school-day list stays empty on load. On staging, save and read back one app, web and
+YouTube edit on the signed parent app before marking the handset row passed.
+
 For Arabic and Latin list separators, run `flutter test test/localized_list_test.dart` from
 `apps/parent-app` (#794). Its nine tests cover the shared splitter and real Arabic-locale widgets for
 allowed/blocked domains, routine blocked/allowed apps and digest recipients. Each field saves both
@@ -392,12 +400,17 @@ off, the read route still answers but returns `counting: false` and `withinBudge
 | `agent-desktop.yml` | `apps/agent-desktop/**` | `dotnet test` of the desktop agent, on a Windows runner (billed above the Linux rate, about 1.67× at the 2026 rates) |
 | `ai-engine.yml` | `services/ai-engine/**` | `pytest`, then the evaluation banks, the generated-set check and the regex-scorer evaluation |
 | `ios-ci.yml` | six path patterns: `apps/child-ios/**`, `apps/parent-app/ios/**`, the workflow itself, and the three API contract files (`services/api/src/routes/devices.ts`, `services/api/src/routes/alerts.ts`, `services/api/src/lib/internalAuth.ts`); `push` runs on `main` only, plus weekly Monday 01:23 and `workflow_dispatch` | The **child** agent's iOS gate (SwiftPM build + `generic/platform=iOS Simulator`). Since 2026-10-24 it is no longer the only iOS gate: the parent app's Flutter iOS build is the `parent-app-ios` job in `parent-app.yml` |
-| `api-image.yml` | PRs touching what the image is built from: `services/api/**`, `packages/**`, the root package files, `.dockerignore` | Builds `services/api/Dockerfile` from the repo root (`docker/build-push-action`, `push: false`, `linux/arm64` on GitHub's arm64 runner) and runs `services/api/scripts/verify-image.sh` inside the result, then migrates, seeds twice and boots the image against Postgres and Redis. `verify-image.sh` also checks that the RDS CA bundle is at `/app/certs/rds-global-bundle.pem`, readable and not writable by the API's user, and that with `DATABASE_TLS_VERIFY=required` the image refuses to boot on a database URL that would not verify the server's certificate, without printing the URL (#766 item 3). The Dockerfile has no `|| true`, so a failed install or build fails the PR, and a build that cannot migrate or seed fails it too. ECR stores images rather than building them; publishing needs an OIDC role scoped to the one repository (#258) |
+| `api-image.yml` | PRs touching what the image is built from: `services/api/**`, `packages/**`, the root package files, `.dockerignore` | Builds `services/api/Dockerfile` from the repo root (`docker/build-push-action`, `push: false`, `linux/arm64` on GitHub's arm64 runner) and runs `services/api/scripts/verify-image.sh` inside the result, then migrates, seeds twice and boots the image against Postgres and Redis. `verify-image.sh` also checks that the single `eu-central-1` RDS root CA is at `/app/certs/rds-eu-central-1-rsa2048-g1.pem` (exactly one certificate, readable and not writable by the API's user, #919), that with `DATABASE_TLS_VERIFY=required` the image refuses to boot on an unverified database URL or on a multi-certificate `sslcert` bundle (`/app/certs/rds-global-bundle.pem`) without printing the URL (#766 item 3, #919), and runs `scripts/check-db-tls.mjs` inside the `linux/arm64` image against a local TLS PostgreSQL wire server to prove right-first 2-cert bundles connect while wrong-first 2-cert bundles are refused on OpenSSL (#924 review). The Dockerfile has no `|| true`, so a failed install or build fails the PR, and a build that cannot migrate or seed fails it too. ECR stores images rather than building them; publishing needs an OIDC role scoped to the one repository (#258) |
 | `workflow-lint.yml` | every PR | `scripts/check-workflows.mjs --strict` — a YAML file GitHub rejects means **zero jobs run**, so this is checked in its own file — and `scripts/check-docs-links.mjs` in the same job, with the self-tests of the other gates. Among them `scripts/check-verified-gate-signers.mjs` (2026-10-23): it fails if `verified-gate.yml` could read a verification from any account but the agent account, structurally and by running the gate's own jq filter over fixture comments (`--selftest` proves both layers fail on the pre-fix filter; without `jq` it runs the structural layer only, and in CI a missing `jq` is exit 2). Since 2026-10-24 also `scripts/check-ci-paths.mjs` (below) and `scripts/verified-gate-carry.mjs --selftest` (below). Since 2026-11-13 also `scripts/check-ci-cost-guardrails.mjs` (below). Since 2026-11-12 also `scripts/check-site-design.mjs` (roadmap 3.19): `site/style.css` must carry the values of `docs/design/tokens.json` under the same names in both themes, no colour outside those two blocks, nothing loaded from another site, `dir="rtl"` on an Arabic page and no physical side in the sheet; rules and fixtures in `docs/design/WEBSITE.md` §5. Since 2026-11-12 also `scripts/check-user-visible-brand.mjs` (issue #608): fails any tracked or untracked repo file carrying the pre-OSRA user-visible forms, with exact-path exemptions for the dated QA audit records and only the two named legacy demo-email migration constants; rules, fixtures and CLI wiring in `--selftest` |
 | `verified-gate.yml` | On every PR to `main`: `state:verified` **and** a `Verified-sha:` line at the head, in a comment written by the agent account `handfulofluck-lab` and signed by a verifier (`AGENTS.md` §6.4, §6.5 rule 6). A comment by any other account is never read: the run log prints how many were left out. Since 2026-10-24 the carry-forward decision is `scripts/verified-gate-carry.mjs <signed-sha> <head-sha>`, run from `origin/main` so a PR's edit to the script does not judge its own carry-forward (the workflow file still comes from the PR; see #359). It exits 0 when only clean merges of main followed the signature and the PR's own `-U0` patch is unchanged; 1 when that patch moved, or when a merge after the signature was not a clean merge of its parents (a conflict, a resolution, an evil merge, or a merge with other than two parents); 2 when it cannot decide (missing or unknown sha, not an ancestor, a non-merge commit after the signature, git older than 2.38 so a merge cannot be re-run). Context is ignored, so position is not compared — a line moved by a hand-edited merge is refused by the clean-merge rule, and the only remaining limit is a line moved by a clean merge, which is git's own result. `--selftest` runs seven cases on real git repositories. Local: `node scripts/check-verified-gate-signers.mjs --selftest` and `node scripts/verified-gate-carry.mjs --selftest`. Since 2026-10-31 the trigger list also carries **`edited`**: when a stacked PR's base branch is deleted GitHub retargets the PR to `main` and announces it only as `edited` (`changes.base`), so without that event the required check is never created at all and the PR cannot merge while every visible check is green (#501; measured on the scratch PR #503 — see §6) |
 | `terraform.yml` | On a PR touching `infra/terraform/**`: `terraform fmt -check -recursive` plus `init -backend=false` and `validate` in `base/` and `env/` (Terraform 1.13.4, no credentials, no `plan`). `plan` and `apply` stay human steps — see `infra/terraform/README.md` |
 
 | `main-guard.yml` | Detects a commit on `main` that did not arrive through a pull request |
+
+The verified-gate policy self-test checks Neon’s `neon/` author prefix and `— Neon` ordinary signature.
+It covers both directions of the cross-family restriction with Antigravity and Hydrogen, preserves their
+existing cross-family pairing, and checks that Neon cannot supply an R3 security key. The signer-fixture
+check accepts Neon’s signature from the shared agent account and rejects it from other accounts.
 
 The Mac phase1 tooling has a fake-only suite beside the org-audit tests:
 `python3 -B -m unittest discover -s infra/terraform/org-audit/tests -p 'test_agent*.py'`.
@@ -586,6 +599,19 @@ by a standard user) is the row table in `apps/child-ios/MacAgent/README.md`, run
 This is compile and unit-test evidence for the shared core only. No Mac application target or enforcement
 runtime exists in step (i), and the job proves nothing about Screen Time on a phone or a physical Mac.
 
+### Arabic dates and times (#758)
+
+Run from `apps/parent-app` with the Flutter SDK and Windows PowerShell on `PATH`:
+
+```bash
+flutter test test/arabic_date_format_test.dart
+flutter test test/alerts_dialog_test.dart
+flutter test test/social_screen_test.dart
+flutter test test/widget_screens_test.dart
+```
+
+`configureDateFormatting()` applies Western digits to Arabic `DateFormat` output and awaits locale-data initialization; app startup and the background notification isolate each call it once. The direct test exercises that background entry point with no session, no network and no alert posted. The alert and social widget rows cover the locale-native day headers and reject Arabic-Indic digits in the alert detail. English expectations use `DateFormat.yMMMMEEEEd` too, not the old abbreviated `EEEE, MMM d, yyyy` pattern. Existing Arabic copy and number/plural paths are unchanged.
+
 ### The parent app's iOS build (roadmap 3.9, 2026-10-24)
 
 The `parent-app-ios` job in `parent-app.yml` is the **only** evidence the iOS target builds. Nothing about it
@@ -664,6 +690,17 @@ that it launches with push (no push SDK is in this build); anything about signin
 Family Controls or TestFlight. Those need an Apple account, and roadmap 5.1 / 5.5 / 5.6 carry them.
 
 ## 5. Hardware verification (physical device)
+
+### Stop a parent-initiated ring (#866)
+
+The parent can choose **Stop ringing** beside Ring on a child device card or in the
+map callout. The action sends a stop to the selected device. The confirmation says
+the command is queued while the device has not acknowledged it.
+
+The widget rows in `apps/parent-app/test/stop_ring_test.dart` load an acknowledged
+ring on a synthetic device. They cover the two parent entry points and the queued
+message. During a scheduled handset check, confirm that the selected phone stops
+and that its command history records the acknowledgement.
 
 ### 5.0 One lease at a time (binding — `AGENTS.md` §9)
 
@@ -927,6 +964,21 @@ adb shell ping -c1 www.wikipedia.org   # → "unknown host" (NXDOMAIN in pause m
 `ping` through the shell uses the system resolver and so goes through the tunnel like any app; it is
 the quickest proof. What a DNS sinkhole cannot do (Private DNS set to a host, an in-app DoH resolver,
 IP literals) is listed in ADR-0015 and must not be reported as a bug.
+
+For the child-wide Pause and Resume controls, read `GET /v1/controls/children/:id/status` after
+each request. The existing `paused` field reports the requested setting. Its optional
+`internetRequest` contains the request ID, generation, action, localizable timestamp and exact
+command receipt for each device. A pending command reports `expired` at its deadline. A delivered
+command reports `unconfirmed` at that deadline if it received no acknowledgement. Verify that a
+newer request gets a new ID and that missing or newly paired devices show unknown. Check the actual
+allowed app and site separately after Resume.
+
+For the first staging rollout, drain the legacy API tasks before serving traffic from this version.
+The legacy API writes the Redis requested state, while this version prefers the durable operation
+when it exists. Before a rollback, reconcile Redis for children with durable operations and keep
+other children's legacy state. Before rolling forward again, retire the pre-rollback snapshots for
+those children and preserve the command history so the latest legacy action remains visible until
+the next durable request. Confirm the cutover and rollback steps on staging before wider rollout.
 
 ## 5d. Guided onboarding on hardware (plan 1.6)
 

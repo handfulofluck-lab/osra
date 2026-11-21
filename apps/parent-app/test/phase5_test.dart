@@ -89,43 +89,46 @@ void main() {
 
       expect(find.text('Always allowed'), findsOneWidget);
       expect(find.text('These apps stay open during bedtime, school time, pause and routines.'), findsOneWidget);
-      expect(find.text('com.edu.app'), findsOneWidget);
+      // #872 condition 2: an always-allowed id the device does not report is named by the Bureaus' line,
+      // never by its package id. Mutant: `apps[id]?.label ?? id` and the id is back on the parent screen.
+      expect(find.text('App no longer installed'), findsOneWidget);
+      expect(find.textContaining('com.edu.app'), findsNothing);
     });
 
-    testWidgets('add then remove an app; Save PUTs alwaysAllowedApps', (tester) async {
+    testWidgets('add then remove an app; Save patches alwaysAllowedApps', (tester) async {
       final api = rulesApi();
       await openAppsTab(tester, api);
 
-      // Add com.new.app via the dialog.
-      await tester.tap(find.text('Add app'));
+      // U33 (#868): the app is chosen from the child's own reported list, never typed.
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Add app'));
       await tester.pumpAndSettle();
-      final dialog = find.byType(AlertDialog);
-      await tester.enterText(find.descendant(of: dialog, matching: find.byType(TextField)), 'com.new.app');
-      await tester.tap(find.descendant(of: dialog, matching: find.text('Add')));
+      await tester.tap(find.byKey(const ValueKey('appPickerRow-com.example.video')));
       await tester.pumpAndSettle();
-      expect(find.text('com.new.app'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('appPickerConfirm')));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(InputChip, 'Video'), findsOneWidget);
 
-      // Save → PUT carries both apps.
+      // Save → PATCH carries both apps, by package id.
       await tester.tap(find.text('Save'));
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
-      var puts = api.calls('PUT', '/v1/rules/child-1');
-      expect(puts, hasLength(1));
-      expect(puts.single.body['alwaysAllowedApps'], ['com.edu.app', 'com.new.app']);
+      var patches = api.calls('PATCH', '/v1/rules/child-1');
+      expect(patches, hasLength(1));
+      expect(patches.single.body['alwaysAllowedApps'], ['com.edu.app', 'com.example.video']);
       await runOutSnackbar(tester);
 
-      // Remove the chip, save again → PUT carries only the remaining app.
-      final chip = find.widgetWithText(InputChip, 'com.new.app');
+      // Remove the chip, save again → PATCH carries only the remaining app.
+      final chip = find.widgetWithText(InputChip, 'Video');
       await tester.tap(find.descendant(of: chip, matching: find.byIcon(Icons.clear)));
       await tester.pumpAndSettle();
-      expect(find.text('com.new.app'), findsNothing);
+      expect(find.widgetWithText(InputChip, 'Video'), findsNothing);
 
       await tester.tap(find.text('Save'));
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
-      puts = api.calls('PUT', '/v1/rules/child-1');
-      expect(puts, hasLength(2));
-      expect(puts.last.body['alwaysAllowedApps'], ['com.edu.app']);
+      patches = api.calls('PATCH', '/v1/rules/child-1');
+      expect(patches, hasLength(2));
+      expect(patches.last.body['alwaysAllowedApps'], ['com.edu.app']);
       await runOutSnackbar(tester);
     });
   });
