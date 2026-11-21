@@ -171,6 +171,14 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(RulesEditorScreen), findsOneWidget);
+      // #931: the action selector stacks when its three labels cannot each hold one line, which makes the
+      // Apps tab taller than a phone screen. The picker is the last row on that tab, so scroll to it rather
+      // than assuming the ListView built it inside the viewport.
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('pickInstalledApp')),
+        200,
+        scrollable: find.byWidgetPredicate((w) => w is Scrollable && w.axisDirection == AxisDirection.down),
+      );
       expect(find.byKey(const ValueKey('pickInstalledApp')), findsOneWidget);
     });
 
