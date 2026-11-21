@@ -16,8 +16,8 @@ data class SocialScanDto(
     val source: String = "screen",
 )
 
-/** #490: one flush as one request — at most `ScanQueuePolicy.ITEMS_PER_REQUEST` captures. */
-data class SocialScanBatchDto(val items: List<SocialScanDto>)
+/** One signed flush. The envelope names the device before the API validates each item. */
+data class SocialScanBatchDto(val deviceId: String, val items: List<SocialScanDto>)
 
 /** #490: the server answers each item of a batch on its own, in the order sent. */
 data class SocialScanBatchResultDto(val results: List<SocialScanItemResultDto> = emptyList())

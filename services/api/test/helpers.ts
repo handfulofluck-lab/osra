@@ -45,6 +45,7 @@ export const MOCKED_MODELS = [
   "familyPurchase",
   "parentPushToken",
   "deviceCommand",
+  "childInternetOperation",
   "deviceApp",
   "pairingDecision",
   "installRequest",
@@ -247,6 +248,8 @@ export function resetPrismaMock(): void {
   prismaMock.consentRecord.updateMany.mockResolvedValue({ count: 1 });
   // Child-scoped fan-outs (rules_updated, consent_revoked) iterate the child's devices.
   prismaMock.device.findMany.mockResolvedValue([]);
+  prismaMock.childInternetOperation.findUnique.mockResolvedValue(null);
+  prismaMock.deviceCommand.createManyAndReturn.mockResolvedValue([]);
   // Phase 2a: alert push fan-out reads parents + tokens; default to none so route tests stay quiet.
   prismaMock.parent.findMany.mockResolvedValue([]);
   // ADR-0032: the durable revocation records. A parent with no row and no logout has nothing to

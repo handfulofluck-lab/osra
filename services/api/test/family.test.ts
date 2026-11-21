@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { familyRoutes } from "../src/routes/family.js";
+import { CHILD_SCOPED_DELETE_ORDER } from "../src/lib/usageModel.js";
 import { getRedis } from "../src/redis.js";
 import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
 
@@ -305,6 +306,7 @@ describe("family routes", () => {
     prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
     prismaMock.child.delete.mockResolvedValue({ id: CHILD_ID });
     prismaMock.device.findMany.mockResolvedValue([{ id: "dev-1" }, { id: "dev-2" }]);
+    prismaMock.childInternetOperation.deleteMany.mockResolvedValue({ count: 1 });
     for (const m of ["deviceCommand", "locationPing", "alert", "activityEvent", "socialEvent", "installRequest", "webVisit", "appUsageDaily", "device", "ruleSet", "geofence", "consentRecord"] as const) {
       prismaMock[m].deleteMany.mockResolvedValue({ count: 1 });
     }
@@ -316,6 +318,11 @@ describe("family routes", () => {
     });
     expect(res.statusCode).toBe(200);
     const cascade = { where: { childId: CHILD_ID } };
+    expect(prismaMock.$queryRaw.mock.calls[0][0].join("")).toContain("FOR UPDATE");
+    expect(prismaMock.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      prismaMock.childInternetOperation.deleteMany.mock.invocationCallOrder[0],
+    );
+    expect(prismaMock.childInternetOperation.deleteMany).toHaveBeenCalledWith(cascade);
     expect(prismaMock.device.deleteMany).toHaveBeenCalledWith(cascade);
     expect(prismaMock.ruleSet.deleteMany).toHaveBeenCalledWith(cascade);
     expect(prismaMock.locationPing.deleteMany).toHaveBeenCalledWith(cascade);
@@ -336,13 +343,18 @@ describe("family routes", () => {
     expect(prismaMock.pairingDecision.deleteMany).toHaveBeenCalledWith(cascade);
     expect(prismaMock.child.delete).toHaveBeenCalledWith({ where: { id: CHILD_ID } });
     const txCalls = prismaMock.$transaction.mock.calls[0][0] as unknown[];
-    expect(txCalls).toHaveLength(15);
+    expect(txCalls).toHaveLength(1 + CHILD_SCOPED_DELETE_ORDER.length);
     // Each deleted device's token is revoked like an unpair (#56), bounded by the token lifetime.
     const redis = getRedis() as unknown as MockRedis;
     for (const id of ["dev-1", "dev-2"]) {
       expect(redis.set).toHaveBeenCalledWith(`revoked:device:${id}`, expect.any(String), "EX", 315_576_000);
     }
-    expect(res.json()).toMatchObject({ erased: true, childId: CHILD_ID, deletedDevices: ["dev-1", "dev-2"] });
+    expect(res.json()).toMatchObject({
+      erased: true,
+      childId: CHILD_ID,
+      deletedDevices: ["dev-1", "dev-2"],
+      rows: { childInternetOperation: 1 },
+    });
     await app.close();
   });
 
