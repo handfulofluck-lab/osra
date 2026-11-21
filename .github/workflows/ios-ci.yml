@@ -258,18 +258,29 @@ jobs:
             exit 0
           fi
 
-          # An assertion failure is red on its first result, whether or not the log also mentions launching.
-          # A simulator that never got the app up can emit unrelated Launch Services noise, and a real assertion
-          # failure can sit in the same log (Codex, 7060451632) — so this check runs FIRST and wins outright.
-          if grep -qiE 'Failing tests:|XCTAssert|Test Case .* failed' "$RESULTS/launch-1.log"; then
+          # Evidence functions, no regex escaping: `error: -[` is a fixed string, and `Failing tests:` is a
+          # generic XCTest FOOTER that appears for a launch failure too (Codex, 7062415705, archived #949 run).
+          # Treating the footer as an assertion is what made the intended launch retry never run.
+          has_assertion() { grep -qF 'XCTAssert' "$1" || grep -qF 'error: -[' "$1"; }
+          has_launch() { grep -qiE 'timed out while launching application|failed to launch|FBSOpenApplicationServiceErrorDomain|unable to launch the application' "$1"; }
+
+          a=0; l=0
+          has_assertion "$RESULTS/launch-1.log" && a=1
+          has_launch "$RESULTS/launch-1.log" && l=1
+
+          # Both kinds of evidence: ambiguous. Keep the first failure red rather than guess which one to trust.
+          if [ "$a" -eq 1 ] && [ "$l" -eq 1 ]; then
+            echo "::error::the first run shows both an assertion and a launch failure. Ambiguous, so it stays red on the first result."
+            status fail-ambiguous
+            exit "$first"
+          fi
+          if [ "$a" -eq 1 ]; then
             echo "::error::the launch case failed on its own assertions. Not retrying: this is the regression the retry must never hide."
             status fail-assertion
             exit "$first"
           fi
-
-          # Only a positive statement that the app never launched earns a retry. `launch services` is deliberately
-          # NOT in this list: it is the incidental diagnostic Codex's fixture showed can accompany an assertion.
-          if ! grep -qiE 'timed out while launching application|failed to launch|FBSOpenApplicationServiceErrorDomain|unable to launch the application' "$RESULTS/launch-1.log"; then
+          # No launch evidence either: not something this retry is entitled to absorb.
+          if [ "$l" -eq 0 ]; then
             echo "::error::the first run failed for a reason that is neither an assertion nor a launch failure; not retrying."
             status fail-other
             exit "$first"
@@ -281,7 +292,14 @@ jobs:
           second=$?
           set -e
           if [ "$second" -ne 0 ]; then
-            status fail-launch-twice
+            # Classify the SECOND failure too: a retry that dies on an assertion is not "launch failed twice", and
+            # the summary must not attribute it to the simulator (Codex, 7062415705 finding 2).
+            if has_assertion "$RESULTS/launch-2.log"; then
+              echo "::error::the retry failed on its own assertions after a launch failure. Red, and the summary will say assertion, not launch."
+              status fail-assertion-on-retry
+            else
+              status fail-launch-twice
+            fi
             exit "$second"
           fi
           status fail-launch-then-pass
@@ -304,6 +322,8 @@ jobs:
             fail-launch-then-pass) text="First run failed **while launching the app on the simulator**; the case was retried once and passed. Both bundles are kept." ;;
             fail-launch-twice) text="**Failed twice**, both times while launching the app on the simulator. Red, as it should be." ;;
             fail-assertion) text="**Failed on its own assertions** and was not retried. Red, as it should be." ;;
+            fail-ambiguous) text="**Both an assertion and a launch failure** in the first log; kept red on the first result rather than guessing." ;;
+            fail-assertion-on-retry) text="Retried once after a launch failure, then **failed on its own assertions**. Both bundles kept." ;;
             fail-other) text="**Failed for neither an assertion nor a launch reason** and was not retried. Read \`launch-1.log\`." ;;
             *) text="Did not run (no outcome recorded)." ;;
           esac
