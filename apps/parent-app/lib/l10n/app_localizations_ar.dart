@@ -3482,4 +3482,48 @@ class AppLocalizationsAr extends AppLocalizations {
     );
     return 'أُعيد تشغيل $device $when، وعاد إلى العمل بعد نحو $_temp0.';
   }
+
+  @override
+  String get alertTitleSocialConcern => 'تنبيه سلامة في التواصل';
+
+  @override
+  String get alertTitleGamingChat => 'تنبيه في محادثات الألعاب';
+
+  @override
+  String get alertCategorySocialConcern => 'السلامة في التواصل';
+
+  @override
+  String get alertCategoryGamingChat => 'محادثات الألعاب';
+
+  @override
+  String socialAlertFlaggedInApp(String app) {
+    return 'رُصد في $app ما يستدعي المراجعة';
+  }
+
+  @override
+  String get socialAlertOpenActivity => 'فتح نشاط التواصل';
+
+  @override
+  String get socialAlertPreviewNoPermissionTitle => 'المعاينة غير متاحة لحسابك';
+
+  @override
+  String get socialAlertPreviewNoPermissionBody =>
+      'اطلب من مالك العائلة منحك صلاحية «التواصل» لعرض المعاينة المشفّرة. ما زالت تفاصيل التنبيه وإرشادات الحديث مع طفلك متاحة هنا.';
+
+  @override
+  String get socialAlertPreviewExpiredTitle => 'لم تعد المعاينة متاحة';
+
+  @override
+  String get socialAlertPreviewExpiredBody =>
+      'انتهت صلاحية المعاينة المشفّرة أو لم تُحفظ لهذا التنبيه. ما زالت تفاصيل التنبيه وإرشادات الحديث مع طفلك محفوظة هنا.';
+
+  @override
+  String get socialAlertUnavailableTitle => 'التنبيه غير متاح';
+
+  @override
+  String get socialAlertUnavailableBody =>
+      'تعذّر العثور على هذا التنبيه. افتح «التنبيهات» لمراجعة النشاط الأخير.';
+
+  @override
+  String get socialAlertViewAll => 'كل التنبيهات';
 }

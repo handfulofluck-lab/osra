@@ -1826,5 +1826,23 @@
       "when": { "type": "String" },
       "hours": { "type": "int" }
     }
-  }
+  },
+  "alertTitleSocialConcern": "Social safety alert",
+  "alertTitleGamingChat": "Gaming chat alert",
+  "alertCategorySocialConcern": "Social safety",
+  "alertCategoryGamingChat": "Gaming chat",
+  "socialAlertFlaggedInApp": "Flagged for review in {app}",
+  "@socialAlertFlaggedInApp": {
+    "placeholders": {
+      "app": { "type": "String" }
+    }
+  },
+  "socialAlertOpenActivity": "Open Social activity",
+  "socialAlertPreviewNoPermissionTitle": "Preview unavailable for your account",
+  "socialAlertPreviewNoPermissionBody": "Ask the family owner to enable Social access to view the encrypted preview. Alert details and the conversation guide remain available here.",
+  "socialAlertPreviewExpiredTitle": "Preview no longer available",
+  "socialAlertPreviewExpiredBody": "The encrypted preview has expired or was not stored for this alert. Alert details and the conversation guide remain saved here.",
+  "socialAlertUnavailableTitle": "Alert unavailable",
+  "socialAlertUnavailableBody": "This alert could not be found. Open Alerts to review recent activity.",
+  "socialAlertViewAll": "All alerts"
 }

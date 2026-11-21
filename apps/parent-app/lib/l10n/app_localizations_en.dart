@@ -3284,4 +3284,49 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$device restarted $when and was back after about $_temp0.';
   }
+
+  @override
+  String get alertTitleSocialConcern => 'Social safety alert';
+
+  @override
+  String get alertTitleGamingChat => 'Gaming chat alert';
+
+  @override
+  String get alertCategorySocialConcern => 'Social safety';
+
+  @override
+  String get alertCategoryGamingChat => 'Gaming chat';
+
+  @override
+  String socialAlertFlaggedInApp(String app) {
+    return 'Flagged for review in $app';
+  }
+
+  @override
+  String get socialAlertOpenActivity => 'Open Social activity';
+
+  @override
+  String get socialAlertPreviewNoPermissionTitle =>
+      'Preview unavailable for your account';
+
+  @override
+  String get socialAlertPreviewNoPermissionBody =>
+      'Ask the family owner to enable Social access to view the encrypted preview. Alert details and the conversation guide remain available here.';
+
+  @override
+  String get socialAlertPreviewExpiredTitle => 'Preview no longer available';
+
+  @override
+  String get socialAlertPreviewExpiredBody =>
+      'The encrypted preview has expired or was not stored for this alert. Alert details and the conversation guide remain saved here.';
+
+  @override
+  String get socialAlertUnavailableTitle => 'Alert unavailable';
+
+  @override
+  String get socialAlertUnavailableBody =>
+      'This alert could not be found. Open Alerts to review recent activity.';
+
+  @override
+  String get socialAlertViewAll => 'All alerts';
 }
