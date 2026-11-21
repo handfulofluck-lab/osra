@@ -965,6 +965,13 @@ adb shell ping -c1 www.wikipedia.org   # → "unknown host" (NXDOMAIN in pause m
 the quickest proof. What a DNS sinkhole cannot do (Private DNS set to a host, an in-app DoH resolver,
 IP literals) is listed in ADR-0015 and must not be reported as a bug.
 
+For the child-wide Pause and Resume controls, read `GET /v1/controls/children/:id/status` after
+each request. The existing `paused` field reports the requested setting. Its optional
+`internetRequest` contains the request ID, generation, action, localizable timestamp and exact
+command receipt for each device. Verify that a newer request gets a new ID, that a delivered
+command stays unconfirmed until the device acknowledges it, and that missing or newly paired
+devices show unknown. Check the actual allowed app and site separately after Resume.
+
 ## 5d. Guided onboarding on hardware (plan 1.6)
 
 Fresh install, pair, set the PIN, then revoke one required grant at a time and confirm the agent
