@@ -1,0 +1,9 @@
+BUREAU pr983-31754c30-en-light-regular 320 dp 200 percent controls 208.9×48.0, 235.0×48.0, 226.4×48.0
+BUREAU pr983-31754c30-en-light-paused 320 dp 200 percent controls 208.9×48.0, 235.0×48.0, 252.5×48.0
+BUREAU pr983-31754c30-en-dark-regular 320 dp 200 percent controls 208.9×48.0, 235.0×48.0, 226.4×48.0
+BUREAU pr983-31754c30-en-dark-paused 320 dp 200 percent controls 208.9×48.0, 235.0×48.0, 252.5×48.0
+BUREAU pr983-31754c30-ar-light-regular 320 dp 200 percent controls 176.4×48.0, 210.9×48.0, 193.9×48.0
+BUREAU pr983-31754c30-ar-light-paused 320 dp 200 percent controls 176.4×48.0, 210.9×48.0, 228.5×48.0
+BUREAU pr983-31754c30-ar-dark-regular 320 dp 200 percent controls 176.4×48.0, 210.9×48.0, 193.9×48.0
+BUREAU pr983-31754c30-ar-dark-paused 320 dp 200 percent controls 176.4×48.0, 210.9×48.0, 228.5×48.0
+00:08 +1: All tests passed!
