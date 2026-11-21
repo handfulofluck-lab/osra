@@ -29,6 +29,11 @@ if [ -z "$log" ] || [ ! -f "$log" ]; then
 fi
 
 LAUNCH_RE='timed out while launching application|failed to launch|FBSOpenApplicationServiceErrorDomain|unable to launch the application'
+# The simulator failing to drive the app at all, which XCTest also formats as an `error: -[` line. Seen twice on
+# this programme: `e8697999` (launch) and `eb9e7fcf` (background assertion), and in both cases an identical tree
+# passed on re-run (#926 attempt 2). It is neither an assertion nor a launch timeout, and calling it an assertion
+# turned a runner stall into a red gate (20:18Z).
+RUNNER_RE='failed to get background assertion|timed out while acquiring background assertion|failed to boot|unable to boot the simulator|lost connection to the test manager|test runner exited'
 
 has_launch() { grep -qiE "$LAUNCH_RE" "$1"; }
 
@@ -39,14 +44,22 @@ has_launch() { grep -qiE "$LAUNCH_RE" "$1"; }
 # genuine launch timeout — which XCTest also formats as `error: -[` — stays a launch failure.
 has_assertion() {
   grep -qF 'XCTAssert' "$1" && return 0
-  grep -F 'error: -[' "$1" | grep -qiEv "$LAUNCH_RE"
+  # Two filters, and only the LAST one is quiet: a `-q` grep emits nothing, so a quiet grep in the middle
+  # would hand an empty stream to the next one and report "no failure line" (which is how these two fixtures
+  # first went red).
+  grep -F 'error: -[' "$1" | grep -vEi "$LAUNCH_RE" | grep -qiEv "$RUNNER_RE"
 }
 
-a=0; l=0
+has_runner() { grep -qiE "$RUNNER_RE" "$1"; }
+
+a=0; l=0; r=0
 has_assertion "$log" && a=1
 has_launch "$log" && l=1
+has_runner "$log" && r=1
 
-if [ "$a" -eq 1 ] && [ "$l" -eq 1 ]; then echo "ambiguous"; exit 0; fi
+# More than one kind of evidence is ambiguous: never guess which one to trust.
+if [ $((a + l + r)) -gt 1 ]; then echo "ambiguous"; exit 0; fi
 if [ "$a" -eq 1 ]; then echo "assertion"; exit 0; fi
 if [ "$l" -eq 1 ]; then echo "launch"; exit 0; fi
+if [ "$r" -eq 1 ]; then echo "runner"; exit 0; fi
 echo "other"

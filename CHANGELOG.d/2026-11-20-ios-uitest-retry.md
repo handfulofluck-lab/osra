@@ -38,3 +38,11 @@
 - **The retry's own verdict has four outcomes, not two.** `ambiguous` and `other` second failures were mislabelled
   `fail-launch-twice` and blamed on the simulator; they now record `fail-ambiguous-on-retry` and
   `fail-other-on-retry`, and the summary prints which.
+- **A third kind of failure, learned from a real run (00:18Z).** `eb9e7fcf` failed with
+  `Failed to get background assertion for target app … Timed out while acquiring background assertion` — a
+  simulator stall that XCTest formats as an `error: -[` line and that matched neither the launch pattern nor any
+  assertion vocabulary. The widened assertion rule therefore called it an assertion and refused the retry. It is now
+  its own verdict, `runner`, retried once exactly like a launch failure; the same message passed on re-run on #926
+  attempt 2, which is the evidence that it is a stall rather than a defect. Two fixtures, including the run's own
+  line, and the recorded outcomes now name the kind that actually failed (`fail-runner-then-pass`,
+  `fail-runner-twice`).

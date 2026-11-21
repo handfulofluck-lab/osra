@@ -38,6 +38,21 @@ expect archived_flake launch
 } > "$tmp/real_launch_timeout.log"
 expect real_launch_timeout launch
 
+# THE REAL BACKGROUND-ASSERTION TIMEOUT, from the run at `eb9e7fcf` (00:18 UAE). A runner failure formatted as
+# an XCTest failure line, matching neither the launch pattern nor any assertion vocabulary. It must classify as
+# `runner` and be retryable — the same tree passed on re-run on #926 attempt 2.
+{
+  echo "/Users/runner/work/osra/osra/apps/child-ios/UITests/AgentLaunchTests.swift:24: error: -[OSRAAgentUITests.AgentLaunchTests testTheAppLaunchesToThePairingScreen] : Failed to get background assertion for target app with pid 23403: Timed out while acquiring background assertion."
+} > "$tmp/real_runner_stall.log"
+expect real_runner_stall runner
+
+# A runner stall alongside a real assertion is ambiguous: never retried.
+{
+  echo "Failed to get background assertion for target app with pid 23403: Timed out while acquiring background assertion."
+  echo "PinRulesSeededTests.swift:42: error: -[OSRAAgentUITests.PinRulesSeededTests testX] : XCTAssertTrue failed"
+} > "$tmp/runner_plus_assertion.log"
+expect runner_plus_assertion ambiguous
+
 # An XCTest failure that never says `XCTAssert` — "failed: caught error" — is still an assertion failure.
 # Treating only `XCTAssert` as evidence let this classify as `other`, and with a launch line present, as `launch`
 # and be retried (Antigravity, 19:33Z).

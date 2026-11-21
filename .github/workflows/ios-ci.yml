@@ -272,13 +272,19 @@ jobs:
               echo "::error::the launch case failed on its own assertions. Not retrying: this is the regression the retry must never hide."
               status fail-assertion
               exit "$first" ;;
+            runner)
+              # Same class as a launch timeout: the simulator never drove the app. Falls through to the retry.
+              echo "::warning title=Simulator stall::the first run died on a simulator failure (background assertion or boot), so that case is retried once like a launch failure. Both bundles are kept." ;;
             other)
-              echo "::error::the first run failed for a reason that is neither an assertion nor a launch failure; not retrying."
+              echo "::error::the first run failed for a reason that is neither an assertion nor a simulator failure; not retrying."
               status fail-other
               exit "$first" ;;
           esac
 
-          echo "::warning title=Simulator launch flake::the first run failed while launching the app on the simulator, so that case is retried once. Both result bundles are kept; read launch-1 before believing the green."
+          if [ "$verdict" = "launch" ]; then
+            echo "::warning title=Simulator launch flake::the first run failed while launching the app on the simulator, so that case is retried once. Both result bundles are kept; read launch-1 before believing the green."
+          fi
+          first_kind="$verdict"
           set +e
           run_launch launch-2
           second=$?
@@ -293,15 +299,15 @@ jobs:
               ambiguous)
                 echo "::error::the retry shows both an assertion and a launch failure. Red, and the summary will say so rather than blaming the simulator."
                 status fail-ambiguous-on-retry ;;
-              launch)
-                status fail-launch-twice ;;
+              launch|runner)
+                status "fail-$second_verdict-twice" ;;
               *)
                 echo "::error::the retry failed for a reason that is neither an assertion nor a launch failure. Red."
                 status fail-other-on-retry ;;
             esac
             exit "$second"
           fi
-          status fail-launch-then-pass
+          status "fail-$first_kind-then-pass"
 
       # A green job must not hide which of the two things happened, so say it on the run instead of only in a log.
       - name: Say what the launch case did
@@ -320,6 +326,9 @@ jobs:
             pass) text="Passed on its first run; no retry was used." ;;
             fail-launch-then-pass) text="First run failed **while launching the app on the simulator**; the case was retried once and passed. Both bundles are kept." ;;
             fail-launch-twice) text="**Failed twice**, both times while launching the app on the simulator. Red, as it should be." ;;
+            fail-runner-twice) text="**Failed twice** on simulator failures (background assertion or boot). Red." ;;
+
+            fail-runner-then-pass) text="First run died on a **simulator failure**; retried once and passed. Both bundles are kept." ;;
             fail-assertion) text="**Failed on its own assertions** and was not retried. Red, as it should be." ;;
             fail-ambiguous) text="**Both an assertion and a launch failure** in the first log; kept red on the first result rather than guessing." ;;
             fail-assertion-on-retry) text="Retried once after a launch failure, then **failed on its own assertions**. Both bundles kept." ;;
