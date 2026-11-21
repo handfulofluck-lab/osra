@@ -70,6 +70,24 @@ class RuleRepository @Inject constructor(
         rulesChangedListeners -= listener
     }
 
+    /**
+     * #865 second half: told the stored version right after it is written, so the phone can hand it to the
+     * server within seconds of applying the rules instead of at the next telemetry tick.
+     *
+     * Separate from [rulesChangedListeners] on purpose: that one fires whether or not the version persisted,
+     * and it is about enforcement. This one fires only when the version was stored — the fact a parent's
+     * "has the phone picked this up" line is about.
+     */
+    private val rulesAppliedListeners = java.util.concurrent.CopyOnWriteArrayList<suspend (Int) -> Unit>()
+
+    fun addRulesAppliedListener(listener: suspend (Int) -> Unit) {
+        rulesAppliedListeners += listener
+    }
+
+    fun removeRulesAppliedListener(listener: suspend (Int) -> Unit) {
+        rulesAppliedListeners -= listener
+    }
+
     // Pause-the-internet state (Feature #11): set by CommandDispatcher on pause_internet /
     // resume_internet; consulted by [evaluate] so every non-always-allowed app is blocked.
     @Volatile private var pausedInternet = false
@@ -274,6 +292,24 @@ class RuleRepository @Inject constructor(
             if (persisted) runCatching { settings.saveAppliedRulesVersion(updated.rulesVersion) }
             runCatching { FirebaseMessaging.getInstance().subscribeToTopic("child:$childId:rules") }
             rulesChangedListeners.forEach { runCatching { it() } }
+            // #865 second half, ordered by Claude's review on #879: enforcement is told first (the two lines
+            // above), and only then does the phone tell the server — on the agent's own scope, so a slow or
+            // dead network never holds up this refresh, the rule change, or the parent's screen. A listener
+            // that fails leaves the number unreported; the periodic upload still carries it on the next tick.
+            if (persisted) {
+                val appliedVersion = updated.rulesVersion
+                appScope.launch {
+                    rulesAppliedListeners.forEach { listener ->
+                        try {
+                            listener(appliedVersion)
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e // NOTE: never swallow coroutine cancellation
+                        } catch (e: Exception) {
+                            // Left unreported on purpose: the next tick retries with the same number.
+                        }
+                    }
+                }
+            }
             updated
         }
     }

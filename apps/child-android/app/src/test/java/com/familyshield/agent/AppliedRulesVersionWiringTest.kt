@@ -31,6 +31,8 @@ class AppliedRulesVersionWiringTest {
         val saveVersion = repository.indexOf("settings.saveAppliedRulesVersion(")
         assertTrue("both must be present", saveRules > 0 && saveVersion > 0)
         assertTrue("the version must not be stored before the rules are", saveVersion > saveRules)
+        // #865 second half kept the one-liner: the report is now launched after the enforcement listeners,
+        // not inside this call, so the guarantee reads exactly as it did before that feature.
         assertTrue(
             "and only when the rules were actually written",
             repository.contains("if (persisted) runCatching { settings.saveAppliedRulesVersion(updated.rulesVersion) }"),
@@ -54,10 +56,12 @@ class AppliedRulesVersionWiringTest {
     fun `every telemetry upload carries it`() {
         assertTrue(dto.contains("val appliedRulesVersion: Int? = null"))
         assertEquals(
-            // ADR-0034 PR 2 added the third: the change-triggered capability upload. The count stays exact on
-            // purpose — a new upload path that forgets the version is the drift this row exists to catch.
-            "every upload path — periodic, the grant report, and the capability change — sends it",
-            3,
+            // ADR-0034 PR 2 added the third: the change-triggered capability upload. #865's second half added
+            // the fourth: the applied-version report, which exists precisely to carry this number on its own.
+            // The count stays exact on purpose — a new upload path that forgets the version is the drift this
+            // row exists to catch.
+            "every upload path — periodic, the grant report, the capability change and the applied-version report — sends it",
+            4,
             Regex("appliedRulesVersion = ").findAll(reporter).count(),
         )
         assertFalse(
@@ -67,8 +71,10 @@ class AppliedRulesVersionWiringTest {
         assertEquals(
             // ADR-0034 A2: the capability report rides the same three uploads, so a phone is described on
             // every surface it reports its rules version on. One that stopped would be a silent gap.
-            "and all three carry the capability report",
-            3,
+            // The fourth path (#865) carries it too, for the same reason as the others: a phone is described on
+            // every surface it reports its rules version on.
+            "and all four carry the capability report",
+            4,
             Regex("capabilities = ").findAll(reporter).count(),
         )
     }

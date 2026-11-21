@@ -102,6 +102,17 @@ class AgentSettings @Inject constructor(
     /** The applied rules version, or null when this install has never applied one (never reported). */
     suspend fun appliedRulesVersion(): Int? = read(KEY_APPLIED_RULES_VERSION)?.toIntOrNull()
 
+    /**
+     * #865 second half: the last version the server **accepted** with a 2xx, which is not the same number as
+     * [appliedRulesVersion]. The applied one is what the phone holds; this one is what the server knows, and
+     * it is written only after a successful upload so a failed POST is retried instead of being forgotten.
+     */
+    suspend fun reportedAppliedRulesVersion(): Int? = read(KEY_REPORTED_APPLIED_RULES_VERSION)?.toIntOrNull()
+
+    suspend fun recordReportedAppliedRulesVersion(version: Int) {
+        store.edit { it[KEY_REPORTED_APPLIED_RULES_VERSION] = version.toString() }
+    }
+
     /** Returns the persisted rule set JSON, or null. */
     suspend fun rulesJson(): String? = read(KEY_RULES_JSON)
 
@@ -519,6 +530,8 @@ class AgentSettings @Inject constructor(
         private const val SECURE_HMAC_SECRET = "hmac_secret"
         private val KEY_RULES_JSON = stringPreferencesKey("rules_json")
         private val KEY_APPLIED_RULES_VERSION = stringPreferencesKey("applied_rules_version")
+        // #865 second half: what the server has acknowledged, kept apart from what the phone holds.
+        private val KEY_REPORTED_APPLIED_RULES_VERSION = stringPreferencesKey("reported_applied_rules_version")
         private val KEY_UNLINK_PENDING = booleanPreferencesKey("unlink_pending")
         private val KEY_BLOCKLIST_JSON = stringPreferencesKey("blocklist_json")
         private val KEY_BLOCKLIST_DOMAINS_JSON = stringPreferencesKey("blocklist_domains_json")
