@@ -1592,6 +1592,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Couldn\'t save changes. Check your connection and try again.';
 
   @override
+  String get saveFailedServer =>
+      'Couldn\'t save your changes. Your changes are still here — try again.';
+
+  @override
   String get saveMonitoring => 'Save monitoring';
 
   @override

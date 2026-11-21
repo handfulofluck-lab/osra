@@ -1725,6 +1725,10 @@ class AppLocalizationsAr extends AppLocalizations {
       'تعذّر حفظ التغييرات. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
 
   @override
+  String get saveFailedServer =>
+      'تعذّر حفظ التغييرات. ما زالت تغييراتك هنا، فحاول مرة أخرى.';
+
+  @override
   String get saveMonitoring => 'حفظ المراقبة';
 
   @override

@@ -379,7 +379,7 @@ void main() {
     expect(api.calls('PATCH', '/v1/rules/child-1'), hasLength(1));
     expect(
       find.descendant(
-        of: find.byType(MaterialBanner),
+        of: find.byKey(const ValueKey('rules-save-error-banner')),
         matching: find.text(
             "This change was not saved: this child has no active consent, so monitoring is paused. Open Parental consent on the child's page to see why."),
       ),

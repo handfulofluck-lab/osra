@@ -1,0 +1,2 @@
+﻿- **Parent rules editor (U43):** Keep rule edits on screen on save failure, show an inline Retry/Dismiss banner above the fixed-width 52 dp Save button, and use cause-accurate saveFailed (offline) vs saveFailedServer (server refusal) copy in EN & AR.
+- **Child Android setup (U44 #952):** Open unpaired first launch on a Compose OsraTheme welcome screen (setup_welcome_*), walk permission grants one per screen with 52 dp actions, and replace bare system-colored setup loading/checklist views with Compose OsraTheme screens.

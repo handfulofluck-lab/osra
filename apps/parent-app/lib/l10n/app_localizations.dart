@@ -2672,6 +2672,12 @@ abstract class AppLocalizations {
   /// **'Couldn\'t save changes. Check your connection and try again.'**
   String get saveFailed;
 
+  /// No description provided for @saveFailedServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t save your changes. Your changes are still here — try again.'**
+  String get saveFailedServer;
+
   /// No description provided for @saveMonitoring.
   ///
   /// In en, this message translates to:
