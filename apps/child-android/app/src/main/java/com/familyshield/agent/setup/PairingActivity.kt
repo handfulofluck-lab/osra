@@ -113,7 +113,7 @@ class PairingActivity : ComponentActivity() {
             showStaleKnoxAdmin()
             return@registerForActivityResult
         }
-        lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
+        onPermissionOrActionReturned()
     }
 
     /** Launches the admin sheet through one place, so every return can be timed (issue #188). */
@@ -129,7 +129,7 @@ class PairingActivity : ComponentActivity() {
             com.familyshield.agent.vpn.VpnState.setEnabled(this, true)
             com.familyshield.agent.vpn.FilterVpnService.start(this)
         }
-        lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
+        onPermissionOrActionReturned()
     }
 
     private fun launchVpnConsent(intent: Intent) {
@@ -172,12 +172,12 @@ class PairingActivity : ComponentActivity() {
                     return@launch
                 }
             }
-            if (settings.isPaired()) showStatus() else showComplete()
+            onPermissionOrActionReturned()
         }
     }
 
     private val backgroundLocationLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-        lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
+        onPermissionOrActionReturned()
     }
 
     /**
@@ -257,10 +257,19 @@ class PairingActivity : ComponentActivity() {
         val typedCode = savedInstanceState?.getString(KEY_TYPED_CODE).orEmpty()
         val typedName = savedInstanceState?.getString(KEY_TYPED_NAME).orEmpty()
         welcomeCompleted = savedInstanceState?.getBoolean(KEY_WELCOME_COMPLETED, false) ?: false
+        activeGuidedStage = savedInstanceState?.getString(KEY_GUIDED_STAGE)
+            ?.let { name -> GuidedStage.values().firstOrNull { it.name == name } }
+        guidedFirstRun = savedInstanceState?.getBoolean(KEY_GUIDED_FIRST_RUN, true) ?: true
+        forceChecklistView = savedInstanceState?.getBoolean(KEY_FORCE_CHECKLIST_VIEW, false) ?: false
+        savedInstanceState?.getStringArrayList(KEY_SKIPPED_GRANTS)?.forEach { name ->
+            OnboardingPolicy.Grant.values().firstOrNull { it.name == name }?.let { skippedPermissionSteps.add(it) }
+        }
+        onBackPressedDispatcher.addCallback(this, guidedBackCallback)
         // NOTE: reading the token (not the cache) — a fresh process has empty caches.
         lifecycleScope.launch {
             when {
-                settings.isPaired() -> showStatus()
+                settings.isPaired() ->
+                    renderStage(SetupResumePolicy.resolvePairedStage(pinStore.isConfigured(), activeGuidedStage))
                 welcomeCompleted || restoredScan != null || typedServer.isNotEmpty() || typedCode.isNotEmpty() || typedName.isNotEmpty() ->
                     showForm(typedServer, typedCode, typedName, scanned = restoredScan)
                 else -> showWelcome(typedServer, typedCode, typedName, scanned = restoredScan)
@@ -274,8 +283,30 @@ class PairingActivity : ComponentActivity() {
      */
     @Volatile private var statusScreenShown = false
     private var welcomeCompleted = false
+    private var activeGuidedStage: GuidedStage? = null
+    private var guidedFirstRun = true
     private var forceChecklistView = false
     private val skippedPermissionSteps = mutableSetOf<OnboardingPolicy.Grant>()
+
+    private val guidedBackCallback: androidx.activity.OnBackPressedCallback =
+        object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                when (SetupResumePolicy.backAction(activeGuidedStage, guidedFirstRun)) {
+                    BackAction.TO_PERMISSION_STEP -> {
+                        forceChecklistView = false
+                        val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
+                        showChecklist(rows, firstRun = guidedFirstRun)
+                    }
+                    BackAction.TO_PROTECTION_SETUP -> showProtectionSetup()
+                    BackAction.TO_STATUS -> finishGuidedSetupAndShowStatus()
+                    BackAction.SYSTEM_DEFAULT -> {
+                        isEnabled = false
+                        onBackPressedDispatcher.onBackPressed()
+                        isEnabled = true
+                    }
+                }
+            }
+        }
 
     /**
      * Issue #471: the unlink runs in the agent, not here, so this screen used to keep showing the
@@ -317,6 +348,12 @@ class PairingActivity : ComponentActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putBoolean(KEY_WELCOME_COMPLETED, welcomeCompleted)
+        activeGuidedStage?.let { outState.putString(KEY_GUIDED_STAGE, it.name) }
+        outState.putBoolean(KEY_GUIDED_FIRST_RUN, guidedFirstRun)
+        outState.putBoolean(KEY_FORCE_CHECKLIST_VIEW, forceChecklistView)
+        if (skippedPermissionSteps.isNotEmpty()) {
+            outState.putStringArrayList(KEY_SKIPPED_GRANTS, ArrayList(skippedPermissionSteps.map { it.name }))
+        }
         val review = scanFlow.state as? PairingScanFlow.State.Review
         if (review != null) outState.putString(KEY_SCANNED_QR, review.payload.encode())
         formServer?.let { outState.putString(KEY_TYPED_SERVER, it.text.toString()) }
@@ -331,7 +368,12 @@ class PairingActivity : ComponentActivity() {
         lifecycleScope.launch {
             if (settings.isPaired()) {
                 startLocationServiceIfPermitted()
-                showStatus()
+                val stage = activeGuidedStage
+                if (stage == null || stage == GuidedStage.STATUS) {
+                    renderStage(SetupResumePolicy.resolvePairedStage(pinStore.isConfigured(), stage))
+                } else {
+                    onPermissionOrActionReturned()
+                }
             } else if (statusScreenShown) {
                 // Issue #471 review: this is the return-from-background path. The receiver is
                 // unregistered in onStop, so an unlink that happens while the child is in another app
@@ -340,6 +382,51 @@ class PairingActivity : ComponentActivity() {
                 showForm()
             }
         }
+    }
+
+    private fun onPermissionOrActionReturned(staleKnox: Boolean = false) {
+        lifecycleScope.launch {
+            if (!settings.isPaired()) {
+                showComplete()
+                return@launch
+            }
+            val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
+            val next = SetupResumePolicy.stageAfterPermissionReturn(
+                pinConfigured = pinStore.isConfigured(),
+                currentStage = activeGuidedStage,
+                isAdminActive = deviceAdmin.isAdminActive(),
+                staleKnox = staleKnox,
+                canComplete = OnboardingPolicy.canComplete(rows),
+                forceChecklist = forceChecklistView,
+            )
+            renderStage(next)
+        }
+    }
+
+    private fun renderStage(stage: GuidedStage) {
+        when (stage) {
+            GuidedStage.SET_PIN -> showSetPin()
+            GuidedStage.PROTECTION_SETUP -> showProtectionSetup()
+            GuidedStage.STALE_KNOX_ADMIN -> showStaleKnoxAdmin()
+            GuidedStage.PERMISSION_STEP -> {
+                forceChecklistView = false
+                val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
+                if (!OnboardingPolicy.canComplete(rows)) showChecklist(rows, firstRun = guidedFirstRun) else showComplete()
+            }
+            GuidedStage.CHECKLIST -> {
+                forceChecklistView = true
+                val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
+                showChecklist(rows, firstRun = guidedFirstRun)
+            }
+            GuidedStage.COMPLETE -> showComplete()
+            GuidedStage.STATUS -> finishGuidedSetupAndShowStatus()
+        }
+    }
+
+    private fun finishGuidedSetupAndShowStatus() {
+        activeGuidedStage = GuidedStage.STATUS
+        forceChecklistView = false
+        showStatus()
     }
 
     // ---- states ----
@@ -351,6 +438,8 @@ class PairingActivity : ComponentActivity() {
         scanned: PairQrPayload? = null,
     ) {
         statusScreenShown = false
+        activeGuidedStage = null
+        skippedPermissionSteps.clear()
         val brand = "${getString(R.string.app_name)} · ${getString(R.string.app_name_ar)}"
         replaceWithCompose {
             OnboardingWelcomeScreen(
@@ -392,6 +481,8 @@ class PairingActivity : ComponentActivity() {
         scanError: String? = null,
     ) {
         statusScreenShown = false
+        activeGuidedStage = null
+        skippedPermissionSteps.clear()
         replaceWith {
             addView(label(getString(R.string.pair_title)))
             addView(label(getString(R.string.pair_intro)))
@@ -560,6 +651,9 @@ class PairingActivity : ComponentActivity() {
 
     /** ADR-0010 step 1: the parent chooses the PIN (4–8 digits, not a weak one). */
     private fun showSetPin() {
+        statusScreenShown = false
+        activeGuidedStage = GuidedStage.SET_PIN
+        guidedFirstRun = true
         replaceWith {
             addView(label(getString(R.string.title_brand_suffix, getString(R.string.pair_pin_title))))
             addView(
@@ -598,6 +692,9 @@ class PairingActivity : ComponentActivity() {
 
     /** ADR-0010 step 2: activate Device Admin (uninstall needs the PIN from then on; remote lock works). */
     private fun showProtectionSetup() {
+        statusScreenShown = false
+        activeGuidedStage = GuidedStage.PROTECTION_SETUP
+        guidedFirstRun = true
         if (deviceAdmin.isAdminActive()) {
             deviceAdmin.applyUninstallProtection()
             showComplete()
@@ -627,6 +724,8 @@ class PairingActivity : ComponentActivity() {
      * registry entry; it can only name the state and open the screen that goes through Knox.
      */
     private fun showStaleKnoxAdmin() {
+        statusScreenShown = false
+        activeGuidedStage = GuidedStage.STALE_KNOX_ADMIN
         val message = AdminEnrolmentMessages.resForOutcome(EnrolmentOutcome.STALE_KNOX_ADMIN) ?: return
         replaceWith {
             addView(
@@ -652,7 +751,7 @@ class PairingActivity : ComponentActivity() {
                 Button(this@PairingActivity).apply {
                     text = getString(R.string.setup_continue_without)
                     setOnClickListener {
-                        lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
+                        showComplete()
                     }
                 },
             )
@@ -688,7 +787,9 @@ class PairingActivity : ComponentActivity() {
 
     private fun showComplete() {
         val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
-        if (!OnboardingPolicy.canComplete(rows)) { showChecklist(rows, firstRun = true); return }
+        if (!OnboardingPolicy.canComplete(rows)) { showChecklist(rows, firstRun = guidedFirstRun); return }
+        statusScreenShown = false
+        activeGuidedStage = GuidedStage.COMPLETE
         replaceWith {
             addView(label(getString(R.string.setup_complete_title)))
             addView(label(progressLine(rows)).apply { setTextColor(0xFF2E7D32.toInt()) })
@@ -713,7 +814,7 @@ class PairingActivity : ComponentActivity() {
             addView(
                 Button(this@PairingActivity).apply {
                     text = getString(R.string.setup_open_status)
-                    setOnClickListener { lifecycleScope.launch { showStatus() } }
+                    setOnClickListener { finishGuidedSetupAndShowStatus() }
                 },
             )
         }
@@ -727,11 +828,13 @@ class PairingActivity : ComponentActivity() {
      */
     private fun showChecklist(rows: List<OnboardingPolicy.Row>, firstRun: Boolean) {
         statusScreenShown = false
+        guidedFirstRun = firstRun
         val nextStep = if (forceChecklistView) null else nextUngrantedPermissionStep(rows)
         if (nextStep != null) {
             showPermissionStep(rows, nextStep, firstRun)
             return
         }
+        activeGuidedStage = GuidedStage.CHECKLIST
         forceChecklistView = false
         val brand = "${getString(R.string.app_name)} · ${getString(R.string.app_name_ar)}"
         val copy = ChecklistCopy(
@@ -761,7 +864,7 @@ class PairingActivity : ComponentActivity() {
                 else -> null
             },
             onFooterClick = when {
-                !firstRun -> { { lifecycleScope.launch { showStatus() } } }
+                !firstRun -> { { finishGuidedSetupAndShowStatus() } }
                 OnboardingPolicy.canComplete(rows) -> { { showComplete() } }
                 else -> null
             },
@@ -780,6 +883,9 @@ class PairingActivity : ComponentActivity() {
         row: OnboardingPolicy.Row,
         firstRun: Boolean,
     ) {
+        statusScreenShown = false
+        guidedFirstRun = firstRun
+        activeGuidedStage = GuidedStage.PERMISSION_STEP
         val g = row.grant
         val brand = "${getString(R.string.app_name)} · ${getString(R.string.app_name_ar)}"
         val copy = PermissionStepCopy(
@@ -802,7 +908,8 @@ class PairingActivity : ComponentActivity() {
                         skippedPermissionSteps.add(g)
                         val remaining = nextUngrantedPermissionStep(rows)
                         if (remaining != null) showPermissionStep(rows, remaining, firstRun)
-                        else lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
+                        else if (firstRun) showComplete()
+                        else finishGuidedSetupAndShowStatus()
                     }
                 } else null,
                 onOpenChecklist = {
@@ -821,7 +928,7 @@ class PairingActivity : ComponentActivity() {
                 if (prepare != null) launchVpnConsent(prepare) else {
                     com.familyshield.agent.vpn.VpnState.setEnabled(this, true)
                     com.familyshield.agent.vpn.FilterVpnService.start(this)
-                    lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
+                    onPermissionOrActionReturned()
                 }
             }
             OnboardingPolicy.Grant.LOCATION -> {
@@ -900,6 +1007,7 @@ class PairingActivity : ComponentActivity() {
             showSetPin()
             return
         }
+        activeGuidedStage = GuidedStage.STATUS
         statusScreenShown = true
         lifecycleScope.launch {
             val childId = settings.childId() ?: "-"
@@ -1047,6 +1155,8 @@ class PairingActivity : ComponentActivity() {
                             requirePin(TamperGuardActivity.REASON_REPAIR) {
                                 lifecycleScope.launch {
                                     settings.clearPairing()
+                                    activeGuidedStage = null
+                                    skippedPermissionSteps.clear()
                                     showForm()
                                 }
                             }
@@ -1334,6 +1444,10 @@ class PairingActivity : ComponentActivity() {
         private const val KEY_TYPED_CODE = "typed_pair_code"
         private const val KEY_TYPED_NAME = "typed_pair_name"
         private const val KEY_WELCOME_COMPLETED = "welcome_completed"
+        private const val KEY_GUIDED_STAGE = "guided_stage"
+        private const val KEY_GUIDED_FIRST_RUN = "guided_first_run"
+        private const val KEY_FORCE_CHECKLIST_VIEW = "force_checklist_view"
+        private const val KEY_SKIPPED_GRANTS = "skipped_permission_grants"
 
         /** Feature #6 runtime permissions (declared in the manifest; prompted, not required). */
         private val COMMS_PERMISSIONS = arrayOf(
