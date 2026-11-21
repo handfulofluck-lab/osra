@@ -30,6 +30,14 @@ expect() {
 } > "$tmp/archived_flake.log"
 expect archived_flake launch
 
+# THE REAL LAUNCH TIMEOUT, copied from the run at e8697999 (18:17 UAE). XCTest formats it as an XCTest
+# failure line, so `error: -[` cannot be assertion evidence — this line must classify as a launch failure and
+# be retried, and it was the reason the job went red at that head.
+{
+  echo "/Users/runner/work/osra/osra/apps/child-ios/UITests/AgentLaunchTests.swift:24: error: -[OSRAAgentUITests.AgentLaunchTests testTheAppLaunchesToThePairingScreen] : Failed to launch <XCUIApplicationImpl: 0x104fcdf40 com.osratech.child at /x/OSRAAgent.app> via Xcode: Timed out while launching application via Xcode."
+} > "$tmp/real_launch_timeout.log"
+expect real_launch_timeout launch
+
 # A real assertion failure, with unrelated Launch Services noise alongside it (Codex 7060451632).
 {
   echo "t = 1.2s Unable to bootstrap the Launch Services database: 0x2d"

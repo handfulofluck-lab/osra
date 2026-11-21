@@ -12,8 +12,14 @@
 # generic `Failing tests:` footer read as an assertion, and the retry's own failure never classified. A file can
 # be tested; a heredoc inside YAML cannot.
 #
-# `Failing tests:` is deliberately NOT evidence of an assertion: xcodebuild prints that footer for a launch
-# failure too, and the archived #949 run carried it alongside `Failed to launch`.
+# TWO things are deliberately NOT evidence of an assertion, and both were learned from real logs:
+#   `Failing tests:` — xcodebuild prints that footer for a launch failure too (the archived #949 run carried it
+#     alongside `Failed to launch`).
+#   `error: -[`     — XCTest formats EVERY failure that way, including a launch timeout. The run at
+#     `e8697999` produced one line: "error: -[AgentLaunchTests …] : Failed to launch … Timed out while launching
+#     application via Xcode", so treating that prefix as assertion evidence classified the very flake this
+#     workflow exists to retry as `ambiguous` and failed the job (Antigravity, Codex 7062904614).
+# Assertion evidence is therefore the assertion vocabulary itself: `XCTAssert`.
 set -uo pipefail
 
 log="${1:-}"
@@ -22,7 +28,7 @@ if [ -z "$log" ] || [ ! -f "$log" ]; then
   exit 0
 fi
 
-has_assertion() { grep -qF 'XCTAssert' "$1" || grep -qF 'error: -[' "$1"; }
+has_assertion() { grep -qF 'XCTAssert' "$1"; }
 has_launch() {
   grep -qiE 'timed out while launching application|failed to launch|FBSOpenApplicationServiceErrorDomain|unable to launch the application' "$1"
 }
