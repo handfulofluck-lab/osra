@@ -1173,6 +1173,14 @@ class AppLocalizationsEn extends AppLocalizations {
       'The list appears after the child device\'s next check-in (up to 15 minutes).';
 
   @override
+  String get appPickerIosEmptyTitle => 'No apps chosen yet';
+
+  @override
+  String appPickerIosEmptyBody(Object child) {
+    return 'Open OSRA on $child\'s iPhone and choose the apps you want to manage. They\'ll appear here.';
+  }
+
+  @override
   String get installedAppsNoMatch => 'No apps match your search.';
 
   @override
@@ -1590,6 +1598,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get saveFailed =>
       'Couldn\'t save changes. Check your connection and try again.';
+
+  @override
+  String get saveFailedServer =>
+      'Couldn\'t save your changes. Your changes are still here — try again.';
 
   @override
   String get saveMonitoring => 'Save monitoring';
@@ -2423,8 +2435,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get digestPrefsEmailsLabel => 'Digest emails';
 
   @override
-  String get digestPrefsEmailsHelper =>
-      'For the digest summary (separate addresses with commas)';
+  String get digestPrefsEmailsHelper => 'For the digest summary';
+
+  @override
+  String get digestPrefsAddEmail => 'Add email';
 
   @override
   String get digestPrefsConfirmationSent =>
@@ -3109,8 +3123,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appGroupsTitle => 'App groups on this iPhone';
 
   @override
-  String get appGroupsBody =>
-      'Groups are made on the child\'s iPhone, behind the parent PIN. Block one here and the iPhone shields its apps.';
+  String get appsTabAndroidHeading => 'Android apps';
+
+  @override
+  String get appsTabIphoneHeading => 'iPhone apps';
+
+  @override
+  String get appGroupsEditorNote =>
+      'Manage iPhone apps from the Apps tab. The rules on this screen apply to Android apps only.';
+
+  @override
+  String get appGroupsBlockOnlyAdds =>
+      'Turning this switch off doesn\'t lift a block set on the iPhone itself.';
 
   @override
   String appGroupsCounts(Object apps, Object categories, Object sites) {

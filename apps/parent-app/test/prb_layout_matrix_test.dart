@@ -979,23 +979,17 @@ void main() {
           final titleFinder = find.text(l10n.editRules);
           expect(titleFinder, findsOneWidget);
           expectTextNotClipped(tester, titleFinder, reason: 'RulesEditor editRules title');
-          final titleInAppBar = find.descendant(
-            of: find.byType(AppBar),
-            matching: find.text(l10n.editRules),
-          );
-          final appBarWidget = tester.widget<AppBar>(find.byType(AppBar));
-          if (titleInAppBar.evaluate().isEmpty) {
-            expect(
-              appBarWidget.toolbarHeight,
-              lessThan(matrix.scale * (kToolbarHeight + 8.0)),
-              reason: 'Collapsed AppBar toolbarHeight should stay compact for Save only',
-            );
-          }
           final saveFinder = find.descendant(
-            of: find.byType(AppBar),
+            of: find.byKey(const ValueKey('rules-save-button')),
             matching: find.text(l10n.save),
           );
+          expect(saveFinder, findsOneWidget);
           expectTextNotClipped(tester, saveFinder, reason: 'RulesEditor Save label');
+          expect(
+            tester.getRect(find.byKey(const ValueKey('rules-save-button'))).height,
+            greaterThanOrEqualTo(52.0),
+            reason: 'U43: Save button stays at least 52 dp tall',
+          );
 
           final fadingTabBarFinder = find.byType(FadingScrollableTabBar);
           expect(fadingTabBarFinder, findsOneWidget);
@@ -1554,7 +1548,7 @@ void main() {
         await tester.tap(find.widgetWithText(TextButton, l10n.onboardingLeaveStay));
         await tester.pumpAndSettle();
 
-        // RulesEditor disable-recommended confirm dialog & collapsed AppBar fallback height.
+        // RulesEditor disable-recommended confirm dialog & bottom 52dp Save button at extreme scale.
         await pumpMatrix(
           tester,
           const RulesEditorScreen(childId: 'child-1'),
@@ -1564,27 +1558,14 @@ void main() {
             blockedCategories: kRecommendedCategories,
           ),
         );
-        expect(
-          find.descendant(of: find.byType(AppBar), matching: find.text(l10n.editRules)),
-          findsNothing,
-        );
-        final appBarWidget = tester.widget<AppBar>(find.byType(AppBar));
-        expect(
-          appBarWidget.toolbarHeight,
-          allOf(isNotNull, greaterThan(kToolbarHeight), lessThan(100.0)),
-          reason: 'Collapsed AppBar toolbarHeight at 3.1x must fit Save without bloating to title height',
-        );
+        final saveButtonFinder = find.byKey(const ValueKey('rules-save-button'));
+        expect(saveButtonFinder, findsOneWidget);
+        expect(tester.getRect(saveButtonFinder).height, greaterThanOrEqualTo(52.0));
         final saveLabelFinder = find.descendant(
-          of: find.byType(AppBar),
+          of: saveButtonFinder,
           matching: find.text(l10n.save),
         );
         expectTextNotClipped(tester, saveLabelFinder, reason: 'RulesEditor Save label at 3.1x');
-        final toolbarRect = tester.getRect(
-          find.descendant(of: find.byType(AppBar), matching: find.byType(NavigationToolbar)),
-        );
-        final saveRect = tester.getRect(saveLabelFinder);
-        expect(saveRect.top, greaterThanOrEqualTo(toolbarRect.top - 0.5));
-        expect(saveRect.bottom, lessThanOrEqualTo(toolbarRect.bottom + 0.5));
 
         final webFilterTab = find.text(l10n.tabWebFilter);
         await tester.ensureVisible(webFilterTab);
