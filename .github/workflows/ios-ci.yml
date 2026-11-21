@@ -251,7 +251,7 @@ jobs:
           run_launch launch-1
           first=$?
           set -e
-          status() { printf '%s\\n' "$1" > "$RESULTS/launch.status"; }
+          status() { printf '%s\n' "$1" > "$RESULTS/launch.status"; }
           if [ "$first" -eq 0 ]; then
             echo "the launch case passed on its first run; nothing was retried"
             status pass
@@ -292,7 +292,13 @@ jobs:
         working-directory: apps/child-ios
         run: |
           RESULTS=.build/uiResults
-          if [ -f "$RESULTS/launch.status" ]; then outcome="$(cat "$RESULTS/launch.status")"; else outcome=did-not-run; fi
+          # Read the recorded outcome defensively: strip any trailing whitespace, so a stray newline cannot
+          # make `pass` miss its own branch in the case statement (Codex, 7061220000).
+          if [ -f "$RESULTS/launch.status" ]; then
+            outcome="$(tr -d '\r\n' < "$RESULTS/launch.status")"
+          else
+            outcome=did-not-run
+          fi
           case "$outcome" in
             pass) text="Passed on its first run; no retry was used." ;;
             fail-launch-then-pass) text="First run failed **while launching the app on the simulator**; the case was retried once and passed. Both bundles are kept." ;;
