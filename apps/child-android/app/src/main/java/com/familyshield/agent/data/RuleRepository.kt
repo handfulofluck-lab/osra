@@ -145,10 +145,13 @@ class RuleRepository @Inject constructor(
     /** Feature #2: true unless the cached rule set explicitly disables social monitoring for [appKey] (absent key = enabled). */
     fun socialMonitoringEnabled(appKey: String): Boolean = cached?.socialMonitoring?.get(appKey) ?: true
 
-    /** ADR-0039 / osra-security#45 & #59: true only when rules opt in AND durable transition state committed. */
+    /** ADR-0039 / osra-security#45 & #59: true only after a fresh server sync grants searchMonitoring with committed state. */
     fun searchMonitoringEnabled(): Boolean = searchOptIn.isSearchMonitoringEnabled(cached)
 
-    /** Durable search opt-in revision (`osra-security#59`) separating earlier queued searches from later grants. */
+    /** True once a server rules sync has resolved this process's search opt-in/rev state (`osra-security#59`). */
+    fun searchSyncConfirmed(): Boolean = searchOptIn.isFreshSyncConfirmed()
+
+    /** Server-verified search opt-in revision (`osra-security#59`). */
     fun searchOptInRevision(): Long = searchOptIn.currentRevision()
 
     /** #830 gating: true only after the server flag went on and the phone synced that rule set. */

@@ -32,7 +32,10 @@ import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Test
+import retrofit2.HttpException
 import retrofit2.Response
 
 /**
@@ -107,11 +110,16 @@ class SearchDurableQueueTest {
 
     private class FakeSearchApi : ApiService {
         var offline = false
+        var refuseSearchStatus: Int? = null
         val postedSearches = mutableListOf<SearchEventDto>()
         val postedSocialBatches = mutableListOf<SocialScanBatchDto>()
 
         override suspend fun postSearchEvent(event: SearchEventDto) {
             if (offline) throw IOException("network unavailable")
+            refuseSearchStatus?.let { code ->
+                val body = """{"error":"refused"}""".toResponseBody("application/json".toMediaTypeOrNull())
+                throw HttpException(Response.error<Unit>(code, body))
+            }
             postedSearches.add(event)
         }
 
@@ -150,7 +158,7 @@ class SearchDurableQueueTest {
             .map { it.name }
             .toSet()
         assertFalse("SearchEventDto must not carry url", dtoFields.contains("url"))
-        assertEquals(setOf("childId", "deviceId", "engine", "query", "timestamp"), dtoFields)
+        assertEquals(setOf("childId", "deviceId", "engine", "query", "timestamp", "searchMonitoringRevision"), dtoFields)
 
         val parsedFields = ParsedSearch::class.java.declaredFields
             .filter { !it.isSynthetic && !java.lang.reflect.Modifier.isStatic(it.modifiers) }
@@ -178,6 +186,7 @@ class SearchDurableQueueTest {
             deviceIdProvider = { "dev-1" },
             allowlistProvider = { emptyList() },
             searchMonitoringEnabledProvider = { optIn },
+            searchOptInRevisionProvider = { 1L },
             consentPausedProvider = { paused },
             consentEpochProvider = { epoch },
             consentResumedAtProvider = { resumedAtMs },
@@ -271,6 +280,7 @@ class SearchDurableQueueTest {
                 deviceIdProvider = { "dev-1" },
                 allowlistProvider = { emptyList() },
                 searchMonitoringEnabledProvider = { true },
+                searchOptInRevisionProvider = { 1L },
                 consentPausedProvider = { false },
                 consentEpochProvider = { 0L },
                 consentResumedAtProvider = { 0L },
@@ -316,6 +326,7 @@ class SearchDurableQueueTest {
             deviceIdProvider = { "dev-1" },
             allowlistProvider = { emptyList() },
             searchMonitoringEnabledProvider = { true },
+            searchOptInRevisionProvider = { 1L },
             consentPausedProvider = { false },
             consentEpochProvider = { epoch },
             consentResumedAtProvider = { resumedAtMs },
@@ -415,5 +426,38 @@ class SearchDurableQueueTest {
         assertFalse(searchPurgePending)
         assertEquals(0, dao.count())
         assertEquals(listOf("post-regrant query"), api.postedSearches.map { it.query })
+    }
+
+    @Test
+    fun `osra-security#59 server 409 or 403 refusal purges search row without retry and sends grant revision`() = runBlocking {
+        for (code in listOf(409, 403)) {
+            val dao = FakePendingScanDao()
+            val api = FakeSearchApi()
+            var retryCount = 0
+            val queue = SocialScanQueue(
+                api = api,
+                dao = dao,
+                childIdProvider = { "child-1" },
+                deviceIdProvider = { "dev-1" },
+                allowlistProvider = { emptyList() },
+                searchMonitoringEnabledProvider = { true },
+                searchOptInRevisionProvider = { 7L },
+                consentPausedProvider = { false },
+                consentEpochProvider = { 0L },
+                consentResumedAtProvider = { 0L },
+                getStoredConsentEpoch = { 0L },
+                setStoredConsentEpoch = {},
+                retryScheduler = { retryCount++ },
+            )
+            val now = System.currentTimeMillis()
+            assertTrue(queue.enqueueForFlush(app = "google", contact = null, text = "stale grant $code", nowMs = now, source = ScanQueuePolicy.SOURCE_SEARCH))
+            assertEquals(ScanQueuePolicy.searchSource(7L), dao.rows.single().source)
+
+            api.refuseSearchStatus = code
+            queue.flush()
+            assertEquals("refused $code upload must be purged immediately", 0, dao.count())
+            assertEquals("refused $code upload must not schedule retry", 0, retryCount)
+            assertTrue(api.postedSearches.isEmpty())
+        }
     }
 }

@@ -204,12 +204,22 @@ export async function rulesRoutes(app: FastifyInstance) {
     const overlap = overlapError(parsed.data);
     if (overlap) return reply.code(400).send(overlap);
     const { childId } = req.params as { childId: string };
+    const existing = await prisma.ruleSet.findUnique({ where: { childId }, select: { searchMonitoring: true } });
     // Issue #475: the bump is part of the write statement, so a saved ruleset and its version cannot
     // disagree even if two parents write at once.
     const row = await prisma.ruleSet.upsert({
       where: { childId },
-      create: toRow(parsed.data, childId),
-      update: { ...toRow(parsed.data, childId), rulesVersion: { increment: 1 } },
+      create: {
+        ...toRow(parsed.data, childId),
+        searchMonitoringRevision: parsed.data.searchMonitoring === true ? 1 : 0,
+      },
+      update: {
+        ...toRow(parsed.data, childId),
+        rulesVersion: { increment: 1 },
+        ...(parsed.data.searchMonitoring !== undefined && parsed.data.searchMonitoring !== (existing?.searchMonitoring ?? false)
+          ? { searchMonitoringRevision: { increment: 1 } }
+          : {}),
+      },
     });
     const api = toApiRuleSet(row as unknown as Record<string, unknown>);
     await publishJson(`child:${childId}:rules`, await filterAgentRules(childId, api));
@@ -258,10 +268,14 @@ export async function rulesRoutes(app: FastifyInstance) {
       // Omit searchMonitoring when absent from PATCH so concurrent opt-outs remain intact atomically (#54).
       ...toRow({ ...validated.data, searchMonitoring: patch.searchMonitoring as boolean | undefined }, childId),
       rulesVersion: { increment: 1 },
+      ...(patch.searchMonitoring !== undefined ? { searchMonitoringRevision: { increment: 1 } } : {}),
     };
     const row = await prisma.ruleSet.upsert({
       where: { childId },
-      create: toRow({ ...validated.data, searchMonitoring: (patch.searchMonitoring as boolean | undefined) ?? false }, childId),
+      create: {
+        ...toRow({ ...validated.data, searchMonitoring: (patch.searchMonitoring as boolean | undefined) ?? false }, childId),
+        searchMonitoringRevision: patch.searchMonitoring === true ? 1 : 0,
+      },
       update: updateData,
     });
     const api = toApiRuleSet(row as unknown as Record<string, unknown>);

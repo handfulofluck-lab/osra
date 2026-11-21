@@ -398,9 +398,11 @@ model RuleSet {
   youtubeRestrictedMode String @default("strict")
   alwaysAllowedApps   String[] @default([])
   bonusMinutesToday   Int      @default(0)
-  socialMonitoring    Json     @default("{}")
-  searchMonitoring    Boolean  @default(false)
-  contactAllowlist    String[] @default([])
+  socialMonitoring         Json     @default("{}")
+  searchMonitoring         Boolean  @default(false)
+  /// osra-security#59: bumped server-side whenever searchMonitoring changes; uploads bind to this revision.
+  searchMonitoringRevision Int      @default(0)
+  contactAllowlist         String[] @default([])
   appRules            Json     @default("[]")
   routines            Json     @default("[]")
   /// ADR-0037 PR B3: `[{groupId, action: "block"}]`, iPhone app groups by the id the phone reported.

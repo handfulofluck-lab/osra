@@ -43,6 +43,7 @@ class SocialScanQueue internal constructor(
     private val deviceIdProvider: suspend () -> String?,
     private val allowlistProvider: () -> List<String>,
     private val searchMonitoringEnabledProvider: () -> Boolean,
+    private val searchSyncConfirmedProvider: () -> Boolean = { true },
     private val searchOptInRevisionProvider: () -> Long = { 0L },
     private val getSearchPurgePending: suspend () -> Boolean = { false },
     private val setSearchPurgePending: suspend (Boolean) -> Unit = {},
@@ -71,6 +72,7 @@ class SocialScanQueue internal constructor(
         deviceIdProvider = { settings.deviceId() },
         allowlistProvider = { rules.contactAllowlist() },
         searchMonitoringEnabledProvider = { rules.searchMonitoringEnabled() },
+        searchSyncConfirmedProvider = { rules.searchSyncConfirmed() },
         searchOptInRevisionProvider = { rules.searchOptInRevision() },
         getSearchPurgePending = {
             (agentStateDao.get(RuleRepository.KEY_SEARCH_PURGE_PENDING) ?: 0L) != 0L
@@ -200,9 +202,9 @@ class SocialScanQueue internal constructor(
             }
             flushJob = null
 
-            // Clean up all pending search rows (even beyond BATCH_SIZE) whenever opt-in is absent/revoked (#59).
+            // Clean up all pending search rows (even beyond BATCH_SIZE) whenever fresh server sync confirms opt-in is absent/revoked (#59).
             var searchPurgeFailed = false
-            if (!searchMonitoringEnabledProvider()) {
+            if (searchSyncConfirmedProvider() && !searchMonitoringEnabledProvider()) {
                 runCatching { setSearchPurgePending(true) }
                 if (runCatching { dao.deleteAllSearches() }.isSuccess) {
                     runCatching { setSearchPurgePending(false) }
@@ -273,7 +275,10 @@ class SocialScanQueue internal constructor(
             }
 
             if (searchRows.isNotEmpty() || !searchPurgeFailed) {
-                if (!searchMonitoringEnabledProvider()) {
+                if (!searchSyncConfirmedProvider()) {
+                    // Hold queued search rows un-uploaded until live rules sync verifies server opt-in & revision (RuleRepository.kt:97).
+                    if (searchRows.isNotEmpty()) anyNetworkFailure = true
+                } else if (!searchMonitoringEnabledProvider()) {
                     if (!searchPurgeFailed && runCatching { dao.deleteAllSearches() }.isFailure) {
                         runCatching { setSearchPurgePending(true) }
                         anyNetworkFailure = true
@@ -317,6 +322,11 @@ class SocialScanQueue internal constructor(
                             }
                             break
                         }
+                        val rowRev = ScanQueuePolicy.parseSearchRevision(row.source)?.toInt()
+                        if (rowRev == null || rowRev <= 0 || rowRev.toLong() != activeRev) {
+                            runCatching { dao.delete(row.id) }
+                            continue
+                        }
                         try {
                             api.postSearchEvent(
                                 SearchEventDto(
@@ -325,6 +335,7 @@ class SocialScanQueue internal constructor(
                                     engine = row.app,
                                     query = row.text,
                                     timestamp = Instant.ofEpochMilli(row.createdAt).toString(),
+                                    searchMonitoringRevision = rowRev,
                                 ),
                             )
                             sendTimestamps.addLast(System.currentTimeMillis())
@@ -332,7 +343,10 @@ class SocialScanQueue internal constructor(
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: retrofit2.HttpException) {
-                            if (e.code() in 400..499 && e.code() != 429) {
+                            if (e.code() == 403 || e.code() == 409) {
+                                // Server refused due to disabled opt-in or stale searchMonitoringRevision (#59): purge without retry.
+                                runCatching { dao.delete(row.id) }
+                            } else if (e.code() in 400..499 && e.code() != 429) {
                                 runCatching { dao.bumpAttempts(row.id) }
                             } else {
                                 anyNetworkFailure = true

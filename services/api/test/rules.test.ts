@@ -766,7 +766,9 @@ describe("parent rule-write fan-out with no enforceable plan", () => {
       expect(omittedRes.statusCode).toBe(200);
       const omittedCall = prismaMock.ruleSet.upsert.mock.calls.at(-1)![0];
       expect("searchMonitoring" in omittedCall.update).toBe(false);
+      expect("searchMonitoringRevision" in omittedCall.update).toBe(false);
       expect(omittedCall.create.searchMonitoring).toBe(false);
+      expect(omittedCall.create.searchMonitoringRevision).toBe(0);
 
       const explicitRes = await app.inject({
         method: "PATCH",
@@ -777,7 +779,9 @@ describe("parent rule-write fan-out with no enforceable plan", () => {
       expect(explicitRes.statusCode).toBe(200);
       const explicitCall = prismaMock.ruleSet.upsert.mock.calls.at(-1)![0];
       expect(explicitCall.update.searchMonitoring).toBe(true);
+      expect(explicitCall.update.searchMonitoringRevision).toEqual({ increment: 1 });
       expect(explicitCall.create.searchMonitoring).toBe(true);
+      expect(explicitCall.create.searchMonitoringRevision).toBe(1);
     } finally {
       await app.close();
     }

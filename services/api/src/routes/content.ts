@@ -14,6 +14,7 @@ const SearchEventSchema = z.object({
   engine: z.string().min(1),
   query: z.string().min(1),
   timestamp: z.string().optional(),
+  searchMonitoringRevision: z.number().int().positive().optional(),
 });
 
 const YouTubeWatchSchema = z.object({
@@ -114,7 +115,7 @@ export async function contentRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: parsed.error.flatten() });
     }
 
-    const { childId, deviceId, engine, query } = parsed.data;
+    const { childId, deviceId, engine, query, searchMonitoringRevision } = parsed.data;
 
     if (auth.device) {
       if (auth.device.childId && auth.device.childId !== childId) {
@@ -132,13 +133,17 @@ export async function contentRoutes(app: FastifyInstance) {
     if (!child) return reply.code(404).send({ error: "child_not_found" });
     // ADR-0008 §2b: withdrawal of consent stops collection.
     if (!(await assertProcessingAllowed(childId, reply))) return;
-    // ADR-0039 / osra-security#45: require explicit parent opt-in for search query ingestion.
+    // ADR-0039 / osra-security#45 & #59: require explicit parent opt-in and matching active grant revision.
     const ruleSet = await prisma.ruleSet.findUnique({
       where: { childId },
-      select: { searchMonitoring: true },
+      select: { searchMonitoring: true, searchMonitoringRevision: true },
     });
     if (ruleSet?.searchMonitoring !== true) {
       return reply.code(403).send({ error: "search_monitoring_disabled" });
+    }
+    const serverRevision = ruleSet.searchMonitoringRevision ?? 0;
+    if (searchMonitoringRevision == null || serverRevision <= 0 || searchMonitoringRevision !== serverRevision) {
+      return reply.code(409).send({ error: "stale_search_grant" });
     }
 
     const childAge = child.birthYear

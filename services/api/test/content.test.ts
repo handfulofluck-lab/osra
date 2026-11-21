@@ -20,7 +20,8 @@ const CHILD = { id: "child-1", familyId: "fam-1", birthYear: 2012 };
 const sign = (raw: string) => createHmac("sha256", SECRET).update(raw).digest("hex");
 
 function postSearchEvent(app: Awaited<ReturnType<typeof buildApp>>, body: Record<string, unknown>, sig?: string) {
-  const raw = JSON.stringify(body);
+  const payloadBody = "searchMonitoringRevision" in body ? body : { searchMonitoringRevision: 1, ...body };
+  const raw = JSON.stringify(payloadBody);
   return app.inject({
     method: "POST",
     url: "/v1/content/search-event",
@@ -54,7 +55,7 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
     process.env.INTERNAL_HMAC_SECRET = SECRET;
     process.env.VAULT_KEY = Buffer.alloc(32, 7).toString("base64");
     prismaMock.child.findUnique.mockResolvedValue(CHILD);
-    prismaMock.ruleSet.findUnique.mockResolvedValue({ searchMonitoring: true });
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ searchMonitoring: true, searchMonitoringRevision: 1 });
 
     app = await buildApp(async (instance) => {
       await instance.register(contentRoutes, { prefix: "/v1/content" });
@@ -167,7 +168,7 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
     expect(absent.statusCode).toBe(403);
     expect(absent.json()).toEqual({ error: "search_monitoring_disabled" });
 
-    prismaMock.ruleSet.findUnique.mockResolvedValueOnce({ searchMonitoring: false });
+    prismaMock.ruleSet.findUnique.mockResolvedValueOnce({ searchMonitoring: false, searchMonitoringRevision: 2 });
     const disabled = await postSearchEvent(app, {
       childId: CHILD.id,
       engine: "google",
@@ -175,6 +176,28 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
     });
     expect(disabled.statusCode).toBe(403);
     expect(disabled.json()).toEqual({ error: "search_monitoring_disabled" });
+
+    // osra-security#59: search captured under rev N (1) when server is now enabled at N+2 (3) after an offline
+    // opt-out/re-enable cycle must be refused (409) with zero vault or alert writes; omitted revision is refused too.
+    prismaMock.ruleSet.findUnique.mockResolvedValueOnce({ searchMonitoring: true, searchMonitoringRevision: 3 });
+    const staleRev = await postSearchEvent(app, {
+      childId: CHILD.id,
+      engine: "google",
+      query: "how to kill myself",
+      searchMonitoringRevision: 1,
+    });
+    expect(staleRev.statusCode).toBe(409);
+    expect(staleRev.json()).toEqual({ error: "stale_search_grant" });
+
+    prismaMock.ruleSet.findUnique.mockResolvedValueOnce({ searchMonitoring: true, searchMonitoringRevision: 3 });
+    const omittedRev = await postSearchEvent(app, {
+      childId: CHILD.id,
+      engine: "google",
+      query: "how to kill myself",
+      searchMonitoringRevision: undefined,
+    });
+    expect(omittedRev.statusCode).toBe(409);
+    expect(omittedRev.json()).toEqual({ error: "stale_search_grant" });
 
     expect(prismaMock.socialEvent.create).not.toHaveBeenCalled();
     expect(prismaMock.alert.create).not.toHaveBeenCalled();

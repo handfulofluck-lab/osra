@@ -41,6 +41,13 @@ object ScanQueuePolicy {
     fun isSearchSource(source: String): Boolean =
         source == SOURCE_SEARCH || source.startsWith("$SOURCE_SEARCH:")
 
+    /** Parses the bound grant revision from a tagged search row (`search:<rev>`), or null for untagged/invalid rows. */
+    fun parseSearchRevision(source: String): Long? {
+        val prefix = "$SOURCE_SEARCH:"
+        if (!source.startsWith(prefix)) return null
+        return source.substring(prefix.length).toLongOrNull()?.takeIf { it > 0L }
+    }
+
     /**
      * Builds the capture from a notification's fields: [title] is the sender (or the group), the
      * message is the newest of [messages] (MessagingStyle) when present, else [bigText]/[text].

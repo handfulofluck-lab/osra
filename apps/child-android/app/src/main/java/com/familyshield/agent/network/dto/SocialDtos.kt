@@ -23,6 +23,7 @@ data class SearchEventDto(
     val engine: String,
     val query: String,
     val timestamp: String? = null,
+    val searchMonitoringRevision: Int = 0,
 )
 
 /** One signed flush. The envelope names the device before the API validates each item (#967). */

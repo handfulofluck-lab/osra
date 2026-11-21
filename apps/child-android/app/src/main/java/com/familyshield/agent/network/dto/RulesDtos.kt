@@ -30,6 +30,10 @@ data class RuleSetDto(
      */
     val searchMonitoring: Boolean? = null,
     /**
+     * osra-security#59: monotonic server grant revision bumped whenever `searchMonitoring` changes.
+     */
+    val searchMonitoringRevision: Int = 0,
+    /**
      * Feature #27: parent-curated known contacts (phone numbers, any format). An EMPTY list means
      * unknown-contact alerting is disabled (no alerts raised).
      */

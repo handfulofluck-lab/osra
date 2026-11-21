@@ -25,15 +25,18 @@ import com.familyshield.agent.social.ScanQueuePolicy
 import com.familyshield.agent.social.SocialScanQueue
 import java.io.IOException
 import kotlinx.coroutines.runBlocking
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import retrofit2.HttpException
 import retrofit2.Response
 
 /**
- * Production state-persistence & missed-opt-out invalidation tests for [SearchOptInCoordinator]
- * wired to [SocialScanQueue] (`osra-security#59`).
+ * Production state-persistence, startup cache isolation, and server-verified grant revision tests
+ * for [SearchOptInCoordinator] wired to [SocialScanQueue] (`osra-security#59`).
  */
 class SearchOptInCoordinatorTest {
 
@@ -114,10 +117,16 @@ class SearchOptInCoordinatorTest {
         }
     }
 
-    private class RecordingSearchApi : ApiService {
+    private class RecordingSearchApi(
+        var activeServerRevision: Int = 1,
+    ) : ApiService {
         val postedSearches = ArrayList<SearchEventDto>()
 
         override suspend fun postSearchEvent(event: SearchEventDto) {
+            if (event.searchMonitoringRevision <= 0 || event.searchMonitoringRevision != activeServerRevision) {
+                val body = """{"error":"stale_search_grant"}""".toResponseBody("application/json".toMediaTypeOrNull())
+                throw HttpException(Response.error<Unit>(409, body))
+            }
             postedSearches.add(event)
         }
 
@@ -138,10 +147,11 @@ class SearchOptInCoordinatorTest {
         override suspend fun postActivityEvents(deviceId: String, batch: ActivityEventBatchDto) = throw UnsupportedOperationException()
     }
 
-    private fun rules(version: Int, searchMonitoring: Boolean?): RuleSetDto = RuleSetDto(
+    private fun rules(version: Int, searchMonitoring: Boolean?, searchMonitoringRevision: Int): RuleSetDto = RuleSetDto(
         rulesVersion = version,
         screenTime = ScreenTimeRuleDto(),
         searchMonitoring = searchMonitoring,
+        searchMonitoringRevision = searchMonitoringRevision,
     )
 
     private fun buildQueue(
@@ -150,6 +160,7 @@ class SearchOptInCoordinatorTest {
         stateDao: FakeAgentStateDao,
         scanDao: FakeScanDao,
         api: ApiService,
+        onRetry: () -> Unit = {},
     ): SocialScanQueue = SocialScanQueue(
         api = api,
         dao = scanDao,
@@ -157,6 +168,7 @@ class SearchOptInCoordinatorTest {
         deviceIdProvider = { "dev-1" },
         allowlistProvider = { emptyList() },
         searchMonitoringEnabledProvider = { coordinator.isSearchMonitoringEnabled(activeRules()) },
+        searchSyncConfirmedProvider = { coordinator.isFreshSyncConfirmed() },
         searchOptInRevisionProvider = { coordinator.currentRevision() },
         getSearchPurgePending = { (stateDao.state[RuleRepository.KEY_SEARCH_PURGE_PENDING] ?: 0L) != 0L },
         setSearchPurgePending = { pending ->
@@ -167,7 +179,7 @@ class SearchOptInCoordinatorTest {
         consentResumedAtProvider = { 0L },
         getStoredConsentEpoch = { 0L },
         setStoredConsentEpoch = {},
-        retryScheduler = {},
+        retryScheduler = onRetry,
     )
 
     @Test
@@ -178,38 +190,39 @@ class SearchOptInCoordinatorTest {
             RuleRepository.KEY_SEARCH_OPT_IN_ENABLED,
             RuleRepository.KEY_SEARCH_RULES_VERSION,
         )
+        val baseNow = System.currentTimeMillis()
 
         for ((idx, failingKey) in stateKeys.withIndex()) {
             val stateDao = FakeAgentStateDao()
             val scanDao = FakeScanDao()
-            val api = RecordingSearchApi()
+            val serverRev = idx + 1
+            val api = RecordingSearchApi(activeServerRevision = serverRev)
             val coordinator = SearchOptInCoordinator(stateDao, scanDao)
             var cached: RuleSetDto? = null
             val queue = buildQueue(coordinator, { cached }, stateDao, scanDao, api)
 
             // Failing any single key during opt-in transition keeps search transmission disabled.
             stateDao.failOnKey = failingKey
-            val grantV1 = rules(version = 10 + idx, searchMonitoring = true)
-            coordinator.onRulesFetched(previous = null, updated = grantV1)
-            cached = grantV1
+            val grant = rules(version = 10 + idx, searchMonitoring = true, searchMonitoringRevision = serverRev)
+            coordinator.onRulesFetched(previous = null, updated = grant)
+            cached = grant
             assertFalse("enable with failing $failingKey must stay disabled", coordinator.isSearchMonitoringEnabled(cached))
             assertEquals("enable with failing $failingKey must keep rev=0", 0L, coordinator.currentRevision())
-            assertFalse(queue.enqueueForFlush("google", null, "blocked on $failingKey", 1_000L, ScanQueuePolicy.SOURCE_SEARCH))
+            assertFalse(queue.enqueueForFlush("google", null, "blocked on $failingKey", baseNow, ScanQueuePolicy.SOURCE_SEARCH))
             queue.flush()
             assertTrue(api.postedSearches.isEmpty())
 
             // Recovery succeeds once DAO write works.
             stateDao.failOnKey = null
-            coordinator.onRulesFetched(previous = cached, updated = grantV1)
+            coordinator.onRulesFetched(previous = cached, updated = grant)
             assertTrue(coordinator.isSearchMonitoringEnabled(cached))
-            val rev1 = coordinator.currentRevision()
-            assertTrue(rev1 > 0L)
-            assertTrue(queue.enqueueForFlush("google", null, "committed query", 2_000L, ScanQueuePolicy.SOURCE_SEARCH))
+            assertEquals(serverRev.toLong(), coordinator.currentRevision())
+            assertTrue(queue.enqueueForFlush("google", null, "committed query", baseNow + 100L, ScanQueuePolicy.SOURCE_SEARCH))
 
             // Failing any single key during opt-out still disqualifies in-memory search capture immediately and blocks uploads.
             stateDao.failOnKey = failingKey
-            val optOutV2 = rules(version = 20 + idx, searchMonitoring = false)
-            coordinator.onRulesFetched(previous = cached, updated = optOutV2)
+            val optOut = rules(version = 20 + idx, searchMonitoring = false, searchMonitoringRevision = serverRev + 1)
+            coordinator.onRulesFetched(previous = cached, updated = optOut)
             assertFalse("opt-out with failing $failingKey must disqualify search capture", coordinator.isSearchMonitoringEnabled(cached))
             assertEquals("opt-out with failing $failingKey must invalidate rev", 0L, coordinator.currentRevision())
             queue.flush()
@@ -217,86 +230,91 @@ class SearchOptInCoordinatorTest {
 
             // Once persistence recovers, opt-out purges pre-opt-out queued rows cleanly.
             stateDao.failOnKey = null
-            coordinator.onRulesFetched(previous = cached, updated = optOutV2)
-            cached = optOutV2
+            coordinator.onRulesFetched(previous = cached, updated = optOut)
+            cached = optOut
             assertFalse(coordinator.isSearchMonitoringEnabled(cached))
             assertEquals(0, scanDao.count())
         }
     }
 
     @Test
-    fun `missed offline opt-out on newer rulesVersion rotates revision and invalidates stale queued searches`() = runBlocking {
+    fun `cached startup disk rules never enable capture or unverified uploads before server sync`() = runBlocking {
         val stateDao = FakeAgentStateDao()
         val scanDao = FakeScanDao()
-        val api = RecordingSearchApi()
+        val api = RecordingSearchApi(activeServerRevision = 3) // Server moved offline rev 1 -> 2(off) -> 3(on)
         val coordinator = SearchOptInCoordinator(stateDao, scanDao)
-        var cached: RuleSetDto? = null
-        val queue = buildQueue(coordinator, { cached }, stateDao, scanDao, api)
+        val cachedDiskV1 = rules(version = 10, searchMonitoring = true, searchMonitoringRevision = 1)
         val baseNow = System.currentTimeMillis()
+        var retries = 0
 
-        // Device syncs v10 (searchMonitoring=true) and queues a search while offline.
-        val grantV10 = rules(version = 10, searchMonitoring = true)
-        coordinator.onRulesFetched(previous = null, updated = grantV10)
-        cached = grantV10
-        assertTrue(coordinator.isSearchMonitoringEnabled(cached))
-        val rev10 = coordinator.currentRevision()
-        assertTrue(queue.enqueueForFlush("google", null, "before offline opt-out", baseNow, ScanQueuePolicy.SOURCE_SEARCH))
-        assertEquals(1, scanDao.count())
-
-        // While offline, parent toggled searchMonitoring false (v11) and back true (v12).
-        // Next sync jumps directly from v10(true) -> v12(true): must conservatively rotate rev and purge v10 rows.
-        val grantV12 = rules(version = 12, searchMonitoring = true)
-        coordinator.onRulesFetched(previous = cached, updated = grantV12)
-        cached = grantV12
-        assertTrue(coordinator.isSearchMonitoringEnabled(cached))
-        val rev12 = coordinator.currentRevision()
-        assertTrue(rev12 > rev10)
-        assertEquals("v10 pre-optout row must be purged on rulesVersion advance", 0, scanDao.count())
-
-        // Even if deleteStaleSearches failed during transition, row tagged rev10 still cannot flush under rev12.
+        // Simulate pre-existing queued row from rev 1 before process restart.
         scanDao.insert(
             PendingScanEntity(
                 app = "google",
                 contact = null,
-                text = "stray v10 row",
-                source = ScanQueuePolicy.searchSource(rev10),
-                createdAt = baseNow + 1_000L,
+                text = "pre-restart rev1 query",
+                source = ScanQueuePolicy.searchSource(1L),
+                createdAt = baseNow,
             ),
         )
-        queue.flush()
-        assertTrue("row from prior rulesVersion cannot upload after re-enable", api.postedSearches.isEmpty())
 
-        // Same rulesVersion restart reload preserves committed rev12, and fresh captures flush cleanly.
-        val reloaded = SearchOptInCoordinator(stateDao, scanDao)
-        reloaded.onStartupLoaded(grantV12)
-        assertTrue(reloaded.isSearchMonitoringEnabled(grantV12))
-        assertEquals(rev12, reloaded.currentRevision())
+        // RuleRepository.kt:97 startup disk load restores cachedDiskV1 without live server sync.
+        coordinator.onStartupLoaded(cachedDiskV1)
+        assertFalse("startup disk rules alone must not confirm fresh server sync", coordinator.isFreshSyncConfirmed())
+        assertFalse("startup disk rules alone must not enable search capture", coordinator.isSearchMonitoringEnabled(cachedDiskV1))
+        assertEquals(0L, coordinator.currentRevision())
 
-        assertTrue(queue.enqueueForFlush("bing", null, "post re-enable query", baseNow + 2_000L, ScanQueuePolicy.SOURCE_SEARCH))
+        val queue = buildQueue(coordinator, { cachedDiskV1 }, stateDao, scanDao, api) { retries++ }
+        // Enqueueing and worker flush BEFORE live server sync must refuse capture and hold without uploading.
+        assertFalse(queue.enqueueForFlush("google", null, "blocked before sync", baseNow + 100L, ScanQueuePolicy.SOURCE_SEARCH))
         queue.flush()
-        assertEquals(listOf("post re-enable query"), api.postedSearches.map { it.query })
+        assertTrue("worker runnable at startup before refresh must not upload unverified searches", api.postedSearches.isEmpty())
+        assertEquals(1, retries)
+
+        // Live server sync arrives at rev 3 (after missed offline opt-out): purges stale rev 1 row cleanly.
+        val syncedV3 = rules(version = 12, searchMonitoring = true, searchMonitoringRevision = 3)
+        coordinator.onRulesFetched(previous = cachedDiskV1, updated = syncedV3)
+        assertTrue(coordinator.isFreshSyncConfirmed())
+        assertTrue(coordinator.isSearchMonitoringEnabled(syncedV3))
+        assertEquals(3L, coordinator.currentRevision())
+        assertEquals("rev-1 row must be purged once server rev 3 syncs", 0, scanDao.count())
     }
 
     @Test
-    fun `startup read failure and forgetRules keep search capture disabled`() = runBlocking {
+    fun `refused server upload due to stale searchMonitoringRevision is purged without retry`() = runBlocking {
+        val stateDao = FakeAgentStateDao()
+        val scanDao = FakeScanDao()
+        val api = RecordingSearchApi(activeServerRevision = 1)
+        val coordinator = SearchOptInCoordinator(stateDao, scanDao)
+        val grantRev1 = rules(version = 10, searchMonitoring = true, searchMonitoringRevision = 1)
+        coordinator.onRulesFetched(previous = null, updated = grantRev1)
+
+        var retries = 0
+        val queue = buildQueue(coordinator, { grantRev1 }, stateDao, scanDao, api) { retries++ }
+        val baseNow = System.currentTimeMillis()
+        assertTrue(queue.enqueueForFlush("google", null, "rev1 search before offline opt-out", baseNow, ScanQueuePolicy.SOURCE_SEARCH))
+
+        // Server moved to rev 3 (off -> on offline) before device refreshed again.
+        api.activeServerRevision = 3
+        queue.flush()
+
+        assertTrue("server must refuse stale rev 1 row", api.postedSearches.isEmpty())
+        assertEquals("refused 409 row must be purged from queue immediately", 0, scanDao.count())
+        assertEquals("refused 409 row must not be retried", 0, retries)
+    }
+
+    @Test
+    fun `forgetRules disables search capture and purges durable state`() = runBlocking {
         val stateDao = FakeAgentStateDao()
         val scanDao = FakeScanDao()
         val coordinator = SearchOptInCoordinator(stateDao, scanDao)
-        val grantV10 = rules(version = 10, searchMonitoring = true)
+        val grantV10 = rules(version = 10, searchMonitoring = true, searchMonitoringRevision = 2)
         coordinator.onRulesFetched(previous = null, updated = grantV10)
         assertTrue(coordinator.isSearchMonitoringEnabled(grantV10))
 
-        // Unlink / forgetRules disables capture and rotates/purges durable state.
         coordinator.onForgetRules()
         assertFalse(coordinator.isSearchMonitoringEnabled(grantV10))
         assertEquals(0L, coordinator.currentRevision())
         assertEquals(0L, stateDao.state[RuleRepository.KEY_SEARCH_OPT_IN_ENABLED])
-
-        // Cold startup where AgentStateDao read fails stays disabled even if cached disk rules had searchMonitoring=true.
-        val restarting = SearchOptInCoordinator(stateDao, scanDao)
-        stateDao.failReads = true
-        restarting.onStartupLoaded(grantV10)
-        assertFalse(restarting.isSearchMonitoringEnabled(grantV10))
-        assertEquals(0L, restarting.currentRevision())
     }
 }
