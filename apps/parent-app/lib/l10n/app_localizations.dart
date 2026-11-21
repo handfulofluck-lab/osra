@@ -5366,6 +5366,90 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{device} restarted {when} and was back after about {hours, plural, =1{1 hour} other{{hours} hours}}.'**
   String alertDeviceRestartedBodyHours(String device, String when, int hours);
+
+  /// ADR-0041 D5.1: the Devices-header action on the child page that pairs a Windows or Mac computer (#627).
+  ///
+  /// In en, this message translates to:
+  /// **'Add a computer'**
+  String get addAComputer;
+
+  /// ADR-0041 D5.1: heading of the Windows or Mac choice (#627).
+  ///
+  /// In en, this message translates to:
+  /// **'Which computer are you adding?'**
+  String get computerSelectPrompt;
+
+  /// ADR-0041 D5.1: the Windows choice (#627).
+  ///
+  /// In en, this message translates to:
+  /// **'Windows'**
+  String get computerWindows;
+
+  /// ADR-0041 D5.1: the Mac choice (#627).
+  ///
+  /// In en, this message translates to:
+  /// **'Mac'**
+  String get computerMac;
+
+  /// ADR-0041 D5.2/D5.5: who installs OSRA on the computer, on the platform choice and on the code screen (#627, UI/UX 6838258198).
+  ///
+  /// In en, this message translates to:
+  /// **'Install OSRA on the computer from your own administrator account. Your child keeps a standard account.'**
+  String get computerAdminInstallNote;
+
+  /// ADR-0041 D5.1: what to do with the code when the pairing is for a computer, in place of the QR instructions (#627).
+  ///
+  /// In en, this message translates to:
+  /// **'Open the address below on the computer, install OSRA there, then type this code on the computer.'**
+  String get computerPairIntro;
+
+  /// ADR-0041 D4/D5.1: label above osratech.com/download (#627, UI/UX 6910861301).
+  ///
+  /// In en, this message translates to:
+  /// **'Address to open on the computer'**
+  String get computerDownloadAddress;
+
+  /// ADR-0041 D5.1: copies the download address (#627).
+  ///
+  /// In en, this message translates to:
+  /// **'Copy link'**
+  String get copyLink;
+
+  /// ADR-0041 D5.1: snackbar after copying the download address (#627).
+  ///
+  /// In en, this message translates to:
+  /// **'Link copied'**
+  String get linkCopied;
+
+  /// ADR-0041 D5.1: helper line under the download address (#627, UI/UX 6838258198).
+  ///
+  /// In en, this message translates to:
+  /// **'Type this address in the computer\'s browser, or paste it into a message to yourself.'**
+  String get sendTheLinkLine;
+
+  /// ADR-0041 D5.1/D5.3: the Allow card when the pairing code is for a computer (#627).
+  ///
+  /// In en, this message translates to:
+  /// **'{device} wants to be paired. Allow it only if it is the computer in front of you.'**
+  String pairClaimBodyComputer(String device);
+
+  /// ADR-0041 D5.3: the Allow result when the pairing code is for a computer (#627).
+  ///
+  /// In en, this message translates to:
+  /// **'Allowed. The computer is finishing pairing…'**
+  String get pairClaimAllowedComputer;
+
+  /// ADR-0041 D5.3: the Deny result when the pairing code is for a computer (#627).
+  ///
+  /// In en, this message translates to:
+  /// **'Declined. Make a new code to pair a computer.'**
+  String get pairClaimDeniedComputer;
+
+  /// ADR-0041 D5.5, verbatim from the ADR: shown on the computer's card when its capability report says the child's own account is an administrator (#627).
+  ///
+  /// In en, this message translates to:
+  /// **'Protection is weak on this computer because your child\'s account is an administrator.'**
+  String get computerAdminWarning;
 }
 
 class _AppLocalizationsDelegate

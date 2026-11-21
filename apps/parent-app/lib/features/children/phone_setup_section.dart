@@ -71,7 +71,8 @@ class PhoneSetupSection extends StatelessWidget {
     final age = formatLastSeen(context, setup.reportedAt);
     final features = [
       ...featureOrder.where(setup.features.containsKey),
-      ...setup.features.keys.where((k) => !featureOrder.contains(k)),
+      ...setup.features.keys.where((k) =>
+          !featureOrder.contains(k) && k != DeviceSetup.accountAdminKey),
     ];
 
     return Padding(
@@ -86,6 +87,14 @@ class PhoneSetupSection extends StatelessWidget {
             setup.stale ? l10n.phoneSetupStale(age) : l10n.phoneSetupReported(age),
             style: Theme.of(context).textTheme.bodySmall,
           ),
+          // ADR-0041 D5.5: the computer's own report that the child's account is an administrator. Only
+          // when the report says so — an absent key is "not said", which is not "weak".
+          if (setup.childAccountIsAdministrator) ...[
+            const SizedBox(height: AppSpace.xs),
+            _line(context, Icons.admin_panel_settings_outlined,
+                context.tokens.warn, l10n.computerAdminWarning,
+                key: const ValueKey('computerAdminWarning')),
+          ],
           const SizedBox(height: AppSpace.xs),
           // The "what to fix" list first: it is the only part a parent can act on.
           if (setup.missing.isEmpty)
@@ -117,7 +126,8 @@ class PhoneSetupSection extends StatelessWidget {
     );
   }
 
-  Widget _line(BuildContext context, IconData icon, Color color, String text) => Row(
+  Widget _line(BuildContext context, IconData icon, Color color, String text, {Key? key}) => Row(
+        key: key,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, size: 16, color: color),
