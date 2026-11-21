@@ -81,6 +81,13 @@ export function toMessage(row: Row): DeviceCommandMessage {
   };
 }
 
+/** Notify agents about a command that has already committed to the durable queue. */
+export async function wakeForDeviceCommand(message: DeviceCommandMessage): Promise<void> {
+  await publishJson(`device:${message.deviceId}:commands`, message).catch(() => undefined);
+  // The push wake is detached so a slow provider cannot hold the request open.
+  wakeDeviceDetached(message.deviceId, message.id);
+}
+
 export interface EnqueueOptions {
   /** Parent id, or "system" for server-originated commands. */
   requestedBy?: string;
@@ -104,8 +111,7 @@ export async function enqueueDeviceCommand(
       // later change waiting for the 15-minute poll (Flip4, 29 Oct). Duplicates are free: the wake
       // carries collapse key "wake" and the agent drains the queue, not the message.
       const message = toMessage(existing);
-      await publishJson(`device:${deviceId}:commands`, message).catch(() => undefined);
-      wakeDeviceDetached(deviceId, message.id);
+      await wakeForDeviceCommand(message);
       return message;
     }
   }
@@ -121,13 +127,7 @@ export async function enqueueDeviceCommand(
   });
   const message = toMessage(row);
   // Wake-up only: an agent that misses this still finds the row on its next drain.
-  await publishJson(`device:${deviceId}:commands`, message).catch(() => undefined);
-  // #319: the same wake over FCM, so a backgrounded phone with no socket does not wait for the
-  // 15-minute poll. Detached on purpose — a slow or failed Google round trip must never delay or
-  // fail a parent's command, and the row above is already durable. One funnel: every command
-  // producer (controls, rules, auth, this file) reaches the device through here. The row id travels
-  // with it only so the wake log can name the command (#673).
-  wakeDeviceDetached(deviceId, message.id);
+  await wakeForDeviceCommand(message);
   return message;
 }
 

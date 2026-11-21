@@ -102,10 +102,13 @@ class _AppPickerState extends ConsumerState<AppPicker> {
   List<InstalledApp> _visible(List<InstalledApp> apps) {
     final query = _query.trim().toLowerCase();
     final pinned = {for (final id in widget.pinnedFirst) id};
+    // #953: the preinstalled chip filters *browsing*, not *searching*. Both used to pass through the same gate,
+    // so a parent who typed "youtube" — an app that is preinstalled on essentially every Android image — got the
+    // no-match line and no hint that a switch they were never told about was hiding it.
     final shown = [
       for (final app in apps)
-        if ((_showSystem || !app.isSystem) &&
-            (query.isEmpty || app.label.toLowerCase().contains(query)))
+        if ((query.isEmpty || app.label.toLowerCase().contains(query)) &&
+            (query.isNotEmpty || _showSystem || !app.isSystem))
           app,
     ];
     shown.sort((a, b) {

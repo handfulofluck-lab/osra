@@ -33,6 +33,8 @@ class ChildDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // #935: keep the live /v1/ws channel subscribed so `command_acked` updates delivery status immediately.
+    ref.watch(wsProvider);
     final overview = ref.watch(familyProvider).valueOrNull;
     final child = overview?.children.where((c) => c.id == childId).firstOrNull;
     final l10n = context.l10n;
@@ -287,20 +289,31 @@ class _OverviewTab extends ConsumerWidget {
                           icon: const Icon(Icons.lock_open, size: 18),
                           label: Text(l10n.unlock),
                         ),
-                        TextButton.icon(
-                          onPressed: () => _sendCommand(context, ref, d, 'pause'),
-                          icon: const Icon(Icons.pause_circle, size: 18),
-                          label: Text(l10n.pause),
+                        // #969: a command that is queued but unconfirmed must not look idle. The pause/resume
+                        // controls are the two that leave a parent wondering whether anything happened, because
+                        // the POST answers `{status: pending}` before the handset has seen it.
+                        _PendingAwareControl(
+                          deviceId: d.id,
+                          command: 'pause',
+                          builder: (waiting) => TextButton.icon(
+                            onPressed: waiting ? null : () => _sendCommand(context, ref, d, 'pause'),
+                            icon: const Icon(Icons.pause_circle, size: 18),
+                            label: Text(l10n.commandPauseDevice),
+                          ),
                         ),
-                        TextButton.icon(
-                          onPressed: () => _sendCommand(context, ref, d, 'resume'),
-                          icon: const Icon(Icons.play_circle, size: 18),
-                          label: Text(l10n.resume),
+                        _PendingAwareControl(
+                          deviceId: d.id,
+                          command: 'resume',
+                          builder: (waiting) => TextButton.icon(
+                            onPressed: waiting ? null : () => _sendCommand(context, ref, d, 'resume'),
+                            icon: const Icon(Icons.play_circle, size: 18),
+                            label: Text(l10n.commandResumeDevice),
+                          ),
                         ),
                         TextButton.icon(
                           onPressed: () => _toggleInternet(context, ref, childId, internetPaused, d),
                           icon: Icon(internetPaused ? Icons.wifi : Icons.wifi_off, size: 18),
-                          label: Text(internetPaused ? l10n.resumeNet : l10n.pauseNet),
+                          label: Text(internetPaused ? l10n.commandResumeInternet : l10n.commandPauseInternet),
                         ),
                       ],
                     ),
@@ -339,6 +352,43 @@ class _OverviewTab extends ConsumerWidget {
 /// Compact latest-command line on a device card. It reports the durable
 /// queue's state; a pending or delivered-but-unacked command is never called
 /// "sent".
+/// #969: a control whose command is queued but not yet confirmed by the handset says so, instead of looking
+/// idle. `pending` means the server has the row; `delivered` means the phone fetched it and has not acted yet;
+/// only `acked` (or a refusal) means the parent knows the outcome.
+///
+/// The control is rebuilt rather than wrapped, because a wrapper cannot disable it: `IgnorePointer` stops touch
+/// but leaves the button focusable and enabled to TalkBack, VoiceOver, Switch Access and the keyboard's
+/// Enter/Space (Antigravity's F2, 7049793348). Passing `waiting` to the builder lets the button itself take
+/// `onPressed: null`, which is the one state every input method honours.
+///
+/// Only the **newest** command of this type decides. Scanning the whole history would keep the control blocked
+/// by an old row that never settled while a newer one had already been acknowledged (F1).
+class _PendingAwareControl extends ConsumerWidget {
+  final String deviceId;
+  final String command;
+  final Widget Function(bool waiting) builder;
+  const _PendingAwareControl({required this.deviceId, required this.command, required this.builder});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final history = ref.watch(deviceCommandHistoryProvider(deviceId)).valueOrNull ?? const <DeviceCommand>[];
+    DeviceCommand? newest;
+    for (final c in history) {
+      if (c.type != command) continue;
+      final after = newest?.createdAt;
+      if (newest == null || after == null || (c.createdAt?.isAfter(after) ?? false)) newest = c;
+    }
+    final waiting = newest != null && (newest.status == 'pending' || newest.status == 'delivered');
+    final button = builder(waiting);
+    if (!waiting) return button;
+    return Tooltip(
+      key: ValueKey('controlPending-$command'),
+      message: context.l10n.statusPending,
+      child: button,
+    );
+  }
+}
+
 class _DeviceDeliverySummary extends ConsumerWidget {
   final String deviceId;
   final String deviceModel;
@@ -568,6 +618,11 @@ Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, St
       );
       return;
     }
+    // F1 (review 7039886009): no re-read here. A POST that queues the command answers `{status: "pending"}`
+    // before the phone has even received it, so asking for `/latest` at that moment returns the same 404 or
+    // the same older fix — a wasted request dressed up as a refresh. The fresh fix arrives when the phone
+    // publishes its ping: the `location` message on `/v1/ws` calls `invalidateLocation` (`family_provider.dart`
+    // `applyRealtimeMessage`), which is what a parent sees the tab update on.
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(l10n.commandQueued(l10n.commandType(command), device.model))),
     );
@@ -638,6 +693,10 @@ class _AppsTab extends ConsumerWidget {
     final devices = overview?.devicesFor(childId) ?? const <Device>[];
     final childHasIphone = devices.any((d) => d.platform == 'ios');
     final childHasAndroid = devices.any((d) => d.platform == 'android');
+    // U40 (#953): headings exist only for a child who has both phones. With one platform the tab is
+    // about one list, and a heading over the only list says nothing a parent cannot see.
+    final mixedFamily = childHasAndroid && childHasIphone;
+    final childName = overview?.children.where((c) => c.id == childId).firstOrNull?.displayName ?? '';
     final groupDevices = [
       for (final d in devices)
         if (d.setup?.groups?.isNotEmpty ?? false) d,
@@ -657,6 +716,15 @@ class _AppsTab extends ConsumerWidget {
         return ListView(
           padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.lg),
           children: [
+            // F1 (UI/UX Bureau 7043461404, Arabic Bureau 7043544512): a mixed family always sees both headings, in
+            // both states. Without the iPhone heading above the empty card, the card reads as being about all the
+            // child's apps while an Android list with apps sits directly under it.
+            if (mixedFamily)
+              Padding(
+                key: const ValueKey('appsTabIphoneHeading'),
+                padding: const EdgeInsetsDirectional.fromSTEB(0, AppSpace.sm, 0, AppSpace.xs),
+                child: Text(l10n.appsTabIphoneHeading, style: Theme.of(context).textTheme.titleMedium),
+              ),
             if (groupDevices.isNotEmpty) ...[
               for (final d in groupDevices)
                 Card(
@@ -667,6 +735,8 @@ class _AppsTab extends ConsumerWidget {
                 ),
               const SizedBox(height: AppSpace.sm),
             ] else if (childHasIphone) ...[
+              // U42 (#953): the iPhone empty state, so a parent is never told about a PIN or where a
+              // group was made. The child's name is isolated because it is Latin inside an Arabic line.
               Card(
                 key: const ValueKey('appsTabIphoneSetupCard'),
                 child: Padding(
@@ -674,15 +744,22 @@ class _AppsTab extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(l10n.appGroupsTitle, style: Theme.of(context).textTheme.titleSmall),
+                      Text(l10n.appPickerIosEmptyTitle, style: Theme.of(context).textTheme.titleSmall),
                       const SizedBox(height: AppSpace.xs),
-                      Text(l10n.appGroupsBody, style: Theme.of(context).textTheme.bodySmall),
+                      Text(l10n.appPickerIosEmptyBody(ltrIsolate(childName)),
+                          style: Theme.of(context).textTheme.bodySmall),
                     ],
                   ),
                 ),
               ),
               const SizedBox(height: AppSpace.sm),
             ],
+            if (mixedFamily && canManagePerAppRules)
+              Padding(
+                key: const ValueKey('appsTabAndroidHeading'),
+                padding: const EdgeInsetsDirectional.fromSTEB(0, AppSpace.sm, 0, AppSpace.xs),
+                child: Text(l10n.appsTabAndroidHeading, style: Theme.of(context).textTheme.titleMedium),
+              ),
             if (canManagePerAppRules) ...[
               FilledButton.tonalIcon(
                 key: const ValueKey('appsTabManageAppsButton'),
@@ -766,6 +843,32 @@ class _LocationTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final ping = ref.watch(locationProvider(childId));
+    // #869: the app could *show* a `locate_now` in a device's command history but had no way to send one, so
+    // "Locate the child" had nothing behind it. It sits here, next to the state a parent reads when there is no
+    // position, rather than in the device-command row — that row already wraps to three lines at 320 px and one
+    // more button pushed an existing control out of the tapped area.
+    //
+    // F2 (review 7039886009): a child can have more than one phone. One unlabelled button wired to the first
+    // device would leave every other device unreachable, and the parent could not tell which phone was asked,
+    // so there is one button per device and each names its phone when there is more than one.
+    final devices = ref.watch(familyProvider).valueOrNull?.devicesFor(childId) ?? const <Device>[];
+    final locate = devices.isEmpty
+        ? null
+        : Wrap(
+            spacing: AppSpace.sm,
+            runSpacing: AppSpace.xs,
+            children: [
+              for (final d in devices)
+                OutlinedButton.icon(
+                  key: ValueKey('locateNow-${d.id}'),
+                  onPressed: () => _sendCommand(context, ref, d, 'locate_now'),
+                  icon: const Icon(Icons.my_location, size: 18),
+                  label: Text(devices.length == 1
+                      ? l10n.commandLocateNow
+                      : '${l10n.commandLocateNow} (${ltrIsolate(d.model)})'),
+                ),
+            ],
+          );
     return ping.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       // #850: never show exception text to a parent. A read refused for permission says so; anything
@@ -777,6 +880,10 @@ class _LocationTab extends ConsumerWidget {
       data: (p) => ListView(
         padding: const EdgeInsets.all(AppSpace.lg),
         children: [
+          if (locate != null) ...[
+            Align(alignment: AlignmentDirectional.centerStart, child: locate),
+            const SizedBox(height: AppSpace.sm),
+          ],
           if (p == null)
             Text(l10n.noLocationReported)
           else ...[

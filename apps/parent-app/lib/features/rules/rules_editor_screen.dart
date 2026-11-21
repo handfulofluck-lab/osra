@@ -66,7 +66,7 @@ class RulesEditorScreen extends ConsumerStatefulWidget {
 
 class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
   RuleSet _draft = const RuleSet();
-  bool _loaded = false;
+  RuleSet? _saved;
   bool _saving = false;
   String? _error;
   final _allowedDomains = TextEditingController();
@@ -114,24 +114,31 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
       appDisplayAvatar(apps, packageId);
 
   void _applyLoaded(RuleSet ruleSet) {
-    if (_loaded) return;
-    _loaded = true;
+    if (_saved != null) return;
+    _saved = ruleSet;
     _draft = ruleSet;
     _allowedDomains.text = ruleSet.webFilter.allowedDomains.join(', ');
     _blockedDomains.text = ruleSet.webFilter.blockedDomains.join(', ');
   }
 
   Future<void> _save() async {
+    final saved = _saved;
+    if (saved == null || _saving) return;
+    final submitted = _draft;
     final l10n = context.l10n;
     setState(() {
       _saving = true;
       _error = null;
     });
     try {
-      // NOTE: the server PATCH-merges, so we always send the full object.
-      await ref.read(apiClientProvider).raw.put('/v1/rules/${widget.childId}', data: _draft.toJson());
+      await ref.read(apiClientProvider).raw.patch(
+        '/v1/rules/${widget.childId}',
+        data: submitted.changesFrom(saved),
+      );
+      if (!mounted) return;
+      _saved = submitted;
       ref.invalidate(rulesProvider(widget.childId));
-      // Issue #475: the PUT bumped `rulesVersion` on the server, and the banner compares that number with
+      // Issue #475: saving bumps `rulesVersion` on the server, and the banner compares that number with
       // what the phone applied. Without this the family snapshot still carries the pre-save version, so
       // right after Save `applied == rules` and the line the parent just earned never appears — which is
       // exactly the "I changed it, why is Meet still blocked?" moment it exists for.
@@ -147,12 +154,10 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.rulesSaved)));
       }
     } on DioException catch (e) {
-      // Issue #437: a rule write can be refused for consent (`428`); anything else maps cleanly.
-      setState(() => _error = friendlyErrorText(
-            l10n,
-            e,
-            () => l10n.saveFailed,
-          ));
+      if (!mounted) return;
+      // Issue #437 & U43: consent refusals name consent, offline errors keep connection wording,
+      // and server refusals keep edits intact with saveFailedServer.
+      setState(() => _error = saveErrorText(l10n, e));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -160,37 +165,27 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
 
   Future<TimeOfDay?> _pickTime(TimeOfDay initial) => showTimePicker(context: context, initialTime: initial);
 
-  Size _measureSaveLabel(BuildContext context, AppLocalizations l10n) {
-    final painter = TextPainter(
-      text: TextSpan(text: l10n.save, style: Theme.of(context).textTheme.labelLarge),
-      textDirection: Directionality.of(context),
-      textScaler: MediaQuery.textScalerOf(context),
-      maxLines: 1,
-    )..layout();
-    return painter.size;
-  }
-
-  bool _titleFitsInAppBar(
+  ({bool fits, double toolbarHeight}) _measureAppBarTitle(
     BuildContext context,
     AppLocalizations l10n,
-    double toolbarHeight,
-    double saveWidth,
   ) {
     final textScaler = MediaQuery.textScalerOf(context);
     final titleStyle = Theme.of(context).appBarTheme.titleTextStyle ??
         Theme.of(context).textTheme.titleLarge ??
         const TextStyle(fontSize: 22);
-    final saveAllowance = saveWidth + AppSpace.xl * 2 + AppSpace.sm + AppSpace.lg;
     const leadingAllowance = kToolbarHeight + AppSpace.lg;
-    final availableTitleWidth = math.max(0.0, MediaQuery.sizeOf(context).width - leadingAllowance - saveAllowance);
-    if (availableTitleWidth <= 0) return false;
+    final availableTitleWidth = math.max(0.0, MediaQuery.sizeOf(context).width - leadingAllowance - AppSpace.lg);
+    if (availableTitleWidth <= 0) return (fits: false, toolbarHeight: kToolbarHeight);
     final titlePainter = TextPainter(
       text: TextSpan(text: l10n.editRules, style: titleStyle),
       textDirection: Directionality.of(context),
       textScaler: textScaler,
       maxLines: 2,
     )..layout(maxWidth: availableTitleWidth);
-    return !titlePainter.didExceedMaxLines && titlePainter.height <= toolbarHeight - AppSpace.sm;
+    final neededHeight = (titlePainter.height + AppSpace.lg).ceilToDouble();
+    final maxToolbar = math.max(kToolbarHeight, textScaler.scale(kToolbarHeight + AppSpace.sm));
+    final fits = !titlePainter.didExceedMaxLines && neededHeight <= maxToolbar;
+    return (fits: fits, toolbarHeight: fits ? math.max(kToolbarHeight, neededHeight) : kToolbarHeight);
   }
 
   @override
@@ -198,22 +193,11 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
     final l10n = context.l10n;
     final rules = ref.watch(rulesProvider(widget.childId));
     ref.listen(rulesProvider(widget.childId), (_, next) => next.whenData(_applyLoaded));
-    final textScaler = MediaQuery.textScalerOf(context);
-    final saveSize = _measureSaveLabel(context, l10n);
-    final expandedToolbarHeight = math.max(kToolbarHeight, textScaler.scale(kToolbarHeight + AppSpace.sm));
-    final titleInAppBar = _titleFitsInAppBar(context, l10n, expandedToolbarHeight, saveSize.width);
-    final collapsedToolbarHeight = math.max(kToolbarHeight, saveSize.height + AppSpace.lg).ceilToDouble();
+    final appBarMetrics = _measureAppBarTitle(context, l10n);
     return Scaffold(
       appBar: AppBar(
-        toolbarHeight: titleInAppBar ? expandedToolbarHeight : collapsedToolbarHeight,
-        title: titleInAppBar ? Text(l10n.editRules, maxLines: 2, overflow: TextOverflow.ellipsis) : null,
-        actions: [
-          if (_saving)
-            const Padding(padding: EdgeInsets.all(AppSpace.lg), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))
-          else
-            FilledButton(onPressed: _loaded ? _save : null, child: Text(l10n.save)),
-          const SizedBox(width: AppSpace.sm),
-        ],
+        toolbarHeight: appBarMetrics.toolbarHeight,
+        title: appBarMetrics.fits ? Text(l10n.editRules, maxLines: 2, overflow: TextOverflow.ellipsis) : null,
       ),
       body: rules.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -223,9 +207,10 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
         ),
         data: (ruleSet) {
           _applyLoaded(ruleSet);
-          return _buildTabs(context, showHeading: !titleInAppBar);
+          return _buildTabs(context, showHeading: !appBarMetrics.fits);
         },
       ),
+      bottomNavigationBar: rules.valueOrNull != null ? _buildSaveFooter(context, l10n) : null,
     );
   }
 
@@ -242,18 +227,6 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
 
   Widget _buildTabs(BuildContext context, {required bool showHeading}) {
     final l10n = context.l10n;
-    if (_error != null) {
-      return Column(
-        children: [
-          if (showHeading) _pageHeading(context, l10n),
-          MaterialBanner(
-            content: Text(_error!),
-            actions: [TextButton(onPressed: () => setState(() => _error = null), child: Text(l10n.dismiss))],
-          ),
-          const Expanded(child: SizedBox()),
-        ],
-      );
-    }
     // Issue #475: the child's phones report the rules version they have SAVED AND APPLIED, and this is the
     // screen where a parent changes the rules — so it is where "the phone hasn't picked this up yet" has to
     // appear. The child comes from the overview the app already loads (#475 review: no extra request).
@@ -264,6 +237,64 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
         RulesBehindBanner(childId: widget.childId),
         Expanded(child: _editorBody(l10n)),
       ],
+    );
+  }
+
+  Widget _buildSaveFooter(BuildContext context, AppLocalizations l10n) {
+    final tokens = context.tokens;
+    final maxFooterHeight = MediaQuery.sizeOf(context).height * 0.56;
+    return SafeArea(
+      top: false,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxFooterHeight),
+        child: Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: tokens.surface,
+            border: Border(top: BorderSide(color: tokens.border)),
+          ),
+          padding: const EdgeInsets.fromLTRB(AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.sm),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_error != null) ...[
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: _SaveErrorBanner(
+                      message: _error!,
+                      saving: _saving,
+                      onRetry: _save,
+                      onDismiss: () => setState(() => _error = null),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: AppSpace.sm),
+              ],
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  key: const ValueKey('rules-save-button'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 52),
+                  ),
+                  onPressed: (_saved != null && !_saving) ? _save : null,
+                  child: _saving
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: tokens.onPrimary,
+                          ),
+                        )
+                      : Text(l10n.save),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -618,7 +649,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
           Padding(
             key: const ValueKey('iosAppsExplained'),
             padding: const EdgeInsets.only(bottom: AppSpace.sm),
-            child: Text(l10n.appGroupsBody, style: Theme.of(context).textTheme.bodyMedium),
+            child: Text(l10n.appGroupsEditorNote, style: Theme.of(context).textTheme.bodyMedium),
           ),
         // U33 (#868): the only way to add a rule is the picker — the package-id dialog is gone, because
         // an app the phone has not reported is not one a parent can meaningfully rule on yet.
@@ -1079,6 +1110,82 @@ class _FallbackChip extends StatelessWidget {
               tooltip: tooltip,
               onPressed: onDeleted,
               visualDensity: VisualDensity.compact,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Inline save-error banner anchored directly above the rules Save button (`U43`, R-ID-1).
+/// Keeps edited rules intact on screen while giving the parent an immediate Retry path.
+class _SaveErrorBanner extends StatelessWidget {
+  final String message;
+  final bool saving;
+  final VoidCallback onRetry;
+  final VoidCallback onDismiss;
+
+  const _SaveErrorBanner({
+    required this.message,
+    required this.saving,
+    required this.onRetry,
+    required this.onDismiss,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final tokens = context.tokens;
+    return Semantics(
+      liveRegion: true,
+      container: true,
+      child: Container(
+        key: const ValueKey('rules-save-error-banner'),
+        decoration: BoxDecoration(
+          color: tokens.danger.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(color: tokens.danger),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpace.md, vertical: AppSpace.sm),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.error_outline, color: tokens.severityCriticalText, size: 20),
+                const SizedBox(width: AppSpace.sm),
+                Expanded(
+                  child: Text(
+                    message,
+                    softWrap: true,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.onSurface),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpace.xs),
+            Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: Wrap(
+                spacing: AppSpace.sm,
+                runSpacing: AppSpace.xs,
+                alignment: WrapAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: onDismiss,
+                    child: Text(l10n.dismiss),
+                  ),
+                  FilledButton.tonalIcon(
+                    key: const ValueKey('rules-save-retry'),
+                    onPressed: saving ? null : onRetry,
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: Text(l10n.retry),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
