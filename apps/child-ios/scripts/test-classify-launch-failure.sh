@@ -46,6 +46,14 @@ expect real_launch_timeout launch
 } > "$tmp/real_runner_stall.log"
 expect real_runner_stall runner
 
+# An APP CRASH at launch is NOT a stall, even though it can print 'test runner exited' (Ahmed's point). It must
+# stay `other` — red, never retried — or a crash that happens to pass on the second launch would be absorbed.
+{
+  echo "Application 'com.osratech.child' crashed with signal 11"
+  echo "test runner exited with code 1"
+} > "$tmp/app_crash.log"
+expect app_crash other
+
 # A runner stall alongside a real assertion is ambiguous: never retried.
 {
   echo "Failed to get background assertion for target app with pid 23403: Timed out while acquiring background assertion."

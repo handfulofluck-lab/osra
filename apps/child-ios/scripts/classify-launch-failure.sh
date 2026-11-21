@@ -33,7 +33,11 @@ LAUNCH_RE='timed out while launching application|failed to launch|FBSOpenApplica
 # this programme: `e8697999` (launch) and `eb9e7fcf` (background assertion), and in both cases an identical tree
 # passed on re-run (#926 attempt 2). It is neither an assertion nor a launch timeout, and calling it an assertion
 # turned a runner stall into a red gate (20:18Z).
-RUNNER_RE='failed to get background assertion|timed out while acquiring background assertion|failed to boot|unable to boot the simulator|lost connection to the test manager|test runner exited'
+# Narrowed to what a real log has shown (Ahmed, after `930bb377`): a simulator that could not acquire a
+# background assertion or could not boot. `test runner exited` and `lost connection to the test manager` were in an
+# earlier list and are deliberately NOT here — an app that CRASHES at launch produces them too, and retrying would
+# absorb a real crash as a stall. A crash classifies as `other`, which is red and not retried.
+RUNNER_RE='failed to get background assertion|timed out while acquiring background assertion|failed to boot|unable to boot the simulator'
 
 has_launch() { grep -qiE "$LAUNCH_RE" "$1"; }
 

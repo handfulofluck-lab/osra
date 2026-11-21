@@ -46,3 +46,7 @@
   attempt 2, which is the evidence that it is a stall rather than a defect. Two fixtures, including the run's own
   line, and the recorded outcomes now name the kind that actually failed (`fail-runner-then-pass`,
   `fail-runner-twice`).
+- **The stall list is narrowed to what a real log shows (Ahmed, after `930bb377`).** `test runner exited` and
+  `lost connection to the test manager` were removed: an app that **crashes** at launch prints them too, and retrying
+  would absorb a real crash as a stall. The verdict keeps only the background-assertion and boot failures seen in a
+  real run, and a new fixture holds an app-crash line to `other` — red, never retried.
