@@ -125,7 +125,15 @@ class SetupResumePolicyTest {
 
     @Test
     fun `guided Back behavior is explicit per stage`() {
-        assertEquals(BackAction.TO_PERMISSION_STEP, SetupResumePolicy.backAction(GuidedStage.CHECKLIST, firstRun = true))
+        assertEquals(
+            BackAction.TO_PERMISSION_STEP,
+            SetupResumePolicy.backAction(GuidedStage.CHECKLIST, firstRun = true, hasRemainingStep = true),
+        )
+        // All grants complete on first-run checklist leaves Done as explicit completion and uses normal Back.
+        assertEquals(
+            BackAction.SYSTEM_DEFAULT,
+            SetupResumePolicy.backAction(GuidedStage.CHECKLIST, firstRun = true, hasRemainingStep = false),
+        )
         assertEquals(BackAction.TO_STATUS, SetupResumePolicy.backAction(GuidedStage.CHECKLIST, firstRun = false))
         assertEquals(BackAction.TO_STATUS, SetupResumePolicy.backAction(GuidedStage.PERMISSION_STEP, firstRun = false))
         assertEquals(BackAction.TO_PROTECTION_SETUP, SetupResumePolicy.backAction(GuidedStage.STALE_KNOX_ADMIN, firstRun = true))
@@ -142,7 +150,7 @@ class SetupResumePolicyTest {
         assertTrue("onCreate must restore active guided stage via resolvePairedStage", text.contains("SetupResumePolicy.resolvePairedStage(pinStore.isConfigured(), activeGuidedStage)"))
         assertTrue("permission returns must flow through stageAfterPermissionReturn", text.contains("SetupResumePolicy.stageAfterPermissionReturn("))
         assertTrue("explicit completion button must move to status via finishGuidedSetupAndShowStatus", text.contains("setOnClickListener { finishGuidedSetupAndShowStatus() }"))
-        assertTrue("Back behavior must dispatch through SetupResumePolicy.backAction", text.contains("SetupResumePolicy.backAction(activeGuidedStage, guidedFirstRun)"))
+        assertTrue("Back behavior must dispatch through SetupResumePolicy.backAction with hasRemainingStep", text.contains("SetupResumePolicy.backAction(activeGuidedStage, guidedFirstRun, hasRemainingStep)"))
     }
 
     private fun loadPairingActivitySource(): String {

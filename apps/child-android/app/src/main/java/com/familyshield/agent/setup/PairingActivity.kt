@@ -291,10 +291,11 @@ class PairingActivity : ComponentActivity() {
     private val guidedBackCallback: androidx.activity.OnBackPressedCallback =
         object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                when (SetupResumePolicy.backAction(activeGuidedStage, guidedFirstRun)) {
+                val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
+                val hasRemainingStep = nextUngrantedPermissionStep(rows) != null
+                when (SetupResumePolicy.backAction(activeGuidedStage, guidedFirstRun, hasRemainingStep)) {
                     BackAction.TO_PERMISSION_STEP -> {
                         forceChecklistView = false
-                        val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
                         showChecklist(rows, firstRun = guidedFirstRun)
                     }
                     BackAction.TO_PROTECTION_SETUP -> showProtectionSetup()

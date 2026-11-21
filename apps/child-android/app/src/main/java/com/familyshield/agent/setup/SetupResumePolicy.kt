@@ -88,8 +88,12 @@ object SetupResumePolicy {
     }
 
     /** Explicit Back behavior for guided onboarding stages. */
-    fun backAction(stage: GuidedStage?, firstRun: Boolean): BackAction = when (stage) {
-        GuidedStage.CHECKLIST -> if (firstRun) BackAction.TO_PERMISSION_STEP else BackAction.TO_STATUS
+    fun backAction(stage: GuidedStage?, firstRun: Boolean, hasRemainingStep: Boolean = true): BackAction = when (stage) {
+        GuidedStage.CHECKLIST -> when {
+            !firstRun -> BackAction.TO_STATUS
+            hasRemainingStep -> BackAction.TO_PERMISSION_STEP
+            else -> BackAction.SYSTEM_DEFAULT
+        }
         GuidedStage.PERMISSION_STEP, GuidedStage.COMPLETE ->
             if (!firstRun) BackAction.TO_STATUS else BackAction.SYSTEM_DEFAULT
         GuidedStage.STALE_KNOX_ADMIN -> BackAction.TO_PROTECTION_SETUP
