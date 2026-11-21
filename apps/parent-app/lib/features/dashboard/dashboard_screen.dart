@@ -8,7 +8,6 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
-import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../widgets/field_question.dart';
 import '../../providers/auth_provider.dart';
@@ -22,6 +21,7 @@ import '../../widgets/error_retry_view.dart';
 import '../auth/mfa_reset_approval_screen.dart';
 import '../auth/mfa_reset_messages.dart';
 import '../children/consent_step.dart';
+import 'child_location_row.dart';
 
 /// Parent dashboard: grid of child cards with live status, pull-to-refresh
 /// and a consent-first "Add child" flow.
@@ -289,6 +289,9 @@ class ChildCard extends ConsumerWidget {
     final location = locationValue.valueOrNull;
     // #406: a refused location read is not "no location yet" — the child card says so (Claude's ruling).
     final locationRefused = locationValue.hasError && ReadPermissionRequired.isRefusal(locationValue.error!);
+    final places = location != null && !locationRefused
+        ? ref.watch(geofencesProvider(child.id)).valueOrNull ?? const <Geofence>[]
+        : const <Geofence>[];
     final rules = ref.watch(rulesProvider(child.id)).valueOrNull;
     final dailyLimit = rules?.screenTime.dailyLimitMinutes ?? 0;
     final progress = dailyLimit > 0 ? (child.screenTimeTodayMinutes / dailyLimit).clamp(0.0, 1.0) : 0.0;
@@ -352,24 +355,7 @@ class ChildCard extends ConsumerWidget {
                     ],
                   ),
                   const SizedBox(height: AppSpace.sm),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(Icons.location_on_outlined, size: 14),
-                      const SizedBox(width: AppSpace.xs),
-                      Expanded(
-                        child: Text(
-                          // #406: a refusal names the owner; "no location yet" would read as a normal state.
-                          locationRefused
-                              ? l10n.readPermissionRequired
-                              : location == null
-                                  ? l10n.noLocationYet
-                                  : ltrIsolate('${location.lat.toStringAsFixed(4)}, ${location.lng.toStringAsFixed(4)}'),
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ),
-                    ],
-                  ),
+                  ChildLocationRow(child: child, fix: location, places: places, refused: locationRefused),
                 ],
               ),
               const SizedBox(height: AppSpace.md),

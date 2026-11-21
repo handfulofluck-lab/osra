@@ -58,7 +58,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  // Mutant: remove any one of the seven ltrIsolate calls; its corresponding row must go red.
+  // The detailed location surfaces still isolate coordinates in RTL.
   testWidgets('latest location isolates both coordinates in Arabic RTL', (tester) async {
     await openLocationTab(tester, const []);
 
@@ -88,14 +88,15 @@ void main() {
     expect(find.textContaining('±8 m'), findsNothing);
   });
 
-  testWidgets('dashboard child card isolates both coordinates in Arabic RTL', (tester) async {
+  testWidgets('dashboard child card offers the map without coordinates in Arabic RTL', (tester) async {
     await pumpArabic(
       tester,
       const DashboardScreen(),
       overrides: [locationProvider('child-1').overrideWith((ref) => _ping)],
     );
 
-    expect(find.text('\u206625.2769, 51.5211\u2069'), findsOneWidget);
+    expect(find.text(arabic.alertShowOnMap), findsOneWidget);
+    expect(find.textContaining('25.2769'), findsNothing);
   });
 
   testWidgets('map marker sheet isolates both coordinates in Arabic RTL', (tester) async {

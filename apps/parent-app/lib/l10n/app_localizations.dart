@@ -572,6 +572,18 @@ abstract class AppLocalizations {
   /// **'No location yet'**
   String get noLocationYet;
 
+  /// Child dashboard: the latest location fix is inside a parent-named saved place.
+  ///
+  /// In en, this message translates to:
+  /// **'At {place}'**
+  String childLocationAtPlace(String place);
+
+  /// Child dashboard: the latest location fix is close to a parent-named saved place.
+  ///
+  /// In en, this message translates to:
+  /// **'Near {place}'**
+  String childLocationNearPlace(String place);
+
   /// No description provided for @screenTime.
   ///
   /// In en, this message translates to:

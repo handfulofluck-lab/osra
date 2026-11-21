@@ -274,6 +274,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noLocationYet => 'No location yet';
 
   @override
+  String childLocationAtPlace(String place) {
+    return 'At $place';
+  }
+
+  @override
+  String childLocationNearPlace(String place) {
+    return 'Near $place';
+  }
+
+  @override
   String get screenTime => 'Screen time';
 
   @override
