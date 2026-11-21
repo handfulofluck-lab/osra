@@ -60,6 +60,70 @@ final alertsProvider = FutureProvider.family<AlertsPage, AlertFilter>((ref, filt
   return AlertsPage.fromJson(res.data);
 });
 
+/// Outcome of resolving a single alert by ID within the guardian's `/v1/alerts` scope.
+enum AlertLookupStatus {
+  /// Matching alert was resolved.
+  found,
+
+  /// All available pages were scanned and the alert is absent.
+  notFound,
+
+  /// Bounded page scan stopped while the server confirmed additional pages remain.
+  incompleteScan,
+}
+
+/// Typed result for [alertByIdProvider] so an incomplete bounded scan is never reported
+/// as a missing alert.
+class AlertLookupResult {
+  final AlertLookupStatus status;
+  final Alert? alert;
+
+  const AlertLookupResult.found(Alert this.alert) : status = AlertLookupStatus.found;
+  const AlertLookupResult.notFound()
+      : status = AlertLookupStatus.notFound,
+        alert = null;
+  const AlertLookupResult.incompleteScan()
+      : status = AlertLookupStatus.incompleteScan,
+        alert = null;
+}
+
+/// Resolves a single alert by [alertId] within the guardian's authorized `/v1/alerts` scope,
+/// checking page 1 via [alertsProvider] first and paginating up to [maxPages] before reporting
+/// either [AlertLookupStatus.notFound] (exhausted) or [AlertLookupStatus.incompleteScan]
+/// (more pages exist beyond the bounded cap).
+final alertByIdProvider = FutureProvider.family<AlertLookupResult, String>((ref, alertId) async {
+  const pageLimit = 50;
+  const maxPages = 20;
+  final firstPage = await ref.watch(alertsProvider(const AlertFilter()).future);
+  final firstHit = firstPage.items.where((a) => a.id == alertId).firstOrNull;
+  if (firstHit != null) return AlertLookupResult.found(firstHit);
+
+  var seen = firstPage.items.length;
+  final total = firstPage.total;
+  if (seen == 0 || seen >= total) return const AlertLookupResult.notFound();
+
+  final api = ref.watch(apiClientProvider);
+  var exhausted = false;
+  for (var page = 2; page <= maxPages && seen < total; page++) {
+    final res = await api.raw.get(
+      '/v1/alerts',
+      queryParameters: {'page': page, 'limit': pageLimit},
+    );
+    final nextPage = AlertsPage.fromJson(res.data);
+    if (nextPage.items.isEmpty) {
+      exhausted = true;
+      break;
+    }
+    final hit = nextPage.items.where((a) => a.id == alertId).firstOrNull;
+    if (hit != null) return AlertLookupResult.found(hit);
+    seen += nextPage.items.length;
+  }
+  if (!exhausted && seen < total) {
+    return const AlertLookupResult.incompleteScan();
+  }
+  return const AlertLookupResult.notFound();
+});
+
 /// Snapshot of unacknowledged alerts returned by `GET /v1/alerts?ack=false`.
 class UnacknowledgedAlertsSummary {
   final int total;
@@ -499,6 +563,11 @@ void applyRealtimeMessage(RealtimeEffects effects, Map<String, dynamic> msg) {
       // list is stale too. Two indicators, one frame, no extra polling.
       effects.invalidateFamily();
       effects.invalidateCommandHistory();
+    case 'command_acked':
+      // #935: a child device acknowledged a command (lock, pause, resume, etc.), so the delivery
+      // summary and command history are stale right away rather than waiting ~15 s.
+      effects.invalidateCommandHistory();
+      effects.invalidateFamily();
   }
 }
 
