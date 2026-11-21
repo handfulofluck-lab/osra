@@ -715,6 +715,110 @@ class _AppRuleTile extends StatefulWidget {
   State<_AppRuleTile> createState() => _AppRuleTileState();
 }
 
+/// The allow / block / time-limit choice for one app rule.
+///
+/// The Arabic Language Bureau's #931 block: «السماح», «حظر» and «حد زمني» do not fit as three segments at
+/// 320 px with 200 % text, and a segmented label that does not fit breaks **mid-word** — a word split in
+/// Arabic cursive is not readable, so hiding it behind an ellipsis would be worse than the overflow. When
+/// the three labels cannot fit on one line each, this falls back to the stacked selector
+/// `appearance_screen.dart` already uses, in the same order the segments read, so the meaning does not
+/// shift between screen sizes. The wording is unchanged: the Bureau signs the text, this only decides how
+/// it is laid out.
+class AppActionSelector extends StatelessWidget {
+  final String packageId;
+  final String action;
+  final ValueChanged<String> onChanged;
+
+  const AppActionSelector({required this.packageId, required this.action, required this.onChanged});
+
+  /// Reading order in both directions: allow, block, time limit.
+  static const _values = ['allow', 'block', 'time_limit'];
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final labels = [l10n.appActionAllow, l10n.appActionBlock, l10n.appActionTimeLimit];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final labelStyle = Theme.of(context).textTheme.labelLarge;
+        final direction = Directionality.of(context);
+        final scaler = MediaQuery.textScalerOf(context);
+        double measure(String label) => (TextPainter(
+              text: TextSpan(text: label, style: labelStyle),
+              maxLines: 1,
+              textDirection: direction,
+              textScaler: scaler,
+            )..layout())
+                .width;
+        final widest = labels.map(measure).reduce((a, b) => a > b ? a : b);
+        final fits = constraints.maxWidth > 0 && widest * 3 + _chromeWidth <= constraints.maxWidth;
+        if (fits) {
+          return SegmentedButton<String>(
+            key: ValueKey('appActionSegments-$packageId'),
+            segments: [
+              for (final (i, value) in _values.indexed)
+                ButtonSegment(value: value, label: Text(labels[i])),
+            ],
+            selected: {action},
+            onSelectionChanged: (sel) => onChanged(sel.first),
+          );
+        }
+        final tokens = context.tokens;
+        return Column(
+          key: ValueKey('appActionStacked-$packageId'),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final (i, value) in _values.indexed)
+              Padding(
+                padding: EdgeInsetsDirectional.only(bottom: i == _values.length - 1 ? 0 : AppSpace.sm),
+                child: Semantics(
+                  inMutuallyExclusiveGroup: true,
+                  selected: action == value,
+                  button: true,
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(52),
+                      padding: const EdgeInsetsDirectional.symmetric(horizontal: AppSpace.lg, vertical: AppSpace.md),
+                      alignment: AlignmentDirectional.centerStart,
+                      backgroundColor: action == value ? tokens.primaryContainer : null,
+                      foregroundColor: action == value ? tokens.onPrimaryContainer : tokens.onSurface,
+                      side: BorderSide(color: action == value ? tokens.primary : tokens.border),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+                    ),
+                    onPressed: () => onChanged(value),
+                    child: Row(
+                      children: [
+                        Icon(
+                          action == value ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                          color: action == value ? tokens.primary : tokens.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: AppSpace.md),
+                        Expanded(
+                          child: Text(
+                            labels[i],
+                            style: labelStyle?.copyWith(
+                              color: action == value ? tokens.onPrimaryContainer : tokens.onSurface,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// What the segmented row draws around its labels: 12 px horizontal padding on each side of three
+  /// segments (72), two 1 px dividers (4), and the 18 px check icon plus its 8 px gap on the selected
+  /// segment (26). Measured from the real widget in `app_action_selector_test.dart`, which sweeps widths
+  /// and text scales and asserts a label never breaks across lines in either mode.
+  static const double _chromeWidth = 102;
+}
+
 /// Whether the child's inventory is **complete**: at least one device, every device has reported, and no
 /// report is truncated.
 ///
@@ -790,14 +894,10 @@ class _AppRuleTileState extends State<_AppRuleTile> {
             ),
             // U33 (#868): the row names the app and shows its icon; the package id is not shown.
             const SizedBox(height: AppSpace.xs),
-            SegmentedButton<String>(
-              segments: [
-                ButtonSegment(value: 'allow', label: Text(l10n.appActionAllow)),
-                ButtonSegment(value: 'block', label: Text(l10n.appActionBlock)),
-                ButtonSegment(value: 'time_limit', label: Text(l10n.appActionTimeLimit)),
-              ],
-              selected: {r.action},
-              onSelectionChanged: (sel) => widget.onChanged(AppRule(packageId: r.packageId, appName: r.appName, action: sel.first, dailyLimitMinutes: r.dailyLimitMinutes)),
+            AppActionSelector(
+              packageId: r.packageId,
+              action: r.action,
+              onChanged: (action) => widget.onChanged(AppRule(packageId: r.packageId, appName: r.appName, action: action, dailyLimitMinutes: r.dailyLimitMinutes)),
             ),
             if (r.action == 'block' && widget.childHasIphone) ...[
               const SizedBox(height: AppSpace.xs),
