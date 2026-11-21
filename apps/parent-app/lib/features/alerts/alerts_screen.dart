@@ -26,7 +26,6 @@ import 'alert_detail_screen.dart';
 import 'sos_alert_actions.dart';
 import '../map/family_map_screen.dart'
     show FamilyMapScreen, MapFocus, mapIsAvailable;
-import '../../push/restart_alert_text.dart';
 import '../../push/sos_fix_text.dart';
 
 /// U45: formats the alert detail dialog timestamp using the #889 time keys
@@ -225,21 +224,12 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   // #889 Arabic Bureau (6997818132): an unkeyed restart row in Arabic renders no body at all
                   // inside the app dialog (the title already states it), never raw English or the push prompt.
                   Builder(builder: (_) {
-                    final isEnglish = dialogContext.localeName.startsWith('en');
-                    final String localizedBody;
-                    if (alert.category == 'sos') {
-                      localizedBody = '';
-                    } else if (alert.category == 'device_restarted') {
-                      localizedBody = RestartAlertText.tryFormat(
-                            alert,
-                            l10n: l10n,
-                            localeName: dialogContext.localeName,
-                            now: widget.nowProvider?.call(),
-                          ) ??
-                          (isEnglish ? alert.body : '');
-                    } else {
-                      localizedBody = alert.body;
-                    }
+                    final localizedBody = formatGeneralAlertBody(
+                      alert,
+                      l10n: l10n,
+                      localeName: dialogContext.localeName,
+                      now: widget.nowProvider?.call(),
+                    );
                     if (localizedBody.isEmpty) return const SizedBox.shrink();
                     return Text(localizedBody);
                   }),

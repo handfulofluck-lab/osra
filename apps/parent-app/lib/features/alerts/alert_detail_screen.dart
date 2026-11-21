@@ -1,8 +1,10 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart' show LaunchMode, launchUrl;
 
 import '../../api/models.dart';
 import '../../api/permission_errors.dart';
@@ -11,12 +13,40 @@ import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/family_provider.dart';
 import '../../providers/social_provider.dart';
+import '../../push/restart_alert_text.dart';
+import '../../push/sos_fix_text.dart';
 import '../../theme/app_tokens.dart';
 import '../../widgets/error_retry_view.dart';
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
+import '../map/family_map_screen.dart' show FamilyMapScreen, MapFocus, mapIsAvailable;
 import '../rules/rules_behind_banner.dart';
 import '../social/social_screen.dart' show socialAppIcon, socialAppLabel;
+import 'sos_alert_actions.dart';
+
+/// Shared per-category localized body formatter used by both [AlertsScreen] and
+/// [AlertDetailScreen] so notification-opened details stay consistent with the feed dialog.
+String formatGeneralAlertBody(
+  Alert alert, {
+  required AppLocalizations l10n,
+  required String localeName,
+  DateTime? now,
+}) {
+  final isEnglish = localeName.startsWith('en');
+  if (alert.category == 'sos') {
+    return '';
+  }
+  if (alert.category == 'device_restarted') {
+    return RestartAlertText.tryFormat(
+          alert,
+          l10n: l10n,
+          localeName: localeName,
+          now: now,
+        ) ??
+        (isEnglish ? alert.body : '');
+  }
+  return alert.body;
+}
 
 /// Whether [category] uses the dedicated #972 full-screen social alert detail route.
 bool isSocialAlertCategory(String category) =>
@@ -114,7 +144,7 @@ class AlertDetailScreen extends ConsumerWidget {
     final l10n = context.l10n;
     final canPop = Navigator.of(context).canPop();
     final alertAsync = initialAlert != null
-        ? AsyncValue<Alert?>.data(initialAlert)
+        ? AsyncValue<AlertLookupResult>.data(AlertLookupResult.found(initialAlert!))
         : ref.watch(alertByIdProvider(alertId));
 
     void openAllAlerts() {
@@ -153,7 +183,28 @@ class AlertDetailScreen extends ConsumerWidget {
             ),
           ],
         ),
-        data: (alert) {
+        data: (result) {
+          if (result.status == AlertLookupStatus.incompleteScan) {
+            return Column(
+              key: const ValueKey('alertDetailLookupIncomplete'),
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ErrorRetryView(
+                  message: l10n.alertsLoadFailed,
+                  onRetry: () {
+                    ref.invalidate(alertsProvider(const AlertFilter()));
+                    ref.invalidate(alertByIdProvider(alertId));
+                  },
+                ),
+                const SizedBox(height: AppSpace.sm),
+                OutlinedButton(
+                  onPressed: () => context.go('/alerts'),
+                  child: Text(l10n.socialAlertViewAll),
+                ),
+              ],
+            );
+          }
+          final alert = result.alert;
           if (alert == null) {
             return _AlertUnavailableView(onOpenAllAlerts: () => context.go('/alerts'));
           }
@@ -594,11 +645,90 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
           ),
           const SizedBox(height: AppSpace.md),
         ],
-        if (alert.body.trim().isNotEmpty) ...[
+        if (formatGeneralAlertBody(
+          alert,
+          l10n: l10n,
+          localeName: context.localeName,
+          now: nowProvider?.call(),
+        ).trim().isNotEmpty) ...[
           Text(
-            alert.body,
+            formatGeneralAlertBody(
+              alert,
+              l10n: l10n,
+              localeName: context.localeName,
+              now: nowProvider?.call(),
+            ),
             key: const ValueKey('alertDetailBody'),
             style: theme.textTheme.bodyLarge,
+          ),
+          const SizedBox(height: AppSpace.md),
+        ],
+        if (alert.category == 'sos' && alert.location != null) ...[
+          Builder(builder: (_) {
+            final fix = alert.location!;
+            final text = SosFixText.of(alert, fix, nowProvider?.call() ?? DateTime.now());
+            final accuracy = text.accuracyClause(l10n, fix);
+            return Column(
+              key: const ValueKey('alert-sos-location'),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  text.locationLine(l10n, fix.isolatedCoords),
+                  key: const ValueKey('alert-sos-location-line'),
+                  style: theme.textTheme.bodyLarge,
+                ),
+                if (accuracy != null)
+                  Text(
+                    accuracy,
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+                  ),
+                const SizedBox(height: AppSpace.md),
+                Wrap(
+                  spacing: AppSpace.sm,
+                  runSpacing: AppSpace.xs,
+                  children: sosAlertActions(
+                    l10n: l10n,
+                    mapAvailable: mapIsAvailable(theme.platform),
+                    onShowOnMap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => FamilyMapScreen(
+                            focus: MapFocus.fromFix(
+                              fix,
+                              label: text.pinCaption(l10n, title),
+                              accuracyM: fix.accuracyM,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                    onOpenInMaps: () async {
+                      final uri = Uri.parse(
+                        'https://www.google.com/maps/search/?api=1&query=${fix.lat},${fix.lng}',
+                      );
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    },
+                    onCopy: () async {
+                      await Clipboard.setData(ClipboardData(text: fix.copyText));
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context)
+                            .showSnackBar(SnackBar(content: Text(l10n.alertCoordinatesCopied)));
+                      }
+                    },
+                  ),
+                ),
+              ],
+            );
+          }),
+          const SizedBox(height: AppSpace.lg),
+        ],
+        if (alert.category == 'tamper' &&
+            alert.metadata['type']?.toString() == 'block_bypass' &&
+            alert.metadata['layout']?.toString() == 'call') ...[
+          Text(
+            l10n.alertCallBypassNote,
+            key: const ValueKey('alert-call-bypass-note'),
+            style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.error),
           ),
           const SizedBox(height: AppSpace.lg),
         ],

@@ -512,6 +512,111 @@ void main() {
       expect(find.byKey(const ValueKey('alertDetailScroll')), findsOneWidget);
       expect(find.byKey(const ValueKey('alertDetailOpenSocial')), findsOneWidget);
     });
+
+    testWidgets(
+        'Finding 4 (7063101979 #1): SOS with event location entered via notification tap renders SOS location panel and actions without raw English body',
+        (tester) async {
+      // Mutant: omitting the SOS location panel / sosAlertActions or rendering alert.body
+      // for sos fails the assertions below.
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/alerts': (_) => {
+              'items': [
+                {
+                  'id': 'alert-sos-1',
+                  'childId': 'child-1',
+                  'deviceId': 'dev-1',
+                  'category': 'sos',
+                  'severity': 'critical',
+                  'title': 'SOS',
+                  'body': 'Raw English SOS body from agent',
+                  'metadata': {
+                    'lat': 25.2048,
+                    'lng': 55.2708,
+                    'accuracyM': 12.0,
+                    'capturedAt': alertTime.toUtc().toIso8601String(),
+                  },
+                  'createdAt': alertTime.toUtc().toIso8601String(),
+                },
+              ],
+              'meta': {'total': 1, 'page': 1, 'limit': 50},
+            },
+      });
+
+      await pumpDetail(tester, api: api, alertId: 'alert-sos-1', lang: 'ar');
+      expect(find.byKey(const ValueKey('alertDetailGeneralScroll')), findsOneWidget);
+      expect(find.byKey(const ValueKey('alert-sos-location')), findsOneWidget);
+      expect(find.byKey(const ValueKey('alert-sos-location-line')), findsOneWidget);
+      expect(find.textContaining('Raw English SOS body'), findsNothing);
+      expect(find.byKey(const ValueKey('alertDetailOpenSocial')), findsNothing);
+    });
+
+    testWidgets(
+        'Finding 5 (7063101979 #2): unkeyed device_restarted in Arabic suppresses raw English body on notification entry',
+        (tester) async {
+      // Mutant: rendering alert.body directly in _GeneralAlertDetailBody leaks raw English in Arabic.
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/alerts': (_) => {
+              'items': [
+                {
+                  'id': 'alert-restart-1',
+                  'childId': 'child-1',
+                  'deviceId': 'dev-1',
+                  'category': 'device_restarted',
+                  'severity': 'warning',
+                  'title': 'Device restarted',
+                  'body': 'Pixel 7 restarted and came back online.',
+                  'metadata': const <String, dynamic>{},
+                  'createdAt': alertTime.toUtc().toIso8601String(),
+                },
+              ],
+              'meta': {'total': 1, 'page': 1, 'limit': 50},
+            },
+      });
+
+      await pumpDetail(tester, api: api, alertId: 'alert-restart-1', lang: 'ar');
+      expect(find.byKey(const ValueKey('alertDetailGeneralScroll')), findsOneWidget);
+      expect(find.byKey(const ValueKey('alertDetailBody')), findsNothing);
+      expect(find.textContaining('Pixel 7 restarted'), findsNothing);
+    });
+
+    testWidgets(
+        'Finding 6 (7063101979 #3): bounded scan hitting maxPages with more server pages renders incomplete-lookup state rather than Alert unavailable',
+        (tester) async {
+      // Mutant: returning AlertLookupResult.notFound() when seen < total after maxPages
+      // renders alertDetailUnavailable instead of alertDetailLookupIncomplete.
+      var pagesRequested = 0;
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/alerts': (opts) {
+          pagesRequested++;
+          final page = (opts.query['page'] as int?) ?? 1;
+          return {
+            'items': List.generate(
+              50,
+              (i) => {
+                'id': 'alert-p$page-$i',
+                'childId': 'child-1',
+                'deviceId': 'dev-1',
+                'category': 'app_blocked',
+                'severity': 'info',
+                'title': 'Alert $page-$i',
+                'body': 'Body',
+                'metadata': const <String, dynamic>{},
+                'createdAt': alertTime.toUtc().toIso8601String(),
+              },
+            ),
+            'meta': {'total': 1500, 'page': page, 'limit': 50},
+          };
+        },
+      });
+
+      await pumpDetail(tester, api: api, alertId: 'alert-very-old-1499');
+      expect(pagesRequested, 20);
+      expect(find.byKey(const ValueKey('alertDetailLookupIncomplete')), findsOneWidget);
+      expect(find.byKey(const ValueKey('alertDetailUnavailable')), findsNothing);
+    });
   });
 
   group('NotificationTapController (#972 cold-start & warm-start auth gate)', () {
