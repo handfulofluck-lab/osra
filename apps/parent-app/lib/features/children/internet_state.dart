@@ -26,8 +26,12 @@ enum InternetState {
   partial,
 }
 
-/// Which of [InternetState] describes [requested] given the newest `pause_internet`/`resume_internet` row of
-/// each device ([newestPerDevice]).
+/// Which of [InternetState] describes [requested] given one row per device ([newestPerDevice]).
+///
+/// **What the caller must pass** (Codex, `7056040915`): the rows belonging to the **latest Pause or Resume
+/// request**, identified by the command ids the aggregate returns. A device's *newest* row is only a stopgap —
+/// `newestInternetCommand` below — and it is the weaker reading: on a cold device its newest internet row can
+/// belong to an older request, which is why the aggregate ties its answer to command ids rather than to time.
 ///
 /// Only an `acked` row counts as confirmed: `delivered` means the phone fetched the command, not that it acted,
 /// and `failed`/`expired` mean the opposite of confirmed. An empty list is `waiting`, never `confirmed` — a
@@ -59,7 +63,12 @@ InternetState internetStateFor({
   return InternetState.waiting;
 }
 
-/// The newest `pause_internet`/`resume_internet` row per device, taken from one device's history.
+/// The newest `pause_internet`/`resume_internet` row for one device, taken from that device's history.
+///
+/// **A stopgap, not the contract.** It reads time, not request identity, so a device whose newest internet row
+/// belongs to an older Pause/Resume reports that older answer. The aggregate Codex is building returns the
+/// command ids of the latest request, which is the correct input for [internetStateFor]; this helper keeps the
+/// screen usable until that lands, and nothing should be built on top of it that assumes request identity.
 ///
 /// Returns null when that device has neither, so the caller can tell "this device has no row yet" from "its
 /// newest row says pending" — the first is unknown, the second is waiting, and only the second belongs in the
