@@ -100,6 +100,16 @@
   "statusOnline": "online",
   "statusOffline": "offline",
   "noLocationYet": "No location yet",
+  "childLocationAtPlace": "At {place}",
+  "@childLocationAtPlace": {
+    "description": "Child dashboard: the latest location fix is inside a parent-named saved place.",
+    "placeholders": {"place": {"type": "String"}}
+  },
+  "childLocationNearPlace": "Near {place}",
+  "@childLocationNearPlace": {
+    "description": "Child dashboard: the latest location fix is close to a parent-named saved place.",
+    "placeholders": {"place": {"type": "String"}}
+  },
   "screenTime": "Screen time",
   "screenTimeValue": "{minutes} / {limit, plural, =0{— min} other{{limit} min}}",
   "@screenTimeValue": {

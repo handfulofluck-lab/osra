@@ -282,6 +282,16 @@ class AppLocalizationsAr extends AppLocalizations {
   String get noLocationYet => 'لا يوجد موقع بعد';
 
   @override
+  String childLocationAtPlace(String place) {
+    return 'At $place';
+  }
+
+  @override
+  String childLocationNearPlace(String place) {
+    return 'Near $place';
+  }
+
+  @override
   String get screenTime => 'وقت الشاشة';
 
   @override

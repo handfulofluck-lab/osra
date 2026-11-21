@@ -43,8 +43,16 @@ const String kMapsApiKey = String.fromEnvironment('MAPS_API_KEY');
 bool mapIsAvailable(TargetPlatform platform, {String key = kMapsApiKey}) =>
     platform != TargetPlatform.iOS || key.isNotEmpty;
 
-/// Issue #672: a point the map was opened **for** — an SOS alert's fix. The map is the same screen the
-/// tab shows; a focus only decides where the camera starts and adds one marker, so there is no second map.
+/// Open the system map at an explicit point when the family map cannot render.
+Uri platformMapPinUri(TargetPlatform platform, {required double lat, required double lng, required String label}) {
+  final point = '$lat,$lng';
+  final encodedLabel = Uri.encodeComponent(label);
+  return platform == TargetPlatform.android
+      ? Uri.parse('geo:$point?q=$point($encodedLabel)')
+      : Uri.parse('https://maps.apple.com/?ll=$point&q=$encodedLabel');
+}
+
+/// A location the family map was opened for.
 @immutable
 class MapFocus {
   final LatLng position;
@@ -57,12 +65,17 @@ class MapFocus {
   /// the child pins already draw. Null means the circle is not drawn — never a guessed radius.
   final double? accuracyM;
 
-  const MapFocus({required this.position, this.label = '', this.accuracyM});
+  final bool isAlert;
+
+  const MapFocus({required this.position, this.label = '', this.accuracyM, this.isAlert = true});
 
   /// From the fix an alert carried. The one conversion the alerts screen needs, so it never imports
   /// `google_maps_flutter` to open the map.
   factory MapFocus.fromFix(AlertFix fix, {String label = '', double? accuracyM}) =>
       MapFocus(position: LatLng(fix.lat, fix.lng), label: label, accuracyM: accuracyM ?? fix.accuracyM);
+
+  factory MapFocus.fromPing(LocationPing fix, {required String label}) =>
+      MapFocus(position: LatLng(fix.lat, fix.lng), label: label, accuracyM: fix.accuracyM, isAlert: false);
 }
 
 /// Where a map visit starts, and how close: the alert's fix when the map was opened for one, else the first
@@ -76,7 +89,7 @@ class MapFocus {
 class FamilyMapScreen extends ConsumerWidget {
   const FamilyMapScreen({super.key, this.focus});
 
-  /// Issue #672: set when the map was opened on an alert's fix. Absent for the tab.
+  /// Set when the map opens on a specific fix. Absent for the tab.
   final MapFocus? focus;
 
   /// Center for a new fence: the first child's latest ping, else 0,0 — a
@@ -289,24 +302,24 @@ class _MapBodyState extends ConsumerState<_MapBody> {
     // point in the past, and a child whose last ping is elsewhere must not hide it.
     final focus = widget.focus;
     if (focus != null) {
+      final focusId = focus.isAlert ? 'alert-fix' : 'child-card-fix';
       markers.add(Marker(
-        markerId: const MarkerId('alert-fix'),
+        markerId: MarkerId(focusId),
         position: focus.position,
-        // The marker helper takes a hue, not a colour, so the `danger` token cannot be applied directly;
-        // hueRed is the same red the token carries (#672 UI/UX review, noted in the PR).
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        icon: BitmapDescriptor.defaultMarkerWithHue(focus.isAlert ? BitmapDescriptor.hueRed : BitmapDescriptor.hueAzure),
         infoWindow: InfoWindow(title: focus.label),
       ));
       // The accuracy circle the child pins already draw: a parent deciding whether the point is a house or
       // a street needs to know how sure the fix is (#672 UI/UX review).
       final accuracy = focus.accuracyM;
       if (accuracy != null && accuracy > 0) {
+        final color = focus.isAlert ? context.tokens.danger : context.tokens.primary;
         circles.add(Circle(
-          circleId: const CircleId('alert-fix-accuracy'),
+          circleId: CircleId('$focusId-accuracy'),
           center: focus.position,
           radius: accuracy,
-          fillColor: context.tokens.danger.withValues(alpha: 0.12),
-          strokeColor: context.tokens.danger,
+          fillColor: color.withValues(alpha: 0.12),
+          strokeColor: color,
           strokeWidth: 1,
         ));
       }

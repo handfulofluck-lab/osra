@@ -64,6 +64,14 @@ For family-plan entitlements (#619), run `pnpm --filter @familyshield/api test -
 
 The maintainer-only finite grant command is `node services/api/scripts/billing/grant.mjs --family-id <uuid> --expires-at <ISO8601> --reason <reason> --secret-name <name> [--profile <name>] [--region <name>]`. It requires a future expiry no more than 366 days away, reads the database connection secret into memory with the AWS CLI, and writes no public route or lifetime grant. The raw store reference and database credentials are not logged; database credentials go to `psql` through its environment, not command arguments. K31's tests inject fake AWS CLI and SQL boundaries and make no AWS, store or real database call. `test/grant-script.test.ts` proves invalid expiry is refused before AWS is called.
 
+For the child-card location summary (#984), run
+`flutter test test/child_location_row_test.dart test/ltr_isolates_test.dart test/prb_layout_matrix_test.dart`
+from `apps/parent-app`. Check a recent accurate fix inside a named saved place, a nearby boundary
+fix, older and unavailable data, and a location permission refusal. In the Parent app, tap the
+location row and verify the exact recorded map pin. Tap the rest of the card and verify it opens
+child detail. On a build without the in-app map configuration, verify the system map opens only
+on the parent's tap. Review both themes in English and Arabic at 320 px and 200% text.
+
 For the location-history query contract (#869), run
 `TZ=UTC flutter test --concurrency=2 test/location_history_query_test.dart test/location_404_test.dart`,
 then `TZ=Asia/Dubai flutter test --concurrency=2 test/location_history_query_test.dart` from
@@ -78,10 +86,10 @@ runtime evidence; #871 owns the shared friendly-error and Retry UI.
 
 For composite numeric values in Arabic RTL, run `flutter test test/ltr_isolates_test.dart` from
 `apps/parent-app` (#751). It renders the real latest-location, location-history (with and without a
-timestamp), dashboard, map-sheet, call/SMS and bonus-time widgets with an Arabic `Locale` and
+timestamp), map-sheet, call/SMS and bonus-time widgets with an Arabic `Locale` and
 `TextDirection.rtl`, and checks the exact LRI/PDI-delimited values plus the localized accuracy unit.
-Removing any one of the seven `ltrIsolate` calls must turn its corresponding row red. These are widget
-tests, not a phone run; no device claim or API access is used.
+The dashboard test checks the localized map action and absence of raw coordinates. These widget
+tests use local fixtures. Device and API acceptance are tracked separately.
 
 For rules save compatibility (#951), run
 `flutter test test/rules_editor_limits_test.dart test/content_safety_test.dart test/installed_apps_picker_test.dart`

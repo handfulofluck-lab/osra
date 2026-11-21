@@ -23,7 +23,7 @@ import '../coach/coach_content.dart';
 import '../../widgets/error_retry_view.dart';
 import 'sos_alert_actions.dart';
 import '../map/family_map_screen.dart'
-    show FamilyMapScreen, MapFocus, mapIsAvailable;
+    show FamilyMapScreen, MapFocus, mapIsAvailable, platformMapPinUri;
 import '../../push/restart_alert_text.dart';
 import '../../push/sos_fix_text.dart';
 
@@ -359,12 +359,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   Future<void> _openInMaps(Alert alert) async {
     final fix = alert.location;
     if (fix == null) return;
-    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
-    final label = Uri.encodeComponent(fix.copyText);
-    final uri = isAndroid
-        ? Uri.parse('geo:${fix.lat},${fix.lng}?q=${fix.lat},${fix.lng}($label)')
-        : Uri.parse(
-            'https://maps.apple.com/?ll=${fix.lat},${fix.lng}&q=$label');
+    final uri = platformMapPinUri(defaultTargetPlatform, lat: fix.lat, lng: fix.lng, label: fix.copyText);
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
