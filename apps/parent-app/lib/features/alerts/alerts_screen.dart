@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart' show launchUrl, LaunchMode;
 
 import '../../api/permission_errors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
@@ -21,10 +22,10 @@ import '../children/child_detail_screen.dart' show AlertTile;
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
 import '../../widgets/error_retry_view.dart';
+import 'alert_detail_screen.dart';
 import 'sos_alert_actions.dart';
 import '../map/family_map_screen.dart'
     show FamilyMapScreen, MapFocus, mapIsAvailable;
-import '../../push/restart_alert_text.dart';
 import '../../push/sos_fix_text.dart';
 
 /// U45: formats the alert detail dialog timestamp using the #889 time keys
@@ -158,6 +159,25 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   /// Feature #8: an install_request alert offers Block (append a block
   /// appRule to the child's ruleset) and Allow (just dismiss) actions.
   void _showDetail(Alert alert) {
+    // #972: social/gaming chat alerts open the dedicated full-screen scrollable detail route
+    // so 200% text size, authorized Social activity action, and unavailable-preview states stay accessible.
+    if (isSocialAlertCategory(alert.category)) {
+      final router = GoRouter.maybeOf(context);
+      if (router != null) {
+        router.push('/alerts/${Uri.encodeComponent(alert.id)}', extra: alert);
+      } else {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => AlertDetailScreen(
+              alertId: alert.id,
+              initialAlert: alert,
+              nowProvider: widget.nowProvider,
+            ),
+          ),
+        );
+      }
+      return;
+    }
     // Feature #16: conversation-coach card for AI/social alert categories.
     final coachCard = coachCardFor(alert.category, _concernTypesOf(alert));
     showDialog(
@@ -204,21 +224,12 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   // #889 Arabic Bureau (6997818132): an unkeyed restart row in Arabic renders no body at all
                   // inside the app dialog (the title already states it), never raw English or the push prompt.
                   Builder(builder: (_) {
-                    final isEnglish = dialogContext.localeName.startsWith('en');
-                    final String localizedBody;
-                    if (alert.category == 'sos') {
-                      localizedBody = '';
-                    } else if (alert.category == 'device_restarted') {
-                      localizedBody = RestartAlertText.tryFormat(
-                            alert,
-                            l10n: l10n,
-                            localeName: dialogContext.localeName,
-                            now: widget.nowProvider?.call(),
-                          ) ??
-                          (isEnglish ? alert.body : '');
-                    } else {
-                      localizedBody = alert.body;
-                    }
+                    final localizedBody = formatGeneralAlertBody(
+                      alert,
+                      l10n: l10n,
+                      localeName: dialogContext.localeName,
+                      now: widget.nowProvider?.call(),
+                    );
                     if (localizedBody.isEmpty) return const SizedBox.shrink();
                     return Text(localizedBody);
                   }),

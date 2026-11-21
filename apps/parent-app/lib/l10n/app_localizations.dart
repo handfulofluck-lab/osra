@@ -5372,6 +5372,84 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{device} restarted {when} and was back after about {hours, plural, =1{1 hour} other{{hours} hours}}.'**
   String alertDeviceRestartedBodyHours(String device, String when, int hours);
+
+  /// No description provided for @alertTitleSocialConcern.
+  ///
+  /// In en, this message translates to:
+  /// **'Social safety alert'**
+  String get alertTitleSocialConcern;
+
+  /// No description provided for @alertTitleGamingChat.
+  ///
+  /// In en, this message translates to:
+  /// **'Gaming chat alert'**
+  String get alertTitleGamingChat;
+
+  /// No description provided for @alertCategorySocialConcern.
+  ///
+  /// In en, this message translates to:
+  /// **'Social safety'**
+  String get alertCategorySocialConcern;
+
+  /// No description provided for @alertCategoryGamingChat.
+  ///
+  /// In en, this message translates to:
+  /// **'Gaming chat'**
+  String get alertCategoryGamingChat;
+
+  /// No description provided for @socialAlertFlaggedInApp.
+  ///
+  /// In en, this message translates to:
+  /// **'Flagged for review in {app}'**
+  String socialAlertFlaggedInApp(String app);
+
+  /// No description provided for @socialAlertOpenActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Social activity'**
+  String get socialAlertOpenActivity;
+
+  /// No description provided for @socialAlertPreviewNoPermissionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Preview unavailable for your account'**
+  String get socialAlertPreviewNoPermissionTitle;
+
+  /// No description provided for @socialAlertPreviewNoPermissionBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask the family owner to enable Social access to view the encrypted preview. Alert details and the conversation guide remain available here.'**
+  String get socialAlertPreviewNoPermissionBody;
+
+  /// No description provided for @socialAlertPreviewExpiredTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Preview no longer available'**
+  String get socialAlertPreviewExpiredTitle;
+
+  /// No description provided for @socialAlertPreviewExpiredBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The encrypted preview has expired or was not stored for this alert. Alert details and the conversation guide remain saved here.'**
+  String get socialAlertPreviewExpiredBody;
+
+  /// No description provided for @socialAlertUnavailableTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Alert unavailable'**
+  String get socialAlertUnavailableTitle;
+
+  /// No description provided for @socialAlertUnavailableBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This alert could not be found. Open Alerts to review recent activity.'**
+  String get socialAlertUnavailableBody;
+
+  /// No description provided for @socialAlertViewAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All alerts'**
+  String get socialAlertViewAll;
 }
 
 class _AppLocalizationsDelegate
