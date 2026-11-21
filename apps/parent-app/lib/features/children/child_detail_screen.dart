@@ -289,15 +289,26 @@ class _OverviewTab extends ConsumerWidget {
                           icon: const Icon(Icons.lock_open, size: 18),
                           label: Text(l10n.unlock),
                         ),
-                        TextButton.icon(
-                          onPressed: () => _sendCommand(context, ref, d, 'pause'),
-                          icon: const Icon(Icons.pause_circle, size: 18),
-                          label: Text(l10n.pause),
+                        // #969: a command that is queued but unconfirmed must not look idle. The pause/resume
+                        // controls are the two that leave a parent wondering whether anything happened, because
+                        // the POST answers `{status: pending}` before the handset has seen it.
+                        _PendingAwareControl(
+                          deviceId: d.id,
+                          command: 'pause',
+                          builder: (waiting) => TextButton.icon(
+                            onPressed: waiting ? null : () => _sendCommand(context, ref, d, 'pause'),
+                            icon: const Icon(Icons.pause_circle, size: 18),
+                            label: Text(l10n.pause),
+                          ),
                         ),
-                        TextButton.icon(
-                          onPressed: () => _sendCommand(context, ref, d, 'resume'),
-                          icon: const Icon(Icons.play_circle, size: 18),
-                          label: Text(l10n.resume),
+                        _PendingAwareControl(
+                          deviceId: d.id,
+                          command: 'resume',
+                          builder: (waiting) => TextButton.icon(
+                            onPressed: waiting ? null : () => _sendCommand(context, ref, d, 'resume'),
+                            icon: const Icon(Icons.play_circle, size: 18),
+                            label: Text(l10n.resume),
+                          ),
                         ),
                         TextButton.icon(
                           onPressed: () => _toggleInternet(context, ref, childId, internetPaused, d),
@@ -341,6 +352,43 @@ class _OverviewTab extends ConsumerWidget {
 /// Compact latest-command line on a device card. It reports the durable
 /// queue's state; a pending or delivered-but-unacked command is never called
 /// "sent".
+/// #969: a control whose command is queued but not yet confirmed by the handset says so, instead of looking
+/// idle. `pending` means the server has the row; `delivered` means the phone fetched it and has not acted yet;
+/// only `acked` (or a refusal) means the parent knows the outcome.
+///
+/// The control is rebuilt rather than wrapped, because a wrapper cannot disable it: `IgnorePointer` stops touch
+/// but leaves the button focusable and enabled to TalkBack, VoiceOver, Switch Access and the keyboard's
+/// Enter/Space (Antigravity's F2, 7049793348). Passing `waiting` to the builder lets the button itself take
+/// `onPressed: null`, which is the one state every input method honours.
+///
+/// Only the **newest** command of this type decides. Scanning the whole history would keep the control blocked
+/// by an old row that never settled while a newer one had already been acknowledged (F1).
+class _PendingAwareControl extends ConsumerWidget {
+  final String deviceId;
+  final String command;
+  final Widget Function(bool waiting) builder;
+  const _PendingAwareControl({required this.deviceId, required this.command, required this.builder});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final history = ref.watch(deviceCommandHistoryProvider(deviceId)).valueOrNull ?? const <DeviceCommand>[];
+    DeviceCommand? newest;
+    for (final c in history) {
+      if (c.type != command) continue;
+      final after = newest?.createdAt;
+      if (newest == null || after == null || (c.createdAt?.isAfter(after) ?? false)) newest = c;
+    }
+    final waiting = newest != null && (newest.status == 'pending' || newest.status == 'delivered');
+    final button = builder(waiting);
+    if (!waiting) return button;
+    return Tooltip(
+      key: ValueKey('controlPending-$command'),
+      message: context.l10n.statusPending,
+      child: button,
+    );
+  }
+}
+
 class _DeviceDeliverySummary extends ConsumerWidget {
   final String deviceId;
   final String deviceModel;
