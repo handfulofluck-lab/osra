@@ -259,6 +259,7 @@ class AgentSettings @Inject constructor(
         deviceIdCache = null
         childIdCache = null
         tokenLoaded = true // loaded, and known to be null
+        com.familyshield.agent.vpn.VpnState.clearFilterLoss(context)
     }
 
     /**

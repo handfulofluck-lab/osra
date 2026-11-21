@@ -168,6 +168,31 @@ jobs:
           grep -q 'cleartextTrafficPermitted="true"' app/src/debug/res/xml/network_security_config.xml \
             || { echo "::error::debug cleartext is not on"; exit 1; }
           echo "debug cleartext on (dev servers)"
+      - name: Release APKs carry no debug test-chat capture filter
+        run: |
+          for FLAVOUR in play full; do
+            REL_APK="app/build/outputs/apk/$FLAVOUR/release/app-$FLAVOUR-release.apk"
+            DBG_APK="app/build/outputs/apk/$FLAVOUR/debug/app-$FLAVOUR-debug.apk"
+            [ -f "$REL_APK" ] || { echo "::error::$REL_APK is missing"; exit 1; }
+            [ -f "$DBG_APK" ] || { echo "::error::$DBG_APK is missing"; exit 1; }
+            python3 - "$REL_APK" "$DBG_APK" <<'PY'
+          import sys, zipfile
+          needle = b"osra_test_chat_filter"
+          def count_hits(apk):
+              with zipfile.ZipFile(apk) as z:
+                  return sum(z.read(n).count(needle) for n in z.namelist() if n.endswith(".dex"))
+          rel_apk, dbg_apk = sys.argv[1], sys.argv[2]
+          rel_hits = count_hits(rel_apk)
+          dbg_hits = count_hits(dbg_apk)
+          print(f"{rel_apk}: hits={rel_hits}; {dbg_apk}: positive-control hits={dbg_hits}")
+          if rel_hits != 0:
+              print(f"::error::{rel_apk} contains debug test-chat filter sentinel ({rel_hits} hits)")
+              sys.exit(1)
+          if dbg_hits < 1:
+              print(f"::error::{dbg_apk} missing debug test-chat filter sentinel (positive control failed)")
+              sys.exit(1)
+          PY
+          done
       # RELEASING.md R4 counts on these artefacts, so an empty upload fails the job instead of warning.
       - uses: actions/upload-artifact@v4
         with:

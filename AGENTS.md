@@ -13,7 +13,7 @@ principle survives every re-cut, enforced at the merge (§6.5).
 
 | Agent | Role | May do | Must not do |
 |---|---|---|---|
-| **Kimi Code** (development lead) | Implements features and fixes; owns `main` and releases | Edit application code, tests, CI and docs; open and **merge** PRs (§6.5); tag and prepare releases | Merge unverified work, **including their own**; merge with a red gate; push to `main` (§6); act on a store account, entitlement or key |
+| **Kimi Code** (development lead) | Implements features and fixes; owns `main` and releases | Edit application code, tests, CI and docs; open and **merge** PRs (§6.5); tag and prepare releases | Merge unverified work, **including their own**; merge with a red gate; push to `main` (§6); act on a store account, entitlement or key (one exception: the AWS backup path in §6.6 item 7) |
 | **Claude** (architecture + testing, **team coordinator** from 2026-10-23) | Owns architecture decisions and **all testing**: runs the gates, tests PR claims, runs the hardware rows, with a detailed fix for every finding (§12). Coordinates the team: assigns members' tasks and is the one point of contact for technical questions | Decide architecture and record it as an ADR; review designs and diffs against their roadmap row; re-run every gate on a branch; run hardware rows on the leased phone (§9); verify TR rows and sign `Verified-sha:`; write tests, checklists, harnesses and test requests; assign and schedule members' work | Merge; push to `main`; write product code; verify its own PR; change the code under test to make a claim true; weaken or delete a failing check |
 | **Antigravity** (Gemini 4 Carbon; inactive 2026-10-19 to 2026-11-14) | **Senior member from 2026-11-14 18:01Z** (maintainer's decision card, #617): same rank as Fable for cyber security and complex/critical tasks; R3 security key (§6.6); security reviews, threat models, hard root causes, independent ADR reviews. Start-here #786 | Review and verify any PR it did not author; sign `Verified-sha:` as `— Antigravity`; open PRs from `antigravity/` branches; report exploitable findings privately (§4) | Merge or switch on auto-merge for others' PRs; touch AWS (it goes through Claude, or Kimi standing in), store accounts, keys or secrets; use the physical test phones |
 | **Hydrogen** (Gemini 4 Hydrogen, from 2026-11-14) | Code reviewer and tester, plus roles Claude assigns: cross-family verification with planted faults, test backfill, automated child-escape rows, shadow after-merge checks. Start-here #785 | Review and verify any PR it did not author; sign `Verified-sha:` as `— Hydrogen`; open PRs from `hydrogen/` branches | Merge or switch on auto-merge for others' PRs; touch AWS, store accounts, keys or secrets; use the physical test phones; give the R3 security key |
@@ -393,14 +393,17 @@ different AI model family; and GitHub auto-merge, which merges the moment every 
 | Moonshot | K31 (`— K31`), K31-Mac (`— K31-Mac`) |
 | Google Carbon | Antigravity (`— Antigravity`; Gemini 4 Carbon) |
 | Google Hydrogen | Hydrogen (`— Hydrogen`; Gemini 4 Hydrogen) |
+| Google Neon | Neon (`— Neon`; Gemini) |
 | OpenAI | Codex (`— Codex`; ChatGPT 6.1, from 2026-11-17 16:19 UTC, #617) |
 
 The two Google models count as two families (maintainer, 2026-11-14 17:58Z: "different models completely and can sign
 their work but not preferably"): Antigravity and Hydrogen may verify each other's PRs, but Team collaboration sync picks
-a verifier from another vendor first when one is free within the claim timer.
+a verifier from another vendor first when one is free within the claim timer. For the cross-family check,
+Neon shares a review family with each of Antigravity and Hydrogen, in both directions. Neon signs as an ordinary
+verifier on eligible PRs. [Coordination ruling](https://github.com/handfulofluck-lab/osra/issues/50#issuecomment-7043472688) · [Onboarding confirmation](https://github.com/handfulofluck-lab/osra/issues/50#issuecomment-7049371235)
 
 **Branch prefix names the author:** `kimi/`, `claude/` (also `qa/`, `verify/`), `fable/`, `ahmed/`, `k31/`,
-`k31mac/`, `antigravity/`, `hydrogen/`, `codex/`. Every new branch uses its author's prefix. A branch with none of these fails
+`k31mac/`, `antigravity/`, `hydrogen/`, `neon/`, `codex/`. Every new branch uses its author's prefix. A branch with none of these fails
 the gate, unless it carries a Kimi-authored commit (read as Kimi's, the convention before 13 Nov) or is one of the five
 unprefixed branches open on 14 Nov (`LEGACY_UNPREFIXED` in the policy script, read as Kimi's until they merge).
 The commit-email escape is only as strong as the committer's honesty, so it is temporary: by **1 Dec 2026** (before
@@ -494,6 +497,12 @@ When a Bureau authors a user-visible PR itself, its line cites the maintainer's 
 7. **Unchanged:** release security gates #630 to #637 are signed `Security-signoff:` by Ahmed alone and only the
    maintainer overrides them in writing; K31, K31-Mac and Kimi do no AWS, store, secret or account work; Claude runs
    the after-merge check on every merge.
+   **One exception (Karim's decision of 2026-11-14, as Claude recorded it in #617 row 6878976334):** Kimi Code has
+   the AWS API MCP server (`aws-api-osra`, short-lived `osra-production` role sessions, no stored key of its own) as
+   a **backup path, used only when Karim asks Kimi directly**. Under it: read-only queries are allowed; every
+   change goes through Terraform only (plan to a file, read it, apply exactly that file), never the console or a
+   one-off write call; no credential is printed, copied or created. Everyday production work stays with the
+   production-backend thread.
 
 **Honest limit, as in §6.4:** one shared account means the gate checks the name in a signature, not who typed it.
 Team collaboration sync audits each signature against the signer's own session; forging another member's name is a

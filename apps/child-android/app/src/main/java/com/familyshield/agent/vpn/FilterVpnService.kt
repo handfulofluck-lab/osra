@@ -10,6 +10,7 @@ import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.VpnService
 import android.os.Build
+import android.os.Handler
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import com.familyshield.agent.R
@@ -72,6 +73,9 @@ class FilterVpnService : VpnService() {
     private val visitFlusherStarted = java.util.concurrent.atomic.AtomicBoolean(false)
 
     private var tun: ParcelFileDescriptor? = null
+    // A failed re-mode can close the old descriptor before Android delivers its revocation callback.
+    private val hadEstablishedTunnel = AtomicBoolean(false)
+    private val lifecycleHandler by lazy { Handler(mainLooper) }
     private var mode: String = MODE_DNS
     private val running = AtomicBoolean(false)
     private val generation = java.util.concurrent.atomic.AtomicInteger(0)
@@ -87,8 +91,15 @@ class FilterVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_STOP -> { stopTunnel(); stopSelf(); return START_NOT_STICKY }
+            ACTION_STOP -> {
+                hadEstablishedTunnel.set(false)
+                stopTunnel()
+                VpnState.clearFilterLoss(this)
+                stopSelf()
+                return START_NOT_STICKY
+            }
             ACTION_RELOAD -> { reloadConfig(); return START_STICKY }
+            ACTION_FLUSH_VISITS -> { flushSiteVisits(); return START_STICKY }
         }
         val wanted = intent?.getStringExtra(EXTRA_MODE) ?: VpnState.mode(this)
         startForegroundCompat()
@@ -102,15 +113,23 @@ class FilterVpnService : VpnService() {
     }
 
     override fun onRevoke() {
-        // Another VPN app took the slot, or the child disconnected us from Settings › VPN: tell the parent.
-        Log.w(TAG, "VPN revoked")
-        VpnState.setRevokedAt(this, System.currentTimeMillis())
-        TamperAlertWorker.enqueue(this, TamperAlertWorker.TYPE_VPN_REVOKED)
-        stopTunnel()
-        stopSelf()
+        // Android can call this off the main thread. Serialize with start, re-mode and stop.
+        lifecycleHandler.post {
+            Log.w(TAG, "VPN revoked")
+            try {
+                if (VpnState.recordFilterLoss(this, settings, consent, hadEstablishedTunnel.getAndSet(false))) {
+                    TamperAlertWorker.enqueue(this, TamperAlertWorker.TYPE_VPN_REVOKED)
+                }
+            } finally {
+                stopTunnel()
+                stopSelf()
+            }
+        }
     }
 
     override fun onDestroy() {
+        // A system revoke can already be queued on the main looper. Keep this instance's
+        // established latch until that callback consumes it or an explicit stop clears it.
         stopTunnel()
         scope.cancel()
         workers.shutdownNow()
@@ -185,13 +204,14 @@ class FilterVpnService : VpnService() {
         }
         tun = fd
         VpnState.setEstablished(this, true)
-        VpnState.setRevokedAt(this, 0L)
         running.set(true)
         // #234: only now is there a tunnel. Set after the fd exists, never before, so the dispatcher's
         // wait cannot be satisfied by a service that failed to establish.
         tunnelMode = mode
         val gen = generation.incrementAndGet()
         pump = Thread({ pumpLoop(fd, gen) }, "osra-dns-sinkhole-$gen").also { it.isDaemon = true; it.start() }
+        hadEstablishedTunnel.set(true)
+        VpnState.clearFilterLoss(this)
         Log.i(TAG, "tunnel up, mode=$mode")
     }
 
@@ -253,7 +273,13 @@ class FilterVpnService : VpnService() {
                         DnsMessage.buildSink(query, q)
                     }
                 }
-                DnsFilterPolicy.Action.REWRITE -> rewrite(query, q, d.target!!)
+                DnsFilterPolicy.Action.REWRITE -> {
+                    // #830 row 5: SafeSearch and YouTube Restricted Mode are enabled by default for every child,
+                    // so Google, Bing, DuckDuckGo and YouTube lookups take REWRITE rather than FORWARD. Record the
+                    // queried host (gated by SiteVisitGate); the CNAME target stays excluded by SiteVisitGate.
+                    recordSiteVisit(q.name, blocked = false)
+                    rewrite(query, q, d.target!!)
+                }
             }
         }
         if (reply == null) return
@@ -474,7 +500,7 @@ class FilterVpnService : VpnService() {
          * dozen names; [SITE_VISIT_FLUSH_MS] bounds how long a name waits, and [SITE_VISIT_BATCH_MAX] is
          * the cap the server also enforces.
          */
-        private const val SITE_VISIT_FLUSH_MS = 60_000L
+        private const val SITE_VISIT_FLUSH_MS = 15_000L
         private const val SITE_VISIT_BATCH_MAX = 20
         /**
          * The mode of the tunnel that is **actually established**, or null when there is none.
@@ -493,6 +519,7 @@ class FilterVpnService : VpnService() {
         const val MODE_SINKHOLE_ALL = "sinkhole_all"
         const val ACTION_STOP = "com.familyshield.agent.vpn.STOP"
         const val ACTION_RELOAD = "com.familyshield.agent.vpn.RELOAD"
+        const val ACTION_FLUSH_VISITS = "com.familyshield.agent.vpn.FLUSH_VISITS"
         const val EXTRA_MODE = "mode"
         private const val TUN_ADDR = "10.111.222.1"
         private const val TUN_ADDR6 = "fd00:6f73:7261::1"
@@ -516,6 +543,12 @@ class FilterVpnService : VpnService() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(i) else context.startService(i)
         }
 
+        /** Flushes any queued site visits when the screen turns off (#830 row 5); no-op when stopped. */
+        fun flushIfRunning(context: Context) {
+            if (!isRunning) return
+            runCatching { context.startService(Intent(context, FilterVpnService::class.java).setAction(ACTION_FLUSH_VISITS)) }
+        }
+
         /**
          * Re-applies the cached rules to the running filter. [startIfStopped] is false where the caller
          * may not adopt "a rule change revives the VPN" as a policy: the `rules_updated` command path
@@ -529,6 +562,7 @@ class FilterVpnService : VpnService() {
         }
 
         fun stop(context: Context) {
+            VpnState.clearFilterLoss(context)
             if (!isRunning) return
             context.startService(Intent(context, FilterVpnService::class.java).setAction(ACTION_STOP))
         }

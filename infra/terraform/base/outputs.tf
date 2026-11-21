@@ -104,3 +104,15 @@ output "redis_url_secret_arn" {
   description = "Secret holding REDIS_URL with the AUTH token (null unless secrets_out_of_band)."
   value       = one(aws_secretsmanager_secret.redis_url[*].arn)
 }
+
+output "staging_qa_analyzer_repository_url" {
+  description = "Private analyzer ECR URL for the staging QA publisher."
+  value       = try(aws_ecr_repository.staging_qa_analyzer[0].repository_url, "")
+  sensitive   = true
+}
+
+output "staging_qa_analyzer_publish_role_arn" {
+  description = "Dedicated OIDC role reference for the staging QA analyzer publisher."
+  value       = try(aws_iam_role.staging_qa_analyzer_publish[0].arn, "")
+  sensitive   = true
+}

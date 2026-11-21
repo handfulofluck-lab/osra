@@ -83,6 +83,14 @@ timestamp), dashboard, map-sheet, call/SMS and bonus-time widgets with an Arabic
 Removing any one of the seven `ltrIsolate` calls must turn its corresponding row red. These are widget
 tests, not a phone run; no device claim or API access is used.
 
+For rules save compatibility (#951), run
+`flutter test test/rules_editor_limits_test.dart test/content_safety_test.dart test/installed_apps_picker_test.dart`
+from `apps/parent-app`. A saved, overlapping school schedule must survive an unrelated app edit.
+The editor sends a PATCH with the changed fields. A newly edited school window is still sent in
+full for server validation. App and YouTube edits leave the rest of the ruleset in place, and
+an empty school-day list stays empty on load. On staging, save and read back one app, web and
+YouTube edit on the signed parent app before marking the handset row passed.
+
 For Arabic and Latin list separators, run `flutter test test/localized_list_test.dart` from
 `apps/parent-app` (#794). Its nine tests cover the shared splitter and real Arabic-locale widgets for
 allowed/blocked domains, routine blocked/allowed apps and digest recipients. Each field saves both
@@ -399,6 +407,11 @@ off, the read route still answers but returns `counting: false` and `withinBudge
 
 | `main-guard.yml` | Detects a commit on `main` that did not arrive through a pull request |
 
+The verified-gate policy self-test checks Neon’s `neon/` author prefix and `— Neon` ordinary signature.
+It covers both directions of the cross-family restriction with Antigravity and Hydrogen, preserves their
+existing cross-family pairing, and checks that Neon cannot supply an R3 security key. The signer-fixture
+check accepts Neon’s signature from the shared agent account and rejects it from other accounts.
+
 The Mac phase1 tooling has a fake-only suite beside the org-audit tests:
 `python3 -B -m unittest discover -s infra/terraform/org-audit/tests -p 'test_agent*.py'`.
 The CI setup disables the Terraform output wrapper: isolated test environments intentionally omit
@@ -677,6 +690,17 @@ that it launches with push (no push SDK is in this build); anything about signin
 Family Controls or TestFlight. Those need an Apple account, and roadmap 5.1 / 5.5 / 5.6 carry them.
 
 ## 5. Hardware verification (physical device)
+
+### Stop a parent-initiated ring (#866)
+
+The parent can choose **Stop ringing** beside Ring on a child device card or in the
+map callout. The action sends a stop to the selected device. The confirmation says
+the command is queued while the device has not acknowledged it.
+
+The widget rows in `apps/parent-app/test/stop_ring_test.dart` load an acknowledged
+ring on a synthetic device. They cover the two parent entry points and the queued
+message. During a scheduled handset check, confirm that the selected phone stops
+and that its command history records the acknowledgement.
 
 ### 5.0 One lease at a time (binding — `AGENTS.md` §9)
 

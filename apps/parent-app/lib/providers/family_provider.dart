@@ -5,6 +5,7 @@ import 'dart:math' as math;
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide Family;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../api/models.dart';
@@ -59,29 +60,237 @@ final alertsProvider = FutureProvider.family<AlertsPage, AlertFilter>((ref, filt
   return AlertsPage.fromJson(res.data);
 });
 
-/// Unacknowledged alert count for the dashboard badge.
-final unacknowledgedCountProvider = FutureProvider<int>((ref) async {
+/// Snapshot of unacknowledged alerts returned by `GET /v1/alerts?ack=false`.
+class UnacknowledgedAlertsSummary {
+  final int total;
+  final List<Alert> items;
+
+  const UnacknowledgedAlertsSummary({
+    required this.total,
+    this.items = const [],
+  });
+}
+
+/// Server-side unacknowledged alerts summary (`GET /v1/alerts?ack=false`).
+final unacknowledgedAlertsProvider = FutureProvider<UnacknowledgedAlertsSummary>((ref) async {
   final api = ref.watch(apiClientProvider);
   final Response<dynamic> res;
   try {
-    res = await api.raw.get('/v1/alerts', queryParameters: {'ack': 'false', 'limit': 1});
+    res = await api.raw.get('/v1/alerts', queryParameters: {'ack': 'false', 'limit': 50});
   } on DioException catch (e) {
     // ADR-0014 amendment, decision 7: a guardian whose invite lacks `alerts` is refused this read, and
     // that must mean "no badge", not a dashboard error. Any other failure still surfaces as before.
-    if (ReadPermissionRequired.from(e) != null) return 0;
+    if (ReadPermissionRequired.from(e) != null) return const UnacknowledgedAlertsSummary(total: 0);
     rethrow;
   }
   final data = res.data;
   if (data is Map) {
-    final meta = data['meta'];
-    // NOTE: prefer meta.total when present; fall back to items.length.
-    if (meta is Map && meta['total'] != null) return (meta['total'] as num).toInt();
-    if (data['items'] is List) return (data['items'] as List).length;
-    if (data['total'] != null) return (data['total'] as num).toInt();
+    final map = Map<String, dynamic>.from(data);
+    final page = AlertsPage.fromJson(map);
+    final meta = map['meta'];
+    final total = meta is Map && meta['total'] != null
+        ? (meta['total'] as num).toInt()
+        : page.total;
+    return UnacknowledgedAlertsSummary(total: total, items: page.items);
   } else if (data is List) {
-    return data.length;
+    final items = [
+      for (final raw in data)
+        if (raw is Map) Alert.fromJson(Map<String, dynamic>.from(raw)),
+    ];
+    return UnacknowledgedAlertsSummary(total: items.length, items: items);
   }
-  return 0;
+  return const UnacknowledgedAlertsSummary(total: 0);
+});
+
+/// Unacknowledged alert count on the server (keeps explicit acknowledgement count intact).
+final unacknowledgedCountProvider = FutureProvider<int>((ref) async {
+  final summary = await ref.watch(unacknowledgedAlertsProvider.future);
+  return summary.total;
+});
+
+/// `shared_preferences` key for which unacknowledged alerts the parent has
+/// already viewed by opening the Notifications feed (#936).
+const kAlertsSeenStateKey = 'alerts_seen_state_v1';
+
+/// Client-side seen state for the dashboard Notifications bell (#936).
+/// Viewing the feed clears the bell badge while leaving server `acknowledged`
+/// untouched for explicit incident acknowledgement.
+class AlertsSeenState {
+  final bool hasViewedFeed;
+  final int seenUnackedBaseline;
+  final Map<String, int> seenVersions;
+
+  const AlertsSeenState({
+    this.hasViewedFeed = false,
+    this.seenUnackedBaseline = 0,
+    this.seenVersions = const {},
+  });
+
+  static const empty = AlertsSeenState();
+
+  factory AlertsSeenState.fromJson(Map<String, dynamic> json) {
+    final rawVersions = json['s'];
+    final versions = <String, int>{};
+    if (rawVersions is Map) {
+      for (final entry in rawVersions.entries) {
+        final v = entry.value;
+        if (entry.key is String && v is num) {
+          versions[entry.key as String] = v.toInt();
+        }
+      }
+    }
+    return AlertsSeenState(
+      hasViewedFeed: json['v'] == true,
+      seenUnackedBaseline: (json['b'] as num?)?.toInt() ?? 0,
+      seenVersions: versions,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'v': hasViewedFeed,
+        'b': seenUnackedBaseline,
+        's': seenVersions,
+      };
+}
+
+class AlertsSeenNotifier extends StateNotifier<AlertsSeenState> {
+  AlertsSeenNotifier() : super(AlertsSeenState.empty);
+
+  bool _disposed = false;
+  bool _userUpdated = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
+  Future<void> load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(kAlertsSeenStateKey);
+      if (raw == null || raw.isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+      final saved = AlertsSeenState.fromJson(Map<String, dynamic>.from(decoded));
+      if (!_disposed && !_userUpdated) state = saved;
+    } catch (_) {
+      // Missing prefs mock in isolated tests falls back to in-memory state.
+    }
+  }
+
+  Future<void> _persist(AlertsSeenState next) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(kAlertsSeenStateKey, jsonEncode(next.toJson()));
+    } catch (_) {
+      // Best-effort persistence; in-memory state already reflects the action.
+    }
+  }
+
+  /// Marks all currently loaded feed items (and any fetched `ack=false` snapshot)
+  /// as seen after page 1 of `/alerts` completes cleanly.
+  Future<void> markFeedViewed(
+    Iterable<Alert> loadedItems, {
+    int? unackedTotalSnapshot,
+    Iterable<Alert>? unackedItemsSnapshot,
+  }) async {
+    _userUpdated = true;
+    final merged = Map<String, int>.from(state.seenVersions);
+    for (final a in loadedItems) {
+      if (a.acknowledged) {
+        merged.remove(a.id);
+      } else {
+        final prev = merged[a.id] ?? 0;
+        if (a.attemptCount > prev) merged[a.id] = a.attemptCount;
+      }
+    }
+    if (unackedItemsSnapshot != null) {
+      for (final a in unackedItemsSnapshot) {
+        if (!a.acknowledged) {
+          final prev = merged[a.id] ?? 0;
+          if (a.attemptCount > prev) merged[a.id] = a.attemptCount;
+        }
+      }
+    }
+    final pageUnackedCount = loadedItems.where((a) => !a.acknowledged).length;
+    final baseline = unackedTotalSnapshot ?? pageUnackedCount;
+    final next = AlertsSeenState(
+      hasViewedFeed: true,
+      seenUnackedBaseline: baseline,
+      seenVersions: merged,
+    );
+    state = next;
+    await _persist(next);
+  }
+
+  /// Adjusts seen tracking when the parent explicitly acknowledges [alertId]
+  /// so the count-only fallback stays aligned with the decremented server total.
+  Future<void> markAcknowledged(String alertId) async {
+    _userUpdated = true;
+    final merged = Map<String, int>.from(state.seenVersions)..remove(alertId);
+    final nextBaseline = state.seenUnackedBaseline > 0 ? state.seenUnackedBaseline - 1 : 0;
+    final next = AlertsSeenState(
+      hasViewedFeed: state.hasViewedFeed,
+      seenUnackedBaseline: nextBaseline,
+      seenVersions: merged,
+    );
+    state = next;
+    await _persist(next);
+  }
+
+  Future<void> clear() async {
+    _userUpdated = true;
+    state = AlertsSeenState.empty;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(kAlertsSeenStateKey);
+    } catch (_) {}
+  }
+}
+
+final alertsSeenProvider = StateNotifierProvider<AlertsSeenNotifier, AlertsSeenState>((ref) {
+  final notifier = AlertsSeenNotifier();
+  notifier.load();
+  ref.listen(authProvider, (prev, next) {
+    if ((prev?.isAuthenticated ?? false) && !next.isAuthenticated) {
+      notifier.clear();
+    }
+  });
+  return notifier;
+});
+
+/// Computes how many unacknowledged alerts have not yet been viewed on `/alerts` (#936).
+int computeUnseenAlertCount(
+  UnacknowledgedAlertsSummary summary,
+  AlertsSeenState seen,
+) {
+  if (summary.total <= 0) return 0;
+  if (!seen.hasViewedFeed) return summary.total;
+  if (summary.items.isNotEmpty) {
+    var unseenInPage = 0;
+    for (final alert in summary.items) {
+      if (alert.acknowledged) continue;
+      final seenAttempt = seen.seenVersions[alert.id];
+      if (seenAttempt == null || alert.attemptCount > seenAttempt) {
+        unseenInPage++;
+      }
+    }
+    final coveredBaseline =
+        summary.items.length > seen.seenUnackedBaseline ? summary.items.length : seen.seenUnackedBaseline;
+    final overflow = summary.total > summary.items.length ? summary.total - coveredBaseline : 0;
+    return unseenInPage + (overflow > 0 ? overflow : 0);
+  }
+  final delta = summary.total - seen.seenUnackedBaseline;
+  return delta > 0 ? delta : 0;
+}
+
+/// Displayed bell badge count on the dashboard (#936): cleared when `/alerts`
+/// loads cleanly, preserved on feed failure, and incremented on later alerts.
+final alertsBadgeCountProvider = Provider<AsyncValue<int>>((ref) {
+  final summaryAsync = ref.watch(unacknowledgedAlertsProvider);
+  final seen = ref.watch(alertsSeenProvider);
+  return summaryAsync.whenData((summary) => computeUnseenAlertCount(summary, seen));
 });
 
 /// RuleSet for one child (`GET /v1/rules/:childId`).
@@ -230,7 +439,10 @@ class RiverpodRealtimeEffects implements RealtimeEffects {
   void invalidateAlerts() => _ref.invalidate(alertsProvider);
 
   @override
-  void invalidateUnacknowledgedCount() => _ref.invalidate(unacknowledgedCountProvider);
+  void invalidateUnacknowledgedCount() {
+    _ref.invalidate(unacknowledgedAlertsProvider);
+    _ref.invalidate(unacknowledgedCountProvider);
+  }
 
   @override
   void invalidateFamily() => _ref.invalidate(familyProvider);

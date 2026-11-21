@@ -394,6 +394,8 @@ Map<String, FakeRoute> standardRoutes({
     'GET /v1/rules/child-2': (_) => ruleSetPayload('child-2', blockedCategories: blockedCategories),
     'PUT /v1/rules/child-1': (_) => {'ok': true},
     'PUT /v1/rules/child-2': (_) => {'ok': true},
+    'PATCH /v1/rules/child-1': (_) => {'ok': true},
+    'PATCH /v1/rules/child-2': (_) => {'ok': true},
     // Roadmap 3.4: the Rules-editor app picker reads the child's device inventories.
     'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(),
     'GET /v1/devices/dev-2/apps': (_) => installedAppsPayload(apps: [installedAppJson('com.example.game', 'Game')]),
