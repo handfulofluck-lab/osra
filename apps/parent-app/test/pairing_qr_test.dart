@@ -335,7 +335,9 @@ void main() {
           find.text('يطلب هاتف سام الإقران. اسمح به فقط إذا كان هو الهاتف الذي أمامك.'),
           findsOneWidget);
       expect(find.text('رفض'), findsOneWidget);
-      expect(find.text('سماح'), findsOneWidget);
+      // #929 (Arabic Language Bureau): the Allow label became «السماح» — the word Android itself
+      // uses — so this pin moves with the decision rather than the decision moving to the pin.
+      expect(find.text('السماح'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('pairClaimDeny')));
       await flushFakeHttp(tester);
