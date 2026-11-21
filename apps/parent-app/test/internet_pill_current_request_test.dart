@@ -18,27 +18,45 @@ void main() {
       'pause',
       ['delivered', 'pending'],
       'Pausing internet…',
+      false,
     ),
     (
       'a pause confirmed by every target',
       'pause',
       ['acked', 'acked'],
       'Internet paused',
+      false,
     ),
     (
       'a resume with one failed device',
       'resume',
       ['acked', 'failed'],
       'Resumed on some devices',
+      true,
     ),
     (
       'a resume confirmed by every target',
       'resume',
       ['acked', 'acked'],
       'Internet resumed',
+      false,
+    ),
+    (
+      'a pause with no remaining device confirmation path',
+      'pause',
+      ['unknown', 'unknown'],
+      'Pause not confirmed',
+      true,
+    ),
+    (
+      'a resume recorded with no paired devices',
+      'resume',
+      <String>[],
+      'Resume not confirmed',
+      true,
     ),
   ]) {
-    final (description, action, statuses, ui) = row;
+    final (description, action, statuses, ui, showsDelivery) = row;
     testWidgets(description, (tester) async {
       tester.view.physicalSize = const Size(320, 800);
       tester.view.devicePixelRatio = 1;
@@ -65,7 +83,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text(ui), findsOneWidget);
       expect(tester.takeException(), isNull);
-      expect(find.text('Command delivery'), statuses.contains('failed') ? findsOneWidget : findsNothing);
+      expect(find.text('Command delivery'), showsDelivery ? findsOneWidget : findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
     });

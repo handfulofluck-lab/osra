@@ -48,9 +48,13 @@ void main() {
           InternetState.waiting);
     });
 
-    test('unknown devices alone are waiting, because nothing has happened yet', () {
+    test('unknown devices alone have no current command to acknowledge', () {
       expect(internetStateFor(action: 'pause', deviceStatuses: ['unknown', 'unknown']),
-          InternetState.waiting);
+          InternetState.partial);
+    });
+
+    test('an unknown device can coexist with an outstanding command', () {
+      expect(internetStateFor(action: 'resume', deviceStatuses: ['unknown', 'pending']), InternetState.waiting);
     });
 
     test('delivered is not confirmed: the phone fetched it, it did not act', () {
@@ -88,8 +92,11 @@ void main() {
       expect(internetStateFor(action: 'pause', deviceStatuses: ['expired']), InternetState.partial);
     });
 
-    test('no paired devices at all is waiting, never confirmed', () {
-      expect(internetStateFor(action: 'pause', deviceStatuses: const []), InternetState.waiting);
+    test('a persisted request with no paired devices is unconfirmed', () {
+      expect(
+        internetStateFor(action: 'pause', deviceStatuses: const [], hasServerRequest: true),
+        InternetState.partial,
+      );
     });
   });
 }

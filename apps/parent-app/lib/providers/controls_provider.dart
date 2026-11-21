@@ -11,7 +11,7 @@ import 'auth_provider.dart';
 final _pauseOverridesProvider = StateProvider<Map<String, bool>>((ref) => const {});
 
 class ChildInternetStatus {
-  const ChildInternetStatus({this.action, this.deviceStatuses = const []});
+  const ChildInternetStatus({this.action, this.deviceStatuses = const [], this.hasServerRequest = false});
 
   factory ChildInternetStatus.fromResponse(Object? response) {
     if (response is! Map) return const ChildInternetStatus();
@@ -20,6 +20,7 @@ class ChildInternetStatus {
       final devices = request['devices'];
       return ChildInternetStatus(
         action: request['action'] as String,
+        hasServerRequest: true,
         deviceStatuses: [
           if (devices is List)
             for (final device in devices)
@@ -33,10 +34,15 @@ class ChildInternetStatus {
 
   final String? action;
   final List<String> deviceStatuses;
+  final bool hasServerRequest;
 
   bool get paused => action == 'pause';
   bool get hasAcknowledgedDevice => deviceStatuses.contains('acked');
-  InternetState get state => internetStateFor(action: action, deviceStatuses: deviceStatuses);
+  InternetState get state => internetStateFor(
+    action: action,
+    deviceStatuses: deviceStatuses,
+    hasServerRequest: hasServerRequest,
+  );
 }
 
 /// Reads the latest child-wide request and each device's result for that request.
