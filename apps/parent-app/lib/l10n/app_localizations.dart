@@ -626,6 +626,54 @@ abstract class AppLocalizations {
   /// **'Internet'**
   String get internet;
 
+  /// No description provided for @internetPausing.
+  ///
+  /// In en, this message translates to:
+  /// **'Pausing internet…'**
+  String get internetPausing;
+
+  /// No description provided for @internetResuming.
+  ///
+  /// In en, this message translates to:
+  /// **'Resuming internet…'**
+  String get internetResuming;
+
+  /// No description provided for @internetPauseConfirmed.
+  ///
+  /// In en, this message translates to:
+  /// **'Internet paused'**
+  String get internetPauseConfirmed;
+
+  /// No description provided for @internetResumeConfirmed.
+  ///
+  /// In en, this message translates to:
+  /// **'Internet resumed'**
+  String get internetResumeConfirmed;
+
+  /// No description provided for @internetPausePartial.
+  ///
+  /// In en, this message translates to:
+  /// **'Paused on some devices'**
+  String get internetPausePartial;
+
+  /// No description provided for @internetResumePartial.
+  ///
+  /// In en, this message translates to:
+  /// **'Resumed on some devices'**
+  String get internetResumePartial;
+
+  /// No description provided for @internetPauseUnconfirmed.
+  ///
+  /// In en, this message translates to:
+  /// **'Pause not confirmed'**
+  String get internetPauseUnconfirmed;
+
+  /// No description provided for @internetResumeUnconfirmed.
+  ///
+  /// In en, this message translates to:
+  /// **'Resume not confirmed'**
+  String get internetResumeUnconfirmed;
+
   /// No description provided for @pauseInternetTitle.
   ///
   /// In en, this message translates to:
