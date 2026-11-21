@@ -89,8 +89,9 @@
 /* #602 Status screen: child name, last sync, Sync now (Bureau, approved by Karim 2026-11-12 12:55Z). */
 "status_child_name" = "Child";
 "status_last_synced" = "Last synced %@";
+"status_last_synced_now" = "Last synced just now";
 "status_never_synced" = "Not synced yet";
-"status_sync_stale" = "Not synced for %@. Check the internet connection, then tap \"Sync now\".";
+"status_sync_stale" = "Last synced %@. Check the internet connection, then tap \"Sync now\".";
 "status_sync_now" = "Sync now";
 "status_syncing" = "Syncing…";
 "status_sync_failed" = "Could not reach the server. Try again in a moment.";
