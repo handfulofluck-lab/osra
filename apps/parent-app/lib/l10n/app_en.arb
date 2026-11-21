@@ -1823,12 +1823,6 @@
       "hours": { "type": "int" }
     }
   },
-  "alertDetailSent": "Sent {when}",
-  "@alertDetailSent": {
-    "placeholders": {
-      "when": { "type": "String" }
-    }
-  },
   "alertTitleSocialConcern": "Social safety alert",
   "alertTitleGamingChat": "Gaming chat alert",
   "alertCategorySocialConcern": "Social safety",

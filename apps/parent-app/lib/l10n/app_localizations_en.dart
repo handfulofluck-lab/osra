@@ -3262,11 +3262,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String alertDetailSent(String when) {
-    return 'Sent $when';
-  }
-
-  @override
   String get alertTitleSocialConcern => 'Social safety alert';
 
   @override

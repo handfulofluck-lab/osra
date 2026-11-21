@@ -1083,7 +1083,6 @@
   "alertDetailSent": "أُرسل {when}",
   "alertDeviceRestartedBodyMinutes": "أُعيد تشغيل {device} {when}، وعاد إلى العمل بعد {minutes, plural, =0{أقل من دقيقة} =1{دقيقة} =2{دقيقتين} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}.",
   "alertDeviceRestartedBodyHours": "أُعيد تشغيل {device} {when}، وعاد إلى العمل بعد نحو {hours, plural, =1{ساعة} =2{ساعتين} few{{hours} ساعات} many{{hours} ساعة} other{{hours} ساعة}}.",
-  "alertDetailSent": "أُرسل {when}",
   "alertTitleSocialConcern": "تنبيه سلامة اجتماعية",
   "alertTitleGamingChat": "تنبيه محادثة ألعاب",
   "alertCategorySocialConcern": "السلامة الاجتماعية",

@@ -5373,12 +5373,6 @@ abstract class AppLocalizations {
   /// **'{device} restarted {when} and was back after about {hours, plural, =1{1 hour} other{{hours} hours}}.'**
   String alertDeviceRestartedBodyHours(String device, String when, int hours);
 
-  /// No description provided for @alertDetailSent.
-  ///
-  /// In en, this message translates to:
-  /// **'Sent {when}'**
-  String alertDetailSent(String when);
-
   /// No description provided for @alertTitleSocialConcern.
   ///
   /// In en, this message translates to:
