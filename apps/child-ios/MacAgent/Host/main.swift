@@ -25,14 +25,16 @@ final class Activator: NSObject, OSSystemExtensionRequestDelegate {
         let request = OSSystemExtensionRequest.activationRequest(forExtensionWithIdentifier: identifier,
                                                                  queue: .main)
         request.delegate = self
-        OSSystemExtensionRequest.submitRequest(request)
+        request.submitRequest()
     }
 
     func request(_ request: OSSystemExtensionRequest,
-                 actionForExtension identifier: String) -> OSSystemExtensionRequest.ReplacementAction {
+                 actionForReplacingExtension existing: OSSystemExtensionProperties,
+                 withExtension ext: OSSystemExtensionProperties) -> OSSystemExtensionRequest.ReplacementAction {
         // The daemon writes the policy, the extension only reads it, so replacing a running extension loses
-        // nothing: replace it rather than asking the parent to stop it first.
-        print("replace: \(identifier)")
+        // nothing: replace rather than making the parent stop it first. The signature is the protocol's own —
+        // CI's unsigned host build is what corrected my first version, which had the app-extension form.
+        print("replace: \(existing.bundleIdentifier) -> \(ext.bundleIdentifier)")
         return .replace
     }
 
