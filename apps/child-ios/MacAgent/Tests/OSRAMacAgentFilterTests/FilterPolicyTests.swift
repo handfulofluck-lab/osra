@@ -192,6 +192,19 @@ final class FilterPolicyTests: XCTestCase {
         XCTAssertEqual(p.decide(host: "c.example"), .block(reason: "category:social:c.example"))
     }
 
+    // Mutant: comparing the rule as typed against the host as asked. The server stores whatever the parent
+    // typed (`blockedDomains` is validated for length only), and a browser asks for the punycode form, so an
+    // Arabic-script rule would silently block nothing — in the first market this product is sold in.
+    func testAnArabicRuleAndThePunycodeHostAreTheSameName() {
+        let unicodeRule = policy(blocked: ["مثال.شبكة"])
+        let punycodeHost = "xn--mgbh0fb.xn--ngbc5azd"
+        XCTAssertEqual(unicodeRule.decide(host: punycodeHost), .block(reason: "blocked_domain:(unicodeRule.blockedDomains[0])"))
+
+        // And the other way round: a rule stored in punycode must match a host written in Arabic script.
+        let asciiRule = policy(blocked: [punycodeHost])
+        XCTAssertEqual(asciiRule.decide(host: "مثال.شبكة"), .block(reason: "blocked_domain:(punycodeHost)"))
+    }
+
     // A request with no host at all (a data: or file: URL) is not something a content filter blocks.
     func testAHostlessUrlIsAllowed() {
         let p = policy(blocked: ["example"], safeSearch: true)

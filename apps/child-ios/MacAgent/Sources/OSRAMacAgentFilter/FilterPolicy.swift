@@ -103,10 +103,21 @@ public struct FilterPolicy: Codable, Equatable {
 
     // MARK: - Matching
 
-    /// Lower-case, no trailing dot, no surrounding whitespace. An IPv6 literal keeps its brackets.
+    /// Lower-case, no trailing dot, no surrounding whitespace, and one encoding.
+    ///
+    /// The encoding part matters for this product: a parent in the Gulf may type a rule as `مثال.شبكة`, and the
+    /// browser asks for `xn--mgbh0fb.xn--ngbc5azd`. Those are the same name, and the server stores whatever was
+    /// typed (`services/api/src/routes/rules.ts` validates only length), so without this the block silently does
+    /// nothing. Both the rule and the host go through this one function, so whichever form Foundation produces,
+    /// the two sides agree. An IPv6 literal keeps its brackets.
     static func normalize(_ value: String) -> String {
         var name = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         while name.hasSuffix(".") { name.removeLast() }
+        guard !name.isEmpty else { return "" }
+        if name.unicodeScalars.contains(where: { !$0.isASCII }),
+           let host = URL(string: "https://\(name)")?.host {
+            name = host.lowercased()
+        }
         return name
     }
 
