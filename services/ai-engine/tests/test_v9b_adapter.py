@@ -358,3 +358,18 @@ def test_score_accepts_a_well_formed_payload_and_flags_by_threshold():
     scored = _adapter_with(payload).score("some text", "ar")
     assert scored.flagged_categories == ("grooming",)
     assert scored.verdict == "flagged"
+
+
+def test_score_refuses_a_language_it_has_no_calibration_for():
+    payload = [[{"label": label, "score": 0.1} for label in LABELS]]
+    # Mutant: fall back to any available language's thresholds -> this row goes red, and a row would be
+    # judged by another language's calibration without anyone noticing.
+    with pytest.raises(AdapterUnavailable):
+        _adapter_with(payload).score("some text", "tr")
+
+
+def test_load_thresholds_refuses_a_language_that_is_not_a_label_map(tmp_path):
+    path = tmp_path / "compare-v9b.json"
+    path.write_text(json.dumps({"thresholds": {"ar": [0.5] * len(LABELS)}}), encoding="utf-8")
+    with pytest.raises(AdapterUnavailable):
+        load_thresholds(path, sha256_file(path))
