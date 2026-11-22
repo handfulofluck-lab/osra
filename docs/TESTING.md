@@ -339,6 +339,19 @@ Six things to know before reading a failure:
   split). A row whose `provenance.split` has drifted from `eval/split.py::split_of(bank, pattern)` fails
   `test_committed_dataset_agrees_with_the_split_rule` — regenerate the dataset rather than editing it.
 
+### Staging synthetic Bedrock endpoint (plan 4.1, #962)
+
+Run `python -m pytest -q tests/test_staging_qa.py` from `services/ai-engine` to check the
+analyzer's Frankfurt HTTPS endpoint validation and the existing fixture and expiry gates. The
+environment Terraform tests check that only the armed analyzer receives the endpoint's regional
+URL and that its invocation grant is restricted to that endpoint and model.
+
+Use a separately reviewed staging plan for live verification. From the analyzer subnets, confirm
+that the regional hostname resolves to the approved endpoint interfaces and that TLS hostname
+verification succeeds. Record pass or fail without logging addresses. Use only the approved
+synthetic fixtures for inference. Capture one successful trace and evidence that unapproved or
+expired requests are rejected. The `/health` response measures process liveness.
+
 ### Notification env (Phase 2a) — all optional
 
 | Variable | Effect when set |

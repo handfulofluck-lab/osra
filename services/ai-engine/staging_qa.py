@@ -18,7 +18,10 @@ from model import _severity
 
 MODEL_ID = "openai.gpt-oss-20b-1:0"
 REGION = "eu-central-1"
-ENDPOINT = f"https://bedrock-runtime.{REGION}.amazonaws.com"
+PRIVATE_ENDPOINT_URL = re.compile(
+    r"https://vpce-[a-f0-9]+(?:-[a-z0-9]+)?\.bedrock-runtime\."
+    rf"{REGION}\.vpce\.amazonaws\.com"
+)
 APPROVED_PROMPT_SHA256 = "813e670c456b1e1dd9863be0ca186b82f18bfea8049f231c9731d2ab132578a8"
 MAX_REQUEST_BYTES = 8192
 MAX_APPROVAL_WINDOW = timedelta(hours=1)
@@ -78,13 +81,18 @@ def _test_approval() -> tuple[datetime, set[str] | None, str]:
 
 @lru_cache(maxsize=1)
 def _bedrock_client():
+    endpoint_url = os.environ.get("OSRA_STAGING_QA_BEDROCK_ENDPOINT_URL", "")
+    if not PRIVATE_ENDPOINT_URL.fullmatch(endpoint_url):
+        raise ValueError("Frankfurt Bedrock endpoint is invalid")
+
     import boto3
     from botocore.config import Config
 
     return boto3.Session().client(
         "bedrock-runtime",
         region_name=REGION,
-        endpoint_url=ENDPOINT,
+        endpoint_url=endpoint_url,
+        verify=True,
         config=Config(
             signature_version="v4",
             connect_timeout=0.35,
