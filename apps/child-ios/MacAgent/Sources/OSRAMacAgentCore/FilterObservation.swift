@@ -22,9 +22,11 @@ public enum FilterObservation {
                                 now: Date = Date(),
                                 maximumAge: TimeInterval = maximumLivenessAge) -> FilterStatus.Provider {
         guard let liveness else { return .failed }
-        // A timestamp in the future is a clock that is ahead; the file was written moments ago, so it is fresh.
-        // Only an age beyond the window makes it stale.
-        guard now.timeIntervalSince(liveness.updatedAt) <= maximumAge else { return .stopped }
+        // Age, in both directions. Older than the window is the ordinary case: the extension stopped refreshing.
+        // Further *ahead* than the window is a clock that jumped — and trusting it would keep a dead filter
+        // reading as running until wall clock caught up, which can be hours.
+        let age = now.timeIntervalSince(liveness.updatedAt)
+        guard age <= maximumAge, age >= -maximumAge else { return .stopped }
         return liveness.running ? .running : .stopped
     }
 

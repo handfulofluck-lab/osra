@@ -34,10 +34,20 @@ final class FilterObservationTests: XCTestCase {
         XCTAssertEqual(FilterObservation.provider(liveness: liveness(false, ageSeconds: 0), now: now), .stopped)
     }
 
-    // Mutant: rejecting a file whose clock is ahead, which would flap every time the extension's clock drifts.
-    func testAClockAheadIsStillFresh() {
+    // Mutant: rejecting any file whose clock is slightly ahead, which would flap every time the extension's
+    // clock drifts by seconds.
+    func testASmallClockSkewIsStillFresh() {
         let ahead = FilterLiveness(running: true, updatedAt: now.addingTimeInterval(30))
         XCTAssertEqual(FilterObservation.provider(liveness: ahead, now: now), .running)
+    }
+
+    // Mutant: trusting a file from far in the future. A clock that jumped would keep a dead filter reading as
+    // running until wall clock caught up — hours of a parent believing the Mac is filtered.
+    func testATimestampFarInTheFutureIsNotEvidence() {
+        let jumped = FilterLiveness(running: true, updatedAt: now.addingTimeInterval(6 * 3600))
+        XCTAssertEqual(FilterObservation.provider(liveness: jumped, now: now), .stopped)
+        XCTAssertEqual(FilterObservation.assess(liveness: jumped, policyLoaded: true, safeSearchRequested: false, now: now)
+            .webFilterState, "unavailable")
     }
 
     // Mutant: forgetting one of the two conditions for `ready` — running, and a policy it could read.
