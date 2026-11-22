@@ -34,8 +34,12 @@ public enum PauseSequencer {
                               filterRunning: Bool,
                               now: Date = Date()) -> Transition {
         _ = filterRunning
-        let next = PauseState(op: (current?.op ?? 0) + 1,
-                              appliedOp: current?.appliedOp ?? 0,
+        let op = (current?.op ?? 0) + 1
+        // A new operation can never be pre-applied. Without this clamp, a lost state file resets `op` to 1
+        // while `appliedOp` comes back as 0 — fine — but an `appliedOp` left over from a read half-state would
+        // make the very next pause report `applied` before the filter confirmed anything.
+        let next = PauseState(op: op,
+                              appliedOp: min(current?.appliedOp ?? 0, op - 1),
                               desired: desired,
                               updatedAt: now)
         return Transition(state: next, outcome: .pending(op: next.op))

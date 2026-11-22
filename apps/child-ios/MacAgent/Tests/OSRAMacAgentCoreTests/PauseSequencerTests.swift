@@ -80,6 +80,18 @@ final class PauseSequencerTests: XCTestCase {
         XCTAssertEqual(PauseSequencer.reconciliation(nil), .unpaused)
     }
 
+    // Mutant: carrying a stale `appliedOp` into a new operation, so a recovered state file makes the next pause
+    // read as already applied before the filter confirmed anything.
+    func testANewOperationIsNeverPreApplied() {
+        // A state that claims everything applied, then loses its operation counter to a partial read.
+        let recovered = PauseState(op: 0, appliedOp: 9, desired: .unpaused, updatedAt: now)
+        let accepted = PauseSequencer.accept(.paused, current: recovered, filterRunning: true, now: now)
+        XCTAssertEqual(accepted.state.op, 1)
+        XCTAssertEqual(accepted.state.appliedOp, 0, "the new operation cannot inherit a higher applied counter")
+        XCTAssertFalse(accepted.state.isApplied)
+        XCTAssertEqual(accepted.outcome, .pending(op: 1))
+    }
+
     // 8. Mutant: promoting a command ack into a capability claim, telling the parent pause works before the
     // signed rows have proven it.
     func testTheCapabilityStaysUnavailableWhateverTheCommandsSay() {
