@@ -209,12 +209,13 @@ run "armed_qa_analyzer_plans_only_the_private_scoped_route" {
     api_image           = "example/api:test"
     allowed_account_ids = [format("%012d", 0)]
     staging_qa_analyzer = {
-      armed               = true
-      image_digest        = "sha256:${sha256("qa-image")}"
-      frankfurt_vpc_cidr  = format("%d.%d.%d.%d/%d", 10, 40, 0, 0, 24)
-      prompt_secret_arn   = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-prompt", 0)
-      approval_secret_arn = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-approval", 0)
-      pairing_secret_arn  = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-pairing", 0)
+      armed                     = true
+      allow_synthetic_pair_text = true
+      image_digest              = "sha256:${sha256("qa-image")}"
+      frankfurt_vpc_cidr        = format("%d.%d.%d.%d/%d", 10, 40, 0, 0, 24)
+      prompt_secret_arn         = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-prompt", 0)
+      approval_secret_arn       = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-approval", 0)
+      pairing_secret_arn        = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-pairing", 0)
     }
   }
 
@@ -225,15 +226,38 @@ run "armed_qa_analyzer_plans_only_the_private_scoped_route" {
     values = {
       id = "vpce-test"
       dns_entry = [{
-        dns_name       = "vpce-test.example.internal"
+        dns_name       = "vpce-0123456789abcdef0-osratest.bedrock-runtime.eu-central-1.vpce.amazonaws.com"
         hosted_zone_id = "ZTEST"
       }]
     }
   }
 
+  override_resource {
+    target          = aws_iam_role.staging_qa_analyzer_task[0]
+    override_during = plan
+
+    values = {
+      arn = "arn:aws:iam::000000000000:role/test-analyzer-task"
+    }
+  }
+
   assert {
-    condition     = aws_vpc_endpoint.staging_qa_bedrock[0].region == "eu-central-1" && aws_vpc_endpoint.staging_qa_bedrock[0].vpc_endpoint_type == "Interface" && !one(aws_ecs_service.staging_qa_analyzer[0].network_configuration).assign_public_ip
+    condition     = aws_vpc_endpoint.staging_qa_bedrock[0].region == "eu-central-1" && aws_vpc_endpoint.staging_qa_bedrock[0].vpc_endpoint_type == "Interface" && !aws_vpc_endpoint.staging_qa_bedrock[0].private_dns_enabled && !one(aws_ecs_service.staging_qa_analyzer[0].network_configuration).assign_public_ip
     error_message = "the service stays private and the model endpoint remains in Frankfurt"
+  }
+
+  # Omitting the explicit URL or substituting the public endpoint leaves this assertion red.
+  assert {
+    condition = alltrue([
+      one([
+        for item in jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].environment
+        : item.value if item.name == "OSRA_STAGING_QA_BEDROCK_ENDPOINT_URL"
+      ]) == "https://${aws_vpc_endpoint.staging_qa_bedrock[0].dns_entry[0].dns_name}",
+      !contains([
+        for item in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : item.name
+      ], "OSRA_STAGING_QA_BEDROCK_ENDPOINT_URL"),
+    ])
+    error_message = "only the armed analyzer receives the Frankfurt endpoint's regional URL"
   }
 
   assert {
@@ -251,9 +275,31 @@ run "armed_qa_analyzer_plans_only_the_private_scoped_route" {
     error_message = "the task may invoke only GPT OSS 20B through the one Frankfurt endpoint"
   }
 
+  # Widening the endpoint policy or swapping in the execution role breaks this assertion.
+  assert {
+    condition = jsondecode(aws_vpc_endpoint.staging_qa_bedrock[0].policy).Statement == [{
+      Effect    = "Allow"
+      Principal = "*"
+      Action    = "bedrock:InvokeModel"
+      Resource  = "arn:aws:bedrock:eu-central-1::foundation-model/openai.gpt-oss-20b-1:0"
+      Condition = {
+        ArnEquals = { "aws:PrincipalArn" = aws_iam_role.staging_qa_analyzer_task[0].arn }
+      }
+    }]
+    error_message = "the endpoint admits only the analyzer task role to invoke the approved model"
+  }
+
   assert {
     condition     = one([for s in jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].secrets : s.valueFrom if s.name == "OSRA_STAGING_QA_SYSTEM_PROMPT"]) == var.staging_qa_analyzer.prompt_secret_arn && !contains([for s in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].secrets : s.name], "OSRA_STAGING_QA_SYSTEM_PROMPT")
     error_message = "only the analyzer receives a reference to the approved prompt"
+  }
+
+  assert {
+    condition = alltrue([
+      for task in [aws_ecs_task_definition.api.container_definitions, aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions] :
+      anytrue([for item in jsondecode(task)[0].environment : item.name == "OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT" && item.value == "1"])
+    ])
+    error_message = "both armed tasks must receive the same explicit synthetic pairing switch"
   }
 }
 
@@ -264,11 +310,12 @@ run "disarmed_qa_analyzer_has_no_model_or_api_access" {
     api_image           = "example/api:test"
     allowed_account_ids = [format("%012d", 0)]
     staging_qa_analyzer = {
-      image_digest        = "sha256:${sha256("qa-image")}"
-      frankfurt_vpc_cidr  = format("%d.%d.%d.%d/%d", 10, 40, 0, 0, 24)
-      prompt_secret_arn   = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-prompt", 0)
-      approval_secret_arn = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-approval", 0)
-      pairing_secret_arn  = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-pairing", 0)
+      allow_synthetic_pair_text = true
+      image_digest              = "sha256:${sha256("qa-image")}"
+      frankfurt_vpc_cidr        = format("%d.%d.%d.%d/%d", 10, 40, 0, 0, 24)
+      prompt_secret_arn         = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-prompt", 0)
+      approval_secret_arn       = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-approval", 0)
+      pairing_secret_arn        = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-pairing", 0)
     }
   }
 
@@ -293,6 +340,20 @@ run "disarmed_qa_analyzer_has_no_model_or_api_access" {
   assert {
     condition     = one([for item in jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].environment : item.value if item.name == "OSRA_STAGING_QA_ANALYZER_ENABLED"]) == "0" && length(jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].secrets) == 0
     error_message = "a disarmed analyzer has a disabled endpoint and receives no fixture secrets"
+  }
+
+  # Moving the URL outside the armed condition would give a disarmed task this setting.
+  assert {
+    condition     = !contains([for item in jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].environment : item.name], "OSRA_STAGING_QA_BEDROCK_ENDPOINT_URL")
+    error_message = "a disarmed analyzer receives no Bedrock endpoint URL"
+  }
+
+  assert {
+    condition = alltrue([
+      for task in [aws_ecs_task_definition.api.container_definitions, aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions] :
+      !contains([for item in jsondecode(task)[0].environment : item.name], "OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT")
+    ])
+    error_message = "neither task may accept synthetic pairing text while disarmed"
   }
 
   assert {

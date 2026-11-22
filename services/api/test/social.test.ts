@@ -88,12 +88,15 @@ describe("social routes", () => {
     vi.unstubAllEnvs();
   });
 
-  it("scores only the approved notification fixture and writes a model-only alert", async () => {
+  it.each([false, true])("writes a model-only notification alert (exploratory mode=%s)", async (exploratory) => {
     const fixture = "The group wants to leave one classmate out of every lunch table.";
+    const sample = exploratory ? "They agreed to leave one classmate out every day." : fixture;
+    const benign = "The window is open.";
     const deviceId = "qa-device-fixture";
     const syntheticKey = randomBytes(32).toString("hex");
     vi.stubEnv("OSRA_DEPLOYMENT_SCOPE", "staging");
     vi.stubEnv("OSRA_STAGING_QA_ANALYZER_ENABLED", "1");
+    vi.stubEnv("OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT", exploratory ? "1" : "0");
     vi.stubEnv("OSRA_STAGING_QA_DEVICE_ID", deviceId);
     vi.stubEnv("OSRA_STAGING_QA_CHILD_ID", CHILD.id);
     vi.stubEnv("OSRA_STAGING_QA_EXPIRES_AT", new Date(Date.now() + 15 * 60 * 1000).toISOString());
@@ -103,7 +106,8 @@ describe("social routes", () => {
       const request = JSON.parse(String(options.body)) as { text: string; trace_id: string };
       return { ok: true, json: async () => ({
         trace_id: request.trace_id, model: "openai.gpt-oss-20b-1:0", region: "eu-central-1",
-        flagged: true, severity: "warning", categories: { cyberbullying: 0.9, safe: 0.1 },
+        flagged: request.text !== benign, severity: request.text === benign ? "info" : "warning",
+        categories: request.text === benign ? { safe: 1 } : { cyberbullying: 0.9, safe: 0.1 },
       }) };
     });
     vi.stubGlobal("fetch", analyze);
@@ -118,19 +122,20 @@ describe("social routes", () => {
         headers: { "content-type": "application/json", ...signV2(syntheticKey, raw) }, payload: raw });
     };
     try {
-      const unapproved = await scan({ text: "Hello from the test fixture." });
-      expect(unapproved.statusCode).toBe(200);
-      expect(unapproved.json().results[0]).toMatchObject({ flagged: false });
-      expect(analyze).not.toHaveBeenCalled();
+      const harmless = await scan({ text: benign });
+      expect(harmless.statusCode).toBe(200);
+      expect(harmless.json().results[0]).toMatchObject({ flagged: false });
+      expect(prismaMock.alert.create).not.toHaveBeenCalled();
+      expect(analyze).toHaveBeenCalledTimes(exploratory ? 1 : 0);
 
-      const res = await scan({ text: fixture });
+      const res = await scan({ text: sample });
       expect(res.statusCode).toBe(200);
       expect(res.json().results[0]).toMatchObject({ flagged: true, concernTypes: ["cyberbullying"] });
-      expect(analyze).toHaveBeenCalledTimes(1);
-      const [url, options] = analyze.mock.calls[0];
+      expect(analyze).toHaveBeenCalledTimes(exploratory ? 2 : 1);
+      const [url, options] = analyze.mock.calls[exploratory ? 1 : 0];
       expect(url.href).toBe("http://ai-engine.osra-qa.internal:8000/analyze/staging-qa");
       expect(options.redirect).toBe("error");
-      expect(JSON.parse(String(options.body))).toEqual({ text: fixture, trace_id: expect.any(String) });
+      expect(JSON.parse(String(options.body))).toEqual({ text: sample, trace_id: expect.any(String) });
       expect(prismaMock.socialEvent.create).toHaveBeenCalledTimes(1);
       expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
     } finally {

@@ -77,6 +77,7 @@ resource "aws_ecs_task_definition" "api" {
           { name = "OSRA_STAGING_QA_ANALYZER_ENABLED", value = "1" },
           { name = "OSRA_STAGING_QA_ANALYZER_URL", value = "http://${local.staging_qa_dns}:8000" },
         ] : [],
+        local.staging_qa_pair_text,
         # APNs (#695). Always the production APNs endpoint: TestFlight and store builds carry
         # aps-environment=production, and a sandbox token sent there fails with BadDeviceToken. Key and team
         # ids are not secrets but stay out of the repo; they come from tfvars.
