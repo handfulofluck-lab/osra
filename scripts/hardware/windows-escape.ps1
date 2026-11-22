@@ -20,11 +20,14 @@
 #     -AllowMutating, and each one undoes what it created before reporting FAIL. Without the switch they
 #     print SKIP and say why.
 #
-# Mutants (each must turn the self-test red):
-#   - classify every non-zero exit as "refused" -> SelfTest's control row (a command that succeeds with
-#     exit 0) goes red, because the classifier would call it refused too;
-#   - drop the elevation guard -> the script would run the mutating rows as admin; SelfTest asserts the
-#     guard is consulted before any row runs.
+# Mutants (each must turn something red, named beside the check it kills):
+#   - classify every non-zero exit as "refused" -> SelfTest's PLAIN-FAILURE control goes red (a command that
+#     fails with exit 1 and no access-denied text). The exit-0 control alone did not catch this, which is why
+#     the plain-failure control exists (Hydrogen, 20:37 on #994);
+#   - drop the elevation guard -> the script would run the mutating rows as admin; SelfTest asserts the guard
+#     is consulted before any row runs;
+#   - replace `Set-Date` with a command that does not exist -> WN06 must be UNKNOWN and the run must exit 1.
+#     Before that fix it reported PASS, because any non-zero exit was taken as a refusal.
 #
 # Usage (PowerShell 5.1, ASCII, run as the child's standard account):
 #   .\windows-escape.ps1                  # OS half only, nothing that changes the machine
@@ -115,12 +118,18 @@ function Test-SelfTest {
     $refusedText = Test-Refused -ExitCode $refusedControl.ExitCode -Output $refusedControl.Output
     Write-Host ("  a command rejected for lack of access is called refused: {0} (exit {1})" -f $refusedText, $refusedControl.ExitCode)
 
+    # A non-zero exit that is NOT a refusal. Without this control, "classify every non-zero exit as refused"
+    # passes the self-test while making every row's PASS meaningless (Hydrogen, 20:37).
+    $plainFailure = Invoke-Probe -FilePath 'cmd.exe' -Arguments @('/c', 'exit 1')
+    $plainRefused = Test-Refused -ExitCode $plainFailure.ExitCode -Output $plainFailure.Output
+    Write-Host ("  a plain non-zero exit is NOT called refused: {0} (exit {1})" -f (-not $plainRefused), $plainFailure.ExitCode)
+
     $guard = [bool](Get-Command Test-Elevated -ErrorAction SilentlyContinue)
     Write-Host ("  the elevation guard exists and answers: {0}" -f $guard)
     $elevated = Test-Elevated
     Write-Host ("  this shell reports elevated={0} (the script refuses to run when this is true)" -f $elevated)
 
-    if ($okControl -and $refusedText -and $guard) {
+    if ($okControl -and $refusedText -and (-not $plainRefused) -and $guard) {
         Write-Host 'SelfTest: PASS'
         return 0
     }
@@ -151,22 +160,34 @@ if ($agent.Count -eq 0) {
         -Evidence 'no OSRA service on this host: the agent half of the row cannot be run here'
 }
 else {
-    $proc = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like 'OSRA*' })
-    if ($proc.Count -eq 0) {
+    # The claim is about the SERVICE, not the tray. A standard user can end the tray (same-user process), so
+    # killing the tray proves nothing and, worse, used to be reported PASS while its own evidence said the
+    # restart had not been observed (Hydrogen, 20:37). This row now tests the half that can be tested from an
+    # unprivileged shell: the service process cannot be ended. The tray-restart half is reported separately as
+    # NOT OBSERVED rather than being folded into a pass.
+    $service = $agent[0]
+    $query = Invoke-Probe -FilePath 'sc.exe' -Arguments @('queryex', $service.Name)
+    $match = [regex]::Match($query.Output, 'PID\s*:\s*(\d+)')
+    $servicePid = if ($match.Success) { [int]$match.Groups[1].Value } else { 0 }
+    if ($servicePid -le 0) {
         Add-Row -Id 'WN02' -Result 'SKIP' -Claim 'A standard user cannot end the service; the tray is restarted by the service' `
-            -Evidence ("service {0} present but no OSRA process is running" -f $agent[0].Name)
+            -Evidence ("service {0} reports no running PID; the agent half of the row cannot be run here" -f $service.Name)
     }
     else {
-        $kill = Invoke-Probe -FilePath 'taskkill.exe' -Arguments @('/PID', ('' + $proc[0].Id), '/F')
-        $survived = $null -ne (Get-Process -Id $proc[0].Id -ErrorAction SilentlyContinue)
-        $serviceStopped = (Get-Service -Name $agent[0].Name -ErrorAction SilentlyContinue).Status -eq 'Running'
-        if (-not $survived -and $serviceStopped) {
+        $kill = Invoke-Probe -FilePath 'taskkill.exe' -Arguments @('/PID', ('' + $servicePid), '/F')
+        $survived = $null -ne (Get-Process -Id $servicePid -ErrorAction SilentlyContinue)
+        $refused = Test-Refused -ExitCode $kill.ExitCode -Output $kill.Output
+        if ($survived -and $refused) {
             Add-Row -Id 'WN02' -Result 'PASS' -Claim 'A standard user cannot end the service; the tray is restarted by the service' `
-                -Evidence ("taskkill exit {0}; process gone; service {1} still Running (restart not yet observed)" -f $kill.ExitCode, $agent[0].Name)
+                -Evidence ("taskkill of service PID {0} refused (exit {1}); service still Running. Tray-restart half NOT OBSERVED by this script" -f $servicePid, $kill.ExitCode)
+        }
+        elseif (-not $survived) {
+            Add-Row -Id 'WN02' -Result 'FAIL' -Claim 'A standard user cannot end the service; the tray is restarted by the service' `
+                -Evidence ("service PID {0} was ended by this standard account (taskkill exit {1})" -f $servicePid, $kill.ExitCode)
         }
         else {
-            Add-Row -Id 'WN02' -Result 'FAIL' -Claim 'A standard user cannot end the service; the tray is restarted by the service' `
-                -Evidence ("taskkill exit {0}; survived={1}; service running={2}" -f $kill.ExitCode, $survived, $serviceStopped)
+            Add-Row -Id 'WN02' -Result 'UNKNOWN' -Claim 'A standard user cannot end the service; the tray is restarted by the service' `
+                -Evidence ("taskkill exit {0} within a surviving service PID {1}, but the OS did not say access denied; the probe did not test the claim" -f $kill.ExitCode, $servicePid)
         }
     }
 }
@@ -216,14 +237,17 @@ $clockMoved = [math]::Abs(($after - $before).TotalSeconds) -gt 30
 if ($clockMoved) {
     $null = Invoke-Probe -FilePath 'powershell.exe' -Arguments @('-NoProfile', '-Command', ("Set-Date -Date '{0}'" -f $before.ToString('o')))
 }
-$clockRefused = (Test-Refused -ExitCode $set.ExitCode -Output $set.Output) -or (-not $clockMoved)
-if (-not $clockMoved -and $set.ExitCode -ne 0) {
+$clockRefused = Test-Refused -ExitCode $set.ExitCode -Output $set.Output
+if (-not $clockMoved -and $clockRefused) {
     Add-Row -Id 'WN06' -Result 'PASS' -Claim 'A standard user cannot change the clock; limits and bedtime do not follow it' `
         -Evidence ("Set-Date exit {0}, clock unchanged ({1} to {2})" -f $set.ExitCode, $before.ToString('HH:mm:ss'), $after.ToString('HH:mm:ss'))
 }
 elseif (-not $clockMoved) {
+    # Non-zero exit, clock unchanged, but the OS did not say "access denied": the probe failed at something
+    # else (a typo, a missing PowerShell, a broken host). Calling that PASS is the defect Hydrogen reproduced
+    # with Set-Date-Broken, so it is UNKNOWN and the run exits 1.
     Add-Row -Id 'WN06' -Result 'UNKNOWN' -Claim 'A standard user cannot change the clock; limits and bedtime do not follow it' `
-        -Evidence 'Set-Date reported success but the clock did not move; the probe is not measuring what it thinks'
+        -Evidence ("Set-Date exited {0} without a refusal and the clock did not move; the probe did not test the claim" -f $set.ExitCode)
 }
 else {
     Add-Row -Id 'WN06' -Result 'FAIL' -Claim 'A standard user cannot change the clock; limits and bedtime do not follow it' `
@@ -243,9 +267,14 @@ try {
     $hostsRefused = $false
     $hostsEvidence = 'hosts file was writable; marker removed again, which is the failure'
 }
-catch {
+catch [System.UnauthorizedAccessException], [System.Security.SecurityException] {
     $hostsRefused = $true
     $hostsEvidence = 'hosts write refused: ' + $_.Exception.GetType().Name
+}
+catch {
+    # A different failure (disk, path, encoding) is not a refusal and must not be counted as one.
+    $hostsRefused = $false
+    $hostsEvidence = 'hosts write failed for a reason that is not a refusal: ' + $_.Exception.GetType().Name
 }
 $proxy = Invoke-Probe -FilePath 'netsh.exe' -Arguments @('winhttp', 'set', 'proxy', '127.0.0.1:9')
 $proxyRefused = Test-Refused -ExitCode $proxy.ExitCode -Output $proxy.Output
