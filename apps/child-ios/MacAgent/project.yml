@@ -75,8 +75,8 @@ targets:
     platform: macOS
     sources:
       - path: SystemExtension
-      - path: FilterExtension/Info.plist
-        buildPhase: none
+    # The checked-in plist is used as-is (no `properties` here, or XcodeGen would rewrite it): CI lints it and
+    # the system reads it, so one file has to be the truth.
     info:
       path: FilterExtension/Info.plist
     entitlements:
