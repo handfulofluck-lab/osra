@@ -21,4 +21,17 @@ final class FilterStatusTests: XCTestCase {
             XCTAssertEqual(FilterStatus(provider: provider, policyLoaded: true).pauseInternetState, "unavailable")
         }
     }
+
+    // Mutant: reporting `ready` for a filter that cannot enforce one of the family's configured rules. Codex's
+    // decision (#988 `7072593070`) is to record SafeSearch as unavailable; with no key of its own in the
+    // vocabulary, `degraded` on `web_filter` is the honest word, and silence would read as "all rules active".
+    func testASafeSearchRuleDegradesAWorkingFilter() {
+        XCTAssertEqual(FilterStatus(provider: .running, policyLoaded: true, safeSearchRequested: false).webFilterState,
+                       "ready")
+        XCTAssertEqual(FilterStatus(provider: .running, policyLoaded: true, safeSearchRequested: true).webFilterState,
+                       "degraded")
+        // Degraded is never a promotion: a stopped filter stays unavailable even with SafeSearch asked for.
+        XCTAssertEqual(FilterStatus(provider: .stopped, policyLoaded: true, safeSearchRequested: true).webFilterState,
+                       "unavailable")
+    }
 }

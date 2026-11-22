@@ -22,16 +22,24 @@ public struct FilterStatus: Equatable {
     /// Whether the running extension found a snapshot it could read. A running filter with no policy allows
     /// everything, so it must not be reported as working.
     public var policyLoaded: Bool
+    /// Whether the family's rules ask for SafeSearch. Codex's decision on #988 (`7072593070`): a Mac content
+    /// filter cannot enforce it — `NEFilterNewFlowVerdict` has no redirect verdict — and the feature vocabulary
+    /// has no key of its own for it. So a filter that is running and enforcing its block lists while one
+    /// configured rule is unenforced is `degraded`, not `ready`. That is what the word is for, and it is the
+    /// only way to say it without inventing a server key.
+    public var safeSearchRequested: Bool
 
-    public init(provider: Provider, policyLoaded: Bool = false) {
+    public init(provider: Provider, policyLoaded: Bool = false, safeSearchRequested: Bool = false) {
         self.provider = provider
         self.policyLoaded = policyLoaded
+        self.safeSearchRequested = safeSearchRequested
     }
 
     /// Not running is not filtering, whatever the policy says.
     public var webFilterState: String {
         guard provider == .running else { return "unavailable" }
-        return policyLoaded ? "ready" : "degraded"
+        guard policyLoaded else { return "degraded" }
+        return safeSearchRequested ? "degraded" : "ready"
     }
 
     /// Pause-internet takes the default route on the DNS sinkhole; on the Mac it is a separate enforcement
