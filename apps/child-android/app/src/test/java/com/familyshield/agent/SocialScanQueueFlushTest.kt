@@ -10,6 +10,10 @@ import com.familyshield.agent.network.dto.SocialScanBatchDto
 import com.familyshield.agent.network.dto.SocialScanBatchResultDto
 import com.familyshield.agent.network.dto.SocialScanItemResultDto
 import com.familyshield.agent.social.SocialScanQueue
+import java.util.Collections
+import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
@@ -18,29 +22,28 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mockito.Mockito
 
 /**
  * Mutants: restoring unconditional `flushJob?.cancel()` makes the delayed row time out before its POST;
- * swallowing `CancellationException` from the DAO can make the caller finish as though the queue were empty.
+ * swallowing `CancellationException` from the DAO makes the originated-cancellation assertion fail.
+ * The worker race waits beyond the original delay so a second scheduled POST cannot pass unnoticed.
  */
 class SocialScanQueueFlushTest {
     @Test
     fun `delayed enqueue uploads and deletes the durable row`() = runBlocking {
         val dao = FakePendingScanDao()
-        val posts = mutableListOf<SocialScanBatchDto>()
-        val queue = queue(dao, posts)
+        val posts = CopyOnWriteArrayList<SocialScanBatchDto>()
+        val posted = CompletableDeferred<Unit>()
+        val queue = queue(dao, posts, posted)
 
         queue.enqueue("whatsapp", null, "synthetic scan fixture", nowMs = System.currentTimeMillis())
 
-        withTimeout(7_000) {
-            while (posts.isEmpty()) delay(25)
-        }
-        withTimeout(2_000) {
-            while (dao.rows().isNotEmpty()) delay(25)
-        }
+        withTimeout(7_000) { posted.await() }
+        withTimeout(2_000) { dao.deleted.await() }
         assertEquals(1, posts.size)
         assertEquals(1, posts.single().items.size)
         assertEquals("child", posts.single().items.single().childId)
@@ -53,11 +56,11 @@ class SocialScanQueueFlushTest {
             initialRows = listOf(scan()),
             suspendOldest = true,
         )
-        val posts = mutableListOf<SocialScanBatchDto>()
+        val posts = CopyOnWriteArrayList<SocialScanBatchDto>()
         val queue = queue(dao, posts)
 
         val caller = launch { queue.flush() }
-        yield()
+        dao.oldestEntered.await()
         caller.cancelAndJoin()
 
         assertTrue(caller.isCancelled)
@@ -66,7 +69,48 @@ class SocialScanQueueFlushTest {
         assertEquals(0, dao.rows().single().attempts)
     }
 
-    private fun queue(dao: PendingScanDao, posts: MutableList<SocialScanBatchDto>): SocialScanQueue {
+    @Test
+    fun `DAO originated cancellation propagates and retains the row`() = runBlocking {
+        val dao = FakePendingScanDao(
+            initialRows = listOf(scan()),
+            cancelOldest = true,
+        )
+        val posts = CopyOnWriteArrayList<SocialScanBatchDto>()
+        val queue = queue(dao, posts)
+
+        val error = assertThrows(CancellationException::class.java) {
+            runBlocking { queue.flush() }
+        }
+
+        assertEquals("DAO cancelled", error.message)
+        assertEquals(0, posts.size)
+        assertEquals(1, dao.rows().size)
+        assertEquals(0, dao.rows().single().attempts)
+    }
+
+    @Test
+    fun `worker flush cancels delayed flush without duplicate upload`() = runBlocking {
+        val dao = FakePendingScanDao()
+        val posts = CopyOnWriteArrayList<SocialScanBatchDto>()
+        val posted = CompletableDeferred<Unit>()
+        val queue = queue(dao, posts, posted)
+        queue.enqueue("whatsapp", null, "synthetic scan fixture", nowMs = System.currentTimeMillis())
+        withTimeout(2_000) { dao.inserted.await() }
+
+        queue.flush()
+        assertEquals(1, posts.size)
+        assertEquals(emptyList<PendingScanEntity>(), dao.rows())
+
+        delay(SocialScanQueue.FLUSH_DELAY_MS + 500)
+        assertEquals(1, posts.size)
+        assertEquals(emptyList<PendingScanEntity>(), dao.rows())
+    }
+
+    private fun queue(
+        dao: PendingScanDao,
+        posts: MutableList<SocialScanBatchDto>,
+        posted: CompletableDeferred<Unit> = CompletableDeferred(),
+    ): SocialScanQueue {
         val api = Mockito.mock(
             ApiService::class.java,
             Mockito.withSettings().defaultAnswer { invocation ->
@@ -75,6 +119,7 @@ class SocialScanQueueFlushTest {
                 }
                 val batch = invocation.getArgument<SocialScanBatchDto>(0)
                 posts += batch
+                posted.complete(Unit)
                 SocialScanBatchResultDto(batch.items.map { SocialScanItemResultDto(ok = true) })
             },
         )
@@ -91,43 +136,60 @@ class SocialScanQueueFlushTest {
     private class FakePendingScanDao(
         initialRows: List<PendingScanEntity> = emptyList(),
         private val suspendOldest: Boolean = false,
+        private val cancelOldest: Boolean = false,
     ) : PendingScanDao {
-        private val data = initialRows.toMutableList()
+        val inserted = CompletableDeferred<Unit>()
+        val deleted = CompletableDeferred<Unit>()
+        val oldestEntered = CompletableDeferred<Unit>()
+        private val data = Collections.synchronizedList(initialRows.toMutableList())
         private var nextId = initialRows.maxOfOrNull { it.id }?.plus(1) ?: 1
 
         override suspend fun insert(scan: PendingScanEntity): Long {
             yield()
-            val id = nextId++
-            data += scan.copy(id = id)
+            val id = synchronized(data) {
+                val id = nextId++
+                data += scan.copy(id = id)
+                id
+            }
+            inserted.complete(Unit)
             return id
         }
 
         override suspend fun oldest(limit: Int): List<PendingScanEntity> {
-            if (suspendOldest) awaitCancellation()
+            oldestEntered.complete(Unit)
+            when {
+                suspendOldest -> awaitCancellation()
+                cancelOldest -> throw CancellationException("DAO cancelled")
+            }
             yield()
-            return data.sortedBy { it.createdAt }.take(limit)
+            return synchronized(data) { data.sortedBy { it.createdAt }.take(limit) }
         }
 
         override suspend fun delete(id: Long) {
             yield()
-            data.removeAll { it.id == id }
+            synchronized(data) { data.removeAll { it.id == id } }
+            deleted.complete(Unit)
         }
 
         override suspend fun bumpAttempts(id: Long) {
-            val index = data.indexOfFirst { it.id == id }
-            if (index >= 0) data[index] = data[index].copy(attempts = data[index].attempts + 1)
+            synchronized(data) {
+                val index = data.indexOfFirst { it.id == id }
+                if (index >= 0) data[index] = data[index].copy(attempts = data[index].attempts + 1)
+            }
         }
 
-        override suspend fun count(): Int = data.size
+        override suspend fun count(): Int = synchronized(data) { data.size }
 
         override suspend fun purge(olderThanMs: Long, maxAttempts: Int): Int {
             yield()
-            val before = data.size
-            data.removeAll { it.createdAt < olderThanMs || it.attempts >= maxAttempts }
-            return before - data.size
+            return synchronized(data) {
+                val before = data.size
+                data.removeAll { it.createdAt < olderThanMs || it.attempts >= maxAttempts }
+                before - data.size
+            }
         }
 
-        fun rows(): List<PendingScanEntity> = data.toList()
+        fun rows(): List<PendingScanEntity> = synchronized(data) { data.toList() }
     }
 
     private companion object {
