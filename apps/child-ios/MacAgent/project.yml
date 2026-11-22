@@ -1,24 +1,24 @@
-// XcodeGen spec for the Mac content filter's signed route (roadmap 5.9, step (iii), #988).
-//
-// Why this file exists at all: a Network Extension **system extension** is a bundle the system loads, with an
-// executable that calls `NEProvider.startSystemExtensionMode()` and a `NetworkExtension`/`NEProviderClasses`
-// entry point. SwiftPM cannot produce that shape — it builds executables and libraries, not signed bundle
-// hierarchies — so `scripts/build-filter-extension.sh`'s first version (copy the SwiftPM dylib into
-// `CFBundleExecutable`) was the wrong route, and Codex said so on #989 (`7073424029`) with Apple's
-// host-bundle-layout reference.
-//
-// What stays in the Swift package, unchanged and covered by the existing macOS job: the decision table, the
-// snapshot store, the liveness store, the capability mapping and the provider class itself
-// (`OSRAMacAgentFilterProvider`). This project only assembles them into a loadable bundle and a host app.
-//
-// Not run in CI: generating and building this needs Xcode and, to be useful, a Developer ID identity and a
-// profile carrying `com.apple.developer.networking.networkextension` =
-// `content-filter-provider-systemextension`. CI's unsigned checks are `swift build` / `swift test` in the
-// package and `plutil -lint` on the plists.
-//
-// On the test Mac:
-//   xcodegen generate --spec apps/child-ios/MacAgent/project.yml --project apps/child-ios/MacAgent
-//   xcodebuild -project apps/child-ios/MacAgent/OSRAMacAgent.xcodeproj -scheme OSRAMacHost build
+# XcodeGen spec for the Mac content filter's signed route (roadmap 5.9, step (iii), #988).
+#
+# Why this file exists at all: a Network Extension **system extension** is a bundle the system loads, with an
+# executable that calls `NEProvider.startSystemExtensionMode()` and a `NetworkExtension`/`NEProviderClasses`
+# entry point. SwiftPM cannot produce that shape — it builds executables and libraries, not signed bundle
+# hierarchies — so `scripts/build-filter-extension.sh`'s first version (copy the SwiftPM dylib into
+# `CFBundleExecutable`) was the wrong route, and Codex said so on #989 (`7073424029`) with Apple's
+# host-bundle-layout reference.
+#
+# What stays in the Swift package, unchanged and covered by the existing macOS job: the decision table, the
+# snapshot store, the liveness store, the capability mapping and the provider class itself
+# (`OSRAMacAgentFilterProvider`). This project only assembles them into a loadable bundle and a host app.
+#
+# Not run in CI: generating and building this needs Xcode and, to be useful, a Developer ID identity and a
+# profile carrying `com.apple.developer.networking.networkextension` =
+# `content-filter-provider-systemextension`. CI's unsigned checks are `swift build` / `swift test` in the
+# package and `plutil -lint` on the plists.
+#
+# On the test Mac:
+#   xcodegen generate --spec apps/child-ios/MacAgent/project.yml --project apps/child-ios/MacAgent
+#   xcodebuild -project apps/child-ios/MacAgent/OSRAMacAgent.xcodeproj -scheme OSRAMacHost build
 # The extension lands in the host's Contents/Library/SystemExtensions/ by virtue of being a dependency of the
 # host target, which is the layout the system expects.
 name: OSRAMacAgent
