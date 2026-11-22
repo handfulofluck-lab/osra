@@ -15,12 +15,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from v9b_adapter import (  # noqa: E402
     LABELS,
+    MANIFEST_FILES,
     AdapterUnavailable,
     Scored,
     apply_thresholds,
     load_thresholds,
+    manifest_of,
     sha256_file,
     verify_labels,
+    verify_manifest,
     verdict_of,
 )
 
@@ -200,7 +203,7 @@ def test_the_real_checkpoint_loads_and_scores_one_row_deterministically():
 
     model_dir = Path(os.environ["V9B_MODEL_DIR"])
     thresholds = Path(os.environ["V9B_THRESHOLDS"])
-    adapter = V9bAdapter.load(model_dir, thresholds, sha256_file(thresholds))
+    adapter = V9bAdapter.load(model_dir, thresholds, sha256_file(thresholds), expected_manifest=manifest_of(model_dir))
     first = adapter.score("the teacher said the class will get a test next week", "en")
     second = adapter.score("the teacher said the class will get a test next week", "en")
     assert first.probs == second.probs, "the same text twice must give the same numbers"
@@ -225,7 +228,7 @@ def test_the_adapter_agrees_with_the_frozen_reference_predictions():
 
     model_dir = Path(os.environ["V9B_MODEL_DIR"])
     thresholds = Path(os.environ["V9B_THRESHOLDS"])
-    adapter = V9bAdapter.load(model_dir, thresholds, sha256_file(thresholds))
+    adapter = V9bAdapter.load(model_dir, thresholds, sha256_file(thresholds), expected_manifest=manifest_of(model_dir))
     rows = [
         json.loads(line)
         for line in Path(os.environ["V9B_ROWS"]).read_text(encoding="utf-8").splitlines()
@@ -261,3 +264,45 @@ def test_the_adapter_agrees_with_the_frozen_reference_predictions():
             assert abs(scored.probs[label] - float(expected[label])) <= 2e-03, (
                 f"{row['id']}/{label}: adapter {scored.probs[label]:.6f} vs reference {float(expected[label]):.6f}"
             )
+
+
+def _make_checkpoint(root: Path, id2label_map=None) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    for name in MANIFEST_FILES:
+        (root / name).write_bytes(b"placeholder-" + name.encode())
+    (root / "config.json").write_text(
+        json.dumps({"id2label": id2label_map if id2label_map is not None else id2label()}), encoding="utf-8"
+    )
+    return root
+
+
+def test_a_manifest_pins_every_file_not_only_the_weights(tmp_path):
+    model = _make_checkpoint(tmp_path / "model")
+    pinned = manifest_of(model)
+    assert set(pinned) == set(MANIFEST_FILES)
+    verify_manifest(model, pinned)
+    # Change the tokenizer only: the weights are untouched and every score would move.
+    (model / "tokenizer.json").write_bytes(b"different tokenizer")
+    # Mutant: verify only model.safetensors -> the tokenizer swap passes and this row goes red.
+    with pytest.raises(AdapterUnavailable) as raised:
+        verify_manifest(model, pinned)
+    assert "tokenizer.json" in str(raised.value)
+
+
+def test_a_partial_manifest_is_refused(tmp_path):
+    model = _make_checkpoint(tmp_path / "model")
+    pinned = {name: digest for name, digest in manifest_of(model).items() if name != "config.json"}
+    # A pin that names five of six files is not a pin, and the config can reorder id2label.
+    with pytest.raises(AdapterUnavailable):
+        verify_manifest(model, pinned)
+
+
+def test_load_refuses_a_checkpoint_that_does_not_match_its_pin(tmp_path):
+    from v9b_adapter import V9bAdapter
+
+    model = _make_checkpoint(tmp_path / "model")
+    pinned = manifest_of(model)
+    path, digest = write_thresholds(tmp_path)
+    (model / "config.json").write_text(json.dumps({"id2label": id2label()}) + " ", encoding="utf-8")
+    with pytest.raises(AdapterUnavailable):
+        V9bAdapter.load(model, path, digest, expected_manifest=pinned)

@@ -69,12 +69,52 @@ class Scored:
         }
 
 
+#: The files a v9b checkpoint is made of. A manifest pins all of them, not just the weights: a tokenizer swap
+#: changes every score while the weights are untouched, and a config edit can reorder `id2label`.
+MANIFEST_FILES: tuple[str, ...] = (
+    "model.safetensors",
+    "config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "sentencepiece.bpe.model",
+    "special_tokens_map.json",
+)
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as handle:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def manifest_of(model_dir: Path) -> dict[str, str]:
+    """The digests of every file a v9b checkpoint is made of, for pinning in a receipt or a test."""
+    model_dir = Path(model_dir)
+    missing = [name for name in MANIFEST_FILES if not (model_dir / name).is_file()]
+    if missing:
+        raise AdapterUnavailable(f"checkpoint is missing {missing}")
+    return {name: sha256_file(model_dir / name) for name in MANIFEST_FILES}
+
+
+def verify_manifest(model_dir: Path, expected: Mapping[str, str]) -> dict[str, str]:
+    """Require every named file to match its pinned digest, and require the pin to cover the whole set.
+
+    A partial pin is not a pin: pinning only the weights leaves the tokenizer and the config free to change
+    under a receipt that still says the same thing.
+    """
+    missing_pins = [name for name in MANIFEST_FILES if name not in expected]
+    if missing_pins:
+        raise AdapterUnavailable(f"manifest does not pin {missing_pins}")
+    actual = manifest_of(model_dir)
+    mismatched = [name for name in MANIFEST_FILES if actual[name] != expected[name]]
+    if mismatched:
+        raise AdapterUnavailable(
+            "checkpoint digests do not match the pin: "
+            + ", ".join(f"{name} {actual[name]} != {expected[name]}" for name in mismatched)
+        )
+    return actual
 
 
 def verify_labels(id2label: Mapping[str | int, str]) -> None:
@@ -166,7 +206,13 @@ class V9bAdapter:
         self._thresholds_sha256 = thresholds_sha256
 
     @classmethod
-    def load(cls, model_dir: Path, thresholds_path: Path, expected_thresholds_sha256: str) -> "V9bAdapter":
+    def load(
+        cls,
+        model_dir: Path,
+        thresholds_path: Path,
+        expected_thresholds_sha256: str,
+        expected_manifest: Mapping[str, str] | None = None,
+    ) -> "V9bAdapter":
         model_dir = Path(model_dir)
         config_path = model_dir / "config.json"
         weights_path = model_dir / "model.safetensors"
@@ -174,6 +220,8 @@ class V9bAdapter:
             raise AdapterUnavailable(f"no config.json in {model_dir}")
         if not weights_path.is_file():
             raise AdapterUnavailable(f"no model.safetensors in {model_dir}")
+        if expected_manifest is not None:
+            verify_manifest(model_dir, expected_manifest)
         thresholds = load_thresholds(Path(thresholds_path), expected_thresholds_sha256)
         try:
             config = json.loads(config_path.read_text(encoding="utf-8"))
