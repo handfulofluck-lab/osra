@@ -192,8 +192,9 @@ extension AgentLoop.Dependencies {
             },
             syncRules: { await AgentRuntime.syncRules(log: log).summary },
             heartbeat: { identity in
-                // Step (iii), #988: the report asks the system what the filter is doing, and asks the snapshot
-                // whether the family wants SafeSearch — which the Mac cannot enforce, so it degrades the report.
+                // Step (iii), #988: the report reads the extension's liveness file for "is anything filtering",
+                // and the snapshot for whether the family wants SafeSearch — which the Mac cannot enforce, so it
+                // degrades the report rather than vanishing from it.
                 let snapshot = PolicySnapshotStore().read()
                 let status = FilterObservation.current(safeSearchRequested: snapshot?.policy.safeSearchEnforced ?? false)
                 return await HeartbeatClient().send(identity, report: MacCapabilityReport(filterStatus: status))
