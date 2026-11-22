@@ -97,6 +97,34 @@ final class MacPolicyPublisherTests: XCTestCase {
         XCTAssertEqual(store.read()?.policy.pausedInternet, false)
     }
 
+    // Mutant: leaving the last policy on disk when consent is withdrawn, so the Mac keeps sinking domains after
+    // the family revoked it. The Android syncer clears its rules on this outcome; the Mac must stop enforcing.
+    func testConsentWithdrawalClearsThePolicy() throws {
+        _ = try MacPolicyPublisher.publish(try rules(blocked: ["blocked.example"]), store: store)
+        XCTAssertEqual(store.read()?.policy.decide(host: "blocked.example"),
+                       .block(reason: "blocked_domain:blocked.example"))
+
+        let cleared = try MacPolicyPublisher.clear(store: store)
+        XCTAssertEqual(cleared, MacPolicyPublisher.Published(version: 2, changed: true))
+        XCTAssertEqual(store.read()?.policy, FilterPolicy())
+        XCTAssertEqual(store.read()?.policy.decide(host: "blocked.example"), .allow)
+        XCTAssertEqual(store.read()?.rulesVersion, 0)
+
+        // Clearing twice is not a new policy, and the version must not churn on every sync after withdrawal.
+        XCTAssertEqual(try MacPolicyPublisher.clear(store: store),
+                       MacPolicyPublisher.Published(version: 2, changed: false))
+    }
+
+    // Mutant: clearing by deleting the file, which resets the version to 1 on the next publish and makes the
+    // extension ignore a re-pairing until the counter catches up.
+    func testAFreshPairingAfterWithdrawalContinuesTheVersion() throws {
+        _ = try MacPolicyPublisher.publish(try rules(), store: store)
+        _ = try MacPolicyPublisher.clear(store: store)
+        let republished = try MacPolicyPublisher.publish(try rules(blocked: ["again.example"]), store: store)
+        XCTAssertEqual(republished, MacPolicyPublisher.Published(version: 3, changed: true))
+        XCTAssertEqual(store.read()?.policy.blockedDomains, ["again.example"])
+    }
+
     // Mutant: swallowing a store refusal and reporting success, so the daemon logs a publish that never
     // happened while the extension keeps enforcing yesterday's rules.
     func testARefusedWriteIsThrownNotSwallowed() throws {

@@ -248,6 +248,16 @@ public enum AgentRuntime {
             return (outcome, .synced(version: rules.effectiveRulesVersion))
         case .consentWithdrawn:
             MacAgentState.setRulesVersion(nil)
+            // Step (iii), #988: the filter stops enforcing too. Leaving the last policy in place would keep
+            // sinking domains after the family revoked consent.
+            do {
+                let cleared = try MacPolicyPublisher.clear()
+                log(cleared.changed
+                    ? "event=policy_cleared version=\(cleared.version)"
+                    : "event=policy_already_clear version=\(cleared.version)")
+            } catch {
+                log("event=policy_clear_failed")
+            }
             log("event=rules_cleared reason=consent_withdrawn")
             return (outcome, .consentWithdrawn)
         case .notPaired:

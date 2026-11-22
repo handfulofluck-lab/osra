@@ -39,6 +39,20 @@ public enum MacPolicyPublisher {
                      categoryDomains: [:])
     }
 
+    /// Consent withdrawn: stop enforcing. The shared syncer clears the stored rules on that outcome, and the
+    /// filter must stop blocking too — a Mac that keeps sinking domains after a family revoked consent is
+    /// enforcing a policy nobody holds any more. An empty policy is published rather than the file deleted, so
+    /// the version keeps rising and the extension applies the change on its next look.
+    @discardableResult
+    public static func clear(store: PolicySnapshotStore = PolicySnapshotStore(),
+                             now: Date = Date()) throws -> Published {
+        let current = store.read()
+        if let current, current.policy == FilterPolicy() { return Published(version: current.version, changed: false) }
+        let version = (current?.version ?? 0) + 1
+        try store.write(PolicySnapshot(version: version, rulesVersion: 0, policy: FilterPolicy(), writtenAt: now))
+        return Published(version: version, changed: true)
+    }
+
     /// Writes the snapshot when the rules say something new. Returns the version now on disk.
     @discardableResult
     public static func publish(_ rules: RuleSet,
