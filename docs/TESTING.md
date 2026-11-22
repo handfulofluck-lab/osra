@@ -1359,6 +1359,38 @@ empty diff, restore failure, or an empty test/result set never yields PASS. Dry-
 K31's CI only exercises the fake boundary.
 
 
+### Windows escape rows as one script (#738, `scripts/hardware/windows-escape.ps1`)
+
+The Windows rows of `docs/testing/CHILD-ESCAPE-CATALOGUE.md` (WN02, WN03, WN05–WN09, WN11, WN13, WN14) are
+run by one PowerShell 5.1 script on the staging Windows Server 2025 VM, **as the child's standard
+account**:
+
+```powershell
+# from the repo root, signed in as the standard user the child would use
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hardware/windows-escape.ps1
+# also attempt the rows that would change the machine (an account, a firewall rule), undoing on success
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hardware/windows-escape.ps1 -AllowMutating
+# exercise the classifier and the guard only, no rows
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hardware/windows-escape.ps1 -SelfTest
+```
+
+Exit codes: `0` no FAIL and no UNKNOWN · `1` at least one FAIL or UNKNOWN · `2` refused to run because the
+shell is **elevated**. The elevation check runs before anything else, including `-SelfTest`: an elevated
+run would pass rows for the wrong reason and could change the host.
+
+Reading the output: each line is `row · result · claim · evidence`, with `PASS`, `FAIL`, `SKIP` or
+`UNKNOWN`. **A SKIP is not coverage** — the rows whose claim needs OSRA installed and paired (the tray
+restarted by the service, the filter holding, the PIN dialog) print SKIP with the reason, and a row whose
+block threw is reported `UNKNOWN`, which exits non-zero. The refused/not-refused classifier is deliberately
+narrower than "non-zero exit": a missing service also exits non-zero, so only an access-denied message or
+exit 5 counts as the OS refusing, and `-SelfTest` fails if a command that succeeds is called refused.
+
+What a run on `DESKTOP-…` (Windows 11, standard account, no OSRA installed) produced on 2026-11-22:
+`Rows: 10 total, 3 PASS, 0 FAIL, 7 SKIP, 0 UNKNOWN` — the three OS refusals (WN03 `sc stop`/`sc config` on
+Spooler, WN06 `Set-Date`, WN09 hosts write and `netsh winhttp set proxy`) held; the seven agent-dependent
+rows skipped. That run is **not** staging evidence; it only shows the harness measures what it claims.
+
+
 ## 6. Traps that have cost real time here
 
 | Trap | What happened | Rule |
