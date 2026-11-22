@@ -1391,6 +1391,20 @@ Spooler, WN06 `Set-Date`, WN09 hosts write and `netsh winhttp set proxy`) held; 
 rows skipped. That run is **not** staging evidence; it only shows the harness measures what it claims.
 
 
+## Bedrock staging test with operator-chosen wording (#962)
+
+The reviewed staging analyzer defaults to exact fixtures. An exploratory run can enable
+`staging_qa_analyzer.allow_synthetic_pair_text` on both armed tasks for a time-boxed
+synthetic child/device pairing. Use a WhatsApp test route isolated from ordinary conversations.
+Confirm the device queue is empty before arming. The API still requires an authenticated
+notification scan from that pairing, and the private analyzer still requires the approved prompt
+and expires automatically. The test can use new wording within the 1,024-byte input limit.
+
+Send a concerning synthetic notification and a harmless control. Confirm the concerning result came
+from Bedrock without fallback and opens the matching alert in the Parent app. Confirm Bedrock scored
+the harmless notification and created no alert. Record model, region, trace ID, and the result using
+the private test record. Roll both services back and retire the synthetic scope at the end of the window.
+
 ## 6. Traps that have cost real time here
 
 | Trap | What happened | Rule |

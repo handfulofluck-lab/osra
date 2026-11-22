@@ -410,12 +410,13 @@ variable "backup_copy_vault_arn" {
 variable "staging_qa_analyzer" {
   description = "Optional staging-only synthetic QA analyzer. Secret references are Stockholm ARNs with operator-provisioned values."
   type = object({
-    image_digest        = string
-    frankfurt_vpc_cidr  = string
-    prompt_secret_arn   = string
-    approval_secret_arn = string
-    pairing_secret_arn  = string
-    armed               = optional(bool, false)
+    image_digest              = string
+    frankfurt_vpc_cidr        = string
+    prompt_secret_arn         = string
+    approval_secret_arn       = string
+    pairing_secret_arn        = string
+    armed                     = optional(bool, false)
+    allow_synthetic_pair_text = optional(bool, false)
   })
   default  = null
   nullable = true

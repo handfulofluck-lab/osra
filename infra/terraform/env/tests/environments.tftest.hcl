@@ -209,12 +209,13 @@ run "armed_qa_analyzer_plans_only_the_private_scoped_route" {
     api_image           = "example/api:test"
     allowed_account_ids = [format("%012d", 0)]
     staging_qa_analyzer = {
-      armed               = true
-      image_digest        = "sha256:${sha256("qa-image")}"
-      frankfurt_vpc_cidr  = format("%d.%d.%d.%d/%d", 10, 40, 0, 0, 24)
-      prompt_secret_arn   = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-prompt", 0)
-      approval_secret_arn = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-approval", 0)
-      pairing_secret_arn  = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-pairing", 0)
+      armed                     = true
+      allow_synthetic_pair_text = true
+      image_digest              = "sha256:${sha256("qa-image")}"
+      frankfurt_vpc_cidr        = format("%d.%d.%d.%d/%d", 10, 40, 0, 0, 24)
+      prompt_secret_arn         = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-prompt", 0)
+      approval_secret_arn       = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-approval", 0)
+      pairing_secret_arn        = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-pairing", 0)
     }
   }
 
@@ -255,6 +256,14 @@ run "armed_qa_analyzer_plans_only_the_private_scoped_route" {
     condition     = one([for s in jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].secrets : s.valueFrom if s.name == "OSRA_STAGING_QA_SYSTEM_PROMPT"]) == var.staging_qa_analyzer.prompt_secret_arn && !contains([for s in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].secrets : s.name], "OSRA_STAGING_QA_SYSTEM_PROMPT")
     error_message = "only the analyzer receives a reference to the approved prompt"
   }
+
+  assert {
+    condition = alltrue([
+      for task in [aws_ecs_task_definition.api.container_definitions, aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions] :
+      anytrue([for item in jsondecode(task)[0].environment : item.name == "OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT" && item.value == "1"])
+    ])
+    error_message = "both armed tasks must receive the same explicit synthetic pairing switch"
+  }
 }
 
 run "disarmed_qa_analyzer_has_no_model_or_api_access" {
@@ -264,11 +273,12 @@ run "disarmed_qa_analyzer_has_no_model_or_api_access" {
     api_image           = "example/api:test"
     allowed_account_ids = [format("%012d", 0)]
     staging_qa_analyzer = {
-      image_digest        = "sha256:${sha256("qa-image")}"
-      frankfurt_vpc_cidr  = format("%d.%d.%d.%d/%d", 10, 40, 0, 0, 24)
-      prompt_secret_arn   = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-prompt", 0)
-      approval_secret_arn = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-approval", 0)
-      pairing_secret_arn  = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-pairing", 0)
+      allow_synthetic_pair_text = true
+      image_digest              = "sha256:${sha256("qa-image")}"
+      frankfurt_vpc_cidr        = format("%d.%d.%d.%d/%d", 10, 40, 0, 0, 24)
+      prompt_secret_arn         = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-prompt", 0)
+      approval_secret_arn       = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-approval", 0)
+      pairing_secret_arn        = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-pairing", 0)
     }
   }
 
@@ -293,6 +303,14 @@ run "disarmed_qa_analyzer_has_no_model_or_api_access" {
   assert {
     condition     = one([for item in jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].environment : item.value if item.name == "OSRA_STAGING_QA_ANALYZER_ENABLED"]) == "0" && length(jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].secrets) == 0
     error_message = "a disarmed analyzer has a disabled endpoint and receives no fixture secrets"
+  }
+
+  assert {
+    condition = alltrue([
+      for task in [aws_ecs_task_definition.api.container_definitions, aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions] :
+      !contains([for item in jsondecode(task)[0].environment : item.name], "OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT")
+    ])
+    error_message = "neither task may accept synthetic pairing text while disarmed"
   }
 
   assert {

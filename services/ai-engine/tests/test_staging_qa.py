@@ -58,6 +58,7 @@ def payload(**overrides):
     ("OSRA_DEPLOYMENT_SCOPE", "production"),
     ("OSRA_STAGING_QA_ANALYZER_ENABLED", ""),
     ("OSRA_STAGING_QA_FIXTURE_SHA256", "*"),
+    ("OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT", "yes"),
     ("OSRA_STAGING_QA_EXPIRES_AT", "2030-01-01T00:00:00Z"),
     ("OSRA_STAGING_QA_EXPIRES_AT", "2020-01-01T00:00:00Z"),
 ])
@@ -67,6 +68,31 @@ def test_disabled_or_expired_gate_never_calls_bedrock(setup_qa, monkeypatch, nam
     response = TestClient(app).post(PATH, json=payload())
     assert response.status_code == 404
     assert setup_qa.calls == []
+
+
+def test_new_wording_is_scored_in_enabled_synthetic_pair_mode(setup_qa, monkeypatch):
+    monkeypatch.setenv("OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT", "1")
+    sample = "A sentence chosen during the test."
+    response = TestClient(app).post(PATH, json=payload(text=sample))
+    assert response.status_code == 200
+    assert response.json()["categories"] == setup_qa.probabilities
+    call, = setup_qa.calls
+    assert call["messages"] == [{"role": "user", "content": [{"text": sample}]}]
+
+
+@pytest.mark.parametrize("name,value,status", [
+    ("OSRA_STAGING_QA_EXPIRES_AT", "2020-01-01T00:00:00Z", 404),
+    ("OSRA_DEPLOYMENT_SCOPE", "production", 404),
+    ("OSRA_STAGING_QA_SYSTEM_PROMPT", "Unapproved prompt", 404),
+    ("", "", 422),
+])
+def test_synthetic_pair_mode_keeps_other_boundaries(setup_qa, monkeypatch, name, value, status):
+    monkeypatch.setenv("OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT", "1")
+    if name:
+        monkeypatch.setenv(name, value)
+    response = TestClient(app).post(PATH, json=payload(text="🎈" * 257 if status == 422 else APPROVED_TEXT))
+    assert response.status_code == status
+    assert not setup_qa.calls
 
 
 def test_only_exact_fixture_text_is_allowed(setup_qa):

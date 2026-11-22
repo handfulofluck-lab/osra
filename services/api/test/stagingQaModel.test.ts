@@ -24,6 +24,14 @@ describe("staging QA model gate", () => {
     expect(stagingQaModel(capture, env, now)?.traceId).not.toBe(selected?.traceId);
   });
 
+  it("accepts new wording only when the synthetic pair mode is explicitly enabled", () => {
+    const sample = { ...capture, text: "A sentence chosen during the test." };
+    expect(stagingQaModel(sample, env, now)).toBeNull();
+    expect(stagingQaModel(sample, {
+      ...env, OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT: "1",
+    }, now)?.fixtureNumber).toBeNull();
+  });
+
   it.each([
     { device: null }, { deviceId: undefined }, { childId: "another-child" },
     { app: "sms" }, { source: "screen" }, { text: "A different fixture." },
@@ -32,10 +40,19 @@ describe("staging QA model gate", () => {
   });
 
   it.each([
+    { device: null }, { deviceId: "another-device" }, { childId: "another-child" },
+    { app: "sms" }, { source: "screen" }, { text: "" }, { text: "🎈".repeat(257) },
+  ])("rejects capture outside the synthetic pair mode boundary %j", (override) => {
+    expect(stagingQaModel({ ...capture, ...override }, {
+      ...env, OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT: "1",
+    }, now)).toBeNull();
+  });
+
+  it.each([
     { OSRA_DEPLOYMENT_SCOPE: "production" }, { OSRA_STAGING_QA_ANALYZER_ENABLED: "0" },
     { OSRA_STAGING_QA_EXPIRES_AT: new Date(now).toISOString() },
     { OSRA_STAGING_QA_EXPIRES_AT: new Date(now + 61 * 60 * 1000).toISOString() },
-    { OSRA_STAGING_QA_FIXTURE_SHA256: "invalid" },
+    { OSRA_STAGING_QA_FIXTURE_SHA256: "invalid" }, { OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT: "yes" },
     { OSRA_STAGING_QA_ANALYZER_URL: "https://example.com" },
     { OSRA_STAGING_QA_ANALYZER_URL: "https://ai-engine.osra-qa.internal/unrelated" },
   ])("defaults to no model for invalid deployment config %j", (override) => {

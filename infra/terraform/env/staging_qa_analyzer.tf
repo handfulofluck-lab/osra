@@ -14,6 +14,10 @@ locals {
     }]
   })
 
+  staging_qa_pair_text = local.staging_qa_armed && try(var.staging_qa_analyzer.allow_synthetic_pair_text, false) ? [
+    { name = "OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT", value = "1" },
+  ] : []
+
   staging_qa_approval = local.staging_qa_armed ? [
     { name = "OSRA_STAGING_QA_EXPIRES_AT", valueFrom = "${var.staging_qa_analyzer.approval_secret_arn}:expires_at::" },
     { name = "OSRA_STAGING_QA_FIXTURE_SHA256", valueFrom = "${var.staging_qa_analyzer.approval_secret_arn}:fixture_sha256::" },
@@ -199,11 +203,11 @@ resource "aws_ecs_task_definition" "staging_qa_analyzer" {
       containerPort = 8000
       protocol      = "tcp"
     }]
-    environment = [
+    environment = concat([
       { name = "OSRA_DEPLOYMENT_SCOPE", value = "staging" },
       { name = "OSRA_STAGING_QA_ANALYZER_ENABLED", value = local.staging_qa_armed ? "1" : "0" },
       { name = "UVICORN_ACCESS_LOG", value = "false" },
-    ]
+    ], local.staging_qa_pair_text)
     secrets = local.staging_qa_armed ? concat(local.staging_qa_approval, [
       { name = "OSRA_STAGING_QA_SYSTEM_PROMPT", valueFrom = var.staging_qa_analyzer.prompt_secret_arn },
     ]) : []
