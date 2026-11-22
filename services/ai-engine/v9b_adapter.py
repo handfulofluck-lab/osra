@@ -92,8 +92,14 @@ def verify_labels(id2label: Mapping[str | int, str]) -> None:
         )
 
 
-def load_thresholds(path: Path, expected_sha256: str) -> dict[str, float]:
-    """Read `{label: threshold}` and refuse it unless the bytes are the ones we were told about."""
+def load_thresholds(path: Path, expected_sha256: str) -> dict[str, dict[str, float]]:
+    """Read the frozen per-language thresholds and refuse them unless the bytes are the ones we were told about.
+
+    The real file (`compare-v9b.json`) is `{"thresholds": {lang: {label: value}}}`, because a category's cutoff
+    is calibrated per language: `grooming` at 0.50 in Arabic and at another value in Turkish. A single flat map
+    would silently apply one language's calibration to another, which is why the language is an input to
+    :meth:`V9bAdapter.score` and not a detail of the tokenizer.
+    """
     actual = sha256_file(path)
     if actual != expected_sha256:
         raise AdapterUnavailable(
@@ -103,17 +109,27 @@ def load_thresholds(path: Path, expected_sha256: str) -> dict[str, float]:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise AdapterUnavailable(f"thresholds file is not readable JSON: {exc}") from exc
-    missing = [label for label in LABELS if label not in raw]
-    extra = [label for label in raw if label not in LABELS]
-    if missing or extra:
-        raise AdapterUnavailable(f"thresholds must name exactly {list(LABELS)}; missing={missing} extra={extra}")
-    thresholds: dict[str, float] = {}
-    for label in LABELS:
-        value = raw[label]
-        if not isinstance(value, (int, float)) or isinstance(value, bool) or not 0.0 <= float(value) <= 1.0:
-            raise AdapterUnavailable(f"threshold for {label} is not a probability: {value!r}")
-        thresholds[label] = float(value)
-    return thresholds
+    per_language = raw.get("thresholds", raw) if isinstance(raw, dict) else None
+    if not isinstance(per_language, dict) or not per_language:
+        raise AdapterUnavailable("thresholds must be {language: {label: value}} or carry a 'thresholds' map")
+    result: dict[str, dict[str, float]] = {}
+    for language, mapping in per_language.items():
+        if not isinstance(mapping, dict):
+            raise AdapterUnavailable(f"thresholds for {language!r} are not a map of labels")
+        missing = [label for label in LABELS if label not in mapping]
+        extra = [label for label in mapping if label not in LABELS]
+        if missing or extra:
+            raise AdapterUnavailable(
+                f"thresholds for {language!r} must name exactly {list(LABELS)}; missing={missing} extra={extra}"
+            )
+        resolved: dict[str, float] = {}
+        for label in LABELS:
+            value = mapping[label]
+            if not isinstance(value, (int, float)) or isinstance(value, bool) or not 0.0 <= float(value) <= 1.0:
+                raise AdapterUnavailable(f"threshold for {language}/{label} is not a probability: {value!r}")
+            resolved[label] = float(value)
+        result[str(language)] = resolved
+    return result
 
 
 def apply_thresholds(probs: Mapping[str, float], thresholds: Mapping[str, float]) -> tuple[str, ...]:
@@ -143,7 +159,7 @@ def verdict_of(flagged: Sequence[str]) -> str:
 class V9bAdapter:
     """A loaded v9b checkpoint. Built by :meth:`load`; every reason it could be wrong is checked there."""
 
-    def __init__(self, pipeline, model_sha256: str, thresholds: dict[str, float], thresholds_sha256: str):
+    def __init__(self, pipeline, model_sha256: str, thresholds: dict[str, dict[str, float]], thresholds_sha256: str):
         self._pipeline = pipeline
         self._model_sha256 = model_sha256
         self._thresholds = thresholds
@@ -184,9 +200,13 @@ class V9bAdapter:
             raise AdapterUnavailable(f"checkpoint did not load: {exc}") from exc
         return cls(pipe, sha256_file(weights_path), thresholds, expected_thresholds_sha256)
 
-    def score(self, text: str) -> Scored:
+    def score(self, text: str, lang: str) -> Scored:
         if not isinstance(text, str) or not text.strip():
             raise AdapterUnavailable("no text to score")
+        if lang not in self._thresholds:
+            raise AdapterUnavailable(
+                f"no calibrated thresholds for language {lang!r}; have {sorted(self._thresholds)}"
+            )
         try:
             raw = self._pipeline(text, truncation=True, max_length=128)[0]
         except Exception as exc:  # noqa: BLE001
@@ -195,7 +215,7 @@ class V9bAdapter:
         if set(by_label) != set(LABELS):
             raise AdapterUnavailable(f"model returned labels {sorted(by_label)}, not the verified seven")
         probs = {label: by_label[label] for label in LABELS}
-        flagged = apply_thresholds(probs, self._thresholds)
+        flagged = apply_thresholds(probs, self._thresholds[lang])
         return Scored(
             probs=probs,
             flagged_categories=flagged,
@@ -204,5 +224,5 @@ class V9bAdapter:
             thresholds_sha256=self._thresholds_sha256,
         )
 
-    def score_batch(self, texts: Iterable[str]) -> list[Scored]:
-        return [self.score(text) for text in texts]
+    def score_batch(self, texts: Iterable[tuple[str, str]]) -> list[Scored]:
+        return [self.score(text, lang) for text, lang in texts]

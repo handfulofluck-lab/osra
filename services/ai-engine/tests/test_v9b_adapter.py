@@ -5,6 +5,7 @@ three real parity rows cannot test the per-label thresholds because all three ar
 none straddles a cutoff — so row 3 drives synthetic vectors instead.
 """
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -31,9 +32,10 @@ def id2label(**overrides):
 
 
 def write_thresholds(tmp_path: Path, values=None) -> tuple[Path, str]:
-    payload = values if values is not None else {label: 0.5 for label in LABELS}
-    path = tmp_path / "thresholds.json"
-    path.write_text(json.dumps(payload), encoding="utf-8")
+    """One language's thresholds, in the frozen file's shape (`{"thresholds": {lang: {label: value}}}`)."""
+    payload = values if values is not None else {"ar": {label: 0.5 for label in LABELS}}
+    path = tmp_path / "compare-v9b.json"
+    path.write_text(json.dumps({"thresholds": payload}), encoding="utf-8")
     return path, sha256_file(path)
 
 
@@ -99,15 +101,15 @@ def test_apply_thresholds_refuses_a_missing_label():
 
 def test_load_thresholds_verifies_the_digest(tmp_path):
     path, good = write_thresholds(tmp_path)
-    assert load_thresholds(path, good)["hate_speech"] == 0.5
+    assert load_thresholds(path, good)["ar"]["hate_speech"] == 0.5
     path.write_text(path.read_text(encoding="utf-8").replace("0.5", "0.6", 1), encoding="utf-8")
     # Mutant: drop the digest check -> the edited file loads and this row goes red.
     with pytest.raises(AdapterUnavailable):
         load_thresholds(path, good)
 
 
-def test_load_thresholds_requires_every_label(tmp_path):
-    path, digest = write_thresholds(tmp_path, {label: 0.5 for label in LABELS if label != "violence"})
+def test_load_thresholds_requires_every_label_in_every_language(tmp_path):
+    path, digest = write_thresholds(tmp_path, {"ar": {label: 0.5 for label in LABELS if label != "violence"}})
     with pytest.raises(AdapterUnavailable):
         load_thresholds(path, digest)
 
@@ -115,9 +117,25 @@ def test_load_thresholds_requires_every_label(tmp_path):
 def test_load_thresholds_rejects_a_value_that_is_not_a_probability(tmp_path):
     values = {label: 0.5 for label in LABELS}
     values["substance_use"] = 55
-    path, digest = write_thresholds(tmp_path, values)
+    path, digest = write_thresholds(tmp_path, {"ar": values})
     with pytest.raises(AdapterUnavailable):
         load_thresholds(path, digest)
+
+
+def test_the_calibration_is_per_language_not_shared(tmp_path):
+    # The real frozen file calibrates each language separately; a row that clears Arabic's grooming cutoff
+    # must not clear Turkish's if Turkish is set higher.
+    ar = {label: 0.50 for label in LABELS}
+    tr = {label: 0.50 for label in LABELS}
+    ar["grooming"] = 0.40
+    tr["grooming"] = 0.90
+    path, digest = write_thresholds(tmp_path, {"ar": ar, "tr": tr})
+    loaded = load_thresholds(path, digest)
+    probs = {label: 0.10 for label in LABELS}
+    probs["grooming"] = 0.60
+    assert apply_thresholds(probs, loaded["ar"]) == ("grooming",)
+    assert apply_thresholds(probs, loaded["tr"]) == tuple()
+    # Mutant: ignore the language and reuse the first calibrated map -> the Turkish assertion goes red.
 
 
 def test_load_refuses_a_missing_checkpoint_without_inventing_a_result(tmp_path):
@@ -167,3 +185,25 @@ def test_the_result_is_deterministic_for_the_same_inputs():
     first = apply_thresholds(probs, thresholds)
     second = apply_thresholds(probs, thresholds)
     assert first == second == LABELS
+
+
+# The one thing the offline cases above cannot show: that the adapter scores the real v9b checkpoint the way
+# the frozen predictions say it does. It runs only where the checkpoint exists, and the receipt that matters is
+# the parity run on the PC (archive 5bb6f82a..., weights 158ca1f0..., worst diff 4.9e-05 at tolerance 0.02,
+# posted on #50). Set V9B_MODEL_DIR and V9B_THRESHOLDS to run it; without them the case is skipped, not passed.
+@pytest.mark.skipif(
+    not (os.environ.get("V9B_MODEL_DIR") and os.environ.get("V9B_THRESHOLDS")),
+    reason="needs the trained checkpoint and its thresholds; the offline cases cover the contract",
+)
+def test_the_real_checkpoint_loads_and_scores_one_row_deterministically():
+    from v9b_adapter import V9bAdapter
+
+    model_dir = Path(os.environ["V9B_MODEL_DIR"])
+    thresholds = Path(os.environ["V9B_THRESHOLDS"])
+    adapter = V9bAdapter.load(model_dir, thresholds, sha256_file(thresholds))
+    first = adapter.score("the teacher said the class will get a test next week", "en")
+    second = adapter.score("the teacher said the class will get a test next week", "en")
+    assert first.probs == second.probs, "the same text twice must give the same numbers"
+    assert list(first.probs) == list(LABELS), "order is part of the contract"
+    assert first.verdict in {"flagged", "safe"}
+    assert len(first.model_sha256) == 64 and len(first.thresholds_sha256) == 64
