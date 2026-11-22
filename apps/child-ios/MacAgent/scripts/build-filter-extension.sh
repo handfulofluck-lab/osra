@@ -44,6 +44,19 @@ plutil -lint FilterExtension/Info.plist
 plutil -lint FilterExtension/OSRAFilter.entitlements
 command -v xcodegen >/dev/null || { echo "xcodegen is required (brew install xcodegen)" >&2; exit 2; }
 
+# The profile is per target, not global: a bare PROVISIONING_PROFILE_SPECIFIER applies to every target,
+# including the host, which needs none. Xcode wants the profile's UUID rather than the file path, so it is
+# read out of the profile itself instead of being asked for twice.
+PROFILE_UUID="$(security cms -D -i "$PROFILE" 2>/dev/null | plutil -extract UUID raw - 2>/dev/null || true)"
+if [[ -z "$PROFILE_UUID" ]]; then
+  echo "could not read the UUID from $PROFILE — is it a provisioning profile?" >&2
+  exit 2
+fi
+echo "extension profile UUID: $PROFILE_UUID"
+
+# Only the extension carries the Network Extension entitlement. The host is signed with the same identity
+# and has none, so it works without a profile; if Xcode insists on one, a plain Developer ID profile for
+# com.osratech.agent.host is enough and goes in OSRAMacHost_PROVISIONING_PROFILE_SPECIFIER.
 xcodegen generate --spec project.yml --project .
 xcodebuild \
   -project OSRAMacAgent.xcodeproj \
@@ -52,7 +65,9 @@ xcodebuild \
   -derivedDataPath "$OUT" \
   CODE_SIGN_IDENTITY="$IDENTITY" \
   CODE_SIGN_STYLE=Manual \
-  PROVISIONING_PROFILE_SPECIFIER="" \
+  OSRAMacHost_PROVISIONING_PROFILE_SPECIFIER="" \
+  OSRAFilter_PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
+  OSRAFilter_CODE_SIGN_ENTITLEMENTS="$PWD/FilterExtension/OSRAFilter.entitlements" \
   OTHER_CODE_SIGN_FLAGS="--timestamp --options runtime" \
   build
 
@@ -63,8 +78,9 @@ if [[ -z "$HOST_APP" || -z "$EXTENSION" ]]; then
   exit 1
 fi
 
-# The extension's own signature is what the system checks on load; sign it explicitly so a build setting cannot
-# quietly ad-hoc it, then the host around it.
+# The extension's own signature is what the system checks on load, so it is signed explicitly — from the
+# checked-in entitlements file, not from whatever the build resolved — and verified before the host around it
+# is touched. Order matters: a host signed before its nested extension carries a stale seal.
 codesign --force --timestamp --options runtime \
   --entitlements FilterExtension/OSRAFilter.entitlements \
   --sign "$IDENTITY" "$EXTENSION"
