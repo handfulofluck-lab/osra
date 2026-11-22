@@ -8,6 +8,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../core/command_in_flight.dart';
 import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
@@ -187,6 +188,17 @@ class ChildMapSheet extends ConsumerWidget {
     // `{status: "failed", reason}`. The map used to report "queued" for those, so a parent whose
     // ring or lock was refused up front was told it had been sent. Both refusals now read the same
     // mapping as child detail (`commandRefusalText`), so one command never has two stories.
+    // PA06 (#738): a second tap on the same command while this POST is outstanding sends nothing, and
+    // the guard is shared with child detail — tapping Ring here and then there is still one ring.
+    if (!beginCommandSend(device.id, command)) return;
+    try {
+      await _postCommand(context, ref, device, command);
+    } finally {
+      endCommandSend(device.id, command);
+    }
+  }
+
+  Future<void> _postCommand(BuildContext context, WidgetRef ref, Device device, String command) async {
     final l10n = context.l10n;
     try {
       final response = await ref.read(apiClientProvider).raw.post('/v1/devices/${device.id}/command', data: {'command': command});
