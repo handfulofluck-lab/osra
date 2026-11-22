@@ -54,6 +54,13 @@ expect real_runner_stall runner
 } > "$tmp/app_crash.log"
 expect app_crash other
 
+# A retryable simulator error cannot override a target app crash in the same log.
+cat "$tmp/app_crash.log" "$tmp/real_runner_stall.log" > "$tmp/crash_plus_runner.log"
+expect crash_plus_runner ambiguous
+
+cat "$tmp/app_crash.log" "$tmp/real_launch_timeout.log" > "$tmp/crash_plus_launch.log"
+expect crash_plus_launch ambiguous
+
 # A runner stall alongside a real assertion is ambiguous: never retried.
 {
   echo "Failed to get background assertion for target app with pid 23403: Timed out while acquiring background assertion."

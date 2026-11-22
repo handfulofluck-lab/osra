@@ -18,6 +18,11 @@ these gates exist, see `docs/adr/0005-adversarial-acceptance-gate.md` and
 | iOS + shared macOS core | `.github/workflows/ios-ci.yml` (macOS runner) | Native macOS SwiftPM build + test discovery + tests; iOS SwiftPM and simulator builds | Swift compile/behaviour regressions, or a portable test excluded from macOS |
 | **Hardware** (device) | section 5 | Crash-loop, FGS start, location upload, overlays | Anything the emulator cannot show |
 
+Run the iOS launch classifier fixtures with
+`bash apps/child-ios/scripts/test-classify-launch-failure.sh`. A failure log that contains
+both an explicit target-app crash and a simulator launch error or runner stall is ambiguous
+and fails without a retry.
+
 `test/demo-seed-cleanup.test.ts` runs against real PostgreSQL in CI, where
 `OSRA_REQUIRE_DATABASE_TESTS=1` makes a missing database configuration an error. Local runs without
 `OSRA_TEST_DATABASE_URL` report these three integration rows as skipped. To include them, point that

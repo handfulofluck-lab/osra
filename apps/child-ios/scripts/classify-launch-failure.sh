@@ -3,8 +3,9 @@
 #
 # Prints exactly one word and exits 0:
 #   assertion   the case failed on its own assertions (XCTAssert / XCTest failure line)
-#   launch      the app never launched (a simulator start failure) — the only case worth retrying
-#   ambiguous   both kinds of evidence are present, so neither may be trusted
+#   launch      the simulator could not launch the app
+#   runner      the simulator could not finish booting or acquire its background assertion
+#   ambiguous   conflicting evidence disables the retry
 #   other       neither kind — red, and not something this retry is entitled to absorb
 #
 # Why this is a script and not inline workflow shell (Codex, 7062415705): three review rounds found three
@@ -38,6 +39,7 @@ LAUNCH_RE='timed out while launching application|failed to launch|FBSOpenApplica
 # earlier list and are deliberately NOT here — an app that CRASHES at launch produces them too, and retrying would
 # absorb a real crash as a stall. A crash classifies as `other`, which is red and not retried.
 RUNNER_RE='failed to get background assertion|timed out while acquiring background assertion|failed to boot|unable to boot the simulator'
+APP_CRASH_RE="application 'com[.]osratech[.]child' crashed"
 
 has_launch() { grep -qiE "$LAUNCH_RE" "$1"; }
 
@@ -60,6 +62,13 @@ a=0; l=0; r=0
 has_assertion "$log" && a=1
 has_launch "$log" && l=1
 has_runner "$log" && r=1
+
+# The same log can contain an explicit app crash and a simulator error.
+# Preserve the crash failure if either simulator condition would allow a retry.
+if [ $((l + r)) -gt 0 ] && grep -qiE "$APP_CRASH_RE" "$log"; then
+  echo "ambiguous"
+  exit 0
+fi
 
 # More than one kind of evidence is ambiguous: never guess which one to trust.
 if [ $((a + l + r)) -gt 1 ]; then echo "ambiguous"; exit 0; fi
