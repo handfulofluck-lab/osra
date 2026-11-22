@@ -21,7 +21,7 @@ public final class FilterDataProvider: NEFilterDataProvider {
     private let store: PolicySnapshotStore
     private let liveness = FilterLivenessStore()
     private var policy: FilterPolicy?
-    private var loadedVersion = -1
+    private var refresh = SnapshotRefresh()
     private var refreshTimer: Timer?
 
     public override init() {
@@ -82,13 +82,15 @@ public final class FilterDataProvider: NEFilterDataProvider {
     private func reload() {
         let snapshot = store.read()
         policy = snapshot?.policy
-        loadedVersion = snapshot?.version ?? -1
+        refresh.applied(snapshot)
     }
 
+    /// The data path runs this per flow, so it must not parse JSON per flow: the file's modification date says
+    /// whether anything moved, and only then is the snapshot read. See SnapshotRefresh.
     private func reloadIfNewer() {
-        guard let snapshot = store.read() else { return }
-        guard snapshot.version > loadedVersion else { return }
-        policy = snapshot.policy
-        loadedVersion = snapshot.version
+        let attributes = try? FileManager.default.attributesOfItem(atPath: store.url.path)
+        let modification = attributes?[.modificationDate] as? Date
+        guard refresh.shouldReload(fileModification: modification) else { return }
+        reload()
     }
 }
