@@ -80,7 +80,7 @@ final class PolicySnapshotTests: XCTestCase {
     func testAFileOwnedByAnotherAccountIsNotReplaced() throws {
         try store().write(snapshot(2))
         let impossibleOwner = 4242
-        XCTAssertNotEqual(getuid(), impossibleOwner, "the fixture assumes the runner is not this uid")
+        XCTAssertNotEqual(Int(getuid()), impossibleOwner, "the fixture assumes the runner is not this uid")
 
         XCTAssertThrowsError(try store(expectedOwner: impossibleOwner).write(snapshot(3))) { error in
             XCTAssertEqual(error as? PolicySnapshotStore.StoreError, .unsafeOwner(Int(getuid())))
