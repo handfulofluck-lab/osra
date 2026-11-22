@@ -19,14 +19,13 @@ import OSRAMacAgentFilter
 /// reported to the parent as `degraded`, not hidden.
 public final class FilterDataProvider: NEFilterDataProvider {
     private let store: PolicySnapshotStore
-    private let liveness: FilterLivenessStore
+    private let liveness = FilterLivenessStore()
     private var policy: FilterPolicy?
     private var loadedVersion = -1
     private var refreshTimer: Timer?
 
     public override init() {
         self.store = PolicySnapshotStore()
-        self.liveness = FilterLivenessStore()
         super.init()
     }
 
