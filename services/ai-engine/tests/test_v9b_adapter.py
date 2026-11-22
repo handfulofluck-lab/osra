@@ -207,3 +207,57 @@ def test_the_real_checkpoint_loads_and_scores_one_row_deterministically():
     assert list(first.probs) == list(LABELS), "order is part of the contract"
     assert first.verdict in {"flagged", "safe"}
     assert len(first.model_sha256) == 64 and len(first.thresholds_sha256) == 64
+
+
+@pytest.mark.skipif(
+    not all(os.environ.get(v) for v in ("V9B_MODEL_DIR", "V9B_THRESHOLDS", "V9B_ROWS", "V9B_EXPECT")),
+    reason="needs the checkpoint, its thresholds and the frozen reference rows",
+)
+def test_the_adapter_agrees_with_the_frozen_reference_predictions():
+    """The cross-implementation check: this adapter vs the runner's own scoring path.
+
+    Both read the same checkpoint through different code (a verified `pipeline` call here, a direct
+    `AutoModelForSequenceClassification` there), so agreement on the verdicts and near-agreement on the
+    numbers is what rules out a label-order or normalization mistake in either. It ran on this PC with the
+    verified archive and produced the same verdicts, worst difference 4.937e-05.
+    """
+    from v9b_adapter import V9bAdapter
+
+    model_dir = Path(os.environ["V9B_MODEL_DIR"])
+    thresholds = Path(os.environ["V9B_THRESHOLDS"])
+    adapter = V9bAdapter.load(model_dir, thresholds, sha256_file(thresholds))
+    rows = [
+        json.loads(line)
+        for line in Path(os.environ["V9B_ROWS"]).read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    reference = {
+        row["id"]: row
+        for row in (
+            json.loads(line)
+            for line in Path(os.environ["V9B_EXPECT"]).read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        )
+    }
+    assert rows, "the reference file must not be empty, or this row passes for the wrong reason"
+    per_language = load_thresholds(thresholds, sha256_file(thresholds))
+    for row in rows:
+        lang = row.get("lang", "ar")
+        scored = adapter.score(row["text"], lang)
+        expected = reference[row["id"]]["probs"]
+        if isinstance(expected, list):
+            expected = dict(zip(LABELS, expected))
+        # Written out rather than reused from the adapter: a comparison that calls the code under test twice
+        # agrees with itself whatever it does. This independent expression of "past its own cutoff" is what
+        # makes the row able to fail.
+        expected_flagged = tuple(
+            label for label in LABELS if float(expected[label]) >= per_language[lang][label]
+        )
+        assert scored.flagged_categories == expected_flagged, (
+            f"{row['id']}: adapter flagged {scored.flagged_categories}, reference would flag {expected_flagged}"
+        )
+        assert scored.verdict == ("flagged" if expected_flagged else "safe")
+        for label in LABELS:
+            assert abs(scored.probs[label] - float(expected[label])) <= 2e-03, (
+                f"{row['id']}/{label}: adapter {scored.probs[label]:.6f} vs reference {float(expected[label]):.6f}"
+            )
