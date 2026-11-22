@@ -146,7 +146,8 @@ def test_load_refuses_a_missing_checkpoint_without_inventing_a_result(tmp_path):
 
     path, digest = write_thresholds(tmp_path)
     with pytest.raises(AdapterUnavailable):
-        V9bAdapter.load(tmp_path / "no-such-model", path, digest)
+        V9bAdapter.load(tmp_path / "no-such-model", path, digest,
+                        expected_manifest={name: "0" * 64 for name in MANIFEST_FILES})
     # Mutant: return a rules-derived Scored instead of raising -> this row goes red, and that is the rule
     # that keeps a v9b receipt honest.
 
@@ -154,16 +155,12 @@ def test_load_refuses_a_missing_checkpoint_without_inventing_a_result(tmp_path):
 def test_load_refuses_a_checkpoint_whose_labels_are_not_verified(tmp_path):
     from v9b_adapter import V9bAdapter
 
-    model_dir = tmp_path / "model"
-    model_dir.mkdir()
-    (model_dir / "model.safetensors").write_bytes(b"not a real checkpoint")
-    (model_dir / "config.json").write_text(
-        json.dumps({"id2label": {"0": "hate_speech", "1": "grooming"}}), encoding="utf-8"
-    )
+    # A full six-file checkpoint with a *correct* pin, so the manifest check passes and the label check is
+    # what has to refuse this one. Two files and a wrong pin would stop earlier for the wrong reason.
+    model_dir = _make_checkpoint(tmp_path / "model", {"0": "hate_speech", "1": "grooming"})
     path, digest = write_thresholds(tmp_path)
-    # The label check runs before any heavy import, so this needs no torch on the host.
     with pytest.raises(AdapterUnavailable) as raised:
-        V9bAdapter.load(model_dir, path, digest)
+        V9bAdapter.load(model_dir, path, digest, expected_manifest=manifest_of(model_dir))
     assert "verified seven" in str(raised.value)
 
 
@@ -306,3 +303,58 @@ def test_load_refuses_a_checkpoint_that_does_not_match_its_pin(tmp_path):
     (model / "config.json").write_text(json.dumps({"id2label": id2label()}) + " ", encoding="utf-8")
     with pytest.raises(AdapterUnavailable):
         V9bAdapter.load(model, path, digest, expected_manifest=pinned)
+
+
+def test_load_cannot_be_called_without_a_manifest():
+    """The pin is a required argument, not an option: an unpinned score cannot be attributed."""
+    from v9b_adapter import V9bAdapter
+
+    with pytest.raises(TypeError):
+        V9bAdapter.load(Path("model"), Path("thresholds.json"), "0" * 64)  # type: ignore[call-arg]
+
+
+class _StubPipeline:
+    """Stands in for the transformers pipeline so malformed scorer output can be tested offline."""
+
+    def __init__(self, payload):
+        self._payload = payload
+
+    def __call__(self, *_args, **_kwargs):
+        return self._payload
+
+
+def _adapter_with(payload) -> "V9bAdapter":
+    from v9b_adapter import V9bAdapter
+
+    thresholds = {"ar": {label: 0.5 for label in LABELS}}
+    return V9bAdapter(_StubPipeline(payload), "a" * 64, thresholds, "b" * 64)
+
+
+@pytest.mark.parametrize(
+    "bad_value",
+    [float("nan"), float("inf"), float("-inf"), 1.5, -0.01, "0.9", None],
+    ids=["nan", "inf", "-inf", "above-one", "below-zero", "string", "null"],
+)
+def test_score_rejects_anything_that_is_not_a_probability(bad_value):
+    # A NaN compares False against every threshold and would come out "safe" — the exact silent failure
+    # this check exists to stop. Mutant: drop the isfinite/range guard -> this row goes red.
+    payload = [[{"label": label, "score": 0.1} for label in LABELS]]
+    payload[0][2]["score"] = bad_value
+    with pytest.raises(AdapterUnavailable):
+        _adapter_with(payload).score("some text", "ar")
+
+
+def test_score_rejects_a_malformed_scorer_payload():
+    with pytest.raises(AdapterUnavailable):
+        _adapter_with({"oops": True}).score("some text", "ar")
+    with pytest.raises(AdapterUnavailable):
+        _adapter_with([[{"label": "grooming"}] * 7]).score("some text", "ar")
+    with pytest.raises(AdapterUnavailable):
+        _adapter_with([[{"label": 7, "score": 0.1} for _ in LABELS]]).score("some text", "ar")
+
+
+def test_score_accepts_a_well_formed_payload_and_flags_by_threshold():
+    payload = [[{"label": label, "score": 0.9 if label == "grooming" else 0.01} for label in LABELS]]
+    scored = _adapter_with(payload).score("some text", "ar")
+    assert scored.flagged_categories == ("grooming",)
+    assert scored.verdict == "flagged"

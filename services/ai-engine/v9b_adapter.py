@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
@@ -211,7 +212,7 @@ class V9bAdapter:
         model_dir: Path,
         thresholds_path: Path,
         expected_thresholds_sha256: str,
-        expected_manifest: Mapping[str, str] | None = None,
+        expected_manifest: Mapping[str, str],
     ) -> "V9bAdapter":
         model_dir = Path(model_dir)
         config_path = model_dir / "config.json"
@@ -220,8 +221,9 @@ class V9bAdapter:
             raise AdapterUnavailable(f"no config.json in {model_dir}")
         if not weights_path.is_file():
             raise AdapterUnavailable(f"no model.safetensors in {model_dir}")
-        if expected_manifest is not None:
-            verify_manifest(model_dir, expected_manifest)
+        # Required, not optional: a score that is not tied to a pinned checkpoint is a score nobody can
+        # attribute, which is the one thing #996 exists to prevent. The check runs before any runtime import.
+        verify_manifest(model_dir, expected_manifest)
         thresholds = load_thresholds(Path(thresholds_path), expected_thresholds_sha256)
         try:
             config = json.loads(config_path.read_text(encoding="utf-8"))
@@ -259,7 +261,25 @@ class V9bAdapter:
             raw = self._pipeline(text, truncation=True, max_length=128)[0]
         except Exception as exc:  # noqa: BLE001
             raise AdapterUnavailable(f"scoring failed: {exc}") from exc
-        by_label = {item["label"]: float(item["score"]) for item in raw}
+        if not isinstance(raw, list):
+            raise AdapterUnavailable(f"scorer returned {type(raw).__name__}, not a list of label/score items")
+        by_label: dict[str, float] = {}
+        for item in raw:
+            if not isinstance(item, dict) or "label" not in item or "score" not in item:
+                raise AdapterUnavailable(f"scorer item is not a label/score pair: {item!r}")
+            label, value = item["label"], item["score"]
+            if not isinstance(label, str):
+                raise AdapterUnavailable(f"scorer label is not a string: {label!r}")
+            # A string that happens to parse as a number is still a malformed scorer response: coercing it
+            # would hide a changed output shape, and `bool` is an int subclass that would sneak through.
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise AdapterUnavailable(f"score for {label} is not a number: {value!r}")
+            score = float(value)
+            # A NaN or an infinity would compare False against every threshold and quietly come out "safe";
+            # a value outside [0, 1] is not a probability at all. Both are the model failing, not a verdict.
+            if not math.isfinite(score) or not 0.0 <= score <= 1.0:
+                raise AdapterUnavailable(f"score for {label} is not a probability in [0, 1]: {value!r}")
+            by_label[label] = score
         if set(by_label) != set(LABELS):
             raise AdapterUnavailable(f"model returned labels {sorted(by_label)}, not the verified seven")
         probs = {label: by_label[label] for label in LABELS}
