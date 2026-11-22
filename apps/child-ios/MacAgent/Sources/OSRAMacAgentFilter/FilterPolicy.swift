@@ -12,9 +12,11 @@ import Foundation
 ///  2. an explicit allowed domain, or a subdomain of one — allowed, whatever else says;
 ///  3. an explicit blocked domain, or a domain in a blocked category — blocked. A parent's block beats
 ///     SafeSearch: redirecting a blocked search host would leave the site reachable (#825 on the Flip4);
-///  4. SafeSearch — a **redirect** to the same request with the engine's safety parameter set. A content
-///     filter cannot rewrite a resolver answer the way the DNS sinkhole does, so this is a URL redirect and
-///     the PR says so rather than implying the phone's mechanism;
+///  4. SafeSearch — a **redirect** to the same request with the engine's safety parameter set. Note that the
+///     Mac's content filter has **no redirect verdict** (`NEFilterNewFlowVerdict` has no
+///     `redirectRequestURL`), so a `.redirect` decision is currently *not enforced* by the provider; enforcing
+///     it on the Mac needs a DNS proxy provider, and that design change is asked for on #988. The table still
+///     returns the intended target so the decision is visible and testable rather than dropped silently;
 ///  5. otherwise allowed.
 ///
 /// Matching is by DNS label suffix: `blocked.example` covers `www.blocked.example` but not

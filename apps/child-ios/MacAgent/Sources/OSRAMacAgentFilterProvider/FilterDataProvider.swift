@@ -53,8 +53,13 @@ public final class FilterDataProvider: NEFilterDataProvider {
             return NEFilterNewFlowVerdict.allow()
         case .block:
             return NEFilterNewFlowVerdict.drop()
-        case .redirect(let target):
-            return NEFilterNewFlowVerdict.redirectRequestURL(target)
+        case .redirect:
+            // There is no redirect verdict on this platform: `NEFilterNewFlowVerdict` has no
+            // `redirectRequestURL`, and a content filter cannot rewrite a request. Enforcing SafeSearch on the
+            // Mac needs a DNS proxy provider, which rewrites an answer the way the Android sinkhole does — a
+            // design change that is Claude's call, asked for on #988. Until then the search is allowed and the
+            // intent stays in the decision table, so nobody reads this as a working rewrite.
+            return NEFilterNewFlowVerdict.allow()
         }
     }
 
