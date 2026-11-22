@@ -12,17 +12,25 @@ let package = Package(
     products: [
         .executable(name: "osra-agent", targets: ["osra-agent"]),
         .library(name: "OSRAMacAgentCore", targets: ["OSRAMacAgentCore"]),
+        .library(name: "OSRAMacAgentFilter", targets: ["OSRAMacAgentFilter"]),
     ],
     dependencies: [.package(path: "..")],
     targets: [
+        // Step (iii), #988: the web filter's decision table, the daemon→extension snapshot and the capability
+        // answer. Foundation only — no NetworkExtension — so it compiles and tests on any macOS runner, unsigned.
+        .target(name: "OSRAMacAgentFilter"),
         .target(
             name: "OSRAMacAgentCore",
-            dependencies: [.product(name: "FamilyShieldAgent", package: "child-ios")]
+            dependencies: [
+                .product(name: "FamilyShieldAgent", package: "child-ios"),
+                "OSRAMacAgentFilter",
+            ]
         ),
         .executableTarget(name: "osra-agent", dependencies: ["OSRAMacAgentCore"]),
         .testTarget(
             name: "OSRAMacAgentCoreTests",
-            dependencies: ["OSRAMacAgentCore", .product(name: "FamilyShieldAgent", package: "child-ios")]
+            dependencies: ["OSRAMacAgentCore", "OSRAMacAgentFilter", .product(name: "FamilyShieldAgent", package: "child-ios")]
         ),
+        .testTarget(name: "OSRAMacAgentFilterTests", dependencies: ["OSRAMacAgentFilter"]),
     ]
 )
