@@ -265,32 +265,35 @@ class V9bAdapter:
             raise AdapterUnavailable(f"scorer returned {type(raw).__name__}, not a list of label/score items")
         by_label: dict[str, float] = {}
         for item in raw:
-            # Diagnostics name the shape and the type, never the payload: a scorer result can carry the row's
-            # text on some backends, and an error message is the easiest place for it to reach a log.
+            # Nothing the scorer produced reaches a message until it is validated. A field name, a label or a
+            # score is attacker-influenced text as far as this module is concerned: the same call also serves
+            # rows of a child's messages, so an echoed field could quote one into a log. Diagnostics use fixed
+            # text plus safe structure (types, counts, and labels already known to be in LABELS).
             if not isinstance(item, dict) or "label" not in item or "score" not in item:
-                raise AdapterUnavailable(
-                    "scorer item is not a label/score pair (keys: "
-                    f"{sorted(item) if isinstance(item, dict) else type(item).__name__})"
+                shape = (
+                    f"has label={isinstance(item, dict) and 'label' in item}, "
+                    f"score={isinstance(item, dict) and 'score' in item}"
+                    if isinstance(item, dict)
+                    else f"is a {type(item).__name__}"
                 )
+                raise AdapterUnavailable(f"scorer item is not a label/score pair ({shape})")
             label, value = item["label"], item["score"]
             if not isinstance(label, str):
                 raise AdapterUnavailable(f"scorer label is not a string (type: {type(label).__name__})")
-            # One score per label is the contract. Without this, a repeated label silently overwrites the first
-            # value and the set comparison downstream still passes — a duplicate would look like a clean result.
+            if label not in LABELS:
+                raise AdapterUnavailable("scorer returned a label outside the verified seven")
             if label in by_label:
                 raise AdapterUnavailable(f"scorer returned {label} more than once; one score per label")
-            # A string that happens to parse as a number is still a malformed scorer response: coercing it
-            # would hide a changed output shape, and `bool` is an int subclass that would sneak through.
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise AdapterUnavailable(f"score for {label} is not a number (type: {type(value).__name__})")
             score = float(value)
-            # A NaN or an infinity would compare False against every threshold and quietly come out "safe";
-            # a value outside [0, 1] is not a probability at all. Both are the model failing, not a verdict.
             if not math.isfinite(score) or not 0.0 <= score <= 1.0:
                 raise AdapterUnavailable(f"score for {label} is not a probability in [0, 1]")
             by_label[label] = score
-        if set(by_label) != set(LABELS):
-            raise AdapterUnavailable(f"model returned labels {sorted(by_label)}, not the verified seven")
+        missing = [label for label in LABELS if label not in by_label]
+        if missing:
+            # Only names from our own LABELS appear here, never anything the scorer chose.
+            raise AdapterUnavailable(f"scorer did not return {missing}")
         probs = {label: by_label[label] for label in LABELS}
         flagged = apply_thresholds(probs, self._thresholds[lang])
         return Scored(

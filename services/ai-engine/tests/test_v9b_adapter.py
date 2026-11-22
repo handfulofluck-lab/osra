@@ -392,3 +392,37 @@ def test_malformed_result_diagnostics_do_not_echo_the_payload():
     with pytest.raises(AdapterUnavailable) as raised:
         _adapter_with(payload).score("some text", "ar")
     assert secret not in str(raised.value)
+
+
+def test_no_scorer_chosen_text_reaches_an_error_message():
+    """osra-security#67: field names and labels are scorer output until validated, and this call also serves
+    child messages, so none of it may be echoed."""
+    placeholder_label = "the child typed this into the chat"
+    placeholder_field = "quoted-child-message"
+
+    # Unknown label.
+    payload = [[{"label": label, "score": 0.1} for label in LABELS]]
+    payload[0][0] = {"label": placeholder_label, "score": 0.9}
+    with pytest.raises(AdapterUnavailable) as raised:
+        _adapter_with(payload).score("some text", "ar")
+    assert placeholder_label not in str(raised.value)
+
+    # Unknown field name.
+    with pytest.raises(AdapterUnavailable) as raised:
+        _adapter_with([[{placeholder_field: 0.9}]]).score("some text", "ar")
+    assert placeholder_field not in str(raised.value)
+
+    # Incomplete coverage names only labels from LABELS.
+    with pytest.raises(AdapterUnavailable) as raised:
+        _adapter_with([[{"label": label, "score": 0.1} for label in LABELS[:-1]]]).score("some text", "ar")
+    assert "hate_speech" in str(raised.value)
+    assert placeholder_label not in str(raised.value)
+
+
+def test_a_known_label_is_still_named_in_a_score_error():
+    """The guard must not go so quiet that a real failure cannot be diagnosed."""
+    payload = [[{"label": label, "score": 0.1} for label in LABELS]]
+    payload[0][3] = {"label": "violence", "score": "0.9"}
+    with pytest.raises(AdapterUnavailable) as raised:
+        _adapter_with(payload).score("some text", "ar")
+    assert "violence" in str(raised.value)
