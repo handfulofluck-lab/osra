@@ -87,6 +87,17 @@ codesign --force --timestamp --options runtime \
 codesign --force --timestamp --options runtime --sign "$IDENTITY" "$HOST_APP"
 
 codesign --verify --strict --verbose=2 "$EXTENSION"
+
+# The failure this catches is the quiet one: a signature that verifies but does not carry the entitlement.
+# The system then refuses to load the extension, and the message it gives points at activation, not at signing.
+SIGNED_ENTITLEMENTS="$(codesign -d --entitlements :- "$EXTENSION" 2>/dev/null || true)"
+if ! printf '%s' "$SIGNED_ENTITLEMENTS" | grep -q 'content-filter-provider-systemextension'; then
+  echo "the signed extension does not carry content-filter-provider-systemextension" >&2
+  echo "the profile in use probably does not include the Network Extension entitlement" >&2
+  exit 1
+fi
+echo "entitlement present: content-filter-provider-systemextension"
+
 echo "built $HOST_APP"
 echo "carrying $EXTENSION"
 echo "Next: run the host binary as the administrator and approve the extension in System Settings."
