@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The bundle description of the Mac content filter (roadmap 5.9, step (iii), #988).
+
+  It is checked in, linted by CI, and assembled into `OSRAFilter.systemextension` by
+  `scripts/build-filter-extension.sh`. CI never signs or installs it.
+
+  `NSExtensionPrincipalClass` carries the module-qualified class name literally, because a bundle assembled
+  without Xcode has no `$(PRODUCT_MODULE_NAME)` to expand. It must stay in step with the target name in
+  `Package.swift`; a mismatch is a system extension that loads and then does nothing.
+-->
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleDisplayName</key>
+    <string>OSRA Filter</string>
+    <key>CFBundleExecutable</key>
+    <string>OSRAFilterProvider</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.osratech.agent.filter</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>OSRAFilter</string>
+    <key>CFBundlePackageType</key>
+    <string>SYSX</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionPointIdentifier</key>
+        <string>com.apple.networkextension.filter-data</string>
+        <key>NSExtensionPrincipalClass</key>
+        <string>OSRAMacAgentFilterProvider.FilterDataProvider</string>
+    </dict>
+</dict>
+</plist>

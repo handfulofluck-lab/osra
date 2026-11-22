@@ -111,6 +111,13 @@ jobs:
       - name: Check the launchd job description
         run: plutil -lint apps/child-ios/MacAgent/launchd/com.osratech.agent.plist
 
+      # Mac step (iii), #988: the filter's bundle description and entitlements are linted here for the same reason
+      # the launchd plist is — a typo in either is invisible until a signed Mac refuses to load the extension.
+      - name: Check the filter extension's bundle description and entitlements
+        run: |
+          plutil -lint apps/child-ios/MacAgent/FilterExtension/Info.plist
+          plutil -lint apps/child-ios/MacAgent/FilterExtension/OSRAFilter.entitlements
+
       - name: Build the Mac agent
         working-directory: apps/child-ios/MacAgent
         run: swift build

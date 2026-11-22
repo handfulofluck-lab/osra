@@ -13,12 +13,23 @@ let package = Package(
         .executable(name: "osra-agent", targets: ["osra-agent"]),
         .library(name: "OSRAMacAgentCore", targets: ["OSRAMacAgentCore"]),
         .library(name: "OSRAMacAgentFilter", targets: ["OSRAMacAgentFilter"]),
+        // A dynamic library, because a `.systemextension` bundle's payload is a loadable image, not a program.
+        // `swift build` produces `libOSRAFilterProvider.dylib`; `scripts/build-filter-extension.sh` assembles the
+        // bundle around it. Nothing here is signed or installed by CI.
+        .library(name: "OSRAFilterProvider", type: .dynamic, targets: ["OSRAMacAgentFilterProvider"]),
     ],
     dependencies: [.package(path: "..")],
     targets: [
         // Step (iii), #988: the web filter's decision table, the daemon→extension snapshot and the capability
         // answer. Foundation only — no NetworkExtension — so it compiles and tests on any macOS runner, unsigned.
         .target(name: "OSRAMacAgentFilter"),
+        // The system extension itself. Its logic is all in `OSRAMacAgentFilter`; this target only turns a flow
+        // into a verdict, so it has no test target of its own and its proof is the signed device row.
+        .target(
+            name: "OSRAMacAgentFilterProvider",
+            dependencies: ["OSRAMacAgentFilter"],
+            linkerSettings: [.linkedFramework("NetworkExtension")]
+        ),
         .target(
             name: "OSRAMacAgentCore",
             dependencies: [
