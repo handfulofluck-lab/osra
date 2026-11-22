@@ -47,6 +47,18 @@ final class PolicySnapshotTests: XCTestCase {
                        "a Standard user must not be able to read or edit the family's block list")
     }
 
+    // Mutant: keeping the sub-second part of `writtenAt`, which the ISO-8601 file cannot carry — a snapshot
+    // would then never equal the one read back, and a caller comparing them would see a change on every read.
+    func testASnapshotWithAFractionalDateStillRoundTrips() throws {
+        let store = store()
+        let rolled = PolicySnapshot(version: 2,
+                                    rulesVersion: 3,
+                                    policy: FilterPolicy(),
+                                    writtenAt: Date(timeIntervalSince1970: 1_700_000_000.875))
+        try store.write(rolled)
+        XCTAssertEqual(store.read(), rolled)
+    }
+
     // Mutant: writing in place, so a crash mid-write leaves a truncated file the provider reads as corrupt.
     func testACrashedWriteLeavesThePreviousVersionReadable() throws {
         let store = store()

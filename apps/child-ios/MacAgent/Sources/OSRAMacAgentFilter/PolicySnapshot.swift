@@ -33,7 +33,9 @@ public struct PolicySnapshot: Codable, Equatable {
         self.schemaVersion = Self.currentSchema
         self.version = version
         self.rulesVersion = rulesVersion
-        self.writtenAt = writtenAt
+        // The file stores ISO-8601 to the second, so the value is truncated here too: a snapshot must compare
+        // equal to the one read back from its own file, or every read looks like a change.
+        self.writtenAt = Date(timeIntervalSince1970: writtenAt.timeIntervalSince1970.rounded(.down))
         self.policy = policy
     }
 }
