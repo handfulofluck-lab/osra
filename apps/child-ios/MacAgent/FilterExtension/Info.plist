@@ -1,14 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  The bundle description of the Mac content filter (roadmap 5.9, step (iii), #988).
+  The bundle description of the Mac content filter system extension (roadmap 5.9, step (iii), #988).
 
-  It is checked in, linted by CI, and assembled into `OSRAFilter.systemextension` by
-  `scripts/build-filter-extension.sh`. CI never signs or installs it.
+  This is the **system-extension** format, not the app-extension one (Codex, #989 `7073424029`, with Apple's
+  host-bundle-layout reference). The differences that matter, and that a wrong plist silently loses:
 
-  `NSExtensionPrincipalClass` carries the module-qualified class name literally, because a bundle assembled
-  without Xcode has no `$(PRODUCT_MODULE_NAME)` to expand. It must stay in step with the target name in
-  `Package.swift`; a mismatch is a system extension that loads and then does nothing.
+  * `NSExtension` is replaced by a `NetworkExtension` dictionary whose `NEProviderClasses` maps the extension
+    point to the module-qualified provider class. A provider declared the app-extension way loads and then
+    never receives a flow.
+  * The executable is a real entry point that calls `NEProvider.startSystemExtensionMode()` (see
+    `../SystemExtension/main.swift`), not a copied dynamic library.
+  * `CFBundlePackageType` is `SYSX`, and the whole bundle is embedded in the host's
+    `Contents/Library/SystemExtensions/` — the layout `MacAgent/project.yml` generates.
+
+  CI lints this file with `plutil -lint`; it neither signs nor loads it.
 -->
 <plist version="1.0">
 <dict>
@@ -17,7 +23,7 @@
     <key>CFBundleDisplayName</key>
     <string>OSRA Filter</string>
     <key>CFBundleExecutable</key>
-    <string>OSRAFilterProvider</string>
+    <string>OSRAFilter</string>
     <key>CFBundleIdentifier</key>
     <string>com.osratech.agent.filter</string>
     <key>CFBundleInfoDictionaryVersion</key>
@@ -32,12 +38,13 @@
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
-    <key>NSExtension</key>
+    <key>NetworkExtension</key>
     <dict>
-        <key>NSExtensionPointIdentifier</key>
-        <string>com.apple.networkextension.filter-data</string>
-        <key>NSExtensionPrincipalClass</key>
-        <string>OSRAMacAgentFilterProvider.FilterDataProvider</string>
+        <key>NEProviderClasses</key>
+        <dict>
+            <key>com.apple.networkextension.filter-data</key>
+            <string>OSRAMacAgentFilterProvider.FilterDataProvider</string>
+        </dict>
     </dict>
 </dict>
 </plist>

@@ -3,20 +3,24 @@
 <!--
   Entitlements for the Mac content filter (roadmap 5.9, step (iii), #988).
 
-  `com.apple.developer.networking.networkextension` with `content-filter-provider` is what lets a
-  NetworkExtension provider run at all. It is **granted by Apple** and must be present in the Developer ID
-  provisioning profile used to sign this bundle; a signature without it loads nothing. That grant, and the
-  profile, are the dependency Ahmed is confirming on #988 — nothing in CI can prove this file works.
+  The value is `content-filter-provider-systemextension`, which is the one Apple lists for a Developer ID
+  distributed system extension (Codex, #989 `7073424029`, with Apple's entitlement reference). The plain
+  `content-filter-provider` value is the app-extension route (a container app on the App Store) and would not
+  be granted for this bundle.
 
-  Deliberately absent: `com.apple.security.app-sandbox` (the daemon and the extension run outside the App
-  Store, and the container-file handoff needs the path both processes can reach) and any team identifier
-  (it comes from the signing identity, and a placeholder here would be a lie that codesign rejects).
+  The entitlement is **granted by Apple** and must be present in the Developer ID provisioning profile used to
+  sign this bundle; a signature without it loads nothing. That grant and the profile are the dependency Ahmed
+  is confirming.
+
+  Deliberately absent: `com.apple.security.app-sandbox` (the extension and the root daemon live outside the App
+  Store, and the snapshot handoff needs the path both can reach) and any team identifier (it comes from the
+  signing identity, and a placeholder would be a lie codesign rejects).
 -->
 <plist version="1.0">
 <dict>
     <key>com.apple.developer.networking.networkextension</key>
     <array>
-        <string>content-filter-provider</string>
+        <string>content-filter-provider-systemextension</string>
     </array>
 </dict>
 </plist>

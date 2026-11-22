@@ -1,61 +1,76 @@
 #!/usr/bin/env bash
 #
-# Assemble the Mac content filter's `.systemextension` bundle around the SwiftPM-built payload, and sign it.
+# Build and sign the Mac content filter through the Xcode host (roadmap 5.9, step (iii), #988).
 #
-# Roadmap 5.9, step (iii), #988. This script is NOT run in CI and is not part of any gate: it needs a Developer
-# ID Application identity and a provisioning profile that carries the Network Extension entitlement, neither of
-# which exists in the repository or on a runner. Its job is to make the bundling route explicit instead of
-# implied, so the signed device row starts from a known build rather than from an Xcode project nobody wrote.
+# Replaces the first version of this script, which copied a SwiftPM dynamic library into `CFBundleExecutable`.
+# That was the wrong route for a system extension: the system loads a bundle whose executable calls
+# `NEProvider.startSystemExtensionMode()` and whose `NetworkExtension`/`NEProviderClasses` dictionary names the
+# provider class (Codex, #989 `7073424029`, with Apple's host-bundle-layout reference). The route below is the
+# one Apple documents: a host app that embeds the extension in `Contents/Library/SystemExtensions/`.
 #
-# Usage, on the test Mac, after `xcrun devicectl`-era Xcode is installed:
+# NOT run in CI, and it cannot be: it needs Xcode, a Developer ID Application identity, and a provisioning
+# profile carrying `com.apple.developer.networking.networkextension` =
+# `content-filter-provider-systemextension`. CI's unsigned checks stay `swift build` / `swift test` in the
+# package and `plutil -lint` on the two plists.
 #
-#   CODESIGN_IDENTITY="Developer ID Application: <name> (<TEAMID>)" \
-#   PROVISIONING_PROFILE=/path/to/OSRAFilter.provisionprofile \
+# Usage, on the test Mac:
+#   CODESIGN_IDENTITY="Developer ID Application: <name> (TEAMID)" \
+#   PROVISIONING_PROFILE=/path/to/profile.provisionprofile \
 #   ./scripts/build-filter-extension.sh
 #
-# Then, as the Mac's administrator (the parent), the extension is submitted by the daemon with
-# `OSSystemExtensionRequest` and approved once in System Settings; approval is a person's action, not a script's.
+# Then, as the Mac's administrator, run the host to submit the activation request:
+#   <build>/OSRAMacHost.app/Contents/MacOS/OSRAMacHost
+# and approve it once in System Settings → Privacy & Security.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 IDENTITY="${CODESIGN_IDENTITY:-}"
 PROFILE="${PROVISIONING_PROFILE:-}"
-OUT="${OUT_DIR:-.build/OSRAFilter.systemextension}"
+OUT="${OUT_DIR:-.build/xcode}"
 
 if [[ -z "$IDENTITY" ]]; then
   echo "CODESIGN_IDENTITY is required (a Developer ID Application identity)." >&2
-  echo "Without it the bundle would be ad-hoc signed and the system would refuse to load it." >&2
+  echo "An ad-hoc signature produces a bundle the system refuses to load." >&2
   exit 2
 fi
 if [[ ! -f "$PROFILE" ]]; then
   echo "PROVISIONING_PROFILE must point to a Developer ID profile carrying" >&2
-  echo "com.apple.developer.networking.networkextension (content-filter-provider)." >&2
+  echo "com.apple.developer.networking.networkextension = content-filter-provider-systemextension." >&2
   exit 2
 fi
 
 plutil -lint FilterExtension/Info.plist
 plutil -lint FilterExtension/OSRAFilter.entitlements
+command -v xcodegen >/dev/null || { echo "xcodegen is required (brew install xcodegen)" >&2; exit 2; }
 
-swift build -c release --product OSRAFilterProvider
-PAYLOAD="$(swift build -c release --product OSRAFilterProvider --show-bin-path)/libOSRAFilterProvider.dylib"
-if [[ ! -f "$PAYLOAD" ]]; then
-  echo "the release build did not produce $PAYLOAD" >&2
+xcodegen generate --spec project.yml --project .
+xcodebuild \
+  -project OSRAMacAgent.xcodeproj \
+  -scheme OSRAMacHost \
+  -configuration Release \
+  -derivedDataPath "$OUT" \
+  CODE_SIGN_IDENTITY="$IDENTITY" \
+  CODE_SIGN_STYLE=Manual \
+  PROVISIONING_PROFILE_SPECIFIER="" \
+  OTHER_CODE_SIGN_FLAGS="--timestamp --options runtime" \
+  build
+
+HOST_APP="$(find "$OUT/Build/Products/Release" -maxdepth 1 -name 'OSRAMacHost.app' -print -quit)"
+EXTENSION="$(find "$HOST_APP/Contents/Library/SystemExtensions" -maxdepth 1 -name '*.systemextension' -print -quit)"
+if [[ -z "$HOST_APP" || -z "$EXTENSION" ]]; then
+  echo "the build did not produce a host app carrying a system extension" >&2
   exit 1
 fi
 
-rm -rf "$OUT"
-mkdir -p "$OUT/Contents/MacOS"
-cp FilterExtension/Info.plist "$OUT/Contents/Info.plist"
-cp "$PROFILE" "$OUT/Contents/embedded.provisionprofile"
-cp "$PAYLOAD" "$OUT/Contents/MacOS/OSRAFilterProvider"
-
-# Hardened runtime and a timestamp, because a notarised installer (step vi) will not accept anything less.
+# The extension's own signature is what the system checks on load; sign it explicitly so a build setting cannot
+# quietly ad-hoc it, then the host around it.
 codesign --force --timestamp --options runtime \
   --entitlements FilterExtension/OSRAFilter.entitlements \
-  --sign "$IDENTITY" \
-  "$OUT"
+  --sign "$IDENTITY" "$EXTENSION"
+codesign --force --timestamp --options runtime --sign "$IDENTITY" "$HOST_APP"
 
-codesign --verify --strict --verbose=2 "$OUT"
-echo "built $OUT"
-echo "Next: submit it from the daemon with OSSystemExtensionRequest; approval is the parent's action."
+codesign --verify --strict --verbose=2 "$EXTENSION"
+echo "built $HOST_APP"
+echo "carrying $EXTENSION"
+echo "Next: run the host binary as the administrator and approve the extension in System Settings."
