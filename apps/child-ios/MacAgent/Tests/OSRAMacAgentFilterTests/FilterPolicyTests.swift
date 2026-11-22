@@ -182,6 +182,16 @@ final class FilterPolicyTests: XCTestCase {
         XCTAssertTrue(p.safeSearchEnforced)
     }
 
+    // Mutant: sorting the category map inside `decide`, which allocates and sorts on every flow in the data
+    // path. The order is prepared once per policy; this pins that a decision still sees the first rule.
+    func testACategoryDecisionUsesThePreparedOrder() {
+        let p = policy(categories: ["b.example": "games", "a.example": "games", "c.example": "social"])
+        XCTAssertEqual(p.sortedCategoryDomains, ["a.example", "b.example", "c.example"])
+        // A host that matches two rules must report the alphabetically first, whatever the dictionary order was.
+        XCTAssertEqual(p.decide(host: "b.example"), .block(reason: "category:games:b.example"))
+        XCTAssertEqual(p.decide(host: "c.example"), .block(reason: "category:social:c.example"))
+    }
+
     // A request with no host at all (a data: or file: URL) is not something a content filter blocks.
     func testAHostlessUrlIsAllowed() {
         let p = policy(blocked: ["example"], safeSearch: true)

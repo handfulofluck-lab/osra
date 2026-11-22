@@ -36,6 +36,9 @@ public struct FilterPolicy: Codable, Equatable {
     /// Domain → category name, already narrowed to the categories this family blocks. Empty until a
     /// blocklist pack ships for the Mac; the table takes it as an input rather than inventing one.
     public var categoryDomains: [String: String]
+    /// `categoryDomains`' keys in sorted order, computed once here rather than per decision. A dictionary has
+    /// no order, and sorting it inside `decide` would allocate and sort on every flow in the data path.
+    public private(set) var sortedCategoryDomains: [String]
 
     public init(pausedInternet: Bool = false,
                 safeSearchEnforced: Bool = false,
@@ -53,6 +56,7 @@ public struct FilterPolicy: Codable, Equatable {
             if !name.isEmpty, !label.isEmpty { categories[name] = label }
         }
         self.categoryDomains = categories
+        self.sortedCategoryDomains = categories.keys.sorted()
     }
 
     // MARK: - Decision
@@ -91,7 +95,7 @@ public struct FilterPolicy: Codable, Equatable {
         if pausedInternet { return .blocked("paused_internet") }
         if Self.firstMatch(host, in: allowedDomains) != nil { return .allowedExplicitly }
         if let rule = Self.firstMatch(host, in: blockedDomains) { return .blocked("blocked_domain:\(rule)") }
-        if let (rule, category) = Self.firstCategory(host, in: categoryDomains) {
+        if let (rule, category) = firstCategory(host) {
             return .blocked("category:\(category):\(rule)")
         }
         return .unblocked
@@ -120,9 +124,10 @@ public struct FilterPolicy: Codable, Equatable {
     }
 
     /// Deterministic: the alphabetically first matching rule, so a log line does not depend on dictionary order.
-    static func firstCategory(_ host: String, in map: [String: String]) -> (String, String)? {
-        for rule in map.keys.sorted() where matches(host, rule) {
-            if let category = map[rule] { return (rule, category) }
+    /// The order is prepared once per policy (`sortedCategoryDomains`), not once per decision.
+    func firstCategory(_ host: String) -> (String, String)? {
+        for rule in sortedCategoryDomains where Self.matches(host, rule) {
+            if let category = categoryDomains[rule] { return (rule, category) }
         }
         return nil
     }
