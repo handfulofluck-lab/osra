@@ -227,6 +227,16 @@ public enum AgentRuntime {
         case .synced(let rules):
             MacAgentState.setRulesVersion(rules.effectiveRulesVersion)
             log("event=rules_synced version=\(rules.effectiveRulesVersion)")
+            // Step (iii), #988: the content filter reads this file, not the server. A publish failure is logged
+            // and survived — the daemon keeps the rules it has and the extension keeps the policy it read.
+            do {
+                let published = try MacPolicyPublisher.publish(rules)
+                log(published.changed
+                    ? "event=policy_published version=\(published.version) rules=\(rules.effectiveRulesVersion)"
+                    : "event=policy_unchanged version=\(published.version) rules=\(rules.effectiveRulesVersion)")
+            } catch {
+                log("event=policy_publish_failed")
+            }
             return (outcome, .synced(version: rules.effectiveRulesVersion))
         case .consentWithdrawn:
             MacAgentState.setRulesVersion(nil)
