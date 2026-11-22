@@ -373,3 +373,22 @@ def test_load_thresholds_refuses_a_language_that_is_not_a_label_map(tmp_path):
     path.write_text(json.dumps({"thresholds": {"ar": [0.5] * len(LABELS)}}), encoding="utf-8")
     with pytest.raises(AdapterUnavailable):
         load_thresholds(path, sha256_file(path))
+
+
+def test_score_refuses_a_repeated_label():
+    # A dict assignment would let the second value win and the label-set check downstream would still pass,
+    # so a duplicated label would look like a clean result. Mutant: drop the membership check -> this row red.
+    payload = [[{"label": label, "score": 0.1} for label in LABELS]]
+    payload[0][2] = {"label": LABELS[0], "score": 0.95}  # cyberbullying twice, grooming gone
+    with pytest.raises(AdapterUnavailable) as raised:
+        _adapter_with(payload).score("some text", "ar")
+    assert "more than once" in str(raised.value)
+
+
+def test_malformed_result_diagnostics_do_not_echo_the_payload():
+    # A scorer result can carry row text on some backends; the message must name the shape, not the content.
+    secret = "the child wrote this sentence"
+    payload = [[{"label": "grooming", "score": secret}]]
+    with pytest.raises(AdapterUnavailable) as raised:
+        _adapter_with(payload).score("some text", "ar")
+    assert secret not in str(raised.value)
