@@ -19,11 +19,14 @@ import OSRAMacAgentFilter
 /// reported to the parent as `degraded`, not hidden.
 public final class FilterDataProvider: NEFilterDataProvider {
     private let store: PolicySnapshotStore
+    private let liveness: FilterLivenessStore
     private var policy: FilterPolicy?
     private var loadedVersion = -1
+    private var refreshTimer: Timer?
 
     public override init() {
         self.store = PolicySnapshotStore()
+        self.liveness = FilterLivenessStore()
         super.init()
     }
 
@@ -35,11 +38,25 @@ public final class FilterDataProvider: NEFilterDataProvider {
 
     public override func startFilter(completionHandler: @escaping (Error?) -> Void) {
         reload()
+        publishLiveness(running: true)
+        // The daemon treats a liveness file older than five minutes as a filter that is not running, so this
+        // refreshes once a minute. If the extension has no run loop to fire it, the file goes stale and the
+        // report under-claims — which is the direction that cannot mislead a parent.
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            self?.publishLiveness(running: true)
+        }
         completionHandler(nil)
     }
 
     public override func stopFilter(with reason: NEProviderStopReason, completionHandler: @escaping () -> Void) {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+        publishLiveness(running: false)
         completionHandler()
+    }
+
+    private func publishLiveness(running: Bool) {
+        try? liveness.write(FilterLiveness(running: running))
     }
 
     public override func handleNewFlow(_ flow: NEFilterFlow) -> NEFilterNewFlowVerdict {

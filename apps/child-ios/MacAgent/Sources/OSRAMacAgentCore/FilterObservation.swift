@@ -1,56 +1,52 @@
 import Foundation
 import OSRAMacAgentFilter
-#if canImport(NetworkExtension)
-import NetworkExtension
-#endif
 
 /// What the system says about the content filter, turned into the one thing the report may say.
 ///
 /// Roadmap 5.9, build step (iii), #988. Codex's requirement: "report web filtering active only after the
-/// provider is actually running." This is the only place that asks, and it deliberately keeps the *judgement*
-/// separate from the *question*, so the judgement is tested and the question is one call:
+/// provider is actually running." macOS has no cross-process query for that (`NEFilterManager` exposes the
+/// configuration, `isEnabled`, and the `SystemExtensions` API submits extensions rather than reporting them),
+/// so the extension writes a liveness file and this decides what it is worth:
 ///
-///  * `assess(observed:policyLoaded:safeSearchRequested:)` is pure and covered by tests;
-///  * `current(safeSearchRequested:)` asks NetworkExtension, and is covered by the signed device row instead,
-///    because a runner has no filter configuration to read.
+///  * `provider(liveness:now:maximumAge:)` is pure and covered by tests;
+///  * `current(...)` reads two small files, and its truth is the signed device row's.
+///
+/// Both failure directions matter. An unanswered question is `failed`, never `running`; a stale file — an
+/// extension that crashed, was unloaded, or stopped refreshing — is `stopped`, never `running`.
 public enum FilterObservation {
-    /// The mapping from "what the system answered" to the reported state.
-    ///
-    /// `observed: nil` means the system did not answer. That is reported as `failed` — never as `running`
-    /// (an unanswered question about enforcement is not evidence of enforcement) and never as `notInstalled`
-    /// (it is not evidence of absence either).
-    public static func assess(observed: FilterStatus.Provider?,
+    /// How long a liveness file stays believable. The extension refreshes it every minute, so five minutes is
+    /// four missed refreshes: long enough not to flap on a busy Mac, short enough that a crash is visible.
+    public static let maximumLivenessAge: TimeInterval = 5 * 60
+
+    public static func provider(liveness: FilterLiveness?,
+                                now: Date = Date(),
+                                maximumAge: TimeInterval = maximumLivenessAge) -> FilterStatus.Provider {
+        guard let liveness else { return .failed }
+        // A timestamp in the future is a clock that is ahead; the file was written moments ago, so it is fresh.
+        // Only an age beyond the window makes it stale.
+        guard now.timeIntervalSince(liveness.updatedAt) <= maximumAge else { return .stopped }
+        return liveness.running ? .running : .stopped
+    }
+
+    public static func assess(liveness: FilterLiveness?,
                               policyLoaded: Bool,
-                              safeSearchRequested: Bool) -> FilterStatus {
-        FilterStatus(provider: observed ?? .failed,
+                              safeSearchRequested: Bool,
+                              now: Date = Date(),
+                              maximumAge: TimeInterval = maximumLivenessAge) -> FilterStatus {
+        FilterStatus(provider: provider(liveness: liveness, now: now, maximumAge: maximumAge),
                      policyLoaded: policyLoaded,
                      safeSearchRequested: safeSearchRequested)
     }
 
-    #if canImport(NetworkExtension)
-    /// Asks the system. `NEFilterManager.status` is the filter configuration's own status: `.invalid` means no
-    /// configuration is installed at all, `.connected` means the provider is running, and every other state
-    /// means it is installed but not filtering.
-    ///
-    /// **Unverified on a device:** whether a process that is not the extension — the root daemon, which holds
-    /// no NetworkExtension entitlement — may read this. Reading the configuration is separate from changing it
-    /// by Apple's own account, but that is my reading rather than a measurement, and it is asked on #988. If the
-    /// daemon cannot read it, the same assessment is made extension-side and handed over beside the snapshot;
-    /// `assess` does not change.
+    /// Reads both files. The policy answers "was the family asked for SafeSearch", which the Mac cannot
+    /// enforce; the liveness file answers "is anything running at all".
     public static func current(safeSearchRequested: Bool,
-                               store: PolicySnapshotStore = PolicySnapshotStore()) -> FilterStatus {
-        let status = NEFilterManager.shared().status
-        let observed: FilterStatus.Provider?
-        if status == .connected {
-            observed = .running
-        } else if status == .invalid {
-            observed = .notInstalled
-        } else {
-            observed = .stopped
-        }
-        return assess(observed: observed,
-                      policyLoaded: store.read() != nil,
-                      safeSearchRequested: safeSearchRequested)
+                               store: PolicySnapshotStore = PolicySnapshotStore(),
+                               livenessStore: FilterLivenessStore = FilterLivenessStore(),
+                               now: Date = Date()) -> FilterStatus {
+        assess(liveness: livenessStore.read(),
+               policyLoaded: store.read() != nil,
+               safeSearchRequested: safeSearchRequested,
+               now: now)
     }
-    #endif
 }

@@ -1,5 +1,6 @@
 import Foundation
 import FamilyShieldAgent
+import OSRAMacAgentFilter
 
 /// The daemon's cycle: prove the secret, drain the command queue, sync the rules, send the heartbeat.
 ///
