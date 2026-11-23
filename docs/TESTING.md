@@ -360,6 +360,20 @@ verification succeeds. Record pass or fail without logging addresses. Use only t
 synthetic fixtures for inference. Capture one successful trace and evidence that unapproved or
 expired requests are rejected. The `/health` response measures process liveness.
 
+For the optional provider comparison, run `pnpm exec vitest run test/social.test.ts
+test/stagingProviderOutcomes.test.ts test/stagingQaModel.test.ts test/alerts.test.ts` from
+`services/api`. On the approved synthetic staging pair, an explicitly set `OSRA_STAGING_QA_ENGINE`
+(`bedrock`, `own` or `both`) requests attributed outcomes from the private analyzer. With the variable
+unset the API uses the existing Bedrock response. All pairing, consent, source and expiry checks apply
+before the call.
+
+Each selected scan adds a `StagingScanOutcome` row. It holds the trace, child, optional vault event,
+time, provider result class, model version and the score of each category the provider explicitly
+flagged. A timed-out peer and a completed benign peer can be distinguished in that row. The existing
+family-scoped alerts response carries explicitly positive providers in `metadata.providerOutcomes`.
+The alert retains the usual per-child and per-app throttle. Include the receipt table in the approved
+staging wipe. Child erasure also removes receipts for that child.
+
 ### Notification env (Phase 2a) — all optional
 
 | Variable | Effect when set |
@@ -1412,6 +1426,15 @@ Spooler, WN06 `Set-Date`, WN09 hosts write and `netsh winhttp set proxy`) held; 
 rows skipped. That run is **not** staging evidence; it only shows the harness measures what it claims.
 
 
+## Staging model checkpoint delivery (#962)
+
+1. Resolve the SHA-256 of each complete gzip-compressed tar archive on the approved source machine. The hash of a weights file inside an archive identifies a different artifact. Supply the v9b archive hash and the v9 hash when available in the private staging configuration under `staging_qa_model_archives`, initially with `allow_read = false`.
+2. Review the bucket, encryption, public access blocks and TLS policy in the saved staging plan. Confirm the analyzer subnet has an active route to regional S3. Its managed route table already uses the staging NAT for HTTPS bootstrap. If the deployed route differs, resolve that before rollout.
+3. During an approved transfer window, the named staging operator uploads each pinned object to its corresponding key, `own-model/v9.tar.gz` and `own-model/v9b.tar.gz`. Verify each uploaded object against the original whole-archive SHA-256. For multipart uploads, hash the ordered bytes on readback. Record the matched count.
+4. For an approved inference window set `allow_read = true` and arm the staging analyzer. Inspect the plan for the task-role read on exactly the pinned objects and the regional S3 inputs on the analyzer. Verify all pinned checkpoints load in the serving process and run the positive and harmless synthetic controls.
+   The task preloads only pinned tags and allows five minutes for startup health checks. Verify space for the image, both archives and their extracted contents against the 20 GiB default ephemeral storage. Record peak usage before adding another checkpoint. Confirm the collector accepts the actual serving region before sending either control.
+5. Disarm and confirm the task loses the object reads and archive inputs. Keep the storage configuration in place to retain the two objects between approved windows.
+
 ## Bedrock staging test with operator-chosen wording (#962)
 
 The reviewed staging analyzer defaults to exact fixtures. An exploratory run can enable
@@ -1437,6 +1460,13 @@ Send a concerning synthetic notification and a harmless control. Confirm the con
 from Bedrock without fallback and opens the matching alert in the Parent app. Confirm Bedrock scored
 the harmless notification and created no alert. Record model, region, trace ID, and the result using
 the private test record. Roll both services back and retire the synthetic scope at the end of the window.
+
+For a staging run with per-provider receipts, send `include_provider_outcomes: true` to the private
+analyzer. `OSRA_STAGING_QA_ENGINE` selects `bedrock` (default), `own`, or `both`. Run
+`python -m pytest -q tests/test_staging_qa.py tests/test_staging_own_model.py tests/test_staging_provider_results.py`
+from `services/ai-engine` to exercise accepted and rejected requests without network access. Check each
+selected provider's status before counting a verdict. A timeout or unavailable result carries no scores.
+The [staging acceptance procedure](QA/staging-model-smoke.md) describes the private route and live evidence.
 
 ## 6. Traps that have cost real time here
 
@@ -1666,3 +1696,7 @@ removed or demoted assertion. It runs unconditionally rather than behind a path 
 does not touch the probe shows the job green on a no-op comparison instead of absent.
 `workflow-lint.yml` runs `--selftest` on every push and PR, including the deleted-multi-line-call case
 that the old matcher missed (#310).
+
+### Staging analyzer task size (#962)
+
+For an approved staging OSRA-model window, set `staging_qa_analyzer.own_model_task_size` to true in the private window configuration. Review the Terraform plan for 2048 CPU units and 8192 MiB on the analyzer task. The sizing flag only takes effect while the analyzer is armed. On rollback, check the replacement task uses 512 CPU units and 1024 MiB. The flag controls capacity only. Check checkpoint delivery and live scoring separately.
