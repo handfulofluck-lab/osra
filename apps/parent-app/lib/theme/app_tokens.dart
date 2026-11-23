@@ -94,6 +94,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
   final Color onSurface;
   final Color onSurfaceVariant;
   final Color border;
+  final Color inputBorder;
   final Color danger;
   final Color warn;
   final Color ok;
@@ -128,6 +129,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     required this.onSurface,
     required this.onSurfaceVariant,
     required this.border,
+    required this.inputBorder,
     required this.danger,
     required this.warn,
     required this.ok,
@@ -158,6 +160,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     onSurface: Color(0xFF12211F), // color.ink.light
     onSurfaceVariant: Color(0xFF4D5E5A), // color.muted.light
     border: Color(0xFFC9D6D3), // color.border.light
+    inputBorder: Color(0xFF6E7E7B), // color.inputBorder.light
     danger: Color(0xFFA3242B), // color.danger.light
     warn: Color(0xFF8A4B00), // color.warn.light
     ok: Color(0xFF0B5D57), // color.ok.light
@@ -186,6 +189,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     onSurface: Color(0xFFE9EFF1), // color.ink.dark
     onSurfaceVariant: Color(0xFFA7B6BD), // color.muted.dark
     border: Color(0xFF3A4A53), // color.border.dark
+    inputBorder: Color(0xFF6A7C86), // color.inputBorder.dark
     danger: Color(0xFFFF9A8C), // color.danger.dark
     warn: Color(0xFFFFB454), // color.warn.dark
     ok: Color(0xFF86D4BE), // color.ok.dark
@@ -214,6 +218,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     Color? onSurface,
     Color? onSurfaceVariant,
     Color? border,
+    Color? inputBorder,
     Color? danger,
     Color? warn,
     Color? ok,
@@ -242,6 +247,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
       onSurface: onSurface ?? this.onSurface,
       onSurfaceVariant: onSurfaceVariant ?? this.onSurfaceVariant,
       border: border ?? this.border,
+      inputBorder: inputBorder ?? this.inputBorder,
       danger: danger ?? this.danger,
       warn: warn ?? this.warn,
       ok: ok ?? this.ok,
@@ -277,6 +283,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
       onSurface: fade(onSurface, other.onSurface),
       onSurfaceVariant: fade(onSurfaceVariant, other.onSurfaceVariant),
       border: fade(border, other.border),
+      inputBorder: fade(inputBorder, other.inputBorder),
       danger: fade(danger, other.danger),
       warn: fade(warn, other.warn),
       ok: fade(ok, other.ok),

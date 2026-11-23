@@ -276,6 +276,29 @@ void main() {
       }
     });
 
+    test('enabled text-field outline keeps at least 3:1 contrast on page, card and raised surfaces (WCAG 1.4.11)', () {
+      for (final entry in {'light': AppTheme.light, 'dark': AppTheme.dark}.entries) {
+        final theme = entry.value;
+        final tokens = theme.extension<AppTokens>()!;
+        final enabledBorder = theme.inputDecorationTheme.enabledBorder as OutlineInputBorder;
+        final outlineColor = enabledBorder.borderSide.color;
+        expect(outlineColor, tokens.inputBorder);
+        final surfaces = {
+          'surface (page)': tokens.surface,
+          'surfaceVariant (card)': tokens.surfaceVariant,
+          'surfaceContainer (raised)': tokens.surfaceContainer,
+        };
+        for (final surface in surfaces.entries) {
+          final ratio = contrastRatio(outlineColor, surface.value);
+          expect(
+            ratio,
+            greaterThanOrEqualTo(3.0),
+            reason: '${entry.key}/inputBorder on ${surface.key} is ${ratio.toStringAsFixed(2)}:1',
+          );
+        }
+      }
+    });
+
     test('the light severity dots keep the pinned Material values', () {
       // widget_screens_test.dart pins these in the AlertsScreen; the token
       // contract has to keep them (including runtime type) so a dark-mode
@@ -535,6 +558,7 @@ void main() {
       expect(AppTokens.light.onSurface, tokenColor('ink', 'light'));
       expect(AppTokens.light.onSurfaceVariant, tokenColor('muted', 'light'));
       expect(AppTokens.light.border, tokenColor('border', 'light'));
+      expect(AppTokens.light.inputBorder, tokenColor('inputBorder', 'light'));
       expect(AppTokens.light.danger, tokenColor('danger', 'light'));
       expect(AppTokens.light.warn, tokenColor('warn', 'light'));
       expect(AppTokens.light.ok, tokenColor('ok', 'light'));
@@ -555,6 +579,7 @@ void main() {
       expect(AppTokens.dark.onSurface, tokenColor('ink', 'dark'));
       expect(AppTokens.dark.onSurfaceVariant, tokenColor('muted', 'dark'));
       expect(AppTokens.dark.border, tokenColor('border', 'dark'));
+      expect(AppTokens.dark.inputBorder, tokenColor('inputBorder', 'dark'));
       expect(AppTokens.dark.danger, tokenColor('danger', 'dark'));
       expect(AppTokens.dark.warn, tokenColor('warn', 'dark'));
       expect(AppTokens.dark.ok, tokenColor('ok', 'dark'));
