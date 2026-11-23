@@ -142,6 +142,9 @@ pnpm --filter @familyshield/api exec prisma generate
 
 cd services/api
 export DATABASE_URL=<launcher> INTERNAL_HMAC_SECRET=<launcher> VAULT_KEY=<launcher>
+export SITE_NAMES_ENABLED=true  # URL-event e2e rows only; the production default remains off
+# Windows launcher alternative: set OSRA_E2E_SITE_NAMES=1 before start-backend.bat.
+# Without that opt-in, the launcher leaves SITE_NAMES_ENABLED unset (production default off).
 export API_BASE=http://127.0.0.1:3000                  # never localhost — see §6, the ::1 trap
 
 node scripts/e2e.mjs        # 71 passed / 0 failed at 2026-10-21 — the count grows, read the 0
@@ -200,6 +203,11 @@ that pairs a device does all three steps as the parent it already logs in as: `c
 `qa-probe.mjs` and `e2e.mjs`, and `live-api.mjs approve` in the iOS live job, which runs alongside the
 simulator and allows only the simulator's own claim. A script that still expects `201` from the claim
 itself is out of date.
+
+After a successful poll, `claimApproved()` posts one minimal telemetry report. Since #790 a claimed
+device is pending and invisible until its first accepted API request; this setup step is what makes it
+visible and witness-eligible. The `G2j` race does the same before reading the device list. Without it,
+later checks can mistake a legitimately pending device for a missing device or `no_witness`.
 
 | Row | What fails if the guard goes |
 |---|---|
