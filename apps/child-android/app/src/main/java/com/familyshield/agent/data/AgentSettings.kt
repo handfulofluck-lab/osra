@@ -139,6 +139,8 @@ class AgentSettings @Inject constructor(
         store.edit {
             it.remove(KEY_RULES_JSON)
             it.remove(KEY_APPLIED_RULES_VERSION)
+            // Karim 23 Nov: and what the server was told, so a re-paired phone reports its first version at once.
+            it.remove(KEY_REPORTED_APPLIED_RULES_VERSION)
         }
     }
 
