@@ -39,6 +39,7 @@ void main() {
     String category = 'social_concern',
     String app = 'whatsapp',
     List<String> concernTypes = const ['cyberbullying'],
+    Map<String, dynamic>? providerOutcomes,
   }) =>
       Alert(
         id: id,
@@ -52,6 +53,7 @@ void main() {
           'app': app,
           'contact': 'Test Group',
           'concernTypes': concernTypes,
+          if (providerOutcomes != null) 'providerOutcomes': providerOutcomes,
         },
         createdAt: alertTime,
       );
@@ -165,6 +167,78 @@ void main() {
     ));
     await tester.pumpAndSettle();
   }
+
+  group('Model attribution on the existing alert detail (#962)', () {
+    Map<String, dynamic> scored(String model, Map<String, dynamic> scores, List<String> flags) => {
+      'status': 'scored', 'flagged': true, 'model': model,
+      'categories': scores, 'flagged_categories': flags,
+    };
+
+    testWidgets('a single alert groups each explicitly flagged category and confidence under its model', (tester) async {
+      // The lower score is explicitly flagged. The high, unflagged category must stay out.
+      // Mutants: derive flags from a 0.5 threshold, or combine the two models into one row.
+      final api = apiWith(alerts: [{
+        'id': 'alert-social-1',
+        'childId': 'child-1',
+        'category': 'social_concern',
+        'severity': 'warning',
+        'metadata': {
+          'app': 'whatsapp',
+          'providerOutcomes': {
+            'bedrock': scored('openai.gpt-oss-20b-1:0', {'self_harm': 0.8125, 'violence': 0.99}, ['self_harm']),
+            'own': scored('v9b', {'self_harm': 0.41, 'grooming': 0.6}, ['self_harm', 'grooming', 'self_harm']),
+          },
+        },
+      }]);
+      // A cold notification resolves this existing alert by ID from the API.
+      await pumpDetail(tester, api: api);
+      expect(find.byKey(const ValueKey('alertDetailTitle')), findsOneWidget);
+      final bedrock = find.byKey(const ValueKey('alertModel-bedrock'));
+      final own = find.byKey(const ValueKey('alertModel-own'));
+      expect(find.descendant(of: bedrock, matching: find.textContaining('Amazon Bedrock · openai.gpt-oss-20b-1:0')), findsOneWidget);
+      expect(find.descendant(of: own, matching: find.textContaining('OSRA · v9b')), findsOneWidget);
+      expect(find.descendant(of: bedrock, matching: find.textContaining('81.25%')), findsOneWidget);
+      expect(find.descendant(of: own, matching: find.textContaining('41%')), findsOneWidget);
+      expect(find.descendant(of: own, matching: find.textContaining('60%')), findsOneWidget);
+      expect(find.descendant(of: own, matching: find.textContaining('Self-harm')), findsOneWidget);
+      expect(find.descendant(of: own, matching: find.textContaining('Grooming')), findsOneWidget);
+      expect(find.descendant(of: bedrock, matching: find.textContaining('Violence')), findsNothing);
+    });
+
+    testWidgets('a single flag survives an unavailable peer in Arabic gaming detail at 200% text', (tester) async {
+      final alert = sampleSocialAlert(category: 'gaming_chat', app: 'discord', concernTypes: [], providerOutcomes: {
+        'bedrock': {'status': 'unavailable', 'flagged': true, 'model': 'Unavailable Test Model'},
+        'own': scored('v9b', {'self_harm': 0.41}, ['self_harm']),
+      });
+      await pumpDetail(tester, api: apiWith(), initialAlert: alert, lang: 'ar', dark: true, textScale: 2.0);
+      final own = find.byKey(const ValueKey('alertModel-own'));
+      await tester.scrollUntilVisible(own, 140);
+      // Mutant: require two successful providers or print the raw category key in Arabic.
+      expect(find.descendant(of: own, matching: find.textContaining(AppLocalizations.of(tester.element(own)).riskSelfHarm)), findsOneWidget);
+      expect(find.descendant(of: own, matching: find.textContaining('41')), findsOneWidget);
+      expect(find.textContaining('Unavailable Test Model'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('legacy metadata keeps the existing concern label without inventing a model', (tester) async {
+      await pumpDetail(tester, api: apiWith(), initialAlert: sampleSocialAlert());
+      // Mutant: invent a default provider for a local or older alert.
+      expect(find.byKey(const ValueKey('alertDetailConcern-cyberbullying')), findsOneWidget);
+      expect(find.byKey(const ValueKey('alertModel-bedrock')), findsNothing);
+      expect(find.byKey(const ValueKey('alertModel-own')), findsNothing);
+    });
+
+    testWidgets('an unflagged result and invalid confidences add no model attribution', (tester) async {
+      final alert = sampleSocialAlert(providerOutcomes: {
+        'bedrock': {...scored('Benign Test Model', {'violence': 0.95}, ['violence']), 'flagged': false},
+        'own': scored('Invalid Test Model', {'violence': 1.2, 'self_harm': 'high'}, ['violence', 'self_harm', 'grooming']),
+      });
+      await pumpDetail(tester, api: apiWith(), initialAlert: alert);
+      // Mutant: attribute every receipt, or coerce an absent/invalid score to a numeric confidence.
+      expect(find.byKey(const ValueKey('alertModel-bedrock')), findsNothing);
+      expect(find.byKey(const ValueKey('alertModel-own')), findsNothing);
+    });
+  });
 
   group('AlertDetailScreen (#972)', () {
     testWidgets('shows localized hierarchy, never leaks vault excerpt, and opens Social activity',
