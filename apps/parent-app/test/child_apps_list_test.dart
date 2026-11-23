@@ -221,6 +221,9 @@ void main() {
   test('limits read as minutes below an hour and as hours above', () {
     final en = lookupAppLocalizations(const Locale('en'));
     expect([for (final m in kAppLimitChoices) formatAppLimit(en, m)], ['15 min', '30 min', '1 h', '2 h']);
-    expect(formatAppLimit(lookupAppLocalizations(const Locale('ar')), 120), '2 س');
+    // Arabic Language Bureau (#1008): full plurals, never «س».
+    final ar = lookupAppLocalizations(const Locale('ar'));
+    expect([for (final m in kAppLimitChoices) formatAppLimit(ar, m)], ['15 دقيقة', '30 دقيقة', 'ساعة واحدة', 'ساعتان']);
+    expect(ar.appStateLimit(formatAppLimit(ar, 60)), 'الحد اليومي: ساعة واحدة');
   });
 }
