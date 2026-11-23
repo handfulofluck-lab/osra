@@ -1111,5 +1111,18 @@
   "locationFindingAddress": "جارٍ تحديد العنوان…",
   "locationAddressUnavailable": "العنوان غير متوفر",
   "locationMapSemantics": "خريطة تُظهر مكان {name}",
-  "locationRecentre": "توسيط الخريطة على آخر موقع"
+  "locationRecentre": "توسيط الخريطة على آخر موقع",
+  "undo": "تراجع",
+  "hoursShort": "{hours} س",
+  "appStateAllowed": "مسموح",
+  "appStateBlocked": "محظور",
+  "appStateLimit": "حدّ {limit} يوميًا",
+  "appAllowedSnack": "تم السماح بـ {app}",
+  "appLimitSnack": "تم تحديد {app} بـ {limit} يوميًا",
+  "appsFilterAll": "الكل ({count})",
+  "appsFilterBlocked": "المحظورة ({count})",
+  "appsFilterLimited": "الحدود الزمنية ({count})",
+  "appsNoMatch": "لا توجد تطبيقات مطابقة",
+  "appAboutThisApp": "عن هذا التطبيق",
+  "appBlockedNamedSnack": "تم حظر {app}"
 }

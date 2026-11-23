@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -3455,7 +3456,10 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String alertDeviceRestartedBodyMinutes(
-      String device, String when, int minutes) {
+    String device,
+    String when,
+    int minutes,
+  ) {
     String _temp0 = intl.Intl.pluralLogic(
       minutes,
       locale: localeName,
@@ -3588,4 +3592,59 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get locationRecentre => 'توسيط الخريطة على آخر موقع';
+
+  @override
+  String get undo => 'تراجع';
+
+  @override
+  String hoursShort(int hours) {
+    return '$hours س';
+  }
+
+  @override
+  String get appStateAllowed => 'مسموح';
+
+  @override
+  String get appStateBlocked => 'محظور';
+
+  @override
+  String appStateLimit(String limit) {
+    return 'حدّ $limit يوميًا';
+  }
+
+  @override
+  String appAllowedSnack(String app) {
+    return 'تم السماح بـ $app';
+  }
+
+  @override
+  String appLimitSnack(String app, String limit) {
+    return 'تم تحديد $app بـ $limit يوميًا';
+  }
+
+  @override
+  String appsFilterAll(int count) {
+    return 'الكل ($count)';
+  }
+
+  @override
+  String appsFilterBlocked(int count) {
+    return 'المحظورة ($count)';
+  }
+
+  @override
+  String appsFilterLimited(int count) {
+    return 'الحدود الزمنية ($count)';
+  }
+
+  @override
+  String get appsNoMatch => 'لا توجد تطبيقات مطابقة';
+
+  @override
+  String get appAboutThisApp => 'عن هذا التطبيق';
+
+  @override
+  String appBlockedNamedSnack(String app) {
+    return 'تم حظر $app';
+  }
 }
