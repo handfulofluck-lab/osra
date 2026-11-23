@@ -1,7 +1,7 @@
 # Retain the artifacts between windows; only the task-role read follows the arm switch.
 variable "staging_qa_model_archives" {
   type = object({
-    v9_sha256  = string
+    v9_sha256  = optional(string)
     v9b_sha256 = string
     allow_read = optional(bool, false)
   })
@@ -12,10 +12,11 @@ variable "staging_qa_model_archives" {
     condition = var.staging_qa_model_archives == null ? true : (
       var.environment == "staging" && var.region == "eu-north-1" && var.assume_role_arn == "" &&
       length(var.allowed_account_ids) == 1 &&
-      alltrue([for digest in [var.staging_qa_model_archives.v9_sha256, var.staging_qa_model_archives.v9b_sha256] : can(regex("^[a-f0-9]{64}$", digest))]) &&
+      alltrue([for digest in [var.staging_qa_model_archives.v9_sha256, var.staging_qa_model_archives.v9b_sha256] : can(regex("^[a-f0-9]{64}$", digest)) if digest != null]) &&
+      var.staging_qa_model_archives.v9b_sha256 != null &&
       var.staging_qa_model_archives.v9_sha256 != var.staging_qa_model_archives.v9b_sha256
     )
-    error_message = "Staging archives require a pinned Stockholm staging account and two distinct lowercase SHA-256 archive digests."
+    error_message = "Staging archives require a pinned Stockholm staging account and a lowercase SHA-256 v9b archive digest. If supplied, the v9 digest must be valid and distinct."
   }
 }
 
@@ -24,18 +25,25 @@ locals {
   staging_model_read       = local.staging_qa_armed && try(var.staging_qa_model_archives.allow_read, false)
   staging_model_bucket     = "${local.name_prefix}-qa-model-archives-${local.staging_qa_account}"
   staging_model_bucket_arn = "arn:aws:s3:::${local.staging_model_bucket}"
-  staging_model_keys       = { for tag in ["v9", "v9b"] : tag => "own-model/${tag}.tar.gz" }
-  staging_model_env = local.staging_model_read ? [
+  staging_model_pins = {
+    for tag, digest in {
+      v9  = try(var.staging_qa_model_archives.v9_sha256, null)
+      v9b = try(var.staging_qa_model_archives.v9b_sha256, null)
+    } : tag => digest if digest != null
+  }
+  staging_model_keys = { for tag in keys(local.staging_model_pins) : tag => "own-model/${tag}.tar.gz" }
+  staging_model_env = local.staging_model_read ? concat([
     { name = "OSRA_OWN_MODEL_S3_BUCKET", value = local.staging_model_bucket },
     { name = "OSRA_STAGING_QA_OWN_MODEL_ENABLED", value = "1" },
     { name = "OSRA_OWN_MODEL_REGION", value = var.region },
     { name = "OSRA_OWN_MODEL_S3_REGION", value = var.region },
     { name = "OSRA_OWN_MODEL_PRELOAD_TAGS", value = join(",", keys(local.staging_model_keys)) },
-    { name = "OSRA_OWN_MODEL_V9_S3_KEY", value = local.staging_model_keys.v9 },
-    { name = "OSRA_OWN_MODEL_V9B_S3_KEY", value = local.staging_model_keys.v9b },
-    { name = "OSRA_OWN_MODEL_V9_ARCHIVE_SHA256", value = var.staging_qa_model_archives.v9_sha256 },
-    { name = "OSRA_OWN_MODEL_V9B_ARCHIVE_SHA256", value = var.staging_qa_model_archives.v9b_sha256 },
-  ] : []
+    ], flatten([
+      for tag, digest in local.staging_model_pins : [
+        { name = "OSRA_OWN_MODEL_${upper(tag)}_S3_KEY", value = local.staging_model_keys[tag] },
+        { name = "OSRA_OWN_MODEL_${upper(tag)}_ARCHIVE_SHA256", value = digest },
+      ]
+  ])) : []
 }
 
 resource "aws_s3_bucket" "staging_model_archives" {
