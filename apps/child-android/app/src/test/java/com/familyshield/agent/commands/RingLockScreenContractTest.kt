@@ -95,7 +95,7 @@ class RingLockScreenContractTest {
     }
 
     private fun source(relative: String): File {
-        var dir: File? = File(System.getProperty("user.dir")).absoluteFile
+        var dir: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
         while (dir != null) {
             val candidate = File(dir, relative)
             if (candidate.isFile) return candidate
