@@ -49,6 +49,7 @@ describe("staging QA model gate", () => {
   });
 
   it.each([
+    { OSRA_STAGING_QA_ENGINE: "unexpected" }, { OSRA_STAGING_QA_ENGINE: "" },
     { OSRA_DEPLOYMENT_SCOPE: "production" }, { OSRA_STAGING_QA_ANALYZER_ENABLED: "0" },
     { OSRA_STAGING_QA_EXPIRES_AT: new Date(now).toISOString() },
     { OSRA_STAGING_QA_EXPIRES_AT: new Date(now + 61 * 60 * 1000).toISOString() },

@@ -1,9 +1,10 @@
+import type { ProviderMode } from "./stagingProviderOutcomes.js";
 import { createHash, randomUUID } from "node:crypto";
 
 export const STAGING_QA_MODEL = "openai.gpt-oss-20b-1:0";
 export const STAGING_QA_REGION = "eu-central-1";
 
-export type StagingQaModel = { endpoint: URL; traceId: string; fixtureNumber: number | null };
+export type StagingQaModel = { endpoint: URL; traceId: string; fixtureNumber: number | null; providerMode?: ProviderMode };
 
 type Capture = {
   device: { id: string; childId: string } | null | undefined;
@@ -50,5 +51,7 @@ export function stagingQaModel(capture: Capture, env: NodeJS.ProcessEnv = proces
   if (!["https:", "http:"].includes(endpoint.protocol) || !/\.(?:internal|local)$/.test(endpoint.hostname) ||
       endpoint.username || endpoint.password || endpoint.search || endpoint.hash || endpoint.pathname !== "/") return null;
   endpoint.pathname = "/analyze/staging-qa";
-  return { endpoint, traceId: randomUUID(), fixtureNumber };
+  const providerMode = env.OSRA_STAGING_QA_ENGINE;
+  if (providerMode !== undefined && providerMode !== "own" && providerMode !== "bedrock" && providerMode !== "both") return null;
+  return { endpoint, traceId: randomUUID(), fixtureNumber, providerMode };
 }
