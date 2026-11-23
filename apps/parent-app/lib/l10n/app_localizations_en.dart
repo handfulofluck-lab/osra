@@ -596,12 +596,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String accuracyLabel(int meters, String time) {
-    return 'Accuracy ±$meters m · $time';
+    return 'Accuracy ±$meters m · $time';
   }
 
   @override
   String accuracyShort(int meters) {
-    return '±$meters m';
+    return '±$meters m';
   }
 
   @override
@@ -792,12 +792,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String familyMapRadius(int meters) {
-    return 'Radius: $meters m';
+    return 'Radius: $meters m';
   }
 
   @override
   String familyMapMeters(int meters) {
-    return '$meters m';
+    return '$meters m';
   }
 
   @override
@@ -3379,4 +3379,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String locationMapSemantics(String name) {
     return 'Map showing where $name is';
   }
+
+  @override
+  String get locationRecentre => 'Centre on the latest location';
 }

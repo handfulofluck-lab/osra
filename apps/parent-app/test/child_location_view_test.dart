@@ -6,6 +6,7 @@ import 'package:familyshield_parent/providers/clock_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -172,5 +173,123 @@ void main() {
     expect(find.text('Open in Maps'), findsOneWidget);
     expect(find.text('Map preview'), findsNothing, reason: 'the grey placeholder is gone');
     expect(find.textContaining('25.11318'), findsNothing);
+  });
+
+  testWidgets('a failed lookup is not cached: it retries while shown, and a later success shows the place',
+      (tester) async {
+    var calls = 0;
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        clockProvider.overrideWithValue(() => now),
+        placemarkLookupProvider.overrideWithValue((lat, lng, locale) async {
+          calls++;
+          if (calls == 1) throw Exception('offline');
+          return const [Placemark(subLocality: 'Al Barsha', locality: 'Dubai')];
+        }),
+      ],
+      child: localizedTestApp(Scaffold(body: PlaceSummaryLine(ping: ping))),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Address not available'), findsOneWidget);
+
+    await tester.pump(kPlaceNameRetryAfter);
+    await tester.pumpAndSettle();
+    expect(calls, 2);
+    expect(find.text('Al Barsha, Dubai'), findsOneWidget);
+  });
+
+  testWidgets('a failed lookup is dropped once nothing shows it, so reopening asks again', (tester) async {
+    var calls = 0;
+    final container = ProviderContainer(overrides: [
+      clockProvider.overrideWithValue(() => now),
+      placemarkLookupProvider.overrideWithValue((lat, lng, locale) async {
+        calls++;
+        if (calls == 1) throw Exception('offline');
+        return const [Placemark(locality: 'Dubai')];
+      }),
+    ]);
+    Widget app(bool show) => UncontrolledProviderScope(
+          container: container,
+          child: localizedTestApp(Scaffold(body: show ? PlaceSummaryLine(ping: ping) : const SizedBox())),
+        );
+    await tester.pumpWidget(app(true));
+    await tester.pumpAndSettle();
+    expect(find.text('Address not available'), findsOneWidget);
+    await tester.pumpWidget(app(false));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(app(true));
+    await tester.pumpAndSettle();
+    expect(calls, 2);
+    expect(find.text('Dubai'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    container.dispose();
+  });
+
+  testWidgets('a found name is cached for a bounded time, then looked up again', (tester) async {
+    var calls = 0;
+    final container = ProviderContainer(overrides: [
+      clockProvider.overrideWithValue(() => now),
+      placemarkLookupProvider.overrideWithValue((lat, lng, locale) async {
+        calls++;
+        return const [Placemark(locality: 'Dubai')];
+      }),
+    ]);
+    Widget app(bool show) => UncontrolledProviderScope(
+          container: container,
+          child: localizedTestApp(Scaffold(body: show ? PlaceSummaryLine(ping: ping) : const SizedBox())),
+        );
+    await tester.pumpWidget(app(true));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(app(false));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(app(true));
+    await tester.pumpAndSettle();
+    expect(calls, 1, reason: 'reopened within the cache time: no new lookup');
+    await tester.pumpWidget(app(false));
+    await tester.pump(kPlaceNameCacheFor + const Duration(minutes: 1));
+    await tester.pumpWidget(app(true));
+    await tester.pumpAndSettle();
+    expect(calls, 2, reason: 'the cached name expired');
+    await tester.pumpWidget(const SizedBox());
+    container.dispose();
+  });
+
+  testWidgets('the profile map follows a new fix; after a manual pan a recentre button brings it back',
+      (tester) async {
+    final far = LocationPing(deviceId: 'dev-1', lat: 25.2048, lng: 55.2708, accuracyM: 18, timestamp: now);
+    final farther = LocationPing(deviceId: 'dev-1', lat: 25.0657, lng: 55.1713, accuracyM: 18, timestamp: now);
+    final current = ValueNotifier(ping);
+    addTearDown(current.dispose);
+    await tester.pumpWidget(ProviderScope(
+      overrides: overrides(marks: const [Placemark(locality: 'Dubai')]),
+      child: localizedTestApp(Scaffold(
+        body: ValueListenableBuilder<LocationPing>(
+          valueListenable: current,
+          builder: (_, p, __) => SizedBox(width: 360, height: 270, child: ChildLocationMap(ping: p, childName: 'Alex')),
+        ),
+      )),
+    ));
+    await tester.pump(const Duration(milliseconds: 100));
+    MapCamera camera() => tester.widget<FlutterMap>(find.byType(FlutterMap)).mapController!.camera;
+    expect(camera().center.latitude, closeTo(ping.lat, 1e-6));
+
+    current.value = far;
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(camera().center.latitude, closeTo(far.lat, 1e-6), reason: 'a new fix recentres the same mounted map');
+    expect(find.byKey(const ValueKey('recentreMap')), findsNothing);
+
+    await tester.drag(find.byType(FlutterMap), const Offset(120, 80));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byKey(const ValueKey('recentreMap')), findsOneWidget);
+
+    current.value = farther;
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(camera().center.latitude, isNot(closeTo(farther.lat, 1e-3)), reason: 'following pauses after a manual pan');
+
+    await tester.tap(find.byKey(const ValueKey('recentreMap')));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(camera().center.latitude, closeTo(farther.lat, 1e-6));
+    expect(camera().center.longitude, closeTo(farther.lng, 1e-6));
+    expect(find.byKey(const ValueKey('recentreMap')), findsNothing);
   });
 }

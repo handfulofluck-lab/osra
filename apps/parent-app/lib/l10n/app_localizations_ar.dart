@@ -621,12 +621,12 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String accuracyLabel(int meters, String time) {
-    return 'الدقة ±$meters م · $time';
+    return 'الدقة ±$meters م · $time';
   }
 
   @override
   String accuracyShort(int meters) {
-    return 'الدقة ±$meters م';
+    return 'الدقة ±$meters م';
   }
 
   @override
@@ -817,12 +817,12 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String familyMapRadius(int meters) {
-    return 'نصف القطر: $meters م';
+    return 'نصف القطر: $meters م';
   }
 
   @override
   String familyMapMeters(int meters) {
-    return '$meters م';
+    return '$meters م';
   }
 
   @override
@@ -3585,4 +3585,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String locationMapSemantics(String name) {
     return 'خريطة تُظهر مكان $name';
   }
+
+  @override
+  String get locationRecentre => 'توسيط الخريطة على آخر موقع';
 }

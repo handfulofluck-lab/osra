@@ -338,22 +338,22 @@ class _MapBodyState extends ConsumerState<_MapBody> {
       children: [
         if (useGoogle)
           GoogleMap(
-          initialCameraPosition: CameraPosition(target: camera.target, zoom: camera.zoom),
-          markers: markers,
-          circles: circles,
-          onMapCreated: (c) {
-            _controller = c;
-            _maybeFit();
-          },
-          // Feature #23: long-press drops a new geofence at the tapped point.
-          onLongPress: widget.overview.children.isEmpty
-              ? null
-              : (latLng) => showGeofenceCreateDialog(
-                    context,
-                    children: widget.overview.children,
-                    initialCenter: latLng,
-                  ),
-        ),
+            initialCameraPosition: CameraPosition(target: camera.target, zoom: camera.zoom),
+            markers: markers,
+            circles: circles,
+            onMapCreated: (c) {
+              _controller = c;
+              _maybeFit();
+            },
+            // Feature #23: long-press drops a new geofence at the tapped point.
+            onLongPress: widget.overview.children.isEmpty
+                ? null
+                : (latLng) => showGeofenceCreateDialog(
+                      context,
+                      children: widget.overview.children,
+                      initialCenter: latLng,
+                    ),
+          ),
         if (!useGoogle)
           fm.FlutterMap(
             options: fm.MapOptions(
@@ -426,7 +426,7 @@ class _MapBodyState extends ConsumerState<_MapBody> {
                     child: OutlinedPin(color: context.tokens.danger),
                   ),
               ]),
-              const fm.SimpleAttributionWidget(source: Text('OpenStreetMap contributors')),
+              const OsmAttribution(),
             ],
           ),
         if (widget.overview.children.isEmpty)
@@ -610,7 +610,8 @@ class _GeofenceCreateDialogState extends ConsumerState<GeofenceCreateDialog> {
             ),
           TextField(
             controller: _label,
-            decoration: InputDecoration(labelText: context.l10n.familyMapLabelField, border: const OutlineInputBorder()),
+            decoration:
+                InputDecoration(labelText: context.l10n.familyMapLabelField, border: const OutlineInputBorder()),
           ),
           const SizedBox(height: AppSpace.md),
           Align(

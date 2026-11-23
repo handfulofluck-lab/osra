@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -45,17 +47,35 @@ final placemarkLookupProvider = Provider<PlacemarkLookup>(
   (ref) => (lat, lng, locale) => Geocoding(locale: locale).placemarkFromCoordinates(lat, lng),
 );
 
+/// A found place name is reused for this long, then looked up again (Codex on #1004: bounded cache).
+const Duration kPlaceNameCacheFor = Duration(hours: 1);
+
+/// A failed lookup is retried this often while the place line is on screen.
+const Duration kPlaceNameRetryAfter = Duration(seconds: 30);
+
 /// The readable place for a fix, or null when the phone's geocoder has no answer (offline, rate
 /// limited, open sea). Never throws: a failed lookup falls back to "address not available".
+///
+/// Only a found name is cached, and only for [kPlaceNameCacheFor]. A failure is never cached: it is
+/// retried every [kPlaceNameRetryAfter] while shown, and dropped as soon as nothing shows it, so a card
+/// opened again after the phone is back online asks the geocoder afresh (Codex on #1004).
 final placeNameProvider = FutureProvider.autoDispose.family<String?, PlaceQuery>((ref, q) async {
-  ref.keepAlive();
+  String? name;
   try {
     final marks = await ref.read(placemarkLookupProvider)(q.lat, q.lng, Locale(q.languageCode));
-    if (marks.isEmpty) return null;
-    return formatPlacemark(marks.first, separator: q.languageCode == 'ar' ? '، ' : ', ');
+    if (marks.isNotEmpty) name = formatPlacemark(marks.first, separator: q.languageCode == 'ar' ? '، ' : ', ');
   } catch (_) {
-    return null;
+    name = null;
   }
+  if (name != null) {
+    final link = ref.keepAlive();
+    final expiry = Timer(kPlaceNameCacheFor, link.close);
+    ref.onDispose(expiry.cancel);
+  } else {
+    final retry = Timer(kPlaceNameRetryAfter, ref.invalidateSelf);
+    ref.onDispose(retry.cancel);
+  }
+  return name;
 });
 
 /// "Street, Neighbourhood, City" with empty and repeated parts dropped, at most three parts.
@@ -230,7 +250,10 @@ Future<void> openInMaps(LocationPing ping, TargetPlatform platform) async {
 }
 
 /// The map itself. Kept separate so widget tests can swap it out (tiles need the network).
-class ChildLocationMap extends StatelessWidget {
+///
+/// It follows the child: a new fix recentres the map (Codex on #1004). Once the parent pans or zooms by
+/// hand, following pauses and a recentre button appears; tapping it centres the latest fix and resumes.
+class ChildLocationMap extends StatefulWidget {
   final LocationPing ping;
   final String childName;
   const ChildLocationMap({super.key, required this.ping, required this.childName});
@@ -244,18 +267,54 @@ class ChildLocationMap extends StatelessWidget {
   }
 
   @override
+  State<ChildLocationMap> createState() => _ChildLocationMapState();
+}
+
+class _ChildLocationMapState extends State<ChildLocationMap> {
+  final _controller = MapController();
+  bool _ready = false;
+  bool _following = true;
+
+  LocationPing get ping => widget.ping;
+  ll.LatLng get _point => ll.LatLng(ping.lat, ping.lng);
+
+  @override
+  void didUpdateWidget(ChildLocationMap old) {
+    super.didUpdateWidget(old);
+    final moved = old.ping.lat != ping.lat || old.ping.lng != ping.lng || old.ping.accuracyM != ping.accuracyM;
+    if (moved && _following) _recentre();
+  }
+
+  void _recentre() {
+    if (!_ready) return;
+    _controller.move(_point, ChildLocationMap.zoomFor(ping.accuracyM));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final point = ll.LatLng(ping.lat, ping.lng);
+    final l10n = context.l10n;
+    final point = _point;
     return Semantics(
-      label: context.l10n.locationMapSemantics(childName),
+      label: l10n.locationMapSemantics(widget.childName),
       child: FlutterMap(
+        mapController: _controller,
         options: MapOptions(
           initialCenter: point,
-          initialZoom: zoomFor(ping.accuracyM),
+          initialZoom: ChildLocationMap.zoomFor(ping.accuracyM),
           interactionOptions: const InteractionOptions(
             flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag | InteractiveFlag.doubleTapZoom,
           ),
+          onMapReady: () => _ready = true,
+          onPositionChanged: (camera, hasGesture) {
+            if (hasGesture && _following) setState(() => _following = false);
+          },
         ),
         children: [
           TileLayer(
@@ -282,8 +341,53 @@ class ChildLocationMap extends StatelessWidget {
               child: OutlinedPin(color: scheme.primary, size: 44),
             ),
           ]),
-          const SimpleAttributionWidget(source: Text('OpenStreetMap contributors')),
+          const OsmAttribution(),
+          if (!_following)
+            Align(
+              alignment: AlignmentDirectional.topEnd,
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpace.sm),
+                child: IconButton.filledTonal(
+                  key: const ValueKey('recentreMap'),
+                  tooltip: l10n.locationRecentre,
+                  icon: const Icon(Icons.my_location),
+                  onPressed: () {
+                    setState(() => _following = true);
+                    _recentre();
+                  },
+                ),
+              ),
+            ),
         ],
+      ),
+    );
+  }
+}
+
+/// The OpenStreetMap credit line. flutter_map's SimpleAttributionWidget lays its text out in a Row that
+/// cannot shrink, so it overflowed the map at 200% text (UI/UX on #1004). This one stays at 1x text
+/// size, fits the map's width, and ellipsizes if the map is ever narrower than the line.
+class OsmAttribution extends StatelessWidget {
+  const OsmAttribution({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Align(
+      alignment: AlignmentDirectional.bottomEnd,
+      child: MediaQuery.withNoTextScaling(
+        child: ColoredBox(
+          color: theme.colorScheme.surface.withValues(alpha: 0.85),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: Text(
+              '© OpenStreetMap contributors',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurface),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -302,8 +406,16 @@ class OutlinedPin extends StatelessWidget {
         color: color,
         // A white halo traced by eight offset shadows: an outline that stays on the glyph's own shape.
         shadows: [
-          for (final o in const [Offset(1.5, 0), Offset(-1.5, 0), Offset(0, 1.5), Offset(0, -1.5),
-              Offset(1.1, 1.1), Offset(-1.1, 1.1), Offset(1.1, -1.1), Offset(-1.1, -1.1)])
+          for (final o in const [
+            Offset(1.5, 0),
+            Offset(-1.5, 0),
+            Offset(0, 1.5),
+            Offset(0, -1.5),
+            Offset(1.1, 1.1),
+            Offset(-1.1, 1.1),
+            Offset(1.1, -1.1),
+            Offset(-1.1, -1.1)
+          ])
             Shadow(color: Colors.white, offset: o, blurRadius: 0.5),
         ],
       );

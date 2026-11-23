@@ -170,8 +170,8 @@
   "appActionAllow": "السماح",
   "locationLoadFailed": "تعذّر تحميل الموقع الجغرافي. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "noLocationReported": "لم يُبلَّغ عن أي موقع بعد",
-  "accuracyLabel": "الدقة ±{meters} م · {time}",
-  "accuracyShort": "الدقة ±{meters} م",
+  "accuracyLabel": "الدقة ±{meters} م · {time}",
+  "accuracyShort": "الدقة ±{meters} م",
   "mapPreview": "معاينة الخريطة",
   "locationHistoryLoadFailed": "تعذّر تحميل سجل المواقع الجغرافية. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "noLocationHistoryToday": "لا يوجد سجل مواقع لليوم",
@@ -226,8 +226,8 @@
   "familyMapGeofenceAdded": "أُضيف النطاق \"{name}\"",
   "familyMapChild": "الطفل",
   "familyMapLabelField": "الاسم (مثل: المدرسة)",
-  "familyMapRadius": "نصف القطر: {meters} م",
-  "familyMapMeters": "{meters} م",
+  "familyMapRadius": "نصف القطر: {meters} م",
+  "familyMapMeters": "{meters} م",
   "familyMapCreate": "إنشاء",
   "alertsLoadFailed": "تعذّر تحميل التنبيهات. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "noRecentAlerts": "لا توجد تنبيهات حديثة",
@@ -1110,5 +1110,6 @@
   "locationUpdatedUnknown": "وقت التحديث غير معروف",
   "locationFindingAddress": "جارٍ تحديد العنوان…",
   "locationAddressUnavailable": "العنوان غير متوفر",
-  "locationMapSemantics": "خريطة تُظهر مكان {name}"
+  "locationMapSemantics": "خريطة تُظهر مكان {name}",
+  "locationRecentre": "توسيط الخريطة على آخر موقع"
 }

@@ -347,7 +347,7 @@
   "appActionAllow": "Allow",
   "locationLoadFailed": "Couldn't load location. Check your connection and try again.",
   "noLocationReported": "No location reported yet",
-  "accuracyLabel": "Accuracy ±{meters} m · {time}",
+  "accuracyLabel": "Accuracy ±{meters} m · {time}",
   "@accuracyLabel": {
     "placeholders": {
       "meters": {
@@ -358,7 +358,7 @@
       }
     }
   },
-  "accuracyShort": "±{meters} m",
+  "accuracyShort": "±{meters} m",
   "@accuracyShort": {
     "placeholders": {
       "meters": {
@@ -481,7 +481,7 @@
   },
   "familyMapChild": "Child",
   "familyMapLabelField": "Label (e.g. School)",
-  "familyMapRadius": "Radius: {meters} m",
+  "familyMapRadius": "Radius: {meters} m",
   "@familyMapRadius": {
     "placeholders": {
       "meters": {
@@ -489,7 +489,7 @@
       }
     }
   },
-  "familyMapMeters": "{meters} m",
+  "familyMapMeters": "{meters} m",
   "@familyMapMeters": {
     "placeholders": {
       "meters": {
@@ -1856,5 +1856,6 @@
   "locationFindingAddress": "Finding address…",
   "locationAddressUnavailable": "Address not available",
   "locationMapSemantics": "Map showing where {name} is",
-  "@locationMapSemantics": { "placeholders": { "name": { "type": "String" } } }
+  "@locationMapSemantics": { "placeholders": { "name": { "type": "String" } } },
+  "locationRecentre": "Centre on the latest location"
 }

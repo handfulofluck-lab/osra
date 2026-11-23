@@ -1079,13 +1079,13 @@ abstract class AppLocalizations {
   /// No description provided for @accuracyLabel.
   ///
   /// In en, this message translates to:
-  /// **'Accuracy ±{meters} m · {time}'**
+  /// **'Accuracy ±{meters} m · {time}'**
   String accuracyLabel(int meters, String time);
 
   /// No description provided for @accuracyShort.
   ///
   /// In en, this message translates to:
-  /// **'±{meters} m'**
+  /// **'±{meters} m'**
   String accuracyShort(int meters);
 
   /// No description provided for @mapPreview.
@@ -1415,13 +1415,13 @@ abstract class AppLocalizations {
   /// No description provided for @familyMapRadius.
   ///
   /// In en, this message translates to:
-  /// **'Radius: {meters} m'**
+  /// **'Radius: {meters} m'**
   String familyMapRadius(int meters);
 
   /// No description provided for @familyMapMeters.
   ///
   /// In en, this message translates to:
-  /// **'{meters} m'**
+  /// **'{meters} m'**
   String familyMapMeters(int meters);
 
   /// No description provided for @familyMapCreate.
@@ -5540,6 +5540,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Map showing where {name} is'**
   String locationMapSemantics(String name);
+
+  /// No description provided for @locationRecentre.
+  ///
+  /// In en, this message translates to:
+  /// **'Centre on the latest location'**
+  String get locationRecentre;
 }
 
 class _AppLocalizationsDelegate

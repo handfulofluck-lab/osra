@@ -97,8 +97,8 @@ void main() {
     );
     await openLocationTab(tester, [ping]);
 
-    expect(find.textContaining('الدقة ±8 م'), findsWidgets);
-    expect(find.textContaining('±8 m'), findsNothing);
+    expect(find.textContaining('الدقة\u00a0±8\u00a0م'), findsWidgets);
+    expect(find.textContaining('±8\u00a0m'), findsNothing);
     expect(find.textContaining('25.27'), findsNothing);
   });
 
