@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import boto3
 import pytest
+from botocore.exceptions import ClientError, EndpointConnectionError, ParamValidationError
 from fastapi.testclient import TestClient
 
 import staging_qa
@@ -233,4 +234,23 @@ def test_unusable_provider_answer_cannot_be_reported_as_inference(setup_qa, capl
     assert response.json() == {"detail": "model_unavailable"}
     assert len(setup_qa.calls) == 1
     assert "provider-private-detail" not in caplog.text
+    assert APPROVED_TEXT not in caplog.text
+
+
+@pytest.mark.parametrize(("error", "diagnostic"), [
+    (ClientError({"Error": {"Code": "AccessDeniedException", "Message": "provider-private-detail"}}, "Converse"), "access_denied"),
+    (ClientError({"Error": {"Code": "ValidationException", "Message": "provider-private-detail"}}, "Converse"), "provider_validation"),
+    (ClientError({"Error": {"Code": "provider-private-detail", "Message": "provider-private-detail"}}, "Converse"), "provider_error"),
+    (ParamValidationError(report="provider-private-detail"), "sdk_validation"),
+    (EndpointConnectionError(endpoint_url=BEDROCK_ENDPOINT), "transport"),
+])
+def test_provider_diagnostic_contains_only_an_allowlisted_kind(setup_qa, caplog, error, diagnostic):
+    # Logging the exception text or a provider-controlled code would leak private fields.
+    setup_qa.answer = error
+    response = TestClient(app).post(PATH, json=payload())
+    assert response.status_code == 502
+    assert response.json() == {"detail": "model_unavailable"}
+    assert f"failure_kind={diagnostic}" in caplog.text
+    assert "provider-private-detail" not in caplog.text
+    assert BEDROCK_ENDPOINT not in caplog.text
     assert APPROVED_TEXT not in caplog.text
