@@ -360,6 +360,20 @@ verification succeeds. Record pass or fail without logging addresses. Use only t
 synthetic fixtures for inference. Capture one successful trace and evidence that unapproved or
 expired requests are rejected. The `/health` response measures process liveness.
 
+For the optional provider comparison, run `pnpm exec vitest run test/social.test.ts
+test/stagingProviderOutcomes.test.ts test/stagingQaModel.test.ts test/alerts.test.ts` from
+`services/api`. On the approved synthetic staging pair, an explicitly set `OSRA_STAGING_QA_ENGINE`
+(`bedrock`, `own` or `both`) requests attributed outcomes from the private analyzer. With the variable
+unset the API uses the existing Bedrock response. All pairing, consent, source and expiry checks apply
+before the call.
+
+Each selected scan adds a `StagingScanOutcome` row. It holds the trace, child, optional vault event,
+time, provider result class, model version and the score of each category the provider explicitly
+flagged. A timed-out peer and a completed benign peer can be distinguished in that row. The existing
+family-scoped alerts response carries explicitly positive providers in `metadata.providerOutcomes`.
+The alert retains the usual per-child and per-app throttle. Include the receipt table in the approved
+staging wipe. Child erasure also removes receipts for that child.
+
 ### Notification env (Phase 2a) — all optional
 
 | Variable | Effect when set |
