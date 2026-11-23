@@ -1,0 +1,1 @@
+- Parent app location is readable: the child card shows a place name from the phone's own geocoder and "Updated N min ago" instead of raw coordinates, the child profile shows a real map with the pin, accuracy circle and Open in Maps, and the Family map draws OpenStreetMap pins on iPhone builds without a Google Maps key instead of "Not available". English and Arabic.

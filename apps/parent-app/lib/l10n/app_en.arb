@@ -347,7 +347,7 @@
   "appActionAllow": "Allow",
   "locationLoadFailed": "Couldn't load location. Check your connection and try again.",
   "noLocationReported": "No location reported yet",
-  "accuracyLabel": "Accuracy ±{meters} m · {time}",
+  "accuracyLabel": "Accuracy ±{meters} m · {time}",
   "@accuracyLabel": {
     "placeholders": {
       "meters": {
@@ -358,7 +358,7 @@
       }
     }
   },
-  "accuracyShort": "±{meters} m",
+  "accuracyShort": "±{meters} m",
   "@accuracyShort": {
     "placeholders": {
       "meters": {
@@ -481,7 +481,7 @@
   },
   "familyMapChild": "Child",
   "familyMapLabelField": "Label (e.g. School)",
-  "familyMapRadius": "Radius: {meters} m",
+  "familyMapRadius": "Radius: {meters} m",
   "@familyMapRadius": {
     "placeholders": {
       "meters": {
@@ -489,7 +489,7 @@
       }
     }
   },
-  "familyMapMeters": "{meters} m",
+  "familyMapMeters": "{meters} m",
   "@familyMapMeters": {
     "placeholders": {
       "meters": {
@@ -739,6 +739,7 @@
     }
   },
   "noAppUsage": "No app usage recorded",
+  "noPerAppBreakdown": "Per-app usage is unavailable",
   "webSection": "Web",
   "urlVisits": "{count, plural, =0{No URL visits} =1{1 URL visit} other{{count} URL visits}}",
   "@urlVisits": {
@@ -1845,6 +1846,19 @@
   "socialAlertUnavailableTitle": "Alert unavailable",
   "socialAlertUnavailableBody": "This alert could not be found. Open Alerts to review recent activity.",
   "socialAlertViewAll": "All alerts",
+  "locationUpdatedJustNow": "Updated just now",
+  "locationUpdatedMinutes": "{count, plural, =1{Updated 1 min ago} other{Updated {count} min ago}}",
+  "@locationUpdatedMinutes": { "placeholders": { "count": { "type": "int" } } },
+  "locationUpdatedHours": "{count, plural, =1{Updated 1 hour ago} other{Updated {count} hours ago}}",
+  "@locationUpdatedHours": { "placeholders": { "count": { "type": "int" } } },
+  "locationUpdatedDays": "{count, plural, =1{Updated 1 day ago} other{Updated {count} days ago}}",
+  "@locationUpdatedDays": { "placeholders": { "count": { "type": "int" } } },
+  "locationUpdatedUnknown": "Update time unknown",
+  "locationFindingAddress": "Finding address…",
+  "locationAddressUnavailable": "Address not available",
+  "locationMapSemantics": "Map showing where {name} is",
+  "@locationMapSemantics": { "placeholders": { "name": { "type": "String" } } },
+  "locationRecentre": "Centre on the latest location",
   "undo": "Undo",
   "hoursShort": "{hours} h",
   "@hoursShort": { "placeholders": { "hours": { "type": "int" } } },

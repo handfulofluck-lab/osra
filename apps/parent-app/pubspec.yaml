@@ -21,6 +21,9 @@ dependencies:
   flutter_local_notifications: ^21.0.0
   timezone: ^0.11.0
   url_launcher: ^6.3.3
+  geocoding: ^5.0.1
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
 
 dev_dependencies:
   flutter_test: { sdk: flutter }

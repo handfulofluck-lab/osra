@@ -596,12 +596,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String accuracyLabel(int meters, String time) {
-    return 'Accuracy ±$meters m · $time';
+    return 'Accuracy ±$meters m · $time';
   }
 
   @override
   String accuracyShort(int meters) {
-    return '±$meters m';
+    return '±$meters m';
   }
 
   @override
@@ -792,12 +792,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String familyMapRadius(int meters) {
-    return 'Radius: $meters m';
+    return 'Radius: $meters m';
   }
 
   @override
   String familyMapMeters(int meters) {
-    return '$meters m';
+    return '$meters m';
   }
 
   @override
@@ -1286,6 +1286,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get noAppUsage => 'No app usage recorded';
+
+  @override
+  String get noPerAppBreakdown => 'Per-app usage is unavailable';
 
   @override
   String get webSection => 'Web';
@@ -3329,6 +3332,59 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get socialAlertViewAll => 'All alerts';
+
+  @override
+  String get locationUpdatedJustNow => 'Updated just now';
+
+  @override
+  String locationUpdatedMinutes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Updated $count min ago',
+      one: 'Updated 1 min ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String locationUpdatedHours(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Updated $count hours ago',
+      one: 'Updated 1 hour ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String locationUpdatedDays(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Updated $count days ago',
+      one: 'Updated 1 day ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get locationUpdatedUnknown => 'Update time unknown';
+
+  @override
+  String get locationFindingAddress => 'Finding address…';
+
+  @override
+  String get locationAddressUnavailable => 'Address not available';
+
+  @override
+  String locationMapSemantics(String name) {
+    return 'Map showing where $name is';
+  }
+
+  @override
+  String get locationRecentre => 'Centre on the latest location';
 
   @override
   String get undo => 'Undo';

@@ -28,18 +28,27 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final summary = ref.watch(reportSummaryProvider((childId: widget.childId, days: _days)));
+    final report = reportSummaryProvider((childId: widget.childId, days: _days));
+    final summary = ref.watch(report);
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.reportsTitle),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: l10n.refresh,
+            onPressed: () => ref.invalidate(report),
+          ),
           // Roadmap 3.5: the summary here is top-apps only; the durable
           // per-day trend and the browsing history live on their own screen.
           IconButton(
             key: const ValueKey('usageHistoryButton'),
             tooltip: l10n.screenTimeWebHistoryTooltip,
             icon: const Icon(Icons.show_chart),
-            onPressed: () => context.push('/child/${widget.childId}/history'),
+            onPressed: () async {
+              await context.push('/child/${widget.childId}/history');
+              if (mounted) ref.invalidate(report);
+            },
           ),
         ],
         bottom: PreferredSize(
@@ -61,7 +70,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => ErrorRetryView(
           message: friendlyErrorText(l10n, e, () => l10n.reportLoadFailed),
-          onRetry: () => ref.invalidate(reportSummaryProvider((childId: widget.childId, days: _days))),
+          onRetry: () => ref.invalidate(report),
         ),
         data: (data) => data.isEmpty
             ? Center(child: Text(l10n.noActivityDays(_days)))
@@ -151,7 +160,7 @@ class _UsageSection extends StatelessWidget {
         if (summary.topApps.isEmpty)
           Padding(
             padding: const EdgeInsets.only(top: AppSpace.md),
-            child: Text(l10n.noAppUsage),
+            child: Text(summary.totalAppMinutes > 0 ? l10n.noPerAppBreakdown : l10n.noAppUsage),
           )
         else ...[
           const SizedBox(height: AppSpace.md),
