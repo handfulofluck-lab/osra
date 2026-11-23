@@ -1579,13 +1579,17 @@ class WellbeingScore {
       this.breakdown = const {}});
 
   factory WellbeingScore.fromJson(Map<String, dynamic> json) {
+    final score = _intOrNull(json['score']);
+    if (score == null || score < 0 || score > 100) {
+      throw const FormatException('Invalid wellbeing score');
+    }
     final raw = json['breakdown'] is Map
         ? Map<String, dynamic>.from(json['breakdown'] as Map)
         : const <String, dynamic>{};
     return WellbeingScore(
       childId: _str(json['childId']),
       week: _str(json['week']),
-      score: _int(json['score']),
+      score: score,
       breakdown: {for (final e in raw.entries) e.key: _int(e.value)},
     );
   }

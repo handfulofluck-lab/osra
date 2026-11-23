@@ -1370,6 +1370,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get noAppUsage => 'لم يُسجَّل أي استخدام للتطبيقات';
 
   @override
+  String get noPerAppBreakdown => 'تفاصيل الاستخدام لكل تطبيق غير متاحة';
+
+  @override
   String get webSection => 'الويب';
 
   @override
