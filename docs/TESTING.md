@@ -1679,3 +1679,7 @@ removed or demoted assertion. It runs unconditionally rather than behind a path 
 does not touch the probe shows the job green on a no-op comparison instead of absent.
 `workflow-lint.yml` runs `--selftest` on every push and PR, including the deleted-multi-line-call case
 that the old matcher missed (#310).
+
+### Staging analyzer task size (#962)
+
+For an approved staging OSRA-model window, set `staging_qa_analyzer.own_model_task_size` to true in the private window configuration. Review the Terraform plan for 2048 CPU units and 8192 MiB on the analyzer task. The sizing flag only takes effect while the analyzer is armed. On rollback, check the replacement task uses 512 CPU units and 1024 MiB. The flag controls capacity only. Check checkpoint delivery and live scoring separately.
