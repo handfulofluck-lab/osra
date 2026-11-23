@@ -238,6 +238,23 @@ describe("social routes", () => {
       } finally {
         timer.mockRestore();
       }
+      // An approved Stockholm CPU verdict reaches the stored scan and the parent's alert metadata.
+      vi.stubEnv("OSRA_STAGING_QA_EXPIRES_AT", new Date(Date.now() + 60_000).toISOString());
+      throttleStore.clear();
+      let ownResult = own;
+      vi.stubGlobal("fetch", vi.fn(async (_url: URL, options: RequestInit) => ({
+        ok: true,
+        json: async () => ({ trace_id: JSON.parse(String(options.body)).trace_id,
+          region: "eu-north-1", mode: "own", outcomes: { own: ownResult } }),
+      })));
+      expect((await send(text)).json()).toMatchObject({ flagged: true });
+      expect(receipt(7).providers.own).toMatchObject({ region: "eu-north-1", flagged: true });
+      expect(prismaMock.alert.create.mock.calls.at(-1)![0].data.metadata.providerOutcomes.own).toEqual(receipt(7).providers.own);
+      const alertCount = prismaMock.alert.create.mock.calls.length;
+      ownResult = benign;
+      expect((await send(text)).json()).toMatchObject({ flagged: false });
+      expect(receipt(8).providers.own).toMatchObject({ region: "eu-north-1", flagged: false });
+      expect(prismaMock.alert.create).toHaveBeenCalledTimes(alertCount);
     } finally {
       await app.close();
     }

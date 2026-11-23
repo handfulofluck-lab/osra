@@ -284,11 +284,15 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
   // Issue #890: the counter is written whether or not the capture is flagged — cost is paid on both — and
   // it counts the ATTEMPT, so a timeout against a paid engine is not recorded as a free scan.
   await recordScanUsage(child.familyId, (child as { family?: { timezone?: string } | null }).family?.timezone, ai.attempted, log);
+  const ownReceipt = ai.providers?.own;
+  const proofRegion = qa?.providerMode === "own"
+    ? (ownReceipt?.status === "scored" ? ownReceipt.region ?? STAGING_QA_REGION : undefined)
+    : STAGING_QA_REGION;
   const qaProof = qa && {
     traceId: qa.traceId,
     fixtureNumber: qa.fixtureNumber,
     ...(qa.providerMode ? { mode: qa.providerMode } : { model: STAGING_QA_MODEL }),
-    region: STAGING_QA_REGION,
+    region: proofRegion,
     fallback: ai.verdict === null,
     modelFlagged: ai.verdict?.flagged ?? null,
     rulesFlagged: local.flagged,
