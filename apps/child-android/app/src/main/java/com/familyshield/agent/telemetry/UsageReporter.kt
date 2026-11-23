@@ -66,6 +66,14 @@ class UsageReporter @Inject constructor(
     @Volatile private var lastUploadElapsedMs: Long = 0L
     private val unlockCounter = AtomicInteger(0)
 
+    init {
+        // Karim 23 Nov test: a parent's rule change showed "pending on the phone" long after the phone had
+        // applied it, because the applied version only rode the 15-minute periodic upload (which WorkManager
+        // can defer further). Every successful refresh — a `rules_updated` command, the worker, a consent
+        // re-grant — now tells the server at once, one request per new version.
+        rules.addRulesChangedListener { scope.launch { reportAppliedRulesIfChanged() } }
+    }
+
     /** Records one foreground transition at [ts] (epoch millis); safe to call on the main thread. */
     fun recordForeground(pkg: String, ts: Long) {
         val prevPkg = lastPkg
@@ -196,6 +204,9 @@ class UsageReporter @Inject constructor(
             // #535 review (point 5): and so does the capability report — otherwise a change this upload just
             // carried is uploaded a second time by the next resume.
             recordCapabilities(report)
+            // Karim 23 Nov: the periodic upload carried the applied version, so an immediate report of the
+            // same version is not needed.
+            appliedRules?.let { settings.recordReportedAppliedRulesVersion(it) }
             // NOTE: watermark moves only on success...
             dao.deleteOlderThan(newWatermark)
             if (dao.since(newWatermark).isEmpty()) {
@@ -338,6 +349,43 @@ class UsageReporter @Inject constructor(
         } catch (e: Exception) {
             // Left unrecorded on purpose: the next resume retries with the same report.
             Log.w(TAG, "capability report failed", e)
+        }
+    }
+
+    /**
+     * Karim 23 Nov: report the applied rules version as soon as it changes, so the parent's "pending on the
+     * phone" banner clears within seconds of the phone applying the rules instead of at the next periodic
+     * upload. Recorded only after a successful POST: a failed request is retried by the next refresh or by the
+     * periodic upload, which carries the version too.
+     */
+    suspend fun reportAppliedRulesIfChanged() {
+        val deviceId = settings.deviceId() ?: return
+        if (consent.isPaused()) return // ADR-0008 §3: no telemetry while consent is withdrawn
+        val applied = settings.appliedRulesVersion()
+        if (!AppliedRulesReportPolicy.shouldReport(applied, settings.reportedAppliedRulesVersion())) return
+        try {
+            val report = capabilities.report()
+            api.postTelemetry(
+                deviceId,
+                TelemetryDto(
+                    appUsage = emptyList(),
+                    totalMinutes = 0,
+                    unlockCount = 0,
+                    batteryPct = currentBatteryPct(),
+                    locationGrant = currentLocationGrant(),
+                    appliedRulesVersion = applied,
+                    capabilities = report,
+                    bootedAt = BootClock.bootedAtIsoNow(),
+                    bootCount = BootClock.bootCountNow(context),
+                ),
+            )
+            settings.recordReportedAppliedRulesVersion(applied!!)
+            recordCapabilities(report)
+        } catch (e: CancellationException) {
+            throw e // NOTE: never swallow coroutine cancellation
+        } catch (e: Exception) {
+            // Left unrecorded on purpose: the next refresh or periodic upload retries.
+            Log.w(TAG, "applied rules report failed", e)
         }
     }
 
