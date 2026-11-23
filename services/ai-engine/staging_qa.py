@@ -26,6 +26,8 @@ from pydantic import BaseModel, ConfigDict, Field, UUID4, ValidationError
 
 from eval.prompt import parse_categories
 from model import _severity
+from staging_own_model import score_cpu, score_own
+from staging_provider_results import collect_provider_results
 
 MODEL_ID = "openai.gpt-oss-20b-1:0"
 REGION = "eu-central-1"
@@ -37,6 +39,7 @@ APPROVED_PROMPT_SHA256 = "813e670c456b1e1dd9863be0ca186b82f18bfea8049f231c9731d2
 MAX_REQUEST_BYTES = 8192
 MAX_APPROVAL_WINDOW = timedelta(hours=1)
 MAX_INFERENCE_SECONDS = 2
+STAGING_OWN_INFERENCE_SECONDS = 9
 
 PROVIDER_FAILURE_KINDS = {
     "AccessDeniedException": "access_denied",
@@ -55,6 +58,7 @@ class StagingQaRequest(BaseModel):
 
     text: str = Field(min_length=1, max_length=1024)
     trace_id: UUID4
+    include_provider_outcomes: bool = Field(default=False, strict=True)
 
 
 class StagingQaResponse(BaseModel):
@@ -64,6 +68,32 @@ class StagingQaResponse(BaseModel):
     model: str
     region: str
     trace_id: UUID4
+
+
+class ScoredOutcome(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    status: Literal["scored"] = "scored"
+    model: Literal["openai.gpt-oss-20b-1:0", "v9", "v9b", "v9+v9b"]
+    language: Literal["en", "id", "ms", "tr", "ur", "ar", "fr", "uncertain"] | None = None
+    flagged: bool
+    severity: Literal["info", "warning", "critical"]
+    categories: dict[str, float]
+    flagged_categories: list[str]
+
+
+class UnavailableOutcome(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["unavailable"] = "unavailable"
+    reason: Literal["timeout", "unavailable"]
+
+
+class ProviderResponse(BaseModel):
+    trace_id: UUID4
+    mode: Literal["bedrock", "own", "both"]
+    region: Literal["eu-central-1"] = REGION
+    outcomes: dict[Literal["bedrock", "own"], ScoredOutcome | UnavailableOutcome]
 
 
 def _test_approval() -> tuple[datetime, set[str] | None, str]:
@@ -168,8 +198,58 @@ def _failure_kind(error: Exception) -> str:
     return "unexpected"
 
 
-@router.post("/analyze/staging-qa", response_model=StagingQaResponse, include_in_schema=False)
-async def analyze_staging_qa(request: Request) -> StagingQaResponse:
+async def _provider_receipts(data, mode, expires_at, system_prompt, started):
+    trace = str(data.trace_id)
+    # The staging approval also bounds the selected provider budget.
+    remaining = (expires_at - datetime.now(timezone.utc)).total_seconds()
+    budget = STAGING_OWN_INFERENCE_SECONDS if mode == "own" else MAX_INFERENCE_SECONDS
+    deadline = min(started + budget, monotonic() + remaining)
+
+    async def bedrock():
+        try:
+            categories = await asyncio.to_thread(_infer, data.text, trace, system_prompt, expires_at, deadline)
+        except (ConnectTimeoutError, ReadTimeoutError) as error:
+            raise TimeoutError from error
+        harmful = {key: score for key, score in categories.items() if key != "safe"}
+        severity, flagged = _severity(max(harmful.values()))
+        return ScoredOutcome(model=MODEL_ID, flagged=flagged, severity=severity, categories=categories,
+                             flagged_categories=[key for key, score in harmful.items() if _severity(score)[1]])
+
+    async def own():
+        cpu = os.environ.get("OSRA_STAGING_QA_OWN_MODEL_ENABLED", "0")
+        if cpu == "1":
+            result = await score_cpu(data.text, trace, expires_at, deadline)
+        elif cpu == "0":
+            result = await asyncio.to_thread(score_own, data.text, trace, expires_at, deadline)
+        else:
+            raise ValueError("Invalid OSRA serving mode")
+        flagged = bool(result["flagged_categories"])
+        # OSRA supplies calibrated flags, not severity. Use ordinary warning severity for its alerts.
+        return ScoredOutcome(**result, flagged=flagged, severity="warning" if flagged else "info")
+
+    selected = {}
+    if mode in ("bedrock", "both"):
+        selected["bedrock"] = bedrock
+    if mode in ("own", "both"):
+        selected["own"] = own
+    results = await collect_provider_results(selected, deadline=deadline)
+    outcomes = {}
+    for provider, result in results.items():
+        if result.verdict is None:
+            outcome = UnavailableOutcome(reason=result.failure)
+            logger.warning("staging QA provider unavailable trace_id=%s provider=%s reason=%s",
+                           trace, provider, outcome.reason)
+        else:
+            outcome = result.verdict
+            logger.info("staging QA provider scored trace_id=%s provider=%s model=%s",
+                        trace, provider, outcome.model)
+        outcomes[provider] = outcome
+    return ProviderResponse(trace_id=data.trace_id, mode=mode, outcomes=outcomes)
+
+
+@router.post("/analyze/staging-qa", response_model=StagingQaResponse | ProviderResponse,
+             response_model_exclude_none=True, include_in_schema=False)
+async def analyze_staging_qa(request: Request) -> StagingQaResponse | ProviderResponse:
     expires_at, digests, system_prompt = _test_approval()
     # FastAPI's default validation error can echo an invalid request field. Validate privately.
     body = bytearray()
@@ -189,6 +269,13 @@ async def analyze_staging_qa(request: Request) -> StagingQaResponse:
 
     trace_id = str(data.trace_id)
     started = monotonic()
+    mode = os.environ.get("OSRA_STAGING_QA_ENGINE", "bedrock")
+    if mode not in ("bedrock", "own", "both"):
+        raise HTTPException(status_code=404, detail="not_found")
+    if data.include_provider_outcomes:
+        return await _provider_receipts(data, mode, expires_at, system_prompt, started)
+    if mode != "bedrock":
+        raise HTTPException(status_code=422, detail="provider_outcomes_required")
     deadline = started + MAX_INFERENCE_SECONDS
     try:
         categories = await asyncio.wait_for(
