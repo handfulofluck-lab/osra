@@ -2,7 +2,6 @@ locals {
   staging_qa_enabled   = var.staging_qa_analyzer != null
   staging_qa_armed     = try(var.staging_qa_analyzer.armed, false)
   staging_qa_frankfurt = "eu-central-1"
-  staging_qa_bedrock   = "bedrock-runtime.${local.staging_qa_frankfurt}.amazonaws.com"
   staging_qa_model_arn = "arn:aws:bedrock:${local.staging_qa_frankfurt}::foundation-model/openai.gpt-oss-20b-1:0"
   staging_qa_dns       = "analyzer.qa.internal"
 }
@@ -149,28 +148,4 @@ resource "aws_vpc_endpoint" "staging_qa_bedrock" {
       }
     }]
   })
-}
-
-resource "aws_route53_zone" "staging_qa_bedrock" {
-  count = local.staging_qa_enabled ? 1 : 0
-  name  = local.staging_qa_bedrock
-
-  vpc {
-    vpc_id = aws_vpc.main.id
-  }
-}
-
-resource "aws_route53_record" "staging_qa_bedrock" {
-  count = local.staging_qa_enabled ? 1 : 0
-
-  zone_id = aws_route53_zone.staging_qa_bedrock[0].zone_id
-  name    = local.staging_qa_bedrock
-  type    = "A"
-
-  # The regional endpoint DNS is the first entry. Preserve the normal TLS/SigV4 hostname.
-  alias {
-    name                   = aws_vpc_endpoint.staging_qa_bedrock[0].dns_entry[0].dns_name
-    zone_id                = aws_vpc_endpoint.staging_qa_bedrock[0].dns_entry[0].hosted_zone_id
-    evaluate_target_health = false
-  }
 }

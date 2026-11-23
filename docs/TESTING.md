@@ -142,6 +142,9 @@ pnpm --filter @familyshield/api exec prisma generate
 
 cd services/api
 export DATABASE_URL=<launcher> INTERNAL_HMAC_SECRET=<launcher> VAULT_KEY=<launcher>
+export SITE_NAMES_ENABLED=true  # URL-event e2e rows only; the production default remains off
+# Windows launcher alternative: set OSRA_E2E_SITE_NAMES=1 before start-backend.bat.
+# Without that opt-in, the launcher leaves SITE_NAMES_ENABLED unset (production default off).
 export API_BASE=http://127.0.0.1:3000                  # never localhost — see §6, the ::1 trap
 
 node scripts/e2e.mjs        # 71 passed / 0 failed at 2026-10-21 — the count grows, read the 0
@@ -200,6 +203,11 @@ that pairs a device does all three steps as the parent it already logs in as: `c
 `qa-probe.mjs` and `e2e.mjs`, and `live-api.mjs approve` in the iOS live job, which runs alongside the
 simulator and allows only the simulator's own claim. A script that still expects `201` from the claim
 itself is out of date.
+
+After a successful poll, `claimApproved()` posts one minimal telemetry report. Since #790 a claimed
+device is pending and invisible until its first accepted API request; this setup step is what makes it
+visible and witness-eligible. The `G2j` race does the same before reading the device list. Without it,
+later checks can mistake a legitimately pending device for a missing device or `no_witness`.
 
 | Row | What fails if the guard goes |
 |---|---|
@@ -338,6 +346,19 @@ Six things to know before reading a failure:
   out from tuning — not from the prompt's author, who wrote every template (`EVAL.md` §The dev/test
   split). A row whose `provenance.split` has drifted from `eval/split.py::split_of(bank, pattern)` fails
   `test_committed_dataset_agrees_with_the_split_rule` — regenerate the dataset rather than editing it.
+
+### Staging synthetic Bedrock endpoint (plan 4.1, #962)
+
+Run `python -m pytest -q tests/test_staging_qa.py` from `services/ai-engine` to check the
+analyzer's Frankfurt HTTPS endpoint validation and the existing fixture and expiry gates. The
+environment Terraform tests check that only the armed analyzer receives the endpoint's regional
+URL and that its invocation grant is restricted to that endpoint and model.
+
+Use a separately reviewed staging plan for live verification. From the analyzer subnets, confirm
+that the regional hostname resolves to the approved endpoint interfaces and that TLS hostname
+verification succeeds. Record pass or fail without logging addresses. Use only the approved
+synthetic fixtures for inference. Capture one successful trace and evidence that unapproved or
+expired requests are rejected. The `/health` response measures process liveness.
 
 ### Notification env (Phase 2a) — all optional
 
@@ -1358,6 +1379,52 @@ empty diff, restore failure, or an empty test/result set never yields PASS. Dry-
 `PASS (DRY RUN)` and is not physical-device evidence. A real run requires Claude's authorized device lease;
 K31's CI only exercises the fake boundary.
 
+
+### Windows escape rows as one script (#738, `scripts/hardware/windows-escape.ps1`)
+
+The Windows rows of `docs/testing/CHILD-ESCAPE-CATALOGUE.md` (WN02, WN03, WN05–WN09, WN11, WN13, WN14) are
+run by one PowerShell 5.1 script on the staging Windows Server 2025 VM, **as the child's standard
+account**:
+
+```powershell
+# from the repo root, signed in as the standard user the child would use
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hardware/windows-escape.ps1
+# also attempt the rows that would change the machine (an account, a firewall rule), undoing on success
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hardware/windows-escape.ps1 -AllowMutating
+# exercise the classifier and the guard only, no rows
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hardware/windows-escape.ps1 -SelfTest
+```
+
+Exit codes: `0` no FAIL and no UNKNOWN · `1` at least one FAIL or UNKNOWN · `2` refused to run because the
+shell is **elevated**. The elevation check runs before anything else, including `-SelfTest`: an elevated
+run would pass rows for the wrong reason and could change the host.
+
+Reading the output: each line is `row · result · claim · evidence`, with `PASS`, `FAIL`, `SKIP` or
+`UNKNOWN`. **A SKIP is not coverage** — the rows whose claim needs OSRA installed and paired (the tray
+restarted by the service, the filter holding, the PIN dialog) print SKIP with the reason, and a row whose
+block threw is reported `UNKNOWN`, which exits non-zero. The refused/not-refused classifier is deliberately
+narrower than "non-zero exit": a missing service also exits non-zero, so only an access-denied message or
+exit 5 counts as the OS refusing, and `-SelfTest` fails if a command that succeeds is called refused.
+
+What a run on `DESKTOP-…` (Windows 11, standard account, no OSRA installed) produced on 2026-11-22:
+`Rows: 10 total, 3 PASS, 0 FAIL, 7 SKIP, 0 UNKNOWN` — the three OS refusals (WN03 `sc stop`/`sc config` on
+Spooler, WN06 `Set-Date`, WN09 hosts write and `netsh winhttp set proxy`) held; the seven agent-dependent
+rows skipped. That run is **not** staging evidence; it only shows the harness measures what it claims.
+
+
+## Bedrock staging test with operator-chosen wording (#962)
+
+The reviewed staging analyzer defaults to exact fixtures. An exploratory run can enable
+`staging_qa_analyzer.allow_synthetic_pair_text` on both armed tasks for a time-boxed
+synthetic child/device pairing. Use a WhatsApp test route isolated from ordinary conversations.
+Confirm the device queue is empty before arming. The API still requires an authenticated
+notification scan from that pairing, and the private analyzer still requires the approved prompt
+and expires automatically. The test can use new wording within the 1,024-byte input limit.
+
+Send a concerning synthetic notification and a harmless control. Confirm the concerning result came
+from Bedrock without fallback and opens the matching alert in the Parent app. Confirm Bedrock scored
+the harmless notification and created no alert. Record model, region, trace ID, and the result using
+the private test record. Roll both services back and retire the synthetic scope at the end of the window.
 
 ## 6. Traps that have cost real time here
 
