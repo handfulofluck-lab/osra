@@ -1,4 +1,4 @@
-"""Private, time-limited Bedrock inference for exact synthetic staging fixtures."""
+"""Private, time-limited Bedrock inference for staging QA."""
 
 import asyncio
 import hashlib
@@ -10,6 +10,17 @@ from functools import lru_cache
 from time import monotonic
 from typing import Literal
 
+from botocore.exceptions import (
+    ClientError,
+    ConnectTimeoutError,
+    CredentialRetrievalError,
+    EndpointConnectionError,
+    NoCredentialsError,
+    ParamValidationError,
+    PartialCredentialsError,
+    ReadTimeoutError,
+    SSLError,
+)
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, UUID4, ValidationError
 
@@ -18,11 +29,22 @@ from model import _severity
 
 MODEL_ID = "openai.gpt-oss-20b-1:0"
 REGION = "eu-central-1"
-ENDPOINT = f"https://bedrock-runtime.{REGION}.amazonaws.com"
+PRIVATE_ENDPOINT_URL = re.compile(
+    r"https://vpce-[a-f0-9]+(?:-[a-z0-9]+)?\.bedrock-runtime\."
+    rf"{REGION}\.vpce\.amazonaws\.com"
+)
 APPROVED_PROMPT_SHA256 = "813e670c456b1e1dd9863be0ca186b82f18bfea8049f231c9731d2ab132578a8"
 MAX_REQUEST_BYTES = 8192
 MAX_APPROVAL_WINDOW = timedelta(hours=1)
 MAX_INFERENCE_SECONDS = 2
+
+PROVIDER_FAILURE_KINDS = {
+    "AccessDeniedException": "access_denied",
+    "ModelAccessDeniedException": "access_denied",
+    "ValidationException": "provider_validation",
+    "ThrottlingException": "throttled",
+    "ServiceQuotaExceededException": "throttled",
+}
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -44,7 +66,7 @@ class StagingQaResponse(BaseModel):
     trace_id: UUID4
 
 
-def _fixture_approval() -> tuple[datetime, set[str], str]:
+def _test_approval() -> tuple[datetime, set[str] | None, str]:
     if (
         os.environ.get("OSRA_DEPLOYMENT_SCOPE") != "staging"
         or os.environ.get("OSRA_STAGING_QA_ANALYZER_ENABLED") != "1"
@@ -58,26 +80,38 @@ def _fixture_approval() -> tuple[datetime, set[str], str]:
     except ValueError:
         raise HTTPException(status_code=404, detail="not_found") from None
     now = datetime.now(timezone.utc)
-    digests = {value.strip() for value in os.environ.get("OSRA_STAGING_QA_FIXTURE_SHA256", "").split(",")}
+    allow_pair_text = os.environ.get("OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT", "0")
     if (
         expires_at.utcoffset() != timedelta(0)
         or not now < expires_at <= now + MAX_APPROVAL_WINDOW
-        or not all(re.fullmatch(r"[0-9a-f]{64}", digest) for digest in digests)
+        or allow_pair_text not in ("0", "1")
         or prompt_digest != APPROVED_PROMPT_SHA256
     ):
+        raise HTTPException(status_code=404, detail="not_found")
+    if allow_pair_text == "1":
+        # The private caller is the staging API, which binds requests to the synthetic pairing.
+        return expires_at, None, system_prompt
+    entries = os.environ.get("OSRA_STAGING_QA_FIXTURE_SHA256", "").split(",")
+    digests = {entry.strip() for entry in entries}
+    if len(entries) > 8 or not all(re.fullmatch(r"[0-9a-f]{64}", digest) for digest in digests):
         raise HTTPException(status_code=404, detail="not_found")
     return expires_at, digests, system_prompt
 
 
 @lru_cache(maxsize=1)
 def _bedrock_client():
+    endpoint_url = os.environ.get("OSRA_STAGING_QA_BEDROCK_ENDPOINT_URL", "")
+    if not PRIVATE_ENDPOINT_URL.fullmatch(endpoint_url):
+        raise ValueError("Frankfurt Bedrock endpoint is invalid")
+
     import boto3
     from botocore.config import Config
 
     return boto3.Session().client(
         "bedrock-runtime",
         region_name=REGION,
-        endpoint_url=ENDPOINT,
+        endpoint_url=endpoint_url,
+        verify=True,
         config=Config(
             signature_version="v4",
             connect_timeout=0.35,
@@ -116,9 +150,27 @@ def _infer(
     return parse_categories(answer, strict=True)
 
 
+def _failure_kind(error: Exception) -> str:
+    """Keep provider messages, request bodies, and unrecognized codes out of logs."""
+    if isinstance(error, ClientError):
+        code = error.response.get("Error", {}).get("Code")
+        return PROVIDER_FAILURE_KINDS.get(code, "provider_error") if isinstance(code, str) else "provider_error"
+    if isinstance(error, ParamValidationError):
+        return "sdk_validation"
+    if isinstance(error, (NoCredentialsError, PartialCredentialsError, CredentialRetrievalError)):
+        return "credentials"
+    if isinstance(error, (ConnectTimeoutError, ReadTimeoutError, EndpointConnectionError, SSLError)):
+        return "transport"
+    if isinstance(error, TimeoutError):
+        return "deadline"
+    if isinstance(error, (KeyError, TypeError, ValueError)):
+        return "invalid_result"
+    return "unexpected"
+
+
 @router.post("/analyze/staging-qa", response_model=StagingQaResponse, include_in_schema=False)
 async def analyze_staging_qa(request: Request) -> StagingQaResponse:
-    expires_at, digests, system_prompt = _fixture_approval()
+    expires_at, digests, system_prompt = _test_approval()
     # FastAPI's default validation error can echo an invalid request field. Validate privately.
     body = bytearray()
     async for chunk in request.stream():
@@ -127,10 +179,12 @@ async def analyze_staging_qa(request: Request) -> StagingQaResponse:
         body.extend(chunk)
     try:
         data = StagingQaRequest.model_validate_json(body)
-        digest = hashlib.sha256(data.text.encode("utf-8")).hexdigest()
+        text_bytes = data.text.encode("utf-8")
     except (ValidationError, UnicodeEncodeError):
         raise HTTPException(status_code=422, detail="invalid_request") from None
-    if digest not in digests:
+    if len(text_bytes) > 1024:
+        raise HTTPException(status_code=422, detail="invalid_request")
+    if digests is not None and hashlib.sha256(text_bytes).hexdigest() not in digests:
         raise HTTPException(status_code=403, detail="fixture_not_approved")
 
     trace_id = str(data.trace_id)
@@ -143,11 +197,11 @@ async def analyze_staging_qa(request: Request) -> StagingQaResponse:
         )
         if datetime.now(timezone.utc) >= expires_at or monotonic() >= deadline:
             raise TimeoutError
-    except Exception:
+    except Exception as error:
         # The route is a fallback boundary. Provider errors may contain the request or reply.
         logger.warning(
-            "staging QA model unavailable trace_id=%s model=%s region=%s latency_ms=%d",
-            trace_id, MODEL_ID, REGION, (monotonic() - started) * 1000,
+            "staging QA model unavailable trace_id=%s model=%s region=%s latency_ms=%d failure_kind=%s",
+            trace_id, MODEL_ID, REGION, (monotonic() - started) * 1000, _failure_kind(error),
         )
         raise HTTPException(status_code=502, detail="model_unavailable") from None
 

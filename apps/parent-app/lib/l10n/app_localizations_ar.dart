@@ -610,7 +610,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get appActionTimeLimit => 'حد زمني';
 
   @override
-  String get appActionAllow => 'سماح';
+  String get appActionAllow => 'السماح';
 
   @override
   String get locationLoadFailed =>
@@ -945,7 +945,7 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get allowAction => 'سماح';
+  String get allowAction => 'السماح';
 
   @override
   String get blockThisApp => 'حظر هذا التطبيق';
@@ -1216,6 +1216,14 @@ class AppLocalizationsAr extends AppLocalizations {
       'تظهر القائمة بعد تسجيل جهاز الطفل في المرة التالية (خلال 15 دقيقة كحد أقصى).';
 
   @override
+  String get appPickerIosEmptyTitle => 'لم تُختر أي تطبيقات بعد';
+
+  @override
+  String appPickerIosEmptyBody(Object child) {
+    return 'افتح تطبيق أسرة للأطفال على آيفون $child واختر التطبيقات التي تريد إدارتها، وستظهر هنا.';
+  }
+
+  @override
   String get installedAppsNoMatch => 'لا توجد تطبيقات تطابق بحثك.';
 
   @override
@@ -1236,7 +1244,16 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String installedAppsTruncated(int count) {
-    return 'عرض أول $count تطبيقًا.';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'عرض أول $count تطبيق',
+      many: 'عرض أول $count تطبيقًا',
+      few: 'عرض أول $count تطبيقات',
+      two: 'عرض أول تطبيقين',
+      one: 'عرض أول تطبيق',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -1723,6 +1740,10 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get saveFailed =>
       'تعذّر حفظ التغييرات. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
+
+  @override
+  String get saveFailedServer =>
+      'تعذّر حفظ التغييرات. ما زالت تغييراتك هنا، فحاول مرة أخرى.';
 
   @override
   String get saveMonitoring => 'حفظ المراقبة';
@@ -2594,11 +2615,14 @@ class AppLocalizationsAr extends AppLocalizations {
   String get digestPrefsEmailsLabel => 'عناوين البريد الإلكتروني';
 
   @override
-  String get digestPrefsEmailsHelper => 'لتلقي الملخّص (افصل بينها بفواصل)';
+  String get digestPrefsEmailsHelper => 'يُرسَل الملخّص إلى هذه العناوين.';
+
+  @override
+  String get digestPrefsAddEmail => 'إضافة عنوان بريد إلكتروني';
 
   @override
   String get digestPrefsConfirmationSent =>
-      'تم إرسال رابط التأكيد — لن يستلم هذا العنوان أي ملخّص قبل التأكيد';
+      'أرسلنا رابط التأكيد. لن يصل الملخّص إلى هذا العنوان قبل تأكيده.';
 
   @override
   String get digestPrefsNotSent => 'لم يُرسَل. احفظ مرة أخرى للمحاولة.';
@@ -3293,12 +3317,22 @@ class AppLocalizationsAr extends AppLocalizations {
   String get appGroupsTitle => 'مجموعات التطبيقات على آيفون الطفل';
 
   @override
-  String get appGroupsBody =>
-      'تُنشأ المجموعات على آيفون الطفل باستخدام رمز PIN للوالدين. عند حظر مجموعة من هنا، تُحجب تطبيقاتها على آيفون الطفل.';
+  String get appsTabAndroidHeading => 'تطبيقات أندرويد';
+
+  @override
+  String get appsTabIphoneHeading => 'تطبيقات آيفون';
+
+  @override
+  String get appGroupsEditorNote =>
+      'تُدار تطبيقات آيفون من تبويب «التطبيقات». تنطبق القواعد في هذه الشاشة على تطبيقات أندرويد فقط.';
+
+  @override
+  String get appGroupsBlockOnlyAdds =>
+      'إيقاف هذا المفتاح لا يرفع الحظر عن تطبيقات حُظرت من جهاز آيفون نفسه.';
 
   @override
   String appGroupsCounts(Object apps, Object categories, Object sites) {
-    return 'التطبيقات: $apps · الفئات: $categories · المواقع: $sites';
+    return 'التطبيقات: $apps · الفئات: $categories · المواقع: $sites';
   }
 
   @override
@@ -3415,6 +3449,11 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String alertDetailSent(String when) {
+    return 'أُرسل $when';
+  }
+
+  @override
   String alertDeviceRestartedBodyMinutes(
       String device, String when, int minutes) {
     String _temp0 = intl.Intl.pluralLogic(
@@ -3443,4 +3482,48 @@ class AppLocalizationsAr extends AppLocalizations {
     );
     return 'أُعيد تشغيل $device $when، وعاد إلى العمل بعد نحو $_temp0.';
   }
+
+  @override
+  String get alertTitleSocialConcern => 'تنبيه سلامة في التواصل';
+
+  @override
+  String get alertTitleGamingChat => 'تنبيه في محادثات الألعاب';
+
+  @override
+  String get alertCategorySocialConcern => 'السلامة في التواصل';
+
+  @override
+  String get alertCategoryGamingChat => 'محادثات الألعاب';
+
+  @override
+  String socialAlertFlaggedInApp(String app) {
+    return 'رُصد في $app ما يستدعي المراجعة';
+  }
+
+  @override
+  String get socialAlertOpenActivity => 'فتح نشاط التواصل';
+
+  @override
+  String get socialAlertPreviewNoPermissionTitle => 'المعاينة غير متاحة لحسابك';
+
+  @override
+  String get socialAlertPreviewNoPermissionBody =>
+      'اطلب من مالك العائلة منحك صلاحية «التواصل» لعرض المعاينة المشفّرة. ما زالت تفاصيل التنبيه وإرشادات الحديث مع طفلك متاحة هنا.';
+
+  @override
+  String get socialAlertPreviewExpiredTitle => 'لم تعد المعاينة متاحة';
+
+  @override
+  String get socialAlertPreviewExpiredBody =>
+      'انتهت صلاحية المعاينة المشفّرة أو لم تُحفظ لهذا التنبيه. ما زالت تفاصيل التنبيه وإرشادات الحديث مع طفلك محفوظة هنا.';
+
+  @override
+  String get socialAlertUnavailableTitle => 'التنبيه غير متاح';
+
+  @override
+  String get socialAlertUnavailableBody =>
+      'تعذّر العثور على هذا التنبيه. افتح «التنبيهات» لمراجعة النشاط الأخير.';
+
+  @override
+  String get socialAlertViewAll => 'كل التنبيهات';
 }

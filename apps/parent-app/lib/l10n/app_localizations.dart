@@ -2120,6 +2120,18 @@ abstract class AppLocalizations {
   /// **'The list appears after the child device\'s next check-in (up to 15 minutes).'**
   String get installedAppsEmptyHint;
 
+  /// No description provided for @appPickerIosEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No apps chosen yet'**
+  String get appPickerIosEmptyTitle;
+
+  /// No description provided for @appPickerIosEmptyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Open OSRA on {child}\'s iPhone and choose the apps you want to manage. They\'ll appear here.'**
+  String appPickerIosEmptyBody(Object child);
+
   /// No description provided for @installedAppsNoMatch.
   ///
   /// In en, this message translates to:
@@ -2671,6 +2683,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t save changes. Check your connection and try again.'**
   String get saveFailed;
+
+  /// No description provided for @saveFailedServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t save your changes. Your changes are still here — try again.'**
+  String get saveFailedServer;
 
   /// No description provided for @saveMonitoring.
   ///
@@ -4049,8 +4067,14 @@ abstract class AppLocalizations {
   /// No description provided for @digestPrefsEmailsHelper.
   ///
   /// In en, this message translates to:
-  /// **'For the digest summary (separate addresses with commas)'**
+  /// **'For the digest summary'**
   String get digestPrefsEmailsHelper;
+
+  /// No description provided for @digestPrefsAddEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Add email'**
+  String get digestPrefsAddEmail;
 
   /// No description provided for @digestPrefsConfirmationSent.
   ///
@@ -5180,11 +5204,29 @@ abstract class AppLocalizations {
   /// **'App groups on this iPhone'**
   String get appGroupsTitle;
 
-  /// ADR-0037: one line under the heading. Arabic is a draft pending Karim's review.
+  /// No description provided for @appsTabAndroidHeading.
   ///
   /// In en, this message translates to:
-  /// **'Groups are made on the child\'s iPhone, behind the parent PIN. Block one here and the iPhone shields its apps.'**
-  String get appGroupsBody;
+  /// **'Android apps'**
+  String get appsTabAndroidHeading;
+
+  /// No description provided for @appsTabIphoneHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'iPhone apps'**
+  String get appsTabIphoneHeading;
+
+  /// No description provided for @appGroupsEditorNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage iPhone apps from the Apps tab. The rules on this screen apply to Android apps only.'**
+  String get appGroupsEditorNote;
+
+  /// No description provided for @appGroupsBlockOnlyAdds.
+  ///
+  /// In en, this message translates to:
+  /// **'Turning this switch off doesn\'t lift a block set on the iPhone itself.'**
+  String get appGroupsBlockOnlyAdds;
 
   /// ADR-0037: what one group holds, as counts only (the parent app never learns which apps). Arabic is a draft pending Karim's review.
   ///
@@ -5354,6 +5396,12 @@ abstract class AppLocalizations {
   /// **'on {date} at {time}'**
   String alertOnDateAtTime(String date, String time);
 
+  /// No description provided for @alertDetailSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent {when}'**
+  String alertDetailSent(String when);
+
   /// No description provided for @alertDeviceRestartedBodyMinutes.
   ///
   /// In en, this message translates to:
@@ -5366,6 +5414,84 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{device} restarted {when} and was back after about {hours, plural, =1{1 hour} other{{hours} hours}}.'**
   String alertDeviceRestartedBodyHours(String device, String when, int hours);
+
+  /// No description provided for @alertTitleSocialConcern.
+  ///
+  /// In en, this message translates to:
+  /// **'Social safety alert'**
+  String get alertTitleSocialConcern;
+
+  /// No description provided for @alertTitleGamingChat.
+  ///
+  /// In en, this message translates to:
+  /// **'Gaming chat alert'**
+  String get alertTitleGamingChat;
+
+  /// No description provided for @alertCategorySocialConcern.
+  ///
+  /// In en, this message translates to:
+  /// **'Social safety'**
+  String get alertCategorySocialConcern;
+
+  /// No description provided for @alertCategoryGamingChat.
+  ///
+  /// In en, this message translates to:
+  /// **'Gaming chat'**
+  String get alertCategoryGamingChat;
+
+  /// No description provided for @socialAlertFlaggedInApp.
+  ///
+  /// In en, this message translates to:
+  /// **'Flagged for review in {app}'**
+  String socialAlertFlaggedInApp(String app);
+
+  /// No description provided for @socialAlertOpenActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Social activity'**
+  String get socialAlertOpenActivity;
+
+  /// No description provided for @socialAlertPreviewNoPermissionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Preview unavailable for your account'**
+  String get socialAlertPreviewNoPermissionTitle;
+
+  /// No description provided for @socialAlertPreviewNoPermissionBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask the family owner to enable Social access to view the encrypted preview. Alert details and the conversation guide remain available here.'**
+  String get socialAlertPreviewNoPermissionBody;
+
+  /// No description provided for @socialAlertPreviewExpiredTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Preview no longer available'**
+  String get socialAlertPreviewExpiredTitle;
+
+  /// No description provided for @socialAlertPreviewExpiredBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The encrypted preview has expired or was not stored for this alert. Alert details and the conversation guide remain saved here.'**
+  String get socialAlertPreviewExpiredBody;
+
+  /// No description provided for @socialAlertUnavailableTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Alert unavailable'**
+  String get socialAlertUnavailableTitle;
+
+  /// No description provided for @socialAlertUnavailableBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This alert could not be found. Open Alerts to review recent activity.'**
+  String get socialAlertUnavailableBody;
+
+  /// No description provided for @socialAlertViewAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All alerts'**
+  String get socialAlertViewAll;
 }
 
 class _AppLocalizationsDelegate

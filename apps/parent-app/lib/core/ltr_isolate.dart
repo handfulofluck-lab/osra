@@ -8,3 +8,9 @@ String ltrIsolate(String value) => '\u{2066}$value\u{2069}';
 /// breaker the point the reader expects, and renders as nothing. The isolate stays on the outside, so
 /// the Arabic app shows the name left to right even though the sentence around it does not.
 String ltrIsolateHost(String value) => ltrIsolate(value.replaceAll('.', '.\u{200B}'));
+
+/// An email address for display: left-to-right isolated, with a break opportunity right after `@`.
+///
+/// PR #902 (Arabic Language Bureau): narrow 320 px / 200 % rows break inside `.com` unless given a
+/// zero-width break after `@`. Keeping `ltrIsolate` around the address preserves Latin ordering in RTL.
+String ltrIsolateEmail(String value) => ltrIsolate(value.replaceAll('@', '@\u{200B}'));

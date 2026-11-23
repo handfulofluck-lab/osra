@@ -1,9 +1,12 @@
 import hashlib
 import json
 from datetime import datetime, timedelta, timezone
+from unittest.mock import Mock
 from uuid import uuid4
 
+import boto3
 import pytest
+from botocore.exceptions import ClientError, EndpointConnectionError, ParamValidationError
 from fastapi.testclient import TestClient
 
 import staging_qa
@@ -13,6 +16,7 @@ from eval.prompt import CATEGORIES
 APPROVED_TEXT = "Synthetic staging fixture"
 STUB_POLICY = "Classifier policy for unit testing"
 PATH = "/analyze/staging-qa"
+BEDROCK_ENDPOINT = "https://vpce-0123456789abcdef0-osratest.bedrock-runtime.eu-central-1.vpce.amazonaws.com"
 
 
 def model_reply(answer, stop_reason="end_turn"):
@@ -38,6 +42,60 @@ class StubBedrock:
 
 
 @pytest.fixture
+def sdk_session(monkeypatch):
+    session = Mock()
+    staging_qa._bedrock_client.cache_clear()
+    monkeypatch.setattr(boto3, "Session", session)
+    yield session
+    staging_qa._bedrock_client.cache_clear()
+
+
+@pytest.mark.parametrize("endpoint", [BEDROCK_ENDPOINT, BEDROCK_ENDPOINT.replace("-osratest.", ".")])
+def test_client_signs_the_exact_private_endpoint_and_verifies_tls(sdk_session, monkeypatch, endpoint):
+    # Reusing the default regional URL or relaxing TLS, signing, or proxies breaks this check.
+    monkeypatch.setenv("OSRA_STAGING_QA_BEDROCK_ENDPOINT_URL", endpoint)
+
+    assert staging_qa._bedrock_client() is sdk_session.return_value.client.return_value
+    sdk_session.assert_called_once_with()
+    client = sdk_session.return_value.client
+    client.assert_called_once()
+    args, kwargs = client.call_args
+    assert args == ("bedrock-runtime",)
+    assert kwargs["endpoint_url"] == endpoint
+    assert kwargs["region_name"] == "eu-central-1"
+    assert kwargs["verify"] is True
+    assert kwargs["config"].signature_version == "v4"
+    assert kwargs["config"].proxies == {}
+    assert kwargs["config"].retries == {"total_max_attempts": 1, "mode": "standard"}
+
+
+@pytest.mark.parametrize("endpoint", [
+    None,
+    "",
+    "https://bedrock-runtime.eu-central-1.amazonaws.com",
+    BEDROCK_ENDPOINT.replace("eu-central-1", "eu-north-1"),
+    BEDROCK_ENDPOINT.replace("https://", "http://"),
+    BEDROCK_ENDPOINT.replace("bedrock-runtime.", "bedrock."),
+    BEDROCK_ENDPOINT.replace("-osratest.", "-osratest-eu-central-1a."),
+    BEDROCK_ENDPOINT + ".example.test",
+    BEDROCK_ENDPOINT + "/unexpected",
+    BEDROCK_ENDPOINT + "?unexpected=value",
+    BEDROCK_ENDPOINT + ":443",
+    BEDROCK_ENDPOINT + "\n",
+])
+def test_bad_private_endpoint_fails_before_sdk_session(sdk_session, monkeypatch, endpoint):
+    # A public or permissive fallback would construct the SDK before the configuration is rejected.
+    if endpoint is None:
+        monkeypatch.delenv("OSRA_STAGING_QA_BEDROCK_ENDPOINT_URL", raising=False)
+    else:
+        monkeypatch.setenv("OSRA_STAGING_QA_BEDROCK_ENDPOINT_URL", endpoint)
+
+    with pytest.raises(ValueError, match="Frankfurt Bedrock endpoint is invalid"):
+        staging_qa._bedrock_client()
+    sdk_session.assert_not_called()
+
+
+@pytest.fixture
 def setup_qa(monkeypatch):
     bedrock = StubBedrock()
     monkeypatch.setattr(staging_qa, "_bedrock_client", lambda: bedrock)
@@ -58,6 +116,7 @@ def payload(**overrides):
     ("OSRA_DEPLOYMENT_SCOPE", "production"),
     ("OSRA_STAGING_QA_ANALYZER_ENABLED", ""),
     ("OSRA_STAGING_QA_FIXTURE_SHA256", "*"),
+    ("OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT", "yes"),
     ("OSRA_STAGING_QA_EXPIRES_AT", "2030-01-01T00:00:00Z"),
     ("OSRA_STAGING_QA_EXPIRES_AT", "2020-01-01T00:00:00Z"),
 ])
@@ -67,6 +126,31 @@ def test_disabled_or_expired_gate_never_calls_bedrock(setup_qa, monkeypatch, nam
     response = TestClient(app).post(PATH, json=payload())
     assert response.status_code == 404
     assert setup_qa.calls == []
+
+
+def test_new_wording_is_scored_in_enabled_synthetic_pair_mode(setup_qa, monkeypatch):
+    monkeypatch.setenv("OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT", "1")
+    sample = "A sentence chosen during the test."
+    response = TestClient(app).post(PATH, json=payload(text=sample))
+    assert response.status_code == 200
+    assert response.json()["categories"] == setup_qa.probabilities
+    call, = setup_qa.calls
+    assert call["messages"] == [{"role": "user", "content": [{"text": sample}]}]
+
+
+@pytest.mark.parametrize("name,value,status", [
+    ("OSRA_STAGING_QA_EXPIRES_AT", "2020-01-01T00:00:00Z", 404),
+    ("OSRA_DEPLOYMENT_SCOPE", "production", 404),
+    ("OSRA_STAGING_QA_SYSTEM_PROMPT", "Unapproved prompt", 404),
+    ("", "", 422),
+])
+def test_synthetic_pair_mode_keeps_other_boundaries(setup_qa, monkeypatch, name, value, status):
+    monkeypatch.setenv("OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT", "1")
+    if name:
+        monkeypatch.setenv(name, value)
+    response = TestClient(app).post(PATH, json=payload(text="🎈" * 257 if status == 422 else APPROVED_TEXT))
+    assert response.status_code == status
+    assert not setup_qa.calls
 
 
 def test_only_exact_fixture_text_is_allowed(setup_qa):
@@ -150,4 +234,23 @@ def test_unusable_provider_answer_cannot_be_reported_as_inference(setup_qa, capl
     assert response.json() == {"detail": "model_unavailable"}
     assert len(setup_qa.calls) == 1
     assert "provider-private-detail" not in caplog.text
+    assert APPROVED_TEXT not in caplog.text
+
+
+@pytest.mark.parametrize(("error", "diagnostic"), [
+    (ClientError({"Error": {"Code": "AccessDeniedException", "Message": "provider-private-detail"}}, "Converse"), "access_denied"),
+    (ClientError({"Error": {"Code": "ValidationException", "Message": "provider-private-detail"}}, "Converse"), "provider_validation"),
+    (ClientError({"Error": {"Code": "provider-private-detail", "Message": "provider-private-detail"}}, "Converse"), "provider_error"),
+    (ParamValidationError(report="provider-private-detail"), "sdk_validation"),
+    (EndpointConnectionError(endpoint_url=BEDROCK_ENDPOINT), "transport"),
+])
+def test_provider_diagnostic_contains_only_an_allowlisted_kind(setup_qa, caplog, error, diagnostic):
+    # Logging the exception text or a provider-controlled code would leak private fields.
+    setup_qa.answer = error
+    response = TestClient(app).post(PATH, json=payload())
+    assert response.status_code == 502
+    assert response.json() == {"detail": "model_unavailable"}
+    assert f"failure_kind={diagnostic}" in caplog.text
+    assert "provider-private-detail" not in caplog.text
+    assert BEDROCK_ENDPOINT not in caplog.text
     assert APPROVED_TEXT not in caplog.text

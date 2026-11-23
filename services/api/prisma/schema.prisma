@@ -248,6 +248,7 @@ model Child {
   alerts      Alert[]
   consents    ConsentRecord[]
   pairingDecisions PairingDecision[]
+  internetOperation ChildInternetOperation?
 }
 
 /// Plan 2.7 (the parent approves each new device): who allowed or refused which phone. `model` is the
@@ -379,6 +380,17 @@ model DeviceCommand {
 
   @@index([deviceId, status])
   @@index([deviceId, createdAt])
+}
+
+/// Latest child-wide internet request and the exact commands it queued.
+model ChildInternetOperation {
+  childId       String   @id
+  id            String   @unique
+  generation    Int
+  desiredPaused Boolean
+  requestedAt   DateTime @db.Timestamptz(3)
+  targets       Json
+  child         Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
 }
 
 model RuleSet {

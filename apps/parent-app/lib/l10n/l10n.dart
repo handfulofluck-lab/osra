@@ -95,6 +95,8 @@ extension AppLocalizationsLabels on AppLocalizations {
         'install_request' => alertCategoryInstallRequest,
         'unknown_contact' => alertCategoryUnknownContact,
         'device_restarted' => alertCategoryDeviceRestarted,
+        'social_concern' => alertCategorySocialConcern,
+        'gaming_chat' => alertCategoryGamingChat,
         _ => category,
       };
 
@@ -131,6 +133,8 @@ extension AppLocalizationsLabels on AppLocalizations {
         'install_request' => alertTitleInstallRequest,
         'unknown_contact' => alertTitleUnknownContact,
         'device_restarted' => alertDeviceRestartedTitle,
+        'social_concern' => alertTitleSocialConcern,
+        'gaming_chat' => alertTitleGamingChat,
         _ => isEnglish ? serverTitle : alertTitleGeneric,
       };
 

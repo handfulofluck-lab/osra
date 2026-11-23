@@ -76,6 +76,37 @@ void main() {
     expect(videoSwitch.value, isFalse);
   });
 
+  // #961 (Codex for UI/UX, 7062778997): the counts must NOT be the tile's subtitle. As a subtitle they sat
+  // between the Block label and the switch — about 110 px at 320 px / 200 % — which is narrower than one
+  // label-and-count segment, so it split. This row fails if the counts go back inside the SwitchListTile.
+  testWidgets('the counts sit under the tile at full width, not in its subtitle', (tester) async {
+    await pump(tester, iphone(groups: twoGroups));
+
+    expect(find.byKey(ValueKey('appGroupCounts-$games')), findsOneWidget);
+    final counts = find.text('Apps 3 · Categories 1 · Websites 0');
+    expect(counts, findsOneWidget);
+    expect(find.ancestor(of: counts, matching: find.byType(SwitchListTile)), findsNothing,
+        reason: 'a subtitle is squeezed by the Block label and the switch; the counts need the card width');
+    expect(find.descendant(of: find.byType(SwitchListTile), matching: find.text('Games')), findsOneWidget,
+        reason: 'the group name stays on the tile');
+  });
+
+  testWidgets('the switch list carries the "adds only" line, under every switch', (tester) async {
+    await pump(tester, iphone(groups: twoGroups));
+    const line = "Turning this switch off doesn't lift a block set on the iPhone itself.";
+    expect(find.text(line), findsOneWidget,
+        reason: 'U40: a switch here can add a block but never lift one set on the phone');
+    // Placed once, under the whole list: the phone does not report which group it blocks itself, so the
+    // line must not sit under one switch as if it described that one.
+    final lineTop = tester.getTopLeft(find.text(line)).dy;
+    for (final group in [games, video]) {
+      final switchBottom = tester.getBottomLeft(find.byKey(ValueKey('appGroup-$group'))).dy;
+      expect(lineTop, greaterThanOrEqualTo(switchBottom),
+          reason: 'the line belongs under the switch list, not above group $group');
+    }
+    expect(find.textContaining('PIN'), findsNothing, reason: 'U42: no PIN copy on any screen');
+  });
+
   testWidgets('blocking a group adds its rule and keeps the others', (tester) async {
     final api = await pump(tester, iphone(groups: twoGroups), stored: [
       {'groupId': games, 'action': 'block'},
@@ -117,10 +148,12 @@ void main() {
     expect(find.text('Could not save the change. Try again.'), findsOneWidget);
   });
 
-  testWidgets('Arabic renders the heading and the counts', (tester) async {
+  testWidgets('Arabic renders the heading, the counts and the adds-only line', (tester) async {
     await pump(tester, iphone(groups: twoGroups), locale: const Locale('ar'));
     expect(find.text('مجموعات التطبيقات على آيفون الطفل'), findsOneWidget);
-    expect(find.text('التطبيقات: 3 · الفئات: 1 · المواقع: 0'), findsOneWidget);
+    expect(find.text('التطبيقات: 3 · الفئات: 1 · المواقع: 0'), findsOneWidget);
+    // The Arabic Language Bureau's line (7038515313), used as written.
+    expect(find.text('إيقاف هذا المفتاح لا يرفع الحظر عن تطبيقات حُظرت من جهاز آيفون نفسه.'), findsOneWidget);
   });
 
   test('appGroupRulesWith is case-insensitive and never duplicates', () {

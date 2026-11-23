@@ -238,7 +238,10 @@ class SocialScanQueue internal constructor(
 
             val now = System.currentTimeMillis()
             runCatching { dao.purge(now - ScanQueuePolicy.MAX_AGE_MS, ScanQueuePolicy.MAX_ATTEMPTS) }
-            val batch = runCatching { dao.oldest(ScanQueuePolicy.BATCH_SIZE) }.getOrDefault(emptyList())
+                .onFailure { if (it is CancellationException) throw it }
+            val batch = runCatching { dao.oldest(ScanQueuePolicy.BATCH_SIZE) }
+                .onFailure { if (it is CancellationException) throw it }
+                .getOrDefault(emptyList())
             if (batch.isEmpty()) {
                 if (searchPurgeFailed) retryScheduler()
                 return@withLock

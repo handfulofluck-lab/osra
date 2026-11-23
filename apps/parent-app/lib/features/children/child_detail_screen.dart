@@ -33,6 +33,8 @@ class ChildDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // #935: keep the live /v1/ws channel subscribed so `command_acked` updates delivery status immediately.
+    ref.watch(wsProvider);
     final overview = ref.watch(familyProvider).valueOrNull;
     final child = overview?.children.where((c) => c.id == childId).firstOrNull;
     final l10n = context.l10n;
@@ -296,7 +298,7 @@ class _OverviewTab extends ConsumerWidget {
                           builder: (waiting) => TextButton.icon(
                             onPressed: waiting ? null : () => _sendCommand(context, ref, d, 'pause'),
                             icon: const Icon(Icons.pause_circle, size: 18),
-                            label: Text(l10n.pause),
+                            label: Text(l10n.commandPauseDevice),
                           ),
                         ),
                         _PendingAwareControl(
@@ -305,13 +307,13 @@ class _OverviewTab extends ConsumerWidget {
                           builder: (waiting) => TextButton.icon(
                             onPressed: waiting ? null : () => _sendCommand(context, ref, d, 'resume'),
                             icon: const Icon(Icons.play_circle, size: 18),
-                            label: Text(l10n.resume),
+                            label: Text(l10n.commandResumeDevice),
                           ),
                         ),
                         TextButton.icon(
                           onPressed: () => _toggleInternet(context, ref, childId, internetPaused, d),
                           icon: Icon(internetPaused ? Icons.wifi : Icons.wifi_off, size: 18),
-                          label: Text(internetPaused ? l10n.resumeNet : l10n.pauseNet),
+                          label: Text(internetPaused ? l10n.commandResumeInternet : l10n.commandPauseInternet),
                         ),
                       ],
                     ),
@@ -691,6 +693,10 @@ class _AppsTab extends ConsumerWidget {
     final devices = overview?.devicesFor(childId) ?? const <Device>[];
     final childHasIphone = devices.any((d) => d.platform == 'ios');
     final childHasAndroid = devices.any((d) => d.platform == 'android');
+    // U40 (#953): headings exist only for a child who has both phones. With one platform the tab is
+    // about one list, and a heading over the only list says nothing a parent cannot see.
+    final mixedFamily = childHasAndroid && childHasIphone;
+    final childName = overview?.children.where((c) => c.id == childId).firstOrNull?.displayName ?? '';
     final groupDevices = [
       for (final d in devices)
         if (d.setup?.groups?.isNotEmpty ?? false) d,
@@ -710,6 +716,15 @@ class _AppsTab extends ConsumerWidget {
         return ListView(
           padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.lg),
           children: [
+            // F1 (UI/UX Bureau 7043461404, Arabic Bureau 7043544512): a mixed family always sees both headings, in
+            // both states. Without the iPhone heading above the empty card, the card reads as being about all the
+            // child's apps while an Android list with apps sits directly under it.
+            if (mixedFamily)
+              Padding(
+                key: const ValueKey('appsTabIphoneHeading'),
+                padding: const EdgeInsetsDirectional.fromSTEB(0, AppSpace.sm, 0, AppSpace.xs),
+                child: Text(l10n.appsTabIphoneHeading, style: Theme.of(context).textTheme.titleMedium),
+              ),
             if (groupDevices.isNotEmpty) ...[
               for (final d in groupDevices)
                 Card(
@@ -720,6 +735,8 @@ class _AppsTab extends ConsumerWidget {
                 ),
               const SizedBox(height: AppSpace.sm),
             ] else if (childHasIphone) ...[
+              // U42 (#953): the iPhone empty state, so a parent is never told about a PIN or where a
+              // group was made. The child's name is isolated because it is Latin inside an Arabic line.
               Card(
                 key: const ValueKey('appsTabIphoneSetupCard'),
                 child: Padding(
@@ -727,15 +744,22 @@ class _AppsTab extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(l10n.appGroupsTitle, style: Theme.of(context).textTheme.titleSmall),
+                      Text(l10n.appPickerIosEmptyTitle, style: Theme.of(context).textTheme.titleSmall),
                       const SizedBox(height: AppSpace.xs),
-                      Text(l10n.appGroupsBody, style: Theme.of(context).textTheme.bodySmall),
+                      Text(l10n.appPickerIosEmptyBody(ltrIsolate(childName)),
+                          style: Theme.of(context).textTheme.bodySmall),
                     ],
                   ),
                 ),
               ),
               const SizedBox(height: AppSpace.sm),
             ],
+            if (mixedFamily && canManagePerAppRules)
+              Padding(
+                key: const ValueKey('appsTabAndroidHeading'),
+                padding: const EdgeInsetsDirectional.fromSTEB(0, AppSpace.sm, 0, AppSpace.xs),
+                child: Text(l10n.appsTabAndroidHeading, style: Theme.of(context).textTheme.titleMedium),
+              ),
             if (canManagePerAppRules) ...[
               FilledButton.tonalIcon(
                 key: const ValueKey('appsTabManageAppsButton'),
