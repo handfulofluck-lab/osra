@@ -88,7 +88,12 @@ describe("social routes", () => {
     vi.unstubAllEnvs();
   });
 
-  it.each([false, true])("writes a model-only notification alert (exploratory mode=%s)", async (exploratory) => {
+  it.each([
+    { exploratory: false, crossApp: false, appKey: "whatsapp", source: "notification" },
+    { exploratory: true, crossApp: false, appKey: "whatsapp", source: "notification" },
+    { exploratory: true, crossApp: true, appKey: "discord", source: "screen" },
+    { exploratory: true, crossApp: true, appKey: "messenger", source: "notification" },
+  ])("writes a model-only alert for the configured app and source %j", async ({ exploratory, crossApp, appKey, source }) => {
     const fixture = "The group wants to leave one classmate out of every lunch table.";
     const sample = exploratory ? "They agreed to leave one classmate out every day." : fixture;
     const benign = "The window is open.";
@@ -97,6 +102,7 @@ describe("social routes", () => {
     vi.stubEnv("OSRA_DEPLOYMENT_SCOPE", "staging");
     vi.stubEnv("OSRA_STAGING_QA_ANALYZER_ENABLED", "1");
     vi.stubEnv("OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT", exploratory ? "1" : "0");
+    vi.stubEnv("OSRA_STAGING_QA_ANDROID_SOURCES", crossApp ? "1" : "0");
     vi.stubEnv("OSRA_STAGING_QA_DEVICE_ID", deviceId);
     vi.stubEnv("OSRA_STAGING_QA_CHILD_ID", CHILD.id);
     vi.stubEnv("OSRA_STAGING_QA_EXPIRES_AT", new Date(Date.now() + 15 * 60 * 1000).toISOString());
@@ -112,12 +118,12 @@ describe("social routes", () => {
     });
     vi.stubGlobal("fetch", analyze);
     prismaMock.device.findUnique.mockResolvedValue({ id: deviceId, childId: CHILD.id, internalSecret: syntheticKey });
-    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.child.findUnique.mockResolvedValue({ ...CHILD, ruleSet: { socialMonitoring: { [appKey]: true } } });
     prismaMock.socialEvent.create.mockResolvedValue({ id: "synthetic-event" });
     prismaMock.alert.create.mockResolvedValue({ id: "synthetic-alert" });
     const app = await buildApp(socialRoutes, "/v1/social");
     const scan = (body: Record<string, unknown>) => {
-      const raw = JSON.stringify({ deviceId, items: [scanBody({ deviceId, source: "notification", ...body })] });
+      const raw = JSON.stringify({ deviceId, items: [scanBody({ deviceId, app: appKey, source, ...body })] });
       return app.inject({ method: "POST", url: "/v1/social/scan",
         headers: { "content-type": "application/json", ...signV2(syntheticKey, raw) }, payload: raw });
     };
@@ -138,6 +144,117 @@ describe("social routes", () => {
       expect(JSON.parse(String(options.body))).toEqual({ text: sample, trace_id: expect.any(String) });
       expect(prismaMock.socialEvent.create).toHaveBeenCalledTimes(1);
       expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+      if (crossApp) {
+        expect(prismaMock.child.findUnique).toHaveBeenCalledWith({
+          where: { id: CHILD.id },
+          include: { family: { select: { timezone: true } }, ruleSet: { select: { socialMonitoring: true } } },
+        });
+        prismaMock.child.findUnique.mockResolvedValue({ ...CHILD, ruleSet: { socialMonitoring: { [appKey]: false } } });
+        const disabled = await scan({ text: sample });
+        expect(disabled.statusCode).toBe(200);
+        expect(disabled.json().results[0]).toMatchObject({ flagged: false });
+        expect(analyze).toHaveBeenCalledTimes(2);
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("records selected staging providers separately and creates one attributable alert", async () => {
+    // Mutants: generic 0.5 thresholds lose the calibrated own flag; raw scores or text leak into receipts.
+    const deviceId = "fixture-provider-device";
+    const secret = randomBytes(32).toString("hex");
+    const text = "A synthetic test phrase without local keywords.";
+    vi.stubEnv("OSRA_DEPLOYMENT_SCOPE", "staging");
+    vi.stubEnv("OSRA_STAGING_QA_ANALYZER_ENABLED", "1");
+    vi.stubEnv("OSRA_STAGING_QA_ENGINE", "both");
+    vi.stubEnv("OSRA_STAGING_QA_DEVICE_ID", deviceId);
+    vi.stubEnv("OSRA_STAGING_QA_CHILD_ID", CHILD.id);
+    vi.stubEnv("OSRA_STAGING_QA_FIXTURE_SHA256", createHash("sha256").update(text).digest("hex"));
+    vi.stubEnv("OSRA_STAGING_QA_EXPIRES_AT", new Date(Date.now() + 600_000).toISOString());
+    vi.stubEnv("OSRA_STAGING_QA_ANALYZER_URL", "http://qa.internal");
+    const scores = { cyberbullying: 0.8, self_harm: 0.41, grooming: 0, violence: 0, sexual_content: 0, substance_use: 0, hate_speech: 0 };
+    const bedrock = { status: "scored", model: "openai.gpt-oss-20b-1:0", flagged: true, severity: "critical",
+      categories: { ...scores, safe: 0.1 }, flagged_categories: ["cyberbullying"] };
+    const own = { status: "scored", model: "v9b", flagged: true, severity: "warning", language: "ar",
+      categories: scores, flagged_categories: ["self_harm"] };
+    const unavailable = { status: "unavailable", reason: "timeout" };
+    const benign = { ...own, flagged: false, severity: "info", flagged_categories: [] };
+    const responses = [{ bedrock, own }, { bedrock: unavailable, own: benign },
+      { bedrock: unavailable, own }, { bedrock: unavailable, own: unavailable }];
+    const fetcher = vi.fn(async (_url: URL, options: RequestInit) => {
+      const body = JSON.parse(String(options.body));
+      return { ok: true, json: async () => ({ trace_id: body.trace_id, region: "eu-central-1", mode: "both", outcomes: responses.shift() }) };
+    });
+    vi.stubGlobal("fetch", fetcher);
+    prismaMock.device.findUnique.mockResolvedValue({ id: deviceId, childId: CHILD.id, internalSecret: secret });
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.socialEvent.create.mockResolvedValue({ id: "fixture-event" });
+    prismaMock.alert.create.mockResolvedValue({ id: "fixture-alert" });
+    const app = await buildApp(socialRoutes, "/v1/social");
+    const send = async (sample: string) => {
+      const raw = JSON.stringify(scanBody({ deviceId, text: sample, source: "notification" }));
+      return app.inject({ method: "POST", url: "/v1/social/scan",
+        headers: { "content-type": "application/json", ...signV2(secret, raw) }, payload: raw });
+    };
+    try {
+      expect((await send(text)).json()).toEqual({ flagged: true, severity: "critical", concernTypes: ["cyberbullying", "self_harm"] });
+      expect(JSON.parse(String(fetcher.mock.calls[0][1].body))).toEqual({ text, trace_id: expect.any(String), include_provider_outcomes: true });
+      const attribution = { bedrock: { status: "scored", model: bedrock.model, flagged: true, categories: { cyberbullying: 0.8 }, flagged_categories: ["cyberbullying"] },
+        own: { status: "scored", model: own.model, flagged: true, categories: { self_harm: 0.41 }, flagged_categories: ["self_harm"] } };
+      expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+      expect(prismaMock.alert.create.mock.calls[0][0].data.metadata.providerOutcomes).toEqual(attribution);
+      const receipt = (n: number) => prismaMock.stagingScanOutcome.create.mock.calls[n][0].data;
+      expect(receipt(0)).toEqual({ childId: CHILD.id, socialEventId: "fixture-event", traceId: expect.any(String), providers: attribution });
+      expect((await send(text)).json()).toMatchObject({ flagged: false });
+      expect(receipt(1).providers).toEqual({ bedrock: unavailable, own: { status: "scored", model: "v9b", flagged: false, flagged_categories: [], categories: {} } });
+      expect((await send(text)).json()).toMatchObject({ flagged: true, concernTypes: ["self_harm"] });
+      expect(receipt(2).providers).toEqual({ bedrock: unavailable, own: attribution.own });
+      expect((await send(text)).json()).toMatchObject({ flagged: false });
+      expect(receipt(3).providers).toEqual({ bedrock: unavailable, own: unavailable });
+      expect(prismaMock.alert.create).toHaveBeenCalledTimes(1); // same-app throttle spans scans
+      expect((await send("Unapproved synthetic fixture.")).json()).toMatchObject({ flagged: false });
+      expect(fetcher).toHaveBeenCalledTimes(4);
+      expect(prismaMock.stagingScanOutcome.create).toHaveBeenCalledTimes(4);
+      fetcher.mockRejectedValueOnce(new DOMException("timed out", "TimeoutError"));
+      expect((await send(text)).json()).toMatchObject({ flagged: false });
+      expect(receipt(4).providers).toEqual({ bedrock: unavailable, own: unavailable });
+      expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+      // Exercise the actual fetch signal on the scoped own-only route, including an earlier approval expiry.
+      vi.stubEnv("OSRA_STAGING_QA_ENGINE", "own");
+      const timer = vi.spyOn(AbortSignal, "timeout");
+      try {
+        fetcher.mockRejectedValueOnce(new DOMException("timed out", "TimeoutError"));
+        await send(text);
+        expect(timer).toHaveBeenCalledWith(10000);
+        expect(receipt(5).providers).toEqual({ own: unavailable });
+        timer.mockClear();
+        vi.stubEnv("OSRA_STAGING_QA_EXPIRES_AT", new Date(Date.now() + 1500).toISOString());
+        fetcher.mockRejectedValueOnce(new DOMException("timed out", "TimeoutError"));
+        await send(text);
+        const capped = timer.mock.calls[0][0];
+        expect(capped).toBeGreaterThan(0);
+        expect(capped).toBeLessThanOrEqual(1500);
+      } finally {
+        timer.mockRestore();
+      }
+      // An approved Stockholm CPU verdict reaches the stored scan and the parent's alert metadata.
+      vi.stubEnv("OSRA_STAGING_QA_EXPIRES_AT", new Date(Date.now() + 60_000).toISOString());
+      throttleStore.clear();
+      let ownResult = own;
+      vi.stubGlobal("fetch", vi.fn(async (_url: URL, options: RequestInit) => ({
+        ok: true,
+        json: async () => ({ trace_id: JSON.parse(String(options.body)).trace_id,
+          region: "eu-north-1", mode: "own", outcomes: { own: ownResult } }),
+      })));
+      expect((await send(text)).json()).toMatchObject({ flagged: true });
+      expect(receipt(7).providers.own).toMatchObject({ region: "eu-north-1", flagged: true });
+      expect(prismaMock.alert.create.mock.calls.at(-1)![0].data.metadata.providerOutcomes.own).toEqual(receipt(7).providers.own);
+      const alertCount = prismaMock.alert.create.mock.calls.length;
+      ownResult = benign;
+      expect((await send(text)).json()).toMatchObject({ flagged: false });
+      expect(receipt(8).providers.own).toMatchObject({ region: "eu-north-1", flagged: false });
+      expect(prismaMock.alert.create).toHaveBeenCalledTimes(alertCount);
     } finally {
       await app.close();
     }

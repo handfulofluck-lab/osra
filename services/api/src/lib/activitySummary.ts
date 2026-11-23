@@ -227,7 +227,9 @@ export async function computeWellbeingScore(childId: string, week: string, days 
   const effectiveMinutes = Math.max(rollupTotal, aggregate.totalAppMinutes);
   const socialConcerns = rawSocialConcerns ?? 0;
   // NOTE: usageRatio above 0.5 of the allowed budget starts costing points.
-  const usageRatio = effectiveMinutes / (dailyLimit * days || 1);
+  // A zero daily limit disables the cap, so this window cannot incur an overage.
+  const budget = dailyLimit * days;
+  const usageRatio = budget > 0 ? effectiveMinutes / budget : 0;
   const usage = 30 * Math.max(0, usageRatio - 0.5) * 2;
   const social = 5 * socialConcerns;
   const safety = 3 * aggregate.blockedHits;

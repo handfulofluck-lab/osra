@@ -105,6 +105,51 @@ void main() {
       expect(calls.last.query['days'], 30);
     });
 
+    testWidgets('returning to a range reloads activity recorded since the first visit', (tester) async {
+      var total = 0;
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/reports/summary': (_) => {'totalAppMinutes': total},
+      });
+      await pumpScreen(tester, const ReportsScreen(childId: 'child-1'), api);
+      expect(find.textContaining('No activity recorded'), findsOneWidget);
+
+      await tester.tap(find.text('30 days'));
+      await tester.pumpAndSettle();
+      total = 22;
+      await tester.tap(find.text('7 days'));
+      await tester.pumpAndSettle();
+
+      // Mutant: retain the old seven-day provider after its last listener leaves.
+      expect(api.calls('GET', '/v1/reports/summary').map((r) => r.query['days']), [7, 30, 7]);
+      expect(find.textContaining('Total 22 min'), findsOneWidget);
+    });
+
+    testWidgets('refreshing the open report replaces an earlier empty response', (tester) async {
+      var total = 0;
+      final api = FakeApiClient({'GET /v1/reports/summary': (_) => {'totalAppMinutes': total}});
+      await pumpScreen(tester, const ReportsScreen(childId: 'child-1'), api);
+      expect(find.textContaining('No activity recorded'), findsOneWidget);
+
+      total = 22;
+      await tester.tap(find.byTooltip('Refresh'));
+      await tester.pumpAndSettle();
+
+      // Mutant: redraw the screen without refetching the selected window.
+      expect(api.calls('GET', '/v1/reports/summary'), hasLength(2));
+      expect(find.textContaining('Total 22 min'), findsOneWidget);
+    });
+
+    testWidgets('recorded minutes with an empty app list keep the total and identify the missing breakdown', (tester) async {
+      await pumpScreen(tester, const ReportsScreen(childId: 'child-1'),
+          reportApi(summary: {'totalAppMinutes': 22, 'topApps': []}));
+
+      // Mutant: test topApps.isEmpty alone and claim there was no usage.
+      expect(find.textContaining('Total 22 min'), findsOneWidget);
+      expect(find.text('Per-app usage is unavailable'), findsOneWidget);
+      expect(find.text('No app usage recorded'), findsNothing);
+    });
+
     testWidgets('empty summary shows the empty state', (tester) async {
       final api = reportApi(summary: const {});
       await pumpScreen(tester, const ReportsScreen(childId: 'child-1'), api);
@@ -150,6 +195,27 @@ void main() {
           .map((w) => w.color)
           .toList();
       expect(colors, containsAll([Colors.green, Colors.red]));
+    });
+
+    testWidgets('dashboard refresh gets a new score and keeps a reported zero distinct from a missing score', (tester) async {
+      var score = 0;
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/reports/wellbeing/child-1': (_) => {'score': score},
+        'GET /v1/reports/wellbeing/child-2': (_) => {'childId': 'child-2'},
+      });
+      await pumpScreen(tester, const DashboardScreen(), api);
+
+      // Mutant: substitute zero when the response omits the score.
+      expect(find.text('Wellbeing 0/100'), findsOneWidget);
+      score = 76;
+      await tester.drag(find.byKey(const ValueKey('dashboardCardsList')), const Offset(0, 350));
+      await tester.pumpAndSettle();
+
+      // Mutant: refreshing the family alone keeps the initial score cached.
+      expect(api.calls('GET', '/v1/reports/wellbeing/child-1'), hasLength(2));
+      expect(find.text('Wellbeing 76/100'), findsOneWidget);
+      expect(find.text('Wellbeing 0/100'), findsNothing);
     });
 
     testWidgets('ring is hidden while the score fails to load', (tester) async {
@@ -472,7 +538,10 @@ void main() {
       final api = insightsApi();
       await openAppsTab(tester, api);
 
-      await tester.tap(find.text('Game'));
+      await tester.tap(find.text('Game').first);
+      await tester.pumpAndSettle();
+      // Karim 23 Nov: a row opens the app's choices first; "About this app" opens the insight sheet.
+      await tester.tap(find.byKey(const ValueKey('appSheetInsight')));
       await tester.pumpAndSettle();
 
       expect(api.calls('GET', '/v1/insights/apps').single.query['packageId'], 'com.example.game');
@@ -492,7 +561,10 @@ void main() {
       final api = FakeApiClient(standardRoutes());
       await openAppsTab(tester, api);
 
-      await tester.tap(find.text('Game'));
+      await tester.tap(find.text('Game').first);
+      await tester.pumpAndSettle();
+      // Karim 23 Nov: a row opens the app's choices first; "About this app" opens the insight sheet.
+      await tester.tap(find.byKey(const ValueKey('appSheetInsight')));
       await tester.pumpAndSettle();
 
       expect(find.text('No insights for this app yet'), findsOneWidget);
