@@ -3526,4 +3526,59 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get socialAlertViewAll => 'كل التنبيهات';
+
+  @override
+  String get undo => 'تراجع';
+
+  @override
+  String hoursShort(int hours) {
+    return '$hours س';
+  }
+
+  @override
+  String get appStateAllowed => 'مسموح';
+
+  @override
+  String get appStateBlocked => 'محظور';
+
+  @override
+  String appStateLimit(String limit) {
+    return 'حدّ $limit يوميًا';
+  }
+
+  @override
+  String appAllowedSnack(String app) {
+    return 'تم السماح بـ $app';
+  }
+
+  @override
+  String appLimitSnack(String app, String limit) {
+    return 'تم تحديد $app بـ $limit يوميًا';
+  }
+
+  @override
+  String appsFilterAll(int count) {
+    return 'الكل ($count)';
+  }
+
+  @override
+  String appsFilterBlocked(int count) {
+    return 'المحظورة ($count)';
+  }
+
+  @override
+  String appsFilterLimited(int count) {
+    return 'الحدود الزمنية ($count)';
+  }
+
+  @override
+  String get appsNoMatch => 'لا توجد تطبيقات مطابقة';
+
+  @override
+  String get appAboutThisApp => 'عن هذا التطبيق';
+
+  @override
+  String appBlockedNamedSnack(String app) {
+    return 'تم حظر $app';
+  }
 }
