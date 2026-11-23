@@ -192,6 +192,20 @@ jobs:
             echo "::endgroup::"
           done
 
+      # #739, Ahmed's condition 3: the UI-test seed exists only in Debug. A Release binary that carries either the
+      # argument or the type is a CI failure, not a review note — the command is named in the PR body for him.
+      - name: Check the Release build carries no UI-test seed
+        working-directory: apps/child-ios
+        run: |
+          BIN=.build/appDerivedData/Build/Products/Release-iphonesimulator/OSRAAgent.app/OSRAAgent
+          if [ ! -f "$BIN" ]; then echo "::error::the Release simulator binary is missing"; exit 1; fi
+          # `grep -q` inside an `if` keeps its exit status out of the step, so nothing here swallows a failure.
+          if strings -a "$BIN" | grep -qE 'OSRAUITestSeed|uitest-seed'; then
+            echo "::error::the Release binary carries the UI-test seed"
+            exit 1
+          fi
+          echo "Release binary carries no UI-test seed"
+
       # The real Keychain, inside the simulator app: ad-hoc signed ("-", project.yml), so it carries its
       # entitlements and the shared access group (5.5 PR B). Debug, as tests run.
       - name: Run the Keychain tests inside the simulator app
@@ -204,6 +218,155 @@ jobs:
             -scheme OSRAAgent \
             -destination "id=$DEVICE_ID" \
             -derivedDataPath .build/hostedDerivedData
+
+      # #739: the escape rows that need no Family Controls. KP01's xcui half drives the real screens; the
+      # shield rows stay on the device. Same runner, same simulator, same triggers and concurrency group as
+      # the rest of this job: no new job, no new schedule, no new path filter.
+      # The launch timeout is the one failure this runner produces by itself; it cost two runs already (#932 at
+      # a fold, #949 before any app code ran). But a blanket retry also forgives a real app assertion that
+      # happens to pass on a second launch, so this classifies the FIRST result before deciding: a failure whose
+      # log shows the app never launched is retried once, and anything else exits red on its first result.
+      - name: Run the launch smoke case, retrying only a simulator start failure
+        working-directory: apps/child-ios
+        run: |
+          DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for r,l in d.items() if "iOS" in r for x in l if x["name"].startswith("iPhone")))')"
+          echo "Simulator: $DEVICE_ID"
+          mkdir -p .build/uiResults
+          RESULTS=.build/uiResults
+          run_launch() {
+            xcodebuild test \
+              -project OSRAAgent.xcodeproj \
+              -scheme OSRAAgentUI \
+              -destination "id=$DEVICE_ID" \
+              -derivedDataPath .build/uiDerivedData \
+              -only-testing:OSRAAgentUITests/AgentLaunchTests \
+              -resultBundlePath "$RESULTS/$1.xcresult" \
+              2>&1 | tee "$RESULTS/$1.log"
+          }
+
+          # pipefail so tee cannot turn a failed run green; `set +e` only long enough to read the exit status,
+          # because the whole point of this step is to look at the failure before acting on it.
+          set -o pipefail
+          set +e
+          run_launch launch-1
+          first=$?
+          set -e
+          status() { printf '%s\n' "$1" > "$RESULTS/launch.status"; }
+          if [ "$first" -eq 0 ]; then
+            echo "the launch case passed on its first run; nothing was retried"
+            status pass
+            exit 0
+          fi
+
+          # The classification is a SCRIPT, not inline shell: three review rounds found three defects here
+          # (a `printf` with two backslashes, the generic `Failing tests:` footer read as an assertion, and the
+          # retry's own failure never classified), and a script is the part that can be tested. Its fixtures run
+          # in the workflow-lint job (apps/child-ios/scripts/test-classify-launch-failure.sh).
+          verdict="$(bash scripts/classify-launch-failure.sh "$RESULTS/launch-1.log")"
+          case "$verdict" in
+            ambiguous)
+              echo "::error::the first run shows both an assertion and a launch failure. Ambiguous, so it stays red on the first result."
+              status fail-ambiguous
+              exit "$first" ;;
+            assertion)
+              echo "::error::the launch case failed on its own assertions. Not retrying: this is the regression the retry must never hide."
+              status fail-assertion
+              exit "$first" ;;
+            runner)
+              # Same class as a launch timeout: the simulator never drove the app. Falls through to the retry.
+              echo "::warning title=Simulator stall::the first run died on a simulator failure (background assertion or boot), so that case is retried once like a launch failure. Both bundles are kept." ;;
+            other)
+              echo "::error::the first run failed for a reason that is neither an assertion nor a simulator failure; not retrying."
+              status fail-other
+              exit "$first" ;;
+          esac
+
+          if [ "$verdict" = "launch" ]; then
+            echo "::warning title=Simulator launch flake::the first run failed while launching the app on the simulator, so that case is retried once. Both result bundles are kept; read launch-1 before believing the green."
+          fi
+          first_kind="$verdict"
+          set +e
+          run_launch launch-2
+          second=$?
+          set -e
+          if [ "$second" -ne 0 ]; then
+            # Classify the SECOND log too: a retry that dies on an assertion is not "launch failed twice".
+            second_verdict="$(bash scripts/classify-launch-failure.sh "$RESULTS/launch-2.log")"
+            case "$second_verdict" in
+              assertion)
+                echo "::error::the retry failed on its own assertions after a launch failure. Red, and the summary will say assertion, not launch."
+                status fail-assertion-on-retry ;;
+              ambiguous)
+                echo "::error::the retry shows both an assertion and a launch failure. Red, and the summary will say so rather than blaming the simulator."
+                status fail-ambiguous-on-retry ;;
+              launch|runner)
+                status "fail-$second_verdict-twice" ;;
+              *)
+                echo "::error::the retry failed for a reason that is neither an assertion nor a launch failure. Red."
+                status fail-other-on-retry ;;
+            esac
+            exit "$second"
+          fi
+          status "fail-$first_kind-then-pass"
+
+      # A green job must not hide which of the two things happened, so say it on the run instead of only in a log.
+      - name: Say what the launch case did
+        if: always()
+        working-directory: apps/child-ios
+        run: |
+          RESULTS=.build/uiResults
+          # Read the recorded outcome defensively: strip any trailing whitespace, so a stray newline cannot
+          # make `pass` miss its own branch in the case statement (Codex, 7061220000).
+          if [ -f "$RESULTS/launch.status" ]; then
+            outcome="$(tr -d '\r\n' < "$RESULTS/launch.status")"
+          else
+            outcome=did-not-run
+          fi
+          case "$outcome" in
+            pass) text="Passed on its first run; no retry was used." ;;
+            fail-launch-then-pass) text="First run failed **while launching the app on the simulator**; the case was retried once and passed. Both bundles are kept." ;;
+            fail-launch-twice) text="**Failed twice**, both times while launching the app on the simulator. Red, as it should be." ;;
+            fail-runner-twice) text="**Failed twice** on simulator failures (background assertion or boot). Red." ;;
+
+            fail-runner-then-pass) text="First run died on a **simulator failure**; retried once and passed. Both bundles are kept." ;;
+            fail-assertion) text="**Failed on its own assertions** and was not retried. Red, as it should be." ;;
+            fail-ambiguous) text="**Both an assertion and a launch failure** in the first log; kept red on the first result rather than guessing." ;;
+            fail-assertion-on-retry) text="Retried once after a launch failure, then **failed on its own assertions**. Both bundles kept." ;;
+            fail-ambiguous-on-retry) text="Retried once after a launch failure, then showed **both an assertion and a launch failure**. Red, and not attributed to the simulator." ;;
+            fail-other-on-retry) text="Retried once after a launch failure, then failed for **neither an assertion nor a launch reason**. Red." ;;
+            fail-other) text="**Failed for neither an assertion nor a launch reason** and was not retried. Read \`launch-1.log\`." ;;
+            *) text="Did not run (no outcome recorded)." ;;
+          esac
+          {
+            echo "### Launch smoke case"
+            echo ""
+            echo "$text"
+            echo ""
+            echo "Recorded outcome: \`$outcome\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run the escape rows (KP01's screens) inside the simulator, with no retry
+        working-directory: apps/child-ios
+        run: |
+          DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for r,l in d.items() if "iOS" in r for x in l if x["name"].startswith("iPhone")))')"
+          echo "Simulator: $DEVICE_ID"
+          xcodebuild test \
+            -project OSRAAgent.xcodeproj \
+            -scheme OSRAAgentUI \
+            -destination "id=$DEVICE_ID" \
+            -derivedDataPath .build/uiDerivedData \
+            -skip-testing:OSRAAgentUITests/AgentLaunchTests \
+            -resultBundlePath .build/uiResults/escape-rows.xcresult
+
+      # The first attempt has to outlive the log, or "preserve the first result" is only a promise.
+      - name: Keep the UI-test result bundles and the launch log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ui-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/child-ios/.build/uiResults/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Check the built app holds its three extensions and the entitlements
         working-directory: apps/child-ios

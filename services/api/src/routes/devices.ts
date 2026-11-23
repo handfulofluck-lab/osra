@@ -30,7 +30,7 @@ import { markDeviceRevoked } from "../lib/deviceRevocation.js";
 import { PAIR_CLAIM_RATE_LIMIT, PAIR_POLL_RATE_LIMIT } from "../lib/rateLimits.js";
 import { cleanDeviceText, decideClaim, markPaired, pollSecretMatches, readClaim, readClaimForCode, recordPollMiss, releaseClaim, reserveClaim, takeApprovedClaim } from "../lib/pairApproval.js";
 import { raiseAlertOnce } from "../lib/alerts.js";
-import { bootReportBody, decideBootReport } from "../lib/bootReport.js";
+import { bootReportBody, decideBootReport, zonedUtcOffsetMinutes } from "../lib/bootReport.js";
 import { encryptSecret } from "../lib/secretVault.js";
 // Re-exported for existing importers/tests; the constant and its contract live in lib/deviceToken.ts.
 export { DEVICE_TOKEN_TTL_SECONDS };
@@ -780,6 +780,29 @@ export async function deviceRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const row = await ackDeviceCommand(id, commandId, parsed.data.status, parsed.data.detail);
     if (!row) return reply.code(404).send({ error: "no_delivered_command" });
+    // #935: push `command_acked` on the family channel so the parent app refreshes command delivery
+    // within seconds instead of staying on "pending". Never carry `row.payload` (may hold a witness
+    // code before clearing) or free-text `detail`.
+    const device = (req as unknown as {
+      device?: { childId?: string; child?: { familyId?: string } };
+    }).device;
+    const familyId = device?.child?.familyId ?? (user as { familyId?: string }).familyId;
+    if (familyId) {
+      // Best-effort after the durable DB write (#968 review): the shared Redis client has no command
+      // timeout, so awaiting publish could stall the device's HTTP 200 ack even though the ack is saved.
+      void publishFamilyEvent(familyId, {
+        type: "command_acked",
+        payload: {
+          deviceId: id,
+          commandId: row.id,
+          type: row.type,
+          status: row.status,
+          ...(device?.childId ? { childId: device.childId } : {}),
+        },
+      }).catch((err) => {
+        req.log.warn({ err, familyId, deviceId: id, commandId: row.id }, "command_acked publish failed");
+      });
+    }
     return { command: row };
   });
 
@@ -1046,14 +1069,15 @@ export async function deviceRoutes(app: FastifyInstance) {
       },
     });
     if (boot.kind === "new_boot" && bootFamilyId) {
-      // Issue #867: the restart itself, reported by the phone because the 30-minute silence window can never
-      // see a 1–2 minute gap. `raiseAlertOnce`, not `raiseAlert`: since #711 a `raiseAlert` producer must
-      // carry a localization `bodyKey`, and no parent-app string exists for a restart yet — the English
-      // title/body is the compatibility floor every un-updated app renders.
+      // Issue #867 / #889: the restart itself, reported by the phone because the 30-minute silence window
+      // can never see a 1–2 minute gap. Carries `bodyKey: "alertBodyDeviceRestarted"` so updated parent apps
+      // localize in the parent's language while `body` stays the English compatibility floor.
       try {
-        // The body is stored as English and read verbatim, so the clock in it has to be the family's
-        // (ADR-0017/ADR-0020), not the server's UTC.
+        // The fallback body is stored in English using the family's zone (ADR-0017/ADR-0020).
         const family = await prisma.family.findUnique({ where: { id: bootFamilyId }, select: { timezone: true } });
+        const familyTimeZone = family?.timezone?.trim() || "UTC";
+        const utcOffsetMinutes = zonedUtcOffsetMinutes(boot.bootedAt, familyTimeZone);
+        const rawModel = device.model?.trim() ?? "";
         await raiseAlertOnce({
           childId: device.childId,
           familyId: bootFamilyId,
@@ -1061,11 +1085,21 @@ export async function deviceRoutes(app: FastifyInstance) {
           severity: boot.severity,
           category: "device_restarted",
           title: "Device restarted",
-          body: bootReportBody(boot, device.model ?? "A phone", family?.timezone ?? "UTC"),
+          body: bootReportBody(boot, rawModel || "A phone", familyTimeZone, now),
+          bodyKey: "alertBodyDeviceRestarted",
+          params: {
+            model: rawModel,
+            bootedAt: boot.bootedAt.toISOString(),
+            gapMinutes: boot.gapMinutes,
+            timeZone: familyTimeZone,
+            utcOffsetMinutes,
+          },
           metadata: {
             type: "device_restarted",
             bootedAt: boot.bootedAt.toISOString(),
             gapMinutes: boot.gapMinutes,
+            timeZone: familyTimeZone,
+            utcOffsetMinutes,
             lastSeen: boot.previousLastSeen?.toISOString() ?? null,
           },
           // #225: two API instances can both read the pre-upload row and both decide "new boot"; keying on

@@ -3,6 +3,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../api/models.dart';
 import '../l10n/l10n.dart';
+import 'notification_tap.dart';
+import 'restart_alert_text.dart';
 import 'sos_fix_text.dart';
 
 /// The visible half of an alert: what the parent reads on the lock screen.
@@ -37,10 +39,22 @@ class VisibleAlert {
   factory VisibleAlert.from(Alert alert, {required AppLocalizations l10n, required bool isEnglish, DateTime? now}) {
     final fix = alert.category == 'sos' ? alert.location : null;
     // #672 UI/UX review: the lock screen says a location exists and how old it is — **no coordinates**.
-    // The numbers are in the alert's detail, which the tap opens.
-    final body = fix == null
-        ? l10n.alertPushBodyGeneric
-        : SosFixText.of(alert, fix, now ?? DateTime.now()).notificationBody(l10n);
+    // #889 UI/UX & Arabic Bureau: a warning restart notification uses the localized restart sentence
+    // (which carries only device model + time/gap, never the server's English).
+    final String body;
+    if (fix != null) {
+      body = SosFixText.of(alert, fix, now ?? DateTime.now()).notificationBody(l10n);
+    } else if (alert.category == 'device_restarted') {
+      body = RestartAlertText.tryFormat(
+            alert,
+            l10n: l10n,
+            localeName: isEnglish ? 'en' : 'ar',
+            now: now,
+          ) ??
+          l10n.alertPushBodyGeneric;
+    } else {
+      body = l10n.alertPushBodyGeneric;
+    }
     return VisibleAlert(
       alertId: alert.id,
       title: l10n.alertTitleFor(alert.category, alert.title, isEnglish: isEnglish),
@@ -94,8 +108,42 @@ class FlutterLocalNotifier implements LocalNotifier {
           requestSoundPermission: false,
         ),
       ),
+      onDidReceiveNotificationResponse: (response) {
+        notificationTapController.recordTap(response.payload);
+      },
     );
     _ready = true;
+  }
+
+  /// #972: wires foreground/warm notification taps and captures a cold-start launch tap
+  /// so GoRouter opens `/alerts/:id` once authentication finishes.
+  static Future<void> registerTapHandlers({
+    FlutterLocalNotificationsPlugin? plugin,
+    NotificationTapController? controller,
+  }) async {
+    final p = plugin ?? FlutterLocalNotificationsPlugin();
+    final tapController = controller ?? notificationTapController;
+    try {
+      await p.initialize(
+        settings: const InitializationSettings(
+          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          iOS: DarwinInitializationSettings(
+            requestAlertPermission: false,
+            requestBadgePermission: false,
+            requestSoundPermission: false,
+          ),
+        ),
+        onDidReceiveNotificationResponse: (response) {
+          tapController.recordTap(response.payload);
+        },
+      );
+      final launch = await p.getNotificationAppLaunchDetails();
+      if (launch != null && launch.didNotificationLaunchApp) {
+        tapController.recordTap(launch.notificationResponse?.payload);
+      }
+    } catch (_) {
+      // Headless test environments or unsupported desktop platforms have no plugin channel.
+    }
   }
 
   @override

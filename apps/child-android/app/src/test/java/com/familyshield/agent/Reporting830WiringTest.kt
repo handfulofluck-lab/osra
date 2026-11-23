@@ -133,6 +133,51 @@ class Reporting830WiringTest {
         assertTrue("resume_internet must close the paused period", resume.contains("LockPeriodTracker.end(context)"))
     }
 
+    /**
+     * #830 row 5 (19 Nov staging): every child has `safeSearchEnforced = true` and `youtubeRestrictedMode = "strict"`
+     * by default, so Google, Bing, DuckDuckGo and YouTube queries take `DnsFilterPolicy.Action.REWRITE` rather than
+     * `Action.FORWARD`. Dropping `recordSiteVisit` from `REWRITE` hid every search and YouTube visit even with
+     * `SITE_NAMES_ENABLED=true`. Likewise, locking the screen after a short test session must close the open
+     * foreground interval and flush both usage and queued site visits immediately, serialized by `uploadMutex`.
+     *
+     * Mutants:
+     *  1. Revert `Action.REWRITE` to `rewrite(query, q, d.target!!)` without `recordSiteVisit(q.name, blocked = false)`
+     *     -> `rewriteBranch` assertion fails.
+     *  2. Drop `uploadMutex.withLock` or `continuationPackage(` from `UsageReporter.aggregateAndUpload`
+     *     -> concurrency / cross-window continuity assertions fail.
+     *  3. Drop `ACTION_SCREEN_OFF` / `usage.onScreenOff` / `FilterVpnService.flushIfRunning` from
+     *     `AccessibilityMonitorService` -> screen-off flush assertions fail.
+     */
+    @Test
+    fun `dns rewrites record the queried site visit, and screen-off flushes serialized usage and visits`() {
+        val vpn = source("apps/child-android/app/src/main/java/com/familyshield/agent/vpn/FilterVpnService.kt")
+        val rewriteBranch = vpn.substringAfter("DnsFilterPolicy.Action.REWRITE ->")
+            .substringBefore("if (reply == null)")
+        val recordAt = rewriteBranch.indexOf("recordSiteVisit(q.name, blocked = false)")
+        val rewriteAt = rewriteBranch.indexOf("rewrite(query, q, d.target!!)")
+        assertTrue("REWRITE must record the queried host as an unblocked visit", recordAt >= 0)
+        assertTrue("recordSiteVisit runs before the CNAME target lookup", rewriteAt > recordAt)
+        assertTrue("screen-off can flush queued visits immediately", vpn.contains("ACTION_FLUSH_VISITS"))
+
+        val reporter = source("apps/child-android/app/src/main/java/com/familyshield/agent/telemetry/UsageReporter.kt")
+        val upload = reporter.substringAfter("suspend fun aggregateAndUpload()")
+            .substringBefore("suspend fun postLiveActivity")
+        assertTrue("concurrent callers are serialized", upload.contains("uploadMutex.withLock"))
+        assertTrue("active foreground app is anchored across windows", upload.contains("continuationPackage("))
+        val screenOff = reporter.substringAfter("suspend fun onScreenOff(")
+            .substringBefore("private fun currentBatteryPct")
+        val pauseAt = screenOff.indexOf("if (consent.isPaused()) return")
+        val endAt = screenOff.indexOf("rules.onForegroundEnded(")
+        val flushAt = screenOff.indexOf("aggregateAndUpload()")
+        assertTrue("onScreenOff honours consent pause before touching counters or DB", pauseAt >= 0 && endAt > pauseAt && flushAt > endAt)
+
+        val a11y = source("apps/child-android/app/src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt")
+        assertTrue(a11y.contains("Intent.ACTION_SCREEN_OFF"))
+        assertTrue(a11y.contains("usage.onScreenOff("))
+        assertTrue(a11y.contains("FilterVpnService.flushIfRunning("))
+        assertTrue(a11y.contains("usage.recordActiveHeartbeat("))
+    }
+
     private fun source(relative: String): String {
         var dir: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
         while (dir != null) {

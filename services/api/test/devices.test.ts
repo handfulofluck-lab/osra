@@ -1456,8 +1456,13 @@ describe("device restart reporting (#867)", () => {
     expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
     const alert = prismaMock.alert.create.mock.calls[0][0].data as { severity: string; body: string; metadata: Record<string, unknown> };
     expect(alert.severity).toBe("info");
-    expect(alert.body).toMatch(/^Pixel 7a restarted at \d\d:\d\d, back after 2 minutes\.$/);
-    expect(alert.metadata).toMatchObject({ gapMinutes: 2 });
+    expect(alert.body).toMatch(/^Pixel 7a restarted (?:yesterday )?at \d\d:\d\d and was back after 2 minutes\.$/);
+    expect(alert.metadata).toMatchObject({
+      type: "device_restarted",
+      gapMinutes: 2,
+      bodyKey: "alertBodyDeviceRestarted",
+      bodyParams: { model: "Pixel 7a", gapMinutes: 2 },
+    });
     // The count that decided the restart is stored, so the next tick's comparison has it.
     expect(bootWrites()[0][0].data).toMatchObject({ lastBootCount: 8 });
     await app.close();
@@ -1517,7 +1522,7 @@ describe("device restart reporting (#867)", () => {
     // they already got instead of reading like a routine reboot.
     expect(alert.severity).toBe("warning");
     expect(alert.metadata.gapMinutes).toBe(40);
-    expect(alert.body).toMatch(/^Pixel 7a restarted at \d\d:\d\d, back after 40 minutes\.$/);
+    expect(alert.body).toMatch(/^Pixel 7a restarted (?:yesterday )?at \d\d:\d\d and was back after 40 minutes\.$/);
     await app.close();
   });
 
@@ -1558,7 +1563,7 @@ describe("device restart reporting (#867)", () => {
     await app.close();
   });
 
-  it("renders the alert in the family's timezone, not UTC (x12)", async () => {
+  it("renders the alert in the family's timezone, carries family zone in bodyParams, and drops bodyKey when model is empty (#889)", async () => {
     // Fable's x12: the pure function is tested with a zone; the mutant is the route passing "UTC" — or
     // reading the wrong family — and a wrong hour in "restarted at …" is the made-up number the body warns
     // about. The fixture family is Asia/Dubai, so the two clocks differ by four hours.
@@ -1567,12 +1572,35 @@ describe("device restart reporting (#867)", () => {
     storedDevice({ lastBootAt: minutesAgo(180), lastSeen: new Date(boot.getTime() - 2 * 60_000) });
 
     expect((await tick(app, { bootedAt: boot.toISOString() })).statusCode).toBe(202);
-    const alert = prismaMock.alert.create.mock.calls[0][0].data as { body: string };
+    const alert = prismaMock.alert.create.mock.calls[0][0].data as {
+      body: string;
+      metadata: { bodyKey?: string; bodyParams?: { timeZone?: string; utcOffsetMinutes?: number } };
+    };
     const hhmm = (timeZone: string) =>
       new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(boot);
     expect(hhmm("Asia/Dubai")).not.toBe(hhmm("UTC"));
-    expect(alert.body).toContain(`restarted at ${hhmm("Asia/Dubai")}`);
-    expect(alert.body).not.toContain(`restarted at ${hhmm("UTC")}`);
+    expect(alert.body).toMatch(new RegExp(`^Pixel 7a restarted (?:yesterday )?at ${hhmm("Asia/Dubai")} and was back`));
+    expect(alert.body).not.toContain(`at ${hhmm("UTC")} `);
+    expect(alert.metadata.bodyKey).toBe("alertBodyDeviceRestarted");
+    expect(alert.metadata.bodyParams?.timeZone).toBe("Asia/Dubai");
+    expect(alert.metadata.bodyParams?.utcOffsetMinutes).toBe(240);
+
+    // When `device.model` is blank, English compatibility `body` uses "A phone", while `bodyKey` / `bodyParams`
+    // are stripped so Arabic UI does not interpolate English "A phone" into Arabic (#889 / Fable n7).
+    prismaMock.alert.create.mockClear();
+    const boot2 = minutesAgo(4);
+    storedDevice({ model: "   ", lastBootAt: minutesAgo(180), lastSeen: new Date(boot2.getTime() - (29 * 60 + 45) * 1_000) });
+    expect((await tick(app, { bootedAt: boot2.toISOString() })).statusCode).toBe(202);
+    const unkeyed = prismaMock.alert.create.mock.calls[0][0].data as {
+      severity: string;
+      body: string;
+      metadata: Record<string, unknown>;
+    };
+    expect(unkeyed.severity).toBe("info");
+    expect(unkeyed.metadata.gapMinutes).toBe(29);
+    expect(unkeyed.body).toMatch(/^A phone restarted /);
+    expect(unkeyed.metadata.bodyKey).toBeUndefined();
+    expect(unkeyed.metadata.bodyParams).toBeUndefined();
     await app.close();
   });
 
@@ -1585,6 +1613,171 @@ describe("device restart reporting (#867)", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().device.lastBootAt).toBe("2026-11-17T10:00:00.000Z");
     expect(res.json().device.lastBootCount).toBe(7);
+    await app.close();
+  });
+});
+
+/**
+ * #935: when a child device acknowledges a command (`POST /v1/devices/:id/commands/:commandId/ack`),
+ * publish `command_acked` on the family channel so the parent app clears "pending" right away.
+ *
+ * Mutants (AGENTS.md §3):
+ * - M1: Remove `publishFamilyEvent(..., { type: "command_acked", ... })` in `devices.ts`:
+ *       the publish test below fails RED.
+ * - M2: Forward `row.payload` or `detail` in the frame payload:
+ *       the non-leak assertions below fail RED.
+ */
+describe("command ack push (#935)", () => {
+  const redis = () => getRedis() as unknown as import("./helpers.js").MockRedis;
+
+  beforeEach(() => {
+    resetPrismaMock();
+  });
+
+  const ack = (
+    app: Awaited<ReturnType<typeof buildApp>>,
+    commandId: string,
+    payload: Record<string, unknown>,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `/v1/devices/dev-1/commands/${commandId}/ack`,
+      headers: deviceHeader(app),
+      payload,
+    });
+
+  it("publishes command_acked on the family channel without payload or detail", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: "cmd-1",
+      deviceId: "dev-1",
+      type: "resume_internet",
+      status: "acked",
+      payload: { secret: "12345678" },
+      result: { note: "FilterVpn: tunnel up" },
+      createdAt: new Date("2026-11-20T12:00:00Z"),
+      ackedAt: new Date("2026-11-20T12:00:02Z"),
+    });
+    redis().publish.mockClear();
+
+    const res = await ack(app, "cmd-1", { status: "ok", detail: { note: "FilterVpn: tunnel up" } });
+    expect(res.statusCode).toBe(200);
+    expect(redis().publish).toHaveBeenCalledWith("family:fam-1:events", expect.stringContaining('"command_acked"'));
+
+    const frame = JSON.parse(redis().publish.mock.calls.at(-1)![1] as string);
+    expect(frame).toEqual({
+      type: "command_acked",
+      payload: {
+        deviceId: "dev-1",
+        commandId: "cmd-1",
+        type: "resume_internet",
+        status: "acked",
+        childId: "child-1",
+      },
+    });
+    expect(JSON.stringify(frame)).not.toContain("12345678");
+    expect(JSON.stringify(frame)).not.toContain("FilterVpn");
+    await app.close();
+  });
+
+  it("publishes command_acked with status failed when the device reports failure", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: "cmd-2",
+      deviceId: "dev-1",
+      type: "lock",
+      status: "failed",
+      payload: {},
+      result: { reason: "permission_missing" },
+      createdAt: new Date("2026-11-20T12:00:00Z"),
+      ackedAt: new Date("2026-11-20T12:00:02Z"),
+    });
+    redis().publish.mockClear();
+
+    const res = await ack(app, "cmd-2", { status: "failed", detail: { reason: "permission_missing" } });
+    expect(res.statusCode).toBe(200);
+    const frame = JSON.parse(redis().publish.mock.calls.at(-1)![1] as string);
+    expect(frame.type).toBe("command_acked");
+    expect(frame.payload.status).toBe("failed");
+    expect(JSON.stringify(frame)).not.toContain("permission_missing");
+    await app.close();
+  });
+
+  it("does not publish when no delivered command matches (404)", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 0 });
+    redis().publish.mockClear();
+
+    const res = await ack(app, "cmd-missing", { status: "ok" });
+    expect(res.statusCode).toBe(404);
+    expect(redis().publish).not.toHaveBeenCalledWith("family:fam-1:events", expect.stringContaining('"command_acked"'));
+    await app.close();
+  });
+
+  it("still returns 200 when redis publish fails", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: "cmd-3",
+      deviceId: "dev-1",
+      type: "pause",
+      status: "acked",
+      payload: {},
+      result: {},
+      createdAt: new Date("2026-11-20T12:00:00Z"),
+      ackedAt: new Date("2026-11-20T12:00:02Z"),
+    });
+    redis().publish.mockRejectedValueOnce(new Error("redis down"));
+
+    const res = await ack(app, "cmd-3", { status: "ok" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().command.id).toBe("cmd-3");
+    await app.close();
+  });
+
+  it("returns 200 promptly even when redis publish is stalled, and catches late rejection (#968)", async () => {
+    // Mutant: restoring `await publishFamilyEvent(...)` in devices.ts causes the ack to wait on the
+    // unresolved publish promise, so the race below resolves to "timed_out" and this row fails.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: "cmd-stalled",
+      deviceId: "dev-1",
+      type: "resume_internet",
+      status: "acked",
+      payload: {},
+      result: {},
+      createdAt: new Date("2026-11-20T12:00:00Z"),
+      ackedAt: new Date("2026-11-20T12:00:02Z"),
+    });
+    let rejectPublish!: (err: Error) => void;
+    const stalledPublish = new Promise<number>((_resolve, reject) => {
+      rejectPublish = reject;
+    });
+    redis().publish.mockClear();
+    redis().publish.mockReturnValueOnce(stalledPublish);
+
+    const outcome = await Promise.race([
+      ack(app, "cmd-stalled", { status: "ok" }),
+      new Promise<"timed_out">((resolve) => setTimeout(() => resolve("timed_out"), 200)),
+    ]);
+
+    expect(outcome).not.toBe("timed_out");
+    const res = outcome as Awaited<ReturnType<typeof ack>>;
+    expect(res.statusCode).toBe(200);
+    expect(res.json().command.id).toBe("cmd-stalled");
+    expect(redis().publish).toHaveBeenCalledWith("family:fam-1:events", expect.stringContaining('"command_acked"'));
+
+    // Settle the stalled publish with a rejection after the HTTP reply already returned: must be caught cleanly.
+    rejectPublish(new Error("redis stalled then closed"));
+    await new Promise((resolve) => setImmediate(resolve));
     await app.close();
   });
 });

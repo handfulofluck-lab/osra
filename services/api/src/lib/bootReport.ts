@@ -136,9 +136,11 @@ function newBoot(bootedAt: Date, bootCount: number | null, lastSeen: Date | null
   const previousLastSeen = lastSeen ?? null;
   // Only a `lastSeen` strictly before the boot is a gap. A phone whose clock is behind, or whose previous
   // report came from the same second as the boot, has no measurable downtime — 0, never a negative number.
+  // Floor whole elapsed minutes so <60s stays "in less than a minute" (`gapMinutes=0`) and 29m45s stays `info`
+  // until full 30m reaches `warning` (#889 Bureau thresholds).
   const gapMinutes =
     previousLastSeen && previousLastSeen.getTime() < bootedAt.getTime()
-      ? Math.round((bootedAt.getTime() - previousLastSeen.getTime()) / 60_000)
+      ? Math.floor((bootedAt.getTime() - previousLastSeen.getTime()) / 60_000)
       : 0;
   return {
     kind: "new_boot",
@@ -158,24 +160,123 @@ function newBoot(bootedAt: Date, bootCount: number | null, lastSeen: Date | null
  * "blocked now" sentences already use; an unknown zone falls back to UTC rather than throwing inside the
  * alert path.
  */
-export function bootClock(bootedAt: Date, timeZone: string): string {
-  const format = (zone: string) =>
-    new Intl.DateTimeFormat("en-GB", { timeZone: zone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(bootedAt);
+/** Short month names matching Dart `DateFormat('d MMM', 'en')` regardless of host ICU data. */
+const EN_SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+interface ZonedCalendarParts {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  clock: string;
+}
+
+/**
+ * Extracts wall-clock calendar date and 24-hour `HH:mm` in the family's timezone, falling back to
+ * UTC when a stored zone string is unknown (#884, #889).
+ */
+function zonedCalendarParts(date: Date, timeZone: string): ZonedCalendarParts {
+  const extract = (zone: string): ZonedCalendarParts => {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: zone,
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(date);
+    const num = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const hour = num("hour");
+    const minute = num("minute");
+    return {
+      year: num("year"),
+      month: num("month"),
+      day: num("day"),
+      hour,
+      minute,
+      clock: `${pad(hour)}:${pad(minute)}`,
+    };
+  };
   try {
-    return format(timeZone);
+    return extract(timeZone);
   } catch {
-    return format("UTC");
+    return extract("UTC");
   }
 }
 
 /**
- * The sentence the parent reads, mirroring the silence alert's shape: the phone's model first, then what
- * happened. A zero gap is left out instead of printed as "0 minutes" — there is no downtime to report, and
- * a made-up number is the one thing a parent will act on.
+ * Computes the family timezone's UTC offset in minutes at [date] (falling back to 0 / UTC for unknown zones).
+ * Passed alongside `timeZone` in `bodyParams` so mobile clients without full IANA tables render exact family clocks (#889).
  */
-export function bootReportBody(report: Extract<BootReport, { kind: "new_boot" }>, model: string, timeZone: string): string {
-  const at = `restarted at ${bootClock(report.bootedAt, timeZone)}`;
-  if (report.gapMinutes <= 0) return `${model} ${at}.`;
-  const unit = report.gapMinutes === 1 ? "minute" : "minutes";
-  return `${model} ${at}, back after ${report.gapMinutes} ${unit}.`;
+export function zonedUtcOffsetMinutes(date: Date, timeZone: string): number {
+  const parts = zonedCalendarParts(date, timeZone);
+  const wallMs = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute);
+  const utcMinuteMs = Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate(),
+    date.getUTCHours(),
+    date.getUTCMinutes(),
+  );
+  return Math.round((wallMs - utcMinuteMs) / 60_000);
+}
+
+export function bootClock(bootedAt: Date, timeZone: string): string {
+  return zonedCalendarParts(bootedAt, timeZone).clock;
+}
+
+function sameCalendarDay(a: { year: number; month: number; day: number }, b: { year: number; month: number; day: number }): boolean {
+  return a.year === b.year && a.month === b.month && a.day === b.day;
+}
+
+/**
+ * English fallback sentence mirroring the localized parent-app rules (#889):
+ * - Today in the family's zone: `restarted at HH:MM`; yesterday: `restarted yesterday at HH:MM`;
+ *   earlier: `restarted on 16 Nov at HH:MM` (with year when it differs from `now`'s year).
+ * - Gaps `< 1` min say `in less than a minute`; `1..119` min stay minutes; `>= 120` min round to the
+ *   nearest hour (`30m+` rounds up) with `about`.
+ */
+export function bootReportBody(
+  report: Extract<BootReport, { kind: "new_boot" }>,
+  model: string,
+  timeZone: string,
+  now: Date = new Date(),
+): string {
+  const bootParts = zonedCalendarParts(report.bootedAt, timeZone);
+  const nowParts = zonedCalendarParts(now, timeZone);
+  const yesterdayUtc = new Date(Date.UTC(nowParts.year, nowParts.month - 1, nowParts.day - 1));
+  const yesterdayParts = {
+    year: yesterdayUtc.getUTCFullYear(),
+    month: yesterdayUtc.getUTCMonth() + 1,
+    day: yesterdayUtc.getUTCDate(),
+  };
+
+  let when: string;
+  if (sameCalendarDay(bootParts, nowParts)) {
+    when = `at ${bootParts.clock}`;
+  } else if (sameCalendarDay(bootParts, yesterdayParts)) {
+    when = `yesterday at ${bootParts.clock}`;
+  } else {
+    const monthName = EN_SHORT_MONTHS[bootParts.month - 1] ?? "Jan";
+    const dateLabel = bootParts.year === nowParts.year
+      ? `${bootParts.day} ${monthName}`
+      : `${bootParts.day} ${monthName} ${bootParts.year}`;
+    when = `on ${dateLabel} at ${bootParts.clock}`;
+  }
+
+  let gapClause: string;
+  if (report.gapMinutes <= 0) {
+    gapClause = "in less than a minute";
+  } else if (report.gapMinutes === 1) {
+    gapClause = "after 1 minute";
+  } else if (report.gapMinutes < 120) {
+    gapClause = `after ${report.gapMinutes} minutes`;
+  } else {
+    const hours = Math.floor((report.gapMinutes + 30) / 60);
+    gapClause = `after about ${hours} ${hours === 1 ? "hour" : "hours"}`;
+  }
+  return `${model} restarted ${when} and was back ${gapClause}.`;
 }
