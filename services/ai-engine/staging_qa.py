@@ -92,7 +92,7 @@ class UnavailableOutcome(BaseModel):
 class ProviderResponse(BaseModel):
     trace_id: UUID4
     mode: Literal["bedrock", "own", "both"]
-    region: Literal["eu-central-1"] = REGION
+    region: Literal["eu-central-1", "eu-north-1"] = REGION
     outcomes: dict[Literal["bedrock", "own"], ScoredOutcome | UnavailableOutcome]
 
 
@@ -205,6 +205,12 @@ async def _provider_receipts(data, mode, expires_at, system_prompt, started):
     budget = STAGING_OWN_INFERENCE_SECONDS if mode == "own" else MAX_INFERENCE_SECONDS
     deadline = min(started + budget, monotonic() + remaining)
 
+    cpu = os.environ.get("OSRA_STAGING_QA_OWN_MODEL_ENABLED", "0")
+    # This path is reached only after _test_approval validates the armed staging window.
+    region = REGION
+    if mode == "own" and cpu == "1" and os.environ.get("OSRA_OWN_MODEL_REGION") == "eu-north-1":
+        region = "eu-north-1"
+
     async def bedrock():
         try:
             categories = await asyncio.to_thread(_infer, data.text, trace, system_prompt, expires_at, deadline)
@@ -216,9 +222,8 @@ async def _provider_receipts(data, mode, expires_at, system_prompt, started):
                              flagged_categories=[key for key, score in harmful.items() if _severity(score)[1]])
 
     async def own():
-        cpu = os.environ.get("OSRA_STAGING_QA_OWN_MODEL_ENABLED", "0")
         if cpu == "1":
-            result = await score_cpu(data.text, trace, expires_at, deadline)
+            result = await score_cpu(data.text, trace, expires_at, deadline, region)
         elif cpu == "0":
             result = await asyncio.to_thread(score_own, data.text, trace, expires_at, deadline)
         else:
@@ -244,7 +249,7 @@ async def _provider_receipts(data, mode, expires_at, system_prompt, started):
             logger.info("staging QA provider scored trace_id=%s provider=%s model=%s",
                         trace, provider, outcome.model)
         outcomes[provider] = outcome
-    return ProviderResponse(trace_id=data.trace_id, mode=mode, outcomes=outcomes)
+    return ProviderResponse(trace_id=data.trace_id, mode=mode, region=region, outcomes=outcomes)
 
 
 @router.post("/analyze/staging-qa", response_model=StagingQaResponse | ProviderResponse,

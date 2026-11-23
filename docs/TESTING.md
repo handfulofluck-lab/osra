@@ -1444,6 +1444,18 @@ Confirm the device queue is empty before arming. The API still requires an authe
 notification scan from that pairing, and the private analyzer still requires the approved prompt
 and expires automatically. The test can use new wording within the 1,024-byte input limit.
 
+For a cross-app run, use a dedicated synthetic Android profile with test conversations.
+Set `staging_qa_analyzer.allow_android_sources` in the reviewed staging plan. The API
+accepts screen and notification captures for the Android monitored app keys whose
+saved Parent monitoring flag is explicitly enabled. With the option absent the existing
+WhatsApp notification route stays in effect. Device authentication, active consent,
+pairing, expiry, digest or exploratory wording policy, and the private endpoint still apply.
+Record the input language, app, source and observed direction without retaining message
+text. The source field alone cannot establish whether a message was sent or received.
+Check a provider verdict and readable Parent delivery separately for each concerning
+control, and a provider verdict without a Parent alert for each benign control.
+Space same-app alert checks to account for the existing alert throttle.
+
 Send a concerning synthetic notification and a harmless control. Confirm the concerning result came
 from Bedrock without fallback and opens the matching alert in the Parent app. Confirm Bedrock scored
 the harmless notification and created no alert. Record model, region, trace ID, and the result using
@@ -1455,6 +1467,10 @@ analyzer. `OSRA_STAGING_QA_ENGINE` selects `bedrock` (default), `own`, or `both`
 from `services/ai-engine` to exercise accepted and rejected requests without network access. Check each
 selected provider's status before counting a verdict. A timeout or unavailable result carries no scores.
 The [staging acceptance procedure](QA/staging-model-smoke.md) describes the private route and live evidence.
+
+## Staging own-model region verification (#962)
+
+For an approved Stockholm CPU-only window, verify the scored receipt identifies Stockholm for both the concerning and harmless controls. Check the matching parent alert metadata for the same region and confirm the harmless control produces no alert. A Stockholm response must be rejected in Bedrock and combined-provider modes.
 
 ## 6. Traps that have cost real time here
 

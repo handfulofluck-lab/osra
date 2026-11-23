@@ -243,7 +243,14 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
   }
 
   // The family's zone rides the lookup the route already does, so the day key costs no second query.
-  const child = await prisma.child.findUnique({ where: { id: childId }, include: { family: { select: { timezone: true } } } });
+  const crossAppQa = stagingQaModelEnabled() && process.env.OSRA_STAGING_QA_ANDROID_SOURCES === "1";
+  const child = await prisma.child.findUnique({
+    where: { id: childId },
+    include: {
+      family: { select: { timezone: true } },
+      ruleSet: crossAppQa && { select: { socialMonitoring: true } },
+    },
+  });
   if (!child) return { ok: false, reason: "child_not_found", status: 404 };
   // ADR-0008 §2b: withdrawal of consent stops collection.
   const consent = await checkActiveConsent(childId);
@@ -255,7 +262,7 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
   const childAge = typeof (child as { birthYear?: number }).birthYear === "number"
     ? new Date().getFullYear() - (child as { birthYear: number }).birthYear
     : undefined;
-  const qa = stagingQaModel({ device, deviceId, childId, app: appName, source, text });
+  const qa = stagingQaModel({ device, deviceId, childId, app: appName, source, text, socialMonitoring: child.ruleSet?.socialMonitoring });
   const ai = qa ? await analyzeStagingFixture(text, qa, batchDeadline)
     : stagingQaModelEnabled() ? { verdict: null, attempted: false }
       : await analyzeWithAi(text, childAge);
@@ -277,11 +284,15 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
   // Issue #890: the counter is written whether or not the capture is flagged — cost is paid on both — and
   // it counts the ATTEMPT, so a timeout against a paid engine is not recorded as a free scan.
   await recordScanUsage(child.familyId, (child as { family?: { timezone?: string } | null }).family?.timezone, ai.attempted, log);
+  const ownReceipt = ai.providers?.own;
+  const proofRegion = qa?.providerMode === "own"
+    ? (ownReceipt?.status === "scored" ? ownReceipt.region ?? STAGING_QA_REGION : undefined)
+    : STAGING_QA_REGION;
   const qaProof = qa && {
     traceId: qa.traceId,
     fixtureNumber: qa.fixtureNumber,
     ...(qa.providerMode ? { mode: qa.providerMode } : { model: STAGING_QA_MODEL }),
-    region: STAGING_QA_REGION,
+    region: proofRegion,
     fallback: ai.verdict === null,
     modelFlagged: ai.verdict?.flagged ?? null,
     rulesFlagged: local.flagged,

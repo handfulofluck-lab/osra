@@ -538,7 +538,10 @@ void main() {
       final api = insightsApi();
       await openAppsTab(tester, api);
 
-      await tester.tap(find.text('Game'));
+      await tester.tap(find.text('Game').first);
+      await tester.pumpAndSettle();
+      // Karim 23 Nov: a row opens the app's choices first; "About this app" opens the insight sheet.
+      await tester.tap(find.byKey(const ValueKey('appSheetInsight')));
       await tester.pumpAndSettle();
 
       expect(api.calls('GET', '/v1/insights/apps').single.query['packageId'], 'com.example.game');
@@ -558,7 +561,10 @@ void main() {
       final api = FakeApiClient(standardRoutes());
       await openAppsTab(tester, api);
 
-      await tester.tap(find.text('Game'));
+      await tester.tap(find.text('Game').first);
+      await tester.pumpAndSettle();
+      // Karim 23 Nov: a row opens the app's choices first; "About this app" opens the insight sheet.
+      await tester.tap(find.byKey(const ValueKey('appSheetInsight')));
       await tester.pumpAndSettle();
 
       expect(find.text('No insights for this app yet'), findsOneWidget);

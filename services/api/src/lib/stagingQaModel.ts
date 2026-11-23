@@ -6,6 +6,12 @@ export const STAGING_QA_REGION = "eu-central-1";
 
 export type StagingQaModel = { endpoint: URL; expiresAt: number; traceId: string; fixtureNumber: number | null; providerMode?: ProviderMode };
 
+// App keys emitted by Android MonitoredApps.appKeyFor.
+const ANDROID_MONITORED_APPS = new Set([
+  "whatsapp", "instagram", "tiktok", "snapchat", "twitter", "discord",
+  "roblox", "line", "youtube", "telegram", "reddit", "messenger",
+]);
+
 type Capture = {
   device: { id: string; childId: string } | null | undefined;
   deviceId: string | undefined;
@@ -13,19 +19,32 @@ type Capture = {
   app: string;
   source: string | undefined;
   text: string;
+  socialMonitoring?: unknown;
 };
 
 export function stagingQaModelEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.OSRA_DEPLOYMENT_SCOPE === "staging" && env.OSRA_STAGING_QA_ANALYZER_ENABLED === "1";
 }
 
-/** Select the analyzer for a scoped synthetic WhatsApp notification. */
+function eligibleCaptureSource(capture: Capture, androidSources: string | undefined): boolean {
+  if (androidSources === undefined || androidSources === "0") {
+    return capture.app === "whatsapp" && capture.source === "notification";
+  }
+  if (androidSources !== "1" || !ANDROID_MONITORED_APPS.has(capture.app) ||
+      (capture.source !== "screen" && capture.source !== "notification")) return false;
+  const rules = capture.socialMonitoring;
+  return typeof rules === "object" && rules !== null && Object.hasOwn(rules, capture.app) &&
+    (rules as Record<string, unknown>)[capture.app] === true;
+}
+
+/** Select the private analyzer for the approved synthetic device, source and time window. */
 export function stagingQaModel(capture: Capture, env: NodeJS.ProcessEnv = process.env, now = Date.now()): StagingQaModel | null {
   if (!stagingQaModelEnabled(env)) return null;
   if (!capture.device || !capture.deviceId || !capture.childId || capture.device.id !== capture.deviceId ||
       capture.device.childId !== capture.childId || capture.deviceId !== env.OSRA_STAGING_QA_DEVICE_ID ||
-      capture.childId !== env.OSRA_STAGING_QA_CHILD_ID || capture.app !== "whatsapp" ||
-      capture.source !== "notification" || !capture.text || Buffer.byteLength(capture.text, "utf8") > 1024) return null;
+      capture.childId !== env.OSRA_STAGING_QA_CHILD_ID ||
+      !eligibleCaptureSource(capture, env.OSRA_STAGING_QA_ANDROID_SOURCES) ||
+      !capture.text || Buffer.byteLength(capture.text, "utf8") > 1024) return null;
 
   const expiration = env.OSRA_STAGING_QA_EXPIRES_AT ?? "";
   const expiresAt = Date.parse(expiration);

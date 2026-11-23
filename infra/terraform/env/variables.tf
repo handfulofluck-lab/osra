@@ -417,6 +417,7 @@ variable "staging_qa_analyzer" {
     pairing_secret_arn        = string
     armed                     = optional(bool, false)
     allow_synthetic_pair_text = optional(bool, false)
+    allow_android_sources     = optional(bool, false)
     own_model_task_size       = optional(bool, false)
   })
   default  = null

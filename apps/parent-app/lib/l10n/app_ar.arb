@@ -1103,5 +1103,18 @@
   "socialAlertPreviewExpiredBody": "انتهت صلاحية المعاينة المشفّرة أو لم تُحفظ لهذا التنبيه. ما زالت تفاصيل التنبيه وإرشادات الحديث مع طفلك محفوظة هنا.",
   "socialAlertUnavailableTitle": "التنبيه غير متاح",
   "socialAlertUnavailableBody": "تعذّر العثور على هذا التنبيه. افتح «التنبيهات» لمراجعة النشاط الأخير.",
-  "socialAlertViewAll": "كل التنبيهات"
+  "socialAlertViewAll": "كل التنبيهات",
+  "undo": "تراجع",
+  "hoursShort": "{hours, plural, =1{ساعة واحدة} =2{ساعتان} few{{hours} ساعات} many{{hours} ساعة} other{{hours} ساعة}}",
+  "appStateAllowed": "مسموح",
+  "appStateBlocked": "محظور",
+  "appStateLimit": "الحد اليومي: {limit}",
+  "appAllowedSnack": "تم السماح بـ{app}",
+  "appLimitSnack": "الحد اليومي لـ{app}: {limit}",
+  "appsFilterAll": "الكل ({count})",
+  "appsFilterBlocked": "المحظورة ({count})",
+  "appsFilterLimited": "الحدود الزمنية ({count})",
+  "appsNoMatch": "لا توجد تطبيقات مطابقة",
+  "appAboutThisApp": "عن هذا التطبيق",
+  "appBlockedNamedSnack": "تم حظر {app}"
 }
