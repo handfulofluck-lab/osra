@@ -111,4 +111,85 @@ void main() {
     expect(button.onPressed, isNull,
         reason: 'a pending control must be unusable from a screen reader or the keyboard too');
   });
+
+  // #969, the scope half: the card must say which controls reach one handset and which reach the family.
+  // These two keys are the Arabic Language Bureau's (`scopeThisDevice`, `scopeAllDevices`), and the rows fail
+  // if the card goes back to one unnamed row where "Resume" and "Resume net" sit side by side.
+  testWidgets('the card names the scope of each group of controls', (tester) async {
+    await pump(tester, history(const []));
+
+    expect(find.byKey(const ValueKey('scopeThisDevice')), findsOneWidget,
+        reason: 'the per-handset controls are grouped under a label that says so');
+    expect(find.text('This device'), findsOneWidget);
+    expect(find.byKey(const ValueKey('scopeAllDevices')), findsOneWidget,
+        reason: 'the internet control is family-wide and must not read as a per-handset command');
+    expect(find.text('All paired devices'), findsOneWidget);
+  });
+
+  // The line, not the tooltip: #974 marked the button with a tooltip, which a parent on a phone never sees.
+  // The Bureau's wording names *this* device, so the line is visible on the card (604 `7116638057`).
+  testWidgets('a queued per-handset command shows the waiting line naming this device', (tester) async {
+    await pump(tester, history([commandJson('c10', 'pause', 'pending', DateTime.now())]));
+
+    expect(find.byKey(const ValueKey('deviceControlPending')), findsOneWidget);
+    expect(find.text('Waiting for this device'), findsOneWidget);
+    expect(find.byKey(const ValueKey('deviceControlFailed')), findsNothing,
+        reason: 'waiting and refused are different sentences');
+  });
+
+  testWidgets('a failed per-handset command shows the refusal line', (tester) async {
+    await pump(tester, history([commandJson('c11', 'pause', 'failed', DateTime.now())]));
+
+    expect(find.byKey(const ValueKey('deviceControlFailed')), findsOneWidget);
+    expect(find.text("This device couldn't apply the change"), findsOneWidget);
+    expect(find.byKey(const ValueKey('deviceControlPending')), findsNothing);
+  });
+
+  // Mutant: showing the line for any command at all, including the family-wide internet control. The line is
+  // about this handset; an internet pause is not a per-device command and must not produce it.
+  testWidgets('the family-wide internet command does not drive the per-handset line', (tester) async {
+    await pump(tester, history([commandJson('c12', 'pause_internet', 'pending', DateTime.now())]));
+
+    expect(find.byKey(const ValueKey('deviceControlPending')), findsNothing);
+    expect(find.byKey(const ValueKey('deviceControlFailed')), findsNothing);
+  });
+
+  testWidgets('an acknowledged command leaves no line on the card', (tester) async {
+    await pump(tester, history([commandJson('c13', 'pause', 'acked', DateTime.now())]));
+
+    expect(find.byKey(const ValueKey('deviceControlPending')), findsNothing,
+        reason: 'a confirmed command is done; the card should not keep explaining it');
+    expect(find.byKey(const ValueKey('deviceControlFailed')), findsNothing);
+  });
+
+  // The Arabic half: the four strings are the Bureau's, verbatim, and the labels must render in an Arabic
+  // locale with the same meaning as English — a missing catalog entry would show the English fallback.
+  testWidgets('the scope labels and the waiting line render in Arabic', (tester) async {
+    tester.view.physicalSize = const Size(320, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/devices/dev-1/commands/history': (_) =>
+          history([commandJson('c14', 'pause', 'pending', DateTime.now())]),
+    });
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: localizedTestApp(
+        const ChildDetailScreen(childId: 'child-1'),
+        locale: const Locale('ar'),
+        textDirection: TextDirection.rtl,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('هذا الجهاز'), findsOneWidget);
+    expect(find.text('كل الأجهزة المقترنة'), findsOneWidget);
+    expect(find.text('بانتظار تأكيد هذا الجهاز'), findsOneWidget);
+    expect(tester.takeException(), isNull, reason: '320 px in Arabic must not overflow');
+  });
+
 }

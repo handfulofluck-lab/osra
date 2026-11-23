@@ -859,6 +859,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commandResumeInternet => 'Resume internet';
 
   @override
+  String get scopeThisDevice => 'This device';
+
+  @override
+  String get scopeAllDevices => 'All paired devices';
+
+  @override
+  String get deviceControlPending => 'Waiting for this device';
+
+  @override
+  String get deviceControlFailed => 'This device couldn\'t apply the change';
+
+  @override
   String get commandBonusTime => 'Bonus time';
 
   @override
