@@ -218,6 +218,7 @@ run "armed_qa_analyzer_plans_only_the_private_scoped_route" {
       own_model_task_size       = true
       allow_synthetic_pair_text = true
       allow_android_sources     = true
+      engine                    = "own"
       image_digest              = "sha256:${sha256("qa-image")}"
       frankfurt_vpc_cidr        = format("%d.%d.%d.%d/%d", 10, 40, 0, 0, 24)
       prompt_secret_arn         = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-prompt", 0)
@@ -322,6 +323,15 @@ run "armed_qa_analyzer_plans_only_the_private_scoped_route" {
     error_message = "only the armed API selects the Android app and source"
   }
 
+  # Mutant: dropping the selector from either task leaves that task on its Bedrock default.
+  assert {
+    condition = alltrue([
+      for task in [aws_ecs_task_definition.api.container_definitions, aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions] :
+      one([for item in jsondecode(task)[0].environment : item.value if item.name == "OSRA_STAGING_QA_ENGINE"]) == "own"
+    ])
+    error_message = "both armed tasks must receive the same explicit own-model selector"
+  }
+
   assert {
     condition = jsondecode(aws_iam_role_policy.staging_model_archive_read[0].policy).Statement == [{
       Effect   = "Allow"
@@ -416,6 +426,14 @@ run "armed_v9b_only_reads_and_preloads_exactly_one_archive" {
     )
     error_message = "A v9b-only window must expose only the pinned v9b archive and preload only that tag."
   }
+
+  assert {
+    condition = alltrue([
+      for task in [aws_ecs_task_definition.api.container_definitions, aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions] :
+      one([for item in jsondecode(task)[0].environment : item.value if item.name == "OSRA_STAGING_QA_ENGINE"]) == "bedrock"
+    ])
+    error_message = "an armed window without an engine keeps the Bedrock default on both tasks"
+  }
 }
 
 run "disarmed_qa_analyzer_has_no_model_or_api_access" {
@@ -432,6 +450,7 @@ run "disarmed_qa_analyzer_has_no_model_or_api_access" {
       own_model_task_size       = true
       allow_synthetic_pair_text = true
       allow_android_sources     = true
+      engine                    = "both"
       image_digest              = "sha256:${sha256("qa-image")}"
       frankfurt_vpc_cidr        = format("%d.%d.%d.%d/%d", 10, 40, 0, 0, 24)
       prompt_secret_arn         = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-prompt", 0)
@@ -501,6 +520,33 @@ run "disarmed_qa_analyzer_has_no_model_or_api_access" {
     condition     = !contains([for item in jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].environment : item.name], "OSRA_OWN_MODEL_PRELOAD_TAGS") && jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].healthCheck.startPeriod == 15
     error_message = "disarm must remove model preloading and restore the ordinary health start period"
   }
+
+  assert {
+    condition = !anytrue([
+      for task in [aws_ecs_task_definition.api.container_definitions, aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions] :
+      contains([for item in jsondecode(task)[0].environment : item.name], "OSRA_STAGING_QA_ENGINE")
+    ])
+    error_message = "a disarmed window renders no engine selector on either task"
+  }
+}
+
+run "qa_engine_must_be_an_approved_provider" {
+  command = plan
+
+  variables {
+    api_image           = "example/api:test"
+    allowed_account_ids = [format("%012d", 0)]
+    staging_qa_analyzer = {
+      engine              = "unapproved"
+      image_digest        = "sha256:${sha256("qa-image")}"
+      frankfurt_vpc_cidr  = format("%d.%d.%d.%d/%d", 10, 40, 0, 0, 24)
+      prompt_secret_arn   = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-prompt", 0)
+      approval_secret_arn = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-approval", 0)
+      pairing_secret_arn  = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-pairing", 0)
+    }
+  }
+
+  expect_failures = [var.staging_qa_analyzer]
 }
 
 run "production_settings" {
