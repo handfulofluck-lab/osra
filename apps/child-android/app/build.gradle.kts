@@ -299,6 +299,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.0")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.mockito:mockito-core:5.14.2")
 }
 
 // #440 review: PairingStringsTest and ResetCodeStringsTest read src/main/res/values*/strings.xml from

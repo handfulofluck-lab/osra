@@ -248,6 +248,7 @@ model Child {
   alerts      Alert[]
   consents    ConsentRecord[]
   pairingDecisions PairingDecision[]
+  stagingScanOutcomes StagingScanOutcome[]
   internetOperation ChildInternetOperation?
 }
 
@@ -473,9 +474,22 @@ model SocialEvent {
   app           String
   contact       String   @default("")
   severity      String   @default("warning")
+  stagingScanOutcome StagingScanOutcome?
   previewCipher String   @default("")
   concernTypes  String[] @default([])
   createdAt     DateTime @default(now())
+  @@index([childId, createdAt])
+}
+
+/// Synthetic staging receipts. A benign or unavailable scan has no social vault event.
+model StagingScanOutcome {
+  traceId       String       @id @db.Uuid
+  childId       String
+  child         Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  socialEventId String?      @unique
+  socialEvent   SocialEvent? @relation(fields: [socialEventId], references: [id], onDelete: SetNull)
+  providers     Json
+  createdAt     DateTime     @default(now()) @db.Timestamptz(3)
   @@index([childId, createdAt])
 }
 
