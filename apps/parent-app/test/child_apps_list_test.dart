@@ -136,6 +136,29 @@ void main() {
     expect(tester.widget<Switch>(find.byKey(const ValueKey('appSwitch-com.instagram.android'))).value, isTrue);
   });
 
+  // Codex on #1008: Undo must put back an explicit "Always allowed" as itself, not as "no rule".
+  testWidgets('Undo after blocking an Always-allowed app restores the explicit allowance', (tester) async {
+    final client = api();
+    savedAppRules = [
+      {'packageId': 'com.roblox.client', 'appName': 'Roblox', 'action': 'block'},
+      {'packageId': 'com.whatsapp', 'appName': 'WhatsApp', 'action': 'allow'},
+    ];
+    await openAppsTab(tester, client);
+
+    await tester.tap(find.byKey(const ValueKey('appSwitch-com.whatsapp')));
+    await tester.pumpAndSettle();
+    expect(find.text('WhatsApp blocked'), findsOneWidget);
+
+    await tester.tap(find.text('Undo'));
+    await tester.pumpAndSettle();
+    final undo = client.calls('PATCH', '/v1/rules/child-1').last;
+    expect(
+      (undo.data['appRules'] as List).map((r) => '${r['packageId']}:${r['action']}'),
+      unorderedEquals(['com.roblox.client:block', 'com.whatsapp:allow']),
+    );
+    expect(tester.widget<Switch>(find.byKey(const ValueKey('appSwitch-com.whatsapp'))).value, isTrue);
+  });
+
   testWidgets('unblocking is the same single tap', (tester) async {
     final client = api();
     await openAppsTab(tester, client);

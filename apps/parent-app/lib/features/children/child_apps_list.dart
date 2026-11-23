@@ -76,14 +76,23 @@ class _ChildAppsListState extends ConsumerState<ChildAppsList> {
 
   /// Replace (or remove, for allow) the rule for one app and save it. `allow` removes the rule, so an
   /// allowed app has no row in the rule set; that is what "allowed" means on the phone.
-  Future<void> _setAction(InstalledApp app, String action, {int? minutes, bool offerUndo = true}) async {
+  Future<void> _setAction(InstalledApp app, String action, {int? minutes}) => _save(
+        app,
+        action == 'allow'
+            ? null
+            : AppRule(packageId: app.packageId, appName: app.label, action: action, dailyLimitMinutes: minutes),
+      );
+
+  /// Saves [rule] as this app's whole rule (null removes it). Undo puts back the **exact** previous rule
+  /// object, so an explicit "Always allowed" (`action: allow`) comes back as itself, not as "no rule"
+  /// (Codex on #1008: that would quietly put the app back under bedtime and school hours).
+  Future<void> _save(InstalledApp app, AppRule? rule, {bool offerUndo = true}) async {
     final l10n = context.l10n;
     final before = _rules;
     final next = [
       for (final r in before)
         if (r.packageId != app.packageId) r,
-      if (action != 'allow')
-        AppRule(packageId: app.packageId, appName: app.label, action: action, dailyLimitMinutes: minutes),
+      if (rule != null) rule,
     ];
     setState(() {
       _optimistic = next;
@@ -101,9 +110,9 @@ class _ChildAppsListState extends ConsumerState<ChildAppsList> {
       // Issue #475: the family snapshot carries the rules version the "applied on the phone" line compares.
       ref.invalidate(familyProvider);
       if (!mounted) return;
-      final text = switch (action) {
+      final text = switch (rule?.action) {
         'block' => l10n.appBlockedNamedSnack(app.label),
-        'time_limit' => l10n.appLimitSnack(app.label, formatAppLimit(l10n, minutes ?? 0)),
+        'time_limit' => l10n.appLimitSnack(app.label, formatAppLimit(l10n, rule?.dailyLimitMinutes ?? 0)),
         _ => l10n.appAllowedSnack(app.label),
       };
       final previous = before.where((r) => r.packageId == app.packageId).firstOrNull;
@@ -113,12 +122,7 @@ class _ChildAppsListState extends ConsumerState<ChildAppsList> {
         action: offerUndo
             ? SnackBarAction(
                 label: l10n.undo,
-                onPressed: () => _setAction(
-                  app,
-                  previous?.action ?? 'allow',
-                  minutes: previous?.dailyLimitMinutes,
-                  offerUndo: false,
-                ),
+                onPressed: () => _save(app, previous, offerUndo: false),
               )
             : null,
       ));
