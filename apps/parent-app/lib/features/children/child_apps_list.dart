@@ -86,7 +86,12 @@ class _ChildAppsListState extends ConsumerState<ChildAppsList> {
   /// Saves [rule] as this app's whole rule (null removes it). Undo puts back the **exact** previous rule
   /// object, so an explicit "Always allowed" (`action: allow`) comes back as itself, not as "no rule"
   /// (Codex on #1008: that would quietly put the app back under bedtime and school hours).
+  ///
+  /// One save at a time (Codex, osra-security#71): while a save is in flight every rule-edit entry point
+  /// (switch, row, sheet, Undo) is inert, so a second edit can't be built on rules the server hasn't
+  /// confirmed. Interaction resumes when the save succeeds or fails.
   Future<void> _save(InstalledApp app, AppRule? rule, {bool offerUndo = true}) async {
+    if (_saving) return;
     final l10n = context.l10n;
     final before = _rules;
     final next = [
@@ -327,7 +332,8 @@ class _ChildAppsListState extends ConsumerState<ChildAppsList> {
               value: action != 'block',
               onChanged: _saving ? null : (allowed) => _setAction(app, allowed ? 'allow' : 'block'),
             ),
-      onTap: essential ? null : () => _openSheet(app),
+      enabled: !_saving || essential,
+      onTap: essential || _saving ? null : () => _openSheet(app),
     );
   }
 }

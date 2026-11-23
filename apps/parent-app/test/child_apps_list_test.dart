@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -157,6 +158,41 @@ void main() {
       unorderedEquals(['com.roblox.client:block', 'com.whatsapp:allow']),
     );
     expect(tester.widget<Switch>(find.byKey(const ValueKey('appSwitch-com.whatsapp'))).value, isTrue);
+  });
+
+  // Codex, osra-security#71: while one save is in flight, no other rule edit can start.
+  testWidgets('while a save is pending, the switch, the row and the sheet are all inert', (tester) async {
+    final pending = Completer<Object?>();
+    final client = api();
+    final routes = <String, FakeRoute>{
+      ...standardRoutes(familyMe: family),
+      'GET /v1/devices/dev-and/apps': (_) => appsReport,
+      'GET /v1/rules/child-1': (_) => {...ruleSetPayload('child-1'), 'appRules': savedAppRules},
+      'PATCH /v1/rules/child-1': (req) => FakeDeferred(pending.future),
+    };
+    final slow = FakeApiClient(routes);
+    await openAppsTab(tester, slow);
+
+    await tester.tap(find.byKey(const ValueKey('appSwitch-com.instagram.android')));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(slow.calls('PATCH', '/v1/rules/child-1'), hasLength(1));
+
+    // Another app's switch, its row and its sheet do nothing while the first save is pending.
+    expect(tester.widget<Switch>(find.byKey(const ValueKey('appSwitch-com.whatsapp'))).onChanged, isNull);
+    final row = tester.widget<ListTile>(find.byKey(const ValueKey('appRow-com.whatsapp')));
+    expect(row.onTap, isNull);
+    expect(row.enabled, isFalse);
+    await tester.tap(find.byKey(const ValueKey('appRow-com.whatsapp')), warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.byKey(const ValueKey('appSheetBlock')), findsNothing);
+    expect(slow.calls('PATCH', '/v1/rules/child-1'), hasLength(1));
+
+    // The save finishes and interaction comes back.
+    pending.complete({...ruleSetPayload('child-1'), 'appRules': savedAppRules});
+    await tester.pumpAndSettle();
+    expect(tester.widget<Switch>(find.byKey(const ValueKey('appSwitch-com.whatsapp'))).onChanged, isNotNull);
+    expect(tester.widget<ListTile>(find.byKey(const ValueKey('appRow-com.whatsapp'))).onTap, isNotNull);
+    client.requests.clear();
   });
 
   testWidgets('unblocking is the same single tap', (tester) async {
