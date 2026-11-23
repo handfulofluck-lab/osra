@@ -24,6 +24,7 @@ import '../rules/active_window.dart';
 import '../social/social_screen.dart' show SocialSectionsView;
 import '../map/child_location_view.dart';
 import 'app_groups_section.dart';
+import 'child_apps_list.dart';
 import 'phone_setup_section.dart';
 import 'command_history_screen.dart' show formatCommandTime;
 
@@ -714,6 +715,9 @@ class _AppsTab extends ConsumerWidget {
     // #476: and it is read on the family's clock, where the child's phone enforces the window.
     final offset = overview?.family.utcOffsetMinutes;
     final now = familyWallClock(ref.watch(clockProvider)(), offset);
+    // Karim 23 Nov: every app on the phone, with its icon and a one-tap switch, once the phone has
+    // reported its apps. Until then the tab keeps the rule list it always had.
+    final installed = canManagePerAppRules ? ref.watch(installedAppsProvider(childId)).valueOrNull : null;
     return rules.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => ErrorRetryView(
@@ -777,7 +781,16 @@ class _AppsTab extends ConsumerWidget {
               ),
               const SizedBox(height: AppSpace.sm),
             ],
-            if (ruleSet.appRules.isEmpty && canManagePerAppRules)
+            if (canManagePerAppRules && installed != null && installed.apps.isNotEmpty)
+              ChildAppsList(
+                key: const ValueKey('childAppsList'),
+                childId: childId,
+                ruleSet: ruleSet,
+                report: installed,
+                windowNote: (packageId) => _windowNote(context, packageId, ruleSet, now),
+                onInsight: (packageId) => showAppInsightSheet(context, packageId),
+              )
+            else if (ruleSet.appRules.isEmpty && canManagePerAppRules)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: AppSpace.lg),
                 child: Center(child: Text(l10n.noPerAppRules)),
@@ -791,33 +804,8 @@ class _AppsTab extends ConsumerWidget {
                   _ => Icons.check_circle_outline,
                 }),
                 title: Text(r.appName),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(r.packageId),
-                    // #456: name the window that is overriding this app, so an "Allowed" row that
-                    // the phone refuses explains itself.
-                    if (activeWindowFor(packageId: r.packageId, rules: ruleSet, now: now)
-                        case final window?)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(
-                          l10n.blockedNowBy(
-                            switch (window.kind) {
-                              WindowKind.school => l10n.schoolHours,
-                              WindowKind.bedtime => l10n.bedtime,
-                              WindowKind.routine => window.routineName ?? l10n.tabRoutines,
-                            },
-                            window.endsAt,
-                          ),
-                          key: ValueKey('blocked-now-${r.packageId}'),
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.error,
-                              ),
-                        ),
-                      ),
-                  ],
-                ),
+                // Karim 23 Nov: a parent reads the app's name, never its package id.
+                subtitle: _windowNote(context, r.packageId, ruleSet, now),
                 trailing: Text(r.action == 'time_limit'
                     ? (r.dailyLimitMinutes == null ? '—' : l10n.minutesShort(r.dailyLimitMinutes!))
                     : switch (r.action) {
@@ -833,6 +821,29 @@ class _AppsTab extends ConsumerWidget {
       },
     );
   }
+}
+
+/// #456: name the window that is overriding this app, so an "Allowed" row that the phone refuses
+/// explains itself. Null when no bedtime, school or routine window is blocking it now.
+Widget? _windowNote(BuildContext context, String packageId, RuleSet ruleSet, DateTime now) {
+  final l10n = context.l10n;
+  final window = activeWindowFor(packageId: packageId, rules: ruleSet, now: now);
+  if (window == null) return null;
+  return Padding(
+    padding: const EdgeInsets.only(top: 2),
+    child: Text(
+      l10n.blockedNowBy(
+        switch (window.kind) {
+          WindowKind.school => l10n.schoolHours,
+          WindowKind.bedtime => l10n.bedtime,
+          WindowKind.routine => window.routineName ?? l10n.tabRoutines,
+        },
+        window.endsAt,
+      ),
+      key: ValueKey('blocked-now-$packageId'),
+      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.error),
+    ),
+  );
 }
 
 class _SocialTab extends ConsumerWidget {

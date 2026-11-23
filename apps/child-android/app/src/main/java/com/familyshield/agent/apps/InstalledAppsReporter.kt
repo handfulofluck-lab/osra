@@ -26,8 +26,9 @@ import kotlinx.coroutines.CancellationException
  * missed install broadcast or a stale server from staying wrong forever; an unchanged list costs a
  * local PackageManager query and no network.
  *
- * Privacy: the payload is the launcher-visible inventory only — package id, launcher label and the
- * system flag. No usage stats, no launch counts, no screen time, no icons. Consent withdrawal is
+ * Privacy: the payload is the launcher-visible inventory only — package id, launcher label, the
+ * system flag and each app's public launcher icon (Karim, 23 Nov: the Parent Apps tab shows real icons).
+ * No usage stats, no launch counts, no screen time. Consent withdrawal is
  * honoured here as it is in telemetry (`ConsentState.isPaused`), and the server re-checks with 428.
  */
 @Singleton
@@ -45,7 +46,9 @@ class InstalledAppsReporter @Inject constructor(
         if (consent.isPaused()) return // ADR-0008 §3: no collection while consent is withdrawn
 
         val report = InstalledAppsCollector.collect(context)
-        val hash = InstalledAppsPolicy.fingerprint(report.apps)
+        // ICONS_MARKER: an agent updated to send icons re-uploads once, even with an unchanged list,
+        // so a phone that reported before this change does not wait for the 24-hour refresh.
+        val hash = InstalledAppsPolicy.fingerprint(report.apps) + ICONS_MARKER
         val lastAt = settings.installedAppsReportedAt()
         val unchanged = hash == settings.installedAppsReportHash() &&
             lastAt != null && now - lastAt < MAX_AGE_MS
@@ -53,12 +56,14 @@ class InstalledAppsReporter @Inject constructor(
         if (report.truncated) Log.w(TAG, "installed app list reached the ${InstalledAppsPolicy.MAX_APPS}-app cap")
 
         try {
+            // Encoded only here, on an upload, never on an unchanged tick.
+            val icons = AppIconEncoder.encodeAll(context, report.apps.map { it.packageId })
             api.postInstalledApps(
                 deviceId,
                 InstalledAppsDto(
                     version = CONTRACT_VERSION,
                     apps = report.apps.map {
-                        inventoryApp(it.packageId, it.label, it.isSystem, facts)
+                        inventoryApp(it.packageId, it.label, it.isSystem, facts, icons[it.packageId])
                     },
                 ),
             )
@@ -78,6 +83,9 @@ class InstalledAppsReporter @Inject constructor(
 
         /** Contract version accepted by POST /v1/devices/:id/apps (zod `literal(1)`). */
         const val CONTRACT_VERSION: Int = 1
+
+        /** Changes the stored fingerprint once, so the first icon-carrying report goes out at the next tick. */
+        const val ICONS_MARKER: String = ":icons-v1"
 
         private const val TAG = "InstalledAppsReporter"
     }
@@ -101,9 +109,11 @@ internal fun inventoryApp(
     label: String,
     isSystem: Boolean,
     facts: PackageFacts,
+    icon: String? = null,
 ): InstalledAppDto = InstalledAppDto(
     packageId = packageId,
     label = label,
     isSystem = isSystem,
     essential = EssentialPackages.isEssential(packageId, facts),
+    icon = icon,
 )

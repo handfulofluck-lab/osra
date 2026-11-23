@@ -482,6 +482,7 @@ if (process.env.DATABASE_URL) {
     const where = { where: { childId: sam.id } };
     const counts = {
       activityEvent: await db.activityEvent.count(where), socialEvent: await db.socialEvent.count(where),
+      stagingScanOutcome: await db.stagingScanOutcome.count(where),
       installRequest: await db.installRequest.count(where), webVisit: await db.webVisit.count(where),
       appUsageDaily: await db.appUsageDaily.count(where), locationPing: await db.locationPing.count(where),
       deviceApp: await db.deviceApp.count({ where: { deviceId: { in: erased.data?.deletedDevices ?? [] } } }),

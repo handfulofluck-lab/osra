@@ -437,7 +437,13 @@ describe("ADR-0032 claim 2 — an unpaired device is refused because its row is 
     store.set(liveDeviceKey("dev-1"), "1");
     store.set(liveDeviceKey("dev-2"), "1");
 
+    prismaMock.stagingScanOutcome.deleteMany.mockResolvedValue({ count: 3 });
+    prismaMock.socialEvent.deleteMany.mockResolvedValue({ count: 1 });
     const result = await eraseChildData("child-1", DEVICE_TOKEN_TTL_SECONDS);
+    // Mutant: the row-lock query shifts deletion counts by one table.
+    expect(result.rows.stagingScanOutcome).toBe(3);
+    expect(prismaMock.stagingScanOutcome.deleteMany).toHaveBeenCalledWith({ where: { childId: "child-1" } });
+    expect(result.rows.socialEvent).toBe(1);
 
     expect(result.deletedDevices).toEqual(["dev-1", "dev-2"]);
     expect(store.has(liveDeviceKey("dev-1"))).toBe(false);

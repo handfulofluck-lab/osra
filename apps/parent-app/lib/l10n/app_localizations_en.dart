@@ -1288,6 +1288,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noAppUsage => 'No app usage recorded';
 
   @override
+  String get noPerAppBreakdown => 'Per-app usage is unavailable';
+
+  @override
   String get webSection => 'Web';
 
   @override
@@ -3382,4 +3385,59 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get locationRecentre => 'Centre on the latest location';
+
+  @override
+  String get undo => 'Undo';
+
+  @override
+  String hoursShort(int hours) {
+    return '$hours h';
+  }
+
+  @override
+  String get appStateAllowed => 'Allowed';
+
+  @override
+  String get appStateBlocked => 'Blocked';
+
+  @override
+  String appStateLimit(String limit) {
+    return 'Limit $limit a day';
+  }
+
+  @override
+  String appAllowedSnack(String app) {
+    return '$app allowed';
+  }
+
+  @override
+  String appLimitSnack(String app, String limit) {
+    return '$app limited to $limit a day';
+  }
+
+  @override
+  String appsFilterAll(int count) {
+    return 'All ($count)';
+  }
+
+  @override
+  String appsFilterBlocked(int count) {
+    return 'Blocked ($count)';
+  }
+
+  @override
+  String appsFilterLimited(int count) {
+    return 'Time limits ($count)';
+  }
+
+  @override
+  String get appsNoMatch => 'No apps match';
+
+  @override
+  String get appAboutThisApp => 'About this app';
+
+  @override
+  String appBlockedNamedSnack(String app) {
+    return '$app blocked';
+  }
 }

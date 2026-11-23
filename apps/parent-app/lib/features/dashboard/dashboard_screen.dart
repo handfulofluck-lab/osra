@@ -151,6 +151,7 @@ class DashboardScreen extends ConsumerWidget {
             onRefresh: () async {
               ref.invalidate(familyProvider);
               ref.invalidate(mfaResetPendingProvider);
+              ref.invalidate(wellbeingProvider);
             },
             child: banners.isEmpty
                 ? content
@@ -293,7 +294,7 @@ class ChildCard extends ConsumerWidget {
     final dailyLimit = rules?.screenTime.dailyLimitMinutes ?? 0;
     final progress = dailyLimit > 0 ? (child.screenTimeTodayMinutes / dailyLimit).clamp(0.0, 1.0) : 0.0;
     final live = ref.watch(liveActivityProvider)[child.id];
-    final wellbeing = ref.watch(wellbeingProvider(child.id)).valueOrNull;
+    final wellbeing = ref.watch(wellbeingProvider(child.id)).asData?.value;
 
     final tokens = context.tokens;
     return Card(
