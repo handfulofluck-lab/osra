@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readProviderAnalysis } from "../src/lib/stagingProviderOutcomes.js";
+import { flaggedProviders, readProviderAnalysis } from "../src/lib/stagingProviderOutcomes.js";
 
 const trace = "fixture-trace";
 const scores = { cyberbullying: 0, self_harm: 0.36, grooming: 0, violence: 0, sexual_content: 0, substance_use: 0, hate_speech: 0 };
@@ -10,6 +10,19 @@ const both = { trace_id: trace, region: "eu-central-1", mode: "both", outcomes: 
 const unavailable = { status: "unavailable", reason: "unavailable" };
 
 describe("private provider receipts", () => {
+  it("retains Stockholm on the staged own-model outcome and parent alert attribution", () => {
+    const outcome = readProviderAnalysis({ ...both, region: "eu-north-1", mode: "own", outcomes: { own } }, "own", trace);
+    expect(outcome.providers.own).toMatchObject({ status: "scored", region: "eu-north-1" });
+    expect(flaggedProviders(outcome.providers).own).toEqual(outcome.providers.own);
+  });
+
+  it.each(["bedrock", "both"] as const)("rejects a Stockholm receipt for %s", (mode) => {
+    const outcomes = mode === "both" ? { own, bedrock } : { bedrock };
+    const result = readProviderAnalysis({ ...both, region: "eu-north-1", mode, outcomes }, mode, trace);
+    expect(result.verdict).toBeNull();
+    expect(result.providers.bedrock).toEqual(unavailable);
+  });
+
   it.each(["bedrock", "own"] as const)("accepts exactly the selected %s provider", (mode) => {
     const result = readProviderAnalysis({ ...both, mode, outcomes: { [mode]: mode === "bedrock" ? bedrock : own } }, mode, trace);
     expect(Object.keys(result.providers)).toEqual([mode]);

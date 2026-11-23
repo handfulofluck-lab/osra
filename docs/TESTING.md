@@ -1426,6 +1426,10 @@ Spooler, WN06 `Set-Date`, WN09 hosts write and `netsh winhttp set proxy`) held; 
 rows skipped. That run is **not** staging evidence; it only shows the harness measures what it claims.
 
 
+## Staging own-model region verification (#962)
+
+For an approved Stockholm CPU-only window, verify the scored receipt identifies Stockholm for both the concerning and harmless controls. Check the matching parent alert metadata for the same region and confirm the harmless control produces no alert. A Stockholm response must be rejected in Bedrock and combined-provider modes.
+
 ## Bedrock staging test with operator-chosen wording (#962)
 
 The reviewed staging analyzer defaults to exact fixtures. An exploratory run can enable

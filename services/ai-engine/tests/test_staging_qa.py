@@ -395,13 +395,15 @@ def test_bedrock_sdk_socket_timeout_receives_timeout_class(setup_qa, kind):
     response = TestClient(app).post(PATH, json=payload(include_provider_outcomes=True))
     assert response.json()["outcomes"] == {"bedrock": {"status": "unavailable", "reason": "timeout"}}
 
-@pytest.mark.parametrize("fault", [None, "benign", "trace", "model_pin", "threshold_pin", "language", "flags", "missing_score", "region"])
+@pytest.mark.parametrize("fault", [None, "stockholm", "wrong_reported_region", "benign", "trace", "model_pin", "threshold_pin", "language", "flags", "missing_score", "region"])
 def test_local_cpu_receipt_uses_native_flags_and_pins(setup_qa, monkeypatch, fault):
     # Mutants: switch to a remote endpoint on failure, accept stale digests, or re-threshold the native flag.
     from staging_own_model import LABELS
 
     monkeypatch.setenv("OSRA_STAGING_QA_ENGINE", "own")
     monkeypatch.setenv("OSRA_STAGING_QA_OWN_MODEL_ENABLED", "1")
+    if fault in ("stockholm", "wrong_reported_region"):
+        monkeypatch.setenv("OSRA_OWN_MODEL_REGION", "eu-north-1")
     for name in ("V9", "V9B"):
         monkeypatch.setenv(f"OSRA_STAGING_QA_{name}_MODEL_SHA256", "1" * 64)
         monkeypatch.setenv(f"OSRA_STAGING_QA_{name}_THRESHOLDS_SHA256", "2" * 64)
@@ -419,7 +421,7 @@ def test_local_cpu_receipt_uses_native_flags_and_pins(setup_qa, monkeypatch, fau
         return {
             "trace_id": str(uuid4()) if fault == "trace" else body["trace_id"],
             "model": "osra-own-v9b", "lang": "en" if fault == "language" else "fr",
-            "region": "other" if fault == "region" else "eu-central-1",
+            "region": "other" if fault == "region" else ("eu-north-1" if fault == "stockholm" else "eu-central-1"),
             "model_sha256": ("3" if fault == "model_pin" else "1") * 64,
             "thresholds_sha256": ("4" if fault == "threshold_pin" else "2") * 64,
             "flagged": flagged, "severity": "warning" if flagged else "info",
@@ -430,17 +432,20 @@ def test_local_cpu_receipt_uses_native_flags_and_pins(setup_qa, monkeypatch, fau
     hosted = Mock(side_effect=AssertionError("unexpected hosted request"))
     monkeypatch.setattr(staging_qa, "score_own", hosted)
     body = payload(include_provider_outcomes=True)
-    outcome = TestClient(app).post(PATH, json=body).json()["outcomes"]["own"]
+    response = TestClient(app).post(PATH, json=body).json()
+    outcome = response["outcomes"]["own"]
+    if fault == "stockholm":
+        assert response["region"] == "eu-north-1"
     assert requests == [{"text": APPROVED_TEXT, "trace_id": body["trace_id"]}]
     hosted.assert_not_called()
     assert setup_qa.calls == []
-    if fault not in (None, "benign"):
+    if fault not in (None, "stockholm", "benign"):
         assert outcome == {"status": "unavailable", "reason": "unavailable"}
     else:
         assert outcome["status"] == "scored" and outcome["model"] == "v9b"
         assert outcome["language"] == "fr" and set(outcome["categories"]) == set(LABELS)
-        assert outcome["flagged"] is (fault is None)
-        assert outcome["flagged_categories"] == (["grooming"] if fault is None else [])
+        assert outcome["flagged"] is (fault != "benign")
+        assert outcome["flagged_categories"] == (["grooming"] if fault != "benign" else [])
 
 
 @pytest.mark.parametrize(("mode", "expires_in", "expected"), [
