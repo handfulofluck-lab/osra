@@ -11,6 +11,7 @@ import 'package:familyshield_parent/features/alerts/alerts_screen.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart' show AlertTile;
 import 'package:familyshield_parent/l10n/l10n.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
+import 'package:familyshield_parent/providers/family_provider.dart';
 import 'package:familyshield_parent/theme/app_theme.dart';
 
 import 'fake_api_client.dart';
@@ -300,6 +301,110 @@ void main() {
       await tester.tap(find.byTooltip('Back'));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('alert-new-since-alert-social-1')), findsNothing);
+    });
+
+    testWidgets('updates open feed in place, moves to top, and shows +2 new WITHOUT a gesture (bounded refresh + ws invalidation)',
+        (tester) async {
+      // Mutant: removing the bounded periodic refresh timer or alertsProvider listener in
+      // AlertsScreen leaves the open feed stuck at count 2 when simulated time advances without a gesture.
+      var currentAlerts = <Map<String, dynamic>>[
+        otherAlertJson(id: 'alert-other-1', createdAt: t0910),
+        socialAlertJson(
+          id: 'alert-social-1',
+          flaggedCount: 2,
+          createdAt: t0905,
+          latestAt: t0905,
+          contactName: 'Samira',
+        ),
+      ];
+
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/alerts': (_) => {
+              'items': currentAlerts,
+              'meta': {'total': currentAlerts.length, 'page': 1, 'limit': 20},
+            },
+        'GET /v1/social/events': (_) => {
+              'items': [
+                {
+                  'id': 'evt-1',
+                  'childId': 'child-1',
+                  'app': 'whatsapp',
+                  'contact': 'Samira',
+                  'severity': 'warning',
+                  'concernTypes': ['cyberbullying'],
+                  'preview': 'Vault only',
+                  'createdAt': t0905.toUtc().toIso8601String(),
+                },
+              ],
+            },
+      });
+
+      final container = ProviderContainer(
+        overrides: [apiClientProvider.overrideWithValue(api)],
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: AppTheme.light,
+          home: AlertsScreen(nowProvider: () => t0915),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      // Open alert-social-1 at count 2 and return to the open feed.
+      await tester.tap(find.byKey(const ValueKey('alert-card-alert-social-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('alert-new-since-alert-social-1')), findsNothing);
+
+      // 2 more messages arrive on the server; advance 1 minute of simulated time with NO gesture.
+      currentAlerts = [
+        otherAlertJson(id: 'alert-other-1', createdAt: t0910),
+        socialAlertJson(
+          id: 'alert-social-1',
+          flaggedCount: 4,
+          createdAt: t0905,
+          latestAt: t0915,
+          contactName: 'Samira',
+        ),
+      ];
+      await tester.pump(const Duration(minutes: 1));
+      await tester.pumpAndSettle();
+
+      // Open feed updated in place, moved above alert-other-1, and shows "+2 new" without a gesture.
+      expect(find.byKey(const ValueKey('alert-card-alert-social-1')), findsOneWidget);
+      expect(find.textContaining('4 concerning messages on'), findsOneWidget);
+      expect(find.byKey(const ValueKey('alert-new-since-alert-social-1')), findsOneWidget);
+      expect(find.text('+2 new'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('alert-card-alert-social-1'))).dy,
+        lessThan(tester.getTopLeft(find.byKey(const ValueKey('alert-card-alert-other-1'))).dy),
+      );
+
+      // Realtime alertsProvider invalidation path updates immediately to count 5 (+3 new) without a gesture.
+      currentAlerts = [
+        otherAlertJson(id: 'alert-other-1', createdAt: t0910),
+        socialAlertJson(
+          id: 'alert-social-1',
+          flaggedCount: 5,
+          createdAt: t0905,
+          latestAt: t0915.add(const Duration(minutes: 1)),
+          contactName: 'Samira',
+        ),
+      ];
+      container.invalidate(alertsProvider);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('5 concerning messages on'), findsOneWidget);
+      expect(find.text('+3 new'), findsOneWidget);
     });
   });
 }

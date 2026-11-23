@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
@@ -91,9 +93,16 @@ List<Alert> mergeAlertsInPlace(List<Alert> existing, Iterable<Alert> incoming) {
 /// Alerts feed: grouped by day, severity-colored, swipe-to-acknowledge with
 /// optimistic removal, detail dialog per category, and paged "load more".
 class AlertsScreen extends ConsumerStatefulWidget {
-  const AlertsScreen({super.key, @visibleForTesting this.nowProvider});
+  const AlertsScreen({
+    super.key,
+    @visibleForTesting this.nowProvider,
+    @visibleForTesting this.liveRefreshInterval = const Duration(seconds: 30),
+  });
 
   final DateTime Function()? nowProvider;
+  /// #1029: bounded live refresh interval while the feed is open so running counts
+  /// update in place without requiring a pull-to-refresh gesture.
+  final Duration liveRefreshInterval;
 
   @override
   ConsumerState<AlertsScreen> createState() => _AlertsScreenState();
@@ -104,6 +113,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   int _page = 0;
   bool _hasMore = true;
   bool _loading = false;
+  bool _liveRefreshing = false;
+  Timer? _liveRefreshTimer;
   String? _error;
 
   /// A read this guardian's invite does not cover (ADR-0014 amendment, decision 7). Kept apart
@@ -114,6 +125,45 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   void initState() {
     super.initState();
     _loadMore();
+    if (widget.liveRefreshInterval > Duration.zero) {
+      _liveRefreshTimer = Timer.periodic(
+        widget.liveRefreshInterval,
+        (_) => _refreshLivePage(),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _liveRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  /// #1029: silent bounded page-1 refresh so an open feed updates running counts,
+  /// moves updated cards to the top, and shows "+N new" without a manual gesture.
+  Future<void> _refreshLivePage() async {
+    if (!mounted || _loading || _liveRefreshing || _refused != null) return;
+    _liveRefreshing = true;
+    try {
+      final res = await ref
+          .read(apiClientProvider)
+          .raw
+          .get('/v1/alerts', queryParameters: {'page': 1, 'limit': 20});
+      if (!mounted) return;
+      final pageData = AlertsPage.fromJson(res.data);
+      setState(() {
+        final merged = mergeAlertsInPlace(_items, pageData.items);
+        _items
+          ..clear()
+          ..addAll(merged);
+        if (_page == 0) _page = 1;
+        _hasMore = pageData.items.isNotEmpty && _items.length < pageData.total;
+      });
+    } on DioException {
+      // Transient background refresh failure keeps the visible feed intact.
+    } finally {
+      _liveRefreshing = false;
+    }
   }
 
   Future<void> _loadMore() async {
@@ -462,6 +512,18 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final seen = ref.watch(alertsSeenProvider);
+    // #1029: when the realtime /v1/ws alert invalidation path reloads alertsProvider,
+    // merge the fresh page into the open feed immediately without requiring a gesture.
+    ref.listen<AsyncValue<AlertsPage>>(alertsProvider(const AlertFilter()), (prev, next) {
+      if (next is! AsyncData<AlertsPage> || !mounted || _items.isEmpty) return;
+      final page = next.value;
+      setState(() {
+        final merged = mergeAlertsInPlace(_items, page.items);
+        _items
+          ..clear()
+          ..addAll(merged);
+      });
+    });
     // Group by local day using effectiveTimestamp (latestAt ?? updatedAt ?? createdAt), most recent first.
     final groups = <String, List<Alert>>{};
     final order = <String>[];

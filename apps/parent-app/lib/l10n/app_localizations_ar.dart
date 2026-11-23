@@ -3661,33 +3661,41 @@ class AppLocalizationsAr extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count concerning messages on $app',
-      one: '1 concerning message on $app',
+      other: '$count رسالة تستدعي المراجعة في $app',
+      many: '$count رسالة تستدعي المراجعة في $app',
+      few: '$count رسائل تستدعي المراجعة في $app',
+      two: 'رسالتان تستدعيان المراجعة في $app',
+      one: 'رسالة واحدة تستدعي المراجعة في $app',
+      zero: 'لا رسائل تستدعي المراجعة في $app',
     );
     return '$_temp0';
   }
 
   @override
   String socialAlertFromContact(String contact, String time) {
-    return 'From $contact · latest $time';
+    return 'من $contact · آخر رسالة $time';
   }
 
   @override
-  String get socialAlertUnknownContact => 'an unknown contact';
+  String get socialAlertUnknownContact => 'جهة اتصال غير معروفة';
 
   @override
   String socialAlertMorePush(int count, String child, String app) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count more concerning messages for $child on $app',
-      one: '1 more concerning message for $child on $app',
+      other: '$count رسالة أخرى تستدعي المراجعة لدى $child في $app',
+      many: '$count رسالة أخرى تستدعي المراجعة لدى $child في $app',
+      few: '$count رسائل أخرى تستدعي المراجعة لدى $child في $app',
+      two: 'رسالتان أخريان تستدعيان المراجعة لدى $child في $app',
+      one: 'رسالة أخرى تستدعي المراجعة لدى $child في $app',
+      zero: 'لا رسائل أخرى تستدعي المراجعة لدى $child في $app',
     );
     return '$_temp0';
   }
 
   @override
   String socialAlertNewSince(int count) {
-    return '+$count new';
+    return '+$count جديدة';
   }
 }
