@@ -20,6 +20,7 @@ public sealed class WebFilterProxy : BackgroundService
     private readonly AgentConfig _config;
     private ProxyServer? _proxy;
     private ExplicitProxyEndPoint? _explicitEndPoint;
+    private bool _decryptSsl;
     private object? _previousProxyEnable;
     private object? _previousProxyServer;
     private DateTime _lastBlockAlertUtc = DateTime.MinValue;
@@ -114,7 +115,7 @@ public sealed class WebFilterProxy : BackgroundService
         // exists/is creatable. With decryptSsl off, CONNECT tunnels are still filtered by
         // hostname in BeforeTunnelConnectRequest (#1011 criterion 4) without decrypting TLS.
         var proxy = CreateProxyServer(Port, decryptSsl: null, out var explicitEndPoint, out var decryptSsl);
-        proxy.Start();
+        proxy.Start(changeSystemProxySettings: false);
         _proxy = proxy;
         _explicitEndPoint = explicitEndPoint;
         _log.LogInformation("WebFilterProxy listening on 127.0.0.1:{Port} (httpsInspect={HttpsInspect})", Port, decryptSsl);
@@ -131,13 +132,14 @@ public sealed class WebFilterProxy : BackgroundService
         out ExplicitProxyEndPoint explicitEndPoint,
         out bool effectiveDecryptSsl)
     {
-        var proxy = new ProxyServer
+        var proxy = new ProxyServer(userTrustRootCertificate: false)
         {
             ExceptionFunc = ex => _log.LogError(ex, "Proxy engine error"),
         };
         proxy.BeforeRequest += OnBeforeRequest;
         effectiveDecryptSsl = decryptSsl
             ?? HttpsInterception.TryConfigureDecryption(proxy, warn: message => _log.LogWarning("{Message}", message));
+        _decryptSsl = effectiveDecryptSsl;
         explicitEndPoint = new ExplicitProxyEndPoint(IPAddress.Loopback, port, effectiveDecryptSsl);
         explicitEndPoint.BeforeTunnelConnectRequest += OnBeforeTunnelConnectRequest;
         proxy.AddEndPoint(explicitEndPoint);
@@ -179,7 +181,7 @@ public sealed class WebFilterProxy : BackgroundService
             var host = ConnectHostGate.NormalizeConnectHost(request.RequestUri?.Host, request.Host);
             if (host is null) return Task.CompletedTask;
 
-            var decision = ConnectHostGate.Evaluate(host, e.DecryptSsl, _store, out var category);
+            var decision = ConnectHostGate.Evaluate(host, _decryptSsl && e.DecryptSsl, _store, out var category);
             var connectUrl = $"https://{host}/";
 
             switch (decision)

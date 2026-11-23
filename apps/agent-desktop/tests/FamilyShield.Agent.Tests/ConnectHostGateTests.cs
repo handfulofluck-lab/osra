@@ -146,7 +146,7 @@ public sealed class ConnectHostGateTests : IDisposable
 
         using var proxy = service.CreateProxyServer(0, decryptSsl: false, out var ep, out var effectiveDecryptSsl);
         Assert.False(effectiveDecryptSsl);
-        proxy.Start();
+        proxy.Start(changeSystemProxySettings: false);
         try
         {
             var statusLine = await SendConnectAsync(ep.Port, "web.whatsapp.com", 443);
@@ -197,7 +197,7 @@ public sealed class ConnectHostGateTests : IDisposable
         });
 
         using var proxy = service.CreateProxyServer(0, decryptSsl: false, out var ep, out _);
-        proxy.Start();
+        proxy.Start(changeSystemProxySettings: false);
         try
         {
             // 1. Not blocked -> CONNECT succeeds (200)
@@ -253,19 +253,19 @@ public sealed class ConnectHostGateTests : IDisposable
 
     private static async Task<string> SendConnectAsync(int proxyPort, string host, int targetPort)
     {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         using var client = new TcpClient();
-        await client.ConnectAsync(IPAddress.Loopback, proxyPort);
+        await client.ConnectAsync(IPAddress.Loopback, proxyPort, cts.Token);
         using var stream = client.GetStream();
-        stream.ReadTimeout = 5000;
-        stream.WriteTimeout = 5000;
 
         var req = $"CONNECT {host}:{targetPort} HTTP/1.1\r\nHost: {host}:{targetPort}\r\nProxy-Connection: Keep-Alive\r\n\r\n";
         var bytes = Encoding.ASCII.GetBytes(req);
-        await stream.WriteAsync(bytes);
-        await stream.FlushAsync();
+        await stream.WriteAsync(bytes, cts.Token);
+        await stream.FlushAsync(cts.Token);
 
         var buf = new byte[1024];
-        var read = await stream.ReadAsync(buf);
+        var read = await stream.ReadAsync(buf, cts.Token);
+        if (read == 0) return "<EOF>";
         var response = Encoding.ASCII.GetString(buf, 0, read);
         var firstLineEnd = response.IndexOf("\r\n", StringComparison.Ordinal);
         return firstLineEnd >= 0 ? response[..firstLineEnd] : response;
