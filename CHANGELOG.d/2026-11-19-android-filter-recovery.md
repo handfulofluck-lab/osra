@@ -1,0 +1,4 @@
+### Android — Web filter recovery
+
+- Android Kids now shows a web filter recovery action if an active filter disconnects. Restarting the filter clears the recovery screen, and emergency access stays available.
+- VPN apps follow the default child app policy, with existing parent allowances respected.

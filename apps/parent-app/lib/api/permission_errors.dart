@@ -160,3 +160,19 @@ String friendlyErrorText(
   }
   return fallback();
 }
+
+/// Maps a rules/settings save failure to a plain localized sentence (U43, R-ID-1):
+/// offline transport errors show [AppLocalizations.saveFailed] ("check your connection"),
+/// while server refusals / non-network failures show [AppLocalizations.saveFailedServer]
+/// so server errors are never blamed on the parent's connection.
+String saveErrorText(AppLocalizations l10n, Object error) {
+  final refusal = error is DioException ? ReadPermissionRequired.from(error) : null;
+  if (refusal != null) return l10n.readPermissionRequired;
+  final consent = consentWriteError(l10n, error);
+  if (consent != null) return consent;
+  logParentError(error);
+  if (error is DioException && isNetworkDioError(error)) {
+    return l10n.saveFailed;
+  }
+  return l10n.saveFailedServer;
+}

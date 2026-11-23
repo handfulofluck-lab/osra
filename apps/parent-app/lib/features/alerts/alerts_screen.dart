@@ -6,10 +6,13 @@ import 'package:url_launcher/url_launcher.dart' show launchUrl, LaunchMode;
 
 import '../../api/permission_errors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
 import '../../core/date_formatting.dart';
+import '../../core/digits.dart';
+import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
@@ -19,11 +22,48 @@ import '../children/child_detail_screen.dart' show AlertTile;
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
 import '../../widgets/error_retry_view.dart';
+import 'alert_detail_screen.dart';
 import 'sos_alert_actions.dart';
 import '../map/family_map_screen.dart'
     show FamilyMapScreen, MapFocus, mapIsAvailable;
-import '../../push/restart_alert_text.dart';
 import '../../push/sos_fix_text.dart';
+
+/// U45: formats the alert detail dialog timestamp using the #889 time keys
+/// (`alertAtTime`, `alertYesterdayAtTime`, `alertOnDateAtTime`), 24-hour
+/// `HH:mm` without seconds, Western `0-9` digits, and LRI/PDI isolation.
+@visibleForTesting
+String formatAlertDetailTime(
+  DateTime createdAt, {
+  required AppLocalizations l10n,
+  required String localeName,
+  DateTime? now,
+}) {
+  final localTime = createdAt.toLocal();
+  final refLocal = (now ?? DateTime.now()).toLocal();
+  final localDay = DateTime.utc(localTime.year, localTime.month, localTime.day);
+  final today = DateTime.utc(refLocal.year, refLocal.month, refLocal.day);
+  final yesterday = DateTime.utc(refLocal.year, refLocal.month, refLocal.day - 1);
+
+  final clock = normalizeDigits(DateFormat('HH:mm', 'en').format(localTime));
+  final isolatedClock = ltrIsolate(clock);
+
+  if (localDay == today) {
+    return l10n.alertAtTime(isolatedClock);
+  }
+  if (localDay == yesterday) {
+    return l10n.alertYesterdayAtTime(isolatedClock);
+  }
+  final isArabic = localeName.toLowerCase().startsWith('ar');
+  final sameYear = localTime.year == refLocal.year;
+  final pattern =
+      isArabic ? (sameYear ? 'd MMMM' : 'd MMMM y') : (sameYear ? 'd MMM' : 'd MMM y');
+  final resolvedLocale =
+      DateFormat.localeExists(localeName) ? localeName : (isArabic ? 'ar' : 'en');
+  final dateLabel = normalizeDigits(
+    DateFormat(pattern, resolvedLocale).format(localTime),
+  );
+  return l10n.alertOnDateAtTime(dateLabel, isolatedClock);
+}
 
 /// Alerts feed: grouped by day, severity-colored, swipe-to-acknowledge with
 /// optimistic removal, detail dialog per category, and paged "load more".
@@ -66,6 +106,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
           .raw
           .get('/v1/alerts', queryParameters: {'page': _page + 1, 'limit': 20});
       final pageData = AlertsPage.fromJson(res.data);
+      final isFirstPage = _page == 0;
       setState(() {
         _page++;
         // De-dupe in case a live refresh raced us.
@@ -73,6 +114,14 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
         _items.addAll(pageData.items.where((a) => !known.contains(a.id)));
         _hasMore = pageData.items.isNotEmpty && _items.length < pageData.total;
       });
+      if (isFirstPage) {
+        final summary = ref.read(unacknowledgedAlertsProvider).valueOrNull;
+        ref.read(alertsSeenProvider.notifier).markFeedViewed(
+              pageData.items,
+              unackedTotalSnapshot: summary?.total,
+              unackedItemsSnapshot: summary?.items,
+            );
+      }
     } on DioException catch (e) {
       if (!mounted) return;
       final refused = ReadPermissionRequired.from(e);
@@ -92,6 +141,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     setState(() => _items.removeAt(index));
     try {
       await ref.read(apiClientProvider).raw.post('/v1/alerts/${alert.id}/ack');
+      ref.read(alertsSeenProvider.notifier).markAcknowledged(alert.id);
+      ref.invalidate(unacknowledgedAlertsProvider);
       ref.invalidate(unacknowledgedCountProvider);
     } on DioException catch (e) {
       setState(() => _items.insert(index, alert));
@@ -108,6 +159,25 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   /// Feature #8: an install_request alert offers Block (append a block
   /// appRule to the child's ruleset) and Allow (just dismiss) actions.
   void _showDetail(Alert alert) {
+    // #972: social/gaming chat alerts open the dedicated full-screen scrollable detail route
+    // so 200% text size, authorized Social activity action, and unavailable-preview states stay accessible.
+    if (isSocialAlertCategory(alert.category)) {
+      final router = GoRouter.maybeOf(context);
+      if (router != null) {
+        router.push('/alerts/${Uri.encodeComponent(alert.id)}', extra: alert);
+      } else {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => AlertDetailScreen(
+              alertId: alert.id,
+              initialAlert: alert,
+              nowProvider: widget.nowProvider,
+            ),
+          ),
+        );
+      }
+      return;
+    }
     // Feature #16: conversation-coach card for AI/social alert categories.
     final coachCard = coachCardFor(alert.category, _concernTypesOf(alert));
     showDialog(
@@ -116,6 +186,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
         final l10n = dialogContext.l10n;
         return AlertDialog(
           scrollable: true,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           title: Row(
             children: [
               Icon(Icons.circle,
@@ -153,21 +224,12 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   // #889 Arabic Bureau (6997818132): an unkeyed restart row in Arabic renders no body at all
                   // inside the app dialog (the title already states it), never raw English or the push prompt.
                   Builder(builder: (_) {
-                    final isEnglish = dialogContext.localeName.startsWith('en');
-                    final String localizedBody;
-                    if (alert.category == 'sos') {
-                      localizedBody = '';
-                    } else if (alert.category == 'device_restarted') {
-                      localizedBody = RestartAlertText.tryFormat(
-                            alert,
-                            l10n: l10n,
-                            localeName: dialogContext.localeName,
-                            now: widget.nowProvider?.call(),
-                          ) ??
-                          (isEnglish ? alert.body : '');
-                    } else {
-                      localizedBody = alert.body;
-                    }
+                    final localizedBody = formatGeneralAlertBody(
+                      alert,
+                      l10n: l10n,
+                      localeName: dialogContext.localeName,
+                      now: widget.nowProvider?.call(),
+                    );
                     if (localizedBody.isEmpty) return const SizedBox.shrink();
                     return Text(localizedBody);
                   }),
@@ -221,15 +283,21 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   const SizedBox(height: AppSpace.sm),
                   if (childName != null && childName.isNotEmpty)
                     Text(l10n.alertChildLabel(childName)),
-                  Text(
-                      '${l10n.categoryLabel(l10n.alertCategory(alert.category))} · '
-                      '${l10n.severityLabel(l10n.severityName(alert.severity))}'),
+                  Text(l10n.categoryLabel(l10n.alertCategory(alert.category))),
                   if (alert.createdAt != null)
-                    Text(l10n.timeLabel(DateFormat.yMMMd(dialogContext.localeName)
-                        .add_Hms()
-                        .format(alert.createdAt!.toLocal()))),
+                    Text(
+                      l10n.alertDetailSent(
+                        formatAlertDetailTime(
+                          alert.createdAt!,
+                          l10n: l10n,
+                          localeName: dialogContext.localeName,
+                          now: widget.nowProvider?.call(),
+                        ),
+                      ),
+                      key: const ValueKey('alert-detail-time'),
+                    ),
                   const Divider(),
-                  CoachCardSection(card: coachCard),
+                  CoachCardSection(card: coachCard, compact: true),
                 ],
               );
             },

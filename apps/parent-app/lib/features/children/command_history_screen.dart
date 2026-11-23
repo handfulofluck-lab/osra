@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../api/models.dart';
 import '../../api/permission_errors.dart';
 import '../../l10n/l10n.dart';
+import '../../theme/app_tokens.dart';
 import 'command_messages.dart';
 import '../../providers/family_provider.dart';
 
@@ -16,14 +17,18 @@ IconData commandStatusIcon(String status) => switch (status) {
       _ => Icons.schedule,
     };
 
-Color commandStatusColor(BuildContext context, String status) =>
-    switch (status) {
-      'acked' => Colors.green.shade700,
-      'delivered' => Colors.blue.shade700,
-      'failed' => Theme.of(context).colorScheme.error,
-      'expired' => Colors.grey.shade600,
-      _ => Colors.amber.shade800,
-    };
+/// #935 / UI/UX Bureau contrast fix: use [AppTokens] text-safe semantic foregrounds
+/// (>= 4.5:1 WCAG AA against light/dark card surfaces) instead of raw Material shades.
+Color commandStatusColor(BuildContext context, String status) {
+  final tokens = context.tokens;
+  return switch (status) {
+    'acked' => tokens.ok,
+    'delivered' => tokens.severityInfoText,
+    'failed' => tokens.danger,
+    'expired' => tokens.onSurfaceVariant,
+    _ => tokens.warn,
+  };
+}
 
 String formatCommandTime(BuildContext context, DateTime? at) => at == null
     ? context.l10n.timeUnknown
@@ -37,6 +42,8 @@ class CommandHistoryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // #935: keep the live /v1/ws channel subscribed so `command_acked` refreshes rows immediately.
+    ref.watch(wsProvider);
     final l10n = context.l10n;
     final overview = ref.watch(familyProvider);
     return Scaffold(

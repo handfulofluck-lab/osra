@@ -1,0 +1,1 @@
+- #962 (staging QA): allow operator-chosen synthetic WhatsApp wording for the explicitly enabled test pairing. The usual exact-fixture mode remains the default. Live Bedrock and Parent alert verification is pending.
