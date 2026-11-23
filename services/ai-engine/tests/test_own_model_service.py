@@ -152,6 +152,27 @@ def test_health_own_model_returns_404_outside_staging(monkeypatch, scope):
     assert res_staging.json()["ok"] is True
 
 
+def test_staging_own_model_timeout_budget_and_layer_order():
+    # Claude 7098421050: CPU (8 s) < collector (9 s) < API (10 s) < child (30 s); default remains 5 s.
+    default_t = svc.effective_inference_timeout_seconds({})
+    prod_t = svc.effective_inference_timeout_seconds(
+        {"OSRA_DEPLOYMENT_SCOPE": "production", "OSRA_STAGING_QA_OWN_MODEL_ENABLED": "1"}
+    )
+    staging_t = svc.effective_inference_timeout_seconds(
+        {"OSRA_DEPLOYMENT_SCOPE": "staging", "OSRA_STAGING_QA_OWN_MODEL_ENABLED": "1"}
+    )
+    assert default_t == 5.0
+    assert prod_t == 5.0
+    assert staging_t == 8.0
+    assert default_t < staging_t < 9.0 < 10.0 < 30.0
+
+
+def test_french_preposition_de_routes_to_fr_not_tr():
+    # Regression caught by live v9b receipt: French "de" must not trigger Turkish routing.
+    assert svc.detect_language("Merci de répondre ce soir") == "fr"
+    assert svc.detect_language("Pas de problème avec ça") == "fr"
+
+
 def test_language_routing_selects_v9b_for_ar_fr_and_v9_for_others(armed_env, monkeypatch):
     # Mutant M4: routing ar/fr to v9 or en/id/ms/tr/ur to v9b breaks this test.
     calls: list[tuple[str, str]] = []

@@ -67,6 +67,7 @@ MAX_REQUEST_BYTES = 8192
 MAX_TEXT_BYTES = 1024
 MAX_APPROVAL_WINDOW = timedelta(hours=1)
 DEFAULT_INFERENCE_TIMEOUT_SECONDS = 5.0
+STAGING_OWN_MODEL_INFERENCE_TIMEOUT_SECONDS = 8.0
 CRITICAL_SEVERITY_THRESHOLD = 0.85
 
 # Urdu-specific Arabic-script letters not used in standard Arabic.
@@ -74,7 +75,7 @@ _URDU_ONLY_RE = re.compile(r"[\u0679\u067e\u0686\u0688\u0691\u0698\u06a9\u06af\u
 _ARABIC_SCRIPT_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]")
 _TURKISH_DIACRITIC_RE = re.compile(r"[\u011e\u011f\u0130\u0131\u015e\u015f]")
 _TURKISH_WORD_RE = re.compile(
-    r"\b(?:çok|bir|gün|güzel|için|değil|nasıl|merhaba|teşekkür|şimdi|de|veya|bugün)\b",
+    r"\b(?:çok|bir|gün|güzel|için|değil|nasıl|merhaba|teşekkür|şimdi|veya|bugün)\b",
     re.IGNORECASE,
 )
 _FRENCH_DIACRITIC_RE = re.compile(r"[\u00e0\u00e2\u00e6\u00e7\u00e8\u00e9\u00ea\u00eb\u00ee\u00ef\u00f4\u0153\u00f9\u00fb\u00c0\u00c2\u00c6\u00c7\u00c8\u00c9\u00ca\u00cb\u00ce\u00cf\u00d4\u0152\u00d9\u00db]")
@@ -619,6 +620,28 @@ def health_own_model() -> dict:
     }
 
 
+def effective_inference_timeout_seconds(env: Mapping[str, str] | None = None) -> float:
+    """Resolve the per-call CPU timeout: 8 s when staging own-model is enabled, else 5 s default.
+
+    Approval expiry always takes precedence over this timeout (`analyze_staging_qa_own`).
+    """
+    source = os.environ if env is None else env
+    raw = source.get("OSRA_OWN_MODEL_TIMEOUT_SECONDS")
+    if raw:
+        try:
+            parsed = float(raw)
+            if math.isfinite(parsed) and parsed > 0:
+                return parsed
+        except ValueError:
+            pass
+    if (
+        source.get("OSRA_DEPLOYMENT_SCOPE") == "staging"
+        and source.get("OSRA_STAGING_QA_OWN_MODEL_ENABLED") == "1"
+    ):
+        return STAGING_OWN_MODEL_INFERENCE_TIMEOUT_SECONDS
+    return DEFAULT_INFERENCE_TIMEOUT_SECONDS
+
+
 @router.post("/analyze/staging-qa/own", response_model=OwnModelQaResponse, include_in_schema=False)
 async def analyze_staging_qa_own(request: Request) -> OwnModelQaResponse:
     expires_at, digests = _own_model_approval()
@@ -639,16 +662,13 @@ async def analyze_staging_qa_own(request: Request) -> OwnModelQaResponse:
 
     trace_id = str(data.trace_id)
     region = os.environ.get("OSRA_OWN_MODEL_REGION", REGION_DEFAULT)
-    try:
-        timeout_seconds = float(
-            os.environ.get("OSRA_OWN_MODEL_TIMEOUT_SECONDS", str(DEFAULT_INFERENCE_TIMEOUT_SECONDS))
-        )
-    except ValueError:
-        timeout_seconds = DEFAULT_INFERENCE_TIMEOUT_SECONDS
+    configured_timeout = effective_inference_timeout_seconds()
+    remaining_approval = (expires_at - datetime.now(timezone.utc)).total_seconds()
+    timeout_seconds = min(configured_timeout, max(0.0, remaining_approval))
 
     started = monotonic()
     try:
-        if datetime.now(timezone.utc) >= expires_at:
+        if remaining_approval <= 0:
             raise TimeoutError("staging QA approval expired")
         resolved_lang, loaded, probs, flagged, thresholds_sha = await asyncio.wait_for(
             asyncio.to_thread(get_registry().score, data.text, data.lang),
@@ -656,6 +676,14 @@ async def analyze_staging_qa_own(request: Request) -> OwnModelQaResponse:
         )
         if datetime.now(timezone.utc) >= expires_at:
             raise TimeoutError("staging QA approval expired")
+    except TimeoutError:
+        logger.warning(
+            "staging QA own model timeout count=1 trace_id=%s region=%s latency_ms=%d",
+            trace_id,
+            region,
+            (monotonic() - started) * 1000,
+        )
+        raise HTTPException(status_code=502, detail="model_unavailable") from None
     except Exception:
         logger.warning(
             "staging QA own model unavailable trace_id=%s region=%s latency_ms=%d",
