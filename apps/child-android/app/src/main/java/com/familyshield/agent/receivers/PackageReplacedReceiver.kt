@@ -5,9 +5,15 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.familyshield.agent.data.AgentSettings
+import com.familyshield.agent.data.ConsentState
+import com.familyshield.agent.data.WorkScheduler
 import com.familyshield.agent.di.WorkerEntryPoint
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.AlertDto
+import com.familyshield.agent.services.PendingPingWorker
+import com.familyshield.agent.vpn.FilterRecoveryPolicy
+import com.familyshield.agent.vpn.FilterVpnService
+import com.familyshield.agent.vpn.VpnState
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,21 +39,54 @@ class PackageReplacedReceiver : BroadcastReceiver() {
         val pending = goAsync()
         scope.launch {
             try {
-                alert(context, entryPoint.apiService(), entryPoint.agentSettings())
+                handleReplace(
+                    context,
+                    entryPoint.apiService(),
+                    entryPoint.agentSettings(),
+                    entryPoint.consentState(),
+                )
             } finally {
                 pending.finish()
             }
         }
     }
 
-    /** Posts the tamper alert when the device is paired; errors are logged, never thrown. */
-    private suspend fun alert(context: Context, api: ApiService, settings: AgentSettings) {
+    /** Restores web filter / periodic workers and posts the tamper alert when genuinely replaced. */
+    private suspend fun handleReplace(
+        context: Context,
+        api: ApiService,
+        settings: AgentSettings,
+        consent: ConsentState,
+    ) {
         if (!settings.isPaired()) return
         // osra-security#8 F6: only when our own package really was replaced just now, not on a sent intent.
         if (!BroadcastGate.genuineSelfReplace(ownFacts(context), System.currentTimeMillis())) {
-            Log.w(TAG, "MY_PACKAGE_REPLACED without a recent update; no alert")
+            Log.w(TAG, "MY_PACKAGE_REPLACED without a recent update; no alert or recovery")
             return
         }
+        // #934: an app update kills the old process without running FilterVpnService.onDestroy(), leaving
+        // stale established=true on disk and the tunnel down. Clear stale state and restore protection.
+        if (FilterVpnService.tunnelMode == null) {
+            VpnState.setEstablished(context, false)
+        }
+        runCatching {
+            WorkScheduler.scheduleAll(context)
+            PendingPingWorker.schedule(context)
+        }.onFailure { Log.w(TAG, "rescheduling work after update failed", it) }
+
+        if (
+            FilterRecoveryPolicy.shouldRestartAfterUpdate(
+                isPaired = true,
+                vpnEnabled = VpnState.isEnabled(context),
+                vpnPrepared = FilterVpnService.isPrepared(context),
+                consentPaused = consent.isPaused(),
+                liveTunnelMode = FilterVpnService.tunnelMode,
+            )
+        ) {
+            runCatching { FilterVpnService.start(context) }
+                .onFailure { Log.w(TAG, "restarting FilterVpnService after update failed", it) }
+        }
+
         val childId = settings.childId() ?: return
         runCatching {
             api.postInternalAlert(

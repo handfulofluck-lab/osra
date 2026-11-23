@@ -76,6 +76,7 @@ import org.json.JSONObject
 class PairingActivity : ComponentActivity() {
 
     @Inject lateinit var settings: AgentSettings
+    @Inject lateinit var consent: com.familyshield.agent.data.ConsentState
     @Inject lateinit var pinStore: ParentPinStore
     @Inject lateinit var deviceAdmin: DeviceAdminManager
     /** ADR-0034 A2: a new phone is described from its first minute, beside the claim it makes. */
@@ -86,6 +87,9 @@ class PairingActivity : ComponentActivity() {
 
     /** When the admin sheet was launched, so a self-closing refusal can be told from a parent's Cancel. */
     private var adminSheetLaunchedAtMs = 0L
+
+    /** #934: guard one-shot auto-reconnect when opening the status screen with a stopped tunnel. */
+    private var vpnAutoReconnectAttempted = false
 
     /**
      * ADR-0010: the OS "activate device admin" screen. The stale-Knox state (#186) is named only when
@@ -984,11 +988,28 @@ class PairingActivity : ComponentActivity() {
             com.familyshield.agent.vpn.VpnState.setEnabled(this, true)
         }
         if (com.familyshield.agent.vpn.VpnState.isEstablished(this)) {
+            vpnAutoReconnectAttempted = false
             container.addView(label(getString(R.string.setup_web_filter_connected)))
         } else {
             container.addView(
                 label(getString(R.string.setup_web_filter_disconnected)).apply { setTextColor(0xFFB00020.toInt()) },
             )
+            // #934: if the tunnel stopped after an app update and OS consent is intact, start it in the
+            // foreground now instead of leaving protection off while the status screen is open.
+            if (
+                !vpnAutoReconnectAttempted &&
+                com.familyshield.agent.vpn.FilterRecoveryPolicy.shouldAutoReconnectOnStatusOpen(
+                    vpnEnabled = com.familyshield.agent.vpn.VpnState.isEnabled(this),
+                    vpnPrepared = true,
+                    consentPaused = consent.isPaused(),
+                    filterLost = com.familyshield.agent.vpn.VpnState.isFilterLost(this, settings, consent),
+                    liveTunnelMode = com.familyshield.agent.vpn.FilterVpnService.tunnelMode,
+                )
+            ) {
+                vpnAutoReconnectAttempted = true
+                runCatching { com.familyshield.agent.vpn.FilterVpnService.start(this@PairingActivity) }
+                lifecycleScope.launch { kotlinx.coroutines.delay(800); if (settings.isPaired()) showStatus() }
+            }
             container.addView(
                 Button(this).apply {
                     text = getString(R.string.setup_web_filter_reconnect)

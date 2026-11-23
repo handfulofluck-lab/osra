@@ -203,11 +203,11 @@ class FilterVpnService : VpnService() {
             return
         }
         tun = fd
+        // #234 / #934: only now is there a tunnel. Set tunnelMode before the persisted established
+        // flag so VpnState.isEstablished never observes a half-written state, and never before fd exists.
+        tunnelMode = mode
         VpnState.setEstablished(this, true)
         running.set(true)
-        // #234: only now is there a tunnel. Set after the fd exists, never before, so the dispatcher's
-        // wait cannot be satisfied by a service that failed to establish.
-        tunnelMode = mode
         val gen = generation.incrementAndGet()
         pump = Thread({ pumpLoop(fd, gen) }, "osra-dns-sinkhole-$gen").also { it.isDaemon = true; it.start() }
         hadEstablishedTunnel.set(true)

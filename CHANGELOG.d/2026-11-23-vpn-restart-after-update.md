@@ -1,0 +1,1 @@
+- Android child: restart the web filter (`FilterVpnService`) and reschedule periodic workers after an app update (`MY_PACKAGE_REPLACED`), require a live tunnel descriptor in `VpnState.isEstablished` so the status screen and capability reports never claim "connected" when the tunnel is down, and auto-reconnect once when opening the status screen (#934).
