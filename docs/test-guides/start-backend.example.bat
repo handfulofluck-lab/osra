@@ -46,6 +46,8 @@ REM === SET REAL SECRETS BEFORE GOING ONLINE (any long random strings) ===
 set JWT_SECRET=CHANGE_ME-long-random-hex
 set INTERNAL_HMAC_SECRET=CHANGE_ME-long-random-hex
 set PORT=3000
+REM Local URL-event e2e rows expect web visits; production keeps site names off by default.
+set SITE_NAMES_ENABLED=true
 REM base64 32-byte AES key, e.g. from: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 set VAULT_KEY=CHANGE_ME-base64-32-bytes
 REM =====================================================================

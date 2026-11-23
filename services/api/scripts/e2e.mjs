@@ -359,7 +359,7 @@ check("GET device merges telemetry", devGet.status === 200 && devGet.data?.telem
 
 // --- 10. Cross-family isolation ---
 // Fixed email + login fallback: re-runs must not mint a new family every time.
-let reg2 = await call("POST", "/v1/auth/register", { body: { email: "e2e-crossfamily@example.com", password: "AnotherCorrectHorse!", displayName: "Eve", familyName: "Other Family", region: "EU" } });
+let reg2 = await call("POST", "/v1/auth/register", { body: { email: "e2e-crossfamily@example.com", password: "AnotherCorrectHorse!", displayName: "Eve", familyName: "Other Family", region: "EU", consents: { termsPrivacy: true, textVersion: "signup-v1", locale: "en" } } });
 if (reg2.status === 409) reg2 = await call("POST", "/v1/auth/login", { body: { email: "e2e-crossfamily@example.com", password: "AnotherCorrectHorse!" } });
 check("second family register/login -> token", (reg2.status === 201 || reg2.status === 200) && !!reg2.data?.token, `got ${reg2.status}`);
 const token2 = reg2.data.token;
