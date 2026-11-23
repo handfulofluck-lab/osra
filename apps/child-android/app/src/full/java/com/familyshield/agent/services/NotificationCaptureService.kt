@@ -135,6 +135,8 @@ class NotificationCaptureService : NotificationListenerService() {
             val n: Notification? = sbn.notification
             val extras: Bundle? = n?.extras
             val isSummary = n != null && (n.flags and Notification.FLAG_GROUP_SUMMARY) != 0
+            // Issue #1027: the burst decodes once, here, so the lines and their times cannot drift apart.
+            val entries = NotificationCapturePolicy.entriesOf(extras?.get(Notification.EXTRA_MESSAGES))
             return NotificationCapturePolicy.Snapshot(
                 packageId = sbn.packageName.orEmpty(),
                 key = sbn.key.orEmpty(),
@@ -143,8 +145,8 @@ class NotificationCaptureService : NotificationListenerService() {
                 title = extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString(),
                 text = extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString(),
                 bigText = extras?.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString(),
-                messages = messageLines(extras),
-                messageTimesMs = messageTimes(extras),
+                messages = entries.map { it.text?.toString() },
+                messageTimesMs = entries.map { it.atMs },
                 isRemoved = removed,
                 postedAtMs = sbn.postTime,
             )
@@ -187,36 +189,5 @@ class NotificationCaptureService : NotificationListenerService() {
          */
         private fun userOf(key: String?): Int = key?.substringBefore('|')?.toIntOrNull() ?: 0
 
-        /**
-         * `EXTRA_MESSAGES` is a list of `Notification.MessagingStyle.Message` on modern APIs and a list
-         * of `CharSequence` on older ones; both are handled because One UI and older sender apps still
-         * produce the latter.
-         */
-        @Suppress("DEPRECATION")
-        private fun messageLines(extras: Bundle?): List<String?> {
-            val raw = extras?.get(Notification.EXTRA_MESSAGES) ?: return emptyList()
-            if (raw !is List<*>) return emptyList()
-            return raw.mapNotNull { item ->
-                when (item) {
-                    is Notification.MessagingStyle.Message -> item.text?.toString()
-                    is CharSequence -> item.toString()
-                    else -> null
-                }
-            }
-        }
-
-        /**
-         * Issue #1027: the timestamp of each `EXTRA_MESSAGES` entry, in the same order as [messageLines]. The
-         * burst tracker needs it to tell a re-delivered notification from a new message; an entry without one
-         * contributes a null and the tracker falls back to comparing text.
-         */
-        @Suppress("DEPRECATION")
-        private fun messageTimes(extras: Bundle?): List<Long?> {
-            val raw = extras?.get(Notification.EXTRA_MESSAGES) ?: return emptyList()
-            if (raw !is List<*>) return emptyList()
-            return raw.map { item ->
-                (item as? Notification.MessagingStyle.Message)?.timestamp
-            }
-        }
     }
 }

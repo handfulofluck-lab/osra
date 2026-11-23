@@ -1,9 +1,13 @@
 package com.familyshield.agent.social
 
+import android.app.Notification
+import android.os.Bundle
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
+import org.mockito.Mockito.mock
+import org.mockito.Mockito.`when`
 
 /**
  * Plan 2.6, second half — the notification-capture decisions, one case per thing Android actually
@@ -158,5 +162,80 @@ class NotificationCapturePolicyTest {
             ),
         )
         assertEquals(listOf("lunch at 1?", "bring the keys"), captures.map { it.text })
+    }
+
+    // Issue #1027 review (Codex, #1032): the policy rows above inject lines that are already decoded, so they
+    // cannot show that the device adapter produces any. The platform fills EXTRA_MESSAGES with a Parcelable[]
+    // of Bundle (text under "text", time under "time"); NotificationCompat fills an ArrayList of the same
+    // Bundle; older senders put plain CharSequence in. These rows come through the same decoder the service
+    // calls, so a container shape nobody handles fails here instead of on the handset.
+
+    /** The service's own snapshotOf, minus the Android StatusBarNotification it cannot build on the JVM. */
+    private fun snapFromExtras(raw: Any?, key: String = "0|com.whatsapp|1|null|10123") =
+        NotificationCapturePolicy.entriesOf(raw).let { entries ->
+            snap(key = key, title = "Work group", text = null, bigText = null, messages = entries.map { it.text?.toString() }, messageTimesMs = entries.map { it.atMs })
+        }
+
+    private fun messageBundle(text: String, atMs: Long): Bundle {
+        val b = mock(Bundle::class.java)
+        `when`(b.getCharSequence("text")).thenReturn(text)
+        `when`(b.getLong("time")).thenReturn(atMs)
+        return b
+    }
+
+    private fun message(text: String, atMs: Long): Notification.MessagingStyle.Message {
+        val m = mock(Notification.MessagingStyle.Message::class.java)
+        `when`(m.text).thenReturn(text)
+        `when`(m.timestamp).thenReturn(atMs)
+        return m
+    }
+
+    @Test
+    fun `the platform's Parcelable array of bundles carries a five message burst and its redelivery adds none`() {
+        // The documented platform shape, and the one the old adapter dropped on the floor: every line lost,
+        // the snapshot fell back to bigText, and a burst scanned once instead of five times.
+        val raw: Any = arrayOf(
+            messageBundle("lunch at 1?", 1_000L),
+            messageBundle("bring the keys", 2_000L),
+            messageBundle("on my way", 3_000L),
+            messageBundle("park outside", 4_000L),
+            messageBundle("call me when", 5_000L),
+        )
+        val tracker = NotificationCapturePolicy.BurstTracker()
+        val first = tracker.newCaptures(snapFromExtras(raw))
+        assertEquals(5, first.size)
+        assertEquals(listOf("lunch at 1?", "bring the keys", "on my way", "park outside", "call me when"), first.map { it.text })
+        assertEquals(listOf(1_000L, 2_000L, 3_000L, 4_000L, 5_000L), first.map { it.postedAtMs })
+        assertEquals(0, tracker.newCaptures(snapFromExtras(raw)).size)
+    }
+
+    @Test
+    fun `a NotificationCompat list of bundles decodes the same as the platform array`() {
+        val compat = arrayListOf(messageBundle("are you there?", 1_000L), messageBundle("call me", 2_000L))
+        assertEquals(listOf("are you there?", "call me"), NotificationCapturePolicy.entriesOf(compat).map { it.text?.toString() })
+        assertEquals(listOf(1_000L, 2_000L), NotificationCapturePolicy.entriesOf(compat).map { it.atMs })
+    }
+
+    @Test
+    fun `a list of MessagingStyle messages keeps each line and its own time`() {
+        val raw = arrayListOf(message("first", 1_000L), message("second", 2_000L))
+        val entries = NotificationCapturePolicy.entriesOf(raw)
+        assertEquals(listOf("first", "second"), entries.map { it.text?.toString() })
+        assertEquals(listOf(1_000L, 2_000L), entries.map { it.atMs })
+    }
+
+    @Test
+    fun `legacy CharSequence entries decode without times and still dedupe on redelivery`() {
+        val raw: Any = arrayOf<Any>("are you there?", "call me")
+        val tracker = NotificationCapturePolicy.BurstTracker()
+        assertEquals(2, tracker.newCaptures(snapFromExtras(raw)).size)
+        assertEquals(0, tracker.newCaptures(snapFromExtras(raw)).size)
+    }
+
+    @Test
+    fun `extras that are not one of the known shapes decode to nothing rather than throwing`() {
+        assertEquals(emptyList<NotificationCapturePolicy.Entry>(), NotificationCapturePolicy.entriesOf(null))
+        assertEquals(emptyList<NotificationCapturePolicy.Entry>(), NotificationCapturePolicy.entriesOf("not a list"))
+        assertEquals(emptyList<NotificationCapturePolicy.Entry>(), NotificationCapturePolicy.entriesOf(listOf(42)))
     }
 }

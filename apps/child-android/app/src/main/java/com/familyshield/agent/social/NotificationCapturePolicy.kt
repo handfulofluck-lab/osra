@@ -1,5 +1,8 @@
 package com.familyshield.agent.social
 
+import android.app.Notification
+import android.os.Bundle
+
 /**
  * Plan 2.6, second half — the decisions a notification capture has to make, as a pure function.
  *
@@ -41,6 +44,36 @@ object NotificationCapturePolicy {
 
     /** One thing worth scanning: the app key the backend knows, the sender, and the newest line. */
     data class Capture(val appKey: String, val contact: String?, val text: String, val key: String, val postedAtMs: Long)
+
+    /** One `EXTRA_MESSAGES` entry as the adapter hands it over: the line, and its own time when it has one. */
+    data class Entry(val text: CharSequence?, val atMs: Long?)
+
+    /**
+     * Issue #1027, review finding (Codex, on #1032): the platform fills `EXTRA_MESSAGES` with
+     * `Notification.MessagingStyle.Message.getMessagesFromBundleArray(...)` — a `Parcelable[]` of `Bundle`s,
+     * the line under `"text"` and its time under `"time"` — while `NotificationCompat` callers put an
+     * `ArrayList<Bundle>` and pre-MessagingStyle senders put plain `CharSequence`s. Every one of those shapes
+     * arrives here. A shape nobody handles does not fail loudly: the caller falls back to the single-line
+     * `bigText`, which is the exact bug this issue fixes, so the shapes are enumerated rather than guessed.
+     */
+    fun entriesOf(raw: Any?): List<Entry> = when (raw) {
+        // Parcelable[] from the platform, and ArrayList from NotificationCompat: same items, two containers.
+        is Array<*> -> raw.mapNotNull(::entryOf)
+        is List<*> -> raw.mapNotNull(::entryOf)
+        else -> emptyList()
+    }
+
+    private fun entryOf(item: Any?): Entry? = when (item) {
+        null -> null
+        is Notification.MessagingStyle.Message -> Entry(item.text, item.timestamp.takeIf { it > 0L })
+        is Bundle -> Entry(item.getCharSequence(KEY_TEXT), item.getLong(KEY_TIME).takeIf { it > 0L })
+        is CharSequence -> Entry(item, null)
+        else -> null
+    }
+
+    /** The keys `Notification.MessagingStyle.Message.getBundle()` writes; not part of the public SDK. */
+    private const val KEY_TEXT = "text"
+    private const val KEY_TIME = "time"
 
     /**
      * Returns the capture to enqueue, or null when the notification carries nothing to scan.
