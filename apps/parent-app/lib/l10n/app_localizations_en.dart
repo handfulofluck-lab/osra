@@ -1288,6 +1288,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noAppUsage => 'No app usage recorded';
 
   @override
+  String get noPerAppBreakdown => 'Per-app usage is unavailable';
+
+  @override
   String get webSection => 'Web';
 
   @override

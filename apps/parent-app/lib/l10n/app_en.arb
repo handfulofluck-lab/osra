@@ -739,6 +739,7 @@
     }
   },
   "noAppUsage": "No app usage recorded",
+  "noPerAppBreakdown": "Per-app usage is unavailable",
   "webSection": "Web",
   "urlVisits": "{count, plural, =0{No URL visits} =1{1 URL visit} other{{count} URL visits}}",
   "@urlVisits": {
