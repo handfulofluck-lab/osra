@@ -2,6 +2,11 @@ using FamilyShield.Agent.Services;
 
 namespace OSRA.Service;
 
+internal interface ITrayActivationGate
+{
+    bool IsReady { get; }
+}
+
 internal sealed class TraySupervisor : BackgroundService, ITrayProcessRegistry
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(15);
@@ -9,16 +14,24 @@ internal sealed class TraySupervisor : BackgroundService, ITrayProcessRegistry
     private readonly ITrayLauncher _launcher;
     private readonly ITrayProcessDiscovery? _discovery;
     private readonly ILogger<TraySupervisor> _log;
+    private readonly Func<bool> _isPaired;
     private readonly Dictionary<int, ITrayProcess> _processes = new();
     private readonly object _gate = new();
 
     public TraySupervisor(IInteractiveSessionSource sessions, ITrayLauncher launcher, ILogger<TraySupervisor> log,
-        ITrayProcessDiscovery? discovery = null)
+        ITrayProcessDiscovery? discovery = null, ITrayActivationGate? activation = null)
+        : this(sessions, launcher, log, discovery, activation is null ? null : () => activation.IsReady)
+    {
+    }
+
+    internal TraySupervisor(IInteractiveSessionSource sessions, ITrayLauncher launcher, ILogger<TraySupervisor> log,
+        ITrayProcessDiscovery? discovery, Func<bool>? isPaired)
     {
         _sessions = sessions;
         _launcher = launcher;
         _discovery = discovery ?? launcher as ITrayProcessDiscovery;
         _log = log;
+        _isPaired = isPaired ?? (() => true);
     }
 
     public static IReadOnlyList<InteractiveSession> DesiredSessions(IEnumerable<InteractiveSession> sessions) =>
@@ -34,6 +47,8 @@ internal sealed class TraySupervisor : BackgroundService, ITrayProcessRegistry
 
     public void Synchronize()
     {
+        if (!_isPaired()) return;
+
         IReadOnlyList<InteractiveSession> sessions;
         try
         {

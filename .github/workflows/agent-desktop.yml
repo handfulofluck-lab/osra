@@ -52,8 +52,23 @@ jobs:
               throw "Missing required artifact file: $name"
             }
           }
+      - name: Install WiX v5 CLI
+        shell: pwsh
+        run: |
+          dotnet tool install --tool-path artifacts/wix-cli wix --version 5.0.2
+          ./artifacts/wix-cli/wix.exe extension add WixToolset.Util.wixext/5.0.2
+      - name: Build unsigned win-x64 and win-arm64 MSIs
+        shell: pwsh
+        run: |
+          ./installer/Build-Msi.ps1 -RuntimeIdentifier win-x64 -PublishDir artifacts/windows-w1 -SkipPublish -WixPath ./artifacts/wix-cli/wix.exe -OutputDir artifacts/msi
+          ./installer/Build-Msi.ps1 -RuntimeIdentifier win-arm64 -WixPath ./artifacts/wix-cli/wix.exe -OutputDir artifacts/msi
       - uses: actions/upload-artifact@v4
         with:
           name: OSRA.Windows-W1-unsigned
           path: apps/agent-desktop/artifacts/windows-w1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OSRA.Windows-W1-msi-unsigned
+          path: apps/agent-desktop/artifacts/msi/*.msi
           if-no-files-found: error

@@ -70,7 +70,7 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         return Task.CompletedTask;
     }
 
-    public void Synchronize()
+    public void Synchronize(CancellationToken stoppingToken = default)
     {
         var active = ListSessions().Where(s => s.SessionId > 0 && s.IsActive).GroupBy(s => s.SessionId);
         foreach (var group in active)
@@ -112,7 +112,7 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
                         foreach (var message in pending) slot.Enqueue(message);
                     }
                     _slots.Add(session.SessionId, slot);
-                    _ = slot.RunAsync();
+                    slot.Start(stoppingToken);
                 }
                 catch (Exception ex)
                 {
@@ -128,7 +128,7 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         {
             try
             {
-                Synchronize();
+                Synchronize(stoppingToken);
             }
             catch (Exception ex)
             {
@@ -233,6 +233,25 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         return null;
     }
 
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken);
+        Task[] tasks;
+        lock (_gate)
+        {
+            tasks = _slots.Values.Select(slot => slot.StopAndDrainAsync()).ToArray();
+        }
+        if (tasks.Length > 0)
+        {
+            try
+            {
+                await Task.WhenAll(tasks).WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
+            }
+            catch (TimeoutException) { }
+            catch (OperationCanceledException) { }
+        }
+    }
+
     public override void Dispose()
     {
         _restrictions.PersistenceFailed -= ReportPersistenceFailure;
@@ -257,6 +276,8 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         private readonly object _gate = new();
         private readonly CancellationTokenSource _stop = new();
         private volatile bool _completed;
+        private int _disposed;
+        private Task? _runTask;
 
         public int SessionId => _session.SessionId;
         public bool IsCompleted => _completed;
@@ -368,6 +389,21 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
             lock (_gate) return _responses.Concat(_pending).ToArray();
         }
 
-        public void Dispose() => _stop.Cancel();
+        public void Start(CancellationToken cancellationToken = default) =>
+            _runTask = RunAsync(cancellationToken);
+
+        public Task StopAndDrainAsync()
+        {
+            CancelStop();
+            return _runTask ?? Task.CompletedTask;
+        }
+
+        public void Dispose() => CancelStop();
+
+        private void CancelStop()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                _stop.Cancel();
+        }
     }
 }

@@ -423,7 +423,7 @@ off, the read route still answers but returns `counting: false` and `withinBudge
 | `api.yml` | `services/api/**`, `packages/**`, the root `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` / `turbo.json`, the two agent files `device-silence.test.ts` reads (`WorkScheduler.kt`, `LocationService.kt`), and `IdleCadence.kt`, which `poll-cadence.test.ts` reads (#353) | Builds the shared packages, generates Prisma, builds the API (the type-check) and runs its vitest suite |
 | `parent-app.yml` | `apps/parent-app/**` and `services/api/src/routes/alerts.ts` (the alert-category parity test reads it, #344) | On `ubuntu-latest`: `flutter analyze`, `flutter test`, release AAB build and its manifest check. On `macos-14`: `flutter build ios --release --no-codesign` and two assertions on the committed iOS tree (bundle id, `Info.plist` display name + locales), but on a PR or a push only when it changes `apps/parent-app/ios/**`, `pubspec.yaml`, `pubspec.lock` or this workflow; weekly and by hand always — see the iOS section below |
 | `child-android.yml` | `apps/child-android/**` and `scripts/check-merged-manifest-gate.mjs` | `testPlayDebugUnitTest` + `testFullDebugUnitTest`, `assemblePlayDebug` + `assembleFullDebug` + `assemblePlayRelease` + `assembleFullRelease`, the merged-manifest gate, and both release APKs' `targetSdk` and the cleartext configs, each failing the job (#361); the four APKs are kept 14 days |
-| `agent-desktop.yml` | `apps/agent-desktop/**` | Debug and Release `dotnet test`, co-located self-contained win-x64 service/tray publishes and the unsigned `OSRA.Windows-W1-unsigned` artifact, on a Windows runner (billed above the Linux rate, about 1.67× at the 2026 rates) |
+| `agent-desktop.yml` | `apps/agent-desktop/**` | Debug and Release `dotnet test`, co-located self-contained `win-x64` / `win-arm64` publishes, `OSRA.Windows-W1-unsigned` and unsigned WiX v5 MSI (`OSRA.Windows-W1-msi-unsigned`) artifacts, on a Windows runner (billed above the Linux rate, about 1.67× at the 2026 rates) |
 | `ai-engine.yml` | `services/ai-engine/**` | `pytest`, then the evaluation banks, the generated-set check and the regex-scorer evaluation |
 | `ios-ci.yml` | six path patterns: `apps/child-ios/**`, `apps/parent-app/ios/**`, the workflow itself, and the three API contract files (`services/api/src/routes/devices.ts`, `services/api/src/routes/alerts.ts`, `services/api/src/lib/internalAuth.ts`); `push` runs on `main` only, plus weekly Monday 01:23 and `workflow_dispatch` | The **child** agent's iOS gate (SwiftPM build + `generic/platform=iOS Simulator`). Since 2026-10-24 it is no longer the only iOS gate: the parent app's Flutter iOS build is the `parent-app-ios` job in `parent-app.yml` |
 | `api-image.yml` | PRs touching what the image is built from: `services/api/**`, `packages/**`, the root package files, `.dockerignore` | Builds `services/api/Dockerfile` from the repo root (`docker/build-push-action`, `push: false`, `linux/arm64` on GitHub's arm64 runner) and runs `services/api/scripts/verify-image.sh` inside the result, then migrates, seeds twice and boots the image against Postgres and Redis. `verify-image.sh` also checks that the single `eu-central-1` RDS root CA is at `/app/certs/rds-eu-central-1-rsa2048-g1.pem` (exactly one certificate, readable and not writable by the API's user, #919), that with `DATABASE_TLS_VERIFY=required` the image refuses to boot on an unverified database URL or on a multi-certificate `sslcert` bundle (`/app/certs/rds-global-bundle.pem`) without printing the URL (#766 item 3, #919), and runs `scripts/check-db-tls.mjs` inside the `linux/arm64` image against a local TLS PostgreSQL wire server to prove right-first 2-cert bundles connect while wrong-first 2-cert bundles are refused on OpenSSL (#924 review). The Dockerfile has no `|| true`, so a failed install or build fails the PR, and a build that cannot migrate or seed fails it too. ECR stores images rather than building them; publishing needs an OIDC role scoped to the one repository (#258) |
@@ -585,22 +585,28 @@ node scripts/check-ci-cost-guardrails.mjs --selftest
 node scripts/check-ci-cost-guardrails.mjs   # the #613 cheaper-CI structural contracts
 ```
 
-### Windows W1 service and tray (#623)
+### Windows W1 service, tray, and per-machine MSI (#623, #927)
 
-Run from `apps/agent-desktop` with the .NET 8 SDK installed:
+Run from `apps/agent-desktop` with the .NET 8 SDK installed (and WiX `5.0.2` + `WixToolset.Util.wixext/5.0.2` for MSI packaging):
 
 ```bash
 dotnet test tests/FamilyShield.Agent.Tests -c Debug --nologo
 dotnet test tests/FamilyShield.Agent.Tests -c Release --nologo
 dotnet publish src/OSRA.Service -c Release -r win-x64 --self-contained true -o artifacts/windows-w1
 dotnet publish src/OSRA -c Release -r win-x64 --self-contained true -o artifacts/windows-w1
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./installer/Build-Msi.ps1 -RuntimeIdentifier win-x64
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./installer/Build-Msi.ps1 -RuntimeIdentifier win-arm64
 ```
 
 Both hosts must publish into the **same** directory. `OSRA.Service.exe`, `OSRA.exe` and the shared
 `OSRA.Agent.dll` must be co-located: the service supervises only the tray beside its own executable.
-The `agent-desktop.yml` workflow performs the same two test configurations and publishes, checks those
-three files and uploads `OSRA.Windows-W1-unsigned` with `if-no-files-found: error`. `artifacts/` is
-build output; do not commit it.
+The compiled endpoint defaults strictly to `https://api.osratech.com`; staging/isolated test builds pass
+the compile-time MSBuild property explicitly (`-p:OsraApiBase=https://api.staging.osratech.com` or
+`-OsraApiBase https://api.staging.osratech.com` to `Build-Msi.ps1`), and invalid/non-HTTPS values fail
+compilation with `error OSRA001`.
+The `agent-desktop.yml` workflow performs the same two test configurations, publishes, installs WiX `5.0.2`,
+and uploads both `OSRA.Windows-W1-unsigned` and `OSRA.Windows-W1-msi-unsigned` (`win-x64` and `win-arm64`)
+with `if-no-files-found: error`. `artifacts/` is build output; do not commit it.
 
 The tests substitute operating-system boundaries. Publishing is not installation: do not start the real
 service or tray on a development PC, pair a real family, lock a session, sound an alert or register a

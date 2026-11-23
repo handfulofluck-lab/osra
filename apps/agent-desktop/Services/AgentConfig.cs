@@ -14,7 +14,7 @@ public sealed class AgentConfig
     public const string FileName = "agent.config.json";
 
     /// <summary>The only API address a Release build may use.</summary>
-    public const string ProductionApiBase = "https://api.osratech.com";
+    public const string ProductionApiBase = BuildEndpoint.ApiBase;
 
     /// <summary>Whether this loaded configuration may use legacy environment overrides.</summary>
     [JsonIgnore]
@@ -143,6 +143,33 @@ public sealed class AgentConfig
         DeviceId = source.DeviceId;
         ChildId = source.ChildId;
         HmacSecret = source.HmacSecret;
+    }
+
+    /// <summary>
+    /// Verifies that the process has filesystem permission to persist <see cref="FileName"/> inside
+    /// <paramref name="exeDir"/> before claiming a pairing code on the server.
+    /// </summary>
+    public static bool CanPersist(string exeDir)
+    {
+        if (string.IsNullOrWhiteSpace(exeDir) || !Directory.Exists(exeDir)) return false;
+        var probePath = Path.Combine(exeDir, $".osra-write-probe-{Guid.NewGuid():N}.tmp");
+        try
+        {
+            using (File.Create(probePath, 1, FileOptions.DeleteOnClose)) { }
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (System.Security.SecurityException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
