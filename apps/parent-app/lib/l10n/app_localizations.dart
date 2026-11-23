@@ -2306,6 +2306,12 @@ abstract class AppLocalizations {
   /// **'No app usage recorded'**
   String get noAppUsage;
 
+  /// No description provided for @noPerAppBreakdown.
+  ///
+  /// In en, this message translates to:
+  /// **'Per-app usage is unavailable'**
+  String get noPerAppBreakdown;
+
   /// No description provided for @webSection.
   ///
   /// In en, this message translates to:
