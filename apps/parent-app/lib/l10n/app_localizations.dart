@@ -5492,6 +5492,84 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'All alerts'**
   String get socialAlertViewAll;
+
+  /// No description provided for @undo.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get undo;
+
+  /// No description provided for @hoursShort.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours} h'**
+  String hoursShort(int hours);
+
+  /// No description provided for @appStateAllowed.
+  ///
+  /// In en, this message translates to:
+  /// **'Allowed'**
+  String get appStateAllowed;
+
+  /// No description provided for @appStateBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Blocked'**
+  String get appStateBlocked;
+
+  /// No description provided for @appStateLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Limit {limit} a day'**
+  String appStateLimit(String limit);
+
+  /// No description provided for @appAllowedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'{app} allowed'**
+  String appAllowedSnack(String app);
+
+  /// No description provided for @appLimitSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'{app} limited to {limit} a day'**
+  String appLimitSnack(String app, String limit);
+
+  /// No description provided for @appsFilterAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All ({count})'**
+  String appsFilterAll(int count);
+
+  /// No description provided for @appsFilterBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Blocked ({count})'**
+  String appsFilterBlocked(int count);
+
+  /// No description provided for @appsFilterLimited.
+  ///
+  /// In en, this message translates to:
+  /// **'Time limits ({count})'**
+  String appsFilterLimited(int count);
+
+  /// No description provided for @appsNoMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'No apps match'**
+  String get appsNoMatch;
+
+  /// No description provided for @appAboutThisApp.
+  ///
+  /// In en, this message translates to:
+  /// **'About this app'**
+  String get appAboutThisApp;
+
+  /// No description provided for @appBlockedNamedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'{app} blocked'**
+  String appBlockedNamedSnack(String app);
 }
 
 class _AppLocalizationsDelegate
