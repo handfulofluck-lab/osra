@@ -1,0 +1,1 @@
+- Record a fixed failure category for staging Bedrock errors so operators can distinguish access and request failures during the synthetic content test (#962).
