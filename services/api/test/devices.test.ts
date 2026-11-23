@@ -1198,11 +1198,19 @@ describe("applied rules version push (#865)", () => {
   // The device row's stored version. The mock applies the route's own `where` clause, so these tests prove
   // the guard the route sends, not a guard the mock assumes.
   let stored: number | null = null;
+  // Codex review: the mock interprets only `null` and a strict `lt`, so any other operator (`lte`, `gt`, a
+  // missing null branch) fails here instead of slipping through as "no match".
   type Guard = { appliedRulesVersion: null | { lt: number } };
-  const guardAllows = (where: { OR?: Guard[] }, current: number | null) =>
-    (where.OR ?? []).some((c) =>
-      c.appliedRulesVersion === null ? current === null : current !== null && current < c.appliedRulesVersion.lt,
-    );
+  const guardAllows = (where: { OR?: Guard[] }, current: number | null) => {
+    const conditions = where.OR ?? [];
+    expect(conditions).toHaveLength(2);
+    expect(conditions).toContainEqual({ appliedRulesVersion: null });
+    return conditions.some((c) => {
+      if (c.appliedRulesVersion === null) return current === null;
+      expect(Object.keys(c.appliedRulesVersion)).toEqual(["lt"]);
+      return current !== null && current < c.appliedRulesVersion.lt;
+    });
+  };
 
   beforeEach(() => {
     resetPrismaMock();
