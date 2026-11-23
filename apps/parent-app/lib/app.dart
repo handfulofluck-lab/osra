@@ -55,7 +55,13 @@ final List<RouteBase> appRoutes = [
   GoRoute(path: '/setup/done', builder: (_, __) => const SetupDoneScreen()),
   GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
   GoRoute(path: '/', builder: (_, __) => const DashboardScreen()),
-  GoRoute(path: '/child/:id', builder: (_, s) => ChildDetailScreen(childId: s.pathParameters['id']!)),
+  GoRoute(
+    path: '/child/:id',
+    builder: (_, s) => ChildDetailScreen(
+      childId: s.pathParameters['id']!,
+      initialTab: s.uri.queryParameters['tab'] == 'location' ? ChildDetailScreen.locationTab : 0,
+    ),
+  ),
   GoRoute(path: '/child/:id/pair', builder: (_, s) => PairingQrScreen(childId: s.pathParameters['id']!)),
   GoRoute(path: '/child/:id/commands', builder: (_, s) => CommandHistoryScreen(childId: s.pathParameters['id']!)),
   GoRoute(path: '/child/:id/consent', builder: (_, s) => ConsentScreen(childId: s.pathParameters['id']!)),

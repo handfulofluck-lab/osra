@@ -211,7 +211,7 @@ void main() {
       expect(find.text("Today's route"), findsOneWidget);
       // Sorted ascending → starts at the earliest ping.
       expect(find.textContaining('08:00'), findsOneWidget);
-      expect(find.textContaining('±12 m'), findsOneWidget);
+      expect(find.textContaining('±12\u00a0m'), findsOneWidget);
 
       // ▶ steps 15 min of timeline: 08:00 → nearest to 08:15 is 08:20.
       await tester.tap(find.byTooltip('Forward 15 min'));
@@ -222,7 +222,7 @@ void main() {
       await tester.drag(find.byType(Slider), const Offset(800, 0));
       await tester.pumpAndSettle();
       expect(find.textContaining('08:40'), findsOneWidget);
-      expect(find.textContaining('±20 m'), findsOneWidget);
+      expect(find.textContaining('±20\u00a0m'), findsOneWidget);
 
       // ◀ steps back: 08:40 → nearest to 08:25 is 08:20.
       await tester.tap(find.byTooltip('Back 15 min'));

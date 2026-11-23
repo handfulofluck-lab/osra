@@ -8,7 +8,6 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
-import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../widgets/field_question.dart';
 import '../../providers/auth_provider.dart';
@@ -22,6 +21,7 @@ import '../../widgets/error_retry_view.dart';
 import '../auth/mfa_reset_approval_screen.dart';
 import '../auth/mfa_reset_messages.dart';
 import '../children/consent_step.dart';
+import '../map/child_location_view.dart';
 
 /// Parent dashboard: grid of child cards with live status, pull-to-refresh
 /// and a consent-first "Add child" flow.
@@ -359,15 +359,18 @@ class ChildCard extends ConsumerWidget {
                       const Icon(Icons.location_on_outlined, size: 14),
                       const SizedBox(width: AppSpace.xs),
                       Expanded(
-                        child: Text(
-                          // #406: a refusal names the owner; "no location yet" would read as a normal state.
-                          locationRefused
-                              ? l10n.readPermissionRequired
-                              : location == null
-                                  ? l10n.noLocationYet
-                                  : ltrIsolate('${location.lat.toStringAsFixed(4)}, ${location.lng.toStringAsFixed(4)}'),
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
+                        // #406: a refusal names the owner; "no location yet" would read as a normal state.
+                        // Karim 22 Nov: a place name and how fresh it is, never raw coordinates.
+                        child: locationRefused || location == null
+                            ? Text(
+                                locationRefused ? l10n.readPermissionRequired : l10n.noLocationYet,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              )
+                            : PlaceSummaryLine(
+                                ping: location,
+                                style: Theme.of(context).textTheme.bodySmall,
+                                onTap: () => context.push('/child/${child.id}?tab=location'),
+                              ),
                       ),
                     ],
                   ),
