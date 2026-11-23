@@ -49,6 +49,13 @@ class NotificationCaptureService : NotificationListenerService() {
     @Inject lateinit var comms: CommsLogger
 
     private val tracker = WhatsAppCallTracker()
+
+    /**
+     * Issue #1027: which lines of each notification have already been scanned. A WhatsApp burst updates one
+     * notification and re-delivers it per message, so the capture path asks this what is new instead of
+     * scanning the newest line only — 20 messages used to reach the server as 4 scans.
+     */
+    private val burst = NotificationCapturePolicy.BurstTracker()
     private val handler = Handler(Looper.getMainLooper())
 
     /** Emits the held rows whose missed-notice window has run out, then re-arms for whatever is left. */
@@ -74,15 +81,18 @@ class NotificationCaptureService : NotificationListenerService() {
 
     private fun capture(sbn: StatusBarNotification, removed: Boolean) {
         if (consentState.isPaused()) return
-        val capture = NotificationCapturePolicy.decide(snapshotOf(sbn, removed)) ?: return
-        if (!TestChatCaptureGate.allows(this, capture.appKey, capture.contact)) return
-        queue.enqueue(
-            app = capture.appKey,
-            contact = capture.contact,
-            text = capture.text,
-            nowMs = if (capture.postedAtMs > 0L) capture.postedAtMs else System.currentTimeMillis(),
-            source = ScanQueuePolicy.SOURCE_NOTIFICATION,
-        )
+        // Issue #1027: one notification can carry a whole burst. Enqueue every line this notification has not
+        // produced yet, oldest first, so a fast sender produces one scan per message instead of one per update.
+        burst.newCaptures(snapshotOf(sbn, removed)).forEach { capture ->
+            if (!TestChatCaptureGate.allows(this, capture.appKey, capture.contact)) return@forEach
+            queue.enqueue(
+                app = capture.appKey,
+                contact = capture.contact,
+                text = capture.text,
+                nowMs = if (capture.postedAtMs > 0L) capture.postedAtMs else System.currentTimeMillis(),
+                source = ScanQueuePolicy.SOURCE_NOTIFICATION,
+            )
+        }
     }
 
     /**
@@ -134,6 +144,7 @@ class NotificationCaptureService : NotificationListenerService() {
                 text = extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString(),
                 bigText = extras?.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString(),
                 messages = messageLines(extras),
+                messageTimesMs = messageTimes(extras),
                 isRemoved = removed,
                 postedAtMs = sbn.postTime,
             )
@@ -191,6 +202,20 @@ class NotificationCaptureService : NotificationListenerService() {
                     is CharSequence -> item.toString()
                     else -> null
                 }
+            }
+        }
+
+        /**
+         * Issue #1027: the timestamp of each `EXTRA_MESSAGES` entry, in the same order as [messageLines]. The
+         * burst tracker needs it to tell a re-delivered notification from a new message; an entry without one
+         * contributes a null and the tracker falls back to comparing text.
+         */
+        @Suppress("DEPRECATION")
+        private fun messageTimes(extras: Bundle?): List<Long?> {
+            val raw = extras?.get(Notification.EXTRA_MESSAGES) ?: return emptyList()
+            if (raw !is List<*>) return emptyList()
+            return raw.map { item ->
+                (item as? Notification.MessagingStyle.Message)?.timestamp
             }
         }
     }

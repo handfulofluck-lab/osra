@@ -21,12 +21,13 @@ class NotificationCapturePolicyTest {
         text: String? = "where are you?",
         bigText: String? = null,
         messages: List<String?> = emptyList(),
+        messageTimesMs: List<Long?> = emptyList(),
         removed: Boolean = false,
         postedAtMs: Long = 1000L,
     ) = NotificationCapturePolicy.Snapshot(
         packageId = pkg, key = key, isGroupSummary = summary, groupKey = "group-1",
         title = title, text = text, bigText = bigText, messages = messages,
-        isRemoved = removed, postedAtMs = postedAtMs,
+        messageTimesMs = messageTimesMs, isRemoved = removed, postedAtMs = postedAtMs,
     )
 
     @Test
@@ -98,5 +99,64 @@ class NotificationCapturePolicyTest {
     fun `one messages style line with a real body still wins over the noise check`() {
         val c = NotificationCapturePolicy.decide(snap(title = "Mum", text = "new messages", messages = listOf("see you at 6")))
         assertEquals("see you at 6", c?.text)
+    }
+
+    // Issue #1027: a WhatsApp burst updates ONE notification. Karim sent ~20 messages and four reached the server,
+    // because the capture path scanned only the newest line. These rows pin the fix and name their mutants.
+
+    private fun burst(times: List<Long>, texts: List<String> = times.map { "line ${it}" }) =
+        snap(title = "Work group", text = texts.last(), messages = texts, messageTimesMs = times.map { it as Long? })
+
+    @Test
+    fun `a five message burst on one notification produces five scans, oldest first`() {
+        // Mutant: take messages.lastOrNull() again -> this row reports one capture and goes red.
+        val tracker = NotificationCapturePolicy.BurstTracker()
+        val captures = tracker.newCaptures(burst(listOf(1_000, 2_000, 3_000, 4_000, 5_000)))
+        assertEquals(5, captures.size)
+        assertEquals(listOf("line 1000", "line 2000", "line 3000", "line 4000", "line 5000"), captures.map { it.text })
+        assertEquals(listOf(1_000L, 2_000L, 3_000L, 4_000L, 5_000L), captures.map { it.postedAtMs })
+        assertEquals("Work group", captures.first().contact)
+    }
+
+    @Test
+    fun `re-posting the same notification adds no scans`() {
+        // Mutant: drop the seen-map entirely -> the second post returns five captures and this row goes red.
+        val tracker = NotificationCapturePolicy.BurstTracker()
+        val snapshot = burst(listOf(1_000, 2_000))
+        assertEquals(2, tracker.newCaptures(snapshot).size)
+        assertEquals(0, tracker.newCaptures(snapshot).size)
+    }
+
+    @Test
+    fun `only the new lines of a growing notification are scanned`() {
+        val tracker = NotificationCapturePolicy.BurstTracker()
+        assertEquals(2, tracker.newCaptures(burst(listOf(1_000, 2_000))).size)
+        val grown = tracker.newCaptures(burst(listOf(1_000, 2_000, 3_000, 4_000)))
+        assertEquals(listOf("line 3000", "line 4000"), grown.map { it.text })
+    }
+
+    @Test
+    fun `without timestamps a re-post is deduped by text`() {
+        // The legacy CharSequence entries carry no time; the tracker must still not scan them twice.
+        val tracker = NotificationCapturePolicy.BurstTracker()
+        val snapshot = snap(title = "Mum", text = "call me", messages = listOf("are you there?", "call me"))
+        assertEquals(2, tracker.newCaptures(snapshot).size)
+        assertEquals(0, tracker.newCaptures(snapshot).size)
+    }
+
+    @Test
+    fun `a burst whose newest line is a placeholder still scans the real messages`() {
+        // The old path read the newest line; when WhatsApp's newest line is "3 new messages" the real ones were
+        // hidden behind it. Per-line cleaning is what makes this case pass.
+        val tracker = NotificationCapturePolicy.BurstTracker()
+        val captures = tracker.newCaptures(
+            snap(
+                title = "Work group",
+                text = "3 new messages",
+                messages = listOf("lunch at 1?", "bring the keys", "3 new messages"),
+                messageTimesMs = listOf(1_000L, 2_000L, 3_000L),
+            ),
+        )
+        assertEquals(listOf("lunch at 1?", "bring the keys"), captures.map { it.text })
     }
 }

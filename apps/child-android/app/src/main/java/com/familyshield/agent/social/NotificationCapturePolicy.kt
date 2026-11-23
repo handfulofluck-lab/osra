@@ -28,6 +28,12 @@ object NotificationCapturePolicy {
         val bigText: String? = null,
         /** `MessagingStyle` lines, oldest first, when the app used that style (WhatsApp does). */
         val messages: List<String?> = emptyList(),
+        /**
+         * The timestamp of each entry in [messages], same order and length when the platform supplies it.
+         * Issue #1027: a burst updates one notification, so the only way to tell "already scanned" from
+         * "new line" is the message's own time; an empty list means the entries carry none.
+         */
+        val messageTimesMs: List<Long?> = emptyList(),
         /** True when this snapshot came from `onNotificationRemoved`. */
         val isRemoved: Boolean = false,
         val postedAtMs: Long = 0L,
@@ -58,5 +64,79 @@ object NotificationCapturePolicy {
             snapshot.messages.map { it as CharSequence? },
         ) ?: return null
         return Capture(appKey = appKey, contact = contact, text = body, key = snapshot.key, postedAtMs = snapshot.postedAtMs)
+    }
+
+    /**
+     * Issue #1027: the stateful half of the capture decision — which lines of a notification have already been
+     * scanned. A WhatsApp burst updates **one** notification and Android re-delivers it on every update, so the
+     * service needs to answer "what is new in this notification?" rather than "what does it say now?".
+     *
+     * Kept separate from the pure policy so it can be tested without Android, and kept in the service instance
+     * rather than in a singleton so a process death simply re-reads the current notification (at worst one line
+     * is scanned twice; the queue's content-hash dedupe still drops the repeat).
+     */
+    class BurstTracker(private val maxLinesPerKey: Int = 64) {
+
+        private data class Seen(val lastAtMs: Long, val texts: ArrayDeque<String>)
+
+        private val seen = HashMap<String, Seen>()
+
+        /** Every line of [snapshot] that has not been scanned yet, oldest first. */
+        fun newCaptures(snapshot: Snapshot): List<Capture> {
+            val appKey = MonitoredApps.appKeyFor(snapshot.packageId) ?: return emptyList()
+            if (snapshot.isRemoved) return emptyList()
+            if (snapshot.isGroupSummary) return emptyList()
+
+            val lines = linesOf(snapshot)
+            if (lines.isEmpty()) return emptyList()
+
+            val state = seen[snapshot.key]
+            val fresh = when {
+                lines.any { it.atMs != null } -> {
+                    val lastAt = state?.lastAtMs ?: 0L
+                    lines.filter { it.atMs != null && it.atMs > lastAt }
+                }
+                // No timestamps on this platform path: compare text against what this notification already
+                // produced. Bounded, so a chatty thread cannot grow the map without limit.
+                else -> lines.filter { line -> state?.texts?.contains(line.text) != true }
+            }
+            if (fresh.isEmpty()) return emptyList()
+
+            val lastAt = lines.mapNotNull { it.atMs }.maxOrNull() ?: state?.lastAtMs ?: 0L
+            val texts = state?.texts ?: ArrayDeque()
+            fresh.forEach { line ->
+                if (texts.size >= maxLinesPerKey) texts.removeFirst()
+                texts.addLast(line.text)
+            }
+            seen[snapshot.key] = Seen(lastAtMs = lastAt, texts = texts)
+
+            return fresh.map {
+                Capture(
+                    appKey = appKey,
+                    contact = ScanQueuePolicy.contactOf(snapshot.title),
+                    text = it.text,
+                    key = snapshot.key,
+                    postedAtMs = it.atMs ?: snapshot.postedAtMs,
+                )
+            }
+        }
+
+        private data class Line(val text: String, val atMs: Long?)
+
+        /**
+         * The message entries, with their timestamps when the notification carries them, falling back to the
+         * single `bigText`/`text` pair for apps that do not use MessagingStyle. [ScanQueuePolicy.cleanText]
+         * drops placeholders line by line, which is the difference from the old behaviour: a burst whose newest
+         * line was "3 new messages" used to hide the real messages behind it.
+         */
+        private fun linesOf(snapshot: Snapshot): List<Line> {
+            val fromMessages = snapshot.messages.mapIndexedNotNull { index, raw ->
+                val text = ScanQueuePolicy.cleanText(raw) ?: return@mapIndexedNotNull null
+                Line(text, snapshot.messageTimesMs.getOrNull(index))
+            }
+            if (fromMessages.isNotEmpty()) return fromMessages
+            val fallback = ScanQueuePolicy.cleanText(snapshot.bigText) ?: ScanQueuePolicy.cleanText(snapshot.text)
+            return if (fallback != null) listOf(Line(fallback, null)) else emptyList()
+        }
     }
 }
