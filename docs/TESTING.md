@@ -143,6 +143,8 @@ pnpm --filter @familyshield/api exec prisma generate
 cd services/api
 export DATABASE_URL=<launcher> INTERNAL_HMAC_SECRET=<launcher> VAULT_KEY=<launcher>
 export SITE_NAMES_ENABLED=true  # URL-event e2e rows only; the production default remains off
+# Windows launcher alternative: set OSRA_E2E_SITE_NAMES=1 before start-backend.bat.
+# Without that opt-in, the launcher leaves SITE_NAMES_ENABLED unset (production default off).
 export API_BASE=http://127.0.0.1:3000                  # never localhost — see §6, the ::1 trap
 
 node scripts/e2e.mjs        # 71 passed / 0 failed at 2026-10-21 — the count grows, read the 0
