@@ -26,7 +26,9 @@ If the analyzer returns `model_unavailable`, match the trace to its `failure_kin
 
 ## Comparing staging providers
 
-Set `OSRA_STAGING_QA_ENGINE` to `bedrock`, `own` or `both`. The staging API requests outcomes by adding
+Set `OSRA_STAGING_QA_ENGINE` to `bedrock`, `own` or `both`. In Terraform, set
+`staging_qa_analyzer.engine` (default `bedrock`); it renders the same value on the armed API and
+analyzer tasks and nothing while the window is disarmed. The staging API requests outcomes by adding
 `include_provider_outcomes: true` to the private request. The legacy Bedrock request still returns its
 original response in the default mode. Other modes require the caller to read provider outcomes.
 
