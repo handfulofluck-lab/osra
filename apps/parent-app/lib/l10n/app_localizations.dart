@@ -4832,6 +4832,60 @@ abstract class AppLocalizations {
   /// **'OSRA\'s data was cleared on a phone'**
   String get alertTitleDataCleared;
 
+  /// Tamper alert metadata.type 'replaced': the OSRA agent was reinstalled or updated. Informational, not an attack (Karim, 23 Nov).
+  ///
+  /// In en, this message translates to:
+  /// **'OSRA was updated on a phone'**
+  String get alertTitleAgentUpdated;
+
+  /// Tamper alert metadata.type 'device_silent': the phone has not checked in for a while (off, offline, or OSRA removed).
+  ///
+  /// In en, this message translates to:
+  /// **'A phone stopped reporting'**
+  String get alertTitleDeviceSilent;
+
+  /// Tamper alert metadata.type 'accessibility_off': OSRA's accessibility service was turned off on the child's phone.
+  ///
+  /// In en, this message translates to:
+  /// **'OSRA\'s protection was turned off'**
+  String get alertTitleProtectionOff;
+
+  /// Tamper alert metadata.type 'device_admin_removed': OSRA's device-admin right was removed, so uninstall is no longer blocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Uninstall protection was turned off'**
+  String get alertTitleAdminRemoved;
+
+  /// Tamper alert metadata.type 'protection_screen_opened': a protection-removal screen was opened and the PIN was asked for.
+  ///
+  /// In en, this message translates to:
+  /// **'Someone tried to remove protection'**
+  String get alertTitleRemovalAttempt;
+
+  /// Tamper alert metadata.type 'parent_pin_locked': the parent PIN was locked after repeated wrong tries on the child's phone.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many wrong parent PIN tries'**
+  String get alertTitlePinLocked;
+
+  /// Tamper alert metadata.type 'content_filter_disconnected' (Android VPN) or 'proxy_failed' (computer): web filtering is off until it reconnects.
+  ///
+  /// In en, this message translates to:
+  /// **'The web filter was disconnected'**
+  String get alertTitleFilterOff;
+
+  /// Tamper alert metadata.type 'private_dns_bypass' (Android Private DNS) or 'proxy_disabled' (computer).
+  ///
+  /// In en, this message translates to:
+  /// **'The web filter was bypassed'**
+  String get alertTitleFilterBypassed;
+
+  /// Tamper alert metadata.type 'overlay_revoked': 'Display over other apps' was turned off, so lock and pause screens can't show.
+  ///
+  /// In en, this message translates to:
+  /// **'The block screen permission was removed'**
+  String get alertTitleOverlayRevoked;
+
   /// No description provided for @alertTitleVpnDetected.
   ///
   /// In en, this message translates to:

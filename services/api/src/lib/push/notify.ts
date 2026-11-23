@@ -37,7 +37,11 @@ export function shouldPush(alert: Pick<AlertLike, "severity" | "category"> | nul
   // Issue #889 (UI/UX Bureau ruling): routine `info` restarts (< 30 min gap) stay in the Alerts list
   // and unread badge without waking the parent's phone; `warning` restarts (>= 30 min gap) still push.
   if (alert.category === "device_restarted" && sev === "info") return false;
-  // SOS and tamper always wake the parent regardless of the floor.
+  // Karim, 23 Nov: every Flip4 reinstall woke the iPhone with "Protection tampered with". That was the agent's
+  // own `info` "Agent updated" tamper (`metadata.type` "replaced"). An `info` tamper is a record, not an
+  // alarm: it stays in the Alerts list and the unread badge without waking the parent's phone, like #889.
+  if (alert.category === "tamper" && sev === "info") return false;
+  // SOS and tamper (warning and critical) always wake the parent regardless of the floor.
   if (alert.category === "sos" || alert.category === "tamper") return true;
   return SEVERITY_RANK[sev] >= SEVERITY_RANK[min];
 }

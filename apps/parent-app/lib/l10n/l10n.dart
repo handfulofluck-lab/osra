@@ -127,6 +127,17 @@ extension AppLocalizationsLabels on AppLocalizations {
         'tamper' => switch (tamperType) {
             'block_bypass' => alertTitleBlockBypass,
             'agent_data_cleared' => alertTitleDataCleared,
+            // Karim, 23 Nov: every tamper read "Protection tampered with", including the agent's own update
+            // notice. Each type the agents and the server send now says what actually happened.
+            'replaced' => alertTitleAgentUpdated,
+            'device_silent' => alertTitleDeviceSilent,
+            'accessibility_off' => alertTitleProtectionOff,
+            'device_admin_removed' => alertTitleAdminRemoved,
+            'protection_screen_opened' => alertTitleRemovalAttempt,
+            'parent_pin_locked' => alertTitlePinLocked,
+            'content_filter_disconnected' || 'proxy_failed' => alertTitleFilterOff,
+            'private_dns_bypass' || 'proxy_disabled' => alertTitleFilterBypassed,
+            'overlay_revoked' => alertTitleOverlayRevoked,
             _ => alertTitleTamper,
           },
         'vpn_detected' => alertTitleVpnDetected,
