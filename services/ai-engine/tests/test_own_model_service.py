@@ -133,6 +133,25 @@ def test_staging_approval_gate_returns_404_when_unarmed(armed_env, monkeypatch, 
     assert res.json() == {"detail": "not_found"}
 
 
+@pytest.mark.parametrize("scope", [None, "", "production", "dev"])
+def test_health_own_model_returns_404_outside_staging(monkeypatch, scope):
+    # Mutant M7 (Ahmed #1015 review): exposing GET /health/own-model outside staging breaks this test.
+    if scope is None:
+        monkeypatch.delenv("OSRA_DEPLOYMENT_SCOPE", raising=False)
+    else:
+        monkeypatch.setenv("OSRA_DEPLOYMENT_SCOPE", scope)
+    monkeypatch.setattr(svc, "_registry", _make_stub_registry(v9_scorer=lambda _: _zero_probs()))
+
+    res = TestClient(app).get("/health/own-model")
+    assert res.status_code == 404
+    assert res.json() == {"detail": "not_found"}
+
+    monkeypatch.setenv("OSRA_DEPLOYMENT_SCOPE", "staging")
+    res_staging = TestClient(app).get("/health/own-model")
+    assert res_staging.status_code == 200
+    assert res_staging.json()["ok"] is True
+
+
 def test_language_routing_selects_v9b_for_ar_fr_and_v9_for_others(armed_env, monkeypatch):
     # Mutant M4: routing ar/fr to v9 or en/id/ms/tr/ur to v9b breaks this test.
     calls: list[tuple[str, str]] = []

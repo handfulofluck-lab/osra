@@ -605,6 +605,8 @@ def _own_model_approval() -> tuple[datetime, set[str] | None]:
 
 @router.get("/health/own-model", include_in_schema=False)
 def health_own_model() -> dict:
+    if os.environ.get("OSRA_DEPLOYMENT_SCOPE") != "staging":
+        raise HTTPException(status_code=404, detail="not_found")
     try:
         cfg = get_registry().get_config()
     except AdapterUnavailable:
