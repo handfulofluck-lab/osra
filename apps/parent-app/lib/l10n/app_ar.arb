@@ -1102,5 +1102,13 @@
   "socialAlertPreviewExpiredBody": "انتهت صلاحية المعاينة المشفّرة أو لم تُحفظ لهذا التنبيه. ما زالت تفاصيل التنبيه وإرشادات الحديث مع طفلك محفوظة هنا.",
   "socialAlertUnavailableTitle": "التنبيه غير متاح",
   "socialAlertUnavailableBody": "تعذّر العثور على هذا التنبيه. افتح «التنبيهات» لمراجعة النشاط الأخير.",
-  "socialAlertViewAll": "كل التنبيهات"
+  "socialAlertViewAll": "كل التنبيهات",
+  "locationUpdatedJustNow": "آخر تحديث: الآن",
+  "locationUpdatedMinutes": "{count, plural, =1{آخر تحديث قبل دقيقة} =2{آخر تحديث قبل دقيقتين} few{آخر تحديث قبل {count} دقائق} many{آخر تحديث قبل {count} دقيقة} other{آخر تحديث قبل {count} دقيقة}}",
+  "locationUpdatedHours": "{count, plural, =1{آخر تحديث قبل ساعة} =2{آخر تحديث قبل ساعتين} few{آخر تحديث قبل {count} ساعات} many{آخر تحديث قبل {count} ساعة} other{آخر تحديث قبل {count} ساعة}}",
+  "locationUpdatedDays": "{count, plural, =1{آخر تحديث قبل يوم} =2{آخر تحديث قبل يومين} few{آخر تحديث قبل {count} أيام} many{آخر تحديث قبل {count} يومًا} other{آخر تحديث قبل {count} يوم}}",
+  "locationUpdatedUnknown": "وقت التحديث غير معروف",
+  "locationFindingAddress": "جارٍ تحديد العنوان…",
+  "locationAddressUnavailable": "العنوان غير متوفر",
+  "locationMapSemantics": "خريطة تُظهر مكان {name}"
 }

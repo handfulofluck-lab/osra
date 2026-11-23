@@ -22,6 +22,7 @@ import '../dashboard/dashboard_screen.dart' show formatLastSeen;
 import '../pairing/pair_qr_screen.dart';
 import '../rules/active_window.dart';
 import '../social/social_screen.dart' show SocialSectionsView;
+import '../map/child_location_view.dart';
 import 'app_groups_section.dart';
 import 'phone_setup_section.dart';
 import 'command_history_screen.dart' show formatCommandTime;
@@ -843,6 +844,7 @@ class _LocationTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final ping = ref.watch(locationProvider(childId));
+    final childName = ref.watch(familyProvider).valueOrNull?.children.where((c) => c.id == childId).firstOrNull?.displayName ?? '';
     // #869: the app could *show* a `locate_now` in a device's command history but had no way to send one, so
     // "Locate the child" had nothing behind it. It sits here, next to the state a parent reads when there is no
     // position, rather than in the device-command row — that row already wraps to three lines at 320 px and one
@@ -887,37 +889,13 @@ class _LocationTab extends ConsumerWidget {
           if (p == null)
             Text(l10n.noLocationReported)
           else ...[
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.location_on),
-                title: Text(ltrIsolate('${p.lat.toStringAsFixed(6)}, ${p.lng.toStringAsFixed(6)}')),
-                subtitle: Text(l10n.accuracyLabel(
-                  p.accuracyM.round(),
-                  p.timestamp == null
-                      ? l10n.timeUnknown
-                      : DateFormat.yMMMd(context.localeName).add_Hms().format(p.timestamp!.toLocal()),
-                )),
-              ),
-            ),
+            // Karim 22 Nov: a real map, a place name and freshness, never raw coordinates.
+            ChildLocationCard(ping: p, childName: childName),
             const SizedBox(height: AppSpace.md),
           ],
           // Feature #15: today's location history with a time scrubber.
           _HistoryScrubber(childId: childId),
           const SizedBox(height: AppSpace.md),
-          // NOTE: map placeholder — a full per-child map lives on /map.
-          AspectRatio(
-            aspectRatio: 16 / 9,
-            child: Card(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.map_outlined, size: 48),
-                  const SizedBox(height: AppSpace.sm),
-                  Text(l10n.mapPreview),
-                ],
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -1008,13 +986,18 @@ class _HistoryScrubberState extends ConsumerState<_HistoryScrubber> {
                     ),
                     const SizedBox(width: AppSpace.xs),
                     Expanded(
-                      child: Text(
-                        ts == null
-                            ? '${ltrIsolate('${ping.lat.toStringAsFixed(5)}, ${ping.lng.toStringAsFixed(5)}')} · ${l10n.accuracyUnknown}'
-                            : '${DateFormat.Hm(context.localeName).format(ts.toLocal())} · '
-                                '${ltrIsolate('${ping.lat.toStringAsFixed(5)}, ${ping.lng.toStringAsFixed(5)}')} · '
-                                '${l10n.accuracyShort(ping.accuracyM.round())}',
-                        style: Theme.of(context).textTheme.bodySmall,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          PlaceNameText(ping: ping, style: Theme.of(context).textTheme.bodyMedium, maxLines: 1),
+                          Text(
+                            ts == null
+                                ? l10n.accuracyUnknown
+                                : '${DateFormat.Hm(context.localeName).format(ts.toLocal())} · '
+                                    '${l10n.accuracyShort(ping.accuracyM.round())}',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
                       ),
                     ),
                   ],

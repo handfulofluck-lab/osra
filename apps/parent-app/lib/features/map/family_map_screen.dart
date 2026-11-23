@@ -4,11 +4,12 @@ import 'dart:math' as math;
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_map/flutter_map.dart' as fm;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart' as ll;
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
-import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
@@ -16,6 +17,7 @@ import '../../theme/app_tokens.dart';
 import '../../api/permission_errors.dart';
 import '../../widgets/error_retry_view.dart';
 import '../children/command_messages.dart';
+import 'child_location_view.dart';
 
 /// Marker hue per device status.
 double _statusHue(String status) => switch (status) {
@@ -148,8 +150,8 @@ class ChildMapSheet extends ConsumerWidget {
                   : DateFormat.yMMMd(context.localeName).add_Hms().format(ping.timestamp!.toLocal()),
             )),
             const SizedBox(height: AppSpace.xs),
-            // NOTE: reverse geocoding is a non-goal; show raw coordinates as the address placeholder.
-            Text(ltrIsolate('${ping.lat.toStringAsFixed(6)}, ${ping.lng.toStringAsFixed(6)}')),
+            // Karim 22 Nov: the phone's own reverse geocoder names the place; never raw coordinates.
+            PlaceNameText(ping: ping),
             if (device != null && device!.batteryPct > 0) ...[
               const SizedBox(height: AppSpace.xs),
               Text(context.l10n.familyMapBattery(device!.batteryPct)),
@@ -256,6 +258,9 @@ class _MapBodyState extends ConsumerState<_MapBody> {
     final fenceColor = context.tokens.primary;
     LatLng? firstPing;
     final points = <LatLng>[];
+    // Karim 22 Nov: the same pins and fences for the OpenStreetMap view an iPhone build without a Google key draws.
+    final osmPins = <({Child child, LocationPing ping})>[];
+    final osmFences = <Geofence>[];
 
     for (final child in widget.overview.children) {
       final ping = ref.watch(locationProvider(child.id)).valueOrNull;
@@ -263,6 +268,7 @@ class _MapBodyState extends ConsumerState<_MapBody> {
       if (ping != null && firstPing == null) firstPing = LatLng(ping.lat, ping.lng);
       if (ping != null) {
         points.add(LatLng(ping.lat, ping.lng));
+        osmPins.add((child: child, ping: ping));
         markers.add(Marker(
           markerId: MarkerId(child.id),
           position: LatLng(ping.lat, ping.lng),
@@ -272,6 +278,7 @@ class _MapBodyState extends ConsumerState<_MapBody> {
         ));
       }
       for (final fence in ref.watch(geofencesProvider(child.id)).valueOrNull ?? const <Geofence>[]) {
+        osmFences.add(fence);
         circles.add(Circle(
           circleId: CircleId(fence.id),
           center: LatLng(fence.lat, fence.lng),
@@ -323,28 +330,14 @@ class _MapBodyState extends ConsumerState<_MapBody> {
       ],
     ]);
 
-    if (!mapIsAvailable(Theme.of(context).platform)) {
-      // #598: no key means no map view, not a crash. The copy is an existing approved string rather than a
-      // new English one — the specific sentence ("Map unavailable in this build") needs the Arabic Language
-      // Bureau, and shipping English here would be the raw-key class of bug the localization tests exist for.
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpace.xl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.map_outlined, size: 48),
-              const SizedBox(height: AppSpace.sm),
-              Text(context.l10n.phoneSetupStateUnavailable, textAlign: TextAlign.center),
-            ],
-          ),
-        ),
-      );
-    }
+    // #598: an iPhone build without a Google Maps key must not construct a GoogleMap (it aborts). Karim 22 Nov:
+    // it used to say "unavailable" instead; it now draws the same pins and fences on OpenStreetMap tiles.
+    final useGoogle = mapIsAvailable(Theme.of(context).platform);
 
     return Stack(
       children: [
-        GoogleMap(
+        if (useGoogle)
+          GoogleMap(
           initialCameraPosition: CameraPosition(target: camera.target, zoom: camera.zoom),
           markers: markers,
           circles: circles,
@@ -361,6 +354,81 @@ class _MapBodyState extends ConsumerState<_MapBody> {
                     initialCenter: latLng,
                   ),
         ),
+        if (!useGoogle)
+          fm.FlutterMap(
+            options: fm.MapOptions(
+              initialCenter: ll.LatLng(camera.target.latitude, camera.target.longitude),
+              initialZoom: camera.zoom,
+              initialCameraFit: focus == null && points.length > 1
+                  ? fm.CameraFit.coordinates(
+                      coordinates: [for (final p in points) ll.LatLng(p.latitude, p.longitude)],
+                      padding: const EdgeInsets.all(64),
+                    )
+                  : null,
+            ),
+            children: [
+              fm.TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.osratech.parent',
+              ),
+              fm.CircleLayer(circles: [
+                for (final fence in osmFences)
+                  fm.CircleMarker(
+                    point: ll.LatLng(fence.lat, fence.lng),
+                    radius: fence.radiusM,
+                    useRadiusInMeter: true,
+                    color: fenceColor.withValues(alpha: 0.15),
+                    borderColor: fenceColor,
+                    borderStrokeWidth: 1,
+                  ),
+                if (focus != null && (focus.accuracyM ?? 0) > 0)
+                  fm.CircleMarker(
+                    point: ll.LatLng(focus.position.latitude, focus.position.longitude),
+                    radius: focus.accuracyM!,
+                    useRadiusInMeter: true,
+                    color: context.tokens.danger.withValues(alpha: 0.12),
+                    borderColor: context.tokens.danger,
+                    borderStrokeWidth: 1,
+                  ),
+              ]),
+              fm.MarkerLayer(markers: [
+                for (final pin in osmPins)
+                  fm.Marker(
+                    point: ll.LatLng(pin.ping.lat, pin.ping.lng),
+                    width: 140,
+                    height: 72,
+                    alignment: Alignment.topCenter,
+                    child: GestureDetector(
+                      key: ValueKey('osmPin-${pin.child.id}'),
+                      onTap: () => _showChildSheet(context, ref, pin.child, pin.ping),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Material(
+                            elevation: 1,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              child: Text(pin.child.displayName, maxLines: 1, overflow: TextOverflow.ellipsis),
+                            ),
+                          ),
+                          Icon(Icons.location_on, size: 40, color: context.tokens.primary),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (focus != null)
+                  fm.Marker(
+                    point: ll.LatLng(focus.position.latitude, focus.position.longitude),
+                    width: 40,
+                    height: 40,
+                    alignment: Alignment.topCenter,
+                    child: Icon(Icons.location_on, size: 40, color: context.tokens.danger),
+                  ),
+              ]),
+              const fm.SimpleAttributionWidget(source: Text('© OpenStreetMap contributors')),
+            ],
+          ),
         if (widget.overview.children.isEmpty)
           Center(
             child: Card(

@@ -1844,5 +1844,17 @@
   "socialAlertPreviewExpiredBody": "The encrypted preview has expired or was not stored for this alert. Alert details and the conversation guide remain saved here.",
   "socialAlertUnavailableTitle": "Alert unavailable",
   "socialAlertUnavailableBody": "This alert could not be found. Open Alerts to review recent activity.",
-  "socialAlertViewAll": "All alerts"
+  "socialAlertViewAll": "All alerts",
+  "locationUpdatedJustNow": "Updated just now",
+  "locationUpdatedMinutes": "{count, plural, =1{Updated 1 min ago} other{Updated {count} min ago}}",
+  "@locationUpdatedMinutes": { "placeholders": { "count": { "type": "int" } } },
+  "locationUpdatedHours": "{count, plural, =1{Updated 1 hour ago} other{Updated {count} hours ago}}",
+  "@locationUpdatedHours": { "placeholders": { "count": { "type": "int" } } },
+  "locationUpdatedDays": "{count, plural, =1{Updated 1 day ago} other{Updated {count} days ago}}",
+  "@locationUpdatedDays": { "placeholders": { "count": { "type": "int" } } },
+  "locationUpdatedUnknown": "Update time unknown",
+  "locationFindingAddress": "Finding address…",
+  "locationAddressUnavailable": "Address not available",
+  "locationMapSemantics": "Map showing where {name} is",
+  "@locationMapSemantics": { "placeholders": { "name": { "type": "String" } } }
 }

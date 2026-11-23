@@ -5492,6 +5492,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'All alerts'**
   String get socialAlertViewAll;
+
+  /// No description provided for @locationUpdatedJustNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Updated just now'**
+  String get locationUpdatedJustNow;
+
+  /// No description provided for @locationUpdatedMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Updated 1 min ago} other{Updated {count} min ago}}'**
+  String locationUpdatedMinutes(int count);
+
+  /// No description provided for @locationUpdatedHours.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Updated 1 hour ago} other{Updated {count} hours ago}}'**
+  String locationUpdatedHours(int count);
+
+  /// No description provided for @locationUpdatedDays.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Updated 1 day ago} other{Updated {count} days ago}}'**
+  String locationUpdatedDays(int count);
+
+  /// No description provided for @locationUpdatedUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Update time unknown'**
+  String get locationUpdatedUnknown;
+
+  /// No description provided for @locationFindingAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'Finding address…'**
+  String get locationFindingAddress;
+
+  /// No description provided for @locationAddressUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Address not available'**
+  String get locationAddressUnavailable;
+
+  /// No description provided for @locationMapSemantics.
+  ///
+  /// In en, this message translates to:
+  /// **'Map showing where {name} is'**
+  String locationMapSemantics(String name);
 }
 
 class _AppLocalizationsDelegate
