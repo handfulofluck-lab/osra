@@ -957,17 +957,24 @@ export async function deviceRoutes(app: FastifyInstance) {
       });
       const current = issued?.rulesVersion ?? 0;
       if (reportedVersion <= current) {
-        await prisma.device.update({ where: { id }, data: { appliedRulesVersion: reportedVersion } });
+        // Codex #1002 review (23 Nov): the phone now reports its applied version at once *and* on the periodic
+        // upload, so two uploads can arrive out of order. The write only ever moves the stored version up, in
+        // one statement, so a delayed report of 3 cannot overwrite a 4 that landed first (and two concurrent
+        // reports cannot both claim the transition). A new pairing is a new device row (null), so its first
+        // report is always taken.
+        const written = await prisma.device.updateMany({
+          where: { id, OR: [{ appliedRulesVersion: null }, { appliedRulesVersion: { lt: reportedVersion } }] },
+          data: { appliedRulesVersion: reportedVersion },
+        });
         // #865: tell the family's parents the moment its last reporting device catches up. Without this
         // the "hasn't picked this change up yet" line is refreshed only by an unrelated socket frame, so
         // a parent reads "not picked up" while the phone is already enforcing. The frame carries the
         // same reduced number the banner reads and nothing else: no rule content, no device detail.
         //
-        // Only on the transition: `req.device` is the row as it was before this upload, so an upload that
-        // repeats a version the phone already reported must not publish — otherwise every telemetry tick
-        // makes every open parent app refetch the family snapshot, changed or not.
-        const previousVersion = (device as { appliedRulesVersion?: number | null }).appliedRulesVersion ?? null;
-        const advanced = previousVersion === null || reportedVersion > previousVersion;
+        // Only on the transition: the guarded write above changed the row only if this report moved the version
+        // up, so an upload that repeats (or trails) a version the phone already reported does not publish —
+        // otherwise every telemetry tick makes every open parent app refetch the family snapshot, changed or not.
+        const advanced = (written?.count ?? 0) > 0;
         const familyId = (device as { child?: { familyId?: string } }).child?.familyId;
         if (familyId && advanced) {
           const siblings = await prisma.device.findMany({

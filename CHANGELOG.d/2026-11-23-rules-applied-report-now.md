@@ -1,1 +1,2 @@
 - Android child: the phone tells the server as soon as it applies new rules, so the Parent app's "pending on the phone" banner clears within seconds instead of after the 15-minute telemetry upload (Karim's 23 Nov test).
+- API and Android child: a late upload that carries an older applied rules version no longer puts a caught-up phone back to "pending" (the stored version only moves up, on the server and on the phone).

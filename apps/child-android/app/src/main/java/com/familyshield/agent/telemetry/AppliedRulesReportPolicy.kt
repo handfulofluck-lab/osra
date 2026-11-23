@@ -8,4 +8,11 @@ package com.familyshield.agent.telemetry
  */
 object AppliedRulesReportPolicy {
     fun shouldReport(applied: Int?, lastReported: Int?): Boolean = applied != null && applied != lastReported
+
+    /**
+     * Codex #1002 review: the marker after an upload covering [version] succeeds. Two uploads can complete out
+     * of order (the periodic one carrying 3 finishing after the immediate one carrying 4), so an older
+     * acknowledgement never moves the marker back. A re-pair clears the marker, so null starts fresh.
+     */
+    fun acknowledged(current: Int?, version: Int): Int = if (current == null || version > current) version else current
 }

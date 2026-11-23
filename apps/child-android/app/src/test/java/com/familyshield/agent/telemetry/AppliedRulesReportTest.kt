@@ -1,6 +1,7 @@
 package com.familyshield.agent.telemetry
 
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -26,6 +27,27 @@ class AppliedRulesReportTest {
     fun `nothing is reported before any rules are applied or when the server already has it`() {
         assertFalse(AppliedRulesReportPolicy.shouldReport(applied = null, lastReported = null))
         assertFalse(AppliedRulesReportPolicy.shouldReport(applied = 19, lastReported = 19))
+    }
+
+    @Test
+    fun `an older upload finishing last does not roll the marker back`() {
+        // The immediate report of 4 succeeds first, then the periodic upload that carried 3 succeeds.
+        val afterImmediate = AppliedRulesReportPolicy.acknowledged(current = 3, version = 4)
+        assertEquals(4, AppliedRulesReportPolicy.acknowledged(current = afterImmediate, version = 3))
+        assertEquals(4, AppliedRulesReportPolicy.acknowledged(current = 4, version = 4))
+        // A cleared marker (re-pair) takes whatever version is acknowledged first.
+        assertEquals(2, AppliedRulesReportPolicy.acknowledged(current = null, version = 2))
+    }
+
+    @Test
+    fun `the stored marker goes through the monotonic rule in one edit`() {
+        val settings = sourceFile("app/src/main/java/com/familyshield/agent/data/AgentSettings.kt")
+        val body = settings.substringAfter("suspend fun recordReportedAppliedRulesVersion(").substringBefore("\n    }\n")
+        val edit = body.indexOf("store.edit")
+        val read = body.indexOf("it[KEY_REPORTED_APPLIED_RULES_VERSION]?.toIntOrNull()")
+        val merge = body.indexOf("AppliedRulesReportPolicy.acknowledged(")
+        assertTrue("reads the current marker inside the edit", edit in 0 until read)
+        assertTrue("and writes it through acknowledged()", read in 0 until merge)
     }
 
     private val reporter = sourceFile("app/src/main/java/com/familyshield/agent/telemetry/UsageReporter.kt")

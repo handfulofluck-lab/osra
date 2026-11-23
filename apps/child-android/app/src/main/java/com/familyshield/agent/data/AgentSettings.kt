@@ -10,6 +10,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.familyshield.agent.receivers.AlertThrottlePolicy
 import com.familyshield.agent.receivers.InstallAlertPolicy
 import com.familyshield.agent.security.TamperState
+import com.familyshield.agent.telemetry.AppliedRulesReportPolicy
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -105,9 +106,15 @@ class AgentSettings @Inject constructor(
     /** Karim 23 Nov: the applied rules version the server last accepted, so a refresh reports a change once. */
     suspend fun reportedAppliedRulesVersion(): Int? = read(KEY_REPORTED_APPLIED_RULES_VERSION)?.toIntOrNull()
 
-    /** Records the applied version a successful upload covered. */
+    /**
+     * Records the applied version a successful upload covered. Codex #1002 review: the periodic upload and the
+     * immediate report can finish out of order, so the marker only moves up, read and written in one edit.
+     */
     suspend fun recordReportedAppliedRulesVersion(version: Int) {
-        store.edit { it[KEY_REPORTED_APPLIED_RULES_VERSION] = version.toString() }
+        store.edit {
+            val current = it[KEY_REPORTED_APPLIED_RULES_VERSION]?.toIntOrNull()
+            it[KEY_REPORTED_APPLIED_RULES_VERSION] = AppliedRulesReportPolicy.acknowledged(current, version).toString()
+        }
     }
 
     /** Returns the persisted rule set JSON, or null. */
