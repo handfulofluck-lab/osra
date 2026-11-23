@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -336,6 +338,18 @@ String _firstLetter(String label) {
   return String.fromCharCode(trimmed.runes.first).toUpperCase();
 }
 
+final _iconCache = <String, Uint8List?>{};
+
+/// The bytes of a `data:` icon URI, decoded once and kept (a 72 px icon is a few KB; at most a few
+/// hundred apps). A malformed URI gives null and the row keeps its letter avatar.
+Uint8List? _iconBytes(String uri) => _iconCache.putIfAbsent(uri, () {
+      try {
+        return UriData.parse(uri).contentAsBytes();
+      } catch (_) {
+        return null;
+      }
+    });
+
 /// The app's real icon when one has arrived, otherwise a letter avatar in the brand tint (U33: never a
 /// blank square). The letter is the first character of the name, which reads the same in every script.
 class AppIconBadge extends StatelessWidget {
@@ -371,6 +385,23 @@ class AppIconBadge extends StatelessWidget {
     );
     final url = app.iconUrl;
     if (url == null) return avatar;
+    // Karim 23 Nov: the server hands the phone's launcher icon back as a `data:` URI (PNG or WebP),
+    // which Image.network cannot load. Decode it once per URI and draw it from memory.
+    if (url.startsWith('data:')) {
+      final bytes = _iconBytes(url);
+      if (bytes == null) return avatar;
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        child: Image.memory(
+          bytes,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: (_, __, ___) => avatar,
+        ),
+      );
+    }
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppRadius.sm),
       child: Image.network(
