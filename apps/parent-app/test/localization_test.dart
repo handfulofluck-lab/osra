@@ -698,7 +698,7 @@ void main() {
         expect(ar.alertTitleFor('tamper', 'x', isEnglish: false, tamperType: t), isNot(ar.alertTitleTamper), reason: t);
       }
       expect(en.alertTitleFor('tamper', 'Agent updated', isEnglish: true, tamperType: 'replaced'), 'OSRA was updated on a phone');
-      expect(ar.alertTitleFor('tamper', 'Agent updated', isEnglish: false, tamperType: 'replaced'), 'تم تحديث OSRA على هاتف');
+      expect(ar.alertTitleFor('tamper', 'Agent updated', isEnglish: false, tamperType: 'replaced'), 'تم تحديث تطبيق أسرة للأطفال على أحد الهواتف');
       expect(en.alertTitleFor('tamper', 'x', isEnglish: true, tamperType: 'device_silent'), 'A phone stopped reporting');
     });
 
