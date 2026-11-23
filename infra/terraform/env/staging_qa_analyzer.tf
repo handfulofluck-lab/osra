@@ -14,6 +14,10 @@ locals {
     }]
   })
 
+  # Explicit provider selector for API and analyzer (#962). Unset means the services' default, bedrock.
+  staging_qa_engine = local.staging_qa_armed ? [
+    { name = "OSRA_STAGING_QA_ENGINE", value = try(var.staging_qa_analyzer.engine, "bedrock") },
+  ] : []
   staging_qa_pair_text = local.staging_qa_armed && try(var.staging_qa_analyzer.allow_synthetic_pair_text, false) ? [
     { name = "OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT", value = "1" },
   ] : []
@@ -86,6 +90,12 @@ resource "aws_service_discovery_service" "staging_qa" {
   }
 
   health_check_custom_config {}
+
+  # AWS does not return the empty block, so without this every plan forces a replacement, and the
+  # delete fails while tasks are registered (#962, 23 Nov).
+  lifecycle {
+    ignore_changes = [health_check_custom_config]
+  }
 }
 
 resource "aws_cloudwatch_log_group" "staging_qa_analyzer" {
@@ -219,6 +229,7 @@ resource "aws_ecs_task_definition" "staging_qa_analyzer" {
         value = "https://${aws_vpc_endpoint.staging_qa_bedrock[0].dns_entry[0].dns_name}"
       }] : [],
       local.staging_qa_pair_text,
+      local.staging_qa_engine,
       local.staging_model_env,
     )
     secrets = local.staging_qa_armed ? concat(local.staging_qa_approval, [
