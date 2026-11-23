@@ -215,6 +215,7 @@ run "armed_qa_analyzer_plans_only_the_private_scoped_route" {
     }
     staging_qa_analyzer = {
       armed                     = true
+      own_model_task_size       = true
       allow_synthetic_pair_text = true
       image_digest              = "sha256:${sha256("qa-image")}"
       frankfurt_vpc_cidr        = format("%d.%d.%d.%d/%d", 10, 40, 0, 0, 24)
@@ -244,6 +245,11 @@ run "armed_qa_analyzer_plans_only_the_private_scoped_route" {
     values = {
       arn = "arn:aws:iam::000000000000:role/test-analyzer-task"
     }
+  }
+
+  assert {
+    condition     = aws_ecs_task_definition.staging_qa_analyzer[0].cpu == "2048" && aws_ecs_task_definition.staging_qa_analyzer[0].memory == "8192"
+    error_message = "an armed own-model test needs two vCPUs and eight GiB"
   }
 
   assert {
@@ -414,6 +420,7 @@ run "disarmed_qa_analyzer_has_no_model_or_api_access" {
       allow_read = true
     }
     staging_qa_analyzer = {
+      own_model_task_size       = true
       allow_synthetic_pair_text = true
       image_digest              = "sha256:${sha256("qa-image")}"
       frankfurt_vpc_cidr        = format("%d.%d.%d.%d/%d", 10, 40, 0, 0, 24)
@@ -434,6 +441,11 @@ run "disarmed_qa_analyzer_has_no_model_or_api_access" {
         hosted_zone_id = "ZTEST"
       }]
     }
+  }
+
+  assert {
+    condition     = aws_ecs_task_definition.staging_qa_analyzer[0].cpu == "512" && aws_ecs_task_definition.staging_qa_analyzer[0].memory == "1024"
+    error_message = "disarming restores baseline resources even when the larger size was requested"
   }
 
   assert {
