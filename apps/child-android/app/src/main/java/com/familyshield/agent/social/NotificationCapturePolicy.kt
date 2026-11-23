@@ -100,6 +100,33 @@ object NotificationCapturePolicy {
     }
 
     /**
+     * Issue #1027 security review (`osra-security#73`): **scope is decided before any state is kept.**
+     *
+     * [BurstTracker] remembers message text, so it must never see a notification the parent has not
+     * designated: the eligibility check runs on the app key and sender — both derived from the snapshot
+     * without touching the tracker — and only an eligible notification reaches [BurstTracker.newCaptures].
+     * A removal releases the key instead of returning early, so a chat the parent de-scopes does not leave
+     * its text behind for the life of the service.
+     *
+     * Pure, with the gate injected, so the ordering itself is a testable claim rather than a line in the
+     * service that a reviewer has to trust.
+     */
+    fun capturesFor(
+        snapshot: Snapshot,
+        tracker: BurstTracker,
+        eligible: (appKey: String, contact: String?) -> Boolean,
+    ): List<Capture> {
+        val appKey = MonitoredApps.appKeyFor(snapshot.packageId) ?: return emptyList()
+        if (snapshot.isRemoved) {
+            tracker.forget(snapshot.key)
+            return emptyList()
+        }
+        if (snapshot.isGroupSummary) return emptyList()
+        if (!eligible(appKey, ScanQueuePolicy.contactOf(snapshot.title))) return emptyList()
+        return tracker.newCaptures(snapshot)
+    }
+
+    /**
      * Issue #1027: the stateful half of the capture decision — which lines of a notification have already been
      * scanned. A WhatsApp burst updates **one** notification and Android re-delivers it on every update, so the
      * service needs to answer "what is new in this notification?" rather than "what does it say now?".
@@ -107,15 +134,34 @@ object NotificationCapturePolicy {
      * Kept separate from the pure policy so it can be tested without Android, and kept in the service instance
      * rather than in a singleton so a process death simply re-reads the current notification (at worst one line
      * is scanned twice; the queue's content-hash dedupe still drops the repeat).
+     *
+     * **Bounded on purpose** (`osra-security#73`): an entry holds message text, so its lifetime is capped by
+     * [ttlMs], its total size by [maxKeys] keys and [maxLinesPerKey] lines, and both are enforced on every
+     * call rather than only on removal — a notification the user swipes away may never produce a removal at all.
      */
-    class BurstTracker(private val maxLinesPerKey: Int = 64) {
+    class BurstTracker(
+        private val maxLinesPerKey: Int = 64,
+        private val maxKeys: Int = 32,
+        private val ttlMs: Long = 10 * 60 * 1000L,
+        private val clock: () -> Long = System::currentTimeMillis,
+    ) {
 
-        private data class Seen(val lastAtMs: Long, val texts: ArrayDeque<String>)
+        private data class Seen(val lastAtMs: Long, val touchedAtMs: Long, val texts: ArrayDeque<String>)
 
-        private val seen = HashMap<String, Seen>()
+        /** Insertion order is touch order: the least recently touched key is the first one. */
+        private val seen = LinkedHashMap<String, Seen>()
+
+        /** How many notifications currently hold state; the tests assert this returns to zero. */
+        val trackedKeys: Int get() = seen.size
+
+        /** Release everything this notification produced; called on removal and available to the service. */
+        fun forget(key: String) {
+            seen.remove(key)
+        }
 
         /** Every line of [snapshot] that has not been scanned yet, oldest first. */
         fun newCaptures(snapshot: Snapshot): List<Capture> {
+            prune()
             val appKey = MonitoredApps.appKeyFor(snapshot.packageId) ?: return emptyList()
             if (snapshot.isRemoved) return emptyList()
             if (snapshot.isGroupSummary) return emptyList()
@@ -141,7 +187,7 @@ object NotificationCapturePolicy {
                 if (texts.size >= maxLinesPerKey) texts.removeFirst()
                 texts.addLast(line.text)
             }
-            seen[snapshot.key] = Seen(lastAtMs = lastAt, texts = texts)
+            remember(snapshot.key, Seen(lastAtMs = lastAt, touchedAtMs = clock(), texts = texts))
 
             return fresh.map {
                 Capture(
@@ -155,6 +201,22 @@ object NotificationCapturePolicy {
         }
 
         private data class Line(val text: String, val atMs: Long?)
+
+        /** Drops entries older than [ttlMs]; called on every access so an idle key cannot outlive its use. */
+        private fun prune() {
+            val cutoff = clock() - ttlMs
+            seen.entries.removeAll { it.value.touchedAtMs < cutoff }
+        }
+
+        /** Records [value] as the most recently touched key and evicts the oldest when over [maxKeys]. */
+        private fun remember(key: String, value: Seen) {
+            seen.remove(key)
+            seen[key] = value
+            while (seen.size > maxKeys) {
+                val oldest = seen.keys.firstOrNull() ?: return
+                seen.remove(oldest)
+            }
+        }
 
         /**
          * The message entries, with their timestamps when the notification carries them, falling back to the

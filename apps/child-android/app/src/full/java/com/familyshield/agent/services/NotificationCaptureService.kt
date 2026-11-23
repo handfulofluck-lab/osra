@@ -81,10 +81,14 @@ class NotificationCaptureService : NotificationListenerService() {
 
     private fun capture(sbn: StatusBarNotification, removed: Boolean) {
         if (consentState.isPaused()) return
-        // Issue #1027: one notification can carry a whole burst. Enqueue every line this notification has not
-        // produced yet, oldest first, so a fast sender produces one scan per message instead of one per update.
-        burst.newCaptures(snapshotOf(sbn, removed)).forEach { capture ->
-            if (!TestChatCaptureGate.allows(this, capture.appKey, capture.contact)) return@forEach
+        // Issue #1027: one notification can carry a whole burst; enqueue every line it has not produced yet.
+        // Security review (osra-security#73): the gate runs inside capturesFor, *before* the tracker is given
+        // anything — an ineligible chat must not leave its text in this service's memory. A removal releases
+        // the key rather than being filtered before it can do that.
+        val captures = NotificationCapturePolicy.capturesFor(snapshotOf(sbn, removed), burst) { appKey, contact ->
+            TestChatCaptureGate.allows(this, appKey, contact)
+        }
+        captures.forEach { capture ->
             queue.enqueue(
                 app = capture.appKey,
                 contact = capture.contact,

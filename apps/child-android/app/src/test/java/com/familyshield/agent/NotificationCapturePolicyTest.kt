@@ -238,4 +238,85 @@ class NotificationCapturePolicyTest {
         assertEquals(emptyList<NotificationCapturePolicy.Entry>(), NotificationCapturePolicy.entriesOf("not a list"))
         assertEquals(emptyList<NotificationCapturePolicy.Entry>(), NotificationCapturePolicy.entriesOf(listOf(42)))
     }
+
+    // Issue #1027 security review (osra-security#73): the tracker holds message text, so an ineligible chat must
+    // never reach it, state must be releaseable, and its lifetime and size must be bounded. Every row below fails
+    // if the ordering or the bound is dropped, which is the point: a comment cannot hold that.
+
+    @Test
+    fun `the gate is asked about the app key and the sender before any state exists`() {
+        val asked = mutableListOf<Pair<String, String?>>()
+        val tracker = NotificationCapturePolicy.BurstTracker()
+        val captures = NotificationCapturePolicy.capturesFor(
+            snap(title = "Work group", messages = listOf("a"), messageTimesMs = listOf(1L)),
+            tracker,
+        ) { appKey, contact ->
+            asked += appKey to contact
+            false
+        }
+        assertEquals(listOf("whatsapp" to "Work group"), asked)
+        assertEquals(0, captures.size)
+        assertEquals(0, tracker.trackedKeys)
+    }
+
+    @Test
+    fun `an ineligible chat leaves the tracker empty and a later eligible one starts from scratch`() {
+        val tracker = NotificationCapturePolicy.BurstTracker()
+        val burst = snap(title = "Work group", messages = listOf("a", "b", "c"), messageTimesMs = listOf(1L, 2L, 3L))
+        assertEquals(0, NotificationCapturePolicy.capturesFor(burst, tracker) { _, _ -> false }.size)
+        assertEquals(0, tracker.trackedKeys)
+        // Now the parent designates it: all three lines are new, none were remembered from the refused pass.
+        assertEquals(3, NotificationCapturePolicy.capturesFor(burst, tracker) { _, _ -> true }.size)
+        assertEquals(1, tracker.trackedKeys)
+    }
+
+    @Test
+    fun `an eligible burst is tracked once and its redelivery adds nothing`() {
+        val tracker = NotificationCapturePolicy.BurstTracker()
+        val snapshot = snap(title = "Work group", messages = listOf("a", "b"), messageTimesMs = listOf(1_000L, 2_000L))
+        assertEquals(2, NotificationCapturePolicy.capturesFor(snapshot, tracker) { _, _ -> true }.size)
+        assertEquals(1, tracker.trackedKeys)
+        assertEquals(0, NotificationCapturePolicy.capturesFor(snapshot, tracker) { _, _ -> true }.size)
+    }
+
+    @Test
+    fun `a removal releases what the notification produced`() {
+        val tracker = NotificationCapturePolicy.BurstTracker()
+        val eligible = { _: String, _: String? -> true }
+        NotificationCapturePolicy.capturesFor(
+            snap(messages = listOf("a"), messageTimesMs = listOf(1_000L)),
+            tracker,
+            eligible,
+        )
+        assertEquals(1, tracker.trackedKeys)
+        assertEquals(0, NotificationCapturePolicy.capturesFor(snap(removed = true), tracker, eligible).size)
+        assertEquals(0, tracker.trackedKeys)
+    }
+
+    @Test
+    fun `state expires after its lifetime instead of outliving the dedupe window`() {
+        var clock = 1_000L
+        val tracker = NotificationCapturePolicy.BurstTracker(ttlMs = 10_000L, clock = { clock })
+        val snapshot = snap(messages = listOf("a"), messageTimesMs = listOf(1_000L))
+        assertEquals(1, tracker.newCaptures(snapshot).size)
+        assertEquals(1, tracker.trackedKeys)
+        clock += 10_001L
+        // The next access prunes, so the same line is new again — the state was dropped, not merely ignored.
+        assertEquals(1, tracker.newCaptures(snapshot).size)
+        assertEquals(1, tracker.trackedKeys)
+    }
+
+    @Test
+    fun `the tracker bounds how many notifications it holds and evicts the least recently touched`() {
+        val tracker = NotificationCapturePolicy.BurstTracker(maxKeys = 2)
+        repeat(3) { i ->
+            tracker.newCaptures(
+                snap(key = "k$i", messages = listOf("m$i"), messageTimesMs = listOf((i + 1).toLong() * 1_000L)),
+            )
+        }
+        assertEquals(2, tracker.trackedKeys)
+        // k0 was evicted, so its line is new again; k2 is still held and deduped.
+        assertEquals(1, tracker.newCaptures(snap(key = "k0", messages = listOf("m0"), messageTimesMs = listOf(1_000L))).size)
+        assertEquals(0, tracker.newCaptures(snap(key = "k2", messages = listOf("m2"), messageTimesMs = listOf(3_000L))).size)
+    }
 }
