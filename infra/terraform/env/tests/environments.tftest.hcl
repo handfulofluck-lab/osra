@@ -208,6 +208,11 @@ run "armed_qa_analyzer_plans_only_the_private_scoped_route" {
   variables {
     api_image           = "example/api:test"
     allowed_account_ids = [format("%012d", 0)]
+    staging_qa_model_archives = {
+      v9_sha256  = sha256("archive-nine")
+      v9b_sha256 = sha256("archive-nine-b")
+      allow_read = true
+    }
     staging_qa_analyzer = {
       armed                     = true
       own_model_task_size       = true
@@ -307,6 +312,101 @@ run "armed_qa_analyzer_plans_only_the_private_scoped_route" {
     ])
     error_message = "both armed tasks must receive the same explicit synthetic pairing switch"
   }
+
+  assert {
+    condition = jsondecode(aws_iam_role_policy.staging_model_archive_read[0].policy).Statement == [{
+      Effect   = "Allow"
+      Action   = ["s3:GetObject"]
+      Resource = [for tag in ["v9", "v9b"] : "${local.staging_model_bucket_arn}/own-model/${tag}.tar.gz"]
+    }] && aws_iam_role_policy.staging_model_archive_read[0].role == aws_iam_role.staging_qa_analyzer_task[0].name
+    error_message = "only the analyzer task role can receive the two exact object reads"
+  }
+
+  assert {
+    condition     = alltrue([aws_s3_bucket_public_access_block.staging_model_archives[0].block_public_acls, aws_s3_bucket_public_access_block.staging_model_archives[0].block_public_policy, aws_s3_bucket_public_access_block.staging_model_archives[0].ignore_public_acls, aws_s3_bucket_public_access_block.staging_model_archives[0].restrict_public_buckets]) && one(one(aws_s3_bucket_server_side_encryption_configuration.staging_model_archives[0].rule).apply_server_side_encryption_by_default).sse_algorithm == "AES256"
+    error_message = "the archive bucket requires all four public-access blocks and default encryption"
+  }
+
+  assert {
+    condition = jsondecode(aws_s3_bucket_policy.staging_model_archives[0].policy).Statement == [{
+      Sid       = "DenyInsecureTransport"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource  = [local.staging_model_bucket_arn, "${local.staging_model_bucket_arn}/*"]
+      Condition = { Bool = { "aws:SecureTransport" = "false" } }
+    }]
+    error_message = "archive access must deny non-TLS requests"
+  }
+
+  assert {
+    condition     = one([for item in jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].environment : item.value if item.name == "OSRA_OWN_MODEL_PRELOAD_TAGS"]) == "v9,v9b" && jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].healthCheck.startPeriod == 300
+    error_message = "the archive window must warm both routes and allow cold startup before counting health failures"
+  }
+
+  assert {
+    condition = alltrue([for name, expected in {
+      OSRA_STAGING_QA_OWN_MODEL_ENABLED = "1"
+      OSRA_OWN_MODEL_S3_REGION          = var.region
+      OSRA_OWN_MODEL_REGION             = var.region
+    } : one([for item in jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].environment : item.value if item.name == name]) == expected])
+    error_message = "the model window must enable scoring and record the actual task and bucket regions"
+  }
+}
+
+run "armed_v9b_only_reads_and_preloads_exactly_one_archive" {
+  command = plan
+
+  variables {
+    api_image           = "example/api:test"
+    allowed_account_ids = [format("%012d", 0)]
+    staging_qa_model_archives = {
+      v9b_sha256 = sha256("archive-nine-b")
+      allow_read = true
+    }
+    staging_qa_analyzer = {
+      armed                     = true
+      allow_synthetic_pair_text = true
+      image_digest              = "sha256:${sha256("qa-image")}"
+      frankfurt_vpc_cidr        = format("%d.%d.%d.%d/%d", 10, 40, 0, 0, 24)
+      prompt_secret_arn         = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-prompt", 0)
+      approval_secret_arn       = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-approval", 0)
+      pairing_secret_arn        = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-pairing", 0)
+    }
+  }
+
+  override_resource {
+    target          = aws_vpc_endpoint.staging_qa_bedrock[0]
+    override_during = plan
+
+    values = {
+      id = "vpce-test"
+      dns_entry = [{
+        dns_name       = "vpce-0123456789abcdef0-osratest.bedrock-runtime.eu-central-1.vpce.amazonaws.com"
+        hosted_zone_id = "ZTEST"
+      }]
+    }
+  }
+
+  override_resource {
+    target          = aws_iam_role.staging_qa_analyzer_task[0]
+    override_during = plan
+
+    values = {
+      arn = "arn:aws:iam::000000000000:role/test-analyzer-task"
+    }
+  }
+
+  # Mutant: granting both archive keys or preloading the missing tag widens a single-tag window.
+  assert {
+    condition = (
+      jsondecode(aws_iam_role_policy.staging_model_archive_read[0].policy).Statement[0].Resource == ["${local.staging_model_bucket_arn}/own-model/v9b.tar.gz"] &&
+      one([for item in local.staging_model_env : item.value if item.name == "OSRA_OWN_MODEL_PRELOAD_TAGS"]) == "v9b" &&
+      one([for item in local.staging_model_env : item.value if item.name == "OSRA_OWN_MODEL_V9B_ARCHIVE_SHA256"]) == sha256("archive-nine-b") &&
+      !anytrue([for item in local.staging_model_env : startswith(item.name, "OSRA_OWN_MODEL_V9_")])
+    )
+    error_message = "A v9b-only window must expose only the pinned v9b archive and preload only that tag."
+  }
 }
 
 run "disarmed_qa_analyzer_has_no_model_or_api_access" {
@@ -315,6 +415,10 @@ run "disarmed_qa_analyzer_has_no_model_or_api_access" {
   variables {
     api_image           = "example/api:test"
     allowed_account_ids = [format("%012d", 0)]
+    staging_qa_model_archives = {
+      v9b_sha256 = sha256("archive-nine-b")
+      allow_read = true
+    }
     staging_qa_analyzer = {
       own_model_task_size       = true
       allow_synthetic_pair_text = true
@@ -376,6 +480,16 @@ run "disarmed_qa_analyzer_has_no_model_or_api_access" {
       ) : startswith(item.name, "OSRA_STAGING_QA_") || item.name == "OSRA_DEPLOYMENT_SCOPE"
     ])
     error_message = "a disarmed analyzer adds no QA environment variables or secrets to the API"
+  }
+
+  assert {
+    condition     = length(aws_s3_bucket.staging_model_archives) == 1 && length(aws_iam_role_policy.staging_model_archive_read) == 0 && length(local.staging_model_env) == 0
+    error_message = "disarm must remove archive reads and retain the bucket"
+  }
+
+  assert {
+    condition     = !contains([for item in jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].environment : item.name], "OSRA_OWN_MODEL_PRELOAD_TAGS") && jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].healthCheck.startPeriod == 15
+    error_message = "disarm must remove model preloading and restore the ordinary health start period"
   }
 }
 

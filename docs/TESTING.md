@@ -1426,6 +1426,15 @@ Spooler, WN06 `Set-Date`, WN09 hosts write and `netsh winhttp set proxy`) held; 
 rows skipped. That run is **not** staging evidence; it only shows the harness measures what it claims.
 
 
+## Staging model checkpoint delivery (#962)
+
+1. Resolve the SHA-256 of each complete gzip-compressed tar archive on the approved source machine. The hash of a weights file inside an archive identifies a different artifact. Supply the v9b archive hash and the v9 hash when available in the private staging configuration under `staging_qa_model_archives`, initially with `allow_read = false`.
+2. Review the bucket, encryption, public access blocks and TLS policy in the saved staging plan. Confirm the analyzer subnet has an active route to regional S3. Its managed route table already uses the staging NAT for HTTPS bootstrap. If the deployed route differs, resolve that before rollout.
+3. During an approved transfer window, the named staging operator uploads each pinned object to its corresponding key, `own-model/v9.tar.gz` and `own-model/v9b.tar.gz`. Verify each uploaded object against the original whole-archive SHA-256. For multipart uploads, hash the ordered bytes on readback. Record the matched count.
+4. For an approved inference window set `allow_read = true` and arm the staging analyzer. Inspect the plan for the task-role read on exactly the pinned objects and the regional S3 inputs on the analyzer. Verify all pinned checkpoints load in the serving process and run the positive and harmless synthetic controls.
+   The task preloads only pinned tags and allows five minutes for startup health checks. Verify space for the image, both archives and their extracted contents against the 20 GiB default ephemeral storage. Record peak usage before adding another checkpoint. Confirm the collector accepts the actual serving region before sending either control.
+5. Disarm and confirm the task loses the object reads and archive inputs. Keep the storage configuration in place to retain the two objects between approved windows.
+
 ## Bedrock staging test with operator-chosen wording (#962)
 
 The reviewed staging analyzer defaults to exact fixtures. An exploratory run can enable
