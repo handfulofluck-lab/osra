@@ -104,7 +104,7 @@ def _validated(reply, version, pins, expected_language=None):
     return {"model": version, "language": language, "categories": probs, "flagged_categories": flagged}
 
 
-async def score_cpu(text, trace, expires, deadline):
+async def score_cpu(text, trace, expires, deadline, expected_region):
     """Call the staging CPU route in this process, without network or provider fallback."""
     from own_model_service import own_model_app
 
@@ -119,7 +119,7 @@ async def score_cpu(text, trace, expires, deadline):
     if response.status_code != 200 or len(response.content) > MAX_REPLY_BYTES:
         raise ValueError("CPU scoring unavailable")
     reply = json.loads(response.content, object_pairs_hook=_unique)
-    if reply["trace_id"] != trace or reply["region"] != REGION:
+    if reply["trace_id"] != trace or reply["region"] != expected_region:
         raise ValueError("Unmatched CPU receipt")
     version = {"osra-own-v9": "v9", "osra-own-v9b": "v9b"}[reply["model"]]
     if reply["lang"] not in LANGUAGES[version]:

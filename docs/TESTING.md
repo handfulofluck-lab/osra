@@ -1456,6 +1456,10 @@ from `services/ai-engine` to exercise accepted and rejected requests without net
 selected provider's status before counting a verdict. A timeout or unavailable result carries no scores.
 The [staging acceptance procedure](QA/staging-model-smoke.md) describes the private route and live evidence.
 
+## Staging own-model region verification (#962)
+
+For an approved Stockholm CPU-only window, verify the scored receipt identifies Stockholm for both the concerning and harmless controls. Check the matching parent alert metadata for the same region and confirm the harmless control produces no alert. A Stockholm response must be rejected in Bedrock and combined-provider modes.
+
 ## 6. Traps that have cost real time here
 
 | Trap | What happened | Rule |
