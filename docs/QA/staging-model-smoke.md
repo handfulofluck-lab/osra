@@ -28,13 +28,16 @@ original response in the default mode. Other modes require the caller to read pr
 Own inference requires the Frankfurt `runtime.sagemaker` private endpoint URL in
 `OSRA_STAGING_QA_SAGEMAKER_ENDPOINT_URL`. Set `OSRA_STAGING_QA_V9_MODEL_SHA256`,
 `OSRA_STAGING_QA_V9_THRESHOLDS_SHA256` and the corresponding `V9B` values from the verified serving
-artifacts. The model pin refers to the weights reported by inference. The threshold pin refers to the
-calibration actually used. Verify that the endpoint policy and task role restrict invocation to the two
-approved staging checkpoints, and confirm that SageMaker data capture and container payload logging are off.
+artifacts. The model pin hashes the loaded weights file. The threshold pin hashes the exact calibration
+file loaded for that checkpoint. Model archives and reserialized calibration values have different
+digests. Verify the serving manifest at startup, confirm that the endpoint policy and task role restrict
+invocation to the two approved checkpoints, and check that SageMaker data capture and container
+payload logging are off.
 
 The serving contract accepts UTF-8 JSON containing `text` and `trace_id`. The candidate analyzer first
 calls the v9 endpoint. Its handler can score a supported language, or return `trace_id`, `route: "v9b"`
-and the detected `language` for Arabic or French. On a scored response the handler returns the trace,
+and the detected `language` for Arabic or French. The routed request carries that value as `lang`.
+On a scored response the handler returns the trace,
 `model`, `language`, `model_sha256`, `thresholds_sha256`, the seven native `probs`, its calibrated
 `flagged_categories` and its `verdict` (`safe` or `flagged`). An uncertain v9 result also requires a
 verified v9b response tagged `uncertain`. The analyzer takes the higher score for each category and

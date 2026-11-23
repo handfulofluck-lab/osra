@@ -90,7 +90,9 @@ def test_routed_reply_uses_serving_language_and_its_calibrated_category(sdk):
     assert result["model"] == "v9b" and result["language"] == "ar"
     assert result["flagged_categories"] == ["grooming"] and result["categories"]["grooming"] == 0.41
     assert [c.kwargs["EndpointName"] for c in invoke.call_args_list] == ["osra-staging-own-v9", "osra-staging-own-v9b"]
-    assert json.loads(invoke.call_args_list[1].kwargs["Body"])["language"] == "ar"
+    assert json.loads(invoke.call_args_list[1].kwargs["Body"]) == {
+        "text": "synthetic fixture", "trace_id": trace, "lang": "ar",
+    }
     assert all(body.closed for body in bodies)
 
 
@@ -150,3 +152,17 @@ def test_expired_budget_or_missing_pins_never_sends_text(sdk, monkeypatch):
     with pytest.raises(ValueError):
         score(trace)
     sdk.return_value.client.return_value.invoke_endpoint.assert_not_called()
+
+
+@pytest.mark.parametrize("payload", ["bare_scorer", "legacy", "unavailable"])
+def test_scorer_or_legacy_payload_without_native_provenance_has_no_verdict(sdk, payload):
+    # Mutant: infer a safe/flagged category or detected language from incomplete serving output.
+    trace = str(uuid4())
+    receipt = reply(trace, flagged=("grooming",))
+    native = {key: receipt[key] for key in ("probs", "flagged_categories", "verdict", "model_sha256", "thresholds_sha256")}
+    legacy = {"trace_id": trace, "region": "eu-central-1", "model": "v9", "flagged": True,
+              "severity": "warning", "categories": {**receipt["probs"], "safe": 0.0}}
+    payloads = {"bare_scorer": native, "legacy": legacy, "unavailable": {"error": "adapter_unavailable"}}
+    install(sdk, payloads[payload])
+    with pytest.raises(ValueError):
+        score(trace)

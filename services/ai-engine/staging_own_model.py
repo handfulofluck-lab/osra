@@ -56,7 +56,7 @@ def _invoke(version, text, trace, language, expires, deadline):
     client = _client()
     request = {"text": text, "trace_id": trace}
     if language is not None:
-        request["language"] = language
+        request["lang"] = language
     # Credential discovery may block. Never send a second checkpoint request after expiry.
     if datetime.now(timezone.utc) >= expires or monotonic() >= deadline:
         raise TimeoutError
