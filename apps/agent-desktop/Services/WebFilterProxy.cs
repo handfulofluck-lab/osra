@@ -19,6 +19,7 @@ public sealed class WebFilterProxy : BackgroundService
     private readonly ApiClient _api;
     private readonly AgentConfig _config;
     private ProxyServer? _proxy;
+    private ExplicitProxyEndPoint? _explicitEndPoint;
     private object? _previousProxyEnable;
     private object? _previousProxyServer;
     private DateTime _lastBlockAlertUtc = DateTime.MinValue;
@@ -109,25 +110,46 @@ public sealed class WebFilterProxy : BackgroundService
 
     private void StartProxy()
     {
+        // Feature #3: TLS termination only when FS_HTTPS_INSPECT=1 AND the generated root CA
+        // exists/is creatable. With decryptSsl off, CONNECT tunnels are still filtered by
+        // hostname in BeforeTunnelConnectRequest (#1011 criterion 4) without decrypting TLS.
+        var proxy = CreateProxyServer(Port, decryptSsl: null, out var explicitEndPoint, out var decryptSsl);
+        proxy.Start();
+        _proxy = proxy;
+        _explicitEndPoint = explicitEndPoint;
+        _log.LogInformation("WebFilterProxy listening on 127.0.0.1:{Port} (httpsInspect={HttpsInspect})", Port, decryptSsl);
+    }
+
+    /// <summary>
+    /// Creates and wires the <see cref="ProxyServer"/> and its <see cref="ExplicitProxyEndPoint"/>
+    /// (including <c>BeforeTunnelConnectRequest</c>). Exposed as <c>internal</c> so tests can
+    /// bind an ephemeral loopback port without touching the WinINET system proxy.
+    /// </summary>
+    internal ProxyServer CreateProxyServer(
+        int port,
+        bool? decryptSsl,
+        out ExplicitProxyEndPoint explicitEndPoint,
+        out bool effectiveDecryptSsl)
+    {
         var proxy = new ProxyServer
         {
             ExceptionFunc = ex => _log.LogError(ex, "Proxy engine error"),
         };
         proxy.BeforeRequest += OnBeforeRequest;
-        // Feature #3: TLS termination only when FS_HTTPS_INSPECT=1 AND the generated root CA
-        // exists/is creatable. With decryptSsl off, HTTPS flows are tunnelled untouched and only
-        // plain HTTP is filtered/logged (previous behavior).
-        var decryptSsl = HttpsInterception.TryConfigureDecryption(proxy, warn: message => _log.LogWarning("{Message}", message));
-        proxy.AddEndPoint(new ExplicitProxyEndPoint(IPAddress.Loopback, Port, decryptSsl));
-        proxy.Start();
-        _proxy = proxy;
-        _log.LogInformation("WebFilterProxy listening on 127.0.0.1:{Port} (httpsInspect={HttpsInspect})", Port, decryptSsl);
+        effectiveDecryptSsl = decryptSsl
+            ?? HttpsInterception.TryConfigureDecryption(proxy, warn: message => _log.LogWarning("{Message}", message));
+        explicitEndPoint = new ExplicitProxyEndPoint(IPAddress.Loopback, port, effectiveDecryptSsl);
+        explicitEndPoint.BeforeTunnelConnectRequest += OnBeforeTunnelConnectRequest;
+        proxy.AddEndPoint(explicitEndPoint);
+        return proxy;
     }
 
     private void StopProxy()
     {
         var proxy = _proxy;
+        var explicitEndPoint = _explicitEndPoint;
         _proxy = null;
+        _explicitEndPoint = null;
         if (proxy is null) return;
         try
         {
@@ -135,9 +157,52 @@ public sealed class WebFilterProxy : BackgroundService
         }
         finally
         {
+            if (explicitEndPoint is not null)
+            {
+                explicitEndPoint.BeforeTunnelConnectRequest -= OnBeforeTunnelConnectRequest;
+            }
             proxy.BeforeRequest -= OnBeforeRequest;
             proxy.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Hostname-only CONNECT gate (#1011 criterion 4): blocks forbidden domains, blocked
+    /// categories, and paused non-allowed hosts before an opaque HTTPS tunnel is established,
+    /// without requiring TLS decryption or a trusted root CA.
+    /// </summary>
+    internal Task OnBeforeTunnelConnectRequest(object sender, TunnelConnectSessionEventArgs e)
+    {
+        try
+        {
+            var request = e.HttpClient.Request;
+            var host = ConnectHostGate.NormalizeConnectHost(request.RequestUri?.Host, request.Host);
+            if (host is null) return Task.CompletedTask;
+
+            var decision = ConnectHostGate.Evaluate(host, e.DecryptSsl, _store, out var category);
+            var connectUrl = $"https://{host}/";
+
+            switch (decision)
+            {
+                case ConnectDecision.BlockPaused:
+                    _log.LogInformation("Internet paused; denied CONNECT tunnel to {Host}", host);
+                    _store.LogUrl(host, connectUrl, null, true);
+                    e.DenyConnect = true;
+                    break;
+                case ConnectDecision.BlockRule:
+                    _log.LogInformation("Blocked CONNECT tunnel to {Host} (category={Category})", host, category ?? "custom");
+                    _store.LogUrl(host, connectUrl, category, true);
+                    RaiseBlockAlert(host, connectUrl, category);
+                    e.DenyConnect = true;
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Error while handling a CONNECT tunnel request");
+        }
+
+        return Task.CompletedTask;
     }
 
     private async Task OnBeforeRequest(object sender, SessionEventArgs e)
@@ -150,10 +215,10 @@ public sealed class WebFilterProxy : BackgroundService
             if (string.IsNullOrWhiteSpace(host)) return;
 
             // Feature #11: while paused, sinkhole everything except the rule set's allowedDomains.
-            // NOTE: this gate sees plain HTTP and (with inspection on) decrypted HTTPS; opaque
-            // CONNECT tunnels still pass while decryptSsl is off — pausing is fail-open for
-            // HTTPS unless FS_HTTPS_INSPECT=1. Browsers are not killed; the block page is the
-            // enforcement (ProcessMonitor is untouched).
+            // Plain HTTP and (with inspection on) decrypted HTTPS receive the HTML block page here;
+            // opaque CONNECT tunnels when decryptSsl is off are denied at CONNECT in
+            // OnBeforeTunnelConnectRequest (#1011 criterion 4). Browsers are not killed; the block
+            // page / CONNECT refusal is the enforcement (ProcessMonitor is untouched).
             if (_store.Paused && PauseGate.ShouldServeBlockPageWhenPaused(host, _store.Current?.AllowedDomains))
             {
                 _log.LogInformation("Internet paused; sinkholed request to {Host}", host);
@@ -263,10 +328,10 @@ public sealed class WebFilterProxy : BackgroundService
         });
     }
 
-    // NOTE: HTTPS requests are only visible as CONNECT tunnels unless the agent root CA is trusted,
-    // so blocking/decryption applies to plain HTTP requests; domain-level HTTPS blocking would need
-    // BeforeTunnelConnectRequest plus a trusted root certificate. The SafeSearch rewrite itself
-    // lives in the pure SafeSearch helper (query params are replaced, never duplicated).
+    // NOTE: with HTTPS inspection off (default), HTTPS requests arrive as CONNECT tunnels and
+    // are filtered by hostname in OnBeforeTunnelConnectRequest (#1011 criterion 4) without
+    // decrypting TLS; URL path/SafeSearch rewriting requires FS_HTTPS_INSPECT=1 plus a trusted
+    // root certificate. The SafeSearch rewrite itself lives in the pure SafeSearch helper.
 
     private void SetSystemProxy()
     {

@@ -1,0 +1,1 @@
+- Windows desktop agent (`apps/agent-desktop`): enforce blocked domains, blocked categories, and internet-pause allowlist at HTTP `CONNECT` (`BeforeTunnelConnectRequest`) without requiring HTTPS inspection or a trusted root CA (#1011 criterion 4).
