@@ -1158,6 +1158,15 @@ class AlertTile extends StatelessWidget {
   static Color severityColor(String severity, [BuildContext? context]) =>
       (context?.tokens ?? AppTokens.light).severityDot(severity);
 
+  /// #1029 (UI/UX Bureau 7116310065): trims [name] to at most [maxChars] grapheme clusters
+  /// (`characters` so Arabic letters are never split) followed by `…`, keeping `· latest HH:mm` visible.
+  @visibleForTesting
+  static String truncateContactForCard(String name, {int maxChars = 24}) {
+    final chars = name.characters;
+    if (chars.length <= maxChars) return name;
+    return '${chars.take(maxChars)}…';
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -1176,7 +1185,7 @@ class AlertTile extends StatelessWidget {
           : ltrIsolate(normalizeDigits(DateFormat('HH:mm', 'en').format(latestAt.toLocal())));
       final contactName = alert.socialContactName;
       final contactDisplay = contactName != null
-          ? ltrIsolate(contactName)
+          ? ltrIsolate(truncateContactForCard(contactName))
           : l10n.socialAlertUnknownContact;
       subtitleText = l10n.socialAlertFromContact(contactDisplay, latestClock);
     } else {
@@ -1197,57 +1206,55 @@ class AlertTile extends StatelessWidget {
             key: ValueKey('alert-new-since-${alert.id}'),
             padding: const EdgeInsets.symmetric(horizontal: AppSpace.sm, vertical: 2),
             decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer,
+              color: theme.colorScheme.secondaryContainer,
               borderRadius: BorderRadius.circular(AppRadius.sm),
             ),
             child: Text(
               l10n.socialAlertNewSince(newSinceCount),
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onPrimaryContainer,
-                fontWeight: FontWeight.w700,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSecondaryContainer,
+                fontWeight: FontWeight.w600,
               ),
             ),
           )
         : null;
 
-    Widget? trailing;
-    if (newBadge != null && onAck != null) {
-      trailing = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          newBadge,
-          const SizedBox(width: AppSpace.xs),
-          IconButton(
-            icon: const Icon(Icons.check),
-            tooltip: l10n.acknowledgeTooltip,
-            onPressed: onAck,
-          ),
-        ],
-      );
-    } else if (newBadge != null) {
-      trailing = newBadge;
-    } else if (onAck != null) {
-      trailing = IconButton(
-        icon: const Icon(Icons.check),
-        tooltip: l10n.acknowledgeTooltip,
-        onPressed: onAck,
-      );
-    }
+    final subtitleWidget = Text(
+      subtitleText,
+      maxLines: alert.hasSocialCountSummary ? 2 : null,
+      overflow: alert.hasSocialCountSummary ? TextOverflow.ellipsis : null,
+      style: alert.hasSocialCountSummary
+          ? theme.textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant)
+          : null,
+    );
 
     return Card(
       key: ValueKey('alert-card-${alert.id}'),
       child: ListTile(
         leading: Icon(Icons.circle, color: severityColor(alert.severity, context), size: 14),
-        title: Text(titleText, maxLines: 2, overflow: TextOverflow.ellipsis),
-        subtitle: Text(
-          subtitleText,
-          maxLines: alert.hasSocialCountSummary ? 1 : null,
-          overflow: alert.hasSocialCountSummary ? TextOverflow.ellipsis : null,
-          style: alert.hasSocialCountSummary
-              ? theme.textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant)
-              : null,
+        title: Text(
+          titleText,
+          maxLines: alert.hasSocialCountSummary ? 3 : 2,
+          overflow: TextOverflow.ellipsis,
         ),
-        trailing: trailing,
+        subtitle: newBadge == null
+            ? subtitleWidget
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  subtitleWidget,
+                  const SizedBox(height: AppSpace.xs),
+                  newBadge,
+                ],
+              ),
+        trailing: onAck == null
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.check),
+                tooltip: l10n.acknowledgeTooltip,
+                onPressed: onAck,
+              ),
         onTap: onTap,
       ),
     );

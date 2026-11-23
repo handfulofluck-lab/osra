@@ -142,10 +142,23 @@ void main() {
       expect(find.textContaining('09:15'), findsOneWidget);
       expect(find.text('+2 new'), findsOneWidget);
 
-      // Subtitle enforces single-line ellipsis (7114262268 rule 1).
+      // Subtitle enforces maxLines 2 and title allows maxLines 3 (UI/UX Bureau 7116310065).
+      final titleText = tester.widget<Text>(find.textContaining('1 concerning message on'));
+      expect(titleText.maxLines, 3);
       final subtitleText = tester.widget<Text>(find.textContaining('From ${ltrIsolate('Alex Smith')}'));
-      expect(subtitleText.maxLines, 1);
+      expect(subtitleText.maxLines, 2);
       expect(subtitleText.overflow, TextOverflow.ellipsis);
+
+      // Contact names > 24 grapheme clusters are trimmed before formatting so "· latest HH:mm" stays visible.
+      expect(
+        AlertTile.truncateContactForCard('Mohammed Abdullah Al Mansouri'),
+        'Mohammed Abdullah Al Man…',
+      );
+      expect(
+        AlertTile.truncateContactForCard('محمد عبدالله المنصوري العلي'),
+        'محمد عبدالله المنصوري ال…',
+      );
+      expect(AlertTile.truncateContactForCard('Alex Smith'), 'Alex Smith');
 
       // Follow-up push ICU plurals (=1 and other) never carry a contact name (lock-screen privacy).
       expect(

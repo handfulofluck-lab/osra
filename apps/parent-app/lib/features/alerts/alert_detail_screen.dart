@@ -426,8 +426,6 @@ class _SocialAlertDetailBodyState extends ConsumerState<_SocialAlertDetailBody> 
           Text(
             countSubtitle,
             key: const ValueKey('alertDetailCountSub'),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodyMedium?.copyWith(color: tokens.onSurfaceVariant),
           ),
           const SizedBox(height: AppSpace.md),
