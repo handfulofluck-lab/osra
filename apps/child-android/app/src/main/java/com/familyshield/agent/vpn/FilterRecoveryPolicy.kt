@@ -19,16 +19,18 @@ object FilterRecoveryPolicy {
      * Whether [com.familyshield.agent.receivers.PackageReplacedReceiver] should restart
      * [FilterVpnService] after a genuine self-replace.
      *
-     * Respects pairing, prior VPN consent ([vpnEnabled] + [vpnPrepared]), and ADR-0008 consent
-     * withdrawal ([consentPaused]). Never restarts an already-live tunnel.
+     * Respects pairing, prior VPN consent ([vpnEnabled] + [vpnPrepared]), ADR-0008 consent
+     * withdrawal ([consentPaused]), and explicit revocation ([filterLost]). Never silently
+     * resurrects a revoked filter or restarts an already-live tunnel.
      */
     fun shouldRestartAfterUpdate(
         isPaired: Boolean,
         vpnEnabled: Boolean,
         vpnPrepared: Boolean,
         consentPaused: Boolean,
+        filterLost: Boolean,
         liveTunnelMode: String?,
-    ): Boolean = isPaired && vpnEnabled && vpnPrepared && !consentPaused && liveTunnelMode == null
+    ): Boolean = isPaired && vpnEnabled && vpnPrepared && !consentPaused && !filterLost && liveTunnelMode == null
 
     /**
      * Whether opening the paired status screen should kick off a one-shot background reconnect when

@@ -14,8 +14,10 @@ import org.junit.Test
  * - Mutant 1: remove `liveTunnelMode != null` from [FilterRecoveryPolicy.isTunnelEstablished] ->
  *   `stale persisted flag alone never claims the tunnel is established` fails.
  * - Mutant 2: remove `!consentPaused` from [FilterRecoveryPolicy.shouldRestartAfterUpdate] ->
- *   `update recovery respects withdrawn consent and pairing` fails.
- * - Mutant 3: remove `FilterVpnService.start` from `PackageReplacedReceiver.kt` ->
+ *   `update recovery respects withdrawn consent, pairing, vpn readiness, and already-live tunnel` fails.
+ * - Mutant 3: remove `!filterLost` from [FilterRecoveryPolicy.shouldRestartAfterUpdate] ->
+ *   `update recovery refuses to resurrect an explicitly revoked filter` fails (and only that row).
+ * - Mutant 4: remove `FilterVpnService.start` from `PackageReplacedReceiver.kt` ->
  *   `PackageReplacedReceiver clears stale state, reschedules work, and restarts web filter after genuine self-replace` fails.
  */
 class FilterRecoveryPolicyTest {
@@ -30,13 +32,14 @@ class FilterRecoveryPolicyTest {
     }
 
     @Test
-    fun `update recovery restarts web filter when paired, enabled, prepared, consented, and tunnel is down`() {
+    fun `update recovery restarts web filter when paired, enabled, prepared, consented, not revoked, and tunnel is down`() {
         assertTrue(
             FilterRecoveryPolicy.shouldRestartAfterUpdate(
                 isPaired = true,
                 vpnEnabled = true,
                 vpnPrepared = true,
                 consentPaused = false,
+                filterLost = false,
                 liveTunnelMode = null,
             ),
         )
@@ -46,27 +49,41 @@ class FilterRecoveryPolicyTest {
     fun `update recovery respects withdrawn consent, pairing, vpn readiness, and already-live tunnel`() {
         assertFalse(
             FilterRecoveryPolicy.shouldRestartAfterUpdate(
-                isPaired = false, vpnEnabled = true, vpnPrepared = true, consentPaused = false, liveTunnelMode = null,
+                isPaired = false, vpnEnabled = true, vpnPrepared = true, consentPaused = false, filterLost = false, liveTunnelMode = null,
             ),
         )
         assertFalse(
             FilterRecoveryPolicy.shouldRestartAfterUpdate(
-                isPaired = true, vpnEnabled = false, vpnPrepared = true, consentPaused = false, liveTunnelMode = null,
+                isPaired = true, vpnEnabled = false, vpnPrepared = true, consentPaused = false, filterLost = false, liveTunnelMode = null,
             ),
         )
         assertFalse(
             FilterRecoveryPolicy.shouldRestartAfterUpdate(
-                isPaired = true, vpnEnabled = true, vpnPrepared = false, consentPaused = false, liveTunnelMode = null,
+                isPaired = true, vpnEnabled = true, vpnPrepared = false, consentPaused = false, filterLost = false, liveTunnelMode = null,
             ),
         )
         assertFalse(
             FilterRecoveryPolicy.shouldRestartAfterUpdate(
-                isPaired = true, vpnEnabled = true, vpnPrepared = true, consentPaused = true, liveTunnelMode = null,
+                isPaired = true, vpnEnabled = true, vpnPrepared = true, consentPaused = true, filterLost = false, liveTunnelMode = null,
             ),
         )
         assertFalse(
             FilterRecoveryPolicy.shouldRestartAfterUpdate(
-                isPaired = true, vpnEnabled = true, vpnPrepared = true, consentPaused = false, liveTunnelMode = "dns",
+                isPaired = true, vpnEnabled = true, vpnPrepared = true, consentPaused = false, filterLost = false, liveTunnelMode = "dns",
+            ),
+        )
+    }
+
+    @Test
+    fun `update recovery refuses to resurrect an explicitly revoked filter`() {
+        assertFalse(
+            FilterRecoveryPolicy.shouldRestartAfterUpdate(
+                isPaired = true,
+                vpnEnabled = true,
+                vpnPrepared = true,
+                consentPaused = false,
+                filterLost = true,
+                liveTunnelMode = null,
             ),
         )
     }
@@ -124,6 +141,8 @@ class FilterRecoveryPolicyTest {
         assertTrue("stale established latch cleared", clearIdx > 0)
         assertTrue("periodic workers rescheduled", workIdx > gateIdx)
         assertTrue("recovery checks FilterRecoveryPolicy.shouldRestartAfterUpdate", policyIdx > gateIdx)
+        assertTrue("passes live settings.isPaired() into policy", receiver.contains("isPaired = settings.isPaired()"))
+        assertTrue("passes VpnState.isFilterLost into policy", receiver.contains("VpnState.isFilterLost(context, settings, consent)"))
         assertTrue("starts FilterVpnService when policy allows", startIdx > policyIdx)
     }
 

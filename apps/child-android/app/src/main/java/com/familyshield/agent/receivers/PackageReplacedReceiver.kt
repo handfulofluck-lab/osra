@@ -76,10 +76,11 @@ class PackageReplacedReceiver : BroadcastReceiver() {
 
         if (
             FilterRecoveryPolicy.shouldRestartAfterUpdate(
-                isPaired = true,
+                isPaired = settings.isPaired(),
                 vpnEnabled = VpnState.isEnabled(context),
                 vpnPrepared = FilterVpnService.isPrepared(context),
                 consentPaused = consent.isPaused(),
+                filterLost = VpnState.isFilterLost(context, settings, consent),
                 liveTunnelMode = FilterVpnService.tunnelMode,
             )
         ) {

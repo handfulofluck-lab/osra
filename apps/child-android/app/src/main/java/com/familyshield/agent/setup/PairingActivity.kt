@@ -994,8 +994,9 @@ class PairingActivity : ComponentActivity() {
             container.addView(
                 label(getString(R.string.setup_web_filter_disconnected)).apply { setTextColor(0xFFB00020.toInt()) },
             )
-            // #934: if the tunnel stopped after an app update and OS consent is intact, start it in the
-            // foreground now instead of leaving protection off while the status screen is open.
+            // #934: Android 12+ can defer or reject background foreground-service starts from
+            // PackageReplacedReceiver, so this foreground status-screen path is the intentional fallback
+            // when OS consent is intact and the filter was not explicitly revoked (filterLost == false).
             if (
                 !vpnAutoReconnectAttempted &&
                 com.familyshield.agent.vpn.FilterRecoveryPolicy.shouldAutoReconnectOnStatusOpen(
