@@ -4,6 +4,8 @@ This test exercises roadmap 2.6 on a dedicated staging pairing with synthetic me
 
 ## Runtime prerequisites
 
+The staged OSRA-only API allows ten seconds per model request, capped by approval expiry and a shared 25-second inference deadline for a batch. Completed receipts survive when other items time out.
+
 - Use the independently approved staging cut and the private analyzer service. In the staging account, confirm that Frankfurt GPT OSS 20B is available with invocation logging disabled and the approved retention settings. The analyzer uses its task role for that one model.
 - The Frankfurt Bedrock Runtime hostname resolves to the restricted interface endpoint throughout the staging VPC while the analyzer is provisioned. Check for other staging callers of that hostname before provisioning.
 - Configure `OSRA_DEPLOYMENT_SCOPE`, `OSRA_STAGING_QA_ANALYZER_ENABLED`, `OSRA_STAGING_QA_EXPIRES_AT` and `OSRA_STAGING_QA_FIXTURE_SHA256` in both services. Enable the gate for at most one hour. Use exact SHA-256 digests of the approved post-redaction synthetic fixtures.
