@@ -274,7 +274,7 @@ class _AlertUnavailableView extends StatelessWidget {
   }
 }
 
-class _SocialAlertDetailBody extends ConsumerWidget {
+class _SocialAlertDetailBody extends ConsumerStatefulWidget {
   final Alert alert;
   final bool showAllAlertsButton;
   final DateTime Function()? nowProvider;
@@ -285,6 +285,22 @@ class _SocialAlertDetailBody extends ConsumerWidget {
     this.nowProvider,
   });
 
+  @override
+  ConsumerState<_SocialAlertDetailBody> createState() => _SocialAlertDetailBodyState();
+}
+
+class _SocialAlertDetailBodyState extends ConsumerState<_SocialAlertDetailBody> {
+  @override
+  void initState() {
+    super.initState();
+    // #1029: opening the detail screen (via feed tap or push tap) clears any "+N new" badge.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(alertsSeenProvider.notifier).markAlertOpened(widget.alert);
+      }
+    });
+  }
+
   List<String> _concernTypesOf(Alert a) {
     final raw = a.metadata['concernTypes'];
     if (raw is List) return [for (final t in raw) '$t'.trim()].where((s) => s.isNotEmpty).toList();
@@ -292,7 +308,10 @@ class _SocialAlertDetailBody extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
+    final alert = widget.alert;
+    final showAllAlertsButton = widget.showAllAlertsButton;
+    final nowProvider = widget.nowProvider;
     final theme = Theme.of(context);
     final tokens = context.tokens;
     final l10n = context.l10n;
@@ -307,12 +326,25 @@ class _SocialAlertDetailBody extends ConsumerWidget {
     final appKey = alert.metadata['app']?.toString().trim().toLowerCase() ?? '';
     final appLabel = appKey.isEmpty ? null : socialAppLabel(appKey, l10n);
     final concernTypes = _concernTypesOf(alert);
-    final title = l10n.alertTitleFor(
-      alert.category,
-      alert.title,
-      isEnglish: isEnglish,
-      tamperType: alert.metadata['type']?.toString(),
-    );
+    final title = alert.hasSocialCountSummary && appLabel != null
+        ? l10n.socialAlertCountTitle(alert.socialMessageCount, ltrIsolate(appLabel))
+        : l10n.alertTitleFor(
+            alert.category,
+            alert.title,
+            isEnglish: isEnglish,
+            tamperType: alert.metadata['type']?.toString(),
+          );
+    final latestAt = alert.effectiveTimestamp;
+    final latestClock = latestAt == null
+        ? ''
+        : ltrIsolate(normalizeDigits(DateFormat('HH:mm', 'en').format(latestAt.toLocal())));
+    final contactName = alert.socialContactName;
+    final contactDisplay = contactName != null
+        ? ltrIsolate(contactName)
+        : l10n.socialAlertUnknownContact;
+    final countSubtitle = alert.hasSocialCountSummary
+        ? l10n.socialAlertFromContact(contactDisplay, latestClock)
+        : null;
 
     final sevDot = tokens.severityDot(alert.severity);
     final sevText = tokens.severityText(alert.severity);
@@ -390,7 +422,16 @@ class _SocialAlertDetailBody extends ConsumerWidget {
           ),
           const SizedBox(height: AppSpace.xs),
         ],
-        if (alert.createdAt != null) ...[
+        if (countSubtitle != null) ...[
+          Text(
+            countSubtitle,
+            key: const ValueKey('alertDetailCountSub'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium?.copyWith(color: tokens.onSurfaceVariant),
+          ),
+          const SizedBox(height: AppSpace.md),
+        ] else if (alert.createdAt != null) ...[
           Text(
             formatAlertLocalTime(
               alert.createdAt!,

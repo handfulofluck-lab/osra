@@ -65,6 +65,29 @@ String formatAlertDetailTime(
   return l10n.alertOnDateAtTime(dateLabel, isolatedClock);
 }
 
+/// #1029: Upserts [incoming] alerts into [existing] by `id` (never duplicating a card)
+/// and sorts descending by [Alert.effectiveTimestamp] so an alert updated in place
+/// during a throttle window moves to the top of the feed.
+@visibleForTesting
+List<Alert> mergeAlertsInPlace(List<Alert> existing, Iterable<Alert> incoming) {
+  final byId = <String, Alert>{
+    for (final a in existing) a.id: a,
+  };
+  for (final a in incoming) {
+    byId[a.id] = a;
+  }
+  final merged = byId.values.toList();
+  merged.sort((a, b) {
+    final ta = a.effectiveTimestamp;
+    final tb = b.effectiveTimestamp;
+    if (ta == null && tb == null) return 0;
+    if (ta == null) return 1;
+    if (tb == null) return -1;
+    return tb.compareTo(ta);
+  });
+  return merged;
+}
+
 /// Alerts feed: grouped by day, severity-colored, swipe-to-acknowledge with
 /// optimistic removal, detail dialog per category, and paged "load more".
 class AlertsScreen extends ConsumerStatefulWidget {
@@ -109,9 +132,12 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       final isFirstPage = _page == 0;
       setState(() {
         _page++;
-        // De-dupe in case a live refresh raced us.
-        final known = _items.map((a) => a.id).toSet();
-        _items.addAll(pageData.items.where((a) => !known.contains(a.id)));
+        // #1029: upsert by id and sort by effectiveTimestamp desc so in-place
+        // updated social alerts refresh their count and move to the top without duplicating.
+        final merged = mergeAlertsInPlace(_items, pageData.items);
+        _items
+          ..clear()
+          ..addAll(merged);
         _hasMore = pageData.items.isNotEmpty && _items.length < pageData.total;
       });
       if (isFirstPage) {
@@ -162,6 +188,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     // #972: social/gaming chat alerts open the dedicated full-screen scrollable detail route
     // so 200% text size, authorized Social activity action, and unavailable-preview states stay accessible.
     if (isSocialAlertCategory(alert.category)) {
+      // #1029: opening the social alert clears any "+N new" badge until more messages arrive.
+      ref.read(alertsSeenProvider.notifier).markAlertOpened(alert);
       final router = GoRouter.maybeOf(context);
       if (router != null) {
         router.push('/alerts/${Uri.encodeComponent(alert.id)}', extra: alert);
@@ -433,11 +461,13 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    // Group by local day, most recent first.
+    final seen = ref.watch(alertsSeenProvider);
+    // Group by local day using effectiveTimestamp (latestAt ?? updatedAt ?? createdAt), most recent first.
     final groups = <String, List<Alert>>{};
     final order = <String>[];
     for (final a in _items) {
-      final day = a.createdAt == null ? 'Unknown' : dayKey(a.createdAt!.toLocal());
+      final ts = a.effectiveTimestamp;
+      final day = ts == null ? 'Unknown' : dayKey(ts.toLocal());
       if (!groups.containsKey(day)) {
         groups[day] = [];
         order.add(day);
@@ -510,6 +540,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                   onDismissed: (_) => _ack(alert, index),
                                   child: AlertTile(
                                       alert: alert,
+                                      newSinceCount: computeSocialNewSinceCount(alert, seen),
                                       onTap: () => _showDetail(alert)),
                                 );
                               }),

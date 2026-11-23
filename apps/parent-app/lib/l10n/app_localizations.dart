@@ -5630,6 +5630,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{app} blocked'**
   String appBlockedNamedSnack(String app);
+
+  /// No description provided for @socialAlertCountTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 concerning message on {app}} other{{count} concerning messages on {app}}}'**
+  String socialAlertCountTitle(int count, String app);
+
+  /// No description provided for @socialAlertFromContact.
+  ///
+  /// In en, this message translates to:
+  /// **'From {contact} · latest {time}'**
+  String socialAlertFromContact(String contact, String time);
+
+  /// No description provided for @socialAlertUnknownContact.
+  ///
+  /// In en, this message translates to:
+  /// **'an unknown contact'**
+  String get socialAlertUnknownContact;
+
+  /// No description provided for @socialAlertMorePush.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 more concerning message for {child} on {app}} other{{count} more concerning messages for {child} on {app}}}'**
+  String socialAlertMorePush(int count, String child, String app);
+
+  /// No description provided for @socialAlertNewSince.
+  ///
+  /// In en, this message translates to:
+  /// **'+{count} new'**
+  String socialAlertNewSince(int count);
 }
 
 class _AppLocalizationsDelegate

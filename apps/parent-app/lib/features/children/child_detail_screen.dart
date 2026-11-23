@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
 import '../../api/permission_errors.dart';
+import '../../core/digits.dart';
 import '../../core/ltr_isolate.dart';
 import '../../widgets/error_retry_view.dart';
 import '../../l10n/l10n.dart';
@@ -21,7 +22,7 @@ import '../../widgets/layout_helpers.dart';
 import '../dashboard/dashboard_screen.dart' show formatLastSeen;
 import '../pairing/pair_qr_screen.dart';
 import '../rules/active_window.dart';
-import '../social/social_screen.dart' show SocialSectionsView;
+import '../social/social_screen.dart' show SocialSectionsView, socialAppLabel;
 import '../map/child_location_view.dart';
 import 'app_groups_section.dart';
 import 'child_apps_list.dart';
@@ -1144,7 +1145,15 @@ class AlertTile extends StatelessWidget {
   final Alert alert;
   final VoidCallback? onTap;
   final VoidCallback? onAck;
-  const AlertTile({super.key, required this.alert, this.onTap, this.onAck});
+  /// #1029: count of additional flagged messages that arrived after the parent last opened this alert.
+  final int newSinceCount;
+  const AlertTile({
+    super.key,
+    required this.alert,
+    this.onTap,
+    this.onAck,
+    this.newSinceCount = 0,
+  });
 
   static Color severityColor(String severity, [BuildContext? context]) =>
       (context?.tokens ?? AppTokens.light).severityDot(severity);
@@ -1152,15 +1161,93 @@ class AlertTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final when = alert.createdAt == null
-        ? ''
-        : DateFormat.MMMd(context.localeName).add_Hm().format(alert.createdAt!.toLocal());
+    final tokens = context.tokens;
+    final theme = Theme.of(context);
+
+    final String titleText;
+    final String subtitleText;
+    if (alert.hasSocialCountSummary) {
+      final appKey = alert.metadata['app']?.toString().trim().toLowerCase() ?? '';
+      final appLabel = ltrIsolate(socialAppLabel(appKey, l10n));
+      titleText = l10n.socialAlertCountTitle(alert.socialMessageCount, appLabel);
+      final latestAt = alert.effectiveTimestamp;
+      final latestClock = latestAt == null
+          ? ''
+          : ltrIsolate(normalizeDigits(DateFormat('HH:mm', 'en').format(latestAt.toLocal())));
+      final contactName = alert.socialContactName;
+      final contactDisplay = contactName != null
+          ? ltrIsolate(contactName)
+          : l10n.socialAlertUnknownContact;
+      subtitleText = l10n.socialAlertFromContact(contactDisplay, latestClock);
+    } else {
+      final when = alert.createdAt == null
+          ? ''
+          : DateFormat.MMMd(context.localeName).add_Hm().format(alert.createdAt!.toLocal());
+      titleText = l10n.alertTitleFor(
+        alert.category,
+        alert.title,
+        isEnglish: context.localeName.startsWith('en'),
+        tamperType: alert.metadata['type']?.toString(),
+      );
+      subtitleText = '${l10n.alertCategory(alert.category)} · $when';
+    }
+
+    final Widget? newBadge = newSinceCount > 0
+        ? Container(
+            key: ValueKey('alert-new-since-${alert.id}'),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpace.sm, vertical: 2),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+            ),
+            child: Text(
+              l10n.socialAlertNewSince(newSinceCount),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onPrimaryContainer,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          )
+        : null;
+
+    Widget? trailing;
+    if (newBadge != null && onAck != null) {
+      trailing = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          newBadge,
+          const SizedBox(width: AppSpace.xs),
+          IconButton(
+            icon: const Icon(Icons.check),
+            tooltip: l10n.acknowledgeTooltip,
+            onPressed: onAck,
+          ),
+        ],
+      );
+    } else if (newBadge != null) {
+      trailing = newBadge;
+    } else if (onAck != null) {
+      trailing = IconButton(
+        icon: const Icon(Icons.check),
+        tooltip: l10n.acknowledgeTooltip,
+        onPressed: onAck,
+      );
+    }
+
     return Card(
+      key: ValueKey('alert-card-${alert.id}'),
       child: ListTile(
         leading: Icon(Icons.circle, color: severityColor(alert.severity, context), size: 14),
-        title: Text(l10n.alertTitleFor(alert.category, alert.title, isEnglish: context.localeName.startsWith('en'), tamperType: alert.metadata['type']?.toString()), maxLines: 2, overflow: TextOverflow.ellipsis),
-        subtitle: Text('${l10n.alertCategory(alert.category)} · $when'),
-        trailing: onAck == null ? null : IconButton(icon: const Icon(Icons.check), tooltip: l10n.acknowledgeTooltip, onPressed: onAck),
+        title: Text(titleText, maxLines: 2, overflow: TextOverflow.ellipsis),
+        subtitle: Text(
+          subtitleText,
+          maxLines: alert.hasSocialCountSummary ? 1 : null,
+          overflow: alert.hasSocialCountSummary ? TextOverflow.ellipsis : null,
+          style: alert.hasSocialCountSummary
+              ? theme.textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant)
+              : null,
+        ),
+        trailing: trailing,
         onTap: onTap,
       ),
     );

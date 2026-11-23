@@ -3655,4 +3655,39 @@ class AppLocalizationsAr extends AppLocalizations {
   String appBlockedNamedSnack(String app) {
     return 'تم حظر $app';
   }
+
+  @override
+  String socialAlertCountTitle(int count, String app) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count concerning messages on $app',
+      one: '1 concerning message on $app',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String socialAlertFromContact(String contact, String time) {
+    return 'From $contact · latest $time';
+  }
+
+  @override
+  String get socialAlertUnknownContact => 'an unknown contact';
+
+  @override
+  String socialAlertMorePush(int count, String child, String app) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count more concerning messages for $child on $app',
+      one: '1 more concerning message for $child on $app',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String socialAlertNewSince(int count) {
+    return '+$count new';
+  }
 }
