@@ -1,0 +1,1 @@
+- Android child: the phone tells the server as soon as it applies new rules, so the Parent app's "pending on the phone" banner clears within seconds instead of after the 15-minute telemetry upload (Karim's 23 Nov test).

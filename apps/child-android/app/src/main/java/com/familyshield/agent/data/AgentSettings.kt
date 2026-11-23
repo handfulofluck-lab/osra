@@ -102,6 +102,14 @@ class AgentSettings @Inject constructor(
     /** The applied rules version, or null when this install has never applied one (never reported). */
     suspend fun appliedRulesVersion(): Int? = read(KEY_APPLIED_RULES_VERSION)?.toIntOrNull()
 
+    /** Karim 23 Nov: the applied rules version the server last accepted, so a refresh reports a change once. */
+    suspend fun reportedAppliedRulesVersion(): Int? = read(KEY_REPORTED_APPLIED_RULES_VERSION)?.toIntOrNull()
+
+    /** Records the applied version a successful upload covered. */
+    suspend fun recordReportedAppliedRulesVersion(version: Int) {
+        store.edit { it[KEY_REPORTED_APPLIED_RULES_VERSION] = version.toString() }
+    }
+
     /** Returns the persisted rule set JSON, or null. */
     suspend fun rulesJson(): String? = read(KEY_RULES_JSON)
 
@@ -131,6 +139,8 @@ class AgentSettings @Inject constructor(
         store.edit {
             it.remove(KEY_RULES_JSON)
             it.remove(KEY_APPLIED_RULES_VERSION)
+            // Karim 23 Nov: and what the server was told, so a re-paired phone reports its first version at once.
+            it.remove(KEY_REPORTED_APPLIED_RULES_VERSION)
         }
     }
 
@@ -539,6 +549,8 @@ class AgentSettings @Inject constructor(
 
         /** ADR-0034 A2: what the last accepted capability report looked like, so a no-op resume is free. */
         private val KEY_REPORTED_CAPABILITIES = stringPreferencesKey("reported_capabilities")
+        // Karim 23 Nov: the applied rules version the server was last told about (change detection).
+        private val KEY_REPORTED_APPLIED_RULES_VERSION = stringPreferencesKey("reported_applied_rules_version")
         // Issue #267: the bucket and per-package UsageStats totals the last backfill covered.
         private val KEY_USAGE_STATS_SNAPSHOT = stringPreferencesKey("usage_stats_snapshot")
         // Issue #225: the recorded "was enabled" state for the accessibility-off transition rule.
