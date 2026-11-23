@@ -43,7 +43,7 @@ void main() {
       }
     });
 
-    test('friendlyErrorText maps permission, consent, network, and 5xx cleanly', () {
+    test('friendlyErrorText maps permission, consent, network, 429, and fallback cleanly', () {
       final opts = RequestOptions(path: '/v1/test');
       DioException http(int status, Map<String, dynamic> body) => DioException(
             requestOptions: opts,
@@ -66,6 +66,10 @@ void main() {
       expect(
         friendlyErrorText(en, http(500, {'error': 'boom'}), () => en.alertsLoadFailed),
         en.alertsLoadFailed,
+      );
+      expect(
+        friendlyErrorText(en, http(429, {'error': 'rate_limited'}), () => en.alertsLoadFailed),
+        en.mfaTooManyAttempts,
       );
       expect(friendlyErrorText(en, StateError('secret stack trace'), () => en.familyLoadFailed), en.familyLoadFailed);
     });

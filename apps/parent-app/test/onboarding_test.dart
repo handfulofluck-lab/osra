@@ -415,8 +415,8 @@ void main() {
       await signIn(tester);
       await tester.pumpAndSettle();
 
-      // UI/UX Bureau (#862 condition 4): a parent has no server address to check.
-      expect(find.textContaining("Couldn't connect to OSRA"), findsOneWidget);
+      // UI/UX Bureau (#763 / #862 condition 4): a parent has no server address to check.
+      expect(find.text("Can't reach OSRA. Check your internet connection and try again."), findsOneWidget);
     });
 
     testWidgets('a child-creation refusal names the consent problem', (tester) async {

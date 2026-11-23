@@ -266,9 +266,44 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 if (errorText != null) ...[
                   const SizedBox(height: AppSpace.md),
-                  Text(errorText,
-                      key: const ValueKey('loginError'),
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.danger)),
+                  Semantics(
+                    liveRegion: true,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Icon(
+                            Icons.error_outline,
+                            key: const ValueKey('loginErrorIcon'),
+                            size: 18,
+                            color: tokens.danger,
+                          ),
+                        ),
+                        const SizedBox(width: AppSpace.xs),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                errorText,
+                                key: const ValueKey('loginError'),
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.danger),
+                              ),
+                              if (showServer && auth.error == 'network_error') ...[
+                                const SizedBox(height: AppSpace.xs),
+                                Text(
+                                  l10n.errorCheckServerAddress,
+                                  key: const ValueKey('loginServerHintError'),
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.danger),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
                 const SizedBox(height: AppSpace.lg),
                 FilledButton.icon(

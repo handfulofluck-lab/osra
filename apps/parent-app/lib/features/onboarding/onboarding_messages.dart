@@ -18,8 +18,10 @@ String onboardingAuthError(AppLocalizations l10n, String raw) {
   if (raw == 'mfa_reenroll_required' || lower.startsWith('two-step verification was reset')) {
     return l10n.authMfaReenrollRequired;
   }
+  if (raw == 'too_many_attempts') return l10n.mfaTooManyAttempts;
+  if (raw == 'server_unavailable') return l10n.errorServerUnavailable;
   if (raw == 'network_error' || isNetworkMessage(lower)) return l10n.onboardingNoNetwork;
-  return l10n.authSignInFailed;
+  return l10n.errorSomethingWentWrong;
 }
 
 /// One honest sentence for a failed `POST /v1/family/children`.

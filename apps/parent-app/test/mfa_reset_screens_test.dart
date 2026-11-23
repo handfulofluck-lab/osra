@@ -300,7 +300,7 @@ void main() {
       await flush(tester);
       await tester.pumpAndSettle();
 
-      expect(find.text('Could not reach the server. Check your connection and try again.'), findsOneWidget);
+      expect(find.text("Can't reach OSRA. Check your internet connection and try again."), findsOneWidget);
     });
   });
 
@@ -555,7 +555,7 @@ void main() {
       await submitPassword(tester);
 
       expect(find.byKey(const ValueKey('mfaResetResumeError')), findsOneWidget);
-      expect(find.text('Could not reach the server. Check your connection and try again.'), findsOneWidget);
+      expect(find.text("Can't reach OSRA. Check your internet connection and try again."), findsOneWidget);
       // Cleared on the failing path too: the throw must not keep it in the field.
       expect(tester.widget<TextField>(find.byKey(const ValueKey('mfaResetResumePassword'))).controller!.text, isEmpty);
       expect(await const FlutterSecureStorage().read(key: MfaResetStore.requestIdKey), 'req-1');

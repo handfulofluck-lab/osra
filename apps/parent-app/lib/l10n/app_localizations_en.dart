@@ -1872,7 +1872,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get mfaNetworkError =>
-      'Could not reach the server. Check your connection and try again.';
+      'Can\'t reach OSRA. Check your internet connection and try again.';
 
   @override
   String get mfaRequestFailed => 'That did not work. Try again.';
@@ -1984,7 +1984,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get onboardingNoNetwork =>
-      'Couldn\'t connect to OSRA. Check your internet connection, then try again.';
+      'Can\'t reach OSRA. Check your internet connection and try again.';
 
   @override
   String get onboardingChildTitle => 'Add your child';
@@ -3211,11 +3211,21 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get errorNoConnection =>
-      'No internet connection. Check your connection and try again.';
+      'Can\'t reach OSRA. Check your internet connection and try again.';
 
   @override
-  String get authSignInFailed =>
-      'Couldn\'t sign in right now. Check your connection and try again.';
+  String get errorCheckServerAddress =>
+      'If you set a server address, check it too.';
+
+  @override
+  String get errorServerUnavailable =>
+      'OSRA is not responding right now. Try again in a few minutes.';
+
+  @override
+  String get errorSomethingWentWrong => 'Something went wrong. Try again.';
+
+  @override
+  String get authSignInFailed => 'Something went wrong. Try again.';
 
   @override
   String get authMfaReenrollRequired =>

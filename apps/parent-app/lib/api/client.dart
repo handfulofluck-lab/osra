@@ -64,7 +64,19 @@ bool shouldRefreshOn401(RequestOptions options, [Response<dynamic>? response]) {
 
 class ApiClient {
   static const _base = String.fromEnvironment('API_BASE', defaultValue: '');
-  final _dio = Dio(BaseOptions(baseUrl: _base));
+
+  /// Explicit transport timeouts (#763): prevents Dio from reporting `0:00:00.000000`
+  /// and bounds how long a parent waits on an unreachable server.
+  static const Duration connectTimeout = Duration(seconds: 15);
+  static const Duration receiveTimeout = Duration(seconds: 20);
+  static const Duration sendTimeout = Duration(seconds: 15);
+
+  final _dio = Dio(BaseOptions(
+    baseUrl: _base,
+    connectTimeout: connectTimeout,
+    receiveTimeout: receiveTimeout,
+    sendTimeout: sendTimeout,
+  ));
   final _storage = const FlutterSecureStorage();
   Future<String?>? _refreshFuture;
 
