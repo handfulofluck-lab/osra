@@ -63,3 +63,5 @@ calibrated flags. For each model, pin the SHA-256 of the model weights and the s
 that the CPU service actually loads. The standalone calibration file has a different digest.
 If the CPU service is absent, fails, or returns a mismatched receipt, the result is unavailable.
 Leaving the CPU selector unset or setting it to `0` selects the existing hosted OSRA path.
+
+For the staging OSRA-only run, the CPU call has eight seconds, the collector nine and the API request ten. The approval expiry can shorten any call. Bedrock and parallel comparison retain their two-second collector deadline.

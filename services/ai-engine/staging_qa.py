@@ -39,6 +39,7 @@ APPROVED_PROMPT_SHA256 = "813e670c456b1e1dd9863be0ca186b82f18bfea8049f231c9731d2
 MAX_REQUEST_BYTES = 8192
 MAX_APPROVAL_WINDOW = timedelta(hours=1)
 MAX_INFERENCE_SECONDS = 2
+STAGING_OWN_INFERENCE_SECONDS = 9
 
 PROVIDER_FAILURE_KINDS = {
     "AccessDeniedException": "access_denied",
@@ -199,9 +200,10 @@ def _failure_kind(error: Exception) -> str:
 
 async def _provider_receipts(data, mode, expires_at, system_prompt, started):
     trace = str(data.trace_id)
-    # An approval can expire before the two-second request budget. Use the same deadline for both.
+    # The staging approval also bounds the selected provider budget.
     remaining = (expires_at - datetime.now(timezone.utc)).total_seconds()
-    deadline = min(started + MAX_INFERENCE_SECONDS, monotonic() + remaining)
+    budget = STAGING_OWN_INFERENCE_SECONDS if mode == "own" else MAX_INFERENCE_SECONDS
+    deadline = min(started + budget, monotonic() + remaining)
 
     async def bedrock():
         try:

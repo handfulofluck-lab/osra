@@ -441,3 +441,24 @@ def test_local_cpu_receipt_uses_native_flags_and_pins(setup_qa, monkeypatch, fau
         assert outcome["language"] == "fr" and set(outcome["categories"]) == set(LABELS)
         assert outcome["flagged"] is (fault is None)
         assert outcome["flagged_categories"] == (["grooming"] if fault is None else [])
+
+
+@pytest.mark.parametrize(("mode", "expires_in", "expected"), [
+    ("own", 60, 9), ("own", 1, 1), ("bedrock", 60, 2), ("both", 60, 2),
+])
+def test_provider_deadline_for_staging_mode(setup_qa, monkeypatch, mode, expires_in, expected):
+    # Mutants: keep the two-second CPU deadline, extend Bedrock, or outlive the staging approval.
+    monkeypatch.setenv("OSRA_STAGING_QA_ENGINE", mode)
+    expiry = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+    monkeypatch.setenv("OSRA_STAGING_QA_EXPIRES_AT", expiry.isoformat())
+    remaining = []
+
+    async def inspect_deadline(providers, *, deadline):
+        remaining.append(deadline - staging_qa.monotonic())
+        return {}
+
+    monkeypatch.setattr(staging_qa, "collect_provider_results", inspect_deadline)
+    TestClient(app).post(PATH, json=payload(include_provider_outcomes=True))
+    assert remaining == [pytest.approx(expected, abs=0.2)]
+    if mode == "own" and expires_in == 60:
+        assert 8 < remaining[0] < 10 < 30
