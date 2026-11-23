@@ -208,6 +208,11 @@ run "armed_qa_analyzer_plans_only_the_private_scoped_route" {
   variables {
     api_image           = "example/api:test"
     allowed_account_ids = [format("%012d", 0)]
+    staging_qa_model_archives = {
+      v9_sha256  = sha256("archive-nine")
+      v9b_sha256 = sha256("archive-nine-b")
+      allow_read = true
+    }
     staging_qa_analyzer = {
       armed                     = true
       allow_synthetic_pair_text = true
@@ -301,6 +306,32 @@ run "armed_qa_analyzer_plans_only_the_private_scoped_route" {
     ])
     error_message = "both armed tasks must receive the same explicit synthetic pairing switch"
   }
+
+  assert {
+    condition = jsondecode(aws_iam_role_policy.staging_model_archive_read[0].policy).Statement == [{
+      Effect   = "Allow"
+      Action   = ["s3:GetObject"]
+      Resource = [for tag in ["v9", "v9b"] : "${local.staging_model_bucket_arn}/own-model/${tag}.tar.gz"]
+    }] && aws_iam_role_policy.staging_model_archive_read[0].role == aws_iam_role.staging_qa_analyzer_task[0].name
+    error_message = "only the analyzer task role can receive the two exact object reads"
+  }
+
+  assert {
+    condition     = alltrue([aws_s3_bucket_public_access_block.staging_model_archives[0].block_public_acls, aws_s3_bucket_public_access_block.staging_model_archives[0].block_public_policy, aws_s3_bucket_public_access_block.staging_model_archives[0].ignore_public_acls, aws_s3_bucket_public_access_block.staging_model_archives[0].restrict_public_buckets]) && one(one(aws_s3_bucket_server_side_encryption_configuration.staging_model_archives[0].rule).apply_server_side_encryption_by_default).sse_algorithm == "AES256"
+    error_message = "the archive bucket requires all four public-access blocks and default encryption"
+  }
+
+  assert {
+    condition = jsondecode(aws_s3_bucket_policy.staging_model_archives[0].policy).Statement == [{
+      Sid       = "DenyInsecureTransport"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource  = [local.staging_model_bucket_arn, "${local.staging_model_bucket_arn}/*"]
+      Condition = { Bool = { "aws:SecureTransport" = "false" } }
+    }]
+    error_message = "archive access must deny non-TLS requests"
+  }
 }
 
 run "disarmed_qa_analyzer_has_no_model_or_api_access" {
@@ -309,6 +340,11 @@ run "disarmed_qa_analyzer_has_no_model_or_api_access" {
   variables {
     api_image           = "example/api:test"
     allowed_account_ids = [format("%012d", 0)]
+    staging_qa_model_archives = {
+      v9_sha256  = sha256("archive-nine")
+      v9b_sha256 = sha256("archive-nine-b")
+      allow_read = true
+    }
     staging_qa_analyzer = {
       allow_synthetic_pair_text = true
       image_digest              = "sha256:${sha256("qa-image")}"
@@ -364,6 +400,11 @@ run "disarmed_qa_analyzer_has_no_model_or_api_access" {
       ) : startswith(item.name, "OSRA_STAGING_QA_") || item.name == "OSRA_DEPLOYMENT_SCOPE"
     ])
     error_message = "a disarmed analyzer adds no QA environment variables or secrets to the API"
+  }
+
+  assert {
+    condition     = length(aws_s3_bucket.staging_model_archives) == 1 && length(aws_iam_role_policy.staging_model_archive_read) == 0 && length(local.staging_model_env) == 0
+    error_message = "disarm must remove archive reads and retain the bucket"
   }
 }
 

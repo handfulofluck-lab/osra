@@ -215,6 +215,7 @@ resource "aws_ecs_task_definition" "staging_qa_analyzer" {
         value = "https://${aws_vpc_endpoint.staging_qa_bedrock[0].dns_entry[0].dns_name}"
       }] : [],
       local.staging_qa_pair_text,
+      local.staging_model_env,
     )
     secrets = local.staging_qa_armed ? concat(local.staging_qa_approval, [
       { name = "OSRA_STAGING_QA_SYSTEM_PROMPT", valueFrom = var.staging_qa_analyzer.prompt_secret_arn },
@@ -264,6 +265,7 @@ resource "aws_ecs_service" "staging_qa_analyzer" {
   }
 
   depends_on = [
+    aws_iam_role_policy.staging_model_archive_read,
     aws_iam_role_policy.staging_qa_analyzer_execution,
     aws_iam_role_policy.staging_qa_analyzer_task,
     aws_vpc_endpoint.staging_qa_bedrock,
