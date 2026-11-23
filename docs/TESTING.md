@@ -1426,6 +1426,13 @@ from Bedrock without fallback and opens the matching alert in the Parent app. Co
 the harmless notification and created no alert. Record model, region, trace ID, and the result using
 the private test record. Roll both services back and retire the synthetic scope at the end of the window.
 
+For a staging run with per-provider receipts, send `include_provider_outcomes: true` to the private
+analyzer. `OSRA_STAGING_QA_ENGINE` selects `bedrock` (default), `own`, or `both`. Run
+`python -m pytest -q tests/test_staging_qa.py tests/test_staging_own_model.py tests/test_staging_provider_results.py`
+from `services/ai-engine` to exercise accepted and rejected requests without network access. Check each
+selected provider's status before counting a verdict. A timeout or unavailable result carries no scores.
+The [staging acceptance procedure](QA/staging-model-smoke.md) describes the private route and live evidence.
+
 ## 6. Traps that have cost real time here
 
 | Trap | What happened | Rule |

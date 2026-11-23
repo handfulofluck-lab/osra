@@ -234,3 +234,111 @@ def test_unusable_provider_answer_cannot_be_reported_as_inference(setup_qa, capl
     assert len(setup_qa.calls) == 1
     assert "provider-private-detail" not in caplog.text
     assert APPROVED_TEXT not in caplog.text
+
+
+def test_opt_in_bedrock_receipt_distinguishes_benign_from_provider_failure(setup_qa):
+    # Mutant: return an empty benign verdict when Bedrock fails.
+    body = payload(include_provider_outcomes=True)
+    setup_qa.probabilities = dict.fromkeys(CATEGORIES, 0.0)
+    setup_qa.probabilities["safe"] = 1.0
+    setup_qa.answer = model_reply(json.dumps({"categories": setup_qa.probabilities}))
+    response = TestClient(app).post(PATH, json=body)
+    assert response.status_code == 200
+    result = response.json()
+    assert result["trace_id"] == body["trace_id"] and result["mode"] == "bedrock"
+    outcome = result["outcomes"]["bedrock"]
+    assert set(result["outcomes"]) == {"bedrock"}
+    assert outcome["status"] == "scored" and outcome["flagged"] is False
+    assert outcome["severity"] == "info" and outcome["flagged_categories"] == []
+
+    setup_qa.answer = RuntimeError("private marker not for evidence")
+    failed = TestClient(app).post(PATH, json=body)
+    assert failed.status_code == 200
+    assert failed.json()["outcomes"] == {"bedrock": {"status": "unavailable", "reason": "unavailable"}}
+    assert "private marker" not in failed.text
+
+
+def test_receipt_requires_valid_selection_and_approved_fixture(setup_qa, monkeypatch):
+    body = payload(include_provider_outcomes=True)
+    client = TestClient(app)
+    monkeypatch.setenv("OSRA_STAGING_QA_ENGINE", "unapproved")
+    assert client.post(PATH, json=body).status_code == 404
+    monkeypatch.setenv("OSRA_STAGING_QA_ENGINE", "both")
+    assert client.post(PATH, json={**body, "text": "different synthetic sample"}).status_code == 403
+    assert client.post(PATH, json=payload()).status_code == 422
+    assert setup_qa.calls == []
+
+
+@pytest.mark.parametrize("mode", ["own", "both"])
+def test_receipt_honors_native_calibrated_labels_in_each_mode(setup_qa, monkeypatch, mode):
+    # Mutants: turn a calibrated 0.41 flag benign, or hide a successful provider when its peer fails.
+    monkeypatch.setenv("OSRA_STAGING_QA_ENGINE", mode)
+    probs = {category: 0.0 for category in CATEGORIES if category != "safe"}
+    probs["grooming"] = 0.41
+    own = Mock(return_value={"model": "v9b", "language": "fr", "categories": probs, "flagged_categories": ["grooming"]})
+    monkeypatch.setattr(staging_qa, "score_own", own)
+    setup_qa.answer = RuntimeError("discard private reason")
+    result = TestClient(app).post(PATH, json=payload(include_provider_outcomes=True)).json()
+    own.assert_called_once()
+    assert len(setup_qa.calls) == (1 if mode == "both" else 0)
+    assert result["outcomes"]["own"] == {
+        "status": "scored", "model": "v9b", "language": "fr", "flagged": True, "severity": "warning",
+        "categories": probs, "flagged_categories": ["grooming"],
+    }
+    if mode == "both":
+        assert result["outcomes"]["bedrock"] == {"status": "unavailable", "reason": "unavailable"}
+    else:
+        assert set(result["outcomes"]) == {"own"}
+
+
+def test_bedrock_positive_survives_missing_own_checkpoint(setup_qa, monkeypatch):
+    monkeypatch.setenv("OSRA_STAGING_QA_ENGINE", "both")
+    monkeypatch.setattr(staging_qa, "score_own", Mock(side_effect=TimeoutError))
+    result = TestClient(app).post(PATH, json=payload(include_provider_outcomes=True)).json()
+    assert result["outcomes"]["own"] == {"status": "unavailable", "reason": "timeout"}
+    bedrock = result["outcomes"]["bedrock"]
+    assert bedrock["model"] == staging_qa.MODEL_ID and bedrock["flagged"] is True
+    assert bedrock["flagged_categories"] == ["cyberbullying"] and bedrock["severity"] == "critical"
+    assert "language" not in bedrock
+
+
+@pytest.mark.parametrize("bedrock_flag,own_flag", [(False, False), (True, False), (False, True), (True, True)])
+def test_both_returns_independent_verdicts_for_one_scan(setup_qa, monkeypatch, bedrock_flag, own_flag):
+    # Mutants: use one provider as fallback, duplicate its result, or overwrite the first positive.
+    monkeypatch.setenv("OSRA_STAGING_QA_ENGINE", "both")
+    scores = {category: 0.0 for category in CATEGORIES}
+    scores["violence" if bedrock_flag else "safe"] = 0.93
+    setup_qa.answer = model_reply(json.dumps({"categories": scores}))
+    native = {key: 0.1 for key in CATEGORIES if key != "safe"}
+    native["grooming"] = 0.41
+    own = Mock(return_value={"model": "v9", "language": "en", "categories": native,
+                             "flagged_categories": ["grooming"] if own_flag else []})
+    monkeypatch.setattr(staging_qa, "score_own", own)
+    body = payload(include_provider_outcomes=True)
+    response = TestClient(app).post(PATH, json=body)
+    assert response.status_code == 200
+    receipt = response.json()
+    assert receipt["trace_id"] == body["trace_id"] and receipt["mode"] == "both"
+    bedrock, local = receipt["outcomes"]["bedrock"], receipt["outcomes"]["own"]
+    assert bedrock["flagged"] is bedrock_flag and local["flagged"] is own_flag
+    assert bedrock["flagged_categories"] == (["violence"] if bedrock_flag else [])
+    assert local["flagged_categories"] == (["grooming"] if own_flag else [])
+    assert len(setup_qa.calls) == own.call_count == 1
+    assert own.call_args.args[1] == setup_qa.calls[0]["requestMetadata"]["osraQaTraceId"] == body["trace_id"]
+
+
+def test_actual_route_deadline_keeps_already_completed_bedrock_result(setup_qa, monkeypatch):
+    # Mutant: a timeout around gather() discards the completed positive.
+    import time
+
+    def delayed(*_):
+        time.sleep(0.12)
+        return {"model": "v9", "language": "en", "categories": {}, "flagged_categories": []}
+
+    monkeypatch.setenv("OSRA_STAGING_QA_ENGINE", "both")
+    monkeypatch.setattr(staging_qa, "MAX_INFERENCE_SECONDS", 0.05)
+    monkeypatch.setattr(staging_qa, "score_own", delayed)
+    with TestClient(app) as client:
+        result = client.post(PATH, json=payload(include_provider_outcomes=True)).json()
+    assert result["outcomes"]["bedrock"]["flagged"] is True
+    assert result["outcomes"]["own"] == {"status": "unavailable", "reason": "timeout"}

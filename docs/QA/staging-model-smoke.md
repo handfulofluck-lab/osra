@@ -17,3 +17,35 @@ This test exercises roadmap 2.6 on a dedicated staging pairing with synthetic me
 3. Open the matching notification on Parent. Check the app, concern and event time, plus the authorized detail or activity view.
 4. Repeat with the approved harmless fixture. Confirm the model completed without fallback and that the control created no new alert.
 5. Disable the staging QA gate after the run. Report each result with a fixture name, exact build, UAE time and sanitized trace evidence.
+
+
+## Comparing staging providers
+
+Set `OSRA_STAGING_QA_ENGINE` to `bedrock`, `own` or `both`. The staging API requests outcomes by adding
+`include_provider_outcomes: true` to the private request. The legacy Bedrock request still returns its
+original response in the default mode. Other modes require the caller to read provider outcomes.
+
+Own inference requires the Frankfurt `runtime.sagemaker` private endpoint URL in
+`OSRA_STAGING_QA_SAGEMAKER_ENDPOINT_URL`. Set `OSRA_STAGING_QA_V9_MODEL_SHA256`,
+`OSRA_STAGING_QA_V9_THRESHOLDS_SHA256` and the corresponding `V9B` values from the verified serving
+artifacts. The model pin refers to the weights reported by inference. The threshold pin refers to the
+calibration actually used. Verify that the endpoint policy and task role restrict invocation to the two
+approved staging checkpoints, and confirm that SageMaker data capture and container payload logging are off.
+
+The serving contract accepts UTF-8 JSON containing `text` and `trace_id`. The candidate analyzer first
+calls the v9 endpoint. Its handler can score a supported language, or return `trace_id`, `route: "v9b"`
+and the detected `language` for Arabic or French. On a scored response the handler returns the trace,
+`model`, `language`, `model_sha256`, `thresholds_sha256`, the seven native `probs`, its calibrated
+`flagged_categories` and its `verdict` (`safe` or `flagged`). An uncertain v9 result also requires a
+verified v9b response tagged `uncertain`. The analyzer takes the higher score for each category and
+retains flags supplied by either checkpoint under model `v9+v9b`. Confirm this handshake with the serving
+operator using a synthetic fixture on the private endpoint before enabling the run.
+
+In the staging response, `outcomes` contains exactly the selected providers. A scored result includes
+the actual model, native probabilities, explicit flagged categories, severity and a boolean flag. OSRA
+returns its serving language. Its calibrated flags carry warning severity; the original Bedrock severity
+function determines Bedrock flags. A failed provider returns `status: "unavailable"` and a bounded reason
+only. Both providers share a two-second processing deadline, shortened when test approval expires.
+For the live receipt, count a benign result only when a provider completed. Check both scoring orders,
+one failed peer and the effect on the single Parent alert. Keep per-scan evidence in private staging
+through the approved wipe.

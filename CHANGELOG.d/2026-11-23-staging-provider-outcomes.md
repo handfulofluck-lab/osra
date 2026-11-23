@@ -1,0 +1,1 @@
+- #962 adds independent Bedrock and OSRA model outcomes to the private staging analyzer. Synthetic tests cover a scored peer surviving a failed peer and the common deadline. Private endpoint, device and Parent acceptance are pending.
