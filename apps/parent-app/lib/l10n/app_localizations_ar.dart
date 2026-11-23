@@ -621,12 +621,12 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String accuracyLabel(int meters, String time) {
-    return 'الدقة ±$meters م · $time';
+    return 'الدقة ±$meters م · $time';
   }
 
   @override
   String accuracyShort(int meters) {
-    return 'الدقة ±$meters م';
+    return 'الدقة ±$meters م';
   }
 
   @override
@@ -817,12 +817,12 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String familyMapRadius(int meters) {
-    return 'نصف القطر: $meters م';
+    return 'نصف القطر: $meters م';
   }
 
   @override
   String familyMapMeters(int meters) {
-    return '$meters م';
+    return '$meters م';
   }
 
   @override
@@ -3529,6 +3529,68 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get socialAlertViewAll => 'كل التنبيهات';
+
+  @override
+  String get locationUpdatedJustNow => 'آخر تحديث: الآن';
+
+  @override
+  String locationUpdatedMinutes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'آخر تحديث قبل $count دقيقة',
+      many: 'آخر تحديث قبل $count دقيقة',
+      few: 'آخر تحديث قبل $count دقائق',
+      two: 'آخر تحديث قبل دقيقتين',
+      one: 'آخر تحديث قبل دقيقة',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String locationUpdatedHours(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'آخر تحديث قبل $count ساعة',
+      many: 'آخر تحديث قبل $count ساعة',
+      few: 'آخر تحديث قبل $count ساعات',
+      two: 'آخر تحديث قبل ساعتين',
+      one: 'آخر تحديث قبل ساعة',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String locationUpdatedDays(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'آخر تحديث قبل $count يوم',
+      many: 'آخر تحديث قبل $count يومًا',
+      few: 'آخر تحديث قبل $count أيام',
+      two: 'آخر تحديث قبل يومين',
+      one: 'آخر تحديث قبل يوم',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get locationUpdatedUnknown => 'وقت التحديث غير معروف';
+
+  @override
+  String get locationFindingAddress => 'جارٍ تحديد العنوان…';
+
+  @override
+  String get locationAddressUnavailable => 'العنوان غير متوفر';
+
+  @override
+  String locationMapSemantics(String name) {
+    return 'خريطة تُظهر مكان $name';
+  }
+
+  @override
+  String get locationRecentre => 'توسيط الخريطة على آخر موقع';
 
   @override
   String get undo => 'تراجع';
