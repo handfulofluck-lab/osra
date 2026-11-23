@@ -9,6 +9,7 @@ from functools import lru_cache
 from time import monotonic
 
 import boto3
+import httpx
 from botocore.config import Config
 from botocore.exceptions import ConnectTimeoutError, ReadTimeoutError
 
@@ -101,6 +102,37 @@ def _validated(reply, version, pins, expected_language=None):
     if reply["verdict"] != ("flagged" if flagged else "safe"):
         raise ValueError("Inconsistent checkpoint verdict")
     return {"model": version, "language": language, "categories": probs, "flagged_categories": flagged}
+
+
+async def score_cpu(text, trace, expires, deadline):
+    """Call the staging CPU route in this process, without network or provider fallback."""
+    from own_model_service import own_model_app
+
+    pins = _pins()
+    if datetime.now(timezone.utc) >= expires or monotonic() >= deadline:
+        raise TimeoutError
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=own_model_app),
+                                 base_url="http://in-process.invalid", trust_env=False) as client:
+        response = await client.post("/analyze/staging-qa/own", json={"text": text, "trace_id": trace})
+    if datetime.now(timezone.utc) >= expires or monotonic() >= deadline:
+        raise TimeoutError
+    if response.status_code != 200 or len(response.content) > MAX_REPLY_BYTES:
+        raise ValueError("CPU scoring unavailable")
+    reply = json.loads(response.content, object_pairs_hook=_unique)
+    if reply["trace_id"] != trace or reply["region"] != REGION:
+        raise ValueError("Unmatched CPU receipt")
+    version = {"osra-own-v9": "v9", "osra-own-v9b": "v9b"}[reply["model"]]
+    if reply["lang"] not in LANGUAGES[version]:
+        raise ValueError("Unexpected CPU checkpoint language")
+    scores = reply["categories"]
+    if set(scores) != {*LABELS, "safe"} or type(reply["flagged"]) is not bool:
+        raise ValueError("Invalid CPU receipt")
+    # The CPU route adds a derived safe score. Only the seven native categories enter the receipt.
+    native = {"trace_id": trace, "model": version, "language": reply["lang"],
+              "model_sha256": reply["model_sha256"], "thresholds_sha256": reply["thresholds_sha256"],
+              "probs": {label: scores[label] for label in LABELS}, "flagged_categories": reply["flagged_categories"],
+              "verdict": "flagged" if reply["flagged"] else "safe"}
+    return _validated(native, version, pins)
 
 
 def score_own(text, trace, expires, deadline):

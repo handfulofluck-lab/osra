@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, UUID4, ValidationError
 
 from eval.prompt import parse_categories
 from model import _severity
-from staging_own_model import score_own
+from staging_own_model import score_cpu, score_own
 from staging_provider_results import collect_provider_results
 
 MODEL_ID = "openai.gpt-oss-20b-1:0"
@@ -178,7 +178,13 @@ async def _provider_receipts(data, mode, expires_at, system_prompt, started):
                              flagged_categories=[key for key, score in harmful.items() if _severity(score)[1]])
 
     async def own():
-        result = await asyncio.to_thread(score_own, data.text, trace, expires_at, deadline)
+        cpu = os.environ.get("OSRA_STAGING_QA_OWN_MODEL_ENABLED", "0")
+        if cpu == "1":
+            result = await score_cpu(data.text, trace, expires_at, deadline)
+        elif cpu == "0":
+            result = await asyncio.to_thread(score_own, data.text, trace, expires_at, deadline)
+        else:
+            raise ValueError("Invalid OSRA serving mode")
         flagged = bool(result["flagged_categories"])
         # OSRA supplies calibrated flags, not severity. Use ordinary warning severity for its alerts.
         return ScoredOutcome(**result, flagged=flagged, severity="warning" if flagged else "info")

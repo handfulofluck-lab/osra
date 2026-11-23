@@ -52,3 +52,11 @@ only. Both providers share a two-second processing deadline, shortened when test
 For the live receipt, count a benign result only when a provider completed. Check both scoring orders,
 one failed peer and the effect on the single Parent alert. Keep per-scan evidence in private staging
 through the approved wipe.
+
+For the in-process staging CPU service (#1015), set `OSRA_STAGING_QA_OWN_MODEL_ENABLED=1`
+in the analyzer and select `own` as the engine. The analyzer calls the CPU route in the same
+process, checks its trace and Frankfurt region, then verifies the actual language, checkpoint and
+calibrated flags. For each model, pin the SHA-256 of the model weights and the serving configuration
+that the CPU service actually loads. The standalone calibration file has a different digest.
+If the CPU service is absent, fails, or returns a mismatched receipt, the result is unavailable.
+Leaving the CPU selector unset or setting it to `0` selects the existing hosted OSRA path.

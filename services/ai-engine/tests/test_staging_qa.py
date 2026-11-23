@@ -1,11 +1,14 @@
 import hashlib
 import json
+import sys
+from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 from uuid import uuid4
 
 import boto3
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import staging_qa
@@ -371,3 +374,50 @@ def test_bedrock_sdk_socket_timeout_receives_timeout_class(setup_qa, kind):
     setup_qa.answer = getattr(exceptions, kind)(endpoint_url="synthetic")
     response = TestClient(app).post(PATH, json=payload(include_provider_outcomes=True))
     assert response.json()["outcomes"] == {"bedrock": {"status": "unavailable", "reason": "timeout"}}
+
+@pytest.mark.parametrize("fault", [None, "benign", "trace", "model_pin", "threshold_pin", "language", "flags", "missing_score", "region"])
+def test_local_cpu_receipt_uses_native_flags_and_pins(setup_qa, monkeypatch, fault):
+    # Mutants: switch to a remote endpoint on failure, accept stale digests, or re-threshold the native flag.
+    from staging_own_model import LABELS
+
+    monkeypatch.setenv("OSRA_STAGING_QA_ENGINE", "own")
+    monkeypatch.setenv("OSRA_STAGING_QA_OWN_MODEL_ENABLED", "1")
+    for name in ("V9", "V9B"):
+        monkeypatch.setenv(f"OSRA_STAGING_QA_{name}_MODEL_SHA256", "1" * 64)
+        monkeypatch.setenv(f"OSRA_STAGING_QA_{name}_THRESHOLDS_SHA256", "2" * 64)
+    service = FastAPI()
+    requests = []
+
+    @service.post("/analyze/staging-qa/own")
+    async def classify(body: dict):
+        requests.append(body)
+        scores = {label: 0.1 for label in LABELS}
+        scores.update(grooming=0.41, safe=0.59)
+        if fault == "missing_score":
+            del scores["violence"]
+        flagged = fault != "benign"
+        return {
+            "trace_id": str(uuid4()) if fault == "trace" else body["trace_id"],
+            "model": "osra-own-v9b", "lang": "en" if fault == "language" else "fr",
+            "region": "other" if fault == "region" else "eu-central-1",
+            "model_sha256": ("3" if fault == "model_pin" else "1") * 64,
+            "thresholds_sha256": ("4" if fault == "threshold_pin" else "2") * 64,
+            "flagged": flagged, "severity": "warning" if flagged else "info",
+            "categories": scores, "flagged_categories": ["grooming"] if flagged and fault != "flags" else [],
+        }
+
+    monkeypatch.setitem(sys.modules, "own_model_service", SimpleNamespace(own_model_app=service))
+    hosted = Mock(side_effect=AssertionError("unexpected hosted request"))
+    monkeypatch.setattr(staging_qa, "score_own", hosted)
+    body = payload(include_provider_outcomes=True)
+    outcome = TestClient(app).post(PATH, json=body).json()["outcomes"]["own"]
+    assert requests == [{"text": APPROVED_TEXT, "trace_id": body["trace_id"]}]
+    hosted.assert_not_called()
+    assert setup_qa.calls == []
+    if fault not in (None, "benign"):
+        assert outcome == {"status": "unavailable", "reason": "unavailable"}
+    else:
+        assert outcome["status"] == "scored" and outcome["model"] == "v9b"
+        assert outcome["language"] == "fr" and set(outcome["categories"]) == set(LABELS)
+        assert outcome["flagged"] is (fault is None)
+        assert outcome["flagged_categories"] == (["grooming"] if fault is None else [])
