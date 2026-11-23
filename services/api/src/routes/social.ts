@@ -8,6 +8,7 @@ import { checkActiveConsent } from "../lib/consent.js";
 import { requireFamily, requireGuardianRead, requireParent } from "../middleware/requireFamily.js";
 import { decryptSnippet, encryptSnippet } from "../lib/snippetVault.js";
 import { isValidTimeZone } from "../lib/digestSchedule.js";
+import { failedProviders, flaggedProviders, readProviderAnalysis, type ProviderReceipts } from "../lib/stagingProviderOutcomes.js";
 import { STAGING_QA_MODEL, STAGING_QA_REGION, stagingQaModel, stagingQaModelEnabled, type StagingQaModel } from "../lib/stagingQaModel.js";
 
 const ScanSchema = z.object({
@@ -43,6 +44,7 @@ const GAMING_APPS = new Set(["discord", "roblox"]);
 
 type Severity = "info" | "warning" | "critical";
 interface Verdict { flagged: boolean; severity: Severity; concernTypes: string[] }
+type ScanAnalysis = { verdict: Verdict | null; attempted: boolean; providers?: ProviderReceipts };
 
 // NOTE: fail-open — when the AI engine is unreachable the scan falls back to a local
 // keyword/regex check so obvious self-harm language is never silently dropped.
@@ -118,7 +120,7 @@ function aiVerdictFrom(data: unknown): Verdict | null {
  * point a): a call that reached the engine and timed out after five seconds was still paid for, and for a
  * cost floor under-counting is the unsafe direction.
  */
-async function analyzeWithAi(text: string, childAge?: number): Promise<{ verdict: Verdict | null; attempted: boolean }> {
+async function analyzeWithAi(text: string, childAge?: number): Promise<ScanAnalysis> {
   const base = process.env.AI_ENGINE_URL;
   if (!base) return { verdict: null, attempted: false };
   try {
@@ -139,24 +141,32 @@ async function analyzeWithAi(text: string, childAge?: number): Promise<{ verdict
   }
 }
 
-async function analyzeStagingFixture(text: string, qa: StagingQaModel): Promise<{ verdict: Verdict | null; attempted: boolean }> {
+async function analyzeStagingFixture(text: string, qa: StagingQaModel): Promise<ScanAnalysis> {
+  const { providerMode } = qa;
+  let receivedResponse = false;
+  function failure(attempted: boolean, reason: "unavailable" | "timeout"): ScanAnalysis {
+    return providerMode ? { ...failedProviders(providerMode, reason), attempted } : { verdict: null, attempted };
+  }
   try {
     const res = await fetch(qa.endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, trace_id: qa.traceId }),
+      body: JSON.stringify({ text, trace_id: qa.traceId, ...(providerMode && { include_provider_outcomes: true }) }),
       redirect: "error",
       signal: AbortSignal.timeout(2600),
     });
-    if (!res.ok) return { verdict: null, attempted: true };
-    const scored = await res.json() as Record<string, unknown>;
+    receivedResponse = true;
+    if (!res.ok) return failure(true, res.status === 408 || res.status === 504 ? "timeout" : "unavailable");
+    const scored = await res.json();
+    if (providerMode) return { ...readProviderAnalysis(scored, providerMode, qa.traceId), attempted: true };
     if (scored?.trace_id !== qa.traceId || scored.model !== STAGING_QA_MODEL || scored.region !== STAGING_QA_REGION) {
-      return { verdict: null, attempted: true };
+      return failure(true, "unavailable");
     }
     return { verdict: aiVerdictFrom(scored), attempted: true };
   } catch (err) {
     const name = (err as { name?: string } | null)?.name;
-    return { verdict: null, attempted: name === "TimeoutError" || name === "AbortError" };
+    const timedOut = name === "TimeoutError" || name === "AbortError";
+    return failure(timedOut || (providerMode !== undefined && receivedResponse), timedOut ? "timeout" : "unavailable");
   }
 }
 
@@ -266,22 +276,27 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
   const qaProof = qa && {
     traceId: qa.traceId,
     fixtureNumber: qa.fixtureNumber,
-    model: STAGING_QA_MODEL,
+    ...(qa.providerMode ? { mode: qa.providerMode } : { model: STAGING_QA_MODEL }),
     region: STAGING_QA_REGION,
     fallback: ai.verdict === null,
     modelFlagged: ai.verdict?.flagged ?? null,
     rulesFlagged: local.flagged,
   };
+  const receipt = ai.providers && qa ? { childId, traceId: qa.traceId, providers: ai.providers } : undefined;
   if (!verdict.flagged) {
+    if (receipt) await prisma.stagingScanOutcome.create({ data: receipt });
     if (qaProof) log?.info(qaProof, "staging QA scan resolved without alert");
     return { ok: true, flagged: false, severity: "info", concernTypes: [] };
   }
 
   // The snippet vault always records flagged messages; alerts are throttled separately.
   const previewCipher = encryptSnippet(text.slice(0, PREVIEW_MAX_CHARS));
-  const event = await prisma.socialEvent.create({
-    data: { childId, app: appName, contact, severity: verdict.severity, previewCipher, concernTypes: verdict.concernTypes },
-  });
+  const eventData = { childId, app: appName, contact, severity: verdict.severity, previewCipher, concernTypes: verdict.concernTypes };
+  const event = receipt ? await prisma.$transaction(async (tx) => {
+    const created = await tx.socialEvent.create({ data: eventData });
+    await tx.stagingScanOutcome.create({ data: { ...receipt, socialEventId: created.id } });
+    return created;
+  }) : await prisma.socialEvent.create({ data: eventData });
 
   // NOTE: at most one alert per app per 10 minutes per child; the vault write above always
   // happens so parents can still review the full snippet history in /v1/social/events.
@@ -292,6 +307,7 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
     const category = GAMING_APPS.has(appName.toLowerCase()) ? "gaming_chat" : "social_concern";
     // Alerts never carry the message snippet — metadata is app/contact/concernTypes only;
     // the decrypted preview stays exclusively in the encrypted vault (#24).
+    const attribution = ai.providers && flaggedProviders(ai.providers);
     const alert = await raiseAlert({
       childId,
       familyId: child.familyId,
@@ -302,7 +318,8 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
       body: `${contact || "A contact"} sent a flagged message on ${appName}`,
       bodyKey: "alertBodySocialConcern",
       params: { app: appName, ...(contact ? { contact } : {}) },
-      metadata: { app: appName, contact, concernTypes: verdict.concernTypes },
+      metadata: { app: appName, contact, concernTypes: verdict.concernTypes,
+        ...(attribution && Object.keys(attribution).length > 0 && { providerOutcomes: attribution }) },
       childName: child.displayName,
     });
     alertId = alert?.id;
