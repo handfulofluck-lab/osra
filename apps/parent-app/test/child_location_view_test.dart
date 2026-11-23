@@ -99,6 +99,42 @@ void main() {
     expect(find.text('آخر تحديث قبل 4 دقائق'), findsOneWidget);
   });
 
+  testWidgets('a fix older than 30 minutes is flagged with a clock icon; a recent one is not', (tester) async {
+    final old = LocationPing(deviceId: 'dev-1', lat: ping.lat, lng: ping.lng, timestamp: now.subtract(const Duration(hours: 2)));
+    await tester.pumpWidget(ProviderScope(
+      overrides: overrides(marks: const [Placemark(locality: 'Dubai')]),
+      child: localizedTestApp(Scaffold(body: Column(children: [PlaceSummaryLine(ping: ping), PlaceSummaryLine(ping: old)]))),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('freshness-fresh')), findsOneWidget);
+    expect(find.byKey(const ValueKey('freshness-stale')), findsOneWidget);
+    expect(find.byIcon(Icons.schedule), findsOneWidget);
+    expect(find.text('Updated 2 hours ago'), findsOneWidget);
+    expect(isStaleFix(null, now), isTrue, reason: 'an unknown time is not presented as current');
+  });
+
+  testWidgets('tapping the card place line runs its action (the dashboard opens the Location tab)', (tester) async {
+    var taps = 0;
+    await tester.pumpWidget(ProviderScope(
+      overrides: overrides(marks: const [Placemark(locality: 'Dubai')]),
+      child: localizedTestApp(Scaffold(body: PlaceSummaryLine(ping: ping, onTap: () => taps++))),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('placeLine')));
+    expect(taps, 1);
+    expect(tester.getSize(find.byKey(const ValueKey('placeLine'))).height, greaterThanOrEqualTo(48));
+  });
+
+  testWidgets('the child screen can open straight on the Location tab', (tester) async {
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(FakeApiClient(standardRoutes())), ...overrides()],
+      child: localizedTestApp(const ChildDetailScreen(childId: 'child-1', initialTab: ChildDetailScreen.locationTab)),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Locate now'), findsOneWidget);
+  });
+
   test('zoom keeps the accuracy circle readable', () {
     expect(ChildLocationMap.zoomFor(18), 16);
     expect(ChildLocationMap.zoomFor(150), 15);

@@ -30,7 +30,13 @@ import 'command_history_screen.dart' show formatCommandTime;
 /// Per-child detail view with Overview / Apps / Social / Location / Alerts tabs.
 class ChildDetailScreen extends ConsumerWidget {
   final String childId;
-  const ChildDetailScreen({super.key, required this.childId});
+
+  /// Which tab opens first (0 Overview … 3 Location). The dashboard's place line opens Location (Bureau #1004).
+  final int initialTab;
+  const ChildDetailScreen({super.key, required this.childId, this.initialTab = 0});
+
+  /// The Location tab's index, for `/child/:id?tab=location`.
+  static const int locationTab = 3;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -41,6 +47,7 @@ class ChildDetailScreen extends ConsumerWidget {
     final l10n = context.l10n;
     return DefaultTabController(
       length: 5,
+      initialIndex: initialTab.clamp(0, 4),
       child: Scaffold(
         appBar: AppBar(
           toolbarHeight: MediaQuery.textScalerOf(context).scale(kToolbarHeight + AppSpace.lg),

@@ -85,6 +85,42 @@ String locationFreshness(BuildContext context, DateTime? timestamp, DateTime now
   return l10n.locationUpdatedDays(age.inDays);
 }
 
+/// Bureau #1004: a fix older than this is flagged, so a parent does not read an old place as "now".
+const Duration kStaleLocationAfter = Duration(minutes: 30);
+
+bool isStaleFix(DateTime? timestamp, DateTime now) =>
+    timestamp == null || now.difference(timestamp.toLocal()) > kStaleLocationAfter;
+
+/// The freshness line: plain when recent; warning colour with a clock icon when stale (Bureau #1004).
+class FreshnessLine extends ConsumerWidget {
+  final DateTime? timestamp;
+  final TextStyle? style;
+
+  /// Text appended after the freshness (the accuracy on the profile card), kept in the same line.
+  final String? suffix;
+  const FreshnessLine({super.key, required this.timestamp, this.style, this.suffix});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final now = ref.watch(clockProvider)();
+    final stale = isStaleFix(timestamp, now);
+    final theme = Theme.of(context);
+    final color = stale ? context.tokens.severityWarningText : theme.colorScheme.onSurfaceVariant;
+    final text = [locationFreshness(context, timestamp, now), if (suffix != null) suffix!].join(' · ');
+    return Row(
+      key: ValueKey(stale ? 'freshness-stale' : 'freshness-fresh'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (stale) ...[
+          Icon(Icons.schedule, size: (style?.fontSize ?? 14) + 2, color: color),
+          const SizedBox(width: AppSpace.xs),
+        ],
+        Flexible(child: Text(text, style: style?.copyWith(color: color) ?? TextStyle(color: color))),
+      ],
+    );
+  }
+}
+
 /// The place line for a fix: the place name once known, "Finding address…" while the lookup runs,
 /// and "Address not available" when it fails. Never coordinates.
 class PlaceNameText extends ConsumerWidget {
@@ -107,25 +143,30 @@ class PlaceNameText extends ConsumerWidget {
   }
 }
 
-/// One line for the child card: "Al Barsha, Dubai · updated 4 min ago".
-class PlaceSummaryLine extends ConsumerWidget {
+/// The child card's place block: "Al Barsha, Dubai" over "Updated 4 min ago". Tapping it opens the child's
+/// map (Bureau #1004), so the map is one tap from the dashboard even when the address is not available.
+class PlaceSummaryLine extends StatelessWidget {
   final LocationPing ping;
   final TextStyle? style;
-  const PlaceSummaryLine({super.key, required this.ping, this.style});
+  final VoidCallback? onTap;
+  const PlaceSummaryLine({super.key, required this.ping, this.style, this.onTap});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final now = ref.watch(clockProvider)();
-    return Column(
+  Widget build(BuildContext context) {
+    final body = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         PlaceNameText(ping: ping, style: style, maxLines: 1),
-        Text(
-          locationFreshness(context, ping.timestamp, now),
-          style: style?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-        ),
+        FreshnessLine(timestamp: ping.timestamp, style: style),
       ],
+    );
+    if (onTap == null) return body;
+    return InkWell(
+      key: const ValueKey('placeLine'),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: ConstrainedBox(constraints: const BoxConstraints(minHeight: 48), child: body),
     );
   }
 }
@@ -141,7 +182,6 @@ class ChildLocationCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final theme = Theme.of(context);
-    final now = ref.watch(clockProvider)();
     final accuracy = ping.accuracyM > 0 ? ping.accuracyM.round() : null;
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -156,12 +196,10 @@ class ChildLocationCard extends ConsumerWidget {
               children: [
                 PlaceNameText(ping: ping, style: theme.textTheme.titleMedium),
                 const SizedBox(height: AppSpace.xs),
-                Text(
-                  [
-                    locationFreshness(context, ping.timestamp, now),
-                    if (accuracy != null) l10n.accuracyShort(accuracy),
-                  ].join(' · '),
-                  style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                FreshnessLine(
+                  timestamp: ping.timestamp,
+                  style: theme.textTheme.bodyMedium,
+                  suffix: accuracy != null ? l10n.accuracyShort(accuracy) : null,
                 ),
                 const SizedBox(height: AppSpace.md),
                 Align(
@@ -241,12 +279,32 @@ class ChildLocationMap extends StatelessWidget {
               width: 44,
               height: 44,
               alignment: Alignment.topCenter,
-              child: Icon(Icons.location_on, size: 44, color: scheme.primary),
+              child: OutlinedPin(color: scheme.primary, size: 44),
             ),
           ]),
-          const SimpleAttributionWidget(source: Text('© OpenStreetMap contributors')),
+          const SimpleAttributionWidget(source: Text('OpenStreetMap contributors')),
         ],
       ),
     );
   }
+}
+
+/// Bureau #1004: the pin keeps a white outline, so it reads on light map tiles in the dark theme too.
+class OutlinedPin extends StatelessWidget {
+  final Color color;
+  final double size;
+  const OutlinedPin({super.key, required this.color, this.size = 40});
+
+  @override
+  Widget build(BuildContext context) => Icon(
+        Icons.location_on,
+        size: size,
+        color: color,
+        // A white halo traced by eight offset shadows: an outline that stays on the glyph's own shape.
+        shadows: [
+          for (final o in const [Offset(1.5, 0), Offset(-1.5, 0), Offset(0, 1.5), Offset(0, -1.5),
+              Offset(1.1, 1.1), Offset(-1.1, 1.1), Offset(1.1, -1.1), Offset(-1.1, -1.1)])
+            Shadow(color: Colors.white, offset: o, blurRadius: 0.5),
+        ],
+      );
 }

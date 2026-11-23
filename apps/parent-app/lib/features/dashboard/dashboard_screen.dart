@@ -365,7 +365,11 @@ class ChildCard extends ConsumerWidget {
                                 locationRefused ? l10n.readPermissionRequired : l10n.noLocationYet,
                                 style: Theme.of(context).textTheme.bodySmall,
                               )
-                            : PlaceSummaryLine(ping: location, style: Theme.of(context).textTheme.bodySmall),
+                            : PlaceSummaryLine(
+                                ping: location,
+                                style: Theme.of(context).textTheme.bodySmall,
+                                onTap: () => context.push('/child/${child.id}?tab=location'),
+                              ),
                       ),
                     ],
                   ),
