@@ -334,6 +334,30 @@ class AppLocalizationsAr extends AppLocalizations {
   String get internet => 'الإنترنت';
 
   @override
+  String get internetPausing => 'جارٍ إيقاف الإنترنت…';
+
+  @override
+  String get internetResuming => 'جارٍ استئناف الإنترنت…';
+
+  @override
+  String get internetPauseConfirmed => 'تم إيقاف الإنترنت';
+
+  @override
+  String get internetResumeConfirmed => 'تم استئناف الإنترنت';
+
+  @override
+  String get internetPausePartial => 'تم الإيقاف على بعض الأجهزة';
+
+  @override
+  String get internetResumePartial => 'تم الاستئناف على بعض الأجهزة';
+
+  @override
+  String get internetPauseUnconfirmed => 'لم يُؤكَّد الإيقاف';
+
+  @override
+  String get internetResumeUnconfirmed => 'لم يُؤكَّد الاستئناف';
+
+  @override
   String pauseInternetTitle(String name) {
     return 'إيقاف الإنترنت مؤقتًا لـ$name؟';
   }

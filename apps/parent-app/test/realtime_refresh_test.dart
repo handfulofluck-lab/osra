@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
+import 'package:familyshield_parent/providers/controls_provider.dart';
 import 'package:familyshield_parent/providers/family_provider.dart';
 
 import 'fake_api_client.dart';
@@ -17,6 +18,7 @@ class RecordingEffects implements RealtimeEffects {
   final List<String> consents = [];
   /// #876: the delivery lists a `rules_applied` frame also refreshes.
   int commandHistory = 0;
+  final List<String?> internetStatuses = [];
   final List<LiveActivity> activities = [];
 
   @override
@@ -38,6 +40,9 @@ class RecordingEffects implements RealtimeEffects {
   void invalidateCommandHistory() => commandHistory++;
 
   @override
+  void invalidateChildInternetStatus(String? childId) => internetStatuses.add(childId);
+
+  @override
   void updateLiveActivity(LiveActivity activity) => activities.add(activity);
 }
 
@@ -46,7 +51,43 @@ class RecordingEffects implements RealtimeEffects {
 final _effectsProvider = Provider<RealtimeEffects>((ref) => RealtimeEffects.fromRef(ref));
 
 void main() {
+  test('an internet acknowledgement refetches the current request immediately', () async {
+    var status = 'delivered';
+    final api = FakeApiClient({
+      'GET /v1/controls/children/child-1/status': (_) => {
+            'paused': true,
+            'internetRequest': {
+              'action': 'pause',
+              'devices': [{'status': status}],
+            },
+          },
+    });
+    final container = ProviderContainer(overrides: [apiClientProvider.overrideWithValue(api)]);
+    addTearDown(container.dispose);
+    final provider = childInternetStatusProvider('child-1');
+    final subscription = container.listen(provider, (_, __) {});
+    addTearDown(subscription.close);
+    expect((await container.read(provider.future)).hasAcknowledgedDevice, isFalse);
+
+    status = 'acked';
+    applyRealtimeMessage(container.read(_effectsProvider), {
+      'type': 'command_acked',
+      'payload': {'type': 'pause_internet', 'childId': 'child-1'},
+    });
+    expect((await container.read(provider.future)).hasAcknowledgedDevice, isTrue);
+    expect(api.calls('GET', '/v1/controls/children/child-1/status'), hasLength(2));
+  });
+
   group('applyRealtimeMessage', () {
+    test('a child internet acknowledgement refreshes that child’s controls', () {
+      final effects = RecordingEffects();
+      applyRealtimeMessage(effects, {
+        'type': 'command_acked',
+        'payload': {'type': 'resume_internet', 'childId': 'child-1'},
+      });
+      expect(effects.internetStatuses, ['child-1']);
+    });
+
     test('an alert invalidates the feed, the badge and the family overview', () {
       final effects = RecordingEffects();
       applyRealtimeMessage(effects, {

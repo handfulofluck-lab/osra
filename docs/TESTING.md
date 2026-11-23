@@ -999,6 +999,13 @@ command reports `unconfirmed` at that deadline if it received no acknowledgement
 newer request gets a new ID and that missing or newly paired devices show unknown. Check the actual
 allowed app and site separately after Resume.
 
+On the Parent dashboard, check the child card after Pause and Resume. The waiting state persists
+while the phones are queued or have only fetched the command. Verify that a recorded request with
+no devices or only unknown devices shows an unconfirmed result. A completed chip requires receipts
+from every device targeted by the current operation. For a partial or unconfirmed result, open
+Command delivery from the card to review the affected devices. Repeat with large text in English
+and Arabic and check that the action and delivery link remain reachable.
+
 For the first staging rollout, drain the legacy API tasks before serving traffic from this version.
 The legacy API writes the Redis requested state, while this version prefers the durable operation
 when it exists. Before a rollback, reconcile Redis for children with durable operations and keep

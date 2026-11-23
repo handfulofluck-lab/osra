@@ -15,14 +15,14 @@ enum InternetState {
   /// No pause was requested, or the requested pause has been lifted.
   inactive,
 
-  /// Requested, and no device has settled it yet — every entry is `pending`, `delivered` or `unknown`.
+  /// A device can still acknowledge the request, or the server has only reported the requested action.
   waiting,
 
   /// Every device on the request acknowledged it.
   confirmed,
 
   /// Some acknowledged and some did not, or nothing acknowledged and something failed, expired or was never
-  /// confirmed. A mixed, unknown or refused result stays visible rather than being rounded to one side.
+  /// confirmed. This also covers a server request with no device left to acknowledge it.
   partial,
 }
 
@@ -40,24 +40,28 @@ enum InternetState {
 /// command — the server's own word for "we asked, it never said" — and `unknown` means this device was not on
 /// the request at all. None of those may round up.
 ///
-/// An empty list is [InternetState.waiting], never `confirmed`: a child with no paired devices must not read as
-/// success.
+/// An empty list from a persisted server request has no confirmation path. Optimistic and legacy responses
+/// also have empty lists, but only report the requested action and still show [InternetState.waiting].
 InternetState internetStateFor({
   required String? action,
   required List<String> deviceStatuses,
+  bool hasServerRequest = false,
 }) {
   if (action == null) return InternetState.inactive;
-  if (deviceStatuses.isEmpty) return InternetState.waiting;
+  if (deviceStatuses.isEmpty) return hasServerRequest ? InternetState.partial : InternetState.waiting;
   var acked = 0;
-  var settledWithoutAck = 0;
+  var settledWithoutAck = false;
+  var canStillAcknowledge = false;
   for (final status in deviceStatuses) {
     if (status == 'acked') {
       acked++;
     } else if (status == 'failed' || status == 'expired' || status == 'unconfirmed') {
-      settledWithoutAck++;
+      settledWithoutAck = true;
+    } else if (status == 'pending' || status == 'delivered') {
+      canStillAcknowledge = true;
     }
   }
   if (acked == deviceStatuses.length) return InternetState.confirmed;
-  if (acked > 0 || settledWithoutAck > 0) return InternetState.partial;
+  if (acked > 0 || settledWithoutAck || !canStillAcknowledge) return InternetState.partial;
   return InternetState.waiting;
 }

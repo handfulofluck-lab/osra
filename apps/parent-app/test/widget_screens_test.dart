@@ -448,31 +448,37 @@ void main() {
   });
 
   group('Internet pause pill (Feature #11)', () {
-    /// Route table with a stateful controls status so the refetch after a
-    /// successful POST reflects the new paused state (mirrors the server).
+    /// Returns a completed current request after each successful POST.
     FakeApiClient pausedApi({required bool startPaused}) {
-      var paused = startPaused;
+      String? action = startPaused ? 'pause' : null;
       return FakeApiClient({
         ...standardRoutes(),
-        'GET /v1/controls/children/child-1/status': (_) => {'paused': paused},
+        'GET /v1/controls/children/child-1/status': (_) => {
+              'paused': action == 'pause',
+              if (action != null)
+                'internetRequest': {
+                  'action': action,
+                  'devices': [{'status': 'acked'}],
+                },
+            },
         'GET /v1/controls/children/child-2/status': (_) => {'paused': false},
         'POST /v1/controls/children/child-1/pause': (_) {
-          paused = true;
+          action = 'pause';
           return {'ok': true};
         },
         'POST /v1/controls/children/child-1/resume': (_) {
-          paused = false;
+          action = 'resume';
           return {'ok': true};
         },
       });
     }
 
-    testWidgets('pill shows Paused when the controls status is true', (tester) async {
+    testWidgets('pill shows a completed pause after the current request is acknowledged', (tester) async {
       final api = pausedApi(startPaused: true);
       await pumpScreen(tester, const DashboardScreen(), api);
 
       final alexCard = find.ancestor(of: find.text('Alex'), matching: find.byType(Card));
-      expect(find.descendant(of: alexCard, matching: find.text('Paused')), findsOneWidget);
+      expect(find.descendant(of: alexCard, matching: find.text('Internet paused')), findsOneWidget);
       expect(find.descendant(of: alexCard, matching: find.text('Internet')), findsNothing);
       // Sam's status is false → green pill.
       final samCard = find.ancestor(of: find.text('Sam'), matching: find.byType(Card));
@@ -495,7 +501,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.calls('POST', '/v1/controls/children/child-1/pause'), hasLength(1));
-      expect(find.descendant(of: alexCard, matching: find.text('Paused')), findsOneWidget);
+      expect(find.descendant(of: alexCard, matching: find.text('Internet paused')), findsOneWidget);
     });
 
     testWidgets('cancel on the confirm dialog keeps the pill unchanged and skips the POST', (tester) async {
@@ -516,9 +522,9 @@ void main() {
       final api = pausedApi(startPaused: true);
       await pumpScreen(tester, const DashboardScreen(), api);
       final alexCard = find.ancestor(of: find.text('Alex'), matching: find.byType(Card));
-      expect(find.descendant(of: alexCard, matching: find.text('Paused')), findsOneWidget);
+      expect(find.descendant(of: alexCard, matching: find.text('Internet paused')), findsOneWidget);
 
-      await tester.tap(find.descendant(of: alexCard, matching: find.text('Paused')));
+      await tester.tap(find.descendant(of: alexCard, matching: find.text('Internet paused')));
       await tester.pumpAndSettle();
       expect(find.text('Resume internet for Alex?'), findsOneWidget);
 
@@ -527,7 +533,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.calls('POST', '/v1/controls/children/child-1/resume'), hasLength(1));
-      expect(find.descendant(of: alexCard, matching: find.text('Internet')), findsOneWidget);
+      expect(find.descendant(of: alexCard, matching: find.text('Internet resumed')), findsOneWidget);
     });
 
     testWidgets('404 status is treated as not paused', (tester) async {
@@ -538,7 +544,7 @@ void main() {
       expect(api.calls('GET', '/v1/controls/children/child-1/status'), hasLength(1));
       final alexCard = find.ancestor(of: find.text('Alex'), matching: find.byType(Card));
       expect(find.descendant(of: alexCard, matching: find.text('Internet')), findsOneWidget);
-      expect(find.text('Paused'), findsNothing);
+      expect(find.text('Internet paused'), findsNothing);
     });
 
     testWidgets('child detail Pause internet button POSTs the pause endpoint', (tester) async {

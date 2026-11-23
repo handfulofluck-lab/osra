@@ -136,6 +136,14 @@
   "wellbeingSafety": "safety",
   "paused": "Paused",
   "internet": "Internet",
+  "internetPausing": "Pausing internet…",
+  "internetResuming": "Resuming internet…",
+  "internetPauseConfirmed": "Internet paused",
+  "internetResumeConfirmed": "Internet resumed",
+  "internetPausePartial": "Paused on some devices",
+  "internetResumePartial": "Resumed on some devices",
+  "internetPauseUnconfirmed": "Pause not confirmed",
+  "internetResumeUnconfirmed": "Resume not confirmed",
   "pauseInternetTitle": "Pause internet for {name}?",
   "@pauseInternetTitle": {
     "placeholders": {
