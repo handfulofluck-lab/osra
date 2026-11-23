@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 export const STAGING_QA_MODEL = "openai.gpt-oss-20b-1:0";
 export const STAGING_QA_REGION = "eu-central-1";
 
-export type StagingQaModel = { endpoint: URL; traceId: string; fixtureNumber: number | null; providerMode?: ProviderMode };
+export type StagingQaModel = { endpoint: URL; expiresAt: number; traceId: string; fixtureNumber: number | null; providerMode?: ProviderMode };
 
 type Capture = {
   device: { id: string; childId: string } | null | undefined;
@@ -53,5 +53,11 @@ export function stagingQaModel(capture: Capture, env: NodeJS.ProcessEnv = proces
   endpoint.pathname = "/analyze/staging-qa";
   const providerMode = env.OSRA_STAGING_QA_ENGINE;
   if (providerMode !== undefined && providerMode !== "own" && providerMode !== "bedrock" && providerMode !== "both") return null;
-  return { endpoint, traceId: randomUUID(), fixtureNumber, providerMode };
+  return { endpoint, expiresAt, traceId: randomUUID(), fixtureNumber, providerMode };
+}
+
+/** Absolute cutoff for an already validated staging capture. */
+export function stagingQaDeadline(qa: StagingQaModel, batchDeadline: number, now: number): number {
+  if (qa.providerMode === "own") return Math.min(qa.expiresAt, now + 10000, batchDeadline);
+  return Math.min(qa.expiresAt, now + 2600);
 }

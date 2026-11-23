@@ -17,3 +17,5 @@ This test exercises roadmap 2.6 on a dedicated staging pairing with synthetic me
 3. Open the matching notification on Parent. Check the app, concern and event time, plus the authorized detail or activity view.
 4. Repeat with the approved harmless fixture. Confirm the model completed without fallback and that the control created no new alert.
 5. Disable the staging QA gate after the run. Report each result with a fixture name, exact build, UAE time and sanitized trace evidence.
+
+The staged OSRA-only API allows ten seconds per model request, capped by approval expiry and a shared 25-second inference deadline for a batch. Completed receipts survive when other items time out.

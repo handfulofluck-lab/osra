@@ -9,7 +9,7 @@ import { requireFamily, requireGuardianRead, requireParent } from "../middleware
 import { decryptSnippet, encryptSnippet } from "../lib/snippetVault.js";
 import { isValidTimeZone } from "../lib/digestSchedule.js";
 import { failedProviders, flaggedProviders, readProviderAnalysis, type ProviderReceipts } from "../lib/stagingProviderOutcomes.js";
-import { STAGING_QA_MODEL, STAGING_QA_REGION, stagingQaModel, stagingQaModelEnabled, type StagingQaModel } from "../lib/stagingQaModel.js";
+import { STAGING_QA_MODEL, STAGING_QA_REGION, stagingQaDeadline, stagingQaModel, stagingQaModelEnabled, type StagingQaModel } from "../lib/stagingQaModel.js";
 
 const ScanSchema = z.object({
   childId: z.string().min(1),
@@ -141,23 +141,27 @@ async function analyzeWithAi(text: string, childAge?: number): Promise<ScanAnaly
   }
 }
 
-async function analyzeStagingFixture(text: string, qa: StagingQaModel): Promise<ScanAnalysis> {
+async function analyzeStagingFixture(text: string, qa: StagingQaModel, batchDeadline: number): Promise<ScanAnalysis> {
   const { providerMode } = qa;
   let receivedResponse = false;
   function failure(attempted: boolean, reason: "unavailable" | "timeout"): ScanAnalysis {
     return providerMode ? { ...failedProviders(providerMode, reason), attempted } : { verdict: null, attempted };
   }
+  const now = Date.now();
+  const deadline = stagingQaDeadline(qa, batchDeadline, now);
+  if (deadline <= now) return failure(false, "timeout");
   try {
     const res = await fetch(qa.endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ text, trace_id: qa.traceId, ...(providerMode && { include_provider_outcomes: true }) }),
       redirect: "error",
-      signal: AbortSignal.timeout(2600),
+      signal: AbortSignal.timeout(deadline - now),
     });
     receivedResponse = true;
     if (!res.ok) return failure(true, res.status === 408 || res.status === 504 ? "timeout" : "unavailable");
     const scored = await res.json();
+    if (Date.now() >= deadline) return failure(true, "timeout");
     if (providerMode) return { ...readProviderAnalysis(scored, providerMode, qa.traceId), attempted: true };
     if (scored?.trace_id !== qa.traceId || scored.model !== STAGING_QA_MODEL || scored.region !== STAGING_QA_REGION) {
       return failure(true, "unavailable");
@@ -228,7 +232,7 @@ async function recordScanUsage(
  * Scans one capture: ownership, consent, the verdict, the vault write and the throttled alert. Shared
  * by the single-item body and each item of a batch (#490), so the checks are identical for both.
  */
-async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest["log"]): Promise<ScanItemResult> {
+async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest["log"], batchDeadline = Infinity): Promise<ScanItemResult> {
   const parsed = ScanSchema.safeParse(input);
   if (!parsed.success) return { ok: false, reason: "invalid_item", status: 400, body: { error: parsed.error.flatten() } };
   const { childId, deviceId, app: appName, contact, text, source } = parsed.data;
@@ -252,7 +256,7 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
     ? new Date().getFullYear() - (child as { birthYear: number }).birthYear
     : undefined;
   const qa = stagingQaModel({ device, deviceId, childId, app: appName, source, text });
-  const ai = qa ? await analyzeStagingFixture(text, qa)
+  const ai = qa ? await analyzeStagingFixture(text, qa, batchDeadline)
     : stagingQaModelEnabled() ? { verdict: null, attempted: false }
       : await analyzeWithAi(text, childAge);
   const local = localKeywordCheck(text);
@@ -352,7 +356,9 @@ export async function socialRoutes(app: FastifyInstance) {
       // reach the agent's 30 s read timeout, so a slow engine would fail a batch the server had already
       // stored, and the retry would store it twice. `Promise.all` keeps the order, and the alert
       // throttle is an atomic SET NX, so same-app items still raise at most one alert.
-      const scanned = await Promise.all(batch.data.items.map((item) => scanOne(item, auth.device, req.log)));
+      // Leave five seconds for persistence and the response before Android's 30-second read timeout.
+      const batchDeadline = Date.now() + 25000;
+      const scanned = await Promise.all(batch.data.items.map((item) => scanOne(item, auth.device, req.log, batchDeadline)));
       // A failed item carries its reason only; status codes belong to the single-item body.
       const results = scanned.map((r) => (r.ok ? r : { ok: false, reason: r.reason }));
       return { results };

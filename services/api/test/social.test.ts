@@ -203,6 +203,24 @@ describe("social routes", () => {
       expect((await send(text)).json()).toMatchObject({ flagged: false });
       expect(receipt(4).providers).toEqual({ bedrock: unavailable, own: unavailable });
       expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+      // Exercise the actual fetch signal on the scoped own-only route, including an earlier approval expiry.
+      vi.stubEnv("OSRA_STAGING_QA_ENGINE", "own");
+      const timer = vi.spyOn(AbortSignal, "timeout");
+      try {
+        fetcher.mockRejectedValueOnce(new DOMException("timed out", "TimeoutError"));
+        await send(text);
+        expect(timer).toHaveBeenCalledWith(10000);
+        expect(receipt(5).providers).toEqual({ own: unavailable });
+        timer.mockClear();
+        vi.stubEnv("OSRA_STAGING_QA_EXPIRES_AT", new Date(Date.now() + 1500).toISOString());
+        fetcher.mockRejectedValueOnce(new DOMException("timed out", "TimeoutError"));
+        await send(text);
+        const capped = timer.mock.calls[0][0];
+        expect(capped).toBeGreaterThan(0);
+        expect(capped).toBeLessThanOrEqual(1500);
+      } finally {
+        timer.mockRestore();
+      }
     } finally {
       await app.close();
     }
