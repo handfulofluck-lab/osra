@@ -26,6 +26,21 @@ import {
  */
 
 export const SOCIAL_SUMMARY_TICK_MS = 30_000;
+
+/**
+ * Atomic conditional rollover for the per-contact Redis throttle key (Redis 5.0.14 compatible;
+ * Codex review of #1033). Writes the post-summary window ONLY when the key is absent (expired)
+ * or still belongs to this same alert; if a newer window (`__pending__` or a newer `alertId`)
+ * already claimed the key before a delayed sweep ran, leaves the newer window untouched.
+ */
+export const SOCIAL_WINDOW_ROLLOVER_SCRIPT = `
+local cur = redis.call('GET', KEYS[1])
+if (not cur) or string.find(cur, ARGV[1], 1, true) then
+  redis.call('SET', KEYS[1], ARGV[2], 'EX', tonumber(ARGV[3]))
+  return 1
+end
+return 0
+`;
 const LOOKBACK_MS = 24 * 60 * 60_000;
 
 export interface SocialSummaryPushedItem {
@@ -110,8 +125,9 @@ export async function runSocialAlertSummarySweep(
       metadata: nextMetadata,
     };
 
-    // Start the next 10-minute window at this summary push so a parent never gets more than
-    // one push per 10 minutes unless a higher-severity message bypasses it (#1029).
+    // Atomically start the next 10-minute window at this summary push ONLY if no newer window has
+    // already claimed this contact's throttle key (Codex #1033 review). If a delayed sweep runs
+    // after a newer alert opened, the newer window stays active and untouched.
     if (meta.contactKey) {
       const throttleKey = `social:alert:${row.childId}:${meta.app.trim().toLowerCase()}:${meta.contactKey}`;
       const nextState: SocialWindowRedisState = {
@@ -120,7 +136,15 @@ export async function runSocialAlertSummarySweep(
         windowEndsAt: nextWindowEndsAt,
         pushedSeverity: meta.pushedSeverity,
       };
-      await redis.set(throttleKey, JSON.stringify(nextState), "EX", SOCIAL_ALERT_WINDOW_SECONDS).catch(() => undefined);
+      const payload = JSON.stringify(nextState);
+      const expectedToken = `"alertId":${JSON.stringify(row.id)}`;
+      const evalRes = await redis
+        .eval(SOCIAL_WINDOW_ROLLOVER_SCRIPT, 1, throttleKey, expectedToken, payload, String(SOCIAL_ALERT_WINDOW_SECONDS))
+        .catch(() => null);
+      if (evalRes !== 0 && evalRes !== 1) {
+        // Fallback for unit-test mocks that don't stub `eval`: still atomic NX, never overwrites a newer key.
+        await redis.set(throttleKey, payload, "EX", SOCIAL_ALERT_WINDOW_SECONDS, "NX").catch(() => undefined);
+      }
     }
 
     await publishFamilyEvent(familyId, { type: "alert", payload: updatedAlert, ts: nowIso });

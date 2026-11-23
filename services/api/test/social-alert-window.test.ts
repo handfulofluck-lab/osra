@@ -6,7 +6,7 @@ import {
   socialAlertThrottleKey,
   socialContactKey,
 } from "../src/lib/socialAlertWindow.js";
-import { runSocialAlertSummarySweep } from "../src/jobs/socialAlertSummary.js";
+import { SOCIAL_WINDOW_ROLLOVER_SCRIPT, runSocialAlertSummarySweep } from "../src/jobs/socialAlertSummary.js";
 import { setPushProviders } from "../src/lib/push/notify.js";
 import type { PushMessage, PushProvider } from "../src/lib/push/types.js";
 import { getRedis } from "../src/redis.js";
@@ -114,6 +114,27 @@ describe("social alert per-contact window (#1029)", () => {
         if (redisStore.delete(k)) n += 1;
       }
       return n;
+    });
+    const evalMock = redis.eval as unknown as {
+      mockImplementation: (fn: (script: string, numKeys: number, ...args: string[]) => Promise<unknown>) => void;
+    };
+    evalMock.mockImplementation(async (script, _numKeys, ...args) => {
+      if (script === SOCIAL_WINDOW_ROLLOVER_SCRIPT) {
+        const [key, expectedToken, nextPayload, ttlStr] = args;
+        recordedRedisKeys.push(key!);
+        const curEntry = redisStore.get(key!);
+        const cur = isLive(curEntry) ? curEntry!.value : null;
+        if (cur === null || cur.includes(expectedToken!)) {
+          const ttlSeconds = Number(ttlStr);
+          redisStore.set(key!, {
+            value: nextPayload!,
+            expiresAt: Number.isFinite(ttlSeconds) ? Date.now() + ttlSeconds * 1000 : null,
+          });
+          return 1;
+        }
+        return 0;
+      }
+      return null;
     });
 
     prismaMock.child.findUnique.mockResolvedValue(CHILD);
@@ -513,6 +534,48 @@ describe("social alert per-contact window (#1029)", () => {
     expect(res.statusCode).toBe(200);
     expect(alerts.get(row.id)?.attemptCount).toBe(3);
     expect(alerts.get(row.id)?.metadata.flaggedCount).toBe(3);
+
+    await app.close();
+  });
+
+  // Mutant (Codex #1033 review): replacing the atomic rollover in socialAlertSummary.ts with an
+  // unconditional redis.set(...) overwrites the active key back to alert-1 and makes scan 4
+  // increment alert-1 instead of alert-2.
+  it("delayed summary sweep preserves a newer active contact window instead of overwriting it", async () => {
+    const app = await buildApp(socialRoutes, "/v1/social");
+    vi.stubGlobal("fetch", aiFlagged("warning", "cyberbullying"));
+
+    // Window 1: scan 1 + scan 2 accumulate on alert-1 (summaryPending = true).
+    await postScan(app, { childId: CHILD.id, app: "WhatsApp", contact: "DelayedSweep", text: "msg 1" });
+    vi.setSystemTime(Date.now() + 30_000);
+    await postScan(app, { childId: CHILD.id, app: "WhatsApp", contact: "DelayedSweep", text: "msg 2" });
+    expect(alerts.size).toBe(1);
+    const alert1Id = [...alerts.keys()][0]!;
+
+    // Advance just past Window 1 expiry; scan 3 arrives BEFORE the delayed sweep runs -> opens alert-2.
+    vi.setSystemTime(Date.now() + SOCIAL_ALERT_WINDOW_MS + 5_000);
+    await postScan(app, { childId: CHILD.id, app: "WhatsApp", contact: "DelayedSweep", text: "msg 3" });
+    expect(alerts.size).toBe(2);
+    const alert2Id = [...alerts.keys()].find((id) => id !== alert1Id)!;
+
+    const key = socialAlertThrottleKey(CHILD.id, "WhatsApp", "DelayedSweep");
+    const beforeSweep = JSON.parse((await getRedis().get(key))!) as { alertId: string };
+    expect(beforeSweep.alertId).toBe(alert2Id);
+
+    // Delayed summary sweep for alert-1 runs now.
+    const sweep = await runSocialAlertSummarySweep(new Date());
+    expect(sweep.pushed.map((p) => p.alertId)).toEqual([alert1Id]);
+
+    // Active Redis key MUST still reference alert-2, never reverted to alert-1.
+    const afterSweep = JSON.parse((await getRedis().get(key))!) as { alertId: string };
+    expect(afterSweep.alertId).toBe(alert2Id);
+
+    // Scan 4 arriving inside Window 2 MUST increment alert-2 (leaving alert-1 at 2).
+    vi.setSystemTime(Date.now() + 15_000);
+    await postScan(app, { childId: CHILD.id, app: "WhatsApp", contact: "DelayedSweep", text: "msg 4" });
+    expect(alerts.get(alert1Id)?.metadata.flaggedCount).toBe(2);
+    expect(alerts.get(alert2Id)?.metadata.flaggedCount).toBe(2);
+    expect(alerts.get(alert2Id)?.attemptCount).toBe(2);
 
     await app.close();
   });
