@@ -3453,8 +3453,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String socialAlertFromContact(String contact, String time) {
-    return 'From $contact · latest $time';
+  String socialAlertFromContactOnly(String contact) {
+    return 'From $contact';
+  }
+
+  @override
+  String socialAlertLatestAt(String time) {
+    return 'Latest $time';
   }
 
   @override

@@ -98,10 +98,11 @@ void main() {
   }
 
   group('Per-contact social alert ICU plurals & contact name (#1029)', () {
-    testWidgets('renders singular/plural titles, ltrIsolate contact name, unknown-contact fallback, and ellipsis',
+    testWidgets('renders singular/plural titles, FSI contact line (1-line ellipsis), separate latest line, and unknown-contact fallback',
         (tester) async {
-      // Mutant 1: hardcoding plural "messages" or omitting ltrIsolate around contact name breaks this test.
+      // Mutant 1: hardcoding plural "messages" or wrapping contact in LRI instead of FSI breaks this test.
       // Mutant 2: omitting "an unknown contact" fallback when metadata['contact'] is blank fails the unknown check.
+      // Mutant 3: merging contact and latest time onto one truncated line breaks the separate alert-latest-* line assertion.
       final singular = Alert.fromJson(socialAlertJson(
         id: 'a1',
         flaggedCount: 1,
@@ -131,34 +132,26 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      // Singular (=1) with named contact wrapped in ltrIsolate
+      // Singular (=1) with named contact wrapped in first-strong isolate (FSI U+2068 ... PDI U+2069)
       expect(find.textContaining('1 concerning message on'), findsOneWidget);
-      expect(find.textContaining('From ${ltrIsolate('Alex Smith')}'), findsOneWidget);
-      expect(find.textContaining('09:05'), findsOneWidget);
+      expect(find.text('From ${firstStrongIsolate('Alex Smith')}'), findsOneWidget);
+      expect(find.text('Latest ${ltrIsolate('09:05')}'), findsOneWidget);
 
-      // Plural (other) with unknown-contact fallback
+      // Plural (other) with unknown-contact fallback + separate latest line
       expect(find.textContaining('4 concerning messages on'), findsOneWidget);
-      expect(find.textContaining('From an unknown contact'), findsOneWidget);
-      expect(find.textContaining('09:15'), findsOneWidget);
+      expect(find.text('From an unknown contact'), findsOneWidget);
+      expect(find.text('Latest ${ltrIsolate('09:15')}'), findsOneWidget);
       expect(find.text('+2 new'), findsOneWidget);
 
-      // Subtitle enforces maxLines 2 and title allows maxLines 3 (UI/UX Bureau 7116310065).
+      // Title allows maxLines 3; contact line enforces maxLines 1 + ellipsis; latest line is unconstrained (UI/UX 7116862871).
       final titleText = tester.widget<Text>(find.textContaining('1 concerning message on'));
       expect(titleText.maxLines, 3);
-      final subtitleText = tester.widget<Text>(find.textContaining('From ${ltrIsolate('Alex Smith')}'));
-      expect(subtitleText.maxLines, 2);
-      expect(subtitleText.overflow, TextOverflow.ellipsis);
-
-      // Contact names > 24 grapheme clusters are trimmed before formatting so "· latest HH:mm" stays visible.
-      expect(
-        AlertTile.truncateContactForCard('Mohammed Abdullah Al Mansouri'),
-        'Mohammed Abdullah Al Man…',
-      );
-      expect(
-        AlertTile.truncateContactForCard('محمد عبدالله المنصوري العلي'),
-        'محمد عبدالله المنصوري ال…',
-      );
-      expect(AlertTile.truncateContactForCard('Alex Smith'), 'Alex Smith');
+      final contactText = tester.widget<Text>(find.byKey(const ValueKey('alert-contact-a1')));
+      expect(contactText.maxLines, 1);
+      expect(contactText.overflow, TextOverflow.ellipsis);
+      final latestText = tester.widget<Text>(find.byKey(const ValueKey('alert-latest-a1')));
+      expect(latestText.maxLines, isNull);
+      expect(latestText.overflow, isNull);
 
       // Follow-up push ICU plurals (=1 and other) never carry a contact name (lock-screen privacy).
       expect(
@@ -336,7 +329,7 @@ void main() {
       // Initially: alert-other-1 (09:10) is above alert-social-1 (09:05), and NO "+N new" badge yet.
       expect(find.byKey(const ValueKey('alert-card-alert-social-1')), findsOneWidget);
       expect(find.textContaining('2 concerning messages on'), findsOneWidget);
-      expect(find.textContaining('From ${ltrIsolate('Samira')}'), findsOneWidget);
+      expect(find.text('From ${firstStrongIsolate('Samira')}'), findsOneWidget);
       expect(find.byKey(const ValueKey('alert-new-since-alert-social-1')), findsNothing);
       expect(
         tester.getTopLeft(find.byKey(const ValueKey('alert-card-alert-other-1'))).dy,
@@ -349,7 +342,7 @@ void main() {
       expect(find.byKey(const ValueKey('alertDetailTitle')), findsOneWidget);
       expect(find.textContaining('2 concerning messages on'), findsOneWidget);
       expect(find.byKey(const ValueKey('alertDetailCountSub')), findsOneWidget);
-      expect(find.textContaining('From ${ltrIsolate('Samira')}'), findsOneWidget);
+      expect(find.text('From ${firstStrongIsolate('Samira')}'), findsOneWidget);
 
       // Return to feed.
       await tester.tap(find.byTooltip('Back'));
@@ -375,7 +368,7 @@ void main() {
       // Single card updated in place, moved to top above alert-other-1, showing "+2 new".
       expect(find.byKey(const ValueKey('alert-card-alert-social-1')), findsOneWidget);
       expect(find.textContaining('4 concerning messages on'), findsOneWidget);
-      expect(find.textContaining('From ${ltrIsolate('Samira')}'), findsOneWidget);
+      expect(find.text('From ${firstStrongIsolate('Samira')}'), findsOneWidget);
       expect(find.textContaining('09:15'), findsOneWidget);
       expect(find.byKey(const ValueKey('alert-new-since-alert-social-1')), findsOneWidget);
       expect(find.text('+2 new'), findsOneWidget);

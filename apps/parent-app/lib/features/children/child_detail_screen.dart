@@ -1158,15 +1158,6 @@ class AlertTile extends StatelessWidget {
   static Color severityColor(String severity, [BuildContext? context]) =>
       (context?.tokens ?? AppTokens.light).severityDot(severity);
 
-  /// #1029 (UI/UX Bureau 7116310065): trims [name] to at most [maxChars] grapheme clusters
-  /// (`characters` so Arabic letters are never split) followed by `…`, keeping `· latest HH:mm` visible.
-  @visibleForTesting
-  static String truncateContactForCard(String name, {int maxChars = 24}) {
-    final chars = name.characters;
-    if (chars.length <= maxChars) return name;
-    return '${chars.take(maxChars)}…';
-  }
-
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -1174,7 +1165,9 @@ class AlertTile extends StatelessWidget {
     final theme = Theme.of(context);
 
     final String titleText;
-    final String subtitleText;
+    final String? socialContactLine;
+    final String? socialLatestLine;
+    final String? genericSubtitleText;
     if (alert.hasSocialCountSummary) {
       final appKey = alert.metadata['app']?.toString().trim().toLowerCase() ?? '';
       final appLabel = ltrIsolate(socialAppLabel(appKey, l10n));
@@ -1185,9 +1178,11 @@ class AlertTile extends StatelessWidget {
           : ltrIsolate(normalizeDigits(DateFormat('HH:mm', 'en').format(latestAt.toLocal())));
       final contactName = alert.socialContactName;
       final contactDisplay = contactName != null
-          ? ltrIsolate(truncateContactForCard(contactName))
+          ? firstStrongIsolate(contactName)
           : l10n.socialAlertUnknownContact;
-      subtitleText = l10n.socialAlertFromContact(contactDisplay, latestClock);
+      socialContactLine = l10n.socialAlertFromContactOnly(contactDisplay);
+      socialLatestLine = latestClock.isEmpty ? null : l10n.socialAlertLatestAt(latestClock);
+      genericSubtitleText = null;
     } else {
       final when = alert.createdAt == null
           ? ''
@@ -1198,7 +1193,9 @@ class AlertTile extends StatelessWidget {
         isEnglish: context.localeName.startsWith('en'),
         tamperType: alert.metadata['type']?.toString(),
       );
-      subtitleText = '${l10n.alertCategory(alert.category)} · $when';
+      socialContactLine = null;
+      socialLatestLine = null;
+      genericSubtitleText = '${l10n.alertCategory(alert.category)} · $when';
     }
 
     final Widget? newBadge = newSinceCount > 0
@@ -1219,14 +1216,46 @@ class AlertTile extends StatelessWidget {
           )
         : null;
 
-    final subtitleWidget = Text(
-      subtitleText,
-      maxLines: alert.hasSocialCountSummary ? 2 : null,
-      overflow: alert.hasSocialCountSummary ? TextOverflow.ellipsis : null,
-      style: alert.hasSocialCountSummary
-          ? theme.textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant)
-          : null,
-    );
+    final mutedStyle = theme.textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant);
+    final Widget subtitleContent;
+    if (alert.hasSocialCountSummary) {
+      subtitleContent = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            socialContactLine!,
+            key: ValueKey('alert-contact-${alert.id}'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: mutedStyle,
+          ),
+          if (socialLatestLine != null)
+            Text(
+              socialLatestLine,
+              key: ValueKey('alert-latest-${alert.id}'),
+              style: mutedStyle,
+            ),
+          if (newBadge != null) ...[
+            const SizedBox(height: AppSpace.xs),
+            newBadge,
+          ],
+        ],
+      );
+    } else {
+      final genericWidget = Text(genericSubtitleText!);
+      subtitleContent = newBadge == null
+          ? genericWidget
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                genericWidget,
+                const SizedBox(height: AppSpace.xs),
+                newBadge,
+              ],
+            );
+    }
 
     return Card(
       key: ValueKey('alert-card-${alert.id}'),
@@ -1237,17 +1266,7 @@ class AlertTile extends StatelessWidget {
           maxLines: alert.hasSocialCountSummary ? 3 : 2,
           overflow: TextOverflow.ellipsis,
         ),
-        subtitle: newBadge == null
-            ? subtitleWidget
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  subtitleWidget,
-                  const SizedBox(height: AppSpace.xs),
-                  newBadge,
-                ],
-              ),
+        subtitle: subtitleContent,
         trailing: onAck == null
             ? null
             : IconButton(

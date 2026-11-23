@@ -340,10 +340,13 @@ class _SocialAlertDetailBodyState extends ConsumerState<_SocialAlertDetailBody> 
         : ltrIsolate(normalizeDigits(DateFormat('HH:mm', 'en').format(latestAt.toLocal())));
     final contactName = alert.socialContactName;
     final contactDisplay = contactName != null
-        ? ltrIsolate(contactName)
+        ? firstStrongIsolate(contactName)
         : l10n.socialAlertUnknownContact;
-    final countSubtitle = alert.hasSocialCountSummary
-        ? l10n.socialAlertFromContact(contactDisplay, latestClock)
+    final countContactLine = alert.hasSocialCountSummary
+        ? l10n.socialAlertFromContactOnly(contactDisplay)
+        : null;
+    final countLatestLine = alert.hasSocialCountSummary && latestClock.isNotEmpty
+        ? l10n.socialAlertLatestAt(latestClock)
         : null;
 
     final sevDot = tokens.severityDot(alert.severity);
@@ -422,12 +425,20 @@ class _SocialAlertDetailBodyState extends ConsumerState<_SocialAlertDetailBody> 
           ),
           const SizedBox(height: AppSpace.xs),
         ],
-        if (countSubtitle != null) ...[
+        if (countContactLine != null) ...[
           Text(
-            countSubtitle,
+            countContactLine,
             key: const ValueKey('alertDetailCountSub'),
             style: theme.textTheme.bodyMedium?.copyWith(color: tokens.onSurfaceVariant),
           ),
+          if (countLatestLine != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              countLatestLine,
+              key: const ValueKey('alertDetailCountLatest'),
+              style: theme.textTheme.bodyMedium?.copyWith(color: tokens.onSurfaceVariant),
+            ),
+          ],
           const SizedBox(height: AppSpace.md),
         ] else if (alert.createdAt != null) ...[
           Text(

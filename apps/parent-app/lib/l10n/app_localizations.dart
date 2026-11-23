@@ -5637,11 +5637,17 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 concerning message on {app}} other{{count} concerning messages on {app}}}'**
   String socialAlertCountTitle(int count, String app);
 
-  /// No description provided for @socialAlertFromContact.
+  /// No description provided for @socialAlertFromContactOnly.
   ///
   /// In en, this message translates to:
-  /// **'From {contact} · latest {time}'**
-  String socialAlertFromContact(String contact, String time);
+  /// **'From {contact}'**
+  String socialAlertFromContactOnly(String contact);
+
+  /// No description provided for @socialAlertLatestAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Latest {time}'**
+  String socialAlertLatestAt(String time);
 
   /// No description provided for @socialAlertUnknownContact.
   ///

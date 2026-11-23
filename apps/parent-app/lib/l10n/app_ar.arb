@@ -1127,7 +1127,8 @@
   "appAboutThisApp": "عن هذا التطبيق",
   "appBlockedNamedSnack": "تم حظر {app}",
   "socialAlertCountTitle": "{count, plural, =0{لا رسائل تستدعي المراجعة في {app}} =1{رسالة واحدة تستدعي المراجعة في {app}} =2{رسالتان تستدعيان المراجعة في {app}} few{{count} رسائل تستدعي المراجعة في {app}} many{{count} رسالة تستدعي المراجعة في {app}} other{{count} رسالة تستدعي المراجعة في {app}}}",
-  "socialAlertFromContact": "من {contact} · آخر رسالة {time}",
+  "socialAlertFromContactOnly": "من {contact}",
+  "socialAlertLatestAt": "آخر رسالة {time}",
   "socialAlertUnknownContact": "جهة اتصال غير معروفة",
   "socialAlertMorePush": "{count, plural, =0{لا رسائل أخرى تستدعي المراجعة لدى {child} في {app}} =1{رسالة أخرى تستدعي المراجعة لدى {child} في {app}} =2{رسالتان أخريان تستدعيان المراجعة لدى {child} في {app}} few{{count} رسائل أخرى تستدعي المراجعة لدى {child} في {app}} many{{count} رسالة أخرى تستدعي المراجعة لدى {child} في {app}} other{{count} رسالة أخرى تستدعي المراجعة لدى {child} في {app}}}",
   "socialAlertNewSince": "+{count} جديدة"
