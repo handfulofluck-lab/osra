@@ -562,6 +562,12 @@ class OwnModelRegistry:
         with self._lock:
             return {tag: model.model_sha256 for tag, model in self._models.items()}
 
+    def preload_models(self, tags: Sequence[str]) -> dict[str, str]:
+        """Eagerly load and verify each requested model tag into resident memory."""
+        for tag in tags:
+            self.get_model(tag)
+        return self.loaded_summary()
+
     def clear(self) -> None:
         with self._lock:
             self._config = None
@@ -573,6 +579,27 @@ _registry = OwnModelRegistry()
 
 def get_registry() -> OwnModelRegistry:
     return _registry
+
+
+def required_preload_tags(env: Mapping[str, str] | None = None) -> tuple[str, ...]:
+    source = os.environ if env is None else env
+    raw = (source.get("OSRA_OWN_MODEL_PRELOAD_TAGS") or "").strip()
+    if not raw:
+        return ()
+    return tuple(tag.strip() for tag in raw.split(",") if tag.strip())
+
+
+def warmup_own_models_from_env() -> dict[str, str]:
+    """Startup warm-up hook: preloads configured tags in staging when own-model is enabled."""
+    if (
+        os.environ.get("OSRA_DEPLOYMENT_SCOPE") != "staging"
+        or os.environ.get("OSRA_STAGING_QA_OWN_MODEL_ENABLED") != "1"
+    ):
+        return {}
+    tags = required_preload_tags()
+    if not tags:
+        return {}
+    return get_registry().preload_models(tags)
 
 
 def _own_model_approval() -> tuple[datetime, set[str] | None]:
@@ -612,34 +639,42 @@ def health_own_model() -> dict:
         cfg = get_registry().get_config()
     except AdapterUnavailable:
         raise HTTPException(status_code=503, detail="model_unavailable") from None
+    loaded = get_registry().loaded_summary()
+    required = required_preload_tags()
+    if required and not all(tag in loaded for tag in required):
+        raise HTTPException(status_code=503, detail="model_not_ready")
     return {
         "ok": True,
         "thresholds_sha256": cfg.sha256,
         "languages": sorted(cfg.model_by_lang),
-        "loaded_models": get_registry().loaded_summary(),
+        "loaded_models": loaded,
     }
 
 
 def effective_inference_timeout_seconds(env: Mapping[str, str] | None = None) -> float:
-    """Resolve the per-call CPU timeout: 8 s when staging own-model is enabled, else 5 s default.
+    """Resolve the per-call CPU timeout, capped at the approved ceiling (8 s staging own-model, 5 s default).
 
+    Shorter overrides are preserved; longer overrides are clamped to the ceiling.
     Approval expiry always takes precedence over this timeout (`analyze_staging_qa_own`).
     """
     source = os.environ if env is None else env
+    ceiling = (
+        STAGING_OWN_MODEL_INFERENCE_TIMEOUT_SECONDS
+        if (
+            source.get("OSRA_DEPLOYMENT_SCOPE") == "staging"
+            and source.get("OSRA_STAGING_QA_OWN_MODEL_ENABLED") == "1"
+        )
+        else DEFAULT_INFERENCE_TIMEOUT_SECONDS
+    )
     raw = source.get("OSRA_OWN_MODEL_TIMEOUT_SECONDS")
     if raw:
         try:
             parsed = float(raw)
             if math.isfinite(parsed) and parsed > 0:
-                return parsed
+                return min(parsed, ceiling)
         except ValueError:
             pass
-    if (
-        source.get("OSRA_DEPLOYMENT_SCOPE") == "staging"
-        and source.get("OSRA_STAGING_QA_OWN_MODEL_ENABLED") == "1"
-    ):
-        return STAGING_OWN_MODEL_INFERENCE_TIMEOUT_SECONDS
-    return DEFAULT_INFERENCE_TIMEOUT_SECONDS
+    return ceiling
 
 
 @router.post("/analyze/staging-qa/own", response_model=OwnModelQaResponse, include_in_schema=False)

@@ -153,7 +153,8 @@ def test_health_own_model_returns_404_outside_staging(monkeypatch, scope):
 
 
 def test_staging_own_model_timeout_budget_and_layer_order():
-    # Claude 7098421050: CPU (8 s) < collector (9 s) < API (10 s) < child (30 s); default remains 5 s.
+    # Claude 7098421050 + Codex 7099204945: CPU (8 s) < collector (9 s) < API (10 s) < child (30 s);
+    # default remains 5 s; longer overrides clamp to the ceiling while shorter overrides are preserved.
     default_t = svc.effective_inference_timeout_seconds({})
     prod_t = svc.effective_inference_timeout_seconds(
         {"OSRA_DEPLOYMENT_SCOPE": "production", "OSRA_STAGING_QA_OWN_MODEL_ENABLED": "1"}
@@ -161,10 +162,46 @@ def test_staging_own_model_timeout_budget_and_layer_order():
     staging_t = svc.effective_inference_timeout_seconds(
         {"OSRA_DEPLOYMENT_SCOPE": "staging", "OSRA_STAGING_QA_OWN_MODEL_ENABLED": "1"}
     )
+    staging_long = svc.effective_inference_timeout_seconds(
+        {
+            "OSRA_DEPLOYMENT_SCOPE": "staging",
+            "OSRA_STAGING_QA_OWN_MODEL_ENABLED": "1",
+            "OSRA_OWN_MODEL_TIMEOUT_SECONDS": "20",
+        }
+    )
+    staging_short = svc.effective_inference_timeout_seconds(
+        {
+            "OSRA_DEPLOYMENT_SCOPE": "staging",
+            "OSRA_STAGING_QA_OWN_MODEL_ENABLED": "1",
+            "OSRA_OWN_MODEL_TIMEOUT_SECONDS": "2.5",
+        }
+    )
+    default_long = svc.effective_inference_timeout_seconds({"OSRA_OWN_MODEL_TIMEOUT_SECONDS": "20"})
+    default_short = svc.effective_inference_timeout_seconds({"OSRA_OWN_MODEL_TIMEOUT_SECONDS": "1.5"})
     assert default_t == 5.0
     assert prod_t == 5.0
     assert staging_t == 8.0
+    assert staging_long == 8.0
+    assert staging_short == 2.5
+    assert default_long == 5.0
+    assert default_short == 1.5
     assert default_t < staging_t < 9.0 < 10.0 < 30.0
+
+
+def test_health_own_model_requires_preloaded_tags_when_configured(monkeypatch):
+    # Codex 7099204945: health must return 503 until required preload tags are actually resident.
+    monkeypatch.setenv("OSRA_DEPLOYMENT_SCOPE", "staging")
+    monkeypatch.setenv("OSRA_OWN_MODEL_PRELOAD_TAGS", "v9b")
+    monkeypatch.setattr(svc, "_registry", _make_stub_registry())
+
+    res_cold = TestClient(app).get("/health/own-model")
+    assert res_cold.status_code == 503
+    assert res_cold.json() == {"detail": "model_not_ready"}
+
+    monkeypatch.setattr(svc, "_registry", _make_stub_registry(v9b_scorer=lambda _: _zero_probs()))
+    res_warm = TestClient(app).get("/health/own-model")
+    assert res_warm.status_code == 200
+    assert "v9b" in res_warm.json()["loaded_models"]
 
 
 def test_french_preposition_de_routes_to_fr_not_tr():
