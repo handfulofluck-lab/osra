@@ -3625,7 +3625,16 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String hoursShort(int hours) {
-    return '$hours س';
+    String _temp0 = intl.Intl.pluralLogic(
+      hours,
+      locale: localeName,
+      other: '$hours ساعة',
+      many: '$hours ساعة',
+      few: '$hours ساعات',
+      two: 'ساعتان',
+      one: 'ساعة واحدة',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -3636,17 +3645,17 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String appStateLimit(String limit) {
-    return 'حدّ $limit يوميًا';
+    return 'الحد اليومي: $limit';
   }
 
   @override
   String appAllowedSnack(String app) {
-    return 'تم السماح بـ $app';
+    return 'تم السماح بـ$app';
   }
 
   @override
   String appLimitSnack(String app, String limit) {
-    return 'تم تحديد $app بـ $limit يوميًا';
+    return 'الحد اليومي لـ$app: $limit';
   }
 
   @override
