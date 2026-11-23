@@ -57,6 +57,34 @@ class AlertFetchFailed {
   const AlertFetchFailed(this.reason);
 }
 
+/// #1028: Coordinates in-flight notification claims across concurrent background
+/// and foreground wake handlers so two handlers overlapping at `readShown()`
+/// never present the same alert twice, while releasing the claim on failure so
+/// a failed post can still retry.
+class AlertPresentationClaimer {
+  AlertPresentationClaimer();
+
+  /// Shared process-wide claimer used by default when neither handler injects one.
+  static final AlertPresentationClaimer shared = AlertPresentationClaimer();
+
+  final Set<String> _inFlight = <String>{};
+
+  /// Atomically claims [alertId] for presentation; returns false if another
+  /// handler already holds the claim.
+  bool tryClaim(String alertId) => _inFlight.add(alertId);
+
+  /// Releases a previously claimed [alertId] (called after persistence succeeds
+  /// or immediately when presentation fails so retries are not blocked).
+  void release(String alertId) => _inFlight.remove(alertId);
+
+  /// Releases every id in [alertIds].
+  void releaseAll(Iterable<String> alertIds) {
+    for (final id in alertIds) {
+      _inFlight.remove(id);
+    }
+  }
+}
+
 /// One background wake: read the session, read the alerts, show what is new.
 ///
 /// Plan (§5 of the #360 decision):
@@ -75,13 +103,15 @@ class BackgroundAlertWake {
     required this.readShown,
     required this.writeShown,
     required this.toVisible,
-  });
+    AlertPresentationClaimer? claimer,
+  }) : claimer = claimer ?? AlertPresentationClaimer.shared;
 
   final Future<String?> Function() readJwt;
   final Future<Object> Function(String jwt) fetchAlerts;
   final LocalNotifier notifier;
   final Future<Set<String>> Function() readShown;
   final Future<void> Function(Set<String>) writeShown;
+  final AlertPresentationClaimer claimer;
 
   /// How an alert becomes a lock-screen row. A seam because the language comes
   /// from the parent's stored choice, resolved outside this class (#395 review).
@@ -119,23 +149,41 @@ class BackgroundAlertWake {
     final plan = planNotifications(alerts: alerts, alreadyShown: shown);
     if (plan.isEmpty) return WakeOutcome.nothingNew;
 
+    final claimedToShow = <Alert>[];
+    for (final alert in plan.toShow) {
+      if (claimer.tryClaim(alert.id)) {
+        claimedToShow.add(alert);
+      }
+    }
+    if (claimedToShow.isEmpty) return WakeOutcome.nothingNew;
+
+    final claimedIds = claimedToShow.map((a) => a.id).toList(growable: false);
     try {
-      for (final alert in plan.toShow) {
+      for (final alert in claimedToShow) {
         await notifier.show(toVisible(alert));
       }
     } catch (_) {
-      // A post failed: write nothing, so the next wake shows these again. The
-      // stable notification id per alert means a row that did post is replaced,
-      // not stacked. Returning instead of throwing also matches [WakeOutcome]'s
-      // promise that no path throws, which is what a background isolate needs
-      // (#395 review F5).
+      // A post failed: release claims and write nothing, so the next wake
+      // retries these alerts cleanly (#395 review F5, #1028).
+      claimer.releaseAll(claimedIds);
       return WakeOutcome.failed;
     }
 
-    final merged = {...shown, ...plan.remember};
-    // Bounded so the store cannot grow without limit across months of wakes.
-    final bounded = merged.length <= maxRememberedIds ? merged : merged.skip(merged.length - maxRememberedIds).toSet();
-    await writeShown(bounded);
+    try {
+      // Re-read shown before merging so concurrent handlers never clobber
+      // each other's persisted ids.
+      final latestShown = await readShown();
+      final claimedSet = claimedIds.toSet();
+      final toShowSet = plan.toShow.map((a) => a.id).toSet();
+      final remember = plan.remember.where((id) => !toShowSet.contains(id) || claimedSet.contains(id));
+      final merged = {...latestShown, ...shown, ...remember};
+      // Bounded so the store cannot grow without limit across months of wakes.
+      final bounded =
+          merged.length <= maxRememberedIds ? merged : merged.skip(merged.length - maxRememberedIds).toSet();
+      await writeShown(bounded);
+    } finally {
+      claimer.releaseAll(claimedIds);
+    }
     return WakeOutcome.shown;
   }
 

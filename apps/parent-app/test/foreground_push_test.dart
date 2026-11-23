@@ -5,11 +5,13 @@ import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/push/background_push.dart';
 import 'package:familyshield_parent/push/foreground_push.dart';
 import 'package:familyshield_parent/push/local_notifier.dart';
+import 'package:familyshield_parent/push/notification_tap.dart';
 
 /// #1028: Foreground push handling in the Parent app — shares the exact
-/// `toVisible -> LocalNotifier.show -> writeShown` pipeline with the background
-/// handler, sets iOS foreground presentation options, and obeys the #317
-/// three-shape rule (no Firebase config -> no listener).
+/// `toVisible -> LocalNotifier.show -> writeShown` pipeline and cross-handler
+/// [AlertPresentationClaimer] with the background handler, selects a single
+/// presenter on iOS when the server sends a visible APNs alert, routes native
+/// notification taps to `/alerts/:id`, and obeys the #317 three-shape rule.
 Alert _alert(
   String id, {
   String at = '2026-11-24T09:00:00.000Z',
@@ -33,15 +35,27 @@ class _RecordingNotifier implements LocalNotifier {
   Future<void> show(VisibleAlert alert) async => shown.add(alert);
 }
 
+class _FlakyNotifier implements LocalNotifier {
+  final List<VisibleAlert> shown = [];
+  bool shouldFail = true;
+
+  @override
+  Future<void> show(VisibleAlert alert) async {
+    if (shouldFail) throw StateError('post failed');
+    shown.add(alert);
+  }
+}
+
 VisibleAlert _toVisible(Alert a) =>
     VisibleAlert(alertId: a.id, title: 'title:${a.category}', body: 'generic:${a.id}');
 
 void main() {
-  group('ForegroundPushBridge & shared dedupe (#1028)', () {
+  group('ForegroundPushBridge & cross-handler claim dedupe (#1028)', () {
     test('a foreground message shows once via toVisible -> LocalNotifier.show and persists shown id', () async {
       // Mutant: omitting writeShown or skipping notifier.show in foreground wakes breaks this test.
       final notifier = _RecordingNotifier();
       final shownStore = <String>{};
+      final claimer = AlertPresentationClaimer();
       final page = [_alert('alert-fg-1')];
 
       BackgroundAlertWake makeWake() => BackgroundAlertWake(
@@ -55,6 +69,7 @@ void main() {
                 ..addAll(ids);
             },
             toVisible: _toVisible,
+            claimer: claimer,
           );
 
       final bridge = ForegroundPushBridge(runWake: () => makeWake().run());
@@ -69,59 +84,65 @@ void main() {
       expect(notifier.shown.length, 1);
     });
 
-    test('the same alert id arriving in background and foreground shows once (both orders)', () async {
-      // Mutant: using a separate dedupe store for foreground instead of sharing readShown/writeShown
-      // would show the same alert twice.
-      Future<void> verifyOrder({required bool backgroundFirst}) async {
-        final notifier = _RecordingNotifier();
-        final shownStore = <String>{};
-        final page = [_alert('alert-shared-1')];
-
-        BackgroundAlertWake makeWake() => BackgroundAlertWake(
-              readJwt: () async => 'jwt-token',
-              fetchAlerts: (_) async => AlertFetchOk(page),
-              notifier: notifier,
-              readShown: () async => Set<String>.from(shownStore),
-              writeShown: (ids) async {
-                shownStore
-                  ..clear()
-                  ..addAll(ids);
-              },
-              toVisible: _toVisible,
-            );
-
-        final bridge = ForegroundPushBridge(runWake: () => makeWake().run());
-
-        if (backgroundFirst) {
-          expect(await makeWake().run(), WakeOutcome.shown);
-          expect(await bridge.handleMessage(), WakeOutcome.nothingNew);
-        } else {
-          expect(await bridge.handleMessage(), WakeOutcome.shown);
-          expect(await makeWake().run(), WakeOutcome.nothingNew);
-        }
-
-        expect(notifier.shown.map((v) => v.alertId), ['alert-shared-1']);
-      }
-
-      await verifyOrder(backgroundFirst: true);
-      await verifyOrder(backgroundFirst: false);
-    });
-
-    test('back-to-back concurrent foreground messages serialize and never show the same alert twice', () async {
-      // Mutant: dropping the _queue serialization in ForegroundPushBridge lets both concurrent wakes
-      // read an empty shownStore before the first writes, showing alert-race-1 twice.
+    test('overlapping background wake and foreground wake held at readShown present once (Finding 1)', () async {
+      // Mutant: removing AlertPresentationClaimer.tryClaim lets both handlers read an empty shownStore
+      // and both call notifier.show, producing 2 notifications instead of 1.
       final notifier = _RecordingNotifier();
       final shownStore = <String>{};
-      final gate = Completer<void>();
-      var fetchCalls = 0;
+      final claimer = AlertPresentationClaimer();
+      final page = [_alert('alert-overlap-1')];
+
+      var readCount = 0;
+      final bothRead = Completer<void>();
+      final releaseBoth = Completer<void>();
 
       BackgroundAlertWake makeWake() => BackgroundAlertWake(
             readJwt: () async => 'jwt-token',
-            fetchAlerts: (_) async {
-              fetchCalls++;
-              if (fetchCalls == 1) await gate.future;
-              return AlertFetchOk([_alert('alert-race-1')]);
+            fetchAlerts: (_) async => AlertFetchOk(page),
+            notifier: notifier,
+            readShown: () async {
+              final snapshot = Set<String>.from(shownStore);
+              readCount++;
+              if (readCount <= 2) {
+                if (readCount == 2 && !bothRead.isCompleted) {
+                  bothRead.complete();
+                }
+                await releaseBoth.future;
+              }
+              return snapshot;
             },
+            writeShown: (ids) async {
+              shownStore
+                ..clear()
+                ..addAll(ids);
+            },
+            toVisible: _toVisible,
+            claimer: claimer,
+          );
+
+      final bgFuture = makeWake().run();
+      final fgBridge = ForegroundPushBridge(runWake: () => makeWake().run());
+      final fgFuture = fgBridge.handleMessage();
+
+      await bothRead.future;
+      releaseBoth.complete();
+
+      final outcomes = await Future.wait([bgFuture, fgFuture]);
+      expect(outcomes.where((o) => o == WakeOutcome.shown).length, 1);
+      expect(outcomes.where((o) => o == WakeOutcome.nothingNew).length, 1);
+      expect(notifier.shown.map((v) => v.alertId), ['alert-overlap-1']);
+    });
+
+    test('failed presentation releases claim and allows the next wake to retry and show once', () async {
+      // Mutant: failing to call claimer.releaseAll on notifier.show error permanently blocks retry.
+      final notifier = _FlakyNotifier();
+      final shownStore = <String>{};
+      final claimer = AlertPresentationClaimer();
+      final page = [_alert('alert-retry-1')];
+
+      BackgroundAlertWake makeWake() => BackgroundAlertWake(
+            readJwt: () async => 'jwt-token',
+            fetchAlerts: (_) async => AlertFetchOk(page),
             notifier: notifier,
             readShown: () async => Set<String>.from(shownStore),
             writeShown: (ids) async {
@@ -130,20 +151,116 @@ void main() {
                 ..addAll(ids);
             },
             toVisible: _toVisible,
+            claimer: claimer,
           );
 
-      final bridge = ForegroundPushBridge(runWake: () => makeWake().run());
-      final first = bridge.handleMessage();
-      final second = bridge.handleMessage();
-      gate.complete();
+      // First attempt fails -> claim released, nothing written.
+      expect(await makeWake().run(), WakeOutcome.failed);
+      expect(notifier.shown, isEmpty);
+      expect(shownStore, isEmpty);
 
-      final outcomes = await Future.wait([first, second]);
-      expect(outcomes, [WakeOutcome.shown, WakeOutcome.nothingNew]);
-      expect(notifier.shown.map((v) => v.alertId), ['alert-race-1']);
+      // Next attempt succeeds -> shown once and persisted.
+      notifier.shouldFail = false;
+      final bridge = ForegroundPushBridge(runWake: () => makeWake().run());
+      expect(await bridge.handleMessage(), WakeOutcome.shown);
+      expect(notifier.shown.map((v) => v.alertId), ['alert-retry-1']);
+      expect(shownStore, {'alert-retry-1'});
     });
   });
 
-  group('enablePushAlerts (#317 three-shape rule + iOS presentation + onMessage)', () {
+  group('Single presenter on iOS & native tap routing (Finding 2, #1028)', () {
+    test('iOS with native foreground presentation skips local show for visible APNs alert and records id', () async {
+      // Mutant: always calling runWake() on iOS even when hasNotificationPayload == true causes
+      // double banners and double sound on iPhone.
+      var wakeCalls = 0;
+      final markedIds = <String>[];
+      final bridge = ForegroundPushBridge(
+        runWake: () async {
+          wakeCalls++;
+          return WakeOutcome.shown;
+        },
+        isApplePlatform: true,
+        nativeForegroundPresentationEnabled: true,
+        markAlertIdShown: (id) async => markedIds.add(id),
+      );
+
+      final outcome = await bridge.handleMessage(
+        hasNotificationPayload: true,
+        data: const {'alertId': 'alert-ios-1'},
+      );
+
+      expect(outcome, WakeOutcome.shown);
+      expect(wakeCalls, 0);
+      expect(markedIds, ['alert-ios-1']);
+    });
+
+    test('iOS data-only foreground push (no APNs alert) still uses local presenter', () async {
+      // Mutant: suppressing all iOS foreground pushes would drop data-only wakes.
+      var wakeCalls = 0;
+      final bridge = ForegroundPushBridge(
+        runWake: () async {
+          wakeCalls++;
+          return WakeOutcome.shown;
+        },
+        isApplePlatform: true,
+        nativeForegroundPresentationEnabled: true,
+      );
+
+      final outcome = await bridge.handleMessage(hasNotificationPayload: false);
+      expect(outcome, WakeOutcome.shown);
+      expect(wakeCalls, 1);
+    });
+
+    test('Android always uses local presenter in foreground even when notification payload is present', () async {
+      // Mutant: suppressing local show on Android when notification != null leaves foreground silent on Android.
+      var wakeCalls = 0;
+      final bridge = ForegroundPushBridge(
+        runWake: () async {
+          wakeCalls++;
+          return WakeOutcome.shown;
+        },
+        isApplePlatform: false,
+        nativeForegroundPresentationEnabled: false,
+      );
+
+      final outcome = await bridge.handleMessage(hasNotificationPayload: true);
+      expect(outcome, WakeOutcome.shown);
+      expect(wakeCalls, 1);
+    });
+
+    test('tapping a native APNs/FCM notification routes alertId to NotificationTapController', () async {
+      // Mutant: omitting onMessageOpenedApp / getInitialMessage leaves native banner taps unopened.
+      final tapController = NotificationTapController();
+      final openedController = StreamController<Map<String, dynamic>>();
+      final fgController = StreamController<String>();
+      addTearDown(() async {
+        await openedController.close();
+        await fgController.close();
+      });
+
+      final sub = await enablePushAlerts<String>(
+        ensureFirebaseInitialized: () async {},
+        registerBackgroundHandler: () {},
+        configureForegroundPresentation: () async {},
+        foregroundMessages: fgController.stream,
+        openedMessageData: openedController.stream,
+        readInitialMessageData: () async => null,
+        isApplePlatform: true,
+        hasNotificationPayload: (_) => true,
+        extractData: (_) => const {'alertId': 'alert-ios-fg'},
+        markAlertIdShown: (_) async {},
+        tapController: tapController,
+        runWake: () async => WakeOutcome.nothingNew,
+      );
+      addTearDown(() async => sub?.cancel());
+
+      openedController.add(const {'alertId': 'alert-ios-tap-1'});
+      await Future<void>.delayed(Duration.zero);
+      expect(tapController.consumePendingAlertId(), 'alert-ios-tap-1');
+    });
+  });
+
+  group('enablePushAlerts (#317 three-shape rule)', () {
     test('no Firebase config means no listener, no background handler, and no crash (#317)', () async {
       // Mutant: registering onMessage or presentation options outside the Firebase init guard
       // throws or subscribes when Firebase config is absent.
@@ -157,6 +274,8 @@ void main() {
         registerBackgroundHandler: () => backgroundRegistered = true,
         configureForegroundPresentation: () async => presentationConfigured = true,
         foregroundMessages: controller.stream,
+        openedMessageData: const Stream.empty(),
+        readInitialMessageData: () async => null,
         runWake: () async => WakeOutcome.shown,
       );
 
@@ -166,50 +285,9 @@ void main() {
       expect(controller.hasListener, isFalse);
     });
 
-    test('configured build registers background handler, iOS foreground presentation, and onMessage listener',
-        () async {
-      // Mutant: omitting configureForegroundPresentation or stream.listen breaks iPhone/foreground alerts.
-      var backgroundRegistered = false;
-      var presentationConfigured = false;
-      final notifier = _RecordingNotifier();
-      final shownStore = <String>{};
-      final wakeDone = Completer<void>();
-      final controller = StreamController<String>();
-      addTearDown(controller.close);
-
-      final sub = await enablePushAlerts<String>(
-        ensureFirebaseInitialized: () async {},
-        registerBackgroundHandler: () => backgroundRegistered = true,
-        configureForegroundPresentation: () async => presentationConfigured = true,
-        foregroundMessages: controller.stream,
-        runWake: () async {
-          final outcome = await BackgroundAlertWake(
-            readJwt: () async => 'jwt-token',
-            fetchAlerts: (_) async => AlertFetchOk([_alert('alert-live-1')]),
-            notifier: notifier,
-            readShown: () async => Set<String>.from(shownStore),
-            writeShown: (ids) async => shownStore.addAll(ids),
-            toVisible: _toVisible,
-          ).run();
-          if (!wakeDone.isCompleted) wakeDone.complete();
-          return outcome;
-        },
-      );
-      addTearDown(() async => sub?.cancel());
-
-      expect(sub, isNotNull);
-      expect(backgroundRegistered, isTrue);
-      expect(presentationConfigured, isTrue);
-      expect(controller.hasListener, isTrue);
-
-      controller.add('fcm-foreground-wake');
-      await wakeDone.future;
-
-      expect(notifier.shown.map((v) => v.alertId), ['alert-live-1']);
-    });
-
-    test('presentation option error does not block onMessage subscription', () async {
+    test('presentation option error falls back to local presentation and keeps onMessage active', () async {
       // Mutant: letting configureForegroundPresentation throw out of enablePushAlerts drops onMessage.
+      final wakeDone = Completer<void>();
       final controller = StreamController<String>();
       addTearDown(controller.close);
 
@@ -218,12 +296,23 @@ void main() {
         registerBackgroundHandler: () {},
         configureForegroundPresentation: () async => throw UnsupportedError('not iOS'),
         foregroundMessages: controller.stream,
-        runWake: () async => WakeOutcome.nothingNew,
+        openedMessageData: const Stream.empty(),
+        readInitialMessageData: () async => null,
+        isApplePlatform: true,
+        hasNotificationPayload: (_) => true,
+        extractData: (_) => const {'alertId': 'alert-fallback'},
+        runWake: () async {
+          if (!wakeDone.isCompleted) wakeDone.complete();
+          return WakeOutcome.shown;
+        },
       );
       addTearDown(() async => sub?.cancel());
 
       expect(sub, isNotNull);
       expect(controller.hasListener, isTrue);
+
+      controller.add('wake');
+      await wakeDone.future;
     });
   });
 }
