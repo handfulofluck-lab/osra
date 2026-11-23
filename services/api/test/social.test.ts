@@ -88,7 +88,12 @@ describe("social routes", () => {
     vi.unstubAllEnvs();
   });
 
-  it.each([false, true])("writes a model-only notification alert (exploratory mode=%s)", async (exploratory) => {
+  it.each([
+    { exploratory: false, crossApp: false, appKey: "whatsapp", source: "notification" },
+    { exploratory: true, crossApp: false, appKey: "whatsapp", source: "notification" },
+    { exploratory: true, crossApp: true, appKey: "discord", source: "screen" },
+    { exploratory: true, crossApp: true, appKey: "messenger", source: "notification" },
+  ])("writes a model-only alert for the configured app and source %j", async ({ exploratory, crossApp, appKey, source }) => {
     const fixture = "The group wants to leave one classmate out of every lunch table.";
     const sample = exploratory ? "They agreed to leave one classmate out every day." : fixture;
     const benign = "The window is open.";
@@ -97,6 +102,7 @@ describe("social routes", () => {
     vi.stubEnv("OSRA_DEPLOYMENT_SCOPE", "staging");
     vi.stubEnv("OSRA_STAGING_QA_ANALYZER_ENABLED", "1");
     vi.stubEnv("OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT", exploratory ? "1" : "0");
+    vi.stubEnv("OSRA_STAGING_QA_ANDROID_SOURCES", crossApp ? "1" : "0");
     vi.stubEnv("OSRA_STAGING_QA_DEVICE_ID", deviceId);
     vi.stubEnv("OSRA_STAGING_QA_CHILD_ID", CHILD.id);
     vi.stubEnv("OSRA_STAGING_QA_EXPIRES_AT", new Date(Date.now() + 15 * 60 * 1000).toISOString());
@@ -112,12 +118,12 @@ describe("social routes", () => {
     });
     vi.stubGlobal("fetch", analyze);
     prismaMock.device.findUnique.mockResolvedValue({ id: deviceId, childId: CHILD.id, internalSecret: syntheticKey });
-    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.child.findUnique.mockResolvedValue({ ...CHILD, ruleSet: { socialMonitoring: { [appKey]: true } } });
     prismaMock.socialEvent.create.mockResolvedValue({ id: "synthetic-event" });
     prismaMock.alert.create.mockResolvedValue({ id: "synthetic-alert" });
     const app = await buildApp(socialRoutes, "/v1/social");
     const scan = (body: Record<string, unknown>) => {
-      const raw = JSON.stringify({ deviceId, items: [scanBody({ deviceId, source: "notification", ...body })] });
+      const raw = JSON.stringify({ deviceId, items: [scanBody({ deviceId, app: appKey, source, ...body })] });
       return app.inject({ method: "POST", url: "/v1/social/scan",
         headers: { "content-type": "application/json", ...signV2(syntheticKey, raw) }, payload: raw });
     };
@@ -138,6 +144,17 @@ describe("social routes", () => {
       expect(JSON.parse(String(options.body))).toEqual({ text: sample, trace_id: expect.any(String) });
       expect(prismaMock.socialEvent.create).toHaveBeenCalledTimes(1);
       expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+      if (crossApp) {
+        expect(prismaMock.child.findUnique).toHaveBeenCalledWith({
+          where: { id: CHILD.id },
+          include: { family: { select: { timezone: true } }, ruleSet: { select: { socialMonitoring: true } } },
+        });
+        prismaMock.child.findUnique.mockResolvedValue({ ...CHILD, ruleSet: { socialMonitoring: { [appKey]: false } } });
+        const disabled = await scan({ text: sample });
+        expect(disabled.statusCode).toBe(200);
+        expect(disabled.json().results[0]).toMatchObject({ flagged: false });
+        expect(analyze).toHaveBeenCalledTimes(2);
+      }
     } finally {
       await app.close();
     }

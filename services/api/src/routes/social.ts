@@ -229,7 +229,14 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
   }
 
   // The family's zone rides the lookup the route already does, so the day key costs no second query.
-  const child = await prisma.child.findUnique({ where: { id: childId }, include: { family: { select: { timezone: true } } } });
+  const crossAppQa = stagingQaModelEnabled() && process.env.OSRA_STAGING_QA_ANDROID_SOURCES === "1";
+  const child = await prisma.child.findUnique({
+    where: { id: childId },
+    include: {
+      family: { select: { timezone: true } },
+      ruleSet: crossAppQa && { select: { socialMonitoring: true } },
+    },
+  });
   if (!child) return { ok: false, reason: "child_not_found", status: 404 };
   // ADR-0008 §2b: withdrawal of consent stops collection.
   const consent = await checkActiveConsent(childId);
@@ -241,7 +248,7 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
   const childAge = typeof (child as { birthYear?: number }).birthYear === "number"
     ? new Date().getFullYear() - (child as { birthYear: number }).birthYear
     : undefined;
-  const qa = stagingQaModel({ device, deviceId, childId, app: appName, source, text });
+  const qa = stagingQaModel({ device, deviceId, childId, app: appName, source, text, socialMonitoring: child.ruleSet?.socialMonitoring });
   const ai = qa ? await analyzeStagingFixture(text, qa)
     : stagingQaModelEnabled() ? { verdict: null, attempted: false }
       : await analyzeWithAi(text, childAge);

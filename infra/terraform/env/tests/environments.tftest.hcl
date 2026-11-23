@@ -211,6 +211,7 @@ run "armed_qa_analyzer_plans_only_the_private_scoped_route" {
     staging_qa_analyzer = {
       armed                     = true
       allow_synthetic_pair_text = true
+      allow_android_sources     = true
       image_digest              = "sha256:${sha256("qa-image")}"
       frankfurt_vpc_cidr        = format("%d.%d.%d.%d/%d", 10, 40, 0, 0, 24)
       prompt_secret_arn         = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-prompt", 0)
@@ -301,6 +302,14 @@ run "armed_qa_analyzer_plans_only_the_private_scoped_route" {
     ])
     error_message = "both armed tasks must receive the same explicit synthetic pairing switch"
   }
+
+  assert {
+    condition = (
+      one([for item in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : item.value if item.name == "OSRA_STAGING_QA_ANDROID_SOURCES"]) == "1" &&
+      !contains([for item in jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].environment : item.name], "OSRA_STAGING_QA_ANDROID_SOURCES")
+    )
+    error_message = "only the armed API selects the Android app and source"
+  }
 }
 
 run "disarmed_qa_analyzer_has_no_model_or_api_access" {
@@ -311,6 +320,7 @@ run "disarmed_qa_analyzer_has_no_model_or_api_access" {
     allowed_account_ids = [format("%012d", 0)]
     staging_qa_analyzer = {
       allow_synthetic_pair_text = true
+      allow_android_sources     = true
       image_digest              = "sha256:${sha256("qa-image")}"
       frankfurt_vpc_cidr        = format("%d.%d.%d.%d/%d", 10, 40, 0, 0, 24)
       prompt_secret_arn         = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-prompt", 0)
