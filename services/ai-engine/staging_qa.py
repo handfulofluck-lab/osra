@@ -10,7 +10,17 @@ from functools import lru_cache
 from time import monotonic
 from typing import Literal
 
-from botocore.exceptions import ConnectTimeoutError, ReadTimeoutError
+from botocore.exceptions import (
+    ClientError,
+    ConnectTimeoutError,
+    CredentialRetrievalError,
+    EndpointConnectionError,
+    NoCredentialsError,
+    ParamValidationError,
+    PartialCredentialsError,
+    ReadTimeoutError,
+    SSLError,
+)
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, UUID4, ValidationError
 
@@ -29,6 +39,14 @@ APPROVED_PROMPT_SHA256 = "813e670c456b1e1dd9863be0ca186b82f18bfea8049f231c9731d2
 MAX_REQUEST_BYTES = 8192
 MAX_APPROVAL_WINDOW = timedelta(hours=1)
 MAX_INFERENCE_SECONDS = 2
+
+PROVIDER_FAILURE_KINDS = {
+    "AccessDeniedException": "access_denied",
+    "ModelAccessDeniedException": "access_denied",
+    "ValidationException": "provider_validation",
+    "ThrottlingException": "throttled",
+    "ServiceQuotaExceededException": "throttled",
+}
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -161,6 +179,24 @@ def _infer(
     return parse_categories(answer, strict=True)
 
 
+def _failure_kind(error: Exception) -> str:
+    """Keep provider messages, request bodies, and unrecognized codes out of logs."""
+    if isinstance(error, ClientError):
+        code = error.response.get("Error", {}).get("Code")
+        return PROVIDER_FAILURE_KINDS.get(code, "provider_error") if isinstance(code, str) else "provider_error"
+    if isinstance(error, ParamValidationError):
+        return "sdk_validation"
+    if isinstance(error, (NoCredentialsError, PartialCredentialsError, CredentialRetrievalError)):
+        return "credentials"
+    if isinstance(error, (ConnectTimeoutError, ReadTimeoutError, EndpointConnectionError, SSLError)):
+        return "transport"
+    if isinstance(error, TimeoutError):
+        return "deadline"
+    if isinstance(error, (KeyError, TypeError, ValueError)):
+        return "invalid_result"
+    return "unexpected"
+
+
 async def _provider_receipts(data, mode, expires_at, system_prompt, started):
     trace = str(data.trace_id)
     # An approval can expire before the two-second request budget. Use the same deadline for both.
@@ -246,11 +282,11 @@ async def analyze_staging_qa(request: Request) -> StagingQaResponse | ProviderRe
         )
         if datetime.now(timezone.utc) >= expires_at or monotonic() >= deadline:
             raise TimeoutError
-    except Exception:
+    except Exception as error:
         # The route is a fallback boundary. Provider errors may contain the request or reply.
         logger.warning(
-            "staging QA model unavailable trace_id=%s model=%s region=%s latency_ms=%d",
-            trace_id, MODEL_ID, REGION, (monotonic() - started) * 1000,
+            "staging QA model unavailable trace_id=%s model=%s region=%s latency_ms=%d failure_kind=%s",
+            trace_id, MODEL_ID, REGION, (monotonic() - started) * 1000, _failure_kind(error),
         )
         raise HTTPException(status_code=502, detail="model_unavailable") from None
 

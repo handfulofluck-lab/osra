@@ -18,6 +18,9 @@ This test exercises roadmap 2.6 on a dedicated staging pairing with synthetic me
 4. Repeat with the approved harmless fixture. Confirm the model completed without fallback and that the control created no new alert.
 5. Disable the staging QA gate after the run. Report each result with a fixture name, exact build, UAE time and sanitized trace evidence.
 
+If the analyzer returns `model_unavailable`, match the trace to its `failure_kind` in staging logs. The fixed categories distinguish AWS access, provider validation, SDK validation, credentials, transport, throttling, the local deadline, and unusable results. Include the category and timing in the test receipt. Leave message text and provider details out of the receipt.
+
+
 
 ## Comparing staging providers
 
