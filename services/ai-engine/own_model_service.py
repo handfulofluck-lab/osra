@@ -59,7 +59,8 @@ MANIFEST_FILES: tuple[str, ...] = (
 )
 
 DEFAULT_SERVING_CONFIG_PATH = Path(__file__).resolve().parent / "serving-v9-v9b.json"
-SERVING_CONFIG_SHA256 = "12cccbf4e1700d82da9f442b76c1a62a671c94e2e4133361a8fdebe00c7f3acc"
+# Canonical LF SHA-256 of serving-v9-v9b.json (Windows CRLF copy on PC is 12cccbf4e1700d82...).
+SERVING_CONFIG_SHA256 = "b6ee77c288a403a6cafa8676fd9e4b8aaa1ce692f8e81b54160f69090b33025b"
 
 REGION_DEFAULT = "eu-central-1"
 MAX_REQUEST_BYTES = 8192
@@ -183,14 +184,15 @@ def load_serving_config(
     path = Path(path)
     if not path.is_file():
         raise AdapterUnavailable(f"serving config not found: {path.name}")
-    actual_sha = sha256_file(path)
+    raw_bytes = path.read_bytes().replace(b"\r\n", b"\n")
+    actual_sha = hashlib.sha256(raw_bytes).hexdigest()
     if expected_sha256 is not None and actual_sha != expected_sha256:
         raise AdapterUnavailable(
             f"serving config digest mismatch for {path.name}: expected {expected_sha256}, found {actual_sha}"
         )
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        raw = json.loads(raw_bytes.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise AdapterUnavailable(f"serving config is not readable JSON: {exc}") from exc
     if not isinstance(raw, dict):
         raise AdapterUnavailable("serving config must be a JSON object")
