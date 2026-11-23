@@ -342,3 +342,22 @@ def test_actual_route_deadline_keeps_already_completed_bedrock_result(setup_qa, 
         result = client.post(PATH, json=payload(include_provider_outcomes=True)).json()
     assert result["outcomes"]["bedrock"]["flagged"] is True
     assert result["outcomes"]["own"] == {"status": "unavailable", "reason": "timeout"}
+
+
+def test_provider_exception_and_input_stay_out_of_logs_and_receipt(setup_qa, monkeypatch, caplog):
+    # Mutants: log the model exception or echo the request when neither provider can score it.
+    monkeypatch.setenv("OSRA_STAGING_QA_ENGINE", "both")
+    monkeypatch.setenv("OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT", "1")
+    sample = "private synthetic free-wording marker"
+    failure = "private synthetic provider response marker"
+    setup_qa.answer = RuntimeError(failure)
+    monkeypatch.setattr(staging_qa, "score_own", Mock(side_effect=RuntimeError(sample)))
+    with caplog.at_level("INFO", logger=staging_qa.__name__):
+        response = TestClient(app).post(PATH, json=payload(text=sample, include_provider_outcomes=True))
+    assert response.status_code == 200
+    assert response.json()["outcomes"] == {
+        "bedrock": {"status": "unavailable", "reason": "unavailable"},
+        "own": {"status": "unavailable", "reason": "unavailable"},
+    }
+    assert caplog.text.count("staging QA provider unavailable") == 2
+    assert sample not in response.text + caplog.text and failure not in response.text + caplog.text
