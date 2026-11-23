@@ -67,15 +67,33 @@ String formatAlertDetailTime(
   return l10n.alertOnDateAtTime(dateLabel, isolatedClock);
 }
 
-/// #1029: Upserts [incoming] alerts into [existing] by `id` (never duplicating a card)
-/// and sorts descending by [Alert.effectiveTimestamp] so an alert updated in place
-/// during a throttle window moves to the top of the feed.
+/// #1029: Returns true when [incoming] is a stale aggregate snapshot of [existing]
+/// (e.g. an older periodic-refresh response arriving after a newer realtime update).
+bool _isStaleSocialAggregate(Alert existing, Alert incoming) {
+  if (!existing.isSocialAlert || !incoming.isSocialAlert) return false;
+  if (incoming.socialMessageCount < existing.socialMessageCount) return true;
+  if (incoming.socialMessageCount == existing.socialMessageCount) {
+    final prevTs = existing.effectiveTimestamp;
+    final nextTs = incoming.effectiveTimestamp;
+    if (prevTs != null && nextTs != null && nextTs.isBefore(prevTs)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// #1029: Upserts [incoming] alerts into [existing] by `id` (never duplicating a card),
+/// reconciles social aggregate versions by freshness so out-of-order responses never roll
+/// a contact card backwards, and sorts descending by [Alert.effectiveTimestamp] so an alert
+/// updated in place during a throttle window moves to the top of the feed.
 @visibleForTesting
 List<Alert> mergeAlertsInPlace(List<Alert> existing, Iterable<Alert> incoming) {
   final byId = <String, Alert>{
     for (final a in existing) a.id: a,
   };
   for (final a in incoming) {
+    final prev = byId[a.id];
+    if (prev != null && _isStaleSocialAggregate(prev, a)) continue;
     byId[a.id] = a;
   }
   final merged = byId.values.toList();

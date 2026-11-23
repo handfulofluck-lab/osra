@@ -196,6 +196,83 @@ void main() {
       expect(merged.first.socialMessageCount, 4);
       expect(merged.first.socialContactName, 'Contact A');
     });
+
+    test('reconciles out-of-order responses by freshness in both arrival orders while preserving legitimate updates', () {
+      // Mutant: unconditional byId[a.id] = a lets an older response (count 1 @ 09:05) roll back
+      // count 4 @ 09:15 and drop the card back below Contact B.
+      final older = Alert.fromJson(socialAlertJson(
+        id: 'a-contact-a',
+        flaggedCount: 1,
+        createdAt: t0905,
+        latestAt: t0905,
+        contactName: 'Contact A',
+      ));
+      final newer = Alert.fromJson(socialAlertJson(
+        id: 'a-contact-a',
+        flaggedCount: 4,
+        createdAt: t0905,
+        latestAt: t0915,
+        contactName: 'Contact A',
+      ));
+      final contactB = Alert.fromJson(socialAlertJson(
+        id: 'a-contact-b',
+        flaggedCount: 2,
+        createdAt: t0910,
+        latestAt: t0910,
+        contactName: 'Contact B',
+      ));
+
+      // Order 1: older arrives first, then newer -> count 4 at top.
+      final inOrder = mergeAlertsInPlace(
+        mergeAlertsInPlace(const [], [older, contactB]),
+        [newer],
+      );
+      expect(inOrder.map((a) => a.id).toList(), ['a-contact-a', 'a-contact-b']);
+      expect(inOrder.first.socialMessageCount, 4);
+
+      // Order 2: newer arrives first, then stale older response arrives -> stays count 4 at top.
+      final outOfOrder = mergeAlertsInPlace(
+        mergeAlertsInPlace(const [], [newer, contactB]),
+        [older],
+      );
+      expect(outOfOrder.map((a) => a.id).toList(), ['a-contact-a', 'a-contact-b']);
+      expect(outOfOrder.first.socialMessageCount, 4);
+      expect(outOfOrder.first.effectiveTimestamp, newer.effectiveTimestamp);
+
+      // Same count but strictly older timestamp is also ignored.
+      final sameCountOlderTs = Alert.fromJson(socialAlertJson(
+        id: 'a-contact-a',
+        flaggedCount: 4,
+        createdAt: t0905,
+        latestAt: t0905,
+        contactName: 'Contact A',
+      ));
+      final afterStaleTs = mergeAlertsInPlace(outOfOrder, [sameCountOlderTs]);
+      expect(afterStaleTs.first.effectiveTimestamp, newer.effectiveTimestamp);
+
+      // Legitimate update at equal count & timestamp (e.g. acknowledged=true) is still applied.
+      final ackedNewer = Alert.fromJson({
+        ...socialAlertJson(
+          id: 'a-contact-a',
+          flaggedCount: 4,
+          createdAt: t0905,
+          latestAt: t0915,
+          contactName: 'Contact A',
+        ),
+        'acknowledged': true,
+      });
+      final afterAck = mergeAlertsInPlace(outOfOrder, [ackedNewer]);
+      expect(afterAck.first.acknowledged, isTrue);
+
+      // Non-social alert updates remain unaffected.
+      final otherV1 = Alert.fromJson(otherAlertJson(id: 'a-other', createdAt: t0910));
+      final otherV2 = Alert.fromJson({
+        ...otherAlertJson(id: 'a-other', createdAt: t0910),
+        'acknowledged': true,
+      });
+      final afterOther = mergeAlertsInPlace([otherV1], [otherV2]);
+      expect(afterOther.single.acknowledged, isTrue);
+    });
   });
 
   group('AlertsScreen per-contact in-place update, move-to-top, and +N new badge (#1029)', () {
