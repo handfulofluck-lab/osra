@@ -224,6 +224,11 @@ Future<BackgroundAlertWake> buildWake() async {
     notifier: FlutterLocalNotifier(),
     readShown: () async {
       final p = await SharedPreferences.getInstance();
+      // #1028: reload so the foreground isolate sees alert ids persisted by the
+      // background isolate (and vice versa), preventing duplicate notifications.
+      try {
+        await p.reload();
+      } catch (_) {}
       return (p.getStringList(_shownKey) ?? const []).toSet();
     },
     writeShown: (ids) async {
