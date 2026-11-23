@@ -689,7 +689,7 @@ void main() {
       final ar = await arabic();
       final en = await AppLocalizations.delegate.load(const Locale('en'));
       const types = [
-        'replaced', 'device_silent', 'accessibility_off', 'device_admin_removed', 'protection_screen_opened',
+        'replaced', 'device_silent', 'accessibility', 'accessibility_off', 'device_admin_removed', 'protection_screen_opened',
         'parent_pin_locked', 'content_filter_disconnected', 'proxy_failed', 'private_dns_bypass', 'proxy_disabled',
         'overlay_revoked', 'block_bypass', 'agent_data_cleared',
       ];

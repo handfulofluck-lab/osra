@@ -131,7 +131,8 @@ extension AppLocalizationsLabels on AppLocalizations {
             // notice. Each type the agents and the server send now says what actually happened.
             'replaced' => alertTitleAgentUpdated,
             'device_silent' => alertTitleDeviceSilent,
-            'accessibility_off' => alertTitleProtectionOff,
+            // `AccessibilityOffReceiver` sends 'accessibility'; `TamperAlertWorker` sends 'accessibility_off'.
+            'accessibility' || 'accessibility_off' => alertTitleProtectionOff,
             'device_admin_removed' => alertTitleAdminRemoved,
             'protection_screen_opened' => alertTitleRemovalAttempt,
             'parent_pin_locked' => alertTitlePinLocked,

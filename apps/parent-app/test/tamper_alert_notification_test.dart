@@ -31,6 +31,7 @@ void main() {
     expect(VisibleAlert.from(tamper('replaced', severity: 'info'), l10n: en, isEnglish: true).title, en.alertTitleAgentUpdated);
     expect(VisibleAlert.from(tamper('device_silent'), l10n: en, isEnglish: true).title, en.alertTitleDeviceSilent);
     expect(VisibleAlert.from(tamper('accessibility_off'), l10n: ar, isEnglish: false).title, ar.alertTitleProtectionOff);
+    expect(VisibleAlert.from(tamper('accessibility'), l10n: en, isEnglish: true).title, en.alertTitleProtectionOff);
     expect(VisibleAlert.from(tamper('block_bypass'), l10n: ar, isEnglish: false).title, ar.alertTitleBlockBypass);
   });
 
