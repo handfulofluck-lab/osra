@@ -27,10 +27,14 @@ describe("alerts routes", () => {
   it("lists alerts in the {items, meta} envelope scoped to the family", async () => {
     const app = await buildApp(alertsRoutes, "/v1/alerts");
     prismaMock.alert.count.mockResolvedValue(7);
-    prismaMock.alert.findMany.mockResolvedValue([{ id: "a1" }, { id: "a2" }]);
+    const providerOutcomes = { own: { status: "scored", model: "v9b", flagged: true,
+      flagged_categories: ["self_harm"], categories: { self_harm: 0.41 } } };
+    prismaMock.alert.findMany.mockResolvedValue([{ id: "a1", metadata: { providerOutcomes } }, { id: "a2" }]);
 
     const res = await app.inject({ method: "GET", url: "/v1/alerts?page=1&limit=2", headers: authHeader(app) });
     expect(res.statusCode).toBe(200);
+    expect(res.json().items[0].metadata.providerOutcomes).toEqual(providerOutcomes);
+    expect(prismaMock.alert.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { child: { familyId: "fam-1" } } }));
     const body = res.json();
     expect(body.items).toHaveLength(2);
     expect(body.meta).toEqual({ total: 7, page: 1, limit: 2 });
@@ -144,7 +148,7 @@ describe("alerts routes", () => {
     await app.close();
   });
 
-  it("a device-signed alert cannot smuggle its own bodyKey through metadata (Fable n13)", async () => {
+  it("device-signed metadata cannot supply localized copy or server model attribution", async () => {
     // This route never passes a bodyKey, so it is the ONE path osra-security#16 is about: without the strip
     // in the no-key branch, a phone (or an AI engine caller) could store a bodyKey and params this server
     // never validated, and the parent app would render them as if it had. Fable's n13 puts the old
@@ -160,7 +164,7 @@ describe("alerts routes", () => {
       category: "tamper",
       title: "t",
       body: "b",
-      metadata: { src: "ai", bodyKey: "alertBodySearchFlagged", bodyParams: { engine: "forged" } },
+      metadata: { src: "ai", bodyKey: "alertBodySearchFlagged", bodyParams: { engine: "forged" }, providerOutcomes: { own: { flagged: true } } },
     });
     const res = await app.inject({
       method: "POST",

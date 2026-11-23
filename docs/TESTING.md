@@ -360,6 +360,20 @@ verification succeeds. Record pass or fail without logging addresses. Use only t
 synthetic fixtures for inference. Capture one successful trace and evidence that unapproved or
 expired requests are rejected. The `/health` response measures process liveness.
 
+For the optional provider comparison, run `pnpm exec vitest run test/social.test.ts
+test/stagingProviderOutcomes.test.ts test/stagingQaModel.test.ts test/alerts.test.ts` from
+`services/api`. On the approved synthetic staging pair, an explicitly set `OSRA_STAGING_QA_ENGINE`
+(`bedrock`, `own` or `both`) requests attributed outcomes from the private analyzer. With the variable
+unset the API uses the existing Bedrock response. All pairing, consent, source and expiry checks apply
+before the call.
+
+Each selected scan adds a `StagingScanOutcome` row. It holds the trace, child, optional vault event,
+time, provider result class, model version and the score of each category the provider explicitly
+flagged. A timed-out peer and a completed benign peer can be distinguished in that row. The existing
+family-scoped alerts response carries explicitly positive providers in `metadata.providerOutcomes`.
+The alert retains the usual per-child and per-app throttle. Include the receipt table in the approved
+staging wipe. Child erasure also removes receipts for that child.
+
 ### Notification env (Phase 2a) — all optional
 
 | Variable | Effect when set |
@@ -1434,6 +1448,13 @@ Send a concerning synthetic notification and a harmless control. Confirm the con
 from Bedrock without fallback and opens the matching alert in the Parent app. Confirm Bedrock scored
 the harmless notification and created no alert. Record model, region, trace ID, and the result using
 the private test record. Roll both services back and retire the synthetic scope at the end of the window.
+
+For a staging run with per-provider receipts, send `include_provider_outcomes: true` to the private
+analyzer. `OSRA_STAGING_QA_ENGINE` selects `bedrock` (default), `own`, or `both`. Run
+`python -m pytest -q tests/test_staging_qa.py tests/test_staging_own_model.py tests/test_staging_provider_results.py`
+from `services/ai-engine` to exercise accepted and rejected requests without network access. Check each
+selected provider's status before counting a verdict. A timeout or unavailable result carries no scores.
+The [staging acceptance procedure](QA/staging-model-smoke.md) describes the private route and live evidence.
 
 ## 6. Traps that have cost real time here
 
