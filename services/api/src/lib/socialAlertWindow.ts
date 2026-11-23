@@ -17,13 +17,19 @@ export function normalizeSocialSeverity(value: unknown): SocialSeverity {
   return value === "info" || value === "warning" || value === "critical" ? value : "warning";
 }
 
-function getContactKeySalt(env: NodeJS.ProcessEnv = process.env): string {
-  const salt = env.SOCIAL_ALERT_KEY_SALT || env.VAULT_KEY || env.INTERNAL_HMAC_SECRET;
-  if (salt) return salt;
-  if (env.NODE_ENV === "production") {
-    throw new Error("SOCIAL_ALERT_KEY_SALT, VAULT_KEY, or INTERNAL_HMAC_SECRET is required in production");
+/**
+ * Derive a domain-separated HMAC key from the API's existing classified secrets (`VAULT_KEY` or
+ * `INTERNAL_HMAC_SECRET`), avoiding an extra unclassified env var in `check-production-taskdef.mjs`.
+ */
+function getContactKeySalt(env: NodeJS.ProcessEnv = process.env): Buffer {
+  const baseSecret = env.VAULT_KEY || env.INTERNAL_HMAC_SECRET;
+  if (baseSecret) {
+    return createHmac("sha256", baseSecret).update("osra:social-alert-contact-key:v1").digest();
   }
-  return "dev-social-alert-contact-salt";
+  if (env.NODE_ENV === "production") {
+    throw new Error("VAULT_KEY or INTERNAL_HMAC_SECRET is required in production");
+  }
+  return Buffer.from("dev-social-alert-contact-salt", "utf8");
 }
 
 /**
