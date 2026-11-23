@@ -115,6 +115,8 @@ describe("social alert per-contact window (#1029)", () => {
       }
       return n;
     });
+    // Unit-suite mock wiring only; real Lua execution against Redis lives in
+    // test/social-alert-window-redis.test.ts (enforced in CI via OSRA_REQUIRE_REDIS_TESTS=1).
     const evalMock = redis.eval as unknown as {
       mockImplementation: (fn: (script: string, numKeys: number, ...args: string[]) => Promise<unknown>) => void;
     };

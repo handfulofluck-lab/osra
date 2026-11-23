@@ -54,6 +54,8 @@ jobs:
     env:
       OSRA_TEST_DATABASE_URL: postgres://postgres@127.0.0.1:5432/osra_test_ci
       OSRA_REQUIRE_DATABASE_TESTS: "1"
+      OSRA_TEST_REDIS_URL: redis://127.0.0.1:6379
+      OSRA_REQUIRE_REDIS_TESTS: "1"
     services:
       postgres:
         image: postgres:16-alpine
@@ -62,6 +64,10 @@ jobs:
           POSTGRES_DB: osra_test_ci
         ports: ["5432:5432"]
         options: --health-cmd "pg_isready -U postgres -d osra_test_ci" --health-interval 2s --health-retries 30
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 2s --health-retries 30
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4   # version comes from package.json "packageManager" — do NOT also pass `with: version:` (the action fails with "Multiple versions of pnpm specified"; this broke the API + AI jobs on main)
@@ -77,5 +83,5 @@ jobs:
         run: pnpm --filter @familyshield/api exec prisma generate
       - name: Type-check API
         run: pnpm --filter @familyshield/api run build
-      - name: API tests (mocked routes + isolated demo database)
+      - name: API tests (mocked routes + isolated demo database + Redis Lua)
         run: pnpm --filter @familyshield/api run test
