@@ -10,6 +10,7 @@ from functools import lru_cache
 from time import monotonic
 from typing import Literal
 
+from botocore.exceptions import ConnectTimeoutError, ReadTimeoutError
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, UUID4, ValidationError
 
@@ -167,7 +168,10 @@ async def _provider_receipts(data, mode, expires_at, system_prompt, started):
     deadline = min(started + MAX_INFERENCE_SECONDS, monotonic() + remaining)
 
     async def bedrock():
-        categories = await asyncio.to_thread(_infer, data.text, trace, system_prompt, expires_at, deadline)
+        try:
+            categories = await asyncio.to_thread(_infer, data.text, trace, system_prompt, expires_at, deadline)
+        except (ConnectTimeoutError, ReadTimeoutError) as error:
+            raise TimeoutError from error
         harmful = {key: score for key, score in categories.items() if key != "safe"}
         severity, flagged = _severity(max(harmful.values()))
         return ScoredOutcome(model=MODEL_ID, flagged=flagged, severity=severity, categories=categories,

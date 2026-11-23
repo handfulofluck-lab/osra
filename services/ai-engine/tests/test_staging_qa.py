@@ -361,3 +361,13 @@ def test_provider_exception_and_input_stay_out_of_logs_and_receipt(setup_qa, mon
     }
     assert caplog.text.count("staging QA provider unavailable") == 2
     assert sample not in response.text + caplog.text and failure not in response.text + caplog.text
+
+
+@pytest.mark.parametrize("kind", ["ConnectTimeoutError", "ReadTimeoutError"])
+def test_bedrock_sdk_socket_timeout_receives_timeout_class(setup_qa, kind):
+    # Mutant: classify a socket timeout as a generic unavailable model.
+    from botocore import exceptions
+
+    setup_qa.answer = getattr(exceptions, kind)(endpoint_url="synthetic")
+    response = TestClient(app).post(PATH, json=payload(include_provider_outcomes=True))
+    assert response.json()["outcomes"] == {"bedrock": {"status": "unavailable", "reason": "timeout"}}

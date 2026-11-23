@@ -7,7 +7,7 @@ from time import monotonic
 from typing import Generic, Literal, TypeVar
 
 Verdict = TypeVar("Verdict")
-Provider = Literal["osra", "bedrock"]
+Provider = Literal["own", "bedrock"]
 
 
 @dataclass(frozen=True)
