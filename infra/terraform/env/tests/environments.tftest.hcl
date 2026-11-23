@@ -483,7 +483,7 @@ run "armed_window_renders_all_four_receipt_pins" {
     override_during = plan
 
     values = {
-      arn = format("arn:aws:iam::%012d:role/test-analyzer-task", 0)
+      arn = "arn:aws:iam::000000000000:role/test-analyzer-task"
     }
   }
 
@@ -496,6 +496,19 @@ run "armed_window_renders_all_four_receipt_pins" {
       one([for item in local.staging_model_env : item.value if item.name == "OSRA_STAGING_QA_V9B_THRESHOLDS_SHA256"]) == sha256("thresholds")
     )
     error_message = "An armed window with pins must render all four own-model receipt pins on the analyzer."
+  }
+
+  # Mutant: dropping the pins from the analyzer container (even if the local still holds them) must fail.
+  assert {
+    condition = alltrue([
+      for pin in [
+        ["OSRA_STAGING_QA_V9_MODEL_SHA256", sha256("weights-nine")],
+        ["OSRA_STAGING_QA_V9B_MODEL_SHA256", sha256("weights-nine-b")],
+        ["OSRA_STAGING_QA_V9_THRESHOLDS_SHA256", sha256("thresholds")],
+        ["OSRA_STAGING_QA_V9B_THRESHOLDS_SHA256", sha256("thresholds")],
+      ] : one([for item in jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].environment : item.value if item.name == pin[0]]) == pin[1]
+    ])
+    error_message = "The analyzer container environment must carry all four receipt pins."
   }
 
   assert {
@@ -588,7 +601,7 @@ run "armed_own_window_with_partial_pins_fails_plan" {
     override_during = plan
 
     values = {
-      arn = format("arn:aws:iam::%012d:role/test-analyzer-task", 0)
+      arn = "arn:aws:iam::000000000000:role/test-analyzer-task"
     }
   }
 
