@@ -35,11 +35,15 @@ import model as rules_model
 import own_model_service as svc
 from app import app
 
-APPROVED_TEXT = "Synthetic staging fixture"
+APPROVED_TEXT = "This is a synthetic staging fixture"
 ARABIC_TEXT = "مرحبا كيف حالك اليوم"
 URDU_TEXT = "تم کہاں جا رہے ہو بھائی"
 FRENCH_TEXT = "Bonjour, comment ça va aujourd'hui?"
 TURKISH_TEXT = "Bugün çok güzel bir gün geçiriyoruz"
+INDONESIAN_TEXT = "Kamu tidak bisa ikut karena sudah malam banget"
+MALAY_TEXT = "Awak tak boleh pergi kerana cikgu hendak jumpa selepas ini"
+AMBIGUOUS_SHORT_TEXT = "ok haha 123"
+AMBIGUOUS_SHARED_ID_MS = "saya yang ini"
 PATH = "/analyze/staging-qa/own"
 
 V9B_LOCAL_DIR = Path(r"C:\KARIM\ocl-study\gen\score\models\v9b\unpacked")
@@ -79,7 +83,16 @@ def _make_stub_registry(
 def armed_env(monkeypatch):
     digests = ",".join(
         hashlib.sha256(t.encode("utf-8")).hexdigest()
-        for t in (APPROVED_TEXT, ARABIC_TEXT, URDU_TEXT, FRENCH_TEXT, TURKISH_TEXT)
+        for t in (
+            APPROVED_TEXT,
+            ARABIC_TEXT,
+            URDU_TEXT,
+            FRENCH_TEXT,
+            TURKISH_TEXT,
+            INDONESIAN_TEXT,
+            MALAY_TEXT,
+            AMBIGUOUS_SHORT_TEXT,
+        )
     )
     monkeypatch.setenv("OSRA_DEPLOYMENT_SCOPE", "staging")
     monkeypatch.setenv("OSRA_STAGING_QA_OWN_MODEL_ENABLED", "1")
@@ -208,6 +221,55 @@ def test_french_preposition_de_routes_to_fr_not_tr():
     # Regression caught by live v9b receipt: French "de" must not trigger Turkish routing.
     assert svc.detect_language("Merci de répondre ce soir") == "fr"
     assert svc.detect_language("Pas de problème avec ça") == "fr"
+
+
+def test_indonesian_malay_and_ambiguous_short_text_routing_through_request(armed_env, monkeypatch):
+    # osra-security#72 (Claude 7100196579): unlabelled id/ms texts must resolve to their own
+    # calibrated thresholds (never silently default to en), and ambiguous short Latin text must
+    # return an explicit uncertain result with no verdict and no parent alert.
+    monkeypatch.setenv("OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT", "1")
+    calls: list[str] = []
+
+    def score_v9(text: str):
+        calls.append(text)
+        # cyberbullying=0.65: flags id (cutoff 0.58) and ms (cutoff 0.50), does NOT flag en (cutoff 0.98).
+        return _zero_probs(cyberbullying=0.65)
+
+    monkeypatch.setattr(svc, "_registry", _make_stub_registry(v9_scorer=score_v9))
+    client = TestClient(svc.own_model_app)
+
+    res_id = client.post(PATH, json=_payload(INDONESIAN_TEXT))
+    assert res_id.status_code == 200
+    body_id = res_id.json()
+    assert body_id["status"] == "scored"
+    assert body_id["lang"] == "id"
+    assert body_id["model"] == "osra-own-v9"
+    assert body_id["flagged"] is True
+    assert body_id["flagged_categories"] == ["cyberbullying"]
+
+    res_ms = client.post(PATH, json=_payload(MALAY_TEXT))
+    assert res_ms.status_code == 200
+    body_ms = res_ms.json()
+    assert body_ms["status"] == "scored"
+    assert body_ms["lang"] == "ms"
+    assert body_ms["model"] == "osra-own-v9"
+    assert body_ms["flagged"] is True
+    assert body_ms["flagged_categories"] == ["cyberbullying"]
+
+    calls.clear()
+    for ambiguous in (AMBIGUOUS_SHORT_TEXT, AMBIGUOUS_SHARED_ID_MS):
+        res_u = client.post(PATH, json=_payload(ambiguous))
+        assert res_u.status_code == 200
+        body_u = res_u.json()
+        assert body_u["status"] == "uncertain"
+        assert body_u["reason"] == svc.UNCALIBRATED_LANGUAGE_REASON
+        assert body_u["flagged"] is False
+        assert body_u["severity"] == "info"
+        assert body_u["categories"] == {}
+        assert body_u["flagged_categories"] == []
+        assert body_u["lang"] == "unknown"
+        assert body_u["model"] == "uncalibrated"
+    assert calls == []
 
 
 def test_language_routing_selects_v9b_for_ar_fr_and_v9_for_others(armed_env, monkeypatch):

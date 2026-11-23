@@ -83,6 +83,22 @@ _FRENCH_WORD_RE = re.compile(
     r"\b(?:bonjour|merci|salut|avec|pour|dans|mais|nous|vous|suis|c['’]est|j['’]ai|t['’]es|pas|tr[eè]s|rien|jamais)\b",
     re.IGNORECASE,
 )
+_INDONESIAN_DISTINCTIVE_RE = re.compile(
+    r"\b(?:tidak|bisa|banget|gak|nggak|kamu|gue|udah|sudah|gimana|kenapa|jangan|cuma|buat|dong|sih|aja|kok|karena|tetapi|harus|terima|kasih|bang)\b",
+    re.IGNORECASE,
+)
+_MALAY_DISTINCTIVE_RE = re.compile(
+    r"\b(?:awak|tak|boleh|nak|macam|sahaja|hendak|kerana|selepas|sangat|janganlah|cikgu|kawan|dekat|sebab|tapi|saje|korang|kau)\b",
+    re.IGNORECASE,
+)
+_ENGLISH_WORD_RE = re.compile(
+    r"\b(?:the|and|you|your|are|is|am|was|were|have|has|had|this|that|with|from|they|them|what|when|where|why|how|not|"
+    r"don['’]t|can['’]t|won['’]t|i['’]m|you['’]re|please|hello|hey|thanks|sorry|school|home|meet|send|photo|secret|"
+    r"kill|hurt|stupid|loser|hate|fight|drugs|weed|tonight|today|tomorrow|my|me|we|our|his|her|about|just|like|know|"
+    r"want|need|will|would|could|should|for|but|all|can|out|one|two|see|get|now|come|here|there|good|bad)\b",
+    re.IGNORECASE,
+)
+UNCALIBRATED_LANGUAGE_REASON = "uncalibrated: language not determined"
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -96,6 +112,14 @@ class AdapterUnavailable(RuntimeError):
     """
 
 
+class UncertainLanguageError(RuntimeError):
+    """Raised when no supported calibrated language can be determined for unlabelled text."""
+
+    def __init__(self, thresholds_sha256: str) -> None:
+        super().__init__(UNCALIBRATED_LANGUAGE_REASON)
+        self.thresholds_sha256 = thresholds_sha256
+
+
 class OwnModelQaRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -105,8 +129,10 @@ class OwnModelQaRequest(BaseModel):
 
 
 class OwnModelQaResponse(BaseModel):
-    """Drop-in superset of `StagingQaResponse` with digest and language audit fields."""
+    """Drop-in superset of `StagingQaResponse` with digest, language, and uncertainty audit fields."""
 
+    status: Literal["scored", "uncertain"] = "scored"
+    reason: str | None = None
     flagged: bool
     severity: Literal["info", "warning", "critical"]
     categories: dict[str, float]
@@ -251,11 +277,15 @@ def load_serving_config(
     )
 
 
-def detect_language(text: str) -> str:
+def detect_language(text: str) -> str | None:
     """Deterministic lightweight router when caller omits `lang`.
 
     Routes Arabic (`ar`) and French (`fr`) to `v9b`; Urdu Nastaliq (`ur`), Turkish (`tr`),
-    and Latin-script languages (`en`, `id`, `ms`) route to `v9`.
+    Indonesian (`id`), Malay (`ms`), and English (`en`) to `v9`.
+    Returns `None` when the language cannot be determined reliably (ambiguous short Latin
+    text or un-disambiguated shared Indonesian/Malay words), so the caller can return an
+    explicit `"uncalibrated: language not determined"` outcome instead of borrowing
+    another language's thresholds.
     """
     if _ARABIC_SCRIPT_RE.search(text):
         if _URDU_ONLY_RE.search(text):
@@ -265,7 +295,17 @@ def detect_language(text: str) -> str:
         return "tr"
     if _FRENCH_DIACRITIC_RE.search(text) or _FRENCH_WORD_RE.search(text):
         return "fr"
-    return "en"
+    id_hits = len(_INDONESIAN_DISTINCTIVE_RE.findall(text))
+    ms_hits = len(_MALAY_DISTINCTIVE_RE.findall(text))
+    if id_hits > ms_hits:
+        return "id"
+    if ms_hits > id_hits:
+        return "ms"
+    if id_hits > 0 and ms_hits > 0:
+        return None
+    if _ENGLISH_WORD_RE.search(text):
+        return "en"
+    return None
 
 
 def validate_probs(raw_probs: Mapping[str, float]) -> dict[str, float]:
@@ -544,6 +584,8 @@ class OwnModelRegistry:
             raise AdapterUnavailable("no text to score")
         cfg = self.get_config()
         resolved_lang = lang if lang is not None else detect_language(text)
+        if resolved_lang is None:
+            raise UncertainLanguageError(cfg.sha256)
         if resolved_lang not in cfg.model_by_lang or resolved_lang not in cfg.thresholds:
             raise AdapterUnavailable(f"unsupported language {resolved_lang!r}")
         tag = cfg.model_by_lang[resolved_lang]
@@ -711,6 +753,27 @@ async def analyze_staging_qa_own(request: Request) -> OwnModelQaResponse:
         )
         if datetime.now(timezone.utc) >= expires_at:
             raise TimeoutError("staging QA approval expired")
+    except UncertainLanguageError as exc:
+        logger.info(
+            "staging QA own model uncertain count=1 reason=language_not_determined trace_id=%s region=%s latency_ms=%d",
+            trace_id,
+            region,
+            (monotonic() - started) * 1000,
+        )
+        return OwnModelQaResponse(
+            status="uncertain",
+            reason=UNCALIBRATED_LANGUAGE_REASON,
+            flagged=False,
+            severity="info",
+            categories={},
+            flagged_categories=[],
+            model="uncalibrated",
+            region=region,
+            lang="unknown",
+            model_sha256="",
+            thresholds_sha256=exc.thresholds_sha256,
+            trace_id=data.trace_id,
+        )
     except TimeoutError:
         logger.warning(
             "staging QA own model timeout count=1 trace_id=%s region=%s latency_ms=%d",
