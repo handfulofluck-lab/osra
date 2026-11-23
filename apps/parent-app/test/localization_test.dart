@@ -674,12 +674,32 @@ void main() {
       final en = await AppLocalizations.delegate.load(const Locale('en'));
       expect(en.alertTitleFor('tamper', 'x', isEnglish: true, tamperType: 'block_bypass'), 'An app got around the block');
       expect(en.alertTitleFor('tamper', 'x', isEnglish: true, tamperType: 'agent_data_cleared'), "OSRA's data was cleared on a phone");
-      expect(en.alertTitleFor('tamper', 'x', isEnglish: true, tamperType: 'protection_screen_opened'), en.alertTitleTamper);
+      expect(en.alertTitleFor('tamper', 'x', isEnglish: true, tamperType: 'protection_screen_opened'), en.alertTitleRemovalAttempt);
+      expect(en.alertTitleFor('tamper', 'x', isEnglish: true, tamperType: 'some_future_type'), en.alertTitleTamper);
       expect(en.alertTitleFor('tamper', 'x', isEnglish: true), en.alertTitleTamper);
       expect(ar.alertTitleFor('tamper', 'x', isEnglish: false, tamperType: 'block_bypass'), ar.alertTitleBlockBypass);
       expect(ar.alertTitleBlockBypass, isNot(en.alertTitleBlockBypass));
       // The type only refines a tamper alert; another category ignores it.
       expect(en.alertTitleFor('sos', 'x', isEnglish: true, tamperType: 'block_bypass'), en.alertTitleSos);
+    });
+
+    // Karim, 23 Nov: every tamper notification on the iPhone read "Protection tampered with", including the
+    // agent's own update notice. Every type an agent or the server sends has its own title, in both locales.
+    test('every tamper type the agents and the server send has its own title, never the generic one', () async {
+      final ar = await arabic();
+      final en = await AppLocalizations.delegate.load(const Locale('en'));
+      const types = [
+        'replaced', 'device_silent', 'accessibility', 'accessibility_off', 'device_admin_removed', 'protection_screen_opened',
+        'parent_pin_locked', 'content_filter_disconnected', 'proxy_failed', 'private_dns_bypass', 'proxy_disabled',
+        'overlay_revoked', 'block_bypass', 'agent_data_cleared',
+      ];
+      for (final t in types) {
+        expect(en.alertTitleFor('tamper', 'x', isEnglish: true, tamperType: t), isNot(en.alertTitleTamper), reason: t);
+        expect(ar.alertTitleFor('tamper', 'x', isEnglish: false, tamperType: t), isNot(ar.alertTitleTamper), reason: t);
+      }
+      expect(en.alertTitleFor('tamper', 'Agent updated', isEnglish: true, tamperType: 'replaced'), 'OSRA was updated on a phone');
+      expect(ar.alertTitleFor('tamper', 'Agent updated', isEnglish: false, tamperType: 'replaced'), 'تم تحديث OSRA على هاتف');
+      expect(en.alertTitleFor('tamper', 'x', isEnglish: true, tamperType: 'device_silent'), 'A phone stopped reporting');
     });
 
     /// The drift guard for the blocking finding: the fixture, the mapping and

@@ -3076,6 +3076,33 @@ class AppLocalizationsAr extends AppLocalizations {
   String get alertTitleDataCleared => 'تم مسح بيانات OSRA على هاتف';
 
   @override
+  String get alertTitleAgentUpdated => 'تم تحديث OSRA على هاتف';
+
+  @override
+  String get alertTitleDeviceSilent => 'توقّف هاتف عن إرسال التحديثات';
+
+  @override
+  String get alertTitleProtectionOff => 'تم إيقاف حماية OSRA';
+
+  @override
+  String get alertTitleAdminRemoved => 'تم إيقاف الحماية من الحذف';
+
+  @override
+  String get alertTitleRemovalAttempt => 'محاولة لإزالة الحماية';
+
+  @override
+  String get alertTitlePinLocked => 'محاولات خاطئة كثيرة لرمز ولي الأمر';
+
+  @override
+  String get alertTitleFilterOff => 'تم فصل فلتر الويب';
+
+  @override
+  String get alertTitleFilterBypassed => 'تم تجاوز فلتر الويب';
+
+  @override
+  String get alertTitleOverlayRevoked => 'تم سحب إذن شاشة الحظر';
+
+  @override
   String get alertTitleVpnDetected => 'تم اكتشاف شبكة VPN';
 
   @override
