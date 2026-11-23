@@ -98,7 +98,7 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
                         _log.LogError(ex, "Could not create the tray pipe for session {SessionId}", session.SessionId);
                         if (_restrictions.RecordPipeFailure(session.SessionId))
                             _ = PostTamperAlert("tray_pipe_create_failed",
-                                "The tray pipe could not be created. OSRA Service will protect a restricted session if it stays unavailable.");
+                                "Part of OSRA could not start on the computer. If a lock or limit is active and this continues, OSRA will lock the computer to keep it protected.");
                         continue;
                     }
                     if (existing is not null)
@@ -165,7 +165,7 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
                 if (_restrictions.MarkFallback(session.SessionId, _clock()))
                 {
                     await PostTamperAlert("tray_offline_fallback",
-                        "No verified tray was connected for 20 seconds during a restriction. OSRA Service locked the session.");
+                        "Part of OSRA stopped running on the computer while a lock or limit was active, so OSRA locked the computer. This can happen if someone closed it.");
                 }
             }
             catch (Exception ex)
@@ -189,7 +189,7 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
     }
 
     private void ReportPersistenceFailure() => _ = PostTamperAlert("restriction_store_write_failed",
-        "Restriction state could not be saved. OSRA Service is keeping the current state in memory and will retry.",
+        "OSRA could not save the current lock or limit on the computer. It is still applied, and OSRA keeps trying to save it.",
         _restrictions.RestoredUnreadable ? "critical" : "high", "OSRA could not save a setting on the computer");
 
     private Task PostTamperAlert(string type, string body, string severity = "critical",
