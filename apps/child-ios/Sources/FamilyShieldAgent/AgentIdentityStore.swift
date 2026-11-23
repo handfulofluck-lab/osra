@@ -105,7 +105,11 @@ public enum AgentIdentityStore {
         secrets.delete(Keys.deviceToken)
         secrets.delete(Keys.hmacSecret)
         guard let defaults = UserDefaults(suiteName: suiteName) else { return }
-        for key in [Keys.apiBaseURL, Keys.childId, Keys.hmacSecret, Keys.deviceToken, Keys.deviceId, Keys.familyId, Keys.childName] {
+        var keys = [Keys.apiBaseURL, Keys.childId, Keys.hmacSecret, Keys.deviceToken, Keys.deviceId, Keys.familyId, Keys.childName]
+        // ADR-0042 D1a (#883): the served language list and the language it recorded belong to the family that
+        // paired. Left behind, the next family on this phone would inherit a tester's `beta` language until a sync.
+        keys += [SharedLanguage.enabledKey, SharedLanguage.key]
+        for key in keys {
             defaults.removeObject(forKey: key)
         }
     }

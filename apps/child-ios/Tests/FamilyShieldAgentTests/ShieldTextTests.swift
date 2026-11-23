@@ -127,8 +127,12 @@ final class ShieldTextTests: XCTestCase {
         if let name, let time { XCTAssertLessThan(name.lowerBound, time.lowerBound, "the window, then the time") }
     }
 
-    func testAnUnshippedLanguageFallsBackToEnglish() {
-        XCTAssertEqual(ShieldText.make(window: nil, language: "fr").title, "This app is blocked by your parent")
+    /// ADR-0042 D1a (#883): "unshipped" now means "no table in the build", not "not yet offered". A language whose
+    /// catalog is compiled in draws that catalog only when the enabled list allows it — that rule is pinned in
+    /// `SharedLanguageTests`; here the row is the older guarantee that a language with no table at all never draws a
+    /// key: it falls back to English.
+    func testALanguageWithNoTableFallsBackToEnglish() {
+        XCTAssertEqual(ShieldText.make(window: nil, language: "de").title, "This app is blocked by your parent")
     }
 
     /// #732: the language is resolved on every call, so a system language change reaches the next shield in the

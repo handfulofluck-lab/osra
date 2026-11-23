@@ -8,6 +8,11 @@
 	<array>
 		<string>en</string>
 		<string>ar</string>
+		<string>tr</string>
+		<string>id</string>
+		<string>ms</string>
+		<string>fr</string>
+		<string>ur</string>
 	</array>
 	<key>CFBundleDisplayName</key>
 	<string>OSRA Shield</string>

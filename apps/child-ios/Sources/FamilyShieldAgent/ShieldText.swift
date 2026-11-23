@@ -67,7 +67,7 @@ public struct ShieldText: Equatable {
         return nil
     }
 
-    /// The screen's text for `window` in `language` ("en" or "ar"; anything else falls back to English).
+    /// The screen's text for `window` in `language` — any catalog the build carries; a language with no table draws English.
     public static func make(window: Window?, language: String) -> ShieldText {
         let table = strings(for: language)
         var subtitle: String?
@@ -108,8 +108,9 @@ public struct ShieldText: Equatable {
     /// #732: read afresh on every call. The shield extension is a long-lived process, and `Locale.preferredLanguages`
     /// there kept the language from before a system language change until a reboot (iPhone 13, 13 Nov), so the
     /// list comes from `freshPreferredLanguages`, which re-reads the system's preferences first.
-    public static func preferredLanguage(preferences: () -> [String] = freshPreferredLanguages) -> String {
-        Bundle.preferredLocalizations(from: ["en", "ar"], forPreferences: preferences()).first ?? "en"
+    public static func preferredLanguage(preferences: () -> [String] = freshPreferredLanguages,
+                                        enabled: () -> [String] = { SharedLanguage.enabledLanguages() }) -> String {
+        SharedLanguage.language(for: preferences(), enabled: enabled())
     }
 
     /// #732, second attempt: the language the shield uses. On a real iPhone the extension's own view of the language
@@ -118,8 +119,9 @@ public struct ShieldText: Equatable {
     /// language change and records the language it runs in to the app group (`SharedLanguage`), so that comes first;
     /// the extension's own read is the fallback for a phone whose app has not run since pairing.
     public static func resolvedLanguage(stored: String? = SharedLanguage.stored(),
+                                        enabled: [String] = SharedLanguage.enabledLanguages(),
                                         fallback: () -> String = { preferredLanguage() }) -> String {
-        if let stored, ["en", "ar"].contains(stored) { return stored }
+        if let stored, SharedLanguage.normalised(enabled).contains(stored) { return stored }
         return fallback()
     }
 

@@ -1,0 +1,107 @@
+/* OSRA Kids iPhone, id: Language Bureau DRAFT, not yet read by a native speaker. Mirrors en.lproj at main 5a59d182 line by line. Lands on main only behind the ADR-0042 D1a served switch. */
+/* #511: the iPhone block screen, the same wording as the Android agent (values/strings.xml). */
+"block_title_blocked" = "Aplikasi ini diblokir oleh orang tuamu";
+"block_request_access" = "Minta izin";
+"block_exit_home" = "Tutup aplikasi";
+/* %1$@ is the window (Bedtime, or the routine's name), %2$@ its end time (HH:MM). */
+"block_window_line" = "Diblokir oleh %1$@ hingga %2$@";
+"block_window_bedtime" = "Waktu tidur";
+
+/* The app's own screens (5.5, Arabic Language Bureau sheet, approved by Karim 2026-11-12 11:20Z). Plurals are in Localizable.stringsdict. */
+"pair_section_title" = "OSRA Kids";
+"pair_server_field" = "Alamat server (mis. 192.168.1.5:3000)";
+"pair_code_field" = "Kode penyambungan 6 angka";
+"pair_name_field" = "Nama perangkat (opsional)";
+"pair_button" = "Sambungkan perangkat ini";
+"pair_button_busy" = "Menyambungkan…";
+"pair_hint" = "Minta kepada orang tuamu kode penyambungan yang ditampilkan di aplikasi OSRA orang tua.";
+"pair_waiting" = "Menunggu orang tuamu mengetuk Izinkan di ponselnya…";
+"pair_title" = "Sambungkan perangkat";
+"pair_error_server" = "Masukkan alamat server yang valid, mis. 192.168.1.5:3000";
+"pair_error_code" = "Masukkan kode penyambungan 6 angka.";
+"pair_error_invalid" = "Kode tidak valid atau sudah tidak berlaku. Minta kode baru kepada orang tuamu.";
+"pair_error_claimed" = "Kode ini sedang digunakan oleh ponsel lain. Minta kode baru kepada orang tuamu.";
+"pair_error_denied" = "Orang tuamu menolak ponsel ini. Jika itu keliru, minta kode baru kepadanya.";
+"pair_error_expired" = "Kode sudah tidak berlaku sebelum orang tuamu mengizinkan ponsel ini. Minta kode baru kepadanya.";
+"pair_error_consent" = "Orang tuamu perlu memberikan persetujuan di aplikasi OSRA sebelum ponsel ini dapat disambungkan.";
+"pair_error_network" = "Tidak dapat menghubungi server. Periksa alamat dan jaringan.";
+"pair_error_response" = "Respons server tidak terduga. Periksa alamat server.";
+"pair_error_http" = "Server menolak permintaan (HTTP %d).";
+"pair_error_save" = "Tidak dapat menyimpan penyambungan di ponsel ini. Coba lagi.";
+"status_title" = "Status";
+"status_paired" = "Tersambung";
+"status_child" = "Anak";
+"status_server" = "Server";
+"status_technical_details" = "Detail teknis";
+"status_device" = "Perangkat";
+"screen_time" = "Durasi Layar";
+"screen_time_on" = "Aktif";
+"screen_time_off" = "Nonaktif";
+"screen_time_not_allowed" = "Tidak diizinkan";
+"screen_time_button" = "Aktifkan Durasi Layar";
+"screen_time_footer_off" = "Batas dan pemblokiran aplikasi dari orang tuamu memerlukan Durasi Layar. Ketuk “Aktifkan Durasi Layar” lalu izinkan.";
+"screen_time_footer_on" = "Batas dan pemblokiran aplikasi dari orang tuamu diterapkan di perangkat ini.";
+"screen_time_footer_denied" = "Durasi Layar tidak diizinkan, sehingga batas dari orang tuamu tidak diterapkan. Ketuk “Aktifkan Durasi Layar” lagi, atau minta orang tuamu membuka Pengaturan > Durasi Layar dan mengizinkan OSRA Kids.";
+"location" = "Lokasi";
+"location_always" = "Selalu";
+"location_while_in_use" = "Saat aplikasi digunakan (perlu “Selalu”)";
+"location_off" = "Nonaktif";
+"location_allow" = "Izinkan lokasi";
+"location_open_settings" = "Buka Pengaturan";
+"location_footer" = "Orang tuamu melihat perangkat ini di peta mereka saat perangkat berpindah cukup jauh, dan mendapat peringatan untuk tempat yang mereka tentukan. Pilih “Izinkan Saat Menggunakan App”, lalu “Ubah ke Selalu Izinkan”.";
+"groups" = "Grup aplikasi";
+"groups_status_footer" = "Khusus orang tua: pilih aplikasi yang akan diblokir di sini. Aplikasi yang diblokir menampilkan layar OSRA dengan “Minta izin”.";
+"repair_button" = "Sambungkan ulang perangkat ini";
+"repair_title" = "Sambungkan ulang";
+"pin_set_title" = "Atur PIN orang tua";
+"pin_parent" = "PIN orang tua";
+"pin_new_field" = "PIN baru (4-8 angka)";
+"pin_repeat_field" = "Ulangi PIN";
+"pin_save" = "Simpan PIN";
+"pin_set_reason" = "Atur PIN orang tua agar hanya orang tua yang dapat mengubah OSRA Kids atau menyambungkan ulang ponsel ini.";
+"pin_set_footer" = "Khusus orang tua. PIN melindungi grup aplikasi dan penyambungan ulang di ponsel ini. PIN tetap berada di ponsel ini dan tidak pernah dikirim ke mana pun.";
+"pin_mismatch" = "Kedua PIN tidak sama.";
+"pin_save_failed" = "PIN tidak dapat disimpan. Coba lagi.";
+"pin_continue" = "Lanjutkan";
+"pin_parents_only" = "Khusus orang tua.";
+"pin_too_short" = "PIN harus terdiri dari minimal 4 angka.";
+"pin_too_long" = "PIN harus terdiri dari maksimal 8 angka.";
+"pin_not_digits" = "PIN hanya boleh berisi angka.";
+"pin_same_digit" = "Pilih PIN yang angkanya tidak sama semua.";
+"pin_weak" = "Pilih PIN yang lebih sulit ditebak.";
+"groups_empty" = "Belum ada grup.";
+"groups_blocked" = "Diblokir";
+"groups_chosen" = "Dipilih";
+"groups_counts" = "Aplikasi %1$d · Kategori %2$d · Situs web %3$d";
+"groups_nothing" = "Belum ada yang dipilih";
+"groups_change" = "Ubah aplikasi";
+"groups_delete" = "Hapus grup";
+"groups_empty_footer" = "Belum ada yang dipilih, sehingga grup ini tidak memblokir apa pun. Ketuk “Ubah aplikasi” untuk memilih lagi.";
+"groups_by_parent" = "Diblokir dari aplikasi orang tua.";
+"groups_new" = "Grup baru";
+"groups_name_field" = "Nama grup, mis. Game";
+"groups_choose" = "Pilih aplikasi";
+"groups_add" = "Tambahkan grup";
+"groups_new_footer" = "Maksimal 40 karakter. Aplikasi yang diblokir menampilkan layar OSRA dengan “Minta izin”.";
+"groups_error_choose" = "Pilih setidaknya satu aplikasi, kategori, atau situs web.";
+"groups_error_name" = "Beri nama untuk grup ini.";
+"groups_error_max" = "Maksimal ada 20 grup.";
+
+/* #602 Status screen: child name, last sync, Sync now (Bureau, approved by Karim 2026-11-12 12:55Z). */
+"status_child_name" = "Anak";
+"status_last_synced" = "Terakhir disinkronkan %@";
+"status_never_synced" = "Belum disinkronkan";
+"status_sync_stale" = "Belum disinkronkan selama %@. Periksa koneksi internet, lalu ketuk “Sinkronkan sekarang”.";
+"status_sync_now" = "Sinkronkan sekarang";
+"status_syncing" = "Menyinkronkan…";
+"status_sync_failed" = "Tidak dapat menghubungi server. Coba lagi sebentar lagi.";
+"status_sync_note" = "Saat OSRA Kids ditutup, perubahan dari orang tuamu bisa memerlukan beberapa menit untuk sampai. Membuka aplikasi atau mengetuk “Sinkronkan sekarang” akan langsung mengambilnya.";
+
+/* #880 alarm permission step and denied row, #881 default block-screen subtitle (English drafts by the UI/UX Bureau, 17 Nov). Key names proposed; rename to match the code. */
+"alarm_setup_title" = "Izinkan orang tuamu membunyikan ponsel ini";
+"alarm_setup_body" = "Agar orang tuamu bisa membunyikan ponsel ini dengan keras jika hilang.";
+"alarm_setup_allow" = "Izinkan bunyi";
+"alarm_setup_not_now" = "Jangan sekarang";
+"alarm_denied_row" = "Bunyi nonaktif di iPhone ini.";
+"alarm_denied_button" = "Aktifkan di Pengaturan";
+"block_subtitle_default" = "Ketuk “Minta izin” untuk bertanya kepada orang tuamu.";

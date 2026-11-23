@@ -1,0 +1,107 @@
+/* OSRA Kids iPhone, ms: Language Bureau DRAFT, not yet read by a native speaker. Mirrors en.lproj at main 5a59d182 line by line. Lands on main only behind the ADR-0042 D1a served switch. */
+/* #511: the iPhone block screen, the same wording as the Android agent (values/strings.xml). */
+"block_title_blocked" = "Apl ini disekat oleh ibu bapa kamu";
+"block_request_access" = "Minta kebenaran";
+"block_exit_home" = "Tutup apl";
+/* %1$@ is the window (Bedtime, or the routine's name), %2$@ its end time (HH:MM). */
+"block_window_line" = "Disekat oleh %1$@ hingga %2$@";
+"block_window_bedtime" = "Waktu tidur";
+
+/* The app's own screens (5.5, Arabic Language Bureau sheet, approved by Karim 2026-11-12 11:20Z). Plurals are in Localizable.stringsdict. */
+"pair_section_title" = "OSRA Kids";
+"pair_server_field" = "Alamat pelayan (cth. 192.168.1.5:3000)";
+"pair_code_field" = "Kod gandingan 6 digit";
+"pair_name_field" = "Nama peranti (pilihan)";
+"pair_button" = "Gandingkan peranti ini";
+"pair_button_busy" = "Menggandingkan…";
+"pair_hint" = "Minta daripada ibu bapa kamu kod gandingan yang dipaparkan dalam apl OSRA ibu bapa.";
+"pair_waiting" = "Menunggu ibu bapa kamu mengetik Benarkan pada telefon mereka…";
+"pair_title" = "Gandingkan peranti";
+"pair_error_server" = "Masukkan alamat pelayan yang sah, cth. 192.168.1.5:3000";
+"pair_error_code" = "Masukkan kod gandingan 6 digit.";
+"pair_error_invalid" = "Kod tidak sah atau telah tamat tempoh. Minta kod baharu daripada ibu bapa kamu.";
+"pair_error_claimed" = "Kod ini sedang digunakan oleh telefon lain. Minta kod baharu daripada ibu bapa kamu.";
+"pair_error_denied" = "Ibu bapa kamu menolak telefon ini. Jika itu satu kesilapan, minta kod baharu daripada mereka.";
+"pair_error_expired" = "Kod telah tamat tempoh sebelum ibu bapa kamu membenarkan telefon ini. Minta kod baharu daripada mereka.";
+"pair_error_consent" = "Ibu bapa kamu perlu memberikan persetujuan dalam apl OSRA sebelum telefon ini boleh digandingkan.";
+"pair_error_network" = "Tidak dapat menghubungi pelayan. Semak alamat dan rangkaian.";
+"pair_error_response" = "Respons pelayan tidak dijangka. Semak alamat pelayan.";
+"pair_error_http" = "Pelayan menolak permintaan (HTTP %d).";
+"pair_error_save" = "Tidak dapat menyimpan gandingan pada telefon ini. Cuba lagi.";
+"status_title" = "Status";
+"status_paired" = "Digandingkan";
+"status_child" = "Anak";
+"status_server" = "Pelayan";
+"status_technical_details" = "Butiran teknikal";
+"status_device" = "Peranti";
+"screen_time" = "Masa Skrin";
+"screen_time_on" = "Hidup";
+"screen_time_off" = "Mati";
+"screen_time_not_allowed" = "Tidak dibenarkan";
+"screen_time_button" = "Hidupkan Masa Skrin";
+"screen_time_footer_off" = "Had dan sekatan apl oleh ibu bapa kamu memerlukan Masa Skrin. Ketik “Hidupkan Masa Skrin” dan benarkannya.";
+"screen_time_footer_on" = "Had dan sekatan apl oleh ibu bapa kamu digunakan pada peranti ini.";
+"screen_time_footer_denied" = "Masa Skrin tidak dibenarkan, jadi had ibu bapa kamu tidak digunakan. Ketik “Hidupkan Masa Skrin” sekali lagi, atau minta ibu atau bapa kamu membuka Seting > Masa Skrin dan membenarkan OSRA Kids.";
+"location" = "Lokasi";
+"location_always" = "Sentiasa";
+"location_while_in_use" = "Semasa menggunakan apl (perlu “Sentiasa”)";
+"location_off" = "Mati";
+"location_allow" = "Benarkan lokasi";
+"location_open_settings" = "Buka Seting";
+"location_footer" = "Ibu bapa kamu melihat peranti ini pada peta mereka apabila peranti bergerak pada jarak yang ketara, dan menerima makluman untuk tempat yang mereka tetapkan. Pilih “Benarkan Semasa Menggunakan App”, kemudian “Tukar kepada Sentiasa Benarkan”.";
+"groups" = "Kumpulan apl";
+"groups_status_footer" = "Untuk ibu bapa sahaja: pilih apl untuk disekat di sini. Apl yang disekat memaparkan skrin OSRA dengan “Minta kebenaran”.";
+"repair_button" = "Gandingkan semula peranti ini";
+"repair_title" = "Gandingkan semula";
+"pin_set_title" = "Tetapkan PIN ibu bapa";
+"pin_parent" = "PIN ibu bapa";
+"pin_new_field" = "PIN baharu (4-8 digit)";
+"pin_repeat_field" = "Ulang PIN";
+"pin_save" = "Simpan PIN";
+"pin_set_reason" = "Tetapkan PIN ibu bapa supaya hanya ibu bapa boleh mengubah OSRA Kids atau menggandingkan semula telefon ini.";
+"pin_set_footer" = "Untuk ibu bapa sahaja. PIN melindungi kumpulan apl dan gandingan semula pada telefon ini. PIN kekal pada telefon ini dan tidak dihantar ke mana-mana.";
+"pin_mismatch" = "Kedua-dua PIN tidak sama.";
+"pin_save_failed" = "PIN tidak dapat disimpan. Cuba lagi.";
+"pin_continue" = "Teruskan";
+"pin_parents_only" = "Untuk ibu bapa sahaja.";
+"pin_too_short" = "PIN mestilah sekurang-kurangnya 4 digit.";
+"pin_too_long" = "PIN mestilah tidak melebihi 8 digit.";
+"pin_not_digits" = "PIN mestilah digit sahaja.";
+"pin_same_digit" = "Pilih PIN yang bukan semuanya digit yang sama.";
+"pin_weak" = "Pilih PIN yang lebih sukar diteka.";
+"groups_empty" = "Belum ada kumpulan.";
+"groups_blocked" = "Disekat";
+"groups_chosen" = "Dipilih";
+"groups_counts" = "Apl %1$d · Kategori %2$d · Laman web %3$d";
+"groups_nothing" = "Tiada yang dipilih";
+"groups_change" = "Tukar apl";
+"groups_delete" = "Padam kumpulan";
+"groups_empty_footer" = "Tiada yang dipilih, jadi kumpulan ini tidak menyekat apa-apa. Ketik “Tukar apl” untuk memilih semula.";
+"groups_by_parent" = "Disekat daripada apl ibu bapa.";
+"groups_new" = "Kumpulan baharu";
+"groups_name_field" = "Nama kumpulan, cth. Permainan";
+"groups_choose" = "Pilih apl";
+"groups_add" = "Tambah kumpulan";
+"groups_new_footer" = "Sehingga 40 aksara. Apl yang disekat memaparkan skrin OSRA dengan “Minta kebenaran”.";
+"groups_error_choose" = "Pilih sekurang-kurangnya satu apl, kategori atau laman web.";
+"groups_error_name" = "Berikan nama kepada kumpulan ini.";
+"groups_error_max" = "Paling banyak 20 kumpulan dibenarkan.";
+
+/* #602 Status screen: child name, last sync, Sync now (Bureau, approved by Karim 2026-11-12 12:55Z). */
+"status_child_name" = "Anak";
+"status_last_synced" = "Kali terakhir disegerakkan %@";
+"status_never_synced" = "Belum disegerakkan";
+"status_sync_stale" = "Tidak disegerakkan selama %@. Semak sambungan Internet, kemudian ketik “Segerakkan sekarang”.";
+"status_sync_now" = "Segerakkan sekarang";
+"status_syncing" = "Menyegerakkan…";
+"status_sync_failed" = "Tidak dapat menghubungi pelayan. Cuba lagi sebentar lagi.";
+"status_sync_note" = "Semasa OSRA Kids ditutup, perubahan daripada ibu bapa kamu mungkin mengambil masa beberapa minit untuk sampai. Membuka apl atau mengetik “Segerakkan sekarang” akan mendapatkannya serta-merta.";
+
+/* #880 alarm permission step and denied row, #881 default block-screen subtitle (English drafts by the UI/UX Bureau, 17 Nov). Key names proposed; rename to match the code. */
+"alarm_setup_title" = "Benarkan ibu bapa kamu menderingkan telefon ini";
+"alarm_setup_body" = "Supaya ibu bapa kamu boleh menderingkan telefon ini dengan kuat jika ia hilang.";
+"alarm_setup_allow" = "Benarkan deringan";
+"alarm_setup_not_now" = "Bukan sekarang";
+"alarm_denied_row" = "Deringan dimatikan pada iPhone ini.";
+"alarm_denied_button" = "Hidupkan dalam Seting";
+"block_subtitle_default" = "Ketik “Minta kebenaran” untuk bertanya kepada ibu bapa kamu.";
