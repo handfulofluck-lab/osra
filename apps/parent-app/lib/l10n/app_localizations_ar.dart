@@ -3072,31 +3072,33 @@ class AppLocalizationsAr extends AppLocalizations {
       'تم حظر تطبيق المكالمات، لكن المكالمة استمرت خلف شاشة الحظر. لا يستطيع OSRA إنهاء مكالمة تطبيق آخر، لذا تبقى الشاشة محظورة حتى تنتهي المكالمة.';
 
   @override
-  String get alertTitleDataCleared => 'تم مسح بيانات OSRA على هاتف';
+  String get alertTitleDataCleared =>
+      'تم مسح بيانات تطبيق أسرة للأطفال على أحد الهواتف';
 
   @override
-  String get alertTitleAgentUpdated => 'تم تحديث OSRA على هاتف';
+  String get alertTitleAgentUpdated =>
+      'تم تحديث تطبيق أسرة للأطفال على أحد الهواتف';
 
   @override
-  String get alertTitleDeviceSilent => 'توقّف هاتف عن إرسال التحديثات';
+  String get alertTitleDeviceSilent => 'توقّف أحد الهواتف عن إرسال حالته';
 
   @override
-  String get alertTitleProtectionOff => 'تم إيقاف حماية OSRA';
+  String get alertTitleProtectionOff => 'تم إيقاف حماية تطبيق أسرة للأطفال';
 
   @override
-  String get alertTitleAdminRemoved => 'تم إيقاف الحماية من الحذف';
+  String get alertTitleAdminRemoved => 'تم إيقاف الحماية من إلغاء التثبيت';
 
   @override
   String get alertTitleRemovalAttempt => 'محاولة لإزالة الحماية';
 
   @override
-  String get alertTitlePinLocked => 'محاولات خاطئة كثيرة لرمز ولي الأمر';
+  String get alertTitlePinLocked => 'محاولات خاطئة كثيرة لإدخال رمز الوالدين';
 
   @override
-  String get alertTitleFilterOff => 'تم فصل فلتر الويب';
+  String get alertTitleFilterOff => 'انقطع اتصال تصفية الويب';
 
   @override
-  String get alertTitleFilterBypassed => 'تم تجاوز فلتر الويب';
+  String get alertTitleFilterBypassed => 'تم تجاوز تصفية الويب';
 
   @override
   String get alertTitleOverlayRevoked => 'تم سحب إذن شاشة الحظر';
