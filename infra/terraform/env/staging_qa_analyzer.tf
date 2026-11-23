@@ -225,7 +225,7 @@ resource "aws_ecs_task_definition" "staging_qa_analyzer" {
       interval    = 30
       timeout     = 5
       retries     = 3
-      startPeriod = 15
+      startPeriod = local.staging_model_read ? 300 : 15
     }
     logConfiguration = {
       logDriver = "awslogs"

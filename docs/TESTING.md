@@ -1418,6 +1418,7 @@ rows skipped. That run is **not** staging evidence; it only shows the harness me
 2. Review the bucket, encryption, public access blocks and TLS policy in the saved staging plan. Confirm the analyzer subnet has an active route to regional S3. Its managed route table already uses the staging NAT for HTTPS bootstrap. If the deployed route differs, resolve that before rollout.
 3. During an approved transfer window, the named staging operator uploads the two objects at `own-model/v9.tar.gz` and `own-model/v9b.tar.gz`. Verify both object digests against the original pins. Record only the verified count and digests.
 4. For an approved inference window set `allow_read = true` and arm the staging analyzer. Inspect the plan for the task-role read on the two exact objects and the regional S3 inputs on the analyzer. Verify both checkpoints load in the serving process and run the positive and harmless synthetic controls.
+   The task preloads both tags and allows five minutes for startup health checks. Verify space for the image, both archives and their extracted contents against the 20 GiB default ephemeral storage. Record peak usage before adding another checkpoint. Confirm the collector accepts the actual serving region before sending either control.
 5. Disarm and confirm the task loses the object reads and archive inputs. Keep the storage configuration in place to retain the two objects between approved windows.
 
 ## Bedrock staging test with operator-chosen wording (#962)

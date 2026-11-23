@@ -332,6 +332,20 @@ run "armed_qa_analyzer_plans_only_the_private_scoped_route" {
     }]
     error_message = "archive access must deny non-TLS requests"
   }
+
+  assert {
+    condition     = one([for item in jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].environment : item.value if item.name == "OSRA_OWN_MODEL_PRELOAD_TAGS"]) == "v9,v9b" && jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].healthCheck.startPeriod == 300
+    error_message = "the archive window must warm both routes and allow cold startup before counting health failures"
+  }
+
+  assert {
+    condition = alltrue([for name, expected in {
+      OSRA_STAGING_QA_OWN_MODEL_ENABLED = "1"
+      OSRA_OWN_MODEL_S3_REGION          = var.region
+      OSRA_OWN_MODEL_REGION             = var.region
+    } : one([for item in jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].environment : item.value if item.name == name]) == expected])
+    error_message = "the model window must enable scoring and record the actual task and bucket regions"
+  }
 }
 
 run "disarmed_qa_analyzer_has_no_model_or_api_access" {
@@ -405,6 +419,11 @@ run "disarmed_qa_analyzer_has_no_model_or_api_access" {
   assert {
     condition     = length(aws_s3_bucket.staging_model_archives) == 1 && length(aws_iam_role_policy.staging_model_archive_read) == 0 && length(local.staging_model_env) == 0
     error_message = "disarm must remove archive reads and retain the bucket"
+  }
+
+  assert {
+    condition     = !contains([for item in jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].environment : item.name], "OSRA_OWN_MODEL_PRELOAD_TAGS") && jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].healthCheck.startPeriod == 15
+    error_message = "disarm must remove model preloading and restore the ordinary health start period"
   }
 }
 

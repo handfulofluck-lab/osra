@@ -27,7 +27,10 @@ locals {
   staging_model_keys       = { for tag in ["v9", "v9b"] : tag => "own-model/${tag}.tar.gz" }
   staging_model_env = local.staging_model_read ? [
     { name = "OSRA_OWN_MODEL_S3_BUCKET", value = local.staging_model_bucket },
+    { name = "OSRA_STAGING_QA_OWN_MODEL_ENABLED", value = "1" },
+    { name = "OSRA_OWN_MODEL_REGION", value = var.region },
     { name = "OSRA_OWN_MODEL_S3_REGION", value = var.region },
+    { name = "OSRA_OWN_MODEL_PRELOAD_TAGS", value = join(",", keys(local.staging_model_keys)) },
     { name = "OSRA_OWN_MODEL_V9_S3_KEY", value = local.staging_model_keys.v9 },
     { name = "OSRA_OWN_MODEL_V9B_S3_KEY", value = local.staging_model_keys.v9b },
     { name = "OSRA_OWN_MODEL_V9_ARCHIVE_SHA256", value = var.staging_qa_model_archives.v9_sha256 },
