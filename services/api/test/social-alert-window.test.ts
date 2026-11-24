@@ -472,6 +472,28 @@ describe("social alert per-contact window (#1029)", () => {
     await app.close();
   });
 
+  it("#1061: a severity step-up still pushes once, not twice, with the switch on", async () => {
+    // Claude 13:37: `applyObservationsToAlert` already pushes on a bypass, so the per-message push must not
+    // repeat it. Mutant: drop `&& !applied.bypassed` from the call site and this reads 3.
+    vi.stubEnv("SOCIAL_ALERT_PUSH_EVERY_MESSAGE", "true");
+    const app = await buildApp(socialRoutes, "/v1/social");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ flagged: true, severity: "warning", categories: { cyberbullying: 0.9, safe: 0.1 } }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ flagged: true, severity: "critical", categories: { self_harm: 0.95, safe: 0.05 } }) });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    for (const text of ["warning line", "critical line"]) {
+      vi.setSystemTime(Date.now() + 30_000);
+      const res = await postScan(app, { childId: CHILD.id, app: "WhatsApp", contact: "Sam", text });
+      expect(res.statusCode).toBe(200);
+    }
+
+    expect(alerts.size).toBe(1);
+    expect(pushRounds()).toBe(2);
+    await app.close();
+  });
+
   it("#1061: the switch is off unless it is exactly true", async () => {
     // A stray value must not turn it on in a definition someone copied by hand.
     vi.stubEnv("SOCIAL_ALERT_PUSH_EVERY_MESSAGE", "1");

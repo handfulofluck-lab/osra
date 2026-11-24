@@ -835,7 +835,8 @@ export async function recordFlaggedSocialAlert(
       const applied = await applyObservationsToAlert(existing, state, batch, applyCtx);
       // Issue #1061: with the switch on, every applied observation is pushed now; the summary stays off because
       // applyObservationsToAlert counts it as already pushed.
-      if (pushEvery && applied.committed && applied.updatedAlert) {
+      // `bypass` already pushed inside applyObservationsToAlert, so a severity step-up must not push twice.
+      if (pushEvery && applied.committed && applied.updatedAlert && !applied.bypassed) {
         await notifyParentsOfAlert(familyId, applied.updatedAlert, childName ?? undefined);
       }
       if (applied.committed && windowDeferredKey && pending.rawCount > 0) {
