@@ -1,0 +1,1 @@
+- #1079 gives the web filter an explicit enforcement state: a family that blocks a category but has no blocklist pack on the phone now reports `UNPROTECTED` instead of looking identical to a working filter. Nothing about packet handling changes.

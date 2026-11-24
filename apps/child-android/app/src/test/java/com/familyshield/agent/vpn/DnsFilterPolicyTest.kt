@@ -2,6 +2,7 @@ package com.familyshield.agent.vpn
 
 import com.familyshield.agent.vpn.DnsFilterPolicy.Action
 import com.familyshield.agent.vpn.DnsFilterPolicy.Config
+import com.familyshield.agent.vpn.DnsFilterPolicy.EnforcementState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -127,6 +128,59 @@ class DnsFilterPolicyTest {
         assertFalse(DnsFilterPolicy.isGoogleSearchHost("accounts.google.com"))
         assertFalse(DnsFilterPolicy.isGoogleSearchHost("google.example.com"))
         assertFalse(DnsFilterPolicy.isGoogleSearchHost("notgoogle.com"))
+    }
+
+    // Issue #1079: a filter with no pack looked exactly like a working filter on child 2 — `sex.com` loaded
+    // while the tunnel was up. These rows pin the three states; the mutant each names is "drop the
+    // blockedCategories check" (an empty pack would then read as ENFORCING whenever it is marked loaded).
+
+    @Test
+    fun `a family that blocks no category reports NOT_APPLICABLE even with an empty pack`() {
+        assertEquals(
+            EnforcementState.NOT_APPLICABLE,
+            DnsFilterPolicy.enforcement(Config(packLoaded = false, categoryDomains = emptyMap(), blockedCategories = emptyList())),
+        )
+        // …and the same when the pack is loaded and full: nothing is claimed about a category nobody blocks.
+        assertEquals(
+            EnforcementState.NOT_APPLICABLE,
+            DnsFilterPolicy.enforcement(Config(categoryDomains = mapOf("x.example" to "pornography"), blockedCategories = emptyList())),
+        )
+    }
+
+    @Test
+    fun `a blocked category with a loaded pack reports ENFORCING`() {
+        assertEquals(
+            EnforcementState.ENFORCING,
+            DnsFilterPolicy.enforcement(
+                Config(categoryDomains = mapOf("sex.com" to "pornography"), blockedCategories = listOf("pornography")),
+            ),
+        )
+    }
+
+    @Test
+    fun `a blocked category with no pack reports UNPROTECTED, which is the child-2 shape`() {
+        assertEquals(
+            EnforcementState.UNPROTECTED,
+            DnsFilterPolicy.enforcement(Config(packLoaded = false, categoryDomains = emptyMap(), blockedCategories = listOf("pornography"))),
+        )
+        // A pack that is "loaded" but empty is the same lie: the category is blocked and nothing enforces it.
+        assertEquals(
+            EnforcementState.UNPROTECTED,
+            DnsFilterPolicy.enforcement(Config(packLoaded = true, categoryDomains = emptyMap(), blockedCategories = listOf("pornography"))),
+        )
+    }
+
+    @Test
+    fun `the enforcement state changes nothing about what the filter does with a packet`() {
+        // #1079 review note: the state is observability, not policy. Failing closed is a product decision that
+        // was not taken, so an unprotected filter must still forward exactly as it did before this change.
+        val unprotected = Config(
+            categoryDomains = emptyMap(),
+            packLoaded = false,
+            blockedCategories = listOf("pornography"),
+        )
+        assertEquals(EnforcementState.UNPROTECTED, DnsFilterPolicy.enforcement(unprotected))
+        assertEquals(Action.FORWARD, DnsFilterPolicy.decide("sex.com", unprotected).action)
     }
 
     @Test
