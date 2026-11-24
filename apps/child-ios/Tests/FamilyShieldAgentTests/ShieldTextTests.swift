@@ -125,8 +125,8 @@ final class ShieldTextTests: XCTestCase {
     func testAnEnglishRoutineNameInTheArabicLineKeepsBothPlaceholdersInOrder() {
         let line = ShieldText.make(window: .routine(name: "Homework", endsAt: "19:00"), language: "ar").subtitle
         XCTAssertEqual(line, "محجوب بواسطة \(fsi)Homework\(pdi) حتى \(fsi)19:00\(pdi)")
-        let name = try? XCTUnwrap(line?.range(of: "Homework"))
-        let time = try? XCTUnwrap(line?.range(of: "19:00"))
+        let name = try? XCTUnwrap(line.range(of: "Homework"))
+        let time = try? XCTUnwrap(line.range(of: "19:00"))
         XCTAssertNotNil(name)
         XCTAssertNotNil(time)
         if let name, let time { XCTAssertLessThan(name.lowerBound, time.lowerBound, "the window, then the time") }

@@ -97,11 +97,11 @@ final class ShieldBrandTests: XCTestCase {
             XCTAssertEqual(Double(dot[2]) ?? 0, Double(ShieldBrand.dotRadius), accuracy: 0.001)
 
             let ringHex = try XCTUnwrap(Self.firstMatch(#"<path[^>]*stroke="#([0-9A-Fa-f]{6})""#, in: svg))
-            XCTAssertEqual("#\(ringHex[0])".uppercased(), expectedRing.uppercased(),
+            XCTAssertEqual(("#" + ringHex[0]).uppercased(), expectedRing.uppercased(),
                            "the drawn ring must be the colour in the artwork")
 
             let dotHex = try XCTUnwrap(Self.firstMatch(#"<circle[^>]*fill="#([0-9A-Fa-f]{6})""#, in: svg))
-            XCTAssertEqual("#\(dotHex[0])".uppercased(), expectedDot.uppercased(),
+            XCTAssertEqual(("#" + dotHex[0]).uppercased(), expectedDot.uppercased(),
                            "the drawn dot must be the colour in the artwork")
         }
     }
