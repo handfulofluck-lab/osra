@@ -12,7 +12,8 @@ Future<void> loadFrameFonts() async {
     for (final path in paths) {
       final file = File(path);
       if (file.existsSync()) {
-        loader.addFont(Future.value(ByteData.sublistView(file.readAsBytesSync())));
+        loader.addFont(
+            Future.value(ByteData.sublistView(file.readAsBytesSync())));
       }
     }
     await loader.load();
@@ -39,17 +40,23 @@ ThemeData withFrameFonts(ThemeData theme) => theme.copyWith(
       ),
     );
 
-Future<void> maybeCaptureFrame(WidgetTester tester, String filename) =>
-    tester.runAsync(() async {
+Future<void> maybeCaptureFrame(WidgetTester tester, String filename) async {
   final directory = Platform.environment['OSRA_FRAME_DIR'];
   if (directory == null) return;
-  final boundary = tester.renderObject<RenderRepaintBoundary>(
-    find.byKey(const ValueKey('frameRoot')),
-  );
-  final image = await boundary.toImage(pixelRatio: 1.0);
-  final data = await image.toByteData(format: ui.ImageByteFormat.png);
-  if (data == null) throw StateError('Could not encode $filename');
-  final file = File('$directory/$filename');
-  await file.parent.create(recursive: true);
-  await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
-});
+  for (final image in tester.widgetList<Image>(find.byType(Image))) {
+    final element = tester.element(find.byWidget(image));
+    await tester.runAsync(() => precacheImage(image.image, element));
+  }
+  await tester.pump();
+  await tester.runAsync(() async {
+    final boundary = tester.renderObject<RenderRepaintBoundary>(
+      find.byKey(const ValueKey('frameRoot')),
+    );
+    final image = await boundary.toImage(pixelRatio: 1.0);
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    if (data == null) throw StateError('Could not encode $filename');
+    final file = File('$directory/$filename');
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
+  });
+}

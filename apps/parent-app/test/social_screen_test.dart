@@ -13,6 +13,7 @@ import 'package:familyshield_parent/theme/app_theme.dart';
 
 import 'fake_api_client.dart';
 import 'frame_capture.dart';
+import 'social_app_fixtures.dart';
 import 'test_app.dart';
 
 /// Fixed local wall-clock base for every seeded timestamp in this file.
@@ -33,29 +34,10 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  const socialPackageFixtures = <String, String>{
-    'whatsapp': 'com.whatsapp',
-    'instagram': 'com.instagram.android',
-    'tiktok': 'com.zhiliaoapp.musically',
-    'snapchat': 'com.snapchat.android',
-    'twitter': 'com.twitter.android',
-    'discord': 'com.discord',
-    'roblox': 'com.roblox.client',
-    'line': 'jp.naver.line.android',
-    'youtube': 'com.google.android.youtube',
-    'telegram': 'org.telegram.messenger',
-    'reddit': 'com.reddit.frontpage',
-    'messenger': 'com.facebook.orca',
-  };
-
-  List<Map<String, dynamic>> socialInventory([Set<String>? keys]) => [
-        for (final entry in socialPackageFixtures.entries)
-          if (keys == null || keys.contains(entry.key))
-            installedAppJson(entry.value, entry.key),
-      ];
-
   Future<void> pumpScreen(WidgetTester tester, Widget home, FakeApiClient api,
-      {bool tall = false, Locale locale = const Locale('en'), bool frameBoundary = false}) async {
+      {bool tall = false,
+      Locale locale = const Locale('en'),
+      bool frameBoundary = false}) async {
     if (tall) {
       tester.view.physicalSize = const Size(1200, 2400);
       tester.view.devicePixelRatio = 1.0;
@@ -81,17 +63,20 @@ void main() {
     }
   }
 
-  Finder fieldByLabel(String label) => find.ancestor(of: find.text(label), matching: find.byType(TextField));
+  Finder fieldByLabel(String label) =>
+      find.ancestor(of: find.text(label), matching: find.byType(TextField));
 
   /// The vertical Scrollable of the shared social sections list.
   Finder socialScrollable() => find.descendant(
         of: find.byKey(const ValueKey('socialSectionsList')),
-        matching: find.byWidgetPredicate((w) => w is Scrollable && w.axis == Axis.vertical),
+        matching: find.byWidgetPredicate(
+            (w) => w is Scrollable && w.axis == Axis.vertical),
       );
 
   /// Scrolls the lazy sections list until [finder]'s widget is built and visible.
   Future<void> reveal(WidgetTester tester, Finder finder) async {
-    await tester.scrollUntilVisible(finder, 150, scrollable: socialScrollable());
+    await tester.scrollUntilVisible(finder, 150,
+        scrollable: socialScrollable());
     await tester.pumpAndSettle();
   }
 
@@ -108,16 +93,37 @@ void main() {
   }) =>
       {
         ...standardRoutes(),
-        'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1', socialMonitoring: socialMonitoring, contactAllowlist: contactAllowlist),
-        'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(apps: installedApps ?? socialInventory()),
+        'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1',
+            socialMonitoring: socialMonitoring,
+            contactAllowlist: contactAllowlist),
+        'GET /v1/devices/dev-1/apps': (_) =>
+            installedAppsPayload(apps: installedApps ?? socialInventory()),
         'GET /v1/social/events': (req) => req.query['childId'] == 'child-1'
-            ? {'items': concerns, 'meta': {'total': concerns.length}}
-            : {'items': <dynamic>[], 'meta': {'total': 0}},
+            ? {
+                'items': concerns,
+                'meta': {'total': concerns.length}
+              }
+            : {
+                'items': <dynamic>[],
+                'meta': {'total': 0}
+              },
         'GET /v1/reports/activity': (req) => switch (req.query['type']) {
-              'call' => {'items': calls, 'meta': {'total': calls.length}},
-              'sms' => {'items': sms, 'meta': {'total': sms.length}},
-              'lock_period' => {'items': locks, 'meta': {'total': locks.length}},
-              _ => {'items': <dynamic>[], 'meta': {'total': 0}},
+              'call' => {
+                  'items': calls,
+                  'meta': {'total': calls.length}
+                },
+              'sms' => {
+                  'items': sms,
+                  'meta': {'total': sms.length}
+                },
+              'lock_period' => {
+                  'items': locks,
+                  'meta': {'total': locks.length}
+                },
+              _ => {
+                  'items': <dynamic>[],
+                  'meta': {'total': 0}
+                },
             },
       };
 
@@ -136,7 +142,9 @@ void main() {
         'severity': severity,
         'preview': 'Are you coming tonight? Don\'t tell your parents.',
         'concernTypes': concernTypes,
-        'createdAt': (at ?? testNow.subtract(const Duration(hours: 2))).toUtc().toIso8601String(),
+        'createdAt': (at ?? testNow.subtract(const Duration(hours: 2)))
+            .toUtc()
+            .toIso8601String(),
       };
 
   Map<String, dynamic> callJson({
@@ -149,8 +157,14 @@ void main() {
       {
         'id': id,
         'type': 'call',
-        'payload': {'number': number, 'durationSec': durationSec, 'direction': direction},
-        'ts': (at ?? testNow.subtract(const Duration(minutes: 30))).toUtc().toIso8601String(),
+        'payload': {
+          'number': number,
+          'durationSec': durationSec,
+          'direction': direction
+        },
+        'ts': (at ?? testNow.subtract(const Duration(minutes: 30)))
+            .toUtc()
+            .toIso8601String(),
       };
 
   Map<String, dynamic> smsJson({
@@ -163,43 +177,94 @@ void main() {
         'id': id,
         'type': 'sms',
         'payload': {'number': number, 'bodyPreview': bodyPreview},
-        'ts': (at ?? testNow.subtract(const Duration(minutes: 10))).toUtc().toIso8601String(),
+        'ts': (at ?? testNow.subtract(const Duration(minutes: 10)))
+            .toUtc()
+            .toIso8601String(),
       };
 
   group('Monitoring toggles', () {
-    testWidgets('the shared catalog covers all 12 monitored apps and keys X as twitter', (tester) async {
+    testWidgets(
+        'the shared catalog covers all 12 monitored apps and keys X as twitter',
+        (tester) async {
       expect(
         kSocialApps.map((a) => a.appKey).toList(),
-        ['whatsapp', 'instagram', 'tiktok', 'snapchat', 'twitter', 'discord', 'roblox', 'line', 'youtube', 'telegram', 'reddit', 'messenger'],
+        [
+          'whatsapp',
+          'instagram',
+          'tiktok',
+          'snapchat',
+          'twitter',
+          'discord',
+          'roblox',
+          'line',
+          'youtube',
+          'telegram',
+          'reddit',
+          'messenger'
+        ],
       );
       expect(socialAppIcon('twitter'), Icons.alternate_email);
       expect(socialAppIcon('x'), Icons.alternate_email);
     });
 
-    testWidgets('render from rules payload; apps absent from the map default to ON', (tester) async {
-      final api = FakeApiClient(socialRoutes(socialMonitoring: {'whatsapp': false, 'tiktok': false}));
+    testWidgets(
+        'render from rules payload; apps absent from the map default to ON',
+        (tester) async {
+      final api = FakeApiClient(
+          socialRoutes(socialMonitoring: {'whatsapp': false, 'tiktok': false}));
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
       await flushFakeHttp(tester);
 
-      expect(tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'WhatsApp')).value, isFalse);
-      expect(tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'TikTok')).value, isFalse);
-      expect(tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'Instagram')).value, isTrue);
-      expect(tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'Discord')).value, isTrue);
-      expect(tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'LINE')).value, isTrue);
+      expect(
+          tester
+              .widget<SwitchListTile>(
+                  find.widgetWithText(SwitchListTile, 'WhatsApp'))
+              .value,
+          isFalse);
+      expect(
+          tester
+              .widget<SwitchListTile>(
+                  find.widgetWithText(SwitchListTile, 'TikTok'))
+              .value,
+          isFalse);
+      expect(
+          tester
+              .widget<SwitchListTile>(
+                  find.widgetWithText(SwitchListTile, 'Instagram'))
+              .value,
+          isTrue);
+      expect(
+          tester
+              .widget<SwitchListTile>(
+                  find.widgetWithText(SwitchListTile, 'Discord'))
+              .value,
+          isTrue);
+      expect(
+          tester
+              .widget<SwitchListTile>(
+                  find.widgetWithText(SwitchListTile, 'LINE'))
+              .value,
+          isTrue);
     });
 
-    testWidgets('canonical twitter wins over legacy x and legacy x survives when canonical is absent', (tester) async {
+    testWidgets(
+        'canonical twitter wins over legacy x and legacy x survives when canonical is absent',
+        (tester) async {
       final cases = <({Map<String, bool> monitoring, bool expected})>[
         (monitoring: {'twitter': false, 'x': true}, expected: false),
         (monitoring: {'twitter': true, 'x': false}, expected: true),
         (monitoring: {'x': false}, expected: false),
       ];
       for (final entry in cases) {
-        final api = FakeApiClient(socialRoutes(socialMonitoring: entry.monitoring));
-        await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api, tall: true);
+        final api =
+            FakeApiClient(socialRoutes(socialMonitoring: entry.monitoring));
+        await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api,
+            tall: true);
         await flushFakeHttp(tester);
         expect(
-          tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'X')).value,
+          tester
+              .widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'X'))
+              .value,
           entry.expected,
           reason: 'rule map ${entry.monitoring} must control X',
         );
@@ -207,36 +272,63 @@ void main() {
       }
     });
 
-    testWidgets('all apps default to ON when the payload has no socialMonitoring', (tester) async {
+    testWidgets(
+        'all apps default to ON when the payload has no socialMonitoring',
+        (tester) async {
       final api = FakeApiClient(socialRoutes());
-      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api, tall: true);
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api,
+          tall: true);
       await flushFakeHttp(tester);
 
       for (final a in kSocialApps) {
-        expect(tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, a.label)).value, isTrue, reason: '${a.label} should default ON');
+        expect(
+            tester
+                .widget<SwitchListTile>(
+                    find.widgetWithText(SwitchListTile, a.label))
+                .value,
+            isTrue,
+            reason: '${a.label} should default ON');
       }
     });
 
-    testWidgets('installed apps sort first and the collapsed group keeps its switches usable', (tester) async {
+    testWidgets(
+        'installed apps sort first and the collapsed group keeps its switches usable',
+        (tester) async {
       final api = FakeApiClient(socialRoutes(
         socialMonitoring: {'whatsapp': false},
         installedApps: socialInventory({'telegram', 'whatsapp', 'youtube'}),
       ));
-      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api, tall: true);
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api,
+          tall: true);
       await flushFakeHttp(tester);
 
       expect(find.text('Check messages in'), findsOneWidget);
-      expect(find.text('OSRA only flags concerning messages. It never shows you every chat.'), findsOneWidget);
+      expect(
+          find.text(
+              'OSRA only flags concerning messages. It never shows you every chat.'),
+          findsOneWidget);
       expect(find.text('Not on Alex\'s phone (9)'), findsOneWidget);
       expect(find.widgetWithText(SwitchListTile, 'Instagram'), findsNothing);
-      expect(find.descendant(of: find.widgetWithText(SwitchListTile, 'WhatsApp'), matching: find.text('Off')), findsOneWidget);
+      expect(
+          find.descendant(
+              of: find.widgetWithText(SwitchListTile, 'WhatsApp'),
+              matching: find.text('Off')),
+          findsOneWidget);
       expect(tester.widget<Text>(find.text('WhatsApp')).maxLines, 1);
-      expect(tester.widget<Text>(find.text('WhatsApp')).overflow, TextOverflow.ellipsis);
-      expect(find.descendant(of: find.widgetWithText(SwitchListTile, 'YouTube'), matching: find.text('Comments and chats')), findsOneWidget);
+      expect(tester.widget<Text>(find.text('WhatsApp')).overflow,
+          TextOverflow.ellipsis);
+      expect(
+          find.descendant(
+              of: find.widgetWithText(SwitchListTile, 'YouTube'),
+              matching: find.text('Comments and chats')),
+          findsOneWidget);
 
-      final telegramTop = tester.getTopLeft(find.widgetWithText(SwitchListTile, 'Telegram')).dy;
-      final whatsappTop = tester.getTopLeft(find.widgetWithText(SwitchListTile, 'WhatsApp')).dy;
-      final youtubeTop = tester.getTopLeft(find.widgetWithText(SwitchListTile, 'YouTube')).dy;
+      final telegramTop =
+          tester.getTopLeft(find.widgetWithText(SwitchListTile, 'Telegram')).dy;
+      final whatsappTop =
+          tester.getTopLeft(find.widgetWithText(SwitchListTile, 'WhatsApp')).dy;
+      final youtubeTop =
+          tester.getTopLeft(find.widgetWithText(SwitchListTile, 'YouTube')).dy;
       expect(telegramTop, lessThan(whatsappTop));
       expect(whatsappTop, lessThan(youtubeTop));
 
@@ -249,10 +341,13 @@ void main() {
       expect(tester.widget<SwitchListTile>(reddit).value, isFalse);
     });
 
-    testWidgets('the four-app banner dismisses once and stays dismissed', (tester) async {
+    testWidgets('the four-app banner dismisses once and stays dismissed',
+        (tester) async {
       final api = FakeApiClient(socialRoutes());
-      const banner = 'You can now choose YouTube, Telegram, Reddit and Messenger too.';
-      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api, tall: true);
+      const banner =
+          'You can now choose YouTube, Telegram, Reddit and Messenger too.';
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api,
+          tall: true);
       await flushFakeHttp(tester);
       expect(find.text(banner), findsOneWidget);
 
@@ -260,13 +355,16 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text(banner), findsNothing);
 
-      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api, tall: true);
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api,
+          tall: true);
       await flushFakeHttp(tester);
       expect(find.text(banner), findsNothing);
     });
 
     for (final locale in [const Locale('en'), const Locale('ar')]) {
-      testWidgets('Social monitoring fits 320 px at 200% text in ${locale.languageCode}', (tester) async {
+      testWidgets(
+          'Social monitoring fits 320 px at 200% text in ${locale.languageCode}',
+          (tester) async {
         tester.view.physicalSize = const Size(320, 1000);
         tester.view.devicePixelRatio = 1.0;
         tester.platformDispatcher.textScaleFactorTestValue = 2.0;
@@ -276,31 +374,49 @@ void main() {
           tester.platformDispatcher.clearTextScaleFactorTestValue();
         });
         final api = FakeApiClient(socialRoutes(
-          installedApps: socialInventory({'telegram', 'whatsapp', 'youtube'}),
+          installedApps: socialInventory({'whatsapp', 'youtube'}, true),
         ));
         await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api,
             locale: locale, frameBoundary: true);
         await flushFakeHttp(tester);
 
+        for (final appKey in ['whatsapp', 'youtube']) {
+          final image = tester.widget<Image>(find.descendant(
+            of: find.byKey(ValueKey('socialAppRow-$appKey')),
+            matching: find.byType(Image),
+          ));
+          expect(image.image, isA<MemoryImage>(),
+              reason: '$appKey must render its reported launcher icon');
+        }
         if (locale.languageCode == 'ar') {
           expect(find.text('فحص الرسائل في هذه التطبيقات'), findsOneWidget);
           expect(find.textContaining('غير مثبّتة على هاتف'), findsOneWidget);
           expect(find.text('التعليقات والمحادثات'), findsOneWidget);
-          expect(find.text('لا ينبّهك تطبيق أسرة للأطفال إلا إلى الرسائل التي تستدعي المراجعة، ولا يعرض لك كل المحادثات أبدًا.'), findsOneWidget);
+          expect(
+              find.text(
+                  'لا ينبّهك تطبيق أسرة للأطفال إلا إلى الرسائل التي تستدعي المراجعة، ولا يعرض لك كل المحادثات أبدًا.'),
+              findsOneWidget);
         } else {
           expect(find.text('Check messages in'), findsOneWidget);
-          expect(find.text('Not on Alex\'s phone (9)'), findsOneWidget);
+          expect(find.text('Not on Alex\'s phone (10)'), findsOneWidget);
           expect(find.text('Comments and chats'), findsOneWidget);
-          expect(find.text('OSRA only flags concerning messages. It never shows you every chat.'), findsOneWidget);
+          expect(
+              find.text(
+                  'OSRA only flags concerning messages. It never shows you every chat.'),
+              findsOneWidget);
         }
         expect(tester.takeException(), isNull);
-        await maybeCaptureFrame(tester, 'social-${locale.languageCode}-320-200.png');
+        await maybeCaptureFrame(
+            tester, 'social-${locale.languageCode}-320-200.png');
       });
     }
 
-    testWidgets('flip + save PUTs the merged socialMonitoring map', (tester) async {
-      final api = FakeApiClient(socialRoutes(socialMonitoring: {'whatsapp': true}));
-      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api, tall: true);
+    testWidgets('flip + save PUTs the merged socialMonitoring map',
+        (tester) async {
+      final api =
+          FakeApiClient(socialRoutes(socialMonitoring: {'whatsapp': true}));
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api,
+          tall: true);
       await flushFakeHttp(tester);
 
       await tester.tap(find.widgetWithText(SwitchListTile, 'WhatsApp'));
@@ -311,18 +427,29 @@ void main() {
 
       final puts = api.calls('PUT', '/v1/rules/child-1');
       expect(puts, hasLength(1));
-      final social = Map<String, dynamic>.from(puts.single.body['socialMonitoring'] as Map);
+      final social = Map<String, dynamic>.from(
+          puts.single.body['socialMonitoring'] as Map);
       expect(social['whatsapp'], isFalse);
       expect(social['twitter'], isTrue);
       expect(social.containsKey('x'), isFalse);
       expect(social.keys, hasLength(kSocialApps.length));
-      expect(puts.single.body.keys, containsAll(['screenTime', 'webFilter', 'appRules', 'routines', 'socialMonitoring']));
+      expect(
+          puts.single.body.keys,
+          containsAll([
+            'screenTime',
+            'webFilter',
+            'appRules',
+            'routines',
+            'socialMonitoring'
+          ]));
       expect(find.text('Monitoring saved'), findsOneWidget);
     });
 
-    testWidgets('saving X writes twitter and removes the legacy x shadow key', (tester) async {
+    testWidgets('saving X writes twitter and removes the legacy x shadow key',
+        (tester) async {
       final api = FakeApiClient(socialRoutes(socialMonitoring: {'x': true}));
-      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api, tall: true);
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api,
+          tall: true);
       await flushFakeHttp(tester);
       await tester.tap(find.widgetWithText(SwitchListTile, 'X'));
       await tester.pumpAndSettle();
@@ -330,15 +457,19 @@ void main() {
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
 
-      final social = Map<String, dynamic>.from(
-          api.calls('PUT', '/v1/rules/child-1').single.body['socialMonitoring'] as Map);
+      final social = Map<String, dynamic>.from(api
+          .calls('PUT', '/v1/rules/child-1')
+          .single
+          .body['socialMonitoring'] as Map);
       expect(social['twitter'], isFalse);
       expect(social.containsKey('x'), isFalse);
     });
   });
 
   group('Concerns vault', () {
-    testWidgets('renders severity-colored cards with concern chips and an expandable preview', (tester) async {
+    testWidgets(
+        'renders severity-colored cards with concern chips and an expandable preview',
+        (tester) async {
       final api = FakeApiClient(socialRoutes(concerns: [concernJson()]));
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
       await flushFakeHttp(tester);
@@ -349,7 +480,8 @@ void main() {
       expect(find.text('late_night'), findsOneWidget);
       expect(find.textContaining('WhatsApp · '), findsOneWidget);
       // Severity tint on the card + colored leading icon.
-      final card = find.ancestor(of: find.text('Maya'), matching: find.byType(Card));
+      final card =
+          find.ancestor(of: find.text('Maya'), matching: find.byType(Card));
       expect(tester.widget<Card>(card).color, isNotNull);
 
       const preview = 'Are you coming tonight? Don\'t tell your parents.';
@@ -366,7 +498,8 @@ void main() {
       expect(find.text('Decrypted content'), findsOneWidget);
     });
 
-    testWidgets('shows the empty state when there are no concerns', (tester) async {
+    testWidgets('shows the empty state when there are no concerns',
+        (tester) async {
       final api = FakeApiClient(socialRoutes());
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
       await flushFakeHttp(tester);
@@ -377,7 +510,8 @@ void main() {
   });
 
   group('Contact allowlist', () {
-    testWidgets('add normalizes digits and save PUTs contactAllowlist', (tester) async {
+    testWidgets('add normalizes digits and save PUTs contactAllowlist',
+        (tester) async {
       final api = FakeApiClient(socialRoutes(contactAllowlist: const []));
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
       await flushFakeHttp(tester);
@@ -399,7 +533,8 @@ void main() {
       expect(puts.single.body['contactAllowlist'], ['15551234567']);
     });
 
-    testWidgets('Arabic digits are the same phone number (#771)', (tester) async {
+    testWidgets('Arabic digits are the same phone number (#771)',
+        (tester) async {
       final api = FakeApiClient(socialRoutes(contactAllowlist: const []));
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
       await flushFakeHttp(tester);
@@ -413,13 +548,17 @@ void main() {
       expect(find.text('+١ (٥٥٥) ١٢٣-٤٥٦٧'), findsNothing);
     });
 
-    testWidgets('removing a chip and saving PUTs the updated contactAllowlist', (tester) async {
-      final api = FakeApiClient(socialRoutes(contactAllowlist: ['15550001122', '15553334445']));
+    testWidgets('removing a chip and saving PUTs the updated contactAllowlist',
+        (tester) async {
+      final api = FakeApiClient(
+          socialRoutes(contactAllowlist: ['15550001122', '15553334445']));
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
       await flushFakeHttp(tester);
 
       await reveal(tester, find.text('15550001122'));
-      tester.widget<InputChip>(find.widgetWithText(InputChip, '15550001122')).onDeleted!();
+      tester
+          .widget<InputChip>(find.widgetWithText(InputChip, '15550001122'))
+          .onDeleted!();
       await tester.pumpAndSettle();
       expect(find.text('15550001122'), findsNothing);
 
@@ -428,7 +567,9 @@ void main() {
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
 
-      expect(api.calls('PUT', '/v1/rules/child-1').single.body['contactAllowlist'], ['15553334445']);
+      expect(
+          api.calls('PUT', '/v1/rules/child-1').single.body['contactAllowlist'],
+          ['15553334445']);
     });
   });
 
@@ -439,18 +580,29 @@ void main() {
     /// Duration` — so a 00:00 or 23:59 fixture cannot cross a day boundary
     /// (issue #176).
     Map<String, FakeRoute> timelineRoutes(DateTime base) {
-      final yesterday = DateTime(base.year, base.month, base.day - 1, base.hour, base.minute);
+      final yesterday =
+          DateTime(base.year, base.month, base.day - 1, base.hour, base.minute);
       final smsAt = DateTime(base.year, base.month, base.day, 12, 30);
       return socialRoutes(
         calls: [
-          callJson(direction: 'outgoing', durationSec: 95, at: DateTime(base.year, base.month, base.day, base.hour, base.minute)),
-          callJson(id: 'act-call-2', number: '+15550002222', direction: 'incoming', durationSec: 12, at: yesterday),
+          callJson(
+              direction: 'outgoing',
+              durationSec: 95,
+              at: DateTime(
+                  base.year, base.month, base.day, base.hour, base.minute)),
+          callJson(
+              id: 'act-call-2',
+              number: '+15550002222',
+              direction: 'incoming',
+              durationSec: 12,
+              at: yesterday),
         ],
         sms: [smsJson(bodyPreview: 'x' * 200, at: smsAt)],
       );
     }
 
-    Future<void> expectDayGroupedTimeline(WidgetTester tester, DateTime base) async {
+    Future<void> expectDayGroupedTimeline(
+        WidgetTester tester, DateTime base) async {
       await reveal(tester, find.byIcon(Icons.call_made));
       expect(find.byIcon(Icons.call_made), findsOneWidget);
       expect(find.byIcon(Icons.call_received), findsOneWidget);
@@ -461,14 +613,18 @@ void main() {
       // 200-char body is capped at 120 chars.
       expect(find.text('${'x' * 120}…'), findsOneWidget);
       // Day groups: today and yesterday headers.
-      final today = DateFormat.yMMMMEEEEd().format(DateTime(base.year, base.month, base.day));
-      final yesterday = DateFormat.yMMMMEEEEd().format(DateTime(base.year, base.month, base.day - 1));
+      final today = DateFormat.yMMMMEEEEd()
+          .format(DateTime(base.year, base.month, base.day));
+      final yesterday = DateFormat.yMMMMEEEEd()
+          .format(DateTime(base.year, base.month, base.day - 1));
       expect(find.text(today), findsOneWidget);
       await reveal(tester, find.text(yesterday));
       expect(find.text(yesterday), findsOneWidget);
     }
 
-    testWidgets('renders call rows (direction icon, mm:ss) and sms rows (120-char preview), day-grouped', (tester) async {
+    testWidgets(
+        'renders call rows (direction icon, mm:ss) and sms rows (120-char preview), day-grouped',
+        (tester) async {
       final api = FakeApiClient(timelineRoutes(testNow));
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
       await flushFakeHttp(tester);
@@ -476,9 +632,14 @@ void main() {
       await expectDayGroupedTimeline(tester, testNow);
     });
 
-    for (final boundary in [DateTime(2026, 10, 19, 0, 0), DateTime(2026, 10, 19, 23, 59)]) {
+    for (final boundary in [
+      DateTime(2026, 10, 19, 0, 0),
+      DateTime(2026, 10, 19, 23, 59)
+    ]) {
       final label = DateFormat('HH:mm').format(boundary);
-      testWidgets('groups today and yesterday with the fixture base pinned at $label local', (tester) async {
+      testWidgets(
+          'groups today and yesterday with the fixture base pinned at $label local',
+          (tester) async {
         final api = FakeApiClient(timelineRoutes(boundary));
         await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
         await flushFakeHttp(tester);
@@ -494,10 +655,12 @@ void main() {
 
       await reveal(tester, find.text('No phone calls or texts yet'));
       expect(find.text('No phone calls or texts yet'), findsOneWidget);
-      expect(find.text('iOS does not support phone-call or text monitoring.'), findsOneWidget);
+      expect(find.text('iOS does not support phone-call or text monitoring.'),
+          findsOneWidget);
     });
 
-    testWidgets('fetches type=call and type=sms and merges newest-first', (tester) async {
+    testWidgets('fetches type=call and type=sms and merges newest-first',
+        (tester) async {
       final api = FakeApiClient(socialRoutes(
         calls: [callJson(at: testNow.subtract(const Duration(minutes: 5)))],
         sms: [smsJson(at: testNow.subtract(const Duration(minutes: 1)))],
@@ -507,7 +670,8 @@ void main() {
 
       final gets = api.calls('GET', '/v1/reports/activity');
       expect(gets, hasLength(3));
-      expect(gets.map((r) => r.query['type']), containsAll(['call', 'sms', 'lock_period']));
+      expect(gets.map((r) => r.query['type']),
+          containsAll(['call', 'sms', 'lock_period']));
       expect(find.text('Device locked'), findsNothing);
 
       // Newest (sms, 1 min ago) renders above the older call.
@@ -517,7 +681,8 @@ void main() {
       expect(smsTop.dy, lessThan(callTop.dy));
     });
 
-    testWidgets('a lock period renders with the attempt count (#830)', (tester) async {
+    testWidgets('a lock period renders with the attempt count (#830)',
+        (tester) async {
       final api = FakeApiClient(socialRoutes(locks: [
         {
           'id': 'lock-1',
@@ -541,9 +706,12 @@ void main() {
   });
 
   group('Child detail Social tab', () {
-    testWidgets('embeds the social sections and the Overview entry jumps to the tab', (tester) async {
+    testWidgets(
+        'embeds the social sections and the Overview entry jumps to the tab',
+        (tester) async {
       final api = FakeApiClient(standardRoutes());
-      await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
+      await pumpScreen(
+          tester, const ChildDetailScreen(childId: 'child-1'), api);
 
       // Overview entry ListTile with chevron.
       expect(find.text('Social monitoring'), findsOneWidget);
@@ -568,12 +736,15 @@ void main() {
   });
 
   group('Arabic dates', () {
-    testWidgets('the day header follows the locale order with Western digits', (tester) async {
+    testWidgets('the day header follows the locale order with Western digits',
+        (tester) async {
       await configureDateFormatting();
-      final api = FakeApiClient(socialRoutes(calls: [callJson(at: DateTime.utc(2026, 11, 14, 12))]));
+      final api = FakeApiClient(
+          socialRoutes(calls: [callJson(at: DateTime.utc(2026, 11, 14, 12))]));
       await tester.pumpWidget(ProviderScope(
         overrides: [apiClientProvider.overrideWithValue(api)],
-        child: localizedTestApp(const SocialScreen(childId: 'child-1'), locale: const Locale('ar')),
+        child: localizedTestApp(const SocialScreen(childId: 'child-1'),
+            locale: const Locale('ar')),
       ));
       await tester.pumpAndSettle();
       await flushFakeHttp(tester);

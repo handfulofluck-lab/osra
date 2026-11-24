@@ -3348,6 +3348,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get setupMonitoringTitle => 'أي التطبيقات تريد أن يراقبها تطبيق أسرة؟';
 
   @override
+  String get setupMonitoringAppBarTitle => 'تطبيقات التواصل';
+
+  @override
   String get setupMonitoringIntro =>
       'يفحص تطبيق أسرة الرسائل في هذه التطبيقات بحثًا عن علامات التنمّر أو الاستدراج أو إيذاء النفس، وينبّهك عند رصد ما يثير القلق. اختر التطبيقات التي تريد مراقبتها، ويمكنك تغيير اختيارك في أي وقت من «القواعد».';
 

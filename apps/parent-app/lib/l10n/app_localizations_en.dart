@@ -3154,6 +3154,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get setupMonitoringTitle => 'Which apps should OSRA watch for you?';
 
   @override
+  String get setupMonitoringAppBarTitle => 'Social apps';
+
+  @override
   String get setupMonitoringIntro =>
       'OSRA checks messages in these apps for signs of bullying, grooming or self-harm, and tells you when it finds something. Tick the apps you want; you can change this any time in the rules.';
 

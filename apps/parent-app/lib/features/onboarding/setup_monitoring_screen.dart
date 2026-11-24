@@ -28,12 +28,14 @@ class SetupMonitoringScreen extends ConsumerStatefulWidget {
   const SetupMonitoringScreen({super.key, this.childId});
 
   @override
-  ConsumerState<SetupMonitoringScreen> createState() => _SetupMonitoringScreenState();
+  ConsumerState<SetupMonitoringScreen> createState() =>
+      _SetupMonitoringScreenState();
 }
 
 class _SetupMonitoringScreenState extends ConsumerState<SetupMonitoringScreen> {
   late final Set<String> _selected = {
-    if (widget.childId == null) for (final a in kSocialApps) a.appKey,
+    if (widget.childId == null)
+      for (final a in kSocialApps) a.appKey,
   };
   bool _selectionInitialized = false;
   bool _xChoiceInitialized = false;
@@ -92,8 +94,12 @@ class _SetupMonitoringScreenState extends ConsumerState<SetupMonitoringScreen> {
         kSocialApps.where((app) => installed.containsKey(app.appKey)));
     final absent = sortedSocialApps(
         kSocialApps.where((app) => !installed.containsKey(app.appKey)));
-    final child = ref.read(familyProvider).valueOrNull?.children
-        .where((c) => c.id == widget.childId).firstOrNull;
+    final child = ref
+        .read(familyProvider)
+        .valueOrNull
+        ?.children
+        .where((c) => c.id == widget.childId)
+        .firstOrNull;
     return Column(
       children: [
         Align(
@@ -141,7 +147,9 @@ class _SetupMonitoringScreenState extends ConsumerState<SetupMonitoringScreen> {
       // settings are untouched.
       await ref.read(apiClientProvider).raw.patch('/v1/rules/$childId', data: {
         // The server replaces the whole map, so every app this build knows is sent, ticked or not.
-        'socialMonitoring': {for (final a in kSocialApps) a.appKey: _selected.contains(a.appKey)},
+        'socialMonitoring': {
+          for (final a in kSocialApps) a.appKey: _selected.contains(a.appKey)
+        },
       });
       ref.invalidate(rulesProvider(childId));
       ref.invalidate(familyProvider);
@@ -163,20 +171,26 @@ class _SetupMonitoringScreenState extends ConsumerState<SetupMonitoringScreen> {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final childId = widget.childId;
-    final inventory = childId == null ? null : ref.watch(installedAppsProvider(childId));
+    final inventory =
+        childId == null ? null : ref.watch(installedAppsProvider(childId));
     final rules = childId == null ? null : ref.watch(rulesProvider(childId));
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.setupMonitoringTitle)),
+      appBar: AppBar(title: Text(l10n.setupMonitoringAppBarTitle)),
       body: ListView(
         padding: const EdgeInsets.all(AppSpace.lg),
         children: [
-          Text(l10n.setupMonitoringIntro, style: Theme.of(context).textTheme.bodyMedium),
+          Text(l10n.setupMonitoringTitle,
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: AppSpace.sm),
+          Text(l10n.setupMonitoringIntro,
+              style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(height: AppSpace.sm),
           // The consent sentence: what monitoring means, in the numbers §5 of the data-safety answers states.
           Card(
             child: Padding(
               padding: const EdgeInsets.all(AppSpace.md),
-              child: Text(l10n.setupMonitoringConsent, style: Theme.of(context).textTheme.bodySmall),
+              child: Text(l10n.setupMonitoringConsent,
+                  style: Theme.of(context).textTheme.bodySmall),
             ),
           ),
           const SizedBox(height: AppSpace.sm),
@@ -188,7 +202,8 @@ class _SetupMonitoringScreenState extends ConsumerState<SetupMonitoringScreen> {
                   padding: EdgeInsets.all(AppSpace.lg),
                   child: Center(child: CircularProgressIndicator())),
               error: (e, _) => ErrorRetryView(
-                message: friendlyErrorText(l10n, e, () => l10n.installedAppsLoadFailed),
+                message: friendlyErrorText(
+                    l10n, e, () => l10n.installedAppsLoadFailed),
                 onRetry: () => ref.invalidate(installedAppsProvider(childId!)),
               ),
               data: (report) {
@@ -206,7 +221,10 @@ class _SetupMonitoringScreenState extends ConsumerState<SetupMonitoringScreen> {
             key: const ValueKey('setupMonitoringContinue'),
             onPressed: _saving ? null : _finish,
             child: _saving
-                ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2))
                 : Text(l10n.setupMonitoringContinue),
           ),
         ),

@@ -5258,6 +5258,12 @@ abstract class AppLocalizations {
   /// **'Which apps should OSRA watch for you?'**
   String get setupMonitoringTitle;
 
+  /// No description provided for @setupMonitoringAppBarTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Social apps'**
+  String get setupMonitoringAppBarTitle;
+
   /// No description provided for @setupMonitoringIntro.
   ///
   /// In en, this message translates to:
