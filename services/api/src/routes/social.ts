@@ -4,10 +4,10 @@ import { prisma } from "../db.js";
 import { recordFlaggedSocialAlert } from "../lib/socialAlertWindow.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { checkActiveConsent } from "../lib/consent.js";
-import { requireFamily, requireGuardianRead, requireParent } from "../middleware/requireFamily.js";
+import { requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
 import { decryptSnippet, encryptSnippet } from "../lib/snippetVault.js";
 import { isValidTimeZone } from "../lib/digestSchedule.js";
-import { failedProviders, flaggedProviders, readProviderAnalysis, type ProviderReceipts } from "../lib/stagingProviderOutcomes.js";
+import { failedProviders, flaggedProviders, readProviderAnalysis, readProviderModelSnapshot, type ProviderReceipts } from "../lib/stagingProviderOutcomes.js";
 import { STAGING_QA_MODEL, STAGING_QA_REGION, stagingQaDeadline, stagingQaModel, stagingQaModelEnabled, type StagingQaModel } from "../lib/stagingQaModel.js";
 
 const ScanSchema = z.object({
@@ -36,13 +36,23 @@ const EventsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(50),
 });
 
+const FeedbackSchema = z.object({ verdict: z.enum(["concerning", "not_concerning"]) });
+
 const AI_TIMEOUT_MS = 5000;
 const PREVIEW_MAX_CHARS = 240;
 const GAMING_APPS = new Set(["discord", "roblox"]);
 
 type Severity = "info" | "warning" | "critical";
 interface Verdict { flagged: boolean; severity: Severity; concernTypes: string[] }
-type ScanAnalysis = { verdict: Verdict | null; attempted: boolean; providers?: ProviderReceipts };
+type FlagTimeSnapshot = {
+  modelVersion: string | null;
+  lang: string | null;
+  topCategory: string | null;
+  topScore: number | null;
+  cutoff: number | null;
+  path: "own" | "hybrid_second_look" | "rules" | null;
+};
+type ScanAnalysis = { verdict: Verdict | null; attempted: boolean; providers?: ProviderReceipts; model?: FlagTimeSnapshot };
 
 // NOTE: fail-open — when the AI engine is unreachable the scan falls back to a local
 // keyword/regex check so obvious self-harm language is never silently dropped.
@@ -111,6 +121,25 @@ function aiVerdictFrom(data: unknown): Verdict | null {
   return { flagged: d.flagged, severity, concernTypes };
 }
 
+function analyzeModelSnapshot(data: unknown): FlagTimeSnapshot | undefined {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return undefined;
+  const d = data as Record<string, unknown>;
+  const categories = d.categories && typeof d.categories === "object" && !Array.isArray(d.categories)
+    ? d.categories as Record<string, unknown>
+    : {};
+  const top = Object.entries(categories)
+    .filter(([category, score]) => category !== "safe" && typeof score === "number" && Number.isFinite(score))
+    .sort((a, b) => Number(b[1]) - Number(a[1]))[0];
+  return {
+    modelVersion: typeof d.model_version === "string" && d.model_version.length > 0 ? d.model_version : null,
+    lang: typeof d.language === "string" && d.language.length > 0 ? d.language : null,
+    topCategory: top?.[0] ?? null,
+    topScore: typeof top?.[1] === "number" ? top[1] : null,
+    cutoff: typeof d.cutoff === "number" && Number.isFinite(d.cutoff) ? d.cutoff : null,
+    path: d.path === "own" || d.path === "hybrid_second_look" || d.path === "rules" ? d.path : null,
+  };
+}
+
 /**
  * Call the AI engine /analyze with a 5 s timeout; `verdict: null` on any failure (caller falls back).
  *
@@ -129,7 +158,8 @@ async function analyzeWithAi(text: string, childAge?: number): Promise<ScanAnaly
       signal: AbortSignal.timeout(AI_TIMEOUT_MS),
     });
     if (!res.ok) return { verdict: null, attempted: true };
-    return { verdict: aiVerdictFrom(await res.json()), attempted: true };
+    const scored = await res.json();
+    return { verdict: aiVerdictFrom(scored), attempted: true, model: analyzeModelSnapshot(scored) };
   } catch (err) {
     // A connection that never opened (refused, DNS) cost nothing; one that opened and then ran past the
     // 5 s timeout was paid for. `AbortSignal.timeout` surfaces as TimeoutError, and an aborted read as
@@ -160,11 +190,14 @@ async function analyzeStagingFixture(text: string, qa: StagingQaModel, batchDead
     if (!res.ok) return failure(true, res.status === 408 || res.status === 504 ? "timeout" : "unavailable");
     const scored = await res.json();
     if (Date.now() >= deadline) return failure(true, "timeout");
-    if (providerMode) return { ...readProviderAnalysis(scored, providerMode, qa.traceId), attempted: true };
+    if (providerMode) {
+      const analysis = readProviderAnalysis(scored, providerMode, qa.traceId);
+      return { ...analysis, attempted: true, model: readProviderModelSnapshot(scored, analysis.providers.own) };
+    }
     if (scored?.trace_id !== qa.traceId || scored.model !== STAGING_QA_MODEL || scored.region !== STAGING_QA_REGION) {
       return failure(true, "unavailable");
     }
-    return { verdict: aiVerdictFrom(scored), attempted: true };
+    return { verdict: aiVerdictFrom(scored), attempted: true, model: analyzeModelSnapshot(scored) };
   } catch (err) {
     const name = (err as { name?: string } | null)?.name;
     const timedOut = name === "TimeoutError" || name === "AbortError";
@@ -304,7 +337,22 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
 
   // The snippet vault always records flagged messages; alerts are throttled separately.
   const previewCipher = encryptSnippet(text.slice(0, PREVIEW_MAX_CHARS));
-  const eventData = { childId, app: appName, contact, severity: verdict.severity, previewCipher, concernTypes: verdict.concernTypes };
+  const model = ai.model;
+  const rulesOnly = local.flagged && !ai.verdict?.flagged;
+  const eventData = {
+    childId,
+    app: appName,
+    contact,
+    severity: verdict.severity,
+    previewCipher,
+    concernTypes: verdict.concernTypes,
+    modelVersion: model?.modelVersion ?? null,
+    lang: model?.lang ?? null,
+    topCategory: model?.topCategory ?? (rulesOnly ? local.concernTypes[0] ?? null : null),
+    topScore: model?.topScore ?? null,
+    cutoff: model?.cutoff ?? null,
+    path: model?.path ?? (rulesOnly ? "rules" : null),
+  };
   const event = receipt ? await prisma.$transaction(async (tx) => {
     const created = await tx.socialEvent.create({ data: eventData });
     await tx.stagingScanOutcome.create({ data: { ...receipt, socialEventId: created.id } });
@@ -319,6 +367,7 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
   const alertOutcome = await recordFlaggedSocialAlert({
     childId,
     familyId: child.familyId,
+    sourceEventId: event?.id,
     childName: child.displayName,
     deviceId,
     appName,
@@ -332,6 +381,24 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
   const throttled = alertOutcome.throttled;
   if (qaProof) log?.info({ ...qaProof, socialEventId: event?.id, alertId, throttled, bypassed: alertOutcome.bypassed, flaggedCount: alertOutcome.flaggedCount }, "staging QA scan resolved");
   return { ok: true, flagged: true, severity: verdict.severity, concernTypes: verdict.concernTypes };
+}
+
+type FeedbackView = {
+  verdict: string;
+  parentName: string;
+  firstVotedAt: Date | string;
+  lastChangedAt: Date | string;
+  changeCount: number;
+};
+
+function feedbackView(row: FeedbackView) {
+  return {
+    verdict: row.verdict,
+    parentDisplayName: row.parentName,
+    firstVotedAt: row.firstVotedAt,
+    lastChangedAt: row.lastChangedAt,
+    changeCount: row.changeCount,
+  };
 }
 
 export async function socialRoutes(app: FastifyInstance) {
@@ -372,6 +439,66 @@ export async function socialRoutes(app: FastifyInstance) {
     return { flagged: single.flagged, severity: single.severity, concernTypes: single.concernTypes };
   });
 
+  const feedbackFamilyGuard = requireFamily({ model: "socialEvent" });
+  const feedbackWriteGuard = requirePermission("social");
+
+  app.post("/events/:id/feedback", { preHandler: [requireParent, feedbackWriteGuard, feedbackFamilyGuard] }, async (req, reply) => {
+    const parsed = FeedbackSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const parentId = (req.user as { sub: string }).sub;
+    const event = (req as unknown as { socialEvent: {
+      id: string;
+      severity: string;
+      modelVersion: string | null;
+      lang: string | null;
+      topCategory: string | null;
+      topScore: number | null;
+      cutoff: number | null;
+      path: string | null;
+    } }).socialEvent;
+    const where = { socialEventId_parentId: { socialEventId: event.id, parentId } };
+    const existing = await prisma.socialEventFeedback.findUnique({ where });
+    if (existing?.verdict === parsed.data.verdict) return { feedback: feedbackView(existing) };
+    const parent = await prisma.parent.findUnique({ where: { id: parentId }, select: { displayName: true } });
+    const parentName = parent?.displayName ?? "";
+    if (existing) {
+      const updated = await prisma.socialEventFeedback.update({
+        where,
+        data: { verdict: parsed.data.verdict, parentName, lastChangedAt: new Date(), changeCount: { increment: 1 } },
+      });
+      return { feedback: feedbackView(updated) };
+    }
+    const now = new Date();
+    const created = await prisma.socialEventFeedback.upsert({
+      where,
+      create: {
+        socialEventId: event.id,
+        parentId,
+        parentName,
+        verdict: parsed.data.verdict,
+        firstVotedAt: now,
+        lastChangedAt: now,
+        changeCount: 0,
+        modelVersion: event.modelVersion,
+        lang: event.lang,
+        topCategory: event.topCategory,
+        topScore: event.topScore,
+        cutoff: event.cutoff,
+        path: event.path,
+        severity: event.severity,
+      },
+      update: {},
+    });
+    return { feedback: feedbackView(created) };
+  });
+
+  app.delete("/events/:id/feedback", { preHandler: [requireParent, feedbackWriteGuard, feedbackFamilyGuard] }, async (req) => {
+    const parentId = (req.user as { sub: string }).sub;
+    const event = (req as unknown as { socialEvent: { id: string } }).socialEvent;
+    await prisma.socialEventFeedback.deleteMany({ where: { socialEventId: event.id, parentId } });
+    return { feedback: null };
+  });
+
   /**
    * Parent-facing vault listing: SocialEvents decrypted server-side, newest first.
    * NOTE (#24, trust copy — no code): the parent app must show transparency copy next to this
@@ -390,6 +517,7 @@ export async function socialRoutes(app: FastifyInstance) {
       },
       orderBy: { createdAt: "desc" },
       take: q.limit,
+      include: { feedback: { orderBy: { lastChangedAt: "desc" }, take: 1 } },
     });
     const items = rows.map((row) => ({
       id: row.id,
@@ -399,6 +527,7 @@ export async function socialRoutes(app: FastifyInstance) {
       preview: decryptSnippet(row.previewCipher),
       concernTypes: row.concernTypes,
       createdAt: row.createdAt,
+      latestFeedback: row.feedback?.[0] ? feedbackView(row.feedback[0]) : null,
     }));
     return { items };
   });

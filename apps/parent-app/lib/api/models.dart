@@ -408,7 +408,8 @@ class ScreenTimeRule {
         : const <String, dynamic>{};
     final rawDays = school['days'];
     final days = _intList(rawDays);
-    final hasSchoolDays = days.isNotEmpty || (rawDays is List && rawDays.isEmpty);
+    final hasSchoolDays =
+        days.isNotEmpty || (rawDays is List && rawDays.isEmpty);
     return ScreenTimeRule(
       dailyLimitMinutes: _int(json['dailyLimitMinutes'], 180),
       weekendLimitMinutes: _int(json['weekendLimitMinutes'], 240),
@@ -899,6 +900,10 @@ class SocialConcernEvent {
   final String preview;
   final List<String> concernTypes;
   final DateTime? createdAt;
+  final String? latestFeedbackVerdict;
+  final String? latestFeedbackParentDisplayName;
+  final DateTime? latestFeedbackFirstVotedAt;
+  final DateTime? latestFeedbackLastChangedAt;
 
   const SocialConcernEvent({
     required this.id,
@@ -908,18 +913,35 @@ class SocialConcernEvent {
     required this.preview,
     this.concernTypes = const [],
     this.createdAt,
+    this.latestFeedbackVerdict,
+    this.latestFeedbackParentDisplayName,
+    this.latestFeedbackFirstVotedAt,
+    this.latestFeedbackLastChangedAt,
   });
 
-  factory SocialConcernEvent.fromJson(Map<String, dynamic> json) =>
-      SocialConcernEvent(
-        id: _str(json['id']),
-        app: _str(json['app']),
-        contact: _str(json['contact']),
-        severity: _str(json['severity'], 'info'),
-        preview: _str(json['preview']),
-        concernTypes: _strList(json['concernTypes']),
-        createdAt: DateTime.tryParse(_str(json['createdAt'])),
-      );
+  factory SocialConcernEvent.fromJson(Map<String, dynamic> json) {
+    final latestFeedback = json['latestFeedback'];
+    final feedback =
+        latestFeedback is Map ? latestFeedback : const <String, dynamic>{};
+    final verdict = _str(feedback['verdict']);
+    final parentDisplayName = _str(feedback['parentDisplayName']);
+    return SocialConcernEvent(
+      id: _str(json['id']),
+      app: _str(json['app']),
+      contact: _str(json['contact']),
+      severity: _str(json['severity'], 'info'),
+      preview: _str(json['preview']),
+      concernTypes: _strList(json['concernTypes']),
+      createdAt: DateTime.tryParse(_str(json['createdAt'])),
+      latestFeedbackVerdict: verdict.isEmpty ? null : verdict,
+      latestFeedbackParentDisplayName:
+          parentDisplayName.isEmpty ? null : parentDisplayName,
+      latestFeedbackFirstVotedAt:
+          DateTime.tryParse(_str(feedback['firstVotedAt'])),
+      latestFeedbackLastChangedAt:
+          DateTime.tryParse(_str(feedback['lastChangedAt'])),
+    );
+  }
 }
 
 /// A flagged search query event (Track 1 & 2 content monitoring).
@@ -1258,11 +1280,13 @@ class Alert {
 
   /// #1029: explicit flagged message count from metadata (or `attemptCount` when > 1), else null.
   int? get socialFlaggedCount =>
-      _positiveMetaInt(metadata, const ['flaggedCount', 'messageCount', 'count']) ??
+      _positiveMetaInt(
+          metadata, const ['flaggedCount', 'messageCount', 'count']) ??
       (attemptCount > 1 ? attemptCount : null);
 
   /// #1029: total flagged messages represented by this social alert (at least 1).
-  int get socialMessageCount => socialFlaggedCount ?? (attemptCount > 0 ? attemptCount : 1);
+  int get socialMessageCount =>
+      socialFlaggedCount ?? (attemptCount > 0 ? attemptCount : 1);
 
   /// #1029: distinct contact count from metadata (count only, never names on card/push).
   int? get socialContactCount {

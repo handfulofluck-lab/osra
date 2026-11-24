@@ -968,6 +968,23 @@
   "saveFailedServer": "Couldn't save your changes. Your changes are still here — try again.",
   "saveMonitoring": "Save monitoring",
   "concerns": "Concerns",
+  "flagVoteQuestion": "Was OSRA right to flag this?",
+  "flagVoteConcerning": "Concerning",
+  "flagVoteNotConcerning": "Not concerning",
+  "flagVoteHelp": "Your answer helps OSRA check messages better.",
+  "flagVoteThanks": "Thanks, noted",
+  "flagVoteBy": "{name}: {vote}",
+  "@flagVoteBy": {
+    "placeholders": {
+      "name": { "type": "String" },
+      "vote": { "type": "String" }
+    }
+  },
+  "flagVoteA11yConcerning": "Mark as concerning",
+  "flagVoteA11yNotConcerning": "Mark as not concerning",
+  "flagVoteClear": "Clear vote",
+  "flagVoteCleared": "Vote cleared",
+  "flagVoteA11yClear": "Clear your vote on this message",
   "vaultTrustCopy": "Excerpts travel over an encrypted connection and are stored encrypted on OSRA's servers.",
   "noConcernsDetected": "No concerns detected",
   "unknownContact": "Unknown contact",

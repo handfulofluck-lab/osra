@@ -134,6 +134,7 @@ void main() {
     String severity = 'warning',
     List<String> concernTypes = const ['grooming_risk', 'late_night'],
     DateTime? at,
+    Object? latestFeedback,
   }) =>
       {
         'id': id,
@@ -145,6 +146,7 @@ void main() {
         'createdAt': (at ?? testNow.subtract(const Duration(hours: 2)))
             .toUtc()
             .toIso8601String(),
+        if (latestFeedback != null) 'latestFeedback': latestFeedback,
       };
 
   Map<String, dynamic> callJson({
@@ -497,6 +499,94 @@ void main() {
       expect(find.text('Encrypted Family Vault'), findsOneWidget);
       expect(find.text('Decrypted content'), findsOneWidget);
     });
+
+    testWidgets(
+        'list vote POSTs once and the vault reuses the selected event vote',
+        (tester) async {
+      // Mutant: omitting eventId from the vault or posting to the alert id leaves
+      // the two surfaces out of sync and writes feedback for the wrong resource.
+      final api = FakeApiClient({
+        ...socialRoutes(concerns: [concernJson()]),
+        'POST /v1/social/events/se-1/feedback': (request) => {
+              'feedback': {
+                'verdict': request.body['verdict'],
+                'parentDisplayName': 'QA Parent',
+                'firstVotedAt': '2026-11-24T10:01:00.000Z',
+                'lastChangedAt': '2026-11-24T10:01:00.000Z',
+              },
+            },
+        'DELETE /v1/social/events/se-1/feedback': (_) => {'feedback': null},
+      });
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api,
+          tall: true);
+      await flushFakeHttp(tester);
+
+      await reveal(tester, find.byTooltip('Mark as concerning'));
+      expect(tester.getSize(find.byTooltip('Mark as concerning')),
+          const Size(48, 48));
+      await tester.tap(find.byTooltip('Mark as concerning'));
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+      expect(api.calls('POST', '/v1/social/events/se-1/feedback').single.body,
+          {'verdict': 'concerning'});
+      expect(find.widgetWithText(FilledButton, 'Concerning'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Maya'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('View in Decryption Vault'));
+      await tester.pumpAndSettle();
+      expect(find.text('Was OSRA right to flag this?'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Concerning'), findsNWidgets(2));
+      expect(find.text('Thanks, noted'), findsNothing);
+    });
+
+    testWidgets(
+        'the latest co-parent vote and isolated voter name render in the list',
+        (tester) async {
+      final api = FakeApiClient(socialRoutes(concerns: [
+        concernJson(latestFeedback: {
+          'verdict': 'not_concerning',
+          'parentDisplayName': 'Lina',
+          'firstVotedAt': '2026-11-24T10:01:00.000Z',
+          'lastChangedAt': '2026-11-24T10:02:00.000Z',
+        }),
+      ]));
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api,
+          tall: true);
+      await flushFakeHttp(tester);
+
+      await reveal(tester, find.widgetWithText(FilledButton, 'Not concerning'));
+      expect(find.text('\u2068Lina\u2069: Not concerning'), findsOneWidget);
+    });
+
+    for (final locale in [const Locale('en'), const Locale('ar')]) {
+      testWidgets(
+          'concern vote controls move below text at 320px/200% in ${locale.languageCode}',
+          (tester) async {
+        tester.view.physicalSize = const Size(320, 1000);
+        tester.view.devicePixelRatio = 1;
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+          tester.platformDispatcher.clearTextScaleFactorTestValue();
+        });
+        final api = FakeApiClient(socialRoutes(concerns: [concernJson()]));
+        await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api,
+            locale: locale);
+        await flushFakeHttp(tester);
+
+        final tooltip = locale.languageCode == 'ar'
+            ? 'اعتبار الرسالة مقلقة'
+            : 'Mark as concerning';
+        await reveal(tester, find.byTooltip(tooltip));
+        expect(tester.getTopLeft(find.byTooltip(tooltip)).dy,
+            greaterThan(tester.getRect(find.text('Maya')).bottom));
+        expect(tester.takeException(), isNull);
+      });
+    }
 
     testWidgets('shows the empty state when there are no concerns',
         (tester) async {

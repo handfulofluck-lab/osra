@@ -20,6 +20,7 @@ import '../content/snippet_vault_modal.dart';
 import '../../api/permission_errors.dart';
 import '../../widgets/error_retry_view.dart';
 import 'social_app_catalog.dart';
+import 'social_vote_controls.dart';
 
 export 'social_app_catalog.dart' show kSocialApps, SocialAppInfo;
 
@@ -197,7 +198,8 @@ class _MonitoringTogglesSectionState
       final body = ruleSet.toJson();
       // NOTE: merge server-side map under the local draft so keys we do not
       // render here (future apps) survive the PATCH-merge.
-      body['socialMonitoring'] = {...ruleSet.socialMonitoring, ...draft}..remove('x');
+      body['socialMonitoring'] = {...ruleSet.socialMonitoring, ...draft}
+        ..remove('x');
       await ref
           .read(apiClientProvider)
           .raw
@@ -240,9 +242,8 @@ class _MonitoringTogglesSectionState
           ? Icon(socialAppIcon(app.appKey))
           : AppIconBadge(app: installed, size: 32),
       value: value,
-      onChanged: _saving
-          ? null
-          : (v) => setState(() => _draft![app.appKey] = v),
+      onChanged:
+          _saving ? null : (v) => setState(() => _draft![app.appKey] = v),
     );
   }
 
@@ -254,8 +255,12 @@ class _MonitoringTogglesSectionState
         kSocialApps.where((app) => installed.containsKey(app.appKey)));
     final absent = sortedSocialApps(
         kSocialApps.where((app) => !installed.containsKey(app.appKey)));
-    final child = ref.read(familyProvider).valueOrNull?.children
-        .where((c) => c.id == widget.childId).firstOrNull;
+    final child = ref
+        .read(familyProvider)
+        .valueOrNull
+        ?.children
+        .where((c) => c.id == widget.childId)
+        .firstOrNull;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -325,8 +330,10 @@ class _MonitoringTogglesSectionState
                 padding: EdgeInsets.all(AppSpace.lg),
                 child: Center(child: CircularProgressIndicator())),
             error: (e, _) => ErrorRetryView(
-              message: friendlyErrorText(l10n, e, () => l10n.installedAppsLoadFailed),
-              onRetry: () => ref.invalidate(installedAppsProvider(widget.childId)),
+              message: friendlyErrorText(
+                  l10n, e, () => l10n.installedAppsLoadFailed),
+              onRetry: () =>
+                  ref.invalidate(installedAppsProvider(widget.childId)),
             ),
             data: (report) => _loadedContent(ruleSet, report),
           ),
@@ -383,9 +390,35 @@ class ConcernsSection extends ConsumerWidget {
                         child: ExpansionTile(
                           leading: Icon(socialAppIcon(e.app),
                               color: socialSeverityColor(e.severity, context)),
-                          title: Text(e.contact.isEmpty
-                              ? l10n.unknownContact
-                              : e.contact),
+                          title: LayoutBuilder(builder: (context, constraints) {
+                            final contact = Text(e.contact.isEmpty
+                                ? l10n.unknownContact
+                                : e.contact);
+                            final controls = SocialVoteControls(
+                              eventId: e.id,
+                              compact: true,
+                            );
+                            final vertical = constraints.maxWidth < 160 ||
+                                MediaQuery.textScalerOf(context).scale(14) > 21;
+                            if (vertical) {
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  contact,
+                                  const SizedBox(height: AppSpace.sm),
+                                  controls,
+                                ],
+                              );
+                            }
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(child: contact),
+                                const SizedBox(width: AppSpace.sm),
+                                Flexible(child: controls),
+                              ],
+                            );
+                          }),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -441,6 +474,7 @@ class ConcernsSection extends ConsumerWidget {
                                     concernTypes: e.concernTypes,
                                     sourceLabel: socialAppLabel(e.app, l10n),
                                     timestamp: e.createdAt,
+                                    eventId: e.id,
                                   ),
                                 ),
                               ),
@@ -499,9 +533,7 @@ class CallsSmsSection extends ConsumerWidget {
             final groups = <String, List<ActivityEvent>>{};
             final order = <String>[];
             for (final e in items) {
-              final day = e.ts == null
-                  ? 'Unknown'
-                  : dayKey(e.ts!.toLocal());
+              final day = e.ts == null ? 'Unknown' : dayKey(e.ts!.toLocal());
               if (!groups.containsKey(day)) {
                 groups[day] = [];
                 order.add(day);
@@ -536,11 +568,15 @@ class CallsSmsSection extends ConsumerWidget {
                         subtitle: e.type == 'lock_period'
                             ? Text(l10n.activityLockRowDetail(_lockAttempts(e)))
                             : e.type == 'sms'
-                            ? Text(_truncateSms(e.bodyPreview))
-                            // Roadmap 4.5: a brand name, so the same text in both languages and no new
-                            // Arabic to approve (#523 ruled the phone side; the screen has to match).
-                            : (e.source == 'whatsapp' ? const Text('WhatsApp') : null),
-                        trailing: e.type == 'call' ? callDurationText(e, context) : null,
+                                ? Text(_truncateSms(e.bodyPreview))
+                                // Roadmap 4.5: a brand name, so the same text in both languages and no new
+                                // Arabic to approve (#523 ruled the phone side; the screen has to match).
+                                : (e.source == 'whatsapp'
+                                    ? const Text('WhatsApp')
+                                    : null),
+                        trailing: e.type == 'call'
+                            ? callDurationText(e, context)
+                            : null,
                       ),
                     ),
                 ],
@@ -560,7 +596,8 @@ class CallsSmsSection extends ConsumerWidget {
   }
 
   /// #830: the attempts a lock-period row carries; 0 when an older row has none.
-  int _lockAttempts(ActivityEvent e) => e.payload['attempts'] is int ? e.payload['attempts'] as int : 0;
+  int _lockAttempts(ActivityEvent e) =>
+      e.payload['attempts'] is int ? e.payload['attempts'] as int : 0;
 
   /// SMS previews are capped at 120 chars server-side; truncate defensively.
   String _truncateSms(String preview) =>

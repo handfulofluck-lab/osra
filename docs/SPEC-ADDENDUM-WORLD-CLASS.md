@@ -37,7 +37,12 @@ Command enum lives in `services/api/src/routes/devices.ts` CommandSchema.
   (register-or-login link flow, token in Redis `invite:<id>`) / `GET /family/invites` (#13).
 - `POST /children/:id/bonus` `{minutes}` → queues `bonus_time` to the child's devices (#10).
 - `GET /social/events?childId&app&severity&limit` → vault of `SocialConcernEvent` (#24,
-  server-side AES-GCM with `@familyshield/crypto` + server key env `VAULT_KEY`).
+  server-side AES-GCM with `@familyshield/crypto` + server key env `VAULT_KEY`). Each item may include
+  `latestFeedback` with the latest verdict, voter display name and timestamps (#1065).
+- `POST /social/events/:id/feedback` `{verdict: "concerning" | "not_concerning"}` creates or changes
+  the caller's vote; `DELETE /social/events/:id/feedback` withdraws it idempotently. Both require a
+  parent session, the `social` permission and family ownership of the event. Votes cascade with the
+  vault event and contain no message text (#1065, ADR-0044).
 - `POST /location/places/:id/routine` — bind geofence→routine auto-apply (#23: when child
   enters a place with `routineId`, agents receive `rules_updated` + the routine rules).
 - Live activity: agents include `foregroundApp` + `minutesToday` in telemetry; API emits
