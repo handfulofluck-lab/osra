@@ -61,10 +61,21 @@ final class ShieldMarkRenderTests: XCTestCase {
     }
 
     /// The shield follows the phone: asking the asset for each appearance must give that artwork's colours.
-    func testTheMarkHasALightAndADarkVariant() {
+    func testTheMarkHasALightAndADarkVariant() throws {
         let asset = ShieldBrand.markImageAsset(size: 100)
-        let light = asset.image(with: UITraitCollection(userInterfaceStyle: .light))
-        let dark = asset.image(with: UITraitCollection(userInterfaceStyle: .dark))
+        // The query has to carry the scale as well as the appearance, or `UIImageAsset` hands back a normalised
+        // `@1x` image whose point size no longer matches the pixels that were drawn.
+        let scale = UITraitCollection.current.displayScale
+        func image(_ style: UIUserInterfaceStyle) -> UIImage {
+            asset.image(with: UITraitCollection(traitsFrom: [
+                UITraitCollection(displayScale: scale),
+                UITraitCollection(userInterfaceStyle: style),
+            ]))
+        }
+        let light = image(.light)
+        let dark = image(.dark)
+        XCTAssertEqual(light.size, CGSize(width: 100, height: 100), "the asset must keep the drawn point size")
+        XCTAssertEqual(dark.size, CGSize(width: 100, height: 100))
         assertColour(pixel(light, at: CGPoint(x: 31.6, y: 68.4)), ShieldBrand.markRing.light, "light ring")
         assertColour(pixel(dark, at: CGPoint(x: 31.6, y: 68.4)), ShieldBrand.markRing.dark, "dark ring")
         assertColour(pixel(light, at: CGPoint(x: 68.4, y: 31.6)), ShieldBrand.markDot.light, "light dot")

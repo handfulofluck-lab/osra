@@ -128,8 +128,14 @@ public extension ShieldBrand {
     static func markImageAsset(size: CGFloat = markPointSize) -> UIImageAsset {
         let asset = UIImageAsset()
         for style in [UIUserInterfaceStyle.light, .dark] {
-            asset.register(renderMark(size: size, style: style),
-                           with: UITraitCollection(userInterfaceStyle: style))
+            let image = renderMark(size: size, style: style)
+            // The traits must carry `displayScale` as well as the appearance: registering without it makes
+            // `UIImageAsset` normalise a 300 px `@3x` render to 300 **points** `@1x`, so the shield shows the mark
+            // three times too large and the pixel rows sample empty corners (Hydrogen, 24 Nov).
+            asset.register(image, with: UITraitCollection(traitsFrom: [
+                UITraitCollection(displayScale: image.scale),
+                UITraitCollection(userInterfaceStyle: style),
+            ]))
         }
         return asset
     }
