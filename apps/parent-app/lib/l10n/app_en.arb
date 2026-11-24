@@ -520,6 +520,8 @@
   "commandClearSos": "Clear SOS",
   "commandPauseDevice": "Pause device",
   "commandResumeDevice": "Resume device",
+  "commandPausingDevice": "Pausing…",
+  "commandResumingDevice": "Resuming…",
   "commandPauseInternet": "Pause internet",
   "commandResumeInternet": "Resume internet",
   "scopeThisDevice": "This device",

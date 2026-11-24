@@ -878,6 +878,12 @@ class AppLocalizationsAr extends AppLocalizations {
   String get commandResumeDevice => 'استئناف الجهاز';
 
   @override
+  String get commandPausingDevice => 'جارٍ إيقاف الجهاز…';
+
+  @override
+  String get commandResumingDevice => 'جارٍ استئناف الجهاز…';
+
+  @override
   String get commandPauseInternet => 'إيقاف الإنترنت';
 
   @override

@@ -853,6 +853,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commandResumeDevice => 'Resume device';
 
   @override
+  String get commandPausingDevice => 'Pausing…';
+
+  @override
+  String get commandResumingDevice => 'Resuming…';
+
+  @override
   String get commandPauseInternet => 'Pause internet';
 
   @override

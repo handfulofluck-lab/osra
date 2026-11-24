@@ -108,8 +108,10 @@ void main() {
     final now = DateTime.now();
     await pump(tester, history([commandJson('c6', 'pause', 'pending', now)]));
 
+    // U61 (7120371019): while waiting for the handset, the disabled button shows "Pausing…".
+    expect(find.text('Pausing…'), findsOneWidget);
     final button = tester.widget<ButtonStyleButton>(
-      find.ancestor(of: find.text('Pause device'), matching: find.bySubtype<ButtonStyleButton>()).first,
+      find.ancestor(of: find.text('Pausing…'), matching: find.bySubtype<ButtonStyleButton>()).first,
     );
     expect(button.onPressed, isNull,
         reason: 'a pending control must be unusable from a screen reader or the keyboard too');
@@ -218,6 +220,7 @@ void main() {
 
     expect(find.text('هذا الجهاز'), findsOneWidget);
     expect(find.text('كل الأجهزة المقترنة'), findsOneWidget);
+    expect(find.text('جارٍ إيقاف الجهاز…'), findsOneWidget);
     expect(find.text('بانتظار تأكيد هذا الجهاز'), findsOneWidget);
     expect(tester.takeException(), isNull, reason: '320 px in Arabic must not overflow');
   });
@@ -278,19 +281,20 @@ void main() {
       expect(s.waiting, isFalse);
     });
 
-    testWidgets('queued resume disables Resume device and never shows Pause device until acked', (tester) async {
-      // Mutant: rendering both buttons or flipping back to Pause before resume is acked fails this row.
+    testWidgets('queued resume disables button with Resuming… (U61) and never shows Pause device until acked', (tester) async {
+      // Mutant: rendering both buttons, showing the idle label instead of Resuming…, or flipping back to Pause before resume is acked fails this row.
       final now = DateTime.now();
       await pump(tester, history([
         commandJson('r1', 'resume', 'pending', now),
         commandJson('p1', 'pause', 'acked', now.subtract(const Duration(minutes: 1))),
       ]));
 
-      expect(find.text('Resume device'), findsOneWidget);
+      expect(find.text('Resuming…'), findsOneWidget);
+      expect(find.text('Resume device'), findsNothing);
       expect(find.text('Pause device'), findsNothing);
       expect(find.byKey(const ValueKey('controlPending-resume')), findsOneWidget);
       final btn = tester.widget<ButtonStyleButton>(
-        find.ancestor(of: find.text('Resume device'), matching: find.bySubtype<ButtonStyleButton>()).first,
+        find.ancestor(of: find.text('Resuming…'), matching: find.bySubtype<ButtonStyleButton>()).first,
       );
       expect(btn.onPressed, isNull);
     });

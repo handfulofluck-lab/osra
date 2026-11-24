@@ -507,11 +507,14 @@ class _DevicePauseControl extends ConsumerWidget {
     final history = ref.watch(deviceCommandHistoryProvider(device.id)).valueOrNull ?? const <DeviceCommand>[];
     final state = resolveDevicePauseControlState(history);
     final command = state.activeCommand;
+    final label = state.waiting
+        ? (state.pendingCommand == 'resume' ? l10n.commandResumingDevice : l10n.commandPausingDevice)
+        : (state.confirmedPaused ? l10n.commandResumeDevice : l10n.commandPauseDevice);
     final button = _deviceTonalButton(
       key: ValueKey('deviceAction-$command-${device.id}'),
       onPressed: state.waiting ? null : () => onSend(command),
       icon: state.confirmedPaused ? Icons.play_circle : Icons.pause_circle,
-      label: state.confirmedPaused ? l10n.commandResumeDevice : l10n.commandPauseDevice,
+      label: label,
     );
     if (!state.waiting) return button;
     return Tooltip(

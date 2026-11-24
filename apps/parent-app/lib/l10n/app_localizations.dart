@@ -1520,6 +1520,18 @@ abstract class AppLocalizations {
   /// **'Resume device'**
   String get commandResumeDevice;
 
+  /// No description provided for @commandPausingDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Pausing…'**
+  String get commandPausingDevice;
+
+  /// No description provided for @commandResumingDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Resuming…'**
+  String get commandResumingDevice;
+
   /// No description provided for @commandPauseInternet.
   ///
   /// In en, this message translates to:
