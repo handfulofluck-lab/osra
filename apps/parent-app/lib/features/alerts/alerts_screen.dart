@@ -180,7 +180,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     }
     // Feature #16: conversation-coach card for AI/social alert categories.
     // UI/UX Bureau (#760): no coach card for ring alerts; fallback is opt-in.
-    final coachCard = coachCardFor(alert.category, concernTypes: _concernTypesOf(alert));
+    final coachCard = coachCardFor(alert.category, _concernTypesOf(alert));
     showDialog(
       context: context,
       builder: (dialogContext) {
