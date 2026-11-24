@@ -125,6 +125,8 @@ public struct AgentRootView: View {
     /// #661: the server address is for support, so it sits closed at the bottom of the screen.
     @State private var showTechnicalDetails = false
     @StateObject private var ring = RingController.shared
+    /// #880: the ringing permission, asked here rather than cold at the first ring.
+    @StateObject private var alarmPermission = AlarmRingingPermission(authorizer: AlarmRingingAuthorizer.alarmKit())
     #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
     @StateObject private var screenTime = ScreenTimePermission(authorizer: FamilyControlsAuthorizer())
     #endif
@@ -196,6 +198,27 @@ public struct AgentRootView: View {
                                 Text(screenTime.row.footer)
                             }
                             #endif
+                            // #880: the ringing permission, next to Screen Time and before any ring. A child who
+                            // closes the system prompt gets nothing when a parent rings, and the parent believes
+                            // the phone is ringing — so the ask is here, in words that say why, and a refusal
+                            // leaves this row with the one route that fixes it.
+                            if let alarmRow = alarmPermission.row {
+                                Section {
+                                    Text(alarmRow.body)
+                                        .accessibilityIdentifier(A11yID.statusAlarmRinging)
+                                    Button(alarmRow.buttonTitle) {
+                                        Task {
+                                            switch alarmRow.action {
+                                            case .ask:
+                                                if !(await alarmPermission.request()) { Self.openSettings() }
+                                            case .openSettings:
+                                                Self.openSettings()
+                                            }
+                                        }
+                                    }
+                                    .accessibilityIdentifier(A11yID.statusAlarmRingingButton)
+                                }
+                            }
                             Section {
                                 LabeledContent(L10n.tr("location"), value: Self.label(locationGrant))
                                     .accessibilityIdentifier(A11yID.statusLocation)
@@ -297,6 +320,8 @@ public struct AgentRootView: View {
             #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
             screenTime.refresh()
             #endif
+            // #880: the child may have turned the Alarms permission on (or off) in Settings while we were away.
+            alarmPermission.refresh()
             // #690: iOS keeps a backgrounded app alive for hours, so the revocation check runs on resume too.
             Task { await refreshAfterResume() }
         }
@@ -344,6 +369,15 @@ public struct AgentRootView: View {
         case .whileInUse: return L10n.tr("location_while_in_use")
         case .noAccess: return L10n.tr("location_off")
         }
+    }
+
+    /// #880: the only route back from a refusal. Nothing else in the app may re-ask once iOS has been told no.
+    private static func openSettings() {
+        #if os(iOS)
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
+        }
+        #endif
     }
 }
 #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)

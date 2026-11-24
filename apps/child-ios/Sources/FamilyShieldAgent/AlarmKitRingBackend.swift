@@ -284,3 +284,26 @@ extension AlarmKitRingBackend {
         #endif
     }
 }
+
+/// #880: the real AlarmKit permission, for the row on the status screen.
+public extension AlarmRingingAuthorizer {
+    @MainActor
+    static func alarmKit(backend: RingBackend = AlarmKitRingBackend()) -> AlarmRingingAuthorizer {
+        AlarmRingingAuthorizer(
+            available: backend.available,
+            read: {
+                #if os(iOS)
+                if #available(iOS 26.0, *) {
+                    switch AlarmManager.shared.authorizationState {
+                    case .authorized: return .approved
+                    case .denied: return .denied
+                    default: return .notDetermined
+                    }
+                }
+                #endif
+                return .notDetermined
+            },
+            ask: { await backend.requestAuthorization() }
+        )
+    }
+}

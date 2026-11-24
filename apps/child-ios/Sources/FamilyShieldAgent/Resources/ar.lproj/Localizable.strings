@@ -101,6 +101,12 @@
 "ring_alarm_title" = "هذا الهاتف يرنّ بطلب من والدك أو والدتك";
 "ring_notification_title" = "هذا الهاتف يرنّ بطلب من والدك أو والدتك";
 "ring_explanation" = "يحاول والدك أو والدتك العثور على هذا الهاتف أو التواصل معك. يتوقف الرنين عند إيقافه من تطبيق الوالدين، أو عند إدخال رمز PIN للوالدين هنا. ويتوقف تلقائيًا بعد 5 دقائق.";
+/* #880: Arabic Language Bureau (604 7122208660), copied verbatim. «غير مفعّل» because "off" is a state, and
+   «المنبّهات» quotes Apple's own Settings label (rule R8). */
+"alarm_setup_body" = "ليتمكّن والدك أو والدتك من جعل هذا الهاتف يرنّ بصوت عالٍ إذا ضاع.";
+"alarm_setup_button" = "السماح بالرنين";
+"alarm_denied_row" = "الرنين غير مفعّل على هذا الآيفون.";
+"alarm_denied_button" = "التفعيل من الإعدادات";
 "ring_pin_title" = "رمز PIN للوالدين";
 "ring_notification_body" = "افتح تطبيق أسرة للأطفال ليُدخل والدك أو والدتك رمز PIN للوالدين.";
 "ring_dismiss" = "فتح تطبيق أسرة للأطفال";

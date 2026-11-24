@@ -20,6 +20,9 @@ public enum A11yID {
     public static let statusSyncFailed = "status.syncFailed"
     public static let statusScreenTime = "status.screenTime"
     public static let statusScreenTimeButton = "status.screenTime.button"
+    /// #880: the ringing permission row and its one button.
+    public static let statusAlarmRinging = "status.alarmRinging"
+    public static let statusAlarmRingingButton = "status.alarmRinging.button"
     public static let statusLocation = "status.location"
     public static let statusLocationButton = "status.location.button"
     public static let statusGroups = "status.groups"
