@@ -47,7 +47,7 @@ public final class ScreenTimeController {
     }
 
     /// ADR-0037: shields exactly the apps, categories and websites of the blocked groups, nothing else. These are
-    /// picker tokens, so iOS shows the OSRA shield (and Ask parent) instead of hiding the app, which is what
+    /// picker tokens, so iOS shows the OSRA shield (and Request access) instead of hiding the app, which is what
     /// `blockedApplications` does for the bundle-id rules above.
     /// [serverBlocked]: the groups the parent blocked from the parent app (ADR-0037 PR B3); the last synced set by
     /// default, so the groups screen's own commits keep them.
