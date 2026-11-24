@@ -88,7 +88,7 @@ open class FamilyShieldShieldActionDelegate: ShieldActionDelegate {
         respond(to: action, target: Self.target("web", webDomain), completionHandler: completionHandler)
     }
 
-    /// ADR-0037: a tap on the shield of an app blocked through a group's category; Ask parent works the same.
+    /// ADR-0037: a tap on the shield of an app blocked through a group's category; Request access works the same.
     public override func handle(
         action: ShieldAction,
         for category: ActivityCategoryToken,
@@ -120,7 +120,7 @@ open class FamilyShieldShieldActionDelegate: ShieldActionDelegate {
             reporter.report(
                 category: "app_blocked",
                 title: "Child asked for access",
-                body: "Child pressed 'Ask parent' on a shield screen.",
+                body: ShieldTapPolicy.requestAccessAlertBody,
                 childId: AlertReporter.pairedChildId()
             )
         }
