@@ -522,6 +522,10 @@
   "commandResumeDevice": "Resume device",
   "commandPauseInternet": "Pause internet",
   "commandResumeInternet": "Resume internet",
+  "scopeThisDevice": "This device",
+  "scopeAllDevices": "All paired devices",
+  "deviceControlPending": "Waiting for this device",
+  "deviceControlFailed": "This device couldn't apply the change",
   "commandBonusTime": "Bonus time",
   "commandWindDown": "Wind down",
   "commandLocateNow": "Locate now",
@@ -1894,5 +1898,16 @@
   "socialCommentsAndChats": "Comments and chats",
   "socialNewAppsBanner": "You can now choose YouTube, Telegram, Reddit and Messenger too.",
   "socialPrivacyLine": "OSRA only flags concerning messages. It never shows you every chat.",
-  "selectAll": "Select all"
+  "selectAll": "Select all",
+  "socialAlertCountTitle": "{count, plural, =1{1 concerning message on {app}} other{{count} concerning messages on {app}}}",
+  "@socialAlertCountTitle": { "placeholders": { "count": { "type": "int" }, "app": { "type": "String" } } },
+  "socialAlertFromContactOnly": "From {contact}",
+  "@socialAlertFromContactOnly": { "placeholders": { "contact": { "type": "String" } } },
+  "socialAlertLatestAt": "Latest {time}",
+  "@socialAlertLatestAt": { "placeholders": { "time": { "type": "String" } } },
+  "socialAlertUnknownContact": "an unknown contact",
+  "socialAlertMorePush": "{count, plural, =1{1 more concerning message for {child} on {app}} other{{count} more concerning messages for {child} on {app}}}",
+  "@socialAlertMorePush": { "placeholders": { "count": { "type": "int" }, "child": { "type": "String" }, "app": { "type": "String" } } },
+  "socialAlertNewSince": "+{count} new",
+  "@socialAlertNewSince": { "placeholders": { "count": { "type": "int" } } }
 }

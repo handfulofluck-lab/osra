@@ -1532,6 +1532,30 @@ abstract class AppLocalizations {
   /// **'Resume internet'**
   String get commandResumeInternet;
 
+  /// No description provided for @scopeThisDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'This device'**
+  String get scopeThisDevice;
+
+  /// No description provided for @scopeAllDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'All paired devices'**
+  String get scopeAllDevices;
+
+  /// No description provided for @deviceControlPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for this device'**
+  String get deviceControlPending;
+
+  /// No description provided for @deviceControlFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'This device couldn\'t apply the change'**
+  String get deviceControlFailed;
+
   /// No description provided for @commandBonusTime.
   ///
   /// In en, this message translates to:
@@ -5684,6 +5708,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Select all'**
   String get selectAll;
+
+  /// No description provided for @socialAlertCountTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 concerning message on {app}} other{{count} concerning messages on {app}}}'**
+  String socialAlertCountTitle(int count, String app);
+
+  /// No description provided for @socialAlertFromContactOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'From {contact}'**
+  String socialAlertFromContactOnly(String contact);
+
+  /// No description provided for @socialAlertLatestAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Latest {time}'**
+  String socialAlertLatestAt(String time);
+
+  /// No description provided for @socialAlertUnknownContact.
+  ///
+  /// In en, this message translates to:
+  /// **'an unknown contact'**
+  String get socialAlertUnknownContact;
+
+  /// No description provided for @socialAlertMorePush.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 more concerning message for {child} on {app}} other{{count} more concerning messages for {child} on {app}}}'**
+  String socialAlertMorePush(int count, String child, String app);
+
+  /// No description provided for @socialAlertNewSince.
+  ///
+  /// In en, this message translates to:
+  /// **'+{count} new'**
+  String socialAlertNewSince(int count);
 }
 
 class _AppLocalizationsDelegate

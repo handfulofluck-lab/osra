@@ -884,6 +884,18 @@ class AppLocalizationsAr extends AppLocalizations {
   String get commandResumeInternet => 'استئناف الإنترنت';
 
   @override
+  String get scopeThisDevice => 'هذا الجهاز';
+
+  @override
+  String get scopeAllDevices => 'كل الأجهزة المقترنة';
+
+  @override
+  String get deviceControlPending => 'بانتظار تأكيد هذا الجهاز';
+
+  @override
+  String get deviceControlFailed => 'تعذّر على هذا الجهاز تطبيق التغيير';
+
+  @override
   String get commandBonusTime => 'وقت إضافي';
 
   @override
@@ -3686,4 +3698,52 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get selectAll => 'تحديد الكل';
+
+  @override
+  String socialAlertCountTitle(int count, String app) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count رسالة تستدعي المراجعة في $app',
+      many: '$count رسالة تستدعي المراجعة في $app',
+      few: '$count رسائل تستدعي المراجعة في $app',
+      two: 'رسالتان تستدعيان المراجعة في $app',
+      one: 'رسالة واحدة تستدعي المراجعة في $app',
+      zero: 'لا رسائل تستدعي المراجعة في $app',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String socialAlertFromContactOnly(String contact) {
+    return 'من $contact';
+  }
+
+  @override
+  String socialAlertLatestAt(String time) {
+    return 'آخر رسالة $time';
+  }
+
+  @override
+  String get socialAlertUnknownContact => 'جهة اتصال غير معروفة';
+
+  @override
+  String socialAlertMorePush(int count, String child, String app) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count رسالة أخرى تستدعي المراجعة لدى $child في $app',
+      many: '$count رسالة أخرى تستدعي المراجعة لدى $child في $app',
+      few: '$count رسائل أخرى تستدعي المراجعة لدى $child في $app',
+      two: 'رسالتان أخريان تستدعيان المراجعة لدى $child في $app',
+      one: 'رسالة أخرى تستدعي المراجعة لدى $child في $app',
+      zero: 'لا رسائل أخرى تستدعي المراجعة لدى $child في $app',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String socialAlertNewSince(int count) {
+    return '+$count جديدة';
+  }
 }
