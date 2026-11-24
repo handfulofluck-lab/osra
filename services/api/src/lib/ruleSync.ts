@@ -15,6 +15,16 @@ export async function filterAgentRules<T extends Record<string, unknown>>(childI
   return filtered;
 }
 
+/** Normalize legacy `"x"` socialMonitoring key to canonical `"twitter"` when `"twitter"` is absent (#1036). */
+export function normalizeSocialMonitoring(raw: unknown): Record<string, boolean> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, boolean> = { ...(raw as Record<string, boolean>) };
+  if (!Object.hasOwn(out, "twitter") && Object.hasOwn(out, "x") && typeof out.x === "boolean") {
+    out.twitter = out.x;
+  }
+  return out;
+}
+
 /** Map a flat Prisma RuleSet row to the nested API shape shared with agents. */
 export function toApiRuleSet(row: Record<string, unknown>) {
   return {
@@ -50,7 +60,7 @@ export function toApiRuleSet(row: Record<string, unknown>) {
      * that has not synced since the flag went on behaves like one on a server where it is off.
      */
     siteNames: siteNamesEnabled(),
-    socialMonitoring: (row.socialMonitoring as Record<string, boolean>) ?? {},
+    socialMonitoring: normalizeSocialMonitoring(row.socialMonitoring),
     contactAllowlist: (row.contactAllowlist as string[]) ?? [],
     updatedAt: row.updatedAt,
     // Issue #475: the version the parent app compares against what the device has applied. Older rows
