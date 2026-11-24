@@ -344,6 +344,10 @@ void main() {
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
       for (final (label, command) in [('Ring', 'ring'), ('Lock', 'lock'), ('Unlock', 'unlock')]) {
+        // #969: the card grew two scope headings and a status line, so the controls sit lower than the 600 px
+        // test viewport. Scroll them into view instead of shrinking the card for the test's convenience.
+        await tester.ensureVisible(find.text(label));
+        await tester.pumpAndSettle();
         await tester.tap(find.text(label));
         await flushFakeHttp(tester);
         expect(find.textContaining('$label queued for Pixel 7a'), findsOneWidget);

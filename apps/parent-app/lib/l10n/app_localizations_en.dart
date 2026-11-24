@@ -859,6 +859,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commandResumeInternet => 'Resume internet';
 
   @override
+  String get scopeThisDevice => 'This device';
+
+  @override
+  String get scopeAllDevices => 'All paired devices';
+
+  @override
+  String get deviceControlPending => 'Waiting for this device';
+
+  @override
+  String get deviceControlFailed => 'This device couldn\'t apply the change';
+
+  @override
   String get commandBonusTime => 'Bonus time';
 
   @override
@@ -3439,5 +3451,45 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String appBlockedNamedSnack(String app) {
     return '$app blocked';
+  }
+
+  @override
+  String socialAlertCountTitle(int count, String app) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count concerning messages on $app',
+      one: '1 concerning message on $app',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String socialAlertFromContactOnly(String contact) {
+    return 'From $contact';
+  }
+
+  @override
+  String socialAlertLatestAt(String time) {
+    return 'Latest $time';
+  }
+
+  @override
+  String get socialAlertUnknownContact => 'an unknown contact';
+
+  @override
+  String socialAlertMorePush(int count, String child, String app) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count more concerning messages for $child on $app',
+      one: '1 more concerning message for $child on $app',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String socialAlertNewSince(int count) {
+    return '+$count new';
   }
 }
