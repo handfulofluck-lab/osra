@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/core/date_formatting.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/social/social_screen.dart';
@@ -147,6 +148,19 @@ void main() {
 
       for (final a in kSocialApps) {
         expect(tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, a.label)).value, isTrue, reason: '${a.label} should default ON');
+      }
+    });
+
+    testWidgets('empty socialMonitoring map ({}) parses empty in RuleSet and renders all switches ON (#1024)', (tester) async {
+      expect(RuleSet.fromJson(const {'socialMonitoring': {}}).socialMonitoring, isEmpty);
+      expect(RuleSet.fromJson(const {}).socialMonitoring, isEmpty);
+
+      final api = FakeApiClient(socialRoutes(socialMonitoring: const {}));
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+      await flushFakeHttp(tester);
+
+      for (final a in kSocialApps) {
+        expect(tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, a.label)).value, isTrue, reason: '${a.label} should render ON for {}');
       }
     });
 

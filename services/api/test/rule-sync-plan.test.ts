@@ -6,7 +6,7 @@ vi.mock("../src/redis.js", () => ({ publishJson: vi.fn(async () => undefined) })
 vi.mock("../src/lib/deviceCommands.js", () => ({ enqueueDeviceCommand: vi.fn(async () => undefined) }));
 
 import { publishJson } from "../src/redis.js";
-import { publishChildRules } from "../src/lib/ruleSync.js";
+import { publishChildRules, toApiRuleSet } from "../src/lib/ruleSync.js";
 import { PREMIUM_FEATURES } from "../src/lib/planGate.js";
 
 beforeEach(() => resetPrismaMock());
@@ -31,5 +31,12 @@ describe("agent rule sync with no enforceable plan", () => {
     } finally {
       delete PREMIUM_FEATURES.socialMonitoring;
     }
+  });
+
+  it("preserves an empty or omitted socialMonitoring map as {} without backfilling keys (#1024)", () => {
+    expect(toApiRuleSet({ id: "rs-1", childId: "child-1", socialMonitoring: {} }).socialMonitoring).toEqual({});
+    expect(toApiRuleSet({ id: "rs-2", childId: "child-1", socialMonitoring: undefined }).socialMonitoring).toEqual({});
+    expect(toApiRuleSet({ id: "rs-3", childId: "child-1", socialMonitoring: { whatsapp: false } }).socialMonitoring)
+      .toEqual({ whatsapp: false });
   });
 });
