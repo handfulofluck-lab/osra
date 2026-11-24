@@ -49,7 +49,7 @@ class CapabilityReporter @Inject constructor(
 
     /** The report, or null when this build cannot name itself (see [CapabilitiesPolicy.report]). */
     fun report(): Map<String, Any?>? = CapabilitiesPolicy.report(
-        versionName = BuildConfig.VERSION_NAME,
+        versionName = ClientHeader.wireVersionName(BuildConfig.VERSION_NAME),
         versionCode = BuildConfig.VERSION_CODE,
         flavour = if (BuildConfig.CAPTURE_CALL_SMS) ClientHeader.FLAVOUR_FULL else ClientHeader.FLAVOUR_PLAY,
         facts = facts(),
@@ -59,7 +59,7 @@ class CapabilityReporter @Inject constructor(
     fun facts(): CapabilitiesPolicy.CapabilityFacts {
         val full = BuildConfig.CAPTURE_CALL_SMS
         return CapabilitiesPolicy.CapabilityFacts(
-            versionName = BuildConfig.VERSION_NAME,
+            versionName = ClientHeader.wireVersionName(BuildConfig.VERSION_NAME),
             versionCode = BuildConfig.VERSION_CODE,
             fullBuild = full,
             applicableGrants = CapabilitiesPolicy.GRANT_WIRE
