@@ -9,6 +9,9 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.familyshield.agent.commands.CommandPollWorker
+import com.familyshield.agent.services.LocationRefreshPolicy
+import com.familyshield.agent.services.LocationRefreshWorker
+import com.familyshield.agent.services.PendingPingWorker
 import com.familyshield.agent.telemetry.TelemetryWorker
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
@@ -16,8 +19,8 @@ import java.util.concurrent.TimeUnit
 /** Enqueues the agent's periodic WorkManager jobs with ExistingPeriodicWorkPolicy.KEEP. */
 object WorkScheduler {
 
-    /** Enqueues (or keeps) the rules-sync (6 h), command-poll (60 s), telemetry (15 min) and
-     * midnight-reset (24 h) jobs. */
+    /** Enqueues (or keeps) the rules-sync (6 h), command-poll (60 s), location-refresh (2 h / 30 m flex),
+     * pending-ping flush (30 min), telemetry (15 min) and midnight-reset (24 h) jobs. */
     fun scheduleAll(context: Context) {
         val wm = WorkManager.getInstance(context)
         val network = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
@@ -40,6 +43,23 @@ object WorkScheduler {
                 .setConstraints(network)
                 .build(),
         )
+        // Issue #1053: Doze-resilient background location refresh (<= 2.5-3 h spacing across Doze
+        // maintenance windows) so an overnight stationary phone never goes 9 hours stale.
+        wm.enqueueUniquePeriodicWork(
+            LocationRefreshWorker.WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<LocationRefreshWorker>(
+                LocationRefreshPolicy.REFRESH_INTERVAL_HOURS,
+                TimeUnit.HOURS,
+                LocationRefreshPolicy.FLEX_INTERVAL_MINUTES,
+                TimeUnit.MINUTES,
+            )
+                .setConstraints(network)
+                .build(),
+        )
+        // Issue #1053: ensure freshly paired phones have the Room pending-ping flush backstop
+        // immediately without waiting for BOOT_COMPLETED.
+        PendingPingWorker.schedule(context)
         // Plan 2.6: the scan queue's periodic drain (network-constrained).
         com.familyshield.agent.social.ScanFlushWorker.schedulePeriodic(context)
         wm.enqueueUniquePeriodicWork(
