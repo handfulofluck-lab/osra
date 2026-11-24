@@ -93,6 +93,9 @@ const FORBIDDEN = {
   // #830: the site-name history is off until the privacy notice (#649) and the Play data-safety form are
   // live. Turning it on means removing this line in its own reviewed change, with that evidence.
   SITE_NAMES_ENABLED: 'site names stay off until the privacy notice and the Play form are live (Karim, 2026-11-16)',
+  // #1061: staging-only test switch. With it on, every flagged message pushes immediately instead of being
+  // folded into the 10-minute window, which is how a parent is meant to be spared a push per message.
+  SOCIAL_ALERT_PUSH_EVERY_MESSAGE: 'sends a push for every flagged message instead of the 10-minute window (#1061); staging test only',
 };
 
 /** Allowed, optional, plain. A value rule where a wrong value matters. */
@@ -424,6 +427,7 @@ function selftest() {
     ['iPhone push key missing at launch', (t) => dropSecret(t, 'APNS_KEY_P8'), 'APNS_KEY_P8: missing (needed at launch'],
     ['Play package missing at launch', (t) => dropEnv(t, 'PLAY_PACKAGE_NAME'), 'PLAY_PACKAGE_NAME: missing (needed at launch'],
     ['staging own-model switch forbidden in production', (t) => setEnv(t, 'OSRA_STAGING_QA_OWN_MODEL_ENABLED', '1'), 'OSRA_STAGING_QA_OWN_MODEL_ENABLED: not allowed'],
+    ['push-per-message switch forbidden in production, even as false', (t) => setEnv(t, 'SOCIAL_ALERT_PUSH_EVERY_MESSAGE', 'false'), 'SOCIAL_ALERT_PUSH_EVERY_MESSAGE: not allowed'],
   ];
 
   let failed = 0;

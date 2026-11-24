@@ -13,6 +13,18 @@ export const SOCIAL_ALERT_WINDOW_MS = SOCIAL_ALERT_WINDOW_SECONDS * 1000;
 /** Default budget a concurrent replica waits for `__pending__` before handing off to the deferred queue. */
 export const DEFAULT_PENDING_WAIT_MS = 5_000;
 
+/**
+ * Issue #1061: staging-only switch — one push per flagged message instead of the 10-minute window.
+ *
+ * Karim asked to see how the own model judges each message during the 24 Nov test, so a message that
+ * is folded into a window would otherwise be invisible until the summary. Card aggregation is unchanged:
+ * the Alerts list still shows one card per contact with a running count; only the pushes multiply.
+ * Production keeps the window: `scripts/check-production-taskdef.mjs` refuses this name outright.
+ */
+export function pushEveryMessageEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.SOCIAL_ALERT_PUSH_EVERY_MESSAGE === "true";
+}
+
 export type SocialSeverity = "info" | "warning" | "critical";
 export const SOCIAL_SEVERITY_RANK: Record<SocialSeverity, number> = { info: 0, warning: 1, critical: 2 };
 
@@ -330,6 +342,8 @@ interface ApplyContext {
   nowIso: string;
   windowEndsAtIso: string;
   redis: ReturnType<typeof getRedis>;
+  /** #1061: push after every applied observation instead of waiting for the window summary. */
+  pushEveryMessage?: boolean;
 }
 
 async function applyObservationsToAlert(
@@ -406,8 +420,9 @@ async function applyObservationsToAlert(
       SOCIAL_SEVERITY_RANK[highestIncomingSeverity] > SOCIAL_SEVERITY_RANK[normalizeSocialSeverity(current.severity)]
         ? highestIncomingSeverity
         : normalizeSocialSeverity(current.severity);
-    const nextPushedCount = bypass ? nextCount : prevPushedCount;
-    nextPushedSeverity = bypass ? highestIncomingSeverity : prevPushedSeverity;
+    const pushEvery = ctx.pushEveryMessage === true;
+    const nextPushedCount = bypass || pushEvery ? nextCount : prevPushedCount;
+    nextPushedSeverity = bypass || pushEvery ? highestIncomingSeverity : prevPushedSeverity;
     const nextSummaryPending = nextCount > nextPushedCount;
     const mergedConcerns = [...new Set([...(existingMeta?.concernTypes ?? []), ...allIncomingConcerns])].slice(0, 5);
     const mergedAttribution = mergeProviderOutcomes(existingMeta?.providerOutcomes, combinedAttribution);
@@ -586,6 +601,7 @@ export async function recordFlaggedSocialAlert(
   const contact = input.contact.trim();
   const contactKey = socialContactKey(childId, contact);
   const throttleKey = socialAlertThrottleKey(childId, appName, contact);
+  const pushEvery = pushEveryMessageEnabled();
   const waitBudgetMs =
     typeof input.pendingWaitMs === "number" && Number.isFinite(input.pendingWaitMs) && input.pendingWaitMs >= 0
       ? input.pendingWaitMs
@@ -615,6 +631,7 @@ export async function recordFlaggedSocialAlert(
       nowIso,
       windowEndsAtIso,
       redis,
+      pushEveryMessage: pushEvery,
     };
 
     for (let claimPass = 0; claimPass < 2; claimPass += 1) {
@@ -816,6 +833,11 @@ export async function recordFlaggedSocialAlert(
         : [];
       const batch = matchingPending.length > 0 ? [...matchingPending, observation] : [observation];
       const applied = await applyObservationsToAlert(existing, state, batch, applyCtx);
+      // Issue #1061: with the switch on, every applied observation is pushed now; the summary stays off because
+      // applyObservationsToAlert counts it as already pushed.
+      if (pushEvery && applied.committed && applied.updatedAlert) {
+        await notifyParentsOfAlert(familyId, applied.updatedAlert, childName ?? undefined);
+      }
       if (applied.committed && windowDeferredKey && pending.rawCount > 0) {
         await ackDeferredEntries(redis, windowDeferredKey, pending.rawCount);
       }

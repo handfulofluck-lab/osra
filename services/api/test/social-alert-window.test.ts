@@ -429,6 +429,62 @@ describe("social alert per-contact window (#1029)", () => {
     await app.close();
   });
 
+  it("#1061: with SOCIAL_ALERT_PUSH_EVERY_MESSAGE=true three messages from one contact give three pushes and one card counting 3", async () => {
+    // Mutant this row kills: dropping the per-message push (or leaving `pushedCount` behind) turns this into
+    // the default behaviour — 1 push, summaryPending true, and a later summary push of "2 more".
+    vi.stubEnv("SOCIAL_ALERT_PUSH_EVERY_MESSAGE", "true");
+    const app = await buildApp(socialRoutes, "/v1/social");
+    vi.stubGlobal("fetch", aiFlagged("warning", "cyberbullying"));
+
+    for (let i = 1; i <= 3; i += 1) {
+      vi.setSystemTime(Date.now() + 30_000);
+      const res = await postScan(app, {
+        childId: CHILD.id,
+        app: "WhatsApp",
+        contact: "Sam",
+        text: `own-model line ${i}`,
+      });
+      expect(res.statusCode).toBe(200);
+    }
+
+    // One card per contact, counting every message (#1030 aggregation untouched)…
+    expect(alerts.size).toBe(1);
+    const row = [...alerts.values()][0]!;
+    expect(row.metadata.flaggedCount).toBe(3);
+    expect(row.metadata.contact).toBe("Sam");
+    // …but a push for each message, and nothing left pending for the summary sweep.
+    expect(pushRounds()).toBe(3);
+    expect(row.metadata.pushedCount).toBe(3);
+    expect(row.metadata.summaryPending).toBe(false);
+
+    vi.setSystemTime(Date.now() + SOCIAL_ALERT_WINDOW_MS + 1_000);
+    const sweep = await runSocialAlertSummarySweep(new Date());
+    expect(sweep.pushed).toHaveLength(0);
+    expect(pushRounds()).toBe(3);
+
+    // The lock-screen rule still holds on every one of those pushes: no contact name, no message text.
+    for (const sent of sentPushes) {
+      const body = JSON.stringify(sent.message);
+      expect(body).not.toContain("Sam");
+      expect(body).not.toContain("own-model line");
+    }
+
+    await app.close();
+  });
+
+  it("#1061: the switch is off unless it is exactly true", async () => {
+    // A stray value must not turn it on in a definition someone copied by hand.
+    vi.stubEnv("SOCIAL_ALERT_PUSH_EVERY_MESSAGE", "1");
+    const app = await buildApp(socialRoutes, "/v1/social");
+    vi.stubGlobal("fetch", aiFlagged("warning", "cyberbullying"));
+    for (let i = 1; i <= 2; i += 1) {
+      vi.setSystemTime(Date.now() + 30_000);
+      await postScan(app, { childId: CHILD.id, app: "WhatsApp", contact: "Sam", text: `off line ${i}` });
+    }
+    expect(pushRounds()).toBe(1);
+    await app.close();
+  });
+
   it("higher severity mid-window bypasses the throttle and pushes immediately without an extra summary push", async () => {
     const app = await buildApp(socialRoutes, "/v1/social");
 
