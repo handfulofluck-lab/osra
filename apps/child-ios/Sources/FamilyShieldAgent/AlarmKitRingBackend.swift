@@ -287,9 +287,12 @@ extension AlarmKitRingBackend {
 
 /// #880: the real AlarmKit permission, for the row on the status screen.
 public extension AlarmRingingAuthorizer {
+    /// The backend is built **inside** the body: `AlarmKitRingBackend.init` is `@MainActor`, and a default
+    /// argument is evaluated in a nonisolated context (`AlarmKitRingBackend.swift:291` in CI, 24 Nov).
     @MainActor
-    static func alarmKit(backend: RingBackend = AlarmKitRingBackend()) -> AlarmRingingAuthorizer {
-        AlarmRingingAuthorizer(
+    static func alarmKit(backend: RingBackend? = nil) -> AlarmRingingAuthorizer {
+        let backend = backend ?? AlarmKitRingBackend()
+        return AlarmRingingAuthorizer(
             available: backend.available,
             read: {
                 #if os(iOS)
