@@ -3172,6 +3172,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get setupMonitoringTitle => 'Which apps should OSRA watch for you?';
 
   @override
+  String get setupMonitoringAppBarTitle => 'Social apps';
+
+  @override
   String get setupMonitoringIntro =>
       'OSRA checks messages in these apps for signs of bullying, grooming or self-harm, and tells you when it finds something. Tick the apps you want; you can change this any time in the rules.';
 
@@ -3458,6 +3461,34 @@ class AppLocalizationsEn extends AppLocalizations {
   String appBlockedNamedSnack(String app) {
     return '$app blocked';
   }
+
+  @override
+  String get socialCheckMessagesIn => 'Check messages in';
+
+  @override
+  String socialNotOnChildPhone(String child, int count) {
+    return 'Not on $child\'s phone ($count)';
+  }
+
+  @override
+  String get socialChecking => 'Checking';
+
+  @override
+  String get socialOff => 'Off';
+
+  @override
+  String get socialCommentsAndChats => 'Comments and chats';
+
+  @override
+  String get socialNewAppsBanner =>
+      'You can now choose YouTube, Telegram, Reddit and Messenger too.';
+
+  @override
+  String get socialPrivacyLine =>
+      'OSRA only flags concerning messages. It never shows you every chat.';
+
+  @override
+  String get selectAll => 'Select all';
 
   @override
   String socialAlertCountTitle(int count, String app) {

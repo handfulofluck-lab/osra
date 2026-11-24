@@ -164,7 +164,12 @@ class FlutterLocalNotifier implements LocalNotifier {
           // and the OS draws that even when the device is locked (#395 review).
           visibility: NotificationVisibility.private,
         ),
-        iOS: DarwinNotificationDetails(),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBanner: true,
+          presentList: true,
+          presentSound: true,
+        ),
       ),
       payload: alert.alertId,
     );

@@ -3366,6 +3366,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get setupMonitoringTitle => 'أي التطبيقات تريد أن يراقبها تطبيق أسرة؟';
 
   @override
+  String get setupMonitoringAppBarTitle => 'تطبيقات التواصل';
+
+  @override
   String get setupMonitoringIntro =>
       'يفحص تطبيق أسرة الرسائل في هذه التطبيقات بحثًا عن علامات التنمّر أو الاستدراج أو إيذاء النفس، وينبّهك عند رصد ما يثير القلق. اختر التطبيقات التي تريد مراقبتها، ويمكنك تغيير اختيارك في أي وقت من «القواعد».';
 
@@ -3673,6 +3676,34 @@ class AppLocalizationsAr extends AppLocalizations {
   String appBlockedNamedSnack(String app) {
     return 'تم حظر $app';
   }
+
+  @override
+  String get socialCheckMessagesIn => 'فحص الرسائل في هذه التطبيقات';
+
+  @override
+  String socialNotOnChildPhone(String child, int count) {
+    return 'غير مثبّتة على هاتف $child ($count)';
+  }
+
+  @override
+  String get socialChecking => 'الفحص مفعّل';
+
+  @override
+  String get socialOff => 'الفحص متوقف';
+
+  @override
+  String get socialCommentsAndChats => 'التعليقات والمحادثات';
+
+  @override
+  String get socialNewAppsBanner =>
+      'يمكنك الآن أيضًا اختيار YouTube وTelegram وReddit وMessenger.';
+
+  @override
+  String get socialPrivacyLine =>
+      'لا ينبّهك تطبيق أسرة للأطفال إلا إلى الرسائل التي تستدعي المراجعة، ولا يعرض لك كل المحادثات أبدًا.';
+
+  @override
+  String get selectAll => 'تحديد الكل';
 
   @override
   String socialAlertCountTitle(int count, String app) {
