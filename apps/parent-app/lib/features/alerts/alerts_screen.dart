@@ -276,7 +276,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     }
     // Feature #16: conversation-coach card for AI/social alert categories.
     // UI/UX Bureau (#760): no coach card for ring alerts; fallback is opt-in.
-    final coachCard = coachCardFor(alert.category, _concernTypesOf(alert));
+    // #760: a ring alert shows no conversation card — main's default-for-unknown category gave it one.
+    final coachCard = alert.category == 'ring' ? null : coachCardFor(alert.category, _concernTypesOf(alert));
     showDialog(
       context: context,
       builder: (dialogContext) {
@@ -401,7 +402,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                       key: const ValueKey('alert-detail-time'),
                     ),
                   const Divider(),
-                  CoachCardSection(card: coachCard, compact: true),
+                  if (coachCard != null) CoachCardSection(card: coachCard, compact: true),
                 ],
               );
             },
