@@ -95,7 +95,7 @@ void main() {
       expect(find.textContaining('com.edu.app'), findsNothing);
     });
 
-    testWidgets('add then remove an app; Save PUTs alwaysAllowedApps', (tester) async {
+    testWidgets('add then remove an app; Save patches alwaysAllowedApps', (tester) async {
       final api = rulesApi();
       await openAppsTab(tester, api);
 
@@ -108,16 +108,16 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.widgetWithText(InputChip, 'Video'), findsOneWidget);
 
-      // Save → PUT carries both apps, by package id.
+      // Save → PATCH carries both apps, by package id.
       await tester.tap(find.text('Save'));
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
-      var puts = api.calls('PUT', '/v1/rules/child-1');
-      expect(puts, hasLength(1));
-      expect(puts.single.body['alwaysAllowedApps'], ['com.edu.app', 'com.example.video']);
+      var patches = api.calls('PATCH', '/v1/rules/child-1');
+      expect(patches, hasLength(1));
+      expect(patches.single.body['alwaysAllowedApps'], ['com.edu.app', 'com.example.video']);
       await runOutSnackbar(tester);
 
-      // Remove the chip, save again → PUT carries only the remaining app.
+      // Remove the chip, save again → PATCH carries only the remaining app.
       final chip = find.widgetWithText(InputChip, 'Video');
       await tester.tap(find.descendant(of: chip, matching: find.byIcon(Icons.clear)));
       await tester.pumpAndSettle();
@@ -126,9 +126,9 @@ void main() {
       await tester.tap(find.text('Save'));
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
-      puts = api.calls('PUT', '/v1/rules/child-1');
-      expect(puts, hasLength(2));
-      expect(puts.last.body['alwaysAllowedApps'], ['com.edu.app']);
+      patches = api.calls('PATCH', '/v1/rules/child-1');
+      expect(patches, hasLength(2));
+      expect(patches.last.body['alwaysAllowedApps'], ['com.edu.app']);
       await runOutSnackbar(tester);
     });
   });
@@ -211,7 +211,7 @@ void main() {
       expect(find.text("Today's route"), findsOneWidget);
       // Sorted ascending → starts at the earliest ping.
       expect(find.textContaining('08:00'), findsOneWidget);
-      expect(find.textContaining('±12 m'), findsOneWidget);
+      expect(find.textContaining('±12\u00a0m'), findsOneWidget);
 
       // ▶ steps 15 min of timeline: 08:00 → nearest to 08:15 is 08:20.
       await tester.tap(find.byTooltip('Forward 15 min'));
@@ -222,7 +222,7 @@ void main() {
       await tester.drag(find.byType(Slider), const Offset(800, 0));
       await tester.pumpAndSettle();
       expect(find.textContaining('08:40'), findsOneWidget);
-      expect(find.textContaining('±20 m'), findsOneWidget);
+      expect(find.textContaining('±20\u00a0m'), findsOneWidget);
 
       // ◀ steps back: 08:40 → nearest to 08:25 is 08:20.
       await tester.tap(find.byTooltip('Back 15 min'));

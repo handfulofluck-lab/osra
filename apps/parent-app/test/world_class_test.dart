@@ -105,6 +105,51 @@ void main() {
       expect(calls.last.query['days'], 30);
     });
 
+    testWidgets('returning to a range reloads activity recorded since the first visit', (tester) async {
+      var total = 0;
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/reports/summary': (_) => {'totalAppMinutes': total},
+      });
+      await pumpScreen(tester, const ReportsScreen(childId: 'child-1'), api);
+      expect(find.textContaining('No activity recorded'), findsOneWidget);
+
+      await tester.tap(find.text('30 days'));
+      await tester.pumpAndSettle();
+      total = 22;
+      await tester.tap(find.text('7 days'));
+      await tester.pumpAndSettle();
+
+      // Mutant: retain the old seven-day provider after its last listener leaves.
+      expect(api.calls('GET', '/v1/reports/summary').map((r) => r.query['days']), [7, 30, 7]);
+      expect(find.textContaining('Total 22 min'), findsOneWidget);
+    });
+
+    testWidgets('refreshing the open report replaces an earlier empty response', (tester) async {
+      var total = 0;
+      final api = FakeApiClient({'GET /v1/reports/summary': (_) => {'totalAppMinutes': total}});
+      await pumpScreen(tester, const ReportsScreen(childId: 'child-1'), api);
+      expect(find.textContaining('No activity recorded'), findsOneWidget);
+
+      total = 22;
+      await tester.tap(find.byTooltip('Refresh'));
+      await tester.pumpAndSettle();
+
+      // Mutant: redraw the screen without refetching the selected window.
+      expect(api.calls('GET', '/v1/reports/summary'), hasLength(2));
+      expect(find.textContaining('Total 22 min'), findsOneWidget);
+    });
+
+    testWidgets('recorded minutes with an empty app list keep the total and identify the missing breakdown', (tester) async {
+      await pumpScreen(tester, const ReportsScreen(childId: 'child-1'),
+          reportApi(summary: {'totalAppMinutes': 22, 'topApps': []}));
+
+      // Mutant: test topApps.isEmpty alone and claim there was no usage.
+      expect(find.textContaining('Total 22 min'), findsOneWidget);
+      expect(find.text('Per-app usage is unavailable'), findsOneWidget);
+      expect(find.text('No app usage recorded'), findsNothing);
+    });
+
     testWidgets('empty summary shows the empty state', (tester) async {
       final api = reportApi(summary: const {});
       await pumpScreen(tester, const ReportsScreen(childId: 'child-1'), api);
@@ -150,6 +195,27 @@ void main() {
           .map((w) => w.color)
           .toList();
       expect(colors, containsAll([Colors.green, Colors.red]));
+    });
+
+    testWidgets('dashboard refresh gets a new score and keeps a reported zero distinct from a missing score', (tester) async {
+      var score = 0;
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/reports/wellbeing/child-1': (_) => {'score': score},
+        'GET /v1/reports/wellbeing/child-2': (_) => {'childId': 'child-2'},
+      });
+      await pumpScreen(tester, const DashboardScreen(), api);
+
+      // Mutant: substitute zero when the response omits the score.
+      expect(find.text('Wellbeing 0/100'), findsOneWidget);
+      score = 76;
+      await tester.drag(find.byKey(const ValueKey('dashboardCardsList')), const Offset(0, 350));
+      await tester.pumpAndSettle();
+
+      // Mutant: refreshing the family alone keeps the initial score cached.
+      expect(api.calls('GET', '/v1/reports/wellbeing/child-1'), hasLength(2));
+      expect(find.text('Wellbeing 76/100'), findsOneWidget);
+      expect(find.text('Wellbeing 0/100'), findsNothing);
     });
 
     testWidgets('ring is hidden while the score fails to load', (tester) async {
@@ -234,6 +300,12 @@ void main() {
       await tester.pumpAndSettle();
 
       // The zone is loaded from /v1/family/me and shown as a city + offset, never raw IANA ids.
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('digestTimezone')),
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('digestTimezone')), findsOneWidget);
       expect(find.text('UTC (GMT+0)'), findsOneWidget);
       expect(find.text('18:00'), findsOneWidget);
@@ -290,9 +362,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.widget<SwitchListTile>(weekly).value, isTrue);
 
-      // The email field now carries a helper line (#344 review), so Save sits
-      // just below the 600 px default surface.
-      await tester.ensureVisible(find.text('Save preferences'));
+      // The email chips/input push Save below the 600 px default surface.
+      await tester.scrollUntilVisible(find.text('Save preferences'), 150, scrollable: find.byType(Scrollable).first);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Save preferences'));
       await flushFakeHttp(tester);
@@ -342,7 +413,10 @@ void main() {
       expect(find.textContaining('Confirmation sent'), findsNothing);
       expect(find.byKey(const ValueKey('digestRecipient-qa@osratech.com')), findsOneWidget);
 
-      await tester.enterText(find.byType(TextField), 'qa@osratech.com, grandma@example.com');
+      // Add grandma@example.com via the R-ID-10 single-email chip input while keeping the existing chip.
+      await tester.enterText(find.byKey(const ValueKey('digestEmailAddInput')), 'grandma@example.com');
+      await tester.tap(find.byKey(const ValueKey('digestEmailAddButton')));
+      await tester.pumpAndSettle();
       // The recipient rows push Save below the 600 px surface, so scroll it into view first.
       await tester.drag(find.byType(ListView), const Offset(0, -300));
       await tester.pumpAndSettle();
@@ -464,7 +538,10 @@ void main() {
       final api = insightsApi();
       await openAppsTab(tester, api);
 
-      await tester.tap(find.text('Game'));
+      await tester.tap(find.text('Game').first);
+      await tester.pumpAndSettle();
+      // Karim 23 Nov: a row opens the app's choices first; "About this app" opens the insight sheet.
+      await tester.tap(find.byKey(const ValueKey('appSheetInsight')));
       await tester.pumpAndSettle();
 
       expect(api.calls('GET', '/v1/insights/apps').single.query['packageId'], 'com.example.game');
@@ -484,7 +561,10 @@ void main() {
       final api = FakeApiClient(standardRoutes());
       await openAppsTab(tester, api);
 
-      await tester.tap(find.text('Game'));
+      await tester.tap(find.text('Game').first);
+      await tester.pumpAndSettle();
+      // Karim 23 Nov: a row opens the app's choices first; "About this app" opens the insight sheet.
+      await tester.tap(find.byKey(const ValueKey('appSheetInsight')));
       await tester.pumpAndSettle();
 
       expect(find.text('No insights for this app yet'), findsOneWidget);

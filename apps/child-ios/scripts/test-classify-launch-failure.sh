@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# The five verdicts classify-launch-failure.sh must give. Runs anywhere bash does, including the workflow-lint
+# job, so a change to the classifier is judged by a fixture rather than by a reviewer reading a regex.
+#
+# Each case is a log file whose content is what Xcode actually emitted in a real run or a review fixture:
+#   pass-ish logs are not classified here — the workflow only calls this after a non-zero exit.
+set -uo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+classify="$here/classify-launch-failure.sh"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+fail=0
+expect() {
+  local name="$1" want="$2" got
+  got="$(bash "$classify" "$tmp/$name.log")"
+  if [ "$got" = "$want" ]; then
+    printf 'ok   %-28s %s\n' "$name" "$got"
+  else
+    printf 'FAIL %-28s want=%s got=%s\n' "$name" "$want" "$got"
+    fail=1
+  fi
+}
+
+# The archived #949 failure: a launch failure carrying the generic XCTest footer. The retry must run.
+{
+  echo "Failed to launch"
+  echo "Failing tests:"
+} > "$tmp/archived_flake.log"
+expect archived_flake launch
+
+# THE REAL LAUNCH TIMEOUT, copied from the run at e8697999 (18:17 UAE). XCTest formats it as an XCTest
+# failure line, so `error: -[` cannot be assertion evidence — this line must classify as a launch failure and
+# be retried, and it was the reason the job went red at that head.
+{
+  echo "/Users/runner/work/osra/osra/apps/child-ios/UITests/AgentLaunchTests.swift:24: error: -[OSRAAgentUITests.AgentLaunchTests testTheAppLaunchesToThePairingScreen] : Failed to launch <XCUIApplicationImpl: 0x104fcdf40 com.osratech.child at /x/OSRAAgent.app> via Xcode: Timed out while launching application via Xcode."
+} > "$tmp/real_launch_timeout.log"
+expect real_launch_timeout launch
+
+# THE REAL BACKGROUND-ASSERTION TIMEOUT, from the run at `eb9e7fcf` (00:18 UAE). A runner failure formatted as
+# an XCTest failure line, matching neither the launch pattern nor any assertion vocabulary. It must classify as
+# `runner` and be retryable — the same tree passed on re-run on #926 attempt 2.
+{
+  echo "/Users/runner/work/osra/osra/apps/child-ios/UITests/AgentLaunchTests.swift:24: error: -[OSRAAgentUITests.AgentLaunchTests testTheAppLaunchesToThePairingScreen] : Failed to get background assertion for target app with pid 23403: Timed out while acquiring background assertion."
+} > "$tmp/real_runner_stall.log"
+expect real_runner_stall runner
+
+# An APP CRASH at launch is NOT a stall, even though it can print 'test runner exited' (Ahmed's point). It must
+# stay `other` — red, never retried — or a crash that happens to pass on the second launch would be absorbed.
+{
+  echo "Application 'com.osratech.child' crashed with signal 11"
+  echo "test runner exited with code 1"
+} > "$tmp/app_crash.log"
+expect app_crash other
+
+# A retryable simulator error cannot override a target app crash in the same log.
+cat "$tmp/app_crash.log" "$tmp/real_runner_stall.log" > "$tmp/crash_plus_runner.log"
+expect crash_plus_runner ambiguous
+
+cat "$tmp/app_crash.log" "$tmp/real_launch_timeout.log" > "$tmp/crash_plus_launch.log"
+expect crash_plus_launch ambiguous
+
+# A runner stall alongside a real assertion is ambiguous: never retried.
+{
+  echo "Failed to get background assertion for target app with pid 23403: Timed out while acquiring background assertion."
+  echo "PinRulesSeededTests.swift:42: error: -[OSRAAgentUITests.PinRulesSeededTests testX] : XCTAssertTrue failed"
+} > "$tmp/runner_plus_assertion.log"
+expect runner_plus_assertion ambiguous
+
+# An XCTest failure that never says `XCTAssert` — "failed: caught error" — is still an assertion failure.
+# Treating only `XCTAssert` as evidence let this classify as `other`, and with a launch line present, as `launch`
+# and be retried (Antigravity, 19:33Z).
+{
+  echo "PinRulesSeededTests.swift:51: error: -[OSRAAgentUITests.PinRulesSeededTests testX] : failed: caught error: UI testing failure - no matches found"
+} > "$tmp/non_xctassert_failure.log"
+expect non_xctassert_failure assertion
+
+# The same non-launch XCTest failure alongside launch noise: two kinds of evidence, so ambiguous and never retried.
+{
+  echo "PinRulesSeededTests.swift:51: error: -[OSRAAgentUITests.PinRulesSeededTests testX] : failed: caught error: UI testing failure - no matches found"
+  echo "Failed to launch"
+} > "$tmp/non_xctassert_plus_launch.log"
+expect non_xctassert_plus_launch ambiguous
+
+# A real assertion failure, with unrelated Launch Services noise alongside it (Codex 7060451632).
+{
+  echo "t = 1.2s Unable to bootstrap the Launch Services database: 0x2d"
+  echo "PinRulesSeededTests.swift:42: error: -[OSRAAgentUITests.PinRulesSeededTests testX] : XCTAssertTrue failed"
+  echo "Failing tests:"
+} > "$tmp/assertion_with_noise.log"
+expect assertion_with_noise assertion
+
+# Both kinds of evidence: neither may be trusted (Codex 7062415705).
+{
+  echo "Timed out while launching application via Xcode"
+  echo "PinRulesSeededTests.swift:42: error: -[OSRAAgentUITests.PinRulesSeededTests testX] : XCTAssertTrue failed"
+} > "$tmp/ambiguous.log"
+expect ambiguous ambiguous
+
+# Something else entirely: red, no retry.
+{
+  echo "error: the project is not configured for this scheme"
+} > "$tmp/other.log"
+expect other other
+
+# The retry's own log, failing on an assertion after a launch failure (Codex 7062415705 finding 2).
+{
+  echo "PinRulesSeededTests.swift:42: error: -[OSRAAgentUITests.PinRulesSeededTests testX] : XCTAssertTrue failed"
+} > "$tmp/retry_assertion.log"
+expect retry_assertion assertion
+
+# A missing log must not be read as a launch failure.
+got="$(bash "$classify" "$tmp/does-not-exist.log")"
+if [ "$got" = "other" ]; then printf 'ok   %-28s %s\n' missing_log other
+else printf 'FAIL %-28s want=other got=%s\n' missing_log "$got"; fail=1; fi
+
+exit "$fail"

@@ -347,7 +347,7 @@
   "appActionAllow": "Allow",
   "locationLoadFailed": "Couldn't load location. Check your connection and try again.",
   "noLocationReported": "No location reported yet",
-  "accuracyLabel": "Accuracy ±{meters} m · {time}",
+  "accuracyLabel": "Accuracy ±{meters} m · {time}",
   "@accuracyLabel": {
     "placeholders": {
       "meters": {
@@ -358,7 +358,7 @@
       }
     }
   },
-  "accuracyShort": "±{meters} m",
+  "accuracyShort": "±{meters} m",
   "@accuracyShort": {
     "placeholders": {
       "meters": {
@@ -481,7 +481,7 @@
   },
   "familyMapChild": "Child",
   "familyMapLabelField": "Label (e.g. School)",
-  "familyMapRadius": "Radius: {meters} m",
+  "familyMapRadius": "Radius: {meters} m",
   "@familyMapRadius": {
     "placeholders": {
       "meters": {
@@ -489,7 +489,7 @@
       }
     }
   },
-  "familyMapMeters": "{meters} m",
+  "familyMapMeters": "{meters} m",
   "@familyMapMeters": {
     "placeholders": {
       "meters": {
@@ -669,6 +669,8 @@
   "essentialAppRow": "Always allowed (needed for calls and safety)",
   "installedAppsEmpty": "No apps reported yet",
   "installedAppsEmptyHint": "The list appears after the child device's next check-in (up to 15 minutes).",
+  "appPickerIosEmptyTitle": "No apps chosen yet",
+  "appPickerIosEmptyBody": "Open OSRA on {child}'s iPhone and choose the apps you want to manage. They'll appear here.",
   "installedAppsNoMatch": "No apps match your search.",
   "installedAppsLoadFailed": "Couldn't load installed apps. Check your connection and try again.",
   "appNoLongerInstalled": "App no longer installed",
@@ -737,6 +739,7 @@
     }
   },
   "noAppUsage": "No app usage recorded",
+  "noPerAppBreakdown": "Per-app usage is unavailable",
   "webSection": "Web",
   "urlVisits": "{count, plural, =0{No URL visits} =1{1 URL visit} other{{count} URL visits}}",
   "@urlVisits": {
@@ -956,6 +959,7 @@
   "monitoring": "Monitoring",
   "monitoringSaved": "Monitoring saved",
   "saveFailed": "Couldn't save changes. Check your connection and try again.",
+  "saveFailedServer": "Couldn't save your changes. Your changes are still here — try again.",
   "saveMonitoring": "Save monitoring",
   "concerns": "Concerns",
   "vaultTrustCopy": "Excerpts travel over an encrypted connection and are stored encrypted on OSRA's servers.",
@@ -1390,7 +1394,8 @@
   "digestPrefsPushTitle": "Push notifications",
   "digestPrefsPushBody": "Critical alerts as push messages",
   "digestPrefsEmailsLabel": "Digest emails",
-  "digestPrefsEmailsHelper": "For the digest summary (separate addresses with commas)",
+  "digestPrefsEmailsHelper": "For the digest summary",
+  "digestPrefsAddEmail": "Add email",
   "digestPrefsConfirmationSent": "Confirmation sent — this address gets no digest until it is confirmed",
   "digestPrefsNotSent": "Not sent. Save again to retry.",
   "digestPrefsConfirmationLimited": "Not sent yet: too many confirmations are waiting. Try again tomorrow.",
@@ -1735,10 +1740,10 @@
   "@appGroupsTitle": {
     "description": "ADR-0037: heading over the iPhone's app groups on the child screen. Arabic is a draft pending Karim's review."
   },
-  "appGroupsBody": "Groups are made on the child's iPhone, behind the parent PIN. Block one here and the iPhone shields its apps.",
-  "@appGroupsBody": {
-    "description": "ADR-0037: one line under the heading. Arabic is a draft pending Karim's review."
-  },
+  "appsTabAndroidHeading": "Android apps",
+  "appsTabIphoneHeading": "iPhone apps",
+  "appGroupsEditorNote": "Manage iPhone apps from the Apps tab. The rules on this screen apply to Android apps only.",
+  "appGroupsBlockOnlyAdds": "Turning this switch off doesn't lift a block set on the iPhone itself.",
   "appGroupsCounts": "Apps {apps} · Categories {categories} · Websites {sites}",
   "@appGroupsCounts": {
     "description": "ADR-0037: what one group holds, as counts only (the parent app never learns which apps). Arabic is a draft pending Karim's review.",
@@ -1809,6 +1814,12 @@
       "time": { "type": "String" }
     }
   },
+  "alertDetailSent": "Sent {when}",
+  "@alertDetailSent": {
+    "placeholders": {
+      "when": { "type": "String" }
+    }
+  },
   "alertDeviceRestartedBodyMinutes": "{device} restarted {when} and was back {minutes, plural, =0{in less than a minute} =1{after 1 minute} other{after {minutes} minutes}}.",
   "@alertDeviceRestartedBodyMinutes": {
     "placeholders": {
@@ -1824,5 +1835,57 @@
       "when": { "type": "String" },
       "hours": { "type": "int" }
     }
-  }
+  },
+  "alertTitleSocialConcern": "Social safety alert",
+  "alertTitleGamingChat": "Gaming chat alert",
+  "alertCategorySocialConcern": "Social safety",
+  "alertCategoryGamingChat": "Gaming chat",
+  "socialAlertFlaggedInApp": "Flagged for review in {app}",
+  "@socialAlertFlaggedInApp": {
+    "placeholders": {
+      "app": { "type": "String" }
+    }
+  },
+  "socialAlertOpenActivity": "Open Social activity",
+  "socialAlertPreviewNoPermissionTitle": "Preview unavailable for your account",
+  "socialAlertPreviewNoPermissionBody": "Ask the family owner to enable Social access to view the encrypted preview. Alert details and the conversation guide remain available here.",
+  "socialAlertPreviewExpiredTitle": "Preview no longer available",
+  "socialAlertPreviewExpiredBody": "The encrypted preview has expired or was not stored for this alert. Alert details and the conversation guide remain saved here.",
+  "socialAlertUnavailableTitle": "Alert unavailable",
+  "socialAlertUnavailableBody": "This alert could not be found. Open Alerts to review recent activity.",
+  "socialAlertViewAll": "All alerts",
+  "locationUpdatedJustNow": "Updated just now",
+  "locationUpdatedMinutes": "{count, plural, =1{Updated 1 min ago} other{Updated {count} min ago}}",
+  "@locationUpdatedMinutes": { "placeholders": { "count": { "type": "int" } } },
+  "locationUpdatedHours": "{count, plural, =1{Updated 1 hour ago} other{Updated {count} hours ago}}",
+  "@locationUpdatedHours": { "placeholders": { "count": { "type": "int" } } },
+  "locationUpdatedDays": "{count, plural, =1{Updated 1 day ago} other{Updated {count} days ago}}",
+  "@locationUpdatedDays": { "placeholders": { "count": { "type": "int" } } },
+  "locationUpdatedUnknown": "Update time unknown",
+  "locationFindingAddress": "Finding address…",
+  "locationAddressUnavailable": "Address not available",
+  "locationMapSemantics": "Map showing where {name} is",
+  "@locationMapSemantics": { "placeholders": { "name": { "type": "String" } } },
+  "locationRecentre": "Centre on the latest location",
+  "undo": "Undo",
+  "hoursShort": "{hours} h",
+  "@hoursShort": { "placeholders": { "hours": { "type": "int" } } },
+  "appStateAllowed": "Allowed",
+  "appStateBlocked": "Blocked",
+  "appStateLimit": "Limit {limit} a day",
+  "@appStateLimit": { "placeholders": { "limit": { "type": "String" } } },
+  "appAllowedSnack": "{app} allowed",
+  "@appAllowedSnack": { "placeholders": { "app": { "type": "String" } } },
+  "appLimitSnack": "{app} limited to {limit} a day",
+  "@appLimitSnack": { "placeholders": { "app": { "type": "String" }, "limit": { "type": "String" } } },
+  "appsFilterAll": "All ({count})",
+  "@appsFilterAll": { "placeholders": { "count": { "type": "int" } } },
+  "appsFilterBlocked": "Blocked ({count})",
+  "@appsFilterBlocked": { "placeholders": { "count": { "type": "int" } } },
+  "appsFilterLimited": "Time limits ({count})",
+  "@appsFilterLimited": { "placeholders": { "count": { "type": "int" } } },
+  "appsNoMatch": "No apps match",
+  "appAboutThisApp": "About this app",
+  "appBlockedNamedSnack": "{app} blocked",
+  "@appBlockedNamedSnack": { "placeholders": { "app": { "type": "String" } } }
 }

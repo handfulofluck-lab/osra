@@ -19,6 +19,11 @@ struct OSRAAgentApp: App {
         // A reinstall keeps the Keychain but not the app group: drop secrets no identity owns (5.5 PR C). Runs
         // second, so the parent PIN of a pairing cleared above goes too.
         AgentIdentityStore.clearOrphanedSecrets()
+        // #739: a UI test's fake identity, Debug only, applied last so the two clears above cannot remove it.
+        // `UITestSeed.swift` is compiled out of Release entirely; a Release binary carrying it fails CI.
+        #if DEBUG
+        UITestSeed.apply()
+        #endif
     }
 
     var body: some Scene {

@@ -164,7 +164,33 @@ targets:
       - target: OSRAAgent
       - package: FamilyShieldAgent
 
+  # #739: the escape rows that need no Family Controls. A UI-testing bundle drives the app the way a child
+  # would; row KP01 is the only catalogue row that runs here, because the shield rows need a device in .child
+  # authorisation. Run by ios-ci.yml's existing test-ios job, so no new job, trigger or schedule.
+  OSRAAgentUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.osratech.child.UITests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: OSRAAgent
+    dependencies:
+      - target: OSRAAgent
+      # The identifiers come from the app's own `A11yID` rather than a second copy in the test, so a rename
+      # cannot leave the suite asserting a string the app no longer sets.
+      - package: FamilyShieldAgent
+
 schemes:
+  OSRAAgentUI:
+    build:
+      targets:
+        OSRAAgent: all
+    test:
+      targets:
+        - OSRAAgentUITests
   OSRAAgentIntegration:
     build:
       targets:

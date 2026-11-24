@@ -69,6 +69,13 @@ jobs:
         # deliberate `|| true` is ever needed; do not add one without saying why in the PR.
         run: node scripts/check-workflows.mjs --strict
 
+      - name: The launch-failure classifier answers as its fixtures say (#739)
+        # The classifier decides whether a UI-test failure is retried. Three review rounds found three defects
+        # in it (a `printf` with two backslashes, the generic `Failing tests:` footer read as an assertion, and
+        # the retry's own failure never classified) — none of them visible to any other check, because none of
+        # them was a test. This runs the six fixtures; it needs no simulator and takes a second.
+        run: bash apps/child-ios/scripts/test-classify-launch-failure.sh
+
       - name: Each suite's path filter covers what the suite reads (2026-10-24)
         # The build-and-test workflows run only when their paths change, so a path list that misses an
         # input is a suite that silently stops running on the PRs that can break it. The self-test proves

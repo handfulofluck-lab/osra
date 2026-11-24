@@ -1,9 +1,15 @@
 package com.familyshield.agent
 
 import com.familyshield.agent.data.db.UsageEventEntity
+import com.familyshield.agent.telemetry.ACTIVE_UPLOAD_INTERVAL_MS
+import com.familyshield.agent.telemetry.FOREGROUND_HEARTBEAT_MS
+import com.familyshield.agent.telemetry.MAX_GAP_MS
 import com.familyshield.agent.telemetry.computePerAppMinutes
+import com.familyshield.agent.telemetry.continuationPackage
+import com.familyshield.agent.telemetry.shouldFlushActiveSession
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -145,5 +151,60 @@ class UsageAggregationTest {
         assertTrue(window.minutes.isEmpty())
         assertEquals(mapOf("com.a" to 40_000L, "com.b" to 30_000L), window.remainderMs)
         assertEquals(setOf("com.a"), window.eventPackages)
+    }
+
+    @Test
+    fun `twenty-minute continuous video across two windows reports all twenty minutes with heartbeats and anchor (#830 row 5)`() {
+        // Mutants:
+        //  1. Drop continuationPackage anchor at window 1 close -> window 2 starts with no event until 12 min
+        //     and drops 2 minutes (reports 18 instead of 20).
+        //  2. Raise FOREGROUND_HEARTBEAT_MS above MAX_GAP_MS -> each gap is capped and minutes are lost.
+        assertTrue("heartbeat must stay strictly below MAX_GAP_MS", FOREGROUND_HEARTBEAT_MS < MAX_GAP_MS)
+        val youtube = "com.google.android.youtube"
+        val w1End = 10 * 60_000L
+        val w1Events = listOf(
+            ev(youtube, 0L),
+            ev(youtube, FOREGROUND_HEARTBEAT_MS),
+            ev(youtube, 2 * FOREGROUND_HEARTBEAT_MS),
+        )
+        val w1 = computePerAppMinutes(w1Events, windowEnd = w1End, ownPackage = own)
+        assertEquals(mapOf(youtube to 10), w1.minutes)
+
+        val anchorPkg = continuationPackage(
+            events = w1Events,
+            ownPackage = own,
+            activeForegroundPkg = youtube,
+            screenInteractive = true,
+            consentPaused = false,
+        )
+        assertEquals(youtube, anchorPkg)
+
+        val w2Start = w1End + 1L
+        val w2End = 20 * 60_000L + 1L
+        val w2Events = listOf(
+            ev(anchorPkg!!, w2Start),
+            ev(youtube, 3 * FOREGROUND_HEARTBEAT_MS),
+            ev(youtube, 4 * FOREGROUND_HEARTBEAT_MS),
+        )
+        val w2 = computePerAppMinutes(w2Events, windowEnd = w2End, ownPackage = own, carriedMs = w1.remainderMs)
+        assertEquals(mapOf(youtube to 10), w2.minutes)
+        assertEquals(20, (w1.minutes[youtube] ?: 0) + (w2.minutes[youtube] ?: 0))
+    }
+
+    @Test
+    fun `continuationPackage never anchors when paused, screen off, or covered by our own window (#830 row 5)`() {
+        // Mutants:
+        //  1. Ignore consentPaused -> anchors during withdrawal (fails line 1).
+        //  2. Ignore screenInteractive -> charges idle screen-off gap into next window (fails line 2).
+        //  3. Ignore ownPackage tail or null activeForegroundPkg -> charges block/lock screen (fails lines 3-4).
+        val youtube = "com.google.android.youtube"
+        assertNull(continuationPackage(listOf(ev(youtube, 0L)), own, youtube, screenInteractive = true, consentPaused = true))
+        assertNull(continuationPackage(listOf(ev(youtube, 0L)), own, youtube, screenInteractive = false, consentPaused = false))
+        assertNull(continuationPackage(listOf(ev(youtube, 0L), ev(own, 1_000L)), own, youtube, screenInteractive = true, consentPaused = false))
+        assertNull(continuationPackage(listOf(ev(youtube, 0L)), own, activeForegroundPkg = null, screenInteractive = true, consentPaused = false))
+        assertEquals(youtube, continuationPackage(emptyList(), own, youtube, screenInteractive = true, consentPaused = false))
+
+        assertFalse(shouldFlushActiveSession(ACTIVE_UPLOAD_INTERVAL_MS - 1L, 0L))
+        assertTrue(shouldFlushActiveSession(ACTIVE_UPLOAD_INTERVAL_MS, 0L))
     }
 }

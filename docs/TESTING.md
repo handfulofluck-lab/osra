@@ -18,6 +18,11 @@ these gates exist, see `docs/adr/0005-adversarial-acceptance-gate.md` and
 | iOS + shared macOS core | `.github/workflows/ios-ci.yml` (macOS runner) | Native macOS SwiftPM build + test discovery + tests; iOS SwiftPM and simulator builds | Swift compile/behaviour regressions, or a portable test excluded from macOS |
 | **Hardware** (device) | section 5 | Crash-loop, FGS start, location upload, overlays | Anything the emulator cannot show |
 
+Run the iOS launch classifier fixtures with
+`bash apps/child-ios/scripts/test-classify-launch-failure.sh`. A failure log that contains
+both an explicit target-app crash and a simulator launch error or runner stall is ambiguous
+and fails without a retry.
+
 `test/demo-seed-cleanup.test.ts` runs against real PostgreSQL in CI, where
 `OSRA_REQUIRE_DATABASE_TESTS=1` makes a missing database configuration an error. Local runs without
 `OSRA_TEST_DATABASE_URL` report these three integration rows as skipped. To include them, point that
@@ -83,6 +88,14 @@ timestamp), dashboard, map-sheet, call/SMS and bonus-time widgets with an Arabic
 Removing any one of the seven `ltrIsolate` calls must turn its corresponding row red. These are widget
 tests, not a phone run; no device claim or API access is used.
 
+For rules save compatibility (#951), run
+`flutter test test/rules_editor_limits_test.dart test/content_safety_test.dart test/installed_apps_picker_test.dart`
+from `apps/parent-app`. A saved, overlapping school schedule must survive an unrelated app edit.
+The editor sends a PATCH with the changed fields. A newly edited school window is still sent in
+full for server validation. App and YouTube edits leave the rest of the ruleset in place, and
+an empty school-day list stays empty on load. On staging, save and read back one app, web and
+YouTube edit on the signed parent app before marking the handset row passed.
+
 For Arabic and Latin list separators, run `flutter test test/localized_list_test.dart` from
 `apps/parent-app` (#794). Its nine tests cover the shared splitter and real Arabic-locale widgets for
 allowed/blocked domains, routine blocked/allowed apps and digest recipients. Each field saves both
@@ -129,6 +142,9 @@ pnpm --filter @familyshield/api exec prisma generate
 
 cd services/api
 export DATABASE_URL=<launcher> INTERNAL_HMAC_SECRET=<launcher> VAULT_KEY=<launcher>
+export SITE_NAMES_ENABLED=true  # URL-event e2e rows only; the production default remains off
+# Windows launcher alternative: set OSRA_E2E_SITE_NAMES=1 before start-backend.bat.
+# Without that opt-in, the launcher leaves SITE_NAMES_ENABLED unset (production default off).
 export API_BASE=http://127.0.0.1:3000                  # never localhost — see §6, the ::1 trap
 
 node scripts/e2e.mjs        # 71 passed / 0 failed at 2026-10-21 — the count grows, read the 0
@@ -187,6 +203,11 @@ that pairs a device does all three steps as the parent it already logs in as: `c
 `qa-probe.mjs` and `e2e.mjs`, and `live-api.mjs approve` in the iOS live job, which runs alongside the
 simulator and allows only the simulator's own claim. A script that still expects `201` from the claim
 itself is out of date.
+
+After a successful poll, `claimApproved()` posts one minimal telemetry report. Since #790 a claimed
+device is pending and invisible until its first accepted API request; this setup step is what makes it
+visible and witness-eligible. The `G2j` race does the same before reading the device list. Without it,
+later checks can mistake a legitimately pending device for a missing device or `no_witness`.
 
 | Row | What fails if the guard goes |
 |---|---|
@@ -326,6 +347,33 @@ Six things to know before reading a failure:
   split). A row whose `provenance.split` has drifted from `eval/split.py::split_of(bank, pattern)` fails
   `test_committed_dataset_agrees_with_the_split_rule` — regenerate the dataset rather than editing it.
 
+### Staging synthetic Bedrock endpoint (plan 4.1, #962)
+
+Run `python -m pytest -q tests/test_staging_qa.py` from `services/ai-engine` to check the
+analyzer's Frankfurt HTTPS endpoint validation and the existing fixture and expiry gates. The
+environment Terraform tests check that only the armed analyzer receives the endpoint's regional
+URL and that its invocation grant is restricted to that endpoint and model.
+
+Use a separately reviewed staging plan for live verification. From the analyzer subnets, confirm
+that the regional hostname resolves to the approved endpoint interfaces and that TLS hostname
+verification succeeds. Record pass or fail without logging addresses. Use only the approved
+synthetic fixtures for inference. Capture one successful trace and evidence that unapproved or
+expired requests are rejected. The `/health` response measures process liveness.
+
+For the optional provider comparison, run `pnpm exec vitest run test/social.test.ts
+test/stagingProviderOutcomes.test.ts test/stagingQaModel.test.ts test/alerts.test.ts` from
+`services/api`. On the approved synthetic staging pair, an explicitly set `OSRA_STAGING_QA_ENGINE`
+(`bedrock`, `own` or `both`) requests attributed outcomes from the private analyzer. With the variable
+unset the API uses the existing Bedrock response. All pairing, consent, source and expiry checks apply
+before the call.
+
+Each selected scan adds a `StagingScanOutcome` row. It holds the trace, child, optional vault event,
+time, provider result class, model version and the score of each category the provider explicitly
+flagged. A timed-out peer and a completed benign peer can be distinguished in that row. The existing
+family-scoped alerts response carries explicitly positive providers in `metadata.providerOutcomes`.
+The alert retains the usual per-child and per-app throttle. Include the receipt table in the approved
+staging wipe. Child erasure also removes receipts for that child.
+
 ### Notification env (Phase 2a) — all optional
 
 | Variable | Effect when set |
@@ -398,6 +446,11 @@ off, the read route still answers but returns `counting: false` and `withinBudge
 | `terraform.yml` | On a PR touching `infra/terraform/**`: `terraform fmt -check -recursive` plus `init -backend=false` and `validate` in `base/` and `env/` (Terraform 1.13.4, no credentials, no `plan`). `plan` and `apply` stay human steps — see `infra/terraform/README.md` |
 
 | `main-guard.yml` | Detects a commit on `main` that did not arrive through a pull request |
+
+The verified-gate policy self-test checks Neon’s `neon/` author prefix and `— Neon` ordinary signature.
+It covers both directions of the cross-family restriction with Antigravity and Hydrogen, preserves their
+existing cross-family pairing, and checks that Neon cannot supply an R3 security key. The signer-fixture
+check accepts Neon’s signature from the shared agent account and rejects it from other accounts.
 
 The Mac phase1 tooling has a fake-only suite beside the org-audit tests:
 `python3 -B -m unittest discover -s infra/terraform/org-audit/tests -p 'test_agent*.py'`.
@@ -678,6 +731,17 @@ Family Controls or TestFlight. Those need an Apple account, and roadmap 5.1 / 5.
 
 ## 5. Hardware verification (physical device)
 
+### Stop a parent-initiated ring (#866)
+
+The parent can choose **Stop ringing** beside Ring on a child device card or in the
+map callout. The action sends a stop to the selected device. The confirmation says
+the command is queued while the device has not acknowledged it.
+
+The widget rows in `apps/parent-app/test/stop_ring_test.dart` load an acknowledged
+ring on a synthetic device. They cover the two parent entry points and the queued
+message. During a scheduled handset check, confirm that the selected phone stops
+and that its command history records the acknowledgement.
+
 ### 5.0 One lease at a time (binding — `AGENTS.md` §9)
 
 The handset is the maintainer's Samsung Galaxy Z Flip4, `adb` serial **R5CW116Y6GF**, attached to this
@@ -940,6 +1004,21 @@ adb shell ping -c1 www.wikipedia.org   # → "unknown host" (NXDOMAIN in pause m
 `ping` through the shell uses the system resolver and so goes through the tunnel like any app; it is
 the quickest proof. What a DNS sinkhole cannot do (Private DNS set to a host, an in-app DoH resolver,
 IP literals) is listed in ADR-0015 and must not be reported as a bug.
+
+For the child-wide Pause and Resume controls, read `GET /v1/controls/children/:id/status` after
+each request. The existing `paused` field reports the requested setting. Its optional
+`internetRequest` contains the request ID, generation, action, localizable timestamp and exact
+command receipt for each device. A pending command reports `expired` at its deadline. A delivered
+command reports `unconfirmed` at that deadline if it received no acknowledgement. Verify that a
+newer request gets a new ID and that missing or newly paired devices show unknown. Check the actual
+allowed app and site separately after Resume.
+
+For the first staging rollout, drain the legacy API tasks before serving traffic from this version.
+The legacy API writes the Redis requested state, while this version prefers the durable operation
+when it exists. Before a rollback, reconcile Redis for children with durable operations and keep
+other children's legacy state. Before rolling forward again, retire the pre-rollback snapshots for
+those children and preserve the command history so the latest legacy action remains visible until
+the next durable request. Confirm the cutover and rollback steps on staging before wider rollout.
 
 ## 5d. Guided onboarding on hardware (plan 1.6)
 
@@ -1371,6 +1450,84 @@ empty diff, restore failure, or an empty test/result set never yields PASS. Dry-
 K31's CI only exercises the fake boundary.
 
 
+### Windows escape rows as one script (#738, `scripts/hardware/windows-escape.ps1`)
+
+The Windows rows of `docs/testing/CHILD-ESCAPE-CATALOGUE.md` (WN02, WN03, WN05–WN09, WN11, WN13, WN14) are
+run by one PowerShell 5.1 script on the staging Windows Server 2025 VM, **as the child's standard
+account**:
+
+```powershell
+# from the repo root, signed in as the standard user the child would use
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hardware/windows-escape.ps1
+# also attempt the rows that would change the machine (an account, a firewall rule), undoing on success
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hardware/windows-escape.ps1 -AllowMutating
+# exercise the classifier and the guard only, no rows
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hardware/windows-escape.ps1 -SelfTest
+```
+
+Exit codes: `0` no FAIL and no UNKNOWN · `1` at least one FAIL or UNKNOWN · `2` refused to run because the
+shell is **elevated**. The elevation check runs before anything else, including `-SelfTest`: an elevated
+run would pass rows for the wrong reason and could change the host.
+
+Reading the output: each line is `row · result · claim · evidence`, with `PASS`, `FAIL`, `SKIP` or
+`UNKNOWN`. **A SKIP is not coverage** — the rows whose claim needs OSRA installed and paired (the tray
+restarted by the service, the filter holding, the PIN dialog) print SKIP with the reason, and a row whose
+block threw is reported `UNKNOWN`, which exits non-zero. The refused/not-refused classifier is deliberately
+narrower than "non-zero exit": a missing service also exits non-zero, so only an access-denied message or
+exit 5 counts as the OS refusing, and `-SelfTest` fails if a command that succeeds is called refused.
+
+What a run on `DESKTOP-…` (Windows 11, standard account, no OSRA installed) produced on 2026-11-22:
+`Rows: 10 total, 3 PASS, 0 FAIL, 7 SKIP, 0 UNKNOWN` — the three OS refusals (WN03 `sc stop`/`sc config` on
+Spooler, WN06 `Set-Date`, WN09 hosts write and `netsh winhttp set proxy`) held; the seven agent-dependent
+rows skipped. That run is **not** staging evidence; it only shows the harness measures what it claims.
+
+
+## Staging model checkpoint delivery (#962)
+
+1. Resolve the SHA-256 of each complete gzip-compressed tar archive on the approved source machine. The hash of a weights file inside an archive identifies a different artifact. Supply the v9b archive hash and the v9 hash when available in the private staging configuration under `staging_qa_model_archives`, initially with `allow_read = false`.
+2. Review the bucket, encryption, public access blocks and TLS policy in the saved staging plan. Confirm the analyzer subnet has an active route to regional S3. Its managed route table already uses the staging NAT for HTTPS bootstrap. If the deployed route differs, resolve that before rollout.
+3. During an approved transfer window, the named staging operator uploads each pinned object to its corresponding key, `own-model/v9.tar.gz` and `own-model/v9b.tar.gz`. Verify each uploaded object against the original whole-archive SHA-256. For multipart uploads, hash the ordered bytes on readback. Record the matched count.
+4. For an approved inference window set `allow_read = true` and arm the staging analyzer. Inspect the plan for the task-role read on exactly the pinned objects and the regional S3 inputs on the analyzer. Verify all pinned checkpoints load in the serving process and run the positive and harmless synthetic controls.
+   The task preloads only pinned tags and allows five minutes for startup health checks. Verify space for the image, both archives and their extracted contents against the 20 GiB default ephemeral storage. Record peak usage before adding another checkpoint. Confirm the collector accepts the actual serving region before sending either control.
+5. Disarm and confirm the task loses the object reads and archive inputs. Keep the storage configuration in place to retain the two objects between approved windows.
+
+## Bedrock staging test with operator-chosen wording (#962)
+
+The reviewed staging analyzer defaults to exact fixtures. An exploratory run can enable
+`staging_qa_analyzer.allow_synthetic_pair_text` on both armed tasks for a time-boxed
+synthetic child/device pairing. Use a WhatsApp test route isolated from ordinary conversations.
+Confirm the device queue is empty before arming. The API still requires an authenticated
+notification scan from that pairing, and the private analyzer still requires the approved prompt
+and expires automatically. The test can use new wording within the 1,024-byte input limit.
+
+For a cross-app run, use a dedicated synthetic Android profile with test conversations.
+Set `staging_qa_analyzer.allow_android_sources` in the reviewed staging plan. The API
+accepts screen and notification captures for the Android monitored app keys whose
+saved Parent monitoring flag is explicitly enabled. With the option absent the existing
+WhatsApp notification route stays in effect. Device authentication, active consent,
+pairing, expiry, digest or exploratory wording policy, and the private endpoint still apply.
+Record the input language, app, source and observed direction without retaining message
+text. The source field alone cannot establish whether a message was sent or received.
+Check a provider verdict and readable Parent delivery separately for each concerning
+control, and a provider verdict without a Parent alert for each benign control.
+Space same-app alert checks to account for the existing alert throttle.
+
+Send a concerning synthetic notification and a harmless control. Confirm the concerning result came
+from Bedrock without fallback and opens the matching alert in the Parent app. Confirm Bedrock scored
+the harmless notification and created no alert. Record model, region, trace ID, and the result using
+the private test record. Roll both services back and retire the synthetic scope at the end of the window.
+
+For a staging run with per-provider receipts, send `include_provider_outcomes: true` to the private
+analyzer. `OSRA_STAGING_QA_ENGINE` selects `bedrock` (default), `own`, or `both`. Run
+`python -m pytest -q tests/test_staging_qa.py tests/test_staging_own_model.py tests/test_staging_provider_results.py`
+from `services/ai-engine` to exercise accepted and rejected requests without network access. Check each
+selected provider's status before counting a verdict. A timeout or unavailable result carries no scores.
+The [staging acceptance procedure](QA/staging-model-smoke.md) describes the private route and live evidence, and the [pre-test checklist](QA/pre-test-checklist.md) lists every pre-flight, live-window, and post-test gate (`PT-01`–`PT-20`) required before and after a live staging run (`#1024`).
+
+## Staging own-model region verification (#962)
+
+For an approved Stockholm CPU-only window, verify the scored receipt identifies Stockholm for both the concerning and harmless controls. Check the matching parent alert metadata for the same region and confirm the harmless control produces no alert. A Stockholm response must be rejected in Bedrock and combined-provider modes.
+
 ## 6. Traps that have cost real time here
 
 | Trap | What happened | Rule |
@@ -1599,3 +1756,7 @@ removed or demoted assertion. It runs unconditionally rather than behind a path 
 does not touch the probe shows the job green on a no-op comparison instead of absent.
 `workflow-lint.yml` runs `--selftest` on every push and PR, including the deleted-multi-line-call case
 that the old matcher missed (#310).
+
+### Staging analyzer task size (#962)
+
+For an approved staging OSRA-model window, set `staging_qa_analyzer.own_model_task_size` to true in the private window configuration. Review the Terraform plan for 2048 CPU units and 8192 MiB on the analyzer task. The sizing flag only takes effect while the analyzer is armed. On rollback, check the replacement task uses 512 CPU units and 1024 MiB. The flag controls capacity only. Check checkpoint delivery and live scoring separately.

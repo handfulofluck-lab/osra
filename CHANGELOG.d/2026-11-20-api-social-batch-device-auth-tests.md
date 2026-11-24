@@ -1,0 +1,2 @@
+### API — per-device v2 HMAC regression tests for batched social scans (#967)
+- Added four Vitest cases in `services/api/test/social.test.ts` exercising `POST /v1/social/scan` with a paired device's own `internalSecret` (no `x-familyshield-caller` or `x-device-id` header): root-`deviceId` batch acceptance (`200`), missing-root-`deviceId` rejection (`401 invalid_signature`), per-item `cross_child_forbidden` and `device_mismatch` isolation inside a valid batch, and legacy single-item compatibility (`200`).

@@ -10,6 +10,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.familyshield.agent.receivers.AlertThrottlePolicy
 import com.familyshield.agent.receivers.InstallAlertPolicy
 import com.familyshield.agent.security.TamperState
+import com.familyshield.agent.telemetry.AppliedRulesReportPolicy
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -102,6 +103,20 @@ class AgentSettings @Inject constructor(
     /** The applied rules version, or null when this install has never applied one (never reported). */
     suspend fun appliedRulesVersion(): Int? = read(KEY_APPLIED_RULES_VERSION)?.toIntOrNull()
 
+    /** Karim 23 Nov: the applied rules version the server last accepted, so a refresh reports a change once. */
+    suspend fun reportedAppliedRulesVersion(): Int? = read(KEY_REPORTED_APPLIED_RULES_VERSION)?.toIntOrNull()
+
+    /**
+     * Records the applied version a successful upload covered. Codex #1002 review: the periodic upload and the
+     * immediate report can finish out of order, so the marker only moves up, read and written in one edit.
+     */
+    suspend fun recordReportedAppliedRulesVersion(version: Int) {
+        store.edit {
+            val current = it[KEY_REPORTED_APPLIED_RULES_VERSION]?.toIntOrNull()
+            it[KEY_REPORTED_APPLIED_RULES_VERSION] = AppliedRulesReportPolicy.acknowledged(current, version).toString()
+        }
+    }
+
     /** Returns the persisted rule set JSON, or null. */
     suspend fun rulesJson(): String? = read(KEY_RULES_JSON)
 
@@ -131,6 +146,8 @@ class AgentSettings @Inject constructor(
         store.edit {
             it.remove(KEY_RULES_JSON)
             it.remove(KEY_APPLIED_RULES_VERSION)
+            // Karim 23 Nov: and what the server was told, so a re-paired phone reports its first version at once.
+            it.remove(KEY_REPORTED_APPLIED_RULES_VERSION)
         }
     }
 
@@ -259,6 +276,7 @@ class AgentSettings @Inject constructor(
         deviceIdCache = null
         childIdCache = null
         tokenLoaded = true // loaded, and known to be null
+        com.familyshield.agent.vpn.VpnState.clearFilterLoss(context)
     }
 
     /**
@@ -538,6 +556,8 @@ class AgentSettings @Inject constructor(
 
         /** ADR-0034 A2: what the last accepted capability report looked like, so a no-op resume is free. */
         private val KEY_REPORTED_CAPABILITIES = stringPreferencesKey("reported_capabilities")
+        // Karim 23 Nov: the applied rules version the server was last told about (change detection).
+        private val KEY_REPORTED_APPLIED_RULES_VERSION = stringPreferencesKey("reported_applied_rules_version")
         // Issue #267: the bucket and per-package UsageStats totals the last backfill covered.
         private val KEY_USAGE_STATS_SNAPSHOT = stringPreferencesKey("usage_stats_snapshot")
         // Issue #225: the recorded "was enabled" state for the accessibility-off transition rule.

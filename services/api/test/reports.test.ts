@@ -130,8 +130,98 @@ describe("GET /v1/reports/summary", () => {
         { domain: "youtube.com", count: 1 },
         { domain: "blocked.example", count: 1 },
       ]);
+      await app.close();
     } finally {
       delete process.env.SITE_NAMES_ENABLED;
+    }
+  });
+
+  it("folds durable AppUsageDaily telemetry totals and DeviceApp labels without double-counting (#830 row 5)", async () => {
+    // Reproduces the 19 Nov staging gap: Android/iOS telemetry writes 2,797 min to AppUsageDaily
+    // while ActivityEvent holds only 9 min from an older activity batch (which recordActivityUsage
+    // also wrote into AppUsageDaily). Summary must report 2,797 min (not 9 and not 2,806) and map
+    // reported packageIds to DeviceApp labels.
+    //
+    // Mutants:
+    //  1. Read only ActivityEvent in summarizeChildActivity -> totalAppMinutes drops to 9 (fails).
+    //  2. Sum AppUsageDaily + ActivityEvent instead of reconciling with max -> TikTok doubles to 18
+    //     and totalAppMinutes inflates to 2,806 (fails).
+    //  3. Ignore DeviceApp labels -> topApps[0].name stays "com.google.android.youtube" (fails).
+    const today = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()));
+    const app = await buildApp(reportsRoutes, "/v1/reports");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    mockActivityFindMany([
+      { id: "e-act", childId: "child-1", type: "app_usage", ts: new Date(NOW - 60_000), payload: { app: "TikTok", minutes: 9 } },
+    ]);
+    prismaMock.appUsageDaily.findMany.mockResolvedValue([
+      { day: today, app: "*", minutes: 2797, deviceId: "dev-1" },
+      { day: today, app: "com.google.android.youtube", minutes: 1800, deviceId: "dev-1" },
+      { day: today, app: "com.android.chrome", minutes: 988, deviceId: "dev-1" },
+      { day: today, app: "TikTok", minutes: 9, deviceId: "dev-1" },
+    ]);
+    prismaMock.deviceApp.findMany.mockResolvedValue([
+      { packageId: "com.google.android.youtube", label: "YouTube" },
+      { packageId: "com.android.chrome", label: "Chrome" },
+    ]);
+    prismaMock.socialEvent.count.mockResolvedValue(0);
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/reports/summary?childId=child-1&days=7",
+      headers: authHeader(app),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.totalAppMinutes).toBe(2797);
+    expect(body.topApps).toEqual([
+      { name: "YouTube", minutes: 1800 },
+      { name: "Chrome", minutes: 988 },
+      { name: "TikTok", minutes: 9 },
+    ]);
+    await app.close();
+  });
+
+  it("folds WebVisit rows into urlVisits and topBlockedDomains only when SITE_NAMES_ENABLED=true (#830/#841)", async () => {
+    // Mutants:
+    //  1. Query WebVisit while SITE_NAMES_ENABLED is unset -> leaks domains or calls webVisit.findMany when off (fails).
+    //  2. Ignore WebVisit when SITE_NAMES_ENABLED=true and ActivityEvent is empty -> urlVisits stays 0 (fails).
+    //  3. Sum duplicate WebVisit + ActivityEvent blocked rows instead of max per host -> bad.example becomes 2 (fails).
+    const app = await buildApp(reportsRoutes, "/v1/reports");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    mockActivityFindMany([
+      { id: "u-dup", childId: "child-1", type: "url", ts: new Date(NOW - 60_000), payload: { domain: "bad.example", blocked: true } },
+    ]);
+    prismaMock.webVisit.findMany.mockResolvedValue([
+      { domain: "www.google.com", blocked: false },
+      { domain: "www.google.com", blocked: false },
+      { domain: "m.youtube.com", blocked: false },
+      { domain: "forcesafesearch.google.com", blocked: false },
+      { domain: "bad.example", blocked: true },
+    ]);
+    prismaMock.socialEvent.count.mockResolvedValue(0);
+
+    // Flag off: zero site visits, zero blocked domain names, and webVisit table is not even read.
+    const offBody = (await app.inject({
+      method: "GET",
+      url: "/v1/reports/summary?childId=child-1&days=7",
+      headers: authHeader(app),
+    })).json();
+    expect(offBody.urlVisits).toBe(0);
+    expect(offBody.topBlockedDomains).toEqual([]);
+    expect(prismaMock.webVisit.findMany).not.toHaveBeenCalled();
+
+    process.env.SITE_NAMES_ENABLED = "true";
+    try {
+      const onBody = (await app.inject({
+        method: "GET",
+        url: "/v1/reports/summary?childId=child-1&days=7",
+        headers: authHeader(app),
+      })).json();
+      expect(onBody.urlVisits).toBe(2); // www.google.com + m.youtube.com (forcesafesearch excluded)
+      expect(onBody.topBlockedDomains).toEqual([{ domain: "bad.example", count: 1 }]);
+    } finally {
+      delete process.env.SITE_NAMES_ENABLED;
+      await app.close();
     }
   });
 
@@ -248,6 +338,20 @@ describe("GET /v1/reports/wellbeing/:childId (#28)", () => {
     await app.close();
   });
 
+  it("applies no usage overage when the child has no daily time limit", async () => {
+    const app = await buildApp(reportsRoutes, "/v1/reports");
+    mockWellbeing(22, 1, 2, 0);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/reports/wellbeing/child-1",
+      headers: authHeader(app),
+    });
+    // Mutant: count a disabled limit as a one-minute budget and the same week scores zero.
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ score: 89, breakdown: { usage: 0, social: 5, safety: 6 } });
+    await app.close();
+  });
+
   it("is deterministic: same activity, same score; formula matches the spec exactly", async () => {
     const app = await buildApp(reportsRoutes, "/v1/reports");
     // 1890/1260 = ratio 1.5 → usage 30*1*2=60; 2 concerns → 10; 1 hit → 3 → 100-73=27.
@@ -302,6 +406,30 @@ describe("GET /v1/reports/wellbeing/:childId (#28)", () => {
       headers: authHeader(app),
     });
     expect(badWeek.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("penalizes heavy telemetry-only AppUsageDaily usage even when ActivityEvent has zero app_usage rows (#830)", async () => {
+    // Mutant: compute wellbeing usage ratio from ActivityEvent only -> score returns 100 instead of 10 (fails).
+    const today = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()));
+    const app = await buildApp(reportsRoutes, "/v1/reports");
+    prismaMock.child.findUnique.mockResolvedValue({ ...CHILD, ruleSet: { dailyLimitMinutes: 180 } });
+    mockActivityFindMany([]);
+    prismaMock.appUsageDaily.findMany.mockResolvedValue([
+      { day: today, app: "*", minutes: 2520, deviceId: "dev-1" },
+    ]);
+    prismaMock.socialEvent.count.mockResolvedValue(0);
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/reports/wellbeing/child-1?week=2026-W37",
+      headers: authHeader(app),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      score: 10,
+      breakdown: { usage: 90, social: 0, safety: 0 },
+    });
     await app.close();
   });
 });

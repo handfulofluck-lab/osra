@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app.dart';
 import 'core/date_formatting.dart';
 import 'push/background_push.dart';
+import 'push/local_notifier.dart';
 
 Future<void> main() async {
   await configureDateFormatting();
@@ -16,6 +17,9 @@ Future<void> main() async {
   // starting still has a handler (#360). Not awaited: on a build with no
   // Firebase config this fails by design, and startup must not wait for it.
   unawaited(_enableBackgroundAlerts());
+  // #972: capture cold-start and warm notification taps so GoRouter opens `/alerts/:id`
+  // after authentication finishes.
+  unawaited(FlutterLocalNotifier.registerTapHandlers());
   runApp(const ProviderScope(child: FamilyShieldApp()));
 }
 

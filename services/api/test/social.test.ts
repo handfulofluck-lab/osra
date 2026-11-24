@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createHmac } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { signV2 } from "../src/lib/internalAuth.js";
 import { decryptForFamily, encryptForFamily } from "@familyshield/crypto";
 import { localDay, socialRoutes } from "../src/routes/social.js";
@@ -85,6 +85,179 @@ describe("social routes", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it.each([
+    { exploratory: false, crossApp: false, appKey: "whatsapp", source: "notification" },
+    { exploratory: true, crossApp: false, appKey: "whatsapp", source: "notification" },
+    { exploratory: true, crossApp: true, appKey: "discord", source: "screen" },
+    { exploratory: true, crossApp: true, appKey: "messenger", source: "notification" },
+  ])("writes a model-only alert for the configured app and source %j", async ({ exploratory, crossApp, appKey, source }) => {
+    const fixture = "The group wants to leave one classmate out of every lunch table.";
+    const sample = exploratory ? "They agreed to leave one classmate out every day." : fixture;
+    const benign = "The window is open.";
+    const deviceId = "qa-device-fixture";
+    const syntheticKey = randomBytes(32).toString("hex");
+    vi.stubEnv("OSRA_DEPLOYMENT_SCOPE", "staging");
+    vi.stubEnv("OSRA_STAGING_QA_ANALYZER_ENABLED", "1");
+    vi.stubEnv("OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT", exploratory ? "1" : "0");
+    vi.stubEnv("OSRA_STAGING_QA_ANDROID_SOURCES", crossApp ? "1" : "0");
+    vi.stubEnv("OSRA_STAGING_QA_DEVICE_ID", deviceId);
+    vi.stubEnv("OSRA_STAGING_QA_CHILD_ID", CHILD.id);
+    vi.stubEnv("OSRA_STAGING_QA_EXPIRES_AT", new Date(Date.now() + 15 * 60 * 1000).toISOString());
+    vi.stubEnv("OSRA_STAGING_QA_FIXTURE_SHA256", createHash("sha256").update(fixture).digest("hex"));
+    vi.stubEnv("OSRA_STAGING_QA_ANALYZER_URL", "http://ai-engine.osra-qa.internal:8000");
+    const analyze = vi.fn(async (_url: URL, options: RequestInit) => {
+      const request = JSON.parse(String(options.body)) as { text: string; trace_id: string };
+      return { ok: true, json: async () => ({
+        trace_id: request.trace_id, model: "openai.gpt-oss-20b-1:0", region: "eu-central-1",
+        flagged: request.text !== benign, severity: request.text === benign ? "info" : "warning",
+        categories: request.text === benign ? { safe: 1 } : { cyberbullying: 0.9, safe: 0.1 },
+      }) };
+    });
+    vi.stubGlobal("fetch", analyze);
+    prismaMock.device.findUnique.mockResolvedValue({ id: deviceId, childId: CHILD.id, internalSecret: syntheticKey });
+    prismaMock.child.findUnique.mockResolvedValue({ ...CHILD, ruleSet: { socialMonitoring: { [appKey]: true } } });
+    prismaMock.socialEvent.create.mockResolvedValue({ id: "synthetic-event" });
+    prismaMock.alert.create.mockResolvedValue({ id: "synthetic-alert" });
+    const app = await buildApp(socialRoutes, "/v1/social");
+    const scan = (body: Record<string, unknown>) => {
+      const raw = JSON.stringify({ deviceId, items: [scanBody({ deviceId, app: appKey, source, ...body })] });
+      return app.inject({ method: "POST", url: "/v1/social/scan",
+        headers: { "content-type": "application/json", ...signV2(syntheticKey, raw) }, payload: raw });
+    };
+    try {
+      const harmless = await scan({ text: benign });
+      expect(harmless.statusCode).toBe(200);
+      expect(harmless.json().results[0]).toMatchObject({ flagged: false });
+      expect(prismaMock.alert.create).not.toHaveBeenCalled();
+      expect(analyze).toHaveBeenCalledTimes(exploratory ? 1 : 0);
+
+      const res = await scan({ text: sample });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().results[0]).toMatchObject({ flagged: true, concernTypes: ["cyberbullying"] });
+      expect(analyze).toHaveBeenCalledTimes(exploratory ? 2 : 1);
+      const [url, options] = analyze.mock.calls[exploratory ? 1 : 0];
+      expect(url.href).toBe("http://ai-engine.osra-qa.internal:8000/analyze/staging-qa");
+      expect(options.redirect).toBe("error");
+      expect(JSON.parse(String(options.body))).toEqual({ text: sample, trace_id: expect.any(String) });
+      expect(prismaMock.socialEvent.create).toHaveBeenCalledTimes(1);
+      expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+      if (crossApp) {
+        expect(prismaMock.child.findUnique).toHaveBeenCalledWith({
+          where: { id: CHILD.id },
+          include: { family: { select: { timezone: true } }, ruleSet: { select: { socialMonitoring: true } } },
+        });
+        prismaMock.child.findUnique.mockResolvedValue({ ...CHILD, ruleSet: { socialMonitoring: { [appKey]: false } } });
+        const disabled = await scan({ text: sample });
+        expect(disabled.statusCode).toBe(200);
+        expect(disabled.json().results[0]).toMatchObject({ flagged: false });
+        expect(analyze).toHaveBeenCalledTimes(2);
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("records selected staging providers separately and creates one attributable alert", async () => {
+    // Mutants: generic 0.5 thresholds lose the calibrated own flag; raw scores or text leak into receipts.
+    const deviceId = "fixture-provider-device";
+    const secret = randomBytes(32).toString("hex");
+    const text = "A synthetic test phrase without local keywords.";
+    vi.stubEnv("OSRA_DEPLOYMENT_SCOPE", "staging");
+    vi.stubEnv("OSRA_STAGING_QA_ANALYZER_ENABLED", "1");
+    vi.stubEnv("OSRA_STAGING_QA_ENGINE", "both");
+    vi.stubEnv("OSRA_STAGING_QA_DEVICE_ID", deviceId);
+    vi.stubEnv("OSRA_STAGING_QA_CHILD_ID", CHILD.id);
+    vi.stubEnv("OSRA_STAGING_QA_FIXTURE_SHA256", createHash("sha256").update(text).digest("hex"));
+    vi.stubEnv("OSRA_STAGING_QA_EXPIRES_AT", new Date(Date.now() + 600_000).toISOString());
+    vi.stubEnv("OSRA_STAGING_QA_ANALYZER_URL", "http://qa.internal");
+    const scores = { cyberbullying: 0.8, self_harm: 0.41, grooming: 0, violence: 0, sexual_content: 0, substance_use: 0, hate_speech: 0 };
+    const bedrock = { status: "scored", model: "openai.gpt-oss-20b-1:0", flagged: true, severity: "critical",
+      categories: { ...scores, safe: 0.1 }, flagged_categories: ["cyberbullying"] };
+    const own = { status: "scored", model: "v9b", flagged: true, severity: "warning", language: "ar",
+      categories: scores, flagged_categories: ["self_harm"] };
+    const unavailable = { status: "unavailable", reason: "timeout" };
+    const benign = { ...own, flagged: false, severity: "info", flagged_categories: [] };
+    const responses = [{ bedrock, own }, { bedrock: unavailable, own: benign },
+      { bedrock: unavailable, own }, { bedrock: unavailable, own: unavailable }];
+    const fetcher = vi.fn(async (_url: URL, options: RequestInit) => {
+      const body = JSON.parse(String(options.body));
+      return { ok: true, json: async () => ({ trace_id: body.trace_id, region: "eu-central-1", mode: "both", outcomes: responses.shift() }) };
+    });
+    vi.stubGlobal("fetch", fetcher);
+    prismaMock.device.findUnique.mockResolvedValue({ id: deviceId, childId: CHILD.id, internalSecret: secret });
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.socialEvent.create.mockResolvedValue({ id: "fixture-event" });
+    prismaMock.alert.create.mockResolvedValue({ id: "fixture-alert" });
+    const app = await buildApp(socialRoutes, "/v1/social");
+    const send = async (sample: string) => {
+      const raw = JSON.stringify(scanBody({ deviceId, text: sample, source: "notification" }));
+      return app.inject({ method: "POST", url: "/v1/social/scan",
+        headers: { "content-type": "application/json", ...signV2(secret, raw) }, payload: raw });
+    };
+    try {
+      expect((await send(text)).json()).toEqual({ flagged: true, severity: "critical", concernTypes: ["cyberbullying", "self_harm"] });
+      expect(JSON.parse(String(fetcher.mock.calls[0][1].body))).toEqual({ text, trace_id: expect.any(String), include_provider_outcomes: true });
+      const attribution = { bedrock: { status: "scored", model: bedrock.model, flagged: true, categories: { cyberbullying: 0.8 }, flagged_categories: ["cyberbullying"] },
+        own: { status: "scored", model: own.model, flagged: true, categories: { self_harm: 0.41 }, flagged_categories: ["self_harm"] } };
+      expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+      expect(prismaMock.alert.create.mock.calls[0][0].data.metadata.providerOutcomes).toEqual(attribution);
+      const receipt = (n: number) => prismaMock.stagingScanOutcome.create.mock.calls[n][0].data;
+      expect(receipt(0)).toEqual({ childId: CHILD.id, socialEventId: "fixture-event", traceId: expect.any(String), providers: attribution });
+      expect((await send(text)).json()).toMatchObject({ flagged: false });
+      expect(receipt(1).providers).toEqual({ bedrock: unavailable, own: { status: "scored", model: "v9b", flagged: false, flagged_categories: [], categories: {} } });
+      expect((await send(text)).json()).toMatchObject({ flagged: true, concernTypes: ["self_harm"] });
+      expect(receipt(2).providers).toEqual({ bedrock: unavailable, own: attribution.own });
+      expect((await send(text)).json()).toMatchObject({ flagged: false });
+      expect(receipt(3).providers).toEqual({ bedrock: unavailable, own: unavailable });
+      expect(prismaMock.alert.create).toHaveBeenCalledTimes(1); // same-app throttle spans scans
+      expect((await send("Unapproved synthetic fixture.")).json()).toMatchObject({ flagged: false });
+      expect(fetcher).toHaveBeenCalledTimes(4);
+      expect(prismaMock.stagingScanOutcome.create).toHaveBeenCalledTimes(4);
+      fetcher.mockRejectedValueOnce(new DOMException("timed out", "TimeoutError"));
+      expect((await send(text)).json()).toMatchObject({ flagged: false });
+      expect(receipt(4).providers).toEqual({ bedrock: unavailable, own: unavailable });
+      expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+      // Exercise the actual fetch signal on the scoped own-only route, including an earlier approval expiry.
+      vi.stubEnv("OSRA_STAGING_QA_ENGINE", "own");
+      const timer = vi.spyOn(AbortSignal, "timeout");
+      try {
+        fetcher.mockRejectedValueOnce(new DOMException("timed out", "TimeoutError"));
+        await send(text);
+        expect(timer).toHaveBeenCalledWith(10000);
+        expect(receipt(5).providers).toEqual({ own: unavailable });
+        timer.mockClear();
+        vi.stubEnv("OSRA_STAGING_QA_EXPIRES_AT", new Date(Date.now() + 1500).toISOString());
+        fetcher.mockRejectedValueOnce(new DOMException("timed out", "TimeoutError"));
+        await send(text);
+        const capped = timer.mock.calls[0][0];
+        expect(capped).toBeGreaterThan(0);
+        expect(capped).toBeLessThanOrEqual(1500);
+      } finally {
+        timer.mockRestore();
+      }
+      // An approved Stockholm CPU verdict reaches the stored scan and the parent's alert metadata.
+      vi.stubEnv("OSRA_STAGING_QA_EXPIRES_AT", new Date(Date.now() + 60_000).toISOString());
+      throttleStore.clear();
+      let ownResult = own;
+      vi.stubGlobal("fetch", vi.fn(async (_url: URL, options: RequestInit) => ({
+        ok: true,
+        json: async () => ({ trace_id: JSON.parse(String(options.body)).trace_id,
+          region: "eu-north-1", mode: "own", outcomes: { own: ownResult } }),
+      })));
+      expect((await send(text)).json()).toMatchObject({ flagged: true });
+      expect(receipt(7).providers.own).toMatchObject({ region: "eu-north-1", flagged: true });
+      expect(prismaMock.alert.create.mock.calls.at(-1)![0].data.metadata.providerOutcomes.own).toEqual(receipt(7).providers.own);
+      const alertCount = prismaMock.alert.create.mock.calls.length;
+      ownResult = benign;
+      expect((await send(text)).json()).toMatchObject({ flagged: false });
+      expect(receipt(8).providers.own).toMatchObject({ region: "eu-north-1", flagged: false });
+      expect(prismaMock.alert.create).toHaveBeenCalledTimes(alertCount);
+    } finally {
+      await app.close();
+    }
   });
 
   it("returns {flagged:false} for clean text and writes no alert or vault row", async () => {
@@ -157,7 +330,9 @@ describe("social routes", () => {
     const res = await postScan(app, scanBody());
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ flagged: true, severity: "warning" });
+    // #938 B3: the union keeps the higher severity. The text hits the local self-harm list, which is
+    // critical by policy, so the model's "warning" no longer downgrades it.
+    expect(res.json()).toMatchObject({ flagged: true, severity: "critical" });
     expect(prismaMock.socialEvent.create).toHaveBeenCalledTimes(1);
     expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
     // One retry on the way out, and still no throw: a unique-index race is not a scan failure either.
@@ -216,13 +391,13 @@ describe("social routes", () => {
 
     const res = await postScan(app, scanBody());
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ flagged: true, severity: "warning", concernTypes: ["self_harm"] });
+    expect(res.json()).toEqual({ flagged: true, severity: "critical", concernTypes: ["self_harm"] });
 
     // The vault row stores the AES-GCM payload — plaintext must never appear.
     const cipher = prismaMock.socialEvent.create.mock.calls[0][0] as {
       data: { previewCipher: string; severity: string; concernTypes: string[]; app: string; contact: string; childId: string };
     };
-    expect(cipher.data).toMatchObject({ childId: CHILD.id, app: "whatsapp", contact: "bully-1", severity: "warning", concernTypes: ["self_harm"] });
+    expect(cipher.data).toMatchObject({ childId: CHILD.id, app: "whatsapp", contact: "bully-1", severity: "critical", concernTypes: ["self_harm"] });
     expect(cipher.data.previewCipher).not.toContain(FLAGGED_TEXT);
     const payload = JSON.parse(cipher.data.previewCipher) as Parameters<typeof decryptForFamily>[0];
     expect(decryptForFamily(payload, VAULT_KEY)).toBe(FLAGGED_TEXT);
@@ -289,6 +464,86 @@ describe("social routes", () => {
       expect.objectContaining({ data: expect.objectContaining({ concernTypes: expect.arrayContaining(["self_harm"]) }) }),
     );
     expect(prismaMock.alert.create).toHaveBeenCalled();
+    await app.close();
+  });
+
+  // #863: the child sent Arabic insults and drug words over WhatsApp and nothing reached the parent.
+  // These rows pin the two halves of the fix: the local list now reads Arabic, and a local hit survives a
+  // model answer of "not flagged" instead of being suppressed by it.
+  it("the local fallback reads Arabic insults, drug words and self-harm phrasing (#863)", async () => {
+    const app = await buildApp(socialRoutes, "/v1/social");
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNREFUSED"); }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({ id: "a-1" });
+
+    const cases: Array<[string, string]> = [
+      ["غبي وما أحد يحبك", "cyberbullying"],
+      ["أريد أن أموت", "self_harm"],
+      ["عندي حشيش في الشارع", "substance_use"],
+      ["he offered me weed after school", "substance_use"],
+    ];
+    for (const [text, concern] of cases) {
+      prismaMock.socialEvent.create.mockClear();
+      const res = await postScan(app, scanBody({ text }));
+      expect(res.statusCode).toBe(200);
+      expect(res.json().flagged, text).toBe(true);
+      expect(prismaMock.socialEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ concernTypes: expect.arrayContaining([concern]) }) }),
+      );
+    }
+    await app.close();
+  });
+
+  it("a local hit is not suppressed by a model that answered \"not flagged\" (#863)", async () => {
+    const app = await buildApp(socialRoutes, "/v1/social");
+    // The engine is reachable and says safe — the rules layer did exactly this for Arabic.
+    vi.stubGlobal("fetch", aiOk({ flagged: false, severity: "info", categories: { safe: 0.99 } }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({ id: "a-1" });
+
+    const res = await postScan(app, scanBody({ text: "أريد أن أموت" }));
+    expect(res.statusCode).toBe(200);
+    expect(res.json().flagged).toBe(true);
+    expect(prismaMock.alert.create).toHaveBeenCalled();
+    await app.close();
+  });
+
+  // Antigravity's #938 B2: token boundaries. Each of these is a real word whose stem appears in the
+  // Arabic list, and each once raised a false drug or bullying alert to a parent.
+  it("Arabic stems do not fire inside ordinary words (#938 B2)", async () => {
+    const app = await buildApp(socialRoutes, "/v1/social");
+    vi.stubGlobal("fetch", aiOk({ flagged: false, severity: "info", categories: { safe: 0.99 } }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({ id: "a-1" });
+
+    const benign = [
+      "فيبدأ الدرس بعد الجرس",
+      "قميص خمري جديد",
+      "نشاهد مباراة رغبي الليلة",
+    ];
+    for (const text of benign) {
+      prismaMock.socialEvent.create.mockClear();
+      const res = await postScan(app, scanBody({ text }));
+      expect(res.statusCode).toBe(200);
+      expect(res.json().flagged, text).toBe(false);
+      expect(prismaMock.socialEvent.create).not.toHaveBeenCalled();
+    }
+    await app.close();
+  });
+
+  it("a mixed message keeps the critical concern the model missed (#938 B3)", async () => {
+    const app = await buildApp(socialRoutes, "/v1/social");
+    // The model sees the English insult and stops there; the Arabic clause is a self-harm statement.
+    vi.stubGlobal("fetch", aiOk({ flagged: true, severity: "warning", categories: { cyberbullying: 0.9, safe: 0.1 } }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({ id: "a-1" });
+
+    const text = "you loser, أريد أن أموت";
+    const res = await postScan(app, scanBody({ text }));
+    expect(res.statusCode).toBe(200);
+    expect(res.json().flagged).toBe(true);
+    expect(res.json().severity).toBe("critical");
+    expect(res.json().concernTypes).toEqual(expect.arrayContaining(["cyberbullying", "self_harm"]));
     await app.close();
   });
 
@@ -367,8 +622,8 @@ describe("social routes", () => {
       expect(res.statusCode).toBe(200);
       expect(res.json()).toEqual({
         results: [
-          { ok: true, flagged: true, severity: "warning", concernTypes: ["self_harm"] },
-          { ok: true, flagged: true, severity: "warning", concernTypes: ["self_harm"] },
+          { ok: true, flagged: true, severity: "critical", concernTypes: ["self_harm"] },
+          { ok: true, flagged: true, severity: "critical", concernTypes: ["self_harm"] },
         ],
       });
       expect(prismaMock.socialEvent.create).toHaveBeenCalledTimes(2);
@@ -447,9 +702,125 @@ describe("social routes", () => {
       prismaMock.child.findUnique.mockResolvedValue(CHILD);
       const res = await postScan(app, scanBody());
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ flagged: true, severity: "warning", concernTypes: ["self_harm"] });
+      // #938 B3: the union keeps the higher severity, so the local self-harm hit makes this critical.
+      expect(res.json()).toEqual({ flagged: true, severity: "critical", concernTypes: ["self_harm"] });
       expect(prismaMock.socialEvent.create).toHaveBeenCalledTimes(1);
       await app.close();
+    });
+
+    /**
+     * Per-device v2 HMAC regression coverage for #967 (tracked in osra-security#46):
+     * `postScan` above signs with the global service secret (`caller: "ai-engine"`), which bypasses
+     * per-device secret lookup in `authenticateInternalRequest`. These four cases exercise the real
+     * child-agent wire path (per-device `internalSecret`, no `x-familyshield-caller`, no `x-device-id`).
+     *
+     * Mutants killed:
+     * - Removing root `deviceId` from the batch envelope turns case 1 into 401 `invalid_signature` (proven in case 2).
+     * - Removing the `device.childId !== childId` or `deviceId !== device.id` check in `scanOne` lets the
+     *   foreign items in case 3 pass instead of returning `cross_child_forbidden` / `device_mismatch`.
+     */
+    describe("per-device v2 HMAC batch authentication (#967)", () => {
+      const DEVICE_SECRET = "test-device-a-hmac-secret";
+      const DEVICE_A = { id: "dev-a", childId: CHILD.id, internalSecret: DEVICE_SECRET };
+
+      function mockPairedDevice() {
+        prismaMock.device.findUnique.mockImplementation((async (args: { where: { id: string } }) =>
+          args.where.id === DEVICE_A.id ? DEVICE_A : null) as never);
+      }
+
+      it("accepts the #967 root-deviceId batch envelope signed with the device's own secret", async () => {
+        const app = await buildApp(socialRoutes, "/v1/social");
+        mockPairedDevice();
+        vi.stubGlobal("fetch", flaggedAi());
+        prismaMock.child.findUnique.mockResolvedValue(CHILD);
+        const raw = JSON.stringify({
+          deviceId: DEVICE_A.id,
+          items: [scanBody({ deviceId: DEVICE_A.id, source: "notification" })],
+        });
+        const res = await app.inject({
+          method: "POST",
+          url: "/v1/social/scan",
+          headers: { "content-type": "application/json", ...signV2(DEVICE_SECRET, raw) },
+          payload: raw,
+        });
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({
+          results: [{ ok: true, flagged: true, severity: "critical", concernTypes: ["self_harm"] }],
+        });
+        await app.close();
+      });
+
+      it("rejects a batch without root deviceId under per-device v2 HMAC with 401 invalid_signature", async () => {
+        const app = await buildApp(socialRoutes, "/v1/social");
+        mockPairedDevice();
+        const raw = JSON.stringify({
+          items: [scanBody({ deviceId: DEVICE_A.id, source: "notification" })],
+        });
+        const res = await app.inject({
+          method: "POST",
+          url: "/v1/social/scan",
+          headers: { "content-type": "application/json", ...signV2(DEVICE_SECRET, raw) },
+          payload: raw,
+        });
+        expect(res.statusCode).toBe(401);
+        expect(res.json()).toEqual({ error: "invalid_signature", reason: "invalid_signature" });
+        await app.close();
+      });
+
+      it("refuses foreign childId and foreign deviceId items inside a valid device-A batch without dropping valid items", async () => {
+        const app = await buildApp(socialRoutes, "/v1/social");
+        mockPairedDevice();
+        const fetchMock = aiOk({ flagged: false, severity: "info", categories: { safe: 1 } });
+        vi.stubGlobal("fetch", fetchMock);
+        prismaMock.child.findUnique.mockResolvedValue(CHILD);
+        const raw = JSON.stringify({
+          deviceId: DEVICE_A.id,
+          items: [
+            scanBody({ deviceId: DEVICE_A.id, text: "benign message" }),
+            scanBody({ childId: "child-other", deviceId: DEVICE_A.id, text: "foreign child" }),
+            scanBody({ deviceId: "dev-other", text: "foreign device" }),
+          ],
+        });
+        const res = await app.inject({
+          method: "POST",
+          url: "/v1/social/scan",
+          headers: { "content-type": "application/json", ...signV2(DEVICE_SECRET, raw) },
+          payload: raw,
+        });
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({
+          results: [
+            { ok: true, flagged: false, severity: "info", concernTypes: [] },
+            { ok: false, reason: "cross_child_forbidden" },
+            { ok: false, reason: "device_mismatch" },
+          ],
+        });
+        // Codex (#970 7062553658): rejected entries must never invoke the analyzer or create stored side effects.
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body ?? "{}"))).toMatchObject({
+          text: "benign message",
+        });
+        expect(prismaMock.socialEvent.create).not.toHaveBeenCalled();
+        expect(prismaMock.alert.create).not.toHaveBeenCalled();
+        await app.close();
+      });
+
+      it("preserves single-item compatibility under per-device v2 HMAC", async () => {
+        const app = await buildApp(socialRoutes, "/v1/social");
+        mockPairedDevice();
+        vi.stubGlobal("fetch", aiOk({ flagged: false, severity: "info", categories: { safe: 1 } }));
+        prismaMock.child.findUnique.mockResolvedValue(CHILD);
+        const raw = JSON.stringify(scanBody({ deviceId: DEVICE_A.id, text: "benign single" }));
+        const res = await app.inject({
+          method: "POST",
+          url: "/v1/social/scan",
+          headers: { "content-type": "application/json", ...signV2(DEVICE_SECRET, raw) },
+          payload: raw,
+        });
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({ flagged: false, severity: "info", concernTypes: [] });
+        await app.close();
+      });
     });
   });
 

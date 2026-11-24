@@ -6,6 +6,8 @@ import 'features/dashboard/dashboard_screen.dart';
 import 'features/children/child_detail_screen.dart';
 import 'features/children/command_history_screen.dart';
 import 'features/children/consent_screen.dart';
+import 'api/models.dart';
+import 'features/alerts/alert_detail_screen.dart';
 import 'features/alerts/alerts_screen.dart';
 import 'features/auth/mfa_reset_approval_screen.dart';
 import 'features/family/family_screen.dart';
@@ -31,15 +33,93 @@ import 'providers/auth_provider.dart';
 import 'providers/locale_provider.dart';
 import 'providers/onboarding_provider.dart';
 import 'providers/theme_provider.dart';
+import 'push/notification_tap.dart';
 import 'theme/app_theme.dart';
 
 const _setupRoutes = {'/welcome', '/sign-in', '/setup/child', '/setup/pair', '/setup/monitoring', '/setup/done'};
 
 bool _isSetupRoute(String location) => _setupRoutes.contains(location);
 
+final List<RouteBase> appRoutes = [
+  GoRoute(path: '/starting', builder: (_, __) => const StartupScreen()),
+  GoRoute(path: '/welcome', builder: (_, __) => const WelcomeScreen()),
+  GoRoute(path: '/sign-in', builder: (_, __) => const LoginScreen(onboarding: true)),
+  GoRoute(path: '/setup/child', builder: (_, __) => const SetupChildScreen()),
+  GoRoute(path: '/setup/pair', builder: (_, __) => const SetupPairScreen()),
+  // Play decision 14 A: the parent picks the monitored apps here, between pairing and the hand-over, so the
+  // first thing the family sees is a choice they made rather than a default.
+  GoRoute(
+    path: '/setup/monitoring',
+    builder: (_, s) => SetupMonitoringScreen(childId: s.uri.queryParameters['childId']),
+  ),
+  GoRoute(path: '/setup/done', builder: (_, __) => const SetupDoneScreen()),
+  GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
+  GoRoute(path: '/', builder: (_, __) => const DashboardScreen()),
+  GoRoute(
+    path: '/child/:id',
+    builder: (_, s) => ChildDetailScreen(
+      childId: s.pathParameters['id']!,
+      initialTab: s.uri.queryParameters['tab'] == 'location' ? ChildDetailScreen.locationTab : 0,
+    ),
+  ),
+  GoRoute(path: '/child/:id/pair', builder: (_, s) => PairingQrScreen(childId: s.pathParameters['id']!)),
+  GoRoute(path: '/child/:id/commands', builder: (_, s) => CommandHistoryScreen(childId: s.pathParameters['id']!)),
+  GoRoute(path: '/child/:id/consent', builder: (_, s) => ConsentScreen(childId: s.pathParameters['id']!)),
+  GoRoute(
+    path: '/child/:id/consent/revoke',
+    builder: (_, s) => ConsentRevokeScreen(
+      childId: s.pathParameters['id']!,
+      childName: s.extra is String ? s.extra as String : null,
+    ),
+  ),
+  GoRoute(path: '/child/:id/reports', builder: (_, s) => ReportsScreen(childId: s.pathParameters['id']!)),
+  GoRoute(path: '/child/:id/history', builder: (_, s) => UsageHistoryScreen(childId: s.pathParameters['id']!)),
+  GoRoute(
+    path: '/child/:id/rules',
+    builder: (_, s) => RulesEditorScreen(
+      childId: s.pathParameters['id']!,
+      initialTab: switch (s.uri.queryParameters['tab']) {
+        'apps' => 2,
+        _ => 0,
+      },
+    ),
+  ),
+  GoRoute(path: '/child/:id/social', builder: (_, s) => SocialScreen(childId: s.pathParameters['id']!)),
+  GoRoute(path: '/child/:id/searches', builder: (_, s) => SearchSafetyScreen(childId: s.pathParameters['id']!)),
+  GoRoute(path: '/settings/digests', builder: (_, __) => const DigestPrefsScreen()),
+  GoRoute(path: '/settings/appearance', builder: (_, __) => const AppearanceScreen()),
+  GoRoute(path: '/settings/mfa', builder: (_, __) => const MfaSettingsScreen()),
+  // #442 PR 2: Play requires account deletion to be reachable in the app.
+  GoRoute(path: '/settings/delete-account', builder: (_, __) => const DeleteAccountScreen()),
+  // ADR-0031 step 3b: the co-parent's approval prompt. The dashboard and the
+  // MFA settings screen open it from `GET /mfa/reset/pending`, with the id
+  // and the requester's name; this deep link remains for a notification
+  // (decision 4's templates are still unbuilt). It carries the id only — the
+  // name, role and state are read from `/pending` by id, never trusted from
+  // the URL (review of #314).
+  GoRoute(
+    path: '/mfa/reset/approve',
+    builder: (_, s) => MfaResetApprovalLink(requestId: s.uri.queryParameters['requestId'] ?? ''),
+  ),
+  GoRoute(path: '/alerts', builder: (_, __) => const AlertsScreen()),
+  GoRoute(
+    path: '/alerts/:id',
+    builder: (_, s) => AlertDetailScreen(
+      alertId: s.pathParameters['id']!,
+      initialAlert: s.extra is Alert ? s.extra as Alert : null,
+    ),
+  ),
+  GoRoute(path: '/map', builder: (_, __) => const FamilyMapScreen()),
+  GoRoute(path: '/family', builder: (_, __) => const FamilyScreen()),
+];
+
 final router = GoRouter(
   initialLocation: '/starting',
-  refreshListenable: Listenable.merge([authRouterListenable, onboardingRouterListenable]),
+  refreshListenable: Listenable.merge([
+    authRouterListenable,
+    onboardingRouterListenable,
+    notificationTapController,
+  ]),
   redirect: (context, state) {
     final container = ProviderScope.containerOf(context);
     final auth = container.read(authProvider);
@@ -57,9 +137,35 @@ final router = GoRouter(
     if (onboarding.complete) {
       // A completed setup never shows the wizard again, even if the flag and
       // a stale step were both written by an older build.
-      if (setupRoute || location == '/starting') return auth.isAuthenticated ? '/' : '/login';
+      if (setupRoute || location == '/starting') {
+        if (!auth.isAuthenticated) return '/login';
+        return resolveNotificationAlertRedirect(
+              authenticated: true,
+              onboardingComplete: true,
+              onboardingStep: onboarding.step,
+              controller: notificationTapController,
+            ) ??
+            '/';
+      }
       if (!auth.isAuthenticated && location != '/login') return '/login';
-      if (auth.isAuthenticated && location == '/login') return '/';
+      if (auth.isAuthenticated && location == '/login') {
+        return resolveNotificationAlertRedirect(
+              authenticated: true,
+              onboardingComplete: true,
+              onboardingStep: onboarding.step,
+              controller: notificationTapController,
+            ) ??
+            '/';
+      }
+      if (auth.isAuthenticated) {
+        final tapTarget = resolveNotificationAlertRedirect(
+          authenticated: true,
+          onboardingComplete: true,
+          onboardingStep: onboarding.step,
+          controller: notificationTapController,
+        );
+        if (tapTarget != null && tapTarget != location) return tapTarget;
+      }
       return null;
     }
 
@@ -73,7 +179,22 @@ final router = GoRouter(
 
     if (onboarding.step == OnboardingStep.none) {
       // A signed-in account that predates the wizard is not forced through it.
-      if (setupRoute || location == '/login' || location == '/starting') return '/';
+      if (setupRoute || location == '/login' || location == '/starting') {
+        return resolveNotificationAlertRedirect(
+              authenticated: true,
+              onboardingComplete: false,
+              onboardingStep: onboarding.step,
+              controller: notificationTapController,
+            ) ??
+            '/';
+      }
+      final tapTarget = resolveNotificationAlertRedirect(
+        authenticated: true,
+        onboardingComplete: false,
+        onboardingStep: onboarding.step,
+        controller: notificationTapController,
+      );
+      if (tapTarget != null && tapTarget != location) return tapTarget;
       return null;
     }
 
@@ -87,56 +208,7 @@ final router = GoRouter(
     // half-set-up account must not be left on the dashboard.
     return location == target ? null : target;
   },
-  routes: [
-    GoRoute(path: '/starting', builder: (_, __) => const StartupScreen()),
-    GoRoute(path: '/welcome', builder: (_, __) => const WelcomeScreen()),
-    GoRoute(path: '/sign-in', builder: (_, __) => const LoginScreen(onboarding: true)),
-    GoRoute(path: '/setup/child', builder: (_, __) => const SetupChildScreen()),
-    GoRoute(path: '/setup/pair', builder: (_, __) => const SetupPairScreen()),
-    // Play decision 14 A: the parent picks the monitored apps here, between pairing and the hand-over, so the
-    // first thing the family sees is a choice they made rather than a default.
-    GoRoute(
-      path: '/setup/monitoring',
-      builder: (_, s) => SetupMonitoringScreen(childId: s.uri.queryParameters['childId']),
-    ),
-    GoRoute(path: '/setup/done', builder: (_, __) => const SetupDoneScreen()),
-    GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
-    GoRoute(path: '/', builder: (_, __) => const DashboardScreen()),
-    GoRoute(path: '/child/:id', builder: (_, s) => ChildDetailScreen(childId: s.pathParameters['id']!)),
-    GoRoute(path: '/child/:id/pair', builder: (_, s) => PairingQrScreen(childId: s.pathParameters['id']!)),
-    GoRoute(path: '/child/:id/commands', builder: (_, s) => CommandHistoryScreen(childId: s.pathParameters['id']!)),
-    GoRoute(path: '/child/:id/consent', builder: (_, s) => ConsentScreen(childId: s.pathParameters['id']!)),
-    GoRoute(
-      path: '/child/:id/consent/revoke',
-      builder: (_, s) => ConsentRevokeScreen(
-        childId: s.pathParameters['id']!,
-        childName: s.extra is String ? s.extra as String : null,
-      ),
-    ),
-    GoRoute(path: '/child/:id/reports', builder: (_, s) => ReportsScreen(childId: s.pathParameters['id']!)),
-    GoRoute(path: '/child/:id/history', builder: (_, s) => UsageHistoryScreen(childId: s.pathParameters['id']!)),
-    GoRoute(path: '/child/:id/rules', builder: (_, s) => RulesEditorScreen(childId: s.pathParameters['id']!)),
-    GoRoute(path: '/child/:id/social', builder: (_, s) => SocialScreen(childId: s.pathParameters['id']!)),
-    GoRoute(path: '/child/:id/searches', builder: (_, s) => SearchSafetyScreen(childId: s.pathParameters['id']!)),
-    GoRoute(path: '/settings/digests', builder: (_, __) => const DigestPrefsScreen()),
-    GoRoute(path: '/settings/appearance', builder: (_, __) => const AppearanceScreen()),
-    GoRoute(path: '/settings/mfa', builder: (_, __) => const MfaSettingsScreen()),
-    // #442 PR 2: Play requires account deletion to be reachable in the app.
-    GoRoute(path: '/settings/delete-account', builder: (_, __) => const DeleteAccountScreen()),
-    // ADR-0031 step 3b: the co-parent's approval prompt. The dashboard and the
-    // MFA settings screen open it from `GET /mfa/reset/pending`, with the id
-    // and the requester's name; this deep link remains for a notification
-    // (decision 4's templates are still unbuilt). It carries the id only — the
-    // name, role and state are read from `/pending` by id, never trusted from
-    // the URL (review of #314).
-    GoRoute(
-      path: '/mfa/reset/approve',
-      builder: (_, s) => MfaResetApprovalLink(requestId: s.uri.queryParameters['requestId'] ?? ''),
-    ),
-    GoRoute(path: '/alerts', builder: (_, __) => const AlertsScreen()),
-    GoRoute(path: '/map', builder: (_, __) => const FamilyMapScreen()),
-    GoRoute(path: '/family', builder: (_, __) => const FamilyScreen()),
-  ],
+  routes: appRoutes,
 );
 
 class FamilyShieldApp extends ConsumerWidget {

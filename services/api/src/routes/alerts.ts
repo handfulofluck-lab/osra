@@ -110,7 +110,9 @@ export async function alertsRoutes(app: FastifyInstance) {
     }
     const parsed = InternalAlertSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const { childId, deviceId, severity, category, title, body, metadata, dedupeKey, attemptCount } = parsed.data;
+    const { childId, deviceId, severity, category, title, body, dedupeKey, attemptCount } = parsed.data;
+    // Provider attribution belongs to the server's validated analyzer reply.
+    const { providerOutcomes: _reserved, ...metadata } = parsed.data.metadata ?? {};
 
     if (auth.device) {
       // Revocation is not checked here: sessionGuard refuses device JWTs, and an unpaired phone has no

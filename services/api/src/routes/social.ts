@@ -8,6 +8,8 @@ import { checkActiveConsent } from "../lib/consent.js";
 import { requireFamily, requireGuardianRead, requireParent } from "../middleware/requireFamily.js";
 import { decryptSnippet, encryptSnippet } from "../lib/snippetVault.js";
 import { isValidTimeZone } from "../lib/digestSchedule.js";
+import { failedProviders, flaggedProviders, readProviderAnalysis, type ProviderReceipts } from "../lib/stagingProviderOutcomes.js";
+import { STAGING_QA_MODEL, STAGING_QA_REGION, stagingQaDeadline, stagingQaModel, stagingQaModelEnabled, type StagingQaModel } from "../lib/stagingQaModel.js";
 
 const ScanSchema = z.object({
   childId: z.string().min(1),
@@ -42,16 +44,50 @@ const GAMING_APPS = new Set(["discord", "roblox"]);
 
 type Severity = "info" | "warning" | "critical";
 interface Verdict { flagged: boolean; severity: Severity; concernTypes: string[] }
+type ScanAnalysis = { verdict: Verdict | null; attempted: boolean; providers?: ProviderReceipts };
 
 // NOTE: fail-open — when the AI engine is unreachable the scan falls back to a local
 // keyword/regex check so obvious self-harm language is never silently dropped.
+/** One Arabic letter, for the token boundaries the bare stems need (Antigravity, #938 B2). */
+const AR_LETTER = "[\\u0621-\\u064A\\u0640]";
+
+/**
+ * An Arabic term with token boundaries, allowing the inseparable proclitics a child actually types
+ * (`و ف ب ل ك`, and `ال`) on the left and **no letter** on the right.
+ *
+ * Without this, `فيب` (`vape`) matched `فيبدأ` ("so it starts"), `خمر` matched `خمري` (maroon) and
+ * `غبي` matched `رغبي` (rugby) — and because the local check now survives a model "safe", every one of
+ * those was a false drug or bullying alert to a parent. The negative rows in `social.test.ts` pin it.
+ */
+const arabicTerm = (alternation: string): RegExp =>
+  new RegExp(`(?<!${AR_LETTER})(?:[\\u0648\\u0641\\u0628\\u0644\\u0643])?(?:\\u0627\\u0644)?(?:${alternation})(?!${AR_LETTER})`);
+
+/** Ordering for the union's severity pick: a critical concern must never be downgraded to warning. */
+const SEVERITY_RANK: Record<"info" | "warning" | "critical", number> = { info: 0, warning: 1, critical: 2 };
+
 const LOCAL_PATTERNS: Array<{ pattern: RegExp; concern: string }> = [
   { pattern: /\b(kill yourself|kys|suicide|end (your|my) life|want to die|wanna die|self[- ]?harm)\b/i, concern: "self_harm" },
   { pattern: /\b(sext(?:ing)?\b|nudes?\b|send (me )?(pics|pictures|photos)|meet (up|me) (alone|in secret)|don't tell your (parents|mom|dad))\b/i, concern: "grooming" },
   { pattern: /\b(ugly|loser|worthless|nobody likes you|die in a fire|everyone hates you)\b/i, concern: "cyberbullying" },
+  // #863: the fallback was English-only, and the run that found it sent **Arabic** insults and drug
+  // words. A child writing in Arabic scored "safe" on the rules layer and on this list, which is the
+  // failure the social scan exists to prevent. High-precision terms, not a lexicon: the word list is the
+  // model's job, and this is the belt for when the model is unreachable or misses.
+  { pattern: arabicTerm("أريد أن أموت|ابغى أموت|أؤذي نفسي|ايذي نفسي|انتحار"), concern: "self_harm" },
+  { pattern: /\b(weed|hash|hashish|vape|vaping|vodka|beer|pills|xanax|cocaine|ketamine)\b/i, concern: "substance_use" },
+  { pattern: arabicTerm("حشيش|مخدرات|فيب|خمر|فودكا"), concern: "substance_use" },
+  { pattern: arabicTerm("لا تخبر (أمك|أبوك|والديك)|سر بيننا"), concern: "grooming" },
+  { pattern: arabicTerm("غبي|قبيح|فاشل|ما أحد يحبك|ما احد يحبك|كلنا نكرهك"), concern: "cyberbullying" },
 ];
 
-/** Local keyword fallback used only when the AI engine cannot be reached. */
+/**
+ * Local keyword fallback: the belt when the AI engine is unreachable **or answers "not flagged"**.
+ *
+ * #863 is why it is no longer "only when the engine is down": the child sent Arabic insults and
+ * drug words over WhatsApp and nothing reached the parent. A model miss and an unreachable engine
+ * have the same consequence for the child, so a local hit now survives a model "no" — the alert
+ * throttle (one per app per 10 minutes) bounds the noise a false positive can cause.
+ */
 export function localKeywordCheck(text: string): Verdict {
   const concerns = [...new Set(
     LOCAL_PATTERNS.filter((p) => p.pattern.test(text)).map((p) => p.concern),
@@ -84,7 +120,7 @@ function aiVerdictFrom(data: unknown): Verdict | null {
  * point a): a call that reached the engine and timed out after five seconds was still paid for, and for a
  * cost floor under-counting is the unsafe direction.
  */
-async function analyzeWithAi(text: string, childAge?: number): Promise<{ verdict: Verdict | null; attempted: boolean }> {
+async function analyzeWithAi(text: string, childAge?: number): Promise<ScanAnalysis> {
   const base = process.env.AI_ENGINE_URL;
   if (!base) return { verdict: null, attempted: false };
   try {
@@ -102,6 +138,39 @@ async function analyzeWithAi(text: string, childAge?: number): Promise<{ verdict
     // AbortError, so those two count as attempts and everything else does not.
     const name = (err as { name?: string } | null)?.name;
     return { verdict: null, attempted: name === "TimeoutError" || name === "AbortError" };
+  }
+}
+
+async function analyzeStagingFixture(text: string, qa: StagingQaModel, batchDeadline: number): Promise<ScanAnalysis> {
+  const { providerMode } = qa;
+  let receivedResponse = false;
+  function failure(attempted: boolean, reason: "unavailable" | "timeout"): ScanAnalysis {
+    return providerMode ? { ...failedProviders(providerMode, reason), attempted } : { verdict: null, attempted };
+  }
+  const now = Date.now();
+  const deadline = stagingQaDeadline(qa, batchDeadline, now);
+  if (deadline <= now) return failure(false, "timeout");
+  try {
+    const res = await fetch(qa.endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text, trace_id: qa.traceId, ...(providerMode && { include_provider_outcomes: true }) }),
+      redirect: "error",
+      signal: AbortSignal.timeout(deadline - now),
+    });
+    receivedResponse = true;
+    if (!res.ok) return failure(true, res.status === 408 || res.status === 504 ? "timeout" : "unavailable");
+    const scored = await res.json();
+    if (Date.now() >= deadline) return failure(true, "timeout");
+    if (providerMode) return { ...readProviderAnalysis(scored, providerMode, qa.traceId), attempted: true };
+    if (scored?.trace_id !== qa.traceId || scored.model !== STAGING_QA_MODEL || scored.region !== STAGING_QA_REGION) {
+      return failure(true, "unavailable");
+    }
+    return { verdict: aiVerdictFrom(scored), attempted: true };
+  } catch (err) {
+    const name = (err as { name?: string } | null)?.name;
+    const timedOut = name === "TimeoutError" || name === "AbortError";
+    return failure(timedOut || (providerMode !== undefined && receivedResponse), timedOut ? "timeout" : "unavailable");
   }
 }
 
@@ -163,10 +232,10 @@ async function recordScanUsage(
  * Scans one capture: ownership, consent, the verdict, the vault write and the throttled alert. Shared
  * by the single-item body and each item of a batch (#490), so the checks are identical for both.
  */
-async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest["log"]): Promise<ScanItemResult> {
+async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest["log"], batchDeadline = Infinity): Promise<ScanItemResult> {
   const parsed = ScanSchema.safeParse(input);
   if (!parsed.success) return { ok: false, reason: "invalid_item", status: 400, body: { error: parsed.error.flatten() } };
-  const { childId, deviceId, app: appName, contact, text } = parsed.data;
+  const { childId, deviceId, app: appName, contact, text, source } = parsed.data;
 
   if (device) {
     if (device.childId !== childId) return { ok: false, reason: "cross_child_forbidden", status: 400 };
@@ -174,7 +243,14 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
   }
 
   // The family's zone rides the lookup the route already does, so the day key costs no second query.
-  const child = await prisma.child.findUnique({ where: { id: childId }, include: { family: { select: { timezone: true } } } });
+  const crossAppQa = stagingQaModelEnabled() && process.env.OSRA_STAGING_QA_ANDROID_SOURCES === "1";
+  const child = await prisma.child.findUnique({
+    where: { id: childId },
+    include: {
+      family: { select: { timezone: true } },
+      ruleSet: crossAppQa && { select: { socialMonitoring: true } },
+    },
+  });
   if (!child) return { ok: false, reason: "child_not_found", status: 404 };
   // ADR-0008 §2b: withdrawal of consent stops collection.
   const consent = await checkActiveConsent(childId);
@@ -186,30 +262,68 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
   const childAge = typeof (child as { birthYear?: number }).birthYear === "number"
     ? new Date().getFullYear() - (child as { birthYear: number }).birthYear
     : undefined;
-  const ai = await analyzeWithAi(text, childAge);
-  const verdict = ai.verdict ?? localKeywordCheck(text);
+  const qa = stagingQaModel({ device, deviceId, childId, app: appName, source, text, socialMonitoring: child.ruleSet?.socialMonitoring });
+  const ai = qa ? await analyzeStagingFixture(text, qa, batchDeadline)
+    : stagingQaModelEnabled() ? { verdict: null, attempted: false }
+      : await analyzeWithAi(text, childAge);
+  const local = localKeywordCheck(text);
+  // Union, not "model wins" (Antigravity, #938 B3): when both flag, the concern types are merged and the
+  // higher severity stands. The earlier short-circuit kept the model's verdict whole, so a mixed message
+  // ("you loser, أريد أن أموت") lost the Arabic self_harm clause and downgraded critical to warning.
+  const verdict = ai.verdict?.flagged
+    ? local.flagged
+      ? {
+          flagged: true,
+          severity: SEVERITY_RANK[ai.verdict.severity] >= SEVERITY_RANK[local.severity] ? ai.verdict.severity : local.severity,
+          concernTypes: [...new Set([...ai.verdict.concernTypes, ...local.concernTypes])].slice(0, 3),
+        }
+      : ai.verdict
+    : local.flagged
+      ? local
+      : ai.verdict ?? local;
   // Issue #890: the counter is written whether or not the capture is flagged — cost is paid on both — and
   // it counts the ATTEMPT, so a timeout against a paid engine is not recorded as a free scan.
   await recordScanUsage(child.familyId, (child as { family?: { timezone?: string } | null }).family?.timezone, ai.attempted, log);
+  const ownReceipt = ai.providers?.own;
+  const proofRegion = qa?.providerMode === "own"
+    ? (ownReceipt?.status === "scored" ? ownReceipt.region ?? STAGING_QA_REGION : undefined)
+    : STAGING_QA_REGION;
+  const qaProof = qa && {
+    traceId: qa.traceId,
+    fixtureNumber: qa.fixtureNumber,
+    ...(qa.providerMode ? { mode: qa.providerMode } : { model: STAGING_QA_MODEL }),
+    region: proofRegion,
+    fallback: ai.verdict === null,
+    modelFlagged: ai.verdict?.flagged ?? null,
+    rulesFlagged: local.flagged,
+  };
+  const receipt = ai.providers && qa ? { childId, traceId: qa.traceId, providers: ai.providers } : undefined;
   if (!verdict.flagged) {
+    if (receipt) await prisma.stagingScanOutcome.create({ data: receipt });
+    if (qaProof) log?.info(qaProof, "staging QA scan resolved without alert");
     return { ok: true, flagged: false, severity: "info", concernTypes: [] };
   }
 
   // The snippet vault always records flagged messages; alerts are throttled separately.
   const previewCipher = encryptSnippet(text.slice(0, PREVIEW_MAX_CHARS));
-  await prisma.socialEvent.create({
-    data: { childId, app: appName, contact, severity: verdict.severity, previewCipher, concernTypes: verdict.concernTypes },
-  });
+  const eventData = { childId, app: appName, contact, severity: verdict.severity, previewCipher, concernTypes: verdict.concernTypes };
+  const event = receipt ? await prisma.$transaction(async (tx) => {
+    const created = await tx.socialEvent.create({ data: eventData });
+    await tx.stagingScanOutcome.create({ data: { ...receipt, socialEventId: created.id } });
+    return created;
+  }) : await prisma.socialEvent.create({ data: eventData });
 
   // NOTE: at most one alert per app per 10 minutes per child; the vault write above always
   // happens so parents can still review the full snippet history in /v1/social/events.
   const throttleKey = `social:alert:${childId}:${appName.toLowerCase()}`;
   const throttled = await getRedis().set(throttleKey, "1", "EX", THROTTLE_SECONDS, "NX") !== "OK";
+  let alertId: string | undefined;
   if (!throttled) {
     const category = GAMING_APPS.has(appName.toLowerCase()) ? "gaming_chat" : "social_concern";
     // Alerts never carry the message snippet — metadata is app/contact/concernTypes only;
     // the decrypted preview stays exclusively in the encrypted vault (#24).
-    await raiseAlert({
+    const attribution = ai.providers && flaggedProviders(ai.providers);
+    const alert = await raiseAlert({
       childId,
       familyId: child.familyId,
       deviceId,
@@ -219,10 +333,13 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
       body: `${contact || "A contact"} sent a flagged message on ${appName}`,
       bodyKey: "alertBodySocialConcern",
       params: { app: appName, ...(contact ? { contact } : {}) },
-      metadata: { app: appName, contact, concernTypes: verdict.concernTypes },
+      metadata: { app: appName, contact, concernTypes: verdict.concernTypes,
+        ...(attribution && Object.keys(attribution).length > 0 && { providerOutcomes: attribution }) },
       childName: child.displayName,
     });
+    alertId = alert?.id;
   }
+  if (qaProof) log?.info({ ...qaProof, socialEventId: event?.id, alertId, throttled }, "staging QA scan resolved");
   return { ok: true, flagged: true, severity: verdict.severity, concernTypes: verdict.concernTypes };
 }
 
@@ -250,7 +367,9 @@ export async function socialRoutes(app: FastifyInstance) {
       // reach the agent's 30 s read timeout, so a slow engine would fail a batch the server had already
       // stored, and the retry would store it twice. `Promise.all` keeps the order, and the alert
       // throttle is an atomic SET NX, so same-app items still raise at most one alert.
-      const scanned = await Promise.all(batch.data.items.map((item) => scanOne(item, auth.device, req.log)));
+      // Leave five seconds for persistence and the response before Android's 30-second read timeout.
+      const batchDeadline = Date.now() + 25000;
+      const scanned = await Promise.all(batch.data.items.map((item) => scanOne(item, auth.device, req.log, batchDeadline)));
       // A failed item carries its reason only; status codes belong to the single-item body.
       const results = scanned.map((r) => (r.ok ? r : { ok: false, reason: r.reason }));
       return { results };
