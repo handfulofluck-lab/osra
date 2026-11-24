@@ -134,7 +134,8 @@ class RuleRepository @Inject constructor(
     fun isInternetPaused(): Boolean = pausedInternet
 
     /** Feature #2: true unless the cached rule set explicitly disables social monitoring for [appKey] (absent key = enabled). */
-    fun socialMonitoringEnabled(appKey: String): Boolean = cached?.socialMonitoring?.get(appKey) ?: true
+    fun socialMonitoringEnabled(appKey: String): Boolean =
+        socialMonitoringEnabled(cached?.socialMonitoring, appKey)
 
     /** #830 gating: true only after the server flag went on and the phone synced that rule set. */
     fun siteNamesEnabled(): Boolean = cached?.siteNames == true
@@ -317,6 +318,14 @@ class RuleRepository @Inject constructor(
          * decision path and the overlay guard cannot drift apart.
          */
         fun isEssentialApp(packageId: String): Boolean = EssentialPackages.isEssential(packageId)
+
+        /**
+         * Issue #1035: a missing `socialMonitoring` key means the parent never turned that app off, so the
+         * default is ON and only an explicit `false` disables it. Pure, so the default is pinned by a test
+         * rather than by reading the elvis in the instance getter.
+         */
+        fun socialMonitoringEnabled(flags: Map<String, Boolean>?, appKey: String): Boolean =
+            flags?.get(appKey) ?: true
 
         /**
          * #276: the persisted snapshot is milliseconds now, but a build before it wrote whole

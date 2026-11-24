@@ -282,14 +282,14 @@ class NotificationCapturePolicyTest {
     @Test
     fun `a removal releases what the notification produced`() {
         val tracker = NotificationCapturePolicy.BurstTracker()
-        val eligible = { _: String, _: String? -> true }
+        val allowAll = { _: String, _: String? -> true }
         NotificationCapturePolicy.capturesFor(
             snap(messages = listOf("a"), messageTimesMs = listOf(1_000L)),
             tracker,
-            eligible,
+            eligible = allowAll,
         )
         assertEquals(1, tracker.trackedKeys)
-        assertEquals(0, NotificationCapturePolicy.capturesFor(snap(removed = true), tracker, eligible).size)
+        assertEquals(0, NotificationCapturePolicy.capturesFor(snap(removed = true), tracker, eligible = allowAll).size)
         assertEquals(0, tracker.trackedKeys)
     }
 
@@ -318,5 +318,64 @@ class NotificationCapturePolicyTest {
         // k0 was evicted, so its line is new again; k2 is still held and deduped.
         assertEquals(1, tracker.newCaptures(snap(key = "k0", messages = listOf("m0"), messageTimesMs = listOf(1_000L))).size)
         assertEquals(0, tracker.newCaptures(snap(key = "k2", messages = listOf("m2"), messageTimesMs = listOf(3_000L))).size)
+    }
+
+    // Issue #1035: a parent's per-app OFF must stop the scan before anything is kept, and must release what the
+    // app's notifications already left behind — the Accessibility path already stops (SocialCapture.kt:34), and
+    // the notification path did not.
+
+    @Test
+    fun `a per-app off scans nothing and keeps no state`() {
+        val tracker = NotificationCapturePolicy.BurstTracker()
+        val burst = snap(title = "Work group", messages = listOf("a", "b", "c"), messageTimesMs = listOf(1_000L, 2_000L, 3_000L))
+        val captures = NotificationCapturePolicy.capturesFor(
+            burst,
+            tracker,
+            monitoringEnabled = { false },
+            eligible = { _, _ -> true },
+        )
+        assertEquals(0, captures.size)
+        assertEquals(0, tracker.trackedKeys)
+    }
+
+    @Test
+    fun `turning an app off releases what its notifications already left in the tracker`() {
+        val tracker = NotificationCapturePolicy.BurstTracker()
+        val burst = snap(title = "Work group", messages = listOf("a", "b"), messageTimesMs = listOf(1_000L, 2_000L))
+        assertEquals(2, NotificationCapturePolicy.capturesFor(burst, tracker, monitoringEnabled = { true }) { _, _ -> true }.size)
+        assertEquals(1, tracker.trackedKeys)
+        // The parent turns the app off; the next notification from it must not scan, and must not keep the old text.
+        assertEquals(0, NotificationCapturePolicy.capturesFor(burst, tracker, monitoringEnabled = { false }) { _, _ -> true }.size)
+        assertEquals(0, tracker.trackedKeys)
+    }
+
+    @Test
+    fun `an app that is on or unmentioned still scans`() {
+        val on = NotificationCapturePolicy.capturesFor(
+            snap(messages = listOf("a"), messageTimesMs = listOf(1_000L)),
+            NotificationCapturePolicy.BurstTracker(),
+            monitoringEnabled = { true },
+        ) { _, _ -> true }
+        assertEquals(1, on.size)
+        // The absent-key default is the repository's, not this lambda's: a missing key reads as enabled.
+        assertEquals(true, com.familyshield.agent.data.RuleRepository.socialMonitoringEnabled(null, "whatsapp"))
+        assertEquals(true, com.familyshield.agent.data.RuleRepository.socialMonitoringEnabled(emptyMap(), "whatsapp"))
+    }
+
+    @Test
+    fun `an explicit false in the rule set is the only thing that turns an app off`() {
+        assertEquals(
+            false,
+            com.familyshield.agent.data.RuleRepository.socialMonitoringEnabled(mapOf("whatsapp" to false), "whatsapp"),
+        )
+        assertEquals(
+            true,
+            com.familyshield.agent.data.RuleRepository.socialMonitoringEnabled(mapOf("whatsapp" to true), "whatsapp"),
+        )
+        // Another app's flag does not leak across apps.
+        assertEquals(
+            true,
+            com.familyshield.agent.data.RuleRepository.socialMonitoringEnabled(mapOf("instagram" to false), "whatsapp"),
+        )
     }
 }
