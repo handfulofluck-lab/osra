@@ -18,6 +18,8 @@ these gates exist, see `docs/adr/0005-adversarial-acceptance-gate.md` and
 | iOS + shared macOS core | `.github/workflows/ios-ci.yml` (macOS runner) | Native macOS SwiftPM build + test discovery + tests; iOS SwiftPM and simulator builds | Swift compile/behaviour regressions, or a portable test excluded from macOS |
 | **Hardware** (device) | section 5 | Crash-loop, FGS start, location upload, overlays | Anything the emulator cannot show |
 
+For the 12-app Social monitoring catalog (#1037), run `flutter test test/social_screen_test.dart test/setup_monitoring_test.dart`. The tests pin the shared Android package mapping, missing-key ON behavior, installed-first grouping, usable collapsed controls, onboarding preselection, Select all, and one-time banner persistence. To generate the UI/UX Bureau's 320 px / 200% EN and AR frames, set `OSRA_FRAME_DIR` to a scratch output directory and run the same command; `test/frame_capture.dart` writes `social-*.png` and `onboarding-*.png` only when that variable is set, so ordinary test runs have no filesystem side effects.
+
 Run the iOS launch classifier fixtures with
 `bash apps/child-ios/scripts/test-classify-launch-failure.sh`. A failure log that contains
 both an explicit target-app crash and a simulator launch error or runner stall is ambiguous
@@ -611,7 +613,7 @@ swift test list
 swift test
 ```
 
-The discovery step requires 225 macOS tests and names one case each from pairing, HMAC signing, rule
+The discovery step requires 228 macOS tests and names one case each from pairing, HMAC signing, rule
 interpretation and both localisation string suites. Five iOS-only authorization tests remain behind
 `#if os(iOS)` because `CLAuthorizationStatus.authorizedWhenInUse` is unavailable on macOS; the other location
 and client tests still run. Wrapping any additional portable source file in `#if os(iOS)` removes its tests and
