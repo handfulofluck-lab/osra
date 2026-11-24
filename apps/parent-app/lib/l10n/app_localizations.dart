@@ -1532,6 +1532,30 @@ abstract class AppLocalizations {
   /// **'Resume internet'**
   String get commandResumeInternet;
 
+  /// No description provided for @scopeThisDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'This device'**
+  String get scopeThisDevice;
+
+  /// No description provided for @scopeAllDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'All paired devices'**
+  String get scopeAllDevices;
+
+  /// No description provided for @deviceControlPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for this device'**
+  String get deviceControlPending;
+
+  /// No description provided for @deviceControlFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'This device couldn\'t apply the change'**
+  String get deviceControlFailed;
+
   /// No description provided for @commandBonusTime.
   ///
   /// In en, this message translates to:
