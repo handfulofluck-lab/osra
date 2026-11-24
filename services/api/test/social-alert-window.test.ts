@@ -8,6 +8,7 @@ import {
   SOCIAL_PENDING_PUBLISH_AND_PEEK_SCRIPT,
   SOCIAL_PENDING_RELEASE_SCRIPT,
   replayDeferredSocialObservations,
+  socialAlertDeferredKey,
   socialAlertThrottleKey,
   socialContactKey,
 } from "../src/lib/socialAlertWindow.js";
@@ -824,9 +825,11 @@ describe("social alert per-contact window (#1029)", () => {
     await expect(p2).resolves.toMatchObject({ throttled: true });
     await expect(p1).rejects.toThrow("transient DB failure before commit");
 
-    const deferredKey = `${socialAlertThrottleKey(CHILD.id, "WhatsApp", "CommitBoundary")}:deferred`;
     expect(alerts.size).toBe(1);
     const createdRow = [...alerts.values()][0]!;
+    const claimId = String(createdRow.metadata.windowClaimId);
+    expect(claimId.length).toBeGreaterThan(0);
+    const deferredKey = socialAlertDeferredKey(socialAlertThrottleKey(CHILD.id, "WhatsApp", "CommitBoundary"), claimId);
     expect(createdRow.attemptCount).toBe(1);
     expect(redisLists.get(deferredKey)).toHaveLength(1);
     const savedDeferredRaw = [...(redisLists.get(deferredKey) ?? [])];
@@ -846,5 +849,176 @@ describe("social alert per-contact window (#1029)", () => {
     expect(alerts.get(createdRow.id)?.attemptCount).toBe(2);
     expect(alerts.get(createdRow.id)?.metadata.flaggedCount).toBe(2);
     expect(redisLists.get(deferredKey)).toBeUndefined();
+  });
+
+  // Mutant (Codex #1033 review 7119141081): acknowledging the deferred queue even when all 6 CAS
+  // attempts return count=0 drops the deferred observation (DB=1, queue=0) instead of returning retryable.
+  it("preserves deferred entries and returns retryable when all 6 CAS attempts conflict", async () => {
+    const origCreate = prismaMock.alert.create.getMockImplementation()!;
+    const origUpdateMany = prismaMock.alert.updateMany.getMockImplementation()!;
+    let delayedOnce = false;
+    let remainingConflicts = 6;
+
+    prismaMock.alert.create.mockImplementation((async (args: { data: Record<string, unknown> }) => {
+      if (!delayedOnce) {
+        delayedOnce = true;
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+      return origCreate(args);
+    }) as never);
+    prismaMock.alert.updateMany.mockImplementation((async (args: { where: { id: string; attemptCount?: number }; data: Record<string, unknown> }) => {
+      if (remainingConflicts > 0) {
+        remainingConflicts -= 1;
+        return { count: 0 };
+      }
+      return origUpdateMany(args);
+    }) as never);
+
+    vi.resetModules();
+    const r1Redis = await import("../src/redis.js");
+    const r1Notify = await import("../src/lib/push/notify.js");
+    const replica1 = await import("../src/lib/socialAlertWindow.js");
+    bindMockRedisClient(r1Redis.getRedis());
+    r1Notify.setPushProviders([fakePushProvider]);
+
+    vi.resetModules();
+    const r2Redis = await import("../src/redis.js");
+    const r2Notify = await import("../src/lib/push/notify.js");
+    const replica2 = await import("../src/lib/socialAlertWindow.js");
+    bindMockRedisClient(r2Redis.getRedis());
+    r2Notify.setPushProviders([fakePushProvider]);
+
+    const p1 = replica1.recordFlaggedSocialAlert({
+      childId: CHILD.id,
+      familyId: CHILD.familyId,
+      childName: CHILD.displayName,
+      appName: "WhatsApp",
+      contact: "SixConflicts",
+      category: "social_concern",
+      severity: "warning",
+      concernTypes: ["cyberbullying"],
+      pendingWaitMs: 25,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const p2 = replica2.recordFlaggedSocialAlert({
+      childId: CHILD.id,
+      familyId: CHILD.familyId,
+      childName: CHILD.displayName,
+      appName: "WhatsApp",
+      contact: "SixConflicts",
+      category: "social_concern",
+      severity: "warning",
+      concernTypes: ["cyberbullying"],
+      pendingWaitMs: 25,
+    });
+
+    const [res1, res2] = await Promise.all([p1, p2]);
+    expect(res2.throttled).toBe(true);
+    expect(res1.retryable).toBe(true);
+    expect(remainingConflicts).toBe(0);
+
+    const row = [...alerts.values()][0]!;
+    const deferredKey = socialAlertDeferredKey(
+      socialAlertThrottleKey(CHILD.id, "WhatsApp", "SixConflicts"),
+      String(row.metadata.windowClaimId),
+    );
+    expect(row.attemptCount).toBe(1);
+    expect(redisLists.get(deferredKey)).toHaveLength(1);
+
+    // Once conflicts subside, replay commits count = 2 and clears the queue.
+    await replayDeferredSocialObservations(row as never, { familyId: CHILD.familyId, childName: CHILD.displayName });
+    expect(alerts.get(row.id)?.attemptCount).toBe(2);
+    expect(alerts.get(row.id)?.metadata.flaggedCount).toBe(2);
+    expect(redisLists.get(deferredKey)).toBeUndefined();
+  });
+
+  // Mutant (Codex #1033 review 7119167276): sharing one contact-wide deferred key lets an expired older
+  // row steal a newer window's deferred observation when visited first (ending old=2, current=1, queued=0).
+  it("binds deferred replay to the originating window in both candidate orders ([old, current] and [current, old])", async () => {
+    const throttleKey = socialAlertThrottleKey(CHILD.id, "WhatsApp", "WindowBound");
+    const contactKey = socialContactKey(CHILD.id, "WindowBound");
+
+    for (const order of ["old-first", "current-first"] as const) {
+      alerts.clear();
+      redisLists.clear();
+      const oldClaim = `claim-old-${order}`;
+      const curClaim = `claim-cur-${order}`;
+      const oldRow: StoredAlert = {
+        id: `alert-old-${order}`,
+        childId: CHILD.id,
+        deviceId: null,
+        severity: "warning",
+        category: "social_concern",
+        title: "Social concern",
+        body: "1 concerning message",
+        attemptCount: 1,
+        acknowledged: false,
+        createdAt: new Date("2026-11-24T00:40:00.000Z"),
+        metadata: {
+          app: "WhatsApp",
+          contact: "WindowBound",
+          contactKey,
+          windowClaimId: oldClaim,
+          flaggedCount: 1,
+          pushedCount: 1,
+          pushedSeverity: "warning",
+          windowStartedAt: "2026-11-24T00:40:00.000Z",
+          windowEndsAt: "2026-11-24T00:50:00.000Z",
+          latestAt: "2026-11-24T00:40:00.000Z",
+          summaryPending: false,
+          summaryPushed: false,
+        },
+      };
+      const curRow: StoredAlert = {
+        id: `alert-cur-${order}`,
+        childId: CHILD.id,
+        deviceId: null,
+        severity: "warning",
+        category: "social_concern",
+        title: "Social concern",
+        body: "1 concerning message",
+        attemptCount: 1,
+        acknowledged: false,
+        createdAt: new Date("2026-11-24T01:00:00.000Z"),
+        metadata: {
+          app: "WhatsApp",
+          contact: "WindowBound",
+          contactKey,
+          windowClaimId: curClaim,
+          flaggedCount: 1,
+          pushedCount: 1,
+          pushedSeverity: "warning",
+          windowStartedAt: "2026-11-24T01:00:00.000Z",
+          windowEndsAt: "2026-11-24T01:10:00.000Z",
+          latestAt: "2026-11-24T01:00:00.000Z",
+          summaryPending: false,
+          summaryPushed: false,
+        },
+      };
+      alerts.set(oldRow.id, oldRow);
+      alerts.set(curRow.id, curRow);
+
+      const curDeferKey = socialAlertDeferredKey(throttleKey, curClaim);
+      redisLists.set(curDeferKey, [
+        JSON.stringify({
+          id: `obs-${order}`,
+          claimId: curClaim,
+          severity: "warning",
+          concernTypes: ["cyberbullying"],
+          observedAt: "2026-11-24T01:00:05.000Z",
+        }),
+      ]);
+
+      const ordered = order === "old-first" ? [oldRow, curRow] : [curRow, oldRow];
+      prismaMock.alert.findMany.mockResolvedValueOnce(
+        ordered.map((r) => ({ ...r, child: { familyId: CHILD.familyId, displayName: CHILD.displayName } })),
+      );
+
+      await runSocialAlertSummarySweep(new Date("2026-11-24T01:01:00.000Z"));
+      expect(alerts.get(oldRow.id)?.attemptCount).toBe(1);
+      expect(alerts.get(curRow.id)?.attemptCount).toBe(2);
+      expect(alerts.get(curRow.id)?.metadata.flaggedCount).toBe(2);
+      expect(redisLists.get(curDeferKey)).toBeUndefined();
+    }
   });
 });

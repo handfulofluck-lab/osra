@@ -7,6 +7,7 @@ import {
   SOCIAL_PENDING_DEFER_SCRIPT,
   SOCIAL_PENDING_PUBLISH_AND_PEEK_SCRIPT,
   replayDeferredSocialObservations,
+  socialAlertDeferredKey,
   socialAlertThrottleKey,
   socialContactKey,
 } from "../src/lib/socialAlertWindow.js";
@@ -332,7 +333,7 @@ describeRedis("social alert window Lua rollover against real Redis (#1029)", () 
       installAlertDbMock(120);
       const contactB = `ReplicaDefer-${randomUUID()}`;
       const keyB = trackKey(socialAlertThrottleKey(childId, appName, contactB));
-      const deferKeyB = trackKey(`${keyB}:deferred`);
+      // Claim-bound deferred key is tracked after alert creation below.
 
       vi.resetModules();
       const r1BRedis = await import("../src/redis.js");
@@ -368,7 +369,8 @@ describeRedis("social alert window Lua rollover against real Redis (#1029)", () 
       replicaClients.push(r1BRedis.getRedis(), r2BRedis.getRedis());
 
       expect(alerts.size).toBe(1);
-      const rowB = [...alerts.values()][0]! as { attemptCount: number; severity: string; metadata: { flaggedCount: number } };
+      const rowB = [...alerts.values()][0]! as { attemptCount: number; severity: string; metadata: { flaggedCount: number; windowClaimId: string } };
+      const deferKeyB = trackKey(socialAlertDeferredKey(keyB, rowB.metadata.windowClaimId));
       expect(rowB.attemptCount).toBe(2);
       expect(rowB.metadata.flaggedCount).toBe(2);
       expect(rowB.severity).toBe("critical");
@@ -416,7 +418,7 @@ describeRedis("social alert window Lua rollover against real Redis (#1029)", () 
     const appName = "WhatsApp";
     const contact = `CommitBoundaryReal-${randomUUID()}`;
     const throttleKey = trackKey(socialAlertThrottleKey(childId, appName, contact));
-    const deferKey = trackKey(`${throttleKey}:deferred`);
+    // Claim-bound deferred key resolved from created alert metadata below.
 
     const alerts = new Map<string, Record<string, unknown>>();
     let delayedOnce = false;
@@ -483,7 +485,8 @@ describeRedis("social alert window Lua rollover against real Redis (#1029)", () 
       replicaClients.push(r1Redis.getRedis(), r2Redis.getRedis());
 
       // Side 1 (before commit): DB at 1, real Redis still holds the deferred entry.
-      const row = [...alerts.values()][0]! as { id: string; attemptCount: number; metadata: { flaggedCount: number } };
+      const row = [...alerts.values()][0]! as { id: string; attemptCount: number; metadata: { flaggedCount: number; windowClaimId: string } };
+      const deferKey = trackKey(socialAlertDeferredKey(throttleKey, row.metadata.windowClaimId));
       expect(row.attemptCount).toBe(1);
       const pendingRaw = await client.lrange(deferKey, 0, -1);
       expect(pendingRaw).toHaveLength(1);
@@ -508,6 +511,184 @@ describeRedis("social alert window Lua rollover against real Redis (#1029)", () 
       await client.rpush(ackKey, "first", "second");
       expect(await client.eval(SOCIAL_PENDING_ACK_SCRIPT, 1, ackKey, "1")).toBe(1);
       expect(await client.lrange(ackKey, 0, -1)).toEqual(["second"]);
+    } finally {
+      for (const rc of replicaClients) {
+        await rc.quit().catch(() => undefined);
+      }
+    }
+  });
+
+  it("preserves deferred entries in real Redis on 6-conflict CAS exhaustion and binds sweep replay to the originating window in both candidate orders", async () => {
+    const childId = `child-${randomUUID()}`;
+    const familyId = `fam-${randomUUID()}`;
+    const appName = "WhatsApp";
+
+    // Part A: 6-conflict CAS exhaustion against real Redis -> retryable=true, DB=1, Redis LLEN=1 -> replay commits 2, LLEN=0.
+    const contact6 = `SixConflictsReal-${randomUUID()}`;
+    const throttle6 = trackKey(socialAlertThrottleKey(childId, appName, contact6));
+    const alerts6 = new Map<string, Record<string, unknown>>();
+    let delayedOnce = false;
+    let remainingConflicts = 6;
+    prismaMock.alert.create.mockImplementation((async ({ data }: { data: Record<string, unknown> }) => {
+      if (!delayedOnce) {
+        delayedOnce = true;
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+      const row = { id: `real-6c-${randomUUID()}`, createdAt: new Date(), acknowledged: false, ...data };
+      alerts6.set(row.id, row);
+      return row;
+    }) as never);
+    prismaMock.alert.findUnique.mockImplementation((async ({ where }: { where: { id: string } }) => alerts6.get(where.id) ?? null) as never);
+    prismaMock.alert.updateMany.mockImplementation((async ({ where, data }: { where: { id: string; attemptCount?: number }; data: Record<string, unknown> }) => {
+      if (remainingConflicts > 0) {
+        remainingConflicts -= 1;
+        return { count: 0 };
+      }
+      const cur = alerts6.get(where.id);
+      if (!cur || (where.attemptCount !== undefined && cur.attemptCount !== where.attemptCount)) return { count: 0 };
+      alerts6.set(where.id, { ...cur, ...data });
+      return { count: 1 };
+    }) as never);
+
+    const replicaClients: Array<ReturnType<typeof getRedis>> = [];
+    try {
+      vi.resetModules();
+      const r1Redis = await import("../src/redis.js");
+      const replica1 = await import("../src/lib/socialAlertWindow.js");
+      vi.resetModules();
+      const r2Redis = await import("../src/redis.js");
+      const replica2 = await import("../src/lib/socialAlertWindow.js");
+
+      const p1 = replica1.recordFlaggedSocialAlert({
+        childId,
+        familyId,
+        childName: "Alex",
+        appName,
+        contact: contact6,
+        category: "social_concern",
+        severity: "warning",
+        concernTypes: ["cyberbullying"],
+        pendingWaitMs: 25,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const p2 = replica2.recordFlaggedSocialAlert({
+        childId,
+        familyId,
+        childName: "Alex",
+        appName,
+        contact: contact6,
+        category: "social_concern",
+        severity: "warning",
+        concernTypes: ["cyberbullying"],
+        pendingWaitMs: 25,
+      });
+      const [res1, res2] = await Promise.all([p1, p2]);
+      replicaClients.push(r1Redis.getRedis(), r2Redis.getRedis());
+
+      expect(res2.throttled).toBe(true);
+      expect(res1.retryable).toBe(true);
+      const row6 = [...alerts6.values()][0]! as { id: string; attemptCount: number; metadata: { flaggedCount: number; windowClaimId: string } };
+      const deferKey6 = trackKey(socialAlertDeferredKey(throttle6, row6.metadata.windowClaimId));
+      expect(row6.attemptCount).toBe(1);
+      expect(await client.llen(deferKey6)).toBe(1);
+
+      await replayDeferredSocialObservations(row6 as never, { familyId, childName: "Alex" });
+      const recovered6 = alerts6.get(row6.id)! as { attemptCount: number; metadata: { flaggedCount: number } };
+      expect(recovered6.attemptCount).toBe(2);
+      expect(recovered6.metadata.flaggedCount).toBe(2);
+      expect(await client.llen(deferKey6)).toBe(0);
+
+      // Part B: Window-bound sweep replay in BOTH candidate orders ([old, current] and [current, old]) against real Redis.
+      const contactW = `WindowBoundReal-${randomUUID()}`;
+      const throttleW = trackKey(socialAlertThrottleKey(childId, appName, contactW));
+      const contactKeyW = socialContactKey(childId, contactW);
+
+      for (const order of ["old-first", "current-first"] as const) {
+        const alertsW = new Map<string, Record<string, unknown>>();
+        const oldClaim = `rc-old-${randomUUID()}`;
+        const curClaim = `rc-cur-${randomUUID()}`;
+        const curDeferKey = trackKey(socialAlertDeferredKey(throttleW, curClaim));
+        const oldRow = {
+          id: `real-old-${order}`,
+          childId,
+          deviceId: null,
+          severity: "warning",
+          category: "social_concern",
+          title: "Social concern",
+          body: "1",
+          attemptCount: 1,
+          acknowledged: false,
+          createdAt: new Date("2026-11-24T00:40:00.000Z"),
+          metadata: {
+            app: appName,
+            contact: contactW,
+            contactKey: contactKeyW,
+            windowClaimId: oldClaim,
+            flaggedCount: 1,
+            pushedCount: 1,
+            pushedSeverity: "warning",
+            windowStartedAt: "2026-11-24T00:40:00.000Z",
+            windowEndsAt: "2026-11-24T00:50:00.000Z",
+            latestAt: "2026-11-24T00:40:00.000Z",
+            summaryPending: false,
+            summaryPushed: false,
+          },
+          child: { familyId, displayName: "Alex" },
+        };
+        const curRow = {
+          id: `real-cur-${order}`,
+          childId,
+          deviceId: null,
+          severity: "warning",
+          category: "social_concern",
+          title: "Social concern",
+          body: "1",
+          attemptCount: 1,
+          acknowledged: false,
+          createdAt: new Date("2026-11-24T01:00:00.000Z"),
+          metadata: {
+            app: appName,
+            contact: contactW,
+            contactKey: contactKeyW,
+            windowClaimId: curClaim,
+            flaggedCount: 1,
+            pushedCount: 1,
+            pushedSeverity: "warning",
+            windowStartedAt: "2026-11-24T01:00:00.000Z",
+            windowEndsAt: "2026-11-24T01:10:00.000Z",
+            latestAt: "2026-11-24T01:00:00.000Z",
+            summaryPending: false,
+            summaryPushed: false,
+          },
+          child: { familyId, displayName: "Alex" },
+        };
+        alertsW.set(oldRow.id, oldRow);
+        alertsW.set(curRow.id, curRow);
+        prismaMock.alert.findUnique.mockImplementation((async ({ where }: { where: { id: string } }) => alertsW.get(where.id) ?? null) as never);
+        prismaMock.alert.updateMany.mockImplementation((async ({ where, data }: { where: { id: string; attemptCount?: number }; data: Record<string, unknown> }) => {
+          const cur = alertsW.get(where.id);
+          if (!cur || (where.attemptCount !== undefined && cur.attemptCount !== where.attemptCount)) return { count: 0 };
+          alertsW.set(where.id, { ...cur, ...data });
+          return { count: 1 };
+        }) as never);
+        prismaMock.alert.findMany.mockResolvedValueOnce(order === "old-first" ? [oldRow, curRow] : [curRow, oldRow]);
+
+        await client.rpush(
+          curDeferKey,
+          JSON.stringify({
+            id: `real-obs-${order}`,
+            claimId: curClaim,
+            severity: "warning",
+            concernTypes: ["cyberbullying"],
+            observedAt: "2026-11-24T01:00:05.000Z",
+          }),
+        );
+
+        await runSocialAlertSummarySweep(new Date("2026-11-24T01:01:00.000Z"));
+        expect((alertsW.get(oldRow.id) as { attemptCount: number }).attemptCount).toBe(1);
+        expect((alertsW.get(curRow.id) as { attemptCount: number }).attemptCount).toBe(2);
+        expect(await client.llen(curDeferKey)).toBe(0);
+      }
     } finally {
       for (const rc of replicaClients) {
         await rc.quit().catch(() => undefined);
