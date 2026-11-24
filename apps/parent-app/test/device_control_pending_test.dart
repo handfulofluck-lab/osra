@@ -118,12 +118,39 @@ void main() {
   testWidgets('the card names the scope of each group of controls', (tester) async {
     await pump(tester, history(const []));
 
-    expect(find.byKey(const ValueKey('scopeThisDevice')), findsOneWidget,
-        reason: 'the per-handset controls are grouped under a label that says so');
-    expect(find.text('This device'), findsOneWidget);
-    expect(find.byKey(const ValueKey('scopeAllDevices')), findsOneWidget,
-        reason: 'the internet control is family-wide and must not read as a per-handset command');
-    expect(find.text('All paired devices'), findsOneWidget);
+    // Each wording is bound to its own keyed heading. Finding the two strings separately would pass with the
+    // labels swapped, which is the exact mistake this row exists to catch (Codex, 7118188485).
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('scopeThisDevice')),
+        matching: find.text('This device'),
+      ),
+      findsOneWidget,
+      reason: 'the per-handset controls are grouped under a label that says so',
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('scopeAllDevices')),
+        matching: find.text('All paired devices'),
+      ),
+      findsOneWidget,
+      reason: 'the internet control is family-wide and must not read as a per-handset command',
+    );
+    // And neither heading may carry the other's wording.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('scopeThisDevice')),
+        matching: find.text('All paired devices'),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('scopeAllDevices')),
+        matching: find.text('This device'),
+      ),
+      findsNothing,
+    );
   });
 
   // The line, not the tooltip: #974 marked the button with a tooltip, which a parent on a phone never sees.
