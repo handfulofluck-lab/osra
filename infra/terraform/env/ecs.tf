@@ -77,15 +77,24 @@ resource "aws_ecs_task_definition" "api" {
           { name = "OSRA_STAGING_QA_ANALYZER_ENABLED", value = "1" },
           { name = "OSRA_STAGING_QA_ANALYZER_URL", value = "http://${local.staging_qa_dns}:8000" },
         ] : [],
-        # APNs (#695). Always the production APNs endpoint: TestFlight and store builds carry
-        # aps-environment=production, and a sandbox token sent there fails with BadDeviceToken. Key and team
-        # ids are not secrets but stay out of the repo; they come from tfvars.
-        var.apns_enabled ? [
+        # APNs (#695). Production always uses the production APNs endpoint: TestFlight and store builds carry
+        # aps-environment=production, and a sandbox token sent there fails with BadDeviceToken. Staging may
+        # set apns_env = "sandbox" for Xcode/debug iPhone builds (24 Nov swap test, osra-security#38).
+        # Key and team ids are not secrets but stay out of the repo: from tfvars, or (apns_secret_json) from
+        # the JSON keys of the APNs secret itself, in which case they are mapped as secrets below.
+        var.apns_enabled && !var.apns_secret_json ? [
           { name = "APNS_KEY_ID", value = var.apns_key_id },
           { name = "APNS_TEAM_ID", value = var.apns_team_id },
+        ] : [],
+        var.apns_enabled ? [
           { name = "APNS_BUNDLE_ID", value = var.apns_bundle_id },
           { name = "APNS_DEVICE_BUNDLE_ID", value = var.apns_device_bundle_id },
-          { name = "APNS_ENV", value = "production" },
+          { name = "APNS_ENV", value = var.environment == "production" ? "production" : var.apns_env },
+        ] : [],
+        # Staging QA only: push the parent on every flagged message instead of the per-app throttle (#1062).
+        # Never in production (the guard below refuses it).
+        var.social_alert_push_every_message && var.environment != "production" ? [
+          { name = "SOCIAL_ALERT_PUSH_EVERY_MESSAGE", value = "true" },
         ] : [],
       )
 
@@ -107,8 +116,15 @@ resource "aws_ecs_task_definition" "api" {
         var.push_enabled ? [
           { name = "FCM_SERVICE_ACCOUNT_JSON", valueFrom = data.terraform_remote_state.base.outputs.fcm_service_account_secret_arn },
         ] : [],
-        var.apns_enabled ? [
+        var.apns_enabled && !var.apns_secret_json ? [
           { name = "APNS_KEY_P8", valueFrom = data.terraform_remote_state.base.outputs.apns_key_p8_secret_arn },
+        ] : [],
+        # apns_secret_json: the secret holds one JSON value {"p8","keyId","teamId"} (how staging was filled on
+        # 24 Nov), so no id travels through tfvars or chat.
+        var.apns_enabled && var.apns_secret_json ? [
+          { name = "APNS_KEY_P8", valueFrom = "${data.terraform_remote_state.base.outputs.apns_key_p8_secret_arn}:p8::" },
+          { name = "APNS_KEY_ID", valueFrom = "${data.terraform_remote_state.base.outputs.apns_key_p8_secret_arn}:keyId::" },
+          { name = "APNS_TEAM_ID", valueFrom = "${data.terraform_remote_state.base.outputs.apns_key_p8_secret_arn}:teamId::" },
         ] : [],
         # Production's service credential (#714): a `secrets` entry, never `environment`, so the value is in
         # no task definition. try(): a staging base from before this change has no such output.
@@ -144,8 +160,12 @@ resource "aws_ecs_task_definition" "api" {
   # APNs with an empty key or team id would start a task whose every iPhone push fails at signing.
   lifecycle {
     precondition {
-      condition     = !var.apns_enabled || (var.apns_key_id != "" && var.apns_team_id != "")
-      error_message = "apns_enabled needs apns_key_id and apns_team_id in tfvars."
+      condition     = !var.apns_enabled || var.apns_secret_json || (var.apns_key_id != "" && var.apns_team_id != "")
+      error_message = "apns_enabled needs apns_key_id and apns_team_id in tfvars (or apns_secret_json = true)."
+    }
+    precondition {
+      condition     = var.environment != "production" || !var.social_alert_push_every_message
+      error_message = "social_alert_push_every_message is a staging QA setting and is refused in production."
     }
   }
 }
