@@ -12,6 +12,7 @@ import {
   buildParentAlertMessage,
   buildDeviceWakeMessage,
   canWakeDevice,
+  classifyPushError,
   notifyDeviceWake,
   notifyParentsOfAlert,
   setDeviceWakeSender,
@@ -912,5 +913,138 @@ describe("the wake log (#673, Claude a4 / Fable B1-B2)", () => {
     expect(lines).toContain("failed");
     expect(lines).toContain("reason=UNREGISTERED");
     expect(lines).toContain("tokenCleared=true");
+  });
+});
+
+describe("parent alert push outcome logging (#1028)", () => {
+  beforeEach(() => {
+    resetPrismaMock();
+    setPushProviders(null);
+    delete process.env.PUSH_MIN_SEVERITY;
+  });
+
+  // Mutant: collapse THIRD_PARTY_AUTH_ERROR into generic provider_error -> the third_party_auth row fails.
+  it("classifies provider errors into operator-scannable classes including third_party_auth", () => {
+    expect(classifyPushError({ invalidToken: true, reason: "HTTP 404 UNREGISTERED" })).toBe("unregistered");
+    expect(classifyPushError({ invalidToken: true, reason: "HTTP 410 Unregistered" })).toBe("unregistered");
+    expect(classifyPushError({ invalidToken: true, reason: "HTTP 400 DeviceTokenNotForTopic" })).toBe("topic_mismatch");
+    expect(classifyPushError({ invalidToken: true, reason: "HTTP 400 INVALID_ARGUMENT" })).toBe("invalid_token");
+    expect(classifyPushError({ invalidToken: false, reason: "HTTP 401 THIRD_PARTY_AUTH_ERROR" })).toBe("third_party_auth");
+    expect(classifyPushError({ invalidToken: false, reason: "HTTP 403 SENDER_ID_MISMATCH" })).toBe("auth_error");
+    expect(classifyPushError({ invalidToken: false, reason: "FCM oauth token exchange failed: HTTP 401" })).toBe("auth_error");
+    expect(classifyPushError({ invalidToken: false, reason: "HTTP 429 QUOTA_EXCEEDED" })).toBe("rate_limited");
+    expect(classifyPushError({ invalidToken: false, reason: "HTTP 400 INVALID_ARGUMENT" })).toBe("invalid_request");
+    expect(classifyPushError({ invalidToken: false, reason: "HTTP 503 UNAVAILABLE" })).toBe("provider_unavailable");
+    expect(classifyPushError({ invalidToken: false, reason: "fetch failed (ECONNRESET)" })).toBe("network_error");
+    expect(classifyPushError({ invalidToken: false, reason: "unexpected" })).toBe("provider_error");
+  });
+
+  // Mutant: delete the per-token or aggregate console.info/warn lines in notifyParentsOfAlert, or include
+  // any push token / familyId / parentId / alertId / childName -> assertions below fail immediately.
+  it("logs per-token sent/pruned/failed outcomes and aggregate NotifyOutcome counts with zero tokens or ids", async () => {
+    const provider = new FakeProvider((tok) => {
+      if (tok === "tok-secret-android") return { ok: true, messageId: "projects/osra-test/messages/101" };
+      if (tok === "tok-secret-ios") return { ok: false, invalidToken: false, reason: "HTTP 401 THIRD_PARTY_AUTH_ERROR" };
+      return { ok: false, invalidToken: true, reason: "HTTP 404 UNREGISTERED" };
+    });
+    setPushProviders([provider]);
+    prismaMock.digestPrefs.findUnique.mockResolvedValue(null);
+    prismaMock.parent.findMany.mockResolvedValue([{ id: "parent-secret-1" }, { id: "parent-secret-2" }]);
+    prismaMock.parentPushToken.findMany.mockResolvedValue([
+      { id: "row-secret-1", parentId: "parent-secret-1", token: "tok-secret-android", platform: "android" },
+      { id: "row-secret-2", parentId: "parent-secret-1", token: "tok-secret-ios", platform: "ios" },
+      { id: "row-secret-3", parentId: "parent-secret-2", token: "tok-secret-web", platform: "web" },
+    ]);
+    prismaMock.parentPushToken.deleteMany.mockResolvedValue({ count: 1 });
+
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const outcome = await notifyParentsOfAlert(
+      "fam-secret-9",
+      { id: "alert-secret-9", childId: "child-secret-9", severity: "critical", category: "sos", title: "SOSCanary", body: "BodyCanary" },
+      "AlexCanary",
+    );
+    const infoLines = info.mock.calls.map((c) => String(c[0]));
+    const warnLines = warn.mock.calls.map((c) => String(c[0]));
+    info.mockRestore();
+    warn.mockRestore();
+
+    expect(outcome).toEqual({ recipients: 3, delivered: 1, pruned: 1, skipped: null });
+    expect(infoLines.some((l) => l.includes("outcome=sent") && l.includes("platform=android") && l.includes("provider=android") && l.includes("messageId=projects/osra-test/messages/101"))).toBe(true);
+    expect(infoLines.some((l) => l.includes("outcome=pruned") && l.includes("platform=web") && l.includes("provider=android") && l.includes("errorClass=unregistered") && l.includes("HTTP 404 UNREGISTERED"))).toBe(true);
+    expect(warnLines.some((l) => l.includes("delivery failed") && l.includes("platform=ios") && l.includes("provider=android") && l.includes("errorClass=third_party_auth") && l.includes("HTTP 401 THIRD_PARTY_AUTH_ERROR"))).toBe(true);
+    expect(
+      infoLines.some(
+        (l) =>
+          l.includes("[push] parent alert outcome") &&
+          l.includes("recipients=3") &&
+          l.includes("delivered=1") &&
+          l.includes("pruned=1") &&
+          l.includes("failed=1") &&
+          l.includes("skipped=none") &&
+          l.includes("platforms=android:1,ios:1,web:1") &&
+          l.includes("category=sos") &&
+          l.includes("severity=critical"),
+      ),
+    ).toBe(true);
+
+    const allLogs = [...infoLines, ...warnLines].join("\n");
+    for (const canary of [
+      "tok-secret-android",
+      "tok-secret-ios",
+      "tok-secret-web",
+      "fam-secret-9",
+      "parent-secret-1",
+      "parent-secret-2",
+      "row-secret-1",
+      "row-secret-2",
+      "row-secret-3",
+      "alert-secret-9",
+      "child-secret-9",
+      "AlexCanary",
+      "SOSCanary",
+      "BodyCanary",
+    ]) {
+      expect(allLogs).not.toContain(canary);
+    }
+  });
+
+  // Mutant: omit logParentAlertOutcome on any skip branch or omit the no_provider branch -> fails below.
+  it("logs aggregate NotifyOutcome on every skip reason (severity, no_providers, prefs, no_tokens) and missing provider", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    // 1. severity skip
+    await notifyParentsOfAlert("fam-1", { ...alert, severity: "info", category: "device_restarted" });
+    // 2. no_providers skip
+    setPushProviders([]);
+    await notifyParentsOfAlert("fam-1", alert);
+    // 3. prefs skip
+    setPushProviders([new FakeProvider()]);
+    prismaMock.digestPrefs.findUnique.mockResolvedValue({ familyId: "fam-1", pushEnabled: false, dailyEmail: true, weeklyEmail: true, emails: [] });
+    await notifyParentsOfAlert("fam-1", alert);
+    // 4. no_tokens skip
+    prismaMock.digestPrefs.findUnique.mockResolvedValue(null);
+    prismaMock.parent.findMany.mockResolvedValue([{ id: "parent-1" }]);
+    prismaMock.parentPushToken.findMany.mockResolvedValue([]);
+    await notifyParentsOfAlert("fam-1", alert);
+    // 5. missing FCM provider when only APNs is registered
+    const apnsOnly: PushProvider = { platform: "ios", async send() { return { ok: true }; } };
+    setPushProviders([apnsOnly]);
+    prismaMock.parentPushToken.findMany.mockResolvedValue([{ id: "t1", parentId: "parent-1", token: "fcm-ios-tok", platform: "ios" }]);
+    const noProvOut = await notifyParentsOfAlert("fam-1", alert);
+
+    const infoLines = info.mock.calls.map((c) => String(c[0]));
+    const warnLines = warn.mock.calls.map((c) => String(c[0]));
+    info.mockRestore();
+    warn.mockRestore();
+
+    expect(noProvOut).toEqual({ recipients: 1, delivered: 0, pruned: 0, skipped: null });
+    expect(infoLines.some((l) => l.includes("[push] parent alert outcome") && l.includes("skipped=severity"))).toBe(true);
+    expect(infoLines.some((l) => l.includes("[push] parent alert outcome") && l.includes("skipped=no_providers"))).toBe(true);
+    expect(infoLines.some((l) => l.includes("[push] parent alert outcome") && l.includes("skipped=prefs"))).toBe(true);
+    expect(infoLines.some((l) => l.includes("[push] parent alert outcome") && l.includes("skipped=no_tokens"))).toBe(true);
+    expect(warnLines.some((l) => l.includes("outcome=skipped") && l.includes("platform=ios") && l.includes("errorClass=no_provider"))).toBe(true);
+    expect(infoLines.some((l) => l.includes("recipients=1 delivered=0 pruned=0 failed=1 skipped=none") && l.includes("platforms=ios:1"))).toBe(true);
   });
 });

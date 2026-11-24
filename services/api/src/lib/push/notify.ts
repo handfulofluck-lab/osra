@@ -136,27 +136,137 @@ export interface NotifyOutcome {
   skipped: "severity" | "no_providers" | "no_tokens" | "prefs" | null;
 }
 
+export type PushErrorClass =
+  | "unregistered"
+  | "topic_mismatch"
+  | "invalid_token"
+  | "third_party_auth"
+  | "auth_error"
+  | "rate_limited"
+  | "invalid_request"
+  | "provider_unavailable"
+  | "network_error"
+  | "provider_error";
+
+/**
+ * Bucket a failed provider response into a closed operator-scannable error class (#1028).
+ * Distinguishes APNs/Firebase third-party auth mismatches (`THIRD_PARTY_AUTH_ERROR`) from
+ * dead tokens, OAuth failures, rate limits, malformed payloads, and transient provider outages.
+ */
+export function classifyPushError(result: { invalidToken?: boolean; reason?: string }): PushErrorClass {
+  const reason = (result.reason ?? "").trim();
+  if (/\b(UNREGISTERED|Unregistered|NOT_FOUND)\b/.test(reason) || /\bHTTP (404|410)\b/.test(reason)) {
+    return "unregistered";
+  }
+  if (/\bDeviceTokenNotForTopic\b/.test(reason)) {
+    return "topic_mismatch";
+  }
+  if (result.invalidToken || /\bBadDeviceToken\b/.test(reason)) {
+    return "invalid_token";
+  }
+  if (/\bTHIRD_PARTY_AUTH_ERROR\b/.test(reason)) {
+    return "third_party_auth";
+  }
+  if (
+    /\b(SENDER_ID_MISMATCH|UNAUTHENTICATED|PERMISSION_DENIED|InvalidProviderToken|ExpiredProviderToken|BadCertificate|BadCertificateEnvironment)\b/.test(
+      reason,
+    ) ||
+    /\bHTTP (401|403)\b/.test(reason) ||
+    /oauth/i.test(reason)
+  ) {
+    return "auth_error";
+  }
+  if (/\b(QUOTA_EXCEEDED|TooManyRequests)\b/.test(reason) || /\bHTTP 429\b/.test(reason)) {
+    return "rate_limited";
+  }
+  if (/\b(INVALID_ARGUMENT|BadMessageId|PayloadTooLarge)\b/.test(reason) || /\bHTTP 400\b/.test(reason)) {
+    return "invalid_request";
+  }
+  if (/\b(UNAVAILABLE|INTERNAL|ServiceUnavailable|InternalServerError)\b/.test(reason) || /\bHTTP 5\d\d\b/.test(reason)) {
+    return "provider_unavailable";
+  }
+  if (/\b(ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EAI_AGAIN|ENOTFOUND|socket|fetch failed|network|timeout)\b/i.test(reason)) {
+    return "network_error";
+  }
+  return "provider_error";
+}
+
+function logParentAlertOutcome(summary: {
+  recipients: number;
+  delivered: number;
+  pruned: number;
+  failed: number;
+  skipped: NotifyOutcome["skipped"];
+  category?: string;
+  severity?: string;
+  platforms?: string;
+}): void {
+  const platformPart = summary.platforms ? ` platforms=${summary.platforms}` : "";
+  console.info(
+    `[push] parent alert outcome recipients=${summary.recipients} delivered=${summary.delivered} pruned=${summary.pruned} failed=${summary.failed} skipped=${summary.skipped ?? "none"} category=${summary.category ?? "none"} severity=${summary.severity ?? "none"}${platformPart}`,
+  );
+}
+
 /**
  * Fan an alert out to every push token of every parent in the family. Never throws: push is
  * best-effort and the alert row is already committed when this runs.
+ *
+ * [#1028] Every call writes an aggregate outcome line (counts, skip reason, platform histogram,
+ * category/severity — never tokens or database ids) and every per-recipient send writes one
+ * structured line (platform, provider, status, errorClass/messageId — never the token or alert text)
+ * so a silent iOS/Android push drop can be diagnosed directly from the API log.
  */
 export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, childName?: string): Promise<NotifyOutcome> {
   const outcome: NotifyOutcome = { recipients: 0, delivered: 0, pruned: 0, skipped: null };
   try {
     // Defensive: raiseAlert always passes the created row, but a caller with a mocked or failed
     // create must not turn into a TypeError in a fire-and-forget path (Antigravity review of #51).
-    if (!alert) return { ...outcome, skipped: "severity" };
-    if (!shouldPush(alert, minPushSeverity())) return { ...outcome, skipped: "severity" };
+    if (!alert) {
+      logParentAlertOutcome({ recipients: 0, delivered: 0, pruned: 0, failed: 0, skipped: "severity" });
+      return { ...outcome, skipped: "severity" };
+    }
+    if (!shouldPush(alert, minPushSeverity())) {
+      logParentAlertOutcome({
+        recipients: 0,
+        delivered: 0,
+        pruned: 0,
+        failed: 0,
+        skipped: "severity",
+        category: alert.category,
+        severity: alert.severity,
+      });
+      return { ...outcome, skipped: "severity" };
+    }
     const providers = getPushProviders();
     if (providers.size === 0) {
       if (!warnedUnconfigured) {
         console.warn("[push] no provider configured (set FCM_SERVICE_ACCOUNT_JSON or APNS_*); parent push disabled");
         warnedUnconfigured = true;
       }
+      logParentAlertOutcome({
+        recipients: 0,
+        delivered: 0,
+        pruned: 0,
+        failed: 0,
+        skipped: "no_providers",
+        category: alert.category,
+        severity: alert.severity,
+      });
       return { ...outcome, skipped: "no_providers" };
     }
     const prefs = await prisma.digestPrefs.findUnique({ where: { familyId } });
-    if (prefs && prefs.pushEnabled === false) return { ...outcome, skipped: "prefs" };
+    if (prefs && prefs.pushEnabled === false) {
+      logParentAlertOutcome({
+        recipients: 0,
+        delivered: 0,
+        pruned: 0,
+        failed: 0,
+        skipped: "prefs",
+        category: alert.category,
+        severity: alert.severity,
+      });
+      return { ...outcome, skipped: "prefs" };
+    }
 
     // ADR-0014 amendment, decision 3: a guardian without `alerts` must not be pushed an alert either,
     // or the gate on `GET /v1/alerts` would be cosmetic — the push *is* the alert text on a lock
@@ -169,26 +279,76 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
       select: { id: true },
     });
     const tokens = await prisma.parentPushToken.findMany({ where: { parentId: { in: parents.map((p) => p.id) } } });
-    if (tokens.length === 0) return { ...outcome, skipped: "no_tokens" };
+    if (tokens.length === 0) {
+      logParentAlertOutcome({
+        recipients: 0,
+        delivered: 0,
+        pruned: 0,
+        failed: 0,
+        skipped: "no_tokens",
+        category: alert.category,
+        severity: alert.severity,
+      });
+      return { ...outcome, skipped: "no_tokens" };
+    }
 
     outcome.recipients = tokens.length;
     const dead: string[] = [];
+    let failed = 0;
+    const byPlatform = new Map<string, number>();
+    for (const row of tokens) {
+      byPlatform.set(row.platform, (byPlatform.get(row.platform) ?? 0) + 1);
+    }
+    const platforms = [...byPlatform.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([platform, count]) => `${platform}:${count}`)
+      .join(",");
+
     await Promise.all(
       tokens.map(async (t) => {
         const provider = providerFor(t.platform as PushPlatform, providers);
-        if (!provider) return;
+        if (!provider) {
+          failed += 1;
+          console.warn(`[push] parent alert send outcome=skipped platform=${t.platform} errorClass=no_provider`);
+          return;
+        }
         // #410: per-platform, and never the alert's text. `childName` is deliberately unused here now.
         const message = buildParentAlertMessage(t.platform as PushPlatform);
         const result = await provider.send(t.token, message);
-        if (result.ok) outcome.delivered += 1;
-        else if (result.invalidToken) dead.push(t.id);
-        else console.warn(`[push] delivery failed platform=${t.platform} reason=${result.reason}`);
+        if (result.ok) {
+          outcome.delivered += 1;
+          console.info(
+            `[push] parent alert send outcome=sent platform=${t.platform} provider=${provider.platform} messageId=${result.messageId ?? "unreported"}`,
+          );
+        } else if (result.invalidToken) {
+          dead.push(t.id);
+          const errorClass = classifyPushError(result);
+          console.info(
+            `[push] parent alert send outcome=pruned platform=${t.platform} provider=${provider.platform} errorClass=${errorClass} reason=${result.reason ?? "unknown"}`,
+          );
+        } else {
+          failed += 1;
+          const errorClass = classifyPushError(result);
+          console.warn(
+            `[push] delivery failed platform=${t.platform} provider=${provider.platform} errorClass=${errorClass} reason=${result.reason ?? "unknown"}`,
+          );
+        }
       }),
     );
     if (dead.length > 0) {
       await prisma.parentPushToken.deleteMany({ where: { id: { in: dead } } });
       outcome.pruned = dead.length;
     }
+    logParentAlertOutcome({
+      recipients: outcome.recipients,
+      delivered: outcome.delivered,
+      pruned: outcome.pruned,
+      failed,
+      skipped: null,
+      category: alert.category,
+      severity: alert.severity,
+      platforms,
+    });
     return outcome;
   } catch (err) {
     console.error("[push] notifyParentsOfAlert failed", err);
