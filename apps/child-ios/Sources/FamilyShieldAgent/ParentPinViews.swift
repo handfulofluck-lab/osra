@@ -116,7 +116,10 @@ public struct PinGateView: View {
                     Spacer()
                     Button(L10n.tr("pin_continue")) { check() }
                         .foregroundStyle(continueButtonColor)
-                        .accessibilityIdentifier(A11yID.pinContinue)
+                        // #760: this is the keyboard's twin of the button above, so it must not answer to the
+                        // same identifier — `app.buttons["pin.continue"]` found two matches and the escape suite
+                        // went red (PinRulesSeededTests:90, :167) until they were told apart.
+                        .accessibilityIdentifier(A11yID.pinContinueKeyboard)
                 }
             }
         }

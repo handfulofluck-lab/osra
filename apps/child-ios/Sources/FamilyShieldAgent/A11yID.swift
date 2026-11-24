@@ -38,6 +38,9 @@ public enum A11yID {
     public static let pinGate = "pin.gate"
     public static let pinGateMessage = "pin.gateMessage"
     public static let pinContinue = "pin.continue"
+    /// #760: the keyboard's twin of `pin.continue`. It must be a different identifier: two elements answering
+    /// to `pin.continue` make every `app.buttons["pin.continue"]` tap ambiguous (escape suite, 24 Nov).
+    public static let pinContinueKeyboard = "pin.continue.keyboard"
     public static let ringView = "ring.view"
 
     // App groups
