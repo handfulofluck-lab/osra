@@ -6,7 +6,7 @@ vi.mock("../src/redis.js", () => ({ publishJson: vi.fn(async () => undefined) })
 vi.mock("../src/lib/deviceCommands.js", () => ({ enqueueDeviceCommand: vi.fn(async () => undefined) }));
 
 import { publishJson } from "../src/redis.js";
-import { publishChildRules, toApiRuleSet } from "../src/lib/ruleSync.js";
+import { normalizeSocialMonitoring, publishChildRules, toApiRuleSet } from "../src/lib/ruleSync.js";
 import { PREMIUM_FEATURES } from "../src/lib/planGate.js";
 
 beforeEach(() => resetPrismaMock());
@@ -38,5 +38,14 @@ describe("agent rule sync with no enforceable plan", () => {
     expect(toApiRuleSet({ id: "rs-2", childId: "child-1", socialMonitoring: undefined }).socialMonitoring).toEqual({});
     expect(toApiRuleSet({ id: "rs-3", childId: "child-1", socialMonitoring: { whatsapp: false } }).socialMonitoring)
       .toEqual({ whatsapp: false });
+  });
+
+  it("maps legacy x to canonical twitter when twitter is absent without overwriting explicit twitter (#1036)", () => {
+    expect(toApiRuleSet({ id: "rs-1", childId: "child-1", socialMonitoring: { x: false } }).socialMonitoring.twitter).toBe(false);
+    expect(toApiRuleSet({ id: "rs-2", childId: "child-1", socialMonitoring: { x: true } }).socialMonitoring.twitter).toBe(true);
+    expect(toApiRuleSet({ id: "rs-3", childId: "child-1", socialMonitoring: { twitter: true, x: false } }).socialMonitoring.twitter).toBe(true);
+    expect(toApiRuleSet({ id: "rs-4", childId: "child-1", socialMonitoring: { twitter: false, x: true } }).socialMonitoring.twitter).toBe(false);
+    expect(normalizeSocialMonitoring({ whatsapp: true })).toEqual({ whatsapp: true });
+    expect(normalizeSocialMonitoring(undefined)).toEqual({});
   });
 });
