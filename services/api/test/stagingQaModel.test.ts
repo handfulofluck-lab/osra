@@ -115,3 +115,13 @@ describe("staging model request budget", () => {
     expect(stagingQaDeadline({ ...qa, expiresAt: now + 100 }, Infinity, now)).toBe(now + 100);
   });
 });
+
+describe("Parent-saved X / twitter socialMonitoring key (#1036)", () => {
+  it("accepts a Parent-saved twitter=true capture on staging cross-app mode and rejects twitter=false", () => {
+    const crossAppEnv = { ...env, OSRA_STAGING_QA_ANDROID_SOURCES: "1", OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT: "1" };
+    for (const source of ["notification", "screen"]) {
+      expect(stagingQaModel({ ...capture, app: "twitter", source, socialMonitoring: { twitter: true } }, crossAppEnv, now)).not.toBeNull();
+      expect(stagingQaModel({ ...capture, app: "twitter", source, socialMonitoring: { twitter: false } }, crossAppEnv, now)).toBeNull();
+    }
+  });
+});
