@@ -1,3 +1,4 @@
+import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:flutter/material.dart';
@@ -76,14 +77,13 @@ void main() {
         reason: 'the newest pause was acknowledged; an older pending row must not block the control');
   });
 
-  // #969: the defect was that "Resume" and "Resume net" sat side by side and neither said what it reached.
-  // The four scoped labels already exist in both catalogs, so this needs no new copy — only that the card uses
-  // them. This row fails if the card goes back to the ambiguous pair.
-  testWidgets('the card names the scope of each control', (tester) async {
+  // #969 + U59 (7119037302, 7047663129): the card names the scope of each control AND shows only ONE
+  // Pause/Resume device control following the server-confirmed state (never both buttons at once).
+  testWidgets('the card names the scope of each control and shows only Pause device when not paused', (tester) async {
     await pump(tester, history(const []));
 
     expect(find.text('Pause device'), findsOneWidget, reason: 'the per-handset pause names its scope');
-    expect(find.text('Resume device'), findsOneWidget);
+    expect(find.text('Resume device'), findsNothing, reason: 'U59: never show both Pause and Resume at once');
     expect(find.text('Pause internet'), findsOneWidget, reason: 'the child-wide pause names its scope');
     expect(find.text('Pause net'), findsNothing, reason: 'the ambiguous label is gone');
     expect(find.text('Resume net'), findsNothing);
@@ -96,17 +96,20 @@ void main() {
 
     expect(find.byKey(const ValueKey('controlPending-pause')), findsNothing,
         reason: 'an acknowledged command is done; the parent can send another');
+    expect(find.text('Resume device'), findsOneWidget,
+        reason: 'U59: once pause is server-confirmed (acked), the single control flips to Resume device');
+    expect(find.text('Pause device'), findsNothing);
   });
 
   // Antigravity's F2 (7049793348): the button itself must be disabled, not merely covered. `IgnorePointer`
-  // stops touch but leaves a TextButton enabled for TalkBack, VoiceOver, Switch Access and Enter/Space, so the
+  // stops touch but leaves a button enabled for TalkBack, VoiceOver, Switch Access and Enter/Space, so the
   // check is on the button's own `onPressed`, which is the state every input method honours.
   testWidgets('the pending control is disabled for every input method, not just touch', (tester) async {
     final now = DateTime.now();
     await pump(tester, history([commandJson('c6', 'pause', 'pending', now)]));
 
-    final button = tester.widget<TextButton>(
-      find.ancestor(of: find.text('Pause device'), matching: find.byType(TextButton)).first,
+    final button = tester.widget<ButtonStyleButton>(
+      find.ancestor(of: find.text('Pause device'), matching: find.bySubtype<ButtonStyleButton>()).first,
     );
     expect(button.onPressed, isNull,
         reason: 'a pending control must be unusable from a screen reader or the keyboard too');
@@ -217,6 +220,133 @@ void main() {
     expect(find.text('كل الأجهزة المقترنة'), findsOneWidget);
     expect(find.text('بانتظار تأكيد هذا الجهاز'), findsOneWidget);
     expect(tester.takeException(), isNull, reason: '320 px in Arabic must not overflow');
+  });
+
+  group('U59: single server-confirmed Pause/Resume device control (#650, 7047663129)', () {
+    test('resolveDevicePauseControlState follows server-confirmed acked state and pending gate', () {
+      // Mutant 1: flipping confirmedPaused on a pending pause instead of acked breaks the pending-pause assertion.
+      // Mutant 2: letting a stale pending row block after a newer acked row breaks the stale-row assertion.
+      final t0 = DateTime.utc(2026, 11, 24, 9, 0);
+      DeviceCommand cmd(String id, String type, String status, int minOffset) =>
+          DeviceCommand.fromJson(commandJson(id, type, status, t0.add(Duration(minutes: minOffset))));
+
+      // Empty history -> not paused, idle -> Pause device
+      var s = resolveDevicePauseControlState(const []);
+      expect(s.confirmedPaused, isFalse);
+      expect(s.activeCommand, 'pause');
+      expect(s.waiting, isFalse);
+
+      // Queued pause (pending) -> NOT confirmed paused yet, disabled waiting
+      s = resolveDevicePauseControlState([cmd('1', 'pause', 'pending', 1)]);
+      expect(s.confirmedPaused, isFalse);
+      expect(s.activeCommand, 'pause');
+      expect(s.waiting, isTrue);
+      expect(s.pendingCommand, 'pause');
+
+      // Acked pause -> confirmed paused, idle -> Resume device
+      s = resolveDevicePauseControlState([cmd('1', 'pause', 'acked', 1)]);
+      expect(s.confirmedPaused, isTrue);
+      expect(s.activeCommand, 'resume');
+      expect(s.waiting, isFalse);
+
+      // Queued resume after acked pause -> still confirmed paused until handset confirms, disabled waiting
+      s = resolveDevicePauseControlState([
+        cmd('2', 'resume', 'pending', 2),
+        cmd('1', 'pause', 'acked', 1),
+      ]);
+      expect(s.confirmedPaused, isTrue);
+      expect(s.activeCommand, 'resume');
+      expect(s.waiting, isTrue);
+      expect(s.pendingCommand, 'resume');
+
+      // Acked resume -> flips back to Pause device, idle
+      s = resolveDevicePauseControlState([
+        cmd('2', 'resume', 'acked', 2),
+        cmd('1', 'pause', 'acked', 1),
+      ]);
+      expect(s.confirmedPaused, isFalse);
+      expect(s.activeCommand, 'pause');
+      expect(s.waiting, isFalse);
+
+      // Failed resume -> still paused, button re-enabled so parent can retry
+      s = resolveDevicePauseControlState([
+        cmd('2', 'resume', 'failed', 2),
+        cmd('1', 'pause', 'acked', 1),
+      ]);
+      expect(s.confirmedPaused, isTrue);
+      expect(s.activeCommand, 'resume');
+      expect(s.waiting, isFalse);
+    });
+
+    testWidgets('queued resume disables Resume device and never shows Pause device until acked', (tester) async {
+      // Mutant: rendering both buttons or flipping back to Pause before resume is acked fails this row.
+      final now = DateTime.now();
+      await pump(tester, history([
+        commandJson('r1', 'resume', 'pending', now),
+        commandJson('p1', 'pause', 'acked', now.subtract(const Duration(minutes: 1))),
+      ]));
+
+      expect(find.text('Resume device'), findsOneWidget);
+      expect(find.text('Pause device'), findsNothing);
+      expect(find.byKey(const ValueKey('controlPending-resume')), findsOneWidget);
+      final btn = tester.widget<ButtonStyleButton>(
+        find.ancestor(of: find.text('Resume device'), matching: find.bySubtype<ButtonStyleButton>()).first,
+      );
+      expect(btn.onPressed, isNull);
+    });
+  });
+
+  group('U60: 2-column tonal device action grid with 48 dp targets (#650, 7119037302)', () {
+    for (final locale in const [Locale('en'), Locale('ar')]) {
+      testWidgets('390px @ 200% (${locale.languageCode}): 2-column tonal grid, >=48dp targets, zero overflow',
+          (tester) async {
+        // Mutant 1: reverting to TextButton.icon fails the FilledButton type assertion.
+        // Mutant 2: dropping minimumSize 48dp fails the height >= 48.0 assertion.
+        // Mutant 3: reverting to single-column Wrap removes deviceActionGrid2Col.
+        tester.view.physicalSize = const Size(390, 1600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
+
+        final api = FakeApiClient({
+          ...standardRoutes(),
+          'GET /v1/devices/dev-1/commands/history': (_) => history(const []),
+        });
+        await tester.pumpWidget(ProviderScope(
+          overrides: [apiClientProvider.overrideWithValue(api)],
+          child: MediaQuery(
+            data: const MediaQueryData(size: Size(390, 1600), textScaler: TextScaler.linear(2.0)),
+            child: localizedTestApp(
+              const ChildDetailScreen(childId: 'child-1'),
+              locale: locale,
+              textDirection: locale.languageCode == 'ar' ? TextDirection.rtl : TextDirection.ltr,
+            ),
+          ),
+        ));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.byKey(const ValueKey('deviceActionGrid2Col')), findsOneWidget);
+
+        const keys = [
+          'deviceAction-ring-dev-1',
+          'deviceAction-stopRing-dev-1',
+          'deviceAction-lock-dev-1',
+          'deviceAction-unlock-dev-1',
+          'deviceAction-pause-dev-1',
+          'deviceAction-history-dev-1',
+          'deviceAction-internet-dev-1',
+        ];
+        for (final k in keys) {
+          final f = find.byKey(ValueKey(k));
+          expect(f, findsOneWidget, reason: 'missing tonal button $k');
+          expect(tester.widget(f), isA<FilledButton>(), reason: '$k must be a tonal FilledButton');
+          expect(tester.getSize(f).height, greaterThanOrEqualTo(48.0), reason: '$k must have >= 48 dp target');
+        }
+      });
+    }
   });
 
 }

@@ -1,0 +1,1 @@
+- Parent app (`apps/parent-app`): fold the child device card's Pause/Resume device controls into a single server-confirmed control (`resolveDevicePauseControlState`, U59) and group the per-device and family-wide actions into a 2-column tonal button grid with 48 dp touch targets (U60, #650).
