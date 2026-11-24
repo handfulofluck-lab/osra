@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
 import '../../api/permission_errors.dart';
+import '../../core/digits.dart';
 import '../../core/ltr_isolate.dart';
 import '../../widgets/error_retry_view.dart';
 import '../../l10n/l10n.dart';
@@ -21,12 +22,13 @@ import '../../widgets/layout_helpers.dart';
 import '../dashboard/dashboard_screen.dart' show formatLastSeen;
 import '../pairing/pair_qr_screen.dart';
 import '../rules/active_window.dart';
-import '../social/social_screen.dart' show SocialSectionsView;
+import '../social/social_screen.dart' show SocialSectionsView, socialAppLabel;
 import '../map/child_location_view.dart';
 import 'app_groups_section.dart';
 import 'child_apps_list.dart';
 import 'phone_setup_section.dart';
 import 'command_history_screen.dart' show formatCommandTime;
+import 'device_control_state.dart';
 
 /// Per-child detail view with Overview / Apps / Social / Location / Alerts tabs.
 class ChildDetailScreen extends ConsumerWidget {
@@ -268,11 +270,20 @@ class _OverviewTab extends ConsumerWidget {
                   ),
                   Padding(
                     padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.sm, 0, AppSpace.sm, 6),
-                    // NOTE: Wrap instead of Row — the command buttons
-                    // overflowed on 320px-wide screens.
-                    child: Wrap(
-                      spacing: AppSpace.sm,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // #969: name the scope of each group, so a parent knows which commands reach one
+                        // handset and which reach the family. The controls themselves are unchanged.
+                        _ScopeLabel(
+                          key: const ValueKey('scopeThisDevice'),
+                          label: l10n.scopeThisDevice,
+                        ),
+                        // NOTE: Wrap instead of Row — the command buttons
+                        // overflowed on 320px-wide screens.
+                        Wrap(
+                          spacing: AppSpace.sm,
+                          children: [
                         TextButton.icon(
                           onPressed: () => context.push('/child/$childId/commands'),
                           icon: const Icon(Icons.receipt_long, size: 18),
@@ -319,10 +330,24 @@ class _OverviewTab extends ConsumerWidget {
                             label: Text(l10n.commandResumeDevice),
                           ),
                         ),
-                        TextButton.icon(
-                          onPressed: () => _toggleInternet(context, ref, childId, internetPaused, d),
-                          icon: Icon(internetPaused ? Icons.wifi : Icons.wifi_off, size: 18),
-                          label: Text(internetPaused ? l10n.commandResumeInternet : l10n.commandPauseInternet),
+                          ],
+                        ),
+                        // #969: a queued command is not a done command. This line names this handset and says
+                        // which state it is in; the wording is the Arabic Language Bureau's per-device copy, not
+                        // the command-history keys, which describe a delivery state rather than a device.
+                        _DeviceControlLine(deviceId: d.id),
+                        const SizedBox(height: AppSpace.xxs),
+                        _ScopeLabel(
+                          key: const ValueKey('scopeAllDevices'),
+                          label: l10n.scopeAllDevices,
+                        ),
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: TextButton.icon(
+                            onPressed: () => _toggleInternet(context, ref, childId, internetPaused, d),
+                            icon: Icon(internetPaused ? Icons.wifi : Icons.wifi_off, size: 18),
+                            label: Text(internetPaused ? l10n.commandResumeInternet : l10n.commandPauseInternet),
+                          ),
                         ),
                       ],
                     ),
@@ -1144,7 +1169,15 @@ class AlertTile extends StatelessWidget {
   final Alert alert;
   final VoidCallback? onTap;
   final VoidCallback? onAck;
-  const AlertTile({super.key, required this.alert, this.onTap, this.onAck});
+  /// #1029: count of additional flagged messages that arrived after the parent last opened this alert.
+  final int newSinceCount;
+  const AlertTile({
+    super.key,
+    required this.alert,
+    this.onTap,
+    this.onAck,
+    this.newSinceCount = 0,
+  });
 
   static Color severityColor(String severity, [BuildContext? context]) =>
       (context?.tokens ?? AppTokens.light).severityDot(severity);
@@ -1152,15 +1185,119 @@ class AlertTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final when = alert.createdAt == null
-        ? ''
-        : DateFormat.MMMd(context.localeName).add_Hm().format(alert.createdAt!.toLocal());
+    final tokens = context.tokens;
+    final theme = Theme.of(context);
+
+    final String titleText;
+    final String? socialContactLine;
+    final String? socialLatestLine;
+    final String? genericSubtitleText;
+    if (alert.hasSocialCountSummary) {
+      final appKey = alert.metadata['app']?.toString().trim().toLowerCase() ?? '';
+      final appLabel = ltrIsolate(socialAppLabel(appKey, l10n));
+      titleText = l10n.socialAlertCountTitle(alert.socialMessageCount, appLabel);
+      final latestAt = alert.effectiveTimestamp;
+      final latestClock = latestAt == null
+          ? ''
+          : ltrIsolate(normalizeDigits(DateFormat('HH:mm', 'en').format(latestAt.toLocal())));
+      final contactName = alert.socialContactName;
+      final contactDisplay = contactName != null
+          ? firstStrongIsolate(contactName)
+          : l10n.socialAlertUnknownContact;
+      socialContactLine = l10n.socialAlertFromContactOnly(contactDisplay);
+      socialLatestLine = latestClock.isEmpty ? null : l10n.socialAlertLatestAt(latestClock);
+      genericSubtitleText = null;
+    } else {
+      final when = alert.createdAt == null
+          ? ''
+          : DateFormat.MMMd(context.localeName).add_Hm().format(alert.createdAt!.toLocal());
+      titleText = l10n.alertTitleFor(
+        alert.category,
+        alert.title,
+        isEnglish: context.localeName.startsWith('en'),
+        tamperType: alert.metadata['type']?.toString(),
+      );
+      socialContactLine = null;
+      socialLatestLine = null;
+      genericSubtitleText = '${l10n.alertCategory(alert.category)} · $when';
+    }
+
+    final Widget? newBadge = newSinceCount > 0
+        ? Container(
+            key: ValueKey('alert-new-since-${alert.id}'),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpace.sm, vertical: 2),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.secondaryContainer,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+            ),
+            child: Text(
+              l10n.socialAlertNewSince(newSinceCount),
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSecondaryContainer,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          )
+        : null;
+
+    final mutedStyle = theme.textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant);
+    final Widget subtitleContent;
+    if (alert.hasSocialCountSummary) {
+      subtitleContent = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            socialContactLine!,
+            key: ValueKey('alert-contact-${alert.id}'),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: mutedStyle,
+          ),
+          if (socialLatestLine != null)
+            Text(
+              socialLatestLine,
+              key: ValueKey('alert-latest-${alert.id}'),
+              style: mutedStyle,
+            ),
+          if (newBadge != null) ...[
+            const SizedBox(height: AppSpace.xs),
+            newBadge,
+          ],
+        ],
+      );
+    } else {
+      final genericWidget = Text(genericSubtitleText!);
+      subtitleContent = newBadge == null
+          ? genericWidget
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                genericWidget,
+                const SizedBox(height: AppSpace.xs),
+                newBadge,
+              ],
+            );
+    }
+
     return Card(
+      key: ValueKey('alert-card-${alert.id}'),
       child: ListTile(
         leading: Icon(Icons.circle, color: severityColor(alert.severity, context), size: 14),
-        title: Text(l10n.alertTitleFor(alert.category, alert.title, isEnglish: context.localeName.startsWith('en'), tamperType: alert.metadata['type']?.toString()), maxLines: 2, overflow: TextOverflow.ellipsis),
-        subtitle: Text('${l10n.alertCategory(alert.category)} · $when'),
-        trailing: onAck == null ? null : IconButton(icon: const Icon(Icons.check), tooltip: l10n.acknowledgeTooltip, onPressed: onAck),
+        title: Text(
+          titleText,
+          maxLines: alert.hasSocialCountSummary ? 3 : 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: subtitleContent,
+        trailing: onAck == null
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.check),
+                tooltip: l10n.acknowledgeTooltip,
+                onPressed: onAck,
+              ),
         onTap: onTap,
       ),
     );
@@ -1174,4 +1311,43 @@ Future<void> _pairDevice(BuildContext context, WidgetRef ref, String childId) as
     MaterialPageRoute(builder: (_) => PairingQrScreen(childId: childId)),
   );
   ref.invalidate(familyProvider);
+}
+
+/// A group heading on the child card: which controls address this handset, which address the family (#969).
+class _ScopeLabel extends StatelessWidget {
+  final String label;
+  const _ScopeLabel({super.key, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.sm, AppSpace.xs, 0, 0),
+      child: Text(label, style: Theme.of(context).textTheme.labelLarge),
+    );
+  }
+}
+
+/// The per-handset status line: waiting, or refused (#969). Silent when the newest command is acked.
+class _DeviceControlLine extends ConsumerWidget {
+  final String deviceId;
+  const _DeviceControlLine({required this.deviceId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final history = ref.watch(deviceCommandHistoryProvider(deviceId)).valueOrNull ?? const <DeviceCommand>[];
+    final line = deviceControlLine(history);
+    if (line == DeviceControlLine.none) return const SizedBox.shrink();
+    final l10n = context.l10n;
+    final failed = line == DeviceControlLine.failed;
+    return Padding(
+      key: ValueKey(failed ? 'deviceControlFailed' : 'deviceControlPending'),
+      padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.sm, AppSpace.xxs, AppSpace.sm, 0),
+      child: Text(
+        failed ? l10n.deviceControlFailed : l10n.deviceControlPending,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: failed ? context.tokens.danger : context.tokens.warn,
+        ),
+      ),
+    );
+  }
 }
