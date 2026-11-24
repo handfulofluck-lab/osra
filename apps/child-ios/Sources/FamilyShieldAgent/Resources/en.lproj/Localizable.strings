@@ -100,7 +100,8 @@
 "ring_alarm_title" = "Your parent is ringing this phone";
 "ring_dismiss" = "Open OSRA Kids";
 "ring_alert_ok" = "OK";
-"ring_title" = "Your parent is ringing this phone";"ring_explanation" = "Your parent is trying to find this phone or reach you. The ring stops when your parent stops it from their app or enters the parent PIN here. It stops by itself after 5 minutes.";
+"ring_title" = "Your parent is ringing this phone";
+"ring_explanation" = "Your parent is trying to find this phone or reach you. The ring stops when your parent stops it from their app or enters the parent PIN here. It stops by itself after 5 minutes.";
 /* #880: the ringing permission. Asked at setup, and again from the row if it was refused. Arabic is the Arabic
    Language Bureau's (604 `7122208660`), including the button label the Bureau wrote because the spec had none. */
 "alarm_setup_body" = "So your parent can ring this phone loudly if it's lost.";
