@@ -671,8 +671,17 @@ Could not find a subcommand named "ios" for "flutter build".   # exit 64
 subcommand does not exist here at all, so the failure is a missing platform, not a build defect, and it proves
 nothing either way. What the job runs on `macos-14`:
 
-- `flutter pub get`, then `flutter build ios --release --no-codesign`. `--no-codesign` means no certificate, no
+- `flutter pub get`, then `bash ios/build-with-maps.sh ios --release --no-codesign`. `--no-codesign` means no certificate, no
   provisioning profile and no Apple account; on a public repository the macOS runner minutes are free.
+
+**iPhone Maps (#598).** The build wrapper takes `MAPS_IOS_API_KEY` from the build environment and supplies
+the same value to the native `Info.plist` setting and the Dart `MAPS_API_KEY` define. The unsigned CI build
+receives the scoped secret only on a push to main. Pull requests exercise the key-free build and the wrapper
+test with a fake key. On a private, disposable signed-build checkout, inject the same secret into the
+environment and run `bash ios/build-with-maps.sh ipa --release` from `apps/parent-app`, with the usual signing
+and staging arguments. Use non-verbose output and discard the build checkout afterward because Flutter's
+generated Xcode settings contain encoded Dart defines. The hardware row is a signed iPhone Parent build with
+the Family map opening successfully.
 
 **Which plugin system, and the Firebase header (2026-10-26, #392).** Plugins link through **CocoaPods**. That is
 not because Flutter refuses a plugin without Swift Package Manager support — I had that wrong when I filed #392.
