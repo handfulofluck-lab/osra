@@ -113,30 +113,62 @@ public extension ShieldBrand {
     }
 
     /// The OSRA mark, drawn from the SVG's geometry at `size` points. Never the system hourglass.
+    /// The mark as a **trait-aware** image: two variants are drawn (light and dark artwork) and registered in a
+    /// `UIImageAsset`, so the shield follows the phone's appearance even though the extension has no window.
+    ///
+    /// #881 review (Hydrogen): the first version drew with `color(markRing)` — a dynamic `UIColor` resolved once,
+    /// against `UITraitCollection.current`, inside a headless extension. It baked the light ring into a dark
+    /// shield, where `#0B5D57` on `#0E1417` is 2.4:1. Both variants are rendered from the **static** artwork
+    /// colours now, and the asset picks by `userInterfaceStyle`.
     static func markImage(size: CGFloat = markPointSize) -> UIImage {
+        markImageAsset(size: size).image(with: .current)
+    }
+
+    /// The asset itself, so a test can ask for each appearance explicitly instead of trusting `.current`.
+    static func markImageAsset(size: CGFloat = markPointSize) -> UIImageAsset {
+        let asset = UIImageAsset()
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            asset.register(renderMark(size: size, style: style),
+                           with: UITraitCollection(userInterfaceStyle: style))
+        }
+        return asset
+    }
+
+    /// One appearance, drawn with that variant's fixed colours.
+    static func renderMark(size: CGFloat, style: UIUserInterfaceStyle) -> UIImage {
+        var ring = markRing.light
+        var dot = markDot.light
+        if style == .dark {
+            ring = markRing.dark
+            dot = markDot.dark
+        }
+        return renderMark(size: size, ring: ring, dot: dot)
+    }
+
+    /// One variant, drawn with fixed colours. `UIBezierPath` is used rather than `CGContext.addArc` on purpose:
+    /// a `UIGraphicsImageRenderer` context is flipped (Y down), where `CGContext`'s `clockwise` reads inverted and
+    /// sweeps the 90° complement instead of the mark's 270° — the bug Hydrogen found at `ShieldBrand.swift:189`.
+    static func renderMark(size: CGFloat, ring: String, dot: String) -> UIImage {
         let scale = size / markBox
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size))
         return renderer.image { context in
-            let cg = context.cgContext
-            cg.setLineCap(.round)
-            cg.setLineWidth(ringStroke * scale)
-            cg.setStrokeColor(color(markRing).cgColor)
             let centre = CGPoint(x: markBox / 2 * scale, y: markBox / 2 * scale)
-            let radius = ringRadius * scale
-            cg.addArc(center: centre,
-                      radius: radius,
-                      startAngle: 0,
-                      endAngle: ringEndAngle * .pi / 180,
-                      clockwise: true)
-            cg.strokePath()
+            let path = UIBezierPath(arcCenter: centre,
+                                    radius: ringRadius * scale,
+                                    startAngle: 0,
+                                    endAngle: ringEndAngle * .pi / 180,
+                                    clockwise: true)
+            path.lineWidth = ringStroke * scale
+            path.lineCapStyle = .round
+            (uiColor(ring) ?? .black).setStroke()
+            path.stroke()
 
-            cg.setFillColor(color(markDot).cgColor)
-            let dot = dotCenter
-            let rect = CGRect(x: (dot.x - dotRadius) * scale,
-                              y: (dot.y - dotRadius) * scale,
+            let rect = CGRect(x: (dotCenter.x - dotRadius) * scale,
+                              y: (dotCenter.y - dotRadius) * scale,
                               width: dotRadius * 2 * scale,
                               height: dotRadius * 2 * scale)
-            cg.fillEllipse(in: rect)
+            (uiColor(dot) ?? .black).setFill()
+            UIBezierPath(ovalIn: rect).fill()
         }
     }
 }
