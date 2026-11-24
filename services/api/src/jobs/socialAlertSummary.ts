@@ -7,6 +7,7 @@ import {
   SOCIAL_ALERT_WINDOW_MS,
   SOCIAL_ALERT_WINDOW_SECONDS,
   parseSocialWindowMetadata,
+  replayDeferredSocialObservations,
   type SocialWindowRedisState,
 } from "../lib/socialAlertWindow.js";
 
@@ -80,7 +81,16 @@ export async function runSocialAlertSummarySweep(
   const pushed: SocialSummaryPushedItem[] = [];
   const redis = getRedis();
 
-  for (const row of candidates) {
+  for (const candidate of candidates) {
+    const childInfo = (candidate as { child?: { familyId?: string; displayName?: string | null } | null }).child;
+    const familyId = childInfo?.familyId;
+    const row = familyId
+      ? await replayDeferredSocialObservations(candidate, {
+          familyId,
+          childName: childInfo?.displayName,
+          now,
+        }).catch(() => candidate)
+      : candidate;
     const rawMeta = (row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
       ? row.metadata
       : null) as Record<string, unknown> | null;
@@ -96,8 +106,6 @@ export async function runSocialAlertSummarySweep(
     const claim = await redis.set(claimKey, nowIso, "EX", SOCIAL_ALERT_WINDOW_SECONDS, "NX").catch(() => null);
     if (claim !== "OK") continue;
 
-    const childInfo = (row as { child?: { familyId?: string; displayName?: string | null } | null }).child;
-    const familyId = childInfo?.familyId;
     if (!familyId) continue;
 
     const nextWindowEndsAt = new Date(nowMs + SOCIAL_ALERT_WINDOW_MS).toISOString();

@@ -3,8 +3,10 @@ import { Redis } from "ioredis";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   SOCIAL_ALERT_WINDOW_SECONDS,
+  SOCIAL_PENDING_ACK_SCRIPT,
   SOCIAL_PENDING_DEFER_SCRIPT,
-  SOCIAL_PENDING_PUBLISH_AND_DRAIN_SCRIPT,
+  SOCIAL_PENDING_PUBLISH_AND_PEEK_SCRIPT,
+  replayDeferredSocialObservations,
   socialAlertThrottleKey,
   socialContactKey,
 } from "../src/lib/socialAlertWindow.js";
@@ -326,7 +328,7 @@ describeRedis("social alert window Lua rollover against real Redis (#1029)", () 
       expect(rowA.metadata.flaggedCount).toBe(2);
 
       // Case B: Insert slower than pendingWaitMs -> real Redis executes SOCIAL_PENDING_DEFER_SCRIPT +
-      // SOCIAL_PENDING_PUBLISH_AND_DRAIN_SCRIPT atomically and folds both observations with zero loss.
+      // SOCIAL_PENDING_PUBLISH_AND_PEEK_SCRIPT atomically and folds both observations with zero loss.
       installAlertDbMock(120);
       const contactB = `ReplicaDefer-${randomUUID()}`;
       const keyB = trackKey(socialAlertThrottleKey(childId, appName, contactB));
@@ -382,7 +384,7 @@ describeRedis("social alert window Lua rollover against real Redis (#1029)", () 
         pushedSeverity: "warning",
       });
       const drained = await client.eval(
-        SOCIAL_PENDING_PUBLISH_AND_DRAIN_SCRIPT,
+        SOCIAL_PENDING_PUBLISH_AND_PEEK_SCRIPT,
         2,
         orderKey,
         orderDefer,
@@ -401,6 +403,111 @@ describeRedis("social alert window Lua rollover against real Redis (#1029)", () 
       );
       expect(lateDefer).toBe(committedJson);
       expect(await client.llen(orderDefer)).toBe(0);
+    } finally {
+      for (const rc of replicaClients) {
+        await rc.quit().catch(() => undefined);
+      }
+    }
+  });
+
+  it("preserves deferred entries in real Redis across a pre-commit DB rejection and replays idempotently after post-commit ack loss", async () => {
+    const childId = `child-${randomUUID()}`;
+    const familyId = `fam-${randomUUID()}`;
+    const appName = "WhatsApp";
+    const contact = `CommitBoundaryReal-${randomUUID()}`;
+    const throttleKey = trackKey(socialAlertThrottleKey(childId, appName, contact));
+    const deferKey = trackKey(`${throttleKey}:deferred`);
+
+    const alerts = new Map<string, Record<string, unknown>>();
+    let delayedOnce = false;
+    let failUpdateOnce = true;
+
+    prismaMock.alert.create.mockImplementation((async ({ data }: { data: Record<string, unknown> }) => {
+      if (!delayedOnce) {
+        delayedOnce = true;
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+      const row = { id: `real-boundary-${randomUUID()}`, createdAt: new Date(), acknowledged: false, ...data };
+      alerts.set(row.id, row);
+      return row;
+    }) as never);
+    prismaMock.alert.findUnique.mockImplementation((async ({ where }: { where: { id: string } }) => alerts.get(where.id) ?? null) as never);
+    prismaMock.alert.findMany.mockImplementation((async () => [...alerts.values()]) as never);
+    prismaMock.alert.updateMany.mockImplementation((async ({ where, data }: { where: { id: string; attemptCount?: number }; data: Record<string, unknown> }) => {
+      if (failUpdateOnce) {
+        failUpdateOnce = false;
+        throw new Error("injected pre-commit DB error");
+      }
+      const cur = alerts.get(where.id);
+      if (!cur) return { count: 0 };
+      if (where.attemptCount !== undefined && cur.attemptCount !== where.attemptCount) return { count: 0 };
+      alerts.set(where.id, { ...cur, ...data });
+      return { count: 1 };
+    }) as never);
+
+    const replicaClients: Array<ReturnType<typeof getRedis>> = [];
+    try {
+      vi.resetModules();
+      const r1Redis = await import("../src/redis.js");
+      const replica1 = await import("../src/lib/socialAlertWindow.js");
+      vi.resetModules();
+      const r2Redis = await import("../src/redis.js");
+      const replica2 = await import("../src/lib/socialAlertWindow.js");
+
+      const p1 = replica1.recordFlaggedSocialAlert({
+        childId,
+        familyId,
+        childName: "Alex",
+        appName,
+        contact,
+        category: "social_concern",
+        severity: "warning",
+        concernTypes: ["cyberbullying"],
+        pendingWaitMs: 25,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const p2 = replica2.recordFlaggedSocialAlert({
+        childId,
+        familyId,
+        childName: "Alex",
+        appName,
+        contact,
+        category: "social_concern",
+        severity: "warning",
+        concernTypes: ["cyberbullying"],
+        pendingWaitMs: 25,
+      });
+
+      await expect(p2).resolves.toMatchObject({ throttled: true });
+      await expect(p1).rejects.toThrow("injected pre-commit DB error");
+      replicaClients.push(r1Redis.getRedis(), r2Redis.getRedis());
+
+      // Side 1 (before commit): DB at 1, real Redis still holds the deferred entry.
+      const row = [...alerts.values()][0]! as { id: string; attemptCount: number; metadata: { flaggedCount: number } };
+      expect(row.attemptCount).toBe(1);
+      const pendingRaw = await client.lrange(deferKey, 0, -1);
+      expect(pendingRaw).toHaveLength(1);
+
+      // Recovery replay commits count = 2 and trims real Redis.
+      await replayDeferredSocialObservations(row as never, { familyId, childName: "Alex" });
+      const afterRecover = alerts.get(row.id)! as { attemptCount: number; metadata: { flaggedCount: number } };
+      expect(afterRecover.attemptCount).toBe(2);
+      expect(afterRecover.metadata.flaggedCount).toBe(2);
+      expect(await client.llen(deferKey)).toBe(0);
+
+      // Side 2 (after commit, before Redis ack): re-push exact same entry -> replay is idempotent (stays 2).
+      await client.rpush(deferKey, pendingRaw[0]!);
+      await replayDeferredSocialObservations(afterRecover as never, { familyId, childName: "Alex" });
+      const afterReplay = alerts.get(row.id)! as { attemptCount: number; metadata: { flaggedCount: number } };
+      expect(afterReplay.attemptCount).toBe(2);
+      expect(afterReplay.metadata.flaggedCount).toBe(2);
+      expect(await client.llen(deferKey)).toBe(0);
+
+      // SOCIAL_PENDING_ACK_SCRIPT trims only the acknowledged prefix, keeping newer concurrent items.
+      const ackKey = trackKey(`${runPrefix}:ack-prefix`);
+      await client.rpush(ackKey, "first", "second");
+      expect(await client.eval(SOCIAL_PENDING_ACK_SCRIPT, 1, ackKey, "1")).toBe(1);
+      expect(await client.lrange(ackKey, 0, -1)).toEqual(["second"]);
     } finally {
       for (const rc of replicaClients) {
         await rc.quit().catch(() => undefined);

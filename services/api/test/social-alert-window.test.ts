@@ -3,9 +3,11 @@ import { signV2 } from "../src/lib/internalAuth.js";
 import { socialRoutes } from "../src/routes/social.js";
 import {
   SOCIAL_ALERT_WINDOW_MS,
+  SOCIAL_PENDING_ACK_SCRIPT,
   SOCIAL_PENDING_DEFER_SCRIPT,
-  SOCIAL_PENDING_PUBLISH_AND_DRAIN_SCRIPT,
+  SOCIAL_PENDING_PUBLISH_AND_PEEK_SCRIPT,
   SOCIAL_PENDING_RELEASE_SCRIPT,
+  replayDeferredSocialObservations,
   socialAlertThrottleKey,
   socialContactKey,
 } from "../src/lib/socialAlertWindow.js";
@@ -83,6 +85,9 @@ describe("social alert per-contact window (#1029)", () => {
     const getMock = redis.get as unknown as {
       mockImplementation: (fn: (key: string) => Promise<string | null>) => void;
     };
+    (redis as unknown as { lrange?: (k: string, s: number, e: number) => Promise<string[]> }).lrange = vi.fn(
+      async (k: string) => [...(redisLists.get(k) ?? [])],
+    );
     const delMock = redis.del as unknown as {
       mockImplementation: (fn: (...keys: string[]) => Promise<number>) => void;
     };
@@ -145,7 +150,7 @@ describe("social alert per-contact window (#1029)", () => {
         }
         return cur ?? "";
       }
-      if (script === SOCIAL_PENDING_PUBLISH_AND_DRAIN_SCRIPT) {
+      if (script === SOCIAL_PENDING_PUBLISH_AND_PEEK_SCRIPT) {
         const [key, deferredKey, payload, ttlStr] = args;
         recordedRedisKeys.push(key!);
         const ttlSeconds = Number(ttlStr);
@@ -153,9 +158,16 @@ describe("social alert per-contact window (#1029)", () => {
           value: payload!,
           expiresAt: Number.isFinite(ttlSeconds) ? Date.now() + ttlSeconds * 1000 : null,
         });
-        const items = redisLists.get(deferredKey!) ?? [];
-        redisLists.delete(deferredKey!);
-        return items;
+        return [...(redisLists.get(deferredKey!) ?? [])];
+      }
+      if (script === SOCIAL_PENDING_ACK_SCRIPT) {
+        const [deferredKey, countStr] = args;
+        const n = Number(countStr);
+        const list = redisLists.get(deferredKey!) ?? [];
+        const rest = n > 0 ? list.slice(n) : list;
+        if (rest.length === 0) redisLists.delete(deferredKey!);
+        else redisLists.set(deferredKey!, rest);
+        return rest.length;
       }
       if (script === SOCIAL_PENDING_RELEASE_SCRIPT) {
         const [key, sentinel] = args;
@@ -745,5 +757,94 @@ describe("social alert per-contact window (#1029)", () => {
     expect(row.severity).toBe("critical");
     expect(row.metadata.pushedSeverity).toBe("critical");
     expect(pushRounds()).toBe(2);
+  });
+
+  // Mutant (Codex #1033 review 7118711880): deleting deferred entries before the DB update commits
+  // loses the deferred observation when the update rejects once, leaving count=1 and deferred list empty;
+  // omitting appliedDeferredIds causes post-commit replay to double-count to 3.
+  it("keeps deferred observations recoverable on pre-commit DB failure and replays idempotently after post-commit failure", async () => {
+    const origCreate = prismaMock.alert.create.getMockImplementation()!;
+    const origUpdateMany = prismaMock.alert.updateMany.getMockImplementation()!;
+    let delayedOnce = false;
+    let failUpdateOnce = true;
+
+    prismaMock.alert.create.mockImplementation((async (args: { data: Record<string, unknown> }) => {
+      if (!delayedOnce) {
+        delayedOnce = true;
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+      return origCreate(args);
+    }) as never);
+    prismaMock.alert.updateMany.mockImplementation((async (args: { where: { id: string; attemptCount?: number }; data: Record<string, unknown> }) => {
+      if (failUpdateOnce) {
+        failUpdateOnce = false;
+        throw new Error("transient DB failure before commit");
+      }
+      return origUpdateMany(args);
+    }) as never);
+
+    vi.resetModules();
+    const r1Redis = await import("../src/redis.js");
+    const r1Notify = await import("../src/lib/push/notify.js");
+    const replica1 = await import("../src/lib/socialAlertWindow.js");
+    bindMockRedisClient(r1Redis.getRedis());
+    r1Notify.setPushProviders([fakePushProvider]);
+
+    vi.resetModules();
+    const r2Redis = await import("../src/redis.js");
+    const r2Notify = await import("../src/lib/push/notify.js");
+    const replica2 = await import("../src/lib/socialAlertWindow.js");
+    bindMockRedisClient(r2Redis.getRedis());
+    r2Notify.setPushProviders([fakePushProvider]);
+
+    const p1 = replica1.recordFlaggedSocialAlert({
+      childId: CHILD.id,
+      familyId: CHILD.familyId,
+      childName: CHILD.displayName,
+      appName: "WhatsApp",
+      contact: "CommitBoundary",
+      category: "social_concern",
+      severity: "warning",
+      concernTypes: ["cyberbullying"],
+      pendingWaitMs: 25,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const p2 = replica2.recordFlaggedSocialAlert({
+      childId: CHILD.id,
+      familyId: CHILD.familyId,
+      childName: CHILD.displayName,
+      appName: "WhatsApp",
+      contact: "CommitBoundary",
+      category: "social_concern",
+      severity: "warning",
+      concernTypes: ["cyberbullying"],
+      pendingWaitMs: 25,
+    });
+
+    await expect(p2).resolves.toMatchObject({ throttled: true });
+    await expect(p1).rejects.toThrow("transient DB failure before commit");
+
+    const deferredKey = `${socialAlertThrottleKey(CHILD.id, "WhatsApp", "CommitBoundary")}:deferred`;
+    expect(alerts.size).toBe(1);
+    const createdRow = [...alerts.values()][0]!;
+    expect(createdRow.attemptCount).toBe(1);
+    expect(redisLists.get(deferredKey)).toHaveLength(1);
+    const savedDeferredRaw = [...(redisLists.get(deferredKey) ?? [])];
+
+    // Pre-commit recovery: replay commits count = 2 and trims Redis.
+    await replayDeferredSocialObservations(createdRow as never, { familyId: CHILD.familyId, childName: CHILD.displayName });
+    expect(alerts.get(createdRow.id)?.attemptCount).toBe(2);
+    expect(alerts.get(createdRow.id)?.metadata.flaggedCount).toBe(2);
+    expect(redisLists.get(deferredKey)).toBeUndefined();
+
+    // Post-commit ack loss: re-inject the same deferred entry and replay -> count stays 2 (never 3).
+    redisLists.set(deferredKey, savedDeferredRaw);
+    await replayDeferredSocialObservations(alerts.get(createdRow.id)! as never, {
+      familyId: CHILD.familyId,
+      childName: CHILD.displayName,
+    });
+    expect(alerts.get(createdRow.id)?.attemptCount).toBe(2);
+    expect(alerts.get(createdRow.id)?.metadata.flaggedCount).toBe(2);
+    expect(redisLists.get(deferredKey)).toBeUndefined();
   });
 });
