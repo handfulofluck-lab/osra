@@ -884,6 +884,18 @@ class AppLocalizationsAr extends AppLocalizations {
   String get commandResumeInternet => 'استئناف الإنترنت';
 
   @override
+  String get scopeThisDevice => 'هذا الجهاز';
+
+  @override
+  String get scopeAllDevices => 'كل الأجهزة المقترنة';
+
+  @override
+  String get deviceControlPending => 'بانتظار تأكيد هذا الجهاز';
+
+  @override
+  String get deviceControlFailed => 'تعذّر على هذا الجهاز تطبيق التغيير';
+
+  @override
   String get commandBonusTime => 'وقت إضافي';
 
   @override

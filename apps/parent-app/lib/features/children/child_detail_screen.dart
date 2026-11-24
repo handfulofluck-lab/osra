@@ -28,6 +28,7 @@ import 'app_groups_section.dart';
 import 'child_apps_list.dart';
 import 'phone_setup_section.dart';
 import 'command_history_screen.dart' show formatCommandTime;
+import 'device_control_state.dart';
 
 /// Per-child detail view with Overview / Apps / Social / Location / Alerts tabs.
 class ChildDetailScreen extends ConsumerWidget {
@@ -269,11 +270,20 @@ class _OverviewTab extends ConsumerWidget {
                   ),
                   Padding(
                     padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.sm, 0, AppSpace.sm, 6),
-                    // NOTE: Wrap instead of Row — the command buttons
-                    // overflowed on 320px-wide screens.
-                    child: Wrap(
-                      spacing: AppSpace.sm,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // #969: name the scope of each group, so a parent knows which commands reach one
+                        // handset and which reach the family. The controls themselves are unchanged.
+                        _ScopeLabel(
+                          key: const ValueKey('scopeThisDevice'),
+                          label: l10n.scopeThisDevice,
+                        ),
+                        // NOTE: Wrap instead of Row — the command buttons
+                        // overflowed on 320px-wide screens.
+                        Wrap(
+                          spacing: AppSpace.sm,
+                          children: [
                         TextButton.icon(
                           onPressed: () => context.push('/child/$childId/commands'),
                           icon: const Icon(Icons.receipt_long, size: 18),
@@ -320,10 +330,24 @@ class _OverviewTab extends ConsumerWidget {
                             label: Text(l10n.commandResumeDevice),
                           ),
                         ),
-                        TextButton.icon(
-                          onPressed: () => _toggleInternet(context, ref, childId, internetPaused, d),
-                          icon: Icon(internetPaused ? Icons.wifi : Icons.wifi_off, size: 18),
-                          label: Text(internetPaused ? l10n.commandResumeInternet : l10n.commandPauseInternet),
+                          ],
+                        ),
+                        // #969: a queued command is not a done command. This line names this handset and says
+                        // which state it is in; the wording is the Arabic Language Bureau's per-device copy, not
+                        // the command-history keys, which describe a delivery state rather than a device.
+                        _DeviceControlLine(deviceId: d.id),
+                        const SizedBox(height: AppSpace.xxs),
+                        _ScopeLabel(
+                          key: const ValueKey('scopeAllDevices'),
+                          label: l10n.scopeAllDevices,
+                        ),
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: TextButton.icon(
+                            onPressed: () => _toggleInternet(context, ref, childId, internetPaused, d),
+                            icon: Icon(internetPaused ? Icons.wifi : Icons.wifi_off, size: 18),
+                            label: Text(internetPaused ? l10n.commandResumeInternet : l10n.commandPauseInternet),
+                          ),
                         ),
                       ],
                     ),
@@ -1287,4 +1311,43 @@ Future<void> _pairDevice(BuildContext context, WidgetRef ref, String childId) as
     MaterialPageRoute(builder: (_) => PairingQrScreen(childId: childId)),
   );
   ref.invalidate(familyProvider);
+}
+
+/// A group heading on the child card: which controls address this handset, which address the family (#969).
+class _ScopeLabel extends StatelessWidget {
+  final String label;
+  const _ScopeLabel({super.key, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.sm, AppSpace.xs, 0, 0),
+      child: Text(label, style: Theme.of(context).textTheme.labelLarge),
+    );
+  }
+}
+
+/// The per-handset status line: waiting, or refused (#969). Silent when the newest command is acked.
+class _DeviceControlLine extends ConsumerWidget {
+  final String deviceId;
+  const _DeviceControlLine({required this.deviceId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final history = ref.watch(deviceCommandHistoryProvider(deviceId)).valueOrNull ?? const <DeviceCommand>[];
+    final line = deviceControlLine(history);
+    if (line == DeviceControlLine.none) return const SizedBox.shrink();
+    final l10n = context.l10n;
+    final failed = line == DeviceControlLine.failed;
+    return Padding(
+      key: ValueKey(failed ? 'deviceControlFailed' : 'deviceControlPending'),
+      padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.sm, AppSpace.xxs, AppSpace.sm, 0),
+      child: Text(
+        failed ? l10n.deviceControlFailed : l10n.deviceControlPending,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: failed ? context.tokens.danger : context.tokens.warn,
+        ),
+      ),
+    );
+  }
 }

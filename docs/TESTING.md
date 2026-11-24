@@ -1466,7 +1466,7 @@ analyzer. `OSRA_STAGING_QA_ENGINE` selects `bedrock` (default), `own`, or `both`
 `python -m pytest -q tests/test_staging_qa.py tests/test_staging_own_model.py tests/test_staging_provider_results.py`
 from `services/ai-engine` to exercise accepted and rejected requests without network access. Check each
 selected provider's status before counting a verdict. A timeout or unavailable result carries no scores.
-The [staging acceptance procedure](QA/staging-model-smoke.md) describes the private route and live evidence.
+The [staging acceptance procedure](QA/staging-model-smoke.md) describes the private route and live evidence, and the [pre-test checklist](QA/pre-test-checklist.md) lists every pre-flight, live-window, and post-test gate (`PT-01`–`PT-20`) required before and after a live staging run (`#1024`).
 
 ## Staging own-model region verification (#962)
 
