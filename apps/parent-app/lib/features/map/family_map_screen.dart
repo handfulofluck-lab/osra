@@ -169,11 +169,7 @@ class ChildMapSheet extends ConsumerWidget {
                 FilledButton.tonalIcon(
                   icon: const Icon(Icons.notifications_off_outlined),
                   label: Text(context.l10n.commandStopRing),
-                  onPressed: device == null ? null : () async {
-                    final ringId = await ringStopTarget(ref, device!.id);
-                    if (!context.mounted) return;
-                    await _sendCommand(context, ref, device!, 'stop_ring', ringId: ringId);
-                  },
+                  onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'stop_ring'),
                 ),
                 FilledButton.tonalIcon(
                   icon: const Icon(Icons.lock),
@@ -188,14 +184,14 @@ class ChildMapSheet extends ConsumerWidget {
     );
   }
 
-  Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, String command, {String? ringId}) async {
+  Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, String command) async {
     // Issue #221 / ADR-0034 decision 3: the server answers a command it will not queue with
     // `{status: "failed", reason}`. The map used to report "queued" for those, so a parent whose
     // ring or lock was refused up front was told it had been sent. Both refusals now read the same
     // mapping as child detail (`commandRefusalText`), so one command never has two stories.
     final l10n = context.l10n;
     try {
-      final response = await ref.read(apiClientProvider).raw.post('/v1/devices/${device.id}/command', data: {'command': command, if (ringId != null) 'payload': {'ringId': ringId}});
+      final response = await ref.read(apiClientProvider).raw.post('/v1/devices/${device.id}/command', data: {'command': command});
       ref.invalidate(deviceCommandHistoryProvider(device.id));
       if (!context.mounted) return;
       final body = response.data;

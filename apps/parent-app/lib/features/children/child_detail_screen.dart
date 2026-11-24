@@ -285,7 +285,7 @@ class _OverviewTab extends ConsumerWidget {
                         _DeviceActionsSection(
                           childId: childId,
                           device: d,
-                          onSend: (command, {ringId}) => _sendCommand(context, ref, d, command, ringId: ringId),
+                          onSend: (command) => _sendCommand(context, ref, d, command),
                           onOpenHistory: () => context.push('/child/$childId/commands'),
                         ),
                         // #969: a queued command is not a done command. This line names this handset and says
@@ -470,7 +470,7 @@ class _DeviceActionGrid extends StatelessWidget {
 class _DeviceActionsSection extends ConsumerWidget {
   final String childId;
   final Device device;
-  final void Function(String command, {String? ringId}) onSend;
+  final void Function(String command) onSend;
   final VoidCallback onOpenHistory;
   const _DeviceActionsSection({
     required this.childId,
@@ -502,11 +502,7 @@ class _DeviceActionsSection extends ConsumerWidget {
       ),
       _deviceTonalButton(
         key: ValueKey('deviceAction-stopRing-${device.id}'),
-        onPressed: () async {
-          // #760: the PIN-stopped ring needs the ring's id, so the ack can name which ring was silenced.
-          final ringId = await ringStopTarget(ref, device.id);
-          onSend('stop_ring', ringId: ringId);
-        },
+        onPressed: () => onSend('stop_ring'),
         icon: Icons.notifications_off_outlined,
         label: l10n.commandStopRing,
       ),
@@ -785,13 +781,10 @@ class _WindDownCard extends ConsumerWidget {
 /// reason}` instead of queueing them — a `locate_now` the phone's last
 /// telemetry says it cannot answer. Reporting "queued" there would be the same
 /// silent failure the refusal exists to remove, so the reason is shown instead.
-Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, String command,
-    {String? ringId}) async {
+Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, String command) async {
   final l10n = context.l10n;
   try {
-    final response = await ref.read(apiClientProvider).raw.post('/v1/devices/${device.id}/command',
-        // #760: a PIN-stopped ring names which ring it silenced; every other command carries no payload.
-        data: {'command': command, if (ringId != null) 'payload': {'ringId': ringId}});
+    final response = await ref.read(apiClientProvider).raw.post('/v1/devices/${device.id}/command', data: {'command': command});
     ref.invalidate(deviceCommandHistoryProvider(device.id));
     if (!context.mounted) return;
     final body = response.data;
@@ -1422,7 +1415,9 @@ class AlertTile extends StatelessWidget {
         ],
       );
     } else {
-      final genericWidget = Text(genericSubtitleText!);
+      // #760: a ring's subtitle is the Bureau's sentence plus a timestamp, so it gets two lines; every other
+      // alert type keeps one. Taking main's tile dropped that rule when the branch's tile was replaced.
+      final genericWidget = Text(genericSubtitleText!, maxLines: alert.category == 'ring' ? 2 : 1);
       subtitleContent = newBadge == null
           ? genericWidget
           : Column(
