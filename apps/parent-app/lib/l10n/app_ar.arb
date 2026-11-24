@@ -244,6 +244,8 @@
   "commandClearSos": "مسح نداء الاستغاثة",
   "commandPauseDevice": "إيقاف الجهاز",
   "commandResumeDevice": "استئناف الجهاز",
+  "commandPausingDevice": "جارٍ إيقاف الجهاز…",
+  "commandResumingDevice": "جارٍ استئناف الجهاز…",
   "commandPauseInternet": "إيقاف الإنترنت",
   "commandResumeInternet": "استئناف الإنترنت",
   "scopeThisDevice": "هذا الجهاز",
