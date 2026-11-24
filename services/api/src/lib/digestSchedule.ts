@@ -1,14 +1,4 @@
-/**
- * ADR-0017: the weekly and daily digests are due at the **family's local hour**, not a fixed UTC hour.
- *
- * This module is pure on purpose: the scheduler's only decisions that can silently send twice (or not
- * at all) are "what is the family's local day/hour/week right now" and "has this period already been
- * sent", so they are computed from a `Date` and an IANA zone and unit-tested without Postgres, Redis
- * or a clock. `digestScheduler.ts` owns the I/O.
- *
- * The selection rule from the ADR is "at or past the hour", not equality: a DST spring-forward that
- * skips the configured hour then sends at the next hour instead of skipping the day, and the period key
- * (local date / ISO week) makes a repeated fall-back hour idempotent.
+a repeated fall-back hour idempotent.
  */
 
 export type DigestKind = "daily" | "weekly";
@@ -114,17 +104,4 @@ export function digestsDueAt(now: Date, timeZone: string, digestHour: number): D
   const parts = localParts(now, timeZone);
   if (parts.hour < digestHour) return [];
   return parts.weekday === 7 ? ["daily", "weekly"] : ["daily"];
-}
-
-/**
- * The env hour, clamped: `DIGEST_HOUR` is a **local** hour (ADR-0017), default 18.
- *
- * `DIGEST_HOUR_UTC` is the pre-ADR-0017 name and is still read as a fallback, but as a **local** hour
- * too — nothing here converts it, because ADR-0017 made the hour local for every family and the name
- * is now wrong (F3 of the #93 review). `startDigestScheduler` warns once at boot when it is the one
- * set, so an operator still on the old name learns the meaning changed; rename it in a deployment.
- */
-export function digestHour(env: NodeJS.ProcessEnv = process.env): number {
-  const raw = Number(env.DIGEST_HOUR ?? env.DIGEST_HOUR_UTC ?? 18);
-  return Number.isInteger(raw) && raw >= 0 && raw <= 23 ? raw : 18;
 }
