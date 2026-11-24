@@ -5,6 +5,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../api/models.dart';
 import 'background_push.dart';
 import 'notification_tap.dart';
 
@@ -20,15 +21,81 @@ bool isPresentedNativelyInForeground({
 }) =>
     isApplePlatform && nativeForegroundPresentationEnabled && hasNotificationPayload;
 
-/// #1028: Routes a tap on a native FCM/APNs notification into [NotificationTapController]
-/// so GoRouter opens `/alerts/:id` (matching local-notification taps from #972).
+/// #1028: Returns true when [data] matches the shipping generic parent wake shape
+/// (`services/api/src/lib/push/notify.ts`: `{ w: "1" }`) or came from a visible
+/// native alert notification without a specific `alertId`.
+bool isGenericAlertWakeData(
+  Map<String, dynamic> data, {
+  bool hasNotificationPayload = false,
+}) =>
+    data['w']?.toString().trim() == '1' || hasNotificationPayload;
+
+/// #1028: Synchronously routes a tap on a native FCM/APNs notification into
+/// [NotificationTapController]. Uses `/alerts/:id` when `alertId` is present,
+/// or falls back to `/alerts` for the shipping generic wake payload (`{ w: "1" }`).
 void recordFcmNotificationTap(
   Map<String, dynamic> data, [
   NotificationTapController? controller,
+  bool hasNotificationPayload = false,
 ]) {
-  final alertId = data['alertId']?.toString();
-  if (alertId == null || alertId.trim().isEmpty) return;
-  (controller ?? notificationTapController).recordTap(alertId);
+  final target = controller ?? notificationTapController;
+  final alertId = data['alertId']?.toString().trim();
+  if (alertId != null && alertId.isNotEmpty) {
+    target.recordTap(alertId);
+    return;
+  }
+  if (isGenericAlertWakeData(data, hasNotificationPayload: hasNotificationPayload)) {
+    target.recordAlertsFeedTap();
+  }
+}
+
+/// #1028: Resolves a native FCM/APNs notification tap against the authenticated
+/// alerts feed when the shipping server wake payload (`{ w: "1" }`) carries no
+/// `alertId`:
+/// - If `data['alertId']` is present, routes directly to `/alerts/:id`.
+/// - Otherwise, fetches `/v1/alerts` with the stored session; if there is
+///   exactly one unacknowledged alert, routes to `/alerts/:id`.
+/// - If unauthenticated, errored, empty, or ambiguous (2+ unacknowledged alerts),
+///   routes to `/alerts` so the parent can select the right card.
+Future<void> handleFcmNotificationTap(
+  Map<String, dynamic> data, {
+  bool hasNotificationPayload = false,
+  NotificationTapController? controller,
+  Future<List<Alert>?> Function()? fetchAlerts,
+}) async {
+  final target = controller ?? notificationTapController;
+  final alertId = data['alertId']?.toString().trim();
+  if (alertId != null && alertId.isNotEmpty) {
+    target.recordTap(alertId);
+    return;
+  }
+  if (!isGenericAlertWakeData(data, hasNotificationPayload: hasNotificationPayload)) {
+    return;
+  }
+  try {
+    final alerts = await (fetchAlerts ?? _defaultFetchAlertsForTap)();
+    if (alerts != null) {
+      final unacked = alerts.where((a) => !a.acknowledged).toList(growable: false);
+      if (unacked.length == 1) {
+        target.recordTap(unacked.single.id);
+        return;
+      }
+    }
+  } catch (_) {
+    // Fall back to the alerts list on any network/auth error.
+  }
+  target.recordAlertsFeedTap();
+}
+
+Future<List<Alert>?> _defaultFetchAlertsForTap() async {
+  final wake = await buildWake();
+  final jwt = await wake.readJwt();
+  if (jwt == null || jwt.isEmpty) return null;
+  final res = await wake.fetchAlerts(jwt);
+  return switch (res) {
+    AlertFetchOk(:final alerts) => alerts,
+    _ => null,
+  };
 }
 
 /// #1028: Coordinates foreground FCM wakes through the exact same
@@ -117,6 +184,7 @@ Future<StreamSubscription<T>?> enablePushAlerts<T>({
   @visibleForTesting Map<String, dynamic> Function(T message)? extractData,
   @visibleForTesting Future<void> Function(String alertId)? markAlertIdShown,
   @visibleForTesting NotificationTapController? tapController,
+  @visibleForTesting Future<List<Alert>?> Function()? fetchAlertsForTap,
   @visibleForTesting Future<WakeOutcome> Function()? runWake,
 }) async {
   try {
@@ -159,22 +227,48 @@ Future<StreamSubscription<T>?> enablePushAlerts<T>({
     nativePresentationEnabled = false;
   }
 
-  // #1028: Route taps on native APNs/FCM banners into NotificationTapController
-  // so tapping a native foreground/background banner opens `/alerts/:id`.
+  // #1028: Route taps on native APNs/FCM banners into NotificationTapController.
+  // Supports both explicit `alertId` and the shipping generic wake (`{ w: "1" }`),
+  // resolving a single unacknowledged alert to `/alerts/:id` or falling back to `/alerts`.
   if (openedMessageData != null) {
-    openedMessageData.listen((data) => recordFcmNotificationTap(data, tapController));
+    openedMessageData.listen(
+      (data) => unawaited(handleFcmNotificationTap(
+        data,
+        controller: tapController,
+        fetchAlerts: fetchAlertsForTap,
+      )),
+    );
   } else {
     FirebaseMessaging.onMessageOpenedApp.listen(
-      (msg) => recordFcmNotificationTap(msg.data, tapController),
+      (msg) => unawaited(handleFcmNotificationTap(
+        msg.data,
+        hasNotificationPayload: msg.notification != null,
+        controller: tapController,
+        fetchAlerts: fetchAlertsForTap,
+      )),
     );
   }
   unawaited(() async {
     try {
-      final initialData = readInitialMessageData != null
-          ? await readInitialMessageData()
-          : (await FirebaseMessaging.instance.getInitialMessage())?.data;
-      if (initialData != null) {
-        recordFcmNotificationTap(initialData, tapController);
+      if (readInitialMessageData != null) {
+        final initialData = await readInitialMessageData();
+        if (initialData != null) {
+          await handleFcmNotificationTap(
+            initialData,
+            controller: tapController,
+            fetchAlerts: fetchAlertsForTap,
+          );
+        }
+      } else {
+        final initialMsg = await FirebaseMessaging.instance.getInitialMessage();
+        if (initialMsg != null) {
+          await handleFcmNotificationTap(
+            initialMsg.data,
+            hasNotificationPayload: initialMsg.notification != null,
+            controller: tapController,
+            fetchAlerts: fetchAlertsForTap,
+          );
+        }
       }
     } catch (_) {}
   }());

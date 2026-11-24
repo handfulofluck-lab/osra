@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:familyshield_parent/api/models.dart';
+import 'package:familyshield_parent/providers/onboarding_provider.dart';
 import 'package:familyshield_parent/push/background_push.dart';
 import 'package:familyshield_parent/push/foreground_push.dart';
 import 'package:familyshield_parent/push/local_notifier.dart';
@@ -257,6 +258,141 @@ void main() {
       openedController.add(const {'alertId': 'alert-ios-tap-1'});
       await Future<void>.delayed(Duration.zero);
       expect(tapController.consumePendingAlertId(), 'alert-ios-tap-1');
+    });
+
+    test('shipping generic wake payload {w: "1"} routes synchronously to /alerts (never null)', () {
+      // Mutant: requiring data['alertId'] in recordFcmNotificationTap leaves pendingDestination null
+      // for the shipping server wake payload (`services/api/src/lib/push/notify.ts`: { w: "1" }).
+      final tapController = NotificationTapController();
+      recordFcmNotificationTap(const {'w': '1'}, tapController);
+      expect(tapController.pendingDestination, '/alerts');
+      expect(
+        resolveNotificationAlertRedirect(
+          authenticated: true,
+          onboardingComplete: true,
+          onboardingStep: OnboardingStep.none,
+          controller: tapController,
+        ),
+        '/alerts',
+      );
+      expect(tapController.pendingDestination, isNull);
+    });
+
+    test('warm tap with shipping generic wake {w: "1"} opens /alerts/:id when 1 unacked, /alerts when ambiguous', () async {
+      // Mutant: skipping authenticated alerts fetch or failing to fall back to /alerts on 2+ unacked alerts
+      // either opens null or guesses the wrong alert card.
+      final tapController = NotificationTapController();
+      final openedController = StreamController<Map<String, dynamic>>();
+      final fgController = StreamController<String>();
+      addTearDown(() async {
+        await openedController.close();
+        await fgController.close();
+      });
+
+      var fetched = <Alert>[_alert('only-unacked-1')];
+      final sub = await enablePushAlerts<String>(
+        ensureFirebaseInitialized: () async {},
+        registerBackgroundHandler: () {},
+        configureForegroundPresentation: () async {},
+        foregroundMessages: fgController.stream,
+        openedMessageData: openedController.stream,
+        readInitialMessageData: () async => null,
+        isApplePlatform: true,
+        tapController: tapController,
+        fetchAlertsForTap: () async => fetched,
+        runWake: () async => WakeOutcome.nothingNew,
+      );
+      addTearDown(() async => sub?.cancel());
+
+      // Single unambiguous unacknowledged alert -> opens /alerts/:id
+      openedController.add(const {'w': '1'});
+      await Future<void>.delayed(Duration.zero);
+      expect(tapController.consumePendingDestination(), '/alerts/only-unacked-1');
+
+      // Ambiguous (2 unacknowledged alerts) -> opens /alerts so parent picks the right card
+      fetched = [_alert('unacked-a'), _alert('unacked-b')];
+      openedController.add(const {'w': '1'});
+      await Future<void>.delayed(Duration.zero);
+      expect(tapController.consumePendingDestination(), '/alerts');
+    });
+
+    test('cold tap with shipping generic wake {w: "1"} survives auth gate and opens /alerts after sign-in', () async {
+      // Mutant: dropping getInitialMessage generic wake or consuming before auth loses the cold-start tap.
+      final tapController = NotificationTapController();
+      final fgController = StreamController<String>();
+      addTearDown(fgController.close);
+
+      final sub = await enablePushAlerts<String>(
+        ensureFirebaseInitialized: () async {},
+        registerBackgroundHandler: () {},
+        configureForegroundPresentation: () async {},
+        foregroundMessages: fgController.stream,
+        openedMessageData: const Stream.empty(),
+        readInitialMessageData: () async => const {'w': '1'},
+        isApplePlatform: true,
+        tapController: tapController,
+        // Signed out during cold start: authenticated fetch returns null.
+        fetchAlertsForTap: () async => null,
+        runWake: () async => WakeOutcome.nothingNew,
+      );
+      addTearDown(() async => sub?.cancel());
+
+      await Future<void>.delayed(Duration.zero);
+      // Auth gate holds the destination until authenticated.
+      expect(
+        resolveNotificationAlertRedirect(
+          authenticated: false,
+          onboardingComplete: true,
+          onboardingStep: OnboardingStep.none,
+          controller: tapController,
+        ),
+        isNull,
+      );
+      expect(tapController.pendingDestination, '/alerts');
+
+      // Once signed in, GoRouter redirect consumes /alerts.
+      expect(
+        resolveNotificationAlertRedirect(
+          authenticated: true,
+          onboardingComplete: true,
+          onboardingStep: OnboardingStep.none,
+          controller: tapController,
+        ),
+        '/alerts',
+      );
+      expect(tapController.pendingDestination, isNull);
+    });
+
+    test('cold tap with shipping generic wake {w: "1"} when signed in resolves single unacked alert to /alerts/:id', () async {
+      // Mutant: ignoring fetchAlertsForTap on getInitialMessage opens /alerts even when 1 alert is unambiguous.
+      final tapController = NotificationTapController();
+      final fgController = StreamController<String>();
+      addTearDown(fgController.close);
+
+      final sub = await enablePushAlerts<String>(
+        ensureFirebaseInitialized: () async {},
+        registerBackgroundHandler: () {},
+        configureForegroundPresentation: () async {},
+        foregroundMessages: fgController.stream,
+        openedMessageData: const Stream.empty(),
+        readInitialMessageData: () async => const {'w': '1'},
+        isApplePlatform: true,
+        tapController: tapController,
+        fetchAlertsForTap: () async => [_alert('cold-single-1')],
+        runWake: () async => WakeOutcome.nothingNew,
+      );
+      addTearDown(() async => sub?.cancel());
+
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        resolveNotificationAlertRedirect(
+          authenticated: true,
+          onboardingComplete: true,
+          onboardingStep: OnboardingStep.none,
+          controller: tapController,
+        ),
+        '/alerts/cold-single-1',
+      );
     });
   });
 
