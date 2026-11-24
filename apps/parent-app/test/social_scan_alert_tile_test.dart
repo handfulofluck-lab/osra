@@ -57,7 +57,7 @@ void main() {
 
     final l10n = AppLocalizations.of(
       tester.element(find.byKey(const ValueKey('alert-contact-a-scan-1'))),
-    )!;
+    );
     final contact = tester.widget<Text>(find.byKey(const ValueKey('alert-contact-a-scan-1')));
     expect(contact.data, contains(l10n.socialAlertUnknownContact));
   });

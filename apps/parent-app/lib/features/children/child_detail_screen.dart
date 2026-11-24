@@ -1411,7 +1411,7 @@ class AlertTile extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            socialContactLine!,
+            socialContactLine,
             key: ValueKey('alert-contact-${alert.id}'),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
