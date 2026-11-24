@@ -1079,7 +1079,7 @@
   "alertBodyRingChildDismissed": "{count, plural, =1{أُغلق تنبيه الرنين على الهاتف. عاد الهاتف إلى الرنين.} =2{أُغلق تنبيه الرنين على الهاتف مرتين. ما زال الهاتف يرنّ.} few{أُغلق تنبيه الرنين على الهاتف {count} مرات. ما زال الهاتف يرنّ.} many{أُغلق تنبيه الرنين على الهاتف {count} مرة. ما زال الهاتف يرنّ.} other{أُغلق تنبيه الرنين على الهاتف {count} مرة. ما زال الهاتف يرنّ.}}",
   "@alertBodyRingChildDismissed": {"placeholders": {"count": {"type": "int", "format": "decimalPattern"}}},
   "alertBodyRingPinStopped": "أُوقف الرنين على الهاتف برمز PIN للوالدين.",
-  "alertBodyRingParentStopped": "أوقف أحد الوالدين الرنين من تطبيق أسرة.",
+  "alertBodyRingParentStopped": "أوقف أحد الوالدين الرنين من تطبيق الوالدين.",
   "alertBodyRingTimedOut": "انتهى الرنين تلقائيًا بعد 5 دقائق.",
   "alertBodyRingAfterRestart": "انتهى الرنين بعد إعادة تشغيل الهاتف.",
   "commandRefusedRingUnsupportedOs": "لا يمكن أن يرنّ هذا الآيفون حاليًا. يحتاج إلى iOS 26 أو أحدث.",

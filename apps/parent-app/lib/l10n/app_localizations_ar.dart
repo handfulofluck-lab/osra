@@ -3413,7 +3413,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get alertBodyRingParentStopped =>
-      'أوقف أحد الوالدين الرنين من تطبيق أسرة.';
+      'أوقف أحد الوالدين الرنين من تطبيق الوالدين.';
 
   @override
   String get alertBodyRingTimedOut => 'انتهى الرنين تلقائيًا بعد 5 دقائق.';
