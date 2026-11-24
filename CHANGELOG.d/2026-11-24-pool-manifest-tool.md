@@ -1,0 +1,1 @@
+- #617 adds `services/ai-engine/pool_manifest.py`: shape, exact-duplicate and digest checks for an own-model language pool, with the pinned `k31_dupclasses.py` invoked rather than re-implemented, so a unit can be validated without publishing a single row.
