@@ -139,6 +139,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(api.calls('GET', '/v1/reports/usage').last.query['days'], 30);
       expect(api.calls('GET', '/v1/reports/web').last.query['days'], 30);
+
+      await tester.tap(find.text('7d'));
+      await tester.pumpAndSettle();
+      // Mutant: keep an inactive time window alive and reopen its old usage or web rows.
+      for (final path in ['/v1/reports/usage', '/v1/reports/web']) {
+        expect(api.calls('GET', path).map((r) => r.query['days']), [7, 14, 30, 7]);
+      }
     });
 
     testWidgets('a 30-day series renders 30 bars, an honest total and a per-day list', (tester) async {
@@ -315,8 +322,12 @@ void main() {
   });
 
   group('UsageHistoryScreen — entry point and layout', () {
-    testWidgets('reports screen opens the history screen for the same child', (tester) async {
-      final api = FakeApiClient(standardRoutes());
+    testWidgets('reports opens history for the same child and refreshes the summary on return', (tester) async {
+      var total = 0;
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/reports/summary': (_) => {'totalAppMinutes': total},
+      });
       final router = GoRouter(
         initialLocation: '/child/child-1/reports',
         routes: [
@@ -340,6 +351,13 @@ void main() {
 
       expect(find.byType(UsageHistoryScreen), findsOneWidget);
       expect(api.calls('GET', '/v1/reports/usage').single.query['childId'], 'child-1');
+
+      total = 22;
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      // Mutant: pop to the still-mounted report without reading the newly available activity.
+      expect(api.calls('GET', '/v1/reports/summary'), hasLength(2));
+      expect(find.textContaining('Total 22 min'), findsOneWidget);
     });
 
     testWidgets('320x568: selector, 30 bars and the browsing controls do not overflow', (tester) async {

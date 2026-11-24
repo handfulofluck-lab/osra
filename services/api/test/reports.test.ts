@@ -338,6 +338,20 @@ describe("GET /v1/reports/wellbeing/:childId (#28)", () => {
     await app.close();
   });
 
+  it("applies no usage overage when the child has no daily time limit", async () => {
+    const app = await buildApp(reportsRoutes, "/v1/reports");
+    mockWellbeing(22, 1, 2, 0);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/reports/wellbeing/child-1",
+      headers: authHeader(app),
+    });
+    // Mutant: count a disabled limit as a one-minute budget and the same week scores zero.
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ score: 89, breakdown: { usage: 0, social: 5, safety: 6 } });
+    await app.close();
+  });
+
   it("is deterministic: same activity, same score; formula matches the spec exactly", async () => {
     const app = await buildApp(reportsRoutes, "/v1/reports");
     // 1890/1260 = ratio 1.5 → usage 30*1*2=60; 2 concerns → 10; 1 hit → 3 → 100-73=27.

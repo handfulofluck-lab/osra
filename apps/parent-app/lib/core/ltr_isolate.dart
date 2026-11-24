@@ -1,5 +1,12 @@
 String ltrIsolate(String value) => '\u{2066}$value\u{2069}';
 
+/// First-strong directional isolate (Unicode FSI `U+2068` … PDI `U+2069`).
+///
+/// #1029 (UI/UX Bureau 7116862871, Arabic Language Bureau 7116877306): user-authored names
+/// (e.g. a chat contact) may be Arabic, Latin, or mixed. FSI lets the contact's own first
+/// strong character pick its run direction while isolating it from surrounding UI text.
+String firstStrongIsolate(String value) => '\u{2068}$value\u{2069}';
+
 /// A host name for display: left-to-right isolated, with a break opportunity after every dot.
 ///
 /// #841 condition 2 (UI/UX Bureau): a host is the site's *name* on the history row, so it is drawn in

@@ -596,12 +596,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String accuracyLabel(int meters, String time) {
-    return 'Accuracy ±$meters m · $time';
+    return 'Accuracy ±$meters m · $time';
   }
 
   @override
   String accuracyShort(int meters) {
-    return '±$meters m';
+    return '±$meters m';
   }
 
   @override
@@ -792,12 +792,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String familyMapRadius(int meters) {
-    return 'Radius: $meters m';
+    return 'Radius: $meters m';
   }
 
   @override
   String familyMapMeters(int meters) {
-    return '$meters m';
+    return '$meters m';
   }
 
   @override
@@ -853,10 +853,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commandResumeDevice => 'Resume device';
 
   @override
+  String get commandPausingDevice => 'Pausing…';
+
+  @override
+  String get commandResumingDevice => 'Resuming…';
+
+  @override
   String get commandPauseInternet => 'Pause internet';
 
   @override
   String get commandResumeInternet => 'Resume internet';
+
+  @override
+  String get scopeThisDevice => 'This device';
+
+  @override
+  String get scopeAllDevices => 'All paired devices';
+
+  @override
+  String get deviceControlPending => 'Waiting for this device';
+
+  @override
+  String get deviceControlFailed => 'This device couldn\'t apply the change';
 
   @override
   String get commandBonusTime => 'Bonus time';
@@ -1286,6 +1304,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get noAppUsage => 'No app usage recorded';
+
+  @override
+  String get noPerAppBreakdown => 'Per-app usage is unavailable';
 
   @override
   String get webSection => 'Web';
@@ -3151,6 +3172,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get setupMonitoringTitle => 'Which apps should OSRA watch for you?';
 
   @override
+  String get setupMonitoringAppBarTitle => 'Social apps';
+
+  @override
   String get setupMonitoringIntro =>
       'OSRA checks messages in these apps for signs of bullying, grooming or self-harm, and tells you when it finds something. Tick the apps you want; you can change this any time in the rules.';
 
@@ -3329,4 +3353,180 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get socialAlertViewAll => 'All alerts';
+
+  @override
+  String get locationUpdatedJustNow => 'Updated just now';
+
+  @override
+  String locationUpdatedMinutes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Updated $count min ago',
+      one: 'Updated 1 min ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String locationUpdatedHours(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Updated $count hours ago',
+      one: 'Updated 1 hour ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String locationUpdatedDays(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Updated $count days ago',
+      one: 'Updated 1 day ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get locationUpdatedUnknown => 'Update time unknown';
+
+  @override
+  String get locationFindingAddress => 'Finding address…';
+
+  @override
+  String get locationAddressUnavailable => 'Address not available';
+
+  @override
+  String locationMapSemantics(String name) {
+    return 'Map showing where $name is';
+  }
+
+  @override
+  String get locationRecentre => 'Centre on the latest location';
+
+  @override
+  String get undo => 'Undo';
+
+  @override
+  String hoursShort(int hours) {
+    return '$hours h';
+  }
+
+  @override
+  String get appStateAllowed => 'Allowed';
+
+  @override
+  String get appStateBlocked => 'Blocked';
+
+  @override
+  String appStateLimit(String limit) {
+    return 'Limit $limit a day';
+  }
+
+  @override
+  String appAllowedSnack(String app) {
+    return '$app allowed';
+  }
+
+  @override
+  String appLimitSnack(String app, String limit) {
+    return '$app limited to $limit a day';
+  }
+
+  @override
+  String appsFilterAll(int count) {
+    return 'All ($count)';
+  }
+
+  @override
+  String appsFilterBlocked(int count) {
+    return 'Blocked ($count)';
+  }
+
+  @override
+  String appsFilterLimited(int count) {
+    return 'Time limits ($count)';
+  }
+
+  @override
+  String get appsNoMatch => 'No apps match';
+
+  @override
+  String get appAboutThisApp => 'About this app';
+
+  @override
+  String appBlockedNamedSnack(String app) {
+    return '$app blocked';
+  }
+
+  @override
+  String get socialCheckMessagesIn => 'Check messages in';
+
+  @override
+  String socialNotOnChildPhone(String child, int count) {
+    return 'Not on $child\'s phone ($count)';
+  }
+
+  @override
+  String get socialChecking => 'Checking';
+
+  @override
+  String get socialOff => 'Off';
+
+  @override
+  String get socialCommentsAndChats => 'Comments and chats';
+
+  @override
+  String get socialNewAppsBanner =>
+      'You can now choose YouTube, Telegram, Reddit and Messenger too.';
+
+  @override
+  String get socialPrivacyLine =>
+      'OSRA only flags concerning messages. It never shows you every chat.';
+
+  @override
+  String get selectAll => 'Select all';
+
+  @override
+  String socialAlertCountTitle(int count, String app) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count concerning messages on $app',
+      one: '1 concerning message on $app',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String socialAlertFromContactOnly(String contact) {
+    return 'From $contact';
+  }
+
+  @override
+  String socialAlertLatestAt(String time) {
+    return 'Latest $time';
+  }
+
+  @override
+  String get socialAlertUnknownContact => 'an unknown contact';
+
+  @override
+  String socialAlertMorePush(int count, String child, String app) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count more concerning messages for $child on $app',
+      one: '1 more concerning message for $child on $app',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String socialAlertNewSince(int count) {
+    return '+$count new';
+  }
 }

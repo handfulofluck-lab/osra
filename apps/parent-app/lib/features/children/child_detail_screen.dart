@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
 import '../../api/permission_errors.dart';
+import '../../core/digits.dart';
 import '../../core/ltr_isolate.dart';
 import '../../widgets/error_retry_view.dart';
 import '../../l10n/l10n.dart';
@@ -21,15 +22,24 @@ import '../../widgets/layout_helpers.dart';
 import '../dashboard/dashboard_screen.dart' show formatLastSeen;
 import '../pairing/pair_qr_screen.dart';
 import '../rules/active_window.dart';
-import '../social/social_screen.dart' show SocialSectionsView;
+import '../social/social_screen.dart' show SocialSectionsView, socialAppLabel;
+import '../map/child_location_view.dart';
 import 'app_groups_section.dart';
+import 'child_apps_list.dart';
 import 'phone_setup_section.dart';
 import 'command_history_screen.dart' show formatCommandTime;
+import 'device_control_state.dart';
 
 /// Per-child detail view with Overview / Apps / Social / Location / Alerts tabs.
 class ChildDetailScreen extends ConsumerWidget {
   final String childId;
-  const ChildDetailScreen({super.key, required this.childId});
+
+  /// Which tab opens first (0 Overview … 3 Location). The dashboard's place line opens Location (Bureau #1004).
+  final int initialTab;
+  const ChildDetailScreen({super.key, required this.childId, this.initialTab = 0});
+
+  /// The Location tab's index, for `/child/:id?tab=location`.
+  static const int locationTab = 3;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -40,6 +50,7 @@ class ChildDetailScreen extends ConsumerWidget {
     final l10n = context.l10n;
     return DefaultTabController(
       length: 5,
+      initialIndex: initialTab.clamp(0, 4),
       child: Scaffold(
         appBar: AppBar(
           toolbarHeight: MediaQuery.textScalerOf(context).scale(kToolbarHeight + AppSpace.lg),
@@ -259,61 +270,42 @@ class _OverviewTab extends ConsumerWidget {
                   ),
                   Padding(
                     padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.sm, 0, AppSpace.sm, 6),
-                    // NOTE: Wrap instead of Row — the command buttons
-                    // overflowed on 320px-wide screens.
-                    child: Wrap(
-                      spacing: AppSpace.sm,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        TextButton.icon(
-                          onPressed: () => context.push('/child/$childId/commands'),
-                          icon: const Icon(Icons.receipt_long, size: 18),
-                          label: Text(l10n.deliveryStatus),
+                        // #969: name the scope of each group, so a parent knows which commands reach one
+                        // handset and which reach the family.
+                        // U59 + U60 (#650, 7119037302, 7047663129): 2-column tonal action grid with 48 dp
+                        // targets and a single server-confirmed Pause/Resume device control.
+                        _ScopeLabel(
+                          key: const ValueKey('scopeThisDevice'),
+                          label: l10n.scopeThisDevice,
                         ),
-                        TextButton.icon(
-                          onPressed: () => _sendCommand(context, ref, d, 'ring'),
-                          icon: const Icon(Icons.notifications_active, size: 18),
-                          label: Text(l10n.ring),
+                        const SizedBox(height: AppSpace.xs),
+                        _DeviceActionsSection(
+                          childId: childId,
+                          device: d,
+                          onSend: (command) => _sendCommand(context, ref, d, command),
+                          onOpenHistory: () => context.push('/child/$childId/commands'),
                         ),
-                        TextButton.icon(
-                          onPressed: () => _sendCommand(context, ref, d, 'stop_ring'),
-                          icon: const Icon(Icons.notifications_off_outlined, size: 18),
-                          label: Text(l10n.commandStopRing),
+                        // #969: a queued command is not a done command. This line names this handset and says
+                        // which state it is in; the wording is the Arabic Language Bureau's per-device copy, not
+                        // the command-history keys, which describe a delivery state rather than a device.
+                        _DeviceControlLine(deviceId: d.id),
+                        const SizedBox(height: AppSpace.sm),
+                        _ScopeLabel(
+                          key: const ValueKey('scopeAllDevices'),
+                          label: l10n.scopeAllDevices,
                         ),
-                        TextButton.icon(
-                          onPressed: () => _sendCommand(context, ref, d, 'lock'),
-                          icon: const Icon(Icons.lock, size: 18),
-                          label: Text(l10n.lock),
-                        ),
-                        TextButton.icon(
-                          onPressed: () => _sendCommand(context, ref, d, 'unlock'),
-                          icon: const Icon(Icons.lock_open, size: 18),
-                          label: Text(l10n.unlock),
-                        ),
-                        // #969: a command that is queued but unconfirmed must not look idle. The pause/resume
-                        // controls are the two that leave a parent wondering whether anything happened, because
-                        // the POST answers `{status: pending}` before the handset has seen it.
-                        _PendingAwareControl(
-                          deviceId: d.id,
-                          command: 'pause',
-                          builder: (waiting) => TextButton.icon(
-                            onPressed: waiting ? null : () => _sendCommand(context, ref, d, 'pause'),
-                            icon: const Icon(Icons.pause_circle, size: 18),
-                            label: Text(l10n.commandPauseDevice),
+                        const SizedBox(height: AppSpace.xs),
+                        SizedBox(
+                          width: double.infinity,
+                          child: _deviceTonalButton(
+                            key: ValueKey('deviceAction-internet-${d.id}'),
+                            onPressed: () => _toggleInternet(context, ref, childId, internetPaused, d),
+                            icon: internetPaused ? Icons.wifi : Icons.wifi_off,
+                            label: internetPaused ? l10n.commandResumeInternet : l10n.commandPauseInternet,
                           ),
-                        ),
-                        _PendingAwareControl(
-                          deviceId: d.id,
-                          command: 'resume',
-                          builder: (waiting) => TextButton.icon(
-                            onPressed: waiting ? null : () => _sendCommand(context, ref, d, 'resume'),
-                            icon: const Icon(Icons.play_circle, size: 18),
-                            label: Text(l10n.commandResumeDevice),
-                          ),
-                        ),
-                        TextButton.icon(
-                          onPressed: () => _toggleInternet(context, ref, childId, internetPaused, d),
-                          icon: Icon(internetPaused ? Icons.wifi : Icons.wifi_off, size: 18),
-                          label: Text(internetPaused ? l10n.commandResumeInternet : l10n.commandPauseInternet),
                         ),
                       ],
                     ),
@@ -349,41 +341,225 @@ class _OverviewTab extends ConsumerWidget {
       d.isOnline ? context.l10n.statusOnline : context.l10n.statusOffline;
 }
 
-/// Compact latest-command line on a device card. It reports the durable
-/// queue's state; a pending or delivered-but-unacked command is never called
-/// "sent".
-/// #969: a control whose command is queued but not yet confirmed by the handset says so, instead of looking
-/// idle. `pending` means the server has the row; `delivered` means the phone fetched it and has not acted yet;
-/// only `acked` (or a refusal) means the parent knows the outcome.
+/// U59 (#650, #50 7047663129): server-confirmed pause/resume state for a single handset.
+@immutable
+class DevicePauseControlState {
+  /// True only when the newest acknowledged pause/resume command is `pause`.
+  final bool confirmedPaused;
+
+  /// True when the newest pause/resume command overall is `pending` or `delivered`.
+  final bool waiting;
+
+  /// The waiting command (`'pause'` or `'resume'`) when [waiting] is true.
+  final String? pendingCommand;
+
+  const DevicePauseControlState({
+    required this.confirmedPaused,
+    required this.waiting,
+    this.pendingCommand,
+  });
+
+  /// The single action the device card exposes: `'resume'` when server-confirmed paused,
+  /// otherwise `'pause'`.
+  String get activeCommand => confirmedPaused ? 'resume' : 'pause';
+}
+
+/// Resolves the single server-confirmed Pause/Resume control state from [history] (U59).
 ///
-/// The control is rebuilt rather than wrapped, because a wrapper cannot disable it: `IgnorePointer` stops touch
-/// but leaves the button focusable and enabled to TalkBack, VoiceOver, Switch Access and the keyboard's
-/// Enter/Space (Antigravity's F2, 7049793348). Passing `waiting` to the builder lets the button itself take
-/// `onPressed: null`, which is the one state every input method honours.
+/// Only the newest `acked` pause/resume command flips [DevicePauseControlState.confirmedPaused],
+/// and only the newest pause/resume command overall decides [DevicePauseControlState.waiting]
+/// (so an old unconfirmed row never blocks the button after a newer acked row, #969 F1).
+DevicePauseControlState resolveDevicePauseControlState(List<DeviceCommand> history) {
+  DeviceCommand? newest;
+  DeviceCommand? newestAcked;
+  for (final c in history) {
+    if (c.type != 'pause' && c.type != 'resume') continue;
+    final after = newest?.createdAt;
+    if (newest == null || after == null || (c.createdAt?.isAfter(after) ?? false)) {
+      newest = c;
+    }
+    if (c.status == 'acked') {
+      final ackAfter = newestAcked?.createdAt;
+      if (newestAcked == null || ackAfter == null || (c.createdAt?.isAfter(ackAfter) ?? false)) {
+        newestAcked = c;
+      }
+    }
+  }
+  final confirmedPaused = newestAcked?.type == 'pause';
+  final waiting = newest != null && (newest.status == 'pending' || newest.status == 'delivered');
+  return DevicePauseControlState(
+    confirmedPaused: confirmedPaused,
+    waiting: waiting,
+    pendingCommand: waiting ? newest.type : null,
+  );
+}
+
+/// U60 (#650, 7119037302): shared 48 dp tonal button for device card actions.
+Widget _deviceTonalButton({
+  Key? key,
+  required VoidCallback? onPressed,
+  required IconData icon,
+  required String label,
+}) {
+  return FilledButton.tonalIcon(
+    key: key,
+    onPressed: onPressed,
+    style: FilledButton.styleFrom(
+      minimumSize: const Size(0, 48),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.sm, vertical: AppSpace.sm),
+      alignment: AlignmentDirectional.centerStart,
+      tapTargetSize: MaterialTapTargetSize.padded,
+    ),
+    icon: Icon(icon, size: 18),
+    label: Text(label, softWrap: true),
+  );
+}
+
+/// U60 (#650, 7119037302): 2-column action grid for per-device controls, falling back to
+/// 1 column on ultra-narrow viewports (`< 268 dp`) so 200% text scale never overflows.
+class _DeviceActionGrid extends StatelessWidget {
+  final List<Widget> children;
+  const _DeviceActionGrid({required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final twoCols = constraints.maxWidth >= 268;
+        if (!twoCols) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < children.length; i++) ...[
+                if (i > 0) const SizedBox(height: AppSpace.xs),
+                children[i],
+              ],
+            ],
+          );
+        }
+        return Column(
+          key: const ValueKey('deviceActionGrid2Col'),
+          children: [
+            for (var i = 0; i < children.length; i += 2) ...[
+              if (i > 0) const SizedBox(height: AppSpace.xs),
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: children[i]),
+                    const SizedBox(width: AppSpace.xs),
+                    Expanded(
+                      child: i + 1 < children.length ? children[i + 1] : const SizedBox.shrink(),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// U59 + U60 + U61 (#650, #969, 7120730242): per-device action grid.
 ///
-/// Only the **newest** command of this type decides. Scanning the whole history would keep the control blocked
-/// by an old row that never settled while a newer one had already been acknowledged (F1).
-class _PendingAwareControl extends ConsumerWidget {
-  final String deviceId;
-  final String command;
-  final Widget Function(bool waiting) builder;
-  const _PendingAwareControl({required this.deviceId, required this.command, required this.builder});
+/// While a pause/resume command is waiting on the handset, the busy control spans the full
+/// row of the grid (B6, 7120730242) so "Pausing…" / "Resuming…" / «جارٍ إيقاف الجهاز…» never
+/// orphan their ellipsis on a separate line and the waiting state stands out clearly.
+class _DeviceActionsSection extends ConsumerWidget {
+  final String childId;
+  final Device device;
+  final void Function(String command) onSend;
+  final VoidCallback onOpenHistory;
+  const _DeviceActionsSection({
+    required this.childId,
+    required this.device,
+    required this.onSend,
+    required this.onOpenHistory,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final history = ref.watch(deviceCommandHistoryProvider(deviceId)).valueOrNull ?? const <DeviceCommand>[];
-    DeviceCommand? newest;
-    for (final c in history) {
-      if (c.type != command) continue;
-      final after = newest?.createdAt;
-      if (newest == null || after == null || (c.createdAt?.isAfter(after) ?? false)) newest = c;
+    final l10n = context.l10n;
+    final history = ref.watch(deviceCommandHistoryProvider(device.id)).valueOrNull ?? const <DeviceCommand>[];
+    final pauseState = resolveDevicePauseControlState(history);
+
+    final pauseWidget = _buildPauseControl(context, pauseState);
+    final historyButton = _deviceTonalButton(
+      key: ValueKey('deviceAction-history-${device.id}'),
+      onPressed: onOpenHistory,
+      icon: Icons.receipt_long,
+      label: l10n.deliveryStatus,
+    );
+
+    final pairChildren = <Widget>[
+      _deviceTonalButton(
+        key: ValueKey('deviceAction-ring-${device.id}'),
+        onPressed: () => onSend('ring'),
+        icon: Icons.notifications_active,
+        label: l10n.ring,
+      ),
+      _deviceTonalButton(
+        key: ValueKey('deviceAction-stopRing-${device.id}'),
+        onPressed: () => onSend('stop_ring'),
+        icon: Icons.notifications_off_outlined,
+        label: l10n.commandStopRing,
+      ),
+      _deviceTonalButton(
+        key: ValueKey('deviceAction-lock-${device.id}'),
+        onPressed: () => onSend('lock'),
+        icon: Icons.lock,
+        label: l10n.lock,
+      ),
+      _deviceTonalButton(
+        key: ValueKey('deviceAction-unlock-${device.id}'),
+        onPressed: () => onSend('unlock'),
+        icon: Icons.lock_open,
+        label: l10n.unlock,
+      ),
+      if (!pauseState.waiting) ...[
+        pauseWidget,
+        historyButton,
+      ],
+    ];
+
+    if (!pauseState.waiting) {
+      return _DeviceActionGrid(children: pairChildren);
     }
-    final waiting = newest != null && (newest.status == 'pending' || newest.status == 'delivered');
-    final button = builder(waiting);
-    if (!waiting) return button;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _DeviceActionGrid(children: pairChildren),
+        const SizedBox(height: AppSpace.xs),
+        SizedBox(
+          key: ValueKey('deviceAction-pauseFullRow-${device.id}'),
+          width: double.infinity,
+          child: pauseWidget,
+        ),
+        const SizedBox(height: AppSpace.xs),
+        SizedBox(width: double.infinity, child: historyButton),
+      ],
+    );
+  }
+
+  Widget _buildPauseControl(BuildContext context, DevicePauseControlState state) {
+    final l10n = context.l10n;
+    final command = state.activeCommand;
+    final label = state.waiting
+        ? (state.pendingCommand == 'resume' ? l10n.commandResumingDevice : l10n.commandPausingDevice)
+        : (state.confirmedPaused ? l10n.commandResumeDevice : l10n.commandPauseDevice);
+    final button = _deviceTonalButton(
+      key: ValueKey('deviceAction-$command-${device.id}'),
+      onPressed: state.waiting ? null : () => onSend(command),
+      icon: state.confirmedPaused ? Icons.play_circle : Icons.pause_circle,
+      label: label,
+    );
+    if (!state.waiting) return button;
     return Tooltip(
-      key: ValueKey('controlPending-$command'),
-      message: context.l10n.statusPending,
+      key: ValueKey('controlPending-${state.pendingCommand}'),
+      message: l10n.statusPending,
       child: button,
     );
   }
@@ -706,6 +882,9 @@ class _AppsTab extends ConsumerWidget {
     // #476: and it is read on the family's clock, where the child's phone enforces the window.
     final offset = overview?.family.utcOffsetMinutes;
     final now = familyWallClock(ref.watch(clockProvider)(), offset);
+    // Karim 23 Nov: every app on the phone, with its icon and a one-tap switch, once the phone has
+    // reported its apps. Until then the tab keeps the rule list it always had.
+    final installed = canManagePerAppRules ? ref.watch(installedAppsProvider(childId)).valueOrNull : null;
     return rules.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => ErrorRetryView(
@@ -769,7 +948,16 @@ class _AppsTab extends ConsumerWidget {
               ),
               const SizedBox(height: AppSpace.sm),
             ],
-            if (ruleSet.appRules.isEmpty && canManagePerAppRules)
+            if (canManagePerAppRules && installed != null && installed.apps.isNotEmpty)
+              ChildAppsList(
+                key: const ValueKey('childAppsList'),
+                childId: childId,
+                ruleSet: ruleSet,
+                report: installed,
+                windowNote: (packageId) => _windowNote(context, packageId, ruleSet, now),
+                onInsight: (packageId) => showAppInsightSheet(context, packageId),
+              )
+            else if (ruleSet.appRules.isEmpty && canManagePerAppRules)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: AppSpace.lg),
                 child: Center(child: Text(l10n.noPerAppRules)),
@@ -783,33 +971,8 @@ class _AppsTab extends ConsumerWidget {
                   _ => Icons.check_circle_outline,
                 }),
                 title: Text(r.appName),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(r.packageId),
-                    // #456: name the window that is overriding this app, so an "Allowed" row that
-                    // the phone refuses explains itself.
-                    if (activeWindowFor(packageId: r.packageId, rules: ruleSet, now: now)
-                        case final window?)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(
-                          l10n.blockedNowBy(
-                            switch (window.kind) {
-                              WindowKind.school => l10n.schoolHours,
-                              WindowKind.bedtime => l10n.bedtime,
-                              WindowKind.routine => window.routineName ?? l10n.tabRoutines,
-                            },
-                            window.endsAt,
-                          ),
-                          key: ValueKey('blocked-now-${r.packageId}'),
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.error,
-                              ),
-                        ),
-                      ),
-                  ],
-                ),
+                // Karim 23 Nov: a parent reads the app's name, never its package id.
+                subtitle: _windowNote(context, r.packageId, ruleSet, now),
                 trailing: Text(r.action == 'time_limit'
                     ? (r.dailyLimitMinutes == null ? '—' : l10n.minutesShort(r.dailyLimitMinutes!))
                     : switch (r.action) {
@@ -825,6 +988,29 @@ class _AppsTab extends ConsumerWidget {
       },
     );
   }
+}
+
+/// #456: name the window that is overriding this app, so an "Allowed" row that the phone refuses
+/// explains itself. Null when no bedtime, school or routine window is blocking it now.
+Widget? _windowNote(BuildContext context, String packageId, RuleSet ruleSet, DateTime now) {
+  final l10n = context.l10n;
+  final window = activeWindowFor(packageId: packageId, rules: ruleSet, now: now);
+  if (window == null) return null;
+  return Padding(
+    padding: const EdgeInsets.only(top: 2),
+    child: Text(
+      l10n.blockedNowBy(
+        switch (window.kind) {
+          WindowKind.school => l10n.schoolHours,
+          WindowKind.bedtime => l10n.bedtime,
+          WindowKind.routine => window.routineName ?? l10n.tabRoutines,
+        },
+        window.endsAt,
+      ),
+      key: ValueKey('blocked-now-$packageId'),
+      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.error),
+    ),
+  );
 }
 
 class _SocialTab extends ConsumerWidget {
@@ -843,6 +1029,7 @@ class _LocationTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final ping = ref.watch(locationProvider(childId));
+    final childName = ref.watch(familyProvider).valueOrNull?.children.where((c) => c.id == childId).firstOrNull?.displayName ?? '';
     // #869: the app could *show* a `locate_now` in a device's command history but had no way to send one, so
     // "Locate the child" had nothing behind it. It sits here, next to the state a parent reads when there is no
     // position, rather than in the device-command row — that row already wraps to three lines at 320 px and one
@@ -887,37 +1074,13 @@ class _LocationTab extends ConsumerWidget {
           if (p == null)
             Text(l10n.noLocationReported)
           else ...[
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.location_on),
-                title: Text(ltrIsolate('${p.lat.toStringAsFixed(6)}, ${p.lng.toStringAsFixed(6)}')),
-                subtitle: Text(l10n.accuracyLabel(
-                  p.accuracyM.round(),
-                  p.timestamp == null
-                      ? l10n.timeUnknown
-                      : DateFormat.yMMMd(context.localeName).add_Hms().format(p.timestamp!.toLocal()),
-                )),
-              ),
-            ),
+            // Karim 22 Nov: a real map, a place name and freshness, never raw coordinates.
+            ChildLocationCard(ping: p, childName: childName),
             const SizedBox(height: AppSpace.md),
           ],
           // Feature #15: today's location history with a time scrubber.
           _HistoryScrubber(childId: childId),
           const SizedBox(height: AppSpace.md),
-          // NOTE: map placeholder — a full per-child map lives on /map.
-          AspectRatio(
-            aspectRatio: 16 / 9,
-            child: Card(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.map_outlined, size: 48),
-                  const SizedBox(height: AppSpace.sm),
-                  Text(l10n.mapPreview),
-                ],
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -1008,13 +1171,18 @@ class _HistoryScrubberState extends ConsumerState<_HistoryScrubber> {
                     ),
                     const SizedBox(width: AppSpace.xs),
                     Expanded(
-                      child: Text(
-                        ts == null
-                            ? '${ltrIsolate('${ping.lat.toStringAsFixed(5)}, ${ping.lng.toStringAsFixed(5)}')} · ${l10n.accuracyUnknown}'
-                            : '${DateFormat.Hm(context.localeName).format(ts.toLocal())} · '
-                                '${ltrIsolate('${ping.lat.toStringAsFixed(5)}, ${ping.lng.toStringAsFixed(5)}')} · '
-                                '${l10n.accuracyShort(ping.accuracyM.round())}',
-                        style: Theme.of(context).textTheme.bodySmall,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          PlaceNameText(ping: ping, style: Theme.of(context).textTheme.bodyMedium, maxLines: 1),
+                          Text(
+                            ts == null
+                                ? l10n.accuracyUnknown
+                                : '${DateFormat.Hm(context.localeName).format(ts.toLocal())} · '
+                                    '${l10n.accuracyShort(ping.accuracyM.round())}',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -1143,7 +1311,15 @@ class AlertTile extends StatelessWidget {
   final Alert alert;
   final VoidCallback? onTap;
   final VoidCallback? onAck;
-  const AlertTile({super.key, required this.alert, this.onTap, this.onAck});
+  /// #1029: count of additional flagged messages that arrived after the parent last opened this alert.
+  final int newSinceCount;
+  const AlertTile({
+    super.key,
+    required this.alert,
+    this.onTap,
+    this.onAck,
+    this.newSinceCount = 0,
+  });
 
   static Color severityColor(String severity, [BuildContext? context]) =>
       (context?.tokens ?? AppTokens.light).severityDot(severity);
@@ -1151,15 +1327,119 @@ class AlertTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final when = alert.createdAt == null
-        ? ''
-        : DateFormat.MMMd(context.localeName).add_Hm().format(alert.createdAt!.toLocal());
+    final tokens = context.tokens;
+    final theme = Theme.of(context);
+
+    final String titleText;
+    final String? socialContactLine;
+    final String? socialLatestLine;
+    final String? genericSubtitleText;
+    if (alert.hasSocialCountSummary) {
+      final appKey = alert.metadata['app']?.toString().trim().toLowerCase() ?? '';
+      final appLabel = ltrIsolate(socialAppLabel(appKey, l10n));
+      titleText = l10n.socialAlertCountTitle(alert.socialMessageCount, appLabel);
+      final latestAt = alert.effectiveTimestamp;
+      final latestClock = latestAt == null
+          ? ''
+          : ltrIsolate(normalizeDigits(DateFormat('HH:mm', 'en').format(latestAt.toLocal())));
+      final contactName = alert.socialContactName;
+      final contactDisplay = contactName != null
+          ? firstStrongIsolate(contactName)
+          : l10n.socialAlertUnknownContact;
+      socialContactLine = l10n.socialAlertFromContactOnly(contactDisplay);
+      socialLatestLine = latestClock.isEmpty ? null : l10n.socialAlertLatestAt(latestClock);
+      genericSubtitleText = null;
+    } else {
+      final when = alert.createdAt == null
+          ? ''
+          : DateFormat.MMMd(context.localeName).add_Hm().format(alert.createdAt!.toLocal());
+      titleText = l10n.alertTitleFor(
+        alert.category,
+        alert.title,
+        isEnglish: context.localeName.startsWith('en'),
+        tamperType: alert.metadata['type']?.toString(),
+      );
+      socialContactLine = null;
+      socialLatestLine = null;
+      genericSubtitleText = '${l10n.alertCategory(alert.category)} · $when';
+    }
+
+    final Widget? newBadge = newSinceCount > 0
+        ? Container(
+            key: ValueKey('alert-new-since-${alert.id}'),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpace.sm, vertical: 2),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.secondaryContainer,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+            ),
+            child: Text(
+              l10n.socialAlertNewSince(newSinceCount),
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSecondaryContainer,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          )
+        : null;
+
+    final mutedStyle = theme.textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant);
+    final Widget subtitleContent;
+    if (alert.hasSocialCountSummary) {
+      subtitleContent = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            socialContactLine!,
+            key: ValueKey('alert-contact-${alert.id}'),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: mutedStyle,
+          ),
+          if (socialLatestLine != null)
+            Text(
+              socialLatestLine,
+              key: ValueKey('alert-latest-${alert.id}'),
+              style: mutedStyle,
+            ),
+          if (newBadge != null) ...[
+            const SizedBox(height: AppSpace.xs),
+            newBadge,
+          ],
+        ],
+      );
+    } else {
+      final genericWidget = Text(genericSubtitleText!);
+      subtitleContent = newBadge == null
+          ? genericWidget
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                genericWidget,
+                const SizedBox(height: AppSpace.xs),
+                newBadge,
+              ],
+            );
+    }
+
     return Card(
+      key: ValueKey('alert-card-${alert.id}'),
       child: ListTile(
         leading: Icon(Icons.circle, color: severityColor(alert.severity, context), size: 14),
-        title: Text(l10n.alertTitleFor(alert.category, alert.title, isEnglish: context.localeName.startsWith('en'), tamperType: alert.metadata['type']?.toString()), maxLines: 2, overflow: TextOverflow.ellipsis),
-        subtitle: Text('${l10n.alertCategory(alert.category)} · $when'),
-        trailing: onAck == null ? null : IconButton(icon: const Icon(Icons.check), tooltip: l10n.acknowledgeTooltip, onPressed: onAck),
+        title: Text(
+          titleText,
+          maxLines: alert.hasSocialCountSummary ? 3 : 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: subtitleContent,
+        trailing: onAck == null
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.check),
+                tooltip: l10n.acknowledgeTooltip,
+                onPressed: onAck,
+              ),
         onTap: onTap,
       ),
     );
@@ -1173,4 +1453,43 @@ Future<void> _pairDevice(BuildContext context, WidgetRef ref, String childId) as
     MaterialPageRoute(builder: (_) => PairingQrScreen(childId: childId)),
   );
   ref.invalidate(familyProvider);
+}
+
+/// A group heading on the child card: which controls address this handset, which address the family (#969).
+class _ScopeLabel extends StatelessWidget {
+  final String label;
+  const _ScopeLabel({super.key, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.sm, AppSpace.xs, 0, 0),
+      child: Text(label, style: Theme.of(context).textTheme.labelLarge),
+    );
+  }
+}
+
+/// The per-handset status line: waiting, or refused (#969). Silent when the newest command is acked.
+class _DeviceControlLine extends ConsumerWidget {
+  final String deviceId;
+  const _DeviceControlLine({required this.deviceId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final history = ref.watch(deviceCommandHistoryProvider(deviceId)).valueOrNull ?? const <DeviceCommand>[];
+    final line = deviceControlLine(history);
+    if (line == DeviceControlLine.none) return const SizedBox.shrink();
+    final l10n = context.l10n;
+    final failed = line == DeviceControlLine.failed;
+    return Padding(
+      key: ValueKey(failed ? 'deviceControlFailed' : 'deviceControlPending'),
+      padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.sm, AppSpace.xxs, AppSpace.sm, 0),
+      child: Text(
+        failed ? l10n.deviceControlFailed : l10n.deviceControlPending,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: failed ? context.tokens.danger : context.tokens.warn,
+        ),
+      ),
+    );
+  }
 }
