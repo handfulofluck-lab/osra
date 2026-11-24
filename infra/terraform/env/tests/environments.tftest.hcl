@@ -209,9 +209,12 @@ run "armed_qa_analyzer_plans_only_the_private_scoped_route" {
     api_image           = "example/api:test"
     allowed_account_ids = [format("%012d", 0)]
     staging_qa_model_archives = {
-      v9_sha256  = sha256("archive-nine")
-      v9b_sha256 = sha256("archive-nine-b")
-      allow_read = true
+      v9_sha256         = sha256("archive-nine")
+      v9b_sha256        = sha256("archive-nine-b")
+      allow_read        = true
+      v9_model_sha256   = sha256("weights-nine")
+      v9b_model_sha256  = sha256("weights-nine-b")
+      thresholds_sha256 = sha256("thresholds")
     }
     staging_qa_analyzer = {
       armed                     = true
@@ -434,6 +437,175 @@ run "armed_v9b_only_reads_and_preloads_exactly_one_archive" {
     ])
     error_message = "an armed window without an engine keeps the Bedrock default on both tasks"
   }
+}
+
+run "armed_window_renders_all_four_receipt_pins" {
+  command = plan
+
+  variables {
+    api_image           = "example/api:test"
+    allowed_account_ids = [format("%012d", 0)]
+    staging_qa_model_archives = {
+      v9_sha256         = sha256("archive-nine")
+      v9b_sha256        = sha256("archive-nine-b")
+      allow_read        = true
+      v9_model_sha256   = sha256("weights-nine")
+      v9b_model_sha256  = sha256("weights-nine-b")
+      thresholds_sha256 = sha256("thresholds")
+    }
+    staging_qa_analyzer = {
+      armed                     = true
+      allow_synthetic_pair_text = true
+      engine                    = "own"
+      image_digest              = "sha256:${sha256("qa-image")}"
+      frankfurt_vpc_cidr        = format("%d.%d.%d.%d/%d", 10, 40, 0, 0, 24)
+      prompt_secret_arn         = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-prompt", 0)
+      approval_secret_arn       = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-approval", 0)
+      pairing_secret_arn        = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-pairing", 0)
+    }
+  }
+
+  override_resource {
+    target          = aws_vpc_endpoint.staging_qa_bedrock[0]
+    override_during = plan
+
+    values = {
+      id = "vpce-test"
+      dns_entry = [{
+        dns_name       = "vpce-0123456789abcdef0-osratest.bedrock-runtime.eu-central-1.vpce.amazonaws.com"
+        hosted_zone_id = "ZTEST"
+      }]
+    }
+  }
+
+  override_resource {
+    target          = aws_iam_role.staging_qa_analyzer_task[0]
+    override_during = plan
+
+    values = {
+      arn = "arn:aws:iam::000000000000:role/test-analyzer-task"
+    }
+  }
+
+  # Mutant: dropping any pin makes the in-process scorer refuse every own-model call.
+  assert {
+    condition = (
+      one([for item in local.staging_model_env : item.value if item.name == "OSRA_STAGING_QA_V9_MODEL_SHA256"]) == sha256("weights-nine") &&
+      one([for item in local.staging_model_env : item.value if item.name == "OSRA_STAGING_QA_V9B_MODEL_SHA256"]) == sha256("weights-nine-b") &&
+      one([for item in local.staging_model_env : item.value if item.name == "OSRA_STAGING_QA_V9_THRESHOLDS_SHA256"]) == sha256("thresholds") &&
+      one([for item in local.staging_model_env : item.value if item.name == "OSRA_STAGING_QA_V9B_THRESHOLDS_SHA256"]) == sha256("thresholds")
+    )
+    error_message = "An armed window with pins must render all four own-model receipt pins on the analyzer."
+  }
+
+  # Mutant: dropping the pins from the analyzer container (even if the local still holds them) must fail.
+  assert {
+    condition = alltrue([
+      for pin in [
+        ["OSRA_STAGING_QA_V9_MODEL_SHA256", sha256("weights-nine")],
+        ["OSRA_STAGING_QA_V9B_MODEL_SHA256", sha256("weights-nine-b")],
+        ["OSRA_STAGING_QA_V9_THRESHOLDS_SHA256", sha256("thresholds")],
+        ["OSRA_STAGING_QA_V9B_THRESHOLDS_SHA256", sha256("thresholds")],
+      ] : one([for item in jsondecode(aws_ecs_task_definition.staging_qa_analyzer[0].container_definitions)[0].environment : item.value if item.name == pin[0]]) == pin[1]
+    ])
+    error_message = "The analyzer container environment must carry all four receipt pins."
+  }
+
+  assert {
+    condition     = length([for item in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : item if startswith(item.name, "OSRA_STAGING_QA_V9")]) == 0
+    error_message = "Receipt pins belong to the analyzer only, never the API task."
+  }
+}
+
+run "disarmed_window_renders_no_receipt_pins" {
+  command = plan
+
+  variables {
+    api_image           = "example/api:test"
+    allowed_account_ids = [format("%012d", 0)]
+    staging_qa_model_archives = {
+      v9_sha256         = sha256("archive-nine")
+      v9b_sha256        = sha256("archive-nine-b")
+      allow_read        = false
+      v9_model_sha256   = sha256("weights-nine")
+      v9b_model_sha256  = sha256("weights-nine-b")
+      thresholds_sha256 = sha256("thresholds")
+    }
+  }
+
+  assert {
+    condition     = length(local.staging_model_env) == 0 && !anytrue([for item in local.staging_model_env : startswith(item.name, "OSRA_STAGING_QA_V9")])
+    error_message = "A disarmed window must not render receipt pins."
+  }
+}
+
+run "disarmed_partial_receipt_pins_render_none" {
+  command = plan
+
+  variables {
+    api_image           = "example/api:test"
+    allowed_account_ids = [format("%012d", 0)]
+    staging_qa_model_archives = {
+      v9_sha256       = sha256("archive-nine")
+      v9b_sha256      = sha256("archive-nine-b")
+      allow_read      = false
+      v9_model_sha256 = sha256("weights-nine")
+    }
+  }
+
+  assert {
+    condition     = length(local.staging_model_receipt_pins) == 0
+    error_message = "A partial pin set must never reach the scorer."
+  }
+}
+
+run "armed_own_window_with_partial_pins_fails_plan" {
+  command = plan
+
+  variables {
+    api_image           = "example/api:test"
+    allowed_account_ids = [format("%012d", 0)]
+    staging_qa_model_archives = {
+      v9_sha256       = sha256("archive-nine")
+      v9b_sha256      = sha256("archive-nine-b")
+      allow_read      = true
+      v9_model_sha256 = sha256("weights-nine")
+    }
+    staging_qa_analyzer = {
+      armed                     = true
+      allow_synthetic_pair_text = true
+      engine                    = "own"
+      image_digest              = "sha256:${sha256("qa-image")}"
+      frankfurt_vpc_cidr        = format("%d.%d.%d.%d/%d", 10, 40, 0, 0, 24)
+      prompt_secret_arn         = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-prompt", 0)
+      approval_secret_arn       = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-approval", 0)
+      pairing_secret_arn        = format("arn:aws:secretsmanager:eu-north-1:%012d:secret:test-pairing", 0)
+    }
+  }
+
+  override_resource {
+    target          = aws_vpc_endpoint.staging_qa_bedrock[0]
+    override_during = plan
+
+    values = {
+      id = "vpce-test"
+      dns_entry = [{
+        dns_name       = "vpce-0123456789abcdef0-osratest.bedrock-runtime.eu-central-1.vpce.amazonaws.com"
+        hosted_zone_id = "ZTEST"
+      }]
+    }
+  }
+
+  override_resource {
+    target          = aws_iam_role.staging_qa_analyzer_task[0]
+    override_during = plan
+
+    values = {
+      arn = "arn:aws:iam::000000000000:role/test-analyzer-task"
+    }
+  }
+
+  expect_failures = [aws_ecs_task_definition.staging_qa_analyzer]
 }
 
 run "disarmed_qa_analyzer_has_no_model_or_api_access" {

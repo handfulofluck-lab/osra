@@ -183,30 +183,38 @@ class AlertsSeenState {
   final bool hasViewedFeed;
   final int seenUnackedBaseline;
   final Map<String, int> seenVersions;
+  /// #1029: social alert `id -> socialMessageCount` at the last time the parent opened it.
+  /// Only alerts present here show a `+{delta} new` badge when more flagged messages arrive.
+  final Map<String, int> openedSocialCounts;
 
   const AlertsSeenState({
     this.hasViewedFeed = false,
     this.seenUnackedBaseline = 0,
     this.seenVersions = const {},
+    this.openedSocialCounts = const {},
   });
 
   static const empty = AlertsSeenState();
 
   factory AlertsSeenState.fromJson(Map<String, dynamic> json) {
-    final rawVersions = json['s'];
-    final versions = <String, int>{};
-    if (rawVersions is Map) {
-      for (final entry in rawVersions.entries) {
-        final v = entry.value;
-        if (entry.key is String && v is num) {
-          versions[entry.key as String] = v.toInt();
+    Map<String, int> parseIntMap(Object? raw) {
+      final out = <String, int>{};
+      if (raw is Map) {
+        for (final entry in raw.entries) {
+          final v = entry.value;
+          if (entry.key is String && v is num) {
+            out[entry.key as String] = v.toInt();
+          }
         }
       }
+      return out;
     }
+
     return AlertsSeenState(
       hasViewedFeed: json['v'] == true,
       seenUnackedBaseline: (json['b'] as num?)?.toInt() ?? 0,
-      seenVersions: versions,
+      seenVersions: parseIntMap(json['s']),
+      openedSocialCounts: parseIntMap(json['oc']),
     );
   }
 
@@ -214,6 +222,7 @@ class AlertsSeenState {
         'v': hasViewedFeed,
         'b': seenUnackedBaseline,
         's': seenVersions,
+        if (openedSocialCounts.isNotEmpty) 'oc': openedSocialCounts,
       };
 }
 
@@ -283,6 +292,33 @@ class AlertsSeenNotifier extends StateNotifier<AlertsSeenState> {
       hasViewedFeed: true,
       seenUnackedBaseline: baseline,
       seenVersions: merged,
+      openedSocialCounts: state.openedSocialCounts,
+    );
+    state = next;
+    await _persist(next);
+  }
+
+  /// #1029: records that the parent opened [alert] at its current message count,
+  /// clearing any `+{count} new` badge until additional flagged messages arrive.
+  Future<void> markAlertOpened(Alert alert) async {
+    if (!alert.isSocialAlert) return;
+    _userUpdated = true;
+    final opened = Map<String, int>.from(state.openedSocialCounts);
+    final prevOpened = opened[alert.id] ?? 0;
+    final currentCount = alert.socialMessageCount;
+    if (currentCount > prevOpened) {
+      opened[alert.id] = currentCount;
+    } else if (!opened.containsKey(alert.id)) {
+      opened[alert.id] = currentCount;
+    }
+    final versions = Map<String, int>.from(state.seenVersions);
+    final prevVer = versions[alert.id] ?? 0;
+    if (alert.attemptCount > prevVer) versions[alert.id] = alert.attemptCount;
+    final next = AlertsSeenState(
+      hasViewedFeed: state.hasViewedFeed,
+      seenUnackedBaseline: state.seenUnackedBaseline,
+      seenVersions: versions,
+      openedSocialCounts: opened,
     );
     state = next;
     await _persist(next);
@@ -293,11 +329,13 @@ class AlertsSeenNotifier extends StateNotifier<AlertsSeenState> {
   Future<void> markAcknowledged(String alertId) async {
     _userUpdated = true;
     final merged = Map<String, int>.from(state.seenVersions)..remove(alertId);
+    final opened = Map<String, int>.from(state.openedSocialCounts)..remove(alertId);
     final nextBaseline = state.seenUnackedBaseline > 0 ? state.seenUnackedBaseline - 1 : 0;
     final next = AlertsSeenState(
       hasViewedFeed: state.hasViewedFeed,
       seenUnackedBaseline: nextBaseline,
       seenVersions: merged,
+      openedSocialCounts: opened,
     );
     state = next;
     await _persist(next);
@@ -323,6 +361,17 @@ final alertsSeenProvider = StateNotifierProvider<AlertsSeenNotifier, AlertsSeenS
   });
   return notifier;
 });
+
+/// #1029: returns how many additional flagged messages have arrived on [alert]
+/// since the parent last opened it. Returns 0 if never opened yet or if no new
+/// messages have arrived since opening.
+int computeSocialNewSinceCount(Alert alert, AlertsSeenState seen) {
+  if (!alert.isSocialAlert) return 0;
+  final openedAt = seen.openedSocialCounts[alert.id];
+  if (openedAt == null) return 0;
+  final current = alert.socialMessageCount;
+  return current > openedAt ? current - openedAt : 0;
+}
 
 /// Computes how many unacknowledged alerts have not yet been viewed on `/alerts` (#936).
 int computeUnseenAlertCount(
