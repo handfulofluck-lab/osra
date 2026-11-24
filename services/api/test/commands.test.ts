@@ -51,6 +51,26 @@ describe("durable command queue (Phase 2b)", () => {
     expect(publishJson).toHaveBeenCalledWith("device:dev-1:commands", expect.objectContaining({ id: msg.id, type: "ring" }));
   });
 
+  it("carries the command type into the detached wake, so an iOS ring arrives as a visible alert (#750)", async () => {
+    // #750: `buildDeviceMessageForCommand` turns a wake into a visible ring alert only when it is told the
+    // type. Dropping the third argument here leaves the phone silent while the parent believes it is ringing,
+    // and no other test notices — this one does, because it is the only assertion on the wake's arguments.
+    const { setDeviceWakeSender } = await import("../src/lib/push/notify.js");
+    const calls: Array<{ deviceId: string; commandId?: string; commandType?: string }> = [];
+    setDeviceWakeSender(async (deviceId, commandId, commandType) => {
+      calls.push({ deviceId, commandId, commandType });
+      return { status: "ok" } as never;
+    });
+    try {
+      const msg = await enqueueDeviceCommand("dev-ring", "ring", {}, { requestedBy: "parent-1" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({ deviceId: "dev-ring", commandId: msg.id, commandType: "ring" });
+    } finally {
+      setDeviceWakeSender(null);
+    }
+  });
+
   it("coalesces rules_updated onto an existing pending row instead of stacking duplicates", async () => {
     const existing = { id: "c-old", deviceId: "dev-1", type: "rules_updated", payload: { reason: "x" }, status: "pending", createdAt: new Date(), expiresAt: new Date(Date.now() + 1000), attempts: 0 };
     prismaMock.deviceCommand.findFirst.mockResolvedValueOnce(existing);
