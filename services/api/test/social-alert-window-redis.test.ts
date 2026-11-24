@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { Redis } from "ioredis";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { SOCIAL_ALERT_WINDOW_SECONDS, socialContactKey } from "../src/lib/socialAlertWindow.js";
+import {
+  SOCIAL_ALERT_WINDOW_SECONDS,
+  SOCIAL_PENDING_DEFER_SCRIPT,
+  SOCIAL_PENDING_PUBLISH_AND_DRAIN_SCRIPT,
+  socialAlertThrottleKey,
+  socialContactKey,
+} from "../src/lib/socialAlertWindow.js";
 import { SOCIAL_WINDOW_ROLLOVER_SCRIPT, runSocialAlertSummarySweep } from "../src/jobs/socialAlertSummary.js";
 import { getRedis } from "../src/redis.js";
 import { prismaMock, resetPrismaMock } from "./helpers.js";
@@ -233,5 +239,172 @@ describeRedis("social alert window Lua rollover against real Redis (#1029)", () 
     expect(sweep.pushed.map((p) => p.alertId)).toEqual([oldAlertId]);
     // Real Redis evaluated SOCIAL_WINDOW_ROLLOVER_SCRIPT and kept the newer window intact.
     expect(await client.get(throttleKey)).toBe(newerState);
+  });
+
+  it("preserves both observations across two independent replicas against real Redis with a 150 ms insert and on deferred handoff", async () => {
+    const childId = `child-${randomUUID()}`;
+    const familyId = `fam-${randomUUID()}`;
+    const appName = "WhatsApp";
+
+    const alerts = new Map<string, Record<string, unknown>>();
+    let seq = 0;
+    const installAlertDbMock = (insertDelayMs: number) => {
+      alerts.clear();
+      seq = 0;
+      let delayedOnce = false;
+      prismaMock.alert.create.mockImplementation((async ({ data }: { data: Record<string, unknown> }) => {
+        if (!delayedOnce && insertDelayMs > 0) {
+          delayedOnce = true;
+          await new Promise((resolve) => setTimeout(resolve, insertDelayMs));
+        }
+        seq += 1;
+        const row = { id: `real-redis-alert-${seq}`, createdAt: new Date(), acknowledged: false, ...data };
+        alerts.set(row.id, row);
+        return row;
+      }) as never);
+      prismaMock.alert.findUnique.mockImplementation((async ({ where }: { where: { id: string } }) => alerts.get(where.id) ?? null) as never);
+      prismaMock.alert.findMany.mockImplementation((async () => [...alerts.values()]) as never);
+      prismaMock.alert.updateMany.mockImplementation((async ({ where, data }: { where: { id: string; attemptCount?: number }; data: Record<string, unknown> }) => {
+        const cur = alerts.get(where.id);
+        if (!cur) return { count: 0 };
+        if (where.attemptCount !== undefined && cur.attemptCount !== where.attemptCount) return { count: 0 };
+        alerts.set(where.id, { ...cur, ...data });
+        return { count: 1 };
+      }) as never);
+      prismaMock.alert.update.mockImplementation((async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+        const cur = alerts.get(where.id);
+        if (!cur) return null;
+        const next = { ...cur, ...data };
+        alerts.set(where.id, next);
+        return next;
+      }) as never);
+    };
+
+    const replicaClients: Array<ReturnType<typeof getRedis>> = [];
+    try {
+      // Case A: Codex's exact 150 ms insert repro across two independently loaded replicas on real Redis.
+      installAlertDbMock(150);
+      const contactA = `Replica150-${randomUUID()}`;
+      const keyA = trackKey(socialAlertThrottleKey(childId, appName, contactA));
+      trackKey(`${keyA}:deferred`);
+
+      vi.resetModules();
+      const r1ARedis = await import("../src/redis.js");
+      const replica1A = await import("../src/lib/socialAlertWindow.js");
+      vi.resetModules();
+      const r2ARedis = await import("../src/redis.js");
+      const replica2A = await import("../src/lib/socialAlertWindow.js");
+      expect(replica1A.recordFlaggedSocialAlert).not.toBe(replica2A.recordFlaggedSocialAlert);
+
+      const p1A = replica1A.recordFlaggedSocialAlert({
+        childId,
+        familyId,
+        childName: "Alex",
+        appName,
+        contact: contactA,
+        category: "social_concern",
+        severity: "warning",
+        concernTypes: ["cyberbullying"],
+      });
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      const p2A = replica2A.recordFlaggedSocialAlert({
+        childId,
+        familyId,
+        childName: "Alex",
+        appName,
+        contact: contactA,
+        category: "social_concern",
+        severity: "warning",
+        concernTypes: ["cyberbullying"],
+      });
+      await Promise.all([p1A, p2A]);
+      replicaClients.push(r1ARedis.getRedis(), r2ARedis.getRedis());
+
+      expect(alerts.size).toBe(1);
+      const rowA = [...alerts.values()][0]! as { attemptCount: number; metadata: { flaggedCount: number } };
+      expect(rowA.attemptCount).toBe(2);
+      expect(rowA.metadata.flaggedCount).toBe(2);
+
+      // Case B: Insert slower than pendingWaitMs -> real Redis executes SOCIAL_PENDING_DEFER_SCRIPT +
+      // SOCIAL_PENDING_PUBLISH_AND_DRAIN_SCRIPT atomically and folds both observations with zero loss.
+      installAlertDbMock(120);
+      const contactB = `ReplicaDefer-${randomUUID()}`;
+      const keyB = trackKey(socialAlertThrottleKey(childId, appName, contactB));
+      const deferKeyB = trackKey(`${keyB}:deferred`);
+
+      vi.resetModules();
+      const r1BRedis = await import("../src/redis.js");
+      const replica1B = await import("../src/lib/socialAlertWindow.js");
+      vi.resetModules();
+      const r2BRedis = await import("../src/redis.js");
+      const replica2B = await import("../src/lib/socialAlertWindow.js");
+
+      const p1B = replica1B.recordFlaggedSocialAlert({
+        childId,
+        familyId,
+        childName: "Alex",
+        appName,
+        contact: contactB,
+        category: "social_concern",
+        severity: "warning",
+        concernTypes: ["cyberbullying"],
+        pendingWaitMs: 25,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const p2B = replica2B.recordFlaggedSocialAlert({
+        childId,
+        familyId,
+        childName: "Alex",
+        appName,
+        contact: contactB,
+        category: "social_concern",
+        severity: "critical",
+        concernTypes: ["self_harm"],
+        pendingWaitMs: 25,
+      });
+      await Promise.all([p1B, p2B]);
+      replicaClients.push(r1BRedis.getRedis(), r2BRedis.getRedis());
+
+      expect(alerts.size).toBe(1);
+      const rowB = [...alerts.values()][0]! as { attemptCount: number; severity: string; metadata: { flaggedCount: number } };
+      expect(rowB.attemptCount).toBe(2);
+      expect(rowB.metadata.flaggedCount).toBe(2);
+      expect(rowB.severity).toBe("critical");
+      expect(await client.llen(deferKeyB)).toBe(0);
+
+      // Direct sanity on the two pending Lua scripts in real Redis: defer sees committed JSON if publish won first.
+      const orderKey = trackKey(`${runPrefix}:publish-before-defer`);
+      const orderDefer = trackKey(`${orderKey}:deferred`);
+      const committedJson = JSON.stringify({
+        alertId: "alert-committed",
+        windowStartedAt: "2026-11-24T01:00:00.000Z",
+        windowEndsAt: "2026-11-24T01:10:00.000Z",
+        pushedSeverity: "warning",
+      });
+      const drained = await client.eval(
+        SOCIAL_PENDING_PUBLISH_AND_DRAIN_SCRIPT,
+        2,
+        orderKey,
+        orderDefer,
+        committedJson,
+        String(SOCIAL_ALERT_WINDOW_SECONDS),
+      );
+      expect(drained).toEqual([]);
+      const lateDefer = await client.eval(
+        SOCIAL_PENDING_DEFER_SCRIPT,
+        2,
+        orderKey,
+        orderDefer,
+        "__pending__",
+        "{}",
+        String(SOCIAL_ALERT_WINDOW_SECONDS),
+      );
+      expect(lateDefer).toBe(committedJson);
+      expect(await client.llen(orderDefer)).toBe(0);
+    } finally {
+      for (const rc of replicaClients) {
+        await rc.quit().catch(() => undefined);
+      }
+    }
   });
 });

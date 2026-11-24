@@ -10,6 +10,9 @@ import { notifyParentsOfAlert } from "./push/notify.js";
 export const SOCIAL_ALERT_WINDOW_SECONDS = 600;
 export const SOCIAL_ALERT_WINDOW_MS = SOCIAL_ALERT_WINDOW_SECONDS * 1000;
 
+/** Default budget a concurrent replica waits for `__pending__` before handing off to the deferred queue. */
+export const DEFAULT_PENDING_WAIT_MS = 5_000;
+
 export type SocialSeverity = "info" | "warning" | "critical";
 export const SOCIAL_SEVERITY_RANK: Record<SocialSeverity, number> = { info: 0, warning: 1, critical: 2 };
 
@@ -119,6 +122,77 @@ export function parseSocialWindowMetadata(raw: unknown): SocialWindowMetadata | 
 const PENDING_SENTINEL = "__pending__";
 
 /**
+ * Atomic handoff when a second replica waits out the pending budget while replica 1 is still
+ * inserting the initial alert row (Redis 5.0.14 compatible; Codex #1033 review 7117292252).
+ *
+ * - If `KEYS[1]` still holds `__pending__`: appends the structured observation (no message text or
+ *   contact name) onto `KEYS[2]` (`${throttleKey}:deferred`) and returns `'DEFERRED'`.
+ * - Otherwise returns the current `KEYS[1]` value (the committed window JSON or `''` if released)
+ *   without touching `KEYS[2]`, so replica 2 updates the row directly or re-claims.
+ */
+export const SOCIAL_PENDING_DEFER_SCRIPT = `
+local cur = redis.call('GET', KEYS[1])
+if cur == ARGV[1] then
+  redis.call('RPUSH', KEYS[2], ARGV[2])
+  redis.call('EXPIRE', KEYS[2], tonumber(ARGV[3]))
+  return 'DEFERRED'
+end
+return cur or ''
+`;
+
+/**
+ * Atomic publish-and-drain called by the creator replica right after `raiseAlert` commits
+ * (Redis 5.0.14 compatible). Serializes with `SOCIAL_PENDING_DEFER_SCRIPT` on Redis's single thread:
+ * every concurrent observation either lands in `KEYS[2]` before publish (and is returned here for
+ * immediate folding) or sees the published JSON in `KEYS[1]` and updates the row directly via CAS.
+ */
+export const SOCIAL_PENDING_PUBLISH_AND_DRAIN_SCRIPT = `
+redis.call('SET', KEYS[1], ARGV[1], 'EX', tonumber(ARGV[2]))
+local items = redis.call('LRANGE', KEYS[2], 0, -1)
+if #items > 0 then
+  redis.call('DEL', KEYS[2])
+end
+return items
+`;
+
+/** Release a `__pending__` claim only if it is still ours (avoids deleting another replica's state). */
+export const SOCIAL_PENDING_RELEASE_SCRIPT = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+`;
+
+interface DeferredSocialObservation {
+  severity: SocialSeverity;
+  concernTypes: string[];
+  observedAt: string;
+  attribution?: Record<string, unknown>;
+}
+
+function parseDeferredObservation(raw: unknown): DeferredSocialObservation | null {
+  if (typeof raw !== "string") return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<DeferredSocialObservation>;
+    if (typeof parsed.observedAt !== "string") return null;
+    return {
+      severity: normalizeSocialSeverity(parsed.severity),
+      concernTypes: Array.isArray(parsed.concernTypes)
+        ? parsed.concernTypes.filter((x): x is string => typeof x === "string")
+        : [],
+      observedAt: parsed.observedAt,
+      ...(parsed.attribution && typeof parsed.attribution === "object" && !Array.isArray(parsed.attribution)
+        ? { attribution: parsed.attribution as Record<string, unknown> }
+        : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+const PENDING_BACKOFF_STEPS_MS = [15, 25, 40, 60, 100, 150, 200] as const;
+
+/**
  * Serialize in-process updates for the same `(childId, app, contactKey)` so concurrent items inside a
  * batched `/v1/social/scan` (`Promise.all`) never lose an increment, while distinct contacts/apps keep
  * running concurrently.
@@ -181,6 +255,8 @@ export interface RecordFlaggedSocialAlertInput {
   concernTypes: string[];
   attribution?: Record<string, unknown>;
   now?: Date;
+  /** Optional override for how long a concurrent replica polls `__pending__` before deferring via Redis. */
+  pendingWaitMs?: number;
 }
 
 export interface RecordFlaggedSocialAlertResult {
@@ -193,6 +269,172 @@ export interface RecordFlaggedSocialAlertResult {
   throttleKey: string;
 }
 
+interface ApplyContext {
+  familyId: string;
+  childName?: string | null;
+  appName: string;
+  contact: string;
+  contactKey: string;
+  throttleKey: string;
+  nowMs: number;
+  nowIso: string;
+  windowEndsAtIso: string;
+  redis: ReturnType<typeof getRedis>;
+}
+
+async function applyObservationsToAlert(
+  existing: Alert,
+  state: SocialWindowRedisState | null,
+  observations: DeferredSocialObservation[],
+  ctx: ApplyContext,
+): Promise<RecordFlaggedSocialAlertResult> {
+  let current: Alert = existing;
+  let updatedAlert: Alert | null = null;
+  let bypass = false;
+  let nextCount = existing.attemptCount ?? 1;
+  let nextPushedSeverity: SocialSeverity = "warning";
+  let effectiveWindowStart = ctx.nowIso;
+  let effectiveWindowEnd = ctx.windowEndsAtIso;
+
+  let highestIncomingSeverity: SocialSeverity = "info";
+  let latestObservedAt = ctx.nowIso;
+  const allIncomingConcerns: string[] = [];
+  let combinedAttribution: Record<string, unknown> | undefined;
+
+  for (const obs of observations) {
+    if (SOCIAL_SEVERITY_RANK[obs.severity] > SOCIAL_SEVERITY_RANK[highestIncomingSeverity]) {
+      highestIncomingSeverity = obs.severity;
+    }
+    if (obs.observedAt > latestObservedAt) {
+      latestObservedAt = obs.observedAt;
+    }
+    allIncomingConcerns.push(...obs.concernTypes);
+    combinedAttribution = mergeProviderOutcomes(combinedAttribution, obs.attribution);
+  }
+
+  for (let casAttempt = 0; casAttempt < 6; casAttempt += 1) {
+    const existingMetaObj = (current.metadata && typeof current.metadata === "object" && !Array.isArray(current.metadata)
+      ? current.metadata
+      : {}) as Record<string, unknown>;
+    const existingMeta = parseSocialWindowMetadata(existingMetaObj);
+
+    const prevCount = existingMeta?.flaggedCount ?? current.attemptCount ?? 1;
+    nextCount = prevCount + observations.length;
+    const prevPushedCount = existingMeta?.pushedCount ?? 1;
+    const prevPushedSeverity =
+      casAttempt === 0
+        ? (existingMeta?.pushedSeverity ?? state?.pushedSeverity ?? normalizeSocialSeverity(current.severity))
+        : (existingMeta?.pushedSeverity ?? normalizeSocialSeverity(current.severity));
+    bypass = SOCIAL_SEVERITY_RANK[highestIncomingSeverity] > SOCIAL_SEVERITY_RANK[prevPushedSeverity];
+    const nextSeverity =
+      SOCIAL_SEVERITY_RANK[highestIncomingSeverity] > SOCIAL_SEVERITY_RANK[normalizeSocialSeverity(current.severity)]
+        ? highestIncomingSeverity
+        : normalizeSocialSeverity(current.severity);
+    const nextPushedCount = bypass ? nextCount : prevPushedCount;
+    nextPushedSeverity = bypass ? highestIncomingSeverity : prevPushedSeverity;
+    const nextSummaryPending = nextCount > nextPushedCount;
+    const mergedConcerns = [...new Set([...(existingMeta?.concernTypes ?? []), ...allIncomingConcerns])].slice(0, 5);
+    const mergedAttribution = mergeProviderOutcomes(existingMeta?.providerOutcomes, combinedAttribution);
+    effectiveWindowStart = existingMeta?.windowStartedAt ?? state?.windowStartedAt ?? ctx.nowIso;
+    effectiveWindowEnd = existingMeta?.windowEndsAt ?? state?.windowEndsAt ?? ctx.windowEndsAtIso;
+    const effectiveLatestAt =
+      existingMeta?.latestAt && existingMeta.latestAt > latestObservedAt ? existingMeta.latestAt : latestObservedAt;
+
+    const nextMetadata: Record<string, unknown> = {
+      ...existingMetaObj,
+      app: ctx.appName,
+      contact: ctx.contact,
+      contactKey: ctx.contactKey,
+      concernTypes: mergedConcerns,
+      flaggedCount: nextCount,
+      latestAt: effectiveLatestAt,
+      windowStartedAt: effectiveWindowStart,
+      windowEndsAt: effectiveWindowEnd,
+      pushedCount: nextPushedCount,
+      pushedSeverity: nextPushedSeverity,
+      summaryPending: nextSummaryPending,
+      summaryPushed: existingMeta?.summaryPushed ?? false,
+      bodyKey: "alertBodySocialConcern",
+      bodyParams: { app: ctx.appName, ...(ctx.contact ? { contact: ctx.contact } : {}) },
+      ...(mergedAttribution ? { providerOutcomes: mergedAttribution } : {}),
+    };
+
+    const nextBody = `${nextCount} concerning messages on ${ctx.appName}`;
+    const casData = {
+      severity: nextSeverity,
+      attemptCount: nextCount,
+      body: nextBody,
+      acknowledged: false,
+      metadata: nextMetadata as Prisma.InputJsonValue,
+    };
+    const casRes = await prisma.alert.updateMany({
+      where: { id: current.id, attemptCount: prevCount },
+      data: casData,
+    });
+    if (casRes && typeof casRes.count === "number") {
+      if (casRes.count === 1) {
+        updatedAlert = (await prisma.alert.findUnique({ where: { id: current.id } })) ?? {
+          ...current,
+          ...casData,
+          metadata: nextMetadata as Prisma.JsonValue,
+        };
+        break;
+      }
+      const refreshed = await prisma.alert.findUnique({ where: { id: current.id } });
+      if (!refreshed) break;
+      current = refreshed;
+      continue;
+    }
+
+    const updated = await prisma.alert.update({ where: { id: current.id }, data: casData });
+    updatedAlert = updated ?? {
+      ...current,
+      ...casData,
+      metadata: nextMetadata as Prisma.JsonValue,
+    };
+    break;
+  }
+
+  if (!updatedAlert) {
+    return {
+      alertId: current.id,
+      throttled: true,
+      bypassed: false,
+      flaggedCount: current.attemptCount ?? 1,
+      throttleKey: ctx.throttleKey,
+    };
+  }
+
+  await publishFamilyEvent(ctx.familyId, { type: "alert", payload: updatedAlert, ts: latestObservedAt });
+
+  if (bypass) {
+    const remainingSeconds = Math.max(1, Math.ceil((Date.parse(effectiveWindowEnd) - ctx.nowMs) / 1000));
+    const nextRedisState: SocialWindowRedisState = {
+      alertId: updatedAlert.id,
+      windowStartedAt: effectiveWindowStart,
+      windowEndsAt: effectiveWindowEnd,
+      pushedSeverity: nextPushedSeverity,
+    };
+    await ctx.redis
+      .set(
+        ctx.throttleKey,
+        JSON.stringify(nextRedisState),
+        "EX",
+        Number.isFinite(remainingSeconds) ? remainingSeconds : SOCIAL_ALERT_WINDOW_SECONDS,
+      )
+      .catch(() => undefined);
+    await notifyParentsOfAlert(ctx.familyId, updatedAlert, ctx.childName ?? undefined);
+  }
+
+  return {
+    alertId: updatedAlert.id,
+    throttled: !bypass,
+    bypassed: bypass,
+    flaggedCount: nextCount,
+    throttleKey: ctx.throttleKey,
+  };
+}
+
 /**
  * Record a flagged social scan against its per-contact 10-minute alert window (#1029).
  *
@@ -201,6 +443,10 @@ export interface RecordFlaggedSocialAlertResult {
  * - Subsequent flagged messages in the same contact's window: updates the same `Alert` row in place
  *   (`flaggedCount` + `attemptCount` increment, `latestAt` updates, `concernTypes` merge, `acknowledged`
  *   resets to `false`, realtime event publishes to move the card to top). No push unless severity rises.
+ * - Multi-replica cold start: if replica 2 arrives while replica 1's initial insert is still in flight
+ *   (`__pending__`), replica 2 waits with backoff up to `pendingWaitMs` and, if still pending, atomically
+ *   hands off its observation to `${throttleKey}:deferred` via Lua so replica 1 folds it immediately on
+ *   publish — zero lost increments regardless of insert latency.
  * - Severity bypass: if `severity` strictly exceeds `pushedSeverity`, pushes parents immediately and
  *   updates `pushedSeverity` + `pushedCount = flaggedCount`.
  * - Window close: if `flaggedCount > pushedCount` when `windowEndsAt` passes, `runSocialAlertSummarySweep`
@@ -213,6 +459,11 @@ export async function recordFlaggedSocialAlert(
   const contact = input.contact.trim();
   const contactKey = socialContactKey(childId, contact);
   const throttleKey = socialAlertThrottleKey(childId, appName, contact);
+  const deferredKey = `${throttleKey}:deferred`;
+  const waitBudgetMs =
+    typeof input.pendingWaitMs === "number" && Number.isFinite(input.pendingWaitMs) && input.pendingWaitMs >= 0
+      ? input.pendingWaitMs
+      : DEFAULT_PENDING_WAIT_MS;
 
   return withThrottleKeyLock(throttleKey, async () => {
     const now = input.now ?? new Date();
@@ -220,216 +471,200 @@ export async function recordFlaggedSocialAlert(
     const nowIso = now.toISOString();
     const windowEndsAtIso = new Date(nowMs + SOCIAL_ALERT_WINDOW_MS).toISOString();
     const redis = getRedis();
+    const observation: DeferredSocialObservation = {
+      severity,
+      concernTypes,
+      observedAt: nowIso,
+      ...(attribution && Object.keys(attribution).length > 0 ? { attribution } : {}),
+    };
+    const applyCtx: ApplyContext = {
+      familyId,
+      childName,
+      appName,
+      contact,
+      contactKey,
+      throttleKey,
+      nowMs,
+      nowIso,
+      windowEndsAtIso,
+      redis,
+    };
 
-    const claimed = (await redis.set(throttleKey, PENDING_SENTINEL, "EX", SOCIAL_ALERT_WINDOW_SECONDS, "NX")) === "OK";
-    if (claimed) {
-      let alert: Alert | undefined;
-      try {
-        // Alerts never carry the message snippet; metadata holds app/contact/concernTypes and
-        // #1029 per-contact window counters. Push payloads never carry text or contact names (#410, #1029).
-        alert = await raiseAlert({
-          childId,
-          familyId,
-          deviceId,
-          severity,
-          category,
-          title: `Social concern in ${appName}`,
-          body: `${contact || "A contact"} sent a flagged message on ${appName}`,
-          bodyKey: "alertBodySocialConcern",
-          params: { app: appName, ...(contact ? { contact } : {}) },
-          attemptCount: 1,
-          metadata: {
-            app: appName,
-            contact,
-            contactKey,
-            concernTypes,
-            flaggedCount: 1,
-            latestAt: nowIso,
+    for (let claimPass = 0; claimPass < 2; claimPass += 1) {
+      const claimed = (await redis.set(throttleKey, PENDING_SENTINEL, "EX", SOCIAL_ALERT_WINDOW_SECONDS, "NX")) === "OK";
+      if (claimed) {
+        let alert: Alert | undefined;
+        try {
+          // Alerts never carry the message snippet; metadata holds app/contact/concernTypes and
+          // #1029 per-contact window counters. Push payloads never carry text or contact names (#410, #1029).
+          alert = await raiseAlert({
+            childId,
+            familyId,
+            deviceId,
+            severity,
+            category,
+            title: `Social concern in ${appName}`,
+            body: `${contact || "A contact"} sent a flagged message on ${appName}`,
+            bodyKey: "alertBodySocialConcern",
+            params: { app: appName, ...(contact ? { contact } : {}) },
+            attemptCount: 1,
+            metadata: {
+              app: appName,
+              contact,
+              contactKey,
+              concernTypes,
+              flaggedCount: 1,
+              latestAt: nowIso,
+              windowStartedAt: nowIso,
+              windowEndsAt: windowEndsAtIso,
+              pushedCount: 1,
+              pushedSeverity: severity,
+              summaryPending: false,
+              summaryPushed: false,
+              ...(attribution && Object.keys(attribution).length > 0 && { providerOutcomes: attribution }),
+            },
+            childName: childName ?? undefined,
+          });
+        } catch (err) {
+          const released = await redis
+            .eval(SOCIAL_PENDING_RELEASE_SCRIPT, 1, throttleKey, PENDING_SENTINEL)
+            .catch(() => null);
+          if (released !== 0 && released !== 1) {
+            await redis.del(throttleKey).catch(() => undefined);
+          }
+          throw err;
+        }
+
+        if (alert?.id) {
+          const state: SocialWindowRedisState = {
+            alertId: alert.id,
             windowStartedAt: nowIso,
             windowEndsAt: windowEndsAtIso,
-            pushedCount: 1,
             pushedSeverity: severity,
-            summaryPending: false,
-            summaryPushed: false,
-            ...(attribution && Object.keys(attribution).length > 0 && { providerOutcomes: attribution }),
-          },
-          childName: childName ?? undefined,
-        });
-      } catch (err) {
-        await redis.del(throttleKey).catch(() => undefined);
-        throw err;
-      }
-
-      if (alert?.id) {
-        const state: SocialWindowRedisState = {
-          alertId: alert.id,
-          windowStartedAt: nowIso,
-          windowEndsAt: windowEndsAtIso,
-          pushedSeverity: severity,
-        };
-        await redis.set(throttleKey, JSON.stringify(state), "EX", SOCIAL_ALERT_WINDOW_SECONDS).catch(() => undefined);
-      }
-      return { alertId: alert?.id, throttled: false, bypassed: false, flaggedCount: 1, throttleKey };
-    }
-
-    // Window already open for this (child, app, contactKey): resolve existing alert row.
-    let state = parseRedisWindowState(await redis.get(throttleKey).catch(() => null));
-    if (!state) {
-      // Another API replica may still be committing the initial alert row; retry briefly.
-      for (let attempt = 0; attempt < 3 && !state; attempt += 1) {
-        const raw = await redis.get(throttleKey).catch(() => null);
-        if (raw !== PENDING_SENTINEL) {
-          state = parseRedisWindowState(raw);
-          break;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      }
-    }
-
-    let existing: Alert | null = null;
-    if (state?.alertId) {
-      existing = await prisma.alert.findUnique({ where: { id: state.alertId } });
-    }
-    if (!existing) {
-      // Fallback when Redis held a bare marker or a minimal mock didn't stub `get`: find the most
-      // recent open window alert for this child, category, and salted contactKey.
-      const recent = await prisma.alert.findMany({
-        where: {
-          childId,
-          category,
-          createdAt: { gte: new Date(nowMs - SOCIAL_ALERT_WINDOW_MS) },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 25,
-      });
-      if (Array.isArray(recent)) {
-        existing = recent.find((row) => {
-          const parsed = parseSocialWindowMetadata(row.metadata);
-          return parsed?.contactKey === contactKey && parsed.app.toLowerCase() === appName.trim().toLowerCase();
-        }) ?? null;
-      }
-    }
-
-    if (!existing) {
-      // No backing row exists (e.g. legacy mock test that only mocked alert.create without persisting rows).
-      return { alertId: state?.alertId, throttled: true, bypassed: false, flaggedCount: 1, throttleKey };
-    }
-
-    let current: Alert = existing;
-    let updatedAlert: Alert | null = null;
-    let bypass = false;
-    let nextCount = 1;
-    let nextPushedSeverity: SocialSeverity = "warning";
-    let effectiveWindowStart = nowIso;
-    let effectiveWindowEnd = windowEndsAtIso;
-
-    // Optimistic CAS loop across multiple API replicas: compare-and-swap on `attemptCount` so
-    // two ECS tasks updating the same contact's alert simultaneously never lose an increment.
-    for (let casAttempt = 0; casAttempt < 4; casAttempt += 1) {
-      const existingMetaObj = (current.metadata && typeof current.metadata === "object" && !Array.isArray(current.metadata)
-        ? current.metadata
-        : {}) as Record<string, unknown>;
-      const existingMeta = parseSocialWindowMetadata(existingMetaObj);
-
-      const prevCount = existingMeta?.flaggedCount ?? current.attemptCount ?? 1;
-      nextCount = prevCount + 1;
-      const prevPushedCount = existingMeta?.pushedCount ?? 1;
-      const prevPushedSeverity =
-        casAttempt === 0
-          ? (existingMeta?.pushedSeverity ?? state?.pushedSeverity ?? normalizeSocialSeverity(current.severity))
-          : (existingMeta?.pushedSeverity ?? normalizeSocialSeverity(current.severity));
-      bypass = SOCIAL_SEVERITY_RANK[severity] > SOCIAL_SEVERITY_RANK[prevPushedSeverity];
-      const nextSeverity =
-        SOCIAL_SEVERITY_RANK[severity] > SOCIAL_SEVERITY_RANK[normalizeSocialSeverity(current.severity)]
-          ? severity
-          : normalizeSocialSeverity(current.severity);
-      const nextPushedCount = bypass ? nextCount : prevPushedCount;
-      nextPushedSeverity = bypass ? severity : prevPushedSeverity;
-      const nextSummaryPending = nextCount > nextPushedCount;
-      const mergedConcerns = [...new Set([...(existingMeta?.concernTypes ?? []), ...concernTypes])].slice(0, 5);
-      const mergedAttribution = mergeProviderOutcomes(existingMeta?.providerOutcomes, attribution);
-      effectiveWindowStart = existingMeta?.windowStartedAt ?? state?.windowStartedAt ?? nowIso;
-      effectiveWindowEnd = existingMeta?.windowEndsAt ?? state?.windowEndsAt ?? windowEndsAtIso;
-
-      const nextMetadata: Record<string, unknown> = {
-        ...existingMetaObj,
-        app: appName,
-        contact,
-        contactKey,
-        concernTypes: mergedConcerns,
-        flaggedCount: nextCount,
-        latestAt: nowIso,
-        windowStartedAt: effectiveWindowStart,
-        windowEndsAt: effectiveWindowEnd,
-        pushedCount: nextPushedCount,
-        pushedSeverity: nextPushedSeverity,
-        summaryPending: nextSummaryPending,
-        summaryPushed: existingMeta?.summaryPushed ?? false,
-        bodyKey: "alertBodySocialConcern",
-        bodyParams: { app: appName, ...(contact ? { contact } : {}) },
-        ...(mergedAttribution ? { providerOutcomes: mergedAttribution } : {}),
-      };
-
-      const nextBody = `${nextCount} concerning messages on ${appName}`;
-      const casData = {
-        severity: nextSeverity,
-        attemptCount: nextCount,
-        body: nextBody,
-        acknowledged: false,
-        metadata: nextMetadata as Prisma.InputJsonValue,
-      };
-      const casRes = await prisma.alert.updateMany({
-        where: { id: current.id, attemptCount: prevCount },
-        data: casData,
-      });
-      if (casRes && typeof casRes.count === "number") {
-        if (casRes.count === 1) {
-          updatedAlert = (await prisma.alert.findUnique({ where: { id: current.id } })) ?? {
-            ...current,
-            ...casData,
-            metadata: nextMetadata as Prisma.JsonValue,
           };
-          break;
+          const payload = JSON.stringify(state);
+          const drainedRaw = await redis
+            .eval(
+              SOCIAL_PENDING_PUBLISH_AND_DRAIN_SCRIPT,
+              2,
+              throttleKey,
+              deferredKey,
+              payload,
+              String(SOCIAL_ALERT_WINDOW_SECONDS),
+            )
+            .catch(() => null);
+          let deferred: DeferredSocialObservation[] = [];
+          if (Array.isArray(drainedRaw)) {
+            deferred = drainedRaw
+              .map(parseDeferredObservation)
+              .filter((x): x is DeferredSocialObservation => x !== null);
+          } else {
+            await redis.set(throttleKey, payload, "EX", SOCIAL_ALERT_WINDOW_SECONDS).catch(() => undefined);
+          }
+
+          if (deferred.length > 0) {
+            const folded = await applyObservationsToAlert(alert, state, deferred, applyCtx);
+            return {
+              alertId: folded.alertId,
+              throttled: false,
+              bypassed: folded.bypassed,
+              flaggedCount: folded.flaggedCount,
+              throttleKey,
+            };
+          }
         }
-        const refreshed = await prisma.alert.findUnique({ where: { id: current.id } });
-        if (!refreshed) break;
-        current = refreshed;
-        continue;
+        return { alertId: alert?.id, throttled: false, bypassed: false, flaggedCount: 1, throttleKey };
       }
 
-      const updated = await prisma.alert.update({ where: { id: current.id }, data: casData });
-      updatedAlert = updated ?? {
-        ...current,
-        ...casData,
-        metadata: nextMetadata as Prisma.JsonValue,
-      };
-      break;
+      // Window already open (or initial insert still in flight on another replica).
+      let raw = await redis.get(throttleKey).catch(() => null);
+      let state = parseRedisWindowState(raw);
+      let shouldRetryClaim = false;
+
+      if (raw === PENDING_SENTINEL) {
+        let waitedMs = 0;
+        let stepIdx = 0;
+        while (raw === PENDING_SENTINEL && waitedMs < waitBudgetMs) {
+          const delay = Math.min(
+            PENDING_BACKOFF_STEPS_MS[Math.min(stepIdx, PENDING_BACKOFF_STEPS_MS.length - 1)]!,
+            waitBudgetMs - waitedMs,
+          );
+          stepIdx += 1;
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          waitedMs += delay;
+          raw = await redis.get(throttleKey).catch(() => null);
+          if (raw === null) {
+            shouldRetryClaim = true;
+            break;
+          }
+          if (raw !== PENDING_SENTINEL) {
+            state = parseRedisWindowState(raw);
+            break;
+          }
+        }
+
+        if (shouldRetryClaim && claimPass === 0) {
+          continue;
+        }
+
+        // Still pending after wait budget: atomically hand off to the creator replica's deferred queue
+        // so the observation is folded into the alert row the instant `raiseAlert` commits.
+        if (raw === PENDING_SENTINEL) {
+          const deferRes = await redis
+            .eval(
+              SOCIAL_PENDING_DEFER_SCRIPT,
+              2,
+              throttleKey,
+              deferredKey,
+              PENDING_SENTINEL,
+              JSON.stringify(observation),
+              String(SOCIAL_ALERT_WINDOW_SECONDS),
+            )
+            .catch(() => null);
+          if (deferRes === "DEFERRED") {
+            return { alertId: undefined, throttled: true, bypassed: false, flaggedCount: 1, throttleKey };
+          }
+          if (deferRes === "" && claimPass === 0) {
+            continue;
+          }
+          if (typeof deferRes === "string" && deferRes.length > 0) {
+            state = parseRedisWindowState(deferRes);
+          }
+        }
+      }
+
+      let existing: Alert | null = null;
+      if (state?.alertId) {
+        existing = await prisma.alert.findUnique({ where: { id: state.alertId } });
+      }
+      if (!existing) {
+        // Fallback when Redis held a bare marker or a minimal mock didn't stub `get`: find the most
+        // recent open window alert for this child, category, and salted contactKey.
+        const recent = await prisma.alert.findMany({
+          where: {
+            childId,
+            category,
+            createdAt: { gte: new Date(nowMs - SOCIAL_ALERT_WINDOW_MS) },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 25,
+        });
+        if (Array.isArray(recent)) {
+          existing = recent.find((row) => {
+            const parsed = parseSocialWindowMetadata(row.metadata);
+            return parsed?.contactKey === contactKey && parsed.app.toLowerCase() === appName.trim().toLowerCase();
+          }) ?? null;
+        }
+      }
+
+      if (!existing) {
+        // No backing row exists (e.g. legacy mock test that only mocked alert.create without persisting rows).
+        return { alertId: state?.alertId, throttled: true, bypassed: false, flaggedCount: 1, throttleKey };
+      }
+
+      return applyObservationsToAlert(existing, state, [observation], applyCtx);
     }
 
-    if (!updatedAlert) {
-      return { alertId: current.id, throttled: true, bypassed: false, flaggedCount: current.attemptCount ?? 1, throttleKey };
-    }
-
-    // Publish the updated row so an open parent feed updates the card in place and moves it to the top.
-    await publishFamilyEvent(familyId, { type: "alert", payload: updatedAlert, ts: nowIso });
-
-    if (bypass) {
-      const remainingSeconds = Math.max(1, Math.ceil((Date.parse(effectiveWindowEnd) - nowMs) / 1000));
-      const nextRedisState: SocialWindowRedisState = {
-        alertId: updatedAlert.id,
-        windowStartedAt: effectiveWindowStart,
-        windowEndsAt: effectiveWindowEnd,
-        pushedSeverity: nextPushedSeverity,
-      };
-      await redis.set(
-        throttleKey,
-        JSON.stringify(nextRedisState),
-        "EX",
-        Number.isFinite(remainingSeconds) ? remainingSeconds : SOCIAL_ALERT_WINDOW_SECONDS,
-      ).catch(() => undefined);
-      await notifyParentsOfAlert(familyId, updatedAlert, childName ?? undefined);
-    }
-
-    return { alertId: updatedAlert.id, throttled: !bypass, bypassed: bypass, flaggedCount: nextCount, throttleKey };
+    return { alertId: undefined, throttled: true, bypassed: false, flaggedCount: 1, throttleKey };
   });
 }

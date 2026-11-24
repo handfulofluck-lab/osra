@@ -3,6 +3,9 @@ import { signV2 } from "../src/lib/internalAuth.js";
 import { socialRoutes } from "../src/routes/social.js";
 import {
   SOCIAL_ALERT_WINDOW_MS,
+  SOCIAL_PENDING_DEFER_SCRIPT,
+  SOCIAL_PENDING_PUBLISH_AND_DRAIN_SCRIPT,
+  SOCIAL_PENDING_RELEASE_SCRIPT,
   socialAlertThrottleKey,
   socialContactKey,
 } from "../src/lib/socialAlertWindow.js";
@@ -64,19 +67,16 @@ describe("social alert per-contact window (#1029)", () => {
   const alerts = new Map<string, StoredAlert>();
   let alertSeq = 0;
 
-  // Simulated Redis KV store with virtual expiration timestamps (ms).
+  // Simulated Redis KV + list store with virtual expiration timestamps (ms).
   const redisStore = new Map<string, { value: string; expiresAt: number | null }>();
+  const redisLists = new Map<string, string[]>();
   const recordedRedisKeys: string[] = [];
   const sentPushes: Array<{ platform: string; token: string; message: PushMessage }> = [];
 
-  function installInMemoryStores() {
-    alerts.clear();
-    alertSeq = 0;
-    redisStore.clear();
-    recordedRedisKeys.length = 0;
-    sentPushes.length = 0;
+  const isLive = (entry: { expiresAt: number | null } | undefined): boolean =>
+    entry !== undefined && (entry.expiresAt === null || entry.expiresAt > Date.now());
 
-    const redis = getRedis();
+  function bindMockRedisClient(redis: ReturnType<typeof getRedis>) {
     const setMock = redis.set as unknown as {
       mockImplementation: (fn: (key: string, value: string, ...rest: unknown[]) => Promise<string | null>) => void;
     };
@@ -86,9 +86,6 @@ describe("social alert per-contact window (#1029)", () => {
     const delMock = redis.del as unknown as {
       mockImplementation: (fn: (...keys: string[]) => Promise<number>) => void;
     };
-
-    const isLive = (entry: { expiresAt: number | null } | undefined): boolean =>
-      entry !== undefined && (entry.expiresAt === null || entry.expiresAt > Date.now());
 
     setMock.mockImplementation(async (key, value, ...rest) => {
       recordedRedisKeys.push(key);
@@ -136,8 +133,61 @@ describe("social alert per-contact window (#1029)", () => {
         }
         return 0;
       }
+      if (script === SOCIAL_PENDING_DEFER_SCRIPT) {
+        const [key, deferredKey, sentinel, obsPayload] = args;
+        const curEntry = redisStore.get(key!);
+        const cur = isLive(curEntry) ? curEntry!.value : null;
+        if (cur === sentinel) {
+          const list = redisLists.get(deferredKey!) ?? [];
+          list.push(obsPayload!);
+          redisLists.set(deferredKey!, list);
+          return "DEFERRED";
+        }
+        return cur ?? "";
+      }
+      if (script === SOCIAL_PENDING_PUBLISH_AND_DRAIN_SCRIPT) {
+        const [key, deferredKey, payload, ttlStr] = args;
+        recordedRedisKeys.push(key!);
+        const ttlSeconds = Number(ttlStr);
+        redisStore.set(key!, {
+          value: payload!,
+          expiresAt: Number.isFinite(ttlSeconds) ? Date.now() + ttlSeconds * 1000 : null,
+        });
+        const items = redisLists.get(deferredKey!) ?? [];
+        redisLists.delete(deferredKey!);
+        return items;
+      }
+      if (script === SOCIAL_PENDING_RELEASE_SCRIPT) {
+        const [key, sentinel] = args;
+        const curEntry = redisStore.get(key!);
+        const cur = isLive(curEntry) ? curEntry!.value : null;
+        if (cur === sentinel) {
+          redisStore.delete(key!);
+          return 1;
+        }
+        return 0;
+      }
       return null;
     });
+  }
+
+  const fakePushProvider: PushProvider = {
+    platform: "android",
+    async send(token, message) {
+      sentPushes.push({ platform: "android", token, message });
+      return { ok: true, messageId: `msg-${sentPushes.length}` };
+    },
+  };
+
+  function installInMemoryStores() {
+    alerts.clear();
+    alertSeq = 0;
+    redisStore.clear();
+    redisLists.clear();
+    recordedRedisKeys.length = 0;
+    sentPushes.length = 0;
+
+    bindMockRedisClient(getRedis());
 
     prismaMock.child.findUnique.mockResolvedValue(CHILD);
     prismaMock.socialEvent.create.mockImplementation((async (args: { data: Record<string, unknown> }) => ({
@@ -580,5 +630,120 @@ describe("social alert per-contact window (#1029)", () => {
     expect(alerts.get(alert2Id)?.attemptCount).toBe(2);
 
     await app.close();
+  });
+
+  // Mutant (Codex #1033 review 7117292252): reverting the pending backoff wait to the old 75 ms cap
+  // drops the second replica's observation when the first replica's insert takes 150 ms, leaving count = 1.
+  it("preserves both observations across two independently loaded replicas when the first insert takes 150 ms", async () => {
+    const origCreate = prismaMock.alert.create.getMockImplementation()!;
+    let delayedOnce = false;
+    prismaMock.alert.create.mockImplementation((async (args: { data: Record<string, unknown> }) => {
+      if (!delayedOnce) {
+        delayedOnce = true;
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+      return origCreate(args);
+    }) as never);
+
+    // Load two independent module graphs so each replica owns a separate in-process `keyLocks` map.
+    vi.resetModules();
+    const replica1Redis = await import("../src/redis.js");
+    const replica1Notify = await import("../src/lib/push/notify.js");
+    const replica1 = await import("../src/lib/socialAlertWindow.js");
+    bindMockRedisClient(replica1Redis.getRedis());
+    replica1Notify.setPushProviders([fakePushProvider]);
+
+    vi.resetModules();
+    const replica2Redis = await import("../src/redis.js");
+    const replica2Notify = await import("../src/lib/push/notify.js");
+    const replica2 = await import("../src/lib/socialAlertWindow.js");
+    bindMockRedisClient(replica2Redis.getRedis());
+    replica2Notify.setPushProviders([fakePushProvider]);
+
+    expect(replica1.recordFlaggedSocialAlert).not.toBe(replica2.recordFlaggedSocialAlert);
+
+    const baseInput = {
+      childId: CHILD.id,
+      familyId: CHILD.familyId,
+      childName: CHILD.displayName,
+      appName: "WhatsApp",
+      contact: "TwoReplica150ms",
+      category: "social_concern" as const,
+      severity: "warning" as const,
+      concernTypes: ["cyberbullying"],
+    };
+
+    const p1 = replica1.recordFlaggedSocialAlert(baseInput);
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    const p2 = replica2.recordFlaggedSocialAlert(baseInput);
+    await Promise.all([p1, p2]);
+
+    expect(alerts.size).toBe(1);
+    const row = [...alerts.values()][0]!;
+    expect(row.attemptCount).toBe(2);
+    expect(row.metadata.flaggedCount).toBe(2);
+    expect(row.metadata.summaryPending).toBe(true);
+    expect(pushRounds()).toBe(1);
+  });
+
+  // Mutant: removing the atomic deferred-queue handoff loses replica 2's observation whenever replica 1's
+  // insert exceeds `pendingWaitMs`, leaving count = 1 and missing severity escalation.
+  it("hands off to the deferred queue across two independent replicas when insert latency exceeds pendingWaitMs", async () => {
+    const origCreate = prismaMock.alert.create.getMockImplementation()!;
+    let delayedOnce = false;
+    prismaMock.alert.create.mockImplementation((async (args: { data: Record<string, unknown> }) => {
+      if (!delayedOnce) {
+        delayedOnce = true;
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+      return origCreate(args);
+    }) as never);
+
+    vi.resetModules();
+    const replica1Redis = await import("../src/redis.js");
+    const replica1Notify = await import("../src/lib/push/notify.js");
+    const replica1 = await import("../src/lib/socialAlertWindow.js");
+    bindMockRedisClient(replica1Redis.getRedis());
+    replica1Notify.setPushProviders([fakePushProvider]);
+
+    vi.resetModules();
+    const replica2Redis = await import("../src/redis.js");
+    const replica2Notify = await import("../src/lib/push/notify.js");
+    const replica2 = await import("../src/lib/socialAlertWindow.js");
+    bindMockRedisClient(replica2Redis.getRedis());
+    replica2Notify.setPushProviders([fakePushProvider]);
+
+    const p1 = replica1.recordFlaggedSocialAlert({
+      childId: CHILD.id,
+      familyId: CHILD.familyId,
+      childName: CHILD.displayName,
+      appName: "WhatsApp",
+      contact: "TwoReplicaDeferred",
+      category: "social_concern",
+      severity: "warning",
+      concernTypes: ["cyberbullying"],
+      pendingWaitMs: 30,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const p2 = replica2.recordFlaggedSocialAlert({
+      childId: CHILD.id,
+      familyId: CHILD.familyId,
+      childName: CHILD.displayName,
+      appName: "WhatsApp",
+      contact: "TwoReplicaDeferred",
+      category: "social_concern",
+      severity: "critical",
+      concernTypes: ["self_harm"],
+      pendingWaitMs: 30,
+    });
+    await Promise.all([p1, p2]);
+
+    expect(alerts.size).toBe(1);
+    const row = [...alerts.values()][0]!;
+    expect(row.attemptCount).toBe(2);
+    expect(row.metadata.flaggedCount).toBe(2);
+    expect(row.severity).toBe("critical");
+    expect(row.metadata.pushedSeverity).toBe("critical");
+    expect(pushRounds()).toBe(2);
   });
 });
