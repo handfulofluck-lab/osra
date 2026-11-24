@@ -293,6 +293,8 @@ void main() {
       expect(find.text('Resume device'), findsNothing);
       expect(find.text('Pause device'), findsNothing);
       expect(find.byKey(const ValueKey('controlPending-resume')), findsOneWidget);
+      expect(find.byKey(const ValueKey('deviceAction-pauseFullRow-dev-1')), findsOneWidget,
+          reason: 'B6 (7120730242): busy pause/resume control spans the full grid row');
       final btn = tester.widget<ButtonStyleButton>(
         find.ancestor(of: find.text('Resuming…'), matching: find.bySubtype<ButtonStyleButton>()).first,
       );

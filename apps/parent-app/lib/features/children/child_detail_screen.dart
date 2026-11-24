@@ -281,43 +281,11 @@ class _OverviewTab extends ConsumerWidget {
                           label: l10n.scopeThisDevice,
                         ),
                         const SizedBox(height: AppSpace.xs),
-                        _DeviceActionGrid(
-                          children: [
-                            _deviceTonalButton(
-                              key: ValueKey('deviceAction-ring-${d.id}'),
-                              onPressed: () => _sendCommand(context, ref, d, 'ring'),
-                              icon: Icons.notifications_active,
-                              label: l10n.ring,
-                            ),
-                            _deviceTonalButton(
-                              key: ValueKey('deviceAction-stopRing-${d.id}'),
-                              onPressed: () => _sendCommand(context, ref, d, 'stop_ring'),
-                              icon: Icons.notifications_off_outlined,
-                              label: l10n.commandStopRing,
-                            ),
-                            _deviceTonalButton(
-                              key: ValueKey('deviceAction-lock-${d.id}'),
-                              onPressed: () => _sendCommand(context, ref, d, 'lock'),
-                              icon: Icons.lock,
-                              label: l10n.lock,
-                            ),
-                            _deviceTonalButton(
-                              key: ValueKey('deviceAction-unlock-${d.id}'),
-                              onPressed: () => _sendCommand(context, ref, d, 'unlock'),
-                              icon: Icons.lock_open,
-                              label: l10n.unlock,
-                            ),
-                            _DevicePauseControl(
-                              device: d,
-                              onSend: (command) => _sendCommand(context, ref, d, command),
-                            ),
-                            _deviceTonalButton(
-                              key: ValueKey('deviceAction-history-${d.id}'),
-                              onPressed: () => context.push('/child/$childId/commands'),
-                              icon: Icons.receipt_long,
-                              label: l10n.deliveryStatus,
-                            ),
-                          ],
+                        _DeviceActionsSection(
+                          childId: childId,
+                          device: d,
+                          onSend: (command) => _sendCommand(context, ref, d, command),
+                          onOpenHistory: () => context.push('/child/$childId/commands'),
                         ),
                         // #969: a queued command is not a done command. This line names this handset and says
                         // which state it is in; the wording is the Arabic Language Bureau's per-device copy, not
@@ -493,19 +461,90 @@ class _DeviceActionGrid extends StatelessWidget {
   }
 }
 
-/// U59 (#650, #969): single Pause/Resume device control that follows the server-confirmed
-/// state and disables itself (`onPressed: null`, honouring screen readers and keyboard, F2)
-/// while a pause or resume command is pending/delivered.
-class _DevicePauseControl extends ConsumerWidget {
+/// U59 + U60 + U61 (#650, #969, 7120730242): per-device action grid.
+///
+/// While a pause/resume command is waiting on the handset, the busy control spans the full
+/// row of the grid (B6, 7120730242) so "Pausing…" / "Resuming…" / «جارٍ إيقاف الجهاز…» never
+/// orphan their ellipsis on a separate line and the waiting state stands out clearly.
+class _DeviceActionsSection extends ConsumerWidget {
+  final String childId;
   final Device device;
   final void Function(String command) onSend;
-  const _DevicePauseControl({required this.device, required this.onSend});
+  final VoidCallback onOpenHistory;
+  const _DeviceActionsSection({
+    required this.childId,
+    required this.device,
+    required this.onSend,
+    required this.onOpenHistory,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final history = ref.watch(deviceCommandHistoryProvider(device.id)).valueOrNull ?? const <DeviceCommand>[];
-    final state = resolveDevicePauseControlState(history);
+    final pauseState = resolveDevicePauseControlState(history);
+
+    final pauseWidget = _buildPauseControl(context, pauseState);
+    final historyButton = _deviceTonalButton(
+      key: ValueKey('deviceAction-history-${device.id}'),
+      onPressed: onOpenHistory,
+      icon: Icons.receipt_long,
+      label: l10n.deliveryStatus,
+    );
+
+    final pairChildren = <Widget>[
+      _deviceTonalButton(
+        key: ValueKey('deviceAction-ring-${device.id}'),
+        onPressed: () => onSend('ring'),
+        icon: Icons.notifications_active,
+        label: l10n.ring,
+      ),
+      _deviceTonalButton(
+        key: ValueKey('deviceAction-stopRing-${device.id}'),
+        onPressed: () => onSend('stop_ring'),
+        icon: Icons.notifications_off_outlined,
+        label: l10n.commandStopRing,
+      ),
+      _deviceTonalButton(
+        key: ValueKey('deviceAction-lock-${device.id}'),
+        onPressed: () => onSend('lock'),
+        icon: Icons.lock,
+        label: l10n.lock,
+      ),
+      _deviceTonalButton(
+        key: ValueKey('deviceAction-unlock-${device.id}'),
+        onPressed: () => onSend('unlock'),
+        icon: Icons.lock_open,
+        label: l10n.unlock,
+      ),
+      if (!pauseState.waiting) ...[
+        pauseWidget,
+        historyButton,
+      ],
+    ];
+
+    if (!pauseState.waiting) {
+      return _DeviceActionGrid(children: pairChildren);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _DeviceActionGrid(children: pairChildren),
+        const SizedBox(height: AppSpace.xs),
+        SizedBox(
+          key: ValueKey('deviceAction-pauseFullRow-${device.id}'),
+          width: double.infinity,
+          child: pauseWidget,
+        ),
+        const SizedBox(height: AppSpace.xs),
+        SizedBox(width: double.infinity, child: historyButton),
+      ],
+    );
+  }
+
+  Widget _buildPauseControl(BuildContext context, DevicePauseControlState state) {
+    final l10n = context.l10n;
     final command = state.activeCommand;
     final label = state.waiting
         ? (state.pendingCommand == 'resume' ? l10n.commandResumingDevice : l10n.commandPausingDevice)
