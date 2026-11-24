@@ -49,6 +49,10 @@ class _SetupMonitoringScreenState extends ConsumerState<SetupMonitoringScreen> {
 
   void _applyRules(RuleSet ruleSet) {
     if (_xChoiceInitialized) return;
+    if (!ruleSet.socialMonitoring.containsKey('twitter') &&
+        !ruleSet.socialMonitoring.containsKey('x')) {
+      return;
+    }
     _xChoiceInitialized = true;
     if (socialMonitoringEnabled(ruleSet.socialMonitoring, 'twitter')) {
       _selected.add('twitter');
@@ -59,6 +63,7 @@ class _SetupMonitoringScreenState extends ConsumerState<SetupMonitoringScreen> {
 
   void _setSelected(String appKey, bool selected) {
     setState(() {
+      if (appKey == 'twitter') _xChoiceInitialized = true;
       if (selected) {
         _selected.add(appKey);
       } else {
@@ -109,6 +114,7 @@ class _SetupMonitoringScreenState extends ConsumerState<SetupMonitoringScreen> {
             onPressed: _saving
                 ? null
                 : () => setState(() {
+                      _xChoiceInitialized = true;
                       _selected.addAll(kSocialApps.map((app) => app.appKey));
                     }),
             icon: const Icon(Icons.select_all),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:familyshield_parent/features/onboarding/setup_monitoring_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -31,6 +33,7 @@ void main() {
     bool frameBoundary = false,
     bool withIcons = false,
     Map<String, bool>? socialMonitoring,
+    Future<Object?>? deferredRules,
   }) async {
     tester.view.physicalSize =
         textScale == null ? const Size(1200, 2400) : const Size(320, 1400);
@@ -44,8 +47,10 @@ void main() {
     });
     final api = FakeApiClient({
       ...standardRoutes(),
-      'GET /v1/rules/child-1': (_) =>
-          ruleSetPayload('child-1', socialMonitoring: socialMonitoring),
+      'GET /v1/rules/child-1': (_) {
+        if (deferredRules != null) return FakeDeferred(deferredRules);
+        return ruleSetPayload('child-1', socialMonitoring: socialMonitoring);
+      },
       'GET /v1/devices/dev-1/apps': (_) =>
           installedAppsPayload(apps: socialInventory(installedKeys, withIcons)),
     });
@@ -64,7 +69,13 @@ void main() {
             : SetupMonitoringScreen(childId: childId),
       ),
     ));
-    await tester.pumpAndSettle();
+    if (deferredRules == null) {
+      await tester.pumpAndSettle();
+    } else {
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    }
   }
 
   testWidgets('every supported app is offered, and every one starts ticked',
@@ -98,6 +109,66 @@ void main() {
       'messenger'
     ]);
   });
+
+  testWidgets(
+      'a new child with no stored X choice preselects installed apps only',
+      (tester) async {
+    await pump(tester, installedKeys: {'whatsapp', 'youtube'});
+    await tester.tap(find.text('Not on Alex\'s phone (10)'));
+    await tester.pumpAndSettle();
+    for (final app in kSocialApps
+        .where((app) => !{'whatsapp', 'youtube'}.contains(app.appKey))) {
+      expect(
+        tester
+            .widget<CheckboxListTile>(
+                find.byKey(ValueKey('setupMonitoring_${app.appKey}')))
+            .value,
+        isFalse,
+        reason:
+            '${app.appKey} is not installed and has no explicit stored choice',
+      );
+    }
+  });
+
+  for (final selectAll in [false, true]) {
+    testWidgets(
+        'late rules cannot overwrite ${selectAll ? 'Select all' : 'an explicit X choice'}',
+        (tester) async {
+      final rules = Completer<Object?>();
+      await pump(
+        tester,
+        installedKeys: {'whatsapp', 'youtube'},
+        deferredRules: rules.future,
+      );
+      await tester.tap(find.text('Not on Alex\'s phone (10)'));
+      await tester.pumpAndSettle();
+      if (selectAll) {
+        await tester.tap(find.text('Select all'));
+      } else {
+        await tester.tap(find.byKey(const ValueKey('setupMonitoring_twitter')));
+      }
+      await tester.pumpAndSettle();
+      expect(
+          tester
+              .widget<CheckboxListTile>(
+                  find.byKey(const ValueKey('setupMonitoring_twitter')))
+              .value,
+          isTrue);
+
+      rules.complete(
+          ruleSetPayload('child-1', socialMonitoring: {'twitter': false}));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<CheckboxListTile>(
+                find.byKey(const ValueKey('setupMonitoring_twitter')))
+            .value,
+        isTrue,
+        reason: 'the parent acted before the server response arrived',
+      );
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
 
   testWidgets(
       'only installed apps are preselected and Select all selects the whole catalog',
