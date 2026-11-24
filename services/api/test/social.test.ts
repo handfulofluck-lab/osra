@@ -405,13 +405,20 @@ describe("social routes", () => {
     // The alert metadata carries app/contact/concernTypes and localization values — no snippet.
     const alertData = prismaMock.alert.create.mock.calls[0][0] as { data: Record<string, unknown> };
     expect(alertData.data.category).toBe("social_concern");
-    expect(alertData.data.metadata).toEqual({
+    expect(alertData.data.metadata).toMatchObject({
       app: "whatsapp",
       contact: "bully-1",
       concernTypes: ["self_harm"],
+      flaggedCount: 1,
+      pushedCount: 1,
+      pushedSeverity: "critical",
+      summaryPending: false,
+      summaryPushed: false,
       bodyKey: "alertBodySocialConcern",
       bodyParams: { app: "whatsapp", contact: "bully-1" },
     });
+    expect(typeof (alertData.data.metadata as Record<string, unknown>).latestAt).toBe("string");
+    expect(typeof (alertData.data.metadata as Record<string, unknown>).contactKey).toBe("string");
     expectKeyedAlertBody(alertData.data, "alertBodySocialConcern", { app: "whatsapp", contact: "bully-1" });
     expect(alertData.data.metadata).not.toHaveProperty("preview");
 
