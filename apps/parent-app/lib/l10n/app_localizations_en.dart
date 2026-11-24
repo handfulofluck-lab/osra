@@ -853,10 +853,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commandResumeDevice => 'Resume device';
 
   @override
+  String get commandPausingDevice => 'Pausing…';
+
+  @override
+  String get commandResumingDevice => 'Resuming…';
+
+  @override
   String get commandPauseInternet => 'Pause internet';
 
   @override
   String get commandResumeInternet => 'Resume internet';
+
+  @override
+  String get scopeThisDevice => 'This device';
+
+  @override
+  String get scopeAllDevices => 'All paired devices';
+
+  @override
+  String get deviceControlPending => 'Waiting for this device';
+
+  @override
+  String get deviceControlFailed => 'This device couldn\'t apply the change';
 
   @override
   String get commandBonusTime => 'Bonus time';
@@ -3154,6 +3172,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get setupMonitoringTitle => 'Which apps should OSRA watch for you?';
 
   @override
+  String get setupMonitoringAppBarTitle => 'Social apps';
+
+  @override
   String get setupMonitoringIntro =>
       'OSRA checks messages in these apps for signs of bullying, grooming or self-harm, and tells you when it finds something. Tick the apps you want; you can change this any time in the rules.';
 
@@ -3439,5 +3460,73 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String appBlockedNamedSnack(String app) {
     return '$app blocked';
+  }
+
+  @override
+  String get socialCheckMessagesIn => 'Check messages in';
+
+  @override
+  String socialNotOnChildPhone(String child, int count) {
+    return 'Not on $child\'s phone ($count)';
+  }
+
+  @override
+  String get socialChecking => 'Checking';
+
+  @override
+  String get socialOff => 'Off';
+
+  @override
+  String get socialCommentsAndChats => 'Comments and chats';
+
+  @override
+  String get socialNewAppsBanner =>
+      'You can now choose YouTube, Telegram, Reddit and Messenger too.';
+
+  @override
+  String get socialPrivacyLine =>
+      'OSRA only flags concerning messages. It never shows you every chat.';
+
+  @override
+  String get selectAll => 'Select all';
+
+  @override
+  String socialAlertCountTitle(int count, String app) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count concerning messages on $app',
+      one: '1 concerning message on $app',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String socialAlertFromContactOnly(String contact) {
+    return 'From $contact';
+  }
+
+  @override
+  String socialAlertLatestAt(String time) {
+    return 'Latest $time';
+  }
+
+  @override
+  String get socialAlertUnknownContact => 'an unknown contact';
+
+  @override
+  String socialAlertMorePush(int count, String child, String app) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count more concerning messages for $child on $app',
+      one: '1 more concerning message for $child on $app',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String socialAlertNewSince(int count) {
+    return '+$count new';
   }
 }

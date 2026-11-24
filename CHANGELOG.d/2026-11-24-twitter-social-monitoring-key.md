@@ -1,0 +1,3 @@
+### Android child & API — honour legacy `"x"` `socialMonitoring` key as `"twitter"` (#1036)
+- Android child `RuleRepository.socialMonitoringEnabled("twitter")` and API `toApiRuleSet` (`normalizeSocialMonitoring` in `services/api/src/lib/ruleSync.ts`) now fall back to a stored legacy `"x"` value when canonical `"twitter"` is absent, while always giving canonical `"twitter"` precedence over stale `"x"`.
+- Added pure-JVM Android tests (`TwitterSocialMonitoringKeyTest`) and API tests (`rule-sync-plan.test.ts`, `stagingQaModel.test.ts`) covering canonical `"twitter"` ON/OFF, legacy `"x"` fallback, precedence, and staging cross-app selector acceptance of Parent-saved `twitter: true`.

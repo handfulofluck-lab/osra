@@ -133,8 +133,14 @@ class RuleRepository @Inject constructor(
     /** Returns true while the internet is paused by the parent (Feature #11). */
     fun isInternetPaused(): Boolean = pausedInternet
 
-    /** Feature #2: true unless the cached rule set explicitly disables social monitoring for [appKey] (absent key = enabled). */
-    fun socialMonitoringEnabled(appKey: String): Boolean = cached?.socialMonitoring?.get(appKey) ?: true
+    /** Feature #2: true unless the cached rule set explicitly disables social monitoring for [appKey] (absent key = enabled).
+     *  Issue #1036: legacy parent builds wrote `"x"` instead of `"twitter"`; honour `"x"` when `"twitter"` is absent. */
+    fun socialMonitoringEnabled(appKey: String): Boolean {
+        val map = cached?.socialMonitoring ?: return true
+        map[appKey]?.let { return it }
+        if (appKey == "twitter") map["x"]?.let { return it }
+        return true
+    }
 
     /** #830 gating: true only after the server flag went on and the phone synced that rule set. */
     fun siteNamesEnabled(): Boolean = cached?.siteNames == true

@@ -205,7 +205,10 @@ void main() {
       });
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
-      await tester.tap(find.widgetWithIcon(TextButton, Icons.notifications_active).first);
+      final ring = find.widgetWithIcon(FilledButton, Icons.notifications_active).first;
+      await tester.ensureVisible(ring);
+      await tester.pumpAndSettle();
+      await tester.tap(ring);
       await tester.pumpAndSettle();
 
       expect(find.textContaining("You don't have permission to send Ring to"), findsOneWidget,
@@ -228,7 +231,7 @@ void main() {
       // #969: the scoped labels are longer, so the internet control can sit below this surface's fold. Scroll
       // to it as a parent would, rather than tapping a point that is off-screen (this file already does the
       // same at the bonus-time row below).
-      final internet = find.widgetWithIcon(TextButton, Icons.wifi_off).first;
+      final internet = find.widgetWithIcon(FilledButton, Icons.wifi_off).first;
       await tester.ensureVisible(internet);
       await tester.pumpAndSettle();
       await tester.tap(internet);
