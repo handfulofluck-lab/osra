@@ -281,7 +281,7 @@ job, so the iOS client gets ported in the same change.
 | Component | Purpose | Reviewed | Result |
 |---|---|---|---|
 | `ScreenTimeController.swift` | Screen Time auth, app/web shields, bedtime scheduling | ✓ | OK with NOTEs (see below) |
-| `ShieldConfiguration.swift` | Shield layout ("Blocked by FamilyShield", Ask parent / OK) | ✓ | OK after alert-reporter fix |
+| `ShieldConfiguration.swift` | Shield layout ("Blocked by FamilyShield", Request access / OK) | ✓ | OK after alert-reporter fix |
 | `DeviceActivityMonitor.swift` | Bedtime interval shields + threshold alerts | ✓ | **2 bugs fixed** (below) |
 | `RoutineWindow.swift` | Pure wrap-midnight window logic | ✓ | OK (inclusive start / exclusive end; whole-day when equal) |
 | `FamilyShieldAgentTests.swift` | XCTest for RoutineWindow | ✓ | 4 tests, correct expectations |

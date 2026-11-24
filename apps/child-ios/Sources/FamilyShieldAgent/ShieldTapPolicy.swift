@@ -30,6 +30,11 @@ public enum ShieldTapPolicy {
     public static let requestWindow: TimeInterval = 5 * 60
     public static let requestTimesKey = "shield.requestTimes"
 
+    /// #882: the alert this tap sends to the parent names the button the child actually pressed,
+    /// "Request access". It used to say "Ask parent", which is the same drift the two App-groups footers had:
+    /// three places describing one button, two of them naming it differently.
+    public static let requestAccessAlertBody = "Child pressed 'Request access' on a shield screen."
+
     /// Whether this tap on "Request access" for `target` should alert the parent, recording it when it does.
     /// With no app group it sends, so a request is never lost to a storage problem.
     public static func shouldSendRequest(target: String, now: Date = Date(), defaults: UserDefaults?) -> Bool {

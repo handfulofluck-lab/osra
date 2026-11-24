@@ -100,16 +100,17 @@ jobs:
               "FamilyShieldAgentTests.RuleSyncTests/testDecodesTheServerShapeAndPicksTheBlockedApps",
               "FamilyShieldAgentTests.L10nTests/testEnglishAndArabicHaveTheSameKeysAndNoEmptyLine",
               "FamilyShieldAgentTests.ShieldTextTests/testBedtimeAndARoutineEachNameTheirWindowAndEnd",
+              "FamilyShieldAgentTests.RequestAccessWordingTests/testNoEnglishFooterStillNamesTheOldButton",
           }
           missing = sorted(required - tests)
           if missing:
               print("Portable tests missing on macOS:", *missing, sep="\n", file=sys.stderr)
-          if len(tests) != 357:
-              print(f"macOS test count changed: expected 357, discovered {len(tests)}", file=sys.stderr)
-          if missing or len(tests) != 357:
+          if len(tests) != 360:
+              print(f"macOS test count changed: expected 360, discovered {len(tests)}", file=sys.stderr)
+          if missing or len(tests) != 360:
               print("Discovered macOS test identifiers:", *sorted(tests), sep="\n", file=sys.stderr)
               sys.exit(1)
-          print(f"macOS portable tests discovered: {len(tests)}; pairing, signer, rules and strings present")
+          print(f"macOS portable tests discovered: {len(tests)}; pairing, signer, rules, strings and #882 wording present")
           PY
 
       - name: Test the shared package on macOS

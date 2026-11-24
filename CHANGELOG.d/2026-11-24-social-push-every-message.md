@@ -1,0 +1,1 @@
+- #1061 adds a staging-only switch, `SOCIAL_ALERT_PUSH_EVERY_MESSAGE`, so every flagged message pushes immediately instead of waiting for the 10-minute window; the parent's card still aggregates per contact and production refuses the switch.
