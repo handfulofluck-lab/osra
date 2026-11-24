@@ -4,6 +4,11 @@ variable "staging_qa_model_archives" {
     v9_sha256  = optional(string)
     v9b_sha256 = string
     allow_read = optional(bool, false)
+    # Receipt pins checked by the in-process scorer before every own-model call:
+    # SHA-256 of each archive's model.safetensors and of the serving thresholds file.
+    v9_model_sha256   = optional(string)
+    v9b_model_sha256  = optional(string)
+    thresholds_sha256 = optional(string)
   })
   default     = null
   description = "Optional digest-pinned staging checkpoints. Provision storage before the upload, then enable reads for an approved analyzer window."
@@ -14,7 +19,8 @@ variable "staging_qa_model_archives" {
       length(var.allowed_account_ids) == 1 &&
       alltrue([for digest in [var.staging_qa_model_archives.v9_sha256, var.staging_qa_model_archives.v9b_sha256] : can(regex("^[a-f0-9]{64}$", digest)) if digest != null]) &&
       var.staging_qa_model_archives.v9b_sha256 != null &&
-      var.staging_qa_model_archives.v9_sha256 != var.staging_qa_model_archives.v9b_sha256
+      var.staging_qa_model_archives.v9_sha256 != var.staging_qa_model_archives.v9b_sha256 &&
+      alltrue([for digest in [var.staging_qa_model_archives.v9_model_sha256, var.staging_qa_model_archives.v9b_model_sha256, var.staging_qa_model_archives.thresholds_sha256] : can(regex("^[a-f0-9]{64}$", digest)) if digest != null])
     )
     error_message = "Staging archives require a pinned Stockholm staging account and a lowercase SHA-256 v9b archive digest. If supplied, the v9 digest must be valid and distinct."
   }
@@ -43,7 +49,22 @@ locals {
         { name = "OSRA_OWN_MODEL_${upper(tag)}_S3_KEY", value = local.staging_model_keys[tag] },
         { name = "OSRA_OWN_MODEL_${upper(tag)}_ARCHIVE_SHA256", value = digest },
       ]
+    ]),
+    flatten([
+      for tag, pin in local.staging_model_receipt_pins : [
+        { name = "OSRA_STAGING_QA_${upper(tag)}_MODEL_SHA256", value = pin },
+        { name = "OSRA_STAGING_QA_${upper(tag)}_THRESHOLDS_SHA256", value = var.staging_qa_model_archives.thresholds_sha256 },
+      ]
   ])) : []
+  # Rendered only when every pin is supplied, so a partial set never reaches the scorer.
+  staging_model_receipt_pins = (
+    try(var.staging_qa_model_archives.v9_model_sha256, null) != null &&
+    try(var.staging_qa_model_archives.v9b_model_sha256, null) != null &&
+    try(var.staging_qa_model_archives.thresholds_sha256, null) != null
+    ) ? {
+    v9  = var.staging_qa_model_archives.v9_model_sha256
+    v9b = var.staging_qa_model_archives.v9b_model_sha256
+  } : {}
 }
 
 resource "aws_s3_bucket" "staging_model_archives" {

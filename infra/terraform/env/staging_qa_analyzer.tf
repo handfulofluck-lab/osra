@@ -251,6 +251,14 @@ resource "aws_ecs_task_definition" "staging_qa_analyzer" {
       }
     }
   }])
+
+  lifecycle {
+    # An own-model window without every receipt pin refuses each call at runtime; fail the plan instead.
+    precondition {
+      condition     = !(local.staging_model_read && contains(["own", "both"], try(var.staging_qa_analyzer.engine, "bedrock"))) || length(local.staging_model_receipt_pins) == 2
+      error_message = "An armed own or both window that reads model archives needs v9_model_sha256, v9b_model_sha256 and thresholds_sha256."
+    }
+  }
 }
 
 resource "aws_ecs_service" "staging_qa_analyzer" {
