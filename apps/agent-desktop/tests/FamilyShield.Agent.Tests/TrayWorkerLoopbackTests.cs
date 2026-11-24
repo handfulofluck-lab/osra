@@ -64,6 +64,90 @@ public sealed class TrayWorkerLoopbackTests
         }
     }
 
+    [Fact]
+    public async Task StopAsyncAndDisposeReleaseFirstPipeInstanceForImmediateRebind()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "osra-worker-rebind", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var store = new LocalRuleStore(NullLogger<LocalRuleStore>.Instance,
+            Path.Combine(directory, "rules.db"), Path.Combine(directory, "status.json"));
+        var session = checked(Process.GetCurrentProcess().Id + 14000);
+        var sid = WindowsIdentity.GetCurrent().User!.Value;
+        var pid = Process.GetCurrentProcess().Id;
+        var image = Process.GetCurrentProcess().MainModule!.FileName;
+        var config = new AgentConfig { ApiBase = "https://unit.test" };
+        try
+        {
+            var server = new TrayServerWorker(
+                new FakeSessions(session, sid),
+                new FakeIdentityServerFactory(session, sid, pid, image),
+                new ListLogger<TrayServerWorker>(),
+                new ForegroundActivityAccumulator(store),
+                new ApiClient(new HttpClient(new SuccessHandler()) { BaseAddress = new Uri(config.ApiBase) }, config),
+                config, new TrayServerEvents(), new FakeRegistry(pid), new DesktopRestrictionState(), new FakeFallback());
+            try
+            {
+                await server.StartAsync(CancellationToken.None);
+                await using (var client = new NamedPipeClientStream(".", TrayPipeName.ForSession(session), PipeDirection.InOut, PipeOptions.Asynchronous))
+                {
+                    await client.ConnectAsync(5000, CancellationToken.None);
+                    await TrayProtocol.WriteAsync(client, new TrayMessage(TrayMessageKind.hello), TrayDirection.ToService);
+                    await server.SendAsync(new TrayMessage(TrayMessageKind.ring));
+                    var received = await TrayProtocol.ReadAsync(client, TrayDirection.ToTray);
+                    Assert.Equal(TrayMessageKind.ring, received.Kind);
+
+                    await server.StopAsync(CancellationToken.None);
+
+                    await using var reboundAfterStop = new TrayPipeServer(session, sid, pid,
+                        new FakeIdentitySource(new ClientIdentity(session, sid, pid, image)), image);
+                }
+            }
+            finally
+            {
+                server.Dispose();
+            }
+
+            var disposeWorker = new TrayServerWorker(
+                new FakeSessions(session, sid),
+                new FakeIdentityServerFactory(session, sid, pid, image),
+                new ListLogger<TrayServerWorker>(),
+                new ForegroundActivityAccumulator(store),
+                new ApiClient(new HttpClient(new SuccessHandler()) { BaseAddress = new Uri(config.ApiBase) }, config),
+                config, new TrayServerEvents(), new FakeRegistry(pid), new DesktopRestrictionState(), new FakeFallback());
+            disposeWorker.Synchronize();
+            await using (var client = new NamedPipeClientStream(".", TrayPipeName.ForSession(session), PipeDirection.InOut, PipeOptions.Asynchronous))
+            {
+                await client.ConnectAsync(5000, CancellationToken.None);
+                await TrayProtocol.WriteAsync(client, new TrayMessage(TrayMessageKind.hello), TrayDirection.ToService);
+                await disposeWorker.SendAsync(new TrayMessage(TrayMessageKind.ring));
+                var received = await TrayProtocol.ReadAsync(client, TrayDirection.ToTray);
+                Assert.Equal(TrayMessageKind.ring, received.Kind);
+
+                disposeWorker.Dispose();
+
+                await using var reboundAfterDispose = new TrayPipeServer(session, sid, pid,
+                    new FakeIdentitySource(new ClientIdentity(session, sid, pid, image)), image);
+            }
+        }
+        finally
+        {
+            store.Dispose();
+            try { Directory.Delete(directory, recursive: true); } catch (Exception) { }
+        }
+    }
+
+    private sealed class FakeIdentityServerFactory(int sessionId, string sid, int pid, string image) : ITrayServerFactory
+    {
+        public ITrayServer Create(int session, string userSid, int expectedPid) =>
+            new TrayPipeServer(session, userSid, expectedPid,
+                new FakeIdentitySource(new ClientIdentity(sessionId, sid, pid, image)), image);
+    }
+
+    private sealed class FakeIdentitySource(ClientIdentity identity) : IClientIdentitySource
+    {
+        public ClientIdentity Read(int clientPid) => identity;
+    }
+
     private sealed class RealServerFactory : ITrayServerFactory
     {
         public ITrayServer Create(int sessionId, string userSid, int expectedPid) =>

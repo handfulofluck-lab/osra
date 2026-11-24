@@ -76,6 +76,64 @@ public sealed class TrayServerWorkerTests
         }
     }
 
+    [Fact]
+    public async Task StopAsyncWaitsForSlotPipeCleanupBeforeReturning()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "osra-tray-worker-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var store = new LocalRuleStore(NullLogger<LocalRuleStore>.Instance,
+            Path.Combine(directory, "rules.db"), Path.Combine(directory, "status.json"));
+        try
+        {
+            var server = new DelayedDisposeServer(7, "user", TimeSpan.FromMilliseconds(120));
+            using var worker = new TrayServerWorker(
+                new FakeSessions([new InteractiveSession(7, "user", true)]), new SingleServerFactory(server),
+                NullLogger<TrayServerWorker>.Instance, new ForegroundActivityAccumulator(store),
+                new ApiClient(new HttpClient(), new AgentConfig()), new AgentConfig(), new TrayServerEvents(), new FakeProcessRegistry(42));
+
+            await worker.StartAsync(CancellationToken.None);
+            await server.AcceptStarted.WaitAsync(TimeSpan.FromSeconds(5));
+
+            await worker.StopAsync(CancellationToken.None);
+
+            Assert.True(server.Disposed, "StopAsync must wait for SessionSlot pipe disposal before returning.");
+        }
+        finally
+        {
+            store.Dispose();
+            try { Directory.Delete(directory, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
+    public async Task DisposeWaitsForSlotPipeCleanupBeforeReturning()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "osra-tray-worker-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var store = new LocalRuleStore(NullLogger<LocalRuleStore>.Instance,
+            Path.Combine(directory, "rules.db"), Path.Combine(directory, "status.json"));
+        try
+        {
+            var server = new DelayedDisposeServer(7, "user", TimeSpan.FromMilliseconds(120));
+            var worker = new TrayServerWorker(
+                new FakeSessions([new InteractiveSession(7, "user", true)]), new SingleServerFactory(server),
+                NullLogger<TrayServerWorker>.Instance, new ForegroundActivityAccumulator(store),
+                new ApiClient(new HttpClient(), new AgentConfig()), new AgentConfig(), new TrayServerEvents(), new FakeProcessRegistry(42));
+
+            worker.Synchronize();
+            await server.AcceptStarted.WaitAsync(TimeSpan.FromSeconds(5));
+
+            worker.Dispose();
+
+            Assert.True(server.Disposed, "Dispose must wait for SessionSlot pipe disposal before returning.");
+        }
+        finally
+        {
+            store.Dispose();
+            try { Directory.Delete(directory, recursive: true); } catch (IOException) { }
+        }
+    }
+
     private sealed class FakeSessions(IReadOnlyList<InteractiveSession> sessions) : IInteractiveSessionSource
     {
         public IReadOnlyList<InteractiveSession> List() => sessions;
@@ -120,6 +178,31 @@ public sealed class TrayServerWorkerTests
         {
             Disposed = true;
             return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class SingleServerFactory(ITrayServer server) : ITrayServerFactory
+    {
+        public ITrayServer Create(int sessionId, string userSid, int expectedPid) => server;
+    }
+
+    private sealed class DelayedDisposeServer(int sessionId, string userSid, TimeSpan disposeDelay) : ITrayServer
+    {
+        private readonly TaskCompletionSource _acceptStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task AcceptStarted => _acceptStarted.Task;
+        public bool Disposed { get; private set; }
+
+        public async Task<TrayPipeConnection> AcceptAsync(CancellationToken cancellationToken = default)
+        {
+            _acceptStarted.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return new TrayPipeConnection(new MemoryStream(), sessionId, userSid);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await Task.Delay(disposeDelay);
+            Disposed = true;
         }
     }
 }

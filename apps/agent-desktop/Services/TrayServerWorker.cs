@@ -32,9 +32,11 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
     private readonly IDesktopSessionFallback _fallback;
     private readonly Func<DateTime> _clock;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
+    private static readonly TimeSpan DisposeWaitTimeout = TimeSpan.FromSeconds(5);
     private DateTime? _lastSosUtc;
     private readonly Dictionary<int, SessionSlot> _slots = new();
     private readonly object _gate = new();
+    private bool _disposed;
 
     public TrayServerWorker(IInteractiveSessionSource sessions, ITrayServerFactory factory,
         ILogger<TrayServerWorker> log, ForegroundActivityAccumulator activity, ApiClient api,
@@ -78,6 +80,7 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
             var session = group.First();
             lock (_gate)
             {
+                if (_disposed) return;
                 try
                 {
                     if (_processRegistry?.ProcessIdForSession(session.SessionId) is not int expectedPid) continue;
@@ -233,15 +236,32 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         return null;
     }
 
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken);
+        var slots = DetachSlots();
+        foreach (var slot in slots) slot.RequestStop();
+        await Task.WhenAll(slots.Select(slot => slot.StopAsync(cancellationToken)));
+    }
+
     public override void Dispose()
     {
         _restrictions.PersistenceFailed -= ReportPersistenceFailure;
+        var slots = DetachSlots(markDisposed: true);
+        foreach (var slot in slots) slot.RequestStop();
+        foreach (var slot in slots) slot.Dispose();
+        base.Dispose();
+    }
+
+    private List<SessionSlot> DetachSlots(bool markDisposed = false)
+    {
         lock (_gate)
         {
-            foreach (var slot in _slots.Values) slot.Dispose();
+            if (markDisposed) _disposed = true;
+            var slots = _slots.Values.ToList();
             _slots.Clear();
+            return slots;
         }
-        base.Dispose();
     }
 
     internal sealed class SessionSlot
@@ -255,7 +275,10 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         private readonly Queue<TrayMessage> _responses = new();
         private readonly Queue<TrayMessage> _pending = new();
         private readonly object _gate = new();
+        private readonly object _stopGate = new();
         private readonly CancellationTokenSource _stop = new();
+        private Task? _runTask;
+        private bool _stopDisposed;
         private volatile bool _completed;
 
         public int SessionId => _session.SessionId;
@@ -287,12 +310,26 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
             }
         }
 
-        public async Task RunAsync(CancellationToken cancellationToken = default)
+        public Task RunAsync(CancellationToken cancellationToken = default)
         {
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _stop.Token);
+            lock (_gate)
+            {
+                _runTask ??= RunCoreAsync(cancellationToken);
+                return _runTask;
+            }
+        }
+
+        private async Task RunCoreAsync(CancellationToken cancellationToken)
+        {
+            CancellationTokenSource? linked = null;
             TrayPipeConnection? connection = null;
             try
             {
+                lock (_stopGate)
+                {
+                    if (_stopDisposed) return;
+                    linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _stop.Token);
+                }
                 connection = await _server.AcceptAsync(linked.Token);
                 _restrictions.MarkConnected(_session.SessionId, _clock());
                 foreach (var message in _restrictions.MessagesFor(_session.SessionId, _clock()))
@@ -312,13 +349,15 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
             {
                 try
                 {
-                    _stop.Cancel();
+                    RequestStop();
+                    try { linked?.Cancel(); } catch (ObjectDisposedException) { }
                     if (connection is not null)
                     {
                         _restrictions.MarkDisconnected(_session.SessionId, _clock());
                         await connection.DisposeAsync();
                     }
                     await _server.DisposeAsync();
+                    linked?.Dispose();
                 }
                 finally
                 {
@@ -368,6 +407,74 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
             lock (_gate) return _responses.Concat(_pending).ToArray();
         }
 
-        public void Dispose() => _stop.Cancel();
+        public void RequestStop()
+        {
+            lock (_stopGate)
+            {
+                if (_stopDisposed) return;
+                _stop.Cancel();
+            }
+        }
+
+        public async Task StopAsync(CancellationToken cancellationToken = default)
+        {
+            RequestStop();
+            Task? runTask;
+            lock (_gate) runTask = _runTask;
+            if (runTask is not null)
+            {
+                await runTask.WaitAsync(cancellationToken);
+                DisposeStop();
+                return;
+            }
+            if (TryBeginStopDispose())
+                await _server.DisposeAsync();
+        }
+
+        public void Dispose()
+        {
+            RequestStop();
+            Task? runTask;
+            lock (_gate) runTask = _runTask;
+            if (runTask is not null)
+            {
+                try
+                {
+                    if (runTask.Wait(DisposeWaitTimeout))
+                        DisposeStop();
+                }
+                catch (AggregateException)
+                {
+                    DisposeStop();
+                }
+                return;
+            }
+            if (TryBeginStopDispose())
+            {
+                try { _server.DisposeAsync().AsTask().Wait(DisposeWaitTimeout); }
+                catch (AggregateException) { }
+            }
+        }
+
+        private void DisposeStop()
+        {
+            lock (_stopGate)
+            {
+                if (_stopDisposed) return;
+                _stopDisposed = true;
+                _stop.Dispose();
+            }
+        }
+
+        private bool TryBeginStopDispose()
+        {
+            lock (_stopGate)
+            {
+                if (_stopDisposed) return false;
+                _stopDisposed = true;
+                _stop.Dispose();
+                return true;
+            }
+        }
     }
 }

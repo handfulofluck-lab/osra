@@ -624,7 +624,7 @@ hotkey as part of this build gate. The unsigned artifact has **not yet been inst
 clean Windows machine**. Claude owns the isolated Windows Server 2025 Standard/admin and cross-session
 pipe rows; acceptance still requires the roadmap's clean Windows 11 run.
 
-The W1 suite is **356 tests in each configuration**. It pins the launched PID and co-located image,
+The W1 suite is **371 tests in each configuration**. It pins the launched PID and co-located image,
 session-0 server verification without a SYSTEM process/token handle, NETWORK denial and token-derived
 session SIDs. A valid first frame other than `hello` is rejected and its connection closes directly rather
 than relying on an outer timeout. A non-SYSTEM server is refused before `hello` with a direct five-second
