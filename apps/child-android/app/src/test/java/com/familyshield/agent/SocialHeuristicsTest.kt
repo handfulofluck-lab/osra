@@ -72,4 +72,29 @@ class SocialHeuristicsTest {
         assertTrue(SocialHeuristics.shouldCapture(now - 1500L, now)) // exactly at the window edge
         assertTrue(SocialHeuristics.shouldCapture(now - 5000L, now))
     }
+
+    @Test
+    fun `resolveMonitoredApp prefers foreground chat app over soft keyboard package`() {
+        assertEquals(
+            "com.whatsapp" to "whatsapp",
+            SocialHeuristics.resolveMonitoredApp("com.whatsapp", "com.samsung.android.honeyboard"),
+        )
+        assertNull(SocialHeuristics.resolveMonitoredApp("com.android.chrome", "com.samsung.android.honeyboard"))
+    }
+
+    @Test
+    fun `extractCandidates retains newer short bad message even when an older long message exists`() {
+        val texts = listOf(
+            "Alex Rivera",
+            "Hey, how was school today and did you get a chance to finish the science assignment?",
+            "hey i got weed after school",
+            "11:15 AM",
+            "Message",
+        )
+        val (contact, candidates) = SocialHeuristics.extractCandidates(texts)
+        assertEquals("Alex Rivera", contact)
+        assertTrue("must include newest short bubble", candidates.contains("hey i got weed after school"))
+        assertFalse("must filter timestamp noise", candidates.contains("11:15 AM"))
+        assertFalse("must filter input placeholder", candidates.contains("Message"))
+    }
 }

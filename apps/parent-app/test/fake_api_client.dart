@@ -197,6 +197,7 @@ Map<String, dynamic> ruleSetPayload(
   String childId, {
   List<String>? blockedCategories,
   Map<String, bool>? socialMonitoring,
+  bool? searchMonitoring,
   List<String>? contactAllowlist,
   List<String>? alwaysAllowedApps,
   Map<String, dynamic>? webFilter,
@@ -236,6 +237,7 @@ Map<String, dynamic> ruleSetPayload(
         },
       ],
       if (socialMonitoring != null) 'socialMonitoring': socialMonitoring,
+      if (searchMonitoring != null) 'searchMonitoring': searchMonitoring,
       if (contactAllowlist != null) 'contactAllowlist': contactAllowlist,
       if (alwaysAllowedApps != null) 'alwaysAllowedApps': alwaysAllowedApps,
     };

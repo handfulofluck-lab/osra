@@ -13,8 +13,8 @@ const SearchEventSchema = z.object({
   deviceId: z.string().optional(),
   engine: z.string().min(1),
   query: z.string().min(1),
-  url: z.string().optional(),
   timestamp: z.string().optional(),
+  searchMonitoringRevision: z.number().int().positive().optional(),
 });
 
 const YouTubeWatchSchema = z.object({
@@ -38,10 +38,18 @@ const PREVIEW_MAX_CHARS = 240;
 type Severity = "info" | "warning" | "critical";
 interface Verdict { flagged: boolean; severity: Severity; concernTypes: string[] }
 
+const SEVERITY_RANK: Record<Severity, number> = { info: 0, warning: 1, critical: 2 };
+const AR_LETTER = "[\\u0621-\\u064A\\u0640]";
+const arabicSearchTerm = (alternation: string): RegExp =>
+  new RegExp(`(?<!${AR_LETTER})(?:[\\u0648\\u0641\\u0628\\u0644\\u0643])?(?:\\u0627\\u0644)?(?:${alternation})(?!${AR_LETTER})`);
+
 const SEARCH_LOCAL_PATTERNS: Array<{ pattern: RegExp; concern: string }> = [
   { pattern: /\b((how (to|can I|do I)|ways to|want to)\s+(kill myself|commit suicide|end my life)|suicide methods|painless (ways to die|death|suicide)|ways to die|kill myself)\b/i, concern: "self_harm" },
+  { pattern: arabicSearchTerm("انتحار|أريد أن أموت|ابغى أموت|طرق الانتحار"), concern: "self_harm" },
   { pattern: /\b(buy (guns?|glock|ammo|drugs|weed|fentanyl)|how to make a bomb|pipe bomb)\b/i, concern: "substance_abuse" },
-  { pattern: /\b(free porn|hentai|xxx|sex video|nude pics)\b/i, concern: "adult_content" },
+  { pattern: /\b(free porn|pornography|pornhub|xvideos|xnxx|xhamster|redtube|youporn|hentai|xxx|nsfw|sex videos?|sexual videos?|nude (pics?|photos?|videos?|girls?|boys?)|naked (girls?|women|men|pics?))\b/i, concern: "adult_content" },
+  { pattern: /\bporn\b/i, concern: "adult_content" },
+  { pattern: arabicSearchTerm("سكس|افلام سكس|أفلام سكس|اباحية|إباحية|بورن|صور عارية|نيك"), concern: "adult_content" },
   { pattern: /\b(how to hack|ddos tool|dox someone)\b/i, concern: "cyberbullying" },
 ];
 
@@ -107,7 +115,7 @@ export async function contentRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: parsed.error.flatten() });
     }
 
-    const { childId, deviceId, engine, query, url } = parsed.data;
+    const { childId, deviceId, engine, query, searchMonitoringRevision } = parsed.data;
 
     if (auth.device) {
       if (auth.device.childId && auth.device.childId !== childId) {
@@ -125,12 +133,50 @@ export async function contentRoutes(app: FastifyInstance) {
     if (!child) return reply.code(404).send({ error: "child_not_found" });
     // ADR-0008 §2b: withdrawal of consent stops collection.
     if (!(await assertProcessingAllowed(childId, reply))) return;
+    // ADR-0039 / osra-security#45 & #59: require explicit parent opt-in and matching active grant revision.
+    const ruleSet = await prisma.ruleSet.findUnique({
+      where: { childId },
+      select: { searchMonitoring: true, searchMonitoringRevision: true },
+    });
+    if (ruleSet?.searchMonitoring !== true) {
+      return reply.code(403).send({ error: "search_monitoring_disabled" });
+    }
+    const serverRevision = ruleSet.searchMonitoringRevision ?? 0;
+    if (searchMonitoringRevision == null || serverRevision <= 0 || searchMonitoringRevision !== serverRevision) {
+      return reply.code(409).send({ error: "stale_search_grant" });
+    }
 
     const childAge = child.birthYear
       ? new Date().getFullYear() - child.birthYear
       : undefined;
 
-    const verdict = (await analyzeContentWithAi(query, "search", childAge)) ?? localSearchCheck(query);
+    const ai = await analyzeContentWithAi(query, "search", childAge);
+    const local = localSearchCheck(query);
+    // Union of AI and local pattern check (matching #938 social scan): a local hit is never
+    // overridden by an English-only or safe model verdict, and critical categories drive
+    // alert routing from the full union before metadata bounds are applied (osra-security#55).
+    const fullConcerns = [
+      ...new Set([
+        ...(ai?.flagged ? ai.concernTypes : []),
+        ...(local.flagged ? local.concernTypes : []),
+      ]),
+    ];
+    const hasCriticalSelfHarm = fullConcerns.includes("self_harm");
+    const boundedConcerns = [
+      ...fullConcerns.filter((c) => c === "self_harm"),
+      ...fullConcerns.filter((c) => c !== "self_harm"),
+    ].slice(0, 3);
+    const verdict: Verdict = ai?.flagged
+      ? local.flagged
+        ? {
+            flagged: true,
+            severity: SEVERITY_RANK[ai.severity] >= SEVERITY_RANK[local.severity] ? ai.severity : local.severity,
+            concernTypes: boundedConcerns,
+          }
+        : { ...ai, concernTypes: boundedConcerns }
+      : local.flagged
+        ? { ...local, concernTypes: boundedConcerns }
+        : ai ?? local;
     if (!verdict.flagged) {
       return reply.code(200).send({ flagged: false, severity: "info" as Severity, concernTypes: [] });
     }
@@ -162,12 +208,12 @@ export async function contentRoutes(app: FastifyInstance) {
         familyId: child.familyId,
         deviceId: effectiveDeviceId,
         severity: verdict.severity,
-        category: verdict.concernTypes.includes("self_harm") ? "self_harm" : "ai_concern",
+        category: hasCriticalSelfHarm ? "self_harm" : "ai_concern",
         title: `Search query concern on ${engine}`,
         body: `A concerning search was conducted on ${engine}`,
         bodyKey: "alertBodySearchFlagged",
         params: { engine },
-        metadata: { engine, concernTypes: verdict.concernTypes, url },
+        metadata: { engine, concernTypes: verdict.concernTypes },
         childName: child.displayName,
       });
       alertId = alert.id;

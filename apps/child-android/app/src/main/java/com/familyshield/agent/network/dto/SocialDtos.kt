@@ -16,7 +16,17 @@ data class SocialScanDto(
     val source: String = "screen",
 )
 
-/** One signed flush. The envelope names the device before the API validates each item. */
+/** Minimal submitted search query payload for POST /v1/content/search-event (osra-security#45). */
+data class SearchEventDto(
+    val childId: String,
+    val deviceId: String,
+    val engine: String,
+    val query: String,
+    val timestamp: String? = null,
+    val searchMonitoringRevision: Int = 0,
+)
+
+/** One signed flush. The envelope names the device before the API validates each item (#967). */
 data class SocialScanBatchDto(val deviceId: String, val items: List<SocialScanDto>)
 
 /** #490: the server answers each item of a batch on its own, in the order sent. */

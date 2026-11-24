@@ -2,7 +2,9 @@ package com.familyshield.agent
 
 import android.content.Context
 import com.familyshield.agent.data.AgentSettings
+import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
+import com.familyshield.agent.data.db.AgentStateDao
 import com.familyshield.agent.data.db.PendingScanDao
 import com.familyshield.agent.data.db.PendingScanEntity
 import com.familyshield.agent.network.ApiService
@@ -125,11 +127,13 @@ class SocialScanQueueFlushTest {
         )
         val settings = Mockito.mock(AgentSettings::class.java)
         val rules = Mockito.mock(RuleRepository::class.java)
+        val agentStateDao = Mockito.mock(AgentStateDao::class.java)
+        val consent = Mockito.mock(ConsentState::class.java)
         val context = Mockito.mock(Context::class.java)
         return runBlocking {
             Mockito.`when`(settings.childId()).thenReturn("child")
             Mockito.`when`(settings.deviceId()).thenReturn("device")
-            SocialScanQueue(api, settings, rules, dao, context)
+            SocialScanQueue(api, settings, rules, dao, agentStateDao, consent, context)
         }
     }
 
@@ -187,6 +191,30 @@ class SocialScanQueueFlushTest {
                 data.removeAll { it.createdAt < olderThanMs || it.attempts >= maxAttempts }
                 before - data.size
             }
+        }
+
+        override suspend fun deleteBySource(source: String): Int = synchronized(data) {
+            val before = data.size
+            data.removeAll { it.source == source }
+            before - data.size
+        }
+
+        override suspend fun deleteAllSearches(): Int = synchronized(data) {
+            val before = data.size
+            data.removeAll { it.source == "search" || it.source.startsWith("search:") }
+            before - data.size
+        }
+
+        override suspend fun deleteStaleSearches(activeSource: String): Int = synchronized(data) {
+            val before = data.size
+            data.removeAll { (it.source == "search" || it.source.startsWith("search:")) && it.source != activeSource }
+            before - data.size
+        }
+
+        override suspend fun deleteBefore(beforeMs: Long): Int = synchronized(data) {
+            val before = data.size
+            data.removeAll { it.createdAt < beforeMs }
+            before - data.size
         }
 
         fun rows(): List<PendingScanEntity> = synchronized(data) { data.toList() }

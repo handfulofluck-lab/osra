@@ -1,13 +1,20 @@
 package com.familyshield.agent.social
 
 import com.familyshield.agent.comms.Allowlist
+import com.familyshield.agent.comms.CommsConsentPolicy
+import com.familyshield.agent.comms.CommsWatermarkPolicy
 import com.familyshield.agent.data.AgentSettings
+import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
+import com.familyshield.agent.data.db.AgentStateDao
+import com.familyshield.agent.data.db.AgentStateEntity
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.AlertDto
+import com.familyshield.agent.network.dto.SearchEventDto
 import com.familyshield.agent.network.dto.SocialScanBatchDto
 import com.familyshield.agent.network.dto.SocialScanDto
 import java.security.MessageDigest
+import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
@@ -24,20 +31,64 @@ import kotlinx.coroutines.sync.withLock
 /**
  * Feature #2/#17 social scan queue: batches redacted captures for 3 s, dedupes by content hash,
  * caps the send rate at [MAX_SENDS_PER_MINUTE] and HMAC-POSTs the batch, six captures per request
- * (#490), to POST /v1/social/scan (the server runs the AI scan and raises alerts). On 200 nothing extra happens
- * here — flagged content surfaces as server-side alerts. A numeric contact (e.g. an unsaved
- * WhatsApp number) is also checked against the Feature #27 allowlist; an unknown number raises a
- * throttled unknown_contact alert (1 per hour per number, allowlist empty = disabled).
+ * (#490), to POST /v1/social/scan (the server runs the AI scan and raises alerts). Also durably
+ * queues opted-in submitted search queries (`SOURCE_SEARCH`, `osra-security#45`), honoring
+ * [ConsentState] pause/approval-epoch transitions across enqueue and upload.
  */
 @Singleton
-class SocialScanQueue @Inject constructor(
+class SocialScanQueue internal constructor(
     private val api: ApiService,
-    private val settings: AgentSettings,
-    private val rules: RuleRepository,
     private val dao: com.familyshield.agent.data.db.PendingScanDao,
-    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
+    private val childIdProvider: suspend () -> String?,
+    private val deviceIdProvider: suspend () -> String?,
+    private val allowlistProvider: () -> List<String>,
+    private val searchMonitoringEnabledProvider: () -> Boolean,
+    private val searchSyncConfirmedProvider: () -> Boolean = { true },
+    private val searchOptInRevisionProvider: () -> Long = { 0L },
+    private val getSearchPurgePending: suspend () -> Boolean = { false },
+    private val setSearchPurgePending: suspend (Boolean) -> Unit = {},
+    private val consentPausedProvider: () -> Boolean,
+    private val consentEpochProvider: () -> Long,
+    private val consentResumedAtProvider: () -> Long,
+    private val getStoredConsentEpoch: suspend () -> Long?,
+    private val setStoredConsentEpoch: suspend (Long) -> Unit,
+    private val retryScheduler: () -> Unit,
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    private val flushDelayMs: Long = FLUSH_DELAY_MS,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Inject
+    constructor(
+        api: ApiService,
+        settings: AgentSettings,
+        rules: RuleRepository,
+        dao: com.familyshield.agent.data.db.PendingScanDao,
+        agentStateDao: AgentStateDao,
+        consent: ConsentState,
+        @dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context,
+    ) : this(
+        api = api,
+        dao = dao,
+        childIdProvider = { settings.childId() },
+        deviceIdProvider = { settings.deviceId() },
+        allowlistProvider = { rules.contactAllowlist() },
+        searchMonitoringEnabledProvider = { rules.searchMonitoringEnabled() },
+        searchSyncConfirmedProvider = { rules.searchSyncConfirmed() },
+        searchOptInRevisionProvider = { rules.searchOptInRevision() },
+        getSearchPurgePending = {
+            (agentStateDao.get(RuleRepository.KEY_SEARCH_PURGE_PENDING) ?: 0L) != 0L
+        },
+        setSearchPurgePending = { pending ->
+            agentStateDao.set(
+                AgentStateEntity(RuleRepository.KEY_SEARCH_PURGE_PENDING, if (pending) 1L else 0L),
+            )
+        },
+        consentPausedProvider = { consent.isPaused() },
+        consentEpochProvider = { consent.pauseEpoch() },
+        consentResumedAtProvider = { consent.resumedAtMs() },
+        getStoredConsentEpoch = { agentStateDao.get(KEY_SCAN_CONSENT_EPOCH) },
+        setStoredConsentEpoch = { epoch -> agentStateDao.set(AgentStateEntity(KEY_SCAN_CONSENT_EPOCH, epoch)) },
+        retryScheduler = { ScanFlushWorker.scheduleRetry(context) },
+    )
     private val mutex = Mutex()
     private val recentHashes = LinkedHashMap<String, Long>() // insertion-ordered for pruning
     private val sendTimestamps = ArrayDeque<Long>()
@@ -46,71 +97,274 @@ class SocialScanQueue @Inject constructor(
 
     /**
      * Queues one capture **durably** (plan 2.6: a Room row, so a kill, a reboot or an offline stretch
-     * loses nothing) and flushes after [FLUSH_DELAY_MS] of quiet. Dedupe and the send-rate cap are
+     * loses nothing) and flushes after [flushDelayMs] of quiet. Dedupe, consent, and rate cap are
      * applied before the row is written. [source] is where the text came from (screen / notification).
      */
     fun enqueue(app: String, contact: String?, text: String, nowMs: Long = System.currentTimeMillis(), source: String = ScanQueuePolicy.SOURCE_SCREEN) {
-        if (text.isBlank()) return
+        if (text.isBlank() || consentPausedProvider()) return
         val hash = dedupeHash(app, contact, text)
         scope.launch {
-            mutex.withLock {
-                val last = recentHashes[hash]
-                if (last != null && nowMs - last < DEDUPE_WINDOW_MS) return@withLock
-                if (!withinRateLimit(sendTimestamps, nowMs, RATE_WINDOW_MS, MAX_SENDS_PER_MINUTE)) {
-                    return@withLock // NOTE: over rate — drop; the next user action re-captures.
-                }
-                recentHashes[hash] = nowMs
-                pruneLocked(nowMs)
-                runCatching {
-                    dao.insert(com.familyshield.agent.data.db.PendingScanEntity(app = app, contact = contact, text = text, source = source, createdAt = nowMs))
-                }
-                if (flushJob == null) {
-                    flushJob = scope.launch { delay(FLUSH_DELAY_MS); flush() }
-                }
-            }
+            enqueueLocked(app = app, contact = contact, text = text, nowMs = nowMs, source = source, hash = hash, scheduleFlush = true)
         }
     }
 
     /**
+     * Queues a confirmed submitted search query **durably** in `pending_scans` (`osra-security#45`, ADR-0039)
+     * without URL data. Respects [consentPausedProvider] and [searchMonitoringEnabledProvider] and flushes after [flushDelayMs].
+     */
+    fun enqueueSearch(engine: String, query: String, nowMs: Long = System.currentTimeMillis()) {
+        if (engine.isBlank() || query.isBlank()) return
+        if (consentPausedProvider() || !searchMonitoringEnabledProvider()) return
+        val hash = dedupeHash("search:$engine", null, query)
+        scope.launch {
+            if (consentPausedProvider() || !searchMonitoringEnabledProvider()) return@launch
+            enqueueLocked(app = engine, contact = null, text = query, nowMs = nowMs, source = ScanQueuePolicy.SOURCE_SEARCH, hash = hash, scheduleFlush = true)
+        }
+    }
+
+    /** Synchronous internal enqueue helper for durable queue and restart-recovery tests. */
+    internal suspend fun enqueueForFlush(
+        app: String,
+        contact: String?,
+        text: String,
+        nowMs: Long,
+        source: String,
+    ): Boolean {
+        if (app.isBlank() || text.isBlank() || consentPausedProvider()) return false
+        val isSearch = ScanQueuePolicy.isSearchSource(source)
+        if (isSearch && !searchMonitoringEnabledProvider()) return false
+        val hash = dedupeHash(if (isSearch) "search:$app" else app, contact, text)
+        return enqueueLocked(app = app, contact = contact, text = text, nowMs = nowMs, source = source, hash = hash, scheduleFlush = false)
+    }
+
+    private suspend fun enqueueLocked(
+        app: String,
+        contact: String?,
+        text: String,
+        nowMs: Long,
+        source: String,
+        hash: String,
+        scheduleFlush: Boolean,
+    ): Boolean = mutex.withLock {
+        val epochAtEntry = consentEpochProvider()
+        val isSearch = ScanQueuePolicy.isSearchSource(source)
+        val searchRevAtEntry = if (isSearch) searchOptInRevisionProvider() else 0L
+        val persistedSource = if (isSearch) ScanQueuePolicy.searchSource(searchRevAtEntry) else source
+        if (consentPausedProvider()) return@withLock false
+        if (isSearch && !searchMonitoringEnabledProvider()) return@withLock false
+        val last = recentHashes[hash]
+        if (last != null && nowMs - last < DEDUPE_WINDOW_MS) return@withLock false
+        if (!withinRateLimit(sendTimestamps, nowMs, RATE_WINDOW_MS, MAX_SENDS_PER_MINUTE)) {
+            return@withLock false // NOTE: over rate — drop; the next user action re-captures.
+        }
+        if (isSearch) {
+            // Require any pending search opt-out purge to clear cleanly before admitting a newly granted row (#59).
+            val pendingRes = runCatching { getSearchPurgePending() }
+            if (pendingRes.isFailure) return@withLock false
+            if (pendingRes.getOrNull() == true) {
+                val cleared = if (searchRevAtEntry > 0L) {
+                    runCatching { dao.deleteStaleSearches(persistedSource) }.isSuccess
+                } else {
+                    runCatching { dao.deleteAllSearches() }.isSuccess
+                }
+                if (!cleared || runCatching { setSearchPurgePending(false) }.isFailure) {
+                    return@withLock false
+                }
+            }
+        }
+        // Re-check consent, opt-in, and revision immediately before inserting so a concurrent opt-out writes nothing.
+        if (consentPausedProvider() || consentEpochProvider() != epochAtEntry) return@withLock false
+        if (isSearch && (!searchMonitoringEnabledProvider() || searchOptInRevisionProvider() != searchRevAtEntry)) {
+            return@withLock false
+        }
+        recentHashes[hash] = nowMs
+        pruneLocked(nowMs)
+        val inserted = runCatching {
+            dao.insert(com.familyshield.agent.data.db.PendingScanEntity(app = app, contact = contact, text = text, source = persistedSource, createdAt = nowMs))
+        }.isSuccess
+        if (inserted && scheduleFlush && (flushJob == null || flushJob?.isActive != true)) {
+            flushJob = scope.launch { delay(flushDelayMs); flush() }
+        }
+        inserted
+    }
+
+    /**
      * Sends the oldest queued rows (serialized), [ScanQueuePolicy.ITEMS_PER_REQUEST] per request (#490).
-     * A row is deleted when the server answers `ok` for it, kept with `attempts + 1` otherwise, and purged by [ScanQueuePolicy.shouldKeep]'s limits; when a network failure leaves
-     * rows behind, [ScanFlushWorker] is scheduled to retry under a network constraint.
+     * Honors [consentPausedProvider], approval-epoch resets (`CommsConsentPolicy`), and cleans up all
+     * pending search rows (`SOURCE_SEARCH`) across the entire queue when search monitoring is opted out.
+     * When a network failure leaves rows behind, [retryScheduler] schedules a network-constrained retry.
      */
     suspend fun flush() {
         mutex.withLock {
             val callerJob = currentCoroutineContext()[Job]
-            if (flushJob != null && flushJob !== callerJob) flushJob?.cancel()
+            if (flushJob != null && flushJob !== callerJob) {
+                flushJob?.cancel()
+            }
             flushJob = null
+
+            // Clean up all pending search rows (even beyond BATCH_SIZE) whenever fresh server sync confirms opt-in is absent/revoked (#59).
+            var searchPurgeFailed = false
+            if (searchSyncConfirmedProvider() && !searchMonitoringEnabledProvider()) {
+                runCatching { setSearchPurgePending(true) }
+                if (runCatching { dao.deleteAllSearches() }.isSuccess) {
+                    runCatching { setSearchPurgePending(false) }
+                } else {
+                    searchPurgeFailed = true
+                }
+            }
+
+            if (consentPausedProvider()) {
+                if (searchPurgeFailed) retryScheduler()
+                return@withLock
+            }
+            val epoch = consentEpochProvider()
+            val storedEpochResult = runCatching { getStoredConsentEpoch() }
+            if (storedEpochResult.isFailure) return@withLock
+            val storedEpoch = CommsWatermarkPolicy.normalize(storedEpochResult.getOrNull())
+            val restartFrom = CommsConsentPolicy.resetTo(
+                storedEpoch = storedEpoch,
+                epoch = epoch,
+                paused = false,
+                resumedAtMs = consentResumedAtProvider(),
+            )
+            if (restartFrom != null) {
+                // Purge captures created under a revoked consent epoch before advancing epoch or permitting a send (#56).
+                if (runCatching { dao.deleteBefore(restartFrom) }.isFailure) return@withLock
+                if (runCatching { setStoredConsentEpoch(epoch) }.isFailure) return@withLock
+                recentHashes.clear()
+            } else if (storedEpoch == null && epoch == 0L) {
+                if (runCatching { setStoredConsentEpoch(0L) }.isFailure) return@withLock
+            }
+
             val now = System.currentTimeMillis()
             runCatching { dao.purge(now - ScanQueuePolicy.MAX_AGE_MS, ScanQueuePolicy.MAX_ATTEMPTS) }
                 .onFailure { if (it is CancellationException) throw it }
             val batch = runCatching { dao.oldest(ScanQueuePolicy.BATCH_SIZE) }
                 .onFailure { if (it is CancellationException) throw it }
                 .getOrDefault(emptyList())
-            if (batch.isEmpty()) return@withLock
-            val childId = settings.childId()
-            val deviceId = settings.deviceId()
-            if (childId == null || deviceId == null) return@withLock // not paired: keep the rows for after pairing
-            // #490: one request per ITEMS_PER_REQUEST rows, not one per row; each row is settled by its
-            // own answer, so one bad capture never drops the others.
-            val outcome = ScanBatchSender<com.familyshield.agent.data.db.PendingScanEntity>(
-                toDto = { row ->
-                    SocialScanDto(childId = childId, deviceId = deviceId, app = row.app, contact = row.contact, text = row.text, source = row.source)
-                },
-                post = { items -> api.postSocialScanBatch(SocialScanBatchDto(deviceId = deviceId, items = items)).results },
-                isPermanentRejection = { e -> e is retrofit2.HttpException && e.code() in 400..499 && e.code() != 429 },
-            ).send(batch)
-            for (row in outcome.sent) {
-                sendTimestamps.addLast(System.currentTimeMillis())
-                runCatching { dao.delete(row.id) }
-                row.contact?.let { maybeAlertUnknownContact(it, row.app) }
+            if (batch.isEmpty()) {
+                if (searchPurgeFailed) retryScheduler()
+                return@withLock
             }
-            // The server will never take these: count them down to the drop.
-            for (row in outcome.rejected) runCatching { dao.bumpAttempts(row.id) }
-            for (row in outcome.failed) runCatching { dao.bumpAttempts(row.id) }
-            val networkFailure = outcome.failed.isNotEmpty()
+            val childId = childIdProvider()
+            val deviceId = deviceIdProvider()
+            if (childId == null || deviceId == null) {
+                if (searchPurgeFailed) retryScheduler()
+                return@withLock // not paired: keep the rows for after pairing
+            }
+            val (searchRows, socialRows) = batch.partition { ScanQueuePolicy.isSearchSource(it.source) }
+            var anyNetworkFailure = searchPurgeFailed
+
+            if (socialRows.isNotEmpty()) {
+                if (consentPausedProvider() || consentEpochProvider() != epoch) return@withLock
+                // #490 / #967: one request per ITEMS_PER_REQUEST rows with top-level deviceId envelope for HMAC;
+                // each row is settled by its own answer, so one bad capture never drops the others.
+                val outcome = ScanBatchSender<com.familyshield.agent.data.db.PendingScanEntity>(
+                    toDto = { row ->
+                        SocialScanDto(childId = childId, deviceId = deviceId, app = row.app, contact = row.contact, text = row.text, source = row.source)
+                    },
+                    post = { items -> api.postSocialScanBatch(SocialScanBatchDto(deviceId = deviceId, items = items)).results },
+                    isPermanentRejection = { e -> e is retrofit2.HttpException && e.code() in 400..499 && e.code() != 429 },
+                ).send(socialRows)
+                for (row in outcome.sent) {
+                    sendTimestamps.addLast(System.currentTimeMillis())
+                    runCatching { dao.delete(row.id) }
+                    row.contact?.let { maybeAlertUnknownContact(it, row.app) }
+                }
+                // The server will never take these: count them down to the drop.
+                for (row in outcome.rejected) runCatching { dao.bumpAttempts(row.id) }
+                for (row in outcome.failed) runCatching { dao.bumpAttempts(row.id) }
+                if (outcome.failed.isNotEmpty()) anyNetworkFailure = true
+            }
+
+            if (searchRows.isNotEmpty() || !searchPurgeFailed) {
+                if (!searchSyncConfirmedProvider()) {
+                    // Hold queued search rows un-uploaded until live rules sync verifies server opt-in & revision (RuleRepository.kt:97).
+                    if (searchRows.isNotEmpty()) anyNetworkFailure = true
+                } else if (!searchMonitoringEnabledProvider()) {
+                    if (!searchPurgeFailed && runCatching { dao.deleteAllSearches() }.isFailure) {
+                        runCatching { setSearchPurgePending(true) }
+                        anyNetworkFailure = true
+                    }
+                } else {
+                    val activeRev = searchOptInRevisionProvider()
+                    val activeSource = ScanQueuePolicy.searchSource(activeRev)
+                    val pendingRes = runCatching { getSearchPurgePending() }
+                    val pendingPurge = pendingRes.getOrNull() == true
+                    val hasStaleSearches = searchRows.any { it.source != activeSource }
+                    var eligibleSearchRows: List<com.familyshield.agent.data.db.PendingScanEntity> = searchRows
+                    if (pendingRes.isFailure) {
+                        eligibleSearchRows = emptyList()
+                        anyNetworkFailure = true
+                    } else if (pendingPurge || hasStaleSearches) {
+                        val cleaned = if (activeRev > 0L) {
+                            runCatching { dao.deleteStaleSearches(activeSource) }.isSuccess
+                        } else {
+                            runCatching { dao.deleteAllSearches() }.isSuccess
+                        }
+                        if (!cleaned || runCatching { setSearchPurgePending(false) }.isFailure) {
+                            eligibleSearchRows = emptyList()
+                            anyNetworkFailure = true
+                        } else {
+                            eligibleSearchRows = if (activeRev > 0L) {
+                                searchRows.filter { it.source == activeSource }
+                            } else {
+                                emptyList()
+                            }
+                        }
+                    }
+
+                    for (row in eligibleSearchRows) {
+                        if (consentPausedProvider() || consentEpochProvider() != epoch) break
+                        if (!searchMonitoringEnabledProvider() || searchOptInRevisionProvider() != activeRev) {
+                            runCatching { setSearchPurgePending(true) }
+                            if (runCatching { dao.deleteAllSearches() }.isSuccess) {
+                                runCatching { setSearchPurgePending(false) }
+                            } else {
+                                anyNetworkFailure = true
+                            }
+                            break
+                        }
+                        val rowRev = ScanQueuePolicy.parseSearchRevision(row.source)?.toInt()
+                        if (rowRev == null || rowRev <= 0 || rowRev.toLong() != activeRev) {
+                            runCatching { dao.delete(row.id) }
+                            continue
+                        }
+                        try {
+                            api.postSearchEvent(
+                                SearchEventDto(
+                                    childId = childId,
+                                    deviceId = deviceId,
+                                    engine = row.app,
+                                    query = row.text,
+                                    timestamp = Instant.ofEpochMilli(row.createdAt).toString(),
+                                    searchMonitoringRevision = rowRev,
+                                ),
+                            )
+                            sendTimestamps.addLast(System.currentTimeMillis())
+                            runCatching { dao.delete(row.id) }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: retrofit2.HttpException) {
+                            if (e.code() == 403 || e.code() == 409) {
+                                // Server refused due to disabled opt-in or stale searchMonitoringRevision (#59): purge without retry.
+                                runCatching { dao.delete(row.id) }
+                            } else if (e.code() in 400..499 && e.code() != 429) {
+                                runCatching { dao.bumpAttempts(row.id) }
+                            } else {
+                                anyNetworkFailure = true
+                                runCatching { dao.bumpAttempts(row.id) }
+                            }
+                        } catch (_: Exception) {
+                            anyNetworkFailure = true
+                            runCatching { dao.bumpAttempts(row.id) }
+                        }
+                    }
+                }
+            }
+
             val remaining = runCatching { dao.count() }.getOrDefault(0)
-            if (ScanQueuePolicy.retryLater(networkFailure, remaining)) ScanFlushWorker.scheduleRetry(context)
+            if (ScanQueuePolicy.retryLater(anyNetworkFailure, remaining)) retryScheduler()
         }
     }
 
@@ -121,18 +375,18 @@ class SocialScanQueue @Inject constructor(
     private suspend fun maybeAlertUnknownContact(contact: String, app: String) {
         val digits = contact.filter { it.isDigit() }
         if (digits.length < Allowlist.MIN_NUMBER_DIGITS) return // a name, not a number
-        val allowlist = rules.contactAllowlist()
+        val allowlist = allowlistProvider()
         if (!Allowlist.isUnknownContact(contact, allowlist)) return
         val now = System.currentTimeMillis()
         val last = lastAlertAt[digits]
         if (last != null && now - last < ALERT_THROTTLE_MS) return
         lastAlertAt[digits] = now
-        val childId = settings.childId() ?: return
+        val childId = childIdProvider() ?: return
         runCatching {
             api.postInternalAlert(
                 AlertDto(
                     childId = childId,
-                    deviceId = settings.deviceId(),
+                    deviceId = deviceIdProvider(),
                     severity = "info",
                     category = "unknown_contact",
                     title = "Unknown contact",
@@ -154,6 +408,8 @@ class SocialScanQueue @Inject constructor(
     }
 
     companion object {
+        const val KEY_SCAN_CONSENT_EPOCH: String = "scan_consent_epoch"
+
         /** Quiet period before a batch is flushed. */
         const val FLUSH_DELAY_MS: Long = 3000L
 
