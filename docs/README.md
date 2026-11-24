@@ -86,6 +86,7 @@ Start here. This page is the map: what each document is for, and which one to re
 | [`test-guides/CHROMEBOOK-KINDLE-PATH.md`](test-guides/CHROMEBOOK-KINDLE-PATH.md) | Roadmap for the Chromebook/Kindle paths |
 | [`../apps/child-ios/QA-IOS.md`](../apps/child-ios/QA-IOS.md) | iOS status, limitations and what still requires a Mac |
 | [`../apps/child-ios/MacAgent/README.md`](../apps/child-ios/MacAgent/README.md) | The Mac's background agent (5.9 step ii): what it does, its commands, and the test-Mac rows |
+| [`QA/swap-test-2026-11-24.md`](QA/swap-test-2026-11-24.md) | Plain-language numbered walkthrough for Karim's Tue 24 Nov 2026 swapped-role live test (Flip4 parent, iPhone child 1, Android child 2; #1024) |
 
 ## Conventions
 
