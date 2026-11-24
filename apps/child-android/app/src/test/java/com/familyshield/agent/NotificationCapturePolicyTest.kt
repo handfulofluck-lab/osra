@@ -377,5 +377,14 @@ class NotificationCapturePolicyTest {
             true,
             com.familyshield.agent.data.RuleRepository.socialMonitoringEnabled(mapOf("instagram" to false), "whatsapp"),
         )
+        // Issue #1036: the legacy "x" key still turns Twitter off, and the canonical key wins.
+        assertEquals(
+            false,
+            com.familyshield.agent.data.RuleRepository.socialMonitoringEnabled(mapOf("x" to false), "twitter"),
+        )
+        assertEquals(
+            true,
+            com.familyshield.agent.data.RuleRepository.socialMonitoringEnabled(mapOf("twitter" to true, "x" to false), "twitter"),
+        )
     }
 }
