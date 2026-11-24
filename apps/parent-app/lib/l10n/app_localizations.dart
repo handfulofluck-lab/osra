@@ -5702,6 +5702,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'+{count} new'**
   String socialAlertNewSince(int count);
+
+  /// #1046, UI/UX Bureau 7120870405: neutral empty-state card title for iPhone children on Apps and Reports.
+  ///
+  /// In en, this message translates to:
+  /// **'App details stay on {child}\'s iPhone'**
+  String iphoneAppDetailsTitle(String child);
+
+  /// #1046, UI/UX Bureau 7120870405: neutral empty-state card body for iPhone children on Apps and Reports.
+  ///
+  /// In en, this message translates to:
+  /// **'Apple doesn\'t share the list of apps or minutes used with other apps. You can still block apps and set limits from {child}\'s iPhone.'**
+  String iphoneAppDetailsBody(String child);
+
+  /// #1046, UI/UX Bureau 7120870405: button opening the 3-step iPhone app control explanation sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'How it works'**
+  String get iphoneAppDetailsHowItWorks;
+
+  /// #1046, UI/UX Bureau 7120870405: replaces the screen-time bar on Dashboard and child profile for iPhone-only children.
+  ///
+  /// In en, this message translates to:
+  /// **'Screen time: shown on {child}\'s iPhone'**
+  String screenTimeShownOnIphone(String child);
+
+  /// #1046: title of the 3-step sheet opened by How it works.
+  ///
+  /// In en, this message translates to:
+  /// **'How app control works on iPhone'**
+  String get iphoneHowItWorksTitle;
+
+  /// #1046: step 1 in the How it works sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Open OSRA on {child}\'s iPhone and group the apps you want to manage.'**
+  String iphoneHowItWorksStep1(String child);
+
+  /// #1046: step 2 in the How it works sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Each app group appears in OSRA on your phone so you can block or allow it anytime.'**
+  String get iphoneHowItWorksStep2;
+
+  /// #1046: step 3 in the How it works sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'To check minutes used per app, open Settings > Screen Time on {child}\'s iPhone.'**
+  String iphoneHowItWorksStep3(String child);
 }
 
 class _AppLocalizationsDelegate

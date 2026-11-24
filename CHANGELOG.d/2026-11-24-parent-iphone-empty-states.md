@@ -1,0 +1,2 @@
+### Parent app — neutral iPhone empty states on Dashboard, child profile, Apps, and Reports (#1046)
+- Replace `"0 min"` / `"0 / 120 min"` bars and empty per-app lists for iPhone-only children (`Device.platform == 'ios'`) with plain `"Screen time: shown on <child>'s iPhone"` copy (keeping the daily limit visible) and a neutral `IphoneAppDetailsCard` (`Icons.phone_iphone`, `surfaceContainer`, 3-step `"How it works"` sheet), leaving Android-only, mixed-device, and unpaired children unchanged.

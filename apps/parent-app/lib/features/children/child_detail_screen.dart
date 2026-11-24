@@ -26,6 +26,8 @@ import '../social/social_screen.dart' show SocialSectionsView, socialAppLabel;
 import '../map/child_location_view.dart';
 import 'app_groups_section.dart';
 import 'child_apps_list.dart';
+import 'child_platform.dart';
+import 'iphone_app_details_card.dart';
 import 'phone_setup_section.dart';
 import 'command_history_screen.dart' show formatCommandTime;
 import 'device_control_state.dart';
@@ -164,6 +166,9 @@ class _OverviewTab extends ConsumerWidget {
     final overview = ref.watch(familyProvider).valueOrNull;
     final child = overview?.children.where((c) => c.id == childId).firstOrNull;
     final devices = overview?.devicesFor(childId) ?? const <Device>[];
+    final iphoneOnly = isIphoneOnlyChild(devices);
+    final rules = ref.watch(rulesProvider(childId)).valueOrNull;
+    final dailyLimit = rules?.screenTime.dailyLimitMinutes ?? 0;
     final internetPaused = ref.watch(internetPausedProvider(childId)).valueOrNull ?? false;
     if (overview == null) return const Center(child: CircularProgressIndicator());
     return RefreshIndicator(
@@ -190,6 +195,51 @@ class _OverviewTab extends ConsumerWidget {
                 subtitle: Text(l10n.bornYear(child.birthYear)),
               ),
             ),
+            if (iphoneOnly) ...[
+              const SizedBox(height: AppSpace.sm),
+              // #1046 (UI/UX Bureau 7120870405): on the child profile, show the plain iPhone
+              // screen-time line and keep the daily limit visible.
+              Card(
+                key: const ValueKey('childProfileIphoneScreenTimeCard'),
+                color: Theme.of(context).colorScheme.surfaceContainer,
+                elevation: 0,
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpace.md),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.phone_iphone,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: AppSpace.sm),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              l10n.screenTimeShownOnIphone(firstStrongIsolate(child.displayName)),
+                              key: const ValueKey('childProfileIphoneScreenTime'),
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            if (dailyLimit > 0) ...[
+                              const SizedBox(height: AppSpace.xxs),
+                              Text(
+                                l10n.appStateLimit(formatAppLimit(l10n, dailyLimit)),
+                                key: const ValueKey('childProfileDailyLimit'),
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: AppSpace.sm),
             FilledButton.tonal(
               key: const ValueKey('overviewEditRulesButton'),
@@ -867,8 +917,9 @@ class _AppsTab extends ConsumerWidget {
     final rules = ref.watch(rulesProvider(childId));
     final overview = ref.watch(familyProvider).valueOrNull;
     final devices = overview?.devicesFor(childId) ?? const <Device>[];
-    final childHasIphone = devices.any((d) => d.platform == 'ios');
-    final childHasAndroid = devices.any((d) => d.platform == 'android');
+    final childHasIphone = hasIphoneDevice(devices);
+    final childHasAndroid = hasAndroidDevice(devices);
+    final iphoneOnly = isIphoneOnlyChild(devices);
     // U40 (#953): headings exist only for a child who has both phones. With one platform the tab is
     // about one list, and a heading over the only list says nothing a parent cannot see.
     final mixedFamily = childHasAndroid && childHasIphone;
@@ -877,7 +928,7 @@ class _AppsTab extends ConsumerWidget {
       for (final d in devices)
         if (d.setup?.groups?.isNotEmpty ?? false) d,
     ];
-    final canManagePerAppRules = childHasAndroid || !childHasIphone;
+    final canManagePerAppRules = !iphoneOnly;
     // #456: the clock is a provider so a row can pin the sentence to a weekday morning.
     // #476: and it is read on the family's clock, where the child's phone enforces the window.
     final offset = overview?.family.utcOffsetMinutes;
@@ -913,23 +964,21 @@ class _AppsTab extends ConsumerWidget {
                   ),
                 ),
               const SizedBox(height: AppSpace.sm),
-            ] else if (childHasIphone) ...[
-              // U42 (#953): the iPhone empty state, so a parent is never told about a PIN or where a
-              // group was made. The child's name is isolated because it is Latin inside an Arabic line.
-              Card(
-                key: const ValueKey('appsTabIphoneSetupCard'),
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpace.lg),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(l10n.appPickerIosEmptyTitle, style: Theme.of(context).textTheme.titleSmall),
-                      const SizedBox(height: AppSpace.xs),
-                      Text(l10n.appPickerIosEmptyBody(ltrIsolate(childName)),
-                          style: Theme.of(context).textTheme.bodySmall),
-                    ],
-                  ),
+              if (iphoneOnly) ...[
+                // #1046 (UI/UX Bureau 7120870405): keep the plain explanation visible beneath the
+                // iPhone app groups so an iPhone-only child never reads as missing a per-app list.
+                IphoneAppDetailsCard(
+                  key: const ValueKey('appsTabIphoneSetupCard'),
+                  childName: childName,
                 ),
+                const SizedBox(height: AppSpace.sm),
+              ],
+            ] else if (childHasIphone) ...[
+              // #1046 (UI/UX Bureau 7120870405): neutral iPhone empty-state card with phone_iphone
+              // icon, surfaceContainer colour, and "How it works" 3-step sheet (no PIN copy, U42).
+              IphoneAppDetailsCard(
+                key: const ValueKey('appsTabIphoneSetupCard'),
+                childName: childName,
               ),
               const SizedBox(height: AppSpace.sm),
             ],
@@ -962,7 +1011,7 @@ class _AppsTab extends ConsumerWidget {
                 padding: const EdgeInsets.symmetric(vertical: AppSpace.lg),
                 child: Center(child: Text(l10n.noPerAppRules)),
               )
-            else if (ruleSet.appRules.isNotEmpty)
+            else if (canManagePerAppRules && ruleSet.appRules.isNotEmpty)
               for (final r in ruleSet.appRules)
               ListTile(
                 leading: Icon(switch (r.action) {

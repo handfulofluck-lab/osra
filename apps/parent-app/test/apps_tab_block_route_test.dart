@@ -135,13 +135,17 @@ void main() {
       await pumpAppsTab(tester, api);
 
       expect(find.byKey(const ValueKey('appsTabIphoneSetupCard')), findsOneWidget);
-      // U42 (#953): the iPhone empty state, with the child's name isolated so it survives an Arabic line.
-      expect(find.text('No apps chosen yet'), findsOneWidget);
+      // #1046 (UI/UX Bureau 7120870405): neutral iPhone card with FSI-isolated child name.
+      expect(find.text('App details stay on \u2068Omar\u2069\'s iPhone'), findsOneWidget);
       expect(
-        find.text('Open OSRA on \u2066Omar\u2069\'s iPhone and choose the apps you want to manage. '
-            'They\'ll appear here.'),
+        find.text(
+          'Apple doesn\'t share the list of apps or minutes used with other apps. '
+          'You can still block apps and set limits from \u2068Omar\u2069\'s iPhone.',
+        ),
         findsOneWidget,
       );
+      expect(find.byKey(const ValueKey('iphoneHowItWorksButton')), findsOneWidget);
+      expect(find.text('How it works'), findsOneWidget);
       expect(find.textContaining('PIN'), findsNothing, reason: 'U42: no PIN copy on any screen');
       expect(find.byKey(const ValueKey('appsTabManageAppsButton')), findsNothing);
       expect(find.text('No per-app rules'), findsNothing);

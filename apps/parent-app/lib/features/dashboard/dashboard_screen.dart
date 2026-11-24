@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/digits.dart';
+import '../../core/ltr_isolate.dart';
 import '../../api/permission_errors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -20,6 +21,8 @@ import '../../theme/app_tokens.dart';
 import '../../widgets/error_retry_view.dart';
 import '../auth/mfa_reset_approval_screen.dart';
 import '../auth/mfa_reset_messages.dart';
+import '../children/child_apps_list.dart' show formatAppLimit;
+import '../children/child_platform.dart';
 import '../children/consent_step.dart';
 import '../map/child_location_view.dart';
 
@@ -285,7 +288,9 @@ class ChildCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final overview = ref.watch(familyProvider).valueOrNull;
-    final device = overview?.devicesFor(child.id).firstOrNull;
+    final devices = overview?.devicesFor(child.id) ?? const <Device>[];
+    final device = devices.firstOrNull;
+    final iphoneOnly = isIphoneOnlyChild(devices);
     final locationValue = ref.watch(locationProvider(child.id));
     final location = locationValue.valueOrNull;
     // #406: a refused location read is not "no location yet" — the child card says so (Claude's ruling).
@@ -381,61 +386,95 @@ class ChildCard extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Builder(
-                    builder: (context) {
-                      final style = Theme.of(context).textTheme.bodySmall;
-                      final valueText = dailyLimit > 0
-                          ? l10n.screenTimeValue(child.screenTimeTodayMinutes, dailyLimit)
-                          : l10n.minutesShort(child.screenTimeTodayMinutes);
-                      final screenWidth = MediaQuery.sizeOf(context).width;
-                      final isWide = screenWidth >= 600;
-                      // ListView horizontal padding (AppSpace.md * 2, plus AppSpace.md col gap on wide) + Card default margin (8) + Card padding (AppSpace.md * 2).
-                      final maxContentWidth = isWide
-                          ? (screenWidth - AppSpace.md * 3) / 2 - AppSpace.md * 2 - 8
-                          : screenWidth - AppSpace.md * 4 - 8;
-                      final scaler = MediaQuery.textScalerOf(context);
-                      final direction = Directionality.of(context);
-                      final labelPainter = TextPainter(
-                        text: TextSpan(text: l10n.screenTime, style: style),
-                        maxLines: 1,
-                        textDirection: direction,
-                        textScaler: scaler,
-                      )..layout();
-                      final labelWidth = labelPainter.width;
-                      labelPainter.dispose();
-                      final valuePainter = TextPainter(
-                        text: TextSpan(text: valueText, style: style),
-                        maxLines: 1,
-                        textDirection: direction,
-                        textScaler: scaler,
-                      )..layout();
-                      final valueWidth = valuePainter.width;
-                      valuePainter.dispose();
-                      if (labelWidth + AppSpace.sm + valueWidth <= maxContentWidth) {
-                        return Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  if (iphoneOnly) ...[
+                    // #1046 (UI/UX Bureau 7120870405): Apple keeps per-app minutes on the child's
+                    // iPhone. Replace the "0 / 120 min" bar with the plain iPhone line while keeping
+                    // the daily limit visible.
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.phone_iphone,
+                          size: 16,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: AppSpace.xs),
+                        Expanded(
+                          child: Text(
+                            l10n.screenTimeShownOnIphone(firstStrongIsolate(child.displayName)),
+                            key: ValueKey('iphoneScreenTime-${child.id}'),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (dailyLimit > 0) ...[
+                      const SizedBox(height: AppSpace.xxs),
+                      Text(
+                        l10n.appStateLimit(formatAppLimit(l10n, dailyLimit)),
+                        key: ValueKey('iphoneDailyLimit-${child.id}'),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                      ),
+                    ],
+                  ] else ...[
+                    Builder(
+                      builder: (context) {
+                        final style = Theme.of(context).textTheme.bodySmall;
+                        final valueText = dailyLimit > 0
+                            ? l10n.screenTimeValue(child.screenTimeTodayMinutes, dailyLimit)
+                            : l10n.minutesShort(child.screenTimeTodayMinutes);
+                        final screenWidth = MediaQuery.sizeOf(context).width;
+                        final isWide = screenWidth >= 600;
+                        // ListView horizontal padding (AppSpace.md * 2, plus AppSpace.md col gap on wide) + Card default margin (8) + Card padding (AppSpace.md * 2).
+                        final maxContentWidth = isWide
+                            ? (screenWidth - AppSpace.md * 3) / 2 - AppSpace.md * 2 - 8
+                            : screenWidth - AppSpace.md * 4 - 8;
+                        final scaler = MediaQuery.textScalerOf(context);
+                        final direction = Directionality.of(context);
+                        final labelPainter = TextPainter(
+                          text: TextSpan(text: l10n.screenTime, style: style),
+                          maxLines: 1,
+                          textDirection: direction,
+                          textScaler: scaler,
+                        )..layout();
+                        final labelWidth = labelPainter.width;
+                        labelPainter.dispose();
+                        final valuePainter = TextPainter(
+                          text: TextSpan(text: valueText, style: style),
+                          maxLines: 1,
+                          textDirection: direction,
+                          textScaler: scaler,
+                        )..layout();
+                        final valueWidth = valuePainter.width;
+                        valuePainter.dispose();
+                        if (labelWidth + AppSpace.sm + valueWidth <= maxContentWidth) {
+                          return Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(l10n.screenTime, style: style),
+                              const SizedBox(width: AppSpace.sm),
+                              Flexible(child: Text(valueText, style: style, textAlign: TextAlign.end)),
+                            ],
+                          );
+                        }
+                        // NOTE: stack end-aligned when tight so neither label nor value truncates with ellipsis at high scale.
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(l10n.screenTime, style: style),
-                            const SizedBox(width: AppSpace.sm),
-                            Flexible(child: Text(valueText, style: style, textAlign: TextAlign.end)),
+                            const SizedBox(height: AppSpace.xs),
+                            Text(valueText, style: style, textAlign: TextAlign.end),
                           ],
                         );
-                      }
-                      // NOTE: stack end-aligned when tight so neither label nor value truncates with ellipsis at high scale.
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(l10n.screenTime, style: style),
-                          const SizedBox(height: AppSpace.xs),
-                          Text(valueText, style: style, textAlign: TextAlign.end),
-                        ],
-                      );
-                    },
-                  ),
-                  if (dailyLimit > 0) ...[
-                    const SizedBox(height: AppSpace.xs),
-                    LinearProgressIndicator(value: progress),
+                      },
+                    ),
+                    if (dailyLimit > 0) ...[
+                      const SizedBox(height: AppSpace.xs),
+                      LinearProgressIndicator(value: progress),
+                    ],
                   ],
                   if (wellbeing != null) ...[
                     const SizedBox(height: AppSpace.sm),
