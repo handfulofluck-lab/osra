@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
 import '../../api/permission_errors.dart';
+import '../../core/digits.dart';
 import '../../core/ltr_isolate.dart';
 import '../../widgets/error_retry_view.dart';
 import '../../l10n/l10n.dart';
@@ -21,7 +22,7 @@ import '../../widgets/layout_helpers.dart';
 import '../dashboard/dashboard_screen.dart' show formatLastSeen;
 import '../pairing/pair_qr_screen.dart';
 import '../rules/active_window.dart';
-import '../social/social_screen.dart' show SocialSectionsView;
+import '../social/social_screen.dart' show SocialSectionsView, socialAppLabel;
 import '../map/child_location_view.dart';
 import 'app_groups_section.dart';
 import 'child_apps_list.dart';
@@ -1310,7 +1311,15 @@ class AlertTile extends StatelessWidget {
   final Alert alert;
   final VoidCallback? onTap;
   final VoidCallback? onAck;
-  const AlertTile({super.key, required this.alert, this.onTap, this.onAck});
+  /// #1029: count of additional flagged messages that arrived after the parent last opened this alert.
+  final int newSinceCount;
+  const AlertTile({
+    super.key,
+    required this.alert,
+    this.onTap,
+    this.onAck,
+    this.newSinceCount = 0,
+  });
 
   static Color severityColor(String severity, [BuildContext? context]) =>
       (context?.tokens ?? AppTokens.light).severityDot(severity);
@@ -1318,15 +1327,119 @@ class AlertTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final when = alert.createdAt == null
-        ? ''
-        : DateFormat.MMMd(context.localeName).add_Hm().format(alert.createdAt!.toLocal());
+    final tokens = context.tokens;
+    final theme = Theme.of(context);
+
+    final String titleText;
+    final String? socialContactLine;
+    final String? socialLatestLine;
+    final String? genericSubtitleText;
+    if (alert.hasSocialCountSummary) {
+      final appKey = alert.metadata['app']?.toString().trim().toLowerCase() ?? '';
+      final appLabel = ltrIsolate(socialAppLabel(appKey, l10n));
+      titleText = l10n.socialAlertCountTitle(alert.socialMessageCount, appLabel);
+      final latestAt = alert.effectiveTimestamp;
+      final latestClock = latestAt == null
+          ? ''
+          : ltrIsolate(normalizeDigits(DateFormat('HH:mm', 'en').format(latestAt.toLocal())));
+      final contactName = alert.socialContactName;
+      final contactDisplay = contactName != null
+          ? firstStrongIsolate(contactName)
+          : l10n.socialAlertUnknownContact;
+      socialContactLine = l10n.socialAlertFromContactOnly(contactDisplay);
+      socialLatestLine = latestClock.isEmpty ? null : l10n.socialAlertLatestAt(latestClock);
+      genericSubtitleText = null;
+    } else {
+      final when = alert.createdAt == null
+          ? ''
+          : DateFormat.MMMd(context.localeName).add_Hm().format(alert.createdAt!.toLocal());
+      titleText = l10n.alertTitleFor(
+        alert.category,
+        alert.title,
+        isEnglish: context.localeName.startsWith('en'),
+        tamperType: alert.metadata['type']?.toString(),
+      );
+      socialContactLine = null;
+      socialLatestLine = null;
+      genericSubtitleText = '${l10n.alertCategory(alert.category)} · $when';
+    }
+
+    final Widget? newBadge = newSinceCount > 0
+        ? Container(
+            key: ValueKey('alert-new-since-${alert.id}'),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpace.sm, vertical: 2),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.secondaryContainer,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+            ),
+            child: Text(
+              l10n.socialAlertNewSince(newSinceCount),
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSecondaryContainer,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          )
+        : null;
+
+    final mutedStyle = theme.textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant);
+    final Widget subtitleContent;
+    if (alert.hasSocialCountSummary) {
+      subtitleContent = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            socialContactLine!,
+            key: ValueKey('alert-contact-${alert.id}'),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: mutedStyle,
+          ),
+          if (socialLatestLine != null)
+            Text(
+              socialLatestLine,
+              key: ValueKey('alert-latest-${alert.id}'),
+              style: mutedStyle,
+            ),
+          if (newBadge != null) ...[
+            const SizedBox(height: AppSpace.xs),
+            newBadge,
+          ],
+        ],
+      );
+    } else {
+      final genericWidget = Text(genericSubtitleText!);
+      subtitleContent = newBadge == null
+          ? genericWidget
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                genericWidget,
+                const SizedBox(height: AppSpace.xs),
+                newBadge,
+              ],
+            );
+    }
+
     return Card(
+      key: ValueKey('alert-card-${alert.id}'),
       child: ListTile(
         leading: Icon(Icons.circle, color: severityColor(alert.severity, context), size: 14),
-        title: Text(l10n.alertTitleFor(alert.category, alert.title, isEnglish: context.localeName.startsWith('en'), tamperType: alert.metadata['type']?.toString()), maxLines: 2, overflow: TextOverflow.ellipsis),
-        subtitle: Text('${l10n.alertCategory(alert.category)} · $when'),
-        trailing: onAck == null ? null : IconButton(icon: const Icon(Icons.check), tooltip: l10n.acknowledgeTooltip, onPressed: onAck),
+        title: Text(
+          titleText,
+          maxLines: alert.hasSocialCountSummary ? 3 : 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: subtitleContent,
+        trailing: onAck == null
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.check),
+                tooltip: l10n.acknowledgeTooltip,
+                onPressed: onAck,
+              ),
         onTap: onTap,
       ),
     );
