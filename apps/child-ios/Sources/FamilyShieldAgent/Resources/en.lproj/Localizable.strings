@@ -2,6 +2,9 @@
 "block_title_blocked" = "This app is blocked by your parent";
 "block_request_access" = "Request access";
 "block_exit_home" = "Close app";
+/* #881: shown whenever no bedtime or routine holds the app. Without it iOS fills the empty subtitle with its own
+   "You cannot use … because it is restricted", which reads as Apple's screen, not the parent's. */
+"block_subtitle_default" = "Tap Request access to ask your parent.";
 /* %1$@ is the window (Bedtime, or the routine's name), %2$@ its end time (HH:MM). */
 "block_window_line" = "Blocked by %1$@ until %2$@";
 "block_window_bedtime" = "Bedtime";

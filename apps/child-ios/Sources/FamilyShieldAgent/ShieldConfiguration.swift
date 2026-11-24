@@ -51,13 +51,13 @@ open class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
         #endif
         return ShieldConfiguration(
             backgroundBlurStyle: nil,
-            backgroundColor: nil,
-            icon: nil,
-            title: ShieldConfiguration.Label(text: text.title, color: .label),
-            subtitle: text.subtitle.map { ShieldConfiguration.Label(text: $0, color: .secondaryLabel) },
-            primaryButtonLabel: ShieldConfiguration.Label(text: text.primaryButton, color: .systemBlue),
-            primaryButtonBackgroundColor: nil,
-            secondaryButtonLabel: ShieldConfiguration.Label(text: text.secondaryButton, color: .systemGray)
+            backgroundColor: ShieldBrand.color(ShieldBrand.page),
+            icon: ShieldBrand.markImage(),
+            title: ShieldConfiguration.Label(text: text.title, color: ShieldBrand.color(ShieldBrand.ink)),
+            subtitle: ShieldConfiguration.Label(text: text.subtitle, color: ShieldBrand.color(ShieldBrand.muted)),
+            primaryButtonLabel: ShieldConfiguration.Label(text: text.primaryButton, color: ShieldBrand.color(ShieldBrand.onPrimary)),
+            primaryButtonBackgroundColor: ShieldBrand.color(ShieldBrand.primary),
+            secondaryButtonLabel: ShieldConfiguration.Label(text: text.secondaryButton, color: ShieldBrand.color(ShieldBrand.primary))
         )
     }
 }

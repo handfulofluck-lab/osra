@@ -2,6 +2,9 @@
 "block_title_blocked" = "حجب والدك أو والدتك هذا التطبيق";
 "block_request_access" = "اطلب السماح";
 "block_exit_home" = "إغلاق التطبيق";
+/* #881: Arabic Language Bureau (#604), copied verbatim — it quotes the button «اطلب السماح» exactly and is
+   gender-free, and the same line serves app and web-domain blocks. */
+"block_subtitle_default" = "اضغط «اطلب السماح» ليصل طلبك إلى والدك أو والدتك.";
 /* %1$@ is the window (وقت النوم, or the routine's name), %2$@ its end time (HH:MM). */
 "block_window_line" = "محجوب بواسطة %1$@ حتى %2$@";
 "block_window_bedtime" = "وقت النوم";

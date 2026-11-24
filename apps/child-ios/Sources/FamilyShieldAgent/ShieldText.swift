@@ -8,8 +8,10 @@ import Foundation
 /// rule itself, not a window, so it gets no line, as `RuleEngine.evaluateWithReason` answers on Android.
 public struct ShieldText: Equatable {
     public var title: String
-    /// The window line, or nil when no window holds the app.
-    public var subtitle: String?
+    /// #881: always present. The window line when a bedtime or a routine holds the app, otherwise
+    /// `block_subtitle_default` ("Tap Request access to ask your parent."). iOS fills an empty subtitle with its
+    /// own "You cannot use … because it is restricted", which is what made the shield read as Apple's screen.
+    public var subtitle: String
     /// "Request access": keeps the shield up and tells the parent.
     public var primaryButton: String
     /// "Close app" (U10, was "Exit to Home screen"): closes the blocked app.
@@ -87,7 +89,8 @@ public struct ShieldText: Equatable {
                 subtitle = String(format: table("block_window_line"), fsi + label + pdi, fsi + endsAt + pdi)
             }
         }
-        return ShieldText(title: table("block_title_blocked"), subtitle: subtitle,
+        return ShieldText(title: table("block_title_blocked"),
+                          subtitle: subtitle ?? table("block_subtitle_default"),
                           primaryButton: table("block_request_access"), secondaryButton: table("block_exit_home"))
     }
 

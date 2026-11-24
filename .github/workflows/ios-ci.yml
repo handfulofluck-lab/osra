@@ -91,13 +91,14 @@ jobs:
               "FamilyShieldAgentTests.L10nTests/testEnglishAndArabicHaveTheSameKeysAndNoEmptyLine",
               "FamilyShieldAgentTests.ShieldTextTests/testBedtimeAndARoutineEachNameTheirWindowAndEnd",
               "FamilyShieldAgentTests.RequestAccessWordingTests/testNoEnglishFooterStillNamesTheOldButton",
+              "FamilyShieldAgentTests.ShieldBrandTests/testEveryTextColourClearsFourPointFiveToOneInBothModes",
           }
           missing = sorted(required - tests)
           if missing:
               print("Portable tests missing on macOS:", *missing, sep="\n", file=sys.stderr)
-          if len(tests) != 228:
-              print(f"macOS test count changed: expected 228, discovered {len(tests)}", file=sys.stderr)
-          if missing or len(tests) != 228:
+          if len(tests) != 234:
+              print(f"macOS test count changed: expected 234, discovered {len(tests)}", file=sys.stderr)
+          if missing or len(tests) != 234:
               print("Discovered macOS test identifiers:", *sorted(tests), sep="\n", file=sys.stderr)
               sys.exit(1)
           print(f"macOS portable tests discovered: {len(tests)}; pairing, signer, rules, strings and #882 wording present")

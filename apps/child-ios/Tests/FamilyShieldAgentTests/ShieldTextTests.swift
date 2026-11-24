@@ -100,9 +100,14 @@ final class ShieldTextTests: XCTestCase {
                        "Blocked by \(fsi)Homework\(pdi) until \(fsi)19:00\(pdi)")
     }
 
-    func testNoWindowAndABlankRoutineNameShowNoLine() {
-        XCTAssertNil(ShieldText.make(window: nil, language: "ar").subtitle)
-        XCTAssertNil(ShieldText.make(window: .routine(name: "  ", endsAt: "19:00"), language: "en").subtitle)
+    /// #881 changed this contract: the shield always has a subtitle, because an empty one is filled by iOS's own
+    /// "You cannot use … because it is restricted". With no window, or a routine whose name is blank, the line is
+    /// the default sentence instead of nothing.
+    func testNoWindowAndABlankRoutineNameShowTheDefaultLine() {
+        XCTAssertEqual(ShieldText.make(window: nil, language: "ar").subtitle,
+                       "اضغط «اطلب السماح» ليصل طلبك إلى والدك أو والدتك.")
+        XCTAssertEqual(ShieldText.make(window: .routine(name: "  ", endsAt: "19:00"), language: "en").subtitle,
+                       "Tap Request access to ask your parent.")
     }
 
     func testTheArabicEqualsKarimsApprovedWordingLiterally() {
