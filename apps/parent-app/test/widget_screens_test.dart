@@ -378,6 +378,8 @@ void main() {
       });
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
+      await tester.ensureVisible(find.text('Lock'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Lock'));
       await flushFakeHttp(tester);
 
@@ -400,6 +402,8 @@ void main() {
       });
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
+      await tester.ensureVisible(find.text('Lock'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Lock'));
       await flushFakeHttp(tester);
 
@@ -441,6 +445,8 @@ void main() {
       });
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
+      await tester.ensureVisible(find.text('Lock'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Lock'));
       await flushFakeHttp(tester);
 
