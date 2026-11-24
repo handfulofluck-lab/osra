@@ -1,0 +1,1 @@
+- #1050 shows the sender and time on a social scan alert instead of only the category, refreshes the Social screen's list when a parent opens it, and keeps a capture whose contact could not be identified instead of rejecting it.

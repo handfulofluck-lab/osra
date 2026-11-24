@@ -583,6 +583,20 @@ describe("social routes", () => {
     await app.close();
   });
 
+  it("stores a scan whose contact is null as an unknown contact instead of rejecting it (#1050)", async () => {
+    const app = await buildApp(socialRoutes, "/v1/social");
+    vi.stubGlobal("fetch", aiOk({ flagged: true, severity: "warning", categories: { cyberbullying: 0.9 } }));
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({ id: "a-1" });
+    const res = await postScan(app, scanBody({ contact: null }));
+    expect(res.statusCode).toBe(200);
+    // The capture must still reach the vault: before this fix a null contact failed schema validation and the
+    // whole message was dropped (no vault row, no alert, nothing for a parent to review).
+    const eventData = prismaMock.socialEvent.create.mock.calls[0][0] as { data: { contact: string } };
+    expect(eventData.data.contact).toBe("");
+    await app.close();
+  });
+
   it("rejects a scan without a valid HMAC signature (401)", async () => {
     const app = await buildApp(socialRoutes, "/v1/social");
     const res = await app.inject({ method: "POST", url: "/v1/social/scan", payload: scanBody() });

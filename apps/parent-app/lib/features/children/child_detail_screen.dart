@@ -1349,6 +1349,27 @@ class AlertTile extends StatelessWidget {
       socialContactLine = l10n.socialAlertFromContactOnly(contactDisplay);
       socialLatestLine = latestClock.isEmpty ? null : l10n.socialAlertLatestAt(latestClock);
       genericSubtitleText = null;
+    } else if (alert.isSocialAlert) {
+      // Issue #1050: a scan alert carries the sender in `metadata.contact` and never the message text
+      // (that stays in the vault, #24). The generic branch drew only "category · time", so a flagged
+      // message from a newly monitored contact looked like an empty alert.
+      titleText = l10n.alertTitleFor(
+        alert.category,
+        alert.title,
+        isEnglish: context.localeName.startsWith('en'),
+        tamperType: alert.metadata['type']?.toString(),
+      );
+      final contactName = alert.socialContactName;
+      final contactDisplay = contactName != null
+          ? firstStrongIsolate(contactName)
+          : l10n.socialAlertUnknownContact;
+      socialContactLine = l10n.socialAlertFromContactOnly(contactDisplay);
+      final latestAt = alert.effectiveTimestamp;
+      final latestClock = latestAt == null
+          ? ''
+          : ltrIsolate(normalizeDigits(DateFormat('HH:mm', 'en').format(latestAt.toLocal())));
+      socialLatestLine = latestClock.isEmpty ? null : l10n.socialAlertLatestAt(latestClock);
+      genericSubtitleText = null;
     } else {
       final when = alert.createdAt == null
           ? ''
@@ -1384,7 +1405,7 @@ class AlertTile extends StatelessWidget {
 
     final mutedStyle = theme.textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant);
     final Widget subtitleContent;
-    if (alert.hasSocialCountSummary) {
+    if (socialContactLine != null) {
       subtitleContent = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,

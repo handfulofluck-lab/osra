@@ -338,13 +338,30 @@ class _MonitoringTogglesSectionState
 
 /// Section (b): the decrypted concerns vault as severity-colored cards with
 /// concern chips and an expandable preview.
-class ConcernsSection extends ConsumerWidget {
+class ConcernsSection extends ConsumerStatefulWidget {
   final String childId;
   const ConcernsSection({super.key, required this.childId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ConcernsSection> createState() => _ConcernsSectionState();
+}
+
+class _ConcernsSectionState extends ConsumerState<ConcernsSection> {
+  @override
+  void initState() {
+    super.initState();
+    // Issue #1050: the list must ask the server when the parent opens this screen. The provider is cached
+    // for the session, and nothing invalidated it on open, so a parent who tapped a fresh alert saw the
+    // rows fetched earlier — in Karim's run, only the original test contact's.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.invalidate(socialEventsProvider(widget.childId));
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final childId = widget.childId;
     final events = ref.watch(socialEventsProvider(childId));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
