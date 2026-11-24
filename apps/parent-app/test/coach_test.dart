@@ -8,7 +8,6 @@ import 'package:familyshield_parent/features/alerts/alerts_screen.dart';
 import 'package:familyshield_parent/features/coach/coach_card_section.dart';
 import 'package:familyshield_parent/features/coach/coach_content.dart';
 import 'package:familyshield_parent/features/social/social_screen.dart';
-import 'package:familyshield_parent/l10n/app_localizations_en.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
 import 'fake_api_client.dart';
@@ -59,7 +58,7 @@ void main() {
 
     test('every mapped category returns non-empty EN+AR title, body and tips', () {
       for (final cat in mappedCategories) {
-        final card = coachCardFor(cat)!;
+        final card = coachCardFor(cat);
         expect(card.title, isNotEmpty, reason: '$cat title');
         expect(card.titleAr, isNotEmpty, reason: '$cat titleAr');
         expect(card.body, isNotEmpty, reason: '$cat body');
@@ -73,43 +72,31 @@ void main() {
       }
     });
 
-    test('unknown categories fall back to the generic card by default', () {
+    test('unknown categories fall back to the generic card', () {
       final card = coachCardFor('totally_new_category');
-      expect(card!.title, coachCardFor('another_unknown')!.title);
+      expect(card.title, coachCardFor('another_unknown').title);
       expect(card.title, 'A calm first conversation');
     });
 
-    test('ring, sos, geofence and install_request never show a coach card', () {
-      expect(coachCardFor('ring'), isNull);
-      expect(coachCardFor('ring', concernTypes: ['grooming_risk']), isNull);
-      expect(coachCardFor('sos'), isNull);
-      expect(coachCardFor('geofence'), isNull);
-      expect(coachCardFor('install_request'), isNull);
-    });
-
-    test('unknown categories return null when fallback is false', () {
-      expect(coachCardFor('totally_new_category', fallback: false), isNull);
-    });
-
     test('social_concern resolves through concernTypes before falling back', () {
-      expect(coachCardFor('social_concern', concernTypes: const ['grooming_risk'])!.title, contains('grooming'));
-      expect(coachCardFor('social_concern', concernTypes: const ['self_harm'])!.title, contains('hurting'));
+      expect(coachCardFor('social_concern', const ['grooming_risk']).title, contains('grooming'));
+      expect(coachCardFor('social_concern', const ['self_harm']).title, contains('hurting'));
       expect(
-        coachCardFor('social_concern', concernTypes: const ['late_night', 'grooming'])!.title,
+        coachCardFor('social_concern', const ['late_night', 'grooming']).title,
         contains('grooming'),
       );
-      expect(coachCardFor('social_concern', concernTypes: const ['late_night'])!.title, coachCardFor('social_concern')!.title);
+      expect(coachCardFor('social_concern', const ['late_night']).title, coachCardFor('social_concern').title);
     });
 
     test('screen_time alerts get the collaboration card', () {
-      expect(coachCardFor('screen_time')!.title, contains('screen-time'));
-      expect(coachCardFor('screen_time_exceeded')!.title, coachCardFor('screen_time')!.title);
+      expect(coachCardFor('screen_time').title, contains('screen-time'));
+      expect(coachCardFor('screen_time_exceeded').title, coachCardFor('screen_time').title);
     });
   });
 
   group('CoachCardSection widget', () {
     testWidgets('shows EN body by default and switches to AR on toggle', (tester) async {
-      final card = coachCardFor('self_harm')!;
+      final card = coachCardFor('self_harm');
       await tester.pumpWidget(localizedTestApp(Scaffold(body: CoachCardSection(card: card))));
       await expandCoachSection(tester);
 
@@ -143,7 +130,7 @@ void main() {
 
       expect(find.text('How to talk about this'), findsOneWidget);
       await expandCoachSection(tester);
-      final card = coachCardFor('self_harm')!;
+      final card = coachCardFor('self_harm');
       expect(find.textContaining('Take every sign seriously'), findsOneWidget);
       expect(find.text(card.tips.first), findsOneWidget);
       expect(find.text(card.tips.last), findsOneWidget);
@@ -185,32 +172,7 @@ void main() {
       expect(find.textContaining('collaboration, not punishment'), findsOneWidget);
     });
 
-    Future<void> assertNoCoachCard(WidgetTester tester, String category, String alertTitle) async {
-      final api = FakeApiClient(standardRoutes(alerts: [
-        alertJson('c1', 'info', category, 'Test alert', DateTime.now()),
-      ]));
-      await openDetail(tester, api, alertTitle);
-      expect(find.text('How to talk about this'), findsNothing,
-          reason: '$category should not show a coach card');
-    }
-
-    testWidgets('sos shows no coach card', (tester) async {
-      await assertNoCoachCard(tester, 'sos', AppLocalizationsEn().alertTitleSos);
-    });
-
-    testWidgets('geofence shows no coach card', (tester) async {
-      await assertNoCoachCard(tester, 'geofence', AppLocalizationsEn().alertTitleGeofence);
-    });
-
-    testWidgets('install_request shows no coach card', (tester) async {
-      await assertNoCoachCard(tester, 'install_request', AppLocalizationsEn().alertTitleInstallRequest);
-    });
-
-    testWidgets('ring shows no coach card', (tester) async {
-      await assertNoCoachCard(tester, 'ring', AppLocalizationsEn().alertTitleRing);
-    });
-
-    testWidgets('an unknown category shows the generic card by default', (tester) async {
+    testWidgets('an unknown category shows the generic card', (tester) async {
       final now = DateTime.now();
       final api = FakeApiClient(standardRoutes(alerts: [
         alertJson('c1', 'info', 'brand_new_alert_type', 'Something unusual', now),
@@ -220,11 +182,6 @@ void main() {
       await expandCoachSection(tester);
 
       expect(find.text('A calm first conversation'), findsOneWidget);
-    });
-
-    testWidgets('an unknown category with fallback disabled shows no coach card', (tester) async {
-      final card = coachCardFor('brand_new_alert_type', fallback: false);
-      expect(card, isNull);
     });
   });
 

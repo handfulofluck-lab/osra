@@ -785,10 +785,13 @@ class _WindDownCard extends ConsumerWidget {
 /// reason}` instead of queueing them — a `locate_now` the phone's last
 /// telemetry says it cannot answer. Reporting "queued" there would be the same
 /// silent failure the refusal exists to remove, so the reason is shown instead.
-Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, String command) async {
+Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, String command,
+    {String? ringId}) async {
   final l10n = context.l10n;
   try {
-    final response = await ref.read(apiClientProvider).raw.post('/v1/devices/${device.id}/command', data: {'command': command});
+    final response = await ref.read(apiClientProvider).raw.post('/v1/devices/${device.id}/command',
+        // #760: a PIN-stopped ring names which ring it silenced; every other command carries no payload.
+        data: {'command': command, if (ringId != null) 'payload': {'ringId': ringId}});
     ref.invalidate(deviceCommandHistoryProvider(device.id));
     if (!context.mounted) return;
     final body = response.data;
