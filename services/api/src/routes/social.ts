@@ -1,8 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { raiseAlert } from "../lib/alerts.js";
-import { getRedis } from "../redis.js";
+import { recordFlaggedSocialAlert } from "../lib/socialAlertWindow.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { checkActiveConsent } from "../lib/consent.js";
 import { requireFamily, requireGuardianRead, requireParent } from "../middleware/requireFamily.js";
@@ -38,7 +37,6 @@ const EventsQuerySchema = z.object({
 });
 
 const AI_TIMEOUT_MS = 5000;
-const THROTTLE_SECONDS = 600;
 const PREVIEW_MAX_CHARS = 240;
 const GAMING_APPS = new Set(["discord", "roblox"]);
 
@@ -313,33 +311,26 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
     return created;
   }) : await prisma.socialEvent.create({ data: eventData });
 
-  // NOTE: at most one alert per app per 10 minutes per child; the vault write above always
-  // happens so parents can still review the full snippet history in /v1/social/events.
-  const throttleKey = `social:alert:${childId}:${appName.toLowerCase()}`;
-  const throttled = await getRedis().set(throttleKey, "1", "EX", THROTTLE_SECONDS, "NX") !== "OK";
-  let alertId: string | undefined;
-  if (!throttled) {
-    const category = GAMING_APPS.has(appName.toLowerCase()) ? "gaming_chat" : "social_concern";
-    // Alerts never carry the message snippet — metadata is app/contact/concernTypes only;
-    // the decrypted preview stays exclusively in the encrypted vault (#24).
-    const attribution = ai.providers && flaggedProviders(ai.providers);
-    const alert = await raiseAlert({
-      childId,
-      familyId: child.familyId,
-      deviceId,
-      severity: verdict.severity,
-      category,
-      title: `Social concern in ${appName}`,
-      body: `${contact || "A contact"} sent a flagged message on ${appName}`,
-      bodyKey: "alertBodySocialConcern",
-      params: { app: appName, ...(contact ? { contact } : {}) },
-      metadata: { app: appName, contact, concernTypes: verdict.concernTypes,
-        ...(attribution && Object.keys(attribution).length > 0 && { providerOutcomes: attribution }) },
-      childName: child.displayName,
-    });
-    alertId = alert?.id;
-  }
-  if (qaProof) log?.info({ ...qaProof, socialEventId: event?.id, alertId, throttled }, "staging QA scan resolved");
+  // Issue #1029: 10-minute alert window per (child, app, salted contact hash). Repeat flagged
+  // messages update the existing alert in place (running count + latestAt), higher severity
+  // bypasses immediately, and a window-close sweep sends one summary push if the count rose.
+  const category = GAMING_APPS.has(appName.toLowerCase()) ? "gaming_chat" : "social_concern";
+  const attribution = ai.providers && flaggedProviders(ai.providers);
+  const alertOutcome = await recordFlaggedSocialAlert({
+    childId,
+    familyId: child.familyId,
+    childName: child.displayName,
+    deviceId,
+    appName,
+    contact,
+    category,
+    severity: verdict.severity,
+    concernTypes: verdict.concernTypes,
+    attribution: attribution && Object.keys(attribution).length > 0 ? attribution : undefined,
+  });
+  const alertId = alertOutcome.alertId;
+  const throttled = alertOutcome.throttled;
+  if (qaProof) log?.info({ ...qaProof, socialEventId: event?.id, alertId, throttled, bypassed: alertOutcome.bypassed, flaggedCount: alertOutcome.flaggedCount }, "staging QA scan resolved");
   return { ok: true, flagged: true, severity: verdict.severity, concernTypes: verdict.concernTypes };
 }
 
