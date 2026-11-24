@@ -148,6 +148,24 @@ export type PushErrorClass =
   | "network_error"
   | "provider_error";
 
+type CleanupStatus = "none" | "ok" | "failed";
+type OutcomeSkipLabel = NonNullable<NotifyOutcome["skipped"]> | "error" | "none";
+
+const KNOWN_PLATFORMS = new Set(["android", "ios", "web"]);
+const KNOWN_SEVERITIES = new Set(["info", "warning", "critical"]);
+
+function safePlatform(value: unknown): string {
+  return typeof value === "string" && KNOWN_PLATFORMS.has(value) ? value : "unknown";
+}
+
+function safeSeverity(value: unknown): string {
+  return typeof value === "string" && KNOWN_SEVERITIES.has(value) ? value : "none";
+}
+
+function safeCategory(value: unknown): string {
+  return typeof value === "string" && /^[a-z0-9_]{1,40}$/.test(value) ? value : "none";
+}
+
 /**
  * Bucket a failed provider response into a closed operator-scannable error class (#1028).
  * Distinguishes APNs/Firebase third-party auth mismatches (`THIRD_PARTY_AUTH_ERROR`) from
@@ -194,16 +212,18 @@ export function classifyPushError(result: { invalidToken?: boolean; reason?: str
 function logParentAlertOutcome(summary: {
   recipients: number;
   delivered: number;
+  stale: number;
   pruned: number;
   failed: number;
-  skipped: NotifyOutcome["skipped"];
-  category?: string;
-  severity?: string;
+  cleanup: CleanupStatus;
+  skipped: OutcomeSkipLabel;
+  category?: unknown;
+  severity?: unknown;
   platforms?: string;
 }): void {
   const platformPart = summary.platforms ? ` platforms=${summary.platforms}` : "";
   console.info(
-    `[push] parent alert outcome recipients=${summary.recipients} delivered=${summary.delivered} pruned=${summary.pruned} failed=${summary.failed} skipped=${summary.skipped ?? "none"} category=${summary.category ?? "none"} severity=${summary.severity ?? "none"}${platformPart}`,
+    `[push] parent alert outcome recipients=${summary.recipients} delivered=${summary.delivered} stale=${summary.stale} pruned=${summary.pruned} failed=${summary.failed} cleanup=${summary.cleanup} skipped=${summary.skipped} category=${safeCategory(summary.category)} severity=${safeSeverity(summary.severity)}${platformPart}`,
   );
 }
 
@@ -211,10 +231,10 @@ function logParentAlertOutcome(summary: {
  * Fan an alert out to every push token of every parent in the family. Never throws: push is
  * best-effort and the alert row is already committed when this runs.
  *
- * [#1028] Every call writes an aggregate outcome line (counts, skip reason, platform histogram,
- * category/severity — never tokens or database ids) and every per-recipient send writes one
- * structured line (platform, provider, status, errorClass/messageId — never the token or alert text)
- * so a silent iOS/Android push drop can be diagnosed directly from the API log.
+ * [#1028] Every call writes exactly one aggregate outcome line (counts, stale vs pruned cleanup
+ * status, skip reason, platform histogram, closed category/severity — never tokens, raw provider
+ * strings, message ids, database ids, or exception objects) and every per-recipient send writes
+ * one closed-classification line (platform, provider, status, errorClass).
  */
 export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, childName?: string): Promise<NotifyOutcome> {
   const outcome: NotifyOutcome = { recipients: 0, delivered: 0, pruned: 0, skipped: null };
@@ -222,15 +242,17 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
     // Defensive: raiseAlert always passes the created row, but a caller with a mocked or failed
     // create must not turn into a TypeError in a fire-and-forget path (Antigravity review of #51).
     if (!alert) {
-      logParentAlertOutcome({ recipients: 0, delivered: 0, pruned: 0, failed: 0, skipped: "severity" });
+      logParentAlertOutcome({ recipients: 0, delivered: 0, stale: 0, pruned: 0, failed: 0, cleanup: "none", skipped: "severity" });
       return { ...outcome, skipped: "severity" };
     }
     if (!shouldPush(alert, minPushSeverity())) {
       logParentAlertOutcome({
         recipients: 0,
         delivered: 0,
+        stale: 0,
         pruned: 0,
         failed: 0,
+        cleanup: "none",
         skipped: "severity",
         category: alert.category,
         severity: alert.severity,
@@ -246,8 +268,10 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
       logParentAlertOutcome({
         recipients: 0,
         delivered: 0,
+        stale: 0,
         pruned: 0,
         failed: 0,
+        cleanup: "none",
         skipped: "no_providers",
         category: alert.category,
         severity: alert.severity,
@@ -259,8 +283,10 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
       logParentAlertOutcome({
         recipients: 0,
         delivered: 0,
+        stale: 0,
         pruned: 0,
         failed: 0,
+        cleanup: "none",
         skipped: "prefs",
         category: alert.category,
         severity: alert.severity,
@@ -283,8 +309,10 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
       logParentAlertOutcome({
         recipients: 0,
         delivered: 0,
+        stale: 0,
         pruned: 0,
         failed: 0,
+        cleanup: "none",
         skipped: "no_tokens",
         category: alert.category,
         severity: alert.severity,
@@ -297,7 +325,8 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
     let failed = 0;
     const byPlatform = new Map<string, number>();
     for (const row of tokens) {
-      byPlatform.set(row.platform, (byPlatform.get(row.platform) ?? 0) + 1);
+      const p = safePlatform(row.platform);
+      byPlatform.set(p, (byPlatform.get(p) ?? 0) + 1);
     }
     const platforms = [...byPlatform.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
@@ -306,52 +335,83 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
 
     await Promise.all(
       tokens.map(async (t) => {
+        const platformLabel = safePlatform(t.platform);
         const provider = providerFor(t.platform as PushPlatform, providers);
         if (!provider) {
           failed += 1;
-          console.warn(`[push] parent alert send outcome=skipped platform=${t.platform} errorClass=no_provider`);
+          console.warn(`[push] parent alert send outcome=skipped platform=${platformLabel} errorClass=no_provider`);
           return;
         }
         // #410: per-platform, and never the alert's text. `childName` is deliberately unused here now.
         const message = buildParentAlertMessage(t.platform as PushPlatform);
-        const result = await provider.send(t.token, message);
-        if (result.ok) {
-          outcome.delivered += 1;
-          console.info(
-            `[push] parent alert send outcome=sent platform=${t.platform} provider=${provider.platform} messageId=${result.messageId ?? "unreported"}`,
-          );
-        } else if (result.invalidToken) {
-          dead.push(t.id);
-          const errorClass = classifyPushError(result);
-          console.info(
-            `[push] parent alert send outcome=pruned platform=${t.platform} provider=${provider.platform} errorClass=${errorClass} reason=${result.reason ?? "unknown"}`,
-          );
-        } else {
+        try {
+          const result = await provider.send(t.token, message);
+          if (result.ok) {
+            outcome.delivered += 1;
+            console.info(`[push] parent alert send outcome=sent platform=${platformLabel} provider=${provider.platform}`);
+          } else if (result.invalidToken) {
+            dead.push(t.id);
+            const errorClass = classifyPushError(result);
+            console.info(
+              `[push] parent alert send outcome=stale platform=${platformLabel} provider=${provider.platform} errorClass=${errorClass}`,
+            );
+          } else {
+            failed += 1;
+            const errorClass = classifyPushError(result);
+            console.warn(
+              `[push] delivery failed platform=${platformLabel} provider=${provider.platform} errorClass=${errorClass}`,
+            );
+          }
+        } catch (sendErr) {
           failed += 1;
-          const errorClass = classifyPushError(result);
+          const errorClass = classifyPushError({ reason: sendErr instanceof Error ? sendErr.message : undefined });
           console.warn(
-            `[push] delivery failed platform=${t.platform} provider=${provider.platform} errorClass=${errorClass} reason=${result.reason ?? "unknown"}`,
+            `[push] delivery failed platform=${platformLabel} provider=${provider.platform} errorClass=${errorClass}`,
           );
         }
       }),
     );
+
+    let cleanup: CleanupStatus = "none";
     if (dead.length > 0) {
-      await prisma.parentPushToken.deleteMany({ where: { id: { in: dead } } });
-      outcome.pruned = dead.length;
+      try {
+        const deleted = await prisma.parentPushToken.deleteMany({ where: { id: { in: dead } } });
+        outcome.pruned = typeof deleted?.count === "number" ? deleted.count : 0;
+        cleanup = "ok";
+      } catch {
+        outcome.pruned = 0;
+        cleanup = "failed";
+        console.error("[push] parent alert cleanup failed errorClass=cleanup_failed");
+      }
     }
+
     logParentAlertOutcome({
       recipients: outcome.recipients,
       delivered: outcome.delivered,
+      stale: dead.length,
       pruned: outcome.pruned,
       failed,
-      skipped: null,
+      cleanup,
+      skipped: "none",
       category: alert.category,
       severity: alert.severity,
       platforms,
     });
     return outcome;
   } catch (err) {
-    console.error("[push] notifyParentsOfAlert failed", err);
+    const errorClass = classifyPushError({ reason: err instanceof Error ? err.message : undefined });
+    console.error(`[push] notifyParentsOfAlert failed errorClass=${errorClass}`);
+    logParentAlertOutcome({
+      recipients: outcome.recipients,
+      delivered: outcome.delivered,
+      stale: 0,
+      pruned: outcome.pruned,
+      failed: 0,
+      cleanup: "none",
+      skipped: "error",
+      category: alert?.category,
+      severity: alert?.severity,
+    });
     return outcome;
   }
 }
