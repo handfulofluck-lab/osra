@@ -1367,6 +1367,8 @@ class PairingActivity : ComponentActivity() {
         WorkScheduler.scheduleAll(this)
         WorkScheduler.syncNow(this)
         CommandPollWorker.requestFetchNow(this)
+        // Issue #1054: hydrate the FCM token right at pairing if onNewToken has not persisted one yet.
+        lifecycleScope.launch(Dispatchers.IO) { com.familyshield.agent.push.PushTokenHydrator.hydrateIfMissing(settings) }
     }
 
     // ---- view helpers ----

@@ -8,6 +8,7 @@ import com.familyshield.agent.network.DeviceUnlinker
 import com.familyshield.agent.network.UnlinkPolicy
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.PushTokenDto
+import com.familyshield.agent.push.PushTokenHydrator
 import com.familyshield.agent.push.PushTokenUploadPolicy
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -89,7 +90,9 @@ class CommandPoller @Inject constructor(
      * path had no recovery from.
      */
     suspend fun syncPushToken(deviceId: String, pushTokenHeader: String?) {
-        val stored = settings.pushToken() ?: return
+        val stored = settings.pushToken()?.takeIf { it.isNotBlank() }
+            ?: PushTokenHydrator.hydrateIfMissing(settings)
+            ?: return
         val serverHasToken = PushTokenUploadPolicy.serverHasToken(pushTokenHeader)
         if (!PushTokenUploadPolicy.shouldUpload(stored, settings.uploadedPushToken(), deviceId, serverHasToken)) return
         runCatching { api.postPushToken(deviceId, PushTokenDto(stored)) }

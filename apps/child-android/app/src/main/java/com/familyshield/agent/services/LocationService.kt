@@ -94,6 +94,7 @@ class LocationService : Service() {
     private val accessibilityOffReceiver = AccessibilityOffReceiver()
 
     @Volatile private var intervalMs = STATIONARY_INTERVAL_MS
+    @Volatile private var updatesStarted = false
     @Volatile private var flushLoopStarted = false
     @Volatile private var commandLoopStarted = false
 
@@ -116,14 +117,19 @@ class LocationService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val holdsWakeLock = intent?.getBooleanExtra(EXTRA_HOLDS_WAKE_LOCK, false) == true
         val fgsStarted = startForegroundCompat()
         if (!fgsStarted) {
+            if (holdsWakeLock) LocateWakeLock.release()
             isServiceRunning = false
             stopSelf()
             return START_NOT_STICKY
         }
         isServiceRunning = true
-        startUpdates(STATIONARY_INTERVAL_MS)
+        if (!updatesStarted) {
+            updatesStarted = true
+            startUpdates(STATIONARY_INTERVAL_MS)
+        }
         if (!flushLoopStarted) {
             flushLoopStarted = true
             serviceScope.launch {
@@ -170,13 +176,16 @@ class LocationService : Service() {
             // Issue #231: the row id travels with the intent so this service can ack `locate_now`
             // once it knows whether a fix exists — the dispatcher deliberately does not.
             val commandId = intent.getStringExtra(EXTRA_COMMAND_ID)
-            serviceScope.launch { locateNowOnce(commandId) }
+            serviceScope.launch { locateNowOnce(commandId, holdsWakeLock) }
+        } else if (holdsWakeLock) {
+            LocateWakeLock.release()
         }
         return START_STICKY
     }
 
     override fun onDestroy() {
         isServiceRunning = false
+        updatesStarted = false
         fused.removeLocationUpdates(callback)
         serviceScope.cancel()
         super.onDestroy()
@@ -185,66 +194,45 @@ class LocationService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     /**
-     * Plan 1.7: `locate_now` asks the fused provider for a **fresh high-accuracy fix** and waits up to
-     * [com.familyshield.agent.commands.LocatePolicy.FRESH_FIX_TIMEOUT_MS] for it; only if that fails is
-     * the last known fix used, and only while it is recent ([LocatePolicy.MAX_CACHED_AGE_MS]). Either way
-     * the ping is flushed at once so the parent's map moves within the timeout, not at the next batch.
+     * Plan 1.7 + Issue #1054: `locate_now` runs the two-stage fresh-fix strategy via
+     * [LocationFixFetcher.fetchLocation] (Stage 1: high-accuracy up to
+     * [com.familyshield.agent.commands.LocatePolicy.HIGH_ACCURACY_TIMEOUT_MS]; Stage 2:
+     * balanced-power fallback up to [com.familyshield.agent.commands.LocatePolicy.BALANCED_FALLBACK_TIMEOUT_MS];
+     * Stage 3: last known fix if within [com.familyshield.agent.commands.LocatePolicy.MAX_CACHED_AGE_MS]).
+     * Either way the ping is flushed at once so the parent's map moves within the timeout, not at
+     * the next batch, and any wake lock handed over by [CommandDispatcher] is always released in `finally`.
      *
      * Issue #231: [commandId] is the durable row from the poll (null on the FCM path, which has no
      * row). The ack is sent after the flush attempt and says whether a fix was obtained — a started
      * service is not an effect the parent can see, so the dispatcher defers this ack to here.
      */
-    private suspend fun locateNowOnce(commandId: String?) {
-        val fresh: Location? = try {
-            kotlinx.coroutines.withTimeoutOrNull(com.familyshield.agent.commands.LocatePolicy.FRESH_FIX_TIMEOUT_MS) {
-                kotlinx.coroutines.suspendCancellableCoroutine { cont ->
-                    val cts = com.google.android.gms.tasks.CancellationTokenSource()
-                    cont.invokeOnCancellation { cts.cancel() }
-                    try {
-                        fused.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cts.token)
-                            .addOnSuccessListener { if (cont.isActive) cont.resume(it) {} }
-                            .addOnFailureListener { if (cont.isActive) cont.resume(null) {} }
-                    } catch (e: SecurityException) {
-                        if (cont.isActive) cont.resume(null) {}
-                    }
+    private suspend fun locateNowOnce(commandId: String?, holdsWakeLock: Boolean = false) {
+        try {
+            val fetched = LocationFixFetcher.fetchLocation(fused)
+            val fix: LocateFix? = when (fetched.choice) {
+                com.familyshield.agent.commands.LocatePolicy.Choice.FRESH -> {
+                    onLocation(fetched.location!!)
+                    LocateFix.FRESH
+                }
+                com.familyshield.agent.commands.LocatePolicy.Choice.CACHED -> {
+                    onLocation(fetched.location!!)
+                    LocateFix.CACHED
+                }
+                com.familyshield.agent.commands.LocatePolicy.Choice.NONE -> {
+                    Log.w(TAG, "locate_now: no fix within the timeout and nothing recent cached")
+                    null
                 }
             }
-        } catch (e: Exception) {
-            null
-        }
-        val cached: Location? = if (fresh == null) {
-            try {
-                kotlinx.coroutines.suspendCancellableCoroutine { cont ->
-                    try {
-                        fused.lastLocation
-                            .addOnSuccessListener { if (cont.isActive) cont.resume(it) {} }
-                            .addOnFailureListener { if (cont.isActive) cont.resume(null) {} }
-                    } catch (e: SecurityException) { if (cont.isActive) cont.resume(null) {} }
-                }
-            } catch (e: Exception) { null }
-        } else null
-        val now = System.currentTimeMillis()
-        val fix: LocateFix? = when (com.familyshield.agent.commands.LocatePolicy.choose(fresh != null, cached?.time, now)) {
-            com.familyshield.agent.commands.LocatePolicy.Choice.FRESH -> {
-                onLocation(fresh!!)
-                LocateFix.FRESH
+            // Issue #231 review: the ack may only claim a point the server has. An upload failure keeps
+            // the ping buffered, so no ack goes out and the row is re-offered at 120 s.
+            val uploaded = runCatching { flushPings() }.getOrDefault(false)
+            if (fix != null && !uploaded) {
+                Log.w(TAG, "locate_now: fix obtained but not uploaded; no ack, the command is re-offered at 120 s")
             }
-            com.familyshield.agent.commands.LocatePolicy.Choice.CACHED -> {
-                onLocation(cached!!)
-                LocateFix.CACHED
-            }
-            com.familyshield.agent.commands.LocatePolicy.Choice.NONE -> {
-                Log.w(TAG, "locate_now: no fix within the timeout and nothing recent cached")
-                null
-            }
+            dispatcher.ackLocateNow(commandId, fix, uploaded)
+        } finally {
+            if (holdsWakeLock) LocateWakeLock.release()
         }
-        // Issue #231 review: the ack may only claim a point the server has. An upload failure keeps
-        // the ping buffered, so no ack goes out and the row is re-offered at 120 s.
-        val uploaded = runCatching { flushPings() }.getOrDefault(false)
-        if (fix != null && !uploaded) {
-            Log.w(TAG, "locate_now: fix obtained but not uploaded; no ack, the command is re-offered at 120 s")
-        }
-        dispatcher.ackLocateNow(commandId, fix, uploaded)
     }
 
     /** Queues one ping and adapts the update interval to the current speed. */
@@ -578,6 +566,9 @@ class LocationService : Service() {
 
         /** Issue #231: durable `DeviceCommand.id` carried from the dispatcher for the deferred ack. */
         const val EXTRA_COMMAND_ID: String = "com.familyshield.agent.extra.COMMAND_ID"
+
+        /** Issue #1054: true when [CommandDispatcher] acquired [LocateWakeLock] for this locate_now handoff. */
+        const val EXTRA_HOLDS_WAKE_LOCK: String = "com.familyshield.agent.extra.HOLDS_WAKE_LOCK"
 
         /** True while LocationService is active in foreground with updates running. */
         @Volatile

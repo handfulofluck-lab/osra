@@ -58,13 +58,15 @@ class FirebaseMessagingSvc : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
+        // Issue #1054: persist the token synchronously inside FCM's callback window before returning,
+        // so background freeze/process kill after onNewToken never loses the token before DataStore
+        // finishes writing. The network upload stays best-effort async and is retried on the next poll.
+        runBlocking {
+            runCatching { settings.savePushToken(token) }
+        }
         // NOTE: FirebaseMessagingService has no goAsync(); the upload is best-effort fire-and-forget.
         scope.launch {
             runCatching {
-                // Issue #319: persist first, conditionally upload second. A token minted before pairing
-                // (the normal order on a fresh install) used to be dropped here forever, because the
-                // upload was skipped when deviceId was null and FCM never re-delivers that token.
-                settings.savePushToken(token)
                 val deviceId = settings.deviceId() ?: return@launch
                 if (!PushTokenUploadPolicy.shouldUpload(token, settings.uploadedPushToken(), deviceId)) {
                     return@launch
