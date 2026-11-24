@@ -151,6 +151,28 @@ describe("decision 3 + A1 — when a command is refused instead of queued", () =
     expect(commandRefusal({ capabilities: r, capabilitiesReportedAt: new Date(NOW) }, "screenshot", NOW)).toBeNull();
   });
 
+  it("a ring to an iPhone is queued, not refused: the Alarms permission decides, not the build (#750)", () => {
+    // `main` refused `ring` for every child-ios flavour in NOT_SUPPORTED_COMMANDS. That was true before the
+    // ring existed; now the build can ring, and whether it does is a *grant* the child can change (the
+    // AlarmKit prompt), not a fact about the build. Refusing from the table would make the parent's Ring
+    // button dead on a phone where turning the permission on is exactly the fix.
+    for (const flavour of ["dev", "testflight", "appstore"]) {
+      const ios = report({
+        client: { app: "child-ios", version: "0.1.0", build: 1, flavour },
+        features: {},
+      });
+      expect(commandRefusal({ capabilities: ios, capabilitiesReportedAt: null }, "ring", NOW)).toBeNull();
+    }
+    // `unlock` stays refused: no feature behind it, and no public API on iOS at all.
+    const ios = report({
+      client: { app: "child-ios", version: "0.1.0", build: 1, flavour: "testflight" },
+      features: {},
+    });
+    expect(commandRefusal({ capabilities: ios, capabilitiesReportedAt: null }, "unlock", NOW)).toEqual({
+      reason: "not_supported",
+    });
+  });
+
   it("a device that never reported is never refused", () => {
     expect(commandRefusal({ capabilities: null, capabilitiesReportedAt: null }, "lock", NOW)).toBeNull();
   });
