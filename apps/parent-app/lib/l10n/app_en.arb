@@ -520,6 +520,8 @@
   "commandClearSos": "Clear SOS",
   "commandPauseDevice": "Pause device",
   "commandResumeDevice": "Resume device",
+  "commandPausingDevice": "Pausing…",
+  "commandResumingDevice": "Resuming…",
   "commandPauseInternet": "Pause internet",
   "commandResumeInternet": "Resume internet",
   "scopeThisDevice": "This device",
@@ -1766,6 +1768,7 @@
     "description": "ADR-0037: snackbar when blocking or unblocking a group fails. Arabic is a draft pending Karim's review."
   },
   "setupMonitoringTitle": "Which apps should OSRA watch for you?",
+  "setupMonitoringAppBarTitle": "Social apps",
   "setupMonitoringIntro": "OSRA checks messages in these apps for signs of bullying, grooming or self-harm, and tells you when it finds something. Tick the apps you want; you can change this any time in the rules.",
   "setupMonitoringConsent": "A flagged message excerpt is kept for 90 days and an alert for 12 months. Nothing is read from an app you untick.",
   "setupMonitoringContinue": "Continue",
@@ -1891,5 +1894,30 @@
   "appsNoMatch": "No apps match",
   "appAboutThisApp": "About this app",
   "appBlockedNamedSnack": "{app} blocked",
-  "@appBlockedNamedSnack": { "placeholders": { "app": { "type": "String" } } }
+  "@appBlockedNamedSnack": { "placeholders": { "app": { "type": "String" } } },
+  "socialCheckMessagesIn": "Check messages in",
+  "socialNotOnChildPhone": "Not on {child}'s phone ({count})",
+  "@socialNotOnChildPhone": {
+    "placeholders": {
+      "child": { "type": "String" },
+      "count": { "type": "int" }
+    }
+  },
+  "socialChecking": "Checking",
+  "socialOff": "Off",
+  "socialCommentsAndChats": "Comments and chats",
+  "socialNewAppsBanner": "You can now choose YouTube, Telegram, Reddit and Messenger too.",
+  "socialPrivacyLine": "OSRA only flags concerning messages. It never shows you every chat.",
+  "selectAll": "Select all",
+  "socialAlertCountTitle": "{count, plural, =1{1 concerning message on {app}} other{{count} concerning messages on {app}}}",
+  "@socialAlertCountTitle": { "placeholders": { "count": { "type": "int" }, "app": { "type": "String" } } },
+  "socialAlertFromContactOnly": "From {contact}",
+  "@socialAlertFromContactOnly": { "placeholders": { "contact": { "type": "String" } } },
+  "socialAlertLatestAt": "Latest {time}",
+  "@socialAlertLatestAt": { "placeholders": { "time": { "type": "String" } } },
+  "socialAlertUnknownContact": "an unknown contact",
+  "socialAlertMorePush": "{count, plural, =1{1 more concerning message for {child} on {app}} other{{count} more concerning messages for {child} on {app}}}",
+  "@socialAlertMorePush": { "placeholders": { "count": { "type": "int" }, "child": { "type": "String" }, "app": { "type": "String" } } },
+  "socialAlertNewSince": "+{count} new",
+  "@socialAlertNewSince": { "placeholders": { "count": { "type": "int" } } }
 }

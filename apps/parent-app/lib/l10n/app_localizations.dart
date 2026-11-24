@@ -1520,6 +1520,18 @@ abstract class AppLocalizations {
   /// **'Resume device'**
   String get commandResumeDevice;
 
+  /// No description provided for @commandPausingDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Pausing…'**
+  String get commandPausingDevice;
+
+  /// No description provided for @commandResumingDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Resuming…'**
+  String get commandResumingDevice;
+
   /// No description provided for @commandPauseInternet.
   ///
   /// In en, this message translates to:
@@ -5282,6 +5294,12 @@ abstract class AppLocalizations {
   /// **'Which apps should OSRA watch for you?'**
   String get setupMonitoringTitle;
 
+  /// No description provided for @setupMonitoringAppBarTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Social apps'**
+  String get setupMonitoringAppBarTitle;
+
   /// No description provided for @setupMonitoringIntro.
   ///
   /// In en, this message translates to:
@@ -5696,6 +5714,90 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{app} blocked'**
   String appBlockedNamedSnack(String app);
+
+  /// No description provided for @socialCheckMessagesIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Check messages in'**
+  String get socialCheckMessagesIn;
+
+  /// No description provided for @socialNotOnChildPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Not on {child}\'s phone ({count})'**
+  String socialNotOnChildPhone(String child, int count);
+
+  /// No description provided for @socialChecking.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking'**
+  String get socialChecking;
+
+  /// No description provided for @socialOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get socialOff;
+
+  /// No description provided for @socialCommentsAndChats.
+  ///
+  /// In en, this message translates to:
+  /// **'Comments and chats'**
+  String get socialCommentsAndChats;
+
+  /// No description provided for @socialNewAppsBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'You can now choose YouTube, Telegram, Reddit and Messenger too.'**
+  String get socialNewAppsBanner;
+
+  /// No description provided for @socialPrivacyLine.
+  ///
+  /// In en, this message translates to:
+  /// **'OSRA only flags concerning messages. It never shows you every chat.'**
+  String get socialPrivacyLine;
+
+  /// No description provided for @selectAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Select all'**
+  String get selectAll;
+
+  /// No description provided for @socialAlertCountTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 concerning message on {app}} other{{count} concerning messages on {app}}}'**
+  String socialAlertCountTitle(int count, String app);
+
+  /// No description provided for @socialAlertFromContactOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'From {contact}'**
+  String socialAlertFromContactOnly(String contact);
+
+  /// No description provided for @socialAlertLatestAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Latest {time}'**
+  String socialAlertLatestAt(String time);
+
+  /// No description provided for @socialAlertUnknownContact.
+  ///
+  /// In en, this message translates to:
+  /// **'an unknown contact'**
+  String get socialAlertUnknownContact;
+
+  /// No description provided for @socialAlertMorePush.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 more concerning message for {child} on {app}} other{{count} more concerning messages for {child} on {app}}}'**
+  String socialAlertMorePush(int count, String child, String app);
+
+  /// No description provided for @socialAlertNewSince.
+  ///
+  /// In en, this message translates to:
+  /// **'+{count} new'**
+  String socialAlertNewSince(int count);
 }
 
 class _AppLocalizationsDelegate

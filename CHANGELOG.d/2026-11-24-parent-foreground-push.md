@@ -1,0 +1,1 @@
+- Parent app (`apps/parent-app`): register `FirebaseMessaging.onMessage` through the shared `toVisible` → `LocalNotifier.show` → `writeShown` dedupe pipeline, reload `SharedPreferences` across isolates before dedupe checks, and enable iOS foreground notification presentation options (while keeping the `#317` no-config guard) (#1028).

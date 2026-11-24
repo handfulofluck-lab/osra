@@ -18,6 +18,7 @@ import {
   buildDeviceRingMessage,
   buildDeviceWakeMessage,
   canWakeDevice,
+  classifyPushError,
   notifyDeviceWake,
   notifyParentsOfAlert,
   setDeviceWakeSender,
@@ -924,6 +925,208 @@ describe("the wake log (#673, Claude a4 / Fable B1-B2)", () => {
     expect(lines).toContain("failed");
     expect(lines).toContain("reason=UNREGISTERED");
     expect(lines).toContain("tokenCleared=true");
+  });
+});
+
+describe("parent alert push outcome logging (#1028)", () => {
+  beforeEach(() => {
+    resetPrismaMock();
+    setPushProviders(null);
+    delete process.env.PUSH_MIN_SEVERITY;
+  });
+
+  // Mutant: collapse THIRD_PARTY_AUTH_ERROR into generic provider_error -> the third_party_auth row fails.
+  it("classifies provider errors into operator-scannable classes including third_party_auth", () => {
+    expect(classifyPushError({ invalidToken: true, reason: "HTTP 404 UNREGISTERED" })).toBe("unregistered");
+    expect(classifyPushError({ invalidToken: true, reason: "HTTP 410 Unregistered" })).toBe("unregistered");
+    expect(classifyPushError({ invalidToken: true, reason: "HTTP 400 DeviceTokenNotForTopic" })).toBe("topic_mismatch");
+    expect(classifyPushError({ invalidToken: true, reason: "HTTP 400 INVALID_ARGUMENT" })).toBe("invalid_token");
+    expect(classifyPushError({ invalidToken: false, reason: "HTTP 401 THIRD_PARTY_AUTH_ERROR" })).toBe("third_party_auth");
+    expect(classifyPushError({ invalidToken: false, reason: "HTTP 403 SENDER_ID_MISMATCH" })).toBe("auth_error");
+    expect(classifyPushError({ invalidToken: false, reason: "FCM oauth token exchange failed: HTTP 401" })).toBe("auth_error");
+    expect(classifyPushError({ invalidToken: false, reason: "HTTP 429 QUOTA_EXCEEDED" })).toBe("rate_limited");
+    expect(classifyPushError({ invalidToken: false, reason: "HTTP 400 INVALID_ARGUMENT" })).toBe("invalid_request");
+    expect(classifyPushError({ invalidToken: false, reason: "HTTP 503 UNAVAILABLE" })).toBe("provider_unavailable");
+    expect(classifyPushError({ invalidToken: false, reason: "fetch failed (ECONNRESET)" })).toBe("network_error");
+    expect(classifyPushError({ invalidToken: false, reason: "unexpected" })).toBe("provider_error");
+  });
+
+  // Mutant: emit raw messageId, raw provider reason, or raw exception objects, or include any push token /
+  // family/parent/child/alert id -> the marker assertions below fail immediately.
+  it("logs closed classifications and counts only, never leaking provider messageIds, raw reasons, exceptions, tokens, or ids", async () => {
+    const provider: PushProvider = {
+      platform: "android",
+      async send(tok) {
+        if (tok === "tok-secret-android") return { ok: true, messageId: "SYNTH_MSG_ID_MARKER_101" };
+        if (tok === "tok-secret-ios") {
+          return { ok: false, invalidToken: false, reason: "HTTP 401 THIRD_PARTY_AUTH_ERROR SYNTH_REASON_MARKER_202" };
+        }
+        if (tok === "tok-secret-web") {
+          return { ok: false, invalidToken: true, reason: "HTTP 404 UNREGISTERED SYNTH_STALE_MARKER_303" };
+        }
+        throw new Error("ECONNRESET SYNTH_THROW_MARKER_404");
+      },
+    };
+    setPushProviders([provider]);
+    prismaMock.digestPrefs.findUnique.mockResolvedValue(null);
+    prismaMock.parent.findMany.mockResolvedValue([{ id: "parent-secret-1" }, { id: "parent-secret-2" }]);
+    prismaMock.parentPushToken.findMany.mockResolvedValue([
+      { id: "row-secret-1", parentId: "parent-secret-1", token: "tok-secret-android", platform: "android" },
+      { id: "row-secret-2", parentId: "parent-secret-1", token: "tok-secret-ios", platform: "ios" },
+      { id: "row-secret-3", parentId: "parent-secret-2", token: "tok-secret-web", platform: "web" },
+      { id: "row-secret-4", parentId: "parent-secret-2", token: "tok-secret-throw", platform: "ios" },
+    ]);
+    prismaMock.parentPushToken.deleteMany.mockResolvedValue({ count: 1 });
+
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const outcome = await notifyParentsOfAlert(
+      "fam-secret-9",
+      { id: "alert-secret-9", childId: "child-secret-9", severity: "critical", category: "sos", title: "SOSCanary", body: "BodyCanary" },
+      "AlexCanary",
+    );
+    const infoLines = info.mock.calls.map((c) => c.map(String).join(" "));
+    const warnLines = warn.mock.calls.map((c) => c.map(String).join(" "));
+    const errLines = err.mock.calls.map((c) => c.map(String).join(" "));
+    info.mockRestore();
+    warn.mockRestore();
+    err.mockRestore();
+
+    expect(outcome).toEqual({ recipients: 4, delivered: 1, pruned: 1, skipped: null });
+    expect(infoLines.some((l) => l === "[push] parent alert send outcome=sent platform=android provider=android")).toBe(true);
+    expect(infoLines.some((l) => l === "[push] parent alert send outcome=stale platform=web provider=android errorClass=unregistered")).toBe(true);
+    expect(warnLines.some((l) => l === "[push] delivery failed platform=ios provider=android errorClass=third_party_auth")).toBe(true);
+    expect(warnLines.some((l) => l === "[push] delivery failed platform=ios provider=android errorClass=network_error")).toBe(true);
+    expect(
+      infoLines.filter((l) => l.startsWith("[push] parent alert outcome ")),
+    ).toEqual([
+      "[push] parent alert outcome recipients=4 delivered=1 stale=1 pruned=1 failed=2 cleanup=ok skipped=none category=sos severity=critical platforms=android:1,ios:2,web:1",
+    ]);
+    expect(errLines).toEqual([]);
+
+    const allLogs = [...infoLines, ...warnLines, ...errLines].join("\n");
+    for (const canary of [
+      "SYNTH_MSG_ID_MARKER_101",
+      "SYNTH_REASON_MARKER_202",
+      "SYNTH_STALE_MARKER_303",
+      "SYNTH_THROW_MARKER_404",
+      "tok-secret-android",
+      "tok-secret-ios",
+      "tok-secret-web",
+      "tok-secret-throw",
+      "fam-secret-9",
+      "parent-secret-1",
+      "parent-secret-2",
+      "row-secret-1",
+      "alert-secret-9",
+      "child-secret-9",
+      "AlexCanary",
+      "SOSCanary",
+      "BodyCanary",
+    ]) {
+      expect(allLogs).not.toContain(canary);
+    }
+  });
+
+  // Mutant (Codex #1040 review 7118885073): setting outcome.pruned = dead.length instead of deleted.count
+  // reports pruned=1 when another worker already removed the stale row; skipping the aggregate on deleteMany
+  // rejection leaves zero summary lines for an alert that already delivered pushes.
+  it("reports affected-row pruned count on concurrent cleanup and still emits one summary on interrupted cleanup", async () => {
+    const provider = new FakeProvider((tok) =>
+      tok === "stale-tok" ? { ok: false, invalidToken: true, reason: "HTTP 404 UNREGISTERED" } : { ok: true },
+    );
+    setPushProviders([provider]);
+    prismaMock.digestPrefs.findUnique.mockResolvedValue(null);
+    prismaMock.parent.findMany.mockResolvedValue([{ id: "parent-1" }]);
+    prismaMock.parentPushToken.findMany.mockResolvedValue([
+      { id: "t1", parentId: "parent-1", token: "live-tok", platform: "android" },
+      { id: "t2", parentId: "parent-1", token: "stale-tok", platform: "ios" },
+    ]);
+
+    // Case 1: Concurrent worker already deleted t2 -> deleteMany returns { count: 0 }.
+    prismaMock.parentPushToken.deleteMany.mockResolvedValueOnce({ count: 0 });
+    const info1 = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const out1 = await notifyParentsOfAlert("fam-1", alert);
+    const summaries1 = info1.mock.calls.map((c) => String(c[0])).filter((l) => l.startsWith("[push] parent alert outcome "));
+    info1.mockRestore();
+
+    expect(out1).toEqual({ recipients: 2, delivered: 1, pruned: 0, skipped: null });
+    expect(summaries1).toEqual([
+      "[push] parent alert outcome recipients=2 delivered=1 stale=1 pruned=0 failed=0 cleanup=ok skipped=none category=sos severity=critical platforms=android:1,ios:1",
+    ]);
+
+    // Case 2: Interrupted cleanup -> deleteMany rejects with an error carrying a synthetic marker.
+    prismaMock.parentPushToken.deleteMany.mockRejectedValueOnce(new Error("DB_CLEANUP_MARKER_505"));
+    const info2 = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const err2 = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const out2 = await notifyParentsOfAlert("fam-1", alert);
+    const summaries2 = info2.mock.calls.map((c) => String(c[0])).filter((l) => l.startsWith("[push] parent alert outcome "));
+    const errLines2 = err2.mock.calls.map((c) => c.map(String).join(" "));
+    info2.mockRestore();
+    err2.mockRestore();
+
+    expect(out2).toEqual({ recipients: 2, delivered: 1, pruned: 0, skipped: null });
+    expect(summaries2).toEqual([
+      "[push] parent alert outcome recipients=2 delivered=1 stale=1 pruned=0 failed=0 cleanup=failed skipped=none category=sos severity=critical platforms=android:1,ios:1",
+    ]);
+    expect(errLines2).toEqual(["[push] parent alert cleanup failed errorClass=cleanup_failed"]);
+    expect([...summaries2, ...errLines2].join("\n")).not.toContain("DB_CLEANUP_MARKER_505");
+
+    // Case 3: Unexpected outer DB failure -> logs closed errorClass + one summary, never serializing the exception.
+    prismaMock.digestPrefs.findUnique.mockRejectedValueOnce(new Error("OUTER_DB_MARKER_606"));
+    const info3 = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const err3 = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const out3 = await notifyParentsOfAlert("fam-1", alert);
+    const summaries3 = info3.mock.calls.map((c) => String(c[0])).filter((l) => l.startsWith("[push] parent alert outcome "));
+    const errLines3 = err3.mock.calls.map((c) => c.map(String).join(" "));
+    info3.mockRestore();
+    err3.mockRestore();
+
+    expect(out3).toEqual({ recipients: 0, delivered: 0, pruned: 0, skipped: null });
+    expect(summaries3).toEqual([
+      "[push] parent alert outcome recipients=0 delivered=0 stale=0 pruned=0 failed=0 cleanup=none skipped=error category=sos severity=critical",
+    ]);
+    expect(errLines3).toEqual(["[push] notifyParentsOfAlert failed errorClass=provider_error"]);
+    expect([...summaries3, ...errLines3].join("\n")).not.toContain("OUTER_DB_MARKER_606");
+  });
+
+  // Mutant: omit logParentAlertOutcome on any skip branch or omit the no_provider branch -> fails below.
+  it("logs aggregate NotifyOutcome on every skip reason (severity, no_providers, prefs, no_tokens) and missing provider", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    await notifyParentsOfAlert("fam-1", { ...alert, severity: "info", category: "device_restarted" });
+    setPushProviders([]);
+    await notifyParentsOfAlert("fam-1", alert);
+    setPushProviders([new FakeProvider()]);
+    prismaMock.digestPrefs.findUnique.mockResolvedValue({ familyId: "fam-1", pushEnabled: false, dailyEmail: true, weeklyEmail: true, emails: [] });
+    await notifyParentsOfAlert("fam-1", alert);
+    prismaMock.digestPrefs.findUnique.mockResolvedValue(null);
+    prismaMock.parent.findMany.mockResolvedValue([{ id: "parent-1" }]);
+    prismaMock.parentPushToken.findMany.mockResolvedValue([]);
+    await notifyParentsOfAlert("fam-1", alert);
+    const apnsOnly: PushProvider = { platform: "ios", async send() { return { ok: true }; } };
+    setPushProviders([apnsOnly]);
+    prismaMock.parentPushToken.findMany.mockResolvedValue([{ id: "t1", parentId: "parent-1", token: "fcm-ios-tok", platform: "ios" }]);
+    const noProvOut = await notifyParentsOfAlert("fam-1", alert);
+
+    const infoLines = info.mock.calls.map((c) => String(c[0]));
+    const warnLines = warn.mock.calls.map((c) => String(c[0]));
+    info.mockRestore();
+    warn.mockRestore();
+
+    expect(noProvOut).toEqual({ recipients: 1, delivered: 0, pruned: 0, skipped: null });
+    expect(infoLines.some((l) => l.includes("[push] parent alert outcome") && l.includes("skipped=severity"))).toBe(true);
+    expect(infoLines.some((l) => l.includes("[push] parent alert outcome") && l.includes("skipped=no_providers"))).toBe(true);
+    expect(infoLines.some((l) => l.includes("[push] parent alert outcome") && l.includes("skipped=prefs"))).toBe(true);
+    expect(infoLines.some((l) => l.includes("[push] parent alert outcome") && l.includes("skipped=no_tokens"))).toBe(true);
+    expect(warnLines.some((l) => l === "[push] parent alert send outcome=skipped platform=ios errorClass=no_provider")).toBe(true);
+    expect(
+      infoLines.some(
+        (l) => l.includes("recipients=1 delivered=0 stale=0 pruned=0 failed=1 cleanup=none skipped=none") && l.includes("platforms=ios:1"),
+      ),
+    ).toBe(true);
   });
 });
 

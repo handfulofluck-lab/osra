@@ -20,7 +20,8 @@ class RecordedRequest {
         headers = headers ?? const {};
 
   /// Request body as a map (empty map for non-map bodies).
-  Map<String, dynamic> get body => data is Map ? Map<String, dynamic>.from(data as Map) : const {};
+  Map<String, dynamic> get body =>
+      data is Map ? Map<String, dynamic>.from(data as Map) : const {};
 }
 
 /// Non-2xx canned response a route can return.
@@ -70,20 +71,27 @@ class FakeApiClient extends ApiClient {
       if (route == null) {
         handler.reject(DioException(
           requestOptions: options,
-          response: Response(requestOptions: options, statusCode: 404, data: {'error': 'no_fake_route'}),
+          response: Response(
+              requestOptions: options,
+              statusCode: 404,
+              data: {'error': 'no_fake_route'}),
           type: DioExceptionType.badResponse,
         ));
         return;
       }
       final result = route(record);
       if (result is FakeDeferred) {
-        result.result.then((data) => handler.resolve(Response(requestOptions: options, data: data)));
+        result.result.then((data) =>
+            handler.resolve(Response(requestOptions: options, data: data)));
         return;
       }
       if (result is FakeHttpError) {
         handler.reject(DioException(
           requestOptions: options,
-          response: Response(requestOptions: options, statusCode: result.status, data: result.body),
+          response: Response(
+              requestOptions: options,
+              statusCode: result.status,
+              data: result.body),
           type: DioExceptionType.badResponse,
         ));
       } else if (result is FakeNetworkError) {
@@ -104,8 +112,10 @@ class FakeApiClient extends ApiClient {
   Dio get raw => _dio;
 
   /// Recorded requests matching [method] + [path], in call order.
-  List<RecordedRequest> calls(String method, String path) =>
-      [for (final r in requests) if (r.method == method && r.path == path) r];
+  List<RecordedRequest> calls(String method, String path) => [
+        for (final r in requests)
+          if (r.method == method && r.path == path) r
+      ];
 }
 
 /// Canned GET /v1/family/me with two children: Alex's device is online at 55%
@@ -151,7 +161,12 @@ Map<String, dynamic> familyMeTwoChildren({
 }) {
   final now = DateTime.now().toUtc();
   return {
-    'family': {'id': 'fam-1', 'name': 'QA Family', 'region': 'US', 'createdAt': now.toIso8601String()},
+    'family': {
+      'id': 'fam-1',
+      'name': 'QA Family',
+      'region': 'US',
+      'createdAt': now.toIso8601String()
+    },
     'parent': {
       'id': 'par-1',
       'familyId': 'fam-1',
@@ -161,8 +176,20 @@ Map<String, dynamic> familyMeTwoChildren({
       'mfaEnabled': false,
     },
     'children': [
-      {'id': 'child-1', 'familyId': 'fam-1', 'displayName': alexName, 'birthYear': 2013, 'screenTimeTodayMinutes': 45},
-      {'id': 'child-2', 'familyId': 'fam-1', 'displayName': 'Sam', 'birthYear': 2016, 'screenTimeTodayMinutes': 10},
+      {
+        'id': 'child-1',
+        'familyId': 'fam-1',
+        'displayName': alexName,
+        'birthYear': 2013,
+        'screenTimeTodayMinutes': 45
+      },
+      {
+        'id': 'child-2',
+        'familyId': 'fam-1',
+        'displayName': 'Sam',
+        'birthYear': 2016,
+        'screenTimeTodayMinutes': 10
+      },
     ],
     'devices': [
       {
@@ -200,7 +227,8 @@ Map<String, dynamic> ruleSetPayload(
   List<String>? contactAllowlist,
   List<String>? alwaysAllowedApps,
   Map<String, dynamic>? webFilter,
-}) => {
+}) =>
+    {
       'id': 'rules-$childId',
       'childId': childId,
       'screenTime': {
@@ -214,15 +242,21 @@ Map<String, dynamic> ruleSetPayload(
           'days': [1, 2, 3, 4, 5],
         },
       },
-      'webFilter': webFilter ?? {
-        'blockedCategories': blockedCategories ?? ['pornography'],
-        'allowedDomains': ['khanacademy.org'],
-        'blockedDomains': <String>[],
-        'safeSearchEnforced': true,
-        'youtubeRestrictedMode': 'strict',
-      },
+      'webFilter': webFilter ??
+          {
+            'blockedCategories': blockedCategories ?? ['pornography'],
+            'allowedDomains': ['khanacademy.org'],
+            'blockedDomains': <String>[],
+            'safeSearchEnforced': true,
+            'youtubeRestrictedMode': 'strict',
+          },
       'appRules': [
-        {'packageId': 'com.example.game', 'appName': 'Game', 'action': 'time_limit', 'dailyLimitMinutes': 60},
+        {
+          'packageId': 'com.example.game',
+          'appName': 'Game',
+          'action': 'time_limit',
+          'dailyLimitMinutes': 60
+        },
       ],
       'routines': [
         {
@@ -284,10 +318,17 @@ Map<String, dynamic> consentStatusPayload({
     };
 
 /// One installed-app JSON object (`GET /v1/devices/:id/apps`, roadmap 3.4).
-Map<String, dynamic> installedAppJson(String packageId, String label, {bool isSystem = false}) => {
+Map<String, dynamic> installedAppJson(
+  String packageId,
+  String label, {
+  bool isSystem = false,
+  String? iconUrl,
+}) =>
+    {
       'packageId': packageId,
       'label': label,
       'isSystem': isSystem,
+      if (iconUrl != null) 'iconUrl': iconUrl,
     };
 
 /// The default inventory used by the Rules-editor picker tests: one app that
@@ -318,7 +359,9 @@ Map<String, dynamic> installedAppsPayload({
 }
 
 /// One alert JSON object.
-Map<String, dynamic> alertJson(String id, String severity, String category, String title, DateTime at) => {
+Map<String, dynamic> alertJson(String id, String severity, String category,
+        String title, DateTime at) =>
+    {
       'id': id,
       'childId': 'child-1',
       'deviceId': 'dev-1',
@@ -353,8 +396,10 @@ Map<String, dynamic> commandJson(
       'requestedBy': 'par-1',
       'attempts': attempts,
       'createdAt': createdAt.toUtc().toIso8601String(),
-      'expiresAt': createdAt.add(const Duration(hours: 1)).toUtc().toIso8601String(),
-      if (deliveredAt != null) 'deliveredAt': deliveredAt.toUtc().toIso8601String(),
+      'expiresAt':
+          createdAt.add(const Duration(hours: 1)).toUtc().toIso8601String(),
+      if (deliveredAt != null)
+        'deliveredAt': deliveredAt.toUtc().toIso8601String(),
       if (ackedAt != null) 'ackedAt': ackedAt.toUtc().toIso8601String(),
       if (result != null) 'result': result,
     };
@@ -367,9 +412,12 @@ Map<String, dynamic> commandJson(
 List<Map<String, dynamic>> defaultAlerts() {
   final now = DateTime.now();
   return [
-    alertJson('a3', 'critical', 'sos', 'SOS pressed', now.subtract(const Duration(minutes: 30))),
-    alertJson('a2', 'warning', 'web_threat', 'Blocked site visited', now.subtract(const Duration(minutes: 10))),
-    alertJson('a1', 'info', 'screen_time_exceeded', 'Daily limit reached', now.subtract(const Duration(days: 1, hours: 2))),
+    alertJson('a3', 'critical', 'sos', 'SOS pressed',
+        now.subtract(const Duration(minutes: 30))),
+    alertJson('a2', 'warning', 'web_threat', 'Blocked site visited',
+        now.subtract(const Duration(minutes: 10))),
+    alertJson('a1', 'info', 'screen_time_exceeded', 'Daily limit reached',
+        now.subtract(const Duration(days: 1, hours: 2))),
   ];
 }
 
@@ -390,15 +438,18 @@ Map<String, FakeRoute> standardRoutes({
     'POST /v1/auth/register': (_) => {'token': 'jwt-token'},
     'GET /v1/family/me': (_) => familyMe ?? familyMeTwoChildren(),
     'POST /v1/family/children': (req) => {'child': req.body, 'id': 'child-new'},
-    'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1', blockedCategories: blockedCategories),
-    'GET /v1/rules/child-2': (_) => ruleSetPayload('child-2', blockedCategories: blockedCategories),
+    'GET /v1/rules/child-1': (_) =>
+        ruleSetPayload('child-1', blockedCategories: blockedCategories),
+    'GET /v1/rules/child-2': (_) =>
+        ruleSetPayload('child-2', blockedCategories: blockedCategories),
     'PUT /v1/rules/child-1': (_) => {'ok': true},
     'PUT /v1/rules/child-2': (_) => {'ok': true},
     'PATCH /v1/rules/child-1': (_) => {'ok': true},
     'PATCH /v1/rules/child-2': (_) => {'ok': true},
     // Roadmap 3.4: the Rules-editor app picker reads the child's device inventories.
     'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(),
-    'GET /v1/devices/dev-2/apps': (_) => installedAppsPayload(apps: [installedAppJson('com.example.game', 'Game')]),
+    'GET /v1/devices/dev-2/apps': (_) => installedAppsPayload(
+        apps: [installedAppJson('com.example.game', 'Game')]),
     'GET /v1/location/child-1/latest': (_) => {'latest': null},
     'GET /v1/location/child-2/latest': (_) => {'latest': null},
     'GET /v1/alerts': (req) => req.query['ack'] == 'false'
@@ -406,7 +457,12 @@ Map<String, FakeRoute> standardRoutes({
             'items': <dynamic>[],
             'meta': {'total': unacked, 'page': 1, 'limit': 1},
           }
-        : {'items': alertItems, 'total': alertItems.length, 'page': 1, 'limit': 20},
+        : {
+            'items': alertItems,
+            'total': alertItems.length,
+            'page': 1,
+            'limit': 20
+          },
     'POST /v1/alerts/a1/ack': (_) => {'ok': true},
     'POST /v1/alerts/a2/ack': (_) => {'ok': true},
     'POST /v1/alerts/a3/ack': (_) => {'ok': true},
@@ -420,8 +476,8 @@ Map<String, FakeRoute> standardRoutes({
     // Plan 3.7: an active consent record for both fixture children.
     'GET /v1/family/children/child-1/consent': (_) =>
         consentStatusPayload(records: [consentRecordJson()]),
-    'GET /v1/family/children/child-2/consent': (_) =>
-        consentStatusPayload(records: [consentRecordJson(id: 'consent-2', childId: 'child-2')]),
+    'GET /v1/family/children/child-2/consent': (_) => consentStatusPayload(
+        records: [consentRecordJson(id: 'consent-2', childId: 'child-2')]),
     'POST /v1/family/children/child-1/consent/revoke': (_) => {
           'revoked': true,
           'childId': 'child-1',
@@ -438,7 +494,10 @@ Map<String, FakeRoute> standardRoutes({
         },
     'POST /v1/devices/pair': (_) => {
           'code': '482916',
-          'expiresAt': DateTime.now().toUtc().add(const Duration(minutes: 10)).toIso8601String(),
+          'expiresAt': DateTime.now()
+              .toUtc()
+              .add(const Duration(minutes: 10))
+              .toIso8601String(),
         },
     // Feature #2/#24 + #6: default to empty feeds so the child-detail Social
     // tab renders its empty states instead of error text.

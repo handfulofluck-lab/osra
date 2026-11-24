@@ -1204,6 +1204,7 @@ class Alert {
   final String body;
   final Map<String, dynamic> metadata;
   final DateTime? createdAt;
+  final DateTime? updatedAt;
   final bool acknowledged;
   final int attemptCount;
 
@@ -1217,6 +1218,7 @@ class Alert {
     required this.body,
     this.metadata = const {},
     this.createdAt,
+    this.updatedAt,
     this.acknowledged = false,
     this.attemptCount = 1,
   });
@@ -1233,9 +1235,80 @@ class Alert {
             ? Map<String, dynamic>.from(json['metadata'] as Map)
             : const {},
         createdAt: DateTime.tryParse(_str(json['createdAt'])),
+        updatedAt: DateTime.tryParse(_str(json['updatedAt'])),
         acknowledged: _bool(json['acknowledged']),
         attemptCount: _int(json['attemptCount'], 1),
       );
+
+  /// #1029: whether this alert is a social/gaming chat concern alert.
+  bool get isSocialAlert =>
+      category == 'social_concern' || category == 'gaming_chat';
+
+  static int? _positiveMetaInt(Map<String, dynamic> meta, List<String> keys) {
+    for (final k in keys) {
+      final v = meta[k];
+      if (v is num && v.toInt() > 0) return v.toInt();
+      if (v is String) {
+        final parsed = int.tryParse(v.trim());
+        if (parsed != null && parsed > 0) return parsed;
+      }
+    }
+    return null;
+  }
+
+  /// #1029: explicit flagged message count from metadata (or `attemptCount` when > 1), else null.
+  int? get socialFlaggedCount =>
+      _positiveMetaInt(metadata, const ['flaggedCount', 'messageCount', 'count']) ??
+      (attemptCount > 1 ? attemptCount : null);
+
+  /// #1029: total flagged messages represented by this social alert (at least 1).
+  int get socialMessageCount => socialFlaggedCount ?? (attemptCount > 0 ? attemptCount : 1);
+
+  /// #1029: distinct contact count from metadata (count only, never names on card/push).
+  int? get socialContactCount {
+    final explicit = _positiveMetaInt(
+      metadata,
+      const ['contactCount', 'distinctContactCount', 'contactsCount'],
+    );
+    if (explicit != null) return explicit;
+    final contact = metadata['contact']?.toString().trim() ?? '';
+    return contact.isNotEmpty ? 1 : null;
+  }
+
+  /// #1029: contact display name from metadata (as the child's app shows it), or null if absent/blank.
+  String? get socialContactName {
+    final raw = metadata['contact']?.toString().trim() ?? '';
+    return raw.isEmpty ? null : raw;
+  }
+
+  /// #1029: latest flagged-message timestamp in the throttle window, if present.
+  DateTime? get socialLatestAt {
+    for (final k in const ['latestAt', 'lastAt', 'updatedAt']) {
+      final raw = metadata[k];
+      if (raw is String && raw.trim().isNotEmpty) {
+        final parsed = DateTime.tryParse(raw.trim());
+        if (parsed != null) return parsed;
+      }
+    }
+    return updatedAt ?? createdAt;
+  }
+
+  /// #1029: timestamp used for feed ordering and day grouping so in-place updated alerts move to top.
+  DateTime? get effectiveTimestamp => socialLatestAt ?? updatedAt ?? createdAt;
+
+  /// #1029: true when this social alert carries running-count aggregate metadata (or attemptCount > 1)
+  /// and an app name so the card/detail renders `socialAlertCountTitle` + `socialAlertCountSub`.
+  bool get hasSocialCountSummary {
+    if (!isSocialAlert) return false;
+    final app = metadata['app']?.toString().trim() ?? '';
+    if (app.isEmpty) return false;
+    return socialFlaggedCount != null ||
+        _positiveMetaInt(
+              metadata,
+              const ['contactCount', 'distinctContactCount', 'contactsCount'],
+            ) !=
+            null;
+  }
 
   /// Issue #672: the fix an SOS carried, or null. Every other category has none — this reads metadata
   /// only, so the getter is safe on any alert.
