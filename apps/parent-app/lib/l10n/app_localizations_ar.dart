@@ -3655,4 +3655,32 @@ class AppLocalizationsAr extends AppLocalizations {
   String appBlockedNamedSnack(String app) {
     return 'تم حظر $app';
   }
+
+  @override
+  String get socialCheckMessagesIn => 'فحص الرسائل في هذه التطبيقات';
+
+  @override
+  String socialNotOnChildPhone(String child, int count) {
+    return 'غير مثبّتة على هاتف $child ($count)';
+  }
+
+  @override
+  String get socialChecking => 'الفحص مفعّل';
+
+  @override
+  String get socialOff => 'الفحص متوقف';
+
+  @override
+  String get socialCommentsAndChats => 'التعليقات والمحادثات';
+
+  @override
+  String get socialNewAppsBanner =>
+      'يمكنك الآن أيضًا اختيار YouTube وTelegram وReddit وMessenger.';
+
+  @override
+  String get socialPrivacyLine =>
+      'لا ينبّهك تطبيق أسرة للأطفال إلا إلى الرسائل التي تستدعي المراجعة، ولا يعرض لك كل المحادثات أبدًا.';
+
+  @override
+  String get selectAll => 'تحديد الكل';
 }

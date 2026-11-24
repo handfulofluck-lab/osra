@@ -9,8 +9,10 @@ import 'package:familyshield_parent/core/date_formatting.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/social/social_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
+import 'package:familyshield_parent/theme/app_theme.dart';
 
 import 'fake_api_client.dart';
+import 'frame_capture.dart';
 import 'test_app.dart';
 
 /// Fixed local wall-clock base for every seeded timestamp in this file.
@@ -24,15 +26,50 @@ final DateTime testNow = DateTime(2026, 10, 19, 12, 0);
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUpAll(loadFrameFonts);
+
   setUp(() {
     FlutterSecureStorage.setMockInitialValues({});
     SharedPreferences.setMockInitialValues({});
   });
 
-  Future<void> pumpScreen(WidgetTester tester, Widget home, FakeApiClient api) async {
+  const socialPackageFixtures = <String, String>{
+    'whatsapp': 'com.whatsapp',
+    'instagram': 'com.instagram.android',
+    'tiktok': 'com.zhiliaoapp.musically',
+    'snapchat': 'com.snapchat.android',
+    'twitter': 'com.twitter.android',
+    'discord': 'com.discord',
+    'roblox': 'com.roblox.client',
+    'line': 'jp.naver.line.android',
+    'youtube': 'com.google.android.youtube',
+    'telegram': 'org.telegram.messenger',
+    'reddit': 'com.reddit.frontpage',
+    'messenger': 'com.facebook.orca',
+  };
+
+  List<Map<String, dynamic>> socialInventory([Set<String>? keys]) => [
+        for (final entry in socialPackageFixtures.entries)
+          if (keys == null || keys.contains(entry.key))
+            installedAppJson(entry.value, entry.key),
+      ];
+
+  Future<void> pumpScreen(WidgetTester tester, Widget home, FakeApiClient api,
+      {bool tall = false, Locale locale = const Locale('en'), bool frameBoundary = false}) async {
+    if (tall) {
+      tester.view.physicalSize = const Size(1200, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+    }
     await tester.pumpWidget(ProviderScope(
       overrides: [apiClientProvider.overrideWithValue(api)],
-      child: localizedTestApp(home),
+      child: localizedTestApp(
+        frameBoundary
+            ? RepaintBoundary(key: const ValueKey('frameRoot'), child: home)
+            : home,
+        locale: locale,
+        theme: withFrameFonts(AppTheme.light),
+      ),
     ));
     await tester.pumpAndSettle();
   }
@@ -67,10 +104,12 @@ void main() {
     List<Map<String, dynamic>> locks = const [],
     Map<String, bool>? socialMonitoring,
     List<String>? contactAllowlist,
+    List<Map<String, dynamic>>? installedApps,
   }) =>
       {
         ...standardRoutes(),
         'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1', socialMonitoring: socialMonitoring, contactAllowlist: contactAllowlist),
+        'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(apps: installedApps ?? socialInventory()),
         'GET /v1/social/events': (req) => req.query['childId'] == 'child-1'
             ? {'items': concerns, 'meta': {'total': concerns.length}}
             : {'items': <dynamic>[], 'meta': {'total': 0}},
@@ -128,6 +167,15 @@ void main() {
       };
 
   group('Monitoring toggles', () {
+    testWidgets('the shared catalog covers all 12 monitored apps and keys X as twitter', (tester) async {
+      expect(
+        kSocialApps.map((a) => a.appKey).toList(),
+        ['whatsapp', 'instagram', 'tiktok', 'snapchat', 'twitter', 'discord', 'roblox', 'line', 'youtube', 'telegram', 'reddit', 'messenger'],
+      );
+      expect(socialAppIcon('twitter'), Icons.alternate_email);
+      expect(socialAppIcon('x'), Icons.alternate_email);
+    });
+
     testWidgets('render from rules payload; apps absent from the map default to ON', (tester) async {
       final api = FakeApiClient(socialRoutes(socialMonitoring: {'whatsapp': false, 'tiktok': false}));
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
@@ -140,9 +188,28 @@ void main() {
       expect(tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'LINE')).value, isTrue);
     });
 
+    testWidgets('canonical twitter wins over legacy x and legacy x survives when canonical is absent', (tester) async {
+      final cases = <({Map<String, bool> monitoring, bool expected})>[
+        (monitoring: {'twitter': false, 'x': true}, expected: false),
+        (monitoring: {'twitter': true, 'x': false}, expected: true),
+        (monitoring: {'x': false}, expected: false),
+      ];
+      for (final entry in cases) {
+        final api = FakeApiClient(socialRoutes(socialMonitoring: entry.monitoring));
+        await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api, tall: true);
+        await flushFakeHttp(tester);
+        expect(
+          tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'X')).value,
+          entry.expected,
+          reason: 'rule map ${entry.monitoring} must control X',
+        );
+        await tester.pumpWidget(const SizedBox());
+      }
+    });
+
     testWidgets('all apps default to ON when the payload has no socialMonitoring', (tester) async {
       final api = FakeApiClient(socialRoutes());
-      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api, tall: true);
       await flushFakeHttp(tester);
 
       for (final a in kSocialApps) {
@@ -150,9 +217,90 @@ void main() {
       }
     });
 
+    testWidgets('installed apps sort first and the collapsed group keeps its switches usable', (tester) async {
+      final api = FakeApiClient(socialRoutes(
+        socialMonitoring: {'whatsapp': false},
+        installedApps: socialInventory({'telegram', 'whatsapp', 'youtube'}),
+      ));
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api, tall: true);
+      await flushFakeHttp(tester);
+
+      expect(find.text('Check messages in'), findsOneWidget);
+      expect(find.text('OSRA only flags concerning messages. It never shows you every chat.'), findsOneWidget);
+      expect(find.text('Not on Alex\'s phone (9)'), findsOneWidget);
+      expect(find.widgetWithText(SwitchListTile, 'Instagram'), findsNothing);
+      expect(find.descendant(of: find.widgetWithText(SwitchListTile, 'WhatsApp'), matching: find.text('Off')), findsOneWidget);
+      expect(tester.widget<Text>(find.text('WhatsApp')).maxLines, 1);
+      expect(tester.widget<Text>(find.text('WhatsApp')).overflow, TextOverflow.ellipsis);
+      expect(find.descendant(of: find.widgetWithText(SwitchListTile, 'YouTube'), matching: find.text('Comments and chats')), findsOneWidget);
+
+      final telegramTop = tester.getTopLeft(find.widgetWithText(SwitchListTile, 'Telegram')).dy;
+      final whatsappTop = tester.getTopLeft(find.widgetWithText(SwitchListTile, 'WhatsApp')).dy;
+      final youtubeTop = tester.getTopLeft(find.widgetWithText(SwitchListTile, 'YouTube')).dy;
+      expect(telegramTop, lessThan(whatsappTop));
+      expect(whatsappTop, lessThan(youtubeTop));
+
+      await tester.tap(find.text('Not on Alex\'s phone (9)'));
+      await tester.pumpAndSettle();
+      final reddit = find.widgetWithText(SwitchListTile, 'Reddit');
+      expect(reddit, findsOneWidget);
+      await tester.tap(reddit);
+      await tester.pumpAndSettle();
+      expect(tester.widget<SwitchListTile>(reddit).value, isFalse);
+    });
+
+    testWidgets('the four-app banner dismisses once and stays dismissed', (tester) async {
+      final api = FakeApiClient(socialRoutes());
+      const banner = 'You can now choose YouTube, Telegram, Reddit and Messenger too.';
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api, tall: true);
+      await flushFakeHttp(tester);
+      expect(find.text(banner), findsOneWidget);
+
+      await tester.tap(find.text('Dismiss'));
+      await tester.pumpAndSettle();
+      expect(find.text(banner), findsNothing);
+
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api, tall: true);
+      await flushFakeHttp(tester);
+      expect(find.text(banner), findsNothing);
+    });
+
+    for (final locale in [const Locale('en'), const Locale('ar')]) {
+      testWidgets('Social monitoring fits 320 px at 200% text in ${locale.languageCode}', (tester) async {
+        tester.view.physicalSize = const Size(320, 1000);
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+          tester.platformDispatcher.clearTextScaleFactorTestValue();
+        });
+        final api = FakeApiClient(socialRoutes(
+          installedApps: socialInventory({'telegram', 'whatsapp', 'youtube'}),
+        ));
+        await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api,
+            locale: locale, frameBoundary: true);
+        await flushFakeHttp(tester);
+
+        if (locale.languageCode == 'ar') {
+          expect(find.text('فحص الرسائل في هذه التطبيقات'), findsOneWidget);
+          expect(find.textContaining('غير مثبّتة على هاتف'), findsOneWidget);
+          expect(find.text('التعليقات والمحادثات'), findsOneWidget);
+          expect(find.text('لا ينبّهك تطبيق أسرة للأطفال إلا إلى الرسائل التي تستدعي المراجعة، ولا يعرض لك كل المحادثات أبدًا.'), findsOneWidget);
+        } else {
+          expect(find.text('Check messages in'), findsOneWidget);
+          expect(find.text('Not on Alex\'s phone (9)'), findsOneWidget);
+          expect(find.text('Comments and chats'), findsOneWidget);
+          expect(find.text('OSRA only flags concerning messages. It never shows you every chat.'), findsOneWidget);
+        }
+        expect(tester.takeException(), isNull);
+        await maybeCaptureFrame(tester, 'social-${locale.languageCode}-320-200.png');
+      });
+    }
+
     testWidgets('flip + save PUTs the merged socialMonitoring map', (tester) async {
       final api = FakeApiClient(socialRoutes(socialMonitoring: {'whatsapp': true}));
-      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api, tall: true);
       await flushFakeHttp(tester);
 
       await tester.tap(find.widgetWithText(SwitchListTile, 'WhatsApp'));
@@ -165,9 +313,27 @@ void main() {
       expect(puts, hasLength(1));
       final social = Map<String, dynamic>.from(puts.single.body['socialMonitoring'] as Map);
       expect(social['whatsapp'], isFalse);
+      expect(social['twitter'], isTrue);
+      expect(social.containsKey('x'), isFalse);
       expect(social.keys, hasLength(kSocialApps.length));
       expect(puts.single.body.keys, containsAll(['screenTime', 'webFilter', 'appRules', 'routines', 'socialMonitoring']));
       expect(find.text('Monitoring saved'), findsOneWidget);
+    });
+
+    testWidgets('saving X writes twitter and removes the legacy x shadow key', (tester) async {
+      final api = FakeApiClient(socialRoutes(socialMonitoring: {'x': true}));
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api, tall: true);
+      await flushFakeHttp(tester);
+      await tester.tap(find.widgetWithText(SwitchListTile, 'X'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save monitoring'));
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      final social = Map<String, dynamic>.from(
+          api.calls('PUT', '/v1/rules/child-1').single.body['socialMonitoring'] as Map);
+      expect(social['twitter'], isFalse);
+      expect(social.containsKey('x'), isFalse);
     });
   });
 
@@ -205,6 +371,7 @@ void main() {
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
       await flushFakeHttp(tester);
 
+      await reveal(tester, find.text('No concerns detected'));
       expect(find.text('No concerns detected'), findsOneWidget);
     });
   });
@@ -386,7 +553,7 @@ void main() {
       await tester.pumpAndSettle();
       await flushFakeHttp(tester);
 
-      expect(find.text('Monitoring'), findsOneWidget);
+      expect(find.text('Check messages in'), findsOneWidget);
       await reveal(tester, find.text('Concerns'));
       expect(find.text('Concerns'), findsOneWidget);
       await reveal(tester, find.text('Phone calls & texts'));

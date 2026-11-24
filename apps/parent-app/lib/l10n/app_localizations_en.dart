@@ -3440,4 +3440,32 @@ class AppLocalizationsEn extends AppLocalizations {
   String appBlockedNamedSnack(String app) {
     return '$app blocked';
   }
+
+  @override
+  String get socialCheckMessagesIn => 'Check messages in';
+
+  @override
+  String socialNotOnChildPhone(String child, int count) {
+    return 'Not on $child\'s phone ($count)';
+  }
+
+  @override
+  String get socialChecking => 'Checking';
+
+  @override
+  String get socialOff => 'Off';
+
+  @override
+  String get socialCommentsAndChats => 'Comments and chats';
+
+  @override
+  String get socialNewAppsBanner =>
+      'You can now choose YouTube, Telegram, Reddit and Messenger too.';
+
+  @override
+  String get socialPrivacyLine =>
+      'OSRA only flags concerning messages. It never shows you every chat.';
+
+  @override
+  String get selectAll => 'Select all';
 }

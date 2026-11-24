@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../api/models.dart';
 import '../../core/date_formatting.dart';
@@ -8,6 +9,7 @@ import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
+import '../rules/app_picker.dart' show AppIconBadge;
 import '../rules/rules_behind_banner.dart';
 import '../../providers/social_provider.dart';
 import '../../core/digits.dart';
@@ -17,19 +19,9 @@ import '../coach/coach_content.dart';
 import '../content/snippet_vault_modal.dart';
 import '../../api/permission_errors.dart';
 import '../../widgets/error_retry_view.dart';
+import 'social_app_catalog.dart';
 
-/// The eight social apps the Android agent can monitor via Accessibility
-/// (spec #2); apps absent from the RuleSet default to ON.
-const kSocialApps = [
-  (appKey: 'whatsapp', label: 'WhatsApp'),
-  (appKey: 'instagram', label: 'Instagram'),
-  (appKey: 'tiktok', label: 'TikTok'),
-  (appKey: 'snapchat', label: 'Snapchat'),
-  (appKey: 'x', label: 'X'),
-  (appKey: 'discord', label: 'Discord'),
-  (appKey: 'roblox', label: 'Roblox'),
-  (appKey: 'line', label: 'LINE'),
-];
+export 'social_app_catalog.dart' show kSocialApps, SocialAppInfo;
 
 /// Standalone social-monitoring screen (route `/child/:id/social`).
 class SocialScreen extends ConsumerWidget {
@@ -85,6 +77,7 @@ IconData socialAppIcon(String appKey) => switch (appKey) {
       'instagram' => Icons.photo_camera_outlined,
       'tiktok' => Icons.music_note,
       'snapchat' => Icons.bolt,
+      'twitter' => Icons.alternate_email,
       'x' => Icons.alternate_email,
       'discord' => Icons.headset_mic_outlined,
       'roblox' => Icons.sports_esports,
@@ -159,14 +152,37 @@ class MonitoringTogglesSection extends ConsumerStatefulWidget {
 
 class _MonitoringTogglesSectionState
     extends ConsumerState<MonitoringTogglesSection> {
+  static const _bannerDismissedKey = 'social_new_apps_banner_dismissed_v1';
+
   Map<String, bool>? _draft;
   bool _saving = false;
+  bool _showNewAppsBanner = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBannerPreference();
+  }
+
+  Future<void> _loadBannerPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _showNewAppsBanner = !(prefs.getBool(_bannerDismissedKey) ?? false);
+    });
+  }
+
+  Future<void> _dismissNewAppsBanner() async {
+    setState(() => _showNewAppsBanner = false);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_bannerDismissedKey, true);
+  }
 
   void _applyLoaded(RuleSet ruleSet) {
     if (_draft != null) return;
     _draft = {
       for (final a in kSocialApps)
-        a.appKey: ruleSet.socialMonitoring[a.appKey] ?? true
+        a.appKey: socialMonitoringEnabled(ruleSet.socialMonitoring, a.appKey)
     };
   }
 
@@ -181,7 +197,7 @@ class _MonitoringTogglesSectionState
       final body = ruleSet.toJson();
       // NOTE: merge server-side map under the local draft so keys we do not
       // render here (future apps) survive the PATCH-merge.
-      body['socialMonitoring'] = {...ruleSet.socialMonitoring, ...draft};
+      body['socialMonitoring'] = {...ruleSet.socialMonitoring, ...draft}..remove('x');
       await ref
           .read(apiClientProvider)
           .raw
@@ -206,47 +222,114 @@ class _MonitoringTogglesSectionState
     }
   }
 
+  Widget _appTile(SocialAppInfo app, InstalledApp? installed) {
+    final l10n = context.l10n;
+    final value = _draft![app.appKey] ?? true;
+    return SwitchListTile(
+      key: ValueKey('socialAppRow-${app.appKey}'),
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      horizontalTitleGap: AppSpace.sm,
+      title: Text(app.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(app.appKey == 'youtube'
+          ? l10n.socialCommentsAndChats
+          : value
+              ? l10n.socialChecking
+              : l10n.socialOff),
+      secondary: installed == null
+          ? Icon(socialAppIcon(app.appKey))
+          : AppIconBadge(app: installed, size: 32),
+      value: value,
+      onChanged: _saving
+          ? null
+          : (v) => setState(() => _draft![app.appKey] = v),
+    );
+  }
+
+  Widget _loadedContent(RuleSet ruleSet, InstalledAppsReport report) {
+    final l10n = context.l10n;
+    _applyLoaded(ruleSet);
+    final installed = installedSocialAppsByKey(report);
+    final present = sortedSocialApps(
+        kSocialApps.where((app) => installed.containsKey(app.appKey)));
+    final absent = sortedSocialApps(
+        kSocialApps.where((app) => !installed.containsKey(app.appKey)));
+    final child = ref.read(familyProvider).valueOrNull?.children
+        .where((c) => c.id == widget.childId).firstOrNull;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final app in present) _appTile(app, installed[app.appKey]),
+        if (absent.isNotEmpty)
+          ExpansionTile(
+            key: const ValueKey('socialNotInstalledGroup'),
+            tilePadding: EdgeInsets.zero,
+            title: Text(l10n.socialNotOnChildPhone(
+                context.localeName == 'ar'
+                    ? '\u{2068}${child?.displayName ?? l10n.unknown}\u{2069}'
+                    : child?.displayName ?? l10n.unknown,
+                absent.length)),
+            children: [
+              for (final app in absent) _appTile(app, null),
+            ],
+          ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: AppSpace.sm),
+          child: Text(l10n.socialPrivacyLine,
+              style: Theme.of(context).textTheme.bodySmall),
+        ),
+        Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: FilledButton(
+            onPressed: _saving ? null : _save,
+            child: Text(_saving ? l10n.saving : l10n.saveMonitoring),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final rules = ref.watch(rulesProvider(widget.childId));
+    final inventory = ref.watch(installedAppsProvider(widget.childId));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(l10n.monitoring, style: Theme.of(context).textTheme.titleMedium),
+        if (_showNewAppsBanner)
+          MaterialBanner(
+            key: const ValueKey('socialNewAppsBanner'),
+            content: Text(l10n.socialNewAppsBanner),
+            leading: const Icon(Icons.new_releases_outlined),
+            actions: [
+              TextButton(
+                onPressed: _dismissNewAppsBanner,
+                child: Text(l10n.dismiss),
+              ),
+            ],
+          ),
+        Text(l10n.socialCheckMessagesIn,
+            style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: AppSpace.xs),
         rules.when(
           loading: () => const Padding(
               padding: EdgeInsets.all(AppSpace.lg),
               child: Center(child: CircularProgressIndicator())),
-          // Polish item 1 (Claude on #50): the sentence said "try again" and offered nothing to touch.
           error: (e, _) => ErrorRetryView(
             message: friendlyErrorText(l10n, e, () => l10n.rulesLoadFailed),
             onRetry: () => ref.invalidate(rulesProvider(widget.childId)),
           ),
-          data: (ruleSet) {
-            _applyLoaded(ruleSet);
-            final draft = _draft!;
-            return Column(
-              children: [
-                for (final a in kSocialApps)
-                  SwitchListTile(
-                    dense: true,
-                    title: Text(a.label),
-                    secondary: Icon(socialAppIcon(a.appKey)),
-                    value: draft[a.appKey] ?? true,
-                    onChanged: (v) => setState(() => draft[a.appKey] = v),
-                  ),
-                Align(
-                  alignment: AlignmentDirectional.centerEnd,
-                  child: FilledButton(
-                    onPressed: _saving ? null : _save,
-                    child: Text(_saving ? l10n.saving : l10n.saveMonitoring),
-                  ),
-                ),
-              ],
-            );
-          },
+          data: (ruleSet) => inventory.when(
+            loading: () => const Padding(
+                padding: EdgeInsets.all(AppSpace.lg),
+                child: Center(child: CircularProgressIndicator())),
+            error: (e, _) => ErrorRetryView(
+              message: friendlyErrorText(l10n, e, () => l10n.installedAppsLoadFailed),
+              onRetry: () => ref.invalidate(installedAppsProvider(widget.childId)),
+            ),
+            data: (report) => _loadedContent(ruleSet, report),
+          ),
         ),
       ],
     );

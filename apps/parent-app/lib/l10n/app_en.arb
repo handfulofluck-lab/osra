@@ -1879,5 +1879,19 @@
   "appsNoMatch": "No apps match",
   "appAboutThisApp": "About this app",
   "appBlockedNamedSnack": "{app} blocked",
-  "@appBlockedNamedSnack": { "placeholders": { "app": { "type": "String" } } }
+  "@appBlockedNamedSnack": { "placeholders": { "app": { "type": "String" } } },
+  "socialCheckMessagesIn": "Check messages in",
+  "socialNotOnChildPhone": "Not on {child}'s phone ({count})",
+  "@socialNotOnChildPhone": {
+    "placeholders": {
+      "child": { "type": "String" },
+      "count": { "type": "int" }
+    }
+  },
+  "socialChecking": "Checking",
+  "socialOff": "Off",
+  "socialCommentsAndChats": "Comments and chats",
+  "socialNewAppsBanner": "You can now choose YouTube, Telegram, Reddit and Messenger too.",
+  "socialPrivacyLine": "OSRA only flags concerning messages. It never shows you every chat.",
+  "selectAll": "Select all"
 }
