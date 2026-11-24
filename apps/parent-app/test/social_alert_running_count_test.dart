@@ -1,4 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +24,59 @@ import 'fake_api_client.dart';
 /// social alert running count, `ltrIsolate`-wrapped contact name or "an unknown contact",
 /// 2+ contacts sitting side-by-side newest first, in-place update + move-to-top,
 /// and "+N new" badge appearing after open and clearing on reopen.
+Future<bool> _loadSdkRobotoFont() async {
+  final sep = Platform.pathSeparator;
+  final candidates = <Directory>[
+    Directory('test${sep}fonts'),
+    Directory('apps${sep}parent-app${sep}test${sep}fonts'),
+  ];
+  Directory? fontsDir;
+  for (final c in candidates) {
+    if (c.existsSync()) {
+      fontsDir = c;
+      break;
+    }
+  }
+  if (fontsDir == null) {
+    Directory? dir = Directory(Platform.resolvedExecutable).parent;
+    for (var i = 0; i < 8 && dir != null; i++) {
+      final candidate = Directory('${dir.path}${sep}bin${sep}cache${sep}artifacts${sep}material_fonts');
+      if (candidate.existsSync()) {
+        fontsDir = candidate;
+        break;
+      }
+      final directCandidate = Directory('${dir.path}${sep}material_fonts');
+      if (directCandidate.existsSync()) {
+        fontsDir = directCandidate;
+        break;
+      }
+      final parent = dir.parent;
+      if (parent.path == dir.path) break;
+      dir = parent;
+    }
+    final envRoot = Platform.environment['FLUTTER_ROOT'];
+    if (fontsDir == null && envRoot != null && envRoot.isNotEmpty) {
+      final envCandidate = Directory('$envRoot${sep}bin${sep}cache${sep}artifacts${sep}material_fonts');
+      if (envCandidate.existsSync()) fontsDir = envCandidate;
+    }
+  }
+  if (fontsDir == null) return false;
+
+  final loader = FontLoader('Roboto');
+  var loadedCount = 0;
+  for (final name in ['roboto-regular.ttf', 'roboto-medium.ttf', 'roboto-bold.ttf']) {
+    final file = File('${fontsDir.path}$sep$name');
+    if (file.existsSync()) {
+      final bytes = await file.readAsBytes();
+      loader.addFont(Future.value(ByteData.sublistView(bytes)));
+      loadedCount++;
+    }
+  }
+  if (loadedCount != 3) return false;
+  await loader.load();
+  return true;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -29,6 +86,8 @@ void main() {
 
   setUpAll(() async {
     await configureDateFormatting();
+    final loaded = await _loadSdkRobotoFont();
+    expect(loaded, isTrue, reason: 'SDK Roboto font must load so 200% metrics match device rendering');
   });
 
   setUp(() {
@@ -143,11 +202,11 @@ void main() {
       expect(find.text('Latest ${ltrIsolate('09:15')}'), findsOneWidget);
       expect(find.text('+2 new'), findsOneWidget);
 
-      // Title allows maxLines 3; contact line enforces maxLines 1 + ellipsis; latest line is unconstrained (UI/UX 7116862871).
+      // Title allows maxLines 3; contact line enforces maxLines 2 + ellipsis (UI/UX 7117829072); latest line is unconstrained.
       final titleText = tester.widget<Text>(find.textContaining('1 concerning message on'));
       expect(titleText.maxLines, 3);
       final contactText = tester.widget<Text>(find.byKey(const ValueKey('alert-contact-a1')));
-      expect(contactText.maxLines, 1);
+      expect(contactText.maxLines, 2);
       expect(contactText.overflow, TextOverflow.ellipsis);
       final latestText = tester.widget<Text>(find.byKey(const ValueKey('alert-latest-a1')));
       expect(latestText.maxLines, isNull);
@@ -489,5 +548,99 @@ void main() {
       expect(find.textContaining('5 concerning messages on'), findsOneWidget);
       expect(find.text('+3 new'), findsOneWidget);
     });
+  });
+
+  group('Feed card at 200% text scale in EN and AR (#1029, 7116306228, 7117829072)', () {
+    for (final locale in const [Locale('en'), Locale('ar')]) {
+      final isAr = locale.languageCode == 'ar';
+      testWidgets('390px @ 2.0x (${locale.languageCode}): full app name, uncut latest time, long + unknown contact fit in 2 lines',
+          (tester) async {
+        // Mutant 1: setting maxLines: 1 on alert-contact-* truncates the unknown-contact fallback (didExceedMaxLines == true).
+        // Mutant 2: merging contact + latest time onto one truncated Text or capping title below 3 lines cuts the app name or time.
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        final longContact = isAr
+            ? 'محمد عبدالله المنصوري العلي'
+            : 'Mohammed Abdullah Al Mansouri';
+        final longAlert = Alert.fromJson(socialAlertJson(
+          id: 'scale-long',
+          flaggedCount: 5,
+          latestAt: t0915,
+          contactName: longContact,
+          app: 'whatsapp',
+        ));
+        final unknownAlert = Alert.fromJson(socialAlertJson(
+          id: 'scale-unknown',
+          flaggedCount: 1,
+          latestAt: t0915,
+          contactName: '   ',
+          app: 'telegram',
+        ));
+
+        final baseTheme = AppTheme.light;
+        final robotoTheme = baseTheme.copyWith(
+          textTheme: baseTheme.textTheme.apply(fontFamily: 'Roboto'),
+          primaryTextTheme: baseTheme.primaryTextTheme.apply(fontFamily: 'Roboto'),
+        );
+
+        await tester.pumpWidget(ProviderScope(
+          child: MaterialApp(
+            locale: locale,
+            supportedLocales: AppLocalizations.supportedLocales,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            theme: robotoTheme,
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(2.0)),
+              child: child!,
+            ),
+            home: Scaffold(
+              body: ListView(
+                padding: const EdgeInsets.all(12),
+                children: [
+                  AlertTile(alert: longAlert, newSinceCount: 3, onAck: () {}),
+                  AlertTile(alert: unknownAlert, onAck: () {}),
+                ],
+              ),
+            ),
+          ),
+        ));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+
+        // 1. Title shows the app name in full without truncation on both cards.
+        for (final appName in const ['WhatsApp', 'Telegram']) {
+          final titleFinder = find.textContaining(appName);
+          expect(titleFinder, findsOneWidget);
+          final titleRender = tester.renderObject<RenderParagraph>(titleFinder);
+          expect(titleRender.didExceedMaxLines, isFalse, reason: '$appName title must not truncate at 200%');
+        }
+
+        // 2. "Latest {time}" / "آخر رسالة {time}" is on its own line and never cut.
+        for (final id in const ['scale-long', 'scale-unknown']) {
+          final latestFinder = find.byKey(ValueKey('alert-latest-$id'));
+          expect(latestFinder, findsOneWidget);
+          final latestRender = tester.renderObject<RenderParagraph>(latestFinder);
+          expect(latestRender.didExceedMaxLines, isFalse, reason: 'Latest time for $id must never be cut');
+        }
+
+        // 3. Long contact line enforces maxLines: 2 + ellipsis, and unknown-contact fallback fits in <= 2 lines uncut.
+        final longContactWidget = tester.widget<Text>(find.byKey(const ValueKey('alert-contact-scale-long')));
+        expect(longContactWidget.maxLines, 2);
+        expect(longContactWidget.overflow, TextOverflow.ellipsis);
+
+        final unknownContactFinder = find.byKey(const ValueKey('alert-contact-scale-unknown'));
+        final unknownContactWidget = tester.widget<Text>(unknownContactFinder);
+        expect(unknownContactWidget.maxLines, 2);
+        final unknownRender = tester.renderObject<RenderParagraph>(unknownContactFinder);
+        expect(
+          unknownRender.didExceedMaxLines,
+          isFalse,
+          reason: 'Unknown-contact fallback must fit completely within 2 lines at 200%',
+        );
+      });
+    }
   });
 }
