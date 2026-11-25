@@ -1265,6 +1265,44 @@ describe("social routes", () => {
     await app.close();
   });
 
+  it("looks up the exact vault event for the child without substituting a different event", async () => {
+    const app = await buildApp(socialRoutes, "/v1/social");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    const previewCipher = JSON.stringify(encryptForFamily("A synthetic event preview", VAULT_KEY));
+    const events = [
+      { id: "se-newer", childId: CHILD.id, createdAt: "2026-09-16T10:00:00Z" },
+      { id: "se-other-child", childId: "child-2", createdAt: "2026-09-16T09:30:00Z" },
+      { id: "se-target", childId: CHILD.id, createdAt: "2026-09-16T09:00:00Z" },
+    ].map((event) => ({ ...event, app: "whatsapp", contact: "c-1", severity: "warning", previewCipher, concernTypes: [] }));
+    prismaMock.socialEvent.findMany.mockImplementation(async ({ where, take }) => events
+      .filter((event) => (where.childId === undefined || event.childId === where.childId)
+        && (where.id === undefined || event.id === where.id))
+      .slice(0, take));
+
+    const get = (eventId: string) => app.inject({
+      method: "GET",
+      url: `/v1/social/events?childId=${CHILD.id}&eventId=${eventId}&limit=1`,
+      headers: authHeader(app),
+    });
+
+    const target = await get("se-target");
+    expect(target.statusCode).toBe(200);
+    expect(target.json().items.map((event: { id: string }) => event.id)).toEqual(["se-target"]);
+    expect(prismaMock.socialEvent.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: { childId: CHILD.id, id: "se-target" },
+      take: 1,
+    }));
+
+    for (const eventId of ["se-other-child", "se-missing"]) {
+      const response = await get(eventId);
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ items: [] });
+    }
+
+    expect((await get("")).statusCode).toBe(400);
+    await app.close();
+  });
+
   it("requires a parent JWT for the vault (401 without, 403 for device tokens, 403 cross-family)", async () => {
     const app = await buildApp(socialRoutes, "/v1/social");
     const noAuth = await app.inject({ method: "GET", url: "/v1/social/events?childId=child-1" });
