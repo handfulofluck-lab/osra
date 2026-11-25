@@ -11,7 +11,7 @@ name: API
 # `services/api/test/poll-cadence.test.ts` (#353), which pins X-Poll-After to the agent's clamps.
 # family_plan_alarms.tf is read by `services/api/test/family-plan-alarms.test.ts` (#816), which pins the
 # production alarm patterns to the events entitlement.ts writes. parent-pin.tsv is read by
-# `services/api/test/parent-pin.test.ts` (#1108), which pins the API's PIN rules and KDF to the phone's.
+# `services/api/test/parent-pin.test.ts` (issue 1108), which ties the API's rules and KDF to the phone's.
 on:
   push:
     branches: [main]
