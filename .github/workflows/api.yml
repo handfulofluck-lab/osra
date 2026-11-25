@@ -10,7 +10,8 @@ name: API
 # which pins the server's silence window to the agent's reporting cadence; IdleCadence.kt is read by
 # `services/api/test/poll-cadence.test.ts` (#353), which pins X-Poll-After to the agent's clamps.
 # family_plan_alarms.tf is read by `services/api/test/family-plan-alarms.test.ts` (#816), which pins the
-# production alarm patterns to the events entitlement.ts writes.
+# production alarm patterns to the events entitlement.ts writes. parent-pin.tsv is read by
+# `services/api/test/parent-pin.test.ts` (#1108), which pins the API's PIN rules and KDF to the phone's.
 on:
   push:
     branches: [main]
@@ -25,6 +26,7 @@ on:
       - "apps/child-android/app/src/main/java/com/familyshield/agent/services/LocationService.kt"
       - "apps/child-android/app/src/main/java/com/familyshield/agent/services/IdleCadence.kt"
       - "infra/terraform/env/family_plan_alarms.tf"
+      - "docs/test-vectors/parent-pin.tsv"
       - ".github/workflows/api.yml"
   pull_request:
     paths:
@@ -38,6 +40,7 @@ on:
       - "apps/child-android/app/src/main/java/com/familyshield/agent/services/LocationService.kt"
       - "apps/child-android/app/src/main/java/com/familyshield/agent/services/IdleCadence.kt"
       - "infra/terraform/env/family_plan_alarms.tf"
+      - "docs/test-vectors/parent-pin.tsv"
       - ".github/workflows/api.yml"
   schedule:
     - cron: "11 2 * * 1"
