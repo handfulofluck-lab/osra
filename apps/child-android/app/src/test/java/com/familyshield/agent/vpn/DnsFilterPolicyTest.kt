@@ -184,6 +184,62 @@ class DnsFilterPolicyTest {
     }
 
     @Test
+    fun `a category list of blanks is no category, not a broken filter`() {
+        // Hydrogen's #1097 note: `blockedCategories.isEmpty()` is not the question — a server sending ["", "  "]
+        // blocks nothing, and calling that UNPROTECTED would raise an alarm over nothing.
+        assertEquals(
+            EnforcementState.NOT_APPLICABLE,
+            DnsFilterPolicy.enforcement(Config(packLoaded = false, blockedCategories = listOf("", "  "))),
+        )
+    }
+
+    @Test
+    fun `a pack whose domains all normalise away does not count as enforcing`() {
+        // Mutant: reading `config.categoryDomains.isNotEmpty()` instead of the normalised map — a pack of blank
+        // or bare "*." entries would report ENFORCING with nothing to sink.
+        assertEquals(
+            EnforcementState.UNPROTECTED,
+            DnsFilterPolicy.enforcement(
+                Config(
+                    packLoaded = true,
+                    categoryDomains = mapOf("" to "pornography", "*." to "pornography"),
+                    blockedCategories = listOf("pornography"),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `a bare asterisk is not a domain`() {
+        // Mutant: leaving "*" as a normalised name keeps a junk pack non-empty, so an all-junk table reads
+        // ENFORCING while nothing can be sunk. Found by the row above failing on the first run (1293 tests).
+        assertEquals("", DnsFilterPolicy.normalize("*"))
+        assertEquals("", DnsFilterPolicy.normalize("*."))
+        assertEquals("example.com", DnsFilterPolicy.normalize("*.example.com"))
+    }
+
+    @Test
+    fun `the three-fact overload asks the same question as the config`() {
+        // Both src/main sites call this overload; if it drifts from the Config rule the report and the tunnel
+        // would disagree about the same phone.
+        val cases = listOf(
+            Triple(emptyMap<String, String>(), false, emptyList<String>()),
+            Triple(mapOf("sex.com" to "pornography"), true, listOf("pornography")),
+            Triple(mapOf<String, String>(), false, listOf("pornography")),
+            Triple(mapOf("sex.com" to "pornography"), false, listOf("pornography")),
+        )
+        for ((domains, stored, categories) in cases) {
+            assertEquals(
+                "domains=$domains stored=$stored categories=$categories",
+                DnsFilterPolicy.enforcement(
+                    Config(categoryDomains = domains, packLoaded = stored, blockedCategories = categories),
+                ),
+                DnsFilterPolicy.enforcement(domains, stored, categories),
+            )
+        }
+    }
+
+    @Test
     fun `blank and dotted names normalise`() {
         assertEquals(Action.FORWARD, DnsFilterPolicy.decide("", Config(pausedInternet = true)).action)
         assertEquals("example.com", DnsFilterPolicy.normalize(" *.Example.COM. "))

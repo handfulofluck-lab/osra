@@ -39,12 +39,34 @@ object DnsFilterPolicy {
         UNPROTECTED,
     }
 
-    /** The state [#decide]'s caller should report. Pure, so the three cases are JVM rows. */
+    /**
+     * The state [#decide]'s caller should report. Pure, so the three cases are JVM rows.
+     *
+     * Reads the **normalised** [Config.categories], not the raw map: a pack entry whose domain is blank or a
+     * bare `*.` normalises away, and a table that empties out must not report as enforcing (Hydrogen's #1097
+     * review). A category list of blanks is no category at all, not a broken filter.
+     */
     fun enforcement(config: Config): EnforcementState = when {
-        config.blockedCategories.isEmpty() -> EnforcementState.NOT_APPLICABLE
-        config.packLoaded && config.categoryDomains.isNotEmpty() -> EnforcementState.ENFORCING
+        config.blockedCategories.none { it.trim().isNotEmpty() } -> EnforcementState.NOT_APPLICABLE
+        config.packLoaded && config.categories.isNotEmpty() -> EnforcementState.ENFORCING
         else -> EnforcementState.UNPROTECTED
     }
+
+    /**
+     * The same question from the three facts a caller on the phone actually holds, so the capability report
+     * and the tunnel ask one function instead of keeping two copies of the rule (Hydrogen, #1097 review).
+     */
+    fun enforcement(
+        categoryDomains: Map<String, String>,
+        packStored: Boolean,
+        blockedCategories: Collection<String>,
+    ): EnforcementState = enforcement(
+        Config(
+            categoryDomains = categoryDomains,
+            packLoaded = packStored,
+            blockedCategories = blockedCategories,
+        ),
+    )
 
     /** [target] is set only for [Action.REWRITE]; [reason] is for the log line and the alert. */
     data class Decision(val action: Action, val target: String? = null, val reason: String = "") {
@@ -138,6 +160,10 @@ object DnsFilterPolicy {
     internal fun matches(name: String, domain: String): Boolean =
         name == domain || name.endsWith(".$domain")
 
-    internal fun normalize(raw: String): String =
-        raw.trim().trimEnd('.').lowercase().removePrefix("*.")
+    internal fun normalize(raw: String): String {
+        val name = raw.trim().trimEnd('.').lowercase().removePrefix("*.")
+        // A bare "*" (or "*." that trimmed to one) is not a domain: it matches no real query, so keeping it
+        // made an all-junk pack look like a non-empty — hence enforcing — table (#1079 wiring review).
+        return if (name == "*") "" else name
+    }
 }
