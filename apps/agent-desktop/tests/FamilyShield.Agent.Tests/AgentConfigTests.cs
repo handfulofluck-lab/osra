@@ -47,9 +47,9 @@ public sealed class AgentConfigTests : IDisposable
     {
         Assert.True(Sample().Save(_dir));
 
-        var loaded = AgentConfig.Load(_dir);
+        var loaded = AgentConfig.Load(_dir, allowEnvironmentOverrides: true);
         Assert.NotNull(loaded);
-        Assert.Equal("http://localhost:3000", loaded.ApiBase);
+        Assert.Equal(AgentConfig.ProductionApiBase, loaded.ApiBase);
         Assert.Equal("jwt-1", loaded.DeviceJwt);
         Assert.Equal("device-1", loaded.DeviceId);
         Assert.Equal("child-1", loaded.ChildId);
@@ -58,14 +58,14 @@ public sealed class AgentConfigTests : IDisposable
     [Fact]
     public void MissingFileReturnsNull()
     {
-        Assert.Null(AgentConfig.Load(_dir));
+        Assert.Null(AgentConfig.Load(_dir, allowEnvironmentOverrides: true));
     }
 
     [Fact]
     public void CorruptFileReturnsNull()
     {
         File.WriteAllText(Path.Combine(_dir, AgentConfig.FileName), "{ not valid json");
-        Assert.Null(AgentConfig.Load(_dir));
+        Assert.Null(AgentConfig.Load(_dir, allowEnvironmentOverrides: true));
     }
 
     [Fact]
@@ -75,7 +75,7 @@ public sealed class AgentConfigTests : IDisposable
         Environment.SetEnvironmentVariable("API_BASE", "http://env-server:4000");
         Environment.SetEnvironmentVariable("DEVICE_ID", "env-device");
 
-        var loaded = AgentConfig.Load(_dir);
+        var loaded = AgentConfig.Load(_dir, allowEnvironmentOverrides: true);
         Assert.NotNull(loaded);
         Assert.Equal("http://env-server:4000", loaded.ApiBase);
         Assert.Equal("env-device", loaded.DeviceId);
@@ -90,7 +90,7 @@ public sealed class AgentConfigTests : IDisposable
         Environment.SetEnvironmentVariable("DEVICE_JWT", "env-jwt");
         Environment.SetEnvironmentVariable("CHILD_ID", "env-child");
 
-        var loaded = AgentConfig.Load(_dir);
+        var loaded = AgentConfig.Load(_dir, allowEnvironmentOverrides: true);
         Assert.NotNull(loaded);
         Assert.Equal("env-jwt", loaded.DeviceJwt);
         Assert.Equal("env-child", loaded.ChildId);
@@ -111,7 +111,7 @@ public sealed class AgentConfigTests : IDisposable
         config.ParentPin = "4821";
         Assert.True(config.Save(_dir));
 
-        Assert.Equal("4821", AgentConfig.Load(_dir)!.ParentPin);
+        Assert.Equal("4821", AgentConfig.Load(_dir, allowEnvironmentOverrides: true)!.ParentPin);
     }
 
     [Fact]
@@ -120,12 +120,12 @@ public sealed class AgentConfigTests : IDisposable
         Sample().Save(_dir);
         Environment.SetEnvironmentVariable(ParentPinPolicy.EnvVar, "4821");
 
-        var adopted = AgentConfig.Load(_dir);
+        var adopted = AgentConfig.Load(_dir, allowEnvironmentOverrides: true);
         Assert.Equal("4821", adopted!.ParentPin);
 
         // Removing the env var must not disarm the install: the PIN is now in the file.
         Environment.SetEnvironmentVariable(ParentPinPolicy.EnvVar, null);
-        Assert.Equal("4821", AgentConfig.Load(_dir)!.ParentPin);
+        Assert.Equal("4821", AgentConfig.Load(_dir, allowEnvironmentOverrides: true)!.ParentPin);
         Assert.Contains("\"parentPin\": \"4821\"", File.ReadAllText(Path.Combine(_dir, AgentConfig.FileName)));
     }
 
@@ -135,7 +135,7 @@ public sealed class AgentConfigTests : IDisposable
         Sample().Save(_dir);
         Environment.SetEnvironmentVariable(ParentPinPolicy.EnvVar, ParentPinPolicy.LegacyDefault);
 
-        var loaded = AgentConfig.Load(_dir);
+        var loaded = AgentConfig.Load(_dir, allowEnvironmentOverrides: true);
         Assert.Null(loaded!.ParentPin);
         Assert.DoesNotContain("0000", File.ReadAllText(Path.Combine(_dir, AgentConfig.FileName)));
     }
@@ -146,7 +146,7 @@ public sealed class AgentConfigTests : IDisposable
         Sample().Save(_dir);
         Environment.SetEnvironmentVariable(ParentPinPolicy.EnvVar, "12ab");
 
-        Assert.Null(AgentConfig.Load(_dir)!.ParentPin);
+        Assert.Null(AgentConfig.Load(_dir, allowEnvironmentOverrides: true)!.ParentPin);
     }
 
     [Fact]
@@ -157,7 +157,7 @@ public sealed class AgentConfigTests : IDisposable
         config.Save(_dir);
         Environment.SetEnvironmentVariable(ParentPinPolicy.EnvVar, "9999");
 
-        Assert.Equal("4821", AgentConfig.Load(_dir)!.ParentPin);
+        Assert.Equal("4821", AgentConfig.Load(_dir, allowEnvironmentOverrides: true)!.ParentPin);
     }
 
     [Fact]
@@ -167,7 +167,7 @@ public sealed class AgentConfigTests : IDisposable
         Environment.SetEnvironmentVariable("CHILD_ID", "env-child");
         Environment.SetEnvironmentVariable(ParentPinPolicy.EnvVar, "4821");
 
-        var loaded = AgentConfig.Load(_dir);
+        var loaded = AgentConfig.Load(_dir, allowEnvironmentOverrides: true);
 
         Assert.Equal("4821", loaded!.ParentPin);
         // The migration must not copy an env-only JWT (or the PIN) onto disk.
