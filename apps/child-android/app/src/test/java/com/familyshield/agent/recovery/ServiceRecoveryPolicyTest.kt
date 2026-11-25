@@ -18,19 +18,21 @@ class ServiceRecoveryPolicyTest {
         consentPaused: Boolean = false,
         filterWanted: Boolean = true,
         tunnelRunning: Boolean = true,
-        locationGrantHeld: Boolean = true,
+        locationMayStart: Boolean = true,
         locationRunning: Boolean = true,
         lockActive: Boolean = false,
         accessibilityEnabled: Boolean = true,
+        accessibilityBound: Boolean = true,
     ) = ServiceRecoveryPolicy.State(
         isPaired = isPaired,
         consentPaused = consentPaused,
         filterWanted = filterWanted,
         tunnelRunning = tunnelRunning,
-        locationGrantHeld = locationGrantHeld,
+        locationMayStart = locationMayStart,
         locationRunning = locationRunning,
         lockActive = lockActive,
         accessibilityEnabled = accessibilityEnabled,
+        accessibilityBound = accessibilityBound,
     )
 
     @Test
@@ -77,8 +79,10 @@ class ServiceRecoveryPolicyTest {
     }
 
     @Test
-    fun `location is not started without a grant`() {
-        val plan = ServiceRecoveryPolicy.plan(state(locationGrantHeld = false, locationRunning = false))
+    fun `location is not started when the background-start policy refuses`() {
+        // The field is LocationStartPolicy's verdict, not "a grant exists": on API 29+ a while-in-use grant
+        // is a refusal, because `startForegroundService` from a worker would crash (Hydrogen, #1098).
+        val plan = ServiceRecoveryPolicy.plan(state(locationMayStart = false, locationRunning = false))
         assertFalse(plan.restartLocation)
         assertFalse(plan.gaps.contains(ServiceRecoveryPolicy.Gap.LOCATION_DOWN))
     }
@@ -90,6 +94,25 @@ class ServiceRecoveryPolicyTest {
         assertEquals(listOf(ServiceRecoveryPolicy.Gap.LOCK_NOT_SHOWN), plan.gaps)
         assertFalse(plan.restartFilter)
         assertFalse(plan.restartLocation)
+    }
+
+    @Test
+    fun `a service enabled in Settings but not bound here is a distinct gap`() {
+        // #1085 requirement 2, Hydrogen's #1098 review: after MIUI's kill Settings still lists the service
+        // while this process has it unbound. Mutant: reporting ACCESSIBILITY_OFF sends the parent to a switch
+        // that already reads "on" — the silent failure #1085 exists to end.
+        val plan = ServiceRecoveryPolicy.plan(state(accessibilityBound = false))
+        assertEquals(listOf(ServiceRecoveryPolicy.Gap.ACCESSIBILITY_UNBOUND), plan.gaps)
+        assertFalse(plan.restartFilter)
+        assertFalse(plan.restartLocation)
+        assertFalse(plan.showLock)
+    }
+
+    @Test
+    fun `a service that is off is off, not unbound as well`() {
+        // One gap per cause: a parent who sees both would not know which switch to trust.
+        val plan = ServiceRecoveryPolicy.plan(state(accessibilityEnabled = false, accessibilityBound = false))
+        assertEquals(listOf(ServiceRecoveryPolicy.Gap.ACCESSIBILITY_OFF), plan.gaps)
     }
 
     @Test

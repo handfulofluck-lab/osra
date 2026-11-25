@@ -23,19 +23,25 @@ object ServiceRecoveryPolicy {
         val filterWanted: Boolean,
         /** The tunnel is actually carrying traffic. */
         val tunnelRunning: Boolean,
-        /** Fine or coarse location is granted, so a location foreground service may legally start. */
-        val locationGrantHeld: Boolean,
+        /**
+         * `LocationStartPolicy.shouldStart(...)` — fine or coarse granted **and**, from API 29, the
+         * background grant held. Hydrogen's #1098 review: the old field was "fine or coarse", which let a
+         * background worker start `LocationService` with only a while-in-use grant and crash the process,
+         * the #128/#132 class of failure again.
+         */
+        val locationMayStart: Boolean,
         /** `LocationService.isServiceRunning`. */
         val locationRunning: Boolean,
         /** True when `LockState` says a lock is in force. */
         val lockActive: Boolean,
-        /**
-         * Our accessibility service is switched on in Settings. Note what this is **not**: Android has no
-         * public "is it bound" query, and a MIUI kill leaves it enabled while marking it crashed — so a
-         * crashed-but-enabled service reads as `true` here. The crash is detected by the absence of scan
-         * traffic, not by this flag; see ServiceRecovery's note.
-         */
+        /** Our accessibility service is switched on in Settings: the global switch and our component. */
         val accessibilityEnabled: Boolean,
+        /**
+         * The service is actually **bound** in this process (`AccessibilityMonitorService.isRunning`).
+         * Hydrogen's #1098 review: the agent already exposes this, and after a kill it is `false` in the
+         * fresh process while Settings still lists us — the exact state #1085 requirement 2 is about.
+         */
+        val accessibilityBound: Boolean,
     )
 
     /** One thing that is down and worth naming. Recoverable gaps have a restart action; the last does not. */
@@ -54,6 +60,13 @@ object ServiceRecoveryPolicy {
          * rather than restarted — claiming otherwise would be a lie a parent could not check.
          */
         ACCESSIBILITY_OFF,
+
+        /**
+         * The service is switched on in Settings but not bound in this process: the post-kill shape, where
+         * Android marked it crashed and never rebound it. Only the user can turn it back on, so this is a
+         * report, not an action.
+         */
+        ACCESSIBILITY_UNBOUND,
     }
 
     data class Plan(
@@ -70,13 +83,16 @@ object ServiceRecoveryPolicy {
         if (!state.isPaired || state.consentPaused) return Plan(false, false, false, emptyList())
 
         val restartFilter = state.filterWanted && !state.tunnelRunning
-        val restartLocation = state.locationGrantHeld && !state.locationRunning
+        val restartLocation = state.locationMayStart && !state.locationRunning
         val showLock = state.lockActive
         val gaps = buildList {
             if (restartFilter) add(Gap.FILTER_DOWN)
             if (restartLocation) add(Gap.LOCATION_DOWN)
             if (showLock) add(Gap.LOCK_NOT_SHOWN)
             if (!state.accessibilityEnabled) add(Gap.ACCESSIBILITY_OFF)
+            // Enabled in Settings but not running here: MIUI's kill leaves exactly this state, and it is the
+            // one #1085 was written for. Reported, never "restarted" — only the user can re-bind it.
+            if (state.accessibilityEnabled && !state.accessibilityBound) add(Gap.ACCESSIBILITY_UNBOUND)
         }
         return Plan(restartFilter, restartLocation, showLock, gaps)
     }

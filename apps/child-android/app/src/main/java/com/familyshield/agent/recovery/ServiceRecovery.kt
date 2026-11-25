@@ -4,13 +4,18 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.familyshield.agent.commands.LockActivity
 import com.familyshield.agent.di.WorkerEntryPoint
 import com.familyshield.agent.enforcement.LockEnforcementPolicy
 import com.familyshield.agent.enforcement.LockState
+import com.familyshield.agent.receivers.AccessibilityOffPolicy
+import com.familyshield.agent.services.AccessibilityMonitorService
 import com.familyshield.agent.services.LocationService
+import com.familyshield.agent.services.LocationStartPolicy
 import com.familyshield.agent.vpn.FilterVpnService
 import com.familyshield.agent.vpn.VpnState
 import dagger.hilt.android.EntryPointAccessors
@@ -50,19 +55,39 @@ object ServiceRecovery {
     /** The facts the policy needs. Split out so the mapping is readable and the policy stays pure. */
     internal fun readState(context: Context): ServiceRecoveryPolicy.State {
         val settings = EntryPointAccessors.fromApplication(context, WorkerEntryPoint::class.java).agentSettings()
-        val filterWanted = VpnState.isEnabled(context)
+        val isPaired = settings.isPairedSync()
         return ServiceRecoveryPolicy.State(
-            isPaired = settings.isPairedSync(),
+            isPaired = isPaired,
             consentPaused = EntryPointAccessors.fromApplication(context, WorkerEntryPoint::class.java).consentState().isPaused(),
-            filterWanted = filterWanted,
-            tunnelRunning = VpnState.isEstablished(context),
-            locationGrantHeld = granted(context, Manifest.permission.ACCESS_FINE_LOCATION) ||
-                granted(context, Manifest.permission.ACCESS_COARSE_LOCATION),
+            filterWanted = VpnState.isEnabled(context),
+            // Hydrogen's #1098 review: `VpnState.isEstablished` is a persisted flag cleared only in
+            // `onDestroy`, so after a kill it reads `true` for a tunnel that no longer exists and the filter
+            // was never restarted. The in-process mode is null in a fresh process by construction.
+            tunnelRunning = FilterVpnService.tunnelMode != null,
+            // The same rule the background start sites use (issue #132), so this worker cannot be the one
+            // site that starts LocationService with only a while-in-use grant on API 29+.
+            locationMayStart = LocationStartPolicy.shouldStart(
+                isPaired = isPaired,
+                hasFineLocation = granted(context, Manifest.permission.ACCESS_FINE_LOCATION),
+                hasCoarseLocation = granted(context, Manifest.permission.ACCESS_COARSE_LOCATION),
+                hasBackgroundLocation = hasBackgroundLocation(context),
+                apiLevel = Build.VERSION.SDK_INT,
+            ),
             locationRunning = LocationService.isServiceRunning,
             lockActive = LockEnforcementPolicy.isLockingMode(LockState.mode(context)),
             accessibilityEnabled = accessibilityEnabled(context),
+            // The in-process flag, which is false in a fresh process even while Settings still lists us.
+            accessibilityBound = AccessibilityMonitorService.isRunning,
         )
     }
+
+    /** "Allow all the time": below Android 10 the fine grant is the whole of it (same rule as the reporter). */
+    private fun hasBackgroundLocation(context: Context): Boolean =
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            granted(context, Manifest.permission.ACCESS_FINE_LOCATION)
+        } else {
+            granted(context, Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        }
 
     private fun startLocation(context: Context) {
         // Its own guard: `startForegroundService` obliges the service to reach `startForeground()`, and a
@@ -71,9 +96,17 @@ object ServiceRecovery {
     }
 
     private fun showLock(context: Context, mode: String) {
+        // Android 10+ drops a background activity launch with neither the overlay app-op nor a bound
+        // accessibility service (Hydrogen's #1098 review). Trying anyway would log a "recovery" that never
+        // reached the screen; the gap stays in the plan either way.
+        val canLaunch = Settings.canDrawOverlays(context) || AccessibilityMonitorService.isRunning
+        if (!canLaunch) {
+            Log.w(TAG, "lock screen not shown: no overlay app-op and no bound accessibility service")
+            return
+        }
         context.startActivity(
             Intent(context, LockActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
                 .putExtra(LockActivity.EXTRA_MODE, mode),
         )
     }
@@ -82,20 +115,20 @@ object ServiceRecovery {
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
     /**
-     * Whether our accessibility service is switched on in Settings — **not** whether it is bound.
+     * Whether our accessibility service is switched on: the global switch **and** our component, parsed by
+     * the shared rule rather than a hand-rolled split (Hydrogen's #1098 review — the old split missed the
+     * `pkg/.Class` form and the global switch entirely).
      *
-     * Android has no public way to ask "is this service currently bound", and MIUI's kill leaves ours
-     * *enabled* while marking it crashed (`dumpsys`: `Enabled services: {…}`, `Crashed services: {…}`), so this
-     * check cannot see the very state #1085 is about. It is kept because "off" is still worth reporting, and
-     * the PR says plainly that "crashed" is detected by the absence of scan traffic, not from here.
+     * Being switched on is not being bound; [AccessibilityMonitorService.isRunning] answers that, and the
+     * two together are what separate `ACCESSIBILITY_OFF` from `ACCESSIBILITY_UNBOUND`.
      */
     private fun accessibilityEnabled(context: Context): Boolean {
-        val expected = "${context.packageName}/${com.familyshield.agent.services.AccessibilityMonitorService::class.java.name}"
-        val enabled = android.provider.Settings.Secure.getString(
-            context.contentResolver,
-            android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-        ).orEmpty()
-        return enabled.split(':').any { it.equals(expected, ignoreCase = true) }
+        val resolver = context.contentResolver
+        return AccessibilityOffPolicy.isEffectivelyEnabled(
+            accessibilityEnabled = Settings.Secure.getString(resolver, Settings.Secure.ACCESSIBILITY_ENABLED),
+            enabledServices = Settings.Secure.getString(resolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES),
+            component = "${context.packageName}/${AccessibilityMonitorService::class.java.name}",
+        )
     }
 
     private fun step(name: String, block: () -> Unit) {
