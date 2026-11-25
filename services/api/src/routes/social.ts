@@ -472,13 +472,6 @@ export async function socialRoutes(app: FastifyInstance) {
     }
     const parent = await prisma.parent.findUnique({ where: { id: parentId }, select: { displayName: true } });
     const parentName = parent?.displayName ?? "";
-    if (existing) {
-      const updated = await prisma.socialEventFeedback.update({
-        where,
-        data: { verdict: parsed.data.verdict, parentName, lastChangedAt: new Date(), changeCount: { increment: 1 } },
-      });
-      return { feedback: feedbackView(updated), latestFeedback: await latestFeedback(event.id) };
-    }
     const created = await writeSocialEventFeedback({
       socialEventId: event.id,
       parentId,

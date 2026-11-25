@@ -986,6 +986,44 @@ describe("social routes", () => {
       await app.close();
     });
 
+    it("keeps concurrent changes from an existing vote idempotent", async () => {
+      const app = await buildApp(socialRoutes, "/v1/social");
+      mockEvent();
+      const initial = {
+        id: "vote-1", socialEventId: event.id, parentId: "parent-1", verdict: "concerning", parentName: "Parent One",
+        firstVotedAt: new Date("2026-11-01T00:00:00Z"), lastChangedAt: new Date("2026-11-01T00:00:00Z"), changeCount: 0,
+      };
+      let row: Record<string, unknown> = { ...initial };
+      prismaMock.socialEventFeedback.findUnique.mockResolvedValue(initial);
+      prismaMock.$queryRaw.mockImplementation(async (...values: unknown[]) => {
+        const verdict = values[4] as string;
+        if (row.verdict === verdict) return [];
+        row = { ...row, verdict, lastChangedAt: values[7], changeCount: Number(row.changeCount) + 1 };
+        return [row];
+      });
+      prismaMock.socialEventFeedback.findUniqueOrThrow.mockImplementation(async () => row);
+      prismaMock.socialEventFeedback.findFirst.mockImplementation(async () => row);
+      prismaMock.socialEventFeedback.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+        row = { ...row, ...data, changeCount: Number(row.changeCount) + 1 };
+        return row;
+      });
+      const post = () => app.inject({
+        method: "POST", url: "/v1/social/events/se-feedback/feedback", headers: authHeader(app), payload: { verdict: "not_concerning" },
+      });
+
+      const [first, second] = await Promise.all([post(), post()]);
+
+      expect(first.statusCode).toBe(200);
+      expect(second.statusCode).toBe(200);
+      expect(row).toMatchObject({ verdict: "not_concerning", changeCount: 1 });
+      expect(first.json().feedback.changeCount).toBe(1);
+      expect(second.json().feedback.changeCount).toBe(1);
+      expect(first.json().latestFeedback).toEqual(first.json().feedback);
+      expect(second.json().latestFeedback).toEqual(second.json().feedback);
+      expect(prismaMock.socialEventFeedback.update).not.toHaveBeenCalled();
+      await app.close();
+    });
+
     it("changes a vote, replays it without another change, and withdraws idempotently", async () => {
       const app = await buildApp(socialRoutes, "/v1/social");
       mockEvent();
@@ -1030,10 +1068,7 @@ describe("social routes", () => {
 
       const changed = await post("not_concerning");
       expect(changed.json().feedback).toMatchObject({ verdict: "not_concerning", changeCount: 1, parentDisplayName: "Parent One" });
-      expect(prismaMock.socialEventFeedback.update).toHaveBeenCalledWith({
-        where: { socialEventId_parentId: { socialEventId: event.id, parentId: "parent-1" } },
-        data: expect.objectContaining({ verdict: "not_concerning", parentName: "Parent One", changeCount: { increment: 1 } }),
-      });
+      expect(prismaMock.socialEventFeedback.update).not.toHaveBeenCalled();
 
       for (let attempt = 0; attempt < 2; attempt += 1) {
         const withdrawn = await app.inject({ method: "DELETE", url: "/v1/social/events/se-feedback/feedback", headers: authHeader(app) });

@@ -922,6 +922,42 @@ void main() {
         }
       }
     }
+    testWidgets(
+        'a short contact keeps at least half the row at 320 px normal scale',
+        (tester) async {
+      tester.view.physicalSize = const Size(320, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final feedback = {
+        'verdict': 'not_concerning',
+        'parentDisplayName': 'QA Parent',
+        'firstVotedAt': '2026-11-24T10:01:00.000Z',
+        'lastChangedAt': '2026-11-24T10:02:00.000Z',
+      };
+      final api = FakeApiClient(socialRoutes(concerns: [
+        concernJson(
+          contact: '\u200b',
+          latestFeedback: feedback,
+          ownFeedback: feedback,
+        ),
+      ]));
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+      await flushFakeHttp(tester);
+
+      final pill = find.widgetWithText(FilledButton, 'Not concerning');
+      await reveal(tester, pill);
+      final contact = find.descendant(
+        of: find.ancestor(of: pill, matching: find.byType(Card)),
+        matching: find.text('\u200b'),
+      );
+      expect(tester.getRect(pill).top,
+          greaterThanOrEqualTo(tester.getRect(contact).bottom));
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('a long contact stacks the trailing pill at 390 px',
         (tester) async {
       tester.view.physicalSize = const Size(390, 844);

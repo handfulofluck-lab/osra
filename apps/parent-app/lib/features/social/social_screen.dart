@@ -429,13 +429,15 @@ class _ConcernCardState extends ConsumerState<_ConcernCard> {
     return Card(
       color: socialSeverityColor(e.severity, context).withValues(alpha: 0.07),
       child: LayoutBuilder(builder: (context, constraints) {
-        final trailingRowWidth = constraints.maxWidth - 120;
+        final rowWidth = constraints.maxWidth;
+        final trailingRowWidth = rowWidth - 120;
         final controlsWidth = vote.isUnavailable
             ? 0.0
             : measureCompactVoteControlWidth(context, vote.ownVerdict);
         final stacked = controlsWidth > 0 &&
-            _textWidth(context, contactText) + AppSpace.sm + controlsWidth >
-                trailingRowWidth;
+            (controlsWidth * 2 > rowWidth ||
+                _textWidth(context, contactText) + AppSpace.sm + controlsWidth >
+                    trailingRowWidth);
         return ExpansionTile(
           leading: Icon(
             socialAppIcon(e.app),
