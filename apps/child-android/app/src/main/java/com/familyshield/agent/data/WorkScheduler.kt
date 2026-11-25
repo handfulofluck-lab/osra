@@ -56,6 +56,9 @@ object WorkScheduler {
                 .setInitialDelay(msUntilNextMidnight(), TimeUnit.MILLISECONDS)
                 .build(),
         )
+        // #1130: periodic KEEP can leave a fresh install waiting hours. Every service start also
+        // requests an immediate fetch; RulesSyncWorker retries while a paired cache stays empty.
+        syncNow(context)
     }
 
     /**

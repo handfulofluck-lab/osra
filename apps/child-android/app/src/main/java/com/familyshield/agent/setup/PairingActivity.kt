@@ -1365,7 +1365,6 @@ class PairingActivity : ComponentActivity() {
     private fun startAgent() {
         startLocationServiceIfPermitted()
         WorkScheduler.scheduleAll(this)
-        WorkScheduler.syncNow(this)
         CommandPollWorker.requestFetchNow(this)
     }
 
