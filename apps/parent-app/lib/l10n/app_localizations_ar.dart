@@ -3093,7 +3093,36 @@ class AppLocalizationsAr extends AppLocalizations {
       'تم حظر تطبيق المكالمات، لكن المكالمة استمرت خلف شاشة الحظر. لا يستطيع OSRA إنهاء مكالمة تطبيق آخر، لذا تبقى الشاشة محظورة حتى تنتهي المكالمة.';
 
   @override
-  String get alertTitleDataCleared => 'تم مسح بيانات OSRA على هاتف';
+  String get alertTitleDataCleared =>
+      'تم مسح بيانات تطبيق أسرة للأطفال على أحد الهواتف';
+
+  @override
+  String get alertTitleAgentUpdated =>
+      'تم تحديث تطبيق أسرة للأطفال على أحد الهواتف';
+
+  @override
+  String get alertTitleDeviceSilent => 'توقّف أحد الهواتف عن إرسال حالته';
+
+  @override
+  String get alertTitleProtectionOff => 'تم إيقاف حماية تطبيق أسرة للأطفال';
+
+  @override
+  String get alertTitleAdminRemoved => 'تم إيقاف الحماية من إلغاء التثبيت';
+
+  @override
+  String get alertTitleRemovalAttempt => 'محاولة لإزالة الحماية';
+
+  @override
+  String get alertTitlePinLocked => 'محاولات خاطئة كثيرة لإدخال رمز الوالدين';
+
+  @override
+  String get alertTitleFilterOff => 'انقطع اتصال تصفية الويب';
+
+  @override
+  String get alertTitleFilterBypassed => 'تم تجاوز تصفية الويب';
+
+  @override
+  String get alertTitleOverlayRevoked => 'تم سحب إذن شاشة الحظر';
 
   @override
   String get alertTitleVpnDetected => 'تم اكتشاف شبكة VPN';

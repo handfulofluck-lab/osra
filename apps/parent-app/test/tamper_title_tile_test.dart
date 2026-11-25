@@ -49,10 +49,18 @@ void main() {
     expect(find.text('Protection tampered with'), findsNothing);
   });
 
-  testWidgets('AlertTile keeps the generic tamper title for any other type', (tester) async {
-    await pumpTile(tester, tamper({'type': 'protection_screen_opened'}));
+  testWidgets('AlertTile keeps the generic tamper title for a type it does not know', (tester) async {
+    await pumpTile(tester, tamper({'type': 'some_future_type'}));
     await tester.pumpAndSettle();
     expect(find.text('Protection tampered with'), findsOneWidget);
+  });
+
+  // Karim, 23 Nov: the agent's own update notice read "Protection tampered with".
+  testWidgets('AlertTile titles a known tamper type by what happened', (tester) async {
+    await pumpTile(tester, tamper({'type': 'protection_screen_opened'}));
+    await tester.pumpAndSettle();
+    expect(find.text('Someone tried to remove protection'), findsOneWidget);
+    expect(find.text('Protection tampered with'), findsNothing);
   });
 
   testWidgets('the alert dialog in the feed titles a block_bypass tamper alert by its type', (tester) async {

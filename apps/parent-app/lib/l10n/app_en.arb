@@ -1614,6 +1614,42 @@
     "description": "#444: shown in the alert dialog when a block_bypass alert carries metadata.layout = call. The agent cannot end another app's VoIP call; this says so rather than promising silence."
   },
   "alertTitleDataCleared": "OSRA's data was cleared on a phone",
+  "alertTitleAgentUpdated": "OSRA was updated on a phone",
+  "@alertTitleAgentUpdated": {
+    "description": "Tamper alert metadata.type 'replaced': the OSRA agent was reinstalled or updated. Informational, not an attack (Karim, 23 Nov)."
+  },
+  "alertTitleDeviceSilent": "A phone stopped reporting",
+  "@alertTitleDeviceSilent": {
+    "description": "Tamper alert metadata.type 'device_silent': the phone has not checked in for a while (off, offline, or OSRA removed)."
+  },
+  "alertTitleProtectionOff": "OSRA's protection was turned off",
+  "@alertTitleProtectionOff": {
+    "description": "Tamper alert metadata.type 'accessibility_off': OSRA's accessibility service was turned off on the child's phone."
+  },
+  "alertTitleAdminRemoved": "Uninstall protection was turned off",
+  "@alertTitleAdminRemoved": {
+    "description": "Tamper alert metadata.type 'device_admin_removed': OSRA's device-admin right was removed, so uninstall is no longer blocked."
+  },
+  "alertTitleRemovalAttempt": "Someone tried to remove protection",
+  "@alertTitleRemovalAttempt": {
+    "description": "Tamper alert metadata.type 'protection_screen_opened': a protection-removal screen was opened and the PIN was asked for."
+  },
+  "alertTitlePinLocked": "Too many wrong parent PIN tries",
+  "@alertTitlePinLocked": {
+    "description": "Tamper alert metadata.type 'parent_pin_locked': the parent PIN was locked after repeated wrong tries on the child's phone."
+  },
+  "alertTitleFilterOff": "The web filter was disconnected",
+  "@alertTitleFilterOff": {
+    "description": "Tamper alert metadata.type 'content_filter_disconnected' (Android VPN) or 'proxy_failed' (computer): web filtering is off until it reconnects."
+  },
+  "alertTitleFilterBypassed": "The web filter was bypassed",
+  "@alertTitleFilterBypassed": {
+    "description": "Tamper alert metadata.type 'private_dns_bypass' (Android Private DNS) or 'proxy_disabled' (computer)."
+  },
+  "alertTitleOverlayRevoked": "The block screen permission was removed",
+  "@alertTitleOverlayRevoked": {
+    "description": "Tamper alert metadata.type 'overlay_revoked': 'Display over other apps' was turned off, so lock and pause screens can't show."
+  },
   "alertTitleVpnDetected": "VPN detected",
   "alertTitleInstallRequest": "App install request",
   "alertTitleUnknownContact": "Unknown contact",

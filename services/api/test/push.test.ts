@@ -413,11 +413,15 @@ describe("notification policy", () => {
     err.mockRestore();
   });
 
-  it("applies the severity floor, always pushes SOS and tamper, and never pushes info restarts (#889)", async () => {
+  it("applies the severity floor, always pushes SOS and warning/critical tamper, and never pushes info restarts (#889) or info tamper", async () => {
     expect(shouldPush({ severity: "info", category: "geofence" }, "warning")).toBe(false);
     expect(shouldPush({ severity: "warning", category: "ai_concern" }, "warning")).toBe(true);
     expect(shouldPush({ severity: "info", category: "sos" }, "critical")).toBe(true);
-    expect(shouldPush({ severity: "info", category: "tamper" }, "critical")).toBe(true);
+    expect(shouldPush({ severity: "warning", category: "tamper" }, "critical")).toBe(true);
+    expect(shouldPush({ severity: "critical", category: "tamper" }, "critical")).toBe(true);
+    // Karim, 23 Nov: the agent's own `info` "Agent updated" tamper stays in-app and never wakes the phone.
+    expect(shouldPush({ severity: "info", category: "tamper" }, "info")).toBe(false);
+    expect(shouldPush({ severity: "info", category: "tamper" }, "critical")).toBe(false);
     // UI/UX Bureau ruling (#889): `info` device_restarted alerts stay in-app only; `warning` restarts push.
     expect(shouldPush({ severity: "info", category: "device_restarted" }, "info")).toBe(false);
     expect(shouldPush({ severity: "warning", category: "device_restarted" }, "info")).toBe(true);

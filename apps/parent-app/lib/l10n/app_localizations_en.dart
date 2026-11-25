@@ -2913,6 +2913,34 @@ class AppLocalizationsEn extends AppLocalizations {
   String get alertTitleDataCleared => 'OSRA\'s data was cleared on a phone';
 
   @override
+  String get alertTitleAgentUpdated => 'OSRA was updated on a phone';
+
+  @override
+  String get alertTitleDeviceSilent => 'A phone stopped reporting';
+
+  @override
+  String get alertTitleProtectionOff => 'OSRA\'s protection was turned off';
+
+  @override
+  String get alertTitleAdminRemoved => 'Uninstall protection was turned off';
+
+  @override
+  String get alertTitleRemovalAttempt => 'Someone tried to remove protection';
+
+  @override
+  String get alertTitlePinLocked => 'Too many wrong parent PIN tries';
+
+  @override
+  String get alertTitleFilterOff => 'The web filter was disconnected';
+
+  @override
+  String get alertTitleFilterBypassed => 'The web filter was bypassed';
+
+  @override
+  String get alertTitleOverlayRevoked =>
+      'The block screen permission was removed';
+
+  @override
   String get alertTitleVpnDetected => 'VPN detected';
 
   @override
