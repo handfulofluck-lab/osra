@@ -500,25 +500,28 @@ final deviceCommandHistoryProvider = FutureProvider.family<List<DeviceCommand>, 
   ];
 });
 
-/// The ring the parent's **Stop** must target, and the rule has two halves because two tests define it:
+/// The ring the parent's **Stop** must target: the **newest** ring row that reached `pending`, `delivered` or
+/// `acked`.
 ///
-/// 1. **A live ring wins.** `pending` or `delivered` is a ring the device may still be ringing, and its
-///    acknowledgement can be late — taking only `acked` rows meant Stop aimed at an older ring while a newer one
-///    rang (Codex, #760 `7158872749`).
-/// 2. **Otherwise the last applied ring.** `ring_stop_action_test.dart` pins this: a *failed* newer row must not
-///    displace the ring the device actually applied. `acked` means the device settled it
-///    (`ackRingCommandOnReport`, `services/api/src/lib/deviceCommands.ts:78-88`), and naming it is how the child
-///    finishes the ring it holds.
+/// Why the newest of those three, and not one state alone. A child acks a ring when it **starts sounding**, not when
+/// it ends (`DeviceCommands.swift:278-286` acks `ok: true` right after `ring.startRing`; Android returns `Applied()`
+/// the same way, `CommandDispatcher.kt:107`), so an actively ringing command is `acked` for the whole five minutes and
+/// `delivered` can be a ring that was superseded. History is newest first, and any row that reached those states
+/// supersedes every older ring behind it; `failed` and `expired` never rang or are dead.
 ///
-/// So neither half of the old behaviour is dropped: the live ring is preferred, and the applied one is the fallback.
+/// Two defects this settles, both found in review:
+/// - taking only `acked` aimed Stop at an older ring while a newer one was starting with its ack still in flight
+///   (Codex, #760 `7158872749`);
+/// - scanning for a live row *past* a newer `acked` one returned a stale older `delivered` id, which the child
+///   refuses as `invalid_command` while the phone kept ringing (Antigravity, #1125 `7164117097`).
 String? activeRingId(List<DeviceCommand> commands) {
-  String? applied;
   for (final command in commands) {
     if (command.type != 'ring') continue;
-    if (command.status == 'pending' || command.status == 'delivered') return command.id;
-    if (applied == null && command.status == 'acked') applied = command.id;
+    if (command.status == 'pending' || command.status == 'delivered' || command.status == 'acked') {
+      return command.id;
+    }
   }
-  return applied;
+  return null;
 }
 
 Future<String?> ringStopTarget(WidgetRef ref, String deviceId) async {

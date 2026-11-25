@@ -3,8 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/providers/family_provider.dart';
 
-/// #760 follow-up, Codex `7158872749`: when a newer ring has started and its acknowledgement is late, **Stop** must
-/// target that ring, not an older one that has already been acknowledged. History arrives newest first.
+/// Stop must name the **newest** ring that reached `pending`, `delivered` or `acked`. A child acks a ring when it
+/// *starts* sounding, so `acked` is an actively ringing command, not a finished one; history is newest first. Two
+/// findings pin this: Codex `7158872749` (a newer ring with its ack in flight) and Antigravity `7164117097` (scanning
+/// past a newer acked row returned a stale id the child refuses).
 void main() {
   DeviceCommand command(String id, String status, {String type = 'ring'}) => DeviceCommand(
         id: id,
@@ -22,7 +24,13 @@ void main() {
   test('a started ring with a late ack wins over an older acknowledged ring', () {
     final history = [command('ring-new', 'delivered'), command('ring-old', 'acked')];
     expect(activeRingId(history), 'ring-new',
-        reason: 'Stop must aim at the ring that is ringing, not one the device already settled');
+        reason: 'Stop must aim at the ring that is ringing, not one that was superseded');
+  });
+
+  test('a newer ringing ring outranks an older superseded one, and is not skipped', () {
+    // Antigravity #1125: [acked(new), delivered(old)] returned the OLD id, which the child refuses as
+    // invalid_command while the phone kept ringing.
+    expect(activeRingId([command('ring-new', 'acked'), command('ring-old', 'delivered')]), 'ring-new');
   });
 
   test('a pending ring is the one being sent, so it is the one Stop targets', () {
