@@ -1,0 +1,1 @@
+- #1085 re-establishes the web filter, the location service and the lock screen whenever the app runs again after the phone's cleaner killed it, and names the gaps it cannot fix — instead of waking up, uploading telemetry and going back to sleep with everything still down.
