@@ -27,6 +27,7 @@ import { startDeviceSilenceScheduler } from "./jobs/deviceSilence.js";
 import { startMfaResetExpiryScheduler } from "./jobs/mfaResetExpiry.js";
 import { startRevokedTokenPruneScheduler } from "./jobs/revokedTokenPrune.js";
 import { startPendingDeviceScheduler } from "./jobs/pendingDevices.js";
+import { startSocialAlertSummaryScheduler } from "./jobs/socialAlertSummary.js";
 import { sessionGuardHook } from "./middleware/sessionGuard.js";
 import { registerPairedAtHook } from "./middleware/pairedAt.js";
 import { healthRoutes } from "./routes/health.js";
@@ -173,3 +174,5 @@ startMfaResetExpiryScheduler();
 startRevokedTokenPruneScheduler();
 // Issue #790: a pairing claim's device row is deleted if the phone never made an accepted request.
 startPendingDeviceScheduler();
+// Issue #1029: window-close summary push when throttled per-contact social alerts accumulate.
+startSocialAlertSummaryScheduler();

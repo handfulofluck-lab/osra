@@ -46,6 +46,8 @@ REM === SET REAL SECRETS BEFORE GOING ONLINE (any long random strings) ===
 set JWT_SECRET=CHANGE_ME-long-random-hex
 set INTERNAL_HMAC_SECRET=CHANGE_ME-long-random-hex
 set PORT=3000
+REM Optional URL-event e2e only. Ordinary launches keep site names off by default.
+if "%OSRA_E2E_SITE_NAMES%"=="1" set SITE_NAMES_ENABLED=true
 REM base64 32-byte AES key, e.g. from: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 set VAULT_KEY=CHANGE_ME-base64-32-bytes
 REM =====================================================================

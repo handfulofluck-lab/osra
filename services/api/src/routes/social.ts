@@ -1,14 +1,14 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { raiseAlert } from "../lib/alerts.js";
-import { getRedis } from "../redis.js";
+import { recordFlaggedSocialAlert } from "../lib/socialAlertWindow.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { checkActiveConsent } from "../lib/consent.js";
 import { requireFamily, requireGuardianRead, requireParent } from "../middleware/requireFamily.js";
 import { decryptSnippet, encryptSnippet } from "../lib/snippetVault.js";
 import { isValidTimeZone } from "../lib/digestSchedule.js";
-import { STAGING_QA_MODEL, STAGING_QA_REGION, stagingQaModel, stagingQaModelEnabled, type StagingQaModel } from "../lib/stagingQaModel.js";
+import { failedProviders, flaggedProviders, readProviderAnalysis, type ProviderReceipts } from "../lib/stagingProviderOutcomes.js";
+import { STAGING_QA_MODEL, STAGING_QA_REGION, stagingQaDeadline, stagingQaModel, stagingQaModelEnabled, type StagingQaModel } from "../lib/stagingQaModel.js";
 
 const ScanSchema = z.object({
   childId: z.string().min(1),
@@ -37,12 +37,12 @@ const EventsQuerySchema = z.object({
 });
 
 const AI_TIMEOUT_MS = 5000;
-const THROTTLE_SECONDS = 600;
 const PREVIEW_MAX_CHARS = 240;
 const GAMING_APPS = new Set(["discord", "roblox"]);
 
 type Severity = "info" | "warning" | "critical";
 interface Verdict { flagged: boolean; severity: Severity; concernTypes: string[] }
+type ScanAnalysis = { verdict: Verdict | null; attempted: boolean; providers?: ProviderReceipts };
 
 // NOTE: fail-open — when the AI engine is unreachable the scan falls back to a local
 // keyword/regex check so obvious self-harm language is never silently dropped.
@@ -118,7 +118,7 @@ function aiVerdictFrom(data: unknown): Verdict | null {
  * point a): a call that reached the engine and timed out after five seconds was still paid for, and for a
  * cost floor under-counting is the unsafe direction.
  */
-async function analyzeWithAi(text: string, childAge?: number): Promise<{ verdict: Verdict | null; attempted: boolean }> {
+async function analyzeWithAi(text: string, childAge?: number): Promise<ScanAnalysis> {
   const base = process.env.AI_ENGINE_URL;
   if (!base) return { verdict: null, attempted: false };
   try {
@@ -139,24 +139,36 @@ async function analyzeWithAi(text: string, childAge?: number): Promise<{ verdict
   }
 }
 
-async function analyzeStagingFixture(text: string, qa: StagingQaModel): Promise<{ verdict: Verdict | null; attempted: boolean }> {
+async function analyzeStagingFixture(text: string, qa: StagingQaModel, batchDeadline: number): Promise<ScanAnalysis> {
+  const { providerMode } = qa;
+  let receivedResponse = false;
+  function failure(attempted: boolean, reason: "unavailable" | "timeout"): ScanAnalysis {
+    return providerMode ? { ...failedProviders(providerMode, reason), attempted } : { verdict: null, attempted };
+  }
+  const now = Date.now();
+  const deadline = stagingQaDeadline(qa, batchDeadline, now);
+  if (deadline <= now) return failure(false, "timeout");
   try {
     const res = await fetch(qa.endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, trace_id: qa.traceId }),
+      body: JSON.stringify({ text, trace_id: qa.traceId, ...(providerMode && { include_provider_outcomes: true }) }),
       redirect: "error",
-      signal: AbortSignal.timeout(2600),
+      signal: AbortSignal.timeout(deadline - now),
     });
-    if (!res.ok) return { verdict: null, attempted: true };
-    const scored = await res.json() as Record<string, unknown>;
+    receivedResponse = true;
+    if (!res.ok) return failure(true, res.status === 408 || res.status === 504 ? "timeout" : "unavailable");
+    const scored = await res.json();
+    if (Date.now() >= deadline) return failure(true, "timeout");
+    if (providerMode) return { ...readProviderAnalysis(scored, providerMode, qa.traceId), attempted: true };
     if (scored?.trace_id !== qa.traceId || scored.model !== STAGING_QA_MODEL || scored.region !== STAGING_QA_REGION) {
-      return { verdict: null, attempted: true };
+      return failure(true, "unavailable");
     }
     return { verdict: aiVerdictFrom(scored), attempted: true };
   } catch (err) {
     const name = (err as { name?: string } | null)?.name;
-    return { verdict: null, attempted: name === "TimeoutError" || name === "AbortError" };
+    const timedOut = name === "TimeoutError" || name === "AbortError";
+    return failure(timedOut || (providerMode !== undefined && receivedResponse), timedOut ? "timeout" : "unavailable");
   }
 }
 
@@ -218,7 +230,7 @@ async function recordScanUsage(
  * Scans one capture: ownership, consent, the verdict, the vault write and the throttled alert. Shared
  * by the single-item body and each item of a batch (#490), so the checks are identical for both.
  */
-async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest["log"]): Promise<ScanItemResult> {
+async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest["log"], batchDeadline = Infinity): Promise<ScanItemResult> {
   const parsed = ScanSchema.safeParse(input);
   if (!parsed.success) return { ok: false, reason: "invalid_item", status: 400, body: { error: parsed.error.flatten() } };
   const { childId, deviceId, app: appName, contact, text, source } = parsed.data;
@@ -229,7 +241,14 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
   }
 
   // The family's zone rides the lookup the route already does, so the day key costs no second query.
-  const child = await prisma.child.findUnique({ where: { id: childId }, include: { family: { select: { timezone: true } } } });
+  const crossAppQa = stagingQaModelEnabled() && process.env.OSRA_STAGING_QA_ANDROID_SOURCES === "1";
+  const child = await prisma.child.findUnique({
+    where: { id: childId },
+    include: {
+      family: { select: { timezone: true } },
+      ruleSet: crossAppQa && { select: { socialMonitoring: true } },
+    },
+  });
   if (!child) return { ok: false, reason: "child_not_found", status: 404 };
   // ADR-0008 §2b: withdrawal of consent stops collection.
   const consent = await checkActiveConsent(childId);
@@ -241,8 +260,8 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
   const childAge = typeof (child as { birthYear?: number }).birthYear === "number"
     ? new Date().getFullYear() - (child as { birthYear: number }).birthYear
     : undefined;
-  const qa = stagingQaModel({ device, deviceId, childId, app: appName, source, text });
-  const ai = qa ? await analyzeStagingFixture(text, qa)
+  const qa = stagingQaModel({ device, deviceId, childId, app: appName, source, text, socialMonitoring: child.ruleSet?.socialMonitoring });
+  const ai = qa ? await analyzeStagingFixture(text, qa, batchDeadline)
     : stagingQaModelEnabled() ? { verdict: null, attempted: false }
       : await analyzeWithAi(text, childAge);
   const local = localKeywordCheck(text);
@@ -263,51 +282,55 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
   // Issue #890: the counter is written whether or not the capture is flagged — cost is paid on both — and
   // it counts the ATTEMPT, so a timeout against a paid engine is not recorded as a free scan.
   await recordScanUsage(child.familyId, (child as { family?: { timezone?: string } | null }).family?.timezone, ai.attempted, log);
+  const ownReceipt = ai.providers?.own;
+  const proofRegion = qa?.providerMode === "own"
+    ? (ownReceipt?.status === "scored" ? ownReceipt.region ?? STAGING_QA_REGION : undefined)
+    : STAGING_QA_REGION;
   const qaProof = qa && {
     traceId: qa.traceId,
     fixtureNumber: qa.fixtureNumber,
-    model: STAGING_QA_MODEL,
-    region: STAGING_QA_REGION,
+    ...(qa.providerMode ? { mode: qa.providerMode } : { model: STAGING_QA_MODEL }),
+    region: proofRegion,
     fallback: ai.verdict === null,
     modelFlagged: ai.verdict?.flagged ?? null,
     rulesFlagged: local.flagged,
   };
+  const receipt = ai.providers && qa ? { childId, traceId: qa.traceId, providers: ai.providers } : undefined;
   if (!verdict.flagged) {
+    if (receipt) await prisma.stagingScanOutcome.create({ data: receipt });
     if (qaProof) log?.info(qaProof, "staging QA scan resolved without alert");
     return { ok: true, flagged: false, severity: "info", concernTypes: [] };
   }
 
   // The snippet vault always records flagged messages; alerts are throttled separately.
   const previewCipher = encryptSnippet(text.slice(0, PREVIEW_MAX_CHARS));
-  const event = await prisma.socialEvent.create({
-    data: { childId, app: appName, contact, severity: verdict.severity, previewCipher, concernTypes: verdict.concernTypes },
-  });
+  const eventData = { childId, app: appName, contact, severity: verdict.severity, previewCipher, concernTypes: verdict.concernTypes };
+  const event = receipt ? await prisma.$transaction(async (tx) => {
+    const created = await tx.socialEvent.create({ data: eventData });
+    await tx.stagingScanOutcome.create({ data: { ...receipt, socialEventId: created.id } });
+    return created;
+  }) : await prisma.socialEvent.create({ data: eventData });
 
-  // NOTE: at most one alert per app per 10 minutes per child; the vault write above always
-  // happens so parents can still review the full snippet history in /v1/social/events.
-  const throttleKey = `social:alert:${childId}:${appName.toLowerCase()}`;
-  const throttled = await getRedis().set(throttleKey, "1", "EX", THROTTLE_SECONDS, "NX") !== "OK";
-  let alertId: string | undefined;
-  if (!throttled) {
-    const category = GAMING_APPS.has(appName.toLowerCase()) ? "gaming_chat" : "social_concern";
-    // Alerts never carry the message snippet — metadata is app/contact/concernTypes only;
-    // the decrypted preview stays exclusively in the encrypted vault (#24).
-    const alert = await raiseAlert({
-      childId,
-      familyId: child.familyId,
-      deviceId,
-      severity: verdict.severity,
-      category,
-      title: `Social concern in ${appName}`,
-      body: `${contact || "A contact"} sent a flagged message on ${appName}`,
-      bodyKey: "alertBodySocialConcern",
-      params: { app: appName, ...(contact ? { contact } : {}) },
-      metadata: { app: appName, contact, concernTypes: verdict.concernTypes },
-      childName: child.displayName,
-    });
-    alertId = alert?.id;
-  }
-  if (qaProof) log?.info({ ...qaProof, socialEventId: event?.id, alertId, throttled }, "staging QA scan resolved");
+  // Issue #1029: 10-minute alert window per (child, app, salted contact hash). Repeat flagged
+  // messages update the existing alert in place (running count + latestAt), higher severity
+  // bypasses immediately, and a window-close sweep sends one summary push if the count rose.
+  const category = GAMING_APPS.has(appName.toLowerCase()) ? "gaming_chat" : "social_concern";
+  const attribution = ai.providers && flaggedProviders(ai.providers);
+  const alertOutcome = await recordFlaggedSocialAlert({
+    childId,
+    familyId: child.familyId,
+    childName: child.displayName,
+    deviceId,
+    appName,
+    contact,
+    category,
+    severity: verdict.severity,
+    concernTypes: verdict.concernTypes,
+    attribution: attribution && Object.keys(attribution).length > 0 ? attribution : undefined,
+  });
+  const alertId = alertOutcome.alertId;
+  const throttled = alertOutcome.throttled;
+  if (qaProof) log?.info({ ...qaProof, socialEventId: event?.id, alertId, throttled, bypassed: alertOutcome.bypassed, flaggedCount: alertOutcome.flaggedCount }, "staging QA scan resolved");
   return { ok: true, flagged: true, severity: verdict.severity, concernTypes: verdict.concernTypes };
 }
 
@@ -335,7 +358,9 @@ export async function socialRoutes(app: FastifyInstance) {
       // reach the agent's 30 s read timeout, so a slow engine would fail a batch the server had already
       // stored, and the retry would store it twice. `Promise.all` keeps the order, and the alert
       // throttle is an atomic SET NX, so same-app items still raise at most one alert.
-      const scanned = await Promise.all(batch.data.items.map((item) => scanOne(item, auth.device, req.log)));
+      // Leave five seconds for persistence and the response before Android's 30-second read timeout.
+      const batchDeadline = Date.now() + 25000;
+      const scanned = await Promise.all(batch.data.items.map((item) => scanOne(item, auth.device, req.log, batchDeadline)));
       // A failed item carries its reason only; status codes belong to the single-item body.
       const results = scanned.map((r) => (r.ok ? r : { ok: false, reason: r.reason }));
       return { results };

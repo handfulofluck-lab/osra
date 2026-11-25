@@ -77,6 +77,11 @@ resource "aws_ecs_task_definition" "api" {
           { name = "OSRA_STAGING_QA_ANALYZER_ENABLED", value = "1" },
           { name = "OSRA_STAGING_QA_ANALYZER_URL", value = "http://${local.staging_qa_dns}:8000" },
         ] : [],
+        local.staging_qa_pair_text,
+        local.staging_qa_engine,
+        local.staging_qa_armed && try(var.staging_qa_analyzer.allow_android_sources, false) ? [
+          { name = "OSRA_STAGING_QA_ANDROID_SOURCES", value = "1" },
+        ] : [],
         # APNs (#695). Production always uses the production APNs endpoint: TestFlight and store builds carry
         # aps-environment=production, and a sandbox token sent there fails with BadDeviceToken. Staging may
         # set apns_env = "sandbox" for Xcode/debug iPhone builds (24 Nov swap test, osra-security#38).
