@@ -180,6 +180,7 @@ extension AppLocalizationsLabels on AppLocalizations {
         'rules_updated' => commandRulesUpdated,
         'consent_granted' => commandConsentGranted,
         'consent_revoked' => commandConsentRevoked,
+        'set_parent_pin' => commandSetParentPin,
         _ => type.replaceAll('_', ' '),
       };
 

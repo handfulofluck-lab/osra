@@ -33,3 +33,35 @@ export const LOGGER_SERIALIZERS = {
     };
   },
 };
+
+/**
+ * #1108 (Ahmed's R3, condition 1): Pino `redact` paths. No route logs a request body today, but the
+ * parent-PIN route carries a PIN, a password and an authenticator code, and its command carries a PIN hash;
+ * if any of them is ever attached to a log object — a body, an error's context, a command row — the value is
+ * replaced before the line is written.
+ */
+export const LOGGER_REDACT = {
+  paths: [
+    "req.body.pin",
+    "req.body.password",
+    "req.body.mfaCode",
+    "body.pin",
+    "body.password",
+    "body.mfaCode",
+    "pin",
+    "password",
+    "mfaCode",
+    "pinHash",
+    "payload.pinHash",
+    "*.pinHash",
+    "*.payload.pinHash",
+    // An error object whose context carries the request body (seen in the zero-log test: `err.body`).
+    "*.pin",
+    "*.password",
+    "*.mfaCode",
+    "*.body.pin",
+    "*.body.password",
+    "*.body.mfaCode",
+  ],
+  censor: "[redacted]",
+};

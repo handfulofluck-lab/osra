@@ -3752,4 +3752,76 @@ class AppLocalizationsAr extends AppLocalizations {
   String socialAlertNewSince(int count) {
     return '+$count جديدة';
   }
+
+  @override
+  String get commandSetParentPin => 'تغيير رمز PIN للجهاز';
+
+  @override
+  String get changeDevicePinButton => 'تغيير رمز PIN للجهاز';
+
+  @override
+  String changeDevicePinTitle(String device) {
+    return 'رمز PIN جديد لتطبيق OSRA على $device';
+  }
+
+  @override
+  String get changeDevicePinBody =>
+      'نسيت الرمز؟ عيّن رمزًا جديدًا هنا. يتوقف الرمز القديم عن العمل بمجرد أن يستلم الهاتف التغيير. لا يمكن لأحد رؤية الرمز القديم، ولا أنت.';
+
+  @override
+  String get changeDevicePinNew => 'الرمز الجديد';
+
+  @override
+  String get changeDevicePinRepeat => 'أعد إدخال الرمز الجديد';
+
+  @override
+  String get changeDevicePinDigitsHint => 'من 4 إلى 8 أرقام';
+
+  @override
+  String get changeDevicePinProof => 'للتأكد من هويتك، أدخل كلمة مرور حسابك.';
+
+  @override
+  String get changeDevicePinCodeHelper => 'فقط إذا كنت تستخدم تطبيق مصادقة';
+
+  @override
+  String get changeDevicePinSave => 'تغيير الرمز';
+
+  @override
+  String get changeDevicePinMismatch => 'الرمزان غير متطابقين.';
+
+  @override
+  String get changeDevicePinTooShort => 'يجب ألا يقل الرمز عن 4 أرقام.';
+
+  @override
+  String get changeDevicePinTooLong => 'يجب ألا يزيد الرمز على 8 أرقام.';
+
+  @override
+  String get changeDevicePinNotDigits => 'استخدم الأرقام فقط.';
+
+  @override
+  String get changeDevicePinWeak => 'اختر رمزًا يصعب تخمينه.';
+
+  @override
+  String get changeDevicePinPasswordRequired => 'أدخل كلمة مرور حسابك.';
+
+  @override
+  String changeDevicePinQueued(String device) {
+    return 'أُرسل الرمز الجديد إلى $device. سيعمل بمجرد أن يستلمه الهاتف.';
+  }
+
+  @override
+  String get changeDevicePinWrongProof =>
+      'كلمة المرور أو الرمز غير صحيح. لم يتغير رمز PIN.';
+
+  @override
+  String get changeDevicePinLimit =>
+      'تغيّر رمز PIN على هذا الهاتف مرات كثيرة. حاول مجددًا بعد ساعة.';
+
+  @override
+  String get changeDevicePinNotSupported =>
+      'تغيير الرمز من هنا متاح لهواتف Android فقط.';
+
+  @override
+  String get commandRefusedPinNotSaved =>
+      'تعذّر على الهاتف حفظ الرمز الجديد، لذا ما زال الرمز القديم يعمل. حاول مجددًا.';
 }

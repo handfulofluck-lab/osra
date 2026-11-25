@@ -54,6 +54,14 @@ bool shouldRefreshOn401(RequestOptions options, [Response<dynamic>? response]) {
     final error = data is Map ? data['error'] : null;
     if (error != 'unauthorized' && error != 'session_revoked') return false;
   }
+  // #1108 (approved in Ahmed's R3 ruling): a device route that checks the parent's password — today
+  // `POST /v1/devices/:id/parent-pin` — answers 401 for a mistyped password or code. That is not an
+  // expired session: refreshing would replay the same wrong secret, and a failed refresh signs the parent out.
+  if (path.startsWith('/v1/devices/')) {
+    final data = response?.data;
+    final error = data is Map ? data['error'] : null;
+    if (error == 'reauth_failed' || error == 'reauth_required' || error == 'mfa_reenroll_required') return false;
+  }
   if (path == '/v1/auth/mfa/reset/cancel') {
     final body = options.data;
     final linkForm = body is Map && body.containsKey('token') && !body.containsKey('requestId');

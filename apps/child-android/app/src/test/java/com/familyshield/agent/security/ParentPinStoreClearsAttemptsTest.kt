@@ -61,6 +61,63 @@ class ParentPinStoreClearsAttemptsTest {
         )
     }
 
+    /**
+     * #1108 (Ahmed's R3, condition 6): a PIN set from the parent app replaces the old one, and only a stored and
+     * read-back value clears the debt.
+     */
+    @Test
+    fun `a PIN set from the parent app replaces the old one and starts with no debt`() {
+        val store = secureStore()
+        val attempts = attemptStore(store)
+        val pins = ParentPinStore(store)
+        pins.set("583921")
+        attempts.write(PinLockout.State(failures = 8, lastFailureMs = 1_000L, lastFailureElapsedMs = 2_000L))
+
+        val result = pins.setPrehashed(ParentPin.hash("4729"))
+
+        assertEquals(ParentPinStore.SetPrehashedResult.STORED, result)
+        assertEquals("the new PIN opens", true, pins.verify("4729"))
+        assertEquals("the forgotten one no longer does", false, pins.verify("583921"))
+        assertEquals(PinLockout.CLEARED, attempts.read())
+    }
+
+    @Test
+    fun `a malformed value from the server changes nothing, not the PIN and not the debt`() {
+        val store = secureStore()
+        val attempts = attemptStore(store)
+        val pins = ParentPinStore(store)
+        pins.set("583921")
+        val debt = PinLockout.State(failures = 3, lastFailureMs = 1_000L, lastFailureElapsedMs = 2_000L)
+        attempts.write(debt)
+
+        for (bad in listOf(null, "", "4729", "pbkdf2\$1000\$AAECAwQFBgcICQoLDA0ODw==\$v+4cs7lf1C6H2lW2gaHJtxZo6tqrt8lSvpspABHx26M=")) {
+            assertEquals(ParentPinStore.SetPrehashedResult.INVALID_SHAPE, pins.setPrehashed(bad))
+        }
+
+        assertEquals("the old PIN still opens", true, pins.verify("583921"))
+        assertEquals("the debt is untouched", debt.failures, attempts.read().failures)
+    }
+
+    @Test
+    fun `a write that does not read back is reported, not claimed`() {
+        // A store whose writes never land: the read-back check is what notices.
+        val store = SecureStore(
+            openerFactory = {
+                SecureStoreOpener<SharedPreferences>(
+                    openEncrypted = { NoopPrefs() },
+                    openPlain = { NoopPrefs() },
+                    empty = { NoopPrefs() },
+                    deleteFile = { },
+                    entries = { emptyMap() },
+                    contains = { _, _ -> false },
+                    putAll = { _, _ -> },
+                    log = { _, _ -> },
+                )
+            },
+        )
+        assertEquals(ParentPinStore.SetPrehashedResult.WRITE_FAILED, ParentPinStore(store).setPrehashed(ParentPin.hash("4729")))
+    }
+
     /** [PinAttemptStore] over the same store, exactly as `StorageModule.providePinAttemptStorage` wires it. */
     private fun attemptStore(store: SecureStore) = PinAttemptStore(
         object : PinAttemptStorage {
