@@ -7,6 +7,8 @@ must never be a test fixture.
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -153,3 +155,86 @@ def test_a_missing_dupclasses_script_is_reported_not_swallowed(tmp_path: Path):
     shard = write_shard(tmp_path, "s.jsonl", [row()])
     manifest = build_manifest([shard], "tr", tmp_path / "does-not-exist.py")
     assert manifest["dupclasses"]["status"] != "ok"
+
+
+def test_a_duplicate_across_two_shards_is_still_a_duplicate(tmp_path: Path):
+    # Mutant: a `seen` set allocated per shard (the shape Neon found in #1093) — the pool is the set of
+    # shards, so two halves of one copy-paste both reported duplicates: 0.
+    first = write_shard(tmp_path, "s1.jsonl", [row()])
+    second = write_shard(tmp_path, "s2.jsonl", [row(id="r-2")])
+    manifest = build_manifest([first, second], "tr")
+    assert manifest["totals"]["valid"] == 2
+    assert manifest["totals"]["duplicates"] == 1
+    assert manifest["totals"]["unique"] == 1
+
+
+def test_a_harmful_row_cannot_carry_category_none():
+    # `none` is the unpaired-safe category; a harmful row that carries it has no Brief v3 harm category,
+    # which is what the judge keys on.
+    assert (
+        check_row(row(label="harmful", kind="harmful", category="none"), "tr")
+        == "a harmful row needs a Brief v3 harm category, not 'none'"
+    )
+
+
+def test_a_paired_row_needs_a_non_empty_pair_id():
+    assert check_row(row(pair_id=""), "tr") == "kind harmful/lookalike is paired, so pair_id must be non-empty"
+    assert check_row(row(pair_id="   "), "tr") == "kind harmful/lookalike is paired, so pair_id must be non-empty"
+
+
+def test_a_non_string_field_is_a_row_failure_not_a_crash(tmp_path: Path):
+    # Mutant: `["harmful"] not in LABELS` is a TypeError on an unhashable list; it killed the scan, so every
+    # later line of the shard was lost instead of one row being refused.
+    shard = write_shard(tmp_path, "s.jsonl", [row(label=["harmful"]), row(id="r-2")])
+    manifest = build_manifest([shard], "tr")
+    assert manifest["totals"]["failures"] == 1
+    assert manifest["totals"]["valid"] == 1
+    assert "label is not a string" in manifest["failures"][0]
+
+
+def run_cli(args: list[str]) -> subprocess.CompletedProcess:
+    """Run the real CLI, so the exit code and stderr are what a CI step would see."""
+    return subprocess.run(
+        [sys.executable, "pool_manifest.py", *args],
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parent.parent,
+    )
+
+
+def test_the_cli_exits_non_zero_when_no_shard_matches(tmp_path: Path):
+    # Mutant: `return 1 if failures else 0` — an empty run has no failures, so a typo in --input passed.
+    proc = run_cli(["--input", str(tmp_path / "nope"), "--lang", "tr", "--out", str(tmp_path / "m.json")])
+    assert proc.returncode == 1
+    assert "no .jsonl shard matched" in proc.stderr
+
+
+def test_the_cli_exits_non_zero_when_the_dupclasses_gate_did_not_pass(tmp_path: Path):
+    shard = write_shard(tmp_path, "s.jsonl", [row()])
+    script = tmp_path / "dup.py"
+    script.write_text("import json, sys; print(json.dumps({'dups': 99})); sys.exit(2)", encoding="utf-8")
+    proc = run_cli(
+        ["--input", str(shard), "--lang", "tr", "--dupclasses", str(script), "--out", str(tmp_path / "m.json")]
+    )
+    assert proc.returncode == 1
+    manifest = json.loads((tmp_path / "m.json").read_text(encoding="utf-8"))
+    assert manifest["dupclasses"]["status"] == "exit 2"
+
+
+def test_a_dupclasses_script_cannot_overwrite_its_own_status(tmp_path: Path):
+    # Mutant: `{"status": ..., **parsed}` let a failing script that printed {"status": "ok"} read as a pass.
+    shard = write_shard(tmp_path, "s.jsonl", [row()])
+    script = tmp_path / "dup.py"
+    script.write_text("import json, sys; print(json.dumps({'status': 'ok'})); sys.exit(1)", encoding="utf-8")
+    manifest = build_manifest([shard], "tr", script)
+    assert manifest["dupclasses"]["status"] == "exit 1"
+
+
+def test_non_dict_dupclasses_output_is_reported_not_a_crash(tmp_path: Path):
+    # Mutant: `**parsed` raises TypeError for `[1, 2, 3]`, losing the whole manifest to a badly-behaved script.
+    shard = write_shard(tmp_path, "s.jsonl", [row()])
+    script = tmp_path / "dup.py"
+    script.write_text("print('[1, 2, 3]')", encoding="utf-8")
+    manifest = build_manifest([shard], "tr", script)
+    assert manifest["dupclasses"]["status"] == "ok"
+    assert manifest["dupclasses"]["output"] == [1, 2, 3]

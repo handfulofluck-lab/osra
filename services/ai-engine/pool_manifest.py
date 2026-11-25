@@ -12,7 +12,8 @@ Two gates are checked here because they are cheap and local:
 
 * **shape** — every row has the 17 fields, the right ``lang``, a non-empty ``text``, and a
   ``text_sha256`` that actually matches the text.
-* **exact duplicates** — two rows with the same ``text_sha256`` are a duplicate, full stop.
+* **exact duplicates** — two rows with the same ``text_sha256`` are a duplicate, full stop, and that
+  holds across shards: the pool is the set of shards, not one file at a time.
 
 The *near*-duplicate gate (the pinned ``k31_dupclasses.py``) is deliberately **not** re-implemented: a
 second copy of a pinned validator is how two runs come to disagree. Pass ``--dupclasses`` a path to the
@@ -113,6 +114,13 @@ def check_row(row: dict, lang: str) -> str | None:
         return f"lang is {row['lang']!r}, expected {lang!r}"
     if not isinstance(row["text"], str) or not row["text"].strip():
         return "text is empty"
+    # A JSON row can carry a list or an object where a string belongs, and `x in frozenset` raises
+    # TypeError for it: the scanner would die and lose every later line of the shard (Neon, #1093).
+    for name in ("label", "category", "kind", "text_sha256"):
+        if not isinstance(row[name], str):
+            return f"{name} is not a string"
+    if row["pair_id"] is not None and not isinstance(row["pair_id"], str):
+        return "pair_id must be a string or null"
     if row["label"] not in LABELS:
         return f"label {row['label']!r} is not one of {sorted(LABELS)}"
     if row["category"] not in CATEGORIES:
@@ -121,6 +129,8 @@ def check_row(row: dict, lang: str) -> str | None:
         return f"kind {row['kind']!r} is not one of {sorted(KINDS)}"
     if row["label"] == "harmful" and row["kind"] != "harmful":
         return f"a harmful row must carry kind 'harmful', not {row['kind']!r}"
+    if row["label"] == "harmful" and row["category"] == "none":
+        return "a harmful row needs a Brief v3 harm category, not 'none'"
     if row["label"] == "safe" and row["kind"] not in {"lookalike", "plain"}:
         return f"a safe row must be kind 'lookalike' or 'plain', not {row['kind']!r}"
     unpaired = row["kind"] == "plain"
@@ -128,6 +138,8 @@ def check_row(row: dict, lang: str) -> str | None:
         return "kind 'plain' means unpaired, so pair_id must be null"
     if not unpaired and row["pair_id"] is None:
         return "kind harmful/lookalike is paired, so pair_id must be set"
+    if not unpaired and not row["pair_id"].strip():
+        return "kind harmful/lookalike is paired, so pair_id must be non-empty"
     if unpaired and row["category"] != "none":
         return "an unpaired safe row must carry category 'none'"
     if row["text_sha256"] != text_sha256(row["text"]):
@@ -135,10 +147,16 @@ def check_row(row: dict, lang: str) -> str | None:
     return None
 
 
-def scan_shard(path: Path, lang: str) -> ShardReport:
+def scan_shard(path: Path, lang: str, seen: set[str] | None = None) -> ShardReport:
+    """Scan one shard. [seen] is shared by every shard of a run, so a duplicate that lands in two files
+    is still a duplicate; a per-shard set reported `duplicates: 0` for a pool that was half copies.
+
+    On its own (no [seen] passed) it keeps a private set, which is what a single-file caller wants.
+    """
     raw = path.read_bytes()
     report = ShardReport(path=str(path), sha256=hashlib.sha256(raw).hexdigest())
-    seen: set[str] = set()
+    if seen is None:
+        seen = set()
     for number, line in enumerate(raw.decode("utf-8").splitlines(), start=1):
         if not line.strip():
             continue
@@ -180,7 +198,11 @@ def run_dupclasses(script: Path, shards: list[Path]) -> dict:
         parsed = json.loads(out.splitlines()[-1]) if out else {}
     except json.JSONDecodeError:
         parsed = {"raw_tail": out.splitlines()[-3:] if out else []}
-    return {"status": "ok" if proc.returncode == 0 else f"exit {proc.returncode}", **parsed}
+    # `parsed` may be a list, and a script that prints `{"status": "ok"}` and exits 1 must not be able to
+    # overwrite the exit code it actually returned (Neon, #1093).
+    result = dict(parsed) if isinstance(parsed, dict) else {"output": parsed}
+    result["status"] = "ok" if proc.returncode == 0 else f"exit {proc.returncode}"
+    return result
 
 
 def build_manifest(inputs: list[Path], lang: str, dupclasses: Path | None = None) -> dict:
@@ -190,11 +212,15 @@ def build_manifest(inputs: list[Path], lang: str, dupclasses: Path | None = None
             shards.extend(sorted(p for p in item.rglob("*.jsonl")))
         elif item.suffix == ".jsonl":
             shards.append(item)
-    reports = [scan_shard(p, lang) for p in shards]
+    seen: set[str] = set()
+    reports = [scan_shard(p, lang, seen) for p in shards]
+    valid = sum(r.valid for r in reports)
+    duplicates = sum(r.duplicates for r in reports)
     totals = {
         "lines": sum(r.lines for r in reports),
-        "valid": sum(r.valid for r in reports),
-        "duplicates": sum(r.duplicates for r in reports),
+        "valid": valid,
+        "unique": valid - duplicates,
+        "duplicates": duplicates,
         "failures": sum(len(r.failures) for r in reports),
     }
     set_digest = hashlib.sha256("\n".join(f"{r.path}:{r.sha256}" for r in reports).encode()).hexdigest()
@@ -224,6 +250,10 @@ def main(argv: list[str]) -> int:
         args.lang,
         Path(args.dupclasses) if args.dupclasses else None,
     )
+    if not manifest["shards"]:
+        # An empty run is not a pass: a typo in --input used to print 0/0 valid and exit 0.
+        print("no .jsonl shard matched --input; refusing to report an empty run as a pass", file=sys.stderr)
+        return 1
     text = json.dumps(manifest, indent=2, ensure_ascii=False)
     if args.out:
         Path(args.out).write_text(text + "\n", encoding="utf-8")
@@ -233,7 +263,12 @@ def main(argv: list[str]) -> int:
         )
     else:
         print(text)
-    return 1 if manifest["totals"]["failures"] else 0
+    if manifest["totals"]["failures"]:
+        return 1
+    dupclasses = manifest.get("dupclasses")
+    if dupclasses is not None and dupclasses.get("status") != "ok":
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
