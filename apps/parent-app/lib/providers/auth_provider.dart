@@ -9,12 +9,35 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../api/permission_errors.dart';
 import '../api/push_api.dart';
+import '../core/mutation_auth.dart';
+import '../core/owner_presence.dart';
 import '../push/push_registration.dart';
 import '../push/fcm_push_token_source.dart';
 import 'server_provider.dart';
 
+/// Issue #742: the phone's owner is asked before a mutation. One gate for the process, so a test can replace it.
+final ownerPresenceGateProvider = Provider<OwnerPresenceGate>((ref) => OwnerPresenceGate());
+
 /// Injectable [ApiClient] source; overridden in tests with a fake.
-final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
+final apiClientProvider = Provider<ApiClient>((ref) {
+  final gate = ref.watch(ownerPresenceGateProvider);
+  return ApiClient(
+    authoriseMutation: (options) async {
+      // Before sign-in there is no session to send and nothing to protect; the server requires a session for
+      // every call that can change a family, so skipping here cannot skip a real check (flagged for Claude).
+      if (options.extra['hasSession'] != true) return;
+      await guardMutation(
+        method: options.method,
+        path: options.path,
+        exempt: options.extra['authExempt'],
+        askOwner: gate.authorise,
+        // UI/UX's final sentence (7157141241). It becomes an l10n key when the refusal screen lands, because
+        // the key needs both locales and Arabic is the Arabic Bureau's to apply.
+        reason: 'Unlock to save changes to your family settings.',
+      );
+    },
+  );
+});
 
 /// [AuthState.error] prefix for a 400 whose body is zod's `flatten()` output: the rejected field
 /// names follow, sorted and comma-separated (`validation_failed:email,password`). The login screen
@@ -235,7 +258,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       final refresh = await _storage.read(key: 'refresh');
       if (refresh != null) {
-        await _api.raw.post('/v1/auth/logout', data: {'refreshToken': refresh});
+        // #742: signing out only removes access, so it cannot wait for a screen lock the phone may not have.
+        await _api.raw.post(
+          '/v1/auth/logout',
+          data: {'refreshToken': refresh},
+          options: Options(extra: {'authExempt': AuthExempt.sessionEnd}),
+        );
       }
     } catch (_) {}
     try {

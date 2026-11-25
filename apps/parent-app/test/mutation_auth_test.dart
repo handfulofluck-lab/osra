@@ -150,6 +150,28 @@ void main() {
       );
     });
 
+    test('the session-end exemption covers logout alone, never logout-all', () {
+      // Ahmed's condition on the fourth exemption (2026-11-25): `/v1/auth/logout` retires the one refresh token
+      // it is given, while `logout-all` signs the parent out on every device. That one stays behind the check.
+      expect(
+        MutationAuthPolicy.requiresAuth(
+          method: 'POST',
+          path: '/v1/auth/logout-all',
+          exempt: AuthExempt.sessionEnd,
+        ),
+        isTrue,
+        reason: 'logout-all must still ask the owner',
+      );
+      expect(
+        MutationAuthPolicy.requiresAuth(
+          method: 'POST',
+          path: '/v1/auth/logout',
+          exempt: AuthExempt.sessionEnd,
+        ),
+        isFalse,
+      );
+    });
+
     test('the whole path must match: extra, missing or renamed segments stay gated', () {
       // Mutant: `path.startsWith(pattern)` or `contains`, which would free a neighbour of the named call.
       for (final path in <String>[
@@ -174,6 +196,31 @@ void main() {
           ),
           isTrue,
           reason: '$path is not a call any exemption names',
+        );
+      }
+    });
+
+    test('a path segment that is a traversal or an encoded separator is refused', () {
+      // Ahmed's re-review of #1114: `..` matches the pattern as text, but a client or proxy may fold it and
+      // send something else. Mutant: accepting any non-empty segment, which would free `/v1/alerts/../ack`.
+      for (final path in <String>[
+        '/v1/alerts/../ack',
+        '/v1/alerts/./ack',
+        '/v1/alerts/%2E%2E/ack',
+        '/v1/alerts/%2e%2e/ack',
+        '/v1/alerts/x%2Fy/ack',
+        '/v1/alerts/x%2fy/ack',
+        '/v1/alerts/x%5Cy/ack',
+        '/v1/alerts/..%2F..%2Frules/ack',
+      ]) {
+        expect(
+          MutationAuthPolicy.requiresAuth(
+            method: 'POST',
+            path: path,
+            exempt: AuthExempt.acknowledgeFromNotification,
+          ),
+          isTrue,
+          reason: '$path must not be treated as an alert id',
         );
       }
     });
@@ -221,7 +268,7 @@ void main() {
       // list is asserted by content rather than by length.
       expect(
         AuthExempt.all.map((e) => e.reason).toList(),
-        <String>['ack-from-notification', 'push-token', 'token-refresh'],
+        <String>['ack-from-notification', 'push-token', 'token-refresh', 'session-end'],
       );
     });
 
@@ -237,6 +284,7 @@ void main() {
           'push-token POST /v1/me/push-token',
           'push-token DELETE /v1/me/push-token',
           'token-refresh POST /v1/auth/token/refresh',
+          'session-end POST /v1/auth/logout',
         ],
       );
     });

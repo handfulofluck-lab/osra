@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../core/mutation_auth.dart';
+
 /// `/v1/auth/*` paths whose 401 is the answer, not an expired session.
 ///
 /// These routes authenticate with a credential in the request (a password, a
@@ -62,11 +64,16 @@ bool shouldRefreshOn401(RequestOptions options, [Response<dynamic>? response]) {
   return !credentialOnlyAuthPaths.contains(path);
 }
 
+/// Applies issue #742's owner-presence gate to one request, before it is sent. Throws when the owner did not
+/// authorise, and the exception leaves the interceptor before any byte is written.
+typedef MutationAuthorizer = Future<void> Function(RequestOptions options);
+
 class ApiClient {
   static const _base = String.fromEnvironment('API_BASE', defaultValue: '');
   final _dio = Dio(BaseOptions(baseUrl: _base));
   final _storage = const FlutterSecureStorage();
   Future<String?>? _refreshFuture;
+  final MutationAuthorizer? _authoriseMutation;
 
   Future<String?> _refreshToken() async {
     String? refresh;
@@ -75,7 +82,13 @@ class ApiClient {
     } catch (_) {}
     if (refresh == null) return null;
     try {
-      final resp = await _dio.post('/v1/auth/token/refresh', data: {'refreshToken': refresh});
+      final resp = await _dio.post(
+        '/v1/auth/token/refresh',
+        data: {'refreshToken': refresh},
+        // A refresh must run without a prompt or the session expires in front of the parent; the marker names
+        // this one endpoint (#742, Ahmed's endpoint binding).
+        options: Options(extra: {'authExempt': AuthExempt.tokenRefresh}),
+      );
       final data = resp.data is Map ? resp.data as Map : const <String, dynamic>{};
       final token = data['token'] as String?;
       if (token == null) throw const FormatException('refresh response missing token');
@@ -92,7 +105,7 @@ class ApiClient {
     }
   }
 
-  ApiClient() {
+  ApiClient({MutationAuthorizer? authoriseMutation}) : _authoriseMutation = authoriseMutation {
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (opts, handler) async {
         // A purpose-scoped token (the 15-minute `mfa_recovery` credential) is
@@ -105,6 +118,12 @@ class ApiClient {
         if (token != null && token.isNotEmpty) {
           opts.headers['Authorization'] = 'Bearer $token';
         }
+        // Issue #742: the gate runs after the token is known, because "there is no session yet" is a fact the
+        // gate needs (before sign-in there is no family to protect, and the server requires a session for every
+        // call that can change anything). A caller's marker travels in `extra['authExempt']`.
+        opts.extra['hasSession'] = token != null && token.isNotEmpty;
+        final authorise = _authoriseMutation;
+        if (authorise != null) await authorise(opts);
         handler.next(opts);
       },
       onError: (e, handler) async {

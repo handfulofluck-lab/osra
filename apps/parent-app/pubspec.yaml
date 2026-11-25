@@ -14,6 +14,9 @@ dependencies:
   google_maps_flutter: ^2.7.0
   fl_chart: ^0.68.0
   flutter_secure_storage: ^9.2.0
+  # Issue #742: the phone's own biometric or device credential, before a mutation. Approved by Claude
+  # (7157129055). No fallback to the app PIN: a PIN a child may have watched is weaker than the promise.
+  local_auth: ^3.0.2
   intl: ^0.20.3
   shared_preferences: ^2.2.3
   qr_flutter: ^4.1.0

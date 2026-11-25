@@ -35,12 +35,27 @@ class ExemptEndpoint {
     for (var i = 0; i < wanted.length; i++) {
       final pattern = wanted[i];
       if (pattern.startsWith(':')) {
-        if (got[i].isEmpty) return false;
+        if (!_isSafePathSegment(got[i])) return false;
       } else if (pattern != got[i]) {
         return false;
       }
     }
     return true;
+  }
+
+  /// One id-shaped segment, and nothing a client or a proxy could normalise into a different call.
+  ///
+  /// Ahmed's re-review of #1114: `/v1/alerts/../ack` matches the pattern as text, but an HTTP client or a
+  /// proxy may fold the `..` and send a different path. `.`, `..`, an encoded separator (`%2F`, `%5C`, either
+  /// case) and an encoded dot that decodes into a traversal (`%2E%2E`) are all refused. Refusing is the
+  /// gated side, so a future caller sees a prompt rather than a silent pass. Double-encoding (`%252E`) is not
+  /// decoded here; a proxy that decodes twice is outside what this check can promise.
+  static bool _isSafePathSegment(String segment) {
+    if (segment.isEmpty) return false;
+    final upper = segment.toUpperCase();
+    if (upper.contains('%2F') || upper.contains('%5C')) return false;
+    final decoded = upper.replaceAll('%2E', '.');
+    return decoded != '.' && decoded != '..' && !decoded.contains('..');
   }
 
   /// Drops the query and fragment, then splits on `/`. Empty segments are dropped so one trailing slash
@@ -89,11 +104,19 @@ class AuthExempt {
     ExemptEndpoint('POST', '/v1/auth/token/refresh'),
   ]);
 
+  /// Signing out. It only removes access, so it cannot loosen a restriction, and a parent on a phone with no
+  /// screen lock could otherwise never leave the session: the refusal path would gate every attempt to sign
+  /// out. Claude's ruling of 2026-11-25 (7157129055), with UI/UX behind it.
+  static const sessionEnd = AuthExempt._('session-end', [
+    ExemptEndpoint('POST', '/v1/auth/logout'),
+  ]);
+
   /// The full set. A test pins this so a new exemption, or a widened one, cannot arrive unreviewed.
   static const all = <AuthExempt>[
     acknowledgeFromNotification,
     pushToken,
     tokenRefresh,
+    sessionEnd,
   ];
 
   /// True only when this marker names [method] on [path]. Used to *narrow* a pass, never to grant one:

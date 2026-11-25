@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import 'client.dart';
+import '../core/mutation_auth.dart';
 
 /// The `platform` value `POST /v1/me/push-token` accepts — a `z.enum` in
 /// `services/api/src/routes/me.ts`, so an unknown string is a `400`, not a
@@ -95,7 +96,8 @@ class PushApi {
       final res = await _client.raw.request<dynamic>(
         '/v1/me/push-token',
         data: body,
-        options: Options(method: method),
+        // #742: both verbs act on this device's own token, minted by the OS, never on a family setting.
+        options: Options(method: method, extra: {'authExempt': AuthExempt.pushToken}),
       );
       final data = res.data;
       if (data is Map) return Map<String, dynamic>.from(data);
