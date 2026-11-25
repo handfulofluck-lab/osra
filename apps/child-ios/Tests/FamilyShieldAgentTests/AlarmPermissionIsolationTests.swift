@@ -16,15 +16,16 @@ final class AlarmPermissionIsolationTests: XCTestCase {
     func testTheAttributeIsNotInsideACommentLine() throws {
         let text = try source()
         XCTAssertFalse(text.contains(".@MainActor"),
-                       "an attribute at the end of a doc sentence is part of the comment, not the code")
-        for line in text.split(separator: "\n") where line.contains("@MainActor") {
-            XCTAssertFalse(line.trimmingCharacters(in: .whitespaces).hasPrefix("///"),
-                           "the attribute has its own line: \(line)")
-        }
+                       "an attribute glued to the end of a sentence is part of the comment, not the code")
+        // A comment may *name* the attribute — this file's own explanation does. What it must never do is end with
+        // it, which is the shape that swallowed it.
+        let swallowed = text.split(separator: "\n").map { String($0).trimmingCharacters(in: .whitespaces) }
+            .first { $0.hasPrefix("///") && $0.hasSuffix("@MainActor") }
+        XCTAssertNil(swallowed, "a doc line ends with the attribute, so it is inside the comment: \(swallowed ?? "")")
     }
 
     func testTheClassIsIsolated() throws {
-        let lines = try source().split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        let lines = try source().split(separator: "\n").map { String($0).trimmingCharacters(in: .whitespaces) }
         let classLine = try XCTUnwrap(lines.firstIndex(of: "public final class AlarmRingingPermission: ObservableObject {"),
                                       "the class declaration moved; update this test with it")
         XCTAssertEqual(lines[classLine - 1], "@MainActor",
