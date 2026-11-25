@@ -304,12 +304,16 @@ void main() {
       await unmount(tester);
     });
 
-    testWidgets('once the phone has its token the card says it is paired', (tester) async {
+    testWidgets('once the phone has its token the screen ends on the paired state (#1134)', (tester) async {
+      // #1134: this row used to assert the claim *card* said it was paired. The standalone screen now ends
+      // instead of leaving the parent on the scan instructions, so the same fact is shown by the paired
+      // screen — one sentence, one place, and a way out.
       final api = claimApi(() => {...pending, 'status': 'paired', 'deviceId': 'dev-1'});
       await pumpScreen(tester, api);
       await nextRead(tester);
 
-      expect(find.byKey(const ValueKey('pairClaimPaired')), findsOneWidget);
+      expect(find.byKey(const ValueKey('pairPairedTitle')), findsOneWidget);
+      expect(find.textContaining("Sam's phone"), findsOneWidget);
       expect(find.byKey(const ValueKey('pairClaimAllow')), findsNothing);
       await unmount(tester);
     });
