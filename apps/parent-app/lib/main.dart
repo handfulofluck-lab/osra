@@ -1,35 +1,23 @@
 import 'dart:async';
 
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
 import 'core/date_formatting.dart';
-import 'push/background_push.dart';
+import 'push/foreground_push.dart';
+import 'push/local_notifier.dart';
 
 Future<void> main() async {
   await configureDateFormatting();
   WidgetsFlutterBinding.ensureInitialized();
   // Registered before the first frame so a wake that arrives while the app is
-  // starting still has a handler (#360). Not awaited: on a build with no
-  // Firebase config this fails by design, and startup must not wait for it.
-  unawaited(_enableBackgroundAlerts());
+  // starting or open in the foreground still has a handler (#360, #1028). Not
+  // awaited: on a build with no Firebase config this skips silently by design
+  // (#317), and startup must not wait for it.
+  unawaited(enablePushAlerts());
+  // #972: capture cold-start and warm notification taps so GoRouter opens `/alerts/:id`
+  // after authentication finishes.
+  unawaited(FlutterLocalNotifier.registerTapHandlers());
   runApp(const ProviderScope(child: FamilyShieldApp()));
-}
-
-/// Wires the FCM background handler when this build can actually use FCM.
-///
-/// The three-shape rule from #317 and [FcmPushTokenSource]: no
-/// `google-services.json` means push is *absent*, not broken. A build made from
-/// a clean clone therefore skips this silently instead of crashing at startup,
-/// and the same build still runs every other feature.
-Future<void> _enableBackgroundAlerts() async {
-  try {
-    if (Firebase.apps.isEmpty) await Firebase.initializeApp();
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-  } catch (_) {
-    // Absent: no config, or a platform without Firebase. Nothing to register.
-  }
 }

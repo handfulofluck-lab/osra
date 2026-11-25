@@ -405,6 +405,7 @@ export async function applyRetention(at: Date = new Date(), env: NodeJS.ProcessE
 
 /** Every child-scoped table, in an order that respects the foreign keys. Exported so a test can assert the list. */
 export const CHILD_SCOPED_DELETE_ORDER = [
+  "childInternetOperation",
   "deviceCommand",
   // Roadmap 3.4: the installed-app inventory is device-scoped but is child data; deleting it
   // explicitly (before the Device rows cascade) makes the GDPR erasure result countable.
@@ -412,6 +413,7 @@ export const CHILD_SCOPED_DELETE_ORDER = [
   "locationPing",
   "alert",
   "activityEvent",
+  "stagingScanOutcome",
   "socialEvent",
   "installRequest",
   "webVisit",
@@ -443,12 +445,16 @@ export interface EraseResult {
 export async function eraseChildData(childId: string, deviceTokenTtlSeconds: number): Promise<EraseResult> {
   const devices = await prisma.device.findMany({ where: { childId }, select: { id: true } });
   const deviceIds = devices.map((d) => d.id);
-  const results = await prisma.$transaction([
+  const [, ...results] = await prisma.$transaction([
+    // Serialize against child-wide internet requests before deleting their rows or device commands.
+    prisma.$queryRaw`SELECT id FROM "Child" WHERE id = ${childId} FOR UPDATE`,
+    prisma.childInternetOperation.deleteMany({ where: { childId } }),
     prisma.deviceCommand.deleteMany({ where: { deviceId: { in: deviceIds } } }),
     prisma.deviceApp.deleteMany({ where: { deviceId: { in: deviceIds } } }),
     prisma.locationPing.deleteMany({ where: { childId } }),
     prisma.alert.deleteMany({ where: { childId } }),
     prisma.activityEvent.deleteMany({ where: { childId } }),
+    prisma.stagingScanOutcome.deleteMany({ where: { childId } }),
     prisma.socialEvent.deleteMany({ where: { childId } }),
     prisma.installRequest.deleteMany({ where: { childId } }),
     prisma.webVisit.deleteMany({ where: { childId } }),

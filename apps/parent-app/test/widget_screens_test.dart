@@ -344,6 +344,10 @@ void main() {
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
       for (final (label, command) in [('Ring', 'ring'), ('Lock', 'lock'), ('Unlock', 'unlock')]) {
+        // #969: the card grew two scope headings and a status line, so the controls sit lower than the 600 px
+        // test viewport. Scroll them into view instead of shrinking the card for the test's convenience.
+        await tester.ensureVisible(find.text(label));
+        await tester.pumpAndSettle();
         await tester.tap(find.text(label));
         await flushFakeHttp(tester);
         expect(find.textContaining('$label queued for Pixel 7a'), findsOneWidget);
@@ -374,6 +378,8 @@ void main() {
       });
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
+      await tester.ensureVisible(find.text('Lock'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Lock'));
       await flushFakeHttp(tester);
 
@@ -396,6 +402,8 @@ void main() {
       });
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
+      await tester.ensureVisible(find.text('Lock'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Lock'));
       await flushFakeHttp(tester);
 
@@ -437,6 +445,8 @@ void main() {
       });
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
+      await tester.ensureVisible(find.text('Lock'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Lock'));
       await flushFakeHttp(tester);
 
@@ -541,17 +551,17 @@ void main() {
       expect(find.text('Paused'), findsNothing);
     });
 
-    testWidgets('child detail Pause net button POSTs the pause endpoint', (tester) async {
+    testWidgets('child detail Pause internet button POSTs the pause endpoint', (tester) async {
       final api = pausedApi(startPaused: false);
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
-      await tester.ensureVisible(find.text('Pause net'));
+      await tester.ensureVisible(find.text('Pause internet'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Pause net'));
+      await tester.tap(find.text('Pause internet'));
       await flushFakeHttp(tester);
 
       expect(api.calls('POST', '/v1/controls/children/child-1/pause'), hasLength(1));
-      expect(find.text('Resume net'), findsOneWidget);
+      expect(find.text('Resume internet'), findsOneWidget);
       // Run out the snackbar so no timer is left pending at test end.
       await tester.pump(const Duration(seconds: 5));
       await tester.pumpAndSettle();
@@ -731,7 +741,7 @@ void main() {
       final firstSave = api.calls('PATCH', '/v1/rules/child-1');
       expect(firstSave, hasLength(1));
       expect(firstSave.single.body, {'appRules': <Object>[]});
-      expect(find.byType(MaterialBanner), findsOneWidget);
+      expect(find.byKey(const ValueKey('rules-save-error-banner')), findsOneWidget);
       expect(find.text('Rules saved'), findsNothing);
 
       await tester.tap(find.text('Save'));
@@ -741,7 +751,7 @@ void main() {
       final saves = api.calls('PATCH', '/v1/rules/child-1');
       expect(saves, hasLength(2));
       expect(saves.last.body, {'appRules': <Object>[]});
-      expect(find.byType(MaterialBanner), findsNothing);
+      expect(find.byKey(const ValueKey('rules-save-error-banner')), findsNothing);
       expect(find.text('Rules saved'), findsOneWidget);
     });
   });

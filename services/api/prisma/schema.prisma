@@ -248,6 +248,8 @@ model Child {
   alerts      Alert[]
   consents    ConsentRecord[]
   pairingDecisions PairingDecision[]
+  stagingScanOutcomes StagingScanOutcome[]
+  internetOperation ChildInternetOperation?
 }
 
 /// Plan 2.7 (the parent approves each new device): who allowed or refused which phone. `model` is the
@@ -351,6 +353,9 @@ model DeviceApp {
   /// an older Play agent or the iOS agent never claims "not essential" or "always allowed". Display
   /// only — the server does not enforce with it, and no parent request writes it.
   essential Boolean?
+  /// Karim 23 Nov: the app's launcher icon as a `data:image/png|webp;base64,…` URI (about 9 KB at most),
+  /// checked on write. Null until an agent that sends icons reports; the parent then draws a letter avatar.
+  icon      String?
   updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
   device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
@@ -379,6 +384,17 @@ model DeviceCommand {
 
   @@index([deviceId, status])
   @@index([deviceId, createdAt])
+}
+
+/// Latest child-wide internet request and the exact commands it queued.
+model ChildInternetOperation {
+  childId       String   @id
+  id            String   @unique
+  generation    Int
+  desiredPaused Boolean
+  requestedAt   DateTime @db.Timestamptz(3)
+  targets       Json
+  child         Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
 }
 
 model RuleSet {
@@ -458,9 +474,22 @@ model SocialEvent {
   app           String
   contact       String   @default("")
   severity      String   @default("warning")
+  stagingScanOutcome StagingScanOutcome?
   previewCipher String   @default("")
   concernTypes  String[] @default([])
   createdAt     DateTime @default(now())
+  @@index([childId, createdAt])
+}
+
+/// Synthetic staging receipts. A benign or unavailable scan has no social vault event.
+model StagingScanOutcome {
+  traceId       String       @id @db.Uuid
+  childId       String
+  child         Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  socialEventId String?      @unique
+  socialEvent   SocialEvent? @relation(fields: [socialEventId], references: [id], onDelete: SetNull)
+  providers     Json
+  createdAt     DateTime     @default(now()) @db.Timestamptz(3)
   @@index([childId, createdAt])
 }
 

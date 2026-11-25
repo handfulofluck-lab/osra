@@ -9,6 +9,8 @@ import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/children/command_history_screen.dart';
 import 'package:familyshield_parent/l10n/l10n.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
+import 'package:familyshield_parent/theme/app_theme.dart';
+import 'package:familyshield_parent/theme/app_tokens.dart';
 
 import 'fake_api_client.dart';
 import 'test_app.dart';
@@ -203,7 +205,10 @@ void main() {
       });
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
-      await tester.tap(find.widgetWithIcon(TextButton, Icons.notifications_active).first);
+      final ring = find.widgetWithIcon(FilledButton, Icons.notifications_active).first;
+      await tester.ensureVisible(ring);
+      await tester.pumpAndSettle();
+      await tester.tap(ring);
       await tester.pumpAndSettle();
 
       expect(find.textContaining("You don't have permission to send Ring to"), findsOneWidget,
@@ -223,7 +228,13 @@ void main() {
       });
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
-      await tester.tap(find.widgetWithIcon(TextButton, Icons.wifi_off).first);
+      // #969: the scoped labels are longer, so the internet control can sit below this surface's fold. Scroll
+      // to it as a parent would, rather than tapping a point that is off-screen (this file already does the
+      // same at the bonus-time row below).
+      final internet = find.widgetWithIcon(FilledButton, Icons.wifi_off).first;
+      await tester.ensureVisible(internet);
+      await tester.pumpAndSettle();
+      await tester.tap(internet);
       await tester.pumpAndSettle();
 
       expect(api.calls('POST', '/v1/controls/children/child-1/pause'), hasLength(1),
@@ -415,6 +426,96 @@ void main() {
 
       expect(find.byType(CommandHistoryScreen), findsOneWidget);
       expect(find.text('Command delivery'), findsOneWidget);
+    });
+
+    testWidgets(
+        'commandStatusColor meets WCAG AA (>= 4.5:1) across all states in light and dark themes (#968)',
+        (tester) async {
+      double contrastRatio(Color fg, Color bg) {
+        final l1 = fg.computeLuminance();
+        final l2 = bg.computeLuminance();
+        final hi = l1 > l2 ? l1 : l2;
+        final lo = l1 > l2 ? l2 : l1;
+        return (hi + 0.05) / (lo + 0.05);
+      }
+
+      // Mutant: reverting pending to Colors.amber.shade800 (~1.97:1) or acked to
+      // Colors.green.shade700 (~3.5:1) breaks this WCAG AA assertion.
+      for (final entry in [('light', AppTheme.light), ('dark', AppTheme.dark)]) {
+        final label = entry.$1;
+        final theme = entry.$2;
+        late BuildContext captured;
+        await tester.pumpWidget(MaterialApp(
+          theme: theme,
+          home: Builder(builder: (ctx) {
+            captured = ctx;
+            return const SizedBox.shrink();
+          }),
+        ));
+        final tokens = captured.tokens;
+        final surfaces = [
+          ('surface', tokens.surface),
+          ('surfaceContainer', tokens.surfaceContainer),
+          ('surfaceVariant', tokens.surfaceVariant),
+        ];
+        for (final status in const ['acked', 'delivered', 'failed', 'expired', 'pending']) {
+          final fg = commandStatusColor(captured, status);
+          for (final s in surfaces) {
+            final ratio = contrastRatio(fg, s.$2);
+            expect(
+              ratio,
+              greaterThanOrEqualTo(4.5),
+              reason: '$label/$status against ${s.$1} must meet WCAG AA (>= 4.5:1), got ${ratio.toStringAsFixed(2)}:1',
+            );
+          }
+        }
+      }
+    });
+
+    testWidgets(
+        'renders themed status text and icons cleanly at 100% and 200% text scale in light and dark (#968)',
+        (tester) async {
+      for (final dark in const [false, true]) {
+        for (final scale in const [1.0, 2.0]) {
+          tester.view.physicalSize = const Size(390, 844);
+          tester.view.devicePixelRatio = 1.0;
+          tester.platformDispatcher.textScaleFactorTestValue = scale;
+          addTearDown(() {
+            tester.view.resetPhysicalSize();
+            tester.view.resetDevicePixelRatio();
+            tester.platformDispatcher.clearTextScaleFactorTestValue();
+          });
+
+          final api = historyApi(histories: {
+            'dev-1': [
+              commandJson('cmd-pending', 'pause_internet', 'pending', now),
+              commandJson('cmd-acked', 'lock', 'acked', now, ackedAt: now),
+            ],
+            'dev-2': [],
+          });
+          await tester.pumpWidget(ProviderScope(
+            overrides: [apiClientProvider.overrideWithValue(api)],
+            child: MaterialApp(
+              locale: const Locale('en'),
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              theme: AppTheme.light,
+              darkTheme: AppTheme.dark,
+              themeMode: dark ? ThemeMode.dark : ThemeMode.light,
+              home: const CommandHistoryScreen(childId: 'child-1'),
+            ),
+          ));
+          await tester.pumpAndSettle();
+
+          final expectedTokens = dark ? AppTokens.dark : AppTokens.light;
+          final pendingText = tester.widget<Text>(find.text('Pending — waiting for the device'));
+          final ackedText = tester.widget<Text>(find.text('Confirmed by device'));
+          expect(pendingText.style?.color, expectedTokens.warn);
+          expect(ackedText.style?.color, expectedTokens.ok);
+          expect(find.byIcon(Icons.schedule), findsOneWidget);
+          expect(find.byIcon(Icons.check_circle), findsOneWidget);
+        }
+      }
     });
   });
 }

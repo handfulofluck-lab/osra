@@ -1,0 +1,1 @@
+- Keep iOS CI red when the same launch log contains an explicit app crash and a retryable simulator error.

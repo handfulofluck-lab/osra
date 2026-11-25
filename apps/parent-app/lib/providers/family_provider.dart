@@ -60,6 +60,70 @@ final alertsProvider = FutureProvider.family<AlertsPage, AlertFilter>((ref, filt
   return AlertsPage.fromJson(res.data);
 });
 
+/// Outcome of resolving a single alert by ID within the guardian's `/v1/alerts` scope.
+enum AlertLookupStatus {
+  /// Matching alert was resolved.
+  found,
+
+  /// All available pages were scanned and the alert is absent.
+  notFound,
+
+  /// Bounded page scan stopped while the server confirmed additional pages remain.
+  incompleteScan,
+}
+
+/// Typed result for [alertByIdProvider] so an incomplete bounded scan is never reported
+/// as a missing alert.
+class AlertLookupResult {
+  final AlertLookupStatus status;
+  final Alert? alert;
+
+  const AlertLookupResult.found(Alert this.alert) : status = AlertLookupStatus.found;
+  const AlertLookupResult.notFound()
+      : status = AlertLookupStatus.notFound,
+        alert = null;
+  const AlertLookupResult.incompleteScan()
+      : status = AlertLookupStatus.incompleteScan,
+        alert = null;
+}
+
+/// Resolves a single alert by [alertId] within the guardian's authorized `/v1/alerts` scope,
+/// checking page 1 via [alertsProvider] first and paginating up to [maxPages] before reporting
+/// either [AlertLookupStatus.notFound] (exhausted) or [AlertLookupStatus.incompleteScan]
+/// (more pages exist beyond the bounded cap).
+final alertByIdProvider = FutureProvider.family<AlertLookupResult, String>((ref, alertId) async {
+  const pageLimit = 50;
+  const maxPages = 20;
+  final firstPage = await ref.watch(alertsProvider(const AlertFilter()).future);
+  final firstHit = firstPage.items.where((a) => a.id == alertId).firstOrNull;
+  if (firstHit != null) return AlertLookupResult.found(firstHit);
+
+  var seen = firstPage.items.length;
+  final total = firstPage.total;
+  if (seen == 0 || seen >= total) return const AlertLookupResult.notFound();
+
+  final api = ref.watch(apiClientProvider);
+  var exhausted = false;
+  for (var page = 2; page <= maxPages && seen < total; page++) {
+    final res = await api.raw.get(
+      '/v1/alerts',
+      queryParameters: {'page': page, 'limit': pageLimit},
+    );
+    final nextPage = AlertsPage.fromJson(res.data);
+    if (nextPage.items.isEmpty) {
+      exhausted = true;
+      break;
+    }
+    final hit = nextPage.items.where((a) => a.id == alertId).firstOrNull;
+    if (hit != null) return AlertLookupResult.found(hit);
+    seen += nextPage.items.length;
+  }
+  if (!exhausted && seen < total) {
+    return const AlertLookupResult.incompleteScan();
+  }
+  return const AlertLookupResult.notFound();
+});
+
 /// Snapshot of unacknowledged alerts returned by `GET /v1/alerts?ack=false`.
 class UnacknowledgedAlertsSummary {
   final int total;
@@ -119,30 +183,38 @@ class AlertsSeenState {
   final bool hasViewedFeed;
   final int seenUnackedBaseline;
   final Map<String, int> seenVersions;
+  /// #1029: social alert `id -> socialMessageCount` at the last time the parent opened it.
+  /// Only alerts present here show a `+{delta} new` badge when more flagged messages arrive.
+  final Map<String, int> openedSocialCounts;
 
   const AlertsSeenState({
     this.hasViewedFeed = false,
     this.seenUnackedBaseline = 0,
     this.seenVersions = const {},
+    this.openedSocialCounts = const {},
   });
 
   static const empty = AlertsSeenState();
 
   factory AlertsSeenState.fromJson(Map<String, dynamic> json) {
-    final rawVersions = json['s'];
-    final versions = <String, int>{};
-    if (rawVersions is Map) {
-      for (final entry in rawVersions.entries) {
-        final v = entry.value;
-        if (entry.key is String && v is num) {
-          versions[entry.key as String] = v.toInt();
+    Map<String, int> parseIntMap(Object? raw) {
+      final out = <String, int>{};
+      if (raw is Map) {
+        for (final entry in raw.entries) {
+          final v = entry.value;
+          if (entry.key is String && v is num) {
+            out[entry.key as String] = v.toInt();
+          }
         }
       }
+      return out;
     }
+
     return AlertsSeenState(
       hasViewedFeed: json['v'] == true,
       seenUnackedBaseline: (json['b'] as num?)?.toInt() ?? 0,
-      seenVersions: versions,
+      seenVersions: parseIntMap(json['s']),
+      openedSocialCounts: parseIntMap(json['oc']),
     );
   }
 
@@ -150,6 +222,7 @@ class AlertsSeenState {
         'v': hasViewedFeed,
         'b': seenUnackedBaseline,
         's': seenVersions,
+        if (openedSocialCounts.isNotEmpty) 'oc': openedSocialCounts,
       };
 }
 
@@ -219,6 +292,33 @@ class AlertsSeenNotifier extends StateNotifier<AlertsSeenState> {
       hasViewedFeed: true,
       seenUnackedBaseline: baseline,
       seenVersions: merged,
+      openedSocialCounts: state.openedSocialCounts,
+    );
+    state = next;
+    await _persist(next);
+  }
+
+  /// #1029: records that the parent opened [alert] at its current message count,
+  /// clearing any `+{count} new` badge until additional flagged messages arrive.
+  Future<void> markAlertOpened(Alert alert) async {
+    if (!alert.isSocialAlert) return;
+    _userUpdated = true;
+    final opened = Map<String, int>.from(state.openedSocialCounts);
+    final prevOpened = opened[alert.id] ?? 0;
+    final currentCount = alert.socialMessageCount;
+    if (currentCount > prevOpened) {
+      opened[alert.id] = currentCount;
+    } else if (!opened.containsKey(alert.id)) {
+      opened[alert.id] = currentCount;
+    }
+    final versions = Map<String, int>.from(state.seenVersions);
+    final prevVer = versions[alert.id] ?? 0;
+    if (alert.attemptCount > prevVer) versions[alert.id] = alert.attemptCount;
+    final next = AlertsSeenState(
+      hasViewedFeed: state.hasViewedFeed,
+      seenUnackedBaseline: state.seenUnackedBaseline,
+      seenVersions: versions,
+      openedSocialCounts: opened,
     );
     state = next;
     await _persist(next);
@@ -229,11 +329,13 @@ class AlertsSeenNotifier extends StateNotifier<AlertsSeenState> {
   Future<void> markAcknowledged(String alertId) async {
     _userUpdated = true;
     final merged = Map<String, int>.from(state.seenVersions)..remove(alertId);
+    final opened = Map<String, int>.from(state.openedSocialCounts)..remove(alertId);
     final nextBaseline = state.seenUnackedBaseline > 0 ? state.seenUnackedBaseline - 1 : 0;
     final next = AlertsSeenState(
       hasViewedFeed: state.hasViewedFeed,
       seenUnackedBaseline: nextBaseline,
       seenVersions: merged,
+      openedSocialCounts: opened,
     );
     state = next;
     await _persist(next);
@@ -259,6 +361,17 @@ final alertsSeenProvider = StateNotifierProvider<AlertsSeenNotifier, AlertsSeenS
   });
   return notifier;
 });
+
+/// #1029: returns how many additional flagged messages have arrived on [alert]
+/// since the parent last opened it. Returns 0 if never opened yet or if no new
+/// messages have arrived since opening.
+int computeSocialNewSinceCount(Alert alert, AlertsSeenState seen) {
+  if (!alert.isSocialAlert) return 0;
+  final openedAt = seen.openedSocialCounts[alert.id];
+  if (openedAt == null) return 0;
+  final current = alert.socialMessageCount;
+  return current > openedAt ? current - openedAt : 0;
+}
 
 /// Computes how many unacknowledged alerts have not yet been viewed on `/alerts` (#936).
 int computeUnseenAlertCount(
@@ -499,6 +612,11 @@ void applyRealtimeMessage(RealtimeEffects effects, Map<String, dynamic> msg) {
       // list is stale too. Two indicators, one frame, no extra polling.
       effects.invalidateFamily();
       effects.invalidateCommandHistory();
+    case 'command_acked':
+      // #935: a child device acknowledged a command (lock, pause, resume, etc.), so the delivery
+      // summary and command history are stale right away rather than waiting ~15 s.
+      effects.invalidateCommandHistory();
+      effects.invalidateFamily();
   }
 }
 

@@ -1,5 +1,6 @@
 #if DEBUG
 import Foundation
+import UIKit
 import FamilyShieldAgent
 
 /// #739: the launch argument a UI test uses to reach a screen without pairing, under Claude's decision 1 and
@@ -27,6 +28,12 @@ enum UITestSeed {
         // loopback interface: not this build's server, not staging, not production, and not derived from
         // `OSRA_API_BASE`. Nothing listens there, so every request this identity makes fails closed.
         guard let base = URL(string: "http://127.0.0.1:9") else { return false }
+        // Antigravity's B2 (`7043304116`): with every request failing against the discard port, the status screen
+        // keeps animating, so XCUITest's "wait for the app to idle" burned its 60-second timeout on every tap — a
+        // single wrong-PIN submission cost about six minutes and the UI-test job hit its 30-minute ceiling. Turning
+        // animations off is scoped to a **seeded launch only**: nothing here runs in Release (the file is `#if
+        // DEBUG`), and nothing runs without the argument, so the agent's behaviour is unchanged everywhere else.
+        UIView.setAnimationsEnabled(false)
         let identity = AgentIdentity(apiBaseURL: base,
                                      deviceToken: "uitest-seed-no-token",
                                      deviceId: "uitest-seed-device",

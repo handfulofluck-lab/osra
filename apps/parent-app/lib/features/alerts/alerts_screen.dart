@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
@@ -6,10 +8,13 @@ import 'package:url_launcher/url_launcher.dart' show launchUrl, LaunchMode;
 
 import '../../api/permission_errors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
 import '../../core/date_formatting.dart';
+import '../../core/digits.dart';
+import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
@@ -19,18 +24,103 @@ import '../children/child_detail_screen.dart' show AlertTile;
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
 import '../../widgets/error_retry_view.dart';
+import 'alert_detail_screen.dart';
 import 'sos_alert_actions.dart';
 import '../map/family_map_screen.dart'
     show FamilyMapScreen, MapFocus, mapIsAvailable;
-import '../../push/restart_alert_text.dart';
 import '../../push/sos_fix_text.dart';
+
+/// U45: formats the alert detail dialog timestamp using the #889 time keys
+/// (`alertAtTime`, `alertYesterdayAtTime`, `alertOnDateAtTime`), 24-hour
+/// `HH:mm` without seconds, Western `0-9` digits, and LRI/PDI isolation.
+@visibleForTesting
+String formatAlertDetailTime(
+  DateTime createdAt, {
+  required AppLocalizations l10n,
+  required String localeName,
+  DateTime? now,
+}) {
+  final localTime = createdAt.toLocal();
+  final refLocal = (now ?? DateTime.now()).toLocal();
+  final localDay = DateTime.utc(localTime.year, localTime.month, localTime.day);
+  final today = DateTime.utc(refLocal.year, refLocal.month, refLocal.day);
+  final yesterday = DateTime.utc(refLocal.year, refLocal.month, refLocal.day - 1);
+
+  final clock = normalizeDigits(DateFormat('HH:mm', 'en').format(localTime));
+  final isolatedClock = ltrIsolate(clock);
+
+  if (localDay == today) {
+    return l10n.alertAtTime(isolatedClock);
+  }
+  if (localDay == yesterday) {
+    return l10n.alertYesterdayAtTime(isolatedClock);
+  }
+  final isArabic = localeName.toLowerCase().startsWith('ar');
+  final sameYear = localTime.year == refLocal.year;
+  final pattern =
+      isArabic ? (sameYear ? 'd MMMM' : 'd MMMM y') : (sameYear ? 'd MMM' : 'd MMM y');
+  final resolvedLocale =
+      DateFormat.localeExists(localeName) ? localeName : (isArabic ? 'ar' : 'en');
+  final dateLabel = normalizeDigits(
+    DateFormat(pattern, resolvedLocale).format(localTime),
+  );
+  return l10n.alertOnDateAtTime(dateLabel, isolatedClock);
+}
+
+/// #1029: Returns true when [incoming] is a stale aggregate snapshot of [existing]
+/// (e.g. an older periodic-refresh response arriving after a newer realtime update).
+bool _isStaleSocialAggregate(Alert existing, Alert incoming) {
+  if (!existing.isSocialAlert || !incoming.isSocialAlert) return false;
+  if (incoming.socialMessageCount < existing.socialMessageCount) return true;
+  if (incoming.socialMessageCount == existing.socialMessageCount) {
+    final prevTs = existing.effectiveTimestamp;
+    final nextTs = incoming.effectiveTimestamp;
+    if (prevTs != null && nextTs != null && nextTs.isBefore(prevTs)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// #1029: Upserts [incoming] alerts into [existing] by `id` (never duplicating a card),
+/// reconciles social aggregate versions by freshness so out-of-order responses never roll
+/// a contact card backwards, and sorts descending by [Alert.effectiveTimestamp] so an alert
+/// updated in place during a throttle window moves to the top of the feed.
+@visibleForTesting
+List<Alert> mergeAlertsInPlace(List<Alert> existing, Iterable<Alert> incoming) {
+  final byId = <String, Alert>{
+    for (final a in existing) a.id: a,
+  };
+  for (final a in incoming) {
+    final prev = byId[a.id];
+    if (prev != null && _isStaleSocialAggregate(prev, a)) continue;
+    byId[a.id] = a;
+  }
+  final merged = byId.values.toList();
+  merged.sort((a, b) {
+    final ta = a.effectiveTimestamp;
+    final tb = b.effectiveTimestamp;
+    if (ta == null && tb == null) return 0;
+    if (ta == null) return 1;
+    if (tb == null) return -1;
+    return tb.compareTo(ta);
+  });
+  return merged;
+}
 
 /// Alerts feed: grouped by day, severity-colored, swipe-to-acknowledge with
 /// optimistic removal, detail dialog per category, and paged "load more".
 class AlertsScreen extends ConsumerStatefulWidget {
-  const AlertsScreen({super.key, @visibleForTesting this.nowProvider});
+  const AlertsScreen({
+    super.key,
+    @visibleForTesting this.nowProvider,
+    @visibleForTesting this.liveRefreshInterval = const Duration(seconds: 30),
+  });
 
   final DateTime Function()? nowProvider;
+  /// #1029: bounded live refresh interval while the feed is open so running counts
+  /// update in place without requiring a pull-to-refresh gesture.
+  final Duration liveRefreshInterval;
 
   @override
   ConsumerState<AlertsScreen> createState() => _AlertsScreenState();
@@ -41,6 +131,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   int _page = 0;
   bool _hasMore = true;
   bool _loading = false;
+  bool _liveRefreshing = false;
+  Timer? _liveRefreshTimer;
   String? _error;
 
   /// A read this guardian's invite does not cover (ADR-0014 amendment, decision 7). Kept apart
@@ -51,6 +143,45 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   void initState() {
     super.initState();
     _loadMore();
+    if (widget.liveRefreshInterval > Duration.zero) {
+      _liveRefreshTimer = Timer.periodic(
+        widget.liveRefreshInterval,
+        (_) => _refreshLivePage(),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _liveRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  /// #1029: silent bounded page-1 refresh so an open feed updates running counts,
+  /// moves updated cards to the top, and shows "+N new" without a manual gesture.
+  Future<void> _refreshLivePage() async {
+    if (!mounted || _loading || _liveRefreshing || _refused != null) return;
+    _liveRefreshing = true;
+    try {
+      final res = await ref
+          .read(apiClientProvider)
+          .raw
+          .get('/v1/alerts', queryParameters: {'page': 1, 'limit': 20});
+      if (!mounted) return;
+      final pageData = AlertsPage.fromJson(res.data);
+      setState(() {
+        final merged = mergeAlertsInPlace(_items, pageData.items);
+        _items
+          ..clear()
+          ..addAll(merged);
+        if (_page == 0) _page = 1;
+        _hasMore = pageData.items.isNotEmpty && _items.length < pageData.total;
+      });
+    } on DioException {
+      // Transient background refresh failure keeps the visible feed intact.
+    } finally {
+      _liveRefreshing = false;
+    }
   }
 
   Future<void> _loadMore() async {
@@ -69,9 +200,12 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       final isFirstPage = _page == 0;
       setState(() {
         _page++;
-        // De-dupe in case a live refresh raced us.
-        final known = _items.map((a) => a.id).toSet();
-        _items.addAll(pageData.items.where((a) => !known.contains(a.id)));
+        // #1029: upsert by id and sort by effectiveTimestamp desc so in-place
+        // updated social alerts refresh their count and move to the top without duplicating.
+        final merged = mergeAlertsInPlace(_items, pageData.items);
+        _items
+          ..clear()
+          ..addAll(merged);
         _hasMore = pageData.items.isNotEmpty && _items.length < pageData.total;
       });
       if (isFirstPage) {
@@ -119,6 +253,27 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   /// Feature #8: an install_request alert offers Block (append a block
   /// appRule to the child's ruleset) and Allow (just dismiss) actions.
   void _showDetail(Alert alert) {
+    // #972: social/gaming chat alerts open the dedicated full-screen scrollable detail route
+    // so 200% text size, authorized Social activity action, and unavailable-preview states stay accessible.
+    if (isSocialAlertCategory(alert.category)) {
+      // #1029: opening the social alert clears any "+N new" badge until more messages arrive.
+      ref.read(alertsSeenProvider.notifier).markAlertOpened(alert);
+      final router = GoRouter.maybeOf(context);
+      if (router != null) {
+        router.push('/alerts/${Uri.encodeComponent(alert.id)}', extra: alert);
+      } else {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => AlertDetailScreen(
+              alertId: alert.id,
+              initialAlert: alert,
+              nowProvider: widget.nowProvider,
+            ),
+          ),
+        );
+      }
+      return;
+    }
     // Feature #16: conversation-coach card for AI/social alert categories.
     final coachCard = coachCardFor(alert.category, _concernTypesOf(alert));
     showDialog(
@@ -127,6 +282,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
         final l10n = dialogContext.l10n;
         return AlertDialog(
           scrollable: true,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           title: Row(
             children: [
               Icon(Icons.circle,
@@ -164,21 +320,12 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   // #889 Arabic Bureau (6997818132): an unkeyed restart row in Arabic renders no body at all
                   // inside the app dialog (the title already states it), never raw English or the push prompt.
                   Builder(builder: (_) {
-                    final isEnglish = dialogContext.localeName.startsWith('en');
-                    final String localizedBody;
-                    if (alert.category == 'sos') {
-                      localizedBody = '';
-                    } else if (alert.category == 'device_restarted') {
-                      localizedBody = RestartAlertText.tryFormat(
-                            alert,
-                            l10n: l10n,
-                            localeName: dialogContext.localeName,
-                            now: widget.nowProvider?.call(),
-                          ) ??
-                          (isEnglish ? alert.body : '');
-                    } else {
-                      localizedBody = alert.body;
-                    }
+                    final localizedBody = formatGeneralAlertBody(
+                      alert,
+                      l10n: l10n,
+                      localeName: dialogContext.localeName,
+                      now: widget.nowProvider?.call(),
+                    );
                     if (localizedBody.isEmpty) return const SizedBox.shrink();
                     return Text(localizedBody);
                   }),
@@ -232,15 +379,21 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   const SizedBox(height: AppSpace.sm),
                   if (childName != null && childName.isNotEmpty)
                     Text(l10n.alertChildLabel(childName)),
-                  Text(
-                      '${l10n.categoryLabel(l10n.alertCategory(alert.category))} · '
-                      '${l10n.severityLabel(l10n.severityName(alert.severity))}'),
+                  Text(l10n.categoryLabel(l10n.alertCategory(alert.category))),
                   if (alert.createdAt != null)
-                    Text(l10n.timeLabel(DateFormat.yMMMd(dialogContext.localeName)
-                        .add_Hms()
-                        .format(alert.createdAt!.toLocal()))),
+                    Text(
+                      l10n.alertDetailSent(
+                        formatAlertDetailTime(
+                          alert.createdAt!,
+                          l10n: l10n,
+                          localeName: dialogContext.localeName,
+                          now: widget.nowProvider?.call(),
+                        ),
+                      ),
+                      key: const ValueKey('alert-detail-time'),
+                    ),
                   const Divider(),
-                  CoachCardSection(card: coachCard),
+                  CoachCardSection(card: coachCard, compact: true),
                 ],
               );
             },
@@ -376,11 +529,25 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    // Group by local day, most recent first.
+    final seen = ref.watch(alertsSeenProvider);
+    // #1029: when the realtime /v1/ws alert invalidation path reloads alertsProvider,
+    // merge the fresh page into the open feed immediately without requiring a gesture.
+    ref.listen<AsyncValue<AlertsPage>>(alertsProvider(const AlertFilter()), (prev, next) {
+      if (next is! AsyncData<AlertsPage> || !mounted || _items.isEmpty) return;
+      final page = next.value;
+      setState(() {
+        final merged = mergeAlertsInPlace(_items, page.items);
+        _items
+          ..clear()
+          ..addAll(merged);
+      });
+    });
+    // Group by local day using effectiveTimestamp (latestAt ?? updatedAt ?? createdAt), most recent first.
     final groups = <String, List<Alert>>{};
     final order = <String>[];
     for (final a in _items) {
-      final day = a.createdAt == null ? 'Unknown' : dayKey(a.createdAt!.toLocal());
+      final ts = a.effectiveTimestamp;
+      final day = ts == null ? 'Unknown' : dayKey(ts.toLocal());
       if (!groups.containsKey(day)) {
         groups[day] = [];
         order.add(day);
@@ -453,6 +620,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                   onDismissed: (_) => _ack(alert, index),
                                   child: AlertTile(
                                       alert: alert,
+                                      newSinceCount: computeSocialNewSinceCount(alert, seen),
                                       onTap: () => _showDetail(alert)),
                                 );
                               }),

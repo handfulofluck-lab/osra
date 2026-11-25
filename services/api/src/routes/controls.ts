@@ -1,10 +1,11 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { getRedis, getJson, publishJson, setJson } from "../redis.js";
+import { getJson, publishJson } from "../redis.js";
 import { requireParent, requireFamily, requirePermission } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
+import { latestChildInternet, requestChildInternet } from "../lib/childInternet.js";
 import { defaultRuleSetRow } from "../lib/defaultRules.js";
 import { filterAgentRules, toApiRuleSet } from "../lib/ruleSync.js";
 
@@ -16,7 +17,7 @@ const WindDownSchema = z.object({
   minutes: z.number().int().min(1),
 });
 
-/** Redis key holding the child's internet-paused state (set by pause, cleared by resume). */
+/** Requested state from revisions that did not record device acknowledgements. */
 function pausedKey(childId: string): string {
   return `child:${childId}:internet-paused`;
 }
@@ -30,14 +31,16 @@ async function fanOutToDevices(childId: string, type: string, payload: Record<st
 }
 
 export async function controlsRoutes(app: FastifyInstance) {
-  /** Sinkhole all of the child's internet traffic except always-allowed apps (Feature #11). */
-  const pauseInternet = async (req: unknown) => {
-    const { childId } = (req as { params: { childId: string } }).params;
-    await fanOutToDevices(childId, "pause_internet");
-    // Server-side paused flag so the parent app can show a live chip; agents confirm via status.
-    await setJson(pausedKey(childId), { pausedAt: new Date().toISOString() });
-    return { childId, paused: true };
+  const changeInternet = (paused: boolean) => async (req: FastifyRequest, reply: FastifyReply) => {
+    const { childId } = req.params as { childId: string };
+    if (!(await requestChildInternet(childId, paused))) {
+      return reply.code(404).send({ error: "child_not_found" });
+    }
+    return { childId, paused };
   };
+
+  /** Sinkhole all of the child's internet traffic except always-allowed apps (Feature #11). */
+  const pauseInternet = changeInternet(true);
   app.post(
     "/children/:childId/pause-internet",
     { preHandler: [requireParent, requirePermission("rules"), requireFamily({ param: "childId", model: "child" }), requireConsent({ param: "childId" })] },
@@ -51,12 +54,7 @@ export async function controlsRoutes(app: FastifyInstance) {
   );
 
   /** Lift the internet pause on all of the child's devices (Feature #11). */
-  const resumeInternet = async (req: unknown) => {
-    const { childId } = (req as { params: { childId: string } }).params;
-    await fanOutToDevices(childId, "resume_internet");
-    await getRedis().del(pausedKey(childId));
-    return { childId, paused: false };
-  };
+  const resumeInternet = changeInternet(false);
   app.post(
     "/children/:childId/resume-internet",
     { preHandler: [requireParent, requirePermission("rules"), requireFamily({ param: "childId", model: "child" })] },
@@ -109,12 +107,14 @@ export async function controlsRoutes(app: FastifyInstance) {
     },
   );
 
-  /** Return whether the child's internet is currently paused (Feature #11). */
+  /** Return the last requested internet setting and any exact device receipts. */
   app.get(
     "/children/:childId/status",
     { preHandler: [requireParent, requirePermission("rules"), requireFamily({ param: "childId", model: "child" })] },
     async (req) => {
       const { childId } = req.params as { childId: string };
+      const operation = await latestChildInternet(childId);
+      if (operation) return operation;
       const paused = await getJson<{ pausedAt: string }>(pausedKey(childId));
       return { paused: paused !== null };
     },
