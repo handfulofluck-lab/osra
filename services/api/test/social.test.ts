@@ -885,12 +885,13 @@ describe("social routes", () => {
       let row: Record<string, unknown> | null = null;
       prismaMock.$queryRaw.mockImplementation(async (...values: unknown[]) => {
         row = {
-          id: values[1], socialEventId: values[2], parentId: values[3], verdict: values[4], parentName: values[5],
-          firstVotedAt: values[6], lastChangedAt: values[7], changeCount: 0, modelVersion: values[8], lang: values[9],
-          topCategory: values[10], topScore: values[11], cutoff: values[12], path: values[13], severity: values[14],
+          id: values[1], socialEventId: values[2], parentId: values[3], verdict: values[4], parent: { displayName: "Parent One" },
+          firstVotedAt: values[5], lastChangedAt: values[6], changeCount: 0, modelVersion: values[7], lang: values[8],
+          topCategory: values[9], topScore: values[10], cutoff: values[11], path: values[12], severity: values[13],
         };
         return [row];
       });
+      prismaMock.socialEventFeedback.findUniqueOrThrow.mockImplementation(async () => row);
       prismaMock.socialEventFeedback.findFirst.mockImplementation(async () => row);
 
       const res = await app.inject({
@@ -905,7 +906,7 @@ describe("social routes", () => {
       expect(row).toMatchObject({
         socialEventId: event.id,
         parentId: "parent-1",
-        parentName: "Parent One",
+        parent: { displayName: "Parent One" },
         verdict: "concerning",
         changeCount: 0,
         modelVersion: "v9b",
@@ -931,8 +932,8 @@ describe("social routes", () => {
         await Promise.resolve();
         if (row) return [];
         row = {
-          id: values[1], socialEventId: values[2], parentId: values[3], verdict: values[4], parentName: values[5],
-          firstVotedAt: values[6], lastChangedAt: values[7], changeCount: 0,
+          id: values[1], socialEventId: values[2], parentId: values[3], verdict: values[4], parent: { displayName: "Parent One" },
+          firstVotedAt: values[5], lastChangedAt: values[6], changeCount: 0,
         };
         return [row];
       });
@@ -963,8 +964,8 @@ describe("social routes", () => {
         const verdict = values[4] as string;
         if (row?.verdict === verdict) return [];
         row = row
-          ? { ...row, verdict, lastChangedAt: values[7], changeCount: 1 }
-          : { id: values[1], socialEventId: values[2], parentId: values[3], verdict, parentName: values[5], firstVotedAt: values[6], lastChangedAt: values[7], changeCount: 0 };
+          ? { ...row, verdict, lastChangedAt: values[6], changeCount: 1 }
+          : { id: values[1], socialEventId: values[2], parentId: values[3], verdict, parent: { displayName: "Parent One" }, firstVotedAt: values[5], lastChangedAt: values[6], changeCount: 0 };
         return [row];
       });
       prismaMock.socialEventFeedback.findUniqueOrThrow.mockImplementation(async () => row);
@@ -990,7 +991,7 @@ describe("social routes", () => {
       const app = await buildApp(socialRoutes, "/v1/social");
       mockEvent();
       const initial = {
-        id: "vote-1", socialEventId: event.id, parentId: "parent-1", verdict: "concerning", parentName: "Parent One",
+        id: "vote-1", socialEventId: event.id, parentId: "parent-1", verdict: "concerning", parent: { displayName: "Parent One" },
         firstVotedAt: new Date("2026-11-01T00:00:00Z"), lastChangedAt: new Date("2026-11-01T00:00:00Z"), changeCount: 0,
       };
       let row: Record<string, unknown> = { ...initial };
@@ -998,7 +999,7 @@ describe("social routes", () => {
       prismaMock.$queryRaw.mockImplementation(async (...values: unknown[]) => {
         const verdict = values[4] as string;
         if (row.verdict === verdict) return [];
-        row = { ...row, verdict, lastChangedAt: values[7], changeCount: Number(row.changeCount) + 1 };
+        row = { ...row, verdict, lastChangedAt: values[6], changeCount: Number(row.changeCount) + 1 };
         return [row];
       });
       prismaMock.socialEventFeedback.findUniqueOrThrow.mockImplementation(async () => row);
@@ -1033,8 +1034,8 @@ describe("social routes", () => {
         const verdict = values[4] as string;
         if (row?.verdict === verdict) return [];
         row = row
-          ? { ...row, verdict, lastChangedAt: values[7], changeCount: 1 }
-          : { id: values[1], socialEventId: values[2], parentId: values[3], verdict, parentName: values[5], firstVotedAt: values[6], lastChangedAt: values[7], changeCount: 0 };
+          ? { ...row, verdict, lastChangedAt: values[6], changeCount: 1 }
+          : { id: values[1], socialEventId: values[2], parentId: values[3], verdict, parent: { displayName: "Parent One" }, firstVotedAt: values[5], lastChangedAt: values[6], changeCount: 0 };
         return [row];
       });
       prismaMock.socialEventFeedback.findUniqueOrThrow.mockImplementation(async () => row);
@@ -1100,7 +1101,7 @@ describe("social routes", () => {
         if (previous?.verdict === verdict) return [];
         const row = previous
           ? { ...previous, verdict, lastChangedAt: new Date(clock += 1000), changeCount: Number(previous.changeCount) + 1 }
-          : { id: values[1], socialEventId: values[2], parentId, verdict, parentName: values[5], firstVotedAt: values[6], lastChangedAt: new Date(clock += 1000), changeCount: 0 };
+          : { id: values[1], socialEventId: values[2], parentId, verdict, parent: { displayName: parentId === "parent-1" ? "Parent One" : "Parent Two" }, firstVotedAt: values[5], lastChangedAt: new Date(clock += 1000), changeCount: 0 };
         rows = [...rows.filter((item) => item.parentId !== parentId), row];
         return [row];
       });
@@ -1137,6 +1138,34 @@ describe("social routes", () => {
       const cleared = await withdraw("parent-1");
       expect(cleared.json()).toEqual({ feedback: null, latestFeedback: expect.objectContaining({ parentDisplayName: "Parent Two", verdict: "not_concerning" }) });
       expect((await withdraw("parent-2")).json()).toEqual({ feedback: null, latestFeedback: null });
+      await app.close();
+    });
+
+    it("reads the current parent display name through the relation, not a stale copied name (#1113)", async () => {
+      const app = await buildApp(socialRoutes, "/v1/social");
+      mockEvent();
+      prismaMock.parent.findUnique.mockResolvedValue({ id: "parent-1", familyId: "fam-1", displayName: "Current parent", role: "owner", permissions: [] });
+      const row = {
+        id: "vote-1", socialEventId: "se-feedback", parentId: "parent-1", verdict: "concerning",
+        parent: { displayName: "Current parent" },
+        firstVotedAt: new Date("2026-01-01T00:00:00Z"), lastChangedAt: new Date("2026-01-01T00:00:00Z"), changeCount: 0,
+      };
+      prismaMock.socialEventFeedback.findUnique.mockResolvedValue(row);
+      prismaMock.socialEventFeedback.findFirst.mockResolvedValue(row);
+
+      const res = await app.inject({
+        method: "POST", url: "/v1/social/events/se-feedback/feedback",
+        headers: authHeader(app, "fam-1", "parent-1"), payload: { verdict: "concerning" },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json().feedback.parentDisplayName).toBe("Current parent");
+      expect(res.json().latestFeedback.parentDisplayName).toBe("Current parent");
+      expect(prismaMock.socialEventFeedback.findFirst).toHaveBeenCalledWith({
+        where: { socialEventId: "se-feedback" },
+        orderBy: { lastChangedAt: "desc" },
+        include: { parent: { select: { displayName: true } } },
+      });
       await app.close();
     });
 
@@ -1192,8 +1221,8 @@ describe("social routes", () => {
     prismaMock.socialEvent.findMany.mockResolvedValue([
       { id: "se-1", app: "whatsapp", contact: "c-1", severity: "critical", previewCipher, concernTypes: ["grooming"], createdAt: "2026-09-16T10:00:00Z",
         feedback: [
-          { parentId: "parent-2", verdict: "not_concerning", parentName: "Parent Two", firstVotedAt: "2026-09-16T10:01:00Z", lastChangedAt: "2026-09-16T10:03:00Z", changeCount: 2 },
-          { parentId: "parent-1", verdict: "concerning", parentName: "Parent One", firstVotedAt: "2026-09-16T10:00:00Z", lastChangedAt: "2026-09-16T10:02:00Z", changeCount: 0 },
+          { parentId: "parent-2", verdict: "not_concerning", parent: { displayName: "Parent Two" }, firstVotedAt: "2026-09-16T10:01:00Z", lastChangedAt: "2026-09-16T10:03:00Z", changeCount: 2 },
+          { parentId: "parent-1", verdict: "concerning", parent: { displayName: "Parent One" }, firstVotedAt: "2026-09-16T10:00:00Z", lastChangedAt: "2026-09-16T10:02:00Z", changeCount: 0 },
         ] },
       { id: "se-2", app: "whatsapp", contact: "c-2", severity: "critical", previewCipher, concernTypes: ["grooming"], createdAt: "2026-09-16T09:00:00Z", feedback: [] },
     ]);
@@ -1209,7 +1238,7 @@ describe("social routes", () => {
         where: { childId: "child-1", app: "whatsapp", severity: "critical" },
         orderBy: { createdAt: "desc" },
         take: 10,
-        include: { feedback: { orderBy: { lastChangedAt: "desc" } } },
+        include: { feedback: { orderBy: { lastChangedAt: "desc" }, include: { parent: { select: { displayName: true } } } } },
       }),
     );
     const item = res.json().items[0];

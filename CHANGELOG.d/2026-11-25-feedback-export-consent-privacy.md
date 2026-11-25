@@ -1,0 +1,4 @@
+### API — feedback export follows current consent and parent names stay relational (#1113)
+- Counts-only social-feedback aggregation now evaluates every candidate child through the existing active-consent gate, including family jurisdiction, revocation and expiry. A family that revokes after voting is excluded from the next export; stored votes and the five-vote minimum bucket are unchanged.
+- `SocialEventFeedback.parentName` is removed by migration 0044. Parent-facing feedback reads join `Parent.displayName`, so renames no longer leave stale copied identity. Rollback can restore the column but not its old values.
+- Fail-first consent/schema and stale-name tests are included. Full API 1,411 passed + 14 skipped, focused privacy 72/72, real PostgreSQL migration/race/cascade 4/4 and TypeScript build are green. Independent R3 and Ahmed security review remain before merge; no AWS or production data was used.

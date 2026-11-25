@@ -119,7 +119,6 @@ describeDatabase("social feedback database migration and cascade (#1065)", () =>
     const input = {
       socialEventId: event.id,
       parentId: parent.id,
-      parentName: parent.displayName,
       modelVersion: "checkpoint-test",
       lang: "en",
       topCategory: "self_harm",
@@ -147,7 +146,7 @@ describeDatabase("social feedback database migration and cascade (#1065)", () =>
   it("deletes a persisted vote when its social event is deleted", async () => {
     const { family, parent, child, event } = await createFamilyEvent();
     const vote = await db.socialEventFeedback.create({
-      data: { socialEventId: event.id, parentId: parent.id, verdict: "concerning", parentName: parent.displayName },
+      data: { socialEventId: event.id, parentId: parent.id, verdict: "concerning" },
     });
     expect(await db.socialEventFeedback.findUnique({ where: { id: vote.id } })).not.toBeNull();
 
@@ -160,7 +159,7 @@ describeDatabase("social feedback database migration and cascade (#1065)", () =>
   it("deletes a child's social events and their votes when the child is deleted", async () => {
     const { family, parent, child, event } = await createFamilyEvent();
     const vote = await db.socialEventFeedback.create({
-      data: { socialEventId: event.id, parentId: parent.id, verdict: "concerning", parentName: parent.displayName },
+      data: { socialEventId: event.id, parentId: parent.id, verdict: "concerning" },
     });
 
     await db.child.delete({ where: { id: child.id } });
