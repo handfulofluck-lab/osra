@@ -500,12 +500,33 @@ final deviceCommandHistoryProvider = FutureProvider.family<List<DeviceCommand>, 
   ];
 });
 
-String? latestAppliedRingId(List<DeviceCommand> commands) =>
-    commands.where((command) => command.type == 'ring' && command.status == 'acked').firstOrNull?.id;
+/// The ring the parent's **Stop** must target: the **newest** ring row that reached `pending`, `delivered` or
+/// `acked`.
+///
+/// Why the newest of those three, and not one state alone. A child acks a ring when it **starts sounding**, not when
+/// it ends (`DeviceCommands.swift:278-286` acks `ok: true` right after `ring.startRing`; Android returns `Applied()`
+/// the same way, `CommandDispatcher.kt:107`), so an actively ringing command is `acked` for the whole five minutes and
+/// `delivered` can be a ring that was superseded. History is newest first, and any row that reached those states
+/// supersedes every older ring behind it; `failed` and `expired` never rang or are dead.
+///
+/// Two defects this settles, both found in review:
+/// - taking only `acked` aimed Stop at an older ring while a newer one was starting with its ack still in flight
+///   (Codex, #760 `7158872749`);
+/// - scanning for a live row *past* a newer `acked` one returned a stale older `delivered` id, which the child
+///   refuses as `invalid_command` while the phone kept ringing (Antigravity, #1125 `7164117097`).
+String? activeRingId(List<DeviceCommand> commands) {
+  for (final command in commands) {
+    if (command.type != 'ring') continue;
+    if (command.status == 'pending' || command.status == 'delivered' || command.status == 'acked') {
+      return command.id;
+    }
+  }
+  return null;
+}
 
 Future<String?> ringStopTarget(WidgetRef ref, String deviceId) async {
   try {
-    return latestAppliedRingId(await ref.read(deviceCommandHistoryProvider(deviceId).future));
+    return activeRingId(await ref.read(deviceCommandHistoryProvider(deviceId).future));
   } catch (_) {
     return null;
   }
