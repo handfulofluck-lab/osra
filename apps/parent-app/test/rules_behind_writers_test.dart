@@ -127,6 +127,8 @@ void main() {
 
     applied = 7;
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await flushFakeHttp(tester);
     await tester.pumpAndSettle();
@@ -218,9 +220,11 @@ void main() {
     expect(find.byKey(const ValueKey('rules-behind-banner')), findsNothing);
 
     childJson['rulesVersion'] = 8;
-    await tester.tap(find.widgetWithText(SwitchListTile, 'WhatsApp'));
+    await tester.tap(find.textContaining('Not on '));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Save monitoring'));
+    tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'WhatsApp')).onChanged!(false);
+    await tester.pumpAndSettle();
+    tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Save monitoring')).onPressed!();
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('rules-behind-banner')), findsOneWidget);

@@ -13,10 +13,12 @@ these gates exist, see `docs/adr/0005-adversarial-acceptance-gate.md` and
 | Live end-to-end | `node scripts/e2e.mjs` | The intended user journey (pair → rules → alerts → commands → export) | Wiring breaks on a real stack |
 | Flutter | `cd apps/parent-app && flutter pub get && flutter analyze && flutter test` (needs `C:\KARIM\tools\flutter\bin` on `PATH` — §2) | Dashboard, rules editor, providers, light/dark design tokens and contrast, layout at 320×568, English/Arabic localization (ARB key parity + every translated screen in Arabic/RTL at 320×568) | UI/contract regressions, a missing Arabic string, an RTL overflow |
 | Android JVM | `cd apps/child-android && ./gradlew testPlayDebugUnitTest testFullDebugUnitTest` (ADR-0016: two flavors, both must stay green) | Rule engine, counters, monitored apps, HMAC signing logic, flavor manifest difference, **the merged manifest** of both flavours (ADR-0021) | Agent logic regressions, a Play build that gained the notification permission or any Play-forbidden permission **through a dependency's manifest** |
-| Windows (xunit) | `cd apps/agent-desktop && dotnet test tests/FamilyShield.Agent.Tests` | Proxy/process/screen-time/tamper logic | Agent logic regressions |
+| Windows (xunit) | `cd apps/agent-desktop && dotnet test tests/FamilyShield.Agent.Tests -c Debug --nologo && dotnet test tests/FamilyShield.Agent.Tests -c Release --nologo` | Configuration isolation, service/tray supervision, per-session pipe, proxy/process/screen-time/tamper logic, pairing and capabilities | Agent logic regressions |
 | AI engine | `cd services/ai-engine && pytest tests -q` | Classifier + API smoke (skips what is absent) | Classification/API regressions |
 | iOS + shared macOS core | `.github/workflows/ios-ci.yml` (macOS runner) | Native macOS SwiftPM build + test discovery + tests; iOS SwiftPM and simulator builds | Swift compile/behaviour regressions, or a portable test excluded from macOS |
 | **Hardware** (device) | section 5 | Crash-loop, FGS start, location upload, overlays | Anything the emulator cannot show |
+
+For the 12-app Social monitoring catalog (#1037), run `flutter test test/social_screen_test.dart test/setup_monitoring_test.dart`. The tests pin the shared Android package mapping, missing-key ON behavior, installed-first grouping, usable collapsed controls, onboarding preselection, Select all, and one-time banner persistence. To generate the UI/UX Bureau's 320 px / 200% EN and AR frames, set `OSRA_FRAME_DIR` to a scratch output directory and run the same command; `test/frame_capture.dart` writes `social-*.png` and `onboarding-*.png` only when that variable is set, so ordinary test runs have no filesystem side effects.
 
 Run the iOS launch classifier fixtures with
 `bash apps/child-ios/scripts/test-classify-launch-failure.sh`. A failure log that contains
@@ -42,7 +44,7 @@ the gates on 2026-10-18), so a row below is the floor, not the gate:
 | API | `pnpm --filter @familyshield/api exec prisma generate` **before** `pnpm --filter @familyshield/api run build` and `run test` (`api.yml`) — CI's own step comment records that `pnpm install` did not create the client (`api.yml:68`), so the generate is a step, not an assumption. In a fresh worktree, generate first, every time — **and build the workspace packages first**: `pnpm --filter @familyshield/crypto --filter @familyshield/shared-types build` before the suite, or 18 of the 39 test files fail to *load* (`Cannot find package '@familyshield/crypto'`) and the run looks like a red tree with 235 of 510 tests collected. Measured on `main@78cca79` from a clean worktree on 2026-10-23: without the build, 18 files failed to load; with it, 510/510 |
 | Flutter | the row's three commands are `parent-app.yml:46-48`; CI then runs `flutter build appbundle --release` and greps the AAB manifest for `android.permission.INTERNET` (`:73-78`) |
 | Android JVM | the two test tasks plus `assemblePlayDebug assembleFullDebug assemblePlayRelease assembleFullRelease` in one invocation (`child-android.yml:65`), then **`node scripts/check-merged-manifest-gate.mjs`** (`:72` — fails the job if the merged-manifest gate skipped, failed or lost a named assertion), then `aapt2 dump badging` of **both** release APKs (`apk/<flavour>/release/app-<flavour>-release.apk`) for `targetSdkVersion:'35'` and both network-security configs (`:76-94`); each check fails the job, and so does an APK upload that finds no files (`:103`). Until #361 that step read `apk/release/app-release.apk`, which has not existed since the flavours landed, and its `grep -q … && echo` guards could not fail, so it passed while checking nothing. The gate reads `app/build/intermediates/merged_manifests/<flavor>Debug/**/AndroidManifest.xml` **and** `<flavor>Release/**/AndroidManifest.xml`; the test tasks depend on all four merges (`app/build.gradle.kts`). Since #170 the release half asserts that `android:testOnly` is absent |
-| Windows | `dotnet test tests/FamilyShield.Agent.Tests --nologo` (`agent-desktop.yml:37`) |
+| Windows | Tests in both Debug and Release, then publishes `src/OSRA.Service` and `src/OSRA` co-located as self-contained win-x64 hosts. `actions/upload-artifact@v4` uploads `OSRA.Windows-W1-unsigned` with `if-no-files-found: error`; a separate step requires `OSRA.Service.exe`, `OSRA.exe` and `OSRA.Agent.dll`. See §4's W1 build guide below |
 | AI engine | `pip install -r requirements-dev.txt` first (`ai-engine.yml:39`) |
 
 A change is not done on the strength of a locally green suite whose build step was never exercised: the
@@ -360,6 +362,20 @@ verification succeeds. Record pass or fail without logging addresses. Use only t
 synthetic fixtures for inference. Capture one successful trace and evidence that unapproved or
 expired requests are rejected. The `/health` response measures process liveness.
 
+For the optional provider comparison, run `pnpm exec vitest run test/social.test.ts
+test/stagingProviderOutcomes.test.ts test/stagingQaModel.test.ts test/alerts.test.ts` from
+`services/api`. On the approved synthetic staging pair, an explicitly set `OSRA_STAGING_QA_ENGINE`
+(`bedrock`, `own` or `both`) requests attributed outcomes from the private analyzer. With the variable
+unset the API uses the existing Bedrock response. All pairing, consent, source and expiry checks apply
+before the call.
+
+Each selected scan adds a `StagingScanOutcome` row. It holds the trace, child, optional vault event,
+time, provider result class, model version and the score of each category the provider explicitly
+flagged. A timed-out peer and a completed benign peer can be distinguished in that row. The existing
+family-scoped alerts response carries explicitly positive providers in `metadata.providerOutcomes`.
+The alert retains the usual per-child and per-app throttle. Include the receipt table in the approved
+staging wipe. Child erasure also removes receipts for that child.
+
 ### Notification env (Phase 2a) — all optional
 
 | Variable | Effect when set |
@@ -423,7 +439,7 @@ off, the read route still answers but returns `counting: false` and `withinBudge
 | `api.yml` | `services/api/**`, `packages/**`, the root `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` / `turbo.json`, the two agent files `device-silence.test.ts` reads (`WorkScheduler.kt`, `LocationService.kt`), and `IdleCadence.kt`, which `poll-cadence.test.ts` reads (#353) | Builds the shared packages, generates Prisma, builds the API (the type-check) and runs its vitest suite |
 | `parent-app.yml` | `apps/parent-app/**` and `services/api/src/routes/alerts.ts` (the alert-category parity test reads it, #344) | On `ubuntu-latest`: `flutter analyze`, `flutter test`, release AAB build and its manifest check. On `macos-14`: `flutter build ios --release --no-codesign` and two assertions on the committed iOS tree (bundle id, `Info.plist` display name + locales), but on a PR or a push only when it changes `apps/parent-app/ios/**`, `pubspec.yaml`, `pubspec.lock` or this workflow; weekly and by hand always — see the iOS section below |
 | `child-android.yml` | `apps/child-android/**` and `scripts/check-merged-manifest-gate.mjs` | `testPlayDebugUnitTest` + `testFullDebugUnitTest`, `assemblePlayDebug` + `assembleFullDebug` + `assemblePlayRelease` + `assembleFullRelease`, the merged-manifest gate, and both release APKs' `targetSdk` and the cleartext configs, each failing the job (#361); the four APKs are kept 14 days |
-| `agent-desktop.yml` | `apps/agent-desktop/**` | `dotnet test` of the desktop agent, on a Windows runner (billed above the Linux rate, about 1.67× at the 2026 rates) |
+| `agent-desktop.yml` | `apps/agent-desktop/**` | Debug and Release `dotnet test`, co-located self-contained win-x64 service/tray publishes and the unsigned `OSRA.Windows-W1-unsigned` artifact, on a Windows runner (billed above the Linux rate, about 1.67× at the 2026 rates) |
 | `ai-engine.yml` | `services/ai-engine/**` | `pytest`, then the evaluation banks, the generated-set check and the regex-scorer evaluation |
 | `ios-ci.yml` | six path patterns: `apps/child-ios/**`, `apps/parent-app/ios/**`, the workflow itself, and the three API contract files (`services/api/src/routes/devices.ts`, `services/api/src/routes/alerts.ts`, `services/api/src/lib/internalAuth.ts`); `push` runs on `main` only, plus weekly Monday 01:23 and `workflow_dispatch` | The **child** agent's iOS gate (SwiftPM build + `generic/platform=iOS Simulator`). Since 2026-10-24 it is no longer the only iOS gate: the parent app's Flutter iOS build is the `parent-app-ios` job in `parent-app.yml` |
 | `api-image.yml` | PRs touching what the image is built from: `services/api/**`, `packages/**`, the root package files, `.dockerignore` | Builds `services/api/Dockerfile` from the repo root (`docker/build-push-action`, `push: false`, `linux/arm64` on GitHub's arm64 runner) and runs `services/api/scripts/verify-image.sh` inside the result, then migrates, seeds twice and boots the image against Postgres and Redis. `verify-image.sh` also checks that the single `eu-central-1` RDS root CA is at `/app/certs/rds-eu-central-1-rsa2048-g1.pem` (exactly one certificate, readable and not writable by the API's user, #919), that with `DATABASE_TLS_VERIFY=required` the image refuses to boot on an unverified database URL or on a multi-certificate `sslcert` bundle (`/app/certs/rds-global-bundle.pem`) without printing the URL (#766 item 3, #919), and runs `scripts/check-db-tls.mjs` inside the `linux/arm64` image against a local TLS PostgreSQL wire server to prove right-first 2-cert bundles connect while wrong-first 2-cert bundles are refused on OpenSSL (#924 review). The Dockerfile has no `|| true`, so a failed install or build fails the PR, and a build that cannot migrate or seed fails it too. ECR stores images rather than building them; publishing needs an OIDC role scoped to the one repository (#258) |
@@ -585,6 +601,78 @@ node scripts/check-ci-cost-guardrails.mjs --selftest
 node scripts/check-ci-cost-guardrails.mjs   # the #613 cheaper-CI structural contracts
 ```
 
+### Windows W1 service and tray (#623)
+
+Run from `apps/agent-desktop` with the .NET 8 SDK installed:
+
+```bash
+dotnet test tests/FamilyShield.Agent.Tests -c Debug --nologo
+dotnet test tests/FamilyShield.Agent.Tests -c Release --nologo
+dotnet publish src/OSRA.Service -c Release -r win-x64 --self-contained true -o artifacts/windows-w1
+dotnet publish src/OSRA -c Release -r win-x64 --self-contained true -o artifacts/windows-w1
+```
+
+Both hosts must publish into the **same** directory. `OSRA.Service.exe`, `OSRA.exe` and the shared
+`OSRA.Agent.dll` must be co-located: the service supervises only the tray beside its own executable.
+The `agent-desktop.yml` workflow performs the same two test configurations and publishes, checks those
+three files and uploads `OSRA.Windows-W1-unsigned` with `if-no-files-found: error`. `artifacts/` is
+build output; do not commit it.
+
+The tests substitute operating-system boundaries. Publishing is not installation: do not start the real
+service or tray on a development PC, pair a real family, lock a session, sound an alert or register a
+hotkey as part of this build gate. The unsigned artifact has **not yet been installed or verified on a
+clean Windows machine**. Claude owns the isolated Windows Server 2025 Standard/admin and cross-session
+pipe rows; acceptance still requires the roadmap's clean Windows 11 run.
+
+The W1 suite is **371 tests in each configuration**. It pins the launched PID and co-located image,
+session-0 server verification without a SYSTEM process/token handle, NETWORK denial and token-derived
+session SIDs. A valid first frame other than `hello` is rejected and its connection closes directly rather
+than relying on an outer timeout. A non-SYSTEM server is refused before `hello` with a direct five-second
+assertion, not a 90-second outer hang. Real `AcceptAsync` rows reject an impostor and then accept the genuine
+client, inspect the ACL on the pipe actually created, and drive the real server/client workers through a
+post-`hello` lock, 20 quiet seconds and a post-connect ring. `TrayPipeClient.ConnectAsync` owns exactly one
+`hello`; the worker does not duplicate it. Ordinary post-connect messages must arrive, and an SOS
+written before EOF but not acknowledged must be sent again on the next connection. Both real-session pipe tests share the cross-process
+`Global\OSRA-TraySessionPipeTests` semaphore so concurrent lanes cannot own the same genuine pipe name.
+
+The suite also merges device restrictions over stale session records, starts a fresh disconnected grace
+period after restore, adopts a live co-located tray instead of duplicating it, and keeps pending commands and
+other sessions alive through create/token failures. It proves one coordinator/worker instance per host,
+idempotent coordinator disposal, first-instance pipe ownership and retry delays. SOS returns a strict
+`sos_result`; only a successful POST starts the 60-second window, a failure is retried without being dropped
+behind ordinary traffic, and the tray shows success only after an accepted result. Save failures are high,
+or critical when unreadable state survived restart. Desktop-only provenance/administrator fields are refused
+for phone reports; the safe Standard account is not a missing permission, and a configured tray waiting for
+`hello` reports interactive features as `degraded`, not `unavailable`. The process-protection row retains its
+separate cross-process gate for disposable children. Foreground usage remains self-reported by the tray until
+W2; the tests do not prove publisher signing or eliminate same-user code injection into a user-mode tray.
+
+The recovery cases pin protected directory and temporary-file ACL descriptors, rejection of an untrusted
+owner or explicit other writer, missing/corrupt state, immediate fail-closed fallback, one log/tamper alert
+per continuous save-failure episode, and global unlock for disconnected sessions. A standard-user test
+process cannot create or read files after the real SYSTEM/admin-only directory ACL is applied, so local
+tests do not claim to prove protected file creation. The two `UntrustedDirectory…` rows need an elevated
+runner to isolate the other-writer mutant: a standard-user owner can mask it. CI is the gate, and the real
+SYSTEM probe covers the individual trust branches.
+
+`tests/run-windows-service-pipe.ps1` is a separate CI-only boundary row. It hosts the production pipe in a
+CI-created SYSTEM service, verifies the native client and typed lock, then requires real store writes and a
+reload, trusted directory ownership and protected ACLs, protected temporary-file creation, stale-temporary
+replacement, post-cleanup collision refusal, corrupt-state recovery and persisted global unlock. Separate
+fault fixtures cover an untrusted owner, a reparse point, another writer and an inherited ACL that must be
+rewritten. The service removes its protected fixtures before writing a result file only after all checks
+pass; the PowerShell harness requires that marker and cannot pass merely because the client connected. It
+also requires `OSRA_SERVICE_CLEANUP_PASS` after confirming the service and probe directory are gone. The
+helper is never run on the development PC and is excluded from the uploaded artifact. Device restrictions
+re-arm every 20-second grace period while no verified tray is connected, including a session that had no
+slot. Loading corrupt state leaves its bytes untouched until explicit fallback recovery writes known-good
+locked state; no separate audit quarantine is claimed. A green local suite alone does not prove the real
+Windows boundary.
+
+W1b's salted PIN hashing and W3's installed-directory ACLs, MSI/service recovery and signing are required
+before a build reaches outsiders. W2 DNS/firewall/browser-policy replacement and W4's signed updater are
+separate. This artifact has no MSI or ARM64 build, signing, AWS, store or production action.
+
 ### The shared Swift package on macOS (roadmap 5.9 step i, #653)
 
 The `macos-core` job in `ios-ci.yml` builds and tests `apps/child-ios` natively on `macos-26`, using the
@@ -597,7 +685,7 @@ swift test list
 swift test
 ```
 
-The discovery step requires 225 macOS tests and names one case each from pairing, HMAC signing, rule
+The discovery step requires 228 macOS tests and names one case each from pairing, HMAC signing, rule
 interpretation and both localisation string suites. Five iOS-only authorization tests remain behind
 `#if os(iOS)` because `CLAuthorizationStatus.authorizedWhenInUse` is unavailable on macOS; the other location
 and client tests still run. Wrapping any additional portable source file in `#if os(iOS)` removes its tests and
@@ -1412,6 +1500,15 @@ Spooler, WN06 `Set-Date`, WN09 hosts write and `netsh winhttp set proxy`) held; 
 rows skipped. That run is **not** staging evidence; it only shows the harness measures what it claims.
 
 
+## Staging model checkpoint delivery (#962)
+
+1. Resolve the SHA-256 of each complete gzip-compressed tar archive on the approved source machine. The hash of a weights file inside an archive identifies a different artifact. Supply the v9b archive hash and the v9 hash when available in the private staging configuration under `staging_qa_model_archives`, initially with `allow_read = false`.
+2. Review the bucket, encryption, public access blocks and TLS policy in the saved staging plan. Confirm the analyzer subnet has an active route to regional S3. Its managed route table already uses the staging NAT for HTTPS bootstrap. If the deployed route differs, resolve that before rollout.
+3. During an approved transfer window, the named staging operator uploads each pinned object to its corresponding key, `own-model/v9.tar.gz` and `own-model/v9b.tar.gz`. Verify each uploaded object against the original whole-archive SHA-256. For multipart uploads, hash the ordered bytes on readback. Record the matched count.
+4. For an approved inference window set `allow_read = true` and arm the staging analyzer. Inspect the plan for the task-role read on exactly the pinned objects and the regional S3 inputs on the analyzer. Verify all pinned checkpoints load in the serving process and run the positive and harmless synthetic controls.
+   The task preloads only pinned tags and allows five minutes for startup health checks. Verify space for the image, both archives and their extracted contents against the 20 GiB default ephemeral storage. Record peak usage before adding another checkpoint. Confirm the collector accepts the actual serving region before sending either control.
+5. Disarm and confirm the task loses the object reads and archive inputs. Keep the storage configuration in place to retain the two objects between approved windows.
+
 ## Bedrock staging test with operator-chosen wording (#962)
 
 The reviewed staging analyzer defaults to exact fixtures. An exploratory run can enable
@@ -1421,10 +1518,33 @@ Confirm the device queue is empty before arming. The API still requires an authe
 notification scan from that pairing, and the private analyzer still requires the approved prompt
 and expires automatically. The test can use new wording within the 1,024-byte input limit.
 
+For a cross-app run, use a dedicated synthetic Android profile with test conversations.
+Set `staging_qa_analyzer.allow_android_sources` in the reviewed staging plan. The API
+accepts screen and notification captures for the Android monitored app keys whose
+saved Parent monitoring flag is explicitly enabled. With the option absent the existing
+WhatsApp notification route stays in effect. Device authentication, active consent,
+pairing, expiry, digest or exploratory wording policy, and the private endpoint still apply.
+Record the input language, app, source and observed direction without retaining message
+text. The source field alone cannot establish whether a message was sent or received.
+Check a provider verdict and readable Parent delivery separately for each concerning
+control, and a provider verdict without a Parent alert for each benign control.
+Space same-app alert checks to account for the existing alert throttle.
+
 Send a concerning synthetic notification and a harmless control. Confirm the concerning result came
 from Bedrock without fallback and opens the matching alert in the Parent app. Confirm Bedrock scored
 the harmless notification and created no alert. Record model, region, trace ID, and the result using
 the private test record. Roll both services back and retire the synthetic scope at the end of the window.
+
+For a staging run with per-provider receipts, send `include_provider_outcomes: true` to the private
+analyzer. `OSRA_STAGING_QA_ENGINE` selects `bedrock` (default), `own`, or `both`. Run
+`python -m pytest -q tests/test_staging_qa.py tests/test_staging_own_model.py tests/test_staging_provider_results.py`
+from `services/ai-engine` to exercise accepted and rejected requests without network access. Check each
+selected provider's status before counting a verdict. A timeout or unavailable result carries no scores.
+The [staging acceptance procedure](QA/staging-model-smoke.md) describes the private route and live evidence, and the [pre-test checklist](QA/pre-test-checklist.md) lists every pre-flight, live-window, and post-test gate (`PT-01`–`PT-21`) required before and after a live staging run (`#1024`).
+
+## Staging own-model region verification (#962)
+
+For an approved Stockholm CPU-only window, verify the scored receipt identifies Stockholm for both the concerning and harmless controls. Check the matching parent alert metadata for the same region and confirm the harmless control produces no alert. A Stockholm response must be rejected in Bedrock and combined-provider modes.
 
 ## 6. Traps that have cost real time here
 
@@ -1654,3 +1774,7 @@ removed or demoted assertion. It runs unconditionally rather than behind a path 
 does not touch the probe shows the job green on a no-op comparison instead of absent.
 `workflow-lint.yml` runs `--selftest` on every push and PR, including the deleted-multi-line-call case
 that the old matcher missed (#310).
+
+### Staging analyzer task size (#962)
+
+For an approved staging OSRA-model window, set `staging_qa_analyzer.own_model_task_size` to true in the private window configuration. Review the Terraform plan for 2048 CPU units and 8192 MiB on the analyzer task. The sizing flag only takes effect while the analyzer is armed. On rollback, check the replacement task uses 512 CPU units and 1024 MiB. The flag controls capacity only. Check checkpoint delivery and live scoring separately.

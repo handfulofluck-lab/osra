@@ -1,0 +1,87 @@
+{
+ "model_by_lang": {
+  "en": "v9",
+  "ar": "v9b",
+  "fr": "v9b",
+  "id": "v9",
+  "ms": "v9",
+  "tr": "v9",
+  "ur": "v9"
+ },
+ "thresholds": {
+  "en": {
+   "cyberbullying": 0.98,
+   "grooming": 0.995,
+   "hate_speech": 0.95,
+   "self_harm": 0.5,
+   "sexual_content": 0.5,
+   "substance_use": 0.5,
+   "violence": 0.5
+  },
+  "ar": {
+   "cyberbullying": 0.5,
+   "grooming": 0.5,
+   "hate_speech": 0.93,
+   "self_harm": 0.5,
+   "sexual_content": 0.5,
+   "substance_use": 0.5,
+   "violence": 0.87
+  },
+  "fr": {
+   "cyberbullying": 0.5,
+   "grooming": 0.5,
+   "hate_speech": 0.5,
+   "self_harm": 0.5,
+   "sexual_content": 0.5,
+   "substance_use": 0.5,
+   "violence": 0.5
+  },
+  "id": {
+   "cyberbullying": 0.58,
+   "grooming": 0.5,
+   "hate_speech": 0.69,
+   "self_harm": 0.5,
+   "sexual_content": 0.5,
+   "substance_use": 0.5,
+   "violence": 0.5
+  },
+  "ms": {
+   "cyberbullying": 0.5,
+   "grooming": 0.5,
+   "hate_speech": 0.98,
+   "self_harm": 0.5,
+   "sexual_content": 0.5,
+   "substance_use": 0.5,
+   "violence": 0.5
+  },
+  "tr": {
+   "cyberbullying": 0.5,
+   "grooming": 0.96,
+   "hate_speech": 0.5,
+   "self_harm": 0.5,
+   "sexual_content": 0.5,
+   "substance_use": 0.5,
+   "violence": 0.995
+  },
+  "ur": {
+   "cyberbullying": 0.5,
+   "grooming": 0.5,
+   "hate_speech": 0.98,
+   "self_harm": 0.5,
+   "sexual_content": 0.5,
+   "substance_use": 0.5,
+   "violence": 0.5
+  }
+ },
+ "labels": [
+  "cyberbullying",
+  "self_harm",
+  "grooming",
+  "violence",
+  "sexual_content",
+  "substance_use",
+  "hate_speech"
+ ],
+ "max_len": 128,
+ "activation": "sigmoid"
+}

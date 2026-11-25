@@ -8,7 +8,9 @@ import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/core/ltr_isolate.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
+import 'package:familyshield_parent/features/map/child_location_view.dart';
 import 'package:familyshield_parent/features/map/family_map_screen.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:familyshield_parent/features/social/social_screen.dart';
 import 'package:familyshield_parent/l10n/app_localizations.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
@@ -34,6 +36,10 @@ void main() {
     await tester.pumpWidget(ProviderScope(
       overrides: [
         apiClientProvider.overrideWithValue(FakeApiClient(standardRoutes())),
+        // Karim 22 Nov: location reads as a place name from the phone's geocoder, never as coordinates.
+        placemarkLookupProvider.overrideWithValue(
+          (lat, lng, locale) async => const [Placemark(subLocality: 'البرشاء', locality: 'دبي')],
+        ),
         ...overrides,
       ],
       child: localizedTestApp(
@@ -58,23 +64,30 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  // Mutant: remove any one of the seven ltrIsolate calls; its corresponding row must go red.
-  testWidgets('latest location isolates both coordinates in Arabic RTL', (tester) async {
+  // Mutant: remove any one of the remaining ltrIsolate calls; its corresponding row must go red.
+  // Karim 22 Nov: the five coordinate rows that lived here pinned an LTR isolate around raw coordinates.
+  // Coordinates are no longer shown to a parent anywhere on these screens; these rows pin that instead, in
+  // Arabic RTL, with the Arabic place name and the Arabic comma.
+  const place = 'البرشاء، دبي';
+
+  testWidgets('latest location shows the place name, not coordinates, in Arabic RTL', (tester) async {
     await openLocationTab(tester, const []);
 
-    expect(find.text('\u206625.276900, 51.521100\u2069'), findsOneWidget);
+    expect(find.text(place), findsWidgets);
+    expect(find.textContaining('25.27'), findsNothing);
   });
 
-  testWidgets('location history without a time isolates both coordinates', (tester) async {
+  testWidgets('location history without a time shows the place name and Arabic accuracy-unknown', (tester) async {
+    // The map card now sits above the history card; a tall view keeps both on screen.
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await openLocationTab(tester, const [_ping]);
-
-    expect(
-      find.text('\u206625.27690, 51.52110\u2069 · ${arabic.accuracyUnknown}'),
-      findsOneWidget,
-    );
+    expect(find.text(arabic.accuracyUnknown), findsOneWidget);
+    expect(find.textContaining('25.27'), findsNothing);
   });
 
-  testWidgets('location history with a time isolates both coordinates', (tester) async {
+  testWidgets('location history with a time shows the Arabic accuracy, not coordinates', (tester) async {
     final ping = LocationPing(
       deviceId: 'dev-1',
       lat: 25.2769,
@@ -84,24 +97,27 @@ void main() {
     );
     await openLocationTab(tester, [ping]);
 
-    expect(find.textContaining('\u206625.27690, 51.52110\u2069 · الدقة ±8 م'), findsOneWidget);
-    expect(find.textContaining('±8 m'), findsNothing);
+    expect(find.textContaining('الدقة\u00a0±8\u00a0م'), findsWidgets);
+    expect(find.textContaining('±8\u00a0m'), findsNothing);
+    expect(find.textContaining('25.27'), findsNothing);
   });
 
-  testWidgets('dashboard child card isolates both coordinates in Arabic RTL', (tester) async {
+  testWidgets('dashboard child card shows the place name, not coordinates, in Arabic RTL', (tester) async {
     await pumpArabic(
       tester,
       const DashboardScreen(),
       overrides: [locationProvider('child-1').overrideWith((ref) => _ping)],
     );
 
-    expect(find.text('\u206625.2769, 51.5211\u2069'), findsOneWidget);
+    expect(find.text(place), findsOneWidget);
+    expect(find.textContaining('25.27'), findsNothing);
   });
 
-  testWidgets('map marker sheet isolates both coordinates in Arabic RTL', (tester) async {
+  testWidgets('map marker sheet shows the place name, not coordinates, in Arabic RTL', (tester) async {
     await pumpArabic(tester, const ChildMapSheet(child: _child, ping: _ping));
 
-    expect(find.text('\u206625.276900, 51.521100\u2069'), findsOneWidget);
+    expect(find.text(place), findsOneWidget);
+    expect(find.textContaining('25.27'), findsNothing);
   });
 
   testWidgets('call and SMS timeline isolates a spaced phone number in Arabic RTL', (tester) async {

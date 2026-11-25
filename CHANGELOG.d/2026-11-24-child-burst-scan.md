@@ -1,0 +1,1 @@
+- #1027 scans every message line a notification carries, not only its newest, so a WhatsApp burst reaches the server as one scan per message instead of one per notification update. Android unit tests pin the burst, the re-post, the growing notification and the placeholder-newest-line cases.
