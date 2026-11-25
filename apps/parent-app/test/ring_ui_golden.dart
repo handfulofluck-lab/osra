@@ -11,6 +11,7 @@ import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/theme/app_theme.dart';
 
 import 'fake_api_client.dart';
+import 'frame_capture.dart';
 import 'test_app.dart';
 
 Map<String, dynamic> _ringAlertJson(DateTime at) => {
@@ -34,6 +35,10 @@ Map<String, dynamic> _ringAlertJson(DateTime at) => {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  // Real faces for every frame: without them the binding draws solid blocks, and the run still "passes"
+  // (#760). Both families are required because every row below draws either Latin or Arabic text.
+  setUpAll(() => loadFrameFonts(required: const {'Roboto', 'NotoNaskhArabicUI'}));
+
   setUp(() {
     FlutterSecureStorage.setMockInitialValues({});
     SharedPreferences.setMockInitialValues({});
@@ -47,12 +52,18 @@ void main() {
     required Locale locale,
     required ThemeMode themeMode,
     TextDirection? textDirection,
+    Size logical = size,
+    double textScale = 1.0,
   }) async {
-    tester.view.physicalSize = size;
+    // `physicalSize` is in device pixels, so a 375 × 812 surface at 2× is 750 × 1624 here. Setting 375 × 812
+    // gave a 187.5 × 406 surface and every frame came out half-size (#760).
+    tester.view.physicalSize = logical * 2.0;
     tester.view.devicePixelRatio = 2.0;
+    tester.platformDispatcher.textScaleFactorTestValue = textScale;
     addTearDown(() {
       tester.view.resetPhysicalSize();
       tester.view.resetDevicePixelRatio();
+      tester.platformDispatcher.clearTextScaleFactorTestValue();
     });
     await tester.pumpWidget(ProviderScope(
       overrides: [
@@ -64,8 +75,8 @@ void main() {
         home,
         locale: locale,
         textDirection: textDirection,
-        theme: AppTheme.light,
-        darkTheme: AppTheme.dark,
+        theme: withFrameFonts(AppTheme.light),
+        darkTheme: withFrameFonts(AppTheme.dark),
         themeMode: themeMode,
       ),
     ));
@@ -102,6 +113,23 @@ void main() {
           matchesGoldenFile('goldens/ring_alert_tile_$suffix.png'),
         );
       });
+
+      // The Arabic Language Bureau's row (#760): the narrowest surface the parent app supports at the largest
+      // text size. An overflow here is a real defect and fails the run rather than hiding in a picture.
+      if (locale.languageCode == 'ar') {
+        testWidgets('ring AlertTile $suffix at 320 pt and 200 % text', (tester) async {
+          await pump(tester, Scaffold(body: AlertTile(alert: _ringAlert())),
+              locale: locale,
+              themeMode: themeMode,
+              textDirection: rtl,
+              logical: const Size(320, 640),
+              textScale: 2.0);
+          await expectLater(
+            find.byType(AlertTile),
+            matchesGoldenFile('goldens/ring_alert_tile_${suffix}_320_200.png'),
+          );
+        });
+      }
 
       testWidgets('ring alert detail $suffix', (tester) async {
         await pump(tester, const AlertsScreen(), locale: locale, themeMode: themeMode, textDirection: rtl);

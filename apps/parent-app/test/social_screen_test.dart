@@ -28,7 +28,9 @@ final DateTime testNow = DateTime(2026, 10, 19, 12, 0);
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUpAll(loadFrameFonts);
+  // Both faces are required: this file draws Arabic rows, and a frame with no Arabic face is solid blocks that
+  // still "passes" (#760).
+  setUpAll(() => loadFrameFonts(required: const {'Roboto', 'NotoNaskhArabicUI'}));
 
   setUp(() {
     FlutterSecureStorage.setMockInitialValues({});
