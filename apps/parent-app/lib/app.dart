@@ -54,7 +54,11 @@ final List<RouteBase> appRoutes = [
   ),
   GoRoute(path: '/setup/done', builder: (_, __) => const SetupDoneScreen()),
   GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
-  GoRoute(path: '/', builder: (_, __) => const DashboardScreen()),
+  GoRoute(
+    path: '/',
+    builder: (_, __) => const DashboardScreen(),
+    routes: [GoRoute(path: 'alerts', builder: (_, __) => const AlertsScreen())],
+  ),
   GoRoute(
     path: '/child/:id',
     builder: (_, s) => ChildDetailScreen(
@@ -101,7 +105,6 @@ final List<RouteBase> appRoutes = [
     path: '/mfa/reset/approve',
     builder: (_, s) => MfaResetApprovalLink(requestId: s.uri.queryParameters['requestId'] ?? ''),
   ),
-  GoRoute(path: '/alerts', builder: (_, __) => const AlertsScreen()),
   GoRoute(
     path: '/alerts/:id',
     builder: (_, s) => AlertDetailScreen(
