@@ -1,22 +1,29 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace FamilyShield.Agent.Services;
 
 /// <summary>
-/// Persistent agent identity (§14.3): stored as JSON in <see cref="FileName"/> beside the exe.
-/// Values from the file are overridden by API_BASE / DEVICE_JWT / DEVICE_ID / CHILD_ID env vars.
-/// DESKTOP_PARENT_PIN is adopted once when no <see cref="ParentPin"/> is stored (see
-/// <see cref="ParentPinPolicy"/>).
+/// Persistent agent identity (§14.3), stored as JSON beside the executable. The file is a source of
+/// identity claims, not trusted endpoint, rule or enforcement configuration. Only Debug permits
+/// environment overrides. A stored parent PIN remains local to the interactive tray until W1b.
 /// </summary>
 public sealed class AgentConfig
 {
     /// <summary>Config file name, written next to the exe (AppContext.BaseDirectory).</summary>
     public const string FileName = "agent.config.json";
 
+    /// <summary>The only API address a Release build may use.</summary>
+    public const string ProductionApiBase = "https://api.osratech.com";
+
+    /// <summary>Whether this loaded configuration may use legacy environment overrides.</summary>
+    [JsonIgnore]
+    public bool AllowEnvironmentOverrides { get; private set; }
+
     private static readonly JsonSerializerOptions LoadOptions = new(JsonSerializerDefaults.Web);
     private static readonly JsonSerializerOptions SaveOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
-    /// <summary>Base URL of the FamilyShield backend.</summary>
+    /// <summary>API address selected by the explicit Debug override or the compiled production constant.</summary>
     public string? ApiBase { get; set; }
 
     /// <summary>Device JWT issued by POST /v1/devices/pair/claim.</summary>
@@ -28,29 +35,29 @@ public sealed class AgentConfig
     /// <summary>The child this device enforces rules for.</summary>
     public string? ChildId { get; set; }
 
-    /// <summary>Shared HMAC secret returned by pair/claim; signs /internal calls (alerts). Env INTERNAL_HMAC_SECRET overrides.</summary>
+    /// <summary>Shared HMAC secret returned by pair/claim; signs /internal calls (alerts).</summary>
     public string? HmacSecret { get; set; }
 
     /// <summary>
-    /// Per-install parent PIN, established at pairing and stored in this file (same store and
-    /// permissions as <see cref="DeviceJwt"/>/<see cref="HmacSecret"/>). Lock, bedtime and
-    /// screen-time refuse to arm while this is null. <c>DESKTOP_PARENT_PIN</c> is adopted once
-    /// during migration by <see cref="Load"/>.
+    /// Per-install parent PIN, established at pairing and stored in this file for the tray. Lock,
+    /// bedtime and screen-time refuse to arm while this is null. Debug-only
+    /// <c>DESKTOP_PARENT_PIN</c> adoption preserves the legacy migration; W1b hashes this field.
     /// </summary>
     public string? ParentPin { get; set; }
 
     /// <summary>
-    /// When false, the desktop agent does not configure or enforce the system-wide WinINET proxy.
-    /// Default true. Environment variable FS_SET_SYSTEM_PROXY=0 overrides to false.
+    /// Whether the legacy WinINET proxy is configured. Release always enables it; a child-writable
+    /// file cannot disable enforcement. Only Debug reads FS_SET_SYSTEM_PROXY.
     /// </summary>
     public bool SetSystemProxy { get; set; } = true;
 
     /// <summary>
-    /// Reads <paramref name="exeDir"/>/<see cref="FileName"/> and applies env overrides.
-    /// Returns null when the file is corrupt, and when there is no usable identity — i.e. the
-    /// missing-file first run, unless the env vars supply a complete identity themselves.
+    /// Reads identity claims from <paramref name="exeDir"/>/<see cref="FileName"/>. Endpoint and
+    /// proxy configuration never come from that file. Environment overrides are considered only
+    /// when <paramref name="allowEnvironmentOverrides"/> is explicitly true (the Debug host).
+    /// Returns null for a corrupt file or when no device token is available.
     /// </summary>
-    public static AgentConfig? Load(string exeDir)
+    public static AgentConfig? Load(string exeDir, bool allowEnvironmentOverrides)
     {
         var path = Path.Combine(exeDir, FileName);
         AgentConfig? config = null;
@@ -62,26 +69,27 @@ public sealed class AgentConfig
             }
             catch (Exception)
             {
-                return null; // corrupt or unreadable file — treat as unconfigured so pairing can rewrite it
+                return null;
             }
         }
 
         config ??= new AgentConfig();
-        // NOTE: capture whether a paired identity came from the file before the env overrides, so
-        // the PIN migration below never creates/rewrites a config file for an env-only identity.
+        config.AllowEnvironmentOverrides = allowEnvironmentOverrides;
+        config.ApiBase = ProductionApiBase;
+        config.SetSystemProxy = true;
+        if (!allowEnvironmentOverrides)
+        {
+            return string.IsNullOrWhiteSpace(config.DeviceJwt) ? null : config;
+        }
+
         var fileHadIdentity = !string.IsNullOrWhiteSpace(config.DeviceJwt);
-        config.ApiBase = Environment.GetEnvironmentVariable("API_BASE") ?? config.ApiBase;
+        config.ApiBase = Environment.GetEnvironmentVariable("API_BASE") ?? ProductionApiBase;
         config.DeviceJwt = Environment.GetEnvironmentVariable("DEVICE_JWT") ?? config.DeviceJwt;
         config.DeviceId = Environment.GetEnvironmentVariable("DEVICE_ID") ?? config.DeviceId;
         config.ChildId = Environment.GetEnvironmentVariable("CHILD_ID") ?? config.ChildId;
         config.HmacSecret = Environment.GetEnvironmentVariable("INTERNAL_HMAC_SECRET") ?? config.HmacSecret;
 
-        // Desktop audit finding 1: no default parent PIN. A stored PIN wins; an install that only
-        // has DESKTOP_PARENT_PIN adopts it once into this file (the legacy literal 0000 is not
-        // adopted). Adoption is persisted so removing the env var later cannot silently disarm
-        // the lock — and so "no PIN" is a visible state, not a fallback. Only an existing paired
-        // config is rewritten here; the unpaired first run goes through the pairing dialog, and an
-        // identity supplied purely by env vars is not copied to disk by this migration.
+        // Legacy Debug migration: adopt the PIN once, never create an env-only identity file.
         var resolvedPin = ParentPinPolicy.Resolve(
             config.ParentPin, Environment.GetEnvironmentVariable(ParentPinPolicy.EnvVar));
         if (!string.Equals(config.ParentPin, resolvedPin, StringComparison.Ordinal))
@@ -109,9 +117,32 @@ public sealed class AgentConfig
                                     !string.Equals(setProxyEnv, "false", StringComparison.OrdinalIgnoreCase);
         }
 
-        // NOTE: "no device token" means "not paired" — that covers the missing-file first run while
-        // still letting a fully env-provided identity (legacy deployments) run without any file.
         return string.IsNullOrWhiteSpace(config.DeviceJwt) ? null : config;
+    }
+
+    /// <summary>
+    /// Copies the identity claims once for the privileged service. PIN, rules and other UI or
+    /// enforcement configuration are not carried across this boundary.
+    /// </summary>
+    public AgentConfig ForService() => new()
+    {
+        ApiBase = AllowEnvironmentOverrides ? ApiBase : ProductionApiBase,
+        DeviceJwt = DeviceJwt,
+        DeviceId = DeviceId,
+        ChildId = ChildId,
+        HmacSecret = HmacSecret,
+        ParentPin = null,
+        SetSystemProxy = AllowEnvironmentOverrides ? SetSystemProxy : true,
+        AllowEnvironmentOverrides = AllowEnvironmentOverrides,
+    };
+
+    /// <summary>Copies only the paired identity claims, never endpoint, rule or PIN configuration.</summary>
+    public void UpdateIdentityFrom(AgentConfig source)
+    {
+        DeviceJwt = source.DeviceJwt;
+        DeviceId = source.DeviceId;
+        ChildId = source.ChildId;
+        HmacSecret = source.HmacSecret;
     }
 
     /// <summary>
