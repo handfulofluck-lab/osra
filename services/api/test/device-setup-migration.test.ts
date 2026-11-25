@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const migration = readFileSync(new URL("../prisma/migrations/0044_device_setup_alerts/migration.sql", import.meta.url), "utf8");
+const migration = readFileSync(new URL("../prisma/migrations/0046_device_setup_alerts/migration.sql", import.meta.url), "utf8");
 const schema = readFileSync(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
 
-describe("0044 setup-alert migration (#1127)", () => {
+describe("0046 setup-alert migration (#1127)", () => {
   it("adds nullable completion and visible-by-default held state", () => {
     expect(migration).toContain('ALTER TABLE "Device" ADD COLUMN "setupCompletedAt" TIMESTAMPTZ(3)');
     expect(migration).toContain('ALTER TABLE "Alert" ADD COLUMN "heldDuringSetup" BOOLEAN NOT NULL DEFAULT false');
