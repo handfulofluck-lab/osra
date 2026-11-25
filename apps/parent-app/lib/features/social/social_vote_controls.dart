@@ -219,17 +219,24 @@ class _SocialVoteControlsState extends ConsumerState<SocialVoteControls> {
     }
     final tokens = context.tokens;
     final concerning = verdict == 'concerning';
-    return FilledButton.tonalIcon(
-      onPressed: null,
-      icon: const Icon(Icons.check, size: 18),
-      label: Text(label),
-      style: FilledButton.styleFrom(
-        minimumSize: const Size(48, 48),
-        backgroundColor: concerning
-            ? tokens.severityWarning.withValues(alpha: 0.24)
-            : tokens.surfaceVariant,
-        foregroundColor:
-            concerning ? tokens.severityWarningText : tokens.onSurfaceVariant,
+    return MergeSemantics(
+      child: Semantics(
+        selected: true,
+        button: true,
+        enabled: true,
+        child: FilledButton.tonalIcon(
+          onPressed: () {},
+          icon: const Icon(Icons.check, size: 18),
+          label: Text(label),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(48, 48),
+            backgroundColor: concerning
+                ? tokens.severityWarning.withValues(alpha: 0.24)
+                : tokens.surfaceVariant,
+            foregroundColor:
+                concerning ? tokens.severityWarningText : tokens.onSurface,
+          ),
+        ),
       ),
     );
   }

@@ -42,6 +42,7 @@ void main() {
     String? initialOwnVerdict,
     String voterName = 'Lina',
     Map<String, FakeRoute>? routes,
+    bool dark = false,
   }) async {
     final api = FakeApiClient(routes ??
         {
@@ -101,6 +102,8 @@ void main() {
         locale: locale,
         textDirection: locale.languageCode == 'ar' ? TextDirection.rtl : null,
         theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        themeMode: dark ? ThemeMode.dark : ThemeMode.light,
       ),
     ));
     await tester.pumpAndSettle();
@@ -128,7 +131,7 @@ void main() {
 
     final selected = find.widgetWithText(FilledButton, 'Concerning');
     expect(selected, findsOneWidget);
-    expect(tester.widget<FilledButton>(selected).onPressed, isNull);
+    expect(tester.widget<FilledButton>(selected).onPressed, isNotNull);
     expect(find.byIcon(Icons.check), findsOneWidget);
     final background = tester
         .widget<FilledButton>(selected)
@@ -151,7 +154,66 @@ void main() {
             .widget<FilledButton>(
                 find.widgetWithText(FilledButton, 'Not concerning'))
             .onPressed,
-        isNull);
+        isNotNull);
+  });
+
+  testWidgets(
+      'selected detail choices keep tonal contrast and selected enabled semantics',
+      (tester) async {
+    // Mutant: a null selected callback activates Material's disabled grey
+    // colors and drops enabled semantics; omitting Semantics.selected hides
+    // which choice is active from accessibility services.
+    final semanticsHandle = tester.ensureSemantics();
+
+    for (final dark in const [false, true]) {
+      for (final choice in const [
+        ('concerning', 'Concerning'),
+        ('not_concerning', 'Not concerning'),
+      ]) {
+        final api = await pumpControls(
+          tester,
+          initialVerdict: choice.$1,
+          dark: dark,
+        );
+        final tokens = dark ? AppTokens.dark : AppTokens.light;
+        final selected = find.widgetWithText(FilledButton, choice.$2);
+        final material = tester.widget<Material>(find.descendant(
+          of: selected,
+          matching: find.byType(Material),
+        ));
+        final expectedBackground = choice.$1 == 'concerning'
+            ? tokens.severityWarning.withValues(alpha: 0.24)
+            : tokens.surfaceVariant;
+        final expectedForeground = choice.$1 == 'concerning'
+            ? tokens.severityWarningText
+            : tokens.onSurface;
+
+        expect(selected, findsOneWidget);
+        expect(find.byIcon(Icons.check), findsOneWidget);
+        expect(material.color, expectedBackground,
+            reason: '${choice.$1} ${dark ? 'dark' : 'light'} background');
+        expect(material.textStyle?.color, expectedForeground,
+            reason: '${choice.$1} ${dark ? 'dark' : 'light'} foreground');
+        expect(tester.widget<FilledButton>(selected).onPressed, isNotNull);
+        final semantics = tester.getSemantics(selected).flagsCollection;
+        expect(semantics.isButton, isTrue);
+        expect(semantics.isSelected.toBoolOrNull(), isTrue);
+        expect(semantics.isEnabled.toBoolOrNull(), isTrue);
+        expect(
+          find.widgetWithText(
+            OutlinedButton,
+            choice.$1 == 'concerning' ? 'Not concerning' : 'Concerning',
+          ),
+          findsOneWidget,
+        );
+
+        await tester.tap(selected);
+        await tester.pumpAndSettle();
+        expect(
+            api.calls('POST', '/v1/social/events/event-1/feedback'), isEmpty);
+      }
+    }
+    semanticsHandle.dispose();
   });
 
   testWidgets(
