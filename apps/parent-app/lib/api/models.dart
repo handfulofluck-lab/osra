@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show Color, Colors;
 
+import '../core/social_sender.dart';
+
 /// Plain Dart models mirroring `packages/shared-types/src/index.ts` field
 /// names (displayName, birthYear, batteryPct, lastSeen, blockedCategories,
 /// dailyLimitMinutes, bedtimeStart, ...). All `fromJson` factories tolerate
@@ -1312,10 +1314,8 @@ class Alert {
   }
 
   /// #1029: contact display name from metadata (as the child's app shows it), or null if absent/blank.
-  String? get socialContactName {
-    final raw = metadata['contact']?.toString().trim() ?? '';
-    return raw.isEmpty ? null : raw;
-  }
+  String? get socialContactName =>
+      socialSenderDisplayName(metadata['contact']?.toString());
 
   /// #1029: latest flagged-message timestamp in the throttle window, if present.
   DateTime? get socialLatestAt {

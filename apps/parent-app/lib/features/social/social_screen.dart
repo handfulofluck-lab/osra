@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../api/models.dart';
 import '../../core/date_formatting.dart';
 import '../../core/ltr_isolate.dart';
+import '../../core/social_sender.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
@@ -464,7 +465,8 @@ class _ConcernCardState extends ConsumerState<_ConcernCard> {
     final e = widget.event;
     final l10n = context.l10n;
     final vote = ref.watch(socialVoteProvider(e.id));
-    final contactText = e.contact.isEmpty ? l10n.unknownContact : e.contact;
+    final contactText =
+        socialSenderDisplayName(e.contact) ?? l10n.unknownContact;
     final contact = Text(contactText);
     final controls = SocialVoteControls(eventId: e.id, compact: true);
     return Card(
@@ -527,7 +529,7 @@ class _ConcernCardState extends ConsumerState<_ConcernCard> {
                       for (final t in e.concernTypes)
                         Chip(
                           visualDensity: VisualDensity.compact,
-                          label: Text(t,
+                          label: Text(l10n.searchRiskCategory(t),
                               style: Theme.of(context).textTheme.bodySmall),
                         ),
                     ],
@@ -555,7 +557,7 @@ class _ConcernCardState extends ConsumerState<_ConcernCard> {
                   label: Text(l10n.viewInDecryptionVault),
                   onPressed: () => SnippetVaultModal.show(
                     context,
-                    title: e.contact.isEmpty ? l10n.socialMessage : e.contact,
+                    title: contactText,
                     snippet: e.preview,
                     severity: e.severity,
                     concernTypes: e.concernTypes,

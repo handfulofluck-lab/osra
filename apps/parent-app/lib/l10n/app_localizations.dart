@@ -5084,6 +5084,12 @@ abstract class AppLocalizations {
   /// **'Concerning content'**
   String get riskAiConcern;
 
+  /// #1138: timing tag on a Social concern card.
+  ///
+  /// In en, this message translates to:
+  /// **'Late at night'**
+  String get riskLateNight;
+
   /// Phone setup row (osra-security#6): the capability report's profiles.kinds holds clone. Arabic wording by Karim (2026-11-11).
   ///
   /// In en, this message translates to:

@@ -839,8 +839,11 @@ void main() {
       expect(ar.searchRiskCategory('substance_use'), 'تعاطي المواد');
       expect(ar.searchRiskCategory('self_harm'), 'إيذاء النفس');
       expect(ar.searchRiskCategory('grooming_risk'), 'استدراج');
+      expect(ar.searchRiskCategory('late_night'), 'في وقت متأخر ليلًا');
       expect(en.searchRiskCategory('substance_use'), 'Substance use');
-      expect(en.searchRiskCategory('late_night'), 'late_night');
+      expect(en.searchRiskCategory('late_night'), 'Late at night');
+      expect(en.searchRiskCategory('future_tag'), 'future_tag');
+      expect(ar.searchRiskCategory('future_tag'), 'future_tag');
     });
   });
 
