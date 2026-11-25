@@ -36,6 +36,15 @@ function report(overrides: Record<string, unknown> = {}) {
 }
 
 describe("A2 — the schema is strict, enum-keyed and capped", () => {
+  it("accepts only the desktop tray as report provenance", () => {
+    expect(CapabilitiesSchema.safeParse(report({
+      client: { app: "agent-desktop", version: "0.1.0", build: 1, flavour: "dev" },
+      source: "tray",
+    })).success).toBe(true);
+    expect(CapabilitiesSchema.safeParse(report({ source: "tray" })).success).toBe(false);
+    expect(CapabilitiesSchema.safeParse(report({ source: "service" })).success).toBe(false);
+  });
+
   it("accepts the shape the ADR describes", () => {
     expect(CapabilitiesSchema.safeParse(report()).success).toBe(true);
   });

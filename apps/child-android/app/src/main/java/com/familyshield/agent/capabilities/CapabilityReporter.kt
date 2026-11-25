@@ -7,12 +7,15 @@ import android.os.Build
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import com.familyshield.agent.BuildConfig
+import com.familyshield.agent.data.BlocklistStore
+import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.network.ClientHeader
 import com.familyshield.agent.security.DeviceAdminManager
 import com.familyshield.agent.security.ProfileReader
 import com.familyshield.agent.services.AccessibilityMonitorService
 import com.familyshield.agent.setup.GrantChecks
 import com.familyshield.agent.setup.OnboardingPolicy
+import com.familyshield.agent.vpn.DnsFilterPolicy
 import com.familyshield.agent.vpn.VpnState
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -42,6 +45,8 @@ import javax.inject.Singleton
 class CapabilityReporter @Inject constructor(
     @ApplicationContext private val context: Context,
     deviceAdmin: DeviceAdminManager,
+    private val blocklist: BlocklistStore,
+    private val rules: RuleRepository,
 ) {
 
     private val grants = GrantChecks(context, deviceAdmin)
@@ -76,6 +81,13 @@ class CapabilityReporter @Inject constructor(
             backgroundLocation = hasBackgroundLocation(),
             callSmsGranted = full && hasPermission(Manifest.permission.READ_CALL_LOG) && hasPermission(Manifest.permission.READ_SMS),
             profiles = profiles.read(),
+            // #1079: the honest state of the filter, from the same facts the sinkhole builds its table from.
+            // Before this, the key kept its default and a phone with no pack reported `web_filter: ready`.
+            webFilter = DnsFilterPolicy.enforcement(
+                categoryDomains = blocklist.domains(),
+                packStored = blocklist.packStored(),
+                blockedCategories = rules.cachedRules()?.webFilter?.blockedCategories ?: emptyList(),
+            ),
         )
     }
 

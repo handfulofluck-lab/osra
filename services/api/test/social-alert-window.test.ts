@@ -397,6 +397,8 @@ describe("social alert per-contact window (#1029)", () => {
     expect(row.metadata.flaggedCount).toBe(4);
     expect(row.metadata.pushedCount).toBe(1);
     expect(row.metadata.latestAt).toBe(timestamps[3]);
+    const latestEvent = await prismaMock.socialEvent.create.mock.results[3].value as { id: string };
+    expect(row.metadata.latestSourceEventId).toBe(latestEvent.id);
     expect(row.metadata.summaryPending).toBe(true);
 
     // Window closes -> 1 summary push for "3 more", and opens a fresh 10-min window.

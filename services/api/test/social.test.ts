@@ -161,7 +161,11 @@ describe("social routes", () => {
   });
 
   it("records selected staging providers separately and creates one attributable alert", async () => {
-    // Mutants: generic 0.5 thresholds lose the calibrated own flag; raw scores or text leak into receipts.
+    // Mutants: generic 0.5 thresholds lose the calibrated own flag; raw scores, text or language leak into receipts.
+    for (const redis of MockRedis.instances) {
+      redis.set.mockClear();
+      redis.eval.mockClear();
+    }
     const deviceId = "fixture-provider-device";
     const secret = randomBytes(32).toString("hex");
     const text = "A synthetic test phrase without local keywords.";
@@ -206,6 +210,9 @@ describe("social routes", () => {
       expect(prismaMock.alert.create.mock.calls[0][0].data.metadata.providerOutcomes).toEqual(attribution);
       const receipt = (n: number) => prismaMock.stagingScanOutcome.create.mock.calls[n][0].data;
       expect(receipt(0)).toEqual({ childId: CHILD.id, socialEventId: "fixture-event", traceId: expect.any(String), providers: attribution });
+      expect(prismaMock.socialEvent.create.mock.calls[0][0].data).toMatchObject({
+        modelVersion: "v9b", lang: "ar", topCategory: "self_harm", topScore: 0.41, cutoff: null, path: "own", severity: "critical",
+      });
       expect((await send(text)).json()).toMatchObject({ flagged: false });
       expect(receipt(1).providers).toEqual({ bedrock: unavailable, own: { status: "scored", model: "v9b", flagged: false, flagged_categories: [], categories: {} } });
       expect((await send(text)).json()).toMatchObject({ flagged: true, concernTypes: ["self_harm"] });
@@ -255,6 +262,8 @@ describe("social routes", () => {
       expect((await send(text)).json()).toMatchObject({ flagged: false });
       expect(receipt(8).providers.own).toMatchObject({ region: "eu-north-1", flagged: false });
       expect(prismaMock.alert.create).toHaveBeenCalledTimes(alertCount);
+      const redisPayloads = MockRedis.instances.flatMap((redis) => [...redis.set.mock.calls, ...redis.eval.mock.calls]);
+      expect(JSON.stringify(redisPayloads)).not.toContain('"language"');
     } finally {
       await app.close();
     }
@@ -384,7 +393,10 @@ describe("social routes", () => {
 
   it("flags risky text: vault row holds only ciphertext, alert has no preview snippet", async () => {
     const app = await buildApp(socialRoutes, "/v1/social");
-    vi.stubGlobal("fetch", aiOk({ flagged: true, severity: "warning", categories: { self_harm: 0.8, safe: 0.2 } }));
+    vi.stubGlobal("fetch", aiOk({
+      flagged: true, severity: "warning", categories: { self_harm: 0.8, safe: 0.2 },
+      model_version: "actual-checkpoint-v12", language: "en", cutoff: 0.6, path: "own",
+    }));
     prismaMock.child.findUnique.mockResolvedValue(CHILD);
     prismaMock.socialEvent.create.mockResolvedValue({ id: "se-1" });
     prismaMock.alert.create.mockResolvedValue({ id: "a-1" });
@@ -397,7 +409,10 @@ describe("social routes", () => {
     const cipher = prismaMock.socialEvent.create.mock.calls[0][0] as {
       data: { previewCipher: string; severity: string; concernTypes: string[]; app: string; contact: string; childId: string };
     };
-    expect(cipher.data).toMatchObject({ childId: CHILD.id, app: "whatsapp", contact: "bully-1", severity: "critical", concernTypes: ["self_harm"] });
+    expect(cipher.data).toMatchObject({
+      childId: CHILD.id, app: "whatsapp", contact: "bully-1", severity: "critical", concernTypes: ["self_harm"],
+      modelVersion: "actual-checkpoint-v12", lang: "en", topCategory: "self_harm", topScore: 0.8, cutoff: 0.6, path: "own",
+    });
     expect(cipher.data.previewCipher).not.toContain(FLAGGED_TEXT);
     const payload = JSON.parse(cipher.data.previewCipher) as Parameters<typeof decryptForFamily>[0];
     expect(decryptForFamily(payload, VAULT_KEY)).toBe(FLAGGED_TEXT);
@@ -409,6 +424,7 @@ describe("social routes", () => {
       app: "whatsapp",
       contact: "bully-1",
       concernTypes: ["self_harm"],
+      latestSourceEventId: "se-1",
       flaggedCount: 1,
       pushedCount: 1,
       pushedSeverity: "critical",
@@ -468,7 +484,9 @@ describe("social routes", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().flagged).toBe(true);
     expect(prismaMock.socialEvent.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ concernTypes: expect.arrayContaining(["self_harm"]) }) }),
+      expect.objectContaining({ data: expect.objectContaining({
+        concernTypes: expect.arrayContaining(["self_harm"]), path: "rules", modelVersion: null, lang: null, topCategory: "self_harm", cutoff: null,
+      }) }),
     );
     expect(prismaMock.alert.create).toHaveBeenCalled();
     await app.close();
@@ -504,13 +522,22 @@ describe("social routes", () => {
   it("a local hit is not suppressed by a model that answered \"not flagged\" (#863)", async () => {
     const app = await buildApp(socialRoutes, "/v1/social");
     // The engine is reachable and says safe — the rules layer did exactly this for Arabic.
-    vi.stubGlobal("fetch", aiOk({ flagged: false, severity: "info", categories: { safe: 0.99 } }));
+    vi.stubGlobal("fetch", aiOk({
+      flagged: false, severity: "info", categories: { safe: 0.99, cyberbullying: 0.4 },
+      model_version: "actual-checkpoint-v12", language: "ar", cutoff: 0.6, path: "own",
+    }));
     prismaMock.child.findUnique.mockResolvedValue(CHILD);
     prismaMock.alert.create.mockResolvedValue({ id: "a-1" });
 
     const res = await postScan(app, scanBody({ text: "أريد أن أموت" }));
     expect(res.statusCode).toBe(200);
     expect(res.json().flagged).toBe(true);
+    expect(prismaMock.socialEvent.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        modelVersion: "actual-checkpoint-v12", lang: "ar", cutoff: 0.6,
+        topCategory: "self_harm", topScore: null, path: "rules",
+      }),
+    }));
     expect(prismaMock.alert.create).toHaveBeenCalled();
     await app.close();
   });
@@ -831,12 +858,344 @@ describe("social routes", () => {
     });
   });
 
+  describe("parent feedback (#1065)", () => {
+    const event = {
+      id: "se-feedback",
+      childId: CHILD.id,
+      app: "whatsapp",
+      contact: "c-1",
+      severity: "critical",
+      modelVersion: "v9b",
+      lang: "ar",
+      topCategory: "self_harm",
+      topScore: 0.41,
+      cutoff: null,
+      path: "own",
+      child: { familyId: "fam-1" },
+    };
+
+    function mockEvent() {
+      prismaMock.socialEvent.findUnique.mockResolvedValue(event);
+    }
+
+    it("creates one parent vote with the flag-time model snapshot and voter name", async () => {
+      const app = await buildApp(socialRoutes, "/v1/social");
+      mockEvent();
+      prismaMock.socialEventFeedback.findUnique.mockResolvedValue(null);
+      let row: Record<string, unknown> | null = null;
+      prismaMock.$queryRaw.mockImplementation(async (...values: unknown[]) => {
+        row = {
+          id: values[1], socialEventId: values[2], parentId: values[3], verdict: values[4], parentName: values[5],
+          firstVotedAt: values[6], lastChangedAt: values[7], changeCount: 0, modelVersion: values[8], lang: values[9],
+          topCategory: values[10], topScore: values[11], cutoff: values[12], path: values[13], severity: values[14],
+        };
+        return [row];
+      });
+      prismaMock.socialEventFeedback.findFirst.mockImplementation(async () => row);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/social/events/se-feedback/feedback",
+        headers: authHeader(app),
+        payload: { verdict: "concerning" },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(prismaMock.socialEvent.findUnique).toHaveBeenCalledWith({ where: { id: event.id }, include: { child: true } });
+      expect(row).toMatchObject({
+        socialEventId: event.id,
+        parentId: "parent-1",
+        parentName: "Parent One",
+        verdict: "concerning",
+        changeCount: 0,
+        modelVersion: "v9b",
+        lang: "ar",
+        topCategory: "self_harm",
+        topScore: 0.41,
+        cutoff: null,
+        path: "own",
+        severity: "critical",
+      });
+      expect(prismaMock.$queryRaw.mock.calls[0][0].join("")).toContain('WHERE "SocialEventFeedback"."verdict" <> EXCLUDED."verdict"');
+      expect(res.json().feedback).toMatchObject({ verdict: "concerning", parentDisplayName: "Parent One", changeCount: 0 });
+      expect(res.json().latestFeedback).toEqual(res.json().feedback);
+      await app.close();
+    });
+
+    it("keeps concurrent identical first POSTs idempotent", async () => {
+      const app = await buildApp(socialRoutes, "/v1/social");
+      mockEvent();
+      prismaMock.socialEventFeedback.findUnique.mockResolvedValue(null);
+      let row: Record<string, unknown> | null = null;
+      prismaMock.$queryRaw.mockImplementation(async (...values: unknown[]) => {
+        await Promise.resolve();
+        if (row) return [];
+        row = {
+          id: values[1], socialEventId: values[2], parentId: values[3], verdict: values[4], parentName: values[5],
+          firstVotedAt: values[6], lastChangedAt: values[7], changeCount: 0,
+        };
+        return [row];
+      });
+      prismaMock.socialEventFeedback.findUniqueOrThrow.mockImplementation(async () => row);
+      prismaMock.socialEventFeedback.findFirst.mockImplementation(async () => row);
+      const post = () => app.inject({
+        method: "POST", url: "/v1/social/events/se-feedback/feedback", headers: authHeader(app), payload: { verdict: "concerning" },
+      });
+
+      const [first, second] = await Promise.all([post(), post()]);
+
+      expect(first.statusCode).toBe(200);
+      expect(second.statusCode).toBe(200);
+      expect(prismaMock.$queryRaw).toHaveBeenCalledTimes(2);
+      expect(row).toMatchObject({ verdict: "concerning", changeCount: 0 });
+      expect(first.json().feedback).toEqual(second.json().feedback);
+      expect(first.json().latestFeedback).toEqual(first.json().feedback);
+      await app.close();
+    });
+
+    it("applies different concurrent first verdicts instead of losing one", async () => {
+      const app = await buildApp(socialRoutes, "/v1/social");
+      mockEvent();
+      prismaMock.socialEventFeedback.findUnique.mockResolvedValue(null);
+      let row: Record<string, unknown> | null = null;
+      prismaMock.$queryRaw.mockImplementation(async (...values: unknown[]) => {
+        await Promise.resolve();
+        const verdict = values[4] as string;
+        if (row?.verdict === verdict) return [];
+        row = row
+          ? { ...row, verdict, lastChangedAt: values[7], changeCount: 1 }
+          : { id: values[1], socialEventId: values[2], parentId: values[3], verdict, parentName: values[5], firstVotedAt: values[6], lastChangedAt: values[7], changeCount: 0 };
+        return [row];
+      });
+      prismaMock.socialEventFeedback.findUniqueOrThrow.mockImplementation(async () => row);
+      prismaMock.socialEventFeedback.findFirst.mockImplementation(async () => row);
+      const post = (verdict: string) => app.inject({
+        method: "POST", url: "/v1/social/events/se-feedback/feedback", headers: authHeader(app), payload: { verdict },
+      });
+
+      const [concerning, notConcerning] = await Promise.all([post("concerning"), post("not_concerning")]);
+
+      expect(concerning.statusCode).toBe(200);
+      expect(notConcerning.statusCode).toBe(200);
+      expect(["concerning", "not_concerning"]).toContain(row?.verdict);
+      expect(row?.changeCount).toBe(1);
+      expect(concerning.json().feedback.verdict).toBe("concerning");
+      expect(notConcerning.json().feedback.verdict).toBe("not_concerning");
+      expect(concerning.json().latestFeedback).not.toBeNull();
+      expect(notConcerning.json().latestFeedback).not.toBeNull();
+      await app.close();
+    });
+
+    it("keeps concurrent changes from an existing vote idempotent", async () => {
+      const app = await buildApp(socialRoutes, "/v1/social");
+      mockEvent();
+      const initial = {
+        id: "vote-1", socialEventId: event.id, parentId: "parent-1", verdict: "concerning", parentName: "Parent One",
+        firstVotedAt: new Date("2026-11-01T00:00:00Z"), lastChangedAt: new Date("2026-11-01T00:00:00Z"), changeCount: 0,
+      };
+      let row: Record<string, unknown> = { ...initial };
+      prismaMock.socialEventFeedback.findUnique.mockResolvedValue(initial);
+      prismaMock.$queryRaw.mockImplementation(async (...values: unknown[]) => {
+        const verdict = values[4] as string;
+        if (row.verdict === verdict) return [];
+        row = { ...row, verdict, lastChangedAt: values[7], changeCount: Number(row.changeCount) + 1 };
+        return [row];
+      });
+      prismaMock.socialEventFeedback.findUniqueOrThrow.mockImplementation(async () => row);
+      prismaMock.socialEventFeedback.findFirst.mockImplementation(async () => row);
+      prismaMock.socialEventFeedback.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+        row = { ...row, ...data, changeCount: Number(row.changeCount) + 1 };
+        return row;
+      });
+      const post = () => app.inject({
+        method: "POST", url: "/v1/social/events/se-feedback/feedback", headers: authHeader(app), payload: { verdict: "not_concerning" },
+      });
+
+      const [first, second] = await Promise.all([post(), post()]);
+
+      expect(first.statusCode).toBe(200);
+      expect(second.statusCode).toBe(200);
+      expect(row).toMatchObject({ verdict: "not_concerning", changeCount: 1 });
+      expect(first.json().feedback.changeCount).toBe(1);
+      expect(second.json().feedback.changeCount).toBe(1);
+      expect(first.json().latestFeedback).toEqual(first.json().feedback);
+      expect(second.json().latestFeedback).toEqual(second.json().feedback);
+      expect(prismaMock.socialEventFeedback.update).not.toHaveBeenCalled();
+      await app.close();
+    });
+
+    it("changes a vote, replays it without another change, and withdraws idempotently", async () => {
+      const app = await buildApp(socialRoutes, "/v1/social");
+      mockEvent();
+      let row: Record<string, unknown> | null = null;
+      prismaMock.socialEventFeedback.findUnique.mockImplementation(async () => row);
+      prismaMock.$queryRaw.mockImplementation(async (...values: unknown[]) => {
+        const verdict = values[4] as string;
+        if (row?.verdict === verdict) return [];
+        row = row
+          ? { ...row, verdict, lastChangedAt: values[7], changeCount: 1 }
+          : { id: values[1], socialEventId: values[2], parentId: values[3], verdict, parentName: values[5], firstVotedAt: values[6], lastChangedAt: values[7], changeCount: 0 };
+        return [row];
+      });
+      prismaMock.socialEventFeedback.findUniqueOrThrow.mockImplementation(async () => row);
+      prismaMock.socialEventFeedback.findFirst.mockImplementation(async () => row);
+      prismaMock.socialEventFeedback.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+        row = {
+          ...row,
+          ...data,
+          changeCount: typeof data.changeCount === "object"
+            ? Number(row?.changeCount) + Number((data.changeCount as { increment: number }).increment)
+            : data.changeCount,
+        };
+        return row;
+      });
+      prismaMock.socialEventFeedback.deleteMany.mockImplementation(async () => {
+        const count = row ? 1 : 0;
+        row = null;
+        return { count };
+      });
+      const post = (verdict: string) => app.inject({
+        method: "POST", url: "/v1/social/events/se-feedback/feedback", headers: authHeader(app), payload: { verdict },
+      });
+
+      const first = await post("concerning");
+      expect(first.statusCode).toBe(200);
+      const firstChangedAt = first.json().feedback.lastChangedAt;
+      const replay = await post("concerning");
+      expect(replay.statusCode).toBe(200);
+      expect(replay.json().feedback.lastChangedAt).toBe(firstChangedAt);
+      expect(prismaMock.socialEventFeedback.update).not.toHaveBeenCalled();
+
+      const changed = await post("not_concerning");
+      expect(changed.json().feedback).toMatchObject({ verdict: "not_concerning", changeCount: 1, parentDisplayName: "Parent One" });
+      expect(prismaMock.socialEventFeedback.update).not.toHaveBeenCalled();
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const withdrawn = await app.inject({ method: "DELETE", url: "/v1/social/events/se-feedback/feedback", headers: authHeader(app) });
+        expect(withdrawn.statusCode).toBe(200);
+        expect(withdrawn.json()).toEqual({ feedback: null, latestFeedback: null });
+      }
+      expect(row).toBeNull();
+      expect(prismaMock.socialEventFeedback.deleteMany).toHaveBeenCalledTimes(2);
+      await app.close();
+    });
+
+    it("returns own and latest feedback for two parents and preserves the other vote after withdrawal", async () => {
+      const app = await buildApp(socialRoutes, "/v1/social");
+      mockEvent();
+      let clock = 1_000;
+      let rows: Array<Record<string, unknown>> = [];
+      const find = (parentId: string) => rows.find((row) => row.parentId === parentId) ?? null;
+      const latest = () => [...rows].sort((a, b) => Number(new Date(b.lastChangedAt as string)) - Number(new Date(a.lastChangedAt as string)))[0] ?? null;
+      prismaMock.parent.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => ({
+        id: where.id, familyId: "fam-1", displayName: where.id === "parent-1" ? "Parent One" : "Parent Two", role: "owner", permissions: [],
+      }));
+      prismaMock.socialEventFeedback.findUnique.mockImplementation(async ({ where }: { where: { socialEventId_parentId: { parentId: string } } }) => find(where.socialEventId_parentId.parentId));
+      prismaMock.socialEventFeedback.findUniqueOrThrow.mockImplementation(async ({ where }: { where: { socialEventId_parentId: { parentId: string } } }) => find(where.socialEventId_parentId.parentId));
+      prismaMock.socialEventFeedback.findFirst.mockImplementation(async () => latest());
+      prismaMock.$queryRaw.mockImplementation(async (...values: unknown[]) => {
+        const parentId = values[3] as string;
+        const verdict = values[4] as string;
+        const previous = find(parentId);
+        if (previous?.verdict === verdict) return [];
+        const row = previous
+          ? { ...previous, verdict, lastChangedAt: new Date(clock += 1000), changeCount: Number(previous.changeCount) + 1 }
+          : { id: values[1], socialEventId: values[2], parentId, verdict, parentName: values[5], firstVotedAt: values[6], lastChangedAt: new Date(clock += 1000), changeCount: 0 };
+        rows = [...rows.filter((item) => item.parentId !== parentId), row];
+        return [row];
+      });
+      prismaMock.socialEventFeedback.update.mockImplementation(async ({ where, data }: { where: { socialEventId_parentId: { parentId: string } }; data: Record<string, unknown> }) => {
+        const previous = find(where.socialEventId_parentId.parentId)!;
+        const row = { ...previous, ...data, lastChangedAt: new Date(clock += 1000), changeCount: Number(previous.changeCount) + 1 };
+        rows = [...rows.filter((item) => item.parentId !== row.parentId), row];
+        return row;
+      });
+      prismaMock.socialEventFeedback.deleteMany.mockImplementation(async ({ where }: { where: { parentId: string } }) => {
+        rows = rows.filter((row) => row.parentId !== where.parentId);
+        return { count: 1 };
+      });
+      const post = (parentId: string, verdict: string) => app.inject({
+        method: "POST", url: "/v1/social/events/se-feedback/feedback", headers: authHeader(app, "fam-1", parentId), payload: { verdict },
+      });
+      const withdraw = (parentId: string) => app.inject({
+        method: "DELETE", url: "/v1/social/events/se-feedback/feedback", headers: authHeader(app, "fam-1", parentId),
+      });
+
+      const first = await post("parent-1", "concerning");
+      expect(first.json().feedback.parentDisplayName).toBe("Parent One");
+      expect(first.json().latestFeedback.parentDisplayName).toBe("Parent One");
+      const same = await post("parent-2", "concerning");
+      expect(same.json().feedback.parentDisplayName).toBe("Parent Two");
+      expect(same.json().latestFeedback.parentDisplayName).toBe("Parent Two");
+      const different = await post("parent-2", "not_concerning");
+      expect(different.json().feedback).toMatchObject({ verdict: "not_concerning", changeCount: 1 });
+      expect(different.json().latestFeedback.parentDisplayName).toBe("Parent Two");
+      const replay = await post("parent-1", "concerning");
+      expect(replay.json().feedback.parentDisplayName).toBe("Parent One");
+      expect(replay.json().latestFeedback.parentDisplayName).toBe("Parent Two");
+
+      const cleared = await withdraw("parent-1");
+      expect(cleared.json()).toEqual({ feedback: null, latestFeedback: expect.objectContaining({ parentDisplayName: "Parent Two", verdict: "not_concerning" }) });
+      expect((await withdraw("parent-2")).json()).toEqual({ feedback: null, latestFeedback: null });
+      await app.close();
+    });
+
+    it("is parent-only and refuses a foreign family's event before writing", async () => {
+      const app = await buildApp(socialRoutes, "/v1/social");
+      mockEvent();
+      const url = "/v1/social/events/se-feedback/feedback";
+      expect((await app.inject({ method: "POST", url, payload: { verdict: "concerning" } })).statusCode).toBe(401);
+      expect((await app.inject({ method: "POST", url, headers: deviceHeader(app), payload: { verdict: "concerning" } })).statusCode).toBe(403);
+      prismaMock.parent.findUnique.mockResolvedValue({ id: "parent-2", familyId: "fam-2", displayName: "Other", role: "owner", permissions: [] });
+      const foreign = await app.inject({ method: "POST", url, headers: authHeader(app, "fam-2", "parent-2"), payload: { verdict: "concerning" } });
+      expect(foreign.statusCode).toBe(403);
+      expect(prismaMock.socialEventFeedback.create).not.toHaveBeenCalled();
+      expect(prismaMock.$queryRaw).not.toHaveBeenCalled();
+      expect(prismaMock.socialEventFeedback.update).not.toHaveBeenCalled();
+      await app.close();
+    });
+
+    it("requires the social permission for guardian feedback writes", async () => {
+      const app = await buildApp(socialRoutes, "/v1/social");
+      mockEvent();
+      prismaMock.parent.findUnique.mockResolvedValue({
+        id: "parent-1", familyId: "fam-1", displayName: "Guardian", role: "guardian", permissions: [],
+      });
+      const url = "/v1/social/events/se-feedback/feedback";
+      for (const method of ["POST", "DELETE"] as const) {
+        const res = await app.inject({ method, url, headers: authHeader(app), payload: { verdict: "concerning" } });
+        expect(res.statusCode).toBe(403);
+        expect(res.json()).toEqual({ error: "permission_required", permission: "social" });
+      }
+      expect(prismaMock.socialEventFeedback.create).not.toHaveBeenCalled();
+      expect(prismaMock.$queryRaw).not.toHaveBeenCalled();
+      expect(prismaMock.socialEventFeedback.deleteMany).not.toHaveBeenCalled();
+      await app.close();
+    });
+
+    it("rejects an unknown verdict without writing", async () => {
+      const app = await buildApp(socialRoutes, "/v1/social");
+      mockEvent();
+      const res = await app.inject({
+        method: "POST", url: "/v1/social/events/se-feedback/feedback", headers: authHeader(app), payload: { verdict: "unsafe" },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(prismaMock.socialEventFeedback.findUnique).not.toHaveBeenCalled();
+      await app.close();
+    });
+  });
+
   it("lists vault events decrypted, newest first, with filters", async () => {
     const app = await buildApp(socialRoutes, "/v1/social");
     prismaMock.child.findUnique.mockResolvedValue(CHILD);
     const previewCipher = JSON.stringify(encryptForFamily("are you alone tonight?", VAULT_KEY));
     prismaMock.socialEvent.findMany.mockResolvedValue([
-      { id: "se-1", app: "whatsapp", contact: "c-1", severity: "critical", previewCipher, concernTypes: ["grooming"], createdAt: "2026-09-16T10:00:00Z" },
+      { id: "se-1", app: "whatsapp", contact: "c-1", severity: "critical", previewCipher, concernTypes: ["grooming"], createdAt: "2026-09-16T10:00:00Z",
+        feedback: [
+          { parentId: "parent-2", verdict: "not_concerning", parentName: "Parent Two", firstVotedAt: "2026-09-16T10:01:00Z", lastChangedAt: "2026-09-16T10:03:00Z", changeCount: 2 },
+          { parentId: "parent-1", verdict: "concerning", parentName: "Parent One", firstVotedAt: "2026-09-16T10:00:00Z", lastChangedAt: "2026-09-16T10:02:00Z", changeCount: 0 },
+        ] },
+      { id: "se-2", app: "whatsapp", contact: "c-2", severity: "critical", previewCipher, concernTypes: ["grooming"], createdAt: "2026-09-16T09:00:00Z", feedback: [] },
     ]);
 
     const res = await app.inject({
@@ -850,11 +1209,16 @@ describe("social routes", () => {
         where: { childId: "child-1", app: "whatsapp", severity: "critical" },
         orderBy: { createdAt: "desc" },
         take: 10,
+        include: { feedback: { orderBy: { lastChangedAt: "desc" } } },
       }),
     );
     const item = res.json().items[0];
     expect(item.preview).toBe("are you alone tonight?");
     expect(item).toMatchObject({ id: "se-1", app: "whatsapp", contact: "c-1", severity: "critical", concernTypes: ["grooming"] });
+    expect(item.latestFeedback).toEqual({ verdict: "not_concerning", parentDisplayName: "Parent Two", firstVotedAt: "2026-09-16T10:01:00Z", lastChangedAt: "2026-09-16T10:03:00Z", changeCount: 2 });
+    expect(item.ownFeedback).toEqual({ verdict: "concerning", parentDisplayName: "Parent One", firstVotedAt: "2026-09-16T10:00:00Z", lastChangedAt: "2026-09-16T10:02:00Z", changeCount: 0 });
+    expect(res.json().items[1].latestFeedback).toBeNull();
+    expect(res.json().items[1].ownFeedback).toBeNull();
     await app.close();
   });
 
