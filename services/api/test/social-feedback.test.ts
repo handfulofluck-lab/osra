@@ -46,9 +46,10 @@ describe("social feedback CI database provisioning (#1065)", () => {
 describe("social feedback storage and deletion (#1065)", () => {
   it("stores one current vote per parent and event with all nullable flag-time fields", () => {
     expect(feedbackModel).toContain("@@unique([socialEventId, parentId])");
-    for (const field of ["verdict", "parentName", "firstVotedAt", "lastChangedAt", "changeCount"]) {
+    for (const field of ["verdict", "firstVotedAt", "lastChangedAt", "changeCount"]) {
       expect(feedbackModel).toMatch(new RegExp(`\\b${field}\\b`));
     }
+    expect(feedbackModel).not.toMatch(/\bparentName\b/);
     for (const field of ["modelVersion", "lang", "topCategory", "topScore", "cutoff", "path", "severity"]) {
       expect(feedbackModel).toMatch(new RegExp(`\\b${field}\\s+\\w+\\?`));
     }
@@ -104,6 +105,11 @@ describe("counts-only social feedback aggregation (#1065)", () => {
   it("suppresses buckets below five and excludes a withdrawn current vote on the next run", async () => {
     const { aggregateSocialEventFeedback } = await import("../src/lib/socialFeedback.js");
     const dimensions = { lang: "ar", topCategory: "self_harm", modelVersion: "v9b", path: "own" };
+    prismaMock.$queryRaw.mockResolvedValue([{ childId: "child-1", region: "EU" }]);
+    prismaMock.consentRecord.findFirst.mockResolvedValue({
+      id: "consent-1", childId: "child-1", parentId: "parent-1", method: "sms_plus", jurisdiction: "EU",
+      grantedAt: new Date("2026-01-01T00:00:00Z"), expiresAt: null, revokedAt: null, thirdPartySharing: false,
+    });
     prismaMock.socialEventFeedback.groupBy.mockResolvedValue([
       { ...dimensions, verdict: "concerning", _count: { _all: 5 } },
       { ...dimensions, verdict: "not_concerning", _count: { _all: 1 } },
@@ -115,6 +121,7 @@ describe("counts-only social feedback aggregation (#1065)", () => {
     ]);
     expect(prismaMock.socialEventFeedback.groupBy).toHaveBeenCalledWith({
       by: ["lang", "topCategory", "modelVersion", "path", "verdict"],
+      where: { socialEvent: { childId: { in: ["child-1"] } } },
       _count: { _all: true },
     });
 

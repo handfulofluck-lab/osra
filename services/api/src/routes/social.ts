@@ -386,7 +386,7 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
 
 type FeedbackView = {
   verdict: string;
-  parentName: string;
+  parent: { displayName: string | null } | null;
   firstVotedAt: Date | string;
   lastChangedAt: Date | string;
   changeCount: number;
@@ -395,7 +395,7 @@ type FeedbackView = {
 function feedbackView(row: FeedbackView) {
   return {
     verdict: row.verdict,
-    parentDisplayName: row.parentName,
+    parentDisplayName: row.parent?.displayName ?? "",
     firstVotedAt: row.firstVotedAt,
     lastChangedAt: row.lastChangedAt,
     changeCount: row.changeCount,
@@ -406,6 +406,7 @@ async function latestFeedback(socialEventId: string) {
   const row = await prisma.socialEventFeedback.findFirst({
     where: { socialEventId },
     orderBy: { lastChangedAt: "desc" },
+    include: { parent: { select: { displayName: true } } },
   });
   return row ? feedbackView(row) : null;
 }
@@ -466,16 +467,16 @@ export async function socialRoutes(app: FastifyInstance) {
       path: string | null;
     } }).socialEvent;
     const where = { socialEventId_parentId: { socialEventId: event.id, parentId } };
-    const existing = await prisma.socialEventFeedback.findUnique({ where });
+    const existing = await prisma.socialEventFeedback.findUnique({
+      where,
+      include: { parent: { select: { displayName: true } } },
+    });
     if (existing?.verdict === parsed.data.verdict) {
       return { feedback: feedbackView(existing), latestFeedback: await latestFeedback(event.id) };
     }
-    const parent = await prisma.parent.findUnique({ where: { id: parentId }, select: { displayName: true } });
-    const parentName = parent?.displayName ?? "";
-    const created = await writeSocialEventFeedback({
+    await writeSocialEventFeedback({
       socialEventId: event.id,
       parentId,
-      parentName,
       verdict: parsed.data.verdict,
       modelVersion: event.modelVersion,
       lang: event.lang,
@@ -484,6 +485,10 @@ export async function socialRoutes(app: FastifyInstance) {
       cutoff: event.cutoff,
       path: event.path,
       severity: event.severity,
+    });
+    const created = await prisma.socialEventFeedback.findUniqueOrThrow({
+      where,
+      include: { parent: { select: { displayName: true } } },
     });
     return { feedback: feedbackView(created), latestFeedback: await latestFeedback(event.id) };
   });
@@ -514,7 +519,7 @@ export async function socialRoutes(app: FastifyInstance) {
       },
       orderBy: { createdAt: "desc" },
       take: q.limit,
-      include: { feedback: { orderBy: { lastChangedAt: "desc" } } },
+      include: { feedback: { orderBy: { lastChangedAt: "desc" }, include: { parent: { select: { displayName: true } } } } },
     });
     const items = rows.map((row) => ({
       id: row.id,

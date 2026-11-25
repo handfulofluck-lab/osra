@@ -496,7 +496,6 @@ model SocialEventFeedback {
   socialEventId String
   parentId      String
   verdict       String
-  parentName    String
   firstVotedAt  DateTime    @default(now()) @db.Timestamptz(3)
   lastChangedAt DateTime    @default(now()) @db.Timestamptz(3)
   changeCount   Int         @default(0)
