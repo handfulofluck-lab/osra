@@ -1,0 +1,1 @@
+- Staging QA (#1144) can score opted-in, consented paired devices with the existing Stockholm own model. An explicit staging switch enables it, and per-family and global quotas fall back to local rules. Live two-family verification is pending.

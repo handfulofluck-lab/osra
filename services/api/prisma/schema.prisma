@@ -293,7 +293,7 @@ model Device {
   /// read excludes it), outside the family's device counts, and deleted by `jobs/pendingDevices.ts`
   /// after 30 minutes. Pair/claim creates it null on purpose; nothing else may.
   pairedAt   DateTime?      @db.Timestamptz(3)
-  /// ADR-0046: null during the bounded initial Android setup window; set only from an authenticated
+  /// ADR-0047: null during the bounded initial Android setup window; set only from an authenticated
   /// telemetry report with every required grant ready. Existing paired rows are backfilled by 0044.
   setupCompletedAt DateTime? @db.Timestamptz(3)
   /// Issue #867: the instant the AGENT says this phone booted (`now - SystemClock.elapsedRealtime()`),
@@ -621,7 +621,7 @@ model Alert {
   attemptCount Int      @default(1)
   createdAt    DateTime @default(now())
   acknowledged Boolean  @default(false)
-  /// ADR-0046: audit-only setup event; never published, pushed, listed, acknowledged or exported.
+  /// ADR-0047: audit-only setup event; never published, pushed, listed, acknowledged or exported.
   heldDuringSetup Boolean @default(false)
   child        Child    @relation(fields: [childId], references: [id])
   device       Device?  @relation(fields: [deviceId], references: [id])

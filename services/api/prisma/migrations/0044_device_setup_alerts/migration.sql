@@ -1,4 +1,4 @@
--- Issue #1127 / ADR-0046: server-owned initial-setup state and audit-only held tamper events.
+-- Issue #1127 / ADR-0047: server-owned initial-setup state and audit-only held tamper events.
 -- Existing paired devices were already past first setup, so backfilling completion prevents a
 -- false "protected" alert and keeps their tamper behavior unchanged. Pending pairings stay incomplete.
 
