@@ -484,4 +484,38 @@ class NotificationCapturePolicyTest {
         ) { _, _ -> true }
         assertEquals(0, captures.size)
     }
+
+    @Test
+    fun `two senders saying the same line both arrive and a repeated snapshot adds nothing`() {
+        // #1150 review mutant: text-only identity drops Bob, while removing all replay suppression
+        // returns the same two captures again on the second delivery.
+        val tracker = NotificationCapturePolicy.BurstTracker()
+        val snapshot = snap(
+            title = "Family group",
+            messages = listOf("same words", "same words"),
+            messageSenders = listOf("Alice", "Bob"),
+            messageTimesMs = listOf(1_000L, 1_000L),
+        )
+        val first = tracker.newCaptures(snapshot)
+        assertEquals(listOf("Alice", "Bob"), first.map { it.contact })
+        assertEquals(listOf("same words", "same words"), first.map { it.text })
+        assertEquals(emptyList<String>(), tracker.newCaptures(snapshot).map { it.text })
+    }
+
+    @Test
+    fun `the category rejection is limited to whatsapp and leaves other monitored apps unchanged`() {
+        // #1150 review mutant: applying the new non-message category rule before the app check
+        // drops this otherwise valid Discord conversation.
+        val discord = NotificationCapturePolicy.capturesFor(
+            snap(pkg = "com.discord", category = Notification.CATEGORY_STATUS, title = "Alice", text = "real-looking words"),
+            NotificationCapturePolicy.BurstTracker(),
+        ) { _, _ -> true }
+        assertEquals(1, discord.size)
+        assertEquals("discord", discord.single().appKey)
+        val whatsapp = NotificationCapturePolicy.capturesFor(
+            snap(category = Notification.CATEGORY_STATUS, title = "account name", text = "real-looking words"),
+            NotificationCapturePolicy.BurstTracker(),
+        ) { _, _ -> true }
+        assertEquals(0, whatsapp.size)
+    }
 }

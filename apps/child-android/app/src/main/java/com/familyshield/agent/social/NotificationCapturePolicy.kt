@@ -65,8 +65,8 @@ object NotificationCapturePolicy {
     )
 
     private fun isNonMessage(snapshot: Snapshot): Boolean {
-        if (snapshot.category != null && snapshot.category != Notification.CATEGORY_MESSAGE) return true
         if (MonitoredApps.appKeyFor(snapshot.packageId) != "whatsapp") return false
+        if (snapshot.category != null && snapshot.category != Notification.CATEGORY_MESSAGE) return true
         val title = snapshot.title?.trim()?.lowercase(java.util.Locale.ROOT) ?: return false
         return title in whatsAppOnlineTitles || whatsAppActivityPrefixes.any(title::startsWith)
     }
@@ -194,7 +194,7 @@ object NotificationCapturePolicy {
         private val clock: () -> Long = System::currentTimeMillis,
     ) {
 
-        private data class Seen(val lastAtMs: Long, val touchedAtMs: Long, val texts: ArrayDeque<String>)
+        private data class Seen(val lastAtMs: Long, val touchedAtMs: Long, val identities: ArrayDeque<String>)
 
         /** Insertion order is touch order: the least recently touched key is the first one. */
         private val seen = LinkedHashMap<String, Seen>()
@@ -226,20 +226,20 @@ object NotificationCapturePolicy {
                 }
                 else -> lines
             }
-            // Timestamps identify notification revisions, not unique messages. WhatsApp can repeat a line
-            // with a newer time, so content already queued for this key is excluded on both platform paths.
+            // Timestamps identify notification revisions, not unique messages. The durable identity is
+            // sender + text: two people can say the same line, while one sender's repeat stays deduped.
             val fresh = candidates
-                .filter { line -> state?.texts?.contains(line.text) != true }
-                .distinctBy { it.text }
+                .filter { line -> state?.identities?.contains(line.identity()) != true }
+                .distinctBy { it.identity() }
             if (fresh.isEmpty()) return emptyList()
 
             val lastAt = lines.mapNotNull { it.atMs }.maxOrNull() ?: state?.lastAtMs ?: 0L
-            val texts = state?.texts ?: ArrayDeque()
+            val identities = state?.identities ?: ArrayDeque()
             fresh.forEach { line ->
-                if (texts.size >= maxLinesPerKey) texts.removeFirst()
-                texts.addLast(line.text)
+                if (identities.size >= maxLinesPerKey) identities.removeFirst()
+                identities.addLast(line.identity())
             }
-            remember(snapshot.key, Seen(lastAtMs = lastAt, touchedAtMs = clock(), texts = texts))
+            remember(snapshot.key, Seen(lastAtMs = lastAt, touchedAtMs = clock(), identities = identities))
 
             return fresh.map {
                 Capture(
@@ -253,6 +253,8 @@ object NotificationCapturePolicy {
         }
 
         private data class Line(val text: String, val atMs: Long?, val contact: String?)
+
+        private fun Line.identity(): String = "${contact.orEmpty().length}:${contact.orEmpty()}:$text"
 
         /** Drops entries older than [ttlMs]; called on every access so an idle key cannot outlive its use. */
         private fun prune() {
