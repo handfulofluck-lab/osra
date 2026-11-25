@@ -21,16 +21,20 @@ class NotificationCapturePolicyTest {
         pkg: String = "com.whatsapp",
         key: String = "0|com.whatsapp|1|null|10123",
         summary: Boolean = false,
+        category: String? = null,
+        conversationTitle: String? = null,
         title: String? = "Mum",
         text: String? = "where are you?",
         bigText: String? = null,
         messages: List<String?> = emptyList(),
+        messageSenders: List<String?> = emptyList(),
         messageTimesMs: List<Long?> = emptyList(),
         removed: Boolean = false,
         postedAtMs: Long = 1000L,
     ) = NotificationCapturePolicy.Snapshot(
         packageId = pkg, key = key, isGroupSummary = summary, groupKey = "group-1",
-        title = title, text = text, bigText = bigText, messages = messages,
+        category = category, conversationTitle = conversationTitle,
+        title = title, text = text, bigText = bigText, messages = messages, messageSenders = messageSenders,
         messageTimesMs = messageTimesMs, isRemoved = removed, postedAtMs = postedAtMs,
     )
 
@@ -173,38 +177,45 @@ class NotificationCapturePolicyTest {
     /** The service's own snapshotOf, minus the Android StatusBarNotification it cannot build on the JVM. */
     private fun snapFromExtras(raw: Any?, key: String = "0|com.whatsapp|1|null|10123") =
         NotificationCapturePolicy.entriesOf(raw).let { entries ->
-            snap(key = key, title = "Work group", text = null, bigText = null, messages = entries.map { it.text?.toString() }, messageTimesMs = entries.map { it.atMs })
+            snap(
+                key = key, title = "Work group", text = null, bigText = null,
+                messages = entries.map { it.text?.toString() },
+                messageSenders = entries.map { it.sender?.toString() },
+                messageTimesMs = entries.map { it.atMs },
+            )
         }
 
-    private fun messageBundle(text: String, atMs: Long): Bundle {
+    private fun messageBundle(text: String, atMs: Long, sender: String? = null): Bundle {
         val b = mock(Bundle::class.java)
         `when`(b.getCharSequence("text")).thenReturn(text)
+        `when`(b.getCharSequence("sender")).thenReturn(sender)
         `when`(b.getLong("time")).thenReturn(atMs)
         return b
     }
 
-    private fun message(text: String, atMs: Long): Notification.MessagingStyle.Message {
+    private fun message(text: String, atMs: Long, sender: String? = null): Notification.MessagingStyle.Message {
         val m = mock(Notification.MessagingStyle.Message::class.java)
         `when`(m.text).thenReturn(text)
         `when`(m.timestamp).thenReturn(atMs)
+        `when`(m.sender).thenReturn(sender)
         return m
     }
 
     @Test
     fun `the platform's Parcelable array of bundles carries a five message burst and its redelivery adds none`() {
-        // The documented platform shape, and the one the old adapter dropped on the floor: every line lost,
-        // the snapshot fell back to bigText, and a burst scanned once instead of five times.
+        // #1141 mutant: dropping Bundle senders turns every contact into the conversation title.
         val raw: Any = arrayOf(
-            messageBundle("lunch at 1?", 1_000L),
-            messageBundle("bring the keys", 2_000L),
-            messageBundle("on my way", 3_000L),
-            messageBundle("park outside", 4_000L),
-            messageBundle("call me when", 5_000L),
+            messageBundle("lunch at 1?", 1_000L, "Alice"),
+            messageBundle("bring the keys", 2_000L, "Bob"),
+            messageBundle("on my way", 3_000L, "Alice"),
+            messageBundle("park outside", 4_000L, "Bob"),
+            messageBundle("call me when", 5_000L, "Alice"),
         )
         val tracker = NotificationCapturePolicy.BurstTracker()
         val first = tracker.newCaptures(snapFromExtras(raw))
         assertEquals(5, first.size)
         assertEquals(listOf("lunch at 1?", "bring the keys", "on my way", "park outside", "call me when"), first.map { it.text })
+        assertEquals(listOf("Alice", "Bob", "Alice", "Bob", "Alice"), first.map { it.contact })
         assertEquals(listOf(1_000L, 2_000L, 3_000L, 4_000L, 5_000L), first.map { it.postedAtMs })
         assertEquals(0, tracker.newCaptures(snapFromExtras(raw)).size)
     }
@@ -386,5 +397,91 @@ class NotificationCapturePolicyTest {
             true,
             com.familyshield.agent.data.RuleRepository.socialMonitoringEnabled(mapOf("twitter" to true, "x" to false), "twitter"),
         )
+    }
+
+    @Test
+    fun `whatsapp presence notices are not chat messages in the supported locales`() {
+        // #1140 mutant: remove the presence-title gate and every one of these produces a concern
+        // whose contact is a status word and whose body is the sender's name.
+        val presenceTitles = listOf(
+            "online", "typing…", "recording audio…",
+            "متصل الآن", "يكتب…", "يسجل صوتًا…",
+            "çevrimiçi", "yazıyor…", "ses kaydediyor…",
+            "mengetik…", "merekam audio…",
+            "dalam talian", "sedang menaip…", "merakam audio…",
+            "en ligne", "écrit…", "enregistre un audio…",
+            "آن لائن", "ٹائپ کر رہا ہے…", "آڈیو ریکارڈ کر رہا ہے…",
+        )
+        presenceTitles.forEach { status ->
+            assertEquals(
+                "presence title must not be captured: $status",
+                0,
+                NotificationCapturePolicy.capturesFor(
+                    snap(title = status, text = "username-only sender"),
+                    NotificationCapturePolicy.BurstTracker(),
+                ) { _, _ -> true }.size,
+            )
+        }
+    }
+
+    @Test
+    fun `newer timestamps do not requeue text already captured for the notification key`() {
+        // #1141 mutant: timestamp-only freshness returns both copies on the first post and the
+        // third copy on the update. Text dedupe must apply even when the platform supplies times.
+        val tracker = NotificationCapturePolicy.BurstTracker()
+        val first = tracker.newCaptures(
+            burst(times = listOf(1_000L, 2_000L), texts = listOf("same words", "same words")),
+        )
+        assertEquals(listOf("same words"), first.map { it.text })
+        val repost = tracker.newCaptures(
+            burst(times = listOf(1_000L, 2_000L, 3_000L), texts = listOf("same words", "same words", "same words")),
+        )
+        assertEquals(emptyList<String>(), repost.map { it.text })
+    }
+
+    @Test
+    fun `conversation title is the contact fallback when a message has no sender`() {
+        // #1140 mutant: skipping EXTRA_CONVERSATION_TITLE leaves the generic app title as contact.
+        val captures = NotificationCapturePolicy.BurstTracker().newCaptures(
+            snap(
+                title = "WhatsApp", conversationTitle = "Family group", text = "2 messages",
+                messages = listOf("first", "second"), messageTimesMs = listOf(1_000L, 2_000L),
+            ),
+        )
+        assertEquals(listOf("Family group", "Family group"), captures.map { it.contact })
+    }
+
+    @Test
+    fun `a real chat following a presence notice is captured once with its sender`() {
+        val tracker = NotificationCapturePolicy.BurstTracker()
+        assertEquals(
+            0,
+            NotificationCapturePolicy.capturesFor(
+                snap(key = "presence", title = "online", text = "username-only sender"),
+                tracker,
+            ) { _, _ -> true }.size,
+        )
+        val real = NotificationCapturePolicy.capturesFor(
+            snap(
+                key = "chat", category = Notification.CATEGORY_MESSAGE,
+                title = "WhatsApp", text = "new messages", messages = listOf("real words"),
+                messageSenders = listOf("username-only sender"), messageTimesMs = listOf(1_000L),
+            ),
+            tracker,
+        ) { _, _ -> true }
+        assertEquals(1, real.size)
+        assertEquals("username-only sender", real.single().contact)
+        assertEquals("real words", real.single().text)
+    }
+
+    @Test
+    fun `a non message category is not captured even when its text looks like a chat`() {
+        // #1140 mutant: removing the category guard lets a status notification with a person's
+        // name in EXTRA_TEXT become a concern even when its title is not a known presence word.
+        val captures = NotificationCapturePolicy.capturesFor(
+            snap(category = Notification.CATEGORY_STATUS, title = "account name", text = "real-looking words"),
+            NotificationCapturePolicy.BurstTracker(),
+        ) { _, _ -> true }
+        assertEquals(0, captures.size)
     }
 }

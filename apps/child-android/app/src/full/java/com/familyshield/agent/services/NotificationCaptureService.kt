@@ -147,17 +147,21 @@ class NotificationCaptureService : NotificationListenerService() {
             val n: Notification? = sbn.notification
             val extras: Bundle? = n?.extras
             val isSummary = n != null && (n.flags and Notification.FLAG_GROUP_SUMMARY) != 0
-            // Issue #1027: the burst decodes once, here, so the lines and their times cannot drift apart.
-            val entries = NotificationCapturePolicy.entriesOf(extras?.get(Notification.EXTRA_MESSAGES))
+            // Issue #1027: the burst decodes once, here, so lines, senders and times cannot drift apart.
+            val entries = NotificationCapturePolicy.entriesOf(extras?.getParcelableArray(Notification.EXTRA_MESSAGES))
             return NotificationCapturePolicy.Snapshot(
                 packageId = sbn.packageName.orEmpty(),
                 key = sbn.key.orEmpty(),
                 isGroupSummary = isSummary,
                 groupKey = n?.group,
+                category = n?.category,
+                channelId = n?.channelId,
+                conversationTitle = extras?.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString(),
                 title = extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString(),
                 text = extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString(),
                 bigText = extras?.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString(),
                 messages = entries.map { it.text?.toString() },
+                messageSenders = entries.map { it.sender?.toString() },
                 messageTimesMs = entries.map { it.atMs },
                 isRemoved = removed,
                 postedAtMs = sbn.postTime,
