@@ -33,10 +33,14 @@ void main() {
     expect(activeRingId(const []), isNull);
   });
 
-  test('a failed newer ring is not a target, and is not skipped over to an older settled one', () {
+  test('a failed newer ring does not displace the ring the device applied', () {
     final history = [command('ring-new', 'failed'), command('ring-old', 'acked')];
-    expect(activeRingId(history), isNull,
-        reason: 'nothing is live: a failed row is not ringing and an acked row has ended');
+    expect(activeRingId(history), 'ring-old',
+        reason: 'a failed row is not ringing, and the applied ring is still the one the child can finish');
+  });
+
+  test('a failed newer ring still loses to a live one behind it', () {
+    expect(activeRingId([command('ring-new', 'failed'), command('ring-old', 'delivered')]), 'ring-old');
   });
 
   test('an expired newer ring is skipped for the live one behind it', () {
