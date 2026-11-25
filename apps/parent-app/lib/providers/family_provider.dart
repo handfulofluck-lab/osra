@@ -500,12 +500,26 @@ final deviceCommandHistoryProvider = FutureProvider.family<List<DeviceCommand>, 
   ];
 });
 
-String? latestAppliedRingId(List<DeviceCommand> commands) =>
-    commands.where((command) => command.type == 'ring' && command.status == 'acked').firstOrNull?.id;
+/// The ring the parent's **Stop** must target: the newest ring command the device may still be ringing — `pending`
+/// (sent, not fetched yet) or `delivered` (fetched; its acknowledgement can be late).
+///
+/// This used to take the newest `acked` row, and that is the bug Codex found (#760 `7158872749`): `acked` means the
+/// device already settled that ring (`ackRingCommandOnReport`, `services/api/src/lib/deviceCommands.ts:78-88`), so a
+/// parent who pressed Stop while a newer ring was starting aimed at a ring that had ended. The id is only useful
+/// while the ring is live, and live is exactly `pending` or `delivered` — the same rule the server applies to its own
+/// ring rows (`:64`). A `failed` or `expired` row is not live, and no ring at all still gives null.
+String? activeRingId(List<DeviceCommand> commands) {
+  for (final command in commands) {
+    if (command.type == 'ring' && (command.status == 'pending' || command.status == 'delivered')) {
+      return command.id;
+    }
+  }
+  return null;
+}
 
 Future<String?> ringStopTarget(WidgetRef ref, String deviceId) async {
   try {
-    return latestAppliedRingId(await ref.read(deviceCommandHistoryProvider(deviceId).future));
+    return activeRingId(await ref.read(deviceCommandHistoryProvider(deviceId).future));
   } catch (_) {
     return null;
   }

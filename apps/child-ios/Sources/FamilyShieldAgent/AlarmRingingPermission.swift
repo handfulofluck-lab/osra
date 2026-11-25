@@ -79,7 +79,11 @@ public final class AlarmRingingAuthorizer: AlarmRingingAuthorizing {
     }
 }
 
-/// The section's state, mirroring `ScreenTimePermission`: the status and the last request's outcome.@MainActor
+/// The section's state, mirroring `ScreenTimePermission`: the status and the last request's outcome.
+/// The previous line had `@MainActor` glued to the end of this sentence, which made it part of the comment: the
+/// class was never isolated, so the published state could be written from the authorizer's async completion off the
+/// main actor (Codex, #760 `7158872749`).
+@MainActor
 public final class AlarmRingingPermission: ObservableObject {
     @Published public private(set) var status: AlarmRingingStatus
     @Published public private(set) var errorMessage: String?
