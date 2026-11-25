@@ -54,6 +54,17 @@ if [[ -z "$PROFILE_UUID" ]]; then
 fi
 echo "extension profile UUID: $PROFILE_UUID"
 
+# Manual signing still wants a team id, and it must never be committed (this repository is public), so it is read
+# out of the identity the caller already supplies — "Developer ID Application: Name (TEAMID)". Without it Xcode
+# fails before it reaches the profile, on a "Signing for ... requires a development team" error that names the
+# wrong thing.
+TEAM="${DEVELOPMENT_TEAM:-$(printf '%s' "$IDENTITY" | sed -n 's/.*(\([A-Z0-9]\{10\}\))$/\1/p')}"
+if [[ -z "$TEAM" ]]; then
+  echo "could not read a team id out of CODESIGN_IDENTITY; pass DEVELOPMENT_TEAM=XXXXXXXXXX" >&2
+  exit 2
+fi
+echo "team id: $TEAM"
+
 # Only the extension carries the Network Extension entitlement. The host is signed with the same identity
 # and has none, so it works without a profile; if Xcode insists on one, a plain Developer ID profile for
 # com.osratech.agent.host is enough and goes in OSRAMacHost_PROVISIONING_PROFILE_SPECIFIER.
@@ -65,16 +76,23 @@ xcodebuild \
   -derivedDataPath "$OUT" \
   CODE_SIGN_IDENTITY="$IDENTITY" \
   CODE_SIGN_STYLE=Manual \
+  DEVELOPMENT_TEAM="$TEAM" \
   OSRAMacHost_PROVISIONING_PROFILE_SPECIFIER="" \
   OSRAFilter_PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
   OSRAFilter_CODE_SIGN_ENTITLEMENTS="$PWD/FilterExtension/OSRAFilter.entitlements" \
   OTHER_CODE_SIGN_FLAGS="--timestamp --options runtime" \
   build
 
-HOST_APP="$(find "$OUT/Build/Products/Release" -maxdepth 1 -name 'OSRAMacHost.app' -print -quit)"
-EXTENSION="$(find "$HOST_APP/Contents/Library/SystemExtensions" -maxdepth 1 -name '*.systemextension' -print -quit)"
-if [[ -z "$HOST_APP" || -z "$EXTENSION" ]]; then
-  echo "the build did not produce a host app carrying a system extension" >&2
+# `set -e` would end the script on `find`'s own error message when there is no such directory, which reads as a
+# broken script rather than as a build that produced nothing. The two are asked separately for that reason.
+HOST_APP="$(find "$OUT/Build/Products/Release" -maxdepth 1 -name 'OSRAMacHost.app' -print -quit || true)"
+if [[ -z "$HOST_APP" ]]; then
+  echo "the build did not produce OSRAMacHost.app in $OUT/Build/Products/Release" >&2
+  exit 1
+fi
+EXTENSION="$(find "$HOST_APP/Contents/Library/SystemExtensions" -maxdepth 1 -name '*.systemextension' -print -quit || true)"
+if [[ -z "$EXTENSION" ]]; then
+  echo "the host app carries no system extension: xcodebuild embedded nothing to sign" >&2
   exit 1
 fi
 
