@@ -578,6 +578,92 @@ void main() {
     });
   });
 
+  group('Arabic wording approved in #604', () {
+    final ar = lookupAppLocalizations(const Locale('ar'));
+
+    test('appName stays OSRA', () {
+      expect(ar.appName, 'OSRA');
+    });
+
+    test('commandRefusedBackgroundLocation', () {
+      expect(
+        ar.commandRefusedBackgroundLocation('رن', 'Pixel 7'),
+        'لم يُرسل «رن» إلى Pixel 7: لم يمنح الهاتف إذن الموقع «السماح دائمًا»، لذا لا يمكن لطلب تحديد الموقع وتنبيهات النطاقات الجغرافية الوصول إليه. اطلب من طفلك فتح تطبيق أسرة للأطفال ومنح الإذن.',
+      );
+    });
+
+    test('commandRefusedLocationPermission', () {
+      expect(
+        ar.commandRefusedLocationPermission('رن', 'Pixel 7'),
+        'لم يُرسل «رن» إلى Pixel 7: لا يوجد إذن موقع على الهاتف. اطلب من طفلك فتح تطبيق أسرة للأطفال ومنح إذن الموقع.',
+      );
+    });
+
+    test('commandRefusedLockScreen', () {
+      expect(
+        ar.commandRefusedLockScreen,
+        'لا يمكن تثبيت القفل على هاتف طفلك: فعّل خدمة إمكانية الوصول لتطبيق أسرة للأطفال على ذلك الهاتف.',
+      );
+    });
+
+    test('commandRefusedWebFilterStart', () {
+      expect(
+        ar.commandRefusedWebFilterStart,
+        'تعذّر بدء إيقاف الإنترنت على هاتف طفلك. افتح تطبيق أسرة للأطفال على ذلك الهاتف وحاول مجددًا.',
+      );
+    });
+
+    test('commandRefusedWebFilter', () {
+      expect(ar.commandRefusedWebFilter, 'تصفية الويب غير مُعدّة على هاتف طفلك، لذا لم يتوقف الإنترنت.');
+    });
+
+    test('commandRefusedUnsupportedCommand', () {
+      expect(ar.commandRefusedUnsupportedCommand, 'يحتاج هذا الأمر إلى إصدار أحدث من تطبيق أسرة للأطفال على هاتف طفلك.');
+    });
+
+    test('scanQr', () {
+      expect(ar.scanQr, 'امسح رمز QR باستخدام تطبيق أسرة للأطفال على جهاز الطفل.');
+    });
+
+    test('pairClaimDataCleared', () {
+      expect(
+        ar.pairClaimDataCleared,
+        'مُسحت بيانات تطبيق أسرة للأطفال على هذا الهاتف، لذلك فقد حمايته. اسمح به فقط إذا كنت تتوقع ذلك.',
+      );
+    });
+
+    test('appearanceDesc', () {
+      expect(ar.appearanceDesc, 'يتبع هذا الجهاز إعدادات النظام. يُطبَّق الوضع الفاتح أو الداكن على تطبيق أسرة فقط.');
+    });
+
+    test('languageDesc', () {
+      expect(ar.languageDesc, 'يتبع هذا الجهاز إعدادات النظام. تُطبَّق اللغة الإنجليزية أو العربية على تطبيق أسرة فقط.');
+    });
+
+    test('onboardingWelcomeTitle', () {
+      expect(ar.onboardingWelcomeTitle, 'مرحبًا بك في تطبيق أسرة');
+    });
+
+    test('onboardingPairIntro', () {
+      expect(ar.onboardingPairIntro('Alex'), 'افتح تطبيق أسرة للأطفال على هاتف Alex واختر الإقران برمز.');
+    });
+
+    test('alertCallBypassNote', () {
+      expect(
+        ar.alertCallBypassNote,
+        'تم حظر تطبيق المكالمات، لكن المكالمة استمرت خلف شاشة الحظر. لا يستطيع تطبيق أسرة للأطفال إنهاء مكالمة تطبيق آخر، لذا تبقى الشاشة محظورة حتى تنتهي المكالمة.',
+      );
+    });
+
+    test('alertTitleDataCleared', () {
+      expect(ar.alertTitleDataCleared, 'مُسحت بيانات تطبيق أسرة للأطفال على أحد الهواتف');
+    });
+
+    test('phoneSetupOtherSpaceOther', () {
+      expect(ar.phoneSetupOtherSpaceOther, 'في هذا الهاتف مساحة أخرى، وقد لا يصل تطبيق أسرة للأطفال إلى التطبيقات داخلها.');
+    });
+  });
+
   /// Pure copy checks for the native-speaker review of the Arabic screen
   /// strings: the changed values, the plural period selectors, and the
   /// alert-title mapping that never falls back to the server's English.
