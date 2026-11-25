@@ -7,7 +7,6 @@ import 'package:intl/intl.dart';
 import '../../api/models.dart';
 import '../../api/permission_errors.dart';
 import '../../core/digits.dart';
-import '../../core/mutation_auth.dart';
 import '../../core/ltr_isolate.dart';
 import '../../widgets/error_retry_view.dart';
 import '../../l10n/l10n.dart';
@@ -1218,10 +1217,8 @@ class _AlertsTab extends ConsumerWidget {
             for (final a in page.items.take(10))
               AlertTile(alert: a, onAck: () async {
                 try {
-                  await ref.read(apiClientProvider).raw.post(
-                    '/v1/alerts/${a.id}/ack',
-                    options: Options(extra: {'authExempt': AuthExempt.acknowledgeFromNotification}),
-                  );
+                  // In-app tap, not a notification action: it prompts (Ahmed's #1121 review).
+                  await ref.read(apiClientProvider).raw.post('/v1/alerts/${a.id}/ack');
                   ref.read(alertsSeenProvider.notifier).markAcknowledged(a.id);
                   ref.invalidate(unacknowledgedAlertsProvider);
                   ref.invalidate(unacknowledgedCountProvider);

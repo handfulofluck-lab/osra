@@ -13,7 +13,6 @@ import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
 import '../../core/date_formatting.dart';
-import '../../core/mutation_auth.dart';
 import '../../core/digits.dart';
 import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
@@ -235,11 +234,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     // Optimistic removal; reinsert on failure.
     setState(() => _items.removeAt(index));
     try {
-      await ref.read(apiClientProvider).raw.post(
-        '/v1/alerts/${alert.id}/ack',
-        // #742: the parent already chose to acknowledge it from the notification action.
-        options: Options(extra: {'authExempt': AuthExempt.acknowledgeFromNotification}),
-      );
+      // Ahmed's #1121 review: this is an in-app tap, not a notification action, so it asks the owner like any
+      // other mutation. A child holding an unlocked parent phone must not be able to acknowledge away a tamper
+      // or SOS alert by tapping the list.
+      await ref.read(apiClientProvider).raw.post('/v1/alerts/${alert.id}/ack');
       ref.read(alertsSeenProvider.notifier).markAcknowledged(alert.id);
       ref.invalidate(unacknowledgedAlertsProvider);
       ref.invalidate(unacknowledgedCountProvider);
