@@ -1,6 +1,7 @@
 import 'package:familyshield_parent/features/alerts/alerts_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -19,19 +20,30 @@ void main() {
         'metadata': <String, dynamic>{'type': 'block_bypass', 'app': 'com.example.meet', 'layout': layout},
       };
 
-  Future<void> openAlert(WidgetTester tester, Map<String, dynamic> alert) async {
+  Future<void> openAlert(
+    WidgetTester tester,
+    Map<String, dynamic> alert, {
+    Locale locale = const Locale('en'),
+  }) async {
     final api = FakeApiClient(standardRoutes(alerts: [alert]));
     await tester.pumpWidget(ProviderScope(
       overrides: [apiClientProvider.overrideWithValue(api)],
-      child: localizedTestApp(const AlertsScreen()),
+      child: localizedTestApp(
+        const AlertsScreen(),
+        locale: locale,
+        textDirection: locale.languageCode == 'ar' ? TextDirection.rtl : null,
+      ),
     ));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('An app got around the block'));
+    final title = locale.languageCode == 'ar' ? 'أحد التطبيقات تجاوز الحظر' : 'An app got around the block';
+    await tester.tap(find.text(title));
     await tester.pumpAndSettle();
   }
 
   const note = "The call app was blocked, but its call kept going under the block screen. "
       "OSRA can't end another app's call, so the screen stays blocked until the call ends.";
+  const arabicNote =
+      'تم حظر تطبيق المكالمات، لكن المكالمة استمرت خلف شاشة الحظر. لا يستطيع تطبيق أسرة للأطفال إنهاء مكالمة تطبيق آخر، لذا تبقى الشاشة محظورة حتى تنتهي المكالمة.';
 
   testWidgets('a call bypass alert says the call kept going', (tester) async {
     await openAlert(tester, tamperAlert(layout: 'call'));
@@ -43,5 +55,24 @@ void main() {
     await openAlert(tester, tamperAlert(layout: 'split_screen'));
     expect(find.byKey(const ValueKey('alert-call-bypass-note')), findsNothing);
     expect(find.textContaining('its call kept going'), findsNothing);
+  });
+
+  testWidgets('Arabic call bypass note is whole at 320x568 and 200% text scale', (tester) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1.0;
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+      tester.platformDispatcher.clearTextScaleFactorTestValue();
+    });
+
+    await openAlert(tester, tamperAlert(layout: 'call'), locale: const Locale('ar'));
+
+    final noteFinder = find.byKey(const ValueKey('alert-call-bypass-note'));
+    expect(noteFinder, findsOneWidget);
+    expect(find.text(arabicNote), findsOneWidget);
+    expect(tester.renderObject<RenderParagraph>(noteFinder).didExceedMaxLines, isFalse);
+    expect(tester.takeException(), isNull, reason: 'the Arabic dialog must not overflow at 320 px / 200%');
   });
 }

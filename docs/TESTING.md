@@ -33,6 +33,29 @@ variable at a dedicated `osra_test_*` database on loopback, with trust-only loca
 with passwords, runs the real migrations, seed and cleanup, and leaves an empty schema. Never point it
 at a shared, staging or production database.
 
+`test/social-feedback-db.test.ts` is a second, independently destructive integration suite for #1065. It
+requires the exact loopback database name `osra_feedback_1065`; CI creates that database in `api.yml` and
+sets `OSRA_FEEDBACK_DATABASE_URL`. For a local run, create that dedicated database once, then run:
+
+```bash
+createdb -h 127.0.0.1 -U postgres osra_feedback_1065   # once; skip when it already exists
+OSRA_FEEDBACK_DATABASE_URL=postgres://postgres@127.0.0.1:5432/osra_feedback_1065 \
+OSRA_REQUIRE_DATABASE_TESTS=1 \
+pnpm --filter @familyshield/api test -- test/social-feedback-db.test.ts
+```
+
+**Every run drops and recreates the `public` schema in `osra_feedback_1065`.** The suite installs migrations
+through 0042, inserts valid, consent-revoked and orphaned `SocialEvent` rows, and upgrades to 0043. It checks
+that only the already-orphaned row is deleted, no `SocialEventOrphan` table exists, and valid and
+consent-revoked events survive. The migration's NOTICE is count-only; Prisma's CLI suppresses PostgreSQL
+NOTICEs, so the suite verifies zero remaining orphans and also checks that deploy output has no ids or message
+text. The suite also races different first verdicts and verifies both event and child deletion cascade to
+votes, then removes its test rows. Never substitute another database name, a remote host, or a
+shared/staging/production URL. Without the variable the file skips locally; with
+`OSRA_REQUIRE_DATABASE_TESTS=1`, a missing variable is deliberately an error so CI cannot skip it.
+Production application of 0043 belongs only in the approved post-snapshot apply window, documented in the
+PR; this local procedure performs no AWS operation.
+
 A green unit suite is **not** evidence that an invariant holds — that is what the probe is for. A green
 probe is **not** evidence that a feature works on a phone — that is what hardware verification is for.
 

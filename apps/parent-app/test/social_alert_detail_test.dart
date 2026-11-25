@@ -17,6 +17,7 @@ import 'package:familyshield_parent/push/notification_tap.dart';
 import 'package:familyshield_parent/theme/app_theme.dart';
 
 import 'fake_api_client.dart';
+import 'frame_capture.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -26,6 +27,7 @@ void main() {
 
   setUpAll(() async {
     await configureDateFormatting();
+    await loadFrameFonts();
   });
 
   setUp(() {
@@ -39,6 +41,7 @@ void main() {
     String category = 'social_concern',
     String app = 'whatsapp',
     List<String> concernTypes = const ['cyberbullying'],
+    String? sourceEventId,
   }) =>
       Alert(
         id: id,
@@ -52,6 +55,7 @@ void main() {
           'app': app,
           'contact': 'Test Group',
           'concernTypes': concernTypes,
+          if (sourceEventId != null) 'latestSourceEventId': sourceEventId,
         },
         createdAt: alertTime,
       );
@@ -112,9 +116,11 @@ void main() {
     String lang = 'en',
     bool dark = false,
     double textScale = 1.0,
+    double width = 390,
+    bool frameBoundary = false,
     List<String>? navigatedTo,
   }) async {
-    tester.view.physicalSize = const Size(390, 844);
+    tester.view.physicalSize = Size(width, 844);
     tester.view.devicePixelRatio = 1.0;
     tester.platformDispatcher.textScaleFactorTestValue = textScale;
     addTearDown(() {
@@ -160,15 +166,56 @@ void main() {
         locale: Locale(lang),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        theme: AppTheme.light,
-        darkTheme: AppTheme.dark,
+        theme: withFrameFonts(AppTheme.light),
+        darkTheme: withFrameFonts(AppTheme.dark),
         themeMode: dark ? ThemeMode.dark : ThemeMode.light,
+        builder: frameBoundary
+            ? (context, child) => RepaintBoundary(
+                  key: const ValueKey('frameRoot'),
+                  child: child!,
+                )
+            : null,
       ),
     ));
     await tester.pumpAndSettle();
   }
 
   group('AlertDetailScreen (#972)', () {
+    test(
+        'message vote eligibility is limited to AI message categories with a source id',
+        () {
+      Alert alertFor(String category, {String? sourceId}) => Alert(
+            id: 'alert-1',
+            childId: 'child-1',
+            category: category,
+            severity: 'warning',
+            title: 'Alert',
+            body: '',
+            metadata: {
+              if (sourceId != null) 'latestSourceEventId': sourceId,
+            },
+            createdAt: alertTime,
+          );
+
+      for (final category in const [
+        'social_concern',
+        'gaming_chat',
+        'ai_concern',
+        'cyberbullying',
+        'self_harm',
+        'grooming',
+      ]) {
+        expect(
+            socialVoteEventId(alertFor(category, sourceId: 'evt-1')), 'evt-1');
+      }
+      for (final category in const ['sos', 'geofence', 'app_blocked']) {
+        expect(
+            socialVoteEventId(alertFor(category, sourceId: 'evt-1')), isNull);
+      }
+      expect(socialVoteEventId(alertFor('self_harm')), isNull);
+      expect(socialVoteEventId(alertFor('self_harm', sourceId: ' ')), isNull);
+    });
+
     testWidgets(
         'shows localized hierarchy, never leaks vault excerpt, and opens Social activity',
         (tester) async {
@@ -201,6 +248,112 @@ void main() {
       await tester.pumpAndSettle();
       expect(visited, contains('/child/child-1/social'));
       expect(find.text('SOCIAL_SCREEN:child-1'), findsOneWidget);
+    });
+
+    testWidgets(
+        'latestSourceEventId wires the social detail vote to that event',
+        (tester) async {
+      // Mutant: voting by alert id, or hiding controls when this metadata is
+      // present, either 404s or leaves an AI-flagged message without feedback.
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/social/events': (_) => {
+              'items': [
+                {
+                  'id': 'evt-1',
+                  'childId': 'child-1',
+                  'app': 'whatsapp',
+                  'contact': 'Test Group',
+                  'severity': 'warning',
+                  'concernTypes': ['cyberbullying'],
+                  'preview': 'Synthetic vault excerpt',
+                  'createdAt': alertTime.toUtc().toIso8601String(),
+                },
+              ],
+            },
+        'POST /v1/social/events/evt-1/feedback': (request) => {
+              'feedback': {
+                'verdict': request.body['verdict'],
+                'parentDisplayName': 'QA Parent',
+                'firstVotedAt': '2026-11-24T10:01:00.000Z',
+                'lastChangedAt': '2026-11-24T10:01:00.000Z',
+              },
+            },
+        'DELETE /v1/social/events/evt-1/feedback': (_) => {'feedback': null},
+      });
+      await pumpDetail(
+        tester,
+        api: api,
+        initialAlert: sampleSocialAlert(sourceEventId: 'evt-1'),
+      );
+
+      expect(find.text('Was OSRA right to flag this?'), findsOneWidget);
+      await tester.tap(find.text('Concerning'));
+      await tester.pumpAndSettle();
+      expect(api.calls('POST', '/v1/social/events/evt-1/feedback').single.body,
+          {'verdict': 'concerning'});
+      expect(api.calls('POST', '/v1/social/events/alert-social-1/feedback'),
+          isEmpty);
+      await tester.pump(const Duration(seconds: 5));
+    });
+
+    for (final category in const ['self_harm', 'grooming']) {
+      testWidgets(
+          '$category detail offers the same source-event vote without extra warnings',
+          (tester) async {
+        // Mutant: limiting controls to social_concern/gaming_chat leaves these
+        // AI-flagged message categories out, contrary to the Bureau design.
+        await pumpDetail(
+          tester,
+          api: apiWith(),
+          initialAlert: Alert(
+            id: 'alert-$category-1',
+            childId: 'child-1',
+            category: category,
+            severity: 'critical',
+            title: 'AI concern',
+            body: '',
+            metadata: const {'latestSourceEventId': 'evt-1'},
+            createdAt: alertTime,
+          ),
+        );
+
+        expect(find.byKey(const ValueKey('alertDetailGeneralScroll')),
+            findsOneWidget);
+        expect(find.text('Was OSRA right to flag this?'), findsOneWidget);
+        expect(find.text('Not concerning'), findsOneWidget);
+      });
+    }
+
+    testWidgets('general AI detail hides votes when its source preview expired',
+        (tester) async {
+      await pumpDetail(
+        tester,
+        api: apiWith(socialEvents: const <Map<String, dynamic>>[]),
+        initialAlert: Alert(
+          id: 'alert-self-harm-expired',
+          childId: 'child-1',
+          category: 'self_harm',
+          severity: 'critical',
+          title: 'AI concern',
+          body: '',
+          metadata: const {'latestSourceEventId': 'evt-1'},
+          createdAt: alertTime,
+        ),
+      );
+
+      expect(find.byKey(const ValueKey('alertDetailGeneralScroll')),
+          findsOneWidget);
+      expect(find.text('Was OSRA right to flag this?'), findsNothing);
+    });
+
+    testWidgets(
+        'a social alert without latestSourceEventId does not offer a vote',
+        (tester) async {
+      await pumpDetail(tester,
+          api: apiWith(), initialAlert: sampleSocialAlert());
+
+      expect(find.text('Was OSRA right to flag this?'), findsNothing);
     });
 
     testWidgets('shows gaming chat title for gaming_chat alerts',
@@ -249,13 +402,14 @@ void main() {
       await pumpDetail(
         tester,
         api: apiWith(socialEvents: forbidden),
-        initialAlert: sampleSocialAlert(),
+        initialAlert: sampleSocialAlert(sourceEventId: 'evt-1'),
       );
 
       expect(find.byKey(const ValueKey('alertDetailPreviewNoPerm')),
           findsOneWidget);
       expect(find.text('Preview unavailable for your account'), findsOneWidget);
       expect(find.byKey(const ValueKey('alertDetailOpenSocial')), findsNothing);
+      expect(find.text('Was OSRA right to flag this?'), findsNothing);
       expect(find.text('How to talk about this'), findsOneWidget);
     });
 
@@ -265,13 +419,14 @@ void main() {
       await pumpDetail(
         tester,
         api: apiWith(socialEvents: const <Map<String, dynamic>>[]),
-        initialAlert: sampleSocialAlert(),
+        initialAlert: sampleSocialAlert(sourceEventId: 'evt-1'),
       );
 
       expect(find.byKey(const ValueKey('alertDetailPreviewExpired')),
           findsOneWidget);
       expect(find.text('Preview no longer available'), findsOneWidget);
       expect(find.byKey(const ValueKey('alertDetailOpenSocial')), findsNothing);
+      expect(find.text('Was OSRA right to flag this?'), findsNothing);
       expect(find.text('How to talk about this'), findsOneWidget);
     });
 
@@ -562,6 +717,7 @@ void main() {
                     'lng': 55.2708,
                     'accuracyM': 12.0,
                     'capturedAt': alertTime.toUtc().toIso8601String(),
+                    'latestSourceEventId': 'evt-1',
                   },
                   'createdAt': alertTime.toUtc().toIso8601String(),
                 },
@@ -578,6 +734,30 @@ void main() {
           findsOneWidget);
       expect(find.textContaining('Raw English SOS body'), findsNothing);
       expect(find.byKey(const ValueKey('alertDetailOpenSocial')), findsNothing);
+      expect(find.text('Was OSRA right to flag this?'), findsNothing);
+    });
+
+    testWidgets(
+        'location alerts never offer message votes even with source metadata',
+        (tester) async {
+      await pumpDetail(
+        tester,
+        api: FakeApiClient(standardRoutes()),
+        initialAlert: Alert(
+          id: 'alert-geofence-1',
+          childId: 'child-1',
+          category: 'geofence',
+          severity: 'info',
+          title: 'Location update',
+          body: 'Arrived at school',
+          metadata: const {'latestSourceEventId': 'evt-1'},
+          createdAt: alertTime,
+        ),
+      );
+
+      expect(find.byKey(const ValueKey('alertDetailGeneralScroll')),
+          findsOneWidget);
+      expect(find.text('Was OSRA right to flag this?'), findsNothing);
     });
 
     testWidgets(
@@ -650,6 +830,78 @@ void main() {
       expect(
           find.byKey(const ValueKey('alertDetailUnavailable')), findsNothing);
     });
+  });
+
+  group('Bureau vote frames (writes only with OSRA_FRAME_DIR)', () {
+    Map<String, dynamic> feedback(String verdict, String name) => {
+          'verdict': verdict,
+          'parentDisplayName': name,
+          'firstVotedAt': '2026-11-24T10:01:00.000Z',
+          'lastChangedAt': '2026-11-24T10:02:00.000Z',
+        };
+
+    Map<String, dynamic> frameEvent(String state) {
+      final selected = state == 'concerning' || state == 'not_concerning';
+      return {
+        'id': 'evt-1',
+        'childId': 'child-1',
+        'app': 'whatsapp',
+        'contact': 'Test Group',
+        'severity': 'warning',
+        'concernTypes': ['cyberbullying'],
+        'preview': 'Synthetic vault excerpt only shown in Social activity',
+        'createdAt': alertTime.toUtc().toIso8601String(),
+        'latestFeedback': switch (state) {
+          'unset' => null,
+          'cleared' => feedback('concerning', 'Lina'),
+          _ => feedback(state, 'QA Parent'),
+        },
+        'ownFeedback': selected ? feedback(state, 'QA Parent') : null,
+      };
+    }
+
+    for (final lang in const ['en', 'ar']) {
+      for (final narrow in [false, true]) {
+        for (final dark in [false, true]) {
+          testWidgets(
+              'Alert detail $lang ${narrow ? '320-200' : '390'} ${dark ? 'dark' : 'light'}',
+              (tester) async {
+            for (final state in const [
+              'unset',
+              'concerning',
+              'not_concerning',
+              'cleared',
+            ]) {
+              await pumpDetail(
+                tester,
+                api: apiWith(socialEvents: [frameEvent(state)]),
+                initialAlert: sampleSocialAlert(sourceEventId: 'evt-1'),
+                lang: lang,
+                dark: dark,
+                width: narrow ? 320 : 390,
+                textScale: narrow ? 2 : 1,
+                frameBoundary: true,
+              );
+              final help = find.text(lang == 'ar'
+                  ? 'إجابتك تساعد تطبيق أسرة للأطفال على فحص الرسائل بدقة أكبر.'
+                  : 'Your answer helps OSRA check messages better.');
+              await tester.scrollUntilVisible(
+                help,
+                150,
+                scrollable: find.byType(Scrollable).first,
+              );
+              await tester.pumpAndSettle();
+              expect(tester.takeException(), isNull);
+              await maybeCaptureFrame(
+                tester,
+                'alert-detail-vote-$state-$lang-${dark ? 'dark' : 'light'}-${narrow ? '320-200' : '390'}.png',
+              );
+              await tester.pumpWidget(const SizedBox());
+            }
+          });
+        }
+      }
+    }
   });
 
   group('NotificationTapController (#972 cold-start & warm-start auth gate)',

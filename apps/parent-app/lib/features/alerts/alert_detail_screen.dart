@@ -24,6 +24,7 @@ import '../map/family_map_screen.dart'
 import '../rules/app_picker.dart' show AppIconBadge;
 import '../rules/rules_behind_banner.dart';
 import '../social/social_screen.dart' show socialAppIcon, socialAppLabel;
+import '../social/social_vote_controls.dart';
 import 'access_request_actions.dart';
 import 'app_alert_presentation.dart';
 import 'sos_alert_actions.dart';
@@ -55,6 +56,21 @@ String formatGeneralAlertBody(
 /// Whether [category] uses the dedicated #972 full-screen social alert detail route.
 bool isSocialAlertCategory(String category) =>
     category == 'social_concern' || category == 'gaming_chat';
+
+String? socialVoteEventId(Alert alert) {
+  const eligibleCategories = {
+    'social_concern',
+    'gaming_chat',
+    'ai_concern',
+    'cyberbullying',
+    'self_harm',
+    'grooming',
+  };
+  if (!eligibleCategories.contains(alert.category)) return null;
+  final eventId =
+      alert.metadata['latestSourceEventId']?.toString().trim() ?? '';
+  return eventId.isEmpty ? null : eventId;
+}
 
 /// Availability of the encrypted Social activity preview for a social alert.
 enum SocialPreviewAvailability {
@@ -395,6 +411,7 @@ class _SocialAlertDetailBodyState
 
     final eventsAsync = ref.watch(socialEventsProvider(alert.childId));
     final availability = resolveSocialPreviewAvailability(alert, eventsAsync);
+    final latestSourceEventId = socialVoteEventId(alert);
     final coachCard = coachCardFor(alert.category, concernTypes);
 
     return ListView(
@@ -525,6 +542,12 @@ class _SocialAlertDetailBodyState
           )
         else
           _PreviewUnavailableCard(availability: availability),
+        if (latestSourceEventId != null &&
+            availability != SocialPreviewAvailability.noPermission &&
+            availability != SocialPreviewAvailability.expired) ...[
+          const SizedBox(height: AppSpace.lg),
+          SocialVoteControls(eventId: latestSourceEventId),
+        ],
         const SizedBox(height: AppSpace.lg),
         const Divider(),
         // 4. Conversation guide.
@@ -772,6 +795,13 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
             localeName: context.localeName,
             now: nowProvider?.call(),
           );
+    final voteEventId = socialVoteEventId(alert);
+    final voteEventsAsync = voteEventId == null
+        ? null
+        : ref.watch(socialEventsProvider(alert.childId));
+    final voteAvailability = voteEventsAsync == null
+        ? null
+        : resolveSocialPreviewAvailability(alert, voteEventsAsync);
 
     return ListView(
       key: const ValueKey('alertDetailGeneralScroll'),
@@ -912,6 +942,12 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
             style: theme.textTheme.bodyMedium
                 ?.copyWith(color: theme.colorScheme.error),
           ),
+          const SizedBox(height: AppSpace.lg),
+        ],
+        if (voteEventId != null &&
+            voteAvailability != SocialPreviewAvailability.noPermission &&
+            voteAvailability != SocialPreviewAvailability.expired) ...[
+          SocialVoteControls(eventId: voteEventId),
           const SizedBox(height: AppSpace.lg),
         ],
         const Divider(),

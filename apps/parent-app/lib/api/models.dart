@@ -903,6 +903,13 @@ class SocialConcernEvent {
   final String preview;
   final List<String> concernTypes;
   final DateTime? createdAt;
+  final String? latestFeedbackVerdict;
+  final String? latestFeedbackParentDisplayName;
+  final DateTime? latestFeedbackFirstVotedAt;
+  final DateTime? latestFeedbackLastChangedAt;
+  final String? ownFeedbackVerdict;
+  final DateTime? ownFeedbackFirstVotedAt;
+  final DateTime? ownFeedbackLastChangedAt;
 
   const SocialConcernEvent({
     required this.id,
@@ -912,18 +919,44 @@ class SocialConcernEvent {
     required this.preview,
     this.concernTypes = const [],
     this.createdAt,
+    this.latestFeedbackVerdict,
+    this.latestFeedbackParentDisplayName,
+    this.latestFeedbackFirstVotedAt,
+    this.latestFeedbackLastChangedAt,
+    this.ownFeedbackVerdict,
+    this.ownFeedbackFirstVotedAt,
+    this.ownFeedbackLastChangedAt,
   });
 
-  factory SocialConcernEvent.fromJson(Map<String, dynamic> json) =>
-      SocialConcernEvent(
-        id: _str(json['id']),
-        app: _str(json['app']),
-        contact: _str(json['contact']),
-        severity: _str(json['severity'], 'info'),
-        preview: _str(json['preview']),
-        concernTypes: _strList(json['concernTypes']),
-        createdAt: DateTime.tryParse(_str(json['createdAt'])),
-      );
+  factory SocialConcernEvent.fromJson(Map<String, dynamic> json) {
+    final latestFeedback = json['latestFeedback'];
+    final feedback =
+        latestFeedback is Map ? latestFeedback : const <String, dynamic>{};
+    final verdict = _str(feedback['verdict']);
+    final parentDisplayName = _str(feedback['parentDisplayName']);
+    final ownFeedback = json['ownFeedback'];
+    final own = ownFeedback is Map ? ownFeedback : const <String, dynamic>{};
+    final ownVerdict = _str(own['verdict']);
+    return SocialConcernEvent(
+      id: _str(json['id']),
+      app: _str(json['app']),
+      contact: _str(json['contact']),
+      severity: _str(json['severity'], 'info'),
+      preview: _str(json['preview']),
+      concernTypes: _strList(json['concernTypes']),
+      createdAt: DateTime.tryParse(_str(json['createdAt'])),
+      latestFeedbackVerdict: verdict.isEmpty ? null : verdict,
+      latestFeedbackParentDisplayName:
+          parentDisplayName.isEmpty ? null : parentDisplayName,
+      latestFeedbackFirstVotedAt:
+          DateTime.tryParse(_str(feedback['firstVotedAt'])),
+      latestFeedbackLastChangedAt:
+          DateTime.tryParse(_str(feedback['lastChangedAt'])),
+      ownFeedbackVerdict: ownVerdict.isEmpty ? null : ownVerdict,
+      ownFeedbackFirstVotedAt: DateTime.tryParse(_str(own['firstVotedAt'])),
+      ownFeedbackLastChangedAt: DateTime.tryParse(_str(own['lastChangedAt'])),
+    );
+  }
 }
 
 /// A flagged search query event (Track 1 & 2 content monitoring).
