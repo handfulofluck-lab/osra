@@ -3754,9 +3754,6 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get ownerPresenceTitle => 'Confirm it\'s you';
-
-  @override
   String get ownerPresenceBody =>
       'Unlock to save changes to your family\'s settings.';
 
@@ -3770,9 +3767,6 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get ownerPresenceNoLockBody =>
       'To keep your family\'s settings safe, OSRA only saves changes after you unlock this phone. Add a PIN, pattern, fingerprint or face unlock in Settings, then come back.';
-
-  @override
-  String get ownerPresenceOpenSettings => 'Open Settings';
 
   @override
   String get ownerPresenceSignOut => 'Sign out';

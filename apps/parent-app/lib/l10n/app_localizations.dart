@@ -5757,12 +5757,6 @@ abstract class AppLocalizations {
   /// **'+{count} new'**
   String socialAlertNewSince(int count);
 
-  /// Issue #742: title of the phone-owner confirmation before a change is saved.
-  ///
-  /// In en, this message translates to:
-  /// **'Confirm it\'s you'**
-  String get ownerPresenceTitle;
-
   /// Issue #742: reason shown inside the system lock/biometric prompt. One short line.
   ///
   /// In en, this message translates to:
@@ -5786,12 +5780,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'To keep your family\'s settings safe, OSRA only saves changes after you unlock this phone. Add a PIN, pattern, fingerprint or face unlock in Settings, then come back.'**
   String get ownerPresenceNoLockBody;
-
-  /// Issue #742: refusal screen main button; opens the phone's security settings.
-  ///
-  /// In en, this message translates to:
-  /// **'Open Settings'**
-  String get ownerPresenceOpenSettings;
 
   /// Issue #742: refusal screen secondary action; the only action that works without a lock.
   ///

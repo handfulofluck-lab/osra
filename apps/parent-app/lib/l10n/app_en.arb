@@ -1912,8 +1912,6 @@
   "@socialAlertMorePush": { "placeholders": { "count": { "type": "int" }, "child": { "type": "String" }, "app": { "type": "String" } } },
   "socialAlertNewSince": "+{count} new",
   "@socialAlertNewSince": { "placeholders": { "count": { "type": "int" } } },
-  "ownerPresenceTitle": "Confirm it's you",
-  "@ownerPresenceTitle": { "description": "Issue #742: title of the phone-owner confirmation before a change is saved." },
   "ownerPresenceBody": "Unlock to save changes to your family's settings.",
   "@ownerPresenceBody": { "description": "Issue #742: reason shown inside the system lock/biometric prompt. One short line." },
   "ownerPresenceCancelled": "Nothing was changed. Confirm it's you to save.",
@@ -1922,8 +1920,6 @@
   "@ownerPresenceNoLockTitle": { "description": "Issue #742: refusal screen title when the phone has no biometric and no screen lock." },
   "ownerPresenceNoLockBody": "To keep your family's settings safe, OSRA only saves changes after you unlock this phone. Add a PIN, pattern, fingerprint or face unlock in Settings, then come back.",
   "@ownerPresenceNoLockBody": { "description": "Issue #742: refusal screen body. Never mentions the app's own PIN." },
-  "ownerPresenceOpenSettings": "Open Settings",
-  "@ownerPresenceOpenSettings": { "description": "Issue #742: refusal screen main button; opens the phone's security settings." },
   "ownerPresenceSignOut": "Sign out",
   "@ownerPresenceSignOut": { "description": "Issue #742: refusal screen secondary action; the only action that works without a lock." }
 }
