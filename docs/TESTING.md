@@ -131,6 +131,13 @@ Disabling direction-mark removal on blocked domains must turn its dedicated row 
 validation row is in `services/api/test/reports.test.ts`: a digest recipient containing RLM gets 400 and
 no preferences write. These are network-free widget tests and an injected API test, not a phone run.
 
+For alert-to-concern navigation (#1140), run `flutter test test/social_alert_detail_test.dart
+test/social_screen_test.dart` from `apps/parent-app`. The regression gives the same app
+two flagged events, uses the older one as the alert's origin, and verifies that only
+its preview opens. Also verify that a missing exact preview never substitutes another
+event from the same app. On a signed parent build, confirm this flow in Social activity
+and verify that the system notification still shows the generic alert.
+
 ## 2. Prerequisites (dev machine)
 
 | Need | Where it lives here |

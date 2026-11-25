@@ -10,6 +10,7 @@ import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/core/date_formatting.dart';
 import 'package:familyshield_parent/features/alerts/alert_detail_screen.dart';
 import 'package:familyshield_parent/features/alerts/alerts_screen.dart';
+import 'package:familyshield_parent/features/social/social_screen.dart';
 import 'package:familyshield_parent/l10n/l10n.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/providers/onboarding_provider.dart';
@@ -42,6 +43,7 @@ void main() {
     String app = 'whatsapp',
     List<String> concernTypes = const ['cyberbullying'],
     String? sourceEventId,
+    String? primaryEventId,
   }) =>
       Alert(
         id: id,
@@ -56,6 +58,7 @@ void main() {
           'contact': 'Test Group',
           'concernTypes': concernTypes,
           if (sourceEventId != null) 'latestSourceEventId': sourceEventId,
+          if (primaryEventId != null) 'primarySocialEventId': primaryEventId,
         },
         createdAt: alertTime,
       );
@@ -119,6 +122,7 @@ void main() {
     double width = 390,
     bool frameBoundary = false,
     List<String>? navigatedTo,
+    bool renderSocial = false,
   }) async {
     tester.view.physicalSize = Size(width, 844);
     tester.view.devicePixelRatio = 1.0;
@@ -151,7 +155,13 @@ void main() {
           path: '/child/:id/social',
           builder: (_, s) {
             final path = '/child/${s.pathParameters['id']}/social';
-            navigatedTo?.add(path);
+            navigatedTo?.add(renderSocial ? s.uri.toString() : path);
+            if (renderSocial) {
+              return SocialScreen(
+                childId: s.pathParameters['id']!,
+                concernId: s.uri.queryParameters['concernId'],
+              );
+            }
             return Scaffold(
                 body: Text('SOCIAL_SCREEN:${s.pathParameters['id']}'));
           },
@@ -243,11 +253,93 @@ void main() {
       // Conversation guide is present.
       expect(find.text('How to talk about this'), findsOneWidget);
 
-      // Tapping Open Social activity reaches the existing authorized Social surface.
+      expect(find.text('Preview no longer available'), findsOneWidget);
+
+      // A legacy alert opens the general Social surface with no selected event.
       await tester.tap(find.byKey(const ValueKey('alertDetailOpenSocial')));
       await tester.pumpAndSettle();
       expect(visited, contains('/child/child-1/social'));
       expect(find.text('SOCIAL_SCREEN:child-1'), findsOneWidget);
+    });
+
+    testWidgets(
+        'opens the originating concern even when a newer one shares the app',
+        (tester) async {
+      Map<String, dynamic> concern(String id, String contact, String preview) =>
+          {
+            'id': id,
+            'app': 'whatsapp',
+            'contact': contact,
+            'severity': 'warning',
+            'concernTypes': ['cyberbullying'],
+            'preview': preview,
+          };
+      final original =
+          concern('evt-original', 'Original sender', 'Original excerpt');
+      final newer = concern('evt-newer', 'Newer sender', 'Newer excerpt');
+      final exactRequests = <String>[];
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/social/events': (request) {
+          final eventId = request.query['eventId'];
+          if (eventId == null)
+            return {
+              'items': [newer, original]
+            };
+          exactRequests.add(eventId.toString());
+          return {
+            'items': [original, newer]
+                .where((event) => event['id'] == eventId)
+                .toList()
+          };
+        },
+      });
+      final visited = <String>[];
+      await pumpDetail(
+        tester,
+        api: api,
+        initialAlert: sampleSocialAlert(
+          primaryEventId: 'evt-original',
+          sourceEventId: 'evt-newer',
+        ),
+        navigatedTo: visited,
+        renderSocial: true,
+      );
+      expect(find.text('Original excerpt'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('alertDetailOpenSocial')));
+      await tester.pumpAndSettle();
+
+      expect(visited, contains('/child/child-1/social?concernId=evt-original'));
+      expect(exactRequests, isNotEmpty);
+      expect(exactRequests, everyElement('evt-original'));
+      expect(find.text('Original excerpt'), findsOneWidget);
+      expect(find.text('Newer sender'), findsOneWidget);
+      expect(find.text('Newer excerpt'), findsNothing);
+    });
+
+    testWidgets(
+        'a missing exact preview never substitutes another WhatsApp event',
+        (tester) async {
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/social/events': (request) => {
+              'items': [
+                {
+                  'id': 'evt-other',
+                  'app': 'whatsapp',
+                  'preview': 'Unrelated excerpt',
+                },
+              ],
+            },
+      });
+      await pumpDetail(
+        tester,
+        api: api,
+        initialAlert: sampleSocialAlert(primaryEventId: 'evt-missing'),
+      );
+      expect(find.text('Preview no longer available'), findsOneWidget);
+      expect(find.byKey(const ValueKey('alertDetailOpenSocial')), findsNothing);
+      expect(find.text('Unrelated excerpt'), findsNothing);
     });
 
     testWidgets(

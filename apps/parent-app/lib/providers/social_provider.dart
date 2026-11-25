@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/models.dart';
@@ -18,20 +19,38 @@ List<T> _itemsOf<T>(dynamic data, T Function(Map<String, dynamic>) fromJson) {
 /// (`GET /v1/social/events?childId&limit=`, features #2/#24).
 final socialEventsProvider =
     FutureProvider.family<List<SocialConcernEvent>, String>(
-        (ref, childId) async {
+        (ref, childId) => _fetchSocialEvents(ref, childId));
+
+/// The alert's exact preview, under the same child and Social read permissions.
+final socialConcernProvider = FutureProvider.autoDispose
+    .family<List<SocialConcernEvent>, ({String childId, String eventId})>(
+        (ref, target) =>
+            _fetchSocialEvents(ref, target.childId, eventId: target.eventId));
+
+Future<List<SocialConcernEvent>> _fetchSocialEvents(Ref ref, String childId,
+    {String? eventId}) async {
   final api = ref.watch(apiClientProvider);
+  final cancelToken = CancelToken();
+  ref.onDispose(cancelToken.cancel);
   final startedRevisions =
       ref.read(socialVoteRevisionRegistryProvider).snapshot();
-  final res = await api.raw.get('/v1/social/events',
-      queryParameters: {'childId': childId, 'limit': 50});
-  final events = _itemsOf(res.data, SocialConcernEvent.fromJson);
+  final res = await api.raw
+      .get('/v1/social/events', cancelToken: cancelToken, queryParameters: {
+    'childId': childId,
+    'limit': eventId == null ? 50 : 1,
+    if (eventId != null) 'eventId': eventId,
+  });
+  if (cancelToken.isCancelled) return const [];
+  final events = _itemsOf(res.data, SocialConcernEvent.fromJson)
+      .where((event) => eventId == null || event.id == eventId)
+      .toList();
   for (final event in events) {
     ref
         .read(socialVoteProvider(event.id).notifier)
         .syncFromEvent(event, startedRevisions[event.id] ?? 0);
   }
   return events;
-});
+}
 
 /// Merged call, SMS and lock-period timeline for one child, newest first (features #6, #830):
 /// fetches `GET /v1/reports/activity` once per type and sorts by `ts`.
