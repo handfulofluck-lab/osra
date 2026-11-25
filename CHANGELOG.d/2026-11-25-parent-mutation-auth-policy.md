@@ -1,1 +1,1 @@
-- #742 starts the owner-presence gate for parent-app changes: a mutating request needs a fresh local auth unless it carries one of four named exemptions, and a test pins that list so adding one is a visible diff.
+- #742 starts the owner-presence gate for parent-app changes: a mutating request needs a fresh local auth unless it carries one of three named exemptions, and each exemption names the exact endpoint (method + path) it covers, so a marker used anywhere else still prompts. A test pins both lists by content, so adding or widening an exemption is a visible diff.
