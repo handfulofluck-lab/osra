@@ -2,3 +2,5 @@
    them byte for byte on #604. Do not reword them here — a change needs a new Bureau line. */
 "NSLocationWhenInUseUsageDescription" = "لا يستخدم تطبيق أسرة موقعك. تعرض خريطة العائلة مكان هاتف طفلك فقط.";
 "CFBundleDisplayName" = "أسرة";
+
+"NSFaceIDUsageDescription" = "يستخدم تطبيق أسرة بصمة الوجه لتأكيد هويتك قبل تغيير إعدادات عائلتك.";

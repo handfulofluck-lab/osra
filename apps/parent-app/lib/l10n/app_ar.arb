@@ -1146,5 +1146,10 @@
   "socialAlertLatestAt": "آخر رسالة {time}",
   "socialAlertUnknownContact": "جهة اتصال غير معروفة",
   "socialAlertMorePush": "{count, plural, =0{لا رسائل أخرى تستدعي المراجعة لدى {child} في {app}} =1{رسالة أخرى تستدعي المراجعة لدى {child} في {app}} =2{رسالتان أخريان تستدعيان المراجعة لدى {child} في {app}} few{{count} رسائل أخرى تستدعي المراجعة لدى {child} في {app}} many{{count} رسالة أخرى تستدعي المراجعة لدى {child} في {app}} other{{count} رسالة أخرى تستدعي المراجعة لدى {child} في {app}}}",
-  "socialAlertNewSince": "+{count} جديدة"
+  "socialAlertNewSince": "+{count} جديدة",
+  "ownerPresenceBody": "افتح قفل الهاتف لحفظ التغييرات في إعدادات عائلتك.",
+  "ownerPresenceCancelled": "لم يتغيّر شيء. أكّد هويتك للحفظ.",
+  "ownerPresenceNoLockTitle": "فعّل قفل الشاشة أولًا",
+  "ownerPresenceNoLockBody": "لحماية إعدادات عائلتك، لا يحفظ تطبيق أسرة أي تغيير إلا بعد فتح قفل هذا الهاتف. أضف رمز PIN أو نقشًا أو بصمة إصبع أو فتح القفل بالوجه من الإعدادات، ثم عُد إلى هنا.",
+  "ownerPresenceSignOut": "تسجيل الخروج"
 }

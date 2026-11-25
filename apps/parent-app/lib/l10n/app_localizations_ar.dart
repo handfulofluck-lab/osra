@@ -3755,19 +3755,18 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get ownerPresenceBody =>
-      'Unlock to save changes to your family\'s settings.';
+      'افتح قفل الهاتف لحفظ التغييرات في إعدادات عائلتك.';
 
   @override
-  String get ownerPresenceCancelled =>
-      'Nothing was changed. Confirm it\'s you to save.';
+  String get ownerPresenceCancelled => 'لم يتغيّر شيء. أكّد هويتك للحفظ.';
 
   @override
-  String get ownerPresenceNoLockTitle => 'Set a screen lock first';
+  String get ownerPresenceNoLockTitle => 'فعّل قفل الشاشة أولًا';
 
   @override
   String get ownerPresenceNoLockBody =>
-      'To keep your family\'s settings safe, OSRA only saves changes after you unlock this phone. Add a PIN, pattern, fingerprint or face unlock in Settings, then come back.';
+      'لحماية إعدادات عائلتك، لا يحفظ تطبيق أسرة أي تغيير إلا بعد فتح قفل هذا الهاتف. أضف رمز PIN أو نقشًا أو بصمة إصبع أو فتح القفل بالوجه من الإعدادات، ثم عُد إلى هنا.';
 
   @override
-  String get ownerPresenceSignOut => 'Sign out';
+  String get ownerPresenceSignOut => 'تسجيل الخروج';
 }
