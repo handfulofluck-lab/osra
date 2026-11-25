@@ -36,10 +36,13 @@ Command enum lives in `services/api/src/routes/devices.ts` CommandSchema.
 - `POST /family/invites` `{email, role, permissions[]}` / `POST /family/invites/:id/accept`
   (register-or-login link flow, token in Redis `invite:<id>`) / `GET /family/invites` (#13).
 - `POST /children/:id/bonus` `{minutes}` → queues `bonus_time` to the child's devices (#10).
-- `GET /social/events?childId&app&severity&limit` → vault of `SocialConcernEvent` (#24,
+- `GET /social/events?childId&app&severity&eventId&limit` → vault of `SocialConcernEvent` (#24,
   server-side AES-GCM with `@familyshield/crypto` + server key env `VAULT_KEY`). Each item may include
   `ownFeedback` with the caller's current vote or null and `latestFeedback` with the family's latest
   vote or null. Both use the same verdict, voter display name, timestamps and change-count shape (#1065).
+  An optional `eventId` returns only that event under the same parent, Social and child access checks.
+  New grouped alerts keep the originating event ID in authenticated alert metadata so the parent app
+  can open that concern even after newer messages arrive (#1140).
 - `POST /social/events/:id/feedback` `{verdict: "concerning" | "not_concerning"}` creates or changes
   the caller's vote and returns `feedback` (the caller's row) plus `latestFeedback` after the mutation.
   `DELETE /social/events/:id/feedback` withdraws idempotently and returns `feedback: null` plus the

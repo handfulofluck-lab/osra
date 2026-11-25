@@ -1,5 +1,6 @@
 """Private Frankfurt transport and receipt validation for the OSRA staging checkpoints."""
 
+import hashlib
 import json
 import math
 import os
@@ -12,14 +13,44 @@ import boto3
 import httpx
 from botocore.config import Config
 from botocore.exceptions import ConnectTimeoutError, ReadTimeoutError
+from fastapi import HTTPException
 
 REGION = "eu-central-1"
+STOCKHOLM_REGION = "eu-north-1"
+APPROVED_PROMPT_SHA256 = "813e670c456b1e1dd9863be0ca186b82f18bfea8049f231c9731d2ab132578a8"
+_CPU_SCOPE_KEY = "osra.in_process_cpu"
+_CPU_SCOPE_MARKER = object()
 PRIVATE_RUNTIME = re.compile(r"https://vpce-[a-f0-9]+(?:-[a-z0-9]+)?\.runtime\.sagemaker\.eu-central-1\.vpce\.amazonaws\.com")
 ENDPOINTS = {"v9": "osra-staging-own-v9", "v9b": "osra-staging-own-v9b"}
 LANGUAGES = {"v9": {"en", "id", "ms", "tr", "ur"}, "v9b": {"ar", "fr"}}
 # These are the native checkpoint labels pinned by #997. No Bedrock vocabulary or cutoff applies.
 LABELS = ("cyberbullying", "self_harm", "grooming", "violence", "sexual_content", "substance_use", "hate_speech")
 MAX_REPLY_BYTES = 8192
+
+
+def consented_staging_scoring(approved_prompt_sha256: str) -> bool:
+    """Reject an explicit broad-mode request unless it is the private Stockholm CPU configuration."""
+    if os.environ.get("OSRA_STAGING_AI_ALL_CHILDREN") != "1":
+        return False
+    try:
+        prompt = os.environ.get("OSRA_STAGING_QA_SYSTEM_PROMPT", "").encode("utf-8")
+    except UnicodeEncodeError:
+        raise HTTPException(status_code=404, detail="not_found") from None
+    if (
+        os.environ.get("OSRA_DEPLOYMENT_SCOPE") != "staging"
+        or os.environ.get("OSRA_STAGING_QA_ENGINE") != "own"
+        or os.environ.get("OSRA_STAGING_QA_ANALYZER_ENABLED") != "1"
+        or os.environ.get("OSRA_STAGING_QA_OWN_MODEL_ENABLED") != "1"
+        or os.environ.get("OSRA_OWN_MODEL_REGION") != STOCKHOLM_REGION
+        or os.environ.get("AWS_REGION", STOCKHOLM_REGION) != STOCKHOLM_REGION
+        or hashlib.sha256(prompt).hexdigest() != approved_prompt_sha256
+    ):
+        raise HTTPException(status_code=404, detail="not_found")
+    return True
+
+
+def is_in_process_cpu_call(scope) -> bool:
+    return scope.get(_CPU_SCOPE_KEY) is _CPU_SCOPE_MARKER
 
 
 @lru_cache(maxsize=1)
@@ -111,7 +142,12 @@ async def score_cpu(text, trace, expires, deadline, expected_region):
     pins = _pins()
     if datetime.now(timezone.utc) >= expires or monotonic() >= deadline:
         raise TimeoutError
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=own_model_app),
+
+    # Scope metadata is set by the Python transport, independently of any HTTP headers.
+    async def in_process_cpu_app(scope, receive, send):
+        await own_model_app({**scope, _CPU_SCOPE_KEY: _CPU_SCOPE_MARKER}, receive, send)
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=in_process_cpu_app),
                                  base_url="http://in-process.invalid", trust_env=False) as client:
         response = await client.post("/analyze/staging-qa/own", json={"text": text, "trace_id": trace})
     if datetime.now(timezone.utc) >= expires or monotonic() >= deadline:
