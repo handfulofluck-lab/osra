@@ -3761,12 +3761,12 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String changeDevicePinTitle(String device) {
-    return 'رمز PIN جديد لتطبيق OSRA على $device';
+    return 'رمز PIN جديد لتطبيق أسرة للأطفال على $device';
   }
 
   @override
   String get changeDevicePinBody =>
-      'نسيت الرمز؟ عيّن رمزًا جديدًا هنا. يتوقف الرمز القديم عن العمل بمجرد أن يستلم الهاتف التغيير. لا يمكن لأحد رؤية الرمز القديم، ولا أنت.';
+      'نسيت الرمز؟ عيّن رمزًا جديدًا هنا. يتوقف الرمز القديم عن العمل بمجرد أن يستلم الهاتف التغيير. لا يستطيع أحد رؤية الرمز القديم، ولا حتى أنت.';
 
   @override
   String get changeDevicePinNew => 'الرمز الجديد';
@@ -3811,15 +3811,15 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get changeDevicePinWrongProof =>
-      'كلمة المرور أو الرمز غير صحيح. لم يتغير رمز PIN.';
+      'كلمة المرور أو الرمز غير صحيح. لم يتغيّر رمز PIN.';
 
   @override
   String get changeDevicePinLimit =>
-      'تغيّر رمز PIN على هذا الهاتف مرات كثيرة. حاول مجددًا بعد ساعة.';
+      'تكرّر تغيير رمز PIN على هذا الهاتف مرات كثيرة. حاول مجددًا بعد ساعة.';
 
   @override
   String get changeDevicePinNotSupported =>
-      'تغيير الرمز من هنا متاح لهواتف Android فقط.';
+      'تغيير الرمز من هنا متاح لهواتف أندرويد فقط.';
 
   @override
   String get commandRefusedPinNotSaved =>
@@ -3833,6 +3833,6 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String alertBodyDevicePinChanged(String who, String device) {
-    return 'عيّن $who رمز PIN جديدًا لتطبيق OSRA على $device. يتوقف الرمز القديم عن العمل بمجرد أن يستلمه الهاتف.';
+    return 'عُيِّن رمز PIN جديد لتطبيق أسرة للأطفال على $device بطلب من $who. يتوقف الرمز القديم عن العمل بمجرد أن يستلم الهاتف التغيير.';
   }
 }

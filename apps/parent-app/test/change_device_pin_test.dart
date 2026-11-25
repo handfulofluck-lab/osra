@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:familyshield_parent/api/models.dart';
+import 'package:familyshield_parent/core/ltr_isolate.dart';
 import 'package:familyshield_parent/features/children/change_device_pin.dart';
 import 'package:familyshield_parent/features/alerts/alert_detail_screen.dart';
 import 'package:familyshield_parent/l10n/app_localizations_en.dart';
@@ -66,21 +67,28 @@ void main() {
         );
     const m = 'Galaxy Z Flip4';
     final type = l10n.commandSetParentPin;
+    // Arabic Bureau on #1126: the model name goes into the sentence first-strong isolated.
+    final im = firstStrongIsolate(m);
     expect(changeDevicePinErrorText(l10n, m, err(401, {'error': 'reauth_failed'})), l10n.changeDevicePinWrongProof);
     expect(changeDevicePinErrorText(l10n, m, err(429, {'error': 'pin_change_limit'})), l10n.changeDevicePinLimit);
-    expect(changeDevicePinErrorText(l10n, m, err(409, {'error': 'command_not_supported'})), l10n.changeDevicePinNotSupported);
+    expect(changeDevicePinErrorText(l10n, m, err(409, {'error': 'command_not_supported'})),
+        l10n.changeDevicePinNotSupported);
     expect(changeDevicePinErrorText(l10n, m, err(400, {'error': 'pin_weak'})), l10n.changeDevicePinWeak);
     // F2: everything else reads as it does for any command.
-    expect(changeDevicePinErrorText(l10n, m, err(429, {'error': 'Too Many Requests'})), l10n.commandErrorRateLimited(type, m));
-    expect(changeDevicePinErrorText(l10n, m, err(403, {'error': 'permission_required', 'permission': 'devices'})), l10n.commandErrorForbidden(type, m));
-    expect(changeDevicePinErrorText(l10n, m, err(428, {'error': 'parental_consent_required'})), l10n.commandErrorConsentWithdrawn(type, m));
+    expect(changeDevicePinErrorText(l10n, m, err(429, {'error': 'Too Many Requests'})),
+        l10n.commandErrorRateLimited(type, im));
+    expect(changeDevicePinErrorText(l10n, m, err(403, {'error': 'permission_required', 'permission': 'devices'})),
+        l10n.commandErrorForbidden(type, im));
+    expect(changeDevicePinErrorText(l10n, m, err(428, {'error': 'parental_consent_required'})),
+        l10n.commandErrorConsentWithdrawn(type, im));
   });
 
   test('F1: the audit alert reads in the parent\'s language, never the server\'s English', () async {
     final ar = await AppLocalizations.delegate.load(const Locale('ar'));
     expect(ar.alertCategory('device_pin_changed'), ar.alertCategoryDevicePinChanged);
     expect(ar.alertCategory('device_pin_changed'), isNot('device_pin_changed'));
-    expect(ar.alertTitleFor('device_pin_changed', 'Device PIN changed', isEnglish: false), ar.alertTitleDevicePinChanged);
+    expect(
+        ar.alertTitleFor('device_pin_changed', 'Device PIN changed', isEnglish: false), ar.alertTitleDevicePinChanged);
     final json = <String, dynamic>{
       'id': 'al-1',
       'childId': 'child-1',
@@ -94,7 +102,8 @@ void main() {
     };
     final alert = Alert.fromJson(json);
     final arBody = formatGeneralAlertBody(alert, l10n: ar, localeName: 'ar');
-    expect(arBody, ar.alertBodyDevicePinChanged('Karim', 'Galaxy Z Flip4'));
+    expect(arBody, ar.alertBodyDevicePinChanged(firstStrongIsolate('Karim'), firstStrongIsolate('Galaxy Z Flip4')));
+    expect(arBody, isNot(contains('OSRA')));
     expect(arBody, isNot(contains('set a new')));
     final bare = Alert.fromJson({...json, 'metadata': <String, dynamic>{}});
     expect(formatGeneralAlertBody(bare, l10n: ar, localeName: 'ar'), '');
@@ -112,7 +121,8 @@ void main() {
     return api;
   }
 
-  Future<void> fill(WidgetTester tester, {String pin = '4729', String? repeat, String password = 'pw', String code = ''}) async {
+  Future<void> fill(WidgetTester tester,
+      {String pin = '4729', String? repeat, String password = 'pw', String code = ''}) async {
     await tester.enterText(find.byKey(const ValueKey('changePinNew')), pin);
     await tester.enterText(find.byKey(const ValueKey('changePinRepeat')), repeat ?? pin);
     await tester.enterText(find.byKey(const ValueKey('changePinPassword')), password);
@@ -132,13 +142,14 @@ void main() {
     expect(api.requests, isEmpty);
   });
 
-  testWidgets('a good PIN is sent once, with the proof and nothing else, and the parent hears it is on its way', (tester) async {
+  testWidgets('a good PIN is sent once, with the proof and nothing else, and the parent hears it is on its way',
+      (tester) async {
     final api = await pumpButton(tester, android, (_) => {'published': true, 'status': 'pending', 'id': 'cmd-1'});
     await fill(tester, pin: '٥٨٣٩٢١', password: 'correct horse', code: '123456');
     final calls = api.calls('POST', '/v1/devices/dev-1/parent-pin');
     expect(calls, hasLength(1));
     expect(calls.single.body, {'pin': '583921', 'password': 'correct horse', 'mfaCode': '123456'});
-    expect(find.text(l10n.changeDevicePinQueued('Galaxy Z Flip4')), findsOneWidget);
+    expect(find.text(l10n.changeDevicePinQueued(firstStrongIsolate('Galaxy Z Flip4'))), findsOneWidget);
   });
 
   testWidgets('without an authenticator code, no mfaCode field is sent', (tester) async {

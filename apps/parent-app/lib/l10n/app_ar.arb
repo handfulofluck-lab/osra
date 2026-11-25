@@ -1149,8 +1149,8 @@
   "socialAlertNewSince": "+{count} جديدة",
   "commandSetParentPin": "تغيير رمز PIN للجهاز",
   "changeDevicePinButton": "تغيير رمز PIN للجهاز",
-  "changeDevicePinTitle": "رمز PIN جديد لتطبيق OSRA على {device}",
-  "changeDevicePinBody": "نسيت الرمز؟ عيّن رمزًا جديدًا هنا. يتوقف الرمز القديم عن العمل بمجرد أن يستلم الهاتف التغيير. لا يمكن لأحد رؤية الرمز القديم، ولا أنت.",
+  "changeDevicePinTitle": "رمز PIN جديد لتطبيق أسرة للأطفال على {device}",
+  "changeDevicePinBody": "نسيت الرمز؟ عيّن رمزًا جديدًا هنا. يتوقف الرمز القديم عن العمل بمجرد أن يستلم الهاتف التغيير. لا يستطيع أحد رؤية الرمز القديم، ولا حتى أنت.",
   "changeDevicePinNew": "الرمز الجديد",
   "changeDevicePinRepeat": "أعد إدخال الرمز الجديد",
   "changeDevicePinDigitsHint": "من 4 إلى 8 أرقام",
@@ -1164,11 +1164,11 @@
   "changeDevicePinWeak": "اختر رمزًا يصعب تخمينه.",
   "changeDevicePinPasswordRequired": "أدخل كلمة مرور حسابك.",
   "changeDevicePinQueued": "أُرسل الرمز الجديد إلى {device}. سيعمل بمجرد أن يستلمه الهاتف.",
-  "changeDevicePinWrongProof": "كلمة المرور أو الرمز غير صحيح. لم يتغير رمز PIN.",
-  "changeDevicePinLimit": "تغيّر رمز PIN على هذا الهاتف مرات كثيرة. حاول مجددًا بعد ساعة.",
-  "changeDevicePinNotSupported": "تغيير الرمز من هنا متاح لهواتف Android فقط.",
+  "changeDevicePinWrongProof": "كلمة المرور أو الرمز غير صحيح. لم يتغيّر رمز PIN.",
+  "changeDevicePinLimit": "تكرّر تغيير رمز PIN على هذا الهاتف مرات كثيرة. حاول مجددًا بعد ساعة.",
+  "changeDevicePinNotSupported": "تغيير الرمز من هنا متاح لهواتف أندرويد فقط.",
   "commandRefusedPinNotSaved": "تعذّر على الهاتف حفظ الرمز الجديد، لذا ما زال الرمز القديم يعمل. حاول مجددًا.",
   "alertCategoryDevicePinChanged": "رمز PIN للجهاز",
   "alertTitleDevicePinChanged": "تغيّر رمز PIN للجهاز",
-  "alertBodyDevicePinChanged": "عيّن {who} رمز PIN جديدًا لتطبيق OSRA على {device}. يتوقف الرمز القديم عن العمل بمجرد أن يستلمه الهاتف."
+  "alertBodyDevicePinChanged": "عُيِّن رمز PIN جديد لتطبيق أسرة للأطفال على {device} بطلب من {who}. يتوقف الرمز القديم عن العمل بمجرد أن يستلم الهاتف التغيير."
 }

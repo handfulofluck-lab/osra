@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../api/models.dart';
 import '../../core/digits.dart';
+import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
@@ -84,7 +85,7 @@ Future<void> changeDevicePin(BuildContext context, WidgetRef ref, Device device)
   try {
     await ref.read(apiClientProvider).raw.post('/v1/devices/${device.id}/parent-pin', data: change.toJson());
     ref.invalidate(deviceCommandHistoryProvider(device.id));
-    messenger.showSnackBar(SnackBar(content: Text(l10n.changeDevicePinQueued(device.model))));
+    messenger.showSnackBar(SnackBar(content: Text(l10n.changeDevicePinQueued(firstStrongIsolate(device.model)))));
   } on DioException catch (e) {
     messenger.showSnackBar(SnackBar(content: Text(changeDevicePinErrorText(l10n, device.model, e))));
   }
@@ -92,7 +93,7 @@ Future<void> changeDevicePin(BuildContext context, WidgetRef ref, Device device)
 
 /// The refusals only this route sends, in the parent's words. Everything else (a missing permission, the
 /// 1-minute auth rate limit, consent withdrawn, no network) reads exactly as it does for any other command,
-/// through [commandErrorText] (Antigravity's F2 on #1126).
+/// through [commandErrorText] (Antigravity's F2 on #1126). Names go in first-strong isolated (Arabic Bureau on #1126).
 String changeDevicePinErrorText(AppLocalizations l10n, String deviceModel, DioException error) {
   final status = error.response?.statusCode;
   final body = error.response?.data;
@@ -109,7 +110,7 @@ String changeDevicePinErrorText(AppLocalizations l10n, String deviceModel, DioEx
     'pin_weak' => l10n.changeDevicePinWeak,
     _ => null,
   };
-  return own ?? commandErrorText(l10n, 'set_parent_pin', deviceModel, error);
+  return own ?? commandErrorText(l10n, 'set_parent_pin', firstStrongIsolate(deviceModel), error);
 }
 
 class ChangeDevicePinDialog extends StatefulWidget {
@@ -162,7 +163,7 @@ class _ChangeDevicePinDialogState extends State<ChangeDevicePinDialog> {
         InputDecoration(labelText: label, helperText: helper, border: const OutlineInputBorder());
     return AlertDialog(
       scrollable: true,
-      title: Text(l10n.changeDevicePinTitle(widget.deviceName)),
+      title: Text(l10n.changeDevicePinTitle(firstStrongIsolate(widget.deviceName))),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,

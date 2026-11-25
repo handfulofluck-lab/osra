@@ -51,7 +51,7 @@ String formatGeneralAlertBody(
     final who = alert.metadata['changedByName'];
     final device = alert.metadata['deviceModel'];
     if (who is String && who.isNotEmpty && device is String && device.isNotEmpty) {
-      return l10n.alertBodyDevicePinChanged(who, device);
+      return l10n.alertBodyDevicePinChanged(firstStrongIsolate(who), firstStrongIsolate(device));
     }
     return isEnglish ? alert.body : '';
   }
