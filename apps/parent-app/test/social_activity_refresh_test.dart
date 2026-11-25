@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:familyshield_parent/app.dart';
+import 'package:familyshield_parent/core/bounded_refetch.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/providers/family_provider.dart';
 import 'package:familyshield_parent/providers/onboarding_provider.dart';
@@ -153,5 +154,8 @@ void main() {
     final requests = api.calls('GET', '/v1/social/events');
     expect(requests, hasLength(requestsBefore + 1));
     expect(requests.last.query['childId'], 'child-1');
+    // Let the scheduled unread-count refetch run before test teardown.
+    await tester.pump(kAlertRefetchDelay);
+    await tester.pumpAndSettle();
   });
 }
