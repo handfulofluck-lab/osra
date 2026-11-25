@@ -410,15 +410,24 @@ variable "backup_copy_vault_arn" {
 variable "staging_qa_analyzer" {
   description = "Optional staging-only synthetic QA analyzer. Secret references are Stockholm ARNs with operator-provisioned values."
   type = object({
-    image_digest        = string
-    frankfurt_vpc_cidr  = string
-    prompt_secret_arn   = string
-    approval_secret_arn = string
-    pairing_secret_arn  = string
-    armed               = optional(bool, false)
+    image_digest              = string
+    frankfurt_vpc_cidr        = string
+    prompt_secret_arn         = string
+    approval_secret_arn       = string
+    pairing_secret_arn        = string
+    armed                     = optional(bool, false)
+    allow_synthetic_pair_text = optional(bool, false)
+    allow_android_sources     = optional(bool, false)
+    own_model_task_size       = optional(bool, false)
+    engine                    = optional(string, "bedrock")
   })
   default  = null
   nullable = true
+
+  validation {
+    condition     = var.staging_qa_analyzer == null ? true : contains(["bedrock", "own", "both"], var.staging_qa_analyzer.engine)
+    error_message = "staging_qa_analyzer.engine must be bedrock, own or both."
+  }
 
   validation {
     condition = var.staging_qa_analyzer == null ? true : (

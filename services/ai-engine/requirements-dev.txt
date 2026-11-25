@@ -7,3 +7,5 @@ pytest>=8
 fastapi==0.111.0
 pydantic==2.7.0
 httpx>=0.27
+# The staging adapter tests construct the Bedrock client without calling AWS.
+boto3==1.43.118

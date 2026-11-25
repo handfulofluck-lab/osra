@@ -1079,13 +1079,13 @@ abstract class AppLocalizations {
   /// No description provided for @accuracyLabel.
   ///
   /// In en, this message translates to:
-  /// **'Accuracy ±{meters} m · {time}'**
+  /// **'Accuracy ±{meters} m · {time}'**
   String accuracyLabel(int meters, String time);
 
   /// No description provided for @accuracyShort.
   ///
   /// In en, this message translates to:
-  /// **'±{meters} m'**
+  /// **'±{meters} m'**
   String accuracyShort(int meters);
 
   /// No description provided for @mapPreview.
@@ -1415,13 +1415,13 @@ abstract class AppLocalizations {
   /// No description provided for @familyMapRadius.
   ///
   /// In en, this message translates to:
-  /// **'Radius: {meters} m'**
+  /// **'Radius: {meters} m'**
   String familyMapRadius(int meters);
 
   /// No description provided for @familyMapMeters.
   ///
   /// In en, this message translates to:
-  /// **'{meters} m'**
+  /// **'{meters} m'**
   String familyMapMeters(int meters);
 
   /// No description provided for @familyMapCreate.
@@ -1520,6 +1520,18 @@ abstract class AppLocalizations {
   /// **'Resume device'**
   String get commandResumeDevice;
 
+  /// No description provided for @commandPausingDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Pausing…'**
+  String get commandPausingDevice;
+
+  /// No description provided for @commandResumingDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Resuming…'**
+  String get commandResumingDevice;
+
   /// No description provided for @commandPauseInternet.
   ///
   /// In en, this message translates to:
@@ -1531,6 +1543,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Resume internet'**
   String get commandResumeInternet;
+
+  /// No description provided for @scopeThisDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'This device'**
+  String get scopeThisDevice;
+
+  /// No description provided for @scopeAllDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'All paired devices'**
+  String get scopeAllDevices;
+
+  /// No description provided for @deviceControlPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for this device'**
+  String get deviceControlPending;
+
+  /// No description provided for @deviceControlFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'This device couldn\'t apply the change'**
+  String get deviceControlFailed;
 
   /// No description provided for @commandBonusTime.
   ///
@@ -2305,6 +2341,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No app usage recorded'**
   String get noAppUsage;
+
+  /// No description provided for @noPerAppBreakdown.
+  ///
+  /// In en, this message translates to:
+  /// **'Per-app usage is unavailable'**
+  String get noPerAppBreakdown;
 
   /// No description provided for @webSection.
   ///
@@ -5252,6 +5294,12 @@ abstract class AppLocalizations {
   /// **'Which apps should OSRA watch for you?'**
   String get setupMonitoringTitle;
 
+  /// No description provided for @setupMonitoringAppBarTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Social apps'**
+  String get setupMonitoringAppBarTitle;
+
   /// No description provided for @setupMonitoringIntro.
   ///
   /// In en, this message translates to:
@@ -5492,6 +5540,222 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'All alerts'**
   String get socialAlertViewAll;
+
+  /// No description provided for @locationUpdatedJustNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Updated just now'**
+  String get locationUpdatedJustNow;
+
+  /// No description provided for @locationUpdatedMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Updated 1 min ago} other{Updated {count} min ago}}'**
+  String locationUpdatedMinutes(int count);
+
+  /// No description provided for @locationUpdatedHours.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Updated 1 hour ago} other{Updated {count} hours ago}}'**
+  String locationUpdatedHours(int count);
+
+  /// No description provided for @locationUpdatedDays.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Updated 1 day ago} other{Updated {count} days ago}}'**
+  String locationUpdatedDays(int count);
+
+  /// No description provided for @locationUpdatedUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Update time unknown'**
+  String get locationUpdatedUnknown;
+
+  /// No description provided for @locationFindingAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'Finding address…'**
+  String get locationFindingAddress;
+
+  /// No description provided for @locationAddressUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Address not available'**
+  String get locationAddressUnavailable;
+
+  /// No description provided for @locationMapSemantics.
+  ///
+  /// In en, this message translates to:
+  /// **'Map showing where {name} is'**
+  String locationMapSemantics(String name);
+
+  /// No description provided for @locationRecentre.
+  ///
+  /// In en, this message translates to:
+  /// **'Centre on the latest location'**
+  String get locationRecentre;
+
+  /// No description provided for @undo.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get undo;
+
+  /// No description provided for @hoursShort.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours} h'**
+  String hoursShort(int hours);
+
+  /// No description provided for @appStateAllowed.
+  ///
+  /// In en, this message translates to:
+  /// **'Allowed'**
+  String get appStateAllowed;
+
+  /// No description provided for @appStateBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Blocked'**
+  String get appStateBlocked;
+
+  /// No description provided for @appStateLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Limit {limit} a day'**
+  String appStateLimit(String limit);
+
+  /// No description provided for @appAllowedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'{app} allowed'**
+  String appAllowedSnack(String app);
+
+  /// No description provided for @appLimitSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'{app} limited to {limit} a day'**
+  String appLimitSnack(String app, String limit);
+
+  /// No description provided for @appsFilterAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All ({count})'**
+  String appsFilterAll(int count);
+
+  /// No description provided for @appsFilterBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Blocked ({count})'**
+  String appsFilterBlocked(int count);
+
+  /// No description provided for @appsFilterLimited.
+  ///
+  /// In en, this message translates to:
+  /// **'Time limits ({count})'**
+  String appsFilterLimited(int count);
+
+  /// No description provided for @appsNoMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'No apps match'**
+  String get appsNoMatch;
+
+  /// No description provided for @appAboutThisApp.
+  ///
+  /// In en, this message translates to:
+  /// **'About this app'**
+  String get appAboutThisApp;
+
+  /// No description provided for @appBlockedNamedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'{app} blocked'**
+  String appBlockedNamedSnack(String app);
+
+  /// No description provided for @socialCheckMessagesIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Check messages in'**
+  String get socialCheckMessagesIn;
+
+  /// No description provided for @socialNotOnChildPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Not on {child}\'s phone ({count})'**
+  String socialNotOnChildPhone(String child, int count);
+
+  /// No description provided for @socialChecking.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking'**
+  String get socialChecking;
+
+  /// No description provided for @socialOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get socialOff;
+
+  /// No description provided for @socialCommentsAndChats.
+  ///
+  /// In en, this message translates to:
+  /// **'Comments and chats'**
+  String get socialCommentsAndChats;
+
+  /// No description provided for @socialNewAppsBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'You can now choose YouTube, Telegram, Reddit and Messenger too.'**
+  String get socialNewAppsBanner;
+
+  /// No description provided for @socialPrivacyLine.
+  ///
+  /// In en, this message translates to:
+  /// **'OSRA only flags concerning messages. It never shows you every chat.'**
+  String get socialPrivacyLine;
+
+  /// No description provided for @selectAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Select all'**
+  String get selectAll;
+
+  /// No description provided for @socialAlertCountTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 concerning message on {app}} other{{count} concerning messages on {app}}}'**
+  String socialAlertCountTitle(int count, String app);
+
+  /// No description provided for @socialAlertFromContactOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'From {contact}'**
+  String socialAlertFromContactOnly(String contact);
+
+  /// No description provided for @socialAlertLatestAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Latest {time}'**
+  String socialAlertLatestAt(String time);
+
+  /// No description provided for @socialAlertUnknownContact.
+  ///
+  /// In en, this message translates to:
+  /// **'an unknown contact'**
+  String get socialAlertUnknownContact;
+
+  /// No description provided for @socialAlertMorePush.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 more concerning message for {child} on {app}} other{{count} more concerning messages for {child} on {app}}}'**
+  String socialAlertMorePush(int count, String child, String app);
+
+  /// No description provided for @socialAlertNewSince.
+  ///
+  /// In en, this message translates to:
+  /// **'+{count} new'**
+  String socialAlertNewSince(int count);
 }
 
 class _AppLocalizationsDelegate

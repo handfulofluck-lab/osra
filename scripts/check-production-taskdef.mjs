@@ -77,6 +77,10 @@ const FORBIDDEN = {
   IDLE_BUDGET_M10: 'staging instrument (#346)',
   OSRA_DEPLOYMENT_SCOPE: 'explicit scope for the synthetic staging model test (#962)',
   OSRA_STAGING_QA_ANALYZER_ENABLED: 'enables the synthetic staging model test (#962)',
+  OSRA_STAGING_QA_ENGINE: 'selects providers for the synthetic staging model test (#962)',
+  OSRA_STAGING_QA_OWN_MODEL_ENABLED: 'enables the staging own-model CPU inference service (#1015)',
+  OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT: 'allows operator-chosen text in the synthetic staging model test (#962)',
+  OSRA_STAGING_QA_ANDROID_SOURCES: 'enables Android capture sources in the synthetic staging test (#962)',
   OSRA_STAGING_QA_ANALYZER_URL: 'private endpoint for the synthetic staging model test (#962)',
   OSRA_STAGING_QA_CHILD_ID: 'restricts the synthetic staging model test to its QA child (#962)',
   OSRA_STAGING_QA_DEVICE_ID: 'restricts the synthetic staging model test to its QA device (#962)',
@@ -89,6 +93,9 @@ const FORBIDDEN = {
   // #830: the site-name history is off until the privacy notice (#649) and the Play data-safety form are
   // live. Turning it on means removing this line in its own reviewed change, with that evidence.
   SITE_NAMES_ENABLED: 'site names stay off until the privacy notice and the Play form are live (Karim, 2026-11-16)',
+  // #1061: staging-only test switch. With it on, every flagged message pushes immediately instead of being
+  // folded into the 10-minute window, which is how a parent is meant to be spared a push per message.
+  SOCIAL_ALERT_PUSH_EVERY_MESSAGE: 'sends a push for every flagged message instead of the 10-minute window (#1061); staging test only',
 };
 
 /** Allowed, optional, plain. A value rule where a wrong value matters. */
@@ -380,6 +387,9 @@ function selftest() {
     ['sandbox push', (t) => setEnv(t, 'APNS_ENV', 'sandbox'), 'APNS_ENV: must be "production"'],
     ['public scorer address', (t) => setEnv(t, 'AI_ENGINE_URL', 'https://api.example.com'), 'AI_ENGINE_URL: must be the private'],
     ['staging QA switch even when disabled', (t) => setEnv(t, 'OSRA_STAGING_QA_ANALYZER_ENABLED', '0'), 'OSRA_STAGING_QA_ANALYZER_ENABLED: not allowed'],
+    ['staging QA Android sources', (t) => setEnv(t, 'OSRA_STAGING_QA_ANDROID_SOURCES', '1'), 'OSRA_STAGING_QA_ANDROID_SOURCES: not allowed'],
+    ['staging QA provider selection', (t) => setEnv(t, 'OSRA_STAGING_QA_ENGINE', 'both'), 'OSRA_STAGING_QA_ENGINE: not allowed'],
+    ['staging QA exploratory switch', (t) => setEnv(t, 'OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT', '1'), 'OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT: not allowed'],
     ['location kept too long', (t) => setEnv(t, 'LOCATION_RETENTION_DAYS', '365'), 'LOCATION_RETENTION_DAYS: location history'],
     ['daily totals kept too long', (t) => setEnv(t, 'ROLLUP_RETENTION_DAYS', '1000'), 'ROLLUP_RETENTION_DAYS: daily totals'],
     ['alerts kept too long', (t) => setEnv(t, 'ALERT_RETENTION_DAYS', '730'), 'ALERT_RETENTION_DAYS: alerts are kept'],
@@ -416,6 +426,8 @@ function selftest() {
     ['the site-name switch before the notice is live', (t) => setEnv(t, 'SITE_NAMES_ENABLED', 'true'), 'SITE_NAMES_ENABLED: not allowed'],
     ['iPhone push key missing at launch', (t) => dropSecret(t, 'APNS_KEY_P8'), 'APNS_KEY_P8: missing (needed at launch'],
     ['Play package missing at launch', (t) => dropEnv(t, 'PLAY_PACKAGE_NAME'), 'PLAY_PACKAGE_NAME: missing (needed at launch'],
+    ['staging own-model switch forbidden in production', (t) => setEnv(t, 'OSRA_STAGING_QA_OWN_MODEL_ENABLED', '1'), 'OSRA_STAGING_QA_OWN_MODEL_ENABLED: not allowed'],
+    ['push-per-message switch forbidden in production, even as false', (t) => setEnv(t, 'SOCIAL_ALERT_PUSH_EVERY_MESSAGE', 'false'), 'SOCIAL_ALERT_PUSH_EVERY_MESSAGE: not allowed'],
   ];
 
   let failed = 0;
