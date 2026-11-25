@@ -18,6 +18,7 @@ const schemaPath = fileURLToPath(new URL("../prisma/schema.prisma", import.meta.
 const migrationPath = fileURLToPath(new URL("../prisma/migrations/0043_social_event_feedback/migration.sql", import.meta.url));
 const schema = readFileSync(schemaPath, "utf8");
 const migration = existsSync(migrationPath) ? readFileSync(migrationPath, "utf8") : "";
+const apiWorkflow = readFileSync(fileURLToPath(new URL("../../../.github/workflows/api.yml", import.meta.url)), "utf8");
 const feedbackModel = schema.match(/model SocialEventFeedback \{([\s\S]*?)\n\}/)?.[1] ?? "";
 const socialEventModel = schema.match(/model SocialEvent \{([\s\S]*?)\n\}/)?.[1] ?? "";
 
@@ -34,6 +35,14 @@ beforeEach(() => {
   redis.publish.mockResolvedValue(0);
 });
 
+describe("social feedback CI database provisioning (#1065)", () => {
+  it("provisions the dedicated feedback database required by the integration suite", () => {
+    expect(apiWorkflow).toContain('OSRA_REQUIRE_DATABASE_TESTS: "1"');
+    expect(apiWorkflow).toContain("OSRA_FEEDBACK_DATABASE_URL: postgres://postgres@127.0.0.1:5432/osra_feedback_1065");
+    expect(apiWorkflow).toMatch(/CREATE DATABASE osra_feedback_1065/);
+  });
+});
+
 describe("social feedback storage and deletion (#1065)", () => {
   it("stores one current vote per parent and event with all nullable flag-time fields", () => {
     expect(feedbackModel).toContain("@@unique([socialEventId, parentId])");
@@ -47,6 +56,14 @@ describe("social feedback storage and deletion (#1065)", () => {
       expect(socialEventModel).toMatch(new RegExp(`\\b${field}\\s+\\w+\\?`));
     }
     expect(socialEventModel).toMatch(/\bseverity\s+String\b/);
+  });
+
+  it("deletes only already-orphaned events before adding the child foreign key", () => {
+    expect(migration).not.toContain("SocialEventOrphan");
+    expect(migration.indexOf('DELETE FROM "SocialEvent"')).toBeLessThan(migration.indexOf('ADD CONSTRAINT "SocialEvent_childId_fkey"'));
+    expect(migration).toContain('WHERE NOT EXISTS (SELECT 1 FROM "Child" AS child WHERE child."id" = event."childId")');
+    expect(migration).toContain("RAISE NOTICE '0043 deleted % orphaned SocialEvent rows (count only)', orphanCount");
+    expect(migration).toContain("SELECT count(*) INTO orphanCount");
   });
 
   it("deletes a vote with its message through database cascades", () => {

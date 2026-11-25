@@ -12,6 +12,7 @@ import '../../providers/family_provider.dart';
 import '../rules/app_picker.dart' show AppIconBadge;
 import '../rules/rules_behind_banner.dart';
 import '../../providers/social_provider.dart';
+import '../../providers/social_vote_provider.dart';
 import '../../core/digits.dart';
 import '../../theme/app_tokens.dart';
 import '../coach/coach_card_section.dart';
@@ -383,114 +384,151 @@ class ConcernsSection extends ConsumerWidget {
                 )
               : Column(
                   children: [
-                    for (final e in items)
-                      Card(
-                        color: socialSeverityColor(e.severity, context)
-                            .withValues(alpha: 0.07),
-                        child: ExpansionTile(
-                          leading: Icon(socialAppIcon(e.app),
-                              color: socialSeverityColor(e.severity, context)),
-                          title: LayoutBuilder(builder: (context, constraints) {
-                            final contact = Text(e.contact.isEmpty
-                                ? l10n.unknownContact
-                                : e.contact);
-                            final controls = SocialVoteControls(
-                              eventId: e.id,
-                              compact: true,
-                            );
-                            final vertical = constraints.maxWidth < 160 ||
-                                MediaQuery.textScalerOf(context).scale(14) > 21;
-                            if (vertical) {
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  contact,
-                                  const SizedBox(height: AppSpace.sm),
-                                  controls,
-                                ],
-                              );
-                            }
-                            return Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(child: contact),
-                                const SizedBox(width: AppSpace.sm),
-                                Flexible(child: controls),
-                              ],
-                            );
-                          }),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                  '${socialAppLabel(e.app, l10n)} · ${formatRelativeTime(e.createdAt, l10n)}'),
-                              if (e.concernTypes.isNotEmpty)
-                                Padding(
-                                  padding:
-                                      const EdgeInsets.only(top: AppSpace.xs),
-                                  child: Wrap(
-                                    spacing: 6,
-                                    runSpacing: AppSpace.xs,
-                                    children: [
-                                      for (final t in e.concernTypes)
-                                        Chip(
-                                          visualDensity: VisualDensity.compact,
-                                          label: Text(t,
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .bodySmall),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          ),
-                          children: [
-                            Align(
-                              alignment: AlignmentDirectional.centerStart,
-                              child: Padding(
-                                padding: const EdgeInsetsDirectional.fromSTEB(
-                                    AppSpace.lg, 0, AppSpace.lg, AppSpace.sm),
-                                child: Text(e.preview.isEmpty
-                                    ? l10n.noPreviewAvailable
-                                    : e.preview),
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsetsDirectional.fromSTEB(
-                                  AppSpace.lg, 0, AppSpace.lg, AppSpace.sm),
-                              child: Align(
-                                alignment: AlignmentDirectional.centerEnd,
-                                child: TextButton.icon(
-                                  icon: const Icon(Icons.lock_open, size: 16),
-                                  label: Text(l10n.viewInDecryptionVault),
-                                  onPressed: () => SnippetVaultModal.show(
-                                    context,
-                                    title: e.contact.isEmpty
-                                        ? l10n.socialMessage
-                                        : e.contact,
-                                    snippet: e.preview,
-                                    severity: e.severity,
-                                    concernTypes: e.concernTypes,
-                                    sourceLabel: socialAppLabel(e.app, l10n),
-                                    timestamp: e.createdAt,
-                                    eventId: e.id,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            // Feature #16: same coaching card as alert details,
-                            // keyed off the AI concern types.
-                            CoachCardSection(
-                                card: coachCardFor(
-                                    'social_concern', e.concernTypes)),
-                          ],
-                        ),
-                      ),
+                    for (final e in items) _ConcernCard(event: e),
                   ],
                 ),
         ),
       ],
+    );
+  }
+}
+
+class _ConcernCard extends ConsumerStatefulWidget {
+  final SocialConcernEvent event;
+
+  const _ConcernCard({required this.event});
+
+  @override
+  ConsumerState<_ConcernCard> createState() => _ConcernCardState();
+}
+
+class _ConcernCardState extends ConsumerState<_ConcernCard> {
+  bool _expanded = false;
+
+  double _textWidth(BuildContext context, String text) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: Theme.of(context).textTheme.bodyLarge,
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    return painter.width;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final e = widget.event;
+    final l10n = context.l10n;
+    final vote = ref.watch(socialVoteProvider(e.id));
+    final contactText = e.contact.isEmpty ? l10n.unknownContact : e.contact;
+    final contact = Text(contactText);
+    final controls = SocialVoteControls(eventId: e.id, compact: true);
+    return Card(
+      color: socialSeverityColor(e.severity, context).withValues(alpha: 0.07),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final trailingRowWidth = constraints.maxWidth - 120;
+        final controlsWidth = vote.isUnavailable
+            ? 0.0
+            : measureCompactVoteControlWidth(context, vote.ownVerdict);
+        final stacked = controlsWidth > 0 &&
+            _textWidth(context, contactText) + AppSpace.sm + controlsWidth >
+                trailingRowWidth;
+        return ExpansionTile(
+          leading: Icon(
+            socialAppIcon(e.app),
+            color: socialSeverityColor(e.severity, context),
+          ),
+          title: stacked
+              ? Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: AnimatedRotation(
+                    turns: _expanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: const Icon(Icons.expand_more),
+                  ),
+                )
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: contact),
+                    const SizedBox(width: AppSpace.sm),
+                    controls,
+                  ],
+                ),
+          showTrailingIcon: !stacked,
+          onExpansionChanged: (expanded) {
+            setState(() => _expanded = expanded);
+          },
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (stacked) ...[
+                contact,
+                const SizedBox(height: AppSpace.sm),
+                controls,
+                const SizedBox(height: AppSpace.sm),
+              ],
+              Text(
+                  '${socialAppLabel(e.app, l10n)} · ${formatRelativeTime(e.createdAt, l10n)}'),
+              if (e.concernTypes.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: AppSpace.xs),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: AppSpace.xs,
+                    children: [
+                      for (final t in e.concernTypes)
+                        Chip(
+                          visualDensity: VisualDensity.compact,
+                          label: Text(t,
+                              style: Theme.of(context).textTheme.bodySmall),
+                        ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          children: [
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                    AppSpace.lg, 0, AppSpace.lg, AppSpace.sm),
+                child: Text(
+                    e.preview.isEmpty ? l10n.noPreviewAvailable : e.preview),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                  AppSpace.lg, 0, AppSpace.lg, AppSpace.sm),
+              child: Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: TextButton.icon(
+                  icon: const Icon(Icons.lock_open, size: 16),
+                  label: Text(l10n.viewInDecryptionVault),
+                  onPressed: () => SnippetVaultModal.show(
+                    context,
+                    title: e.contact.isEmpty ? l10n.socialMessage : e.contact,
+                    snippet: e.preview,
+                    severity: e.severity,
+                    concernTypes: e.concernTypes,
+                    sourceLabel: socialAppLabel(e.app, l10n),
+                    timestamp: e.createdAt,
+                    eventId: e.id,
+                  ),
+                ),
+              ),
+            ),
+            // Feature #16: same coaching card as alert details,
+            // keyed off the AI concern types.
+            CoachCardSection(
+                card: coachCardFor('social_concern', e.concernTypes)),
+          ],
+        );
+      }),
     );
   }
 }

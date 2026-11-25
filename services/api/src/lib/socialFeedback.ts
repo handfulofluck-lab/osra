@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import type { PrismaClient, SocialEventFeedback } from "@prisma/client";
 import { prisma } from "../db.js";
 
 export const SOCIAL_FEEDBACK_MIN_BUCKET = 5;
@@ -37,4 +39,45 @@ export async function aggregateSocialEventFeedback(): Promise<Bucket[]> {
   return [...buckets.values()]
     .filter((bucket) => bucket.total >= SOCIAL_FEEDBACK_MIN_BUCKET)
     .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+}
+
+export type SocialEventFeedbackWrite = {
+  socialEventId: string;
+  parentId: string;
+  parentName: string;
+  verdict: "concerning" | "not_concerning";
+  modelVersion: string | null;
+  lang: string | null;
+  topCategory: string | null;
+  topScore: number | null;
+  cutoff: number | null;
+  path: string | null;
+  severity: string | null;
+};
+
+export async function writeSocialEventFeedback(
+  data: SocialEventFeedbackWrite,
+  client: PrismaClient = prisma,
+): Promise<SocialEventFeedback> {
+  const now = new Date();
+  const rows = await client.$queryRaw<SocialEventFeedback[]>`
+    INSERT INTO "SocialEventFeedback" (
+      "id", "socialEventId", "parentId", "verdict", "parentName", "firstVotedAt", "lastChangedAt", "changeCount",
+      "modelVersion", "lang", "topCategory", "topScore", "cutoff", "path", "severity"
+    ) VALUES (
+      ${randomUUID()}, ${data.socialEventId}, ${data.parentId}, ${data.verdict}, ${data.parentName}, ${now}, ${now}, 0,
+      ${data.modelVersion}, ${data.lang}, ${data.topCategory}, ${data.topScore}, ${data.cutoff}, ${data.path}, ${data.severity}
+    )
+    ON CONFLICT ("socialEventId", "parentId") DO UPDATE SET
+      "verdict" = EXCLUDED."verdict",
+      "parentName" = EXCLUDED."parentName",
+      "lastChangedAt" = EXCLUDED."lastChangedAt",
+      "changeCount" = "SocialEventFeedback"."changeCount" + 1
+    WHERE "SocialEventFeedback"."verdict" <> EXCLUDED."verdict"
+    RETURNING *
+  `;
+  if (rows[0]) return rows[0];
+  return client.socialEventFeedback.findUniqueOrThrow({
+    where: { socialEventId_parentId: { socialEventId: data.socialEventId, parentId: data.parentId } },
+  });
 }

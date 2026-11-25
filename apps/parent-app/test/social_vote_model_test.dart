@@ -20,6 +20,12 @@ void main() {
         'firstVotedAt': '2026-11-24T10:01:00.000Z',
         'lastChangedAt': '2026-11-24T10:02:00.000Z',
       },
+      'ownFeedback': {
+        'verdict': 'concerning',
+        'parentDisplayName': 'QA Parent',
+        'firstVotedAt': '2026-11-24T09:01:00.000Z',
+        'lastChangedAt': '2026-11-24T09:02:00.000Z',
+      },
     });
 
     expect(event.latestFeedbackVerdict, 'not_concerning');
@@ -27,6 +33,9 @@ void main() {
     expect(event.latestFeedbackFirstVotedAt, DateTime.utc(2026, 11, 24, 10, 1));
     expect(
         event.latestFeedbackLastChangedAt, DateTime.utc(2026, 11, 24, 10, 2));
+    expect(event.ownFeedbackVerdict, 'concerning');
+    expect(event.ownFeedbackFirstVotedAt, DateTime.utc(2026, 11, 24, 9, 1));
+    expect(event.ownFeedbackLastChangedAt, DateTime.utc(2026, 11, 24, 9, 2));
   });
 
   test(
@@ -48,6 +57,9 @@ void main() {
       expect(event.latestFeedbackParentDisplayName, isNull);
       expect(event.latestFeedbackFirstVotedAt, isNull);
       expect(event.latestFeedbackLastChangedAt, isNull);
+      expect(event.ownFeedbackVerdict, isNull);
+      expect(event.ownFeedbackFirstVotedAt, isNull);
+      expect(event.ownFeedbackLastChangedAt, isNull);
     }
   });
 }

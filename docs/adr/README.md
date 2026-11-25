@@ -51,6 +51,7 @@ Status is one of `accepted`, `superseded by ADR-XXXX`, `deprecated`, or `propose
 | [0042](0042-many-languages.md) | Ready for many languages: one language registry, native catalogs with no literals, a translation pipeline with CI gates, a language-neutral scorer with a per-language eval gate, and a compiled base pack plus country packs for web blocking | proposed |
 | [0043](0043-bounded-mac-metadata-access.md) | Separate Mac metadata principal, literal action/resource scope, deny ceilings, fixed authorization deadline and login-Keychain credential process; independent private review and runtime evidence precede any use | proposed implementation record |
 | [0044](0044-parent-feedback-on-flagged-messages.md) | Parent votes on flagged messages stay per-parent and editable, tied to the vault event with cascading deletion and counts-only, sub-five-suppressed evaluation; no message text or ids leave for analytics | accepted |
+| [0045](0045-parent-feedback-ownership-and-conflict-writes.md) | Event reads distinguish `ownFeedback` from family `latestFeedback`; conditional conflict writes preserve different racing verdicts, local-only hits use rules metadata, and only already-orphaned events are deleted before the child FK | accepted |
 
 ## Writing a new ADR
 

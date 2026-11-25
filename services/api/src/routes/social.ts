@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { recordFlaggedSocialAlert } from "../lib/socialAlertWindow.js";
+import { writeSocialEventFeedback } from "../lib/socialFeedback.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { checkActiveConsent } from "../lib/consent.js";
 import { requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
@@ -348,10 +349,10 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
     concernTypes: verdict.concernTypes,
     modelVersion: model?.modelVersion ?? null,
     lang: model?.lang ?? null,
-    topCategory: model?.topCategory ?? (rulesOnly ? local.concernTypes[0] ?? null : null),
-    topScore: model?.topScore ?? null,
+    topCategory: rulesOnly ? local.concernTypes[0] ?? null : model?.topCategory ?? null,
+    topScore: rulesOnly ? null : model?.topScore ?? null,
     cutoff: model?.cutoff ?? null,
-    path: model?.path ?? (rulesOnly ? "rules" : null),
+    path: rulesOnly ? "rules" : model?.path ?? null,
   };
   const event = receipt ? await prisma.$transaction(async (tx) => {
     const created = await tx.socialEvent.create({ data: eventData });
@@ -399,6 +400,14 @@ function feedbackView(row: FeedbackView) {
     lastChangedAt: row.lastChangedAt,
     changeCount: row.changeCount,
   };
+}
+
+async function latestFeedback(socialEventId: string) {
+  const row = await prisma.socialEventFeedback.findFirst({
+    where: { socialEventId },
+    orderBy: { lastChangedAt: "desc" },
+  });
+  return row ? feedbackView(row) : null;
 }
 
 export async function socialRoutes(app: FastifyInstance) {
@@ -458,7 +467,9 @@ export async function socialRoutes(app: FastifyInstance) {
     } }).socialEvent;
     const where = { socialEventId_parentId: { socialEventId: event.id, parentId } };
     const existing = await prisma.socialEventFeedback.findUnique({ where });
-    if (existing?.verdict === parsed.data.verdict) return { feedback: feedbackView(existing) };
+    if (existing?.verdict === parsed.data.verdict) {
+      return { feedback: feedbackView(existing), latestFeedback: await latestFeedback(event.id) };
+    }
     const parent = await prisma.parent.findUnique({ where: { id: parentId }, select: { displayName: true } });
     const parentName = parent?.displayName ?? "";
     if (existing) {
@@ -466,37 +477,29 @@ export async function socialRoutes(app: FastifyInstance) {
         where,
         data: { verdict: parsed.data.verdict, parentName, lastChangedAt: new Date(), changeCount: { increment: 1 } },
       });
-      return { feedback: feedbackView(updated) };
+      return { feedback: feedbackView(updated), latestFeedback: await latestFeedback(event.id) };
     }
-    const now = new Date();
-    const created = await prisma.socialEventFeedback.upsert({
-      where,
-      create: {
-        socialEventId: event.id,
-        parentId,
-        parentName,
-        verdict: parsed.data.verdict,
-        firstVotedAt: now,
-        lastChangedAt: now,
-        changeCount: 0,
-        modelVersion: event.modelVersion,
-        lang: event.lang,
-        topCategory: event.topCategory,
-        topScore: event.topScore,
-        cutoff: event.cutoff,
-        path: event.path,
-        severity: event.severity,
-      },
-      update: {},
+    const created = await writeSocialEventFeedback({
+      socialEventId: event.id,
+      parentId,
+      parentName,
+      verdict: parsed.data.verdict,
+      modelVersion: event.modelVersion,
+      lang: event.lang,
+      topCategory: event.topCategory,
+      topScore: event.topScore,
+      cutoff: event.cutoff,
+      path: event.path,
+      severity: event.severity,
     });
-    return { feedback: feedbackView(created) };
+    return { feedback: feedbackView(created), latestFeedback: await latestFeedback(event.id) };
   });
 
   app.delete("/events/:id/feedback", { preHandler: [requireParent, feedbackWriteGuard, feedbackFamilyGuard] }, async (req) => {
     const parentId = (req.user as { sub: string }).sub;
     const event = (req as unknown as { socialEvent: { id: string } }).socialEvent;
     await prisma.socialEventFeedback.deleteMany({ where: { socialEventId: event.id, parentId } });
-    return { feedback: null };
+    return { feedback: null, latestFeedback: await latestFeedback(event.id) };
   });
 
   /**
@@ -509,6 +512,7 @@ export async function socialRoutes(app: FastifyInstance) {
     const parsed = EventsQuerySchema.safeParse(req.query ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const q = parsed.data;
+    const parentId = (req.user as { sub: string }).sub;
     const rows = await prisma.socialEvent.findMany({
       where: {
         childId: q.childId,
@@ -517,7 +521,7 @@ export async function socialRoutes(app: FastifyInstance) {
       },
       orderBy: { createdAt: "desc" },
       take: q.limit,
-      include: { feedback: { orderBy: { lastChangedAt: "desc" }, take: 1 } },
+      include: { feedback: { orderBy: { lastChangedAt: "desc" } } },
     });
     const items = rows.map((row) => ({
       id: row.id,
@@ -528,6 +532,7 @@ export async function socialRoutes(app: FastifyInstance) {
       concernTypes: row.concernTypes,
       createdAt: row.createdAt,
       latestFeedback: row.feedback?.[0] ? feedbackView(row.feedback[0]) : null,
+      ownFeedback: row.feedback?.find((vote) => vote.parentId === parentId) ? feedbackView(row.feedback.find((vote) => vote.parentId === parentId)!) : null,
     }));
     return { items };
   });

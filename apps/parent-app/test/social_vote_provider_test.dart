@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
+import 'package:familyshield_parent/providers/family_provider.dart';
 import 'package:familyshield_parent/providers/social_provider.dart';
 import 'package:familyshield_parent/providers/social_vote_provider.dart';
 
@@ -45,8 +46,10 @@ void main() {
 
   tearDown(() => container.dispose());
 
-  Map<String, dynamic> eventJson(
-          {Object? feedback = const <String, dynamic>{}}) =>
+  Map<String, dynamic> eventJson({
+    Object? feedback = const <String, dynamic>{},
+    Object? ownFeedback = const <String, dynamic>{},
+  }) =>
       {
         'id': 'event-1',
         'childId': 'child-1',
@@ -57,6 +60,7 @@ void main() {
         'concernTypes': ['grooming_risk'],
         'createdAt': '2026-11-24T10:00:00.000Z',
         'latestFeedback': feedback,
+        'ownFeedback': ownFeedback,
       };
 
   Map<String, dynamic> feedbackJson(String verdict,
@@ -197,7 +201,7 @@ void main() {
     final deletesBeforeFirstAnswer =
         api.calls('DELETE', '/v1/social/events/event-1/feedback').length;
     final optimisticVerdict =
-        container.read(socialVoteProvider('event-1')).verdict;
+        container.read(socialVoteProvider('event-1')).ownVerdict;
     final optimisticSaving =
         container.read(socialVoteProvider('event-1')).isSaving;
 
@@ -246,6 +250,173 @@ void main() {
     expect(api.calls('POST', '/v1/social/events/event-1/feedback').single.body,
         {'verdict': 'concerning'});
     expect(container.read(socialVoteProvider('event-1')).verdict, isNull);
+  });
+
+  test('a co-parent same verdict does not suppress the current parent POST',
+      () async {
+    // Mutant: comparing against latestFeedback rather than ownFeedback makes
+    // the current parent's first matching vote disappear without a request.
+    container = makeContainer(FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/social/events': (_) => {
+            'items': [
+              eventJson(
+                feedback: feedbackJson('concerning'),
+                ownFeedback: null,
+              )
+            ],
+          },
+      'POST /v1/social/events/event-1/feedback': (_) => {
+            'feedback':
+                feedbackJson('concerning', parentDisplayName: 'QA Parent'),
+            'latestFeedback': feedbackJson('concerning'),
+          },
+    }));
+    await container.read(socialEventsProvider('child-1').future);
+    final controller = container.read(socialVoteProvider('event-1').notifier);
+
+    await controller.vote('concerning');
+
+    expect(
+        api.calls('POST', '/v1/social/events/event-1/feedback'), hasLength(1));
+    final vote = container.read(socialVoteProvider('event-1'));
+    expect(vote.ownVerdict, 'concerning');
+    expect(vote.verdict, 'concerning');
+    expect(vote.parentDisplayName, 'Lina');
+  });
+
+  test(
+      'Clear is a no-op for a co-parent-only vote and reveals remaining latest after own Clear',
+      () async {
+    // Mutant: offering DELETE from family latest can delete a hidden own row;
+    // clearing own must instead adopt the server-provided remaining family vote.
+    container = makeContainer(FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/social/events': (_) => {
+            'items': [
+              eventJson(
+                feedback: feedbackJson('concerning'),
+                ownFeedback: null,
+              )
+            ],
+          },
+      'POST /v1/social/events/event-1/feedback': (_) => {
+            'feedback':
+                feedbackJson('not_concerning', parentDisplayName: 'QA Parent'),
+            'latestFeedback':
+                feedbackJson('not_concerning', parentDisplayName: 'QA Parent'),
+          },
+      'DELETE /v1/social/events/event-1/feedback': (_) => {
+            'feedback': null,
+            'latestFeedback': feedbackJson('concerning'),
+          },
+    }));
+    await container.read(socialEventsProvider('child-1').future);
+    final controller = container.read(socialVoteProvider('event-1').notifier);
+
+    await controller.withdraw();
+    expect(api.calls('DELETE', '/v1/social/events/event-1/feedback'), isEmpty);
+
+    await controller.vote('not_concerning');
+    await controller.withdraw();
+    expect(api.calls('DELETE', '/v1/social/events/event-1/feedback'),
+        hasLength(1));
+    final vote = container.read(socialVoteProvider('event-1'));
+    expect(vote.ownVerdict, isNull);
+    expect(vote.verdict, 'concerning');
+    expect(vote.parentDisplayName, 'Lina');
+  });
+
+  test(
+      'Undo restores own previous verdict when co-parent and parent share a display name',
+      () async {
+    // Mutant: name-based ownership restores the family's not_concerning instead
+    // of the signed-in parent's actual prior concerning vote.
+    final family = familyMeTwoChildren();
+    (family['parent'] as Map<String, dynamic>)['displayName'] = 'Sam';
+    container = makeContainer(FakeApiClient({
+      ...standardRoutes(familyMe: family),
+      'GET /v1/social/events': (_) => {
+            'items': [
+              eventJson(
+                feedback:
+                    feedbackJson('not_concerning', parentDisplayName: 'Sam'),
+                ownFeedback:
+                    feedbackJson('concerning', parentDisplayName: 'Sam'),
+              )
+            ],
+          },
+      'POST /v1/social/events/event-1/feedback': (request) => {
+            'feedback': feedbackJson(request.body['verdict'] as String,
+                parentDisplayName: 'Sam'),
+            'latestFeedback': feedbackJson(request.body['verdict'] as String,
+                parentDisplayName: 'Sam'),
+          },
+      'DELETE /v1/social/events/event-1/feedback': (_) => {
+            'feedback': null,
+            'latestFeedback':
+                feedbackJson('not_concerning', parentDisplayName: 'Sam'),
+          },
+    }));
+    await container.read(socialEventsProvider('child-1').future);
+    final controller = container.read(socialVoteProvider('event-1').notifier);
+
+    await controller.vote('not_concerning');
+    await controller.undo();
+
+    expect(api.calls('POST', '/v1/social/events/event-1/feedback').last.body,
+        {'verdict': 'concerning'});
+    expect(api.calls('DELETE', '/v1/social/events/event-1/feedback'), isEmpty);
+    expect(
+        container.read(socialVoteProvider('event-1')).ownVerdict, 'concerning');
+  });
+
+  test(
+      'Undo restores own previous verdict while the parent profile is unloaded',
+      () async {
+    // Mutant: requiring a loaded display name turns this into DELETE rather
+    // than restoring the actual own previous vote.
+    container = makeContainer(FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/social/events': (_) => {
+            'items': [
+              eventJson(
+                feedback:
+                    feedbackJson('concerning', parentDisplayName: 'QA Parent'),
+                ownFeedback:
+                    feedbackJson('concerning', parentDisplayName: 'QA Parent'),
+              )
+            ],
+          },
+      'POST /v1/social/events/event-1/feedback': (request) => {
+            'feedback': feedbackJson(request.body['verdict'] as String,
+                parentDisplayName: 'QA Parent'),
+            'latestFeedback': feedbackJson(request.body['verdict'] as String,
+                parentDisplayName: 'QA Parent'),
+          },
+      'DELETE /v1/social/events/event-1/feedback': (_) => {
+            'feedback': null,
+            'latestFeedback': null,
+          },
+    }));
+    // Override below, after the API routes are built.
+    final authlessContainer = ProviderContainer(overrides: [
+      apiClientProvider.overrideWithValue(api),
+      familyProvider.overrideWith((ref) => Completer<FamilyOverview>().future),
+    ]);
+    container.dispose();
+    container = authlessContainer;
+    await container.read(socialEventsProvider('child-1').future);
+    final controller = container.read(socialVoteProvider('event-1').notifier);
+
+    await controller.vote('not_concerning');
+    await controller.undo();
+
+    expect(api.calls('POST', '/v1/social/events/event-1/feedback').last.body,
+        {'verdict': 'concerning'});
+    expect(api.calls('DELETE', '/v1/social/events/event-1/feedback'), isEmpty);
+    expect(
+        container.read(socialVoteProvider('event-1')).ownVerdict, 'concerning');
   });
 
   test(
@@ -348,14 +519,61 @@ void main() {
     });
   }
 
+  test(
+      'an events GET begun before a completed vote cannot overwrite it, but a later refresh can',
+      () async {
+    // Mutant: syncing solely on request completion lets the stale GET replace
+    // the newer POST result; rejecting every later sync would break real refreshes.
+    final firstGet = Completer<Object?>();
+    var getAttempts = 0;
+    container = makeContainer(FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/social/events': (_) {
+        getAttempts++;
+        if (getAttempts == 1) return FakeDeferred(firstGet.future);
+        return {
+          'items': [eventJson(feedback: feedbackJson('not_concerning'))],
+        };
+      },
+      'POST /v1/social/events/event-1/feedback': (_) => {
+            'feedback':
+                feedbackJson('concerning', parentDisplayName: 'QA Parent'),
+            'latestFeedback':
+                feedbackJson('concerning', parentDisplayName: 'QA Parent'),
+          },
+    }));
+    final events = container.read(socialEventsProvider('child-1').future);
+    await flushAsync();
+    final controller = container.read(socialVoteProvider('event-1').notifier);
+    await controller.vote('concerning');
+
+    firstGet.complete({
+      'items': [eventJson(feedback: feedbackJson('not_concerning'))],
+    });
+    await events;
+    expect(container.read(socialVoteProvider('event-1')).verdict, 'concerning');
+
+    container.invalidate(socialEventsProvider('child-1'));
+    await container.read(socialEventsProvider('child-1').future);
+    expect(container.read(socialVoteProvider('event-1')).verdict,
+        'not_concerning');
+  });
+
   test('withdrawal is an idempotent DELETE and clears voter metadata',
       () async {
     container = makeContainer(FakeApiClient({
       ...standardRoutes(),
       'GET /v1/social/events': (_) => {
-            'items': [eventJson(feedback: feedbackJson('concerning'))],
+            'items': [
+              eventJson(
+                feedback: feedbackJson('concerning'),
+                ownFeedback:
+                    feedbackJson('concerning', parentDisplayName: 'QA Parent'),
+              )
+            ],
           },
-      'DELETE /v1/social/events/event-1/feedback': (_) => {'feedback': null},
+      'DELETE /v1/social/events/event-1/feedback': (_) =>
+          {'feedback': null, 'latestFeedback': null},
     }));
     await container.read(socialEventsProvider('child-1').future);
     final controller = container.read(socialVoteProvider('event-1').notifier);

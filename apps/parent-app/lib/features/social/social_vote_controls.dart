@@ -8,6 +8,24 @@ import '../../l10n/l10n.dart';
 import '../../providers/social_vote_provider.dart';
 import '../../theme/app_tokens.dart';
 
+double measureCompactVoteControlWidth(BuildContext context, String? verdict) {
+  if (verdict == null) return 48 * 2 + AppSpace.sm;
+  final l10n = context.l10n;
+  final label = verdict == 'concerning'
+      ? l10n.flagVoteConcerning
+      : l10n.flagVoteNotConcerning;
+  final painter = TextPainter(
+    text: TextSpan(
+      text: label,
+      style: Theme.of(context).textTheme.labelLarge,
+    ),
+    textDirection: Directionality.of(context),
+    textScaler: MediaQuery.textScalerOf(context),
+    maxLines: 1,
+  )..layout();
+  return painter.width + 18 + 8 + 24;
+}
+
 class SocialVoteControls extends ConsumerStatefulWidget {
   final String eventId;
   final bool compact;
@@ -38,7 +56,9 @@ class _SocialVoteControlsState extends ConsumerState<SocialVoteControls> {
 
   void _cast(String verdict) {
     final controller = ref.read(socialVoteProvider(widget.eventId).notifier);
-    if (ref.read(socialVoteProvider(widget.eventId)).verdict == verdict) return;
+    if (ref.read(socialVoteProvider(widget.eventId)).ownVerdict == verdict) {
+      return;
+    }
     setState(() => _editing = false);
     unawaited(controller.vote(verdict));
     final l10n = context.l10n;
@@ -78,12 +98,12 @@ class _SocialVoteControlsState extends ConsumerState<SocialVoteControls> {
     final vote = ref.watch(socialVoteProvider(widget.eventId));
     if (vote.isUnavailable) return const SizedBox.shrink();
     final l10n = context.l10n;
-    final verdict = vote.verdict;
-    final voterLine = vote.parentDisplayName == null || verdict == null
+    final latestVerdict = vote.verdict;
+    final voterLine = vote.parentDisplayName == null || latestVerdict == null
         ? null
         : l10n.flagVoteBy(
             firstStrongIsolate(vote.parentDisplayName!),
-            _label(l10n, verdict),
+            _label(l10n, latestVerdict),
           );
 
     final content = widget.compact
@@ -126,8 +146,8 @@ class _SocialVoteControlsState extends ConsumerState<SocialVoteControls> {
       final vertical = constraints.maxWidth < 340 ||
           MediaQuery.textScalerOf(context).scale(14) > 21;
       final choices = [
-        _detailChoice('concerning', vote.verdict),
-        _detailChoice('not_concerning', vote.verdict),
+        _detailChoice('concerning', vote.ownVerdict),
+        _detailChoice('not_concerning', vote.ownVerdict),
       ];
       return Column(
         mainAxisSize: MainAxisSize.min,
@@ -153,7 +173,7 @@ class _SocialVoteControlsState extends ConsumerState<SocialVoteControls> {
                 Expanded(child: choices[1]),
               ],
             ),
-          if (vote.verdict != null) ...[
+          if (vote.ownVerdict != null) ...[
             const SizedBox(height: AppSpace.sm),
             Align(
               alignment: AlignmentDirectional.centerStart,
@@ -215,7 +235,7 @@ class _SocialVoteControlsState extends ConsumerState<SocialVoteControls> {
   }
 
   Widget _buildCompact(SocialVoteState vote, String? voterLine) {
-    final verdict = vote.verdict;
+    final verdict = vote.ownVerdict;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -287,6 +307,7 @@ class _SocialVoteControlsState extends ConsumerState<SocialVoteControls> {
       label: Text(_label(l10n, verdict)),
       style: FilledButton.styleFrom(
         minimumSize: const Size(48, 48),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         backgroundColor: concerning
             ? tokens.severityWarning.withValues(alpha: 0.24)
             : tokens.surfaceVariant,

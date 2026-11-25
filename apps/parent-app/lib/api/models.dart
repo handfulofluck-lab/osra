@@ -904,6 +904,9 @@ class SocialConcernEvent {
   final String? latestFeedbackParentDisplayName;
   final DateTime? latestFeedbackFirstVotedAt;
   final DateTime? latestFeedbackLastChangedAt;
+  final String? ownFeedbackVerdict;
+  final DateTime? ownFeedbackFirstVotedAt;
+  final DateTime? ownFeedbackLastChangedAt;
 
   const SocialConcernEvent({
     required this.id,
@@ -917,6 +920,9 @@ class SocialConcernEvent {
     this.latestFeedbackParentDisplayName,
     this.latestFeedbackFirstVotedAt,
     this.latestFeedbackLastChangedAt,
+    this.ownFeedbackVerdict,
+    this.ownFeedbackFirstVotedAt,
+    this.ownFeedbackLastChangedAt,
   });
 
   factory SocialConcernEvent.fromJson(Map<String, dynamic> json) {
@@ -925,6 +931,9 @@ class SocialConcernEvent {
         latestFeedback is Map ? latestFeedback : const <String, dynamic>{};
     final verdict = _str(feedback['verdict']);
     final parentDisplayName = _str(feedback['parentDisplayName']);
+    final ownFeedback = json['ownFeedback'];
+    final own = ownFeedback is Map ? ownFeedback : const <String, dynamic>{};
+    final ownVerdict = _str(own['verdict']);
     return SocialConcernEvent(
       id: _str(json['id']),
       app: _str(json['app']),
@@ -940,6 +949,9 @@ class SocialConcernEvent {
           DateTime.tryParse(_str(feedback['firstVotedAt'])),
       latestFeedbackLastChangedAt:
           DateTime.tryParse(_str(feedback['lastChangedAt'])),
+      ownFeedbackVerdict: ownVerdict.isEmpty ? null : ownVerdict,
+      ownFeedbackFirstVotedAt: DateTime.tryParse(_str(own['firstVotedAt'])),
+      ownFeedbackLastChangedAt: DateTime.tryParse(_str(own['lastChangedAt'])),
     );
   }
 }

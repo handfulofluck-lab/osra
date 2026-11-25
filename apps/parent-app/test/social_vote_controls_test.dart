@@ -23,7 +23,8 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  Map<String, dynamic> feedback(String verdict, {String parentName = 'Lina'}) => {
+  Map<String, dynamic> feedback(String verdict, {String parentName = 'Lina'}) =>
+      {
         'verdict': verdict,
         'parentDisplayName': parentName,
         'firstVotedAt': '2026-11-24T10:01:00.000Z',
@@ -37,6 +38,8 @@ void main() {
     double width = 390,
     double textScale = 1,
     String? initialVerdict,
+    bool ownVoteMatchesLatest = true,
+    String? initialOwnVerdict,
     String voterName = 'Lina',
     Map<String, FakeRoute>? routes,
   }) async {
@@ -57,6 +60,8 @@ void main() {
     ]);
     addTearDown(container.dispose);
     if (initialVerdict != null) {
+      final ownVerdict =
+          ownVoteMatchesLatest ? initialVerdict : initialOwnVerdict;
       container.read(socialVoteProvider('event-1').notifier).syncFromEvent(
             SocialConcernEvent(
               id: 'event-1',
@@ -68,6 +73,11 @@ void main() {
               latestFeedbackParentDisplayName: voterName,
               latestFeedbackFirstVotedAt: DateTime.utc(2026, 11, 24, 10, 1),
               latestFeedbackLastChangedAt: DateTime.utc(2026, 11, 24, 10, 2),
+              ownFeedbackVerdict: ownVerdict,
+              ownFeedbackFirstVotedAt:
+                  ownVerdict == null ? null : DateTime.utc(2026, 11, 24, 10, 1),
+              ownFeedbackLastChangedAt:
+                  ownVerdict == null ? null : DateTime.utc(2026, 11, 24, 10, 2),
             ),
           );
     }
@@ -145,6 +155,28 @@ void main() {
   });
 
   testWidgets(
+      'co-parent latest hides Clear but does not block a matching own vote',
+      (tester) async {
+    final api = await pumpControls(
+      tester,
+      initialVerdict: 'concerning',
+      ownVoteMatchesLatest: false,
+      initialOwnVerdict: null,
+    );
+
+    expect(find.text('Clear vote'), findsNothing);
+    expect(find.text('\u2068Lina\u2069: Concerning'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Concerning'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Concerning'));
+    await tester.pumpAndSettle();
+    expect(
+        api.calls('POST', '/v1/social/events/event-1/feedback'), hasLength(1));
+    expect(find.text('Clear vote'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets(
       'Clear vote deletes, confirms with Undo, and is absent from compact rows',
       (tester) async {
     final api = await pumpControls(tester,
@@ -169,19 +201,21 @@ void main() {
     expect(api.calls('POST', '/v1/social/events/event-1/feedback').last.body,
         {'verdict': 'concerning'});
 
-    await pumpControls(tester,
-        compact: true, initialVerdict: 'not_concerning');
+    await pumpControls(tester, compact: true, initialVerdict: 'not_concerning');
     expect(find.text('Clear vote'), findsNothing);
   });
 
   testWidgets('Arabic Clear vote uses the approved labels', (tester) async {
     await pumpControls(tester,
-        locale: const Locale('ar'), width: 320, textScale: 2,
+        locale: const Locale('ar'),
+        width: 320,
+        textScale: 2,
         initialVerdict: 'not_concerning');
 
     final clear = find.text('إلغاء إجابتي');
     expect(clear, findsOneWidget);
-    expect(find.bySemanticsLabel('إلغاء إجابتك عن هذه الرسالة'), findsOneWidget);
+    expect(
+        find.bySemanticsLabel('إلغاء إجابتك عن هذه الرسالة'), findsOneWidget);
     await tester.tap(clear);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));

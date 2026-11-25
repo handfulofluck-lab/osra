@@ -6,6 +6,17 @@ ALTER TABLE "SocialEvent"
     ADD COLUMN "cutoff" DOUBLE PRECISION,
     ADD COLUMN "path" TEXT;
 
+DO $$
+DECLARE orphanCount integer;
+BEGIN
+    SELECT count(*) INTO orphanCount FROM "SocialEvent" AS event
+    WHERE NOT EXISTS (SELECT 1 FROM "Child" AS child WHERE child."id" = event."childId");
+    RAISE NOTICE '0043 deleted % orphaned SocialEvent rows (count only)', orphanCount;
+END $$;
+
+DELETE FROM "SocialEvent" AS event
+WHERE NOT EXISTS (SELECT 1 FROM "Child" AS child WHERE child."id" = event."childId");
+
 ALTER TABLE "SocialEvent"
     ADD CONSTRAINT "SocialEvent_childId_fkey" FOREIGN KEY ("childId") REFERENCES "Child"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

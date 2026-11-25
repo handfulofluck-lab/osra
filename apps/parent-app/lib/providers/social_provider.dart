@@ -20,11 +20,15 @@ final socialEventsProvider =
     FutureProvider.family<List<SocialConcernEvent>, String>(
         (ref, childId) async {
   final api = ref.watch(apiClientProvider);
+  final startedRevisions =
+      ref.read(socialVoteRevisionRegistryProvider).snapshot();
   final res = await api.raw.get('/v1/social/events',
       queryParameters: {'childId': childId, 'limit': 50});
   final events = _itemsOf(res.data, SocialConcernEvent.fromJson);
   for (final event in events) {
-    ref.read(socialVoteProvider(event.id).notifier).syncFromEvent(event);
+    ref
+        .read(socialVoteProvider(event.id).notifier)
+        .syncFromEvent(event, startedRevisions[event.id] ?? 0);
   }
   return events;
 });

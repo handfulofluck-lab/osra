@@ -17,6 +17,7 @@ import 'package:familyshield_parent/push/notification_tap.dart';
 import 'package:familyshield_parent/theme/app_theme.dart';
 
 import 'fake_api_client.dart';
+import 'frame_capture.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -26,6 +27,7 @@ void main() {
 
   setUpAll(() async {
     await configureDateFormatting();
+    await loadFrameFonts();
   });
 
   setUp(() {
@@ -114,9 +116,11 @@ void main() {
     String lang = 'en',
     bool dark = false,
     double textScale = 1.0,
+    double width = 390,
+    bool frameBoundary = false,
     List<String>? navigatedTo,
   }) async {
-    tester.view.physicalSize = const Size(390, 844);
+    tester.view.physicalSize = Size(width, 844);
     tester.view.devicePixelRatio = 1.0;
     tester.platformDispatcher.textScaleFactorTestValue = textScale;
     addTearDown(() {
@@ -162,9 +166,15 @@ void main() {
         locale: Locale(lang),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        theme: AppTheme.light,
-        darkTheme: AppTheme.dark,
+        theme: withFrameFonts(AppTheme.light),
+        darkTheme: withFrameFonts(AppTheme.dark),
         themeMode: dark ? ThemeMode.dark : ThemeMode.light,
+        builder: frameBoundary
+            ? (context, child) => RepaintBoundary(
+                  key: const ValueKey('frameRoot'),
+                  child: child!,
+                )
+            : null,
       ),
     ));
     await tester.pumpAndSettle();
@@ -815,6 +825,78 @@ void main() {
       expect(
           find.byKey(const ValueKey('alertDetailUnavailable')), findsNothing);
     });
+  });
+
+  group('Bureau vote frames (writes only with OSRA_FRAME_DIR)', () {
+    Map<String, dynamic> feedback(String verdict, String name) => {
+          'verdict': verdict,
+          'parentDisplayName': name,
+          'firstVotedAt': '2026-11-24T10:01:00.000Z',
+          'lastChangedAt': '2026-11-24T10:02:00.000Z',
+        };
+
+    Map<String, dynamic> frameEvent(String state) {
+      final selected = state == 'concerning' || state == 'not_concerning';
+      return {
+        'id': 'evt-1',
+        'childId': 'child-1',
+        'app': 'whatsapp',
+        'contact': 'Test Group',
+        'severity': 'warning',
+        'concernTypes': ['cyberbullying'],
+        'preview': 'Synthetic vault excerpt only shown in Social activity',
+        'createdAt': alertTime.toUtc().toIso8601String(),
+        'latestFeedback': switch (state) {
+          'unset' => null,
+          'cleared' => feedback('concerning', 'Lina'),
+          _ => feedback(state, 'QA Parent'),
+        },
+        'ownFeedback': selected ? feedback(state, 'QA Parent') : null,
+      };
+    }
+
+    for (final lang in const ['en', 'ar']) {
+      for (final narrow in [false, true]) {
+        for (final dark in [false, true]) {
+          testWidgets(
+              'Alert detail $lang ${narrow ? '320-200' : '390'} ${dark ? 'dark' : 'light'}',
+              (tester) async {
+            for (final state in const [
+              'unset',
+              'concerning',
+              'not_concerning',
+              'cleared',
+            ]) {
+              await pumpDetail(
+                tester,
+                api: apiWith(socialEvents: [frameEvent(state)]),
+                initialAlert: sampleSocialAlert(sourceEventId: 'evt-1'),
+                lang: lang,
+                dark: dark,
+                width: narrow ? 320 : 390,
+                textScale: narrow ? 2 : 1,
+                frameBoundary: true,
+              );
+              final help = find.text(lang == 'ar'
+                  ? 'إجابتك تساعد تطبيق أسرة للأطفال على فحص الرسائل بدقة أكبر.'
+                  : 'Your answer helps OSRA check messages better.');
+              await tester.scrollUntilVisible(
+                help,
+                150,
+                scrollable: find.byType(Scrollable).first,
+              );
+              await tester.pumpAndSettle();
+              expect(tester.takeException(), isNull);
+              await maybeCaptureFrame(
+                tester,
+                'alert-detail-vote-$state-$lang-${dark ? 'dark' : 'light'}-${narrow ? '320-200' : '390'}.png',
+              );
+              await tester.pumpWidget(const SizedBox());
+            }
+          });
+        }
+      }
+    }
   });
 
   group('NotificationTapController (#972 cold-start & warm-start auth gate)',
