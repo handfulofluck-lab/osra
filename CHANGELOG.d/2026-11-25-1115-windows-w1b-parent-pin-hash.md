@@ -1,0 +1,3 @@
+### Windows agent — parent PIN stored only as a salted PBKDF2 hash (#1115)
+- `AgentConfig.ParentPin` is now stored exclusively as a salted PBKDF2-HMAC-SHA256 hash (`pbkdf2$120000$<salt>$<hash>`), matching Android (`ParentPin.kt`) and the shared `docs/test-vectors/parent-pin.tsv` vectors. Existing installs with a plaintext PIN migrate automatically on first run with the plaintext removed from disk; the lock overlay refuses to arm on plaintext or missing hashes.
+- Hardening: the tray now verifies that the pipe server runs in Session 0 as `S-1-5-18` (`SYSTEM`) from the installed `OSRA.Service.exe` image, and the service retries squatted pipes with exponential backoff while recording the bare squatting image name and failure count in the count-only tamper diagnostic.

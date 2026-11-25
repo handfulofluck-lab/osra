@@ -115,6 +115,47 @@ public sealed class TrayEndpointIdentityTests
     }
 
     [Fact]
+    public void ServiceIdentityRequiresSessionZeroSystemSidAndInstalledServiceImage()
+    {
+        const string expectedImage = @"C:\Program Files\OSRA\OSRA.Service.exe";
+        var verifier = new WindowsServiceIdentityVerifier(expectedServiceImagePath: expectedImage);
+
+        Assert.True(verifier.IsExpectedService(new ServerIdentity(0, "S-1-5-18", 400, expectedImage)));
+        Assert.True(verifier.IsExpectedService(new ServerIdentity(0, "S-1-5-18", 400, @"c:\program files\osra\osra.service.exe")));
+
+        // Wrong session id
+        Assert.False(verifier.IsExpectedService(new ServerIdentity(1, "S-1-5-18", 400, expectedImage)));
+        // Non-SYSTEM token in session 0 (e.g., LocalService or NetworkService)
+        Assert.False(verifier.IsExpectedService(new ServerIdentity(0, "S-1-5-19", 400, expectedImage)));
+        Assert.False(verifier.IsExpectedService(new ServerIdentity(0, null, 400, expectedImage)));
+        // Different image running as SYSTEM in session 0
+        Assert.False(verifier.IsExpectedService(new ServerIdentity(0, "S-1-5-18", 400, @"C:\Windows\System32\svchost.exe")));
+        Assert.False(verifier.IsExpectedService(new ServerIdentity(0, "S-1-5-18", 400, @"C:\Temp\OSRA.Service.exe")));
+        Assert.False(verifier.IsExpectedService(new ServerIdentity(0, "S-1-5-18", 400, null)));
+    }
+
+    [Fact]
+    public void ServiceIdentityVerifierFailsClosedWhenIdentityReadThrows()
+    {
+        var verifier = new WindowsServiceIdentityVerifier(
+            new ThrowingServerIdentitySource(), @"C:\Program Files\OSRA\OSRA.Service.exe");
+        Assert.False(verifier.Verify(null!));
+    }
+
+    [Fact]
+    public void NtDevicePathTranslatesToWin32DrivePath()
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [@"\Device\HarddiskVolume3"] = "C:",
+        };
+        var translated = ProcessIdentityQuery.TranslateNtDevicePathToWin32(
+            @"\Device\HarddiskVolume3\Program Files\OSRA\OSRA.Service.exe", map);
+        Assert.Equal(@"C:\Program Files\OSRA\OSRA.Service.exe", translated);
+        Assert.Null(ProcessIdentityQuery.TranslateNtDevicePathToWin32(@"\Device\HarddiskVolume9\other.exe", map));
+    }
+
+    [Fact]
     public async Task OnlyTheFirstServerCanOwnTheSessionPipeName()
     {
         var session = checked(Process.GetCurrentProcess().Id + 20000);
@@ -165,6 +206,11 @@ public sealed class TrayEndpointIdentityTests
             ExpectedPids.Add(expectedPid);
             return new FakeServer(sessionId, userSid);
         }
+    }
+
+    private sealed class ThrowingServerIdentitySource : IServerIdentitySource
+    {
+        public ServerIdentity Read(PipeStream stream) => throw new UnauthorizedAccessException("Access denied.");
     }
 
     private sealed class FakeServer(int sessionId, string userSid) : ITrayServer

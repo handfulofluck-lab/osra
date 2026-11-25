@@ -65,6 +65,9 @@ public sealed class PairingServiceTests
         Assert.Equal("dev-9", config.DeviceId);
         Assert.Equal("child-1", config.ChildId);
         Assert.Equal("ab12", config.HmacSecret);
+        Assert.True(ParentPinPolicy.IsStoredHash(config.ParentPin));
+        Assert.True(ParentPinPolicy.Matches(config.ParentPin, Pin));
+        Assert.DoesNotContain(Pin, config.ParentPin!, StringComparison.Ordinal);
         Assert.Equal(new[] { "/v1/devices/pair/claim", "/v1/devices/pair/claims/c-1/poll", "/v1/devices/pair/claims/c-1/poll" }, handler.Paths);
         Assert.Contains("\"pollSecret\":\"s-1\"", handler.Bodies[1]);
         Assert.All(handler.ClientHeaders, header => Assert.Equal("agent-desktop/0.1.0+1 (windows)", header));

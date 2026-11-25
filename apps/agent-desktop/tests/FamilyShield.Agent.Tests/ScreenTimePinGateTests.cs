@@ -75,7 +75,24 @@ public sealed class ScreenTimePinGateTests : IDisposable
     }
 
     [Fact]
-    public void BedtimeArmsWithTheConfiguredPin()
+    public void BedtimeArmsWithTheConfiguredPinHash()
+    {
+        SyncRules(bedtimeStart: "21:00", bedtimeEnd: "07:00");
+        var observed = new Observed();
+        var pinHash = ParentPinPolicy.Hash("4821");
+        var enforcer = Enforcer(pinHash, observed);
+
+        enforcer.Evaluate(BedtimeNow);
+
+        var shown = Assert.Single(observed.ShownPins);
+        Assert.Equal(pinHash, shown);
+        Assert.True(ParentPinPolicy.Matches(shown, "4821"));
+        Assert.Equal(1, observed.WorkstationLocks);
+        Assert.Null(enforcer.LastArmRefusal);
+    }
+
+    [Fact]
+    public void PlaintextPinDoesNotArmBedtime()
     {
         SyncRules(bedtimeStart: "21:00", bedtimeEnd: "07:00");
         var observed = new Observed();
@@ -83,9 +100,9 @@ public sealed class ScreenTimePinGateTests : IDisposable
 
         enforcer.Evaluate(BedtimeNow);
 
-        Assert.Equal("4821", Assert.Single(observed.ShownPins));
-        Assert.Equal(1, observed.WorkstationLocks);
-        Assert.Null(enforcer.LastArmRefusal);
+        Assert.Empty(observed.ShownPins);
+        Assert.Equal(0, observed.WorkstationLocks);
+        Assert.Equal("screen_time", enforcer.LastArmRefusal);
     }
 
     [Fact]
@@ -117,16 +134,19 @@ public sealed class ScreenTimePinGateTests : IDisposable
     }
 
     [Fact]
-    public void ScreenTimeCapArmsWithTheConfiguredPin()
+    public void ScreenTimeCapArmsWithTheConfiguredPinHash()
     {
         SyncRules(dailyLimitMinutes: 60);
         _store.AddAppMinutes("chrome", 90);
         var observed = new Observed();
-        var enforcer = Enforcer("4821", observed);
+        var pinHash = ParentPinPolicy.Hash("4821");
+        var enforcer = Enforcer(pinHash, observed);
 
         enforcer.Evaluate(DaytimeNow);
 
-        Assert.Equal("4821", Assert.Single(observed.ShownPins));
+        var shown = Assert.Single(observed.ShownPins);
+        Assert.Equal(pinHash, shown);
+        Assert.True(ParentPinPolicy.Matches(shown, "4821"));
         Assert.Null(enforcer.LastArmRefusal);
     }
 

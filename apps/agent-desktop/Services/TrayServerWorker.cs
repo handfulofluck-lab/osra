@@ -1,3 +1,5 @@
+using System.IO.Pipes;
+using System.Security.Principal;
 using System.Text.Json;
 
 namespace FamilyShield.Agent.Services;
@@ -5,6 +7,40 @@ namespace FamilyShield.Agent.Services;
 public interface ITrayServerFactory
 {
     ITrayServer Create(int sessionId, string userSid, int expectedPid);
+}
+
+public interface IPipeSquatProbe
+{
+    /// <summary>
+    /// Best-effort probe returning only the bare executable image name (e.g. <c>powershell.exe</c>)
+    /// of the process currently squatting on the session pipe, or null if unavailable.
+    /// </summary>
+    string? IdentifyHolderImageName(int sessionId);
+}
+
+internal sealed class WindowsPipeSquatProbe : IPipeSquatProbe
+{
+    private const int ProbeTimeoutMs = 250;
+
+    public string? IdentifyHolderImageName(int sessionId)
+    {
+        try
+        {
+            // Anonymous impersonation prevents a hostile squatter from learning or impersonating
+            // the connecting SYSTEM service token during the diagnostic probe.
+            using var probe = new NamedPipeClientStream(
+                ".", TrayPipeName.ForSession(sessionId), PipeDirection.InOut,
+                PipeOptions.None, TokenImpersonationLevel.Anonymous);
+            probe.Connect(ProbeTimeoutMs);
+            var pid = TrayClientIdentity.ServerProcessId(probe);
+            var imagePath = ProcessIdentityQuery.TryReadImagePath(pid);
+            return TrayServerWorker.SanitizeImageName(imagePath);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
 }
 
 public sealed class TrayPipeServerFactory : ITrayServerFactory
@@ -32,9 +68,20 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
     private readonly IDesktopSessionFallback _fallback;
     private readonly Func<DateTime> _clock;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
+    private readonly IPipeSquatProbe _squatProbe;
+    private readonly IReadOnlyList<TimeSpan> _pipeRetryBackoff;
     private static readonly TimeSpan DisposeWaitTimeout = TimeSpan.FromSeconds(5);
+    internal static readonly TimeSpan[] DefaultPipeRetryBackoff =
+    [
+        TimeSpan.FromSeconds(5),
+        TimeSpan.FromSeconds(10),
+        TimeSpan.FromSeconds(20),
+        TimeSpan.FromSeconds(40),
+        TimeSpan.FromSeconds(60),
+    ];
     private DateTime? _lastSosUtc;
     private readonly Dictionary<int, SessionSlot> _slots = new();
+    private readonly Dictionary<int, PipeFailureState> _pipeFailures = new();
     private readonly object _gate = new();
     private bool _disposed;
 
@@ -42,7 +89,8 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         ILogger<TrayServerWorker> log, ForegroundActivityAccumulator activity, ApiClient api,
         AgentConfig config, TrayServerEvents events, ITrayProcessRegistry? processRegistry = null,
         DesktopRestrictionState? restrictions = null, IDesktopSessionFallback? fallback = null,
-        Func<DateTime>? clock = null, Func<TimeSpan, CancellationToken, Task>? delay = null)
+        Func<DateTime>? clock = null, Func<TimeSpan, CancellationToken, Task>? delay = null,
+        IPipeSquatProbe? squatProbe = null, IReadOnlyList<TimeSpan>? pipeRetryBackoff = null)
     {
         _sessions = sessions;
         _factory = factory;
@@ -57,6 +105,8 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         _fallback = fallback ?? new WtsSessionFallback();
         _clock = clock ?? (() => DateTime.UtcNow);
         _delay = delay ?? Task.Delay;
+        _squatProbe = squatProbe ?? new WindowsPipeSquatProbe();
+        _pipeRetryBackoff = pipeRetryBackoff ?? DefaultPipeRetryBackoff;
     }
 
     public Task SendAsync(TrayMessage message, CancellationToken cancellationToken = default)
@@ -91,17 +141,40 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
                         if (!existing.IsCompleted) continue;
                         pending = existing.PendingMessages();
                     }
+                    var now = _clock();
+                    if (_pipeFailures.TryGetValue(session.SessionId, out var failureState) && now < failureState.NextRetryUtc)
+                        continue;
+
                     ITrayServer server;
                     try
                     {
                         server = _factory.Create(session.SessionId, session.UserSid, expectedPid);
+                        _pipeFailures.Remove(session.SessionId);
                     }
                     catch (Exception ex)
                     {
-                        _log.LogError(ex, "Could not create the tray pipe for session {SessionId}", session.SessionId);
+                        var failureCount = (failureState?.Count ?? 0) + 1;
+                        var backoff = _pipeRetryBackoff.Count == 0
+                            ? TimeSpan.Zero
+                            : _pipeRetryBackoff[Math.Min(failureCount - 1, _pipeRetryBackoff.Count - 1)];
+                        _pipeFailures[session.SessionId] = new PipeFailureState(failureCount, now + backoff);
+
+                        var squatterImage = SanitizeImageName(_squatProbe.IdentifyHolderImageName(session.SessionId));
+                        _log.LogError(ex,
+                            "Could not create the tray pipe for session {SessionId} (failure {FailureCount}, holder {SquatterImage})",
+                            session.SessionId, failureCount, squatterImage ?? "unknown");
                         if (_restrictions.RecordPipeFailure(session.SessionId))
+                        {
+                            var metadata = new Dictionary<string, object>
+                            {
+                                ["type"] = "tray_pipe_create_failed",
+                                ["failureCount"] = failureCount,
+                            };
+                            if (squatterImage is not null) metadata["squatterImage"] = squatterImage;
                             _ = PostTamperAlert("tray_pipe_create_failed",
-                                "Part of OSRA could not start on the computer. If a lock or limit is active and this continues, OSRA will lock the computer to keep it protected.");
+                                "Part of OSRA could not start on the computer. If a lock or limit is active and this continues, OSRA will lock the computer to keep it protected.",
+                                extraMetadata: metadata);
+                        }
                         continue;
                     }
                     if (existing is not null)
@@ -196,16 +269,47 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         _restrictions.RestoredUnreadable ? "critical" : "high", "OSRA could not save a setting on the computer");
 
     private Task PostTamperAlert(string type, string body, string severity = "critical",
-        string title = "Protection on the computer was interrupted") => _api.PostAlert(new AlertDto
+        string title = "Protection on the computer was interrupted",
+        Dictionary<string, object>? extraMetadata = null)
     {
-        DeviceId = _config.DeviceId,
-        ChildId = _config.ChildId,
-        Severity = severity,
-        Category = "tamper",
-        Title = title,
-        Body = body,
-        Metadata = new Dictionary<string, object> { ["type"] = type },
-    });
+        var metadata = extraMetadata ?? new Dictionary<string, object> { ["type"] = type };
+        metadata["type"] = type;
+        return _api.PostAlert(new AlertDto
+        {
+            DeviceId = _config.DeviceId,
+            ChildId = _config.ChildId,
+            Severity = severity,
+            Category = "tamper",
+            Title = title,
+            Body = body,
+            Metadata = metadata,
+        });
+    }
+
+    /// <summary>
+    /// Strips any directory path (preventing username/PII leakage) and clamps to a safe bare
+    /// executable name for count-only squat diagnostics (#1115).
+    /// </summary>
+    internal static string? SanitizeImageName(string? imagePath)
+    {
+        if (string.IsNullOrWhiteSpace(imagePath)) return null;
+        var trimmed = imagePath.Trim();
+        var sep = trimmed.LastIndexOfAny(['\\', '/']);
+        var fileName = sep >= 0 ? trimmed[(sep + 1)..] : trimmed;
+        if (fileName.Length == 0) return null;
+        Span<char> clean = stackalloc char[Math.Min(fileName.Length, 64)];
+        var len = 0;
+        foreach (var ch in fileName)
+        {
+            if (len == clean.Length) break;
+            if (char.IsAsciiLetterOrDigit(ch) || ch is '.' or '-' or '_' or ' ')
+                clean[len++] = ch;
+        }
+        var result = new string(clean[..len]).Trim();
+        return result.Length == 0 ? null : result;
+    }
+
+    private sealed record PipeFailureState(int Count, DateTime NextRetryUtc);
 
     private async Task<TrayMessage?> HandleMessage(int sessionId, TrayMessage message, CancellationToken cancellationToken)
     {

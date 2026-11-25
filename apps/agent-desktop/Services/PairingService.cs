@@ -43,7 +43,7 @@ public static class PairingService
         IAccountIdentity? account = null)
     {
         var baseUrl = (apiBase ?? string.Empty).Trim().TrimEnd('/');
-        var pin = ParentPinPolicy.Normalize(parentPin);
+        var pin = ParentPinPolicy.Validate(parentPin) is null ? ParentPinPolicy.Normalize(parentPin) : null;
         var typedCode = (code ?? string.Empty).Trim();
         if (baseUrl.Length == 0 || typedCode.Length == 0 || pin is null) return null;
         // Every caller goes through here, so the code is normalised once (#771): the server accepts
@@ -145,7 +145,7 @@ public static class PairingService
             DeviceId = payload.DeviceId,
             ChildId = payload.ChildId,
             HmacSecret = payload.HmacSecret,
-            ParentPin = pin,
+            ParentPin = ParentPinPolicy.Hash(pin),
         };
     }
 
