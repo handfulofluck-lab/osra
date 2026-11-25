@@ -1,6 +1,6 @@
 name: familyshield_parent
 description: FamilyShield parent dashboard
-version: 0.1.0
+version: 0.1.0+1
 environment:
   sdk: ">=3.4.0 <4.0.0"
 

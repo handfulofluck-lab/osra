@@ -59,9 +59,9 @@ The version number labels the artifact. The dated heading in `CHANGELOG.md` labe
 |---|---|---|
 | Android child agent `versionCode` | `apps/child-android/app/build.gradle.kts:29` | Play's monotonic counter; must increase on every upload, forever |
 | Android child agent `versionName` | `apps/child-android/app/build.gradle.kts:30` | human label, currently `0.2.0` |
-| Parent app version | `apps/parent-app/pubspec.yaml:3` | `0.1.0` today, with **no `+<build>` suffix** — and `apps/parent-app/android/app/build.gradle.kts:40` takes `versionCode` from it, so a second upload would reuse versionCode 1 and Play would refuse it. The release bump adds `+<n>` |
+| Parent app version | `apps/parent-app/pubspec.yaml:3` | `0.1.0+1` since 2026-11-16 — the `+<n>` suffix is what becomes Android's `versionCode` (`apps/parent-app/android/app/build.gradle.kts:62`), so without it a second upload would reuse code 1 and Play would refuse it. Raise `n` for every uploaded build, even a rebuild of the same version |
 | JS workspace | `package.json:4`, `services/api/package.json:3` | both `0.1.0`; set together |
-| Windows agent | `apps/agent-desktop/FamilyShield.Agent.csproj:2-11` | **no `<Version>`** today, so every build reports the SDK default and two builds are indistinguishable. A Windows release sets it or the record says "unversioned" |
+| Windows agent | `apps/agent-desktop/FamilyShield.Agent.csproj:13` | `<Version>0.2.0</Version>` since 2026-11-16; before that the agent carried none and every build reported the SDK default |
 | iOS agent | `apps/child-ios/Package.swift` | a SwiftPM package with no bundle version; there is no distributable iOS build yet (`docs/ROADMAP.md` 5.1, 5.6) |
 
 Rules, each with the failure it prevents:

@@ -31,18 +31,18 @@ app for store publishing, and none of them replace device testing, store review,
 requirements below. (We already use the same *class* of tooling — Kimi Code subagents —
 for the development side; that's how this codebase was built and QA'd.)
 
-## Where OSRA stands today — automated verification (all green)
+## Where OSRA stands today — automated verification
 
-| Layer | Result |
-|---|---|
-| API unit/integration (vitest) | 178/178 |
-| Android agent JVM tests | 146/146 |
-| Windows agent xunit | 161/161 |
-| Parent app widget tests + analyzer | 89/89, clean |
-| AI engine pytest | 18 passed / 1 skipped |
-| Live E2E (public HTTPS tunnel, wss) | **44/44** |
+**The counts that used to sit here were stale.** They read 178/178 API, 146/146 Android JVM, 161/161 Windows,
+89/89 parent and 44/44 E2E; on 2026-11-16 the same suites stand at 205+ vitest, 1117 Android JVM tests, 185
+Windows, 103 parent and a 56-check E2E, and they move every day. A table nobody re-runs is worse than no table:
+it gets quoted at review time as if it were current.
 
-Plus: on-device emulator smoke (see below) when the emulator image finishes downloading.
+So this document no longer carries numbers. The current result for any commit is the CI run on that commit —
+`ci.yml` plus each suite's own workflow (`api.yml`, `parent-app.yml`, `child-android.yml`, `agent-desktop.yml`,
+`ai-engine.yml`) — and the release record cites the run ids, not a copy of them (`RELEASING.md` R5).
+
+What these suites still do not replace: device testing, store review, and every row below.
 
 ## Google Play — what's required before publishing (current gaps)
 
@@ -51,7 +51,7 @@ Plus: on-device emulator smoke (see below) when the emulator image finishes down
 | `targetSdk 35` | ✅ met (child agent and parent app) | — |
 | Release signing (own keystore) | 🟡 **plumbed, key not yet issued** | `build.gradle.kts` reads `OSRA_UPLOAD_KEYSTORE`, `OSRA_UPLOAD_KEYSTORE_PASSWORD`, `OSRA_UPLOAD_KEY_ALIAS`, `OSRA_UPLOAD_KEY_PASSWORD` from `android/local.properties` or the environment; CI materialises the keystore from the `OSRA_UPLOAD_KEYSTORE_B64` secret and builds the **AAB** on every run (falls back to the debug key when unset). Maintainer action: `keytool -genkeypair -v -keystore upload.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000`, then `base64 -w0 upload.jks` into the secret. Also set `MAPS_API_KEY`. |
 | 16 KB page-size compatibility (Android 15+) | 🟡 AGP 8.4 / current NDK — verify with `zipalign`/`apkanalyzer` on the AAB | Run the Play pre-launch report; bump NDK if flagged. |
-| Privacy policy URL | ❌ missing | Host a policy covering: collected data (location, app usage, calls/SMS metadata, social snippets **encrypted**), COPPA/GDPR-K consent flow, retention, contact. |
+| Privacy policy URL | 🟡 **page exists, HTTPS broken** | The policy is written and deployed: `site/privacy/index.html`, published by `.github/workflows/site-pages.yml`. Measured 2026-11-16: `http://osratech.com/privacy/` returns 200 with `<title>OSRA privacy policy</title>`, and `https://osratech.com/privacy/` **fails the TLS handshake** (`SEC_E_WRONG_PRINCIPAL` — the certificate does not match the name). Cause: DNS for `osratech.com` points at GitHub Pages (185.199.108-111.153) but the Pages domain challenge record `TXT _github-pages-challenge-handfulofluck-lab.osratech.com` does **not** exist, so no certificate is issued. Maintainer action: add that TXT record with the value GitHub shows under *Settings → Pages → Custom domain*, wait for the certificate, tick **Enforce HTTPS**. Do not hand Play an `http://` policy URL for a parental-control app. |
 | Data-safety form | ❌ not filled | Declare location, app activity, messages metadata; note encryption. |
 | App content rating (IARC questionnaire) | ❌ not done | Answer in Play Console. |
 | Test track first (internal/closed) | 🟡 APKs ready | Upload `OSRA-ChildAgent.apk` (or AAB) to an internal track with the test family. |
