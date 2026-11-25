@@ -12,6 +12,7 @@ import '../../providers/family_provider.dart';
 import '../rules/app_picker.dart' show AppIconBadge;
 import '../rules/rules_behind_banner.dart';
 import '../../providers/social_provider.dart';
+import '../../providers/social_vote_provider.dart';
 import '../../core/digits.dart';
 import '../../theme/app_tokens.dart';
 import '../coach/coach_card_section.dart';
@@ -20,6 +21,7 @@ import '../content/snippet_vault_modal.dart';
 import '../../api/permission_errors.dart';
 import '../../widgets/error_retry_view.dart';
 import 'social_app_catalog.dart';
+import 'social_vote_controls.dart';
 
 export 'social_app_catalog.dart' show kSocialApps, SocialAppInfo;
 
@@ -197,7 +199,8 @@ class _MonitoringTogglesSectionState
       final body = ruleSet.toJson();
       // NOTE: merge server-side map under the local draft so keys we do not
       // render here (future apps) survive the PATCH-merge.
-      body['socialMonitoring'] = {...ruleSet.socialMonitoring, ...draft}..remove('x');
+      body['socialMonitoring'] = {...ruleSet.socialMonitoring, ...draft}
+        ..remove('x');
       await ref
           .read(apiClientProvider)
           .raw
@@ -240,9 +243,8 @@ class _MonitoringTogglesSectionState
           ? Icon(socialAppIcon(app.appKey))
           : AppIconBadge(app: installed, size: 32),
       value: value,
-      onChanged: _saving
-          ? null
-          : (v) => setState(() => _draft![app.appKey] = v),
+      onChanged:
+          _saving ? null : (v) => setState(() => _draft![app.appKey] = v),
     );
   }
 
@@ -254,8 +256,12 @@ class _MonitoringTogglesSectionState
         kSocialApps.where((app) => installed.containsKey(app.appKey)));
     final absent = sortedSocialApps(
         kSocialApps.where((app) => !installed.containsKey(app.appKey)));
-    final child = ref.read(familyProvider).valueOrNull?.children
-        .where((c) => c.id == widget.childId).firstOrNull;
+    final child = ref
+        .read(familyProvider)
+        .valueOrNull
+        ?.children
+        .where((c) => c.id == widget.childId)
+        .firstOrNull;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -325,8 +331,10 @@ class _MonitoringTogglesSectionState
                 padding: EdgeInsets.all(AppSpace.lg),
                 child: Center(child: CircularProgressIndicator())),
             error: (e, _) => ErrorRetryView(
-              message: friendlyErrorText(l10n, e, () => l10n.installedAppsLoadFailed),
-              onRetry: () => ref.invalidate(installedAppsProvider(widget.childId)),
+              message: friendlyErrorText(
+                  l10n, e, () => l10n.installedAppsLoadFailed),
+              onRetry: () =>
+                  ref.invalidate(installedAppsProvider(widget.childId)),
             ),
             data: (report) => _loadedContent(ruleSet, report),
           ),
@@ -376,87 +384,153 @@ class ConcernsSection extends ConsumerWidget {
                 )
               : Column(
                   children: [
-                    for (final e in items)
-                      Card(
-                        color: socialSeverityColor(e.severity, context)
-                            .withValues(alpha: 0.07),
-                        child: ExpansionTile(
-                          leading: Icon(socialAppIcon(e.app),
-                              color: socialSeverityColor(e.severity, context)),
-                          title: Text(e.contact.isEmpty
-                              ? l10n.unknownContact
-                              : e.contact),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                  '${socialAppLabel(e.app, l10n)} · ${formatRelativeTime(e.createdAt, l10n)}'),
-                              if (e.concernTypes.isNotEmpty)
-                                Padding(
-                                  padding:
-                                      const EdgeInsets.only(top: AppSpace.xs),
-                                  child: Wrap(
-                                    spacing: 6,
-                                    runSpacing: AppSpace.xs,
-                                    children: [
-                                      for (final t in e.concernTypes)
-                                        Chip(
-                                          visualDensity: VisualDensity.compact,
-                                          label: Text(t,
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .bodySmall),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          ),
-                          children: [
-                            Align(
-                              alignment: AlignmentDirectional.centerStart,
-                              child: Padding(
-                                padding: const EdgeInsetsDirectional.fromSTEB(
-                                    AppSpace.lg, 0, AppSpace.lg, AppSpace.sm),
-                                child: Text(e.preview.isEmpty
-                                    ? l10n.noPreviewAvailable
-                                    : e.preview),
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsetsDirectional.fromSTEB(
-                                  AppSpace.lg, 0, AppSpace.lg, AppSpace.sm),
-                              child: Align(
-                                alignment: AlignmentDirectional.centerEnd,
-                                child: TextButton.icon(
-                                  icon: const Icon(Icons.lock_open, size: 16),
-                                  label: Text(l10n.viewInDecryptionVault),
-                                  onPressed: () => SnippetVaultModal.show(
-                                    context,
-                                    title: e.contact.isEmpty
-                                        ? l10n.socialMessage
-                                        : e.contact,
-                                    snippet: e.preview,
-                                    severity: e.severity,
-                                    concernTypes: e.concernTypes,
-                                    sourceLabel: socialAppLabel(e.app, l10n),
-                                    timestamp: e.createdAt,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            // Feature #16: same coaching card as alert details,
-                            // keyed off the AI concern types.
-                            CoachCardSection(
-                                card: coachCardFor(
-                                    'social_concern', e.concernTypes)),
-                          ],
-                        ),
-                      ),
+                    for (final e in items) _ConcernCard(event: e),
                   ],
                 ),
         ),
       ],
+    );
+  }
+}
+
+class _ConcernCard extends ConsumerStatefulWidget {
+  final SocialConcernEvent event;
+
+  const _ConcernCard({required this.event});
+
+  @override
+  ConsumerState<_ConcernCard> createState() => _ConcernCardState();
+}
+
+class _ConcernCardState extends ConsumerState<_ConcernCard> {
+  bool _expanded = false;
+
+  double _textWidth(BuildContext context, String text) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: Theme.of(context).textTheme.bodyLarge,
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    return painter.width;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final e = widget.event;
+    final l10n = context.l10n;
+    final vote = ref.watch(socialVoteProvider(e.id));
+    final contactText = e.contact.isEmpty ? l10n.unknownContact : e.contact;
+    final contact = Text(contactText);
+    final controls = SocialVoteControls(eventId: e.id, compact: true);
+    return Card(
+      color: socialSeverityColor(e.severity, context).withValues(alpha: 0.07),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final rowWidth = constraints.maxWidth;
+        final trailingRowWidth = rowWidth - 120;
+        final controlsWidth = vote.isUnavailable
+            ? 0.0
+            : measureCompactVoteControlWidth(context, vote.ownVerdict);
+        final stacked = controlsWidth > 0 &&
+            (controlsWidth + AppSpace.sm > trailingRowWidth / 2 ||
+                _textWidth(context, contactText) + AppSpace.sm + controlsWidth >
+                    trailingRowWidth);
+        return ExpansionTile(
+          leading: Icon(
+            socialAppIcon(e.app),
+            color: socialSeverityColor(e.severity, context),
+          ),
+          title: stacked
+              ? Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: AnimatedRotation(
+                    turns: _expanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: const Icon(Icons.expand_more),
+                  ),
+                )
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: contact),
+                    const SizedBox(width: AppSpace.sm),
+                    controls,
+                  ],
+                ),
+          showTrailingIcon: !stacked,
+          onExpansionChanged: (expanded) {
+            setState(() => _expanded = expanded);
+          },
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (stacked) ...[
+                contact,
+                const SizedBox(height: AppSpace.sm),
+                controls,
+                const SizedBox(height: AppSpace.sm),
+              ],
+              Text(
+                  '${socialAppLabel(e.app, l10n)} · ${formatRelativeTime(e.createdAt, l10n)}'),
+              if (e.concernTypes.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: AppSpace.xs),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: AppSpace.xs,
+                    children: [
+                      for (final t in e.concernTypes)
+                        Chip(
+                          visualDensity: VisualDensity.compact,
+                          label: Text(t,
+                              style: Theme.of(context).textTheme.bodySmall),
+                        ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          children: [
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                    AppSpace.lg, 0, AppSpace.lg, AppSpace.sm),
+                child: Text(
+                    e.preview.isEmpty ? l10n.noPreviewAvailable : e.preview),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                  AppSpace.lg, 0, AppSpace.lg, AppSpace.sm),
+              child: Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: TextButton.icon(
+                  icon: const Icon(Icons.lock_open, size: 16),
+                  label: Text(l10n.viewInDecryptionVault),
+                  onPressed: () => SnippetVaultModal.show(
+                    context,
+                    title: e.contact.isEmpty ? l10n.socialMessage : e.contact,
+                    snippet: e.preview,
+                    severity: e.severity,
+                    concernTypes: e.concernTypes,
+                    sourceLabel: socialAppLabel(e.app, l10n),
+                    timestamp: e.createdAt,
+                    eventId: e.id,
+                  ),
+                ),
+              ),
+            ),
+            // Feature #16: same coaching card as alert details,
+            // keyed off the AI concern types.
+            CoachCardSection(
+                card: coachCardFor('social_concern', e.concernTypes)),
+          ],
+        );
+      }),
     );
   }
 }
@@ -499,9 +573,7 @@ class CallsSmsSection extends ConsumerWidget {
             final groups = <String, List<ActivityEvent>>{};
             final order = <String>[];
             for (final e in items) {
-              final day = e.ts == null
-                  ? 'Unknown'
-                  : dayKey(e.ts!.toLocal());
+              final day = e.ts == null ? 'Unknown' : dayKey(e.ts!.toLocal());
               if (!groups.containsKey(day)) {
                 groups[day] = [];
                 order.add(day);
@@ -536,11 +608,15 @@ class CallsSmsSection extends ConsumerWidget {
                         subtitle: e.type == 'lock_period'
                             ? Text(l10n.activityLockRowDetail(_lockAttempts(e)))
                             : e.type == 'sms'
-                            ? Text(_truncateSms(e.bodyPreview))
-                            // Roadmap 4.5: a brand name, so the same text in both languages and no new
-                            // Arabic to approve (#523 ruled the phone side; the screen has to match).
-                            : (e.source == 'whatsapp' ? const Text('WhatsApp') : null),
-                        trailing: e.type == 'call' ? callDurationText(e, context) : null,
+                                ? Text(_truncateSms(e.bodyPreview))
+                                // Roadmap 4.5: a brand name, so the same text in both languages and no new
+                                // Arabic to approve (#523 ruled the phone side; the screen has to match).
+                                : (e.source == 'whatsapp'
+                                    ? const Text('WhatsApp')
+                                    : null),
+                        trailing: e.type == 'call'
+                            ? callDurationText(e, context)
+                            : null,
                       ),
                     ),
                 ],
@@ -560,7 +636,8 @@ class CallsSmsSection extends ConsumerWidget {
   }
 
   /// #830: the attempts a lock-period row carries; 0 when an older row has none.
-  int _lockAttempts(ActivityEvent e) => e.payload['attempts'] is int ? e.payload['attempts'] as int : 0;
+  int _lockAttempts(ActivityEvent e) =>
+      e.payload['attempts'] is int ? e.payload['attempts'] as int : 0;
 
   /// SMS previews are capped at 120 chars server-side; truncate defensively.
   String _truncateSms(String preview) =>

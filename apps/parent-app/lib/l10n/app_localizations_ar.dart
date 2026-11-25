@@ -1774,6 +1774,42 @@ class AppLocalizationsAr extends AppLocalizations {
   String get concerns => 'المخاوف';
 
   @override
+  String get flagVoteQuestion => 'هل هذه الرسالة مقلقة فعلًا؟';
+
+  @override
+  String get flagVoteConcerning => 'مقلقة';
+
+  @override
+  String get flagVoteNotConcerning => 'غير مقلقة';
+
+  @override
+  String get flagVoteHelp =>
+      'إجابتك تساعد تطبيق أسرة للأطفال على فحص الرسائل بدقة أكبر.';
+
+  @override
+  String get flagVoteThanks => 'شكرًا، سُجّلت إجابتك';
+
+  @override
+  String flagVoteBy(String name, String vote) {
+    return '$name: $vote';
+  }
+
+  @override
+  String get flagVoteA11yConcerning => 'اعتبار الرسالة مقلقة';
+
+  @override
+  String get flagVoteA11yNotConcerning => 'اعتبار الرسالة غير مقلقة';
+
+  @override
+  String get flagVoteClear => 'إلغاء إجابتي';
+
+  @override
+  String get flagVoteCleared => 'أُلغيت إجابتك';
+
+  @override
+  String get flagVoteA11yClear => 'إلغاء إجابتك عن هذه الرسالة';
+
+  @override
   String get vaultTrustCopy =>
       'تنتقل المقتطفات عبر اتصال مشفّر، وتُخزَّن مشفّرة على خوادم تطبيق أسرة.';
 
