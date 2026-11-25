@@ -95,7 +95,8 @@ void main() {
                     'contact': 'Test Group',
                     'severity': 'warning',
                     'concernTypes': ['cyberbullying'],
-                    'preview': 'Synthetic vault excerpt only shown in Social activity',
+                    'preview':
+                        'Synthetic vault excerpt only shown in Social activity',
                     'createdAt': alertTime.toUtc().toIso8601String(),
                   },
                 ],
@@ -145,7 +146,8 @@ void main() {
           builder: (_, s) {
             final path = '/child/${s.pathParameters['id']}/social';
             navigatedTo?.add(path);
-            return Scaffold(body: Text('SOCIAL_SCREEN:${s.pathParameters['id']}'));
+            return Scaffold(
+                body: Text('SOCIAL_SCREEN:${s.pathParameters['id']}'));
           },
         ),
       ],
@@ -167,7 +169,8 @@ void main() {
   }
 
   group('AlertDetailScreen (#972)', () {
-    testWidgets('shows localized hierarchy, never leaks vault excerpt, and opens Social activity',
+    testWidgets(
+        'shows localized hierarchy, never leaks vault excerpt, and opens Social activity',
         (tester) async {
       final visited = <String>[];
       await pumpDetail(
@@ -180,7 +183,8 @@ void main() {
       expect(find.text('Social safety alert'), findsOneWidget);
       expect(find.byKey(const ValueKey('alertDetailAppChip')), findsOneWidget);
       expect(find.text('Cyberbullying'), findsOneWidget);
-      expect(find.byKey(const ValueKey('alertDetailChildDevice')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('alertDetailChildDevice')), findsOneWidget);
       expect(find.textContaining('Alex'), findsOneWidget);
       expect(find.textContaining('Pixel 7a'), findsOneWidget);
       expect(find.textContaining('09:05'), findsOneWidget);
@@ -199,7 +203,8 @@ void main() {
       expect(find.text('SOCIAL_SCREEN:child-1'), findsOneWidget);
     });
 
-    testWidgets('shows gaming chat title for gaming_chat alerts', (tester) async {
+    testWidgets('shows gaming chat title for gaming_chat alerts',
+        (tester) async {
       await pumpDetail(
         tester,
         api: apiWith(socialEvents: [
@@ -222,11 +227,13 @@ void main() {
       );
 
       expect(find.text('Gaming chat alert'), findsOneWidget);
-      expect(find.byKey(const ValueKey('alertDetailConcern-grooming')), findsOneWidget);
+      expect(find.byKey(const ValueKey('alertDetailConcern-grooming')),
+          findsOneWidget);
       expect(find.textContaining('Hidden excerpt'), findsNothing);
     });
 
-    testWidgets('missing social permission shows unavailable-for-account state and hides CTA',
+    testWidgets(
+        'missing social permission shows unavailable-for-account state and hides CTA',
         (tester) async {
       // Mutant: dropping the 403 permission_required branch in resolveSocialPreviewAvailability
       // would show expired or the Open Social activity CTA instead of the permission message.
@@ -245,13 +252,15 @@ void main() {
         initialAlert: sampleSocialAlert(),
       );
 
-      expect(find.byKey(const ValueKey('alertDetailPreviewNoPerm')), findsOneWidget);
+      expect(find.byKey(const ValueKey('alertDetailPreviewNoPerm')),
+          findsOneWidget);
       expect(find.text('Preview unavailable for your account'), findsOneWidget);
       expect(find.byKey(const ValueKey('alertDetailOpenSocial')), findsNothing);
       expect(find.text('How to talk about this'), findsOneWidget);
     });
 
-    testWidgets('empty vault shows preview-no-longer-available state and keeps guide usable',
+    testWidgets(
+        'empty vault shows preview-no-longer-available state and keeps guide usable',
         (tester) async {
       await pumpDetail(
         tester,
@@ -259,7 +268,8 @@ void main() {
         initialAlert: sampleSocialAlert(),
       );
 
-      expect(find.byKey(const ValueKey('alertDetailPreviewExpired')), findsOneWidget);
+      expect(find.byKey(const ValueKey('alertDetailPreviewExpired')),
+          findsOneWidget);
       expect(find.text('Preview no longer available'), findsOneWidget);
       expect(find.byKey(const ValueKey('alertDetailOpenSocial')), findsNothing);
       expect(find.text('How to talk about this'), findsOneWidget);
@@ -274,14 +284,16 @@ void main() {
         navigatedTo: visited,
       );
 
-      expect(find.byKey(const ValueKey('alertDetailUnavailable')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('alertDetailUnavailable')), findsOneWidget);
       expect(find.text('Alert unavailable'), findsOneWidget);
       await tester.tap(find.text('All alerts'));
       await tester.pumpAndSettle();
       expect(visited, contains('/alerts'));
     });
 
-    testWidgets('200% text scale scrolls cleanly to primary CTA in EN/AR light and dark',
+    testWidgets(
+        '200% text scale scrolls cleanly to primary CTA in EN/AR light and dark',
         (tester) async {
       for (final lang in const ['en', 'ar']) {
         for (final dark in const [false, true]) {
@@ -306,7 +318,8 @@ void main() {
       }
     });
 
-    testWidgets('tapping a social_concern row on AlertsScreen opens full-screen AlertDetailScreen',
+    testWidgets(
+        'tapping a social_concern row on AlertsScreen opens full-screen AlertDetailScreen',
         (tester) async {
       tester.view.physicalSize = const Size(400, 900);
       tester.view.devicePixelRatio = 1.0;
@@ -365,9 +378,15 @@ void main() {
       });
 
       await pumpDetail(tester, api: api, alertId: 'alert-blocked-1');
-      expect(find.byKey(const ValueKey('alertDetailGeneralScroll')), findsOneWidget);
+      expect(find.byKey(const ValueKey('alertDetailGeneralScroll')),
+          findsOneWidget);
       expect(find.byKey(const ValueKey('alertDetailBody')), findsOneWidget);
-      expect(find.text('TikTok was blocked by your schedule.'), findsOneWidget);
+      expect(find.text('TikTok was blocked by your schedule.'), findsNothing);
+      expect(
+        find.text(
+            '\u{2068}Alex\u{2069} tried to open it. Nothing for you to do.'),
+        findsOneWidget,
+      );
       expect(find.byKey(const ValueKey('alertDetailOpenSocial')), findsNothing);
       expect(find.byKey(const ValueKey('alertDetailFraming')), findsNothing);
       expect(socialEventsCalls, 0);
@@ -418,7 +437,8 @@ void main() {
                 'contact': 'Test Group',
                 'severity': 'warning',
                 'concernTypes': ['cyberbullying'],
-                'preview': 'Synthetic vault excerpt only shown in Social activity',
+                'preview':
+                    'Synthetic vault excerpt only shown in Social activity',
                 'createdAt': alertTime.toUtc().toIso8601String(),
               },
             ],
@@ -431,15 +451,20 @@ void main() {
       expect(find.byKey(const ValueKey('alertDetailTitle')), findsOneWidget);
       expect(find.byKey(const ValueKey('alertDetailAppChip')), findsOneWidget);
       expect(find.byKey(const ValueKey('alertDetailFraming')), findsOneWidget);
-      expect(find.byKey(const ValueKey('alertDetailPreviewExpired')), findsNothing);
-      expect(find.byKey(const ValueKey('alertDetailPreviewRetry')), findsOneWidget);
+      expect(find.byKey(const ValueKey('alertDetailPreviewExpired')),
+          findsNothing);
+      expect(find.byKey(const ValueKey('alertDetailPreviewRetry')),
+          findsOneWidget);
 
-      await tester.tap(find.byKey(const ValueKey('alertDetailPreviewRetryButton')));
+      await tester
+          .tap(find.byKey(const ValueKey('alertDetailPreviewRetryButton')));
       await tester.pumpAndSettle();
 
       expect(attempt, 2);
-      expect(find.byKey(const ValueKey('alertDetailPreviewRetry')), findsNothing);
-      expect(find.byKey(const ValueKey('alertDetailOpenSocial')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('alertDetailPreviewRetry')), findsNothing);
+      expect(
+          find.byKey(const ValueKey('alertDetailOpenSocial')), findsOneWidget);
     });
 
     testWidgets(
@@ -508,9 +533,11 @@ void main() {
 
       await pumpDetail(tester, api: api, alertId: 'alert-older-62');
       expect(requestedPages, [1, 2]);
-      expect(find.byKey(const ValueKey('alertDetailUnavailable')), findsNothing);
+      expect(
+          find.byKey(const ValueKey('alertDetailUnavailable')), findsNothing);
       expect(find.byKey(const ValueKey('alertDetailScroll')), findsOneWidget);
-      expect(find.byKey(const ValueKey('alertDetailOpenSocial')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('alertDetailOpenSocial')), findsOneWidget);
     });
 
     testWidgets(
@@ -544,9 +571,11 @@ void main() {
       });
 
       await pumpDetail(tester, api: api, alertId: 'alert-sos-1', lang: 'ar');
-      expect(find.byKey(const ValueKey('alertDetailGeneralScroll')), findsOneWidget);
+      expect(find.byKey(const ValueKey('alertDetailGeneralScroll')),
+          findsOneWidget);
       expect(find.byKey(const ValueKey('alert-sos-location')), findsOneWidget);
-      expect(find.byKey(const ValueKey('alert-sos-location-line')), findsOneWidget);
+      expect(find.byKey(const ValueKey('alert-sos-location-line')),
+          findsOneWidget);
       expect(find.textContaining('Raw English SOS body'), findsNothing);
       expect(find.byKey(const ValueKey('alertDetailOpenSocial')), findsNothing);
     });
@@ -575,8 +604,10 @@ void main() {
             },
       });
 
-      await pumpDetail(tester, api: api, alertId: 'alert-restart-1', lang: 'ar');
-      expect(find.byKey(const ValueKey('alertDetailGeneralScroll')), findsOneWidget);
+      await pumpDetail(tester,
+          api: api, alertId: 'alert-restart-1', lang: 'ar');
+      expect(find.byKey(const ValueKey('alertDetailGeneralScroll')),
+          findsOneWidget);
       expect(find.byKey(const ValueKey('alertDetailBody')), findsNothing);
       expect(find.textContaining('Pixel 7 restarted'), findsNothing);
     });
@@ -614,13 +645,17 @@ void main() {
 
       await pumpDetail(tester, api: api, alertId: 'alert-very-old-1499');
       expect(pagesRequested, 20);
-      expect(find.byKey(const ValueKey('alertDetailLookupIncomplete')), findsOneWidget);
-      expect(find.byKey(const ValueKey('alertDetailUnavailable')), findsNothing);
+      expect(find.byKey(const ValueKey('alertDetailLookupIncomplete')),
+          findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('alertDetailUnavailable')), findsNothing);
     });
   });
 
-  group('NotificationTapController (#972 cold-start & warm-start auth gate)', () {
-    test('preserves tapped alertId until authenticated, then consumes once', () {
+  group('NotificationTapController (#972 cold-start & warm-start auth gate)',
+      () {
+    test('preserves tapped alertId until authenticated, then consumes once',
+        () {
       // Mutant: consuming pendingAlertId while authenticated == false drops a cold-start
       // notification tap across /login and fails the second assertion below.
       final ctrl = NotificationTapController();

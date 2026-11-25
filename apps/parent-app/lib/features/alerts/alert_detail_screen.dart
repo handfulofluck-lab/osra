@@ -19,9 +19,13 @@ import '../../theme/app_tokens.dart';
 import '../../widgets/error_retry_view.dart';
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
-import '../map/family_map_screen.dart' show FamilyMapScreen, MapFocus, mapIsAvailable;
+import '../map/family_map_screen.dart'
+    show FamilyMapScreen, MapFocus, mapIsAvailable;
+import '../rules/app_picker.dart' show AppIconBadge;
 import '../rules/rules_behind_banner.dart';
 import '../social/social_screen.dart' show socialAppIcon, socialAppLabel;
+import 'access_request_actions.dart';
+import 'app_alert_presentation.dart';
 import 'sos_alert_actions.dart';
 
 /// Shared per-category localized body formatter used by both [AlertsScreen] and
@@ -115,9 +119,11 @@ SocialPreviewAvailability resolveSocialPreviewAvailability(
     },
     data: (events) {
       if (events.isEmpty) return SocialPreviewAvailability.expired;
-      final appKey = alert.metadata['app']?.toString().trim().toLowerCase() ?? '';
+      final appKey =
+          alert.metadata['app']?.toString().trim().toLowerCase() ?? '';
       if (appKey.isEmpty) return SocialPreviewAvailability.available;
-      final hasAppMatch = events.any((e) => e.app.trim().toLowerCase() == appKey);
+      final hasAppMatch =
+          events.any((e) => e.app.trim().toLowerCase() == appKey);
       return hasAppMatch
           ? SocialPreviewAvailability.available
           : SocialPreviewAvailability.expired;
@@ -143,9 +149,26 @@ class AlertDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final canPop = Navigator.of(context).canPop();
-    final alertAsync = initialAlert != null
-        ? AsyncValue<AlertLookupResult>.data(AlertLookupResult.found(initialAlert!))
-        : ref.watch(alertByIdProvider(alertId));
+    final remoteAlert = ref.watch(alertByIdProvider(alertId));
+    final alertAsync = initialAlert != null &&
+            initialAlert!.category != 'app_blocked'
+        ? AsyncValue<AlertLookupResult>.data(
+            AlertLookupResult.found(initialAlert!))
+        : remoteAlert.when(
+            data: (result) => AsyncValue<AlertLookupResult>.data(
+              initialAlert != null && result.status != AlertLookupStatus.found
+                  ? AlertLookupResult.found(initialAlert!)
+                  : result,
+            ),
+            loading: () => initialAlert == null
+                ? const AsyncValue<AlertLookupResult>.loading()
+                : AsyncValue<AlertLookupResult>.data(
+                    AlertLookupResult.found(initialAlert!)),
+            error: (error, stackTrace) => initialAlert == null
+                ? AsyncValue<AlertLookupResult>.error(error, stackTrace)
+                : AsyncValue<AlertLookupResult>.data(
+                    AlertLookupResult.found(initialAlert!)),
+          );
 
     void openAllAlerts() {
       if (canPop) {
@@ -170,7 +193,8 @@ class AlertDetailScreen extends ConsumerWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             ErrorRetryView(
-              message: friendlyErrorText(l10n, err, () => l10n.alertsLoadFailed),
+              message:
+                  friendlyErrorText(l10n, err, () => l10n.alertsLoadFailed),
               onRetry: () {
                 ref.invalidate(alertsProvider(const AlertFilter()));
                 ref.invalidate(alertByIdProvider(alertId));
@@ -206,7 +230,8 @@ class AlertDetailScreen extends ConsumerWidget {
           }
           final alert = result.alert;
           if (alert == null) {
-            return _AlertUnavailableView(onOpenAllAlerts: () => context.go('/alerts'));
+            return _AlertUnavailableView(
+                onOpenAllAlerts: () => context.go('/alerts'));
           }
           if (!isSocialAlertCategory(alert.category)) {
             return _GeneralAlertDetailBody(
@@ -253,13 +278,15 @@ class _AlertUnavailableView extends StatelessWidget {
                     Expanded(
                       child: Text(
                         l10n.socialAlertUnavailableTitle,
-                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                        style: theme.textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w600),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: AppSpace.sm),
-                Text(l10n.socialAlertUnavailableBody, style: theme.textTheme.bodyMedium),
+                Text(l10n.socialAlertUnavailableBody,
+                    style: theme.textTheme.bodyMedium),
                 const SizedBox(height: AppSpace.md),
                 FilledButton(
                   onPressed: onOpenAllAlerts,
@@ -286,10 +313,12 @@ class _SocialAlertDetailBody extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<_SocialAlertDetailBody> createState() => _SocialAlertDetailBodyState();
+  ConsumerState<_SocialAlertDetailBody> createState() =>
+      _SocialAlertDetailBodyState();
 }
 
-class _SocialAlertDetailBodyState extends ConsumerState<_SocialAlertDetailBody> {
+class _SocialAlertDetailBodyState
+    extends ConsumerState<_SocialAlertDetailBody> {
   @override
   void initState() {
     super.initState();
@@ -303,7 +332,10 @@ class _SocialAlertDetailBodyState extends ConsumerState<_SocialAlertDetailBody> 
 
   List<String> _concernTypesOf(Alert a) {
     final raw = a.metadata['concernTypes'];
-    if (raw is List) return [for (final t in raw) '$t'.trim()].where((s) => s.isNotEmpty).toList();
+    if (raw is List)
+      return [for (final t in raw) '$t'.trim()]
+          .where((s) => s.isNotEmpty)
+          .toList();
     return const [];
   }
 
@@ -318,7 +350,8 @@ class _SocialAlertDetailBodyState extends ConsumerState<_SocialAlertDetailBody> 
     final isEnglish = context.localeName.startsWith('en');
 
     final overview = ref.watch(familyProvider).valueOrNull;
-    final child = overview?.children.where((c) => c.id == alert.childId).firstOrNull;
+    final child =
+        overview?.children.where((c) => c.id == alert.childId).firstOrNull;
     final device = alert.deviceId != null
         ? overview?.devices.where((d) => d.id == alert.deviceId).firstOrNull
         : null;
@@ -327,7 +360,8 @@ class _SocialAlertDetailBodyState extends ConsumerState<_SocialAlertDetailBody> 
     final appLabel = appKey.isEmpty ? null : socialAppLabel(appKey, l10n);
     final concernTypes = _concernTypesOf(alert);
     final title = alert.hasSocialCountSummary && appLabel != null
-        ? l10n.socialAlertCountTitle(alert.socialMessageCount, ltrIsolate(appLabel))
+        ? l10n.socialAlertCountTitle(
+            alert.socialMessageCount, ltrIsolate(appLabel))
         : l10n.alertTitleFor(
             alert.category,
             alert.title,
@@ -337,7 +371,8 @@ class _SocialAlertDetailBodyState extends ConsumerState<_SocialAlertDetailBody> 
     final latestAt = alert.effectiveTimestamp;
     final latestClock = latestAt == null
         ? ''
-        : ltrIsolate(normalizeDigits(DateFormat('HH:mm', 'en').format(latestAt.toLocal())));
+        : ltrIsolate(normalizeDigits(
+            DateFormat('HH:mm', 'en').format(latestAt.toLocal())));
     final contactName = alert.socialContactName;
     final contactDisplay = contactName != null
         ? firstStrongIsolate(contactName)
@@ -345,9 +380,10 @@ class _SocialAlertDetailBodyState extends ConsumerState<_SocialAlertDetailBody> 
     final countContactLine = alert.hasSocialCountSummary
         ? l10n.socialAlertFromContactOnly(contactDisplay)
         : null;
-    final countLatestLine = alert.hasSocialCountSummary && latestClock.isNotEmpty
-        ? l10n.socialAlertLatestAt(latestClock)
-        : null;
+    final countLatestLine =
+        alert.hasSocialCountSummary && latestClock.isNotEmpty
+            ? l10n.socialAlertLatestAt(latestClock)
+            : null;
 
     final sevDot = tokens.severityDot(alert.severity);
     final sevText = tokens.severityText(alert.severity);
@@ -379,7 +415,8 @@ class _SocialAlertDetailBodyState extends ConsumerState<_SocialAlertDetailBody> 
               child: Text(
                 title,
                 key: const ValueKey('alertDetailTitle'),
-                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                style: theme.textTheme.titleLarge
+                    ?.copyWith(fontWeight: FontWeight.w700),
               ),
             ),
           ],
@@ -421,7 +458,8 @@ class _SocialAlertDetailBodyState extends ConsumerState<_SocialAlertDetailBody> 
           Text(
             contextParts.join(' · '),
             key: const ValueKey('alertDetailChildDevice'),
-            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+            style: theme.textTheme.titleSmall
+                ?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: AppSpace.xs),
         ],
@@ -429,14 +467,16 @@ class _SocialAlertDetailBodyState extends ConsumerState<_SocialAlertDetailBody> 
           Text(
             countContactLine,
             key: const ValueKey('alertDetailCountSub'),
-            style: theme.textTheme.bodyMedium?.copyWith(color: tokens.onSurfaceVariant),
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(color: tokens.onSurfaceVariant),
           ),
           if (countLatestLine != null) ...[
             const SizedBox(height: 2),
             Text(
               countLatestLine,
               key: const ValueKey('alertDetailCountLatest'),
-              style: theme.textTheme.bodyMedium?.copyWith(color: tokens.onSurfaceVariant),
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: tokens.onSurfaceVariant),
             ),
           ],
           const SizedBox(height: AppSpace.md),
@@ -449,7 +489,8 @@ class _SocialAlertDetailBodyState extends ConsumerState<_SocialAlertDetailBody> 
               now: nowProvider?.call(),
             ),
             key: const ValueKey('alertDetailTime'),
-            style: theme.textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant),
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: tokens.onSurfaceVariant),
           ),
           const SizedBox(height: AppSpace.md),
         ],
@@ -516,7 +557,8 @@ class _PreviewUnavailableCard extends StatelessWidget {
     final l10n = context.l10n;
     final noPerm = availability == SocialPreviewAvailability.noPermission;
     return Container(
-      key: ValueKey(noPerm ? 'alertDetailPreviewNoPerm' : 'alertDetailPreviewExpired'),
+      key: ValueKey(
+          noPerm ? 'alertDetailPreviewNoPerm' : 'alertDetailPreviewExpired'),
       width: double.infinity,
       padding: const EdgeInsets.all(AppSpace.md),
       decoration: BoxDecoration(
@@ -541,7 +583,8 @@ class _PreviewUnavailableCard extends StatelessWidget {
                   noPerm
                       ? l10n.socialAlertPreviewNoPermissionTitle
                       : l10n.socialAlertPreviewExpiredTitle,
-                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                  style: theme.textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
             ],
@@ -551,7 +594,8 @@ class _PreviewUnavailableCard extends StatelessWidget {
             noPerm
                 ? l10n.socialAlertPreviewNoPermissionBody
                 : l10n.socialAlertPreviewExpiredBody,
-            style: theme.textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant),
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: tokens.onSurfaceVariant),
           ),
         ],
       ),
@@ -588,12 +632,14 @@ class _PreviewRetryCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.cloud_off_outlined, size: 20, color: tokens.onSurfaceVariant),
+              Icon(Icons.cloud_off_outlined,
+                  size: 20, color: tokens.onSurfaceVariant),
               const SizedBox(width: AppSpace.sm),
               Expanded(
                 child: Text(
                   message,
-                  style: theme.textTheme.bodyMedium?.copyWith(color: tokens.onSurfaceVariant),
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(color: tokens.onSurfaceVariant),
                 ),
               ),
             ],
@@ -607,6 +653,49 @@ class _PreviewRetryCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class AppAlertLeading extends StatelessWidget {
+  final Alert alert;
+  final AppAlertIdentity identity;
+
+  const AppAlertLeading(
+      {super.key, required this.alert, required this.identity});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final request = isAccessRequestAlert(alert);
+    final statusColor =
+        request ? tokens.severityInfoText : tokens.onSurfaceVariant;
+    final packageId = appAlertPackageId(alert);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: request
+                ? tokens.severityInfoText.withValues(alpha: 0.12)
+                : tokens.surfaceVariant,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+          ),
+          child: Icon(request ? Icons.pan_tool : Icons.block,
+              size: 21, color: statusColor),
+        ),
+        const SizedBox(width: AppSpace.xs),
+        AppIconBadge(
+          app: InstalledApp(
+            packageId: packageId,
+            label: identity.name,
+            iconUrl: identity.installed?.iconUrl,
+          ),
+          size: 36,
+        ),
+      ],
     );
   }
 }
@@ -633,23 +722,56 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
     final isEnglish = context.localeName.startsWith('en');
 
     final overview = ref.watch(familyProvider).valueOrNull;
-    final child = overview?.children.where((c) => c.id == alert.childId).firstOrNull;
+    final child =
+        overview?.children.where((c) => c.id == alert.childId).firstOrNull;
     final device = alert.deviceId != null
         ? overview?.devices.where((d) => d.id == alert.deviceId).firstOrNull
         : null;
+    final isAppBlocked = alert.category == 'app_blocked';
+    final installed = isAppBlocked
+        ? alertInstalledAppsReport(
+            ref.watch(installedAppsByDeviceProvider(alert.childId)).valueOrNull,
+            alert.deviceId,
+          )
+        : null;
+    final identity = resolveAppAlertIdentity(alert, installed);
+    final childName = child?.displayName ?? l10n.childFallback;
 
-    final title = l10n.alertTitleFor(
-      alert.category,
-      alert.title,
-      isEnglish: isEnglish,
-      tamperType: alert.metadata['type']?.toString(),
-    );
+    final title = isAppBlocked
+        ? appAlertTitle(
+            alert: alert,
+            localeName: context.localeName,
+            childName: childName,
+            identity: identity,
+          )
+        : l10n.alertTitleFor(
+            alert.category,
+            alert.title,
+            isEnglish: isEnglish,
+            tamperType: alert.metadata['type']?.toString(),
+          );
     final sevDot = tokens.severityDot(alert.severity);
     final contextParts = <String>[
-      if (child != null && child.displayName.isNotEmpty) child.displayName,
+      if (child != null && child.displayName.isNotEmpty)
+        isAppBlocked
+            ? firstStrongIsolate(child.displayName)
+            : child.displayName,
       if (device != null && device.model.isNotEmpty) ltrIsolate(device.model),
     ];
     final coachCard = coachCardFor(alert.category, const []);
+    final body = isAppBlocked
+        ? appAlertBody(
+            alert: alert,
+            localeName: context.localeName,
+            childName: childName,
+            identity: identity,
+          )
+        : formatGeneralAlertBody(
+            alert,
+            l10n: l10n,
+            localeName: context.localeName,
+            now: nowProvider?.call(),
+          );
 
     return ListView(
       key: const ValueKey('alertDetailGeneralScroll'),
@@ -659,16 +781,21 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 3),
-              child: Icon(Icons.notifications_active_outlined, color: sevDot, size: 24),
-            ),
+            if (isAppBlocked)
+              AppAlertLeading(alert: alert, identity: identity)
+            else
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: Icon(Icons.notifications_active_outlined,
+                    color: sevDot, size: 24),
+              ),
             const SizedBox(width: AppSpace.sm),
             Expanded(
               child: Text(
                 title,
                 key: const ValueKey('alertDetailTitle'),
-                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                style: theme.textTheme.titleLarge
+                    ?.copyWith(fontWeight: FontWeight.w700),
               ),
             ),
           ],
@@ -678,7 +805,8 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
           Text(
             contextParts.join(' · '),
             key: const ValueKey('alertDetailChildDevice'),
-            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+            style: theme.textTheme.titleSmall
+                ?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: AppSpace.xs),
         ],
@@ -691,32 +819,32 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
               now: nowProvider?.call(),
             ),
             key: const ValueKey('alertDetailTime'),
-            style: theme.textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant),
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: tokens.onSurfaceVariant),
           ),
           const SizedBox(height: AppSpace.md),
         ],
-        if (formatGeneralAlertBody(
-          alert,
-          l10n: l10n,
-          localeName: context.localeName,
-          now: nowProvider?.call(),
-        ).trim().isNotEmpty) ...[
+        if (body.trim().isNotEmpty) ...[
           Text(
-            formatGeneralAlertBody(
-              alert,
-              l10n: l10n,
-              localeName: context.localeName,
-              now: nowProvider?.call(),
-            ),
+            body,
             key: const ValueKey('alertDetailBody'),
             style: theme.textTheme.bodyLarge,
           ),
           const SizedBox(height: AppSpace.md),
         ],
+        if (isAccessRequestAlert(alert)) ...[
+          AccessRequestActions(
+            alert: alert,
+            identity: identity,
+            nowProvider: nowProvider,
+          ),
+          const SizedBox(height: AppSpace.lg),
+        ],
         if (alert.category == 'sos' && alert.location != null) ...[
           Builder(builder: (_) {
             final fix = alert.location!;
-            final text = SosFixText.of(alert, fix, nowProvider?.call() ?? DateTime.now());
+            final text = SosFixText.of(
+                alert, fix, nowProvider?.call() ?? DateTime.now());
             final accuracy = text.accuracyClause(l10n, fix);
             return Column(
               key: const ValueKey('alert-sos-location'),
@@ -730,7 +858,8 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
                 if (accuracy != null)
                   Text(
                     accuracy,
-                    style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.hintColor),
                   ),
                 const SizedBox(height: AppSpace.md),
                 Wrap(
@@ -756,13 +885,15 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
                       final uri = Uri.parse(
                         'https://www.google.com/maps/search/?api=1&query=${fix.lat},${fix.lng}',
                       );
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      await launchUrl(uri,
+                          mode: LaunchMode.externalApplication);
                     },
                     onCopy: () async {
-                      await Clipboard.setData(ClipboardData(text: fix.copyText));
+                      await Clipboard.setData(
+                          ClipboardData(text: fix.copyText));
                       if (context.mounted) {
-                        ScaffoldMessenger.of(context)
-                            .showSnackBar(SnackBar(content: Text(l10n.alertCoordinatesCopied)));
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text(l10n.alertCoordinatesCopied)));
                       }
                     },
                   ),
@@ -778,7 +909,8 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
           Text(
             l10n.alertCallBypassNote,
             key: const ValueKey('alert-call-bypass-note'),
-            style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.error),
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(color: theme.colorScheme.error),
           ),
           const SizedBox(height: AppSpace.lg),
         ],

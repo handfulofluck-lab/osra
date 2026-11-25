@@ -282,6 +282,7 @@ class BlockActivity : ComponentActivity() {
         if (reason == REASON_FILTER_LOST || consent.isPaused()) return
         val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString()
         val attempts = AttemptCounter.next(this, "app", pkg, day)
+        val appLabelSnapshot = appLabel
         scope.launch {
             runCatching {
                 api.postInternalAlert(
@@ -292,7 +293,7 @@ class BlockActivity : ComponentActivity() {
                         category = "app_blocked",
                         title = "Blocked app opened",
                         body = "Your child tried to open a blocked app.",
-                        metadata = mapOf("packageId" to pkg, "reason" to reason),
+                        metadata = mapOf("packageId" to pkg, "reason" to reason, "appName" to appLabelSnapshot),
                         dedupeKey = AlertKeys.blockedApp(pkg, day),
                         attemptCount = attempts,
                     ),
@@ -303,6 +304,7 @@ class BlockActivity : ComponentActivity() {
 
     /** POSTs an app_blocked alert for the blocked package; failures are swallowed (best effort). */
     private fun requestAccess(pkg: String, reason: String) {
+        val appLabelSnapshot = appLabel
         scope.launch {
             runCatching {
                 api.postInternalAlert(
@@ -313,7 +315,12 @@ class BlockActivity : ComponentActivity() {
                         category = "app_blocked",
                         title = "Access requested",
                         body = "Child requested access to $pkg",
-                        metadata = mapOf("packageId" to pkg, "reason" to reason),
+                        metadata = mapOf(
+                            "packageId" to pkg,
+                            "reason" to reason,
+                            "appName" to appLabelSnapshot,
+                            "requestType" to "access",
+                        ),
                     ),
                 )
             }

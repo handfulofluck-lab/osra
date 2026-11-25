@@ -89,6 +89,7 @@ class Parent {
   final String displayName;
   final String role;
   final bool mfaEnabled;
+  final List<String> permissions;
 
   const Parent({
     required this.id,
@@ -97,6 +98,7 @@ class Parent {
     required this.displayName,
     this.role = 'owner',
     this.mfaEnabled = false,
+    this.permissions = const [],
   });
 
   factory Parent.fromJson(Map<String, dynamic> json) => Parent(
@@ -106,6 +108,7 @@ class Parent {
         displayName: _str(json['displayName']),
         role: _str(json['role'], 'owner'),
         mfaEnabled: _bool(json['mfaEnabled']),
+        permissions: _strList(json['permissions']),
       );
 }
 
@@ -408,7 +411,8 @@ class ScreenTimeRule {
         : const <String, dynamic>{};
     final rawDays = school['days'];
     final days = _intList(rawDays);
-    final hasSchoolDays = days.isNotEmpty || (rawDays is List && rawDays.isEmpty);
+    final hasSchoolDays =
+        days.isNotEmpty || (rawDays is List && rawDays.isEmpty);
     return ScreenTimeRule(
       dailyLimitMinutes: _int(json['dailyLimitMinutes'], 180),
       weekendLimitMinutes: _int(json['weekendLimitMinutes'], 240),
@@ -1240,6 +1244,26 @@ class Alert {
         attemptCount: _int(json['attemptCount'], 1),
       );
 
+  Alert copyWith({
+    Map<String, dynamic>? metadata,
+    DateTime? updatedAt,
+    bool? acknowledged,
+  }) =>
+      Alert(
+        id: id,
+        childId: childId,
+        deviceId: deviceId,
+        severity: severity,
+        category: category,
+        title: title,
+        body: body,
+        metadata: metadata ?? this.metadata,
+        createdAt: createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+        acknowledged: acknowledged ?? this.acknowledged,
+        attemptCount: attemptCount,
+      );
+
   /// #1029: whether this alert is a social/gaming chat concern alert.
   bool get isSocialAlert =>
       category == 'social_concern' || category == 'gaming_chat';
@@ -1258,11 +1282,13 @@ class Alert {
 
   /// #1029: explicit flagged message count from metadata (or `attemptCount` when > 1), else null.
   int? get socialFlaggedCount =>
-      _positiveMetaInt(metadata, const ['flaggedCount', 'messageCount', 'count']) ??
+      _positiveMetaInt(
+          metadata, const ['flaggedCount', 'messageCount', 'count']) ??
       (attemptCount > 1 ? attemptCount : null);
 
   /// #1029: total flagged messages represented by this social alert (at least 1).
-  int get socialMessageCount => socialFlaggedCount ?? (attemptCount > 0 ? attemptCount : 1);
+  int get socialMessageCount =>
+      socialFlaggedCount ?? (attemptCount > 0 ? attemptCount : 1);
 
   /// #1029: distinct contact count from metadata (count only, never names on card/push).
   int? get socialContactCount {
