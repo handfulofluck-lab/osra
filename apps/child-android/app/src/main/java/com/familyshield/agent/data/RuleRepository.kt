@@ -258,7 +258,6 @@ class RuleRepository @Inject constructor(
                 return@withLock cached
             }
             consent.onPollStatus(200)
-            cached = updated
             // #864/#922 (Antigravity's review): the category pack is a store of its own, and it feeds BOTH
             // `blocklist.domains()` (the DNS sinkhole) and `blocklist.apps()` (`verdict`, RuleRepository.kt:116).
             // Refreshing it here — under `refreshMutex`, after `cached = updated`, before the #444 C4 listeners
@@ -273,7 +272,11 @@ class RuleRepository @Inject constructor(
             val persisted = runCatching {
                 settings.saveRulesJson(moshi.adapter(RuleSetDto::class.java).toJson(updated))
             }.isSuccess
-            if (persisted) runCatching { settings.saveAppliedRulesVersion(updated.rulesVersion) }
+            // #1151 review: an unpersisted fetch is not a successful refresh and must not replace the
+            // last durable cache. The paired-empty case returns null so RulesSyncWorker retries.
+            if (!persisted) return@withLock cached
+            cached = updated
+            runCatching { settings.saveAppliedRulesVersion(updated.rulesVersion) }
             runCatching { FirebaseMessaging.getInstance().subscribeToTopic("child:$childId:rules") }
             rulesChangedListeners.forEach { runCatching { it() } }
             updated

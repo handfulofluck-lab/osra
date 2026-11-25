@@ -17,6 +17,8 @@ class FreshInstallRulesWiringTest {
     private val scheduler = sourceFile("app/src/main/java/com/familyshield/agent/data/WorkScheduler.kt")
     private val worker = sourceFile("app/src/main/java/com/familyshield/agent/data/RulesSyncWorker.kt")
     private val pairing = sourceFile("app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt")
+    private val packageReplaced = sourceFile("app/src/main/java/com/familyshield/agent/receivers/PackageReplacedReceiver.kt")
+    private val locationService = sourceFile("app/src/main/java/com/familyshield/agent/services/LocationService.kt")
 
     @Test
     fun `every scheduler start requests rules immediately instead of waiting for periodic work`() {
@@ -43,6 +45,23 @@ class FreshInstallRulesWiringTest {
         assertFalse(
             "scheduleAll owns the post-pairing immediate sync too; a second call doubles the fetch",
             pairing.contains("WorkScheduler.syncNow(this)"),
+        )
+    }
+
+    @Test
+    fun `package replacement enqueues the same durable rules refresh after the genuine-update gate`() {
+        val gate = packageReplaced.indexOf("BroadcastGate.genuineSelfReplace(ownFacts(context)")
+        val sync = packageReplaced.indexOf("WorkScheduler.syncNow(context)")
+        val post = packageReplaced.indexOf("api.postInternalAlert(")
+        assertTrue("a genuine replacement schedules rules before the best-effort alert", gate in 0 until sync && sync < post)
+    }
+
+    @Test
+    fun `a foreground service restart requests the same immediate rules refresh`() {
+        val onStart = locationService.substringAfter("override fun onStartCommand(").substringBefore("override fun onDestroy(")
+        assertTrue(
+            "service restart must not wait for boot, pairing, a push, or the six-hour tick",
+            onStart.contains("WorkScheduler.syncNow(this)"),
         )
     }
 
