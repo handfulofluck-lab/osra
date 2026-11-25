@@ -270,11 +270,51 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
   bool _paired(FamilyOverview? overview) =>
       overview?.devicesFor(widget.childId).isNotEmpty ?? false;
 
+  /// #1134: a standalone screen — opened from the child card or `/child/:id/pair` — has no wizard step to
+  /// advance to, so a confirmed pairing left the parent on the scan instructions with nothing to press. The
+  /// claim watch already knows the phone has its token; this is where that becomes a screen that ends.
+  Widget _pairedScaffold(BuildContext context) {
+    final l10n = context.l10n;
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.pairADevice)),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpace.lg),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.check_circle_outline, size: 56, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(height: AppSpace.md),
+                Text(
+                  l10n.pairClaimPaired(pairClaimDeviceLabel(_claim!)),
+                  key: const ValueKey('pairPairedTitle'),
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: AppSpace.lg),
+                FilledButton(
+                  key: const ValueKey('pairPairedDone'),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                  child: Text(l10n.close),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final overview = ref.watch(familyProvider).valueOrNull;
     final paired = widget.onboarding && _paired(overview);
+    // Standalone only: the wizard keeps its own Continue flow below (#1134).
+    if (!widget.onboarding && _claim?['status'] == 'paired') {
+      return _pairedScaffold(context);
+    }
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.pairADevice),
