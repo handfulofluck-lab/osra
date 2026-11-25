@@ -1,0 +1,30 @@
+# Live pre-test checklist
+
+**No live test starts until every check below is green for every child device in the session.**
+
+The test coordinator starts this checklist one hour before the session, fills in one column per child device, and posts the completed record on [status issue #50](https://github.com/handfulofluck-lab/osra/issues/50) before testing begins. A red, unchecked, or evidence-free row stops the start; it is not a note to investigate after messages have been sent.
+
+Do not attach message text, contact names, credentials, or other private family data to the public record. Link to non-sensitive evidence such as build numbers, event IDs, model/configuration versions, timestamps, and yes/no readbacks.
+
+## Required checks
+
+| # | Check | Required evidence for each child device |
+|---|---|---|
+| 1 | **AI scores a message end to end** | One synthetic message is scored by the model through the real capture-to-result path. Record the non-sensitive event/result ID and model or serving configuration; a local classifier-only result does not satisfy this row. |
+| 2 | **Monitoring is saved ON for every app under test** | Read the settings back from the API before the first message. Record the app keys and enabled/disabled state; do not rely on the parent screen's last known state. |
+| 3 | **Every child runs the same assigned build** | Read back `versionName` and `versionCode` on each phone and compare them with the build assigned to the session. Record the source SHA or artifact identifier as well. |
+| 4 | **Each parent can receive an alert and stop a ring** | Deliver one test alert to every participating parent app, then issue Ring and Stop from that parent app. Record delivery and stop acknowledgements, and confirm no ring remains active. |
+| 5 | **Alarm levels in effect are known per language** | Record the active rule/model version, cut-offs, effective date, and language coverage. The evidence must describe the configuration actually serving the test, not only a configuration file in a branch. |
+| 6 | **The child is online, setup is complete, and Pause works** | Confirm the child reports Online with setup complete, then issue Pause and verify it takes effect on that device. Resume immediately after the check and record the restored state. |
+
+## Why this gate exists
+
+- [#1144](https://github.com/handfulofluck-lab/osra/issues/1144): a test is not meaningful if the assigned model did not actually score the message end to end.
+- [#1142](https://github.com/handfulofluck-lab/osra/issues/1142): a visually enabled toggle is insufficient; monitoring state must be present in the server-side rule set and read back before capture is tested.
+- [#1130](https://github.com/handfulofluck-lab/osra/issues/1130): a freshly installed child can otherwise run without rules until a parent saves something, leaving protection and Pause dependent on an unrelated action.
+
+These checks catch those false starts before a tester spends a session interpreting missing alerts, stale rules, or different builds as product behavior.
+
+## After the session
+
+Follow [the testing guide](../TESTING.md) and [the device lease rules in AGENTS.md §9](../../AGENTS.md): clear Pause/Ring and every other restriction, remove test artifacts and forwards as required, release the phone lease with an honest final state, and delete only test-owned server data. The completed checklist is a start gate, not a substitute for cleanup or independent verification.
