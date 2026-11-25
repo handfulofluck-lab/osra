@@ -98,9 +98,6 @@
 
 
 "ring_title" = "هذا الهاتف يرنّ بطلب من والدك أو والدتك";
-/* #760: the navigation bar's name for the screen, short so it cannot be cut at the largest text size. Arabic is the
-   Arabic Language Bureau's own line (760 7152533494), copied verbatim; the sentence above stays as the heading. */
-"ring_nav_title" = "رنين الهاتف";
 "ring_alarm_title" = "هذا الهاتف يرنّ بطلب من والدك أو والدتك";
 "ring_notification_title" = "هذا الهاتف يرنّ بطلب من والدك أو والدتك";
 "ring_explanation" = "يحاول والدك أو والدتك العثور على هذا الهاتف أو التواصل معك. يتوقف الرنين عند إيقافه من تطبيق الوالدين، أو عند إدخال رمز PIN للوالدين هنا. ويتوقف تلقائيًا بعد 5 دقائق.";

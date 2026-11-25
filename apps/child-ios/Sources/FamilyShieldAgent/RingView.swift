@@ -26,14 +26,16 @@ public struct RingView: View {
                             .accessibilityHidden(true)
                     }
                     .padding(.top, 24)
-                    // #760 (Arabic Bureau 7152533494): the full sentence is the heading and must wrap — at the
-                    // largest text size a cut sentence is the one line that tells the child why the phone rings.
-                    // `fixedSize` refuses the single-line compaction that truncated it; the bar carries the short
-                    // `ring_nav_title` instead.
+                    // #760 (Arabic Bureau 7152533494, UI/UX Bureau 7153247882): the sentence is the heading and must
+                    // wrap — at the largest text size a cut sentence is the one line that tells the child why the
+                    // phone rings. `fixedSize` refuses the single-line compaction that truncated it, and no bar is
+                    // added: it would spend about 44 pt on a screen where first paint matters most. `isHeader` is
+                    // what makes it the screen's heading to VoiceOver, since there is no navigation bar to carry one.
                     Text(L10n.tr("ring_title"))
                         .font(.title.bold())
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
                     Text(L10n.tr("ring_explanation"))
                         .font(.body)
                         .multilineTextAlignment(.center)
@@ -47,9 +49,6 @@ public struct RingView: View {
                 .padding(.vertical, 16)
             }
             .scrollDismissesKeyboard(.interactively)
-            // #760: a bar name that fits at any text size, with the sentence in the content where it can wrap.
-            .navigationTitle(L10n.tr("ring_nav_title"))
-            .navigationBarTitleDisplayMode(.inline)
             .background(color(0xF1F5F4, 0x0E1417).ignoresSafeArea())
             .accessibilityIdentifier(A11yID.ringView)
             .interactiveDismissDisabled()
