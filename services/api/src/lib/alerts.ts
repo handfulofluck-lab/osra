@@ -41,6 +41,8 @@ export interface RaiseAlertInput {
    * #225 event key, which keeps its duplicate-is-a-no-op rule.
    */
   attemptCount?: number | null;
+  /** ADR-0047: server-derived only. Persist for security audit without realtime, push or parent reads. */
+  heldDuringSetup?: boolean;
 }
 
 export type KeyedRaiseAlertInput = Omit<RaiseAlertInput, "bodyKey" | "params"> & {
@@ -147,7 +149,9 @@ async function applyAttemptCount(existing: Alert, input: RaiseAlertInput): Promi
   if (count === 0) return existing;
   const alert = await prisma.alert.findUnique({ where: { id: existing.id } });
   if (!alert) return existing;
-  await publishFamilyEvent(input.familyId, { type: "alert", payload: alert, ts: new Date().toISOString() });
+  if (!alert.heldDuringSetup) {
+    await publishFamilyEvent(input.familyId, { type: "alert", payload: alert, ts: new Date().toISOString() });
+  }
   return alert;
 }
 
@@ -181,6 +185,7 @@ export async function raiseAlertOnce(
         metadata: (normalizedInput.metadata ?? {}) as Prisma.InputJsonValue,
         dedupeKey: dedupeKey ?? undefined,
         attemptCount: normalizedInput.attemptCount ?? 1,
+        heldDuringSetup: normalizedInput.heldDuringSetup ?? false,
       },
     });
   } catch (e) {
@@ -190,6 +195,8 @@ export async function raiseAlertOnce(
     if (existing) return { alert: await applyAttemptCount(existing, normalizedInput), deduplicated: true };
     throw e;
   }
+
+  if (alert.heldDuringSetup) return { alert, deduplicated: false };
 
   await publishFamilyEvent(normalizedInput.familyId, { type: "alert", payload: alert, ts: new Date().toISOString() });
 
