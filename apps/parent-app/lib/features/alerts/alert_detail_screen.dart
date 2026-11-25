@@ -462,6 +462,7 @@ class _SocialAlertDetailBodyState extends ConsumerState<_SocialAlertDetailBody> 
           ),
           const SizedBox(height: AppSpace.lg),
         ],
+        ..._flaggedModelDetails(context, alert),
         // 3. Primary Social activity action OR preview-availability / retry callout (inside scroll for 200%).
         if (availability == SocialPreviewAvailability.available)
           SizedBox(
@@ -503,6 +504,56 @@ class _SocialAlertDetailBodyState extends ConsumerState<_SocialAlertDetailBody> 
       ],
     );
   }
+}
+
+/// A provider's flagged list owns the decision. Its other scores are measurements only.
+List<Widget> _flaggedModelDetails(BuildContext context, Alert alert) {
+  final outcomes = alert.metadata['providerOutcomes'];
+  if (outcomes is! Map) return const [];
+
+  final l10n = context.l10n;
+  final theme = Theme.of(context).textTheme;
+  final percent = NumberFormat.percentPattern(context.localeName)..maximumFractionDigits = 2;
+  final groups = <Widget>[];
+  for (final provider in const ['bedrock', 'own']) {
+    final outcome = outcomes[provider];
+    if (outcome is! Map || outcome['status'] != 'scored' || outcome['flagged'] != true) continue;
+    final model = outcome['model'];
+    final categories = outcome['categories'];
+    final flags = outcome['flagged_categories'];
+    if (model is! String || model.trim().isEmpty || categories is! Map || flags is! List) continue;
+
+    final rows = <Widget>[];
+    for (final category in flags.whereType<String>().toSet()) {
+      final score = categories[category];
+      if (category.isEmpty || category == 'safe' ||
+          score is! num || !score.isFinite || score < 0 || score > 1) {
+        continue;
+      }
+      final confidence = ltrIsolate(normalizeDigits(percent.format(score)));
+      rows.add(Text('${l10n.searchRiskCategory(category)} · $confidence'));
+    }
+    if (rows.isEmpty) continue;
+
+    final name = provider == 'bedrock' ? 'Amazon Bedrock' : l10n.appName;
+    groups.add(Padding(
+      key: ValueKey('alertModel-$provider'),
+      padding: const EdgeInsets.only(top: AppSpace.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(ltrIsolate('$name · ${model.trim()}'), style: theme.titleSmall),
+          ...rows,
+        ],
+      ),
+    ));
+  }
+  if (groups.isEmpty) return const [];
+  return [
+    Text(l10n.detectedConcernTypes, style: theme.titleMedium),
+    ...groups,
+    const SizedBox(height: AppSpace.lg),
+  ];
 }
 
 class _PreviewUnavailableCard extends StatelessWidget {
