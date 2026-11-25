@@ -435,7 +435,7 @@ class _ConcernCardState extends ConsumerState<_ConcernCard> {
             ? 0.0
             : measureCompactVoteControlWidth(context, vote.ownVerdict);
         final stacked = controlsWidth > 0 &&
-            (controlsWidth * 2 > rowWidth ||
+            (controlsWidth + AppSpace.sm > trailingRowWidth / 2 ||
                 _textWidth(context, contactText) + AppSpace.sm + controlsWidth >
                     trailingRowWidth);
         return ExpansionTile(

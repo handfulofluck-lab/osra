@@ -874,7 +874,8 @@ void main() {
             final pill = find.widgetWithText(FilledButton, label);
             await reveal(tester, pill);
             final contactRect = tester.getRect(find.text('Maya'));
-            if (narrow) {
+            final expectsStacked = narrow || locale.languageCode == 'en';
+            if (expectsStacked) {
               expect(tester.getRect(pill).top,
                   greaterThanOrEqualTo(contactRect.bottom));
             } else {
@@ -955,6 +956,49 @@ void main() {
       );
       expect(tester.getRect(pill).top,
           greaterThanOrEqualTo(tester.getRect(contact).bottom));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a short contact receives half the shared row at 390 px',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final feedback = {
+        'verdict': 'not_concerning',
+        'parentDisplayName': 'QA Parent',
+        'firstVotedAt': '2026-11-24T10:01:00.000Z',
+        'lastChangedAt': '2026-11-24T10:02:00.000Z',
+      };
+      final api = FakeApiClient(socialRoutes(concerns: [
+        concernJson(
+          contact: '\u200b',
+          latestFeedback: feedback,
+          ownFeedback: feedback,
+        ),
+      ]));
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+      await flushFakeHttp(tester);
+
+      final pill = find.widgetWithText(FilledButton, 'Not concerning');
+      await reveal(tester, pill);
+      final card = find.ancestor(of: pill, matching: find.byType(Card));
+      final contact = find.descendant(of: card, matching: find.text('\u200b'));
+      final contactRow = find.ancestor(of: contact, matching: find.byType(Row));
+      final contactAllocation = contactRow.evaluate().isNotEmpty
+          ? tester.getRect(contactRow).width - tester.getRect(pill).width - 8
+          : tester
+              .getRect(find
+                  .ancestor(of: contact, matching: find.byType(Column))
+                  .first)
+              .width;
+      final expectedMinimum = (tester.getRect(card).width - 128) / 2;
+      expect(contactAllocation, greaterThanOrEqualTo(expectedMinimum),
+          reason: 'Contact received $contactAllocation px of the shared row; '
+              'it needs at least $expectedMinimum px');
       expect(tester.takeException(), isNull);
     });
 
