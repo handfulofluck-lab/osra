@@ -561,29 +561,29 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String commandRefusedBackgroundLocation(String command, String device) {
-    return 'لم يُرسل «$command» إلى $device: لم يمنح الهاتف إذن الموقع «السماح دائمًا»، لذا لا يمكن لطلب تحديد الموقع وتنبيهات النطاقات الجغرافية الوصول إليه. اطلب من طفلك فتح OSRA ومنح الإذن.';
+    return 'لم يُرسل «$command» إلى $device: لم يمنح الهاتف إذن الموقع «السماح دائمًا»، لذا لا يمكن لطلب تحديد الموقع وتنبيهات النطاقات الجغرافية الوصول إليه. اطلب من طفلك فتح تطبيق أسرة للأطفال ومنح الإذن.';
   }
 
   @override
   String commandRefusedLocationPermission(String command, String device) {
-    return 'لم يُرسل «$command» إلى $device: لا يوجد إذن موقع على الهاتف. اطلب من طفلك فتح OSRA ومنح إذن الموقع.';
+    return 'لم يُرسل «$command» إلى $device: لا يوجد إذن موقع على الهاتف. اطلب من طفلك فتح تطبيق أسرة للأطفال ومنح إذن الموقع.';
   }
 
   @override
   String get commandRefusedLockScreen =>
-      'لا يمكن أن يثبت القفل على هاتف طفلك: فعّل خدمة إمكانية الوصول لتطبيق OSRA على ذلك الهاتف.';
+      'لا يمكن تثبيت القفل على هاتف طفلك: فعّل خدمة إمكانية الوصول لتطبيق أسرة للأطفال على ذلك الهاتف.';
 
   @override
   String get commandRefusedWebFilter =>
-      'لم يتم إعداد عامل تصفية الويب على هاتف طفلك، لذا لم يتم إيقاف الإنترنت.';
+      'تصفية الويب غير مُعدّة على هاتف طفلك، لذا لم يتوقف الإنترنت.';
 
   @override
   String get commandRefusedWebFilterStart =>
-      'تعذّر بدء إيقاف الإنترنت على هاتف طفلك. افتح تطبيق OSRA هناك وحاول مجددًا.';
+      'تعذّر بدء إيقاف الإنترنت على هاتف طفلك. افتح تطبيق أسرة للأطفال على ذلك الهاتف وحاول مجددًا.';
 
   @override
   String get commandRefusedUnsupportedCommand =>
-      'يحتاج هذا الأمر إلى إصدار أحدث من OSRA على هاتف طفلك.';
+      'يحتاج هذا الأمر إلى إصدار أحدث من تطبيق أسرة للأطفال على هاتف طفلك.';
 
   @override
   String commandRefusedNotSupported(String command, String device) {
@@ -1627,7 +1627,8 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get scanQr => 'امسح رمز QR باستخدام تطبيق OSRA على جهاز الطفل.';
+  String get scanQr =>
+      'امسح رمز QR باستخدام تطبيق أسرة للأطفال على جهاز الطفل.';
 
   @override
   String get typeSixDigit =>
@@ -1711,7 +1712,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get pairClaimDataCleared =>
-      'تم مسح بيانات OSRA على هذا الهاتف، لذلك فقد حمايته. اسمح به فقط إذا كنت تتوقع ذلك.';
+      'مُسحت بيانات تطبيق أسرة للأطفال على هذا الهاتف، لذلك فقد حمايته. اسمح به فقط إذا كنت تتوقع ذلك.';
 
   @override
   String get appearanceTitle => 'المظهر';
@@ -1721,7 +1722,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get appearanceDesc =>
-      'يتبع هذا الجهاز إعدادات النظام. يُطبَّق الوضع الفاتح أو الداكن على تطبيق OSRA فقط.';
+      'يتبع هذا الجهاز إعدادات النظام. يُطبَّق الوضع الفاتح أو الداكن على تطبيق أسرة فقط.';
 
   @override
   String followingDevice(String mode) {
@@ -1739,7 +1740,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get languageDesc =>
-      'يتبع هذا الجهاز إعدادات النظام. تُطبَّق اللغة الإنجليزية أو العربية على تطبيق OSRA فقط.';
+      'يتبع هذا الجهاز إعدادات النظام. تُطبَّق اللغة الإنجليزية أو العربية على تطبيق أسرة فقط.';
 
   @override
   String followingLanguage(String language) {
@@ -2197,7 +2198,7 @@ class AppLocalizationsAr extends AppLocalizations {
       'املأ البريد الإلكتروني وكلمة المرور ورمز الاسترداد.';
 
   @override
-  String get onboardingWelcomeTitle => 'مرحبًا بك في OSRA';
+  String get onboardingWelcomeTitle => 'مرحبًا بك في تطبيق أسرة';
 
   @override
   String get onboardingWelcomeBody =>
@@ -2284,7 +2285,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String onboardingPairIntro(String childName) {
-    return 'افتح OSRA على هاتف $childName واختر الإقران برمز.';
+    return 'افتح تطبيق أسرة للأطفال على هاتف $childName واختر الإقران برمز.';
   }
 
   @override
@@ -3126,10 +3127,11 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get alertCallBypassNote =>
-      'تم حظر تطبيق المكالمات، لكن المكالمة استمرت خلف شاشة الحظر. لا يستطيع OSRA إنهاء مكالمة تطبيق آخر، لذا تبقى الشاشة محظورة حتى تنتهي المكالمة.';
+      'تم حظر تطبيق المكالمات، لكن المكالمة استمرت خلف شاشة الحظر. لا يستطيع تطبيق أسرة للأطفال إنهاء مكالمة تطبيق آخر، لذا تبقى الشاشة محظورة حتى تنتهي المكالمة.';
 
   @override
-  String get alertTitleDataCleared => 'تم مسح بيانات OSRA على هاتف';
+  String get alertTitleDataCleared =>
+      'مُسحت بيانات تطبيق أسرة للأطفال على أحد الهواتف';
 
   @override
   String get alertTitleVpnDetected => 'تم اكتشاف شبكة VPN';
@@ -3259,7 +3261,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get phoneSetupOtherSpaceOther =>
-      'في هذا الهاتف مساحة أخرى، وقد لا يصل OSRA إلى التطبيقات داخلها.';
+      'في هذا الهاتف مساحة أخرى، وقد لا يصل تطبيق أسرة للأطفال إلى التطبيقات داخلها.';
 
   @override
   String get phoneSetupTitle => 'إعداد الهاتف';
