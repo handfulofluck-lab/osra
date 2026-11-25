@@ -10,6 +10,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../api/models.dart';
 import 'auth_provider.dart';
+import 'social_provider.dart';
 import 'world_class_provider.dart';
 
 import '../api/permission_errors.dart';
@@ -528,6 +529,7 @@ abstract class RealtimeEffects {
   void invalidateAlerts();
   void invalidateUnacknowledgedCount();
   void invalidateFamily();
+  void invalidateSocialEvents(String childId);
   void invalidateLocation(String childId);
 
   /// Issue #253: an open consent screen watches `consentStatusProvider(childId)`, which nothing else
@@ -561,6 +563,10 @@ class RiverpodRealtimeEffects implements RealtimeEffects {
   void invalidateFamily() => _ref.invalidate(familyProvider);
 
   @override
+  void invalidateSocialEvents(String childId) =>
+      _ref.invalidate(socialEventsProvider(childId));
+
+  @override
   void invalidateLocation(String childId) => _ref.invalidate(locationProvider(childId));
 
   @override
@@ -585,6 +591,13 @@ void applyRealtimeMessage(RealtimeEffects effects, Map<String, dynamic> msg) {
       effects.invalidateAlerts();
       effects.invalidateUnacknowledgedCount();
       effects.invalidateFamily();
+      final payload = msg['payload'];
+      if (payload case {
+        'childId': final String childId,
+        'category': 'social_concern' || 'gaming_chat',
+      } when childId.isNotEmpty) {
+        effects.invalidateSocialEvents(childId);
+      }
     case 'location':
       final payload = msg['payload'];
       if (payload is Map && payload['childId'] != null) {

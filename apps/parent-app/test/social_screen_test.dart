@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -473,6 +475,54 @@ void main() {
   });
 
   group('Concerns vault', () {
+    testWidgets('pull-to-refresh reloads concerns even when the list fits',
+        (tester) async {
+      final pending = Completer<Object?>();
+      var refreshRequested = false;
+      final api = FakeApiClient({
+        ...socialRoutes(),
+        'GET /v1/social/events': (_) => refreshRequested
+            ? FakeDeferred(pending.future)
+            : {
+                'items': [concernJson()]
+              },
+      });
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api,
+          tall: true);
+      await flushFakeHttp(tester);
+
+      final scrollPosition =
+          tester.state<ScrollableState>(socialScrollable()).position;
+      expect(scrollPosition.maxScrollExtent, 0);
+      expect(find.text('Maya'), findsOneWidget);
+      expect(api.calls('GET', '/v1/social/events'), hasLength(1));
+      final activityRequestCount = api.calls('GET', '/v1/reports/activity').length;
+
+      refreshRequested = true;
+      final list = find.byKey(const ValueKey('socialSectionsList'));
+      await tester.dragFrom(tester.getTopLeft(list) + const Offset(40, 24),
+          const Offset(0, 620));
+      await tester.pump();
+      await flushFakeHttp(tester);
+      final wasRefreshing =
+          find.byType(RefreshProgressIndicator).evaluate().isNotEmpty;
+      pending.complete({
+        'items': [concernJson(id: 'se-new', contact: 'Lina'), concernJson()],
+      });
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      final requests = api.calls('GET', '/v1/social/events');
+      expect(requests.map((request) => request.query['childId']),
+          ['child-1', 'child-1']);
+      expect(api.calls('GET', '/v1/reports/activity'),
+          hasLength(activityRequestCount));
+      expect(wasRefreshing, isTrue);
+      expect(find.byType(RefreshProgressIndicator), findsNothing);
+      expect(find.text('Lina'), findsOneWidget);
+      expect(find.text('Maya'), findsOneWidget);
+    });
+
     testWidgets(
         'renders severity-colored cards with concern chips and an expandable preview',
         (tester) async {
