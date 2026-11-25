@@ -5756,6 +5756,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'+{count} new'**
   String socialAlertNewSince(int count);
+
+  /// #1088: neutral pill under a control the child's build cannot run yet (UI/UX Bureau 7146060347).
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet available'**
+  String get iosNotYetPill;
+
+  /// #1088: one line under an iPhone child's device row. {actions} is the joined list of action names.
+  ///
+  /// In en, this message translates to:
+  /// **'On {child}\'s iPhone, {actions} aren\'t available yet. Screen-time limits, app blocking and the web filter work now.'**
+  String iosNotYetCardLine(String child, String actions);
+
+  /// #1088: snackbar when a parent taps a not-yet control. Never sends a command.
+  ///
+  /// In en, this message translates to:
+  /// **'{action} isn\'t available on iPhone yet. It will arrive in an app update.'**
+  String iosNotYetTapSnack(String action);
+
+  /// #1088: screen-reader label of a not-yet control.
+  ///
+  /// In en, this message translates to:
+  /// **'{action}, not yet available on iPhone'**
+  String iosNotYetA11y(String action);
+
+  /// #1088: separator between action names in the card line, before the last one.
+  ///
+  /// In en, this message translates to:
+  /// **', '**
+  String get iosNotYetListSeparator;
+
+  /// #1088: joins the last action name to the rest ("Lock, Pause and Ring").
+  ///
+  /// In en, this message translates to:
+  /// **'{rest} and {last}'**
+  String iosNotYetListLast(String rest, String last);
 }
 
 class _AppLocalizationsDelegate

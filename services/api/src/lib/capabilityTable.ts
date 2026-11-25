@@ -60,6 +60,34 @@ export function isCommandNotSupported(app: string | null | undefined, command: s
   return NOT_SUPPORTED_COMMANDS[app as CapabilityApp]?.includes(command) ?? false;
 }
 
+/**
+ * #1088: every parent command, with the feature that carries it (null: only [NOT_SUPPORTED_COMMANDS] can
+ * rule it out). A command and its undo travel together, so a parent is never offered half a pair.
+ */
+const PARENT_COMMANDS: ReadonlyArray<{ command: string; feature: FeatureKey | null; via?: string }> = [
+  { command: "lock", feature: "lock_screen" },
+  { command: "unlock", feature: "lock_screen" },
+  { command: "pause", feature: "pause_screen" },
+  { command: "resume", feature: "pause_screen" },
+  { command: "pause_internet", feature: "pause_internet" },
+  { command: "resume_internet", feature: "pause_internet" },
+  { command: "ring", feature: null },
+  { command: "stop_ring", feature: null, via: "ring" },
+];
+
+/**
+ * #1088 (epic #1092): the parent commands this (app, flavour) cannot run at all, in a fixed order. The
+ * parent app shows these as "Not yet available" from this list alone, so a control comes back by itself
+ * when its row in the table above is emptied (Ring with #760, Lock and Pause with #1089).
+ */
+export function unsupportedCommands(app: string | null | undefined, flavour: string | null | undefined): string[] {
+  if (!app) return [];
+  return PARENT_COMMANDS.filter(
+    ({ command, feature, via }) =>
+      isCommandNotSupported(app, via ?? command) || (feature != null && isNotSupported(app, flavour, feature)),
+  ).map(({ command }) => command);
+}
+
 /** True when this (app, flavour) cannot do [feature] at all. */
 export function isNotSupported(
   app: string | null | undefined,

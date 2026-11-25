@@ -3752,4 +3752,30 @@ class AppLocalizationsAr extends AppLocalizations {
   String socialAlertNewSince(int count) {
     return '+$count جديدة';
   }
+
+  @override
+  String get iosNotYetPill => 'غير متاح بعد';
+
+  @override
+  String iosNotYetCardLine(String child, String actions) {
+    return 'على آيفون $child، لا تتوفر بعد هذه الميزات: $actions. أما حدود وقت الشاشة وحظر التطبيقات وتصفية الويب فتعمل الآن.';
+  }
+
+  @override
+  String iosNotYetTapSnack(String action) {
+    return '«$action» غير متاح على آيفون بعد، وسيصل في تحديث قادم للتطبيق.';
+  }
+
+  @override
+  String iosNotYetA11y(String action) {
+    return '$action، غير متاح على آيفون بعد';
+  }
+
+  @override
+  String get iosNotYetListSeparator => '، ';
+
+  @override
+  String iosNotYetListLast(String rest, String last) {
+    return '$rest و$last';
+  }
 }

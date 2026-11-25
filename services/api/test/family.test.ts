@@ -177,6 +177,7 @@ describe("family routes", () => {
       missing: [],
       profiles: null,
       groups: null,
+      unsupportedCommands: [],
     });
     // Both copies of the device carry it: the nested child list and the flat list the app reads.
     expect(body.children[0].devices[0].setup).toEqual(body.devices[0].setup);

@@ -3529,4 +3529,30 @@ class AppLocalizationsEn extends AppLocalizations {
   String socialAlertNewSince(int count) {
     return '+$count new';
   }
+
+  @override
+  String get iosNotYetPill => 'Not yet available';
+
+  @override
+  String iosNotYetCardLine(String child, String actions) {
+    return 'On $child\'s iPhone, $actions aren\'t available yet. Screen-time limits, app blocking and the web filter work now.';
+  }
+
+  @override
+  String iosNotYetTapSnack(String action) {
+    return '$action isn\'t available on iPhone yet. It will arrive in an app update.';
+  }
+
+  @override
+  String iosNotYetA11y(String action) {
+    return '$action, not yet available on iPhone';
+  }
+
+  @override
+  String get iosNotYetListSeparator => ', ';
+
+  @override
+  String iosNotYetListLast(String rest, String last) {
+    return '$rest and $last';
+  }
 }

@@ -29,6 +29,7 @@ import 'child_apps_list.dart';
 import 'phone_setup_section.dart';
 import 'command_history_screen.dart' show formatCommandTime;
 import 'device_control_state.dart';
+import 'not_yet_available.dart';
 
 /// Per-child detail view with Overview / Apps / Social / Location / Alerts tabs.
 class ChildDetailScreen extends ConsumerWidget {
@@ -255,6 +256,8 @@ class _OverviewTab extends ConsumerWidget {
                       child: Text(l10n.lastSeenLabel(formatLastSeen(context, d.lastSeen)), style: Theme.of(context).textTheme.bodySmall),
                     ),
                   ),
+                  // #1088: what this build cannot do yet, named once, with what works now.
+                  NotYetCardLine(device: d, childName: child?.displayName ?? d.model),
                   // ADR-0034 decision 3: what this phone says it can do, and what is missing.
                   PhoneSetupSection(device: d),
                   // ADR-0037 PR B3c: the iPhone's app groups, each with a Block switch.
@@ -300,12 +303,20 @@ class _OverviewTab extends ConsumerWidget {
                         const SizedBox(height: AppSpace.xs),
                         SizedBox(
                           width: double.infinity,
-                          child: _deviceTonalButton(
-                            key: ValueKey('deviceAction-internet-${d.id}'),
-                            onPressed: () => _toggleInternet(context, ref, childId, internetPaused, d),
-                            icon: internetPaused ? Icons.wifi : Icons.wifi_off,
-                            label: internetPaused ? l10n.commandResumeInternet : l10n.commandPauseInternet,
-                          ),
+                          child: isCommandNotYetAvailable(d, 'pause_internet')
+                              // #1088: never queue pause_internet to a build that cannot apply it.
+                              ? NotYetAvailableButton(
+                                  key: ValueKey('deviceAction-internet-${d.id}'),
+                                  icon: Icons.wifi_off,
+                                  label: l10n.commandPauseInternet,
+                                  actionLabel: l10n.commandPauseInternet,
+                                )
+                              : _deviceTonalButton(
+                                  key: ValueKey('deviceAction-internet-${d.id}'),
+                                  onPressed: () => _toggleInternet(context, ref, childId, internetPaused, d),
+                                  icon: internetPaused ? Icons.wifi : Icons.wifi_off,
+                                  label: internetPaused ? l10n.commandResumeInternet : l10n.commandPauseInternet,
+                                ),
                         ),
                       ],
                     ),
@@ -494,25 +505,33 @@ class _DeviceActionsSection extends ConsumerWidget {
     );
 
     final pairChildren = <Widget>[
-      _deviceTonalButton(
+      _controlOrNotYet(
+        context,
+        command: 'ring',
         key: ValueKey('deviceAction-ring-${device.id}'),
         onPressed: () => onSend('ring'),
         icon: Icons.notifications_active,
         label: l10n.ring,
       ),
-      _deviceTonalButton(
+      _controlOrNotYet(
+        context,
+        command: 'stop_ring',
         key: ValueKey('deviceAction-stopRing-${device.id}'),
         onPressed: () => onSend('stop_ring'),
         icon: Icons.notifications_off_outlined,
         label: l10n.commandStopRing,
       ),
-      _deviceTonalButton(
+      _controlOrNotYet(
+        context,
+        command: 'lock',
         key: ValueKey('deviceAction-lock-${device.id}'),
         onPressed: () => onSend('lock'),
         icon: Icons.lock,
         label: l10n.lock,
       ),
-      _deviceTonalButton(
+      _controlOrNotYet(
+        context,
+        command: 'unlock',
         key: ValueKey('deviceAction-unlock-${device.id}'),
         onPressed: () => onSend('unlock'),
         icon: Icons.lock_open,
@@ -544,9 +563,39 @@ class _DeviceActionsSection extends ConsumerWidget {
     );
   }
 
+  /// #1088: the control as usual, or drawn "Not yet available" when the server says this build cannot run
+  /// [command]. Never decided from the platform name.
+  Widget _controlOrNotYet(
+    BuildContext context, {
+    required String command,
+    required Key key,
+    required VoidCallback onPressed,
+    required IconData icon,
+    required String label,
+  }) {
+    if (!isCommandNotYetAvailable(device, command)) {
+      return _deviceTonalButton(key: key, onPressed: onPressed, icon: icon, label: label);
+    }
+    final action = notYetActionFor(command);
+    return NotYetAvailableButton(
+      key: key,
+      icon: icon,
+      label: label,
+      actionLabel: action == null ? label : notYetActionLabel(context.l10n, action),
+    );
+  }
+
   Widget _buildPauseControl(BuildContext context, DevicePauseControlState state) {
     final l10n = context.l10n;
     final command = state.activeCommand;
+    if (isCommandNotYetAvailable(device, command)) {
+      return NotYetAvailableButton(
+        key: ValueKey('deviceAction-$command-${device.id}'),
+        icon: Icons.pause_circle,
+        label: l10n.commandPauseDevice,
+        actionLabel: l10n.commandPauseDevice,
+      );
+    }
     final label = state.waiting
         ? (state.pendingCommand == 'resume' ? l10n.commandResumingDevice : l10n.commandPausingDevice)
         : (state.confirmedPaused ? l10n.commandResumeDevice : l10n.commandPauseDevice);

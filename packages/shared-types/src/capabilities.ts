@@ -178,4 +178,10 @@ export interface DeviceSetup {
   profiles: DeviceProfiles | null;
   /** ADR-0037: the iPhone's app groups as last reported, or null when no report has carried them. */
   groups: AppGroupReport[] | null;
+  /**
+   * #1088 (epic #1092): the parent commands this build cannot run at all, from the server's static table
+   * (`capabilityTable.ts`), never from the device. The parent app greys these out as "Not yet available"
+   * instead of sending a command that will only come back `not_supported`. Empty when nothing is known.
+   */
+  unsupportedCommands: string[];
 }

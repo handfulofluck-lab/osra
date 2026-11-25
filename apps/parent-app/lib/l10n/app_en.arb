@@ -1911,5 +1911,17 @@
   "socialAlertMorePush": "{count, plural, =1{1 more concerning message for {child} on {app}} other{{count} more concerning messages for {child} on {app}}}",
   "@socialAlertMorePush": { "placeholders": { "count": { "type": "int" }, "child": { "type": "String" }, "app": { "type": "String" } } },
   "socialAlertNewSince": "+{count} new",
-  "@socialAlertNewSince": { "placeholders": { "count": { "type": "int" } } }
+  "@socialAlertNewSince": { "placeholders": { "count": { "type": "int" } } },
+  "iosNotYetPill": "Not yet available",
+  "@iosNotYetPill": {"description": "#1088: neutral pill under a control the child's build cannot run yet (UI/UX Bureau 7146060347)."},
+  "iosNotYetCardLine": "On {child}'s iPhone, {actions} aren't available yet. Screen-time limits, app blocking and the web filter work now.",
+  "@iosNotYetCardLine": {"description": "#1088: one line under an iPhone child's device row. {actions} is the joined list of action names.", "placeholders": {"child": {"type": "String"}, "actions": {"type": "String"}}},
+  "iosNotYetTapSnack": "{action} isn't available on iPhone yet. It will arrive in an app update.",
+  "@iosNotYetTapSnack": {"description": "#1088: snackbar when a parent taps a not-yet control. Never sends a command.", "placeholders": {"action": {"type": "String"}}},
+  "iosNotYetA11y": "{action}, not yet available on iPhone",
+  "@iosNotYetA11y": {"description": "#1088: screen-reader label of a not-yet control.", "placeholders": {"action": {"type": "String"}}},
+  "iosNotYetListSeparator": ", ",
+  "@iosNotYetListSeparator": {"description": "#1088: separator between action names in the card line, before the last one."},
+  "iosNotYetListLast": "{rest} and {last}",
+  "@iosNotYetListLast": {"description": "#1088: joins the last action name to the rest (\"Lock, Pause and Ring\").", "placeholders": {"rest": {"type": "String"}, "last": {"type": "String"}}}
 }

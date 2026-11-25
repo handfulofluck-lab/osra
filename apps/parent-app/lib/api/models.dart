@@ -254,6 +254,11 @@ class DeviceSetup {
   /// ADR-0037: the iPhone's app groups, null until the phone has reported any (and always for Android).
   final List<AppGroupReport>? groups;
 
+  /// #1088 (epic #1092): the parent commands this build cannot run at all, from the server's static table
+  /// (`services/api/src/lib/capabilityTable.ts`), never from the phone. Empty when nothing is known, so a
+  /// control is only greyed out on the server's word.
+  final List<String> unsupportedCommands;
+
   const DeviceSetup({
     this.reportedAt,
     this.stale = false,
@@ -261,6 +266,7 @@ class DeviceSetup {
     this.missing = const [],
     this.profiles,
     this.groups,
+    this.unsupportedCommands = const [],
   });
 
   factory DeviceSetup.fromJson(Map<String, dynamic> json) => DeviceSetup(
@@ -288,6 +294,12 @@ class DeviceSetup {
                   if (AppGroupReport.tryFromJson(m) case final g?) g,
               ]
             : null,
+        unsupportedCommands: json['unsupportedCommands'] is List
+            ? [
+                for (final v in json['unsupportedCommands'] as List)
+                  if (v is String) v
+              ]
+            : const [],
       );
 
   /// The state of one feature, or null when this device never mentioned it.

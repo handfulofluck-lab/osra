@@ -95,7 +95,7 @@ describe("decision 3 + A4 — what the parent's setup screen is shown", () => {
 
   it("a device that has never reported is not 'all missing'", () => {
     const setup = setupFor({ capabilities: null, capabilitiesReportedAt: null }, NOW);
-    expect(setup).toEqual({ reportedAt: null, stale: true, features: {}, missing: [], profiles: null, groups: null });
+    expect(setup).toEqual({ reportedAt: null, stale: true, features: {}, missing: [], profiles: null, groups: null, unsupportedCommands: [] });
   });
 
   it("claim 8 — a not_supported claimed outside the build's row is shown as unavailable", () => {
@@ -162,5 +162,32 @@ describe("decision 3 + A1 — when a command is refused instead of queued", () =
 
   it("a device that never reported is never refused", () => {
     expect(commandRefusal({ capabilities: null, capabilitiesReportedAt: null }, "lock", NOW)).toBeNull();
+  });
+});
+
+describe("#1088 — the parent commands a build cannot run, from the table", () => {
+  it("an iPhone gets Lock, Pause, Pause internet and Ring (with their undos) as unsupported", () => {
+    const ios = report({
+      client: { app: "child-ios", version: "0.1.0", build: 1, flavour: "testflight" },
+      features: {},
+    });
+    expect(setupFor({ capabilities: ios, capabilitiesReportedAt: new Date(NOW) }, NOW).unsupportedCommands).toEqual([
+      "lock",
+      "unlock",
+      "pause",
+      "resume",
+      "pause_internet",
+      "resume_internet",
+      "ring",
+      "stop_ring",
+    ]);
+  });
+
+  it("an Android Full build has none", () => {
+    expect(setupFor({ capabilities: report(), capabilitiesReportedAt: new Date(NOW) }, NOW).unsupportedCommands).toEqual([]);
+  });
+
+  it("a device that never reported has none: the screen does not guess", () => {
+    expect(setupFor({ capabilities: null, capabilitiesReportedAt: null }, NOW).unsupportedCommands).toEqual([]);
   });
 });

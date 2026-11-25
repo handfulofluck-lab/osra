@@ -17,7 +17,7 @@ import {
   type DeviceSetup,
   type FeatureKey,
 } from "@familyshield/shared-types";
-import { isCommandNotSupported, isNotSupported, shownFeatureState } from "./capabilityTable.js";
+import { isCommandNotSupported, isNotSupported, shownFeatureState, unsupportedCommands } from "./capabilityTable.js";
 
 /**
  * ADR-0034 PR 1a: the capability report, its storage rules, and the one refusal that replaces
@@ -271,7 +271,7 @@ export function setupFor(report: CapabilityReport, nowMs: number = Date.now()): 
   const parsed = CapabilitiesSchema.safeParse(report.capabilities);
   const at = reportedAtMs(report.capabilitiesReportedAt);
   if (!parsed.success || at == null) {
-    return { reportedAt: null, stale: true, features: {}, missing: [], profiles: null, groups: null };
+    return { reportedAt: null, stale: true, features: {}, missing: [], profiles: null, groups: null, unsupportedCommands: [] };
   }
   const { client, grants, features, profiles, groups } = parsed.data;
   const shownFeatures: Partial<Record<FeatureKey, string>> = {};
@@ -288,6 +288,7 @@ export function setupFor(report: CapabilityReport, nowMs: number = Date.now()): 
       .map(([key]) => key as DeviceSetup["missing"][number]),
     profiles: profiles ?? null,
     groups: groups ?? null,
+    unsupportedCommands: unsupportedCommands(client.app, client.flavour),
   };
 }
 

@@ -9,6 +9,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:intl/intl.dart';
 
+import '../children/not_yet_available.dart';
 import '../../api/models.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
@@ -161,21 +162,48 @@ class ChildMapSheet extends ConsumerWidget {
               spacing: AppSpace.md,
               runSpacing: AppSpace.sm,
               children: [
-                FilledButton.tonalIcon(
-                  icon: const Icon(Icons.volume_up),
-                  label: Text(context.l10n.familyMapRing),
-                  onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'ring'),
-                ),
-                FilledButton.tonalIcon(
-                  icon: const Icon(Icons.notifications_off_outlined),
-                  label: Text(context.l10n.commandStopRing),
-                  onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'stop_ring'),
-                ),
-                FilledButton.tonalIcon(
-                  icon: const Icon(Icons.lock),
-                  label: Text(context.l10n.familyMapLock),
-                  onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'lock'),
-                ),
+                if (device != null && isCommandNotYetAvailable(device!, 'ring'))
+                  // #1088: the server says this build cannot ring; explain, never send.
+                  NotYetAvailableButton(
+                    key: const ValueKey('familyMap-ring-notYet'),
+                    icon: Icons.volume_up,
+                    label: context.l10n.familyMapRing,
+                    actionLabel: notYetActionLabel(context.l10n, notYetActionFor('ring')!),
+                  )
+                else
+                  FilledButton.tonalIcon(
+                    icon: const Icon(Icons.volume_up),
+                    label: Text(context.l10n.familyMapRing),
+                    onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'ring'),
+                  ),
+                if (device != null && isCommandNotYetAvailable(device!, 'stop_ring'))
+                  // #1088: the server says this build cannot stop ring; explain, never send.
+                  NotYetAvailableButton(
+                    key: const ValueKey('familyMap-stop_ring-notYet'),
+                    icon: Icons.notifications_off_outlined,
+                    label: context.l10n.commandStopRing,
+                    actionLabel: notYetActionLabel(context.l10n, notYetActionFor('stop_ring')!),
+                  )
+                else
+                  FilledButton.tonalIcon(
+                    icon: const Icon(Icons.notifications_off_outlined),
+                    label: Text(context.l10n.commandStopRing),
+                    onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'stop_ring'),
+                  ),
+                if (device != null && isCommandNotYetAvailable(device!, 'lock'))
+                  // #1088: the server says this build cannot lock; explain, never send.
+                  NotYetAvailableButton(
+                    key: const ValueKey('familyMap-lock-notYet'),
+                    icon: Icons.lock,
+                    label: context.l10n.familyMapLock,
+                    actionLabel: notYetActionLabel(context.l10n, notYetActionFor('lock')!),
+                  )
+                else
+                  FilledButton.tonalIcon(
+                    icon: const Icon(Icons.lock),
+                    label: Text(context.l10n.familyMapLock),
+                    onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'lock'),
+                  ),
               ],
             ),
           ],
