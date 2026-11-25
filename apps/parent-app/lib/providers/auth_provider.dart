@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show SnackBar, Text;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide Family;
 
@@ -10,7 +11,10 @@ import '../api/models.dart';
 import '../api/permission_errors.dart';
 import '../api/push_api.dart';
 import '../core/mutation_auth.dart';
+import '../app_messenger.dart';
 import '../core/owner_presence.dart';
+import '../features/owner_presence/owner_presence_prompt.dart';
+import '../l10n/app_copy.dart';
 import '../push/push_registration.dart';
 import '../push/fcm_push_token_source.dart';
 import 'server_provider.dart';
@@ -26,15 +30,30 @@ final apiClientProvider = Provider<ApiClient>((ref) {
       // Before sign-in there is no session to send and nothing to protect; the server requires a session for
       // every call that can change a family, so skipping here cannot skip a real check (flagged for Claude).
       if (options.extra['hasSession'] != true) return;
-      await guardMutation(
-        method: options.method,
-        path: options.path,
-        exempt: options.extra['authExempt'],
-        askOwner: gate.authorise,
-        // UI/UX's final sentence (7157141241). It becomes an l10n key when the refusal screen lands, because
-        // the key needs both locales and Arabic is the Arabic Bureau's to apply.
-        reason: 'Unlock to save changes to your family settings.',
-      );
+      try {
+        await guardMutation(
+          method: options.method,
+          path: options.path,
+          exempt: options.extra['authExempt'],
+          askOwner: gate.authorise,
+          reason: AppCopy.current?.ownerPresenceBody ??
+              'Unlock to save changes to your family settings.',
+        );
+      } on OwnerPresenceRequired catch (e) {
+        if (e.result == OwnerPresence.unavailable) {
+          // No biometrics and no screen lock: the refusal screen explains it and offers sign-out.
+          ref.read(ownerPresencePromptProvider.notifier).state =
+              OwnerPresencePrompt(result: e.result, pending: options);
+        } else {
+          // Dismissed or failed: a snackbar, and the form is untouched so the parent can retry (UI/UX note 2).
+          appMessengerKey.currentState?.showSnackBar(
+            SnackBar(
+              content: Text(AppCopy.current?.ownerPresenceCancelled ?? 'Nothing was changed.'),
+            ),
+          );
+        }
+        rethrow;
+      }
     },
   );
 });

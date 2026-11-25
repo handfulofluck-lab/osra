@@ -5756,6 +5756,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'+{count} new'**
   String socialAlertNewSince(int count);
+
+  /// Issue #742: title of the phone-owner confirmation before a change is saved.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm it\'s you'**
+  String get ownerPresenceTitle;
+
+  /// Issue #742: reason shown inside the system lock/biometric prompt. One short line.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock to save changes to your family\'s settings.'**
+  String get ownerPresenceBody;
+
+  /// Issue #742: after the parent dismisses the system prompt; the form is unchanged so they can retry.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was changed. Confirm it\'s you to save.'**
+  String get ownerPresenceCancelled;
+
+  /// Issue #742: refusal screen title when the phone has no biometric and no screen lock.
+  ///
+  /// In en, this message translates to:
+  /// **'Set a screen lock first'**
+  String get ownerPresenceNoLockTitle;
+
+  /// Issue #742: refusal screen body. Never mentions the app's own PIN.
+  ///
+  /// In en, this message translates to:
+  /// **'To keep your family\'s settings safe, OSRA only saves changes after you unlock this phone. Add a PIN, pattern, fingerprint or face unlock in Settings, then come back.'**
+  String get ownerPresenceNoLockBody;
+
+  /// Issue #742: refusal screen main button; opens the phone's security settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Settings'**
+  String get ownerPresenceOpenSettings;
+
+  /// Issue #742: refusal screen secondary action; the only action that works without a lock.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get ownerPresenceSignOut;
 }
 
 class _AppLocalizationsDelegate

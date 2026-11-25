@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'app_messenger.dart';
 import 'features/auth/login_screen.dart';
+import 'features/owner_presence/owner_presence_prompt.dart';
+import 'features/owner_presence/owner_presence_screen.dart';
+import 'l10n/app_copy.dart';
 import 'features/dashboard/dashboard_screen.dart';
 import 'features/children/child_detail_screen.dart';
 import 'features/children/command_history_screen.dart';
@@ -102,6 +106,9 @@ final List<RouteBase> appRoutes = [
     builder: (_, s) => MfaResetApprovalLink(requestId: s.uri.queryParameters['requestId'] ?? ''),
   ),
   GoRoute(path: '/alerts', builder: (_, __) => const AlertsScreen()),
+  // #742: a full-screen refusal, never a dialog (UI/UX 7157141241). It is pushed over the form that was being
+  // saved, so Back returns to it untouched.
+  GoRoute(path: '/owner-presence', builder: (_, __) => const OwnerPresenceScreen()),
   GoRoute(
     path: '/alerts/:id',
     builder: (_, s) => AlertDetailScreen(
@@ -218,7 +225,18 @@ class FamilyShieldApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(themeModeProvider);
     final locale = ref.watch(localeProvider);
+    // #742: a refused mutation pushes the refusal screen once; the screen clears the prompt when it closes.
+    ref.listen<OwnerPresencePrompt?>(ownerPresencePromptProvider, (previous, next) {
+      if (next != null && previous == null) router.push('/owner-presence');
+    });
     return MaterialApp.router(
+      scaffoldMessengerKey: appMessengerKey,
+      // The mutation gate answers from a dio interceptor, where there is no context; this is the one place the
+      // generated copy is handed to that layer, and it follows the locale the screen above is using.
+      builder: (context, child) {
+        AppCopy.set(AppLocalizations.of(context));
+        return child ?? const SizedBox.shrink();
+      },
       title: 'OSRA',
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,

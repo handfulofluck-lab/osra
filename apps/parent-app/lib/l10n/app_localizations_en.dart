@@ -3529,4 +3529,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String socialAlertNewSince(int count) {
     return '+$count new';
   }
+
+  @override
+  String get ownerPresenceTitle => 'Confirm it\'s you';
+
+  @override
+  String get ownerPresenceBody =>
+      'Unlock to save changes to your family\'s settings.';
+
+  @override
+  String get ownerPresenceCancelled =>
+      'Nothing was changed. Confirm it\'s you to save.';
+
+  @override
+  String get ownerPresenceNoLockTitle => 'Set a screen lock first';
+
+  @override
+  String get ownerPresenceNoLockBody =>
+      'To keep your family\'s settings safe, OSRA only saves changes after you unlock this phone. Add a PIN, pattern, fingerprint or face unlock in Settings, then come back.';
+
+  @override
+  String get ownerPresenceOpenSettings => 'Open Settings';
+
+  @override
+  String get ownerPresenceSignOut => 'Sign out';
 }

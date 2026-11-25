@@ -51,6 +51,19 @@ class OwnerPresenceGate {
   final Future<bool> Function()? _isSupported;
   final Future<bool> Function(String reason)? _authenticate;
 
+  /// Whether the phone can answer a prompt at all right now. The refusal screen asks this when the parent comes
+  /// back from Settings: a lock that now exists means the refused save can be repeated with one prompt.
+  Future<bool> canAsk() async {
+    final supported = _isSupported ?? _auth!.isDeviceSupported;
+    try {
+      return await supported();
+    } on LocalAuthException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
   /// [reason] is shown inside the OS prompt, so the caller passes localised copy.
   Future<OwnerPresence> authorise(String reason) async {
     final plugin = _auth;
