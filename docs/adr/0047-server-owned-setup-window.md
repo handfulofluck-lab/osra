@@ -1,4 +1,4 @@
-# ADR-0046: Server-owned initial-setup window for tamper alerts
+# ADR-0047: Server-owned initial-setup window for tamper alerts
 
 Status: accepted
 
