@@ -676,7 +676,8 @@ export async function recordFlaggedSocialAlert(
               concernTypes,
               flaggedCount: 1,
               latestAt: nowIso,
-              ...(sourceEventId ? { latestSourceEventId: sourceEventId } : {}),
+              // The alert link stays on its original event while feedback follows the latest event.
+              ...(sourceEventId ? { primarySocialEventId: sourceEventId, latestSourceEventId: sourceEventId } : {}),
               windowStartedAt: nowIso,
               windowEndsAt: windowEndsAtIso,
               pushedCount: 1,

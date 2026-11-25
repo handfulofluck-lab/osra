@@ -102,7 +102,13 @@ final List<RouteBase> appRoutes = [
       },
     ),
   ),
-  GoRoute(path: '/child/:id/social', builder: (_, s) => SocialScreen(childId: s.pathParameters['id']!)),
+  GoRoute(
+    path: '/child/:id/social',
+    builder: (_, s) => SocialScreen(
+      childId: s.pathParameters['id']!,
+      concernId: s.uri.queryParameters['concernId'],
+    ),
+  ),
   GoRoute(path: '/child/:id/searches', builder: (_, s) => SearchSafetyScreen(childId: s.pathParameters['id']!)),
   GoRoute(path: '/settings/digests', builder: (_, __) => const DigestPrefsScreen()),
   GoRoute(path: '/settings/appearance', builder: (_, __) => const AppearanceScreen()),

@@ -117,8 +117,9 @@ String formatAlertLocalTime(
 /// "Open Social activity" CTA or an explicit unavailable-preview explanation.
 SocialPreviewAvailability resolveSocialPreviewAvailability(
   Alert alert,
-  AsyncValue<List<SocialConcernEvent>> eventsAsync,
-) {
+  AsyncValue<List<SocialConcernEvent>> eventsAsync, {
+  String? exactConcernId,
+}) {
   return eventsAsync.when(
     loading: () => SocialPreviewAvailability.available,
     error: (err, _) {
@@ -131,6 +132,12 @@ SocialPreviewAvailability resolveSocialPreviewAvailability(
       return SocialPreviewAvailability.transientError;
     },
     data: (events) {
+      if (exactConcernId != null) {
+        return events.any((event) =>
+                event.id == exactConcernId && event.preview.isNotEmpty)
+            ? SocialPreviewAvailability.available
+            : SocialPreviewAvailability.expired;
+      }
       if (events.isEmpty) return SocialPreviewAvailability.expired;
       final appKey =
           alert.metadata['app']?.toString().trim().toLowerCase() ?? '';
@@ -390,8 +397,14 @@ class _SocialAlertDetailBodyState
       if (device != null && device.model.isNotEmpty) ltrIsolate(device.model),
     ];
 
-    final eventsAsync = ref.watch(socialEventsProvider(alert.childId));
-    final availability = resolveSocialPreviewAvailability(alert, eventsAsync);
+    final primary = alert.metadata['primarySocialEventId'];
+    final concernId = primary is String && primary.isNotEmpty ? primary : null;
+    final eventsProvider = concernId == null
+        ? socialEventsProvider(alert.childId)
+        : socialConcernProvider((childId: alert.childId, eventId: concernId));
+    final eventsAsync = ref.watch(eventsProvider);
+    final availability = resolveSocialPreviewAvailability(alert, eventsAsync,
+        exactConcernId: concernId);
     final latestSourceEventId = socialVoteEventId(alert);
     final coachCard = coachCardFor(alert.category, concernTypes);
 
@@ -502,24 +515,33 @@ class _SocialAlertDetailBodyState
           const SizedBox(height: AppSpace.lg),
         ],
         // 3. Primary Social activity action OR preview-availability / retry callout (inside scroll for 200%).
-        if (availability == SocialPreviewAvailability.available)
+        if (availability == SocialPreviewAvailability.available) ...[
+          if (concernId == null) ...[
+            const _PreviewUnavailableCard(
+                availability: SocialPreviewAvailability.expired),
+            const SizedBox(height: AppSpace.sm),
+          ],
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
               key: const ValueKey('alertDetailOpenSocial'),
-              onPressed: () => context.push('/child/${alert.childId}/social'),
+              onPressed: () => context.push(Uri(
+                path: '/child/${alert.childId}/social',
+                queryParameters:
+                    concernId == null ? null : {'concernId': concernId},
+              ).toString()),
               icon: const Icon(Icons.lock_open_rounded, size: 18),
               label: Text(l10n.socialAlertOpenActivity),
             ),
-          )
-        else if (availability == SocialPreviewAvailability.transientError)
+          ),
+        ] else if (availability == SocialPreviewAvailability.transientError)
           _PreviewRetryCard(
             message: friendlyErrorText(
               l10n,
               eventsAsync.error ?? Exception('preview_unavailable'),
               () => l10n.alertsLoadFailed,
             ),
-            onRetry: () => ref.invalidate(socialEventsProvider(alert.childId)),
+            onRetry: () => ref.invalidate(eventsProvider),
           )
         else
           _PreviewUnavailableCard(availability: availability),
