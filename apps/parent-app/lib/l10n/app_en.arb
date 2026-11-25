@@ -1923,5 +1923,7 @@
   "iosNotYetListSeparator": ", ",
   "@iosNotYetListSeparator": {"description": "#1088: separator between action names in the card line, before the last one."},
   "iosNotYetListLast": "{rest} and {last}",
-  "@iosNotYetListLast": {"description": "#1088: joins the last action name to the rest (\"Lock, Pause and Ring\").", "placeholders": {"rest": {"type": "String"}, "last": {"type": "String"}}}
+  "@iosNotYetListLast": {"description": "#1088: joins the last action name to the rest (\"Lock, Pause and Ring\").", "placeholders": {"rest": {"type": "String"}, "last": {"type": "String"}}},
+  "iosPauseInternetSkips": "{devices} can't pause the internet yet, so it stays online.",
+  "@iosPauseInternetSkips": {"description": "#1088 review: names the iPhones a child-wide Pause internet skips. Draft for the UI/UX Bureau.", "placeholders": {"devices": {"type": "String"}}}
 }

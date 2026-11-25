@@ -43,6 +43,16 @@ List<String> notYetActions(Device device) => [
         if (_actionCommands[action]!.any((c) => isCommandNotYetAvailable(device, c))) action,
     ];
 
+/// #1088 review on #1123: Pause internet is child-wide (`/v1/controls/children/:id/pause`).
+/// The devices of a child that cannot apply it; when this is every device, the child-wide control is
+/// drawn "Not yet available", and when it is only some, the parent is told which phones are skipped.
+List<Device> internetPauseSkippedDevices(List<Device> devices) =>
+    [for (final d in devices) if (isCommandNotYetAvailable(d, 'pause_internet')) d];
+
+/// True when no device of the child can apply Pause internet (and there is at least one device).
+bool internetPauseNotYetForAll(List<Device> devices) =>
+    devices.isNotEmpty && internetPauseSkippedDevices(devices).length == devices.length;
+
 /// The localized name of an action, as the buttons already label it.
 String notYetActionLabel(AppLocalizations l10n, String action) => switch (action) {
       'lock' => l10n.lock,

@@ -884,8 +884,16 @@ Future<void> _toggleInternet(BuildContext context, WidgetRef ref, String childId
     }
     ref.invalidate(deviceCommandHistoryProvider(device.id));
     if (context.mounted) {
+      // #1088 review: the pause is child-wide; name any phone of this child that cannot apply it.
+      final siblings = ref.read(familyProvider).valueOrNull?.devicesFor(childId) ?? const <Device>[];
+      final skipped = paused ? const <Device>[] : internetPauseSkippedDevices(siblings);
+      final queued = l10n.netQueued(paused ? l10n.resume : l10n.pause, device.model);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.netQueued(paused ? l10n.resume : l10n.pause, device.model))),
+        SnackBar(
+          content: Text(skipped.isEmpty
+              ? queued
+              : '$queued ${l10n.iosPauseInternetSkips(joinNotYetActions(l10n, [for (final d in skipped) d.model]))}'),
+        ),
       );
     }
   } on ControlsRefusal catch (r) {

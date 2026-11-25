@@ -1152,5 +1152,6 @@
   "iosNotYetTapSnack": "«{action}» غير متاح على آيفون بعد، وسيصل في تحديث قادم للتطبيق.",
   "iosNotYetA11y": "{action}، غير متاح على آيفون بعد",
   "iosNotYetListSeparator": "، ",
-  "iosNotYetListLast": "{rest} و{last}"
+  "iosNotYetListLast": "{rest} و{last}",
+  "iosPauseInternetSkips": "لا يمكن بعد إيقاف الإنترنت على {devices}، لذا سيبقى متصلًا."
 }

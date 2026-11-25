@@ -3555,4 +3555,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String iosNotYetListLast(String rest, String last) {
     return '$rest and $last';
   }
+
+  @override
+  String iosPauseInternetSkips(String devices) {
+    return '$devices can\'t pause the internet yet, so it stays online.';
+  }
 }

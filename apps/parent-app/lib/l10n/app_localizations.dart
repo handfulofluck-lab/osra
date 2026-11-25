@@ -5792,6 +5792,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{rest} and {last}'**
   String iosNotYetListLast(String rest, String last);
+
+  /// #1088 review: names the iPhones a child-wide Pause internet skips. Draft for the UI/UX Bureau.
+  ///
+  /// In en, this message translates to:
+  /// **'{devices} can\'t pause the internet yet, so it stays online.'**
+  String iosPauseInternetSkips(String devices);
 }
 
 class _AppLocalizationsDelegate

@@ -1,4 +1,5 @@
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
+import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -121,5 +122,82 @@ void main() {
     expect(find.byKey(const ValueKey('notYetCardLine-dev-1')), findsNothing);
     expect(find.text('Ring'), findsWidgets);
     expect(find.text('Pause internet'), findsOneWidget);
+  });
+
+  group('#1088 review: the child-wide Pause internet', () {
+    Map<String, dynamic> withSetup(Map<String, dynamic> base, String deviceId, List<String> unsupported) => {
+          ...base,
+          'devices': [
+            for (final d in (base['devices'] as List).cast<Map<String, dynamic>>())
+              d['id'] == deviceId
+                  ? {
+                      ...d,
+                      'setup': {
+                        'reportedAt': DateTime.now().toUtc().toIso8601String(),
+                        'stale': false,
+                        'features': <String, String>{},
+                        'missing': <String>[],
+                        'unsupportedCommands': unsupported,
+                      },
+                    }
+                  : d,
+          ],
+        };
+
+    Future<FakeApiClient> pumpDashboard(WidgetTester tester, Map<String, dynamic> familyMe) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final api = FakeApiClient({
+        ...standardRoutes(familyMe: familyMe),
+        'GET /v1/controls/children/child-1/status': (_) => {'paused': false},
+        'GET /v1/controls/children/child-2/status': (_) => {'paused': false},
+        'POST /v1/controls/children/child-1/pause': (_) => {'ok': true},
+      });
+      await tester.pumpWidget(ProviderScope(
+        overrides: [apiClientProvider.overrideWithValue(api)],
+        child: localizedTestApp(const DashboardScreen()),
+      ));
+      await tester.pumpAndSettle();
+      return api;
+    }
+
+    testWidgets('an iPhone-only child: the dashboard pill says Not yet available and never pauses', (tester) async {
+      final api = await pumpDashboard(
+        tester,
+        withSetup(familyMeTwoChildren(alexPlatform: 'ios', alexModel: 'iPhone 13'), 'dev-1', iosUnsupported),
+      );
+
+      expect(find.byKey(const ValueKey('internetPillNotYet-child-1')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('internetPillNotYet-child-1')));
+      await tester.pump();
+
+      expect(find.text("Pause internet isn't available on iPhone yet. It will arrive in an app update."), findsOneWidget);
+      expect(find.text('Pause internet for Alex?'), findsNothing, reason: 'no confirm dialog for a pause that cannot apply');
+      expect(api.requests.where((r) => r.method == 'POST' && r.path.contains('/controls/')), isEmpty);
+      expect(find.text('Paused'), findsNothing, reason: "Karim's 24 Nov failure: the pill must not flip to Paused");
+    });
+
+    testWidgets('an iPhone and an Android: the dialog names the skipped iPhone, and the pause still goes out',
+        (tester) async {
+      final api = await pumpDashboard(tester, withSetup(familyMeMixedDevices(), 'dev-1', iosUnsupported));
+
+      expect(find.byKey(const ValueKey('internetPillNotYet-child-1')), findsNothing,
+          reason: 'the Android tablet can pause, so the pill works');
+      final alexCard = find.ancestor(of: find.text('Alex'), matching: find.byType(Card));
+      await tester.tap(find.descendant(of: alexCard, matching: find.text('Internet')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('pauseInternetSkipsLine')), findsOneWidget);
+      expect(find.text("iPhone 13 can't pause the internet yet, so it stays online."), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Pause'));
+      await tester.pumpAndSettle();
+      expect(api.requests.where((r) => r.method == 'POST' && r.path == '/v1/controls/children/child-1/pause'),
+          hasLength(1));
+    });
   });
 }

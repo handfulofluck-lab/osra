@@ -21,6 +21,7 @@ import '../../widgets/error_retry_view.dart';
 import '../auth/mfa_reset_approval_screen.dart';
 import '../auth/mfa_reset_messages.dart';
 import '../children/consent_step.dart';
+import '../children/not_yet_available.dart';
 import '../map/child_location_view.dart';
 
 /// Parent dashboard: grid of child cards with live status, pull-to-refresh
@@ -544,6 +545,41 @@ class InternetPill extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final paused = ref.watch(internetPausedProvider(child.id)).valueOrNull ?? false;
     final tokens = context.tokens;
+    final devices = ref.watch(familyProvider).valueOrNull?.devicesFor(child.id) ?? const <Device>[];
+    // #1088 review: an iPhone-only child cannot pause the internet yet. The pill says so instead of
+    // flipping to "Paused" for a phone that will refuse the command (Karim's 24 Nov failure).
+    if (!paused && internetPauseNotYetForAll(devices)) {
+      final faded = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.38);
+      final label = context.l10n.commandPauseInternet;
+      return Semantics(
+        button: true,
+        label: context.l10n.iosNotYetA11y(label),
+        excludeSemantics: true,
+        child: InkWell(
+          key: ValueKey('internetPillNotYet-${child.id}'),
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          onTap: () => showNotYetSnackBar(context, label),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpace.sm, vertical: AppSpace.xs),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(color: faded),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.wifi, size: 14, color: faded),
+                const SizedBox(width: AppSpace.xs),
+                Flexible(
+                  child: Text(context.l10n.iosNotYetPill,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(color: faded)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     final color = paused ? tokens.danger : tokens.ok;
     return InkWell(
       borderRadius: BorderRadius.circular(AppRadius.md),
@@ -572,12 +608,29 @@ class InternetPill extends ConsumerWidget {
 /// only on confirm.
 Future<void> toggleInternetWithConfirm(BuildContext context, WidgetRef ref, Child child, bool paused) async {
   final l10n = context.l10n;
+  // #1088 review: in a family with an iPhone and an Android, pausing reaches only the phones that can
+  // apply it. The dialog names the skipped phones before the parent confirms.
+  final devices = ref.read(familyProvider).valueOrNull?.devicesFor(child.id) ?? const <Device>[];
+  final skipped = paused ? const <Device>[] : internetPauseSkippedDevices(devices);
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
       scrollable: true,
       title: Text(paused ? l10n.resumeInternetTitle(child.displayName) : l10n.pauseInternetTitle(child.displayName)),
-      content: Text(paused ? l10n.resumeInternetBody : l10n.pauseInternetBody),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(paused ? l10n.resumeInternetBody : l10n.pauseInternetBody),
+          if (skipped.isNotEmpty) ...[
+            const SizedBox(height: AppSpace.sm),
+            Text(
+              l10n.iosPauseInternetSkips(joinNotYetActions(l10n, [for (final d in skipped) d.model])),
+              key: const ValueKey('pauseInternetSkipsLine'),
+            ),
+          ],
+        ],
+      ),
       actions: [
         TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(l10n.cancel)),
         FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: Text(paused ? l10n.resume : l10n.pause)),

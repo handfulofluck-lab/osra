@@ -3778,4 +3778,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String iosNotYetListLast(String rest, String last) {
     return '$rest و$last';
   }
+
+  @override
+  String iosPauseInternetSkips(String devices) {
+    return 'لا يمكن بعد إيقاف الإنترنت على $devices، لذا سيبقى متصلًا.';
+  }
 }
