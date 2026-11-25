@@ -71,7 +71,7 @@ public sealed class TrayWorkerLoopbackTests
         Directory.CreateDirectory(directory);
         var store = new LocalRuleStore(NullLogger<LocalRuleStore>.Instance,
             Path.Combine(directory, "rules.db"), Path.Combine(directory, "status.json"));
-        var session = checked(Process.GetCurrentProcess().Id + 14000);
+        var session = checked(Process.GetCurrentProcess().Id + 16000);
         var sid = WindowsIdentity.GetCurrent().User!.Value;
         var pid = Process.GetCurrentProcess().Id;
         var image = Process.GetCurrentProcess().MainModule!.FileName;
