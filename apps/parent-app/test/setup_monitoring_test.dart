@@ -130,6 +130,34 @@ void main() {
     }
   });
 
+  testWidgets(
+      'the uniform all-ON server default does not force uninstalled X (#1142)',
+      (tester) async {
+    // Mutant: applying twitter=true from the server default selects an app that is not installed,
+    // undoing Play decision 14 A's installed-app preselection.
+    await pump(
+      tester,
+      installedKeys: {'whatsapp', 'youtube'},
+      socialMonitoring: {for (final app in kSocialApps) app.appKey: true},
+    );
+    await tester.tap(find.text('Not on Alex\'s phone (10)'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<CheckboxListTile>(
+              find.byKey(const ValueKey('setupMonitoring_twitter')))
+          .value,
+      isFalse,
+    );
+    expect(
+      tester
+          .widget<CheckboxListTile>(
+              find.byKey(const ValueKey('setupMonitoring_whatsapp')))
+          .value,
+      isTrue,
+    );
+  });
+
   for (final selectAll in [false, true]) {
     testWidgets(
         'late rules cannot overwrite ${selectAll ? 'Select all' : 'an explicit X choice'}',
