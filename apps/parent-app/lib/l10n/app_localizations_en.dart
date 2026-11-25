@@ -1631,6 +1631,41 @@ class AppLocalizationsEn extends AppLocalizations {
   String get concerns => 'Concerns';
 
   @override
+  String get flagVoteQuestion => 'Was OSRA right to flag this?';
+
+  @override
+  String get flagVoteConcerning => 'Concerning';
+
+  @override
+  String get flagVoteNotConcerning => 'Not concerning';
+
+  @override
+  String get flagVoteHelp => 'Your answer helps OSRA check messages better.';
+
+  @override
+  String get flagVoteThanks => 'Thanks, noted';
+
+  @override
+  String flagVoteBy(String name, String vote) {
+    return '$name: $vote';
+  }
+
+  @override
+  String get flagVoteA11yConcerning => 'Mark as concerning';
+
+  @override
+  String get flagVoteA11yNotConcerning => 'Mark as not concerning';
+
+  @override
+  String get flagVoteClear => 'Clear vote';
+
+  @override
+  String get flagVoteCleared => 'Vote cleared';
+
+  @override
+  String get flagVoteA11yClear => 'Clear your vote on this message';
+
+  @override
   String get vaultTrustCopy =>
       'Excerpts travel over an encrypted connection and are stored encrypted on OSRA\'s servers.';
 

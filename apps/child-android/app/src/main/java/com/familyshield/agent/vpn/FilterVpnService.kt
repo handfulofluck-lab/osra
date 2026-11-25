@@ -163,6 +163,10 @@ class FilterVpnService : VpnService() {
             allowedDomains = wf?.allowedDomains ?: emptyList(),
             blockedDomains = wf?.blockedDomains ?: emptyList(),
             categoryDomains = blocklist.domains(),
+            // #1079: the two facts that decide whether those domains are the whole story. Without them the
+            // table cannot tell an empty pack from a family that blocks nothing (Hydrogen's #1097 review).
+            packLoaded = blocklist.packStored(),
+            blockedCategories = wf?.blockedCategories ?: emptyList(),
         )
     }
 

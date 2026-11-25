@@ -38,6 +38,7 @@ export const MOCKED_MODELS = [
   "locationPing",
   "activityEvent",
   "socialEvent",
+  "socialEventFeedback",
   "stagingScanOutcome",
   "digestPrefs",
   "digestRecipient",

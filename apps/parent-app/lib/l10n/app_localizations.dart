@@ -2744,6 +2744,72 @@ abstract class AppLocalizations {
   /// **'Concerns'**
   String get concerns;
 
+  /// No description provided for @flagVoteQuestion.
+  ///
+  /// In en, this message translates to:
+  /// **'Was OSRA right to flag this?'**
+  String get flagVoteQuestion;
+
+  /// No description provided for @flagVoteConcerning.
+  ///
+  /// In en, this message translates to:
+  /// **'Concerning'**
+  String get flagVoteConcerning;
+
+  /// No description provided for @flagVoteNotConcerning.
+  ///
+  /// In en, this message translates to:
+  /// **'Not concerning'**
+  String get flagVoteNotConcerning;
+
+  /// No description provided for @flagVoteHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Your answer helps OSRA check messages better.'**
+  String get flagVoteHelp;
+
+  /// No description provided for @flagVoteThanks.
+  ///
+  /// In en, this message translates to:
+  /// **'Thanks, noted'**
+  String get flagVoteThanks;
+
+  /// No description provided for @flagVoteBy.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}: {vote}'**
+  String flagVoteBy(String name, String vote);
+
+  /// No description provided for @flagVoteA11yConcerning.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as concerning'**
+  String get flagVoteA11yConcerning;
+
+  /// No description provided for @flagVoteA11yNotConcerning.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as not concerning'**
+  String get flagVoteA11yNotConcerning;
+
+  /// No description provided for @flagVoteClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear vote'**
+  String get flagVoteClear;
+
+  /// No description provided for @flagVoteCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'Vote cleared'**
+  String get flagVoteCleared;
+
+  /// No description provided for @flagVoteA11yClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear your vote on this message'**
+  String get flagVoteA11yClear;
+
   /// No description provided for @vaultTrustCopy.
   ///
   /// In en, this message translates to:
