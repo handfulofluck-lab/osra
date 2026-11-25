@@ -1,6 +1,7 @@
 package com.familyshield.agent.services
 
 import java.io.File
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -27,6 +28,20 @@ class RulesReachOnPushWiringTest {
             "onMessageReceived must ask for a rules sync; the poll alone only fetches commands",
             handler.contains("WorkScheduler.syncNow(applicationContext)"),
         )
+    }
+
+    @Test
+    fun `a second push appends instead of being dropped`() {
+        // Ahmed's #1107 review: with KEEP, two rule changes seconds apart collapse into one sync, and if that sync
+        // already fetched before the second change committed, the second change waits six hours. Mutant: back to
+        // KEEP leaves every other row green and reintroduces the race.
+        val scheduler = sourceFile("app/src/main/java/com/familyshield/agent/data/WorkScheduler.kt")
+        val syncNow = scheduler.substringAfter("fun syncNow(").substringBefore("const val RULES_SYNC_NOW")
+        assertTrue(
+            "the push-triggered sync must append (or replace) rather than be skipped",
+            syncNow.contains("ExistingWorkPolicy.APPEND_OR_REPLACE"),
+        )
+        assertFalse("KEEP is the race Ahmed found", syncNow.contains("ExistingWorkPolicy.KEEP"))
     }
 
     @Test
