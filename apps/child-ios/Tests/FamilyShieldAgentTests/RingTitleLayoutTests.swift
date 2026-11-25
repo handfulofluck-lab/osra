@@ -31,6 +31,34 @@ final class RingTitleLayoutTests: XCTestCase {
                       "with no bar, the heading trait is what tells VoiceOver this is the heading")
     }
 
+    func testTheEmbeddedPinFormAddsNoSecondHeading() throws {
+        let ring = try ringViewSource()
+        XCTAssertTrue(ring.contains("PinGateView(pin: $pin"), "the form is called without a title")
+        let gate = try pinGateSource()
+        XCTAssertTrue(gate.contains("if let title {"),
+                      "the bar name is applied only when the caller gives one, so an embedded form adds no heading")
+    }
+
+    func testTheBellGivesWayToTheTextAtAccessibilitySizes() throws {
+        let source = try ringViewSource()
+        XCTAssertTrue(source.contains("@Environment(\\.dynamicTypeSize) private var dynamicTypeSize"),
+                      "the view reads the text size")
+        XCTAssertTrue(source.contains("if !dynamicTypeSize.isAccessibilitySize {"),
+                      "at accessibility sizes the ~112 pt bell block is dropped so the explanation reaches first paint")
+        // The block really is inside the condition: the circle comes after it, before the heading.
+        let condition = try XCTUnwrap(source.range(of: "if !dynamicTypeSize.isAccessibilitySize {"))
+        let circle = try XCTUnwrap(source.range(of: "Circle()"))
+        let heading = try XCTUnwrap(source.range(of: #"Text(L10n.tr("ring_title"))"#))
+        XCTAssertTrue(condition.upperBound < circle.lowerBound && circle.lowerBound < heading.lowerBound)
+    }
+
+    private func pinGateSource() throws -> String {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/FamilyShieldAgent/ParentPinViews.swift")
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
     func testTheDroppedKeyIsGoneAndTheSentenceIsUntouched() throws {
         let resources = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent()

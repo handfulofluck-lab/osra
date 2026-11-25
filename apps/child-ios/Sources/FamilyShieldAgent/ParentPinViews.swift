@@ -62,12 +62,14 @@ public struct PinGateView: View {
     @Binding private var externalPin: String
     @Binding private var externalMessage: String?
     @Environment(\.colorScheme) private var colorScheme
-    let title: String
+    /// Nil when the form is embedded in a screen that already says why the PIN is wanted (the ring screen): a bar
+    /// name there is a second title, and at the largest text size it is cut mid-word (Arabic Bureau, #760).
+    let title: String?
     var onUnlock: () -> Void
     var showsButtons: Bool
     private let usesExternalState: Bool
 
-    public init(title: String, onUnlock: @escaping () -> Void) {
+    public init(title: String? = nil, onUnlock: @escaping () -> Void) {
         self.title = title
         self.onUnlock = onUnlock
         self._externalPin = .constant("")
@@ -76,7 +78,7 @@ public struct PinGateView: View {
         self.usesExternalState = false
     }
 
-    public init(title: String, pin: Binding<String>, message: Binding<String?>, onUnlock: @escaping () -> Void, showsButtons: Bool = false) {
+    public init(title: String? = nil, pin: Binding<String>, message: Binding<String?>, onUnlock: @escaping () -> Void, showsButtons: Bool = false) {
         self.title = title
         self.onUnlock = onUnlock
         self._externalPin = pin
@@ -96,6 +98,16 @@ public struct PinGateView: View {
     }
 
     public var body: some View {
+        // The bar name is applied only when the caller gives one: an embedded form inside a screen that already
+        // explains itself must not add a second title, which is what got cut at the largest text size (#760).
+        if let title {
+            form.navigationTitle(title)
+        } else {
+            form
+        }
+    }
+
+    private var form: some View {
         Form {
             Section {
                 SecureField(L10n.tr("pin_parent"), text: pin).keyboardType(.numberPad)
@@ -109,7 +121,6 @@ public struct PinGateView: View {
                 Text(L10n.tr("pin_parents_only"))
             }
         }
-        .navigationTitle(title)
         .toolbar {
             if showsButtons {
                 ToolbarItemGroup(placement: .keyboard) {

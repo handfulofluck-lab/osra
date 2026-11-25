@@ -189,10 +189,12 @@ final class RingCommandTests: XCTestCase {
         let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent/RingView.swift")
         let view = try String(contentsOf: source, encoding: .utf8)
-        let pinGateRange = try XCTUnwrap(view.range(of: "PinGateView(title: L10n.tr(\"ring_pin_title\")"))
+        // #760: no title, because the bar name it produced was a second heading that got cut at the largest text.
+        let pinGateRange = try XCTUnwrap(view.range(of: "PinGateView(pin: $pin"))
         let endRange = try XCTUnwrap(view.range(of: ")", range: pinGateRange.upperBound..<view.endIndex))
         let pinGateCall = String(view[pinGateRange.lowerBound..<endRange.upperBound])
         XCTAssertTrue(pinGateCall.contains("showsButtons: false"), "RingView's PinGateView does not show its own Continue")
+        XCTAssertFalse(pinGateCall.contains("title:"), "the embedded form carries no title of its own")
     }
 
     func testHomeOrBackgroundDoesNotStop() async {

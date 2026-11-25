@@ -7,6 +7,9 @@ public struct RingView: View {
     @State private var pinMessage: String?
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
+    /// The bell is decoration; at accessibility text sizes it costs about 112 pt of the first paint, which the
+    /// sentence and the start of the explanation need more (Arabic Bureau, #760, `7155618448`).
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     public init(controller: RingController) {
         self.controller = controller
@@ -16,16 +19,18 @@ public struct RingView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
-                    ZStack {
-                        Circle()
-                            .fill(color(0xEAF2F0, 0x1E2A31))
-                            .frame(width: 88, height: 88)
-                        Image(systemName: "bell.fill")
-                            .font(.system(size: 36))
-                            .foregroundStyle(color(0x0B5D57, 0x7DB4FF))
-                            .accessibilityHidden(true)
+                    if !dynamicTypeSize.isAccessibilitySize {
+                        ZStack {
+                            Circle()
+                                .fill(color(0xEAF2F0, 0x1E2A31))
+                                .frame(width: 88, height: 88)
+                            Image(systemName: "bell.fill")
+                                .font(.system(size: 36))
+                                .foregroundStyle(color(0x0B5D57, 0x7DB4FF))
+                                .accessibilityHidden(true)
+                        }
+                        .padding(.top, 24)
                     }
-                    .padding(.top, 24)
                     // #760 (Arabic Bureau 7152533494, UI/UX Bureau 7153247882): the sentence is the heading and must
                     // wrap — at the largest text size a cut sentence is the one line that tells the child why the
                     // phone rings. `fixedSize` refuses the single-line compaction that truncated it, and no bar is
@@ -40,7 +45,9 @@ public struct RingView: View {
                         .font(.body)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
-                    PinGateView(title: L10n.tr("ring_pin_title"), pin: $pin, message: $pinMessage, onUnlock: stopRing, showsButtons: false)
+                    // No title: the ring screen already says why the PIN is wanted, and a bar name here was a second
+                    // heading that got cut mid-word at the largest text size (Arabic Bureau, #760, `7155618448`).
+                    PinGateView(pin: $pin, message: $pinMessage, onUnlock: stopRing, showsButtons: false)
                         .scrollContentBackground(.hidden)
                         .frame(minHeight: 240)
                 }
