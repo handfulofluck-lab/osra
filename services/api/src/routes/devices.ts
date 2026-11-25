@@ -31,6 +31,7 @@ import { PAIR_CLAIM_RATE_LIMIT, PAIR_POLL_RATE_LIMIT } from "../lib/rateLimits.j
 import { cleanDeviceText, decideClaim, markPaired, pollSecretMatches, readClaim, readClaimForCode, recordPollMiss, releaseClaim, reserveClaim, takeApprovedClaim } from "../lib/pairApproval.js";
 import { raiseAlertOnce } from "../lib/alerts.js";
 import { bootReportBody, decideBootReport, zonedUtcOffsetMinutes } from "../lib/bootReport.js";
+import { completeDeviceSetupIfReady, evaluateDeviceSetupIncomplete, type SetupTransitionDevice } from "../lib/deviceSetupTransitions.js";
 import { encryptSecret } from "../lib/secretVault.js";
 // Re-exported for existing importers/tests; the constant and its contract live in lib/deviceToken.ts.
 export { DEVICE_TOKEN_TTL_SECONDS };
@@ -512,6 +513,8 @@ export async function deviceRoutes(app: FastifyInstance) {
             category: "tamper",
             title: "OSRA's data was cleared on a phone",
             body: `${record.deviceName ?? record.model} was paired again after OSRA's data on it was cleared. Its protection was off until now.`,
+            bodyKey: "alertBodyDataCleared",
+            params: { model: record.deviceName ?? record.model },
             metadata: { type: "agent_data_cleared" },
             dedupeKey: `agent_data_cleared|${record.claimId}`,
           });
@@ -787,6 +790,11 @@ export async function deviceRoutes(app: FastifyInstance) {
     // ADR-0008 §2b: an agent polling for commands learns from a 428 that monitoring is paused.
     const device = (req as unknown as { device: PolledDevice & { childId: string } }).device;
     if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
+    // ADR-0047: lazy timeout even with JOBS_ENABLED=0; completion itself is never inferred from this poll.
+    if (device) {
+      await evaluateDeviceSetupIncomplete(device as unknown as SetupTransitionDevice, new Date())
+        .catch((err) => req.log.warn({ err, deviceId: id }, "device setup timeout evaluation failed (command poll)"));
+    }
     const ackCapable = (req.query as { ack?: string })?.ack === "1";
     const commands = await claimPendingCommands(id, { ackCapable });
     reply.header(POLL_AFTER_HEADER, String(pollAfterSeconds(device)));
@@ -1101,6 +1109,12 @@ export async function deviceRoutes(app: FastifyInstance) {
         ...(boot.kind === "same_boot_adopt_count" ? { lastBootCount: boot.bootCount } : {}),
       },
     });
+    // ADR-0047: only this authenticated telemetry report may complete setup. Pair-claim and stored
+    // reports are deliberately excluded; a failed protected-alert write rolls the transition back.
+    if (capabilitiesOk && capabilitiesParsed) {
+      await completeDeviceSetupIfReady(device as unknown as SetupTransitionDevice, capabilitiesParsed, now)
+        .catch((err) => req.log.warn({ err, deviceId: id }, "device setup completion failed (telemetry)"));
+    }
     if (boot.kind === "new_boot" && bootFamilyId) {
       // Issue #867 / #889: the restart itself, reported by the phone because the 30-minute silence window
       // can never see a 1–2 minute gap. Carries `bodyKey: "alertBodyDeviceRestarted"` so updated parent apps

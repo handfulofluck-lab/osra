@@ -61,6 +61,9 @@ const ALERT_BODY_REQUIRED_PARAMS = {
   // channel is a real case, and the English body already copes with an empty one. A required param here would
   // mean no alert at all for that video (#718 review).
   alertBodyYouTubeFlagged: [],
+  alertBodySetupCompleted: ["childName"],
+  alertBodySetupIncomplete: ["childName", "count"],
+  alertBodyDataCleared: ["model"],
 } as const satisfies Record<AlertBodyKey, readonly string[]>;
 
 /**
@@ -196,7 +199,7 @@ export async function raiseAlertOnce(
     throw e;
   }
 
-  if (alert.heldDuringSetup) return { alert, deduplicated: false };
+  if (alert?.heldDuringSetup) return { alert, deduplicated: false };
 
   await publishFamilyEvent(normalizedInput.familyId, { type: "alert", payload: alert, ts: new Date().toISOString() });
 
