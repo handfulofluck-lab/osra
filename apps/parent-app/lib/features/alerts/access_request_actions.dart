@@ -333,15 +333,17 @@ class _AccessRequestActionsState extends ConsumerState<AccessRequestActions> {
             ],
           ),
         ],
-        const SizedBox(height: AppSpace.sm),
-        _IconLine(
-          icon: Icons.info_outline,
-          color: tokens.onSurfaceVariant,
-          text: accessApproveDisclosure(
-              localeName: localeName, identity: widget.identity),
-          textColor: tokens.onSurfaceVariant,
-          muted: true,
-        ),
+        if (!resolved) ...[
+          const SizedBox(height: AppSpace.sm),
+          _IconLine(
+            icon: Icons.info_outline,
+            color: tokens.onSurfaceVariant,
+            text: accessApproveDisclosure(
+                localeName: localeName, identity: widget.identity),
+            textColor: tokens.onSurfaceVariant,
+            muted: true,
+          ),
+        ],
       ],
     );
   }

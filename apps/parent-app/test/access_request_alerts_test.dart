@@ -558,6 +558,37 @@ void main() {
     expect(find.text('Keep blocked'), findsNothing);
   });
 
+  testWidgets('all four resolved states hide the approval disclosure',
+      (tester) async {
+    for (final alert in [
+      _alert(acknowledged: true),
+      _alert(
+        acknowledged: true,
+        extraMetadata: {
+          'resolution': 'allowed',
+          'resolvedByName': 'Mariam',
+          'resolvedAt': '2026-11-25T08:05:00.000Z',
+        },
+      ),
+    ]) {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _pumpDetail(tester, alert);
+      expect(find.byKey(const ValueKey('access-request-resolved')),
+          findsOneWidget);
+      expect(find.textContaining('will be allowed from now on'), findsNothing);
+    }
+
+    for (final label in ['Allow', 'Keep blocked']) {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _pumpDetail(tester, _alert());
+      await tester.tap(find.text(label));
+      await _flush(tester);
+      expect(find.byKey(const ValueKey('access-request-resolved')),
+          findsOneWidget);
+      expect(find.textContaining('will be allowed from now on'), findsNothing);
+    }
+  });
+
   testWidgets('request actions stay hidden until parent permissions load',
       (tester) async {
     final alert = _alert();
