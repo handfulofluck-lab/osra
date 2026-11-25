@@ -159,6 +159,22 @@ curl -s http://127.0.0.1:3000/health/deep   # {"ok":true,"version":"0.1.0","db":
 `127.0.0.1`, not `localhost`: on this host `localhost` resolves to `::1` first and a v4-only server then
 looks dead (§6, the spare-port trap). The same rule applies to `API_BASE` in §3.
 
+For #1144, run `test/staging-ai-social-route.test.ts`, `test/staging-ai-quota.test.ts`,
+`test/stagingQaModel.test.ts` and the AI engine tests. The staged rollout requires security approval.
+The existing private Stockholm analyzer endpoint, own-model flags and checkpoint and prompt pins
+must be present. Set `OSRA_DEPLOYMENT_SCOPE=staging`, `OSRA_STAGING_QA_ENGINE=own`,
+`OSRA_OWN_MODEL_REGION=eu-north-1` and `OSRA_STAGING_AI_ALL_CHILDREN=1` on both the API and
+analyzer task. The API also needs the existing analyzer enabled switch and private analyzer URL.
+The analyzer needs both the QA analyzer and own-model enabled switches. Keep the private ingress
+and current vault configuration. The optional API caps
+`OSRA_STAGING_AI_FAMILY_DAILY_CAP` and `OSRA_STAGING_AI_GLOBAL_DAILY_CAP` default to 250 per
+family local day and 2,000 per staging UTC day. Invalid cap configuration disables analyzer calls.
+
+During the approved staged window, exercise two opted-in test families and record the live
+Stockholm model receipt and Parent result with a harmless control. Confirm missing consent or a
+disabled app prevents scoring. Remove `OSRA_STAGING_AI_ALL_CHILDREN` from both tasks to disarm
+the broader mode. Mixed versions or mismatched settings use local rules.
+
 ## 3. Running the gates
 
 ```bash
