@@ -802,8 +802,8 @@ export async function deviceRoutes(app: FastifyInstance) {
    * - The PIN exists only in this handler's memory. The hash is written to one `DeviceCommand` row with a
    *   15-minute TTL, superseding any earlier one, and cleared on ack, supersede or expiry. The response,
    *   `/commands/history`, pub/sub and the push wake never carry it.
-   * - Audit and co-parent notice: an alert row "device PIN changed" naming the parent, with neither PIN nor
-   *   hash, which every parent of the family sees and is pushed.
+   * - Audit and co-parent notice: a `device_pin_changed` alert naming the parent, with neither PIN nor hash,
+   *   which every parent of the family sees and is always pushed (lib/push/notify.ts `shouldPush`).
    */
   app.post(
     "/:id/parent-pin",
@@ -845,10 +845,12 @@ export async function deviceRoutes(app: FastifyInstance) {
           familyId,
           deviceId: id,
           severity: "warning",
-          category: "security",
+          // Its own category (Antigravity's F1 on #1126): the parent app titles and words it in the reader's
+          // language from `changedByName` and `deviceModel`, so the English `body` is only the fallback.
+          category: "device_pin_changed",
           title: "Device PIN changed",
           body: `${who} set a new OSRA PIN on ${phone}. The old PIN no longer works once the phone receives it.`,
-          metadata: { type: "parent_pin_changed", changedBy: user.sub, commandId: message.id },
+          metadata: { type: "parent_pin_changed", changedBy: user.sub, changedByName: who, deviceModel: phone, commandId: message.id },
           dedupeKey: `parent_pin_changed|${message.id}`,
         });
       } catch (err) {

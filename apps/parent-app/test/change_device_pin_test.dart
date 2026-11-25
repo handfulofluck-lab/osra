@@ -5,7 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/features/children/change_device_pin.dart';
+import 'package:familyshield_parent/features/alerts/alert_detail_screen.dart';
 import 'package:familyshield_parent/l10n/app_localizations_en.dart';
+import 'package:familyshield_parent/l10n/l10n.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
 import 'fake_api_client.dart';
@@ -62,11 +64,41 @@ void main() {
           requestOptions: RequestOptions(path: '/v1/devices/dev-1/parent-pin'),
           response: Response(requestOptions: RequestOptions(), statusCode: status, data: body),
         );
-    expect(changeDevicePinErrorText(l10n, err(401, {'error': 'reauth_failed'})), l10n.changeDevicePinWrongProof);
-    expect(changeDevicePinErrorText(l10n, err(429, {'error': 'pin_change_limit'})), l10n.changeDevicePinLimit);
-    expect(changeDevicePinErrorText(l10n, err(409, {'error': 'command_not_supported'})), l10n.changeDevicePinNotSupported);
-    expect(changeDevicePinErrorText(l10n, err(400, {'error': 'pin_weak'})), l10n.changeDevicePinWeak);
-    expect(changeDevicePinErrorText(l10n, err(500, {'error': 'boom'})), l10n.commandFailed);
+    const m = 'Galaxy Z Flip4';
+    final type = l10n.commandSetParentPin;
+    expect(changeDevicePinErrorText(l10n, m, err(401, {'error': 'reauth_failed'})), l10n.changeDevicePinWrongProof);
+    expect(changeDevicePinErrorText(l10n, m, err(429, {'error': 'pin_change_limit'})), l10n.changeDevicePinLimit);
+    expect(changeDevicePinErrorText(l10n, m, err(409, {'error': 'command_not_supported'})), l10n.changeDevicePinNotSupported);
+    expect(changeDevicePinErrorText(l10n, m, err(400, {'error': 'pin_weak'})), l10n.changeDevicePinWeak);
+    // F2: everything else reads as it does for any command.
+    expect(changeDevicePinErrorText(l10n, m, err(429, {'error': 'Too Many Requests'})), l10n.commandErrorRateLimited(type, m));
+    expect(changeDevicePinErrorText(l10n, m, err(403, {'error': 'permission_required', 'permission': 'devices'})), l10n.commandErrorForbidden(type, m));
+    expect(changeDevicePinErrorText(l10n, m, err(428, {'error': 'parental_consent_required'})), l10n.commandErrorConsentWithdrawn(type, m));
+  });
+
+  test('F1: the audit alert reads in the parent\'s language, never the server\'s English', () async {
+    final ar = await AppLocalizations.delegate.load(const Locale('ar'));
+    expect(ar.alertCategory('device_pin_changed'), ar.alertCategoryDevicePinChanged);
+    expect(ar.alertCategory('device_pin_changed'), isNot('device_pin_changed'));
+    expect(ar.alertTitleFor('device_pin_changed', 'Device PIN changed', isEnglish: false), ar.alertTitleDevicePinChanged);
+    final json = <String, dynamic>{
+      'id': 'al-1',
+      'childId': 'child-1',
+      'severity': 'warning',
+      'category': 'device_pin_changed',
+      'title': 'Device PIN changed',
+      'body': 'Karim set a new OSRA PIN on Galaxy Z Flip4. The old PIN no longer works once the phone receives it.',
+      'metadata': {'type': 'parent_pin_changed', 'changedByName': 'Karim', 'deviceModel': 'Galaxy Z Flip4'},
+      'createdAt': '2026-11-25T12:00:00Z',
+      'acknowledged': false,
+    };
+    final alert = Alert.fromJson(json);
+    final arBody = formatGeneralAlertBody(alert, l10n: ar, localeName: 'ar');
+    expect(arBody, ar.alertBodyDevicePinChanged('Karim', 'Galaxy Z Flip4'));
+    expect(arBody, isNot(contains('set a new')));
+    final bare = Alert.fromJson({...json, 'metadata': <String, dynamic>{}});
+    expect(formatGeneralAlertBody(bare, l10n: ar, localeName: 'ar'), '');
+    expect(formatGeneralAlertBody(bare, l10n: l10n, localeName: 'en'), bare.body);
   });
 
   Future<FakeApiClient> pumpButton(WidgetTester tester, Device device, FakeRoute route) async {

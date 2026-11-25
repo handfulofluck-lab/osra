@@ -1953,5 +1953,11 @@
   "changeDevicePinNotSupported": "Changing the PIN from here works on Android phones only.",
   "@changeDevicePinNotSupported": {"description": "#1108 Change device PIN (UI/UX Bureau copy pending)"},
   "commandRefusedPinNotSaved": "The phone could not save the new PIN, so the old one still works. Try again.",
-  "@commandRefusedPinNotSaved": {"description": "#1108 Change device PIN (UI/UX Bureau copy pending)"}
+  "@commandRefusedPinNotSaved": {"description": "#1108 Change device PIN (UI/UX Bureau copy pending)"},
+  "alertCategoryDevicePinChanged": "Device PIN",
+  "@alertCategoryDevicePinChanged": {"description": "#1108 Change device PIN audit alert (UI/UX Bureau copy pending)"},
+  "alertTitleDevicePinChanged": "Device PIN changed",
+  "@alertTitleDevicePinChanged": {"description": "#1108 Change device PIN audit alert (UI/UX Bureau copy pending)"},
+  "alertBodyDevicePinChanged": "{who} set a new OSRA PIN on {device}. The old PIN no longer works once the phone receives it.",
+  "@alertBodyDevicePinChanged": {"placeholders": {"who": {"type": "String"}, "device": {"type": "String"}}}
 }

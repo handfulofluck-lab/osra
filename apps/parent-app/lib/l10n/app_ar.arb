@@ -1167,5 +1167,8 @@
   "changeDevicePinWrongProof": "كلمة المرور أو الرمز غير صحيح. لم يتغير رمز PIN.",
   "changeDevicePinLimit": "تغيّر رمز PIN على هذا الهاتف مرات كثيرة. حاول مجددًا بعد ساعة.",
   "changeDevicePinNotSupported": "تغيير الرمز من هنا متاح لهواتف Android فقط.",
-  "commandRefusedPinNotSaved": "تعذّر على الهاتف حفظ الرمز الجديد، لذا ما زال الرمز القديم يعمل. حاول مجددًا."
+  "commandRefusedPinNotSaved": "تعذّر على الهاتف حفظ الرمز الجديد، لذا ما زال الرمز القديم يعمل. حاول مجددًا.",
+  "alertCategoryDevicePinChanged": "رمز PIN للجهاز",
+  "alertTitleDevicePinChanged": "تغيّر رمز PIN للجهاز",
+  "alertBodyDevicePinChanged": "عيّن {who} رمز PIN جديدًا لتطبيق OSRA على {device}. يتوقف الرمز القديم عن العمل بمجرد أن يستلمه الهاتف."
 }

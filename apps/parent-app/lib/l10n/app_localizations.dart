@@ -5882,6 +5882,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The phone could not save the new PIN, so the old one still works. Try again.'**
   String get commandRefusedPinNotSaved;
+
+  /// #1108 Change device PIN audit alert (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'Device PIN'**
+  String get alertCategoryDevicePinChanged;
+
+  /// #1108 Change device PIN audit alert (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'Device PIN changed'**
+  String get alertTitleDevicePinChanged;
+
+  /// No description provided for @alertBodyDevicePinChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'{who} set a new OSRA PIN on {device}. The old PIN no longer works once the phone receives it.'**
+  String alertBodyDevicePinChanged(String who, String device);
 }
 
 class _AppLocalizationsDelegate

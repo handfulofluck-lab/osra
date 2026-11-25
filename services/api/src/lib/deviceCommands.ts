@@ -184,8 +184,12 @@ export async function claimPendingCommands(deviceId: string, opts: { ackCapable?
   // so ring/lock/unlock never reached a device. Columns are now timestamptz (migration 0012) AND
   // the instant is bound from JS, so the comparison is independent of the session time zone.
   const now = new Date();
+  // #1108 (N1 on #1126): an expired `set_parent_pin` loses its hash here as well, so a deployment that runs
+  // without the expiry job (JOBS_ENABLED=0) still clears it on the device's next poll.
   await prisma.$executeRaw`
-    UPDATE "DeviceCommand" SET "status" = 'expired'
+    UPDATE "DeviceCommand"
+    SET "status" = 'expired',
+        "payload" = CASE WHEN "type" = 'set_parent_pin' THEN '{}'::jsonb ELSE "payload" END
     WHERE "deviceId" = ${deviceId} AND "status" = 'pending' AND "expiresAt" <= ${now}`;
   const redeliverCutoff = new Date(now.getTime() - REDELIVER_AFTER_SECONDS * 1000);
   const rows = opts.ackCapable

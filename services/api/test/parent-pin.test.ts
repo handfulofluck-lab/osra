@@ -135,6 +135,7 @@ describe("POST /v1/devices/:id/parent-pin", () => {
     primeHappyPath();
     const before = Date.now();
     const res = await post(app, { pin: PIN, password: PASSWORD });
+    const after = Date.now();
     expect(res.statusCode).toBe(202);
     const body = res.json();
     expect(body).toEqual({ published: true, status: "pending", id: "cmd-pin-1", expiresAt: expect.any(String) });
@@ -147,7 +148,10 @@ describe("POST /v1/devices/:id/parent-pin", () => {
     expect(isPrehashedParentPin(data.payload.pinHash)).toBe(true);
     expect(await verifyParentPinForTest(PIN, data.payload.pinHash)).toBe(true);
     expect(ttlFor("set_parent_pin")).toBe(15 * 60);
-    expect(data.expiresAt.getTime() - before).toBeLessThanOrEqual(15 * 60 * 1000 + 100);
+    // Bounded by the request's own start and end: the 120k-iteration KDF can take seconds on a slow host
+    // (Antigravity's F3 on #1126), so a fixed margin would be a timing test.
+    expect(data.expiresAt.getTime()).toBeGreaterThanOrEqual(before + 15 * 60 * 1000);
+    expect(data.expiresAt.getTime()).toBeLessThanOrEqual(after + 15 * 60 * 1000);
     await app.close();
   });
 
@@ -266,6 +270,16 @@ describe("pinHash is a secret: supersede, ack, expiry, history, pub/sub (conditi
     }
   });
 
+  it("the device's own drain clears an expired hash too, without the expiry job", async () => {
+    prismaMock.$queryRaw.mockResolvedValue([]);
+    prismaMock.$executeRaw.mockResolvedValue(0);
+    const { claimPendingCommands } = await import("../src/lib/deviceCommands.js");
+    await claimPendingCommands("dev-1", { ackCapable: true });
+    const sql = prismaMock.$executeRaw.mock.calls[0][0].join("?");
+    expect(sql).toContain("'expired'");
+    expect(sql).toContain(`WHEN "type" = 'set_parent_pin' THEN '{}'::jsonb`);
+  });
+
   it("the expiry sweep clears a hash the phone never acknowledged", async () => {
     prismaMock.mfaResetRequest.updateMany.mockResolvedValue({ count: 0 });
     prismaMock.mfaResetRequest.deleteMany.mockResolvedValue({ count: 0 });
@@ -307,14 +321,20 @@ describe("audit and co-parent notice (condition 5)", () => {
       childId: "child-1",
       familyId: "fam-1",
       deviceId: "dev-1",
-      category: "security",
-      metadata: { type: "parent_pin_changed", changedBy: "parent-1", commandId: "cmd-pin-1" },
+      category: "device_pin_changed",
+      metadata: { type: "parent_pin_changed", changedBy: "parent-1", changedByName: "Karim", deviceModel: "Galaxy Z Flip4", commandId: "cmd-pin-1" },
     });
     expect(input.body).toContain("Karim");
     const text = JSON.stringify(input);
     expect(text).not.toContain(PIN);
     expect(text).not.toContain("pbkdf2");
     await app.close();
+  });
+
+  it("always wakes the parents, whatever the push severity floor", async () => {
+    const { shouldPush } = await import("../src/lib/push/notify.js");
+    expect(shouldPush({ severity: "warning", category: "device_pin_changed" }, "critical")).toBe(true);
+    expect(shouldPush({ severity: "warning", category: "geofence" }, "critical")).toBe(false);
   });
 
   it("a failed audit write does not undo a PIN change that is already queued", async () => {

@@ -3824,4 +3824,15 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get commandRefusedPinNotSaved =>
       'تعذّر على الهاتف حفظ الرمز الجديد، لذا ما زال الرمز القديم يعمل. حاول مجددًا.';
+
+  @override
+  String get alertCategoryDevicePinChanged => 'رمز PIN للجهاز';
+
+  @override
+  String get alertTitleDevicePinChanged => 'تغيّر رمز PIN للجهاز';
+
+  @override
+  String alertBodyDevicePinChanged(String who, String device) {
+    return 'عيّن $who رمز PIN جديدًا لتطبيق OSRA على $device. يتوقف الرمز القديم عن العمل بمجرد أن يستلمه الهاتف.';
+  }
 }

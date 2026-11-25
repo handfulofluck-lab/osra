@@ -37,8 +37,9 @@ export function shouldPush(alert: Pick<AlertLike, "severity" | "category"> | nul
   // Issue #889 (UI/UX Bureau ruling): routine `info` restarts (< 30 min gap) stay in the Alerts list
   // and unread badge without waking the parent's phone; `warning` restarts (>= 30 min gap) still push.
   if (alert.category === "device_restarted" && sev === "info") return false;
-  // SOS and tamper always wake the parent regardless of the floor.
-  if (alert.category === "sos" || alert.category === "tamper") return true;
+  // SOS and tamper always wake the parent regardless of the floor. #1108: so does a changed device PIN —
+  // the co-parent notice is the only detection for a misused parent phone (Ahmed's note A on #1126).
+  if (alert.category === "sos" || alert.category === "tamper" || alert.category === "device_pin_changed") return true;
   return SEVERITY_RANK[sev] >= SEVERITY_RANK[min];
 }
 

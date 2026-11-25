@@ -8,6 +8,7 @@ import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
+import 'command_messages.dart';
 
 /// #1108: "Change device PIN". A parent who forgot the OSRA PIN on a child's phone sets a new one here.
 ///
@@ -85,27 +86,30 @@ Future<void> changeDevicePin(BuildContext context, WidgetRef ref, Device device)
     ref.invalidate(deviceCommandHistoryProvider(device.id));
     messenger.showSnackBar(SnackBar(content: Text(l10n.changeDevicePinQueued(device.model))));
   } on DioException catch (e) {
-    messenger.showSnackBar(SnackBar(content: Text(changeDevicePinErrorText(l10n, e))));
+    messenger.showSnackBar(SnackBar(content: Text(changeDevicePinErrorText(l10n, device.model, e))));
   }
 }
 
-/// The API's refusals for this route, in the parent's words. Unknown codes fall back to the generic failure.
-String changeDevicePinErrorText(AppLocalizations l10n, DioException error) {
+/// The refusals only this route sends, in the parent's words. Everything else (a missing permission, the
+/// 1-minute auth rate limit, consent withdrawn, no network) reads exactly as it does for any other command,
+/// through [commandErrorText] (Antigravity's F2 on #1126).
+String changeDevicePinErrorText(AppLocalizations l10n, String deviceModel, DioException error) {
   final status = error.response?.statusCode;
   final body = error.response?.data;
   final code = body is Map ? body['error'] : null;
   if (status == 401 && (code == 'reauth_failed' || code == 'reauth_required' || code == 'mfa_reenroll_required')) {
     return l10n.changeDevicePinWrongProof;
   }
-  if (code == 'pin_change_limit' || status == 429) return l10n.changeDevicePinLimit;
-  if (code == 'command_not_supported') return l10n.changeDevicePinNotSupported;
-  return switch (code) {
+  final own = switch (code) {
+    'pin_change_limit' => l10n.changeDevicePinLimit,
+    'command_not_supported' => l10n.changeDevicePinNotSupported,
     'pin_too_short' => l10n.changeDevicePinTooShort,
     'pin_too_long' => l10n.changeDevicePinTooLong,
     'pin_not_digits' => l10n.changeDevicePinNotDigits,
     'pin_weak' => l10n.changeDevicePinWeak,
-    _ => l10n.commandFailed,
+    _ => null,
   };
+  return own ?? commandErrorText(l10n, 'set_parent_pin', deviceModel, error);
 }
 
 class ChangeDevicePinDialog extends StatefulWidget {

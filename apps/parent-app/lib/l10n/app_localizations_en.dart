@@ -3603,4 +3603,15 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get commandRefusedPinNotSaved =>
       'The phone could not save the new PIN, so the old one still works. Try again.';
+
+  @override
+  String get alertCategoryDevicePinChanged => 'Device PIN';
+
+  @override
+  String get alertTitleDevicePinChanged => 'Device PIN changed';
+
+  @override
+  String alertBodyDevicePinChanged(String who, String device) {
+    return '$who set a new OSRA PIN on $device. The old PIN no longer works once the phone receives it.';
+  }
 }

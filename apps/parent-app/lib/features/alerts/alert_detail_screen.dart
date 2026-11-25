@@ -45,6 +45,16 @@ String formatGeneralAlertBody(
         ) ??
         (isEnglish ? alert.body : '');
   }
+  // #1108 (Antigravity's F1 on #1126): worded here from the structured fields, so an Arabic co-parent never
+  // reads the server's English sentence. Without them, English keeps the server body and others show nothing.
+  if (alert.category == 'device_pin_changed') {
+    final who = alert.metadata['changedByName'];
+    final device = alert.metadata['deviceModel'];
+    if (who is String && who.isNotEmpty && device is String && device.isNotEmpty) {
+      return l10n.alertBodyDevicePinChanged(who, device);
+    }
+    return isEnglish ? alert.body : '';
+  }
   return alert.body;
 }
 
