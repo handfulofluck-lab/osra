@@ -28,12 +28,13 @@ export 'social_app_catalog.dart' show kSocialApps, SocialAppInfo;
 /// Standalone social-monitoring screen (route `/child/:id/social`).
 class SocialScreen extends ConsumerWidget {
   final String childId;
-  const SocialScreen({super.key, required this.childId});
+  final String? concernId;
+  const SocialScreen({super.key, required this.childId, this.concernId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => Scaffold(
         appBar: AppBar(title: Text(context.l10n.socialMonitoringTitle)),
-        body: SocialSectionsView(childId: childId),
+        body: SocialSectionsView(childId: childId, concernId: concernId),
       );
 }
 
@@ -42,7 +43,8 @@ class SocialScreen extends ConsumerWidget {
 /// [SocialScreen] and in the child-detail Social tab.
 class SocialSectionsView extends StatelessWidget {
   final String childId;
-  const SocialSectionsView({super.key, required this.childId});
+  final String? concernId;
+  const SocialSectionsView({super.key, required this.childId, this.concernId});
 
   @override
   Widget build(BuildContext context) => Column(
@@ -56,9 +58,15 @@ class SocialSectionsView extends StatelessWidget {
               key: const ValueKey('socialSectionsList'),
               padding: const EdgeInsets.all(AppSpace.lg),
               children: [
+                if (concernId != null) ...[
+                  ConcernsSection(childId: childId, concernId: concernId),
+                  const SizedBox(height: AppSpace.xl),
+                ],
                 MonitoringTogglesSection(childId: childId),
-                const SizedBox(height: AppSpace.xl),
-                ConcernsSection(childId: childId),
+                if (concernId == null) ...[
+                  const SizedBox(height: AppSpace.xl),
+                  ConcernsSection(childId: childId),
+                ],
                 const SizedBox(height: AppSpace.xl),
                 CallsSmsSection(childId: childId),
                 const SizedBox(height: AppSpace.xl),
@@ -348,12 +356,18 @@ class _MonitoringTogglesSectionState
 /// concern chips and an expandable preview.
 class ConcernsSection extends ConsumerWidget {
   final String childId;
-  const ConcernsSection({super.key, required this.childId});
+  final String? concernId;
+  const ConcernsSection({super.key, required this.childId, this.concernId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final events = ref.watch(socialEventsProvider(childId));
+    final target = concernId;
+    final focusProvider = target == null
+        ? null
+        : socialConcernProvider((childId: childId, eventId: target));
+    final focus = focusProvider == null ? null : ref.watch(focusProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -369,6 +383,29 @@ class ConcernsSection extends ConsumerWidget {
         const SizedBox(height: AppSpace.sm),
         Text(l10n.concerns, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: AppSpace.xs),
+        if (focus != null)
+          focus.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, _) => ErrorRetryView(
+              message:
+                  friendlyErrorText(l10n, error, () => l10n.rulesLoadFailed),
+              onRetry: () => ref.invalidate(focusProvider!),
+            ),
+            data: (items) {
+              final event = items.firstOrNull;
+              if (event == null || event.preview.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: AppSpace.sm),
+                  child: Text(l10n.socialAlertPreviewExpiredTitle),
+                );
+              }
+              return _ConcernCard(
+                key: ValueKey(event.id),
+                event: event,
+                initiallyExpanded: true,
+              );
+            },
+          ),
         events.when(
           loading: () => const Padding(
               padding: EdgeInsets.all(AppSpace.lg),
@@ -377,14 +414,16 @@ class ConcernsSection extends ConsumerWidget {
             message: friendlyErrorText(l10n, e, () => l10n.rulesLoadFailed),
             onRetry: () => ref.invalidate(socialEventsProvider(childId)),
           ),
-          data: (items) => items.isEmpty
+          data: (items) => items.isEmpty && target == null
               ? Padding(
                   padding: const EdgeInsets.symmetric(vertical: AppSpace.lg),
                   child: Center(child: Text(l10n.noConcernsDetected)),
                 )
               : Column(
                   children: [
-                    for (final e in items) _ConcernCard(event: e),
+                    for (final e in items)
+                      if (e.id != target)
+                        _ConcernCard(key: ValueKey(e.id), event: e),
                   ],
                 ),
         ),
@@ -396,14 +435,16 @@ class ConcernsSection extends ConsumerWidget {
 class _ConcernCard extends ConsumerStatefulWidget {
   final SocialConcernEvent event;
 
-  const _ConcernCard({required this.event});
+  final bool initiallyExpanded;
+  const _ConcernCard(
+      {super.key, required this.event, this.initiallyExpanded = false});
 
   @override
   ConsumerState<_ConcernCard> createState() => _ConcernCardState();
 }
 
 class _ConcernCardState extends ConsumerState<_ConcernCard> {
-  bool _expanded = false;
+  late bool _expanded = widget.initiallyExpanded;
 
   double _textWidth(BuildContext context, String text) {
     final painter = TextPainter(
@@ -439,6 +480,7 @@ class _ConcernCardState extends ConsumerState<_ConcernCard> {
                 _textWidth(context, contactText) + AppSpace.sm + controlsWidth >
                     trailingRowWidth);
         return ExpansionTile(
+          initiallyExpanded: widget.initiallyExpanded,
           leading: Icon(
             socialAppIcon(e.app),
             color: socialSeverityColor(e.severity, context),

@@ -32,6 +32,7 @@ const ScanBatchSchema = z.object({ items: z.array(z.unknown()).min(1).max(SCAN_B
 
 const EventsQuerySchema = z.object({
   childId: z.string().min(1),
+  eventId: z.string().min(1).optional(),
   app: z.string().optional(),
   severity: z.enum(["info", "warning", "critical"]).optional(),
   limit: z.coerce.number().int().min(1).max(500).default(50),
@@ -509,6 +510,7 @@ export async function socialRoutes(app: FastifyInstance) {
     const rows = await prisma.socialEvent.findMany({
       where: {
         childId: q.childId,
+        ...(q.eventId ? { id: q.eventId } : {}),
         ...(q.app ? { app: q.app } : {}),
         ...(q.severity ? { severity: q.severity } : {}),
       },
