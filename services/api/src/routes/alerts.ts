@@ -4,7 +4,7 @@ import { prisma } from "../db.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { redactedBlockedSiteKey, redactBlockedSiteHost, siteNamesEnabled } from "../lib/siteNames.js";
 import { raiseAlertOnce } from "../lib/alerts.js";
-import { shouldHoldTamperDuringSetup, type SetupDevice } from "../lib/deviceSetup.js";
+import { incompleteDedupeKey, shouldHoldTamperDuringSetup, type SetupDevice } from "../lib/deviceSetup.js";
 import { sanitizeAlertMetadata, withoutAlertLocation } from "../lib/alertLocation.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
 import { guardianPermissions, requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
@@ -143,6 +143,16 @@ export async function alertsRoutes(app: FastifyInstance) {
     if (!(await assertProcessingAllowed(childId, reply))) return;
 
     const effectiveDeviceId = deviceId ?? auth.device?.id;
+    // #1208: the phone's setup notice shares the server reminder's key. Once the server has recorded
+    // completion, a notice still queued on the phone is stale: the parent gets no setup alert after
+    // "Phone is protected".
+    if (
+      auth.device &&
+      dedupeKey === incompleteDedupeKey(auth.device.id) &&
+      (auth.device as unknown as SetupDevice).setupCompletedAt
+    ) {
+      return reply.code(200).send({ dropped: "setup_complete" });
+    }
     const heldDuringSetup = auth.device
       ? shouldHoldTamperDuringSetup(
           auth.device as unknown as SetupDevice,

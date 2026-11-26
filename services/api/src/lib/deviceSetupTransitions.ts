@@ -1,4 +1,6 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
+import { publishFamilyEvent } from "../realtime/gateway.js";
 import { raiseAlertOnce } from "./alerts.js";
 import {
   completionDedupeKey,
@@ -74,18 +76,46 @@ export async function evaluateDeviceSetupIncomplete(
   if (!setupIncompleteDue(device, now) || !device.pairedAt) return { due: false, deduplicated: true };
   const missing = requiredMissingGrants(device.capabilities) ?? [];
   const steps = missing.join(", ");
+  const title = "Phone setup needs attention";
+  const body = `${device.child.displayName}'s phone setup is not complete after 30 minutes${steps ? `: ${steps}` : "."}`;
+  const params = { childName: device.child.displayName, count: missing.length, steps };
+  const metadata = { type: "setup_incomplete", missing, pairedAt: device.pairedAt.toISOString(), serverReminder: true };
+  const dedupeKey = incompleteDedupeKey(device.id);
+
+  // #1208: the phone may already have posted its immediate notice under the same key. That row IS the one
+  // parent notice for this pairing: refresh what is still missing in place, publish it, and never page again.
+  const existing = await prisma.alert.findFirst({ where: { deviceId: device.id, category: "tamper", dedupeKey } });
+  if (existing) {
+    const prev = (existing.metadata && typeof existing.metadata === "object" && !Array.isArray(existing.metadata)
+      ? existing.metadata
+      : {}) as Record<string, unknown>;
+    const unchanged = prev.serverReminder === true && JSON.stringify(prev.missing ?? null) === JSON.stringify(missing);
+    if (!unchanged && !existing.heldDuringSetup) {
+      const updated = await prisma.alert.update({
+        where: { id: existing.id },
+        data: {
+          title,
+          body,
+          metadata: { ...prev, ...metadata, bodyKey: "alertBodySetupIncomplete", bodyParams: params } as Prisma.InputJsonValue,
+        },
+      });
+      await publishFamilyEvent(device.child.familyId, { type: "alert", payload: updated, ts: now.toISOString() });
+    }
+    return { due: true, deduplicated: true };
+  }
+
   const { deduplicated } = await raiseAlertOnce({
     childId: device.childId,
     familyId: device.child.familyId,
     deviceId: device.id,
     severity: "warning",
     category: "tamper",
-    title: "Phone setup needs attention",
-    body: `${device.child.displayName}'s phone setup is not complete after 30 minutes${steps ? `: ${steps}` : "."}`,
+    title,
+    body,
     bodyKey: "alertBodySetupIncomplete",
-    params: { childName: device.child.displayName, count: missing.length, steps },
-    metadata: { type: "setup_incomplete", missing, pairedAt: device.pairedAt.toISOString() },
-    dedupeKey: incompleteDedupeKey(device.id, device.pairedAt),
+    params,
+    metadata,
+    dedupeKey,
     childName: device.child.displayName,
   });
   return { due: true, deduplicated };
