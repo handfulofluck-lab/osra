@@ -5900,6 +5900,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'OSRA was reinstalled on {model}. Its protection was off until it was paired again.'**
   String alertBodyDataCleared(String model);
+
+  /// No description provided for @p01ExampleBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Example'**
+  String get p01ExampleBadge;
+
+  /// No description provided for @p01NoAdsLine.
+  ///
+  /// In en, this message translates to:
+  /// **'No ads. Your family\'s data is never sold.'**
+  String get p01NoAdsLine;
+
+  /// No description provided for @p01PreviewScreenTimeValue.
+  ///
+  /// In en, this message translates to:
+  /// **'1 h 20 min left'**
+  String get p01PreviewScreenTimeValue;
+
+  /// No description provided for @p01PreviewBedtimeValue.
+  ///
+  /// In en, this message translates to:
+  /// **'21:30 → 07:00'**
+  String get p01PreviewBedtimeValue;
+
+  /// No description provided for @p01PreviewAppsValue.
+  ///
+  /// In en, this message translates to:
+  /// **'2 blocked'**
+  String get p01PreviewAppsValue;
+
+  /// No description provided for @p01PreviewLocationValue.
+  ///
+  /// In en, this message translates to:
+  /// **'At school'**
+  String get p01PreviewLocationValue;
 }
 
 class _AppLocalizationsDelegate

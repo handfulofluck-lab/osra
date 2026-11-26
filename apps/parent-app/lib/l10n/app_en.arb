@@ -1957,5 +1957,11 @@
   "alertBodySetupIncompleteGeneric": "{childName}'s phone setup is still incomplete after 30 minutes.",
   "@alertBodySetupIncompleteGeneric": { "placeholders": { "childName": { "type": "String" } } },
   "alertBodyDataCleared": "OSRA was reinstalled on {model}. Its protection was off until it was paired again.",
-  "@alertBodyDataCleared": { "placeholders": { "model": { "type": "String" } } }
+  "@alertBodyDataCleared": { "placeholders": { "model": { "type": "String" } } },
+  "p01ExampleBadge": "Example",
+  "p01NoAdsLine": "No ads. Your family's data is never sold.",
+  "p01PreviewScreenTimeValue": "1 h 20 min left",
+  "p01PreviewBedtimeValue": "21:30 → 07:00",
+  "p01PreviewAppsValue": "2 blocked",
+  "p01PreviewLocationValue": "At school"
 }

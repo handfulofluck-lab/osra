@@ -3871,4 +3871,22 @@ class AppLocalizationsAr extends AppLocalizations {
   String alertBodyDataCleared(String model) {
     return 'أُعيد تثبيت تطبيق أسرة للأطفال على $model، وكانت الحماية متوقفة إلى أن أُعيد الإقران.';
   }
+
+  @override
+  String get p01ExampleBadge => 'مثال';
+
+  @override
+  String get p01NoAdsLine => 'بلا إعلانات. لا تُباع بيانات عائلتك أبدًا.';
+
+  @override
+  String get p01PreviewScreenTimeValue => 'المتبقي ساعة و20 دقيقة';
+
+  @override
+  String get p01PreviewBedtimeValue => '21:30 → 07:00';
+
+  @override
+  String get p01PreviewAppsValue => 'تطبيقان محظوران';
+
+  @override
+  String get p01PreviewLocationValue => 'في المدرسة';
 }

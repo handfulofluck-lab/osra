@@ -1176,5 +1176,11 @@
   "alertBodySetupIncompleteGeneric": "مرّت 30 دقيقة، وإعداد هاتف {childName} ما زال غير مكتمل.",
   "@alertBodySetupIncompleteGeneric": { "placeholders": { "childName": { "type": "String" } } },
   "alertBodyDataCleared": "أُعيد تثبيت تطبيق أسرة للأطفال على {model}، وكانت الحماية متوقفة إلى أن أُعيد الإقران.",
-  "@alertBodyDataCleared": { "placeholders": { "model": { "type": "String" } } }
+  "@alertBodyDataCleared": { "placeholders": { "model": { "type": "String" } } },
+  "p01ExampleBadge": "مثال",
+  "p01NoAdsLine": "بلا إعلانات. لا تُباع بيانات عائلتك أبدًا.",
+  "p01PreviewScreenTimeValue": "المتبقي ساعة و20 دقيقة",
+  "p01PreviewBedtimeValue": "21:30 → 07:00",
+  "p01PreviewAppsValue": "تطبيقان محظوران",
+  "p01PreviewLocationValue": "في المدرسة"
 }
