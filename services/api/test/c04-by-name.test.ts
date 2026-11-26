@@ -188,4 +188,58 @@ describe("C-04 byName: the server stamps the acting adult on child-visible comma
     await enqueueDeviceCommand("dev-1", "rules_updated", { reason: "rules_changed", byName: "Mama Sara" });
     expect(prismaMock.deviceCommand.updateMany).not.toHaveBeenCalled();
   });
+
+  // Codex (#1237 [Sat] 1): overlapping edits by two adults, in both arrival orders.
+  const pendingRules = (byName: string, rulesVersion: number) => ({
+    id: "c-old", deviceId: "dev-1", type: "rules_updated", payload: { reason: "rules_changed", rulesVersion, byName },
+    status: "pending", createdAt: new Date(), expiresAt: new Date(Date.now() + 60_000), attempts: 0,
+  });
+
+  it("newer version arrives second: the pending row takes the newer adult", async () => {
+    prismaMock.deviceCommand.findFirst.mockResolvedValue(pendingRules("Baba", 5));
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
+    const msg = await enqueueDeviceCommand("dev-1", "rules_updated", { reason: "rules_changed", rulesVersion: 6, byName: "Mama Sara" });
+    expect(prismaMock.deviceCommand.updateMany).toHaveBeenCalledWith({
+      where: { id: "c-old", status: "pending" },
+      data: { payload: { reason: "rules_changed", rulesVersion: 6, byName: "Mama Sara" } },
+    });
+    expect(msg).toMatchObject({ id: "c-old", payload: { rulesVersion: 6, byName: "Mama Sara" } });
+    expect(prismaMock.deviceCommand.create).not.toHaveBeenCalled();
+  });
+
+  it("older version arrives second: the pending row keeps the newer adult", async () => {
+    prismaMock.deviceCommand.findFirst.mockResolvedValue(pendingRules("Mama Sara", 6));
+    const msg = await enqueueDeviceCommand("dev-1", "rules_updated", { reason: "rules_changed", rulesVersion: 5, byName: "Baba" });
+    expect(prismaMock.deviceCommand.updateMany).not.toHaveBeenCalled();
+    expect(prismaMock.deviceCommand.create).not.toHaveBeenCalled();
+    expect(msg).toMatchObject({ id: "c-old", payload: { rulesVersion: 6, byName: "Mama Sara" } });
+  });
+
+  it("the phone claimed the older row first: the newer change is queued as its own row", async () => {
+    prismaMock.deviceCommand.findFirst.mockResolvedValue(pendingRules("Baba", 5));
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 0 });
+    const msg = await enqueueDeviceCommand("dev-1", "rules_updated", { reason: "rules_changed", rulesVersion: 6, byName: "Mama Sara" });
+    expect(queued()).toEqual([expect.objectContaining({
+      type: "rules_updated", payload: { reason: "rules_changed", rulesVersion: 6, byName: "Mama Sara" },
+    })]);
+    expect(msg.id).not.toBe("c-old");
+  });
+
+  it("a rules write sends its committed version with the adult", async () => {
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    prismaMock.ruleSet.findUnique.mockResolvedValue(rulesRow());
+    prismaMock.ruleSet.upsert.mockResolvedValue({ ...rulesRow(), rulesVersion: 7 });
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/rules/child-1",
+      headers: authHeader(app),
+      payload: { screenTime: { dailyLimitMinutes: 90 } },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(queued()).toContainEqual(expect.objectContaining({
+      type: "rules_updated",
+      payload: { reason: "rules_changed", rulesVersion: 7, byName: "Mama Sara" },
+    }));
+    await app.close();
+  });
 });

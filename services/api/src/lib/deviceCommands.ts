@@ -105,18 +105,29 @@ export async function enqueueDeviceCommand(
     const existing = await prisma.deviceCommand.findFirst({
       where: { deviceId, type, status: "pending", expiresAt: { gt: new Date() } },
     });
+    let superseded = false;
     if (existing) {
       // C-04 (#1179): a coalesced row stands for the LATEST change, so it carries the latest actor. If a
       // second adult (or a routine, with no name) changes the rules before the phone drains, the pending
       // row takes the newer payload; it is still pending, so nothing delivered is rewritten.
-      const prevByName = ((existing.payload ?? {}) as Record<string, unknown>).byName;
-      if (prevByName !== payload.byName) {
+      // Codex (#1237 [Sat] 1): two overlapping edits can reach here out of order. A payload with a lower
+      // committed rulesVersion than the pending row's is the older edit and never replaces the newer actor.
+      const prev = (existing.payload ?? {}) as Record<string, unknown>;
+      const prevVersion = typeof prev.rulesVersion === "number" ? prev.rulesVersion : null;
+      const nextVersion = typeof payload.rulesVersion === "number" ? payload.rulesVersion : null;
+      const older = prevVersion !== null && nextVersion !== null && nextVersion < prevVersion;
+      if (!older && (prev.byName !== payload.byName || prevVersion !== nextVersion)) {
         const { count } = await prisma.deviceCommand.updateMany({
           where: { id: existing.id, status: "pending" },
           data: { payload: payload as Prisma.InputJsonValue },
         });
         if (count > 0) existing.payload = payload as Prisma.JsonValue;
+        // The phone claimed the older row between our read and this write: queue the newer change as its
+        // own row instead of acknowledging the stale one.
+        else superseded = true;
       }
+    }
+    if (existing && !superseded) {
       // Wake again even though no row is added. The pending row may come from a wake that FCM delayed
       // or dropped, or from a change made while push was off; returning silently would leave every
       // later change waiting for the 15-minute poll (Flip4, 29 Oct). Duplicates are free: the wake
