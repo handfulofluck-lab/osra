@@ -1251,14 +1251,17 @@ class TimeRequestResolution {
   final int? grantedMinutes;
   final String actorName;
   final DateTime resolvedAt;
+  final bool? decidedByViewer;
 
   const TimeRequestResolution({
     required this.grantedMinutes,
     required this.actorName,
     required this.resolvedAt,
+    this.decidedByViewer,
   });
 
-  static TimeRequestResolution? fromJson(Object? json) {
+  static TimeRequestResolution? fromJson(Object? json,
+      {bool ownSubmission = false}) {
     if (json is! Map) return null;
     final minutes = json['minutes'];
     final grantedMinutes = switch (json['action']) {
@@ -1269,10 +1272,12 @@ class TimeRequestResolution {
     };
     final resolvedAt = DateTime.tryParse(_str(json['resolvedAt']));
     if (grantedMinutes == -1 || resolvedAt == null) return null;
+    final viewer = json['decidedByViewer'];
     return TimeRequestResolution(
       grantedMinutes: grantedMinutes,
       actorName: _str(json['actorName']).trim(),
       resolvedAt: resolvedAt,
+      decidedByViewer: viewer is bool ? viewer : (ownSubmission ? true : null),
     );
   }
 }

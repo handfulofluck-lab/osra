@@ -6020,7 +6020,7 @@ abstract class AppLocalizations {
   ///
   /// In en, this message translates to:
   /// **'{child} asked for {minutes} more minutes today'**
-  String timeRequestTitle(String child, String minutes);
+  String timeRequestTitle(String child, int minutes);
 
   /// No description provided for @timeRequestGrant.
   ///
@@ -6037,14 +6037,26 @@ abstract class AppLocalizations {
   /// No description provided for @timeRequestGrantedBy.
   ///
   /// In en, this message translates to:
-  /// **'{actor} gave {minutes} more minutes'**
-  String timeRequestGrantedBy(String actor, String minutes);
+  /// **'{actor} already gave {minutes} minutes today'**
+  String timeRequestGrantedBy(String actor, int minutes);
+
+  /// No description provided for @timeRequestGrantedByYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You already gave {minutes} minutes today'**
+  String timeRequestGrantedByYou(int minutes);
 
   /// No description provided for @timeRequestDeclinedBy.
   ///
   /// In en, this message translates to:
-  /// **'{actor} declined this request'**
+  /// **'{actor} already declined this request'**
   String timeRequestDeclinedBy(String actor);
+
+  /// No description provided for @timeRequestDeclinedByYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You already declined this request'**
+  String get timeRequestDeclinedByYou;
 
   /// No description provided for @timeRequestDecidedAt.
   ///

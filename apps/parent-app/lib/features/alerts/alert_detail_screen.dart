@@ -929,12 +929,18 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
         ],
         if (alert.createdAt != null) ...[
           Text(
-            formatAlertLocalTime(
-              alert.createdAt!,
-              l10n: l10n,
-              localeName: context.localeName,
-              now: nowProvider?.call(),
-            ),
+            isTimeRequest
+                ? l10n.alertDetailSent(l10n.alertAtTime(
+                    formatTimeRequestTimestamp(
+                      context, alert.createdAt!, now: nowProvider?.call(),
+                    ),
+                  ))
+                : formatAlertLocalTime(
+                    alert.createdAt!,
+                    l10n: l10n,
+                    localeName: context.localeName,
+                    now: nowProvider?.call(),
+                  ),
             key: const ValueKey('alertDetailTime'),
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: tokens.onSurfaceVariant),

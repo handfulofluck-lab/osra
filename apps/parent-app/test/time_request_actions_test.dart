@@ -90,6 +90,36 @@ void main() {
     expect(merged.single.timeRequestResolution?.grantedMinutes, 30);
   });
 
+  test('keeps own decision evidence when legacy readback omits viewer identity',
+      () {
+    final legacy = Alert.fromJson({
+      ..._alertJson,
+      'acknowledged': true,
+      'timeRequestResolution': _grant,
+    });
+    final own = legacy.copyWith(
+      timeRequestResolution:
+          TimeRequestResolution.fromJson(_grant, ownSubmission: true),
+    );
+    final confirmed = Alert.fromJson({
+      ..._alertJson,
+      'acknowledged': true,
+      'timeRequestResolution': {..._grant, 'decidedByViewer': false},
+    });
+    expect(
+        mergeAlertsInPlace([own], [legacy])
+            .single
+            .timeRequestResolution
+            ?.decidedByViewer,
+        isTrue);
+    expect(
+        mergeAlertsInPlace([own], [confirmed])
+            .single
+            .timeRequestResolution
+            ?.decidedByViewer,
+        isFalse);
+  });
+
   testWidgets('conflict displays the caregiver and their winning grant',
       (tester) async {
     final api = await _pump(
@@ -121,7 +151,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.calls('POST', _decisionPath).single.body,
         {'action': 'grant', 'minutes': 30});
-    expect(find.textContaining('Sarah'), findsOneWidget);
+    expect(find.text('You already gave 30 minutes today'), findsOneWidget);
   });
 
   testWidgets(

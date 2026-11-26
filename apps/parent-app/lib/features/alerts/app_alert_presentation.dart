@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
@@ -14,6 +15,22 @@ bool isAccessRequestAlert(Alert alert) {
 
 bool isParentDecisionAlert(Alert alert) =>
     isAccessRequestAlert(alert) || alert.requestedScreenTimeMinutes != null;
+
+String formatTimeRequestTimestamp(
+  BuildContext context,
+  DateTime at, {
+  DateTime? now,
+}) {
+  final local = at.toLocal();
+  final material = MaterialLocalizations.of(context);
+  final time = material.formatTimeOfDay(
+    TimeOfDay.fromDateTime(local),
+    alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
+  );
+  final sameDay = DateUtils.isSameDay(local, (now ?? DateTime.now()).toLocal());
+  final label = sameDay ? time : '${material.formatMediumDate(local)} · $time';
+  return ltrIsolate(normalizeDigits(label));
+}
 
 String appAlertPackageId(Alert alert) =>
     alert.metadata['packageId']?.toString().trim() ?? '';
@@ -83,8 +100,7 @@ String appAlertTitle({
   final child = _childName(childName, l10n);
   final minutes = alert.requestedScreenTimeMinutes;
   if (minutes != null) {
-    return l10n.timeRequestTitle(
-        child, ltrIsolate(normalizeDigits('$minutes')));
+    return l10n.timeRequestTitle(child, minutes);
   }
   final app = isolateAppAlertName(identity);
   if (isAccessRequestAlert(alert)) return l10n.accessRequestTitle(child, app);

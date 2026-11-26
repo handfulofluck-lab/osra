@@ -3961,30 +3961,65 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String timeRequestTitle(String child, String minutes) {
-    return '$child asked for $minutes more minutes today';
+  String timeRequestTitle(String child, int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة إضافية',
+      many: '$minutes دقيقة إضافية',
+      few: '$minutes دقائق إضافية',
+      two: 'دقيقتان إضافيتان',
+      one: 'دقيقة إضافية واحدة',
+    );
+    return 'طلب من $child: $_temp0 اليوم';
   }
 
   @override
   String timeRequestGrant(String minutes) {
-    return '+$minutes min';
+    return '+$minutes دقيقة';
   }
 
   @override
-  String get timeRequestDecline => 'Not today';
+  String get timeRequestDecline => 'ليس اليوم';
 
   @override
-  String timeRequestGrantedBy(String actor, String minutes) {
-    return '$actor gave $minutes more minutes';
+  String timeRequestGrantedBy(String actor, int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة',
+      many: '$minutes دقيقة',
+      few: '$minutes دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    return 'سبق منح وقت إضافي اليوم بقرار من $actor: $_temp0';
+  }
+
+  @override
+  String timeRequestGrantedByYou(int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة',
+      many: '$minutes دقيقة',
+      few: '$minutes دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    return 'سبق منح وقت إضافي اليوم بقرارك: $_temp0';
   }
 
   @override
   String timeRequestDeclinedBy(String actor) {
-    return '$actor declined this request';
+    return 'سبق رفض هذا الطلب بقرار من $actor';
   }
 
   @override
+  String get timeRequestDeclinedByYou => 'سبق رفض هذا الطلب بقرارك';
+
+  @override
   String timeRequestDecidedAt(String time) {
-    return 'Decided $time';
+    return 'وقت القرار: $time';
   }
 }

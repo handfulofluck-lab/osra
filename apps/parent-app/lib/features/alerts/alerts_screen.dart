@@ -105,7 +105,14 @@ List<Alert> mergeAlertsInPlace(List<Alert> existing, Iterable<Alert> incoming) {
                 a.timeRequestResolution == null))) {
       continue;
     }
-    byId[a.id] = a;
+    final earlierReceipt = prev?.timeRequestResolution;
+    final nextReceipt = a.timeRequestResolution;
+    byId[a.id] = earlierReceipt?.decidedByViewer == true &&
+            nextReceipt != null &&
+            nextReceipt.decidedByViewer == null &&
+            earlierReceipt!.resolvedAt == nextReceipt.resolvedAt
+        ? a.copyWith(timeRequestResolution: earlierReceipt)
+        : a;
   }
   final merged = byId.values.toList();
   merged.sort((a, b) {

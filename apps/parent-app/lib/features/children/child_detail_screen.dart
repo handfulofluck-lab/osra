@@ -1526,9 +1526,13 @@ class AlertTile extends ConsumerWidget {
     } else {
       final when = alert.createdAt == null
           ? ''
-          : DateFormat.MMMd(context.localeName)
-              .add_Hm()
-              .format(alert.createdAt!.toLocal());
+          : isTimeRequest
+              ? formatTimeRequestTimestamp(
+                  context, alert.createdAt!, now: ref.watch(clockProvider)(),
+                )
+              : DateFormat.MMMd(context.localeName)
+                  .add_Hm()
+                  .format(alert.createdAt!.toLocal());
       titleText = isAppBlocked
           ? appAlertTitle(
               alert: alert,
@@ -1543,7 +1547,11 @@ class AlertTile extends ConsumerWidget {
               tamperType: alert.metadata['type']?.toString(),
             );
       socialLatestLine = null;
-      genericSubtitleText = '${l10n.alertCategory(alert.category)} · $when';
+      final category = isTimeRequest
+          ? l10n.alertCategoryScreenTime
+          : l10n.alertCategory(alert.category);
+      genericSubtitleText =
+          isTimeRequest && when.isEmpty ? category : '$category · $when';
     }
 
     final Widget? newBadge = newSinceCount > 0

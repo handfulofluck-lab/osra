@@ -7,8 +7,10 @@ import '../../core/digits.dart';
 import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/clock_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
+import 'app_alert_presentation.dart';
 
 const timeRequestActionsEnabled = bool.fromEnvironment('OSRA_UX_P20');
 const _actionSize = ButtonStyle(
@@ -50,6 +52,7 @@ class _TimeRequestActionsState extends ConsumerState<TimeRequestActions> {
       final payload = response.data;
       final receipt = TimeRequestResolution.fromJson(
         payload is Map ? payload['resolution'] : null,
+        ownSubmission: true,
       );
       if (receipt == null) {
         if (mounted) setState(() => _failed = true);
@@ -102,27 +105,28 @@ class _TimeRequestActionsState extends ConsumerState<TimeRequestActions> {
     if (alert.acknowledged || receipt != null) {
       final minutes = receipt?.grantedMinutes;
       final actor = firstStrongIsolate(receipt?.actorName ?? '');
-      final message = receipt == null || receipt.actorName.isEmpty
-          ? l10n.accessRequestHandled
-          : minutes == null
-              ? l10n.timeRequestDeclinedBy(actor)
-              : l10n.timeRequestGrantedBy(
-                  actor, ltrIsolate(normalizeDigits('$minutes')));
-      final resolvedAt = receipt?.resolvedAt.toLocal();
-      final material = MaterialLocalizations.of(context);
-      final localTime = resolvedAt == null
+      final message = switch ((receipt?.decidedByViewer, minutes)) {
+        (true, null) => l10n.timeRequestDeclinedByYou,
+        (true, final int granted) => l10n.timeRequestGrantedByYou(granted),
+        (_, _) when receipt == null || receipt.actorName.isEmpty =>
+          l10n.accessRequestHandled,
+        (_, null) => l10n.timeRequestDeclinedBy(actor),
+        (_, final int granted) => l10n.timeRequestGrantedBy(actor, granted),
+      };
+      final localTime = receipt == null
           ? null
-          : '${material.formatMediumDate(resolvedAt)} · '
-              '${material.formatTimeOfDay(TimeOfDay.fromDateTime(resolvedAt))}';
+          : formatTimeRequestTimestamp(
+              context,
+              receipt.resolvedAt,
+              now: ref.watch(clockProvider)(),
+            );
       return Semantics(
         liveRegion: true,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(message, key: const ValueKey('time-request-receipt')),
-            if (localTime != null)
-              Text(l10n.timeRequestDecidedAt(
-                  ltrIsolate(normalizeDigits(localTime)))),
+            if (localTime != null) Text(l10n.timeRequestDecidedAt(localTime)),
           ],
         ),
       );
