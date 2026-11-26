@@ -9,6 +9,7 @@ import com.familyshield.agent.security.AccessibilityServiceListPolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -117,13 +118,14 @@ class AccessibilityBindObserver(
 
     fun start(scope: CoroutineScope) {
         stop()
+        if (runningState.value && isAccessibilityGranted()) {
+            onBoundWhileVisible()
+            return
+        }
         observeJob = scope.launch {
-            runningState.collect { running ->
-                if (running && isAccessibilityGranted()) {
-                    stop()
-                    onBoundWhileVisible()
-                }
-            }
+            runningState.first { running -> running && isAccessibilityGranted() }
+            observeJob = null
+            onBoundWhileVisible()
         }
     }
 
