@@ -1181,7 +1181,7 @@
   "privacyTitle": "الخصوصية والبيانات",
   "privacyKeptHeader": "نحتفظ بها ثم تُحذف تلقائيًا",
   "privacyFullDetails": "التفاصيل الكاملة",
-  "privacyRowExcerpts": "مقتطفات الرسائل المُنبَّه عليها",
+  "privacyRowExcerpts": "مقتطفات الرسائل التي أثارت تنبيهًا",
   "privacyRowAlerts": "التنبيهات",
   "privacyRowLocation": "سجل المواقع",
   "privacyRowStoredIn": "مكان التخزين",
@@ -1204,10 +1204,10 @@
   "privacyChooseChild": "اختر طفلًا",
   "privacyNoChildren": "لم تُضِف أي طفل بعد.",
   "privacyDeleteFamilyTitle": "حذف حساب العائلة",
-  "privacyDeleteFamilyDesc": "يحذف العائلة كلها، ومعها بيانات كل طفل، فورًا. يطلب كلمة المرور.",
+  "privacyDeleteFamilyDesc": "يحذف العائلة كلها، ومعها بيانات كل طفل، فورًا. ويلزم إدخال كلمة المرور لذلك.",
   "privacyDeleteSelfTitle": "حذف حسابي",
   "privacyDeleteSelfDesc": "يحذف حسابك أنت فقط، وتبقى العائلة كما هي.",
   "privacyDeleteAction": "حذف…",
   "privacyLoadFailed": "تعذّر تحميل مدد الاحتفاظ. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
-  "privacyRetry": "حاول مرة أخرى"
+  "privacyRetry": "إعادة المحاولة"
 }

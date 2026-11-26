@@ -3885,7 +3885,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get privacyFullDetails => 'التفاصيل الكاملة';
 
   @override
-  String get privacyRowExcerpts => 'مقتطفات الرسائل المُنبَّه عليها';
+  String get privacyRowExcerpts => 'مقتطفات الرسائل التي أثارت تنبيهًا';
 
   @override
   String get privacyRowAlerts => 'التنبيهات';
@@ -3973,7 +3973,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get privacyDeleteFamilyDesc =>
-      'يحذف العائلة كلها، ومعها بيانات كل طفل، فورًا. يطلب كلمة المرور.';
+      'يحذف العائلة كلها، ومعها بيانات كل طفل، فورًا. ويلزم إدخال كلمة المرور لذلك.';
 
   @override
   String get privacyDeleteSelfTitle => 'حذف حسابي';
@@ -3990,5 +3990,5 @@ class AppLocalizationsAr extends AppLocalizations {
       'تعذّر تحميل مدد الاحتفاظ. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
 
   @override
-  String get privacyRetry => 'حاول مرة أخرى';
+  String get privacyRetry => 'إعادة المحاولة';
 }
