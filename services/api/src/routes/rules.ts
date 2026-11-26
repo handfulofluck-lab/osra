@@ -8,6 +8,7 @@ import { assertProcessingAllowed } from "../lib/consent.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
 import { DEFAULT_RULESET } from "../lib/defaultRules.js";
 import { filterAgentRules, toApiRuleSet } from "../lib/ruleSync.js";
+import { actingAdultName, withByName } from "../lib/actingAdult.js";
 import { touchAgentLastSeen } from "../lib/pollCadence.js";
 import { APP_GROUPS_MAX } from "@familyshield/shared-types";
 
@@ -121,10 +122,10 @@ export function windowsOverlap(start1: string, end1: string, start2: string, end
 }
 
 /** Push a rules_updated command to every device of the child so HTTP-polling agents refresh. */
-async function notifyDevices(childId: string): Promise<void> {
+async function notifyDevices(childId: string, byName?: string): Promise<void> {
   const devices = await prisma.device.findMany({ where: { childId }, select: { id: true } });
   for (const { id } of devices) {
-    await enqueueDeviceCommand(id, "rules_updated", { reason: "rules_changed" });
+    await enqueueDeviceCommand(id, "rules_updated", withByName({ reason: "rules_changed" }, byName));
   }
 }
 
@@ -209,7 +210,7 @@ export async function rulesRoutes(app: FastifyInstance) {
     });
     const api = toApiRuleSet(row as unknown as Record<string, unknown>);
     await publishJson(`child:${childId}:rules`, await filterAgentRules(childId, api));
-    await notifyDevices(childId);
+    await notifyDevices(childId, await actingAdultName(req));
     return api;
   });
 
@@ -252,7 +253,7 @@ export async function rulesRoutes(app: FastifyInstance) {
     });
     const api = toApiRuleSet(row as unknown as Record<string, unknown>);
     await publishJson(`child:${childId}:rules`, await filterAgentRules(childId, api));
-    await notifyDevices(childId);
+    await notifyDevices(childId, await actingAdultName(req));
     return api;
   });
 }

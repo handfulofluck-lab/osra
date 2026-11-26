@@ -106,6 +106,17 @@ export async function enqueueDeviceCommand(
       where: { deviceId, type, status: "pending", expiresAt: { gt: new Date() } },
     });
     if (existing) {
+      // C-04 (#1179): a coalesced row stands for the LATEST change, so it carries the latest actor. If a
+      // second adult (or a routine, with no name) changes the rules before the phone drains, the pending
+      // row takes the newer payload; it is still pending, so nothing delivered is rewritten.
+      const prevByName = ((existing.payload ?? {}) as Record<string, unknown>).byName;
+      if (prevByName !== payload.byName) {
+        const { count } = await prisma.deviceCommand.updateMany({
+          where: { id: existing.id, status: "pending" },
+          data: { payload: payload as Prisma.InputJsonValue },
+        });
+        if (count > 0) existing.payload = payload as Prisma.JsonValue;
+      }
       // Wake again even though no row is added. The pending row may come from a wake that FCM delayed
       // or dropped, or from a change made while push was off; returning silently would leave every
       // later change waiting for the 15-minute poll (Flip4, 29 Oct). Duplicates are free: the wake
