@@ -121,6 +121,7 @@ model Parent {
   mfaRecoveryCodes ParentMfaRecoveryCode[]
   mfaResetRequests MfaResetRequest[]
   accountDeletionTokens AccountDeletionToken[]
+  socialEventFeedback SocialEventFeedback[]
 }
 
 /// ADR-0032 / roadmap 2.7: a single-logout revocation, the durable record behind
@@ -249,6 +250,7 @@ model Child {
   consents    ConsentRecord[]
   pairingDecisions PairingDecision[]
   stagingScanOutcomes StagingScanOutcome[]
+  socialEvents SocialEvent[]
   internetOperation ChildInternetOperation?
 }
 
@@ -474,11 +476,42 @@ model SocialEvent {
   app           String
   contact       String   @default("")
   severity      String   @default("warning")
+  modelVersion  String?
+  lang          String?
+  topCategory   String?
+  topScore      Float?
+  cutoff        Float?
+  path          String?
+  child         Child      @relation(fields: [childId], references: [id], onDelete: Cascade)
   stagingScanOutcome StagingScanOutcome?
+  feedback      SocialEventFeedback[]
   previewCipher String   @default("")
   concernTypes  String[] @default([])
   createdAt     DateTime @default(now())
   @@index([childId, createdAt])
+}
+
+model SocialEventFeedback {
+  id            String      @id @default(uuid())
+  socialEventId String
+  parentId      String
+  verdict       String
+  parentName    String
+  firstVotedAt  DateTime    @default(now()) @db.Timestamptz(3)
+  lastChangedAt DateTime    @default(now()) @db.Timestamptz(3)
+  changeCount   Int         @default(0)
+  modelVersion  String?
+  lang          String?
+  topCategory   String?
+  topScore      Float?
+  cutoff        Float?
+  path          String?
+  severity      String?
+  socialEvent   SocialEvent @relation(fields: [socialEventId], references: [id], onDelete: Cascade)
+  parent        Parent      @relation(fields: [parentId], references: [id], onDelete: Cascade)
+
+  @@unique([socialEventId, parentId])
+  @@index([parentId])
 }
 
 /// Synthetic staging receipts. A benign or unavailable scan has no social vault event.

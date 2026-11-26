@@ -71,6 +71,13 @@ object CapabilitiesPolicy {
         val callSmsGranted: Boolean,
         /** osra-security#6 item 2, or null when the reader could not be asked. */
         val profiles: ProfilePolicy.Report?,
+        /**
+         * Issue #1079, Claude's fail-visible ruling: what the filter can promise, from
+         * [com.familyshield.agent.vpn.DnsFilterPolicy.enforcement]. The parent must never be told a category is
+         * blocked while no list enforces it — on child 2 that silence is exactly what happened.
+         */
+        val webFilter: com.familyshield.agent.vpn.DnsFilterPolicy.EnforcementState =
+            com.familyshield.agent.vpn.DnsFilterPolicy.EnforcementState.NOT_APPLICABLE,
     )
 
     /**
@@ -129,8 +136,12 @@ object CapabilitiesPolicy {
         // Only the consent and a working tunnel are `ready`.
         out["web_filter"] = when {
             grantedState(facts, "web_filter") != GRANTED -> UNAVAILABLE
-            facts.webFilterSetUp && facts.tunnelRunning -> READY
-            else -> UNAVAILABLE
+            !facts.webFilterSetUp || !facts.tunnelRunning -> UNAVAILABLE
+            // #1079: the tunnel is up but the list that blocks the parent's categories is not on the device.
+            // Some of the filter still works — SafeSearch and the YouTube rewrite need no pack — so this is
+            // `degraded`, not `unavailable`, and the server never refuses a command on `degraded`.
+            facts.webFilter == com.familyshield.agent.vpn.DnsFilterPolicy.EnforcementState.UNPROTECTED -> DEGRADED
+            else -> READY
         }
         // `pause_internet` is deliberately **weaker** than `web_filter`'s verdict on identical facts: the
         // dispatcher starts the tunnel and waits for it before deciding (`CommandDispatcher`), so a pause asked
