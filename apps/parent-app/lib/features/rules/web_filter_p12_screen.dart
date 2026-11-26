@@ -143,7 +143,7 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
     final value = await showDialog<String>(
       context: context,
       builder: (_) => _SiteDialog(
-        title: allowed ? l10n.alwaysAllowed : l10n.alertCategoryWebThreat,
+        title: allowed ? l10n.p12AllowSiteTitle : l10n.p12BlockSiteTitle,
         initial: exactDomain ?? '',
       ),
     );
@@ -231,6 +231,8 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
               const SizedBox(height: AppSpace.md),
               _blockedCard(context, l10n, tokens),
               const SizedBox(height: AppSpace.md),
+              _blockedSitesCard(context, l10n, tokens),
+              const SizedBox(height: AppSpace.md),
               _allowedCard(context, l10n, tokens),
               const SizedBox(height: AppSpace.md),
               _safeSearchAndYouTubeCard(context, l10n, tokens),
@@ -282,18 +284,21 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
                   ),
                 ),
                 const SizedBox(width: AppSpace.sm),
-                _pill(
-                  context,
-                  key: const ValueKey('p12-not-blocked-pill'),
-                  label: l10n.phoneSetupStateDegraded,
-                  color: tokens.warn,
+                Flexible(
+                  child: _pill(
+                    context,
+                    key: const ValueKey('p12-not-blocked-pill'),
+                    label: l10n.p12NotBlockingYet,
+                    icon: Icons.block,
+                    color: tokens.warn,
+                  ),
                 ),
               ],
             ),
             if (model.isNotEmpty) ...[
               const SizedBox(height: AppSpace.xs),
               Text(
-                firstStrongIsolate(model),
+                ltrIsolate(model),
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant),
               ),
             ],
@@ -314,7 +319,15 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
     );
   }
 
-  Widget _pill(BuildContext context, {required Key key, required String label, required Color color}) {
+  /// A state pill: label plus its own icon, so the state is never carried by
+  /// colour alone (UI/UX Bureau, 7204314039).
+  Widget _pill(
+    BuildContext context, {
+    required Key key,
+    required String label,
+    required IconData icon,
+    required Color color,
+  }) {
     return Container(
       key: key,
       padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.sm, AppSpace.xxs, AppSpace.sm, AppSpace.xxs),
@@ -323,9 +336,19 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
         borderRadius: BorderRadius.circular(AppRadius.sm),
         border: Border.all(color: color.withValues(alpha: 0.55)),
       ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(color: color),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: AppSpace.xxs),
+          Flexible(
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(color: color),
+              softWrap: true,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -421,13 +444,15 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
     );
   }
 
-  /// Recently blocked hosts and the blocked-site list in one card: both answer
-  /// "what is blocked". The recent rows come from the reports summary and are
-  /// hidden whole when the server withholds host names (SITE_NAMES off, or a
-  /// guardian without `social`), per the P-12 row's dependency.
+  /// Recently blocked hosts, in their own card titled by the UI/UX Bureau
+  /// (`p12RecentlyBlocked`, 7204314039). The rows come from the reports summary
+  /// and the whole card is hidden when the server withholds host names
+  /// (SITE_NAMES off, or a guardian without `social`), per the P-12 row's
+  /// dependency — an absent list is never drawn as a clean week.
   Widget _blockedCard(BuildContext context, AppLocalizations l10n, AppTokens tokens) {
     final summary = ref.watch(reportSummaryProvider((childId: widget.childId, days: _recentDays))).valueOrNull;
     final recent = summary?.blockedDomainsVisible == true ? summary!.topBlockedDomains : null;
+    if (recent == null) return const SizedBox.shrink();
     return Card(
       key: const ValueKey('p12-blocked-card'),
       child: Padding(
@@ -436,23 +461,18 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              l10n.alertCategoryWebThreat,
+              l10n.p12RecentlyBlocked,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(color: tokens.onSurface),
             ),
-            if (recent != null) ...[
-              const SizedBox(height: AppSpace.xs),
-              if (recent.isEmpty)
-                Text(
-                  l10n.noBlockedSites(_recentDays),
-                  key: const ValueKey('p12-recently-empty'),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant),
-                )
-              else
-                for (final site in recent)
-                  _recentSiteRow(context, l10n, tokens, site),
-            ],
-            const Divider(height: AppSpace.xl),
-            ..._domainList(context, l10n, tokens, allowed: false),
+            const SizedBox(height: AppSpace.xs),
+            if (recent.isEmpty)
+              Text(
+                l10n.noBlockedSites(_recentDays),
+                key: const ValueKey('p12-recently-empty'),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant),
+              )
+            else
+              for (final site in recent) _recentSiteRow(context, l10n, tokens, site),
           ],
         ),
       ),
@@ -470,7 +490,7 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  ltrIsolate(site.domain),
+                  ltrIsolateHost(site.domain),
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.onSurface),
                 ),
                 Text(
@@ -484,9 +504,31 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
             key: ValueKey('p12-allow-${site.domain}'),
             style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
             onPressed: () => _addSiteDialog(exactDomain: site.domain, allowed: true),
-            child: Text(l10n.allowAction),
+            child: Text(l10n.p12AllowSite),
           ),
         ],
+      ),
+    );
+  }
+
+  /// The always-blocked site list. Its title and its dialog share
+  /// `p12BlockSiteTitle`, so neither borrows the web-threat alert category.
+  Widget _blockedSitesCard(BuildContext context, AppLocalizations l10n, AppTokens tokens) {
+    return Card(
+      key: const ValueKey('p12-blocked-sites-card'),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpace.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              l10n.p12BlockSiteTitle,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(color: tokens.onSurface),
+            ),
+            const SizedBox(height: AppSpace.xs),
+            ..._domainList(context, l10n, tokens, allowed: false),
+          ],
+        ),
       ),
     );
   }
@@ -500,7 +542,7 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              l10n.alwaysAllowed,
+              l10n.p12AllowSiteTitle,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(color: tokens.onSurface),
             ),
             const SizedBox(height: AppSpace.xs),
@@ -533,7 +575,7 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
             for (final d in domains)
               InputChip(
                 key: ValueKey('p12-site-${allowed ? 'allow' : 'block'}-$d'),
-                label: Text(ltrIsolate(d)),
+                label: Text(ltrIsolateHost(d)),
                 onDeleted: () => _removeDomain(d, allowed: allowed),
                 deleteIcon: const Icon(Icons.close, size: 18),
                 materialTapTargetSize: MaterialTapTargetSize.padded,
@@ -629,7 +671,8 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
                         _pill(
                           context,
                           key: const ValueKey('p12-iphone-not-available'),
-                          label: l10n.phoneSetupStateUnavailable,
+                          label: l10n.appsNotYetOnIphone,
+                          icon: Icons.phone_iphone,
                           color: tokens.onSurfaceVariant,
                         ),
                       ],

@@ -6015,6 +6015,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Keep {app} blocked'**
   String accessRequestKeepBlockedLabel(String app);
+
+  /// P-12: pill on the enforcement banner when the filter is not applied on a device (UI/UX Bureau 7204314039).
+  ///
+  /// In en, this message translates to:
+  /// **'Not blocking yet'**
+  String get p12NotBlockingYet;
+
+  /// P-12: button on one recently blocked site; opens the prefilled Allow a site dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow site'**
+  String get p12AllowSite;
+
+  /// P-12: card title over the recent blocks (hidden whole when the server withholds host names).
+  ///
+  /// In en, this message translates to:
+  /// **'Recently blocked'**
+  String get p12RecentlyBlocked;
+
+  /// P-12 (#1182 pair): browser coverage for an iPhone-only child.
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet available on iPhone'**
+  String get appsNotYetOnIphone;
+
+  /// P-12: dialog title when adding a site to always block.
+  ///
+  /// In en, this message translates to:
+  /// **'Block a site'**
+  String get p12BlockSiteTitle;
+
+  /// P-12: dialog title when adding a site to always allow, including from Allow site.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow a site'**
+  String get p12AllowSiteTitle;
 }
 
 class _AppLocalizationsDelegate

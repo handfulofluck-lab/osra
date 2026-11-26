@@ -1173,11 +1173,11 @@ class AppLocalizationsAr extends AppLocalizations {
   String get enforceSafeSearch => 'فرض البحث الآمن';
 
   @override
-  String get youtubeRestrictedMode => 'الوضع المقيّد في يوتيوب';
+  String get youtubeRestrictedMode => 'الوضع المحظور في يوتيوب';
 
   @override
   String get youtubeRestrictedDesc =>
-      'يُخفي معظم الفيديوهات غير المناسبة، لكن تصفية يوتيوب ليست دقيقة تمامًا. للتأكد، احظر يوتيوب أو اضبط له حدًا زمنيًا في «التطبيقات».';
+      'يُخفي معظم الفيديوهات غير المناسبة، لكن تصفية يوتيوب نفسها تفوّت بعضها، فللتأكد احظر يوتيوب أو اضبط له حدًا زمنيًا في «التطبيقات».';
 
   @override
   String get strict => 'صارم';
@@ -3959,4 +3959,22 @@ class AppLocalizationsAr extends AppLocalizations {
   String accessRequestKeepBlockedLabel(String app) {
     return 'إبقاء $app محظورًا';
   }
+
+  @override
+  String get p12NotBlockingYet => 'لم يبدأ الحظر بعد';
+
+  @override
+  String get p12AllowSite => 'السماح بالموقع';
+
+  @override
+  String get p12RecentlyBlocked => 'المواقع المحظورة مؤخرًا';
+
+  @override
+  String get appsNotYetOnIphone => 'غير متاح بعد على آيفون';
+
+  @override
+  String get p12BlockSiteTitle => 'حظر موقع';
+
+  @override
+  String get p12AllowSiteTitle => 'السماح بموقع';
 }

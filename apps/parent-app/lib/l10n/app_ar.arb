@@ -331,8 +331,8 @@
   "allowedDomainsLabel": "النطاقات المسموح بها (مفصولة بفواصل)",
   "blockedDomainsLabel": "النطاقات المحظورة (مفصولة بفواصل)",
   "enforceSafeSearch": "فرض البحث الآمن",
-  "youtubeRestrictedMode": "الوضع المقيّد في يوتيوب",
-  "youtubeRestrictedDesc": "يُخفي معظم الفيديوهات غير المناسبة، لكن تصفية يوتيوب ليست دقيقة تمامًا. للتأكد، احظر يوتيوب أو اضبط له حدًا زمنيًا في «التطبيقات».",
+  "youtubeRestrictedMode": "الوضع المحظور في يوتيوب",
+  "youtubeRestrictedDesc": "يُخفي معظم الفيديوهات غير المناسبة، لكن تصفية يوتيوب نفسها تفوّت بعضها، فللتأكد احظر يوتيوب أو اضبط له حدًا زمنيًا في «التطبيقات».",
   "strict": "صارم",
   "moderate": "متوسط",
   "off": "إيقاف",
@@ -1195,5 +1195,11 @@
   "accessRequestAllowedSnack": "سُمح باستخدام {app}",
   "accessRequestKeptBlockedSnack": "بقي {app} محظورًا",
   "accessRequestAllowLabel": "السماح باستخدام {app}",
-  "accessRequestKeepBlockedLabel": "إبقاء {app} محظورًا"
+  "accessRequestKeepBlockedLabel": "إبقاء {app} محظورًا",
+  "p12NotBlockingYet": "لم يبدأ الحظر بعد",
+  "p12AllowSite": "السماح بالموقع",
+  "p12RecentlyBlocked": "المواقع المحظورة مؤخرًا",
+  "appsNotYetOnIphone": "غير متاح بعد على آيفون",
+  "p12BlockSiteTitle": "حظر موقع",
+  "p12AllowSiteTitle": "السماح بموقع"
 }

@@ -3724,4 +3724,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String accessRequestKeepBlockedLabel(String app) {
     return 'Keep $app blocked';
   }
+
+  @override
+  String get p12NotBlockingYet => 'Not blocking yet';
+
+  @override
+  String get p12AllowSite => 'Allow site';
+
+  @override
+  String get p12RecentlyBlocked => 'Recently blocked';
+
+  @override
+  String get appsNotYetOnIphone => 'Not yet available on iPhone';
+
+  @override
+  String get p12BlockSiteTitle => 'Block a site';
+
+  @override
+  String get p12AllowSiteTitle => 'Allow a site';
 }

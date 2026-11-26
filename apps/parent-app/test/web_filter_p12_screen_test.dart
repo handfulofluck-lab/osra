@@ -216,7 +216,7 @@ void main() {
   });
 
   testWidgets(
-      '"Allow site" on a recently blocked host opens filled with that exact domain and stores it verbatim '
+      '"Allow site" on a recently blocked host opens filled with that exact domain, under the Bureau\'s own dialog title, and stores it verbatim '
       '(mutant: a field opened empty, or a stored value widened to www.<domain>)',
       (tester) async {
     final api = _makeApi();
@@ -224,8 +224,16 @@ void main() {
 
     final allow = find.byKey(const ValueKey('p12-allow-example.com'));
     await _scrollTo(tester, allow);
+    expect(
+      find.descendant(of: allow, matching: find.text('Allow site')),
+      findsOneWidget,
+    );
     await tester.tap(allow);
     await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: find.byType(AlertDialog), matching: find.text('Allow a site')),
+      findsOneWidget,
+    );
 
     final field = tester.widget<TextField>(find.byKey(const ValueKey('p12-site-field')));
     expect(field.controller!.text, 'example.com');
@@ -284,7 +292,9 @@ void main() {
       ),
     );
     expect(find.byKey(const ValueKey('p12-enforcement-banner')), findsOneWidget);
-    expect(find.byKey(const ValueKey('p12-not-blocked-pill')), findsOneWidget);
+    final pill = find.byKey(const ValueKey('p12-not-blocked-pill'));
+    expect(pill, findsOneWidget);
+    expect(find.descendant(of: pill, matching: find.text('Not blocking yet')), findsOneWidget);
     expect(find.textContaining('Web filter (VPN consent)'), findsOneWidget);
   });
 
@@ -298,13 +308,18 @@ void main() {
   });
 
   testWidgets(
-      'recently blocked is hidden whole when the server withholds host names, and says "no blocked sites" for a real empty week '
+      '"Recently blocked" is hidden whole when the server withholds host names, and says "no blocked sites" for a real empty week '
       '(mutant: treating an absent key as an empty list — the network-off screen then claims a clean week)',
       (tester) async {
     await _pumpScreen(tester, api: _makeApi(summary: _summary(withHosts: false)));
-    await _scrollTo(tester, find.byKey(const ValueKey('p12-blocked-card')));
+    // Scroll past where the card would be, to a card that is always there, so the
+    // absence is "hidden", not "not built yet".
+    await _scrollTo(tester, find.byKey(const ValueKey('p12-blocked-sites-card')));
+    expect(find.byKey(const ValueKey('p12-blocked-sites-card')), findsOneWidget);
+    expect(find.byKey(const ValueKey('p12-blocked-card')), findsNothing);
     expect(find.byKey(const ValueKey('p12-recent-example.com')), findsNothing);
     expect(find.byKey(const ValueKey('p12-recently-empty')), findsNothing);
+    expect(find.text('Recently blocked'), findsNothing);
 
     await _pumpScreen(
       tester,
@@ -314,17 +329,23 @@ void main() {
       ),
     );
     await _scrollTo(tester, find.byKey(const ValueKey('p12-recently-empty')));
-    expect(find.byKey(const ValueKey('p12-recently-empty')), findsOneWidget);
+    expect(find.byKey(const ValueKey('p12-blocked-card')), findsOneWidget);
+    expect(find.text('Recently blocked'), findsOneWidget);
     expect(find.byKey(const ValueKey('p12-recent-example.com')), findsNothing);
   });
 
   testWidgets(
-      'an iPhone-only child reads "Not available" instead of the Android browser coverage line '
+      'an iPhone-only child reads "Not yet available on iPhone" instead of the Android browser coverage line '
       '(mutant: branching on the Android wording for every platform)',
       (tester) async {
     await _pumpScreen(tester, api: _makeApi(overview: _overview(platform: 'ios')));
     await _scrollTo(tester, find.byKey(const ValueKey('p12-browsers-card')));
-    expect(find.byKey(const ValueKey('p12-iphone-not-available')), findsOneWidget);
+    final pill = find.byKey(const ValueKey('p12-iphone-not-available'));
+    expect(pill, findsOneWidget);
+    expect(
+      find.descendant(of: pill, matching: find.text('Not yet available on iPhone')),
+      findsOneWidget,
+    );
     expect(find.byKey(const ValueKey('p12-browsers-android')), findsNothing);
 
     await _pumpScreen(tester, api: _makeApi());
