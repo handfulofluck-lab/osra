@@ -51,6 +51,7 @@ void main() {
       'settingsRow-twoStep',
       'settingsRow-signOut',
       'settingsRow-signOutAll',
+      'settingsRow-digest',
       'settingsRow-deleteAccount',
     ]) {
       expect(find.byKey(ValueKey(key)), findsOneWidget, reason: '$key must be on the list');

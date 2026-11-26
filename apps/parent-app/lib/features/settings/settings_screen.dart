@@ -63,23 +63,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final overview = ref.watch(familyProvider).valueOrNull;
     final twoStepOn = overview?.parent.mfaEnabled ?? false;
 
+    // A21: every row carries its current value on the trailing side and wraps under the label at 320 px /
+    // 200 %, so a long value never truncates the label it belongs to.
     Widget row({
       required Key key,
       required String label,
       String? value,
       IconData icon = Icons.chevron_right,
       VoidCallback? onTap,
+      bool danger = false,
     }) =>
-        ListTile(
-          key: key,
-          minVerticalPadding: AppSpace.md,
-          leading: Icon(icon, color: theme.colorScheme.onSurfaceVariant),
-          title: Text(label),
-          trailing: Text(
-            value ?? '',
-            style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-          onTap: onTap,
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final narrow = constraints.maxWidth < 360 || MediaQuery.textScalerOf(context).scale(14) > 16;
+            final valueStyle =
+                theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+            final titleStyle = danger
+                ? theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.error)
+                : null;
+            return ListTile(
+              key: key,
+              minVerticalPadding: AppSpace.md,
+              leading: Icon(icon,
+                  color: danger ? theme.colorScheme.error : theme.colorScheme.onSurfaceVariant),
+              title: Text(label, style: titleStyle),
+              subtitle: narrow && value != null ? Text(value, style: valueStyle) : null,
+              trailing: narrow ? null : Text(value ?? '', style: valueStyle),
+              onTap: onTap,
+            );
+          },
         );
 
     Widget group(String heading, List<Widget> children) => Column(
@@ -147,9 +159,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 onTap: _signingOutAll ? null : _signOutEverywhere,
               ),
               row(
+                key: const ValueKey('settingsRow-digest'),
+                label: l10n.digestPrefsTitle,
+                icon: Icons.mail_outline,
+                onTap: () => context.push('/settings/digests'),
+              ),
+              // Delete account is last in Account and in the error colour (A21 rule).
+              row(
                 key: const ValueKey('settingsRow-deleteAccount'),
                 label: l10n.deleteAccountTitle,
                 icon: Icons.delete_outline,
+                danger: true,
                 onTap: () => context.push('/settings/delete-account'),
               ),
             ]),
