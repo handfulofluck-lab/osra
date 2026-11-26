@@ -1034,6 +1034,12 @@ abstract class AppLocalizations {
   /// **'The phone hasn\'t picked this change up yet.'**
   String get rulesBehindHint;
 
+  /// No description provided for @rulesWaitingFirstApply.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the phone to apply rules.'**
+  String get rulesWaitingFirstApply;
+
   /// No description provided for @rulesLoadFailed.
   ///
   /// In en, this message translates to:

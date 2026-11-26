@@ -163,6 +163,7 @@
   "commandRefusedNotSupported": "«{command}» غير متاح على {device}: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.",
   "commandRefusedInvalidPayload": "رفض الهاتف إعدادات هذا الأمر.",
   "rulesBehindHint": "لم يستلم الهاتف هذا التغيير بعد.",
+  "rulesWaitingFirstApply": "بانتظار أن يطبّق الهاتف القواعد.",
   "rulesLoadFailed": "تعذّر تحميل القواعد. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "noPerAppRules": "لا توجد قواعد لكل تطبيق",
   "appActionBlock": "حظر",
