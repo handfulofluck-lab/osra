@@ -331,6 +331,19 @@ class _OverviewTab extends ConsumerWidget {
             onTap: () => context.push('/child/$childId/consent'),
           ),
         ),
+        // P-10: the new Screen time screen. Added after everything else so no card above moves, and the
+        // bonus and wind-down cards stay here as the fallback.
+        const SizedBox(height: AppSpace.sm),
+        Card(
+          child: ListTile(
+            key: const ValueKey('screenTimeScreenTile'),
+            leading: const Icon(Icons.hourglass_bottom),
+            title: Text(l10n.screenTime),
+            subtitle: Text(l10n.screenTimeOpenDesc),
+            trailing: const Icon(Icons.arrow_forward, size: 18),
+            onTap: () => context.push('/child/$childId/screen-time'),
+          ),
+        ),
       ],
       ),
     ),

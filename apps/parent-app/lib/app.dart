@@ -22,6 +22,7 @@ import 'features/pairing/pair_qr_screen.dart';
 import 'features/reports/reports_screen.dart';
 import 'features/reports/usage_history_screen.dart';
 import 'features/rules/rules_editor_screen.dart';
+import 'features/rules/screen_time_screen.dart';
 import 'features/settings/appearance_screen.dart';
 import 'features/settings/digest_prefs_screen.dart';
 import 'features/settings/delete_account_screen.dart';
@@ -94,6 +95,7 @@ final List<RouteBase> appRoutes = [
   ),
   GoRoute(path: '/child/:id/reports', builder: (_, s) => ReportsScreen(childId: s.pathParameters['id']!)),
   GoRoute(path: '/child/:id/history', builder: (_, s) => UsageHistoryScreen(childId: s.pathParameters['id']!)),
+  GoRoute(path: '/child/:id/screen-time', builder: (_, s) => ScreenTimeScreen(childId: s.pathParameters['id']!)),
   GoRoute(
     path: '/child/:id/rules',
     builder: (_, s) => RulesEditorScreen(

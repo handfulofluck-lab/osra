@@ -3871,4 +3871,114 @@ class AppLocalizationsAr extends AppLocalizations {
   String alertBodyDataCleared(String model) {
     return 'أُعيد تثبيت تطبيق أسرة للأطفال على $model، وكانت الحماية متوقفة إلى أن أُعيد الإقران.';
   }
+
+  @override
+  String get screenTimeOpenDesc => 'الحدود والوقت الإضافي واستخدام اليوم';
+
+  @override
+  String stLeftToday(String left) {
+    return 'المتبقي اليوم: $left';
+  }
+
+  @override
+  String stOverLimit(String over) {
+    return 'الزيادة على حد اليوم: $over';
+  }
+
+  @override
+  String stUsedOf(String used, String limit) {
+    return 'المستخدم: $used · الحد: $limit';
+  }
+
+  @override
+  String stUsedToday(String used) {
+    return 'المستخدم اليوم: $used';
+  }
+
+  @override
+  String get stNoLimitSet => 'لم يُضبط حد يومي';
+
+  @override
+  String stHoursMinutes(String hours, String minutes) {
+    return '$hours و$minutes';
+  }
+
+  @override
+  String get stAddTimeHeader => 'إضافة وقت · لليوم فقط';
+
+  @override
+  String get stEveryWeekHeader => 'كل أسبوع';
+
+  @override
+  String get stSchoolDays => 'أيام الدراسة';
+
+  @override
+  String get stSchoolDaysRange => 'من الاثنين إلى الجمعة';
+
+  @override
+  String get stWeekend => 'عطلة نهاية الأسبوع';
+
+  @override
+  String get stWeekendRange => 'السبت والأحد';
+
+  @override
+  String get stNoLimit => 'بلا حد';
+
+  @override
+  String get stSameAsSchoolDays => 'مثل أيام الدراسة';
+
+  @override
+  String get stWeekendNeedsSchool => 'اضبط حد أيام الدراسة أولًا';
+
+  @override
+  String stLess(String label) {
+    return 'تقليل حد $label';
+  }
+
+  @override
+  String stMore(String label) {
+    return 'زيادة حد $label';
+  }
+
+  @override
+  String get stNeverCounted => 'تطبيقات لا يُحتسب وقتها';
+
+  @override
+  String stNeverCountedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count تطبيق مسموح دائمًا',
+      many: '$count تطبيقًا مسموحًا دائمًا',
+      few: '$count تطبيقات مسموحة دائمًا',
+      two: 'تطبيقان مسموحان دائمًا',
+      one: 'تطبيق واحد مسموح دائمًا',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get stNeverCountedNone => 'لا توجد تطبيقات مسموحة دائمًا بعد';
+
+  @override
+  String get stView => 'عرض';
+
+  @override
+  String get stWhereTimeWent => 'توزيع وقت اليوم';
+
+  @override
+  String get stNoUseYet => 'لم يُبلَّغ عن استخدام أي تطبيق اليوم بعد';
+
+  @override
+  String get stSaved => 'تم الحفظ. يطبّقه الهاتف عند اتصاله التالي.';
+
+  @override
+  String get stSaveFailed => 'تعذّر حفظ الحد.';
+
+  @override
+  String get stLoadFailed => 'تعذّر تحميل وقت الشاشة.';
+
+  @override
+  String get stIphoneNotYet =>
+      'غير متاح بعد على آيفون: الوقت المستخدم والحدود اليومية تعمل على هواتف أندرويد فقط.';
 }

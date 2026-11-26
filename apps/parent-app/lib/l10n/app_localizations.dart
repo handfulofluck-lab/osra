@@ -5900,6 +5900,174 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'OSRA was reinstalled on {model}. Its protection was off until it was paired again.'**
   String alertBodyDataCleared(String model);
+
+  /// No description provided for @screenTimeOpenDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Limits, extra time and today\'s use'**
+  String get screenTimeOpenDesc;
+
+  /// No description provided for @stLeftToday.
+  ///
+  /// In en, this message translates to:
+  /// **'{left} left today'**
+  String stLeftToday(String left);
+
+  /// No description provided for @stOverLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'{over} over today\'s limit'**
+  String stOverLimit(String over);
+
+  /// No description provided for @stUsedOf.
+  ///
+  /// In en, this message translates to:
+  /// **'{used} used of {limit}'**
+  String stUsedOf(String used, String limit);
+
+  /// No description provided for @stUsedToday.
+  ///
+  /// In en, this message translates to:
+  /// **'{used} used today'**
+  String stUsedToday(String used);
+
+  /// No description provided for @stNoLimitSet.
+  ///
+  /// In en, this message translates to:
+  /// **'No daily limit is set'**
+  String get stNoLimitSet;
+
+  /// No description provided for @stHoursMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours} {minutes}'**
+  String stHoursMinutes(String hours, String minutes);
+
+  /// No description provided for @stAddTimeHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'Add time · today only'**
+  String get stAddTimeHeader;
+
+  /// No description provided for @stEveryWeekHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'Every week'**
+  String get stEveryWeekHeader;
+
+  /// No description provided for @stSchoolDays.
+  ///
+  /// In en, this message translates to:
+  /// **'School days'**
+  String get stSchoolDays;
+
+  /// No description provided for @stSchoolDaysRange.
+  ///
+  /// In en, this message translates to:
+  /// **'Monday to Friday'**
+  String get stSchoolDaysRange;
+
+  /// No description provided for @stWeekend.
+  ///
+  /// In en, this message translates to:
+  /// **'Weekend'**
+  String get stWeekend;
+
+  /// No description provided for @stWeekendRange.
+  ///
+  /// In en, this message translates to:
+  /// **'Saturday and Sunday'**
+  String get stWeekendRange;
+
+  /// No description provided for @stNoLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'No limit'**
+  String get stNoLimit;
+
+  /// No description provided for @stSameAsSchoolDays.
+  ///
+  /// In en, this message translates to:
+  /// **'Same as school days'**
+  String get stSameAsSchoolDays;
+
+  /// No description provided for @stWeekendNeedsSchool.
+  ///
+  /// In en, this message translates to:
+  /// **'Set a school-day limit first'**
+  String get stWeekendNeedsSchool;
+
+  /// No description provided for @stLess.
+  ///
+  /// In en, this message translates to:
+  /// **'Less time on {label}'**
+  String stLess(String label);
+
+  /// No description provided for @stMore.
+  ///
+  /// In en, this message translates to:
+  /// **'More time on {label}'**
+  String stMore(String label);
+
+  /// No description provided for @stNeverCounted.
+  ///
+  /// In en, this message translates to:
+  /// **'Never counted'**
+  String get stNeverCounted;
+
+  /// No description provided for @stNeverCountedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 app is always allowed} other{{count} apps are always allowed}}'**
+  String stNeverCountedCount(int count);
+
+  /// No description provided for @stNeverCountedNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No apps are always allowed yet'**
+  String get stNeverCountedNone;
+
+  /// No description provided for @stView.
+  ///
+  /// In en, this message translates to:
+  /// **'View'**
+  String get stView;
+
+  /// No description provided for @stWhereTimeWent.
+  ///
+  /// In en, this message translates to:
+  /// **'Where today\'s time went'**
+  String get stWhereTimeWent;
+
+  /// No description provided for @stNoUseYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No app use reported yet today'**
+  String get stNoUseYet;
+
+  /// No description provided for @stSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved. The phone picks it up when it next checks in.'**
+  String get stSaved;
+
+  /// No description provided for @stSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t save the limit.'**
+  String get stSaveFailed;
+
+  /// No description provided for @stLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load screen time.'**
+  String get stLoadFailed;
+
+  /// No description provided for @stIphoneNotYet.
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet available on iPhone: time used and daily limits work on Android phones only.'**
+  String get stIphoneNotYet;
 }
 
 class _AppLocalizationsDelegate
