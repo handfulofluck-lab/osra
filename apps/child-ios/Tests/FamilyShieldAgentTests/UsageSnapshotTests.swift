@@ -74,3 +74,65 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(decoded, snapshot, "what the extension writes is what the agent uploads")
     }
 }
+
+/// #1046: the app group handoff. The distinction these rows protect is "unreadable" versus "no use" — a parent
+/// should see "not available yet", never a zero, when the extension has not written anything.
+final class UsageStoreTests: XCTestCase {
+
+    private var suite: String { "UsageStoreTests" }
+    private var defaults: UserDefaults? { UserDefaults(suiteName: suite) }
+
+    override func setUp() {
+        super.setUp()
+        defaults?.removePersistentDomain(forName: suite)
+    }
+
+    override func tearDown() {
+        defaults?.removePersistentDomain(forName: suite)
+        super.tearDown()
+    }
+
+    private func snapshot() -> UsageSnapshot {
+        UsagePolicy.snapshot(day: "2026-11-26",
+                             collected: [UsageSnapshot.Entry(bundleId: "com.google.ios.youtube", label: "YouTube", minutes: 42)])
+    }
+
+    func testNothingWrittenReadsAsNilNotAnEmptyDay() {
+        XCTAssertNil(UsageStore(defaults: defaults).load(),
+                     "no snapshot is 'not available', not 'no use' — the parent must not be told zero")
+    }
+
+    func testADaySurvivesTheRoundTrip() {
+        let store = UsageStore(defaults: defaults)
+        XCTAssertTrue(store.save(snapshot()))
+        XCTAssertEqual(store.load(), snapshot())
+    }
+
+    func testSavingADayReplacesThePreviousOne() {
+        let store = UsageStore(defaults: defaults)
+        store.save(snapshot())
+        let newer = UsagePolicy.snapshot(day: "2026-11-27",
+                                         collected: [UsageSnapshot.Entry(bundleId: "com.burbn.instagram", label: "Instagram", minutes: 5)])
+        store.save(newer)
+        XCTAssertEqual(store.load()?.day, "2026-11-27", "one day is held at a time; the extension writes the newest")
+    }
+
+    func testClearingAfterUploadRemovesIt() {
+        let store = UsageStore(defaults: defaults)
+        store.save(snapshot())
+        store.clear()
+        XCTAssertNil(store.load(), "an uploaded day is not sent twice")
+    }
+
+    func testAnUndecodableValueReadsAsNil() {
+        defaults?.set(Data("not a snapshot".utf8), forKey: UsageStore.key)
+        XCTAssertNil(UsageStore(defaults: defaults).load(),
+                     "a corrupt value is unreadable, which is not the same as an empty day")
+    }
+
+    func testNoAppGroupWritesNothingAndSaysSo() {
+        let store = UsageStore(defaults: nil)
+        XCTAssertFalse(store.save(snapshot()), "without the app group the write fails, and the caller must know")
+        XCTAssertNil(store.load())
+    }
+}
