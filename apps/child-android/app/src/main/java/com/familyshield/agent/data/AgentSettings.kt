@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -52,6 +53,11 @@ class AgentSettings @Inject constructor(
     @Volatile private var baseUrlCache: String? = null
     @Volatile private var baseUrlLoaded: Boolean = false
     @Volatile private var tokenLoaded: Boolean = false
+
+    // Issue #1162: the first `device_revoked` answer, so a process death between the two answers does not
+    // restart the confirmation clock. Same cold-start pattern as the token cache above.
+    @Volatile private var firstRevokedCache: Long? = null
+    @Volatile private var firstRevokedLoaded: Boolean = false
 
     /** Returns the enrolled device id, or null when not yet provisioned. */
     suspend fun deviceId(): String? = read(KEY_DEVICE_ID).also { deviceIdCache = it }
@@ -132,6 +138,32 @@ class AgentSettings @Inject constructor(
 
     /** True when an unlink was started and not finished; see [setUnlinkPending]. */
     suspend fun unlinkPending(): Boolean = store.data.first()[KEY_UNLINK_PENDING] ?: false
+
+    /**
+     * Synchronous snapshot of the persisted first revocation answer, for [com.familyshield.agent.network
+     * .UnlinkPolicy] (#1162). Blocking read once per process, for the same reason [deviceTokenSync] does it:
+     * the provider is not a coroutine.
+     */
+    fun firstRevokedAtMsSync(): Long? {
+        if (!firstRevokedLoaded) {
+            synchronized(this) {
+                if (!firstRevokedLoaded) {
+                    firstRevokedCache = runBlocking { store.data.first()[KEY_FIRST_REVOKED_AT] }
+                    firstRevokedLoaded = true
+                }
+            }
+        }
+        return firstRevokedCache
+    }
+
+    /** Stores the first `device_revoked` answer, or clears it. Called from the policy's persist callback. */
+    suspend fun saveFirstRevokedAtMs(ms: Long?) {
+        firstRevokedCache = ms
+        firstRevokedLoaded = true
+        store.edit { prefs ->
+            if (ms == null) prefs.remove(KEY_FIRST_REVOKED_AT) else prefs[KEY_FIRST_REVOKED_AT] = ms
+        }
+    }
 
     /**
      * Issue #465: drop the cached rule set when this phone is no longer linked to a family. The last
@@ -537,6 +569,9 @@ class AgentSettings @Inject constructor(
         private val KEY_RULES_JSON = stringPreferencesKey("rules_json")
         private val KEY_APPLIED_RULES_VERSION = stringPreferencesKey("applied_rules_version")
         private val KEY_UNLINK_PENDING = booleanPreferencesKey("unlink_pending")
+
+        /** Issue #1162: when the first `device_revoked` answer arrived, cleared once it is used or disproved. */
+        private val KEY_FIRST_REVOKED_AT = longPreferencesKey("first_revoked_at")
         private val KEY_BLOCKLIST_JSON = stringPreferencesKey("blocklist_json")
         private val KEY_BLOCKLIST_DOMAINS_JSON = stringPreferencesKey("blocklist_domains_json")
         private val KEY_BASE_URL = stringPreferencesKey("base_url")

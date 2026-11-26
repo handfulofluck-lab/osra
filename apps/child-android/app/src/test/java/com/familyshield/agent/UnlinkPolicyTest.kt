@@ -119,4 +119,18 @@ class UnlinkPolicyTest {
         assertNull("the half-confirmation is gone", policy.pendingSinceMs())
         assertNull("a 200 proves the phone is linked, so it goes from disk too", stored)
     }
+
+    @Test
+    fun `an in-memory first answer older than the window starts a fresh clock instead of confirming`() {
+        // #1162, Ahmed's condition: the stale check must live in onDeviceRevoked, not only in init — a phone
+        // that stays up for hours is exactly the case the persisted-then-in-memory design misses.
+        var stored: Long? = null
+        val policy = UnlinkPolicy(persist = { stored = it })
+        val t0 = 1_000_000L
+        assertFalse("first answer", policy.onDeviceRevoked(t0))
+        val elevenMinutes = t0 + 660_000L
+        assertFalse("an 11-minute-old answer is stale, so this starts again", policy.onDeviceRevoked(elevenMinutes))
+        assertEquals("the clock restarted at the new answer", elevenMinutes, stored ?: -1L)
+        assertTrue("60 s later it confirms", policy.onDeviceRevoked(elevenMinutes + 60_000L))
+    }
 }

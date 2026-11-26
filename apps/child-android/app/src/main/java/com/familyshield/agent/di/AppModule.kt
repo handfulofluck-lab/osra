@@ -4,7 +4,12 @@ import android.app.admin.DevicePolicyManager
 import android.content.Context
 import com.familyshield.agent.enforcement.AndroidPackageFacts
 import com.familyshield.agent.enforcement.PackageFacts
+import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.network.UnlinkPolicy
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -39,5 +44,13 @@ object AppModule {
      */
     @Provides
     @Singleton
-    fun provideUnlinkPolicy(): UnlinkPolicy = UnlinkPolicy()
+    fun provideUnlinkPolicy(settings: AgentSettings): UnlinkPolicy {
+        // Issue #1162: the persisted first answer, so a process death between the two `device_revoked` answers
+        // no longer restarts the clock. The write is fire-and-forget: the poll must never wait on DataStore.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        return UnlinkPolicy(
+            persistedFirstRevokedAtMs = settings.firstRevokedAtMsSync(),
+            persist = { ms -> scope.launch { settings.saveFirstRevokedAtMs(ms) } },
+        )
+    }
 }
