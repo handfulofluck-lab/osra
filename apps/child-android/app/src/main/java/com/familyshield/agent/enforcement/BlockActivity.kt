@@ -14,6 +14,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -34,6 +35,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -152,8 +154,16 @@ class BlockActivity : ComponentActivity() {
         reportBlockedAttempt(request.packageId, request.reason)
 
         setContent {
-            if (request.reason != REASON_FILTER_LOST && ChildUxFlags.c02BlockedScreenEnabled) {
-                OsraTheme.OsraTheme {
+            val useC02 = request.reason != REASON_FILTER_LOST && ChildUxFlags.c02BlockedScreenEnabled
+            val darkTheme = isSystemInDarkTheme()
+            SideEffect {
+                val controller = WindowCompat.getInsetsController(window, window.decorView)
+                val lightIconsBackground = useC02 && !darkTheme
+                controller.isAppearanceLightStatusBars = lightIconsBackground
+                controller.isAppearanceLightNavigationBars = lightIconsBackground
+            }
+            if (useC02) {
+                OsraTheme.OsraTheme(darkTheme = darkTheme) {
                     key(request.packageId, request.reason) {
                         val explanation = BlockExplainPolicy.explain(
                             ruleSet = rules.cachedRules(),

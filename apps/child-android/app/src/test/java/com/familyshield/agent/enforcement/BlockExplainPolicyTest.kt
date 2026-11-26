@@ -284,9 +284,9 @@ class BlockExplainPolicyTest {
     }
 
     @Test
-    fun `isolation helpers wrap with LRI, single-unit LTR ranges, and FSI markers`() {
+    fun `isolation helpers wrap with LRI, non-breaking single-unit LTR ranges, and FSI markers`() {
         assertEquals("\u2066Minecraft\u2069", BlockExplainPolicy.ltrIsolate(" Minecraft "))
-        assertEquals("\u206621:00 – 07:00\u2069", BlockExplainPolicy.ltrRange(" 21:00 ", " 07:00 "))
+        assertEquals("\u206621:00\u00A0\u2060–\u2060\u00A007:00\u2069", BlockExplainPolicy.ltrRange(" 21:00 ", " 07:00 "))
         assertEquals("\u2068Homework\u2069", BlockExplainPolicy.firstStrongIsolate(" Homework "))
     }
 

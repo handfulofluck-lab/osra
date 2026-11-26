@@ -82,8 +82,13 @@ object BlockExplainPolicy {
     /** Wraps app names, numbers, and clock times in LRI...PDI for RTL safety. */
     fun ltrIsolate(value: String): String = "$LRI${value.trim()}$PDI"
 
-    /** Wraps an entire clock range ("21:00 – 07:00") in one LRI...PDI unit so RTL never breaks the dash. */
-    fun ltrRange(start: String, end: String): String = ltrIsolate("${start.trim()} – ${end.trim()}")
+    /**
+     * Wraps an entire clock range ("21:00 – 07:00") in one non-breaking LRI...PDI unit so RTL
+     * preserves order and narrow 320 dp / 200% layouts move the range as a whole instead of
+     * wrapping the end time onto a separate line (Codex #1188 B2).
+     */
+    fun ltrRange(start: String, end: String): String =
+        ltrIsolate("${start.trim()}\u00A0\u2060–\u2060\u00A0${end.trim()}")
 
     /** Wraps routine or adult names in FSI...PDI so their own script sets direction. */
     fun firstStrongIsolate(value: String): String = "$FSI${value.trim()}$PDI"
