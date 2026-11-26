@@ -1139,6 +1139,10 @@ describe("social alert per-contact window (#1029)", () => {
       expect(row.metadata.pushDeliverySeq).toBe(3);
       const idAfterThird = row.metadata.pushDeliveryId;
       expect(typeof idAfterThird).toBe("string");
+      const historyAfterThird = row.metadata.pushDeliveries as Array<{ id: string; seq: number; createdAt: string }>;
+      expect(historyAfterThird).toHaveLength(3);
+      expect(historyAfterThird.map((entry) => entry.seq)).toEqual([1, 2, 3]);
+      expect(historyAfterThird[2]!.id).toBe(idAfterThird);
 
       vi.setSystemTime(Date.now() + socialAlertWindowMs() + 1_000);
       const sweep = await runSocialAlertSummarySweep(new Date());
@@ -1148,12 +1152,40 @@ describe("social alert per-contact window (#1029)", () => {
       const after = alerts.get(row.id)!;
       expect(after.metadata.pushDeliverySeq).toBe(4);
       expect(after.metadata.pushDeliveryId).not.toBe(idAfterThird);
+      expect(after.metadata.pushDeliveries).toEqual([
+        ...historyAfterThird,
+        { id: after.metadata.pushDeliveryId, seq: 4, createdAt: new Date().toISOString() },
+      ]);
 
       // A repeated tick sends nothing more.
       const again = await runSocialAlertSummarySweep(new Date());
       expect(again.pushed).toHaveLength(0);
       expect(pushRounds()).toBe(4);
       await app.close();
+    });
+
+    it("retains the newest ten delivery entries in issue order on one alert card", async () => {
+      // Mutant: retaining only latest or failing to cap the list loses the expected ten entries.
+      vi.stubEnv("SOCIAL_ALERT_FIRST_PUSHES", "12");
+      const app = await buildApp(socialRoutes, "/v1/social");
+      vi.stubGlobal("fetch", aiFlagged("warning", "cyberbullying"));
+      try {
+        const issued: Array<{ id: unknown; seq: number; createdAt: string }> = [];
+        for (let seq = 1; seq <= 12; seq += 1) {
+          vi.setSystemTime(Date.now() + 10_000);
+          const res = await postScan(app, { childId: CHILD.id, app: "WhatsApp", contact: "Sam", text: `line ${seq}` });
+          expect(res.statusCode).toBe(200);
+          const row = [...alerts.values()][0]!;
+          expect(row.metadata.pushDeliverySeq).toBe(seq);
+          issued.push({ id: row.metadata.pushDeliveryId, seq, createdAt: new Date().toISOString() });
+        }
+        expect(alerts.size).toBe(1);
+        expect(pushRounds()).toBe(12);
+        expect(new Set(issued.map((entry) => entry.id)).size).toBe(12);
+        expect([...alerts.values()][0]!.metadata.pushDeliveries).toEqual(issued.slice(-10));
+      } finally {
+        await app.close();
+      }
     });
 
     it("a silent in-place update keeps the delivery fields unchanged", async () => {
@@ -1176,7 +1208,8 @@ describe("social alert per-contact window (#1029)", () => {
       await app.close();
     });
 
-    it("the budget spans contacts of one app, and a card created over budget carries no delivery fields", async () => {
+    it("the budget spans contacts of one app, and a card created over budget carries sequence zero", async () => {
+      // Mutant: leaving all fields absent makes the Parent planner treat this as a legacy push.
       const app = await buildApp(socialRoutes, "/v1/social");
       vi.stubGlobal("fetch", aiFlagged("warning", "cyberbullying"));
       for (const contact of ["A", "B", "C", "D"]) {
@@ -1190,8 +1223,38 @@ describe("social alert per-contact window (#1029)", () => {
       expect(d.metadata.pushedCount).toBe(0);
       expect(d.metadata.summaryPending).toBe(true);
       expect(d.metadata.pushDeliveryId).toBeUndefined();
+      expect(d.metadata.pushDeliverySeq).toBe(0);
+      expect(d.metadata.pushDeliveries).toBeUndefined();
       expect(byContact.get("A")!.metadata.pushDeliverySeq).toBe(1);
       await app.close();
+    });
+
+    it("two concurrent sweeps issue one child/app summary and keep folded silent cards silent", async () => {
+      // Mutant: claiming only individual contact rows lets each sweep issue a separate delivery.
+      const app = await buildApp(socialRoutes, "/v1/social");
+      vi.stubGlobal("fetch", aiFlagged("warning", "cyberbullying"));
+      try {
+        for (const contact of ["A", "A", "A", "A", "B", "C"]) {
+          vi.setSystemTime(Date.now() + 10_000);
+          const res = await postScan(app, { childId: CHILD.id, app: "WhatsApp", contact, text: `msg from ${contact}` });
+          expect(res.statusCode).toBe(200);
+        }
+        expect(pushRounds()).toBe(3);
+        vi.setSystemTime(Date.now() + socialAlertWindowMs() + 1_000);
+        const sweeps = await Promise.all([runSocialAlertSummarySweep(new Date()), runSocialAlertSummarySweep(new Date())]);
+        const deliveries = sweeps.flatMap((sweep) => sweep.pushed);
+        expect(deliveries).toHaveLength(1);
+        expect(deliveries[0]!.delta).toBe(3);
+        expect(pushRounds()).toBe(4);
+        const foldedSilent = [...alerts.values()].find((row) => row.metadata.contact === "B")!;
+        expect(foldedSilent.metadata.summaryPending).toBe(false);
+        expect(foldedSilent.metadata.summaryGroupedInto).toBe(deliveries[0]!.alertId);
+        expect(foldedSilent.metadata.pushDeliverySeq).toBe(0);
+        expect(foldedSilent.metadata.pushDeliveryId).toBeUndefined();
+        expect(foldedSilent.metadata.pushDeliveries).toBeUndefined();
+      } finally {
+        await app.close();
+      }
     });
 
     it("several closed windows of one child and app give ONE grouped summary push", async () => {

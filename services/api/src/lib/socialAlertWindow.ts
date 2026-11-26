@@ -112,11 +112,26 @@ export async function holdSocialPushBudget(
  * fires (a first-N push, a critical or step-up push, a summary). A silent in-place count update keeps the
  * previous pair, so the parent shows nothing new for it.
  */
-export function nextPushDelivery(metadata: Record<string, unknown> | null | undefined): { pushDeliveryId: string; pushDeliverySeq: number } {
-  const prev = metadata && typeof metadata.pushDeliverySeq === "number" && Number.isFinite(metadata.pushDeliverySeq)
-    ? Math.floor(metadata.pushDeliverySeq)
-    : 0;
-  return { pushDeliveryId: randomUUID(), pushDeliverySeq: prev + 1 };
+export function nextPushDelivery(metadata: Record<string, unknown> | null | undefined, createdAt: string) {
+  const previous = metadata?.pushDeliverySeq;
+  const seq = typeof previous === "number" && Number.isSafeInteger(previous) && previous > 0 ? previous + 1 : 1;
+  const delivery = { id: randomUUID(), seq, createdAt };
+  const history: Array<typeof delivery> = [];
+  if (Array.isArray(metadata?.pushDeliveries)) {
+    for (const entry of metadata.pushDeliveries) {
+      if (entry && typeof entry.id === "string" &&
+          Number.isSafeInteger(entry.seq) && entry.seq > 0 && entry.seq < seq &&
+          typeof entry.createdAt === "string") {
+        history.push({ id: entry.id, seq: entry.seq, createdAt: entry.createdAt });
+      }
+    }
+  }
+  return {
+    pushDeliveryId: delivery.id,
+    pushDeliverySeq: seq,
+    // A coalesced wake can recover the newest ten issued deliveries on this card.
+    pushDeliveries: [...history.slice(-9), delivery],
+  };
 }
 
 export type SocialSeverity = "info" | "warning" | "critical";
@@ -564,7 +579,7 @@ async function applyObservationsToAlert(
       ...(nextAppliedIds.length > 0 ? { appliedDeferredIds: nextAppliedIds } : {}),
       ...(mergedAttribution ? { providerOutcomes: mergedAttribution } : {}),
       // #1139: a new delivery identity only when this update is pushed.
-      ...(pushNow ? nextPushDelivery(existingMetaObj) : {}),
+      ...(pushNow ? nextPushDelivery(existingMetaObj, ctx.nowIso) : {}),
     };
 
     const nextBody = `${nextCount} concerning messages on ${ctx.appName}`;
@@ -795,7 +810,7 @@ export async function recordFlaggedSocialAlert(
               pushedSeverity: severity,
               summaryPending: !budgetAllowed,
               summaryPushed: false,
-              ...(budgetAllowed ? nextPushDelivery(null) : {}),
+              ...(budgetAllowed ? nextPushDelivery(null, nowIso) : { pushDeliverySeq: 0 }),
               ...(attribution && Object.keys(attribution).length > 0 && { providerOutcomes: attribution }),
             },
             childName: childName ?? undefined,

@@ -19,8 +19,8 @@ import {
  * Mirrors `jobs/pendingDevices.ts` and `jobs/deviceSilence.ts`:
  * - Polls on a short interval (`SOCIAL_SUMMARY_TICK_MS = 30 s`) for per-contact social alert
  *   windows whose `windowEndsAt` has elapsed with `flaggedCount > pushedCount`.
- * - Uses a Redis `SET NX` claim per `(alertId, windowEndsAt)` so multiple API instances never send
- *   duplicate summary pushes.
+ * - A shared Redis claim per child and app admits one summary worker per window. An additional
+ *   per-alert claim guards row rollover.
  * - Sends at most one lock-screen-safe summary push per closed window (via `notifyParentsOfAlert`,
  *   which emits zero message text and zero contact names), updates the alert row in place, and
  *   opens a fresh 10-minute window on that push so a parent never receives more than one push per
@@ -97,6 +97,7 @@ export async function runSocialAlertSummarySweep(
     return bt - at;
   });
   const pushedByGroup = new Map<string, SocialSummaryPushedItem>();
+  const claimedGroups = new Map<string, boolean>();
 
   for (const candidate of ordered) {
     const childInfo = (candidate as { child?: { familyId?: string; displayName?: string | null } | null }).child;
@@ -118,14 +119,24 @@ export async function runSocialAlertSummarySweep(
     const delta = meta.flaggedCount - meta.pushedCount;
     if (delta <= 0) continue;
 
-    // Multi-instance guard: only one API instance may emit the summary push for this window close.
+    if (!familyId) continue;
+
+    const groupKey = `${row.childId}:${meta.app.trim().toLowerCase()}`;
+    // Claim the whole child/app group before claiming any contact row, so a
+    // second worker cannot summarize a different contact during this window.
+    let groupClaimed = claimedGroups.get(groupKey);
+    if (groupClaimed === undefined) {
+      const claim = await redis.set(`jobs:social-summary-group:${groupKey}`, nowIso, "EX", windowSeconds, "NX")
+        .catch(() => null);
+      groupClaimed = claim === "OK";
+      claimedGroups.set(groupKey, groupClaimed);
+    }
+    if (!groupClaimed) continue;
+
     const claimKey = `jobs:social-summary:${row.id}:${meta.windowEndsAt}`;
     const claim = await redis.set(claimKey, nowIso, "EX", windowSeconds, "NX").catch(() => null);
     if (claim !== "OK") continue;
 
-    if (!familyId) continue;
-
-    const groupKey = `${row.childId}:${meta.app.trim().toLowerCase()}`;
     const groupPush = pushedByGroup.get(groupKey);
     const willPush = !groupPush;
     const nextWindowEndsAt = new Date(nowMs + windowMs).toISOString();
@@ -139,7 +150,9 @@ export async function runSocialAlertSummarySweep(
       windowStartedAt: nowIso,
       windowEndsAt: nextWindowEndsAt,
       // Delivery fields change ONLY on the row whose push actually fires (#1139 parent contract).
-      ...(willPush ? nextPushDelivery(rawMeta) : { summaryGroupedInto: groupPush!.alertId }),
+      ...(willPush
+        ? nextPushDelivery(rawMeta, nowIso)
+        : { pushDeliverySeq: rawMeta?.pushDeliverySeq ?? 0, summaryGroupedInto: groupPush!.alertId }),
     };
 
     const updated = await prisma.alert.update({
