@@ -254,7 +254,12 @@ class Device {
                 (json['capabilities'] as Map)['client'] is Map &&
                 ((json['capabilities'] as Map)['client'] as Map)['flavour']
                     is String
-            ? _str(((json['capabilities'] as Map)['client'] as Map)['flavour'])
+            ? switch (_str(
+                ((json['capabilities'] as Map)['client'] as Map)['flavour'])) {
+                'play' => 'play',
+                'full' => 'full',
+                _ => '',
+              }
             : '',
       );
 

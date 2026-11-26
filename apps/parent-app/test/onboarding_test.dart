@@ -554,6 +554,25 @@ void main() {
       expect(find.text('Done'), findsOneWidget);
     });
 
+    testWidgets('unknown or differently-cased flavours never unlock Done',
+        (tester) async {
+      for (final flavour in ['bogus', 'FULL']) {
+        p06Prefs();
+        final api = FakeApiClient(onboardingRoutes(
+          children: [childJson('child-1', 'Alex')],
+          devices: [
+            p06Device(
+              flavour: flavour,
+              states: {'notification_listener': 'missing'},
+            )
+          ],
+        ));
+        await pumpStep(tester, const SetupDoneScreen(), api);
+        expect(find.text('Done'), findsNothing, reason: flavour);
+        expect(find.byKey(const ValueKey('onboardingFinish')), findsOneWidget);
+      }
+    });
+
     testWidgets('Show me how opens the child-side instructions',
         (tester) async {
       p06Prefs();
