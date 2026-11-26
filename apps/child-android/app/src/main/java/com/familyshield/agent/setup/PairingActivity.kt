@@ -473,7 +473,6 @@ class PairingActivity : ComponentActivity() {
                 c05Enabled = ChildUxFlags.c05FirstRunEnabled,
             )
         ) {
-            PrePairStage.WELCOME -> showWelcome(prefillServer, prefillCode, prefillName, scanned = scanned)
             PrePairStage.PRE_PAIR_PERMISSIONS -> {
                 forceChecklistView = false
                 showChecklist(rows, firstRun = true)
@@ -483,6 +482,7 @@ class PairingActivity : ComponentActivity() {
                 showChecklist(rows, firstRun = true)
             }
             PrePairStage.PAIRING_FORM -> showForm(prefillServer, prefillCode, prefillName, scanned = scanned)
+            else -> showWelcome(prefillServer, prefillCode, prefillName, scanned = scanned)
         }
     }
 
