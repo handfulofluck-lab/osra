@@ -1,0 +1,1 @@
+- Child Android (Full build): the app now names its version correctly, so it sends its permissions report and its `X-OSRA-Client` header again. Before this, every Full build had the version name `0.2.0-full`, which failed the version check, so the server never learned which setup steps were done and Phone setup never showed as complete.

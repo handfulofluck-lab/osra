@@ -223,6 +223,10 @@ class CapabilitiesPolicyTest {
     fun `a build that cannot name itself sends no report`() {
         // A report whose client block fails the strict schema rejects the whole upload, so it is not sent.
         assertNull(CapabilitiesPolicy.report("0.2.0-rc1", 2, "full", facts()))
+        // #50 26 Nov: the Full flavour's real VERSION_NAME ("0.2.0-full") must still produce a report.
+        val full = CapabilitiesPolicy.report("0.2.0-full", 88, "full", facts())!!
+        assertEquals("0.2.0", (full["client"] as Map<*, *>)["version"])
+        assertEquals("full", (full["client"] as Map<*, *>)["flavour"])
         assertNull(CapabilitiesPolicy.report(null, 2, "full", facts()))
     }
 }

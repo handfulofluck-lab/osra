@@ -33,6 +33,14 @@ object ClientHeader {
     const val FLAVOUR_PLAY = "play"
     const val FLAVOUR_FULL = "full"
 
+    /**
+     * `app/build.gradle.kts` gives the Full flavour `versionNameSuffix = "-full"`, so its `VERSION_NAME` is
+     * `0.2.0-full`. The flavour already travels in its own field, so that one known suffix is dropped before
+     * the digit check. Without this every Full build sent no header and no capability report at all (#50, 26 Nov:
+     * `capabilitiesReportedAt` was never set on either test phone). Any other suffix (`-rc1`) still sends nothing.
+     */
+    const val FULL_VERSION_SUFFIX = "-full"
+
     private val VERSION_PART = Regex("^\\d{1,4}$")
     private val FLAVOUR = Regex("^[a-z0-9-]{1,16}$")
 
@@ -61,7 +69,7 @@ object ClientHeader {
      * normalisers would eventually disagree, and the server compares the header against the report.
      */
     fun version(versionName: String?): String? {
-        val raw = versionName?.trim().orEmpty()
+        val raw = versionName?.trim().orEmpty().removeSuffix(FULL_VERSION_SUFFIX)
         if (raw.isEmpty()) return null
         val parts = raw.split('.')
         if (parts.size > 3) return null

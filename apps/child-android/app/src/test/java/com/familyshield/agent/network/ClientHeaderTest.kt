@@ -33,6 +33,17 @@ class ClientHeaderTest {
     }
 
     @Test
+    fun `the Full flavour's version name suffix is dropped, so the Full build names itself`() {
+        // build.gradle.kts: the full flavour has versionNameSuffix = "-full", so VERSION_NAME is "0.2.0-full".
+        assertEquals("0.2.0", ClientHeader.version("0.2.0-full"))
+        assertEquals("child-android/0.2.0+88 (full)", ClientHeader.value("0.2.0-full", 88, ClientHeader.FLAVOUR_FULL))
+        assertEquals("0.2.0", ClientHeader.version("0.2-full"))
+        // Only that one known suffix: anything else still sends nothing.
+        assertNull(ClientHeader.value("0.2.0-rc1-full", 88, "full"))
+        assertNull(ClientHeader.value("-full", 88, "full"))
+    }
+
+    @Test
     fun `a version the wire cannot express sends no header rather than a wrong one`() {
         // A wrong build number is worse than none: the version gate reads this number, and the server cannot
         // tell a typo from a release.
