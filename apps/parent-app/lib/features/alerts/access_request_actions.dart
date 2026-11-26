@@ -183,7 +183,6 @@ class _AccessRequestActionsState extends ConsumerState<AccessRequestActions> {
             l10n: context.l10n,
             resolution: resolution,
             identity: widget.identity,
-            resolvedAt: at,
           ),
         ),
       ),

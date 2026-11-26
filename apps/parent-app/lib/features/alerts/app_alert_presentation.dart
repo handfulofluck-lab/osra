@@ -87,9 +87,12 @@ String appAlertTitle({
         child, ltrIsolate(normalizeDigits('$minutes')));
   }
   final app = isolateAppAlertName(identity);
-  return isAccessRequestAlert(alert)
-      ? l10n.accessRequestTitle(child, app)
-      : l10n.accessRequestBlockedTitle(app, child);
+  if (isAccessRequestAlert(alert)) return l10n.accessRequestTitle(child, app);
+  final appName = alert.metadata['appName']?.toString().trim() ?? '';
+  if (appAlertPackageId(alert).isEmpty && appName.isEmpty) {
+    return l10n.alertTitleAppBlocked;
+  }
+  return l10n.accessRequestBlockedTitle(app, child);
 }
 
 String appAlertBody({
@@ -157,13 +160,11 @@ String accessResolvedSnack({
   required AppLocalizations l10n,
   required String resolution,
   required AppAlertIdentity identity,
-  DateTime? resolvedAt,
 }) {
   final app = isolateAppAlertName(identity);
-  final suffix = _timeSuffix(resolvedAt);
   return switch (resolution) {
-    'allowed' => l10n.accessRequestAllowedSnack(app, suffix),
-    'kept_blocked' => l10n.accessRequestKeptBlockedSnack(app, suffix),
+    'allowed' => l10n.accessRequestAllowedSnack(app),
+    'kept_blocked' => l10n.accessRequestKeptBlockedSnack(app),
     _ => l10n.accessRequestHandled,
   };
 }
