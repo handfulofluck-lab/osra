@@ -131,6 +131,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ],
         );
 
+    // P-22 / Karim's pick: the security check sits on top and shows only while something is unfinished.
+    // With no "codes saved" flag to read, the only item it can honestly carry is two-step verification.
+    final securityCard = twoStepOn
+        ? null
+        : Card(
+            key: const ValueKey('settingsSecurityCard'),
+            margin: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, AppSpace.sm, AppSpace.lg, 0),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpace.lg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(l10n.settingsSecurityCardTitle, style: theme.textTheme.titleMedium),
+                  const SizedBox(height: AppSpace.xs),
+                  Text(l10n.settingsSecurityCardLine, style: theme.textTheme.bodyMedium),
+                  const SizedBox(height: AppSpace.sm),
+                  Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: FilledButton(
+                      key: const ValueKey('settingsSecurityCardButton'),
+                      onPressed: () => context.push('/settings/mfa'),
+                      child: Text(l10n.settingsSecurityCardButton),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settingsTitle)),
       body: SafeArea(
@@ -138,6 +167,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           key: const ValueKey('settingsList'),
           padding: const EdgeInsets.only(bottom: AppSpace.xl),
           children: [
+            if (securityCard != null) securityCard,
             group(l10n.settingsGroupLanguage, [
               row(
                 key: const ValueKey('settingsRow-language'),

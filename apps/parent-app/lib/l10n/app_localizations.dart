@@ -579,13 +579,40 @@ abstract class AppLocalizations {
   String get settingsValueOff;
 
   /// No description provided for @settingsSignOutAllTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out of all devices?'**
   String get settingsSignOutAllTitle;
 
   /// No description provided for @settingsSignOutAllBody.
+  ///
+  /// In en, this message translates to:
+  /// **'You will have to sign in again on every device that uses your account, including this one.'**
   String get settingsSignOutAllBody;
 
   /// No description provided for @settingsSignOutAllConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out everywhere'**
   String get settingsSignOutAllConfirm;
+
+  /// No description provided for @settingsSecurityCardTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish securing your account'**
+  String get settingsSecurityCardTitle;
+
+  /// No description provided for @settingsSecurityCardLine.
+  ///
+  /// In en, this message translates to:
+  /// **'Two-step verification is off'**
+  String get settingsSecurityCardLine;
+
+  /// No description provided for @settingsSecurityCardButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on'**
+  String get settingsSecurityCardButton;
 
   /// No description provided for @signOutTooltip.
   ///

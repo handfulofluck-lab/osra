@@ -285,6 +285,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsSignOutAllConfirm => 'Sign out everywhere';
 
   @override
+  String get settingsSecurityCardTitle => 'Finish securing your account';
+
+  @override
+  String get settingsSecurityCardLine => 'Two-step verification is off';
+
+  @override
+  String get settingsSecurityCardButton => 'Turn on';
+
+  @override
   String get signOutTooltip => 'Sign out';
 
   @override
