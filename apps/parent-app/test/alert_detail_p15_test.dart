@@ -117,6 +117,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => FlutterSecureStorage.setMockInitialValues({}));
 
+  // Mutant: forcing the P-15 switch branch to `if (false)` fails `p15AlertDetailScroll` / `p15Sender`.
   testWidgets('P-15 ON shows sender (#1059), can-be-wrong framing, Fix 2 Help Alex block Jay, #1065 vote footer, and NO Mark reviewed / encrypted banner',
       (tester) async {
     final api = _makeApi();
@@ -143,6 +144,7 @@ void main() {
     expect(find.text('Not concerning'), findsOneWidget);
   });
 
+  // Mutant: changing `d.platform.toLowerCase() == 'ios'` to `'ios9'` fails `p15IphoneNotYet`.
   testWidgets('P-15 ON shows iPhone Not yet available state for iPhone-only child (Fix 8)', (tester) async {
     final api = _makeApi(platform: 'ios');
     await tester.pumpWidget(_harness(api: api, p15Enabled: true));
@@ -152,6 +154,77 @@ void main() {
     expect(find.text('Not yet available on iPhone'), findsOneWidget);
   });
 
+  // Mutant: removing PreviewRetryCard branch in AlertDetailP15Body fails `PreviewRetryCard` & retry recovery.
+  testWidgets('P-15 ON shows PreviewRetryCard on transient error and recovers on Retry (K31 note 3)',
+      (tester) async {
+    var shouldFail = true;
+    final api = FakeApiClient({
+      ...standardRoutes(
+        familyMe: {
+          ...familyMeTwoChildren(),
+          'children': [
+            {'id': 'child-1', 'familyId': 'fam-1', 'displayName': 'Alex', 'birthYear': 2014},
+          ],
+          'devices': [
+            {'id': 'dev-1', 'childId': 'child-1', 'platform': 'android', 'model': 'Galaxy S23', 'status': 'online'},
+          ],
+        },
+      ),
+      'GET /v1/social/events': (_) {
+        if (shouldFail) throw FakeNetworkError();
+        return {
+          'items': [
+            {
+              'id': 'ev-1',
+              'childId': 'child-1',
+              'app': 'whatsapp',
+              'contact': 'Jay',
+              'preview': 'Flagged excerpt',
+              'createdAt': '2026-11-26T11:42:00Z',
+            },
+          ],
+        };
+      },
+    });
+    await tester.pumpWidget(_harness(api: api, p15Enabled: true));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PreviewRetryCard), findsOneWidget);
+    expect(find.byKey(const ValueKey('p15OpenSocial')), findsNothing);
+
+    shouldFail = false;
+    await tester.tap(find.descendant(of: find.byType(PreviewRetryCard), matching: find.bySubtype<ButtonStyleButton>()));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PreviewRetryCard), findsNothing);
+    expect(find.byKey(const ValueKey('p15OpenSocial')), findsOneWidget);
+  });
+
+  // Mutant: removing PreviewUnavailableCard branch in AlertDetailP15Body fails `PreviewUnavailableCard`.
+  testWidgets('P-15 ON shows PreviewUnavailableCard when preview is expired/missing (K31 note 3)',
+      (tester) async {
+    final api = FakeApiClient({
+      ...standardRoutes(
+        familyMe: {
+          ...familyMeTwoChildren(),
+          'children': [
+            {'id': 'child-1', 'familyId': 'fam-1', 'displayName': 'Alex', 'birthYear': 2014},
+          ],
+          'devices': [
+            {'id': 'dev-1', 'childId': 'child-1', 'platform': 'android', 'model': 'Galaxy S23', 'status': 'online'},
+          ],
+        },
+      ),
+      'GET /v1/social/events': (_) => {'items': <Map<String, dynamic>>[]},
+    });
+    await tester.pumpWidget(_harness(api: api, p15Enabled: true));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PreviewUnavailableCard), findsOneWidget);
+    expect(find.byKey(const ValueKey('p15OpenSocial')), findsNothing);
+  });
+
+  // Mutant: ignoring `p15AlertDetailEnabledProvider` fails `alertDetailScroll` fallback.
   testWidgets('P-15 OFF falls back to legacy _SocialAlertDetailBody', (tester) async {
     final api = _makeApi();
     await tester.pumpWidget(_harness(api: api, p15Enabled: false));
@@ -161,6 +234,7 @@ void main() {
     expect(find.byKey(const ValueKey('p15AlertDetailScroll')), findsNothing);
   });
 
+  // Mutant: removing the P-15 switch fails `p15AlertDetailScroll` inside the 8-combo matrix (K31 note 1).
   testWidgets('Bureau 8-combo matrix: zero overflow across EN/AR x light/dark x 390/320-200%',
       (tester) async {
     final api = _makeApi();
@@ -184,6 +258,7 @@ void main() {
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull,
               reason: 'Failed on $locale $mode $size @ ${scale}x');
+          expect(find.byKey(const ValueKey('p15AlertDetailScroll')), findsOneWidget);
         }
       }
     }

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../api/permission_errors.dart';
 import '../../core/digits.dart';
 import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
@@ -16,6 +17,8 @@ import '../social/social_screen.dart' show socialAppIcon, socialAppLabel;
 import '../social/social_vote_controls.dart';
 import 'alert_detail_screen.dart'
     show
+        PreviewRetryCard,
+        PreviewUnavailableCard,
         SocialPreviewAvailability,
         formatAlertLocalTime,
         resolveSocialPreviewAvailability,
@@ -266,18 +269,39 @@ class _AlertDetailP15BodyState extends ConsumerState<AlertDetailP15Body> {
                   key: const ValueKey('p15CanBeWrong'),
                   style: theme.textTheme.bodyMedium?.copyWith(color: tokens.onSurfaceVariant),
                 ),
-                if (availability == SocialPreviewAvailability.available && !isIphoneOnly) ...[
-                  const SizedBox(height: AppSpace.md),
-                  FilledButton.icon(
-                    key: const ValueKey('p15OpenSocial'),
-                    style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 48)),
-                    onPressed: () => context.push(Uri(
-                      path: '/child/${alert.childId}/social',
-                      queryParameters: concernId == null ? null : {'concernId': concernId},
-                    ).toString()),
-                    icon: const Icon(Icons.forum_outlined, size: 18),
-                    label: Text(l10n.socialAlertOpenActivity),
-                  ),
+                if (!isIphoneOnly) ...[
+                  if (availability == SocialPreviewAvailability.available) ...[
+                    if (concernId == null) ...[
+                      const SizedBox(height: AppSpace.sm),
+                      const PreviewUnavailableCard(
+                        availability: SocialPreviewAvailability.expired,
+                      ),
+                    ],
+                    const SizedBox(height: AppSpace.md),
+                    FilledButton.icon(
+                      key: const ValueKey('p15OpenSocial'),
+                      style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 48)),
+                      onPressed: () => context.push(Uri(
+                        path: '/child/${alert.childId}/social',
+                        queryParameters: concernId == null ? null : {'concernId': concernId},
+                      ).toString()),
+                      icon: const Icon(Icons.forum_outlined, size: 18),
+                      label: Text(l10n.socialAlertOpenActivity),
+                    ),
+                  ] else if (availability == SocialPreviewAvailability.transientError) ...[
+                    const SizedBox(height: AppSpace.md),
+                    PreviewRetryCard(
+                      message: friendlyErrorText(
+                        l10n,
+                        eventsAsync.error ?? Exception('preview_unavailable'),
+                        () => l10n.alertsLoadFailed,
+                      ),
+                      onRetry: () => ref.invalidate(eventsProvider),
+                    ),
+                  ] else ...[
+                    const SizedBox(height: AppSpace.md),
+                    PreviewUnavailableCard(availability: availability),
+                  ],
                 ],
               ],
             ),

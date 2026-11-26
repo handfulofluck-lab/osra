@@ -605,7 +605,7 @@ class _SocialAlertDetailBodyState
         // 3. Primary Social activity action OR preview-availability / retry callout (inside scroll for 200%).
         if (availability == SocialPreviewAvailability.available) ...[
           if (concernId == null) ...[
-            const _PreviewUnavailableCard(
+            const PreviewUnavailableCard(
                 availability: SocialPreviewAvailability.expired),
             const SizedBox(height: AppSpace.sm),
           ],
@@ -623,7 +623,7 @@ class _SocialAlertDetailBodyState
             ),
           ),
         ] else if (availability == SocialPreviewAvailability.transientError)
-          _PreviewRetryCard(
+          PreviewRetryCard(
             message: friendlyErrorText(
               l10n,
               eventsAsync.error ?? Exception('preview_unavailable'),
@@ -632,7 +632,7 @@ class _SocialAlertDetailBodyState
             onRetry: () => ref.invalidate(eventsProvider),
           )
         else
-          _PreviewUnavailableCard(availability: availability),
+          PreviewUnavailableCard(availability: availability),
         if (latestSourceEventId != null &&
             availability != SocialPreviewAvailability.noPermission &&
             availability != SocialPreviewAvailability.expired) ...[
@@ -660,9 +660,9 @@ class _SocialAlertDetailBodyState
   }
 }
 
-class _PreviewUnavailableCard extends StatelessWidget {
+class PreviewUnavailableCard extends StatelessWidget {
   final SocialPreviewAvailability availability;
-  const _PreviewUnavailableCard({required this.availability});
+  const PreviewUnavailableCard({super.key, required this.availability});
 
   @override
   Widget build(BuildContext context) {
@@ -717,11 +717,12 @@ class _PreviewUnavailableCard extends StatelessWidget {
   }
 }
 
-class _PreviewRetryCard extends StatelessWidget {
+class PreviewRetryCard extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
 
-  const _PreviewRetryCard({
+  const PreviewRetryCard({
+    super.key,
     required this.message,
     required this.onRetry,
   });
