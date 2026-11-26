@@ -397,7 +397,9 @@ describe("social alert per-contact window (#1029)", () => {
     expect(row.metadata.flaggedCount).toBe(4);
     expect(row.metadata.pushedCount).toBe(1);
     expect(row.metadata.latestAt).toBe(timestamps[3]);
+    const primaryEvent = await prismaMock.socialEvent.create.mock.results[0].value as { id: string };
     const latestEvent = await prismaMock.socialEvent.create.mock.results[3].value as { id: string };
+    expect(row.metadata.primarySocialEventId).toBe(primaryEvent.id);
     expect(row.metadata.latestSourceEventId).toBe(latestEvent.id);
     expect(row.metadata.summaryPending).toBe(true);
 
@@ -419,6 +421,7 @@ describe("social alert per-contact window (#1029)", () => {
     expect(fifth.statusCode).toBe(200);
     expect(alerts.size).toBe(1);
     expect(alerts.get(row.id)?.metadata.flaggedCount).toBe(5);
+    expect(alerts.get(row.id)?.metadata.primarySocialEventId).toBe(primaryEvent.id);
     expect(pushRounds()).toBe(2); // still 2 — no >1 push per 10 min
 
     // Second window closes -> 1 summary push for "1 more".

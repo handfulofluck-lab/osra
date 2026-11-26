@@ -1,0 +1,3 @@
+### Server rules — monitoring is explicitly ON for every new child (#1142)
+- Child creation now persists all 12 canonical `socialMonitoring` app keys as `true` in the same rule row, so a first staging message can be analyzed without a parent saving settings first. Migration 0045 backfills only empty maps and never overwrites an existing parent choice. A read-only count of empty maps must precede any staging apply.
+- Parent onboarding preserves Play decision 14 A: the uniform all-ON server default does not select X/Twitter when it is not installed, while an explicit stored X choice still wins. API first-scan, migration/default and setup widget regressions are included; independent verification is required before merge.

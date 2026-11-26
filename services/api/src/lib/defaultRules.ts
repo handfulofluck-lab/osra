@@ -21,7 +21,20 @@ export const DEFAULT_RULESET = {
   appGroupRules: [] as { groupId: string; action: "block" }[],
   alwaysAllowedApps: [],
   bonusMinutesToday: 0,
-  socialMonitoring: {} as Record<string, boolean>,
+  socialMonitoring: {
+    whatsapp: true,
+    instagram: true,
+    tiktok: true,
+    snapchat: true,
+    twitter: true,
+    discord: true,
+    roblox: true,
+    line: true,
+    youtube: true,
+    telegram: true,
+    reddit: true,
+    messenger: true,
+  } as Record<string, boolean>,
   contactAllowlist: [] as string[],
 };
 
