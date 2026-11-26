@@ -1,0 +1,1 @@
+- Parent app (#1136): The Social concerns list updates when an alert arrives or opens and when the app returns to the foreground. Pull down to refresh the list manually.

@@ -1,0 +1,1 @@
+- **Parent notifications (#1139).** A grouped alert can show a new notification for each delivery the server issues. Silent updates stay in the alert card. Tapping a local notification still opens that card. The release handset check is pending.

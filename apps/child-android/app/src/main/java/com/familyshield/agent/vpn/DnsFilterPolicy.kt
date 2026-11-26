@@ -23,6 +23,51 @@ object DnsFilterPolicy {
 
     enum class Action { FORWARD, SINK, REWRITE }
 
+    /**
+     * Issue #1079: what the filter can honestly promise. Kept separate from [decide] because the decision
+     * for one name is not a claim about the filter: a policy that forwards everything looks identical to a
+     * policy that blocks nothing, and the parent cannot tell the two apart from the outside.
+     */
+    enum class EnforcementState {
+        /** The family blocks no category, so an empty pack is the correct state, not a fault. */
+        NOT_APPLICABLE,
+
+        /** Categories are blocked and the pack that enforces them is on the device. */
+        ENFORCING,
+
+        /** Categories are blocked and no pack has ever been stored: the filter is up and enforces nothing. */
+        UNPROTECTED,
+    }
+
+    /**
+     * The state [#decide]'s caller should report. Pure, so the three cases are JVM rows.
+     *
+     * Reads the **normalised** [Config.categories], not the raw map: a pack entry whose domain is blank or a
+     * bare `*.` normalises away, and a table that empties out must not report as enforcing (Hydrogen's #1097
+     * review). A category list of blanks is no category at all, not a broken filter.
+     */
+    fun enforcement(config: Config): EnforcementState = when {
+        config.blockedCategories.none { it.trim().isNotEmpty() } -> EnforcementState.NOT_APPLICABLE
+        config.packLoaded && config.categories.isNotEmpty() -> EnforcementState.ENFORCING
+        else -> EnforcementState.UNPROTECTED
+    }
+
+    /**
+     * The same question from the three facts a caller on the phone actually holds, so the capability report
+     * and the tunnel ask one function instead of keeping two copies of the rule (Hydrogen, #1097 review).
+     */
+    fun enforcement(
+        categoryDomains: Map<String, String>,
+        packStored: Boolean,
+        blockedCategories: Collection<String>,
+    ): EnforcementState = enforcement(
+        Config(
+            categoryDomains = categoryDomains,
+            packLoaded = packStored,
+            blockedCategories = blockedCategories,
+        ),
+    )
+
     /** [target] is set only for [Action.REWRITE]; [reason] is for the log line and the alert. */
     data class Decision(val action: Action, val target: String? = null, val reason: String = "") {
         companion object {
@@ -41,6 +86,14 @@ object DnsFilterPolicy {
         val blockedDomains: Collection<String> = emptyList(),
         /** domain → category, the blocklist pack already filtered to the blocked categories. */
         val categoryDomains: Map<String, String> = emptyMap(),
+        /**
+         * Issue #1079: whether a blocklist pack has ever been stored on this device. Empty domains plus
+         * `false` is "the filter is up and enforcing nothing", which is what child 2 looked like; empty
+         * domains plus `true` is a family that blocks no category, which is correct.
+         */
+        val packLoaded: Boolean = true,
+        /** The categories the rule set blocks. With none, an empty pack is not a fault. */
+        val blockedCategories: Collection<String> = emptyList(),
     ) {
         internal val allowed: List<String> = allowedDomains.map(::normalize).filter { it.isNotEmpty() }
         internal val blocked: List<String> = blockedDomains.map(::normalize).filter { it.isNotEmpty() }
@@ -107,6 +160,10 @@ object DnsFilterPolicy {
     internal fun matches(name: String, domain: String): Boolean =
         name == domain || name.endsWith(".$domain")
 
-    internal fun normalize(raw: String): String =
-        raw.trim().trimEnd('.').lowercase().removePrefix("*.")
+    internal fun normalize(raw: String): String {
+        val name = raw.trim().trimEnd('.').lowercase().removePrefix("*.")
+        // A bare "*" (or "*." that trimmed to one) is not a domain: it matches no real query, so keeping it
+        // made an all-junk pack look like a non-empty — hence enforcing — table (#1079 wiring review).
+        return if (name == "*") "" else name
+    }
 }

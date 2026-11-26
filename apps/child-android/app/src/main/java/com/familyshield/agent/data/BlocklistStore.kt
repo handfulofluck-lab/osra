@@ -29,12 +29,19 @@ class BlocklistStore @Inject constructor(
     @Volatile private var cached: Map<String, String> = emptyMap()
     @Volatile private var cachedDomains: Map<String, String> = emptyMap()
 
+    /** Issue #1079: true once a pack has been fetched and stored on this device, even if it merged to {}. */
+    @Volatile private var cachedPackStored: Boolean = false
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
         scope.launch {
             cached = loadFromDisk() ?: emptyMap()
-            cachedDomains = settings.blocklistDomainsJson()?.let { runCatching { mapAdapter().fromJson(it) }.getOrNull() } ?: emptyMap()
+            val domainsJson = settings.blocklistDomainsJson()
+            cachedDomains = domainsJson?.let { runCatching { mapAdapter().fromJson(it) }.getOrNull() } ?: emptyMap()
+            // A persisted domains JSON is the record that a pack was stored, even when it merged to {}: the
+            // file existing and being empty is a different fact from "no pack has ever arrived" (#1079).
+            cachedPackStored = domainsJson != null
         }
     }
 
@@ -46,6 +53,17 @@ class BlocklistStore @Inject constructor(
 
     /** Snapshot of the current domain -> blocked-category map, consumed by the DNS sinkhole (plan 1.4). */
     fun domains(): Map<String, String> = cachedDomains
+
+    /**
+     * Issue #1079: whether a blocklist pack has been fetched and stored on this device, even if it carried no
+     * domain for the categories this family blocks. Without it the filter cannot tell "this family blocks
+     * nothing" from "the pack never arrived", and child 2 reported both as a working filter.
+     *
+     * In memory it turns true as soon as a refresh succeeds; after a restart it comes from the persisted
+     * domains JSON, so a save that failed leaves it false and the report stays honest (`UNPROTECTED`) rather
+     * than claiming a pack the next process cannot find.
+     */
+    fun packStored(): Boolean = cachedPackStored
 
     /**
      * Fetches the blocklist pack and re-merges it against [blockedCategories]. On success the
@@ -66,6 +84,7 @@ class BlocklistStore @Inject constructor(
         val mergedDomains = mergeDomains(pack, blockedCategories)
         cachedDomains = mergedDomains
         runCatching { settings.saveBlocklistDomainsJson(mapAdapter().toJson(mergedDomains)) }
+        cachedPackStored = true
         return true
     }
 

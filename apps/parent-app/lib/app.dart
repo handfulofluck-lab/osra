@@ -32,7 +32,9 @@ import 'l10n/l10n.dart';
 import 'providers/auth_provider.dart';
 import 'providers/locale_provider.dart';
 import 'providers/onboarding_provider.dart';
+import 'providers/social_provider.dart';
 import 'providers/theme_provider.dart';
+import 'push/foreground_push.dart';
 import 'push/notification_tap.dart';
 import 'theme/app_theme.dart';
 
@@ -54,7 +56,25 @@ final List<RouteBase> appRoutes = [
   ),
   GoRoute(path: '/setup/done', builder: (_, __) => const SetupDoneScreen()),
   GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
-  GoRoute(path: '/', builder: (_, __) => const DashboardScreen()),
+  GoRoute(
+    path: '/',
+    builder: (_, __) => const DashboardScreen(),
+    routes: [
+      GoRoute(
+        path: 'alerts',
+        builder: (_, __) => const AlertsScreen(),
+        routes: [
+          GoRoute(
+            path: ':id',
+            builder: (_, s) => AlertDetailScreen(
+              alertId: s.pathParameters['id']!,
+              initialAlert: s.extra is Alert ? s.extra as Alert : null,
+            ),
+          ),
+        ],
+      ),
+    ],
+  ),
   GoRoute(
     path: '/child/:id',
     builder: (_, s) => ChildDetailScreen(
@@ -84,7 +104,13 @@ final List<RouteBase> appRoutes = [
       },
     ),
   ),
-  GoRoute(path: '/child/:id/social', builder: (_, s) => SocialScreen(childId: s.pathParameters['id']!)),
+  GoRoute(
+    path: '/child/:id/social',
+    builder: (_, s) => SocialScreen(
+      childId: s.pathParameters['id']!,
+      concernId: s.uri.queryParameters['concernId'],
+    ),
+  ),
   GoRoute(path: '/child/:id/searches', builder: (_, s) => SearchSafetyScreen(childId: s.pathParameters['id']!)),
   GoRoute(path: '/settings/digests', builder: (_, __) => const DigestPrefsScreen()),
   GoRoute(path: '/settings/appearance', builder: (_, __) => const AppearanceScreen()),
@@ -100,14 +126,6 @@ final List<RouteBase> appRoutes = [
   GoRoute(
     path: '/mfa/reset/approve',
     builder: (_, s) => MfaResetApprovalLink(requestId: s.uri.queryParameters['requestId'] ?? ''),
-  ),
-  GoRoute(path: '/alerts', builder: (_, __) => const AlertsScreen()),
-  GoRoute(
-    path: '/alerts/:id',
-    builder: (_, s) => AlertDetailScreen(
-      alertId: s.pathParameters['id']!,
-      initialAlert: s.extra is Alert ? s.extra as Alert : null,
-    ),
   ),
   GoRoute(path: '/map', builder: (_, __) => const FamilyMapScreen()),
   GoRoute(path: '/family', builder: (_, __) => const FamilyScreen()),
@@ -211,11 +229,26 @@ final router = GoRouter(
   routes: appRoutes,
 );
 
+/// Refresh cached concerns after app-wide signals that may lack a child ID.
+final _socialActivityRefreshProvider = Provider<void>((ref) {
+  void refresh() => ref.invalidate(socialEventsProvider);
+
+  final lifecycle = AppLifecycleListener(onResume: refresh);
+  foregroundAlertWakes.addListener(refresh);
+  notificationTapController.addListener(refresh);
+  ref.onDispose(() {
+    lifecycle.dispose();
+    foregroundAlertWakes.removeListener(refresh);
+    notificationTapController.removeListener(refresh);
+  });
+});
+
 class FamilyShieldApp extends ConsumerWidget {
   const FamilyShieldApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(_socialActivityRefreshProvider);
     final mode = ref.watch(themeModeProvider);
     final locale = ref.watch(localeProvider);
     return MaterialApp.router(

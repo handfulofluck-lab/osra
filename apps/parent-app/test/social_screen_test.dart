@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -37,7 +40,8 @@ void main() {
   Future<void> pumpScreen(WidgetTester tester, Widget home, FakeApiClient api,
       {bool tall = false,
       Locale locale = const Locale('en'),
-      bool frameBoundary = false}) async {
+      bool frameBoundary = false,
+      bool dark = false}) async {
     if (tall) {
       tester.view.physicalSize = const Size(1200, 2400);
       tester.view.devicePixelRatio = 1.0;
@@ -50,7 +54,7 @@ void main() {
             ? RepaintBoundary(key: const ValueKey('frameRoot'), child: home)
             : home,
         locale: locale,
-        theme: withFrameFonts(AppTheme.light),
+        theme: withFrameFonts(dark ? AppTheme.dark : AppTheme.light),
       ),
     ));
     await tester.pumpAndSettle();
@@ -134,6 +138,8 @@ void main() {
     String severity = 'warning',
     List<String> concernTypes = const ['grooming_risk', 'late_night'],
     DateTime? at,
+    Object? latestFeedback,
+    Object? ownFeedback,
   }) =>
       {
         'id': id,
@@ -145,6 +151,8 @@ void main() {
         'createdAt': (at ?? testNow.subtract(const Duration(hours: 2)))
             .toUtc()
             .toIso8601String(),
+        if (latestFeedback != null) 'latestFeedback': latestFeedback,
+        'ownFeedback': ownFeedback,
       };
 
   Map<String, dynamic> callJson({
@@ -467,6 +475,54 @@ void main() {
   });
 
   group('Concerns vault', () {
+    testWidgets('pull-to-refresh reloads concerns even when the list fits',
+        (tester) async {
+      final pending = Completer<Object?>();
+      var refreshRequested = false;
+      final api = FakeApiClient({
+        ...socialRoutes(),
+        'GET /v1/social/events': (_) => refreshRequested
+            ? FakeDeferred(pending.future)
+            : {
+                'items': [concernJson()]
+              },
+      });
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api,
+          tall: true);
+      await flushFakeHttp(tester);
+
+      final scrollPosition =
+          tester.state<ScrollableState>(socialScrollable()).position;
+      expect(scrollPosition.maxScrollExtent, 0);
+      expect(find.text('Maya'), findsOneWidget);
+      expect(api.calls('GET', '/v1/social/events'), hasLength(1));
+      final activityRequestCount = api.calls('GET', '/v1/reports/activity').length;
+
+      refreshRequested = true;
+      final list = find.byKey(const ValueKey('socialSectionsList'));
+      await tester.dragFrom(tester.getTopLeft(list) + const Offset(40, 24),
+          const Offset(0, 620));
+      await tester.pump();
+      await flushFakeHttp(tester);
+      final wasRefreshing =
+          find.byType(RefreshProgressIndicator).evaluate().isNotEmpty;
+      pending.complete({
+        'items': [concernJson(id: 'se-new', contact: 'Lina'), concernJson()],
+      });
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      final requests = api.calls('GET', '/v1/social/events');
+      expect(requests.map((request) => request.query['childId']),
+          ['child-1', 'child-1']);
+      expect(api.calls('GET', '/v1/reports/activity'),
+          hasLength(activityRequestCount));
+      expect(wasRefreshing, isTrue);
+      expect(find.byType(RefreshProgressIndicator), findsNothing);
+      expect(find.text('Lina'), findsOneWidget);
+      expect(find.text('Maya'), findsOneWidget);
+    });
+
     testWidgets(
         'renders severity-colored cards with concern chips and an expandable preview',
         (tester) async {
@@ -476,8 +532,8 @@ void main() {
 
       await reveal(tester, find.text('Maya'));
       expect(find.text('Maya'), findsOneWidget);
-      expect(find.text('grooming_risk'), findsOneWidget);
-      expect(find.text('late_night'), findsOneWidget);
+      expect(find.text('Grooming'), findsOneWidget);
+      expect(find.text('Late at night'), findsOneWidget);
       expect(find.textContaining('WhatsApp · '), findsOneWidget);
       // Severity tint on the card + colored leading icon.
       final card =
@@ -497,6 +553,134 @@ void main() {
       expect(find.text('Encrypted Family Vault'), findsOneWidget);
       expect(find.text('Decrypted content'), findsOneWidget);
     });
+
+    testWidgets(
+        'list vote POSTs once and the vault reuses the selected event vote',
+        (tester) async {
+      // Mutant: omitting eventId from the vault or posting to the alert id leaves
+      // the two surfaces out of sync and writes feedback for the wrong resource.
+      final api = FakeApiClient({
+        ...socialRoutes(concerns: [concernJson()]),
+        'POST /v1/social/events/se-1/feedback': (request) => {
+              'feedback': {
+                'verdict': request.body['verdict'],
+                'parentDisplayName': 'QA Parent',
+                'firstVotedAt': '2026-11-24T10:01:00.000Z',
+                'lastChangedAt': '2026-11-24T10:01:00.000Z',
+              },
+            },
+        'DELETE /v1/social/events/se-1/feedback': (_) => {'feedback': null},
+      });
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api,
+          tall: true);
+      await flushFakeHttp(tester);
+
+      await reveal(tester, find.byTooltip('Mark as concerning'));
+      expect(tester.getSize(find.byTooltip('Mark as concerning')),
+          const Size(48, 48));
+      await tester.tap(find.byTooltip('Mark as concerning'));
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+      expect(api.calls('POST', '/v1/social/events/se-1/feedback').single.body,
+          {'verdict': 'concerning'});
+      expect(find.widgetWithText(FilledButton, 'Concerning'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Maya'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('View in Decryption Vault'));
+      await tester.pumpAndSettle();
+      expect(find.text('Was OSRA right to flag this?'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Concerning'), findsNWidgets(2));
+      expect(find.text('Thanks, noted'), findsNothing);
+    });
+
+    testWidgets(
+        'the latest co-parent vote and isolated voter name render while own choices are unset',
+        (tester) async {
+      final api = FakeApiClient(socialRoutes(concerns: [
+        concernJson(latestFeedback: {
+          'verdict': 'not_concerning',
+          'parentDisplayName': 'Lina',
+          'firstVotedAt': '2026-11-24T10:01:00.000Z',
+          'lastChangedAt': '2026-11-24T10:02:00.000Z',
+        }),
+      ]));
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api,
+          tall: true);
+      await flushFakeHttp(tester);
+
+      await reveal(tester, find.byTooltip('Mark as not concerning'));
+      expect(find.byTooltip('Mark as not concerning'), findsOneWidget);
+      expect(find.text('\u2068Lina\u2069: Not concerning'), findsOneWidget);
+    });
+
+    for (final locale in [const Locale('en'), const Locale('ar')]) {
+      testWidgets(
+          'concern vote controls move below text at 320px/200% in ${locale.languageCode}',
+          (tester) async {
+        tester.view.physicalSize = const Size(320, 1000);
+        tester.view.devicePixelRatio = 1;
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+          tester.platformDispatcher.clearTextScaleFactorTestValue();
+        });
+        final api = FakeApiClient(socialRoutes(concerns: [concernJson()]));
+        await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api,
+            locale: locale);
+        await flushFakeHttp(tester);
+
+        final tooltip = locale.languageCode == 'ar'
+            ? 'اعتبار الرسالة مقلقة'
+            : 'Mark as concerning';
+        await reveal(tester, find.byTooltip(tooltip));
+        expect(tester.getTopLeft(find.byTooltip(tooltip)).dy,
+            greaterThan(tester.getRect(find.text('Maya')).bottom));
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    for (final locale in [const Locale('en'), const Locale('ar')]) {
+      testWidgets(
+          'localized Social concern chips fit 320 px at 200% in ${locale.languageCode}',
+          (tester) async {
+        tester.view.physicalSize = const Size(320, 1000);
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+          tester.platformDispatcher.clearTextScaleFactorTestValue();
+        });
+        final api = FakeApiClient(socialRoutes(concerns: [concernJson()]));
+        await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api,
+            locale: locale, frameBoundary: true);
+        await flushFakeHttp(tester);
+
+        final card = find.byKey(const ValueKey('se-1'));
+        await reveal(tester, card);
+        final labels = locale.languageCode == 'ar'
+            ? ['استدراج', 'في وقت متأخر ليلًا']
+            : ['Grooming', 'Late at night'];
+        for (final label in labels) {
+          final chip =
+              find.ancestor(of: find.text(label), matching: find.byType(Chip));
+          expect(chip, findsOneWidget);
+          expect(tester.getRect(chip).left,
+              greaterThanOrEqualTo(tester.getRect(card).left));
+          expect(tester.getRect(chip).right,
+              lessThanOrEqualTo(tester.getRect(card).right));
+        }
+        expect(find.text('grooming_risk'), findsNothing);
+        expect(find.text('late_night'), findsNothing);
+        expect(tester.takeException(), isNull);
+        await maybeCaptureFrame(
+            tester, 'social-concern-labels-${locale.languageCode}-320-200.png');
+      });
+    }
 
     testWidgets('shows the empty state when there are no concerns',
         (tester) async {
@@ -733,6 +917,293 @@ void main() {
       await reveal(tester, find.text('No phone calls or texts yet'));
       expect(find.text('No phone calls or texts yet'), findsOneWidget);
     });
+  });
+
+  group('compact selected labels stay on one line', () {
+    for (final locale in [const Locale('en'), const Locale('ar')]) {
+      for (final narrow in [false, true]) {
+        for (final verdict in const ['concerning', 'not_concerning']) {
+          testWidgets(
+              '$verdict ${locale.languageCode} ${narrow ? '320-200' : '390'}',
+              (tester) async {
+            final scale = narrow ? 2.0 : 1.0;
+            tester.view.physicalSize =
+                Size(narrow ? 320 : 390, narrow ? 1000 : 844);
+            tester.view.devicePixelRatio = 1;
+            tester.platformDispatcher.textScaleFactorTestValue = scale;
+            addTearDown(() {
+              tester.view.resetPhysicalSize();
+              tester.view.resetDevicePixelRatio();
+              tester.platformDispatcher.clearTextScaleFactorTestValue();
+            });
+            final feedback = {
+              'verdict': verdict,
+              'parentDisplayName': 'QA Parent',
+              'firstVotedAt': '2026-11-24T10:01:00.000Z',
+              'lastChangedAt': '2026-11-24T10:02:00.000Z',
+            };
+            final api = FakeApiClient(socialRoutes(concerns: [
+              concernJson(
+                latestFeedback: feedback,
+                ownFeedback: feedback,
+              ),
+            ]));
+            await pumpScreen(
+                tester, const SocialScreen(childId: 'child-1'), api,
+                locale: locale);
+            await flushFakeHttp(tester);
+
+            final label = locale.languageCode == 'ar'
+                ? verdict == 'concerning'
+                    ? 'مقلقة'
+                    : 'غير مقلقة'
+                : verdict == 'concerning'
+                    ? 'Concerning'
+                    : 'Not concerning';
+            final pill = find.widgetWithText(FilledButton, label);
+            await reveal(tester, pill);
+            final contactRect = tester.getRect(find.text('Maya'));
+            final expectsStacked = narrow || locale.languageCode == 'en';
+            if (expectsStacked) {
+              expect(tester.getRect(pill).top,
+                  greaterThanOrEqualTo(contactRect.bottom));
+            } else {
+              expect(tester.getRect(pill).top, contactRect.top);
+            }
+            final paragraph =
+                tester.renderObject<RenderParagraph>(find.text(label));
+            int countLines(Iterable<TextBox> boxes) {
+              final centers =
+                  boxes.map((box) => box.toRect().center.dy).toList()..sort();
+              if (centers.isEmpty) return 0;
+              var lines = 1;
+              for (var i = 1; i < centers.length; i++) {
+                if ((centers[i] - centers[i - 1]).abs() > 5 * scale) lines++;
+              }
+              return lines;
+            }
+
+            final lineCount = countLines(paragraph.getBoxesForSelection(
+              TextSelection(baseOffset: 0, extentOffset: label.length),
+            ));
+            var wordStart = 0;
+            for (final word in label.split(' ')) {
+              final wordLines = countLines(paragraph.getBoxesForSelection(
+                TextSelection(
+                  baseOffset: wordStart,
+                  extentOffset: wordStart + word.length,
+                ),
+              ));
+              expect(wordLines, 1, reason: '$word broke mid-word in $label');
+              wordStart += word.length + 1;
+            }
+            if (narrow) {
+              expect(lineCount, lessThanOrEqualTo(2),
+                  reason: '$label used $lineCount lines at 320 px / 200%');
+            } else {
+              expect(lineCount, 1,
+                  reason: '$label used $lineCount lines at 390 px');
+            }
+            final pillRect = tester.getRect(pill);
+            expect(pillRect.left, greaterThanOrEqualTo(0));
+            expect(pillRect.right, lessThanOrEqualTo(narrow ? 320 : 390));
+            expect(tester.takeException(), isNull);
+          });
+        }
+      }
+    }
+    testWidgets(
+        'a short contact keeps at least half the row at 320 px normal scale',
+        (tester) async {
+      tester.view.physicalSize = const Size(320, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final feedback = {
+        'verdict': 'not_concerning',
+        'parentDisplayName': 'QA Parent',
+        'firstVotedAt': '2026-11-24T10:01:00.000Z',
+        'lastChangedAt': '2026-11-24T10:02:00.000Z',
+      };
+      final api = FakeApiClient(socialRoutes(concerns: [
+        concernJson(
+          contact: 'I',
+          latestFeedback: feedback,
+          ownFeedback: feedback,
+        ),
+      ]));
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+      await flushFakeHttp(tester);
+
+      final pill = find.widgetWithText(FilledButton, 'Not concerning');
+      await reveal(tester, pill);
+      final contact = find.descendant(
+        of: find.ancestor(of: pill, matching: find.byType(Card)),
+        matching: find.text('I'),
+      );
+      expect(tester.getRect(pill).top,
+          greaterThanOrEqualTo(tester.getRect(contact).bottom));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a short contact receives half the shared row at 390 px',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final feedback = {
+        'verdict': 'not_concerning',
+        'parentDisplayName': 'QA Parent',
+        'firstVotedAt': '2026-11-24T10:01:00.000Z',
+        'lastChangedAt': '2026-11-24T10:02:00.000Z',
+      };
+      final api = FakeApiClient(socialRoutes(concerns: [
+        concernJson(
+          contact: 'I',
+          latestFeedback: feedback,
+          ownFeedback: feedback,
+        ),
+      ]));
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+      await flushFakeHttp(tester);
+
+      final pill = find.widgetWithText(FilledButton, 'Not concerning');
+      await reveal(tester, pill);
+      final card = find.ancestor(of: pill, matching: find.byType(Card));
+      final contact = find.descendant(of: card, matching: find.text('I'));
+      final contactRow = find.ancestor(of: contact, matching: find.byType(Row));
+      final contactAllocation = contactRow.evaluate().isNotEmpty
+          ? tester.getRect(contactRow).width - tester.getRect(pill).width - 8
+          : tester
+              .getRect(find
+                  .ancestor(of: contact, matching: find.byType(Column))
+                  .first)
+              .width;
+      final expectedMinimum = (tester.getRect(card).width - 128) / 2;
+      expect(contactAllocation, greaterThanOrEqualTo(expectedMinimum),
+          reason: 'Contact received $contactAllocation px of the shared row; '
+              'it needs at least $expectedMinimum px');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a long contact stacks the trailing pill at 390 px',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      const contact = 'A very long contact name that needs the full row';
+      final feedback = {
+        'verdict': 'not_concerning',
+        'parentDisplayName': 'QA Parent',
+        'firstVotedAt': '2026-11-24T10:01:00.000Z',
+        'lastChangedAt': '2026-11-24T10:02:00.000Z',
+      };
+      final api = FakeApiClient(socialRoutes(concerns: [
+        concernJson(
+          contact: contact,
+          latestFeedback: feedback,
+          ownFeedback: feedback,
+        ),
+      ]));
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+      await flushFakeHttp(tester);
+
+      final pill = find.widgetWithText(FilledButton, 'Not concerning');
+      await reveal(tester, pill);
+      expect(tester.getRect(pill).top,
+          greaterThanOrEqualTo(tester.getRect(find.text(contact)).bottom));
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('Bureau vote frames (writes only with OSRA_FRAME_DIR)', () {
+    Map<String, dynamic> feedback(String verdict, String name) => {
+          'verdict': verdict,
+          'parentDisplayName': name,
+          'firstVotedAt': '2026-11-24T10:01:00.000Z',
+          'lastChangedAt': '2026-11-24T10:02:00.000Z',
+        };
+
+    Map<String, dynamic> frameConcern(String state) {
+      final selected = state == 'concerning' || state == 'not_concerning';
+      return concernJson(
+        latestFeedback: switch (state) {
+          'unset' => null,
+          'cleared' => feedback('concerning', 'Lina'),
+          _ => feedback(state, 'QA Parent'),
+        },
+        ownFeedback: selected ? feedback(state, 'QA Parent') : null,
+      );
+    }
+
+    for (final locale in [const Locale('en'), const Locale('ar')]) {
+      for (final narrow in [false, true]) {
+        for (final dark in [false, true]) {
+          testWidgets(
+              'Social Monitoring ${locale.languageCode} ${narrow ? '320-200' : '390'} ${dark ? 'dark' : 'light'}',
+              (tester) async {
+            for (final state in const [
+              'unset',
+              'concerning',
+              'not_concerning',
+              'cleared',
+            ]) {
+              tester.view.physicalSize =
+                  Size(narrow ? 320 : 390, narrow ? 1000 : 844);
+              tester.view.devicePixelRatio = 1;
+              tester.platformDispatcher.textScaleFactorTestValue =
+                  narrow ? 2 : 1;
+              addTearDown(() {
+                tester.view.resetPhysicalSize();
+                tester.view.resetDevicePixelRatio();
+                tester.platformDispatcher.clearTextScaleFactorTestValue();
+              });
+              final api =
+                  FakeApiClient(socialRoutes(concerns: [frameConcern(state)]));
+              await pumpScreen(
+                tester,
+                const SocialScreen(childId: 'child-1'),
+                api,
+                locale: locale,
+                frameBoundary: true,
+                dark: dark,
+              );
+              await flushFakeHttp(tester);
+
+              final target = switch (state) {
+                'concerning' => find.widgetWithText(FilledButton,
+                    locale.languageCode == 'ar' ? 'مقلقة' : 'Concerning'),
+                'not_concerning' => find.widgetWithText(
+                    FilledButton,
+                    locale.languageCode == 'ar'
+                        ? 'غير مقلقة'
+                        : 'Not concerning'),
+                _ => find.byTooltip(locale.languageCode == 'ar'
+                    ? 'اعتبار الرسالة مقلقة'
+                    : 'Mark as concerning'),
+              };
+              await reveal(tester, target);
+              await tester.ensureVisible(find.text('Maya'));
+              await tester.pumpAndSettle();
+              expect(tester.takeException(), isNull);
+              await maybeCaptureFrame(
+                tester,
+                'social-monitoring-vote-$state-${locale.languageCode}-${dark ? 'dark' : 'light'}-${narrow ? '320-200' : '390'}.png',
+              );
+              await tester.pumpWidget(const SizedBox());
+            }
+          });
+        }
+      }
+    }
   });
 
   group('Arabic dates', () {

@@ -77,6 +77,10 @@ const FORBIDDEN = {
   IDLE_BUDGET_M10: 'staging instrument (#346)',
   OSRA_DEPLOYMENT_SCOPE: 'explicit scope for the synthetic staging model test (#962)',
   OSRA_STAGING_QA_ANALYZER_ENABLED: 'enables the synthetic staging model test (#962)',
+  OSRA_OWN_MODEL_REGION: 'pins the consented staging own-model region (#1144)',
+  OSRA_STAGING_AI_ALL_CHILDREN: 'enables consented paired-device scoring in staging only (#1144)',
+  OSRA_STAGING_AI_FAMILY_DAILY_CAP: 'caps a staging family’s analyzer attempts (#1144)',
+  OSRA_STAGING_AI_GLOBAL_DAILY_CAP: 'caps all staging analyzer attempts (#1144)',
   OSRA_STAGING_QA_ENGINE: 'selects providers for the synthetic staging model test (#962)',
   OSRA_STAGING_QA_OWN_MODEL_ENABLED: 'enables the staging own-model CPU inference service (#1015)',
   OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT: 'allows operator-chosen text in the synthetic staging model test (#962)',
@@ -121,6 +125,10 @@ const OPTIONAL = {
   // The code caps alerts at 365 by itself (usageModel.ts); the rule keeps a too-large value from reading as intended.
   ALERT_RETENTION_DAYS: (v) => (Number.isInteger(Number(v)) && Number(v) >= 7 && Number(v) <= 365 ? null : 'alerts are kept 12 months at most (privacy policy); 7 to 365'),
   // The code accepts any number at or above the event window, so nothing but this rule stops 1000 days.
+  // #1139 alert grouping: first N flagged messages per (child, app) push, then one grouped summary per window.
+  // The code clamps too (socialAlertWindow.ts); the rule keeps an out-of-range value from reading as intended.
+  SOCIAL_ALERT_FIRST_PUSHES: (v) => (Number.isInteger(Number(v)) && Number(v) >= 1 && Number(v) <= 20 ? null : 'first pushes per child and app: a whole number 1 to 20 (#1139)'),
+  SOCIAL_ALERT_SUMMARY_MINUTES: (v) => (Number.isInteger(Number(v)) && Number(v) >= 1 && Number(v) <= 60 ? null : 'grouped summary every 1 to 60 minutes (#1139)'),
   ROLLUP_RETENTION_DAYS: (v) => (Number.isInteger(Number(v)) && Number(v) >= 90 && Number(v) <= 365 ? null : 'daily totals are kept 365 days at most (privacy policy); 90 to 365'),
 };
 
@@ -386,6 +394,8 @@ function selftest() {
     ['links to localhost', (t) => setEnv(t, 'APP_PUBLIC_URL', 'http://localhost:3000'), 'APP_PUBLIC_URL: must be the public'],
     ['sandbox push', (t) => setEnv(t, 'APNS_ENV', 'sandbox'), 'APNS_ENV: must be "production"'],
     ['public scorer address', (t) => setEnv(t, 'AI_ENGINE_URL', 'https://api.example.com'), 'AI_ENGINE_URL: must be the private'],
+    ...['OSRA_OWN_MODEL_REGION', 'OSRA_STAGING_AI_ALL_CHILDREN', 'OSRA_STAGING_AI_FAMILY_DAILY_CAP', 'OSRA_STAGING_AI_GLOBAL_DAILY_CAP']
+      .map((name) => [`consented staging setting ${name} forbidden in production`, (t) => setEnv(t, name, '0'), `${name}: not allowed`]),
     ['staging QA switch even when disabled', (t) => setEnv(t, 'OSRA_STAGING_QA_ANALYZER_ENABLED', '0'), 'OSRA_STAGING_QA_ANALYZER_ENABLED: not allowed'],
     ['staging QA Android sources', (t) => setEnv(t, 'OSRA_STAGING_QA_ANDROID_SOURCES', '1'), 'OSRA_STAGING_QA_ANDROID_SOURCES: not allowed'],
     ['staging QA provider selection', (t) => setEnv(t, 'OSRA_STAGING_QA_ENGINE', 'both'), 'OSRA_STAGING_QA_ENGINE: not allowed'],
@@ -428,6 +438,8 @@ function selftest() {
     ['Play package missing at launch', (t) => dropEnv(t, 'PLAY_PACKAGE_NAME'), 'PLAY_PACKAGE_NAME: missing (needed at launch'],
     ['staging own-model switch forbidden in production', (t) => setEnv(t, 'OSRA_STAGING_QA_OWN_MODEL_ENABLED', '1'), 'OSRA_STAGING_QA_OWN_MODEL_ENABLED: not allowed'],
     ['push-per-message switch forbidden in production, even as false', (t) => setEnv(t, 'SOCIAL_ALERT_PUSH_EVERY_MESSAGE', 'false'), 'SOCIAL_ALERT_PUSH_EVERY_MESSAGE: not allowed'],
+    ['first-push budget out of range', (t) => setEnv(t, 'SOCIAL_ALERT_FIRST_PUSHES', '50'), 'SOCIAL_ALERT_FIRST_PUSHES: first pushes per child and app'],
+    ['summary cadence out of range', (t) => setEnv(t, 'SOCIAL_ALERT_SUMMARY_MINUTES', '0'), 'SOCIAL_ALERT_SUMMARY_MINUTES: grouped summary every'],
   ];
 
   let failed = 0;
