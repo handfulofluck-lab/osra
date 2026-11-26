@@ -95,6 +95,7 @@ object BlockExplainPolicy {
         bonusMinutes: Int,
         fallbackReason: String,
         fallbackWindow: WindowReason?,
+        declaresVpnService: Boolean = false,
         ownPackage: String = EssentialPackages.OWN_PACKAGE,
     ): BlockExplanation {
         val stillOpen = ruleSet?.alwaysAllowedApps
@@ -134,7 +135,7 @@ object BlockExplainPolicy {
 
         val explicitAllow = appRule?.action == "allow"
         val explicitBlock = appRule?.action == "block"
-        val blocklisted = !explicitAllow && blocklist.containsKey(packageId)
+        val defaultProtected = !explicitAllow && (blocklist.containsKey(packageId) || declaresVpnService)
 
         val bedtimeEnabled = isWindowEnabled(screenTime.bedtimeStart, screenTime.bedtimeEnd)
         val bedtimeActive = !explicitAllow && bedtimeEnabled &&
@@ -162,7 +163,7 @@ object BlockExplainPolicy {
                 usedMinutes = appUsed
                 limitMinutes = appLimit
             }
-            blocklisted -> primaryCause = BlockCause.APP_BLOCKED
+            defaultProtected -> primaryCause = BlockCause.APP_BLOCKED
             dailyLimitReached -> {
                 primaryCause = BlockCause.DAILY_LIMIT
                 usedMinutes = totalUsed
@@ -173,8 +174,9 @@ object BlockExplainPolicy {
             else -> return fallbackExplanation(fallbackReason, fallbackWindow, local, stillOpen)
         }
 
-        // 2. Compute "Back again" as the LATER of all active rules (null if any indefinite rule applies).
-        val hasIndefiniteBlock = pausedInternet || explicitBlock || blocklisted
+        // 2. Compute "Back again" as the LATER of all active rules, extending across contiguous
+        // scheduled windows (e.g. overnight bedtime handing off directly into morning school hours).
+        val hasIndefiniteBlock = pausedInternet || explicitBlock || defaultProtected
         val backAt: LocalDateTime? = if (hasIndefiniteBlock) {
             null
         } else {
@@ -183,16 +185,7 @@ object BlockExplainPolicy {
                 nextEndDateTime(local, routine.endTime)?.let { candidates += it }
             }
             if (appLimitReached || dailyLimitReached) {
-                var resetAt = local.toLocalDate().plusDays(1).atStartOfDay()
-                if (!explicitAllow && bedtimeEnabled &&
-                    engine.inWindow(LocalTime.MIDNIGHT, screenTime.bedtimeStart, screenTime.bedtimeEnd)
-                ) {
-                    parseHhMm(screenTime.bedtimeEnd)?.let { end ->
-                        val afterBedtime = resetAt.toLocalDate().atTime(end)
-                        if (afterBedtime.isAfter(resetAt)) resetAt = afterBedtime
-                    }
-                }
-                candidates += resetAt
+                candidates += local.toLocalDate().plusDays(1).atStartOfDay()
             }
             if (bedtimeActive) {
                 nextEndDateTime(local, screenTime.bedtimeEnd)?.let { candidates += it }
@@ -200,7 +193,17 @@ object BlockExplainPolicy {
             if (schoolActive) {
                 nextEndDateTime(local, screenTime.schoolHours.end)?.let { candidates += it }
             }
-            candidates.maxOrNull()
+            candidates.maxOrNull()?.let { initial ->
+                extendAcrossContiguousWindows(
+                    initial = initial,
+                    ruleSet = ruleSet,
+                    packageId = packageId,
+                    explicitAllow = explicitAllow,
+                    bedtimeEnabled = bedtimeEnabled,
+                    schoolEnabled = schoolEnabled,
+                    engine = engine,
+                )
+            }
         }
 
         // 3. G3: offer "Ask for 15 more minutes of screen time" ONLY when daily limit is blocking
@@ -210,7 +213,7 @@ object BlockExplainPolicy {
             activeRoutines.isEmpty() &&
             !explicitBlock &&
             !appLimitReached &&
-            !blocklisted &&
+            !defaultProtected &&
             !bedtimeActive &&
             !schoolActive
 
@@ -371,6 +374,53 @@ object BlockExplainPolicy {
         val end = parseHhMm(endHhMm) ?: return null
         val todayEnd = now.toLocalDate().atTime(end)
         return if (todayEnd.isAfter(now)) todayEnd else now.toLocalDate().plusDays(1).atTime(end)
+    }
+
+    /**
+     * Re-evaluates scheduled blockers (routines, bedtime, school hours) at [initial] and advances
+     * through any contiguous blocking window so C-02 never promises a return time while another
+     * scheduled window still holds the app shut. Returns null if bounded hops cannot clear (24 h cover).
+     */
+    private fun extendAcrossContiguousWindows(
+        initial: LocalDateTime,
+        ruleSet: RuleSetDto,
+        packageId: String,
+        explicitAllow: Boolean,
+        bedtimeEnabled: Boolean,
+        schoolEnabled: Boolean,
+        engine: RuleEngine,
+    ): LocalDateTime? {
+        var candidate = initial
+        val screenTime = ruleSet.screenTime
+        repeat(8) {
+            val time = candidate.toLocalTime()
+            val day = candidate.dayOfWeek.value
+            val coveringEnds = mutableListOf<LocalDateTime>()
+            for (routine in ruleSet.routines) {
+                if (day in routine.days &&
+                    engine.inWindow(time, routine.startTime, routine.endTime) &&
+                    packageId !in routine.allowedApps &&
+                    (packageId in routine.blockedApps || routine.allowedApps.isNotEmpty())
+                ) {
+                    nextEndDateTime(candidate, routine.endTime)?.let { coveringEnds += it }
+                }
+            }
+            if (!explicitAllow && bedtimeEnabled &&
+                engine.inWindow(time, screenTime.bedtimeStart, screenTime.bedtimeEnd)
+            ) {
+                nextEndDateTime(candidate, screenTime.bedtimeEnd)?.let { coveringEnds += it }
+            }
+            if (!explicitAllow && schoolEnabled &&
+                day in screenTime.schoolHours.days &&
+                engine.inWindow(time, screenTime.schoolHours.start, screenTime.schoolHours.end)
+            ) {
+                nextEndDateTime(candidate, screenTime.schoolHours.end)?.let { coveringEnds += it }
+            }
+            val next = coveringEnds.maxOrNull() ?: return candidate
+            if (!next.isAfter(candidate)) return null
+            candidate = next
+        }
+        return null
     }
 
     private fun parseHhMm(value: String): LocalTime? =

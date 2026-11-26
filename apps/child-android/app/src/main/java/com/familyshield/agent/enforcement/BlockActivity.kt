@@ -163,6 +163,7 @@ class BlockActivity : ComponentActivity() {
                             blocklist = rules.blocklistSnapshot(),
                             pausedInternet = rules.isInternetPaused(),
                             bonusMinutes = rules.bonusMinutesTodaySnapshot(),
+                            declaresVpnService = rules.declaresVpnServiceSnapshot(request.packageId),
                             fallbackReason = request.reason,
                             fallbackWindow = request.window,
                         )

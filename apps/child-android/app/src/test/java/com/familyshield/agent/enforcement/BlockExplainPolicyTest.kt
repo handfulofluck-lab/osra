@@ -200,6 +200,55 @@ class BlockExplainPolicyTest {
     }
 
     @Test
+    fun `VPN-protected app stays indefinite block even when daily limit is also exhausted`() {
+        val rules = RuleSetDto(
+            screenTime = ScreenTimeRuleDto(dailyLimitMinutes = 60, bedtimeStart = "21:00", bedtimeEnd = "07:00"),
+        )
+        val exp = BlockExplainPolicy.explain(
+            ruleSet = rules,
+            packageId = "com.example.vpn",
+            now = wedAfternoon,
+            minutesUsedToday = mapOf("com.example.vpn" to 60),
+            blocklist = emptyMap(),
+            pausedInternet = false,
+            bonusMinutes = 0,
+            fallbackReason = BlockActivity.REASON_BLOCKED,
+            fallbackWindow = null,
+            declaresVpnService = true,
+        )
+        assertEquals(BlockCause.APP_BLOCKED, exp.cause)
+        assertNull("VPN-protected app must never promise a return time", exp.backAtTime)
+        assertFalse("VPN-protected app must NOT offer a daily-limit screen-time ask", exp.canAskForMoreTime)
+    }
+
+    @Test
+    fun `overnight bedtime handing off into next-day school hours extends return time to school end`() {
+        val rules = RuleSetDto(
+            screenTime = ScreenTimeRuleDto(
+                bedtimeStart = "21:00",
+                bedtimeEnd = "07:00",
+                // Thursday (day 4) school hours begin at 06:00, overlapping bedtime end at 07:00.
+                schoolHours = SchoolHoursDto(start = "06:00", end = "15:00", days = listOf(1, 2, 3, 4, 5)),
+            ),
+        )
+        val exp = BlockExplainPolicy.explain(
+            ruleSet = rules,
+            packageId = minecraft,
+            now = wedNight,
+            minutesUsedToday = emptyMap(),
+            blocklist = emptyMap(),
+            pausedInternet = false,
+            bonusMinutes = 0,
+            fallbackReason = BlockActivity.REASON_BLOCKED,
+            fallbackWindow = WindowReason(WindowKind.BEDTIME, null, "07:00"),
+        )
+        assertEquals(BlockCause.BEDTIME, exp.cause)
+        assertEquals("15:00", exp.backAtTime)
+        assertTrue(exp.backAtTomorrow)
+        assertFalse(exp.canAskForMoreTime)
+    }
+
+    @Test
     fun `time request only emits 15 or 30 minutes and rejects 60 for this cut`() {
         val exp = BlockExplanation(cause = BlockCause.DAILY_LIMIT, canAskForMoreTime = true)
         assertEquals("15", BlockExplainPolicy.buildRequestPayload(minecraft, exp, "time_limit", 15).metadata["minutes"])
