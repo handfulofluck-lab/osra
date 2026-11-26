@@ -614,6 +614,12 @@ abstract class AppLocalizations {
   /// **'Turn on'**
   String get settingsSecurityCardButton;
 
+  /// No description provided for @settingsTimeZone.
+  ///
+  /// In en, this message translates to:
+  /// **'Time zone'**
+  String get settingsTimeZone;
+
   /// No description provided for @signOutTooltip.
   ///
   /// In en, this message translates to:

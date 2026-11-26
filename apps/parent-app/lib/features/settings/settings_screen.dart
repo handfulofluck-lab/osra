@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../api/permission_errors.dart';
+import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
@@ -79,6 +80,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  /// A21: the family's offset in words, never a raw IANA id and never a raw number. The catalog's city is
+  /// not reachable from the family snapshot (it carries , not the zone id), so this is the
+  /// offset alone — which the Bureau allows.
+  String _utcOffsetLabel(AppLocalizations l10n) {
+    final minutes = ref.watch(familyProvider).valueOrNull?.family.utcOffsetMinutes;
+    if (minutes == null) return l10n.off;
+    final sign = minutes < 0 ? '-' : '+' ;
+    final abs = minutes.abs();
+    final hh = abs ~/ 60;
+    final mm = abs % 60;
+    final offset = mm == 0 ? 'UTC$sign$hh' : 'UTC$sign${hh.toString().padLeft(2, '0')}:${mm.toString().padLeft(2, '0')}';
+    return ltrIsolate(offset);
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -119,6 +134,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               onTap: onTap,
             );
           },
+        );
+
+    /// Read-only row (A21's time zone until #1211): a plain tile with no chevron and no ripple, because
+    /// there is nothing to open yet and a tappable-looking row that does nothing is worse than a label.
+    Widget readOnlyRow({required Key key, required String label, required String value, required IconData icon}) =>
+        ListTile(
+          key: key,
+          minVerticalPadding: AppSpace.md,
+          enabled: false,
+          leading: Icon(icon, color: theme.colorScheme.onSurfaceVariant),
+          title: Text(label),
+          trailing: Text(value,
+              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
         );
 
     Widget group(String heading, List<Widget> children) => Column(
@@ -184,6 +212,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 label: l10n.appearanceTitle,
                 icon: Icons.palette_outlined,
                 onTap: () => context.push('/settings/appearance'),
+              ),
+              readOnlyRow(
+                key: const ValueKey('settingsRow-timeZone'),
+                label: l10n.settingsTimeZone,
+                icon: Icons.public,
+                value: _utcOffsetLabel(l10n),
               ),
             ]),
             group(l10n.settingsGroupSecurity, [

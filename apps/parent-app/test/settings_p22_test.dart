@@ -74,6 +74,17 @@ void main() {
 
 
 
+
+  testWidgets('the time zone row is read-only and shows the family offset, never an IANA id', (tester) async {
+    await pump(tester);
+    expect(find.byKey(const ValueKey('settingsRow-timeZone')), findsOneWidget);
+    // fixture family: utcOffsetMinutes 240 -> UTC+4, in Western digits
+    expect(find.text('UTC+4'), findsOneWidget);
+    expect(find.textContaining('/'), findsNothing, reason: 'never the raw Asia/Dubai id');
+    final tile = tester.widget<ListTile>(find.byKey(const ValueKey('settingsRow-timeZone')));
+    expect(tile.enabled, isFalse, reason: 'read-only until #1211: no chevron and no ripple');
+  });
+
   testWidgets('the security card is on top while two-step verification is off, and gone when it is on',
       (tester) async {
     await pump(tester, twoStepOn: false);
