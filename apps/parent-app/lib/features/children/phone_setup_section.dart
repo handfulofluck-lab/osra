@@ -230,6 +230,7 @@ class PhoneSetupSection extends StatelessWidget {
         'uninstall_guard' => l10n.phoneSetupFeatureUninstallGuard,
         'notification_scan' => l10n.phoneSetupFeatureNotificationScan,
         'call_sms_log' => l10n.phoneSetupFeatureCallSmsLog,
+        'child_account_admin' => l10n.phoneSetupFeatureChildAccountAdmin,
         // A newer agent naming a feature this build of the app does not know: show the wire key rather than
         // dropping the row, so the parent sees that something is reported.
         _ => key,

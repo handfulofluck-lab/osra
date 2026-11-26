@@ -3181,6 +3181,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get phoneSetupFeatureCallSmsLog => 'Calls and texts';
 
   @override
+  String get phoneSetupFeatureChildAccountAdmin => 'Standard account';
+
+  @override
   String get phoneSetupStateReady => 'Ready';
 
   @override

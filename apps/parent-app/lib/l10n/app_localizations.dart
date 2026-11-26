@@ -5288,6 +5288,12 @@ abstract class AppLocalizations {
   /// **'Calls and texts'**
   String get phoneSetupFeatureCallSmsLog;
 
+  /// No description provided for @phoneSetupFeatureChildAccountAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'Standard account'**
+  String get phoneSetupFeatureChildAccountAdmin;
+
   /// No description provided for @phoneSetupStateReady.
   ///
   /// In en, this message translates to:

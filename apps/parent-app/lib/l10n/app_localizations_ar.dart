@@ -3378,6 +3378,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get phoneSetupFeatureCallSmsLog => 'المكالمات والرسائل';
 
   @override
+  String get phoneSetupFeatureChildAccountAdmin => 'حساب قياسي';
+
+  @override
   String get phoneSetupStateReady => 'جاهز';
 
   @override

@@ -1804,6 +1804,7 @@
   "phoneSetupFeatureUninstallGuard": "Uninstall protection",
   "phoneSetupFeatureNotificationScan": "Notification scan",
   "phoneSetupFeatureCallSmsLog": "Calls and texts",
+  "phoneSetupFeatureChildAccountAdmin": "Standard account",
   "phoneSetupStateReady": "Ready",
   "phoneSetupStateDegraded": "Limited",
   "phoneSetupStateUnavailable": "Not available",

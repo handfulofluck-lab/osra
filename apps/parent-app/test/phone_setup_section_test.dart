@@ -116,8 +116,10 @@ void main() {
           findsOneWidget);
       expect(find.textContaining('Use a standard account for full protection.'),
           findsOneWidget);
+      expect(find.text('Standard account · Limited'), findsOneWidget);
       expect(find.textContaining('child_account_admin'), findsNothing,
-          reason: 'the feature chip must use the Bureau label, not the wire key');
+          reason:
+              'the feature chip must use the Bureau label, not the wire key');
     }
     await pump(tester, device(features: {'child_account_admin': 'degraded'}));
     expect(find.textContaining('account on this computer is an administrator'),

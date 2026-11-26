@@ -1107,6 +1107,7 @@
   "phoneSetupFeatureUninstallGuard": "حماية من الإزالة",
   "phoneSetupFeatureNotificationScan": "فحص الإشعارات",
   "phoneSetupFeatureCallSmsLog": "المكالمات والرسائل",
+  "phoneSetupFeatureChildAccountAdmin": "حساب قياسي",
   "phoneSetupStateReady": "جاهز",
   "phoneSetupStateDegraded": "محدود",
   "phoneSetupStateUnavailable": "غير متاح",
