@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:familyshield_parent/features/pairing/pair_p05_screen.dart';
 import 'package:familyshield_parent/features/pairing/pair_qr_screen.dart';
 import 'package:familyshield_parent/l10n/app_localizations.dart';
@@ -10,12 +11,14 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'fake_api_client.dart';
 
-/// #1179 P-05 Pair device tests (★0, A10).
+/// #1179 P-05 Pair device tests (★0, A10 + Kimi-Mac B1–B5).
 ///
 /// Mutant checks:
-/// - Removing `p05PairEnabledProvider` gate breaks the fallback test.
-/// - Re-introducing OS chooser (`Android` / `iPhone`) or copy-code button fails the forbidden-element assertions.
-/// - Skipping device-name confirmation (`A10`) fails the claim approval test.
+/// - Treating `approved` as `p05ConnectedCard` breaks the B1 state-transition test.
+/// - Reading `model` instead of `deviceName` breaks the B2 device-name test.
+/// - Leaving `p05QrCodeCard` / `p05WaitingLine` visible after Deny breaks the B3 test.
+/// - Dropping `pairClaimDataCleared` breaks the B4 test.
+/// - Swallowing poll errors or labeling HTTP 409 as "No connection" breaks the B5 test.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -26,7 +29,9 @@ void main() {
   FakeApiClient buildApi({
     String code = '482913',
     DateTime? expiresAt,
-    Map<String, dynamic>? claimResponse,
+    Object? Function()? claimResponse,
+    Object? Function()? approveResponse,
+    Object? Function()? denyResponse,
     List<String>? approvedClaims,
   }) {
     final exp = (expiresAt ?? DateTime.now().add(const Duration(minutes: 10))).toUtc().toIso8601String();
@@ -34,25 +39,29 @@ void main() {
       ...standardRoutes(),
       'POST /v1/devices/pair': (_) => {'code': code, 'expiresAt': exp},
       'GET /v1/devices/pair/$code/claim': (_) =>
-          claimResponse ?? {'status': 'waiting'},
+          claimResponse != null ? claimResponse() : {'status': 'waiting'},
       'POST /v1/devices/pair/claims/claim-1/approve': (_) {
         approvedClaims?.add('claim-1');
-        return {'ok': true};
+        return approveResponse != null ? approveResponse() : {'ok': true};
       },
-      'POST /v1/devices/pair/claims/claim-1/deny': (_) => {'ok': true},
+      'POST /v1/devices/pair/claims/claim-1/deny': (_) =>
+          denyResponse != null ? denyResponse() : {'ok': true},
     });
   }
 
-  testWidgets('#1179 P-05 switch ON shows QR + code, waiting line, no OS chooser, no copy-code button, and confirms device name (A10)', (tester) async {
+  testWidgets('#1179 P-05 B1+B2+B4: confirms deviceName over model, shows dataCleared warning, stays approved-waiting until paired', (tester) async {
     final approved = <String>[];
     final now = DateTime(2026, 11, 26, 17, 45);
+    var stage = 'pending';
     final api = buildApi(
       code: '482913',
       expiresAt: now.add(const Duration(minutes: 10)),
-      claimResponse: {
+      claimResponse: () => {
         'claimId': 'claim-1',
-        'status': 'pending',
-        'model': 'Galaxy A54',
+        'status': stage,
+        'model': 'Pixel 8',
+        'deviceName': "Sam's phone",
+        'dataCleared': true,
       },
       approvedClaims: approved,
     );
@@ -71,6 +80,7 @@ void main() {
             childId: 'child-1',
             childName: 'Alex',
             clock: () => now,
+            onContinue: () {},
             onSkip: () {},
           ),
         ),
@@ -81,24 +91,21 @@ void main() {
 
     expect(find.byKey(const ValueKey('p05QrCodeCard')), findsOneWidget);
     expect(find.byKey(const ValueKey('p05QrImage')), findsOneWidget);
-    expect(find.byKey(const ValueKey('p05CodeText')), findsOneWidget);
     expect(find.textContaining('482 · 913'), findsOneWidget);
-    expect(find.byKey(const ValueKey('p05ExpiryPill')), findsOneWidget);
-    expect(find.byKey(const ValueKey('p05NewCodeButton')), findsOneWidget);
-    expect(find.byKey(const ValueKey('p05SendInstallLinkButton')), findsOneWidget);
-    expect(find.byKey(const ValueKey('p05SkipButton')), findsOneWidget);
-
-    // Forbidden per #1179 P-05: no OS chooser, no copy-code button.
     expect(find.text('Android'), findsNothing);
     expect(find.text('iPhone'), findsNothing);
     expect(find.text('Copy code'), findsNothing);
 
-    // Trigger 2-second claim poll -> shows device name confirmation card (A10).
+    // Poll -> pending claim: B2 deviceName wins, B4 dataCleared warning visible.
     await tester.pump(const Duration(seconds: 2));
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.byKey(const ValueKey('p05ConfirmDeviceCard')), findsOneWidget);
-    expect(find.textContaining('Galaxy A54'), findsOneWidget);
+    expect(find.textContaining("Sam's phone"), findsOneWidget);
+    expect(find.textContaining('Pixel 8'), findsNothing);
+    expect(find.byKey(const ValueKey('pairClaimDataCleared')), findsOneWidget);
 
+    // Tap Confirm -> B1: status is `approved`, NOT connected yet, Continue NOT shown.
+    stage = 'approved';
     await tester.scrollUntilVisible(find.byKey(const ValueKey('p05ConfirmLinkButton')), 200);
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('p05ConfirmLinkButton')));
@@ -106,7 +113,114 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
 
     expect(approved, ['claim-1']);
+    expect(find.byKey(const ValueKey('p05ApprovedCard')), findsOneWidget);
+    expect(find.byKey(const ValueKey('p05ConnectedCard')), findsNothing);
+    expect(find.byKey(const ValueKey('p05ContinueButton')), findsNothing);
+
+    // Next poll returns `paired` -> now shows Phone connected + Continue.
+    stage = 'paired';
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(milliseconds: 50));
     expect(find.byKey(const ValueKey('p05ConnectedCard')), findsOneWidget);
+    expect(find.byKey(const ValueKey('p05ContinueButton')), findsOneWidget);
+  });
+
+  testWidgets('#1179 P-05 B3: Decline hides dead QR and waiting line and offers New code', (tester) async {
+    final now = DateTime(2026, 11, 26, 17, 45);
+    final api = buildApi(
+      expiresAt: now.add(const Duration(minutes: 10)),
+      claimResponse: () => {
+        'claimId': 'claim-1',
+        'status': 'pending',
+        'model': 'Pixel 8',
+      },
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          p05PairEnabledProvider.overrideWithValue(true),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: PairingQrScreen(childId: 'child-1', childName: 'Alex', clock: () => now),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('p05DeclineButton')), 200);
+    await tester.tap(find.byKey(const ValueKey('p05DeclineButton')));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.byKey(const ValueKey('p05DeniedCard')), findsOneWidget);
+    expect(find.byKey(const ValueKey('p05DeniedNewCodeButton')), findsOneWidget);
+    expect(find.byKey(const ValueKey('p05QrCodeCard')), findsNothing);
+    expect(find.byKey(const ValueKey('p05WaitingLine')), findsNothing);
+  });
+
+  testWidgets('#1179 P-05 B5: polling error shows honest retry while keeping QR visible, and 409 approve does not say No connection', (tester) async {
+    final now = DateTime(2026, 11, 26, 17, 45);
+    var failPoll = true;
+    final api = buildApi(
+      expiresAt: now.add(const Duration(minutes: 10)),
+      claimResponse: () {
+        if (failPoll) throw FakeNetworkError();
+        return {'claimId': 'claim-1', 'status': 'pending', 'model': 'Pixel 8'};
+      },
+      approveResponse: () => throw DioException(
+        requestOptions: RequestOptions(path: '/v1/devices/pair/claims/claim-1/approve'),
+        response: Response(
+          requestOptions: RequestOptions(path: '/v1/devices/pair/claims/claim-1/approve'),
+          statusCode: 409,
+          data: {'error': 'conflict'},
+        ),
+        type: DioExceptionType.badResponse,
+      ),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          p05PairEnabledProvider.overrideWithValue(true),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: PairingQrScreen(childId: 'child-1', childName: 'Alex', clock: () => now),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.byKey(const ValueKey('p05PollErrorCard')), findsOneWidget);
+    expect(find.byKey(const ValueKey('p05QrCodeCard')), findsOneWidget);
+
+    // Recover poll -> pending claim -> 409 on approve shows pairClaimError, NOT "No connection".
+    failPoll = false;
+    await tester.ensureVisible(find.byKey(const ValueKey('p05PollRetryButton')));
+    await tester.tap(find.byKey(const ValueKey('p05PollRetryButton')));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.byKey(const ValueKey('p05ConfirmDeviceCard')), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('p05ConfirmLinkButton')), 200);
+    await tester.tap(find.byKey(const ValueKey('p05ConfirmLinkButton')));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.byKey(const ValueKey('p05DecisionError')), findsOneWidget);
+    expect(find.textContaining('No connection'), findsNothing);
   });
 
   testWidgets('#1179 P-05 switch OFF falls back to legacy PairingQrScreen', (tester) async {
@@ -134,8 +248,12 @@ void main() {
 
   for (final cfg in [
     (locale: const Locale('en'), dark: false, size: const Size(390, 844), scale: 1.0),
+    (locale: const Locale('en'), dark: true, size: const Size(390, 844), scale: 1.0),
     (locale: const Locale('ar'), dark: false, size: const Size(390, 844), scale: 1.0),
+    (locale: const Locale('ar'), dark: true, size: const Size(390, 844), scale: 1.0),
+    (locale: const Locale('en'), dark: false, size: const Size(320, 568), scale: 2.0),
     (locale: const Locale('en'), dark: true, size: const Size(320, 568), scale: 2.0),
+    (locale: const Locale('ar'), dark: false, size: const Size(320, 568), scale: 2.0),
     (locale: const Locale('ar'), dark: true, size: const Size(320, 568), scale: 2.0),
   ]) {
     testWidgets(

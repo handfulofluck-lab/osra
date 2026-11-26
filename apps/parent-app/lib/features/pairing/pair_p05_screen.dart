@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../api/permission_errors.dart';
 import '../../core/digits.dart';
 import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
@@ -13,6 +14,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
 import 'pair_qr_payload.dart';
+import 'pair_qr_screen.dart' show pairClaimDeviceLabel;
 
 /// Feature switch for UX Final Decisions P-05 Pair (#1179, ★0).
 ///
@@ -33,7 +35,11 @@ const String kInstallShareUrl = 'https://osratech.com/install';
 /// UX Final Decisions **P-05 Pair device** (#1179, ★0, A10):
 /// - QR + typed 6-digit code on one screen from the same pairing session.
 /// - Live waiting line + expiry timer + "New code".
-/// - Confirm the claiming device's name before linking (A10).
+/// - Confirm the claiming device's name (`pairClaimDeviceLabel`) before linking
+///   (A10), including the `dataCleared` warning when present.
+/// - `approved` acknowledges approval and keeps polling until `paired`; only
+///   `paired` shows the connected card / Continue.
+/// - `denied` hides the burned QR and offers a fresh code.
 /// - "Send install link" and "Skip for now" (when `onSkip != null`).
 /// - **No OS chooser, no copy-code button, never shows device IDs or server URLs.**
 class PairP05Screen extends ConsumerStatefulWidget {
@@ -68,7 +74,8 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
   Timer? _claimTimer;
   Map<String, dynamic>? _claim;
   bool _deciding = false;
-  bool _decisionFailed = false;
+  Object? _decisionError;
+  Object? _pollError;
 
   DateTime get _now => (widget.clock ?? DateTime.now)();
 
@@ -102,7 +109,8 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
       _loading = true;
       _errorKind = null;
       _claim = null;
-      _decisionFailed = false;
+      _decisionError = null;
+      _pollError = null;
     });
     try {
       final res = await ref.read(apiClientProvider).raw.post(
@@ -171,13 +179,19 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
           .get('/v1/devices/pair/$code/claim');
       if (!mounted || code != _code || _deciding) return;
       final data = Map<String, dynamic>.from(res.data as Map);
-      setState(() => _claim = data);
+      setState(() {
+        _claim = data;
+        _pollError = null;
+      });
       if (data['status'] == 'paired') {
         _claimTimer?.cancel();
         ref.invalidate(familyProvider);
+      } else if (data['status'] == 'denied') {
+        _claimTimer?.cancel();
       }
-    } catch (_) {
-      // Missed tick; next tick retries.
+    } catch (e) {
+      if (!mounted || code != _code) return;
+      setState(() => _pollError = e);
     }
   }
 
@@ -186,7 +200,7 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
     if (claimId == null) return;
     setState(() {
       _deciding = true;
-      _decisionFailed = false;
+      _decisionError = null;
     });
     try {
       await ref.read(apiClientProvider).raw.post(
@@ -202,13 +216,24 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
       } else {
         _claimTimer?.cancel();
       }
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
         _deciding = false;
-        _decisionFailed = true;
+        _decisionError = e;
       });
     }
+  }
+
+  String _decisionErrorMessage(AppLocalizations l10n, Object error) {
+    if (error is DioException) {
+      final code = error.response?.statusCode;
+      if (code == 409 || code == 410 || code == 404) {
+        return l10n.pairClaimError;
+      }
+      return friendlyErrorText(l10n, error, () => l10n.pairClaimError);
+    }
+    return l10n.pairClaimError;
   }
 
   Future<void> _sendInstallLink() async {
@@ -242,7 +267,11 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
         : null;
 
     final claimStatus = _claim?['status']?.toString();
-    final claimModel = _claim?['model']?.toString() ?? _claim?['deviceModel']?.toString();
+    final rawLabel = _claim != null ? pairClaimDeviceLabel(_claim!) : '';
+    final claimDeviceLabel = rawLabel.isNotEmpty
+        ? rawLabel
+        : (_claim?['deviceModel']?.toString() ?? '');
+    final isDenied = claimStatus == 'denied';
 
     return Scaffold(
       appBar: AppBar(
@@ -301,6 +330,38 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
                           onPressed: _generate,
                           style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
                           child: Text(l10n.pairP05NewCode),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else if (isDenied)
+                // B3: Deny burns the pairing code on the server — hide the dead QR/waiting line
+                // and show the approved Declined + New code card.
+                Card(
+                  key: const ValueKey('p05DeniedCard'),
+                  color: tokens.surfaceContainer,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    side: BorderSide(color: tokens.border),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpace.lg),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          l10n.pairClaimDenied,
+                          key: const ValueKey('pairClaimDenied'),
+                          style: textTheme.bodyLarge?.copyWith(color: tokens.onSurface),
+                        ),
+                        const SizedBox(height: AppSpace.md),
+                        FilledButton.tonalIcon(
+                          key: const ValueKey('p05DeniedNewCodeButton'),
+                          onPressed: _generate,
+                          style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: Text(l10n.pairP05NewCode),
                         ),
                       ],
                     ),
@@ -411,8 +472,8 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
                   ),
                 ),
                 const SizedBox(height: AppSpace.md),
-                // A10: Confirm device name before linking
-                if (claimStatus == 'pending' && claimModel != null)
+                // A10 + B2 + B4: Confirm device name (preferring deviceName) + dataCleared warning
+                if (claimStatus == 'pending' && claimDeviceLabel.isNotEmpty)
                   Card(
                     key: const ValueKey('p05ConfirmDeviceCard'),
                     color: tokens.primaryContainer,
@@ -434,15 +495,24 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
                           ),
                           const SizedBox(height: AppSpace.xs),
                           Text(
-                            l10n.pairP05ConfirmDeviceBody(ltrIsolate(claimModel)),
+                            l10n.pairP05ConfirmDeviceBody(firstStrongIsolate(claimDeviceLabel)),
                             style: textTheme.bodyMedium?.copyWith(
                               color: tokens.onPrimaryContainer,
                             ),
                           ),
-                          if (_decisionFailed) ...[
+                          if (_claim?['dataCleared'] == true) ...[
                             const SizedBox(height: AppSpace.xs),
                             Text(
-                              l10n.errorNoConnection,
+                              l10n.pairClaimDataCleared,
+                              key: const ValueKey('pairClaimDataCleared'),
+                              style: textTheme.bodySmall?.copyWith(color: tokens.danger),
+                            ),
+                          ],
+                          if (_decisionError != null) ...[
+                            const SizedBox(height: AppSpace.xs),
+                            Text(
+                              _decisionErrorMessage(l10n, _decisionError!),
+                              key: const ValueKey('p05DecisionError'),
                               style: textTheme.bodySmall?.copyWith(color: tokens.danger),
                             ),
                           ],
@@ -469,7 +539,41 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
                       ),
                     ),
                   )
-                else if (claimStatus == 'paired' || claimStatus == 'approved')
+                else if (claimStatus == 'approved')
+                  // B1: Approved means waiting for the phone to fetch its token; not connected yet.
+                  Card(
+                    key: const ValueKey('p05ApprovedCard'),
+                    color: tokens.surfaceContainer,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                      side: BorderSide(color: tokens.primary),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpace.lg),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: tokens.primary,
+                            ),
+                          ),
+                          const SizedBox(width: AppSpace.sm),
+                          Expanded(
+                            child: Text(
+                              l10n.pairClaimAllowed,
+                              key: const ValueKey('pairClaimAllowed'),
+                              style: textTheme.bodyMedium?.copyWith(color: tokens.onSurface),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else if (claimStatus == 'paired')
+                  // B1: Only `paired` shows Phone connected / Continue.
                   Card(
                     key: const ValueKey('p05ConnectedCard'),
                     color: tokens.surfaceContainer,
@@ -503,6 +607,36 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
                               child: Text(l10n.setupMonitoringContinue),
                             ),
                           ],
+                        ],
+                      ),
+                    ),
+                  )
+                else if (_pollError != null)
+                  // B5: Honest offline/retry state for claim polling errors (QR stays visible).
+                  Card(
+                    key: const ValueKey('p05PollErrorCard'),
+                    color: tokens.surfaceContainer,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                      side: BorderSide(color: tokens.danger),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpace.md),
+                      child: Row(
+                        children: [
+                          Icon(Icons.cloud_off_outlined, color: tokens.danger, size: 20),
+                          const SizedBox(width: AppSpace.sm),
+                          Expanded(
+                            child: Text(
+                              friendlyErrorText(l10n, _pollError!, () => l10n.errorNoConnection),
+                              style: textTheme.bodySmall?.copyWith(color: tokens.danger),
+                            ),
+                          ),
+                          TextButton(
+                            key: const ValueKey('p05PollRetryButton'),
+                            onPressed: _readClaim,
+                            child: Text(l10n.retry),
+                          ),
                         ],
                       ),
                     ),
