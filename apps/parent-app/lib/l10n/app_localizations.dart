@@ -578,6 +578,15 @@ abstract class AppLocalizations {
   /// **'Off'**
   String get settingsValueOff;
 
+  /// No description provided for @settingsSignOutAllTitle.
+  String get settingsSignOutAllTitle;
+
+  /// No description provided for @settingsSignOutAllBody.
+  String get settingsSignOutAllBody;
+
+  /// No description provided for @settingsSignOutAllConfirm.
+  String get settingsSignOutAllConfirm;
+
   /// No description provided for @signOutTooltip.
   ///
   /// In en, this message translates to:

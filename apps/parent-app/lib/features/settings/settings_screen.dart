@@ -39,10 +39,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   /// `/v1/auth/logout-all` revokes every refresh token of this parent, this device included; the app then signs
-  /// itself out the same way the single-device row does.
+  /// itself out the same way the single-device row does. The confirm step comes first and Cancel is the default,
+  /// because this row is one tap from signing out every phone the account uses (UI/UX Bureau, 22:12 UAE).
   Future<void> _signOutEverywhere() async {
     if (_signingOutAll) return;
     final l10n = context.l10n;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        key: const ValueKey('settingsSignOutAllDialog'),
+        title: Text(l10n.settingsSignOutAllTitle),
+        content: Text(l10n.settingsSignOutAllBody),
+        actions: [
+          TextButton(
+            key: const ValueKey('settingsSignOutAllCancel'),
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.cancel),
+          ),
+          TextButton(
+            key: const ValueKey('settingsSignOutAllConfirm'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Theme.of(ctx).colorScheme.error),
+            child: Text(l10n.settingsSignOutAllConfirm),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     setState(() => _signingOutAll = true);
     try {
       await ref.read(apiClientProvider).raw.post('/v1/auth/logout-all');

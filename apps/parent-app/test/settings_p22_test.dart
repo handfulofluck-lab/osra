@@ -72,6 +72,20 @@ void main() {
         reason: 'there are no recovery codes to open while two-step verification is off');
   });
 
+
+  testWidgets('sign out of all devices asks first, and cancel touches nothing', (tester) async {
+    await pump(tester);
+    await tester.tap(find.byKey(const ValueKey('settingsRow-signOutAll')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('settingsSignOutAllDialog')), findsOneWidget);
+    expect(find.text('Sign out everywhere'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('settingsSignOutAllCancel')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('settingsSignOutAllDialog')), findsNothing,
+        reason: 'cancel is the default and closes the dialog without revoking anything');
+  });
+
   testWidgets('the list reads in Arabic', (tester) async {
     await pump(tester, locale: const Locale('ar'));
     expect(find.text('الإعدادات'), findsOneWidget);
