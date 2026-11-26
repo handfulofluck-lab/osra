@@ -142,7 +142,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ListTile(
           key: key,
           minVerticalPadding: AppSpace.md,
-          enabled: false,
+          // No onTap: no ripple, no chevron, and normal colours — a disabled tile would dim the label
+          // and read as broken rather than as read-only.
           leading: Icon(icon, color: theme.colorScheme.onSurfaceVariant),
           title: Text(label),
           trailing: Text(value,
