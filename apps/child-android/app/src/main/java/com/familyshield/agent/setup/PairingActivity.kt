@@ -1491,7 +1491,7 @@ class PairingActivity : ComponentActivity() {
             pending.requestType == "time" -> getString(R.string.c01_pending_time_title, pending.minutes ?: 15)
             else -> getString(
                 R.string.c01_pending_access_title,
-                com.familyshield.agent.ui.home.AdultsNameFormatter.ltrIsolate(pending.appLabel ?: getString(R.string.app_name)),
+                com.familyshield.agent.ui.home.AdultsNameFormatter.firstStrongIsolate(pending.appLabel ?: getString(R.string.app_name)),
             )
         }
         val pendingSentLine = if (pending != null && pendingTitle != null) {
@@ -1550,7 +1550,7 @@ class PairingActivity : ComponentActivity() {
                     packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
                 }.getOrNull()?.takeIf { it.isNotBlank() } ?: pkg
                 com.familyshield.agent.ui.home.ChildActivityItemUi(
-                    appName = com.familyshield.agent.ui.home.AdultsNameFormatter.ltrIsolate(resolved),
+                    appName = com.familyshield.agent.ui.home.AdultsNameFormatter.firstStrongIsolate(resolved),
                     durationText = formatChildHomeDuration(mins),
                 )
             }

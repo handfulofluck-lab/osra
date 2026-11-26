@@ -69,7 +69,7 @@ class ChildHomePolicyTest {
     }
 
     @Test
-    fun `F7 AdultsNameFormatter follows Arabic Bureau 7191839045 rules for 0, 1, 2, and 3 adults`() {
+    fun `F7 AdultsNameFormatter follows Arabic Bureau 7191839045 rules for 0, 1, 2, 3, and 4+ adults`() {
         assertEquals("أهلي", AdultsNameFormatter.format(emptyList(), "أهلي", isArabic = true))
         assertEquals("\u2068سارة\u2069", AdultsNameFormatter.format(listOf("سارة"), "أهلي", isArabic = true))
         assertEquals(
@@ -79,6 +79,15 @@ class ChildHomePolicyTest {
         assertEquals(
             "\u2068سارة\u2069 و\u2068عمر\u2069 و\u2068خالد\u2069",
             AdultsNameFormatter.format(listOf("سارة", "عمر", "خالد"), "أهلي", isArabic = true),
+        )
+        // Claude lead (#1191 7197409788): 4+ adults fall back to generic form so no adult is silently dropped.
+        assertEquals(
+            "أهلي",
+            AdultsNameFormatter.format(listOf("سارة", "عمر", "خالد", "نور"), "أهلي", isArabic = true),
+        )
+        assertEquals(
+            "my parents",
+            AdultsNameFormatter.format(listOf("Sarah", "Omar", "Khaled", "Noor"), "my parents", isArabic = false),
         )
         assertEquals(
             "\u2068Sarah\u2069 and \u2068Omar\u2069",
@@ -150,11 +159,16 @@ class ChildHomePolicyTest {
             assertTrue("EN strings missing $key", enStrings.contains("name=\"$key\""))
             assertTrue("AR strings missing $key", arStrings.contains("name=\"$key\""))
         }
-        // Arabic Bureau 7191839045 core lines:
+        // Arabic Bureau 7191839045 + 7197357265 core lines:
         assertTrue(arStrings.contains("يومي"))
         assertTrue(arStrings.contains("الطلبات"))
         assertTrue(arStrings.contains("الرسائل"))
-        assertTrue(arStrings.contains("المتبقي اليوم %1\$s"))
+        assertTrue(arStrings.contains("المتبقي اليوم: %1\$s"))
+        assertTrue(arStrings.contains("المستخدم: %1\$s · الحد: %2\$s"))
+        assertTrue(arStrings.contains("المستخدم اليوم: %1\$s"))
+        assertTrue(arStrings.contains("الوقت المتبقي قبل قفل الشاشة: %1\$s"))
+        assertTrue(arStrings.contains("التالي: %1\$s %2\$s · الوقت المتبقي: %3\$s"))
+        assertTrue(arStrings.contains("الدقائق المتبقية"))
         assertTrue(arStrings.contains("إرسال استغاثة إلى %1\$s"))
         assertTrue(arStrings.contains("الاتصال بأهلي"))
         assertTrue(arStrings.contains("ما الذي يُعرض على %1\$s؟"))
