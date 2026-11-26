@@ -252,6 +252,30 @@ class AppLocalizationsEn extends AppLocalizations {
   String get digestPreferencesMenu => 'Digest preferences';
 
   @override
+  String get settingsTitle => 'Settings';
+
+  @override
+  String get settingsGroupLanguage => 'Language and appearance';
+
+  @override
+  String get settingsGroupSecurity => 'Security';
+
+  @override
+  String get settingsGroupAccount => 'Account';
+
+  @override
+  String get settingsSignOut => 'Sign out';
+
+  @override
+  String get settingsSignOutAll => 'Sign out of all devices';
+
+  @override
+  String get settingsValueOn => 'On';
+
+  @override
+  String get settingsValueOff => 'Off';
+
+  @override
   String get signOutTooltip => 'Sign out';
 
   @override
