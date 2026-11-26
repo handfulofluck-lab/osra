@@ -1978,6 +1978,7 @@
   "childOverviewAppsWithLimits": "{count, plural, =0{No app limits} =1{1 with limit} other{{count} with limits}}",
   "@childOverviewAppsWithLimits": { "placeholders": { "count": { "type": "int" } } },
   "childOverviewWebFilterOn": "On",
+  "childOverviewWebFilterOff": "Off",
   "childOverviewSafeSearchOn": "Safe search on",
   "childOverviewCategoriesBlocked": "{count, plural, =0{No categories blocked} =1{1 category blocked} other{{count} categories blocked}}",
   "@childOverviewCategoriesBlocked": { "placeholders": { "count": { "type": "int" } } },

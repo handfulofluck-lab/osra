@@ -3890,7 +3890,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String childOverviewOfLimit(String limit) {
-    return 'من $limit';
+    return 'الحد: $limit';
   }
 
   @override
@@ -3944,6 +3944,9 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get childOverviewWebFilterOn => 'مفعّلة';
+
+  @override
+  String get childOverviewWebFilterOff => 'غير مفعّلة';
 
   @override
   String get childOverviewSafeSearchOn => 'البحث الآمن مفعّل';
@@ -4029,7 +4032,7 @@ class AppLocalizationsAr extends AppLocalizations {
       many: '$count ساعة',
       few: '$count ساعات',
       two: 'ساعتان',
-      one: 'ساعة واحدة',
+      one: 'ساعة',
     );
     return '$_temp0';
   }
@@ -4043,7 +4046,7 @@ class AppLocalizationsAr extends AppLocalizations {
       many: '$count دقيقة',
       few: '$count دقائق',
       two: 'دقيقتان',
-      one: 'دقيقة واحدة',
+      one: 'دقيقة',
     );
     return '$_temp0';
   }

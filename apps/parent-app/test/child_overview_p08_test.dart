@@ -48,8 +48,13 @@ void main() {
           },
         },
     ];
+    final base = familyMeTwoChildren();
     return {
-      ...familyMeTwoChildren(),
+      ...base,
+      'family': {
+        ...(base['family'] as Map<String, dynamic>),
+        'utcOffsetMinutes': 240,
+      },
       'children': [
         {
           'id': 'child-1',
@@ -72,6 +77,8 @@ void main() {
     String platform = 'android',
     List<String>? sentCommands,
     List<int>? bonusGrants,
+    bool includeRulesAck = true,
+    Map<String, dynamic> Function(RecordedRequest)? onCommand,
   }) {
     return FakeApiClient({
       ...standardRoutes(
@@ -82,6 +89,20 @@ void main() {
           platform: platform,
         ),
       ),
+      'GET /v1/devices/dev-1/commands/history': (_) => {
+            'items': includeRulesAck
+                ? [
+                    {
+                      'id': 'cmd-rules-1',
+                      'deviceId': 'dev-1',
+                      'type': 'rules_updated',
+                      'status': 'acked',
+                      'createdAt': '2026-11-26T12:02:00Z',
+                      'ackedAt': '2026-11-26T12:03:00Z',
+                    },
+                  ]
+                : <Map<String, dynamic>>[],
+          },
       'GET /v1/geofences/child-1': (_) => {
             'geofences': [
               {'id': 'g1', 'childId': 'child-1', 'label': 'Home', 'lat': 25.2, 'lng': 55.27, 'radiusM': 150},
@@ -91,7 +112,7 @@ void main() {
       'POST /v1/devices/dev-1/command': (req) {
         final cmd = (req.data as Map?)?['command']?.toString() ?? '';
         sentCommands?.add(cmd);
-        return {'ok': true};
+        return onCommand != null ? onCommand(req) : {'ok': true};
       },
       'POST /v1/controls/children/child-1/bonus': (req) {
         final mins = (req.data as Map?)?['minutes'] as int? ?? 0;
@@ -151,10 +172,11 @@ void main() {
     expect(find.byKey(const ValueKey('p08NamedDevice')), findsOneWidget);
     // Only 1 device -> Switch device button must be absent.
     expect(find.byKey(const ValueKey('p08SwitchDeviceButton')), findsNothing);
-    // Proof line shows Applied on Galaxy S23 at HH:mm
+    // Proof line shows Applied on Galaxy S23 at 16:03 (family UTC+4 clock from rules_updated ackedAt)
     final proof = tester.widget<Text>(find.byKey(const ValueKey('p08ProofLine'))).data ?? '';
     expect(proof, contains('Applied on'));
     expect(proof, contains('Galaxy S23'));
+    expect(proof, contains('16:03'));
     // Forbidden elements from #1179: no "81%", no "-12%" / "−12%"
     expect(find.textContaining('81%'), findsNothing);
     expect(find.textContaining('12%'), findsNothing);
@@ -281,6 +303,107 @@ void main() {
       tester.widget<Text>(find.byKey(const ValueKey('p08TimeLeftHeadline'))).data,
       'Not yet available on iPhone',
     );
+  });
+
+  testWidgets('#1186 finding 1: Lock skips iOS devices and reports server refusals instead of Queued', (tester) async {
+    final iosCmds = <String>[];
+    final iosApi = buildApi(deviceCount: 1, platform: 'ios', sentCommands: iosCmds);
+    await tester.pumpWidget(
+      ProviderScope(
+        key: UniqueKey(),
+        overrides: [
+          apiClientProvider.overrideWithValue(iosApi),
+          p08ChildOverviewEnabledProvider.overrideWithValue(true),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const ChildDetailScreen(childId: 'child-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('p08QuickAction-lock')), 200);
+    await tester.tap(find.byKey(const ValueKey('p08QuickAction-lock')));
+    await tester.pumpAndSettle();
+    expect(iosCmds, isEmpty);
+    expect(find.textContaining('Queued'), findsNothing);
+
+    final refusedCmds = <String>[];
+    final refusedApi = buildApi(
+      deviceCount: 1,
+      platform: 'android',
+      sentCommands: refusedCmds,
+      onCommand: (_) => {'published': false, 'status': 'failed', 'reason': 'device_admin_inactive'},
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        key: UniqueKey(),
+        overrides: [
+          apiClientProvider.overrideWithValue(refusedApi),
+          p08ChildOverviewEnabledProvider.overrideWithValue(true),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const ChildDetailScreen(childId: 'child-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('p08QuickAction-lock')), 200);
+    await tester.tap(find.byKey(const ValueKey('p08QuickAction-lock')));
+    await tester.pumpAndSettle();
+    expect(refusedCmds, ['lock']);
+    expect(find.textContaining('Queued'), findsNothing);
+    expect(find.textContaining('Galaxy S23'), findsWidgets);
+  });
+
+  testWidgets('#1186 finding 2: proof line falls back to Sent to phone when no acked rules_updated command exists', (tester) async {
+    final api = buildApi(deviceCount: 1, rulesVersion: 5, appliedRulesVersion: 5, includeRulesAck: false);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          p08ChildOverviewEnabledProvider.overrideWithValue(true),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const ChildDetailScreen(childId: 'child-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<Text>(find.byKey(const ValueKey('p08ProofLine'))).data, 'Sent to phone');
+  });
+
+  testWidgets('#1186 finding 3: ChildDetailScreen honours ?tab=location even when P-08 switch is ON', (tester) async {
+    final api = buildApi(deviceCount: 1);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          p08ChildOverviewEnabledProvider.overrideWithValue(true),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const ChildDetailScreen(childId: 'child-1', initialTab: ChildDetailScreen.locationTab),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(TabBar), findsOneWidget);
+    expect(find.byKey(const ValueKey('p08TimeLeftCard')), findsNothing);
   });
 
   for (final cfg in [

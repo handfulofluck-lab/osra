@@ -3705,6 +3705,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get childOverviewWebFilterOn => 'On';
 
   @override
+  String get childOverviewWebFilterOff => 'Off';
+
+  @override
   String get childOverviewSafeSearchOn => 'Safe search on';
 
   @override

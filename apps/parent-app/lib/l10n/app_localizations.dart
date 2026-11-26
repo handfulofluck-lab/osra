@@ -5979,6 +5979,12 @@ abstract class AppLocalizations {
   /// **'On'**
   String get childOverviewWebFilterOn;
 
+  /// No description provided for @childOverviewWebFilterOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get childOverviewWebFilterOff;
+
   /// No description provided for @childOverviewSafeSearchOn.
   ///
   /// In en, this message translates to:

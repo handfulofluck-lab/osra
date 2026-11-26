@@ -13,10 +13,12 @@ import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../../widgets/error_retry_view.dart';
 import '../dashboard/dashboard_screen.dart' show formatLastSeen;
+import '../rules/active_window.dart' show familyWallClock;
 import '../rules/rules_behind_banner.dart';
 import '../rules/rules_freshness.dart';
 import '../social/social_app_catalog.dart';
 import 'command_history_screen.dart' show formatCommandTime;
+import 'command_messages.dart';
 
 /// Feature switch for UX Final Decisions P-08 Child Overview (#1179).
 ///
@@ -92,11 +94,25 @@ class _ChildOverviewP08ScreenState
     return l10n.childOverviewDurationMinutes(m);
   }
 
-  /// Formats a local HH:mm timestamp in Western digits, isolated LTR.
-  String _formatHHmm(DateTime ts) {
-    final local = ts.toLocal();
-    final hh = local.hour.toString().padLeft(2, '0');
-    final mm = local.minute.toString().padLeft(2, '0');
+  /// #1186 finding 2: newest acked `rules_updated` command timestamp for the proof line.
+  DateTime? _latestRulesAckedAt(List<DeviceCommand>? commands) {
+    if (commands == null || commands.isEmpty) return null;
+    DateTime? latest;
+    for (final c in commands) {
+      if (c.type == 'rules_updated' && c.status == 'acked' && c.ackedAt != null) {
+        if (latest == null || c.ackedAt!.isAfter(latest)) {
+          latest = c.ackedAt;
+        }
+      }
+    }
+    return latest;
+  }
+
+  /// Formats an HH:mm timestamp in the family's wall clock (#476), Western digits, isolated LTR.
+  String _formatHHmm(DateTime ts, int? utcOffsetMinutes) {
+    final wall = familyWallClock(ts, utcOffsetMinutes);
+    final hh = wall.hour.toString().padLeft(2, '0');
+    final mm = wall.minute.toString().padLeft(2, '0');
     return ltrIsolate('$hh:$mm');
   }
 
@@ -151,30 +167,51 @@ class _ChildOverviewP08ScreenState
   Future<void> _lockAllDevices(List<Device> devices) async {
     if (_sendingCommand || devices.isEmpty) return;
     final l10n = context.l10n;
+    // #1088 / #1186 finding 1: iOS devices do not support remote lock; skip them from fan-out.
+    final supported = devices.where((d) => d.platform.toLowerCase() != 'ios').toList();
+    if (supported.isEmpty) {
+      showErrorSnackBar(context, l10n.commandRefusedUnsupportedCommand);
+      return;
+    }
     setState(() => _sendingCommand = true);
+    final queued = <Device>[];
+    final refused = <String>[];
     try {
-      for (final d in devices) {
-        await ref.read(apiClientProvider).raw.post(
+      for (final d in supported) {
+        final res = await ref.read(apiClientProvider).raw.post(
           '/v1/devices/${d.id}/command',
           data: {'command': 'lock'},
         );
         ref.invalidate(deviceCommandHistoryProvider(d.id));
+        final body = res.data;
+        if (body is Map && body['status'] == 'failed') {
+          final reason = body['reason'];
+          refused.add(
+            '${ltrIsolate(d.model)}: ${commandRefusalText(l10n, 'lock', ltrIsolate(d.model), reason)}',
+          );
+        } else {
+          queued.add(d);
+        }
       }
       ref.invalidate(familyProvider);
-      if (mounted) {
+      if (!mounted) return;
+      if (refused.isNotEmpty) {
+        showErrorSnackBar(context, refused.join(' · '));
+      }
+      if (queued.isNotEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               l10n.commandQueued(
                 l10n.commandLock,
-                devices.length == 1
-                    ? ltrIsolate(devices.first.model)
+                queued.length == 1
+                    ? ltrIsolate(queued.first.model)
                     : l10n.scopeAllDevices,
               ),
             ),
             action: SnackBarAction(
               label: l10n.undo,
-              onPressed: () => _unlockAllDevices(devices),
+              onPressed: () => _unlockAllDevices(queued),
             ),
           ),
         );
@@ -193,16 +230,29 @@ class _ChildOverviewP08ScreenState
   }
 
   Future<void> _unlockAllDevices(List<Device> devices) async {
-    for (final d in devices) {
+    final l10n = context.l10n;
+    final supported = devices.where((d) => d.platform.toLowerCase() != 'ios').toList();
+    final refused = <String>[];
+    for (final d in supported) {
       try {
-        await ref.read(apiClientProvider).raw.post(
+        final res = await ref.read(apiClientProvider).raw.post(
           '/v1/devices/${d.id}/command',
           data: {'command': 'unlock'},
         );
         ref.invalidate(deviceCommandHistoryProvider(d.id));
+        final body = res.data;
+        if (body is Map && body['status'] == 'failed') {
+          final reason = body['reason'];
+          refused.add(
+            '${ltrIsolate(d.model)}: ${commandRefusalText(l10n, 'unlock', ltrIsolate(d.model), reason)}',
+          );
+        }
       } catch (_) {}
     }
     ref.invalidate(familyProvider);
+    if (mounted && refused.isNotEmpty) {
+      showErrorSnackBar(context, refused.join(' · '));
+    }
   }
 
   Future<void> _sendWindDown() async {
@@ -530,8 +580,16 @@ class _ChildOverviewP08ScreenState
                         selectedDevice: selectedDevice,
                         rules: rules,
                         internetPaused: internetPaused,
+                        latestRulesAckAt: selectedDevice == null
+                            ? null
+                            : _latestRulesAckedAt(
+                                ref
+                                    .watch(deviceCommandHistoryProvider(selectedDevice.id))
+                                    .valueOrNull,
+                              ),
                         formatDuration: (m) => _formatDuration(context, m),
-                        formatHHmm: _formatHHmm,
+                        formatHHmm: (ts) =>
+                            _formatHHmm(ts, overview.family.utcOffsetMinutes),
                         onSwitchDevice: selectedDevice != null && devices.length > 1
                             ? () => _switchDeviceSheet(devices, selectedDevice)
                             : null,
@@ -602,6 +660,7 @@ class _TimeLeftHeaderCard extends StatelessWidget {
   final Device? selectedDevice;
   final RuleSet? rules;
   final bool internetPaused;
+  final DateTime? latestRulesAckAt;
   final String Function(int minutes) formatDuration;
   final String Function(DateTime ts) formatHHmm;
   final VoidCallback? onSwitchDevice;
@@ -615,6 +674,7 @@ class _TimeLeftHeaderCard extends StatelessWidget {
     required this.selectedDevice,
     required this.rules,
     required this.internetPaused,
+    required this.latestRulesAckAt,
     required this.formatDuration,
     required this.formatHHmm,
     required this.onSwitchDevice,
@@ -652,7 +712,7 @@ class _TimeLeftHeaderCard extends StatelessWidget {
                 : tokens.primary;
 
     final freshness = rulesFreshness(child, hasPairedDevice: devices.isNotEmpty);
-    final proofTime = selectedDevice?.setup?.reportedAt ?? selectedDevice?.lastSeen;
+    final proofTime = latestRulesAckAt;
     final String? proofLine = selectedDevice == null
         ? null
         : (freshness == RulesFreshness.current &&
@@ -1012,7 +1072,7 @@ class _EightRuleTilesGrid extends StatelessWidget {
         key: const ValueKey('p08Tile-webFilter'),
         icon: Icons.public_outlined,
         title: l10n.tabWebFilter,
-        value: webOn ? l10n.childOverviewWebFilterOn : l10n.off,
+        value: webOn ? l10n.childOverviewWebFilterOn : l10n.childOverviewWebFilterOff,
         subtitle: (wf?.safeSearchEnforced ?? false)
             ? l10n.childOverviewSafeSearchOn
             : l10n.childOverviewCategoriesBlocked(wf?.blockedCategories.length ?? 0),
@@ -1035,7 +1095,7 @@ class _EightRuleTilesGrid extends StatelessWidget {
         icon: Icons.forum_outlined,
         title: l10n.tabSocial,
         value: isIphoneOnly
-            ? l10n.off
+            ? '—'
             : l10n.childOverviewSocialAppsCount(monitoredSocialCount),
         subtitle: isIphoneOnly
             ? l10n.childOverviewNotYetAvailableIphone
