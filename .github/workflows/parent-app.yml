@@ -78,6 +78,19 @@ jobs:
           fi
       - run: flutter analyze
       - run: flutter test
+      # UX frame artifacts (#1179). The Bureau signs a screen from frames, and the harness in
+      # `test/frame_capture.dart` writes PNGs only when `OSRA_FRAME_DIR` is set. Running the frame rows a
+      # second time with it set, then uploading the directory, means a screen's frames exist without anyone
+      # running Flutter on a machine of their own. The rows are also ordinary tests: with the variable unset
+      # they still assert that nothing overflows at 320 px / 200 %.
+      - name: Capture UX frames
+        run: OSRA_FRAME_DIR="$GITHUB_WORKSPACE/ux-frames" flutter test test/ux_frames_test.dart
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ux-frames-${{ github.sha }}
+          path: ux-frames/
+          if-no-files-found: warn
+          retention-days: 7
       # Store-readiness gate: a release build must compile, shrink and carry INTERNET + the Maps
       # key placeholder. The Maps key is a repository secret (blank is tolerated for the build;
       # the map simply renders empty). Signing: with OSRA_UPLOAD_KEYSTORE_B64 set this produces an
