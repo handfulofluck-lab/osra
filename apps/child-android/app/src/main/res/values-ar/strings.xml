@@ -327,8 +327,8 @@
     <string name="c02_hours_and_minutes">%1$s و%2$s</string>
     <string name="c02_rules_sheet_title">قواعدي</string>
     <string name="c02_rules_daily_limit">وقت الشاشة اليومي: استخدمت %1$s من %2$s</string>
-    <string name="c02_rules_bedtime">وقت النوم: %1$s – %2$s</string>
-    <string name="c02_rules_school">ساعات المدرسة: %1$s – %2$s</string>
+    <string name="c02_rules_bedtime">وقت النوم: %1$s</string>
+    <string name="c02_rules_school">ساعات المدرسة: %1$s</string>
     <string name="c02_rules_routines">الجداول: %1$s</string>
     <string name="c02_rules_none">قواعد أهلك مفعّلة على هذا الهاتف.</string>
     <string name="c02_rules_close">إغلاق</string>

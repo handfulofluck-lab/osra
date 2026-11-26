@@ -284,19 +284,27 @@ class BlockExplainPolicyTest {
     }
 
     @Test
-    fun `isolation helpers wrap with LRI and FSI markers`() {
+    fun `isolation helpers wrap with LRI, single-unit LTR ranges, and FSI markers`() {
         assertEquals("\u2066Minecraft\u2069", BlockExplainPolicy.ltrIsolate(" Minecraft "))
+        assertEquals("\u206621:00 – 07:00\u2069", BlockExplainPolicy.ltrRange(" 21:00 ", " 07:00 "))
         assertEquals("\u2068Homework\u2069", BlockExplainPolicy.firstStrongIsolate(" Homework "))
     }
 
     @Test
-    fun `C-02 screen keeps calm SOS row, feature switch fallback, and EN-AR string parity`() {
+    fun `C-02 screen keeps calm SOS row, NoActionBar manifest theme, feature switch fallback, and EN-AR string parity`() {
         val root = findAppSrcRoot()
+        val manifest = File(root, "AndroidManifest.xml").readText()
         val screen = File(root, "java/com/familyshield/agent/ui/block/BlockedAppScreen.kt").readText()
         val activity = File(root, "java/com/familyshield/agent/enforcement/BlockActivity.kt").readText()
         val enStrings = File(root, "res/values/strings.xml").readText()
         val arStrings = File(root, "res/values-ar/strings.xml").readText()
 
+        val blockActivityTag = manifest.substringAfter("android:name=\".enforcement.BlockActivity\"").substringBefore("/>")
+        assertTrue(
+            "BlockActivity must use Theme.Material.NoActionBar so no grey native title bar renders above C-02",
+            blockActivityTag.contains("android:theme=\"@android:style/Theme.Material.NoActionBar\""),
+        )
+        assertTrue("BlockActivity must isolate time ranges as one LTR unit", activity.contains("BlockExplainPolicy.ltrRange("))
         assertFalse("C-02 must never draw a red danger SOS button", screen.contains("palette.danger"))
         assertTrue("BlockActivity must keep C-02 behind ChildUxFlags fallback", activity.contains("ChildUxFlags.c02BlockedScreenEnabled"))
         assertTrue("BlockActivity must wire SosActivity for calm SOS row", activity.contains("SosActivity::class.java"))

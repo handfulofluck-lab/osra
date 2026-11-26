@@ -527,8 +527,7 @@ class BlockActivity : ComponentActivity() {
                 add(
                     getString(
                         R.string.c02_rules_bedtime,
-                        BlockExplainPolicy.ltrIsolate(start),
-                        BlockExplainPolicy.ltrIsolate(end),
+                        BlockExplainPolicy.ltrRange(start, end),
                     ),
                 )
             }
@@ -536,8 +535,7 @@ class BlockActivity : ComponentActivity() {
                 add(
                     getString(
                         R.string.c02_rules_school,
-                        BlockExplainPolicy.ltrIsolate(start),
-                        BlockExplainPolicy.ltrIsolate(end),
+                        BlockExplainPolicy.ltrRange(start, end),
                     ),
                 )
             }

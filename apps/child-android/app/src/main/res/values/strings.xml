@@ -319,8 +319,8 @@
     <string name="c02_hours_and_minutes">%1$s %2$s</string>
     <string name="c02_rules_sheet_title">Your rules</string>
     <string name="c02_rules_daily_limit">Daily screen time: %1$s used of %2$s</string>
-    <string name="c02_rules_bedtime">Bedtime: %1$s – %2$s</string>
-    <string name="c02_rules_school">School hours: %1$s – %2$s</string>
+    <string name="c02_rules_bedtime">Bedtime: %1$s</string>
+    <string name="c02_rules_school">School hours: %1$s</string>
     <string name="c02_rules_routines">Routines: %1$s</string>
     <string name="c02_rules_none">Your family\'s rules are active on this phone.</string>
     <string name="c02_rules_close">Close</string>
