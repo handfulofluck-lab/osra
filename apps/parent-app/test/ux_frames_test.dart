@@ -83,6 +83,39 @@ void main() {
     return family;
   }
 
+
+  testWidgets('P-22 settings card shown en-light-390', (tester) async {
+    await pumpFrame(
+      tester,
+      const SettingsScreen(),
+      locale: const Locale('en'),
+      dark: false,
+      width: 390,
+      textScale: 1,
+      family: familyWith(twoStepOn: false),
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('settingsSecurityCard')), findsOneWidget);
+    await maybeCaptureFrame(tester, 'p22-settings-card-shown-en-light-390.png');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('P-22 settings card shown ar-dark-390', (tester) async {
+    await pumpFrame(
+      tester,
+      const SettingsScreen(),
+      locale: const Locale('ar'),
+      dark: true,
+      width: 390,
+      textScale: 1,
+      family: familyWith(twoStepOn: false),
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('settingsSecurityCard')), findsOneWidget);
+    await maybeCaptureFrame(tester, 'p22-settings-card-shown-ar-dark-390.png');
+    await tester.pumpWidget(const SizedBox());
+  });
+
   for (final config in const [
     (locale: 'en', dark: false, width: 390.0, scale: 1.0, tag: 'en-light-390'),
     (locale: 'ar', dark: true, width: 390.0, scale: 1.0, tag: 'ar-dark-390'),
