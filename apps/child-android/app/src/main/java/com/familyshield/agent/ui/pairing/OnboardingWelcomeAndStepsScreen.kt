@@ -53,6 +53,16 @@ data class WelcomeCopy(
 )
 
 /**
+ * Issue #1131: Android 13+ non-store install guidance shown on the Accessibility step until the
+ * service is actually bound.
+ */
+data class RestrictedSettingsGuideCopy(
+    val steps: List<String>,
+    val openAppInfoButton: String,
+    val waitingLine: String,
+)
+
+/**
  * Words passed into [OnboardingPermissionStepScreen] from Android resources
  * (`OnboardingPolicy.Grant.*`, `setup_grant_button`, etc.).
  */
@@ -64,6 +74,7 @@ data class PermissionStepCopy(
     val grantButton: String,
     val optionalBadge: String? = null,
     val oemHint: String? = null,
+    val restrictedSettingsGuide: RestrictedSettingsGuideCopy? = null,
     val skipLabel: String? = null,
     val checklistLabel: String? = null,
 )
@@ -157,6 +168,7 @@ fun OnboardingWelcomeScreen(
 fun OnboardingPermissionStepScreen(
     copy: PermissionStepCopy,
     onGrant: () -> Unit,
+    onOpenAppInfo: (() -> Unit)? = null,
     onSkip: (() -> Unit)? = null,
     onOpenChecklist: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -243,6 +255,53 @@ fun OnboardingPermissionStepScreen(
                         ),
                         color = palette.muted,
                     )
+
+                    copy.restrictedSettingsGuide?.let { guide ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(radii.control))
+                                .background(palette.tint)
+                                .border(1.dp, palette.border, RoundedCornerShape(radii.control))
+                                .padding(OsraTokens.spaces.md),
+                            verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.xs),
+                        ) {
+                            guide.steps.forEachIndexed { index, stepText ->
+                                Text(
+                                    text = "${index + 1}. $stepText",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        textDirection = TextDirection.Content,
+                                    ),
+                                    color = palette.ink,
+                                )
+                            }
+                            if (onOpenAppInfo != null) {
+                                Spacer(modifier = Modifier.height(OsraTokens.spaces.xs))
+                                OutlinedButton(
+                                    onClick = onOpenAppInfo,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .defaultMinSize(minHeight = OsraTokens.sizes.primaryButtonHeight),
+                                    shape = RoundedCornerShape(radii.control),
+                                ) {
+                                    Text(
+                                        text = guide.openAppInfoButton,
+                                        style = MaterialTheme.typography.labelLarge.copy(
+                                            textDirection = TextDirection.Content,
+                                        ),
+                                        textAlign = TextAlign.Center,
+                                    )
+                                }
+                            }
+                            Text(
+                                text = guide.waitingLine,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    textDirection = TextDirection.Content,
+                                ),
+                                color = palette.muted,
+                            )
+                        }
+                    }
 
                     copy.oemHint?.let { hint ->
                         Box(
