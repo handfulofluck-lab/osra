@@ -51,6 +51,7 @@ function installRedis(now: () => number) {
     kv.set(k, { v, exp: now() + ttl * 1000 });
     return "OK";
   });
+  redis.del = vi.fn(async (...keys: string[]) => keys.reduce((n, k) => n + (kv.delete(k) ? 1 : 0), 0));
 }
 
 let nowMs = clock;
@@ -160,5 +161,62 @@ describe("#1222 blocked attempts follow the #1139 grouped-alert rule", () => {
     const next = await attempt("app_blocked", 2, { producerKey: "app:com.x:2026-11-26", producerAttemptCount: 2 });
     expect(next.retry).toBe(false);
     expect(rows[0].attemptCount).toBe(2);
+  });
+
+  type Entry = { at: string; site?: string; app?: string };
+  const entries = (row: Row) => ((row.metadata.blockGroup as Record<string, unknown>).attempts ?? []) as Entry[];
+
+  it("lists every accepted attempt as its own entry, newest first (lead 00:35: each attempt still listed)", async () => {
+    for (const m of [0, 1, 2, 3, 4]) await attempt("app_blocked", m);
+    expect(rows).toHaveLength(1);
+    expect(entries(rows[0])).toEqual([4, 3, 2, 1, 0].map((m) => ({ at: at(m).toISOString(), app: "TikTok" })));
+    // The summary sweep keeps the list.
+    nowMs = at(12).getTime();
+    await runBlockedAttemptSummarySweep(at(12), env);
+    expect(entries(rows[0])).toHaveLength(5);
+  });
+
+  it("an entry names the site only when site names are on; names off shows the time alone", async () => {
+    await attempt("web_threat", 0, { metadata: { domain: "https://www.example.test/path" }, siteNames: true });
+    await attempt("web_threat", 20, { metadata: { domain: "example.test" } });
+    expect(entries(rows[0])).toEqual([{ at: at(0).toISOString(), site: "www.example.test" }]);
+    expect(entries(rows[1])).toEqual([{ at: at(20).toISOString() }]);
+  });
+
+  it("overlapping copies of one attempt count and push once (Codex #1228 finding 1)", async () => {
+    const key = { producerKey: "app:com.x:2026-11-26" };
+    await attempt("app_blocked", 0, { ...key, producerAttemptCount: 1 });
+    const [a, b] = await Promise.all([
+      attempt("app_blocked", 1, { ...key, producerAttemptCount: 2 }),
+      attempt("app_blocked", 1, { ...key, producerAttemptCount: 2 }),
+    ]);
+    expect([a.retry, b.retry].sort()).toEqual([false, true]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].attemptCount).toBe(2);
+    expect(pushes).toHaveLength(2);
+    expect(entries(rows[0])).toHaveLength(2);
+  });
+
+  it("a failed write releases the claim, so the phone's retry still records the attempt", async () => {
+    const key = { producerKey: "app:com.x:2026-11-26" };
+    await attempt("app_blocked", 0, { ...key, producerAttemptCount: 1 });
+    const a = prismaMock.alert as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    a.updateMany.mockRejectedValueOnce(new Error("synthetic write failure"));
+    await expect(attempt("app_blocked", 1, { ...key, producerAttemptCount: 2 })).rejects.toThrow("synthetic write failure");
+    expect(rows[0].attemptCount).toBe(1);
+    const retried = await attempt("app_blocked", 2, { ...key, producerAttemptCount: 2 });
+    expect(retried.retry).toBe(false);
+    expect(rows[0].attemptCount).toBe(2);
+  });
+
+  it("an earlier attempt that finishes later never moves the group backwards (Codex #1228 finding 2)", async () => {
+    await attempt("app_blocked", 0);
+    await attempt("app_blocked", 5);
+    await attempt("app_blocked", 3); // received at 3, finished after the one received at 5
+    expect(rows).toHaveLength(1);
+    expect(rows[0].attemptCount).toBe(3);
+    expect(rows[0].metadata.latestAt).toBe(at(5).toISOString());
+    expect((rows[0].metadata.blockGroup as Record<string, unknown>).latestAt).toBe(at(5).toISOString());
+    expect(entries(rows[0]).map((e) => e.at)).toEqual([5, 3, 0].map((m) => at(m).toISOString()));
   });
 });

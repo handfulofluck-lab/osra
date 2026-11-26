@@ -63,6 +63,19 @@ export function blockedGroupPrefix(kind: BlockedKind, subject: string, day: stri
   return `grp:${kind}:${subject}:${day}:`;
 }
 
+/**
+ * One accepted attempt in a group (#1222, lead 00:35 UAE: "each attempt still listed"). Newest first, capped at
+ * BLOCKED_ATTEMPTS_CAP; the full total stays in alert.attemptCount. `site` only when site names are on; `app` is the
+ * phone's app label, else the package id. Contract for the parent app: #1228 comment 7203909801.
+ */
+export interface BlockedAttemptEntry {
+  at: string;
+  site?: string;
+  app?: string;
+}
+
+export const BLOCKED_ATTEMPTS_CAP = 50;
+
 export interface BlockedGroupState {
   kind: BlockedKind;
   day: string;
@@ -73,6 +86,38 @@ export interface BlockedGroupState {
   summaryPending: boolean;
   summaryDueAt?: string;
   summaryPushedAt?: string;
+  attempts?: BlockedAttemptEntry[];
+}
+
+function parseAttempts(raw: unknown): BlockedAttemptEntry[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: BlockedAttemptEntry[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const e = item as Record<string, unknown>;
+    if (typeof e.at !== "string" || !Number.isFinite(Date.parse(e.at))) continue;
+    out.push({
+      at: e.at,
+      ...(typeof e.site === "string" && e.site ? { site: e.site } : {}),
+      ...(typeof e.app === "string" && e.app ? { app: e.app } : {}),
+    });
+  }
+  return out;
+}
+
+/** Insert one entry by time (newest first) and keep the newest BLOCKED_ATTEMPTS_CAP. */
+export function withAttempt(list: BlockedAttemptEntry[] | undefined, entry: BlockedAttemptEntry): BlockedAttemptEntry[] {
+  const next = [...(list ?? []), entry];
+  next.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  return next.slice(0, BLOCKED_ATTEMPTS_CAP);
+}
+
+/** What one attempt shows in the parent's list: the site with names on, the app's label or package. */
+export function attemptEntry(kind: BlockedKind, subject: string, metadata: Record<string, unknown>, at: string): BlockedAttemptEntry {
+  if (kind === "web") return subject ? { at, site: subject } : { at };
+  const label = typeof metadata.appName === "string" ? metadata.appName.replace(/s+/g, " ").trim().slice(0, 80) : "";
+  const app = label || subject;
+  return app ? { at, app } : { at };
 }
 
 export function parseBlockedGroup(raw: unknown): BlockedGroupState | null {
@@ -91,6 +136,7 @@ export function parseBlockedGroup(raw: unknown): BlockedGroupState | null {
     summaryPending: m.summaryPending === true,
     ...(typeof m.summaryDueAt === "string" ? { summaryDueAt: m.summaryDueAt } : {}),
     ...(typeof m.summaryPushedAt === "string" ? { summaryPushedAt: m.summaryPushedAt } : {}),
+    ...(Array.isArray(m.attempts) ? { attempts: parseAttempts(m.attempts) } : {}),
   };
 }
 
@@ -137,6 +183,33 @@ async function isRetry(redis: ReturnType<typeof getRedis>, input: RecordBlockedA
   }
 }
 
+/**
+ * Codex (#1228 finding 1): two in-flight copies of one attempt could both pass the seen-count read before either
+ * wrote it, counting and pushing twice. The attempt identity (device, category, producer key, producer count) is
+ * now claimed with SET NX before anything is counted or pushed; a copy that loses the claim is a retry. If the
+ * write then fails, the claim is released so the phone's normal retry still records the attempt.
+ */
+export function blockedClaimKey(deviceId: string, category: string, producerKey: string, count: number): string {
+  return `blocked:claim:${deviceId}:${category}:${producerKey}:${count}`;
+}
+
+type Claim = { key: string } | null | "lost";
+
+async function claimAttempt(redis: ReturnType<typeof getRedis>, input: RecordBlockedAttemptInput): Promise<Claim> {
+  if (!input.deviceId || !input.producerKey || !input.producerAttemptCount) return null;
+  const key = blockedClaimKey(input.deviceId, input.category, input.producerKey, input.producerAttemptCount);
+  try {
+    const ok = await redis.set(key, "1", "EX", BLOCKED_SEEN_TTL_SECONDS, "NX");
+    return ok === "OK" ? { key } : "lost";
+  } catch {
+    return null; // Redis down: record the attempt rather than drop it, as before.
+  }
+}
+
+async function releaseClaim(redis: ReturnType<typeof getRedis>, claim: Claim): Promise<void> {
+  if (claim && claim !== "lost") await redis.del(claim.key).catch(() => undefined);
+}
+
 async function rememberSeen(redis: ReturnType<typeof getRedis>, input: RecordBlockedAttemptInput): Promise<void> {
   if (!input.deviceId || !input.producerKey || !input.producerAttemptCount) return;
   await redis
@@ -164,11 +237,45 @@ export async function recordBlockedAttempt(input: RecordBlockedAttemptInput): Pr
   const prefix = blockedGroupPrefix(kind, subject, day);
   const redis = getRedis();
 
-  if (await isRetry(redis, input)) {
+  const retryResult = async (): Promise<RecordBlockedAttemptResult | null> => {
     const existing = await openRow(input.childId, input.category, prefix);
-    if (existing) return { alert: existing, created: false, pushed: false, retry: true };
+    return existing ? { alert: existing, created: false, pushed: false, retry: true } : null;
+  };
+  if (await isRetry(redis, input)) {
+    const existing = await retryResult();
+    if (existing) return existing;
   }
+  const claim = await claimAttempt(redis, input);
+  if (claim === "lost") {
+    const existing = await retryResult();
+    if (existing) return existing;
+    // The winning copy has not written its row yet: answer with nothing new rather than count it twice.
+    throw Object.assign(new Error("blocked attempt already in flight"), { statusCode: 409 });
+  }
+  try {
+    return await recordClaimed(input, { env, now, nowMs, nowIso, windowMs, kind, subject, day, prefix, redis });
+  } catch (err) {
+    await releaseClaim(redis, claim);
+    throw err;
+  }
+}
 
+interface AttemptContext {
+  env: NodeJS.ProcessEnv;
+  now: Date;
+  nowMs: number;
+  nowIso: string;
+  windowMs: number;
+  kind: BlockedKind;
+  subject: string;
+  day: string;
+  prefix: string;
+  redis: ReturnType<typeof getRedis>;
+}
+
+async function recordClaimed(input: RecordBlockedAttemptInput, ctx: AttemptContext): Promise<RecordBlockedAttemptResult> {
+  const { env, nowMs, nowIso, windowMs, kind, subject, day, prefix, redis } = ctx;
+  const entry = attemptEntry(kind, subject, input.metadata, nowIso);
   const pushNow = await takeSocialPushBudget(redis, input.childId, blockedBudgetName(kind), env);
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
@@ -186,9 +293,13 @@ export async function recordBlockedAttempt(input: RecordBlockedAttemptInput): Pr
         : group.summaryPending && group.summaryDueAt
           ? group.summaryDueAt
           : new Date(Math.max(nowMs, Date.parse(group.lastPushAt ?? group.firstAt) + windowMs)).toISOString();
+      // Codex (#1228 finding 2): an attempt received earlier can finish later; the group never moves backwards.
+      const latestIso = nowMs > latestMs ? nowIso : group.latestAt;
       const nextGroup: BlockedGroupState = {
         ...group,
-        latestAt: nowIso,
+        firstAt: Date.parse(group.firstAt) > nowMs ? nowIso : group.firstAt,
+        latestAt: latestIso,
+        attempts: withAttempt(group.attempts, entry),
         pushedCount: pushNow ? nextCount : group.pushedCount,
         ...(pushNow ? { lastPushAt: nowIso } : {}),
         summaryPending: !pushNow,
@@ -198,7 +309,7 @@ export async function recordBlockedAttempt(input: RecordBlockedAttemptInput): Pr
       const nextMetadata: Record<string, unknown> = {
         ...prevMeta,
         ...input.metadata,
-        latestAt: nowIso,
+        latestAt: latestIso,
         blockGroup: nextGroup,
         ...(pushNow ? nextPushDelivery(prevMeta, nowIso) : {}),
       };
@@ -224,6 +335,7 @@ export async function recordBlockedAttempt(input: RecordBlockedAttemptInput): Pr
       day,
       firstAt: nowIso,
       latestAt: nowIso,
+      attempts: [entry],
       pushedCount: pushNow ? 1 : 0,
       ...(pushNow ? { lastPushAt: nowIso } : { summaryDueAt: new Date(nowMs + windowMs).toISOString() }),
       summaryPending: !pushNow,
