@@ -19,6 +19,8 @@ import '../../providers/pairing_session_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../../widgets/error_retry_view.dart';
 import '../alerts/alerts_screen.dart';
+import '../alerts/app_alert_presentation.dart';
+import '../alerts/time_request_actions.dart';
 import '../auth/mfa_reset_approval_screen.dart';
 import '../auth/mfa_reset_messages.dart';
 import '../family/family_screen.dart';
@@ -94,6 +96,16 @@ class HomeTimeSummary {
   });
 }
 
+/// Computes P-07 daily time-left from today's base limit plus today's `acked`
+/// `bonus_time` rows in [primaryDeviceHistory] (ignoring `ruleSet.bonusMinutesToday`,
+/// which never resets across days on the server).
+///
+/// Window note (G5): `deviceCommandHistoryProvider` reads up to 100 recent
+/// commands (the server's `listDeviceCommands` cap). If more than 100 commands
+/// are issued to the same device in one day so an earlier same-day `acked`
+/// grant ages past [primaryDeviceHistory], `effectiveLimitMinutes` conservatively
+/// omits that aged-out grant and clamps `remainingMinutes` at `0` rather than
+/// over-reporting from stale `bonusMinutesToday`.
 HomeTimeSummary computeHomeTimeSummary({
   required int usedMinutes,
   required RuleSet? rules,
@@ -307,6 +319,7 @@ class HomeP07Screen extends ConsumerStatefulWidget {
 class _HomeP07ScreenState extends ConsumerState<HomeP07Screen> {
   int _tabIndex = 0;
   String? _selectedChildId;
+  final Map<String, Alert> _resolvedTimeRequests = <String, Alert>{};
 
   @override
   Widget build(BuildContext context) {
@@ -334,7 +347,10 @@ class _HomeP07ScreenState extends ConsumerState<HomeP07Screen> {
       bottomNavigationBar: _P07BottomNavigationBar(
         currentIndex: _tabIndex,
         alertsBadgeCount: badgeCount,
-        onTap: (index) => setState(() => _tabIndex = index),
+        onTap: (index) => setState(() {
+          if (index != _tabIndex) _resolvedTimeRequests.clear();
+          _tabIndex = index;
+        }),
       ),
     );
   }
@@ -388,6 +404,7 @@ class _HomeP07ScreenState extends ConsumerState<HomeP07Screen> {
 
         return RefreshIndicator(
           onRefresh: () async {
+            setState(_resolvedTimeRequests.clear);
             ref.invalidate(familyProvider);
             ref.invalidate(mfaResetPendingProvider);
             ref.invalidate(unacknowledgedAlertsProvider);
@@ -418,6 +435,11 @@ class _HomeP07ScreenState extends ConsumerState<HomeP07Screen> {
               _NeedsYouSection(
                 overview: overview,
                 selectedChildId: activeFilter,
+                resolvedTimeRequests: _resolvedTimeRequests,
+                onTimeRequestResolved: (updated) {
+                  if (!mounted) return;
+                  setState(() => _resolvedTimeRequests[updated.id] = updated);
+                },
               ),
               if (overview.children.isEmpty)
                 Padding(
@@ -491,19 +513,20 @@ class _ChildFilterChipsRow extends StatelessWidget {
   }
 }
 
-bool _isRequestAlert(Alert a) {
-  if (a.category == 'install_request') return true;
-  final reqType = a.metadata['requestType']?.toString();
-  return reqType == 'access' || reqType == 'time';
-}
+bool _isRequestAlert(Alert a) =>
+    a.category == 'install_request' || isParentDecisionAlert(a);
 
 class _NeedsYouSection extends ConsumerWidget {
   final FamilyOverview overview;
   final String? selectedChildId;
+  final Map<String, Alert> resolvedTimeRequests;
+  final ValueChanged<Alert> onTimeRequestResolved;
 
   const _NeedsYouSection({
     required this.overview,
     required this.selectedChildId,
+    required this.resolvedTimeRequests,
+    required this.onTimeRequestResolved,
   });
 
   @override
@@ -536,9 +559,15 @@ class _NeedsYouSection extends ConsumerWidget {
             (selectedChildId == null || a.childId == selectedChildId))
           a,
     ];
-    final requestAlerts = [
+    final seenRequestIds = <String>{};
+    final requestAlerts = <Alert>[
       for (final a in filteredUnacked)
-        if (_isRequestAlert(a)) a,
+        if (_isRequestAlert(a) && seenRequestIds.add(a.id))
+          resolvedTimeRequests[a.id] ?? a,
+      for (final resolved in resolvedTimeRequests.values)
+        if ((selectedChildId == null || resolved.childId == selectedChildId) &&
+            seenRequestIds.add(resolved.id))
+          resolved,
     ];
     final safetyAlerts = [
       for (final a in filteredUnacked)
@@ -558,6 +587,7 @@ class _NeedsYouSection extends ConsumerWidget {
           key: ValueKey('homeRequestCard-${req.id}'),
           alert: req,
           overview: overview,
+          onTimeRequestResolved: onTimeRequestResolved,
         ),
       if (safetyAlerts.isNotEmpty)
         _HomeSafetyAlertsCard(
@@ -847,11 +877,13 @@ class _HomePairingClaimCardState extends ConsumerState<_HomePairingClaimCard> {
 class _HomeChildRequestCard extends ConsumerStatefulWidget {
   final Alert alert;
   final FamilyOverview overview;
+  final ValueChanged<Alert>? onTimeRequestResolved;
 
   const _HomeChildRequestCard({
     super.key,
     required this.alert,
     required this.overview,
+    this.onTimeRequestResolved,
   });
 
   @override
@@ -862,16 +894,9 @@ class _HomeChildRequestCard extends ConsumerStatefulWidget {
 class _HomeChildRequestCardState extends ConsumerState<_HomeChildRequestCard> {
   bool _busy = false;
 
-  bool get _isTimeRequest =>
-      widget.alert.metadata['requestType']?.toString() == 'time';
+  bool get _isTimeRequest => widget.alert.requestedScreenTimeMinutes != null;
 
-  int get _requestedMinutes {
-    final raw = widget.alert.metadata['minutes'];
-    final parsed = raw is int
-        ? raw
-        : int.tryParse(raw?.toString() ?? '') ?? 15;
-    return parsed > 0 ? parsed : 15;
-  }
+  int get _requestedMinutes => widget.alert.requestedScreenTimeMinutes ?? 15;
 
   String get _packageId =>
       widget.alert.metadata['packageId']?.toString().trim() ?? '';
@@ -907,44 +932,6 @@ class _HomeChildRequestCardState extends ConsumerState<_HomeChildRequestCard> {
     }
   }
 
-  Future<void> _grantTimeAndAck(int minutes) async {
-    if (_busy) return;
-    final l10n = context.l10n;
-    setState(() => _busy = true);
-    try {
-      await ref.read(apiClientProvider).raw.post(
-        '/v1/controls/children/${widget.alert.childId}/bonus',
-        data: {'minutes': minutes},
-      );
-      await ref
-          .read(apiClientProvider)
-          .raw
-          .post('/v1/alerts/${widget.alert.id}/ack');
-      ref.read(alertsSeenProvider.notifier).markAcknowledged(widget.alert.id);
-      ref.invalidate(rulesProvider(widget.alert.childId));
-      ref.invalidate(familyProvider);
-      ref.invalidate(unacknowledgedAlertsProvider);
-      ref.invalidate(unacknowledgedCountProvider);
-      ref.invalidate(alertsProvider);
-      for (final d in widget.overview.devicesFor(widget.alert.childId)) {
-        ref.invalidate(deviceCommandHistoryProvider(d.id));
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.bonusGranted(minutes))),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        showErrorSnackBar(
-          context,
-          friendlyErrorText(l10n, e, () => l10n.bonusFailed),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
 
   Future<void> _allowAppAndAck() async {
     if (_busy) return;
@@ -1016,7 +1003,7 @@ class _HomeChildRequestCardState extends ConsumerState<_HomeChildRequestCard> {
         devices.every((d) => d.platform.toLowerCase() == 'ios');
 
     final title = _isTimeRequest
-        ? l10n.homeTimeRequestTitle(childName, _requestedMinutes)
+        ? l10n.timeRequestTitle(childName, _requestedMinutes)
         : l10n.homeAccessRequestTitle(childName, ltrIsolate(_appLabel));
 
     return Card(
@@ -1027,70 +1014,44 @@ class _HomeChildRequestCardState extends ConsumerState<_HomeChildRequestCard> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(title, style: Theme.of(context).textTheme.titleSmall),
-            if (_isTimeRequest && iosOnly) ...[
-              const SizedBox(height: AppSpace.xs),
-              Text(
-                l10n.homeNotYetOnIphone,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: context.tokens.onSurfaceVariant),
-              ),
-            ],
             const SizedBox(height: AppSpace.sm),
-            Wrap(
-              spacing: AppSpace.sm,
-              runSpacing: AppSpace.xs,
-              children: _isTimeRequest
-                  ? [
-                      if (!iosOnly) ...[
-                        FilledButton.tonal(
-                          key: ValueKey('homeReqPlus15-${widget.alert.id}'),
-                          style: FilledButton.styleFrom(
-                            minimumSize:
-                                const Size(kMinInteractiveDimension, 48),
-                          ),
-                          onPressed: _busy ? null : () => _grantTimeAndAck(15),
-                          child: Text(ltrIsolate(l10n.homeBonusPlus15)),
-                        ),
-                        FilledButton.tonal(
-                          key: ValueKey('homeReqPlus30-${widget.alert.id}'),
-                          style: FilledButton.styleFrom(
-                            minimumSize:
-                                const Size(kMinInteractiveDimension, 48),
-                          ),
-                          onPressed: _busy ? null : () => _grantTimeAndAck(30),
-                          child: Text(ltrIsolate(l10n.homeBonusPlus30)),
-                        ),
-                      ],
-                      OutlinedButton(
-                        key: ValueKey('homeReqNotToday-${widget.alert.id}'),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(kMinInteractiveDimension, 48),
-                        ),
-                        onPressed: _busy ? null : _ackOnly,
-                        child: Text(l10n.homeNotToday),
-                      ),
-                    ]
-                  : [
-                      FilledButton(
-                        key: ValueKey('homeReqAllow-${widget.alert.id}'),
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size(kMinInteractiveDimension, 48),
-                        ),
-                        onPressed: _busy ? null : _allowAppAndAck,
-                        child: Text(l10n.allowAction),
-                      ),
-                      OutlinedButton(
-                        key: ValueKey('homeReqKeepBlocked-${widget.alert.id}'),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(kMinInteractiveDimension, 48),
-                        ),
-                        onPressed: _busy ? null : _ackOnly,
-                        child: Text(l10n.homeKeepBlocked),
-                      ),
-                    ],
-            ),
+            if (_isTimeRequest)
+              iosOnly
+                  ? Text(
+                      l10n.homeNotYetOnIphone,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: context.tokens.onSurfaceVariant),
+                    )
+                  : TimeRequestActions(
+                      key: ValueKey('homeTimeRequestActions-${widget.alert.id}'),
+                      alert: widget.alert,
+                      onResolved: widget.onTimeRequestResolved,
+                    )
+            else
+              Wrap(
+                spacing: AppSpace.sm,
+                runSpacing: AppSpace.xs,
+                children: [
+                  FilledButton(
+                    key: ValueKey('homeReqAllow-${widget.alert.id}'),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(kMinInteractiveDimension, 48),
+                    ),
+                    onPressed: _busy ? null : _allowAppAndAck,
+                    child: Text(l10n.allowAction),
+                  ),
+                  OutlinedButton(
+                    key: ValueKey('homeReqKeepBlocked-${widget.alert.id}'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(kMinInteractiveDimension, 48),
+                    ),
+                    onPressed: _busy ? null : _ackOnly,
+                    child: Text(l10n.homeKeepBlocked),
+                  ),
+                ],
+              ),
           ],
         ),
       ),

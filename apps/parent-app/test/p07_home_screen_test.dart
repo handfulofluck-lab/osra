@@ -291,6 +291,36 @@ void main() {
       expect(sat.effectiveLimitMinutes, 180);
       expect(sat.remainingMinutes, 120);
     });
+
+    /// Mutant: fall back to `ruleSet.bonusMinutesToday` when a same-day grant ages
+    /// out of `primaryDeviceHistory`, inflating `effectiveLimitMinutes` from stale
+    /// cross-day server state instead of conservatively clamping `remainingMinutes` at 0.
+    test('conservatively drops a grant that aged out of the bounded history window and clamps remaining at 0', () {
+      final rules = RuleSet.fromJson({
+        'bonusMinutesToday': 60,
+        'screenTime': {'dailyLimitMinutes': 120, 'weekendLimitMinutes': 180},
+      });
+      final boundedWindow = List<DeviceCommand>.generate(
+        100,
+        (i) => DeviceCommand(
+          id: 'cmd-newer-$i',
+          deviceId: 'dev-1',
+          type: 'locate_now',
+          status: 'acked',
+          ackedAt: weekdayNow.subtract(Duration(seconds: i)),
+        ),
+      );
+      final agedOut = computeHomeTimeSummary(
+        usedMinutes: 130,
+        rules: rules,
+        now: weekdayNow,
+        utcOffsetMinutes: 240,
+        primaryDeviceHistory: boundedWindow,
+      );
+      expect(agedOut.effectiveLimitMinutes, 120);
+      expect(agedOut.remainingMinutes, 0);
+      expect(agedOut.progress, 1.0);
+    });
   });
 
   group('Feature switch & excluded anti-patterns', () {
@@ -358,12 +388,14 @@ void main() {
             {
               'id': 'req-time-1',
               'childId': 'child-1',
+              'deviceId': 'dev-1',
               'severity': 'info',
               'category': 'app_blocked',
               'title': 'Time request',
               'body': 'Body',
               'metadata': {
                 'requestType': 'time',
+                'reason': 'daily_limit',
                 'minutes': '30',
                 'packageId': 'com.mojang.minecraftpe',
                 'note': 'please dad',
@@ -440,8 +472,8 @@ void main() {
       expect(find.byKey(const ValueKey('mfaResetPendingBanner')), findsOneWidget);
       expect(find.byKey(const ValueKey('homePairingClaimBanner')), findsOneWidget);
 
-      // Karim 17:02 & 17:04: whole-day screen time wording, zero child note, zero "Allow 1 hour".
-      expect(find.textContaining('30 more minutes of screen time'), findsOneWidget);
+      // Karim 17:02 & 17:04 + P-20 (#1200): whole-day screen time wording, zero child note, zero "Allow 1 hour".
+      expect(find.textContaining('asked for 30 more minutes today'), findsOneWidget);
       expect(find.textContaining('please dad'), findsNothing);
       expect(find.textContaining('Allow 1 hour'), findsNothing);
       expect(find.byKey(const ValueKey('homeReqAllow-req-app-1')), findsOneWidget);
@@ -466,6 +498,123 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(AlertDetailScreen), findsOneWidget);
       expect(api.calls('POST', '/v1/alerts/urgent-1/ack'), isEmpty);
+    });
+
+    /// Mutant: read `GET /v1/devices/pair/:code/claim` only once on mount without
+    /// scheduling a waiting poll, and `homePairingClaimBanner` remains absent
+    /// after the child claims the code while Home is already open.
+    testWidgets('A10 live arrival: pairing claim starting as waiting advances to pending on Home without manual refresh', (tester) async {
+      var claimState = <String, dynamic>{'status': 'waiting'};
+      final api = FakeApiClient({
+        ...p07Routes(),
+        'GET /v1/devices/pair/482916/claim': (_) => claimState,
+      });
+
+      await tester.pumpWidget(
+        buildP07App(
+          api: api,
+          activePairing: ActivePairingSession(
+            code: '482916',
+            childId: 'child-1',
+            expiresAt: weekdayNow.add(const Duration(minutes: 5)),
+          ),
+        ),
+      );
+      await flushHttp(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('homePairingClaimBanner')), findsNothing);
+
+      claimState = <String, dynamic>{
+        'status': 'pending',
+        'claimId': 'claim-live-1',
+        'platform': 'android',
+        'model': 'Pixel 8a',
+        'osVersion': '15',
+      };
+
+      await tester.pump(const Duration(seconds: 2));
+      await flushHttp(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('homePairingClaimBanner')), findsOneWidget);
+      expect(find.textContaining('Pixel 8a'), findsOneWidget);
+    });
+
+    /// Mutant: call `POST /v1/controls/children/:id/bonus` + `POST /v1/alerts/:id/ack`
+    /// from Home instead of `POST /v1/alerts/:id/time-decision`, or drop the card on
+    /// `unacknowledgedAlertsProvider` refresh before showing a 409 winning caregiver receipt.
+    testWidgets('G4 + P-20 on Home: +15, +30, Not today use POST /v1/alerts/:id/time-decision and 409 displays winning caregiver receipt', (tester) async {
+      var timeResolvedOnServer = false;
+      final alertsList = <Map<String, dynamic>>[
+        {
+          'id': 'req-decide-1',
+          'childId': 'child-1',
+          'deviceId': 'dev-1',
+          'severity': 'info',
+          'category': 'app_blocked',
+          'title': 'Time request',
+          'body': 'Body',
+          'metadata': {
+            'requestType': 'time',
+            'reason': 'daily_limit',
+            'minutes': '15',
+          },
+          'createdAt': weekdayNow.toIso8601String(),
+          'acknowledged': false,
+        },
+      ];
+
+      final api = FakeApiClient({
+        ...p07Routes(alerts: alertsList),
+        'GET /v1/alerts': (req) {
+          final visible = req.query['ack'] == 'false' && timeResolvedOnServer
+              ? const <Map<String, dynamic>>[]
+              : alertsList;
+          return {
+            'items': visible,
+            'total': visible.length,
+            'page': 1,
+            'limit': 50,
+            'meta': {'total': visible.length, 'page': 1, 'limit': 50},
+          };
+        },
+        'POST /v1/alerts/req-decide-1/time-decision': (_) {
+          timeResolvedOnServer = true;
+          return const FakeHttpError(409, {
+            'error': 'time_request_already_resolved',
+            'resolution': {
+              'action': 'grant',
+              'minutes': 30,
+              'actorName': 'Sarah',
+              'resolvedAt': '2026-11-26T12:28:00Z',
+            },
+          });
+        },
+      });
+
+      await tester.pumpWidget(buildP07App(api: api));
+      await flushHttp(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('time-request-grant-15')), findsOneWidget);
+      expect(find.byKey(const ValueKey('time-request-grant-30')), findsOneWidget);
+      expect(find.byKey(const ValueKey('time-request-decline')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('time-request-grant-15')));
+      await flushHttp(tester);
+      await tester.pumpAndSettle();
+
+      final decisionCalls = api.calls('POST', '/v1/alerts/req-decide-1/time-decision');
+      expect(decisionCalls, hasLength(1));
+      expect(decisionCalls.single.body, {'action': 'grant', 'minutes': 15});
+      expect(api.calls('POST', '/v1/controls/children/child-1/bonus'), isEmpty);
+      expect(api.calls('POST', '/v1/alerts/req-decide-1/ack'), isEmpty);
+
+      expect(find.byKey(const ValueKey('time-request-receipt')), findsOneWidget);
+      expect(find.textContaining('Sarah'), findsOneWidget);
+      expect(find.textContaining('already gave 30 minutes today'), findsOneWidget);
+      expect(find.byKey(const ValueKey('time-request-grant-15')), findsNothing);
     });
 
     /// Mutant: omit `FamilyScreen` or settings items on tabs 2 and 3 (A21, A22, A29)
@@ -682,12 +831,14 @@ void main() {
                   {
                     'id': 'req-frame-1',
                     'childId': 'child-1',
+                    'deviceId': 'dev-1',
                     'severity': 'info',
                     'category': 'app_blocked',
                     'title': 'Time request',
                     'body': 'Body',
                     'metadata': {
                       'requestType': 'time',
+                      'reason': 'daily_limit',
                       'minutes': '15',
                     },
                     'createdAt': weekdayNow
