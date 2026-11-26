@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/locale_provider.dart';
-import '../../providers/onboarding_provider.dart';
+import '../../providers/server_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../dashboard/home_p07_screen.dart';
 
@@ -30,14 +30,22 @@ class WelcomeP01Screen extends ConsumerWidget {
     final tokens = context.tokens;
     final isArabic = Localizations.localeOf(context).languageCode == 'ar';
 
-    void openCreateAccount() {
-      ref.read(onboardingProvider.notifier).begin();
-      context.go('/create-account');
+    Future<void> openCreateAccount() async {
+      await ref.read(serverUrlProvider.notifier).ensureApplied();
+      if (!context.mounted) return;
+      final hasServer = builtInServerUrl() != null ||
+          normalizeServerUrl(ref.read(serverUrlProvider)) != null;
+      if (!hasServer) {
+        // Unlocked build with no saved server: open Sign in first so the parent
+        // can configure and validate the server URL before loading consent copy.
+        await context.push('/sign-in');
+        return;
+      }
+      await context.push('/create-account');
     }
 
     void openSignIn() {
-      ref.read(onboardingProvider.notifier).begin();
-      context.go('/sign-in');
+      context.push('/sign-in');
     }
 
     final previewTiles = <HomeP07PreviewTile>[

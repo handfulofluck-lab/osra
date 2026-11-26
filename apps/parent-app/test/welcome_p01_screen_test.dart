@@ -1,13 +1,20 @@
+import 'package:familyshield_parent/app.dart' show appRoutes;
+import 'package:familyshield_parent/features/auth/create_account_screen.dart';
+import 'package:familyshield_parent/features/auth/login_screen.dart';
 import 'package:familyshield_parent/features/dashboard/home_p07_screen.dart';
 import 'package:familyshield_parent/features/onboarding/welcome_p01_screen.dart';
-import 'package:familyshield_parent/features/onboarding/welcome_screen.dart';
 import 'package:familyshield_parent/l10n/app_localizations.dart';
+import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/providers/locale_provider.dart';
+import 'package:familyshield_parent/providers/server_provider.dart';
 import 'package:familyshield_parent/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+
+import 'fake_api_client.dart';
 
 class _TestLocaleNotifier extends AppLocaleNotifier {
   _TestLocaleNotifier(Locale initial) {
@@ -20,37 +27,47 @@ class _TestLocaleNotifier extends AppLocaleNotifier {
   }
 }
 
-Widget _harness({
+class _FixedServerNotifier extends ServerUrlNotifier {
+  _FixedServerNotifier(String url) : super(FakeApiClient({})) {
+    state = url;
+  }
+
+  @override
+  Future<void> ensureApplied() async {}
+}
+
+Widget _realRouterHarness({
   required bool p01Enabled,
+  String serverUrl = 'https://api.osratech.com',
   Locale locale = const Locale('en'),
   ThemeMode themeMode = ThemeMode.light,
   double textScale = 1.0,
-  List<String>? navigated,
   _TestLocaleNotifier? localeNotifier,
 }) {
+  final api = FakeApiClient({
+    ...standardRoutes(),
+    'GET /v1/consent-copy': (_) => {
+          'version': '2026-11',
+          'purposes': {
+            'account': {
+              'sentence': 'I agree to the Terms and Privacy Policy.',
+              'links': [
+                {'label': 'Terms', 'url': 'https://osratech.com/terms'},
+                {'label': 'Privacy', 'url': 'https://osratech.com/privacy'},
+              ],
+            },
+          },
+        },
+  });
   final router = GoRouter(
     initialLocation: '/welcome',
-    routes: [
-      GoRoute(path: '/welcome', builder: (_, __) => const WelcomeScreen()),
-      GoRoute(
-        path: '/create-account',
-        builder: (_, __) {
-          navigated?.add('/create-account');
-          return const Scaffold(body: Text('CREATE_ACCOUNT_DEST'));
-        },
-      ),
-      GoRoute(
-        path: '/sign-in',
-        builder: (_, __) {
-          navigated?.add('/sign-in');
-          return const Scaffold(body: Text('SIGN_IN_DEST'));
-        },
-      ),
-    ],
+    routes: appRoutes,
   );
   return ProviderScope(
     key: UniqueKey(),
     overrides: [
+      apiClientProvider.overrideWithValue(api),
+      serverUrlProvider.overrideWith((_) => _FixedServerNotifier(serverUrl)),
       p01WelcomeEnabledProvider.overrideWithValue(p01Enabled),
       if (localeNotifier != null) localeProvider.overrideWith((_) => localeNotifier),
     ],
@@ -78,11 +95,15 @@ Widget _harness({
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() => FlutterSecureStorage.setMockInitialValues({}));
+
+  // Mutant: replacing `context.push('/create-account')` with `context.go('/create-account')`
+  // removes Welcome from the Back stack and fails the Back-navigation assertion.
   testWidgets(
-      'P-01 switch ON shows 4 real HomeP07PreviewTile cards, Example badge, language switch, 2 distinct buttons, no-ads line, and no forbidden claims',
+      'P-01 switch ON shows 4 HomeP07PreviewTile cards, no speed/forbidden claims, and Create account pushes CreateAccountScreen with real Back to Welcome',
       (tester) async {
-    final nav = <String>[];
-    await tester.pumpWidget(_harness(p01Enabled: true, navigated: nav));
+    await tester.pumpWidget(_realRouterHarness(p01Enabled: true));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('p01-example-badge')), findsOneWidget);
@@ -103,23 +124,49 @@ void main() {
     await tester.scrollUntilVisible(find.byKey(const ValueKey('p01-create-account')), 150);
     await tester.tap(find.byKey(const ValueKey('p01-create-account')));
     await tester.pumpAndSettle();
-    expect(nav, ['/create-account']);
+    expect(find.byType(CreateAccountScreen), findsOneWidget);
+
+    // Real Back navigation returns to Welcome so an accidental tap keeps Sign in reachable.
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byType(WelcomeP01Screen), findsOneWidget);
+    expect(find.byKey(const ValueKey('p01-sign-in')), findsOneWidget);
   });
 
-  testWidgets('P-01 Sign in button routes to /sign-in separately from Create account', (tester) async {
-    final nav = <String>[];
-    await tester.pumpWidget(_harness(p01Enabled: true, navigated: nav));
+  // Mutant: removing the `!hasServer` guard sends an unlocked build with no saved server
+  // straight to CreateAccountScreen instead of LoginScreen where the server URL can be entered.
+  testWidgets(
+      'P-01 Create account on unlocked build with empty server routes to LoginScreen for server setup and preserves Back to Welcome',
+      (tester) async {
+    await tester.pumpWidget(_realRouterHarness(p01Enabled: true, serverUrl: ''));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('p01-create-account')), 150);
+    await tester.tap(find.byKey(const ValueKey('p01-create-account')));
+    await tester.pumpAndSettle();
+    expect(find.byType(LoginScreen), findsOneWidget);
+    expect(find.byType(CreateAccountScreen), findsNothing);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byType(WelcomeP01Screen), findsOneWidget);
+  });
+
+  // Mutant: wiring Sign in to `/create-account` fails `LoginScreen`.
+  testWidgets('P-01 Sign in button pushes LoginScreen separately from Create account', (tester) async {
+    await tester.pumpWidget(_realRouterHarness(p01Enabled: true));
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(find.byKey(const ValueKey('p01-sign-in')), 150);
     await tester.tap(find.byKey(const ValueKey('p01-sign-in')));
     await tester.pumpAndSettle();
-    expect(nav, ['/sign-in']);
+    expect(find.byType(LoginScreen), findsOneWidget);
   });
 
+  // Mutant: removing `localeProvider.notifier.setLocale` fails the locale toggle check.
   testWidgets('P-01 language switch toggles locale EN -> AR -> EN', (tester) async {
     final localeNotifier = _TestLocaleNotifier(const Locale('en'));
-    await tester.pumpWidget(_harness(
+    await tester.pumpWidget(_realRouterHarness(
       p01Enabled: true,
       locale: const Locale('en'),
       localeNotifier: localeNotifier,
@@ -136,14 +183,16 @@ void main() {
     expect(localeNotifier.state, const Locale('en'));
   });
 
+  // Mutant: removing `p01WelcomeEnabledProvider` gate fails the fallback check.
   testWidgets('P-01 switch OFF falls back to legacy WelcomeScreen', (tester) async {
-    await tester.pumpWidget(_harness(p01Enabled: false));
+    await tester.pumpWidget(_realRouterHarness(p01Enabled: false));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('onboardingGetStarted')), findsOneWidget);
     expect(find.byKey(const ValueKey('p01-example-badge')), findsNothing);
   });
 
+  // Mutant: removing P-01 switch fails `p01-welcome-title` inside the 8-combo matrix.
   testWidgets('Bureau matrix: zero overflow across all 8 combos (EN/AR x light/dark x 390@1x and 320@2x)',
       (tester) async {
     final configs = [
@@ -162,7 +211,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
 
-      await tester.pumpWidget(_harness(
+      await tester.pumpWidget(_realRouterHarness(
         p01Enabled: true,
         locale: locale,
         themeMode: mode,
@@ -170,6 +219,7 @@ void main() {
       ));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: 'Failed on $locale $mode $size @ ${scale}x');
+      expect(find.byKey(const ValueKey('p01-welcome-title')), findsOneWidget);
     }
   });
 }
