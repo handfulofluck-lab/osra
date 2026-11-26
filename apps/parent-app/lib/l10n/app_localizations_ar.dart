@@ -4008,7 +4008,7 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get pairP05ConfirmLink => 'تأكيد والربط';
+  String get pairP05ConfirmLink => 'التأكيد والربط';
 
   @override
   String get pairP05Decline => 'رفض';
@@ -4023,5 +4023,5 @@ class AppLocalizationsAr extends AppLocalizations {
   String get pairP05InstallLinkCopied => 'تم نسخ رابط التثبيت للمشاركة.';
 
   @override
-  String get pairP05SkipForNow => 'التخطي الآن';
+  String get pairP05SkipForNow => 'التخطي حاليًا';
 }

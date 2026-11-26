@@ -1213,10 +1213,10 @@
   "pairP05ConfirmDeviceTitle": "تأكيد هذا الجهاز؟",
   "pairP05ConfirmDeviceBody": "يطلب {model} الاتصال. أكّد الربط للمتابعة.",
   "@pairP05ConfirmDeviceBody": { "placeholders": { "model": { "type": "String" } } },
-  "pairP05ConfirmLink": "تأكيد والربط",
+  "pairP05ConfirmLink": "التأكيد والربط",
   "pairP05Decline": "رفض",
   "pairP05Connected": "تم ربط الهاتف.",
   "pairP05SendInstallLink": "إرسال رابط التثبيت",
   "pairP05InstallLinkCopied": "تم نسخ رابط التثبيت للمشاركة.",
-  "pairP05SkipForNow": "التخطي الآن"
+  "pairP05SkipForNow": "التخطي حاليًا"
 }
