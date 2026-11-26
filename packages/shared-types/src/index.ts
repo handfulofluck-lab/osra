@@ -23,6 +23,8 @@ export interface Device { id: UUID; childId: UUID; platform: Platform; model: st
   setupCompletedAt?: ISODate; }
 export interface RuleSet { id: UUID; childId: UUID; screenTime: ScreenTimeRule;
   webFilter: WebFilterRule; appRules: AppRule[]; routines: Routine[]; updatedAt: ISODate;
+  /** F7: device view only. Family adults' display names (owner first, max 4); empty = "your parents". */
+  adultNames?: string[];
   /** ADR-0037 PR B3: iPhone app groups the parent blocks, by the id the phone reported. */
   appGroupRules?: AppGroupRule[]; }
 /** ADR-0037 PR B3: a rule on an iPhone app group (`DeviceSetup.groups`). Only `block` for now; limits are PR C. */
