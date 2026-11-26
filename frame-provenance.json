@@ -1,0 +1,99 @@
+{
+  "head": "55ee40db85b9076e023011069ddbb3d7f66ad23b",
+  "production_copy_extraction_sha256": "465dd842e0788f573262de1e3896b89295b077fcab72ca36cd844657e40403f0",
+  "debug_apk_sha256": "ce47e168ff606465eed80a5b166e91b889586456b40e54802ff0df2fa5fefb98",
+  "avd": "codex-c02-1188",
+  "data": "synthetic",
+  "frames": [
+    {
+      "file": "app-en-light-390dp-100pct.png",
+      "sha256": "e8852ab67a126a346edeaabf9c2518c19bc6db7607c9514191131a0627a6b5a2",
+      "display_pixels": [
+        390,
+        844
+      ],
+      "local_activity_measurement": "sample=APP_BLOCKED; language=en; dark=false; widthDp=390; fontScale=1.0",
+      "language": "en",
+      "layout_direction": "ltr",
+      "theme": "light",
+      "font_scale": 1.0,
+      "sample": "app",
+      "view": "primary"
+    },
+    {
+      "file": "app-en-dark-390dp-100pct.png",
+      "sha256": "f645877da1f1c84d3166d1eb2ac934a2d3f4d6bba04f4ff87caf1de8dee79a3c",
+      "display_pixels": [
+        390,
+        844
+      ],
+      "local_activity_measurement": "sample=APP_BLOCKED; language=en; dark=true; widthDp=390; fontScale=1.0",
+      "language": "en",
+      "layout_direction": "ltr",
+      "theme": "dark",
+      "font_scale": 1.0,
+      "sample": "app",
+      "view": "primary"
+    },
+    {
+      "file": "rules-ar-light-390dp-100pct.png",
+      "sha256": "f9a97af6d6096d269874206a323b2d31bb24f27828a317231b4255b959c65d8d",
+      "display_pixels": [
+        390,
+        844
+      ],
+      "local_activity_measurement": "sample=DAILY_LIMIT; language=ar; dark=false; widthDp=390; fontScale=1.0",
+      "language": "ar",
+      "layout_direction": "rtl",
+      "theme": "light",
+      "font_scale": 1.0,
+      "sample": "rules",
+      "view": "primary"
+    },
+    {
+      "file": "rules-ar-dark-390dp-100pct.png",
+      "sha256": "f3b7935904a9f4d3b132df008697e70ecf329714e73b503a026ab92fcecc2b97",
+      "display_pixels": [
+        390,
+        844
+      ],
+      "local_activity_measurement": "sample=DAILY_LIMIT; language=ar; dark=true; widthDp=390; fontScale=1.0",
+      "language": "ar",
+      "layout_direction": "rtl",
+      "theme": "dark",
+      "font_scale": 1.0,
+      "sample": "rules",
+      "view": "primary"
+    },
+    {
+      "file": "rules-ar-light-320dp-200pct.png",
+      "sha256": "ef411c64c1112e62d26e5b6ba7bd5f12df1af3f2c97b18293318840e6434c9c8",
+      "display_pixels": [
+        320,
+        712
+      ],
+      "local_activity_measurement": "sample=DAILY_LIMIT; language=ar; dark=false; widthDp=320; fontScale=2.0",
+      "language": "ar",
+      "layout_direction": "rtl",
+      "theme": "light",
+      "font_scale": 2.0,
+      "sample": "rules",
+      "view": "primary"
+    },
+    {
+      "file": "rules-ar-dark-320dp-200pct.png",
+      "sha256": "91fd7808249f586b17e4fdf08ac9ebab049380d45274b0608148daaa0030fefb",
+      "display_pixels": [
+        320,
+        712
+      ],
+      "local_activity_measurement": "sample=DAILY_LIMIT; language=ar; dark=true; widthDp=320; fontScale=2.0",
+      "language": "ar",
+      "layout_direction": "rtl",
+      "theme": "dark",
+      "font_scale": 2.0,
+      "sample": "rules",
+      "view": "primary"
+    }
+  ]
+}
