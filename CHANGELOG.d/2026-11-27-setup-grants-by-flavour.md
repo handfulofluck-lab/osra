@@ -1,4 +1,4 @@
-### API — Full phones are protected only after notification access, and setup sends one parent notice (#1208, osra-security#82)
+### API — Full phones are protected only after notification access, and setup sends one parent notice (#1230, #1208, osra-security#82)
 - The server now asks for the same grants the phone does: Full builds need notification access as an
   eighth required grant, Play builds keep their seven. Protection and "Phone is protected" arrive only
   when the last one is granted.
