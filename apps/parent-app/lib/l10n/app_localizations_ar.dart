@@ -3790,4 +3790,39 @@ class AppLocalizationsAr extends AppLocalizations {
   String socialAlertNewSince(int count) {
     return '+$count جديدة';
   }
+
+  @override
+  String iphoneAppDetailsTitle(String child) {
+    return 'تبقى تفاصيل التطبيقات على آيفون $child';
+  }
+
+  @override
+  String iphoneAppDetailsBody(String child) {
+    return 'لا تشارك Apple قائمة التطبيقات ولا دقائق الاستخدام مع التطبيقات الأخرى. ولكن يمكنك حظر التطبيقات وتحديد الحدود من آيفون $child.';
+  }
+
+  @override
+  String get iphoneAppDetailsHowItWorks => 'كيف يعمل ذلك';
+
+  @override
+  String screenTimeShownOnIphone(String child) {
+    return 'وقت الشاشة: يُعرض على آيفون $child';
+  }
+
+  @override
+  String get iphoneHowItWorksTitle => 'كيف يعمل التحكم بالتطبيقات على آيفون';
+
+  @override
+  String iphoneHowItWorksStep1(String child) {
+    return 'افتح تطبيق أسرة للأطفال على آيفون $child وأضف التطبيقات التي تريد إدارتها إلى مجموعات.';
+  }
+
+  @override
+  String get iphoneHowItWorksStep2 =>
+      'تظهر كل مجموعة تطبيقات هنا، لتتمكن من حظرها أو السماح بها في أي وقت.';
+
+  @override
+  String iphoneHowItWorksStep3(String child) {
+    return 'لمعرفة دقائق استخدام كل تطبيق، افتح «الإعدادات» ثم «مدة استخدام الجهاز» على آيفون $child.';
+  }
 }

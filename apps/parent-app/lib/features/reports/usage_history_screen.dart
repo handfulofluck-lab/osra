@@ -5,9 +5,12 @@ import 'package:intl/intl.dart';
 import '../../api/models.dart';
 import '../../l10n/l10n.dart';
 import '../../core/ltr_isolate.dart';
+import '../../providers/family_provider.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../../api/permission_errors.dart';
+import '../children/child_platform.dart';
+import '../children/iphone_app_details_card.dart';
 
 /// Roadmap 3.5: the durable usage model in the parent app. One screen carries
 /// both reads, because they share the 7/14/30-day window:
@@ -90,6 +93,19 @@ class _UsageSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
+    final overview = ref.watch(familyProvider).valueOrNull;
+    final devices = overview?.devicesFor(childId) ?? const <Device>[];
+    if (isIphoneOnlyChild(devices)) {
+      final childName = overview?.children.where((c) => c.id == childId).firstOrNull?.displayName ?? '';
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(l10n.screenTime, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: AppSpace.sm),
+          IphoneAppDetailsCard(childName: childName),
+        ],
+      );
+    }
     final query = (childId: childId, days: days);
     final report = ref.watch(usageReportProvider(query));
     return Column(

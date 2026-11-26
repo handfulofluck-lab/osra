@@ -3564,4 +3564,39 @@ class AppLocalizationsEn extends AppLocalizations {
   String socialAlertNewSince(int count) {
     return '+$count new';
   }
+
+  @override
+  String iphoneAppDetailsTitle(String child) {
+    return 'App details stay on $child\'s iPhone';
+  }
+
+  @override
+  String iphoneAppDetailsBody(String child) {
+    return 'Apple doesn\'t share the list of apps or minutes used with other apps. You can still block apps and set limits from $child\'s iPhone.';
+  }
+
+  @override
+  String get iphoneAppDetailsHowItWorks => 'How it works';
+
+  @override
+  String screenTimeShownOnIphone(String child) {
+    return 'Screen time: shown on $child\'s iPhone';
+  }
+
+  @override
+  String get iphoneHowItWorksTitle => 'How app control works on iPhone';
+
+  @override
+  String iphoneHowItWorksStep1(String child) {
+    return 'Open OSRA on $child\'s iPhone and group the apps you want to manage.';
+  }
+
+  @override
+  String get iphoneHowItWorksStep2 =>
+      'Each app group appears in OSRA on your phone so you can block or allow it anytime.';
+
+  @override
+  String iphoneHowItWorksStep3(String child) {
+    return 'To check minutes used per app, open Settings > Screen Time on $child\'s iPhone.';
+  }
 }

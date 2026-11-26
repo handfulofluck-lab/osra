@@ -6,10 +6,13 @@ import 'package:go_router/go_router.dart';
 import '../../api/models.dart';
 import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
+import '../../providers/family_provider.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../../api/permission_errors.dart';
 import '../../widgets/error_retry_view.dart';
+import '../children/child_platform.dart';
+import '../children/iphone_app_details_card.dart';
 
 /// Feature #4: per-child activity report — app-usage bar chart, web stats
 /// (visits + top blocked domains, with the YouTube SafeSearch NOTE #7) and
@@ -28,6 +31,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final overview = ref.watch(familyProvider).valueOrNull;
+    final devices = overview?.devicesFor(widget.childId) ?? const <Device>[];
+    final iphoneOnly = isIphoneOnlyChild(devices);
+    final childName = overview?.children.where((c) => c.id == widget.childId).firstOrNull?.displayName ?? '';
     final report = reportSummaryProvider((childId: widget.childId, days: _days));
     final summary = ref.watch(report);
     return Scaffold(
@@ -72,18 +79,33 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           message: friendlyErrorText(l10n, e, () => l10n.reportLoadFailed),
           onRetry: () => ref.invalidate(report),
         ),
-        data: (data) => data.isEmpty
-            ? Center(child: Text(l10n.noActivityDays(_days)))
-            : ListView(
+        data: (data) => iphoneOnly
+            // #1046 (UI/UX Bureau 7120870405): never show "0 min" or an empty app-usage list
+            // for an iPhone-only child on Reports; show the neutral "stays on {child}'s iPhone" card.
+            ? ListView(
                 padding: const EdgeInsets.all(AppSpace.lg),
                 children: [
-                  _UsageSection(summary: data, days: _days),
-                  const SizedBox(height: AppSpace.lg),
-                  _WebSection(summary: data),
-                  const SizedBox(height: AppSpace.lg),
-                  _SocialSection(summary: data),
+                  IphoneAppDetailsCard(childName: childName),
+                  if (!data.isEmpty) ...[
+                    const SizedBox(height: AppSpace.lg),
+                    _WebSection(summary: data),
+                    const SizedBox(height: AppSpace.lg),
+                    _SocialSection(summary: data),
+                  ],
                 ],
-              ),
+              )
+            : data.isEmpty
+                ? Center(child: Text(l10n.noActivityDays(_days)))
+                : ListView(
+                    padding: const EdgeInsets.all(AppSpace.lg),
+                    children: [
+                      _UsageSection(summary: data, days: _days),
+                      const SizedBox(height: AppSpace.lg),
+                      _WebSection(summary: data),
+                      const SizedBox(height: AppSpace.lg),
+                      _SocialSection(summary: data),
+                    ],
+                  ),
       ),
     );
   }

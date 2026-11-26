@@ -1928,5 +1928,42 @@
   "socialAlertMorePush": "{count, plural, =1{1 more concerning message for {child} on {app}} other{{count} more concerning messages for {child} on {app}}}",
   "@socialAlertMorePush": { "placeholders": { "count": { "type": "int" }, "child": { "type": "String" }, "app": { "type": "String" } } },
   "socialAlertNewSince": "+{count} new",
-  "@socialAlertNewSince": { "placeholders": { "count": { "type": "int" } } }
+  "@socialAlertNewSince": { "placeholders": { "count": { "type": "int" } } },
+  "iphoneAppDetailsTitle": "App details stay on {child}'s iPhone",
+  "@iphoneAppDetailsTitle": {
+    "description": "#1046, UI/UX Bureau 7120870405: neutral empty-state card title for iPhone children on Apps and Reports.",
+    "placeholders": { "child": { "type": "String" } }
+  },
+  "iphoneAppDetailsBody": "Apple doesn't share the list of apps or minutes used with other apps. You can still block apps and set limits from {child}'s iPhone.",
+  "@iphoneAppDetailsBody": {
+    "description": "#1046, UI/UX Bureau 7120870405: neutral empty-state card body for iPhone children on Apps and Reports.",
+    "placeholders": { "child": { "type": "String" } }
+  },
+  "iphoneAppDetailsHowItWorks": "How it works",
+  "@iphoneAppDetailsHowItWorks": {
+    "description": "#1046, UI/UX Bureau 7120870405: button opening the 3-step iPhone app control explanation sheet."
+  },
+  "screenTimeShownOnIphone": "Screen time: shown on {child}'s iPhone",
+  "@screenTimeShownOnIphone": {
+    "description": "#1046, UI/UX Bureau 7120870405: replaces the screen-time bar on Dashboard and child profile for iPhone-only children.",
+    "placeholders": { "child": { "type": "String" } }
+  },
+  "iphoneHowItWorksTitle": "How app control works on iPhone",
+  "@iphoneHowItWorksTitle": {
+    "description": "#1046: title of the 3-step sheet opened by How it works."
+  },
+  "iphoneHowItWorksStep1": "Open OSRA on {child}'s iPhone and group the apps you want to manage.",
+  "@iphoneHowItWorksStep1": {
+    "description": "#1046: step 1 in the How it works sheet.",
+    "placeholders": { "child": { "type": "String" } }
+  },
+  "iphoneHowItWorksStep2": "Each app group appears in OSRA on your phone so you can block or allow it anytime.",
+  "@iphoneHowItWorksStep2": {
+    "description": "#1046: step 2 in the How it works sheet."
+  },
+  "iphoneHowItWorksStep3": "To check minutes used per app, open Settings > Screen Time on {child}'s iPhone.",
+  "@iphoneHowItWorksStep3": {
+    "description": "#1046: step 3 in the How it works sheet.",
+    "placeholders": { "child": { "type": "String" } }
+  }
 }
