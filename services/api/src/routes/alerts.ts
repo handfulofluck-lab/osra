@@ -3,9 +3,9 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { redactedBlockedSiteKey, redactBlockedSiteHost, siteNamesEnabled } from "../lib/siteNames.js";
-import { raiseAlertOnce } from "../lib/alerts.js";
+import { raiseAlertOnce, type RaiseAlertInput } from "../lib/alerts.js";
 import { incompleteDedupeKey, shouldHoldTamperDuringSetup, type SetupDevice } from "../lib/deviceSetup.js";
-import { findSetupNotice, withSetupOpen } from "../lib/deviceSetupTransitions.js";
+import { raisePhoneSetupNotice } from "../lib/deviceSetupTransitions.js";
 import { sanitizeAlertMetadata, withoutAlertLocation } from "../lib/alertLocation.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
 import { guardianPermissions, requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
@@ -165,7 +165,7 @@ export async function alertsRoutes(app: FastifyInstance) {
 
     // Phase 2a: one path creates the row, publishes the WS event and pushes to the parents' phones.
     // Issue #225: a repeated dedupeKey is a retry, not a new alert — 200 with the existing row.
-    const raise = () => raiseAlertOnce({
+    const input: RaiseAlertInput = {
       childId,
       familyId: child.familyId,
       deviceId: effectiveDeviceId,
@@ -183,22 +183,19 @@ export async function alertsRoutes(app: FastifyInstance) {
       attemptCount,
       heldDuringSetup,
       childName: child.displayName,
-    });
+    };
 
     if (setupNoticeDevice) {
-      // A notice still queued on the phone after completion is stale, so the parent gets no setup alert after
-      // "Phone is protected". The check and the write hold the Device row (Codex, #1230 finding 2), so a
-      // completion that commits first always wins. A row under the pre-#1208 server key is the pairing's one
-      // notice too (finding 1): the phone's copy dedupes onto it.
+      // Decided under the Device row lock with the server-validated grants (Codex, #1230 finding 2 and
+      // osra-security#82/#87): open setup dedupes onto the pairing's one notice; a completed pairing that the
+      // server sees missing a newly required grant gets one new notice with the latch kept; a completed pairing
+      // with every required grant is a stale retry and writes nothing. Publish and push run after commit.
       const pairedAt = (setupNoticeDevice as unknown as SetupDevice).pairedAt;
-      const outcome = await withSetupOpen(setupNoticeDevice.id, async () => {
-        const existing = await findSetupNotice(setupNoticeDevice.id, pairedAt);
-        return existing ? { alert: existing, deduplicated: true } : raise();
-      });
+      const outcome = await raisePhoneSetupNotice(setupNoticeDevice.id, pairedAt, { ...input, attemptCount: undefined });
       if (!outcome) return reply.code(200).send({ dropped: "setup_complete" });
       return reply.code(outcome.deduplicated ? 200 : 201).send({ alert: outcome.alert });
     }
-    const { alert, deduplicated } = await raise();
+    const { alert, deduplicated } = await raiseAlertOnce(input);
     return reply.code(deduplicated ? 200 : 201).send({ alert });
   });
 

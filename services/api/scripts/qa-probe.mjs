@@ -832,7 +832,7 @@ const setupSevenReport = await call("POST", `/v1/devices/${d2.deviceId}/telemetr
   body: { capabilities: setupCapabilities("granted", "missing") },
 });
 const setupSevenDevice = await call("GET", `/v1/devices/${d2.deviceId}`, { token: tokenA });
-check("G32a a Full report with seven grants but no notification access stays incomplete", setupSevenReport.status === 202 && !setupSevenDevice.data?.device?.setupCompletedAt, `telemetry=${setupSevenReport.status} completed=${setupSevenDevice.data?.device?.setupCompletedAt}`);
+check("G32a a Full report with seven grants but no notification access stays incomplete", setupSevenReport.status === 202 && setupSevenDevice.status === 200 && setupSevenDevice.data?.device != null && setupSevenDevice.data.device.setupCompletedAt === null, `telemetry=${setupSevenReport.status} read=${setupSevenDevice.status} completed=${setupSevenDevice.data?.device?.setupCompletedAt}`);
 const setupCompleteReport = await call("POST", `/v1/devices/${d2.deviceId}/telemetry`, {
   token: d2.token,
   body: { capabilities: setupCapabilities("granted") },

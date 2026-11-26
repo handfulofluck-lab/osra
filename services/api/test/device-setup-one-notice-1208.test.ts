@@ -91,7 +91,7 @@ describe("#1208 / osra-security#82: one setup notice per pairing, protection onl
     // The Device row lock read (#1230) sees the committed completion state, not a caller's snapshot.
     prismaMock.$queryRaw.mockImplementation(async (strings: TemplateStringsArray) =>
       Array.from(strings ?? []).join("").includes("FOR NO KEY UPDATE")
-        ? [{ setupCompletedAt: deviceRow.setupCompletedAt }]
+        ? [{ setupCompletedAt: deviceRow.setupCompletedAt, capabilities: deviceRow.capabilities }]
         : []);
     prismaMock.alert.findFirst.mockImplementation(async ({ where }) =>
       alerts.find((a) =>
@@ -101,7 +101,7 @@ describe("#1208 / osra-security#82: one setup notice per pairing, protection onl
         (where.category === undefined || a.category === where.category) &&
         (typeof where.heldDuringSetup !== "boolean" || a.heldDuringSetup === where.heldDuringSetup)) ?? null);
     prismaMock.alert.create.mockImplementation(async ({ data }) => {
-      const row = { id: `alert-${alerts.length + 1}`, heldDuringSetup: false, attemptCount: 1, ...data } as Row;
+      const row = { id: `alert-${alerts.length + 1}`, heldDuringSetup: false, attemptCount: 1, createdAt: new Date(), ...data } as Row;
       alerts.push(row);
       return row;
     });
@@ -162,16 +162,64 @@ describe("#1208 / osra-security#82: one setup notice per pairing, protection onl
     expect(protectedNotices()).toHaveLength(1);
   });
 
-  it("no setup notice after completion, and a completed pairing is never re-gated by the new rule", async () => {
+  it("upgrade: a completed pairing the server sees missing a newly required grant gets one notice, latch intact", async () => {
     const app = await buildApp(alertsRoutes, "/v1/alerts");
-    // Completed before this change, on the old seven; its next Full report still lacks notification access.
-    deviceRow.setupCompletedAt = new Date(START.getTime() + 5_000);
+    // Completed before this change, on the old seven; the server-validated report still lacks notification access.
+    const completedAt = new Date(START.getTime() + 5_000);
+    deviceRow.setupCompletedAt = completedAt;
     const stillSeven = caps({ ...SEVEN, notification_listener: "missing" });
+    deviceRow.capabilities = stillSeven;
     expect(await completeDeviceSetupIfReady(transitionDevice(), stillSeven, new Date())).toBe(false);
-    expect(deviceRow.setupCompletedAt).not.toBeNull();
     expect(await evaluateDeviceSetupIncomplete({ ...transitionDevice(), capabilities: stillSeven } as never, EXPIRY))
       .toEqual({ due: false, deduplicated: true });
 
+    const { raw, headers } = phoneNotice();
+    const posted = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers, payload: raw });
+    expect(posted.statusCode).toBe(201);
+    expect(setupNotices()).toHaveLength(1);
+    expect(setupNotices()[0]).toEqual(expect.objectContaining({
+      dedupeKey: incompleteDedupeKey("dev-1"),
+      title: "Setup is not finished yet",
+      metadata: expect.objectContaining({ type: "setup_incomplete_permissions", missingGrants: "notification_listener" }),
+    }));
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(deviceRow.setupCompletedAt).toBe(completedAt);
+
+    // A retry of the same upgrade notice is a duplicate: still one row, one push.
+    const again = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers: phoneNotice().headers, payload: phoneNotice().raw });
+    expect(again.statusCode).toBe(200);
+    expect(setupNotices()).toHaveLength(1);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(deviceRow.setupCompletedAt).toBe(completedAt);
+    await app.close();
+  });
+
+  it("upgrade after a first-setup notice: the one row is raised again, unread, with one new push", async () => {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    alerts.push({
+      id: "first-setup", childId: CHILD.id, deviceId: "dev-1", severity: "warning", category: "tamper",
+      title: "Phone setup needs attention", heldDuringSetup: false, attemptCount: 1, acknowledged: true,
+      dedupeKey: incompleteDedupeKey("dev-1"), createdAt: new Date(START.getTime() + 1_000),
+      metadata: { type: "setup_incomplete", missing: ["location"], serverReminder: true },
+    });
+    const completedAt = new Date(START.getTime() + 5_000);
+    deviceRow.setupCompletedAt = completedAt;
+    deviceRow.capabilities = caps({ ...SEVEN, notification_listener: "missing" });
+    const { raw, headers } = phoneNotice();
+    const posted = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers, payload: raw });
+    expect(posted.statusCode).toBe(201);
+    expect(setupNotices()).toHaveLength(1);
+    expect(setupNotices()[0]).toEqual(expect.objectContaining({ id: "first-setup", acknowledged: false, title: "Setup is not finished yet" }));
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(deviceRow.setupCompletedAt).toBe(completedAt);
+    await app.close();
+  });
+
+  it("stale first-setup retry: a completed pairing with every required grant writes nothing", async () => {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    deviceRow.setupCompletedAt = new Date(START.getTime() + 5_000);
+    deviceRow.capabilities = caps(Object.fromEntries(FULL_STEPS.map((k) => [k, "granted"])));
     const { raw, headers } = phoneNotice();
     const posted = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers, payload: raw });
     expect(posted.statusCode).toBe(200);
@@ -180,7 +228,39 @@ describe("#1208 / osra-security#82: one setup notice per pairing, protection onl
     expect(send).not.toHaveBeenCalled();
     await app.close();
   });
-function seedLegacyReminder(missing: string[]) {
+
+  it("osra-security#87: the notice is stored through the transaction client and pushed only after commit", async () => {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    const order: string[] = [];
+    const tx = {
+      $queryRaw: vi.fn((...args: unknown[]) => (prismaMock.$queryRaw as (...a: unknown[]) => unknown)(...args)),
+      alert: {
+        findFirst: vi.fn((...args: unknown[]) => (prismaMock.alert.findFirst as (...a: unknown[]) => unknown)(...args)),
+        create: vi.fn(async (...args: unknown[]) => { order.push("tx.create"); return (prismaMock.alert.create as (...a: unknown[]) => unknown)(...args); }),
+        update: vi.fn((...args: unknown[]) => (prismaMock.alert.update as (...a: unknown[]) => unknown)(...args)),
+      },
+    };
+    prismaMock.$transaction.mockImplementation(async (fn: (client: unknown) => Promise<unknown>) => {
+      const result = await fn(tx);
+      order.push("commit");
+      return result;
+    });
+    send.mockImplementation(async () => { order.push("push"); return { ok: true }; });
+    const { raw, headers } = phoneNotice();
+    const posted = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers, payload: raw });
+    expect(posted.statusCode).toBe(201);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.alert.findFirst).toHaveBeenCalled();
+    expect(tx.alert.create).toHaveBeenCalledTimes(1);
+    // Every durable read and write went through tx: the shared client's alert methods were only reached via tx.
+    expect(prismaMock.alert.create.mock.calls.length).toBe(tx.alert.create.mock.calls.length);
+    expect(prismaMock.alert.findFirst.mock.calls.length).toBe(tx.alert.findFirst.mock.calls.length);
+    expect(order).toEqual(["tx.create", "commit", "push"]);
+    send.mockImplementation(async () => ({ ok: true }));
+    await app.close();
+  });
+
+  function seedLegacyReminder(missing: string[]) {
     alerts.push({
       id: "legacy-1",
       childId: CHILD.id,
@@ -219,6 +299,7 @@ function seedLegacyReminder(missing: string[]) {
 
   it("a check holding a pre-completion snapshot writes nothing once completion has committed", async () => {
     const stale = transitionDevice(); // read by the scheduler before completion
+    deviceRow.capabilities = caps(Object.fromEntries(FULL_STEPS.map((k) => [k, "granted"])));
     const done = await completeDeviceSetupIfReady(transitionDevice(), caps(Object.fromEntries(FULL_STEPS.map((k) => [k, "granted"]))), EXPIRY);
     expect(done).toBe(true);
     expect(await evaluateDeviceSetupIncomplete(stale, EXPIRY)).toEqual({ due: false, deduplicated: true });
@@ -231,6 +312,7 @@ function seedLegacyReminder(missing: string[]) {
     const app = await buildApp(alertsRoutes, "/v1/alerts");
     const staleDevice = { ...deviceRow }; // what the request loaded at authentication
     prismaMock.device.findUnique.mockImplementation(async () => ({ ...staleDevice }));
+    deviceRow.capabilities = caps(Object.fromEntries(FULL_STEPS.map((k) => [k, "granted"])));
     await completeDeviceSetupIfReady(transitionDevice(), caps(Object.fromEntries(FULL_STEPS.map((k) => [k, "granted"]))), new Date());
     const { raw, headers } = phoneNotice();
     const posted = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers, payload: raw });
