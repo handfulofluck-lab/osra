@@ -88,7 +88,7 @@ void main() {
     expect(find.textContaining('UTC+4'), findsOneWidget);
     expect(find.textContaining('/'), findsNothing, reason: 'never the raw Asia/Dubai id');
     final tile = tester.widget<ListTile>(find.byKey(const ValueKey('settingsRow-timeZone')));
-    expect(tile.enabled, isFalse, reason: 'read-only until #1211: no chevron and no ripple');
+    expect(tile.onTap, isNull, reason: 'read-only until #1211: no chevron and no ripple');
   });
 
   testWidgets('the security card is on top while two-step verification is off, and gone when it is on',
