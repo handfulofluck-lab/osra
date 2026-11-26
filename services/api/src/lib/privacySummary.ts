@@ -40,7 +40,7 @@ function positiveInt(raw: string | undefined, fallback: number): number {
 }
 
 export function privacySummary(env: NodeJS.ProcessEnv = process.env): PrivacySummary {
-  const region = (env.AWS_REGION ?? env.AWS_DEFAULT_REGION ?? "").trim();
+  const region = (env.AWS_REGION ?? "").trim();
   const location = EU_LOCATIONS[region];
   return {
     retention: {

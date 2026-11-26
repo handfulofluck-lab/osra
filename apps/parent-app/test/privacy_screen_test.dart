@@ -47,7 +47,7 @@ void main() {
       });
 
   Future<void> pump(WidgetTester tester, FakeApiClient client, {Locale locale = const Locale('en')}) async {
-    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.physicalSize = const Size(1080, 6000);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(ProviderScope(
