@@ -4,9 +4,11 @@ import { getRedis } from "../redis.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 import { notifyParentsOfAlert } from "../lib/push/notify.js";
 import {
-  SOCIAL_ALERT_WINDOW_MS,
-  SOCIAL_ALERT_WINDOW_SECONDS,
+  holdSocialPushBudget,
+  nextPushDelivery,
   parseSocialWindowMetadata,
+  socialAlertWindowMs,
+  socialAlertWindowSeconds,
   replayDeferredSocialObservations,
   type SocialWindowRedisState,
 } from "../lib/socialAlertWindow.js";
@@ -23,6 +25,10 @@ import {
  *   which emits zero message text and zero contact names), updates the alert row in place, and
  *   opens a fresh 10-minute window on that push so a parent never receives more than one push per
  *   10 minutes unless severity escalates.
+ * - Issue #1139: summaries are grouped per (child, app). When several per-contact windows of the
+ *   same child + app close in one sweep, every row is updated but only ONE push fires (on the most
+ *   recent row), which carries fresh `pushDeliveryId` / `pushDeliverySeq`. Cadence comes from
+ *   `SOCIAL_ALERT_SUMMARY_MINUTES` (default 10, clamped 1..60).
  * - Honors `JOBS_ENABLED=0` and `NODE_ENV=test`; exports `runSocialAlertSummarySweep()` for tests.
  */
 
@@ -49,6 +55,8 @@ export interface SocialSummaryPushedItem {
   childId: string;
   app: string;
   delta: number;
+  /** Other alert rows of the same (child, app) folded into this one push (#1139). */
+  groupedAlertIds?: string[];
 }
 
 export interface SocialSummarySweepRun {
@@ -80,8 +88,17 @@ export async function runSocialAlertSummarySweep(
 
   const pushed: SocialSummaryPushedItem[] = [];
   const redis = getRedis();
+  const windowMs = socialAlertWindowMs(env);
+  const windowSeconds = socialAlertWindowSeconds(env);
+  // #1139: newest first, so the single grouped push per (child, app) lands on the latest row.
+  const ordered = [...candidates].sort((a, b) => {
+    const at = new Date((a as { createdAt?: Date | string }).createdAt ?? 0).getTime();
+    const bt = new Date((b as { createdAt?: Date | string }).createdAt ?? 0).getTime();
+    return bt - at;
+  });
+  const pushedByGroup = new Map<string, SocialSummaryPushedItem>();
 
-  for (const candidate of candidates) {
+  for (const candidate of ordered) {
     const childInfo = (candidate as { child?: { familyId?: string; displayName?: string | null } | null }).child;
     const familyId = childInfo?.familyId;
     const row = familyId
@@ -103,12 +120,15 @@ export async function runSocialAlertSummarySweep(
 
     // Multi-instance guard: only one API instance may emit the summary push for this window close.
     const claimKey = `jobs:social-summary:${row.id}:${meta.windowEndsAt}`;
-    const claim = await redis.set(claimKey, nowIso, "EX", SOCIAL_ALERT_WINDOW_SECONDS, "NX").catch(() => null);
+    const claim = await redis.set(claimKey, nowIso, "EX", windowSeconds, "NX").catch(() => null);
     if (claim !== "OK") continue;
 
     if (!familyId) continue;
 
-    const nextWindowEndsAt = new Date(nowMs + SOCIAL_ALERT_WINDOW_MS).toISOString();
+    const groupKey = `${row.childId}:${meta.app.trim().toLowerCase()}`;
+    const groupPush = pushedByGroup.get(groupKey);
+    const willPush = !groupPush;
+    const nextWindowEndsAt = new Date(nowMs + windowMs).toISOString();
     const nextMetadata: Record<string, unknown> = {
       ...(rawMeta ?? {}),
       pushedCount: meta.flaggedCount,
@@ -118,6 +138,8 @@ export async function runSocialAlertSummarySweep(
       summaryPushedAt: nowIso,
       windowStartedAt: nowIso,
       windowEndsAt: nextWindowEndsAt,
+      // Delivery fields change ONLY on the row whose push actually fires (#1139 parent contract).
+      ...(willPush ? nextPushDelivery(rawMeta) : { summaryGroupedInto: groupPush!.alertId }),
     };
 
     const updated = await prisma.alert.update({
@@ -147,17 +169,25 @@ export async function runSocialAlertSummarySweep(
       const payload = JSON.stringify(nextState);
       const expectedToken = `"alertId":${JSON.stringify(row.id)}`;
       const evalRes = await redis
-        .eval(SOCIAL_WINDOW_ROLLOVER_SCRIPT, 1, throttleKey, expectedToken, payload, String(SOCIAL_ALERT_WINDOW_SECONDS))
+        .eval(SOCIAL_WINDOW_ROLLOVER_SCRIPT, 1, throttleKey, expectedToken, payload, String(windowSeconds))
         .catch(() => null);
       if (evalRes !== 0 && evalRes !== 1) {
         // Fallback for unit-test mocks that don't stub `eval`: still atomic NX, never overwrites a newer key.
-        await redis.set(throttleKey, payload, "EX", SOCIAL_ALERT_WINDOW_SECONDS, "NX").catch(() => undefined);
+        await redis.set(throttleKey, payload, "EX", windowSeconds, "NX").catch(() => undefined);
       }
     }
 
     await publishFamilyEvent(familyId, { type: "alert", payload: updatedAlert, ts: nowIso });
+    if (!willPush) {
+      groupPush!.delta += delta;
+      (groupPush!.groupedAlertIds ??= []).push(row.id);
+      continue;
+    }
     await notifyParentsOfAlert(familyId, updatedAlert, childInfo?.displayName ?? undefined);
-    pushed.push({ alertId: row.id, childId: row.childId, app: meta.app, delta });
+    await holdSocialPushBudget(redis, row.childId, meta.app, env);
+    const item: SocialSummaryPushedItem = { alertId: row.id, childId: row.childId, app: meta.app, delta };
+    pushedByGroup.set(groupKey, item);
+    pushed.push(item);
   }
 
   if (pushed.length > 0 && env.NODE_ENV !== "test") {
