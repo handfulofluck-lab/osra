@@ -98,6 +98,7 @@ class ConversationCapturePolicyTest {
         assertEquals(3, first.size)
         assertEquals(listOf("ok"), second.map { it.text })
         assertNotEquals(first.last().occurrenceId, second.single().occurrenceId)
+        assertTrue(!first.last().occurrenceId.contains("Alex"))
     }
 
     @Test

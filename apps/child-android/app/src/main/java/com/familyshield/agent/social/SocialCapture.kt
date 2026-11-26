@@ -28,6 +28,15 @@ class SocialCapture @Inject constructor(
     private val lastCaptureAt = HashMap<String, Long>()
     private val conversationSeen = ConversationCapturePolicy.SeenTracker()
 
+    init {
+        consent.addListener { paused ->
+            if (paused) conversationSeen.clear()
+        }
+        rules.addRulesChangedListener {
+            conversationSeen.retainOnly { appKey -> rules.socialMonitoringEnabled(appKey) }
+        }
+    }
+
     /** Entry point from AccessibilityMonitorService; cheap no-op for unmonitored packages. */
     fun onAccessibilityEvent(event: AccessibilityEvent, nowMs: Long = System.currentTimeMillis()) {
         if (consent.isPaused()) {
@@ -54,7 +63,7 @@ class SocialCapture @Inject constructor(
             }
         }
         if (appKey == "whatsapp") {
-            val conversation = ConversationCapturePolicy.parse(texts) ?: return
+            val conversation = ConversationCapturePolicy.parse(texts, packageId = pkg) ?: return
             if (!TestChatCaptureGate.allows(context, appKey, conversation.contact)) return
             for (capture in conversationSeen.newCaptures(appKey, conversation, packageId = pkg)) {
                 val redacted = TextRedaction.redact(capture.text)

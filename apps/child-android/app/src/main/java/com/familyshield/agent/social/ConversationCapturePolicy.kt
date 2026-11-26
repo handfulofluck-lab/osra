@@ -91,10 +91,14 @@ object ConversationCapturePolicy {
             seen.keys.removeAll { key -> key.split('\u0000').getOrNull(1) == appKey }
         }
 
+        fun retainOnly(keepApp: (String) -> Boolean) {
+            seen.keys.removeAll { key -> !keepApp(key.split('\u0000').getOrNull(1).orEmpty()) }
+        }
+
         fun clear() = seen.clear()
 
         private fun conversationKey(appKey: String, contact: String?, packageId: String): String =
-            "$packageId\u0000$appKey\u0000${contact.orEmpty()}"
+            "$packageId\u0000$appKey\u0000${occurrenceSignature(contact.orEmpty())}"
 
         private fun prune() {
             val cutoff = clock() - ttlMs
