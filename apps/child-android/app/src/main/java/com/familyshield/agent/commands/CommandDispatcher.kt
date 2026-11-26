@@ -115,6 +115,17 @@ class CommandDispatcher @Inject constructor(
             // best-effort and comes after the refresh, so the filter reads the new set; a failed
             // refresh still reloads from whatever is cached.
             "rules_updated" -> {
+                val actor = data["byName"]?.trim()?.takeIf { it.isNotEmpty() }
+                com.familyshield.agent.ui.home.ChildHomeStore.clearPendingRequest(context)
+                com.familyshield.agent.ui.home.ChildHomeStore.recordDecision(
+                    context,
+                    com.familyshield.agent.ui.home.ChildDecisionRecord(
+                        kind = "rules_updated",
+                        byName = actor,
+                        timestampMs = System.currentTimeMillis(),
+                        todayOnly = false,
+                    ),
+                )
                 scope.launch {
                     val failed = refreshThenReload(
                         refresh = { rules.refresh() },
@@ -133,14 +144,59 @@ class CommandDispatcher @Inject constructor(
             "locate_now" -> locateNow(commandId)
             // Feature #11: pause the internet — block everything except alwaysAllowedApps and
             // keep the overlay up until resume_internet arrives.
-            "pause_internet" -> pauseInternet()
-            "resume_internet" -> { resumeInternet(); CommandOutcome.Applied() }
+            "pause_internet" -> {
+                val actor = data["byName"]?.trim()?.takeIf { it.isNotEmpty() }
+                com.familyshield.agent.ui.home.ChildHomeStore.recordDecision(
+                    context,
+                    com.familyshield.agent.ui.home.ChildDecisionRecord(
+                        kind = "pause_internet",
+                        byName = actor,
+                        timestampMs = System.currentTimeMillis(),
+                        todayOnly = true,
+                    ),
+                )
+                pauseInternet()
+            }
+            "resume_internet" -> {
+                val actor = data["byName"]?.trim()?.takeIf { it.isNotEmpty() }
+                com.familyshield.agent.ui.home.ChildHomeStore.recordDecision(
+                    context,
+                    com.familyshield.agent.ui.home.ChildDecisionRecord(
+                        kind = "resume_internet",
+                        byName = actor,
+                        timestampMs = System.currentTimeMillis(),
+                        todayOnly = true,
+                    ),
+                )
+                resumeInternet()
+                CommandOutcome.Applied()
+            }
             // Feature #10: grant N extra screen-time minutes for today only.
-            "bonus_time" -> dispatchMinutes(data) { rules.addBonusMinutes(it) }
+            "bonus_time" -> dispatchMinutes(data) { mins ->
+                rules.addBonusMinutes(mins)
+                val actor = data["byName"]?.trim()?.takeIf { it.isNotEmpty() }
+                com.familyshield.agent.ui.home.ChildHomeStore.clearPendingRequest(context)
+                com.familyshield.agent.ui.home.ChildHomeStore.recordDecision(
+                    context,
+                    com.familyshield.agent.ui.home.ChildDecisionRecord(
+                        kind = "bonus_time",
+                        minutes = mins,
+                        byName = actor,
+                        timestampMs = System.currentTimeMillis(),
+                        todayOnly = true,
+                    ),
+                )
+            }
             // Feature #22: warn, then lock after N minutes. Issue #231: the ack claims the warning
             // is posted and the timer armed, not that the lock has fired — the parent asked for the
             // warning, and waiting minutes for the timer would leave the row `delivered` meanwhile.
-            "wind_down" -> dispatchMinutes(data) { windDown(it) }
+            "wind_down" -> dispatchMinutes(data) { mins ->
+                com.familyshield.agent.ui.home.ChildHomeStore.setWindDownUntil(
+                    context,
+                    System.currentTimeMillis() + mins.toLong() * 60_000L,
+                )
+                windDown(mins)
+            }
             // ADR-0031: the family witness. Deferred, not acked at display: see [showResetCode].
             "show_reset_code" -> showResetCode(data, commandId)
             // Issue #231 review: a type this agent does not know must not stay `delivered` forever.
@@ -376,6 +432,7 @@ class CommandDispatcher @Inject constructor(
     private fun unlock(): CommandOutcome {
         windDownJob?.cancel()
         windDownJob = null
+        com.familyshield.agent.ui.home.ChildHomeStore.clearWindDown(context)
         com.familyshield.agent.enforcement.LockState.clear(context)
         reportLockPeriod(com.familyshield.agent.enforcement.LockPeriodTracker.end(context))
         val showing = LockActivity.isShowing
