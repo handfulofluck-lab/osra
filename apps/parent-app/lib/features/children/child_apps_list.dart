@@ -50,6 +50,15 @@ String formatAppLimit(AppLocalizations l10n, int minutes) =>
 /// Daily limits offered in an app's sheet, in minutes.
 const kAppLimitChoices = [15, 30, 60, 120];
 
+
+/// Feature switch for UX Final Decisions **P-09** (#1179). Enable with
+/// `--dart-define=OSRA_UX_P09=true`, or override [p09AppsEnabledProvider] in tests. When it is false the
+/// list keeps the switch row and the choice sheet it shipped with, so a screen can be turned off on the
+/// morning of a test without a revert.
+const bool kEnableUxP09Apps = bool.fromEnvironment('OSRA_UX_P09', defaultValue: false);
+
+final p09AppsEnabledProvider = Provider<bool>((ref) => kEnableUxP09Apps);
+
 class _ChildAppsListState extends ConsumerState<ChildAppsList> {
   final _search = TextEditingController();
   AppsFilter _filter = AppsFilter.all;
@@ -231,6 +240,8 @@ class _ChildAppsListState extends ConsumerState<ChildAppsList> {
     // the same signal the rules banner uses (#475/#1157), so the line clears itself when the phone applies them.
     final family = ref.watch(familyProvider).valueOrNull;
     final child = family?.children.where((c) => c.id == widget.childId).firstOrNull;
+    // P-09 ships behind its own switch: off restores the switch row and the choice sheet this list had.
+    final uxP09 = ref.watch(p09AppsEnabledProvider);
     final rulesOnTheirWay = family != null &&
         child != null &&
         rulesFreshness(child, hasPairedDevice: family.devicesFor(widget.childId).isNotEmpty) !=
@@ -290,7 +301,10 @@ class _ChildAppsListState extends ConsumerState<ChildAppsList> {
             padding: const EdgeInsets.symmetric(vertical: AppSpace.lg),
             child: Center(child: Text(l10n.appsNoMatch, key: const ValueKey('appsNoMatch'))),
           ),
-        for (final app in shown) _row(context, app, theme, rulesOnTheirWay: rulesOnTheirWay),
+        for (final app in shown)
+          uxP09
+              ? _row(context, app, theme, rulesOnTheirWay: rulesOnTheirWay)
+              : _legacyRow(context, app, theme),
       ],
     );
   }
@@ -421,6 +435,202 @@ class _AppActionWord extends StatelessWidget {
       child: selected
           ? FilledButton.tonal(key: buttonKey, onPressed: onPressed, child: Text(label))
           : TextButton(key: buttonKey, onPressed: onPressed, child: Text(label)),
+    );
+  }
+  Future<void> _openLegacySheet(InstalledApp app) async {
+    final l10n = context.l10n;
+    final rule = _ruleFor(app.packageId);
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        Widget choice(String key, IconData icon, String label, bool selected, VoidCallback onTap) => ListTile(
+              key: ValueKey(key),
+              leading: Icon(icon),
+              title: Text(label),
+              trailing: selected ? Icon(Icons.check, color: theme.colorScheme.primary) : null,
+              onTap: () {
+                Navigator.of(ctx).pop();
+                onTap();
+              },
+            );
+        final action = rule?.action ?? 'allow';
+        return SafeArea(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ListTile(
+                  leading: AppIconBadge(app: app, size: 40),
+                  title: Text(app.label, style: theme.textTheme.titleMedium),
+                ),
+                const Divider(height: 1),
+                choice('appSheetAllow', Icons.check_circle_outline, l10n.appActionAllow, action == 'allow',
+                    () => _setAction(app, 'allow')),
+                choice('appSheetBlock', Icons.block, l10n.appActionBlock, action == 'block',
+                    () => _setAction(app, 'block')),
+                Padding(
+                  padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, AppSpace.sm, AppSpace.lg, 0),
+                  child: Text(l10n.appActionTimeLimit, style: theme.textTheme.titleSmall),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.lg, vertical: AppSpace.sm),
+                  child: Wrap(
+                    spacing: AppSpace.sm,
+                    runSpacing: AppSpace.sm,
+                    children: [
+                      for (final m in kAppLimitChoices)
+                        ChoiceChip(
+                          key: ValueKey('appSheetLimit-$m'),
+                          label: Text(formatAppLimit(l10n, m)),
+                          selected: action == 'time_limit' && rule?.dailyLimitMinutes == m,
+                          onSelected: (_) {
+                            Navigator.of(ctx).pop();
+                            _setAction(app, 'time_limit', minutes: m);
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+                if (widget.onInsight != null)
+                  ListTile(
+                    key: const ValueKey('appSheetInsight'),
+                    leading: const Icon(Icons.info_outline),
+                    title: Text(l10n.appAboutThisApp),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      widget.onInsight!(app.packageId);
+                    },
+                  ),
+                const SizedBox(height: AppSpace.sm),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final theme = Theme.of(context);
+    final query = _search.text.trim().toLowerCase();
+
+    // Every reported app, plus any app that has a rule but is no longer reported (so a block stays visible).
+    final byPackage = {for (final a in widget.report.apps) a.packageId: a};
+    for (final r in _rules) {
+      byPackage.putIfAbsent(
+        r.packageId,
+        () => InstalledApp(
+            packageId: r.packageId, label: r.appName == r.packageId ? l10n.appNoLongerInstalled : r.appName),
+      );
+    }
+    final apps = byPackage.values.toList()..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+    final blockedCount = _rules.where((r) => r.action == 'block').length;
+    final limitedCount = _rules.where((r) => r.action == 'time_limit').length;
+    final shown = [
+      for (final a in apps)
+        if ((query.isEmpty || a.label.toLowerCase().contains(query)) &&
+            switch (_filter) {
+              AppsFilter.all => true,
+              AppsFilter.blocked => _ruleFor(a.packageId)?.action == 'block',
+              AppsFilter.limited => _ruleFor(a.packageId)?.action == 'time_limit',
+            })
+          a,
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          key: const ValueKey('appsSearch'),
+          controller: _search,
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.search),
+            hintText: l10n.searchApps,
+            isDense: true,
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: AppSpace.sm),
+        Wrap(
+          spacing: AppSpace.sm,
+          children: [
+            ChoiceChip(
+              key: const ValueKey('appsFilterAll'),
+              label: Text(l10n.appsFilterAll(apps.length)),
+              selected: _filter == AppsFilter.all,
+              onSelected: (_) => setState(() => _filter = AppsFilter.all),
+            ),
+            ChoiceChip(
+              key: const ValueKey('appsFilterBlocked'),
+              label: Text(l10n.appsFilterBlocked(blockedCount)),
+              selected: _filter == AppsFilter.blocked,
+              onSelected: (_) => setState(() => _filter = AppsFilter.blocked),
+            ),
+            ChoiceChip(
+              key: const ValueKey('appsFilterLimited'),
+              label: Text(l10n.appsFilterLimited(limitedCount)),
+              selected: _filter == AppsFilter.limited,
+              onSelected: (_) => setState(() => _filter = AppsFilter.limited),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpace.sm),
+        if (shown.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpace.lg),
+            child: Center(child: Text(l10n.appsNoMatch, key: const ValueKey('appsNoMatch'))),
+          ),
+        for (final app in shown) _row(context, app, theme),
+      ],
+    );
+  }
+
+  Widget _legacyRow(BuildContext context, InstalledApp app, ThemeData theme) {
+    final l10n = context.l10n;
+    final rule = _ruleFor(app.packageId);
+    final essential = app.essential == true;
+    final action = rule?.action ?? 'allow';
+    final (String state, Color? color) = essential
+        ? (l10n.alwaysAllowed, theme.colorScheme.onSurfaceVariant)
+        : switch (action) {
+            'block' => (l10n.appStateBlocked, theme.colorScheme.error),
+            'time_limit' => (
+                l10n.appStateLimit(formatAppLimit(l10n, rule?.dailyLimitMinutes ?? 0)),
+                context.tokens.severityWarningText
+              ),
+            _ => (l10n.appStateAllowed, theme.colorScheme.onSurfaceVariant),
+          };
+    final note = widget.windowNote?.call(app.packageId);
+    return ListTile(
+      key: ValueKey('appRow-${app.packageId}'),
+      contentPadding: EdgeInsets.zero,
+      leading: Opacity(opacity: action == 'block' ? 0.45 : 1, child: AppIconBadge(app: app, size: 40)),
+      title: Text(app.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(state,
+              key: ValueKey('appState-${app.packageId}'), style: theme.textTheme.bodySmall?.copyWith(color: color)),
+          if (note != null) note,
+        ],
+      ),
+      trailing: essential
+          ? Icon(Icons.lock_outline, size: 20, color: theme.colorScheme.onSurfaceVariant)
+          : Switch(
+              key: ValueKey('appSwitch-${app.packageId}'),
+              value: action != 'block',
+              onChanged: _saving ? null : (allowed) => _setAction(app, allowed ? 'allow' : 'block'),
+            ),
+      enabled: !_saving || essential,
+      onTap: essential || _saving ? null : () => _openLegacySheet(app),
     );
   }
 }
