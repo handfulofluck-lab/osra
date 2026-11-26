@@ -3636,4 +3636,111 @@ class AppLocalizationsEn extends AppLocalizations {
   String alertBodyDataCleared(String model) {
     return 'OSRA was reinstalled on $model. Its protection was off until it was paired again.';
   }
+
+  @override
+  String get screenTimeOpenDesc => 'Limits, extra time and today\'s use';
+
+  @override
+  String stLeftToday(String left) {
+    return '$left left today';
+  }
+
+  @override
+  String stOverLimit(String over) {
+    return '$over over today\'s limit';
+  }
+
+  @override
+  String stUsedOf(String used, String limit) {
+    return '$used used of $limit';
+  }
+
+  @override
+  String stUsedToday(String used) {
+    return '$used used today';
+  }
+
+  @override
+  String get stNoLimitSet => 'No daily limit is set';
+
+  @override
+  String stHoursMinutes(String hours, String minutes) {
+    return '$hours $minutes';
+  }
+
+  @override
+  String get stAddTimeHeader => 'Add time · today only';
+
+  @override
+  String get stEveryWeekHeader => 'Every week';
+
+  @override
+  String get stSchoolDays => 'School days';
+
+  @override
+  String get stSchoolDaysRange => 'Monday to Friday';
+
+  @override
+  String get stWeekend => 'Weekend';
+
+  @override
+  String get stWeekendRange => 'Saturday and Sunday';
+
+  @override
+  String get stNoLimit => 'No limit';
+
+  @override
+  String get stSameAsSchoolDays => 'Same as school days';
+
+  @override
+  String get stWeekendNeedsSchool => 'Set a school-day limit first';
+
+  @override
+  String stLess(String label) {
+    return 'Less time on $label';
+  }
+
+  @override
+  String stMore(String label) {
+    return 'More time on $label';
+  }
+
+  @override
+  String get stNeverCounted => 'Never counted';
+
+  @override
+  String stNeverCountedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count apps are always allowed',
+      one: '1 app is always allowed',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get stNeverCountedNone => 'No apps are always allowed yet';
+
+  @override
+  String get stView => 'View';
+
+  @override
+  String get stWhereTimeWent => 'Where today\'s time went';
+
+  @override
+  String get stNoUseYet => 'No app use reported yet today';
+
+  @override
+  String get stSaved => 'Saved. The phone picks it up when it next checks in.';
+
+  @override
+  String get stSaveFailed => 'Couldn\'t save the limit.';
+
+  @override
+  String get stLoadFailed => 'Couldn\'t load screen time.';
+
+  @override
+  String get stIphoneNotYet =>
+      'Not yet available on iPhone: time used and daily limits work on Android phones only.';
 }
