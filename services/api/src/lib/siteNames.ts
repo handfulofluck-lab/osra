@@ -75,9 +75,17 @@ export function redactBlockedSiteHost(
   };
 }
 
-/** The hostless dedupe key for a blocked attempt while the flag is off: one row per day. */
+/** #1128 item 3: 10-minute quiet window for hostless blocked-site dedupe keys when `siteNames` is off. */
+export const REDACTED_SITE_WINDOW_MS = 10 * 60 * 1000;
+
+/**
+ * The hostless dedupe key for a blocked attempt while the flag is off (#1128 item 3):
+ * one row per 10-minute UTC window (`web:YYYY-MM-DDTHH:M0`), so repeats inside a quiet window
+ * still group while a later attempt notifies the parent instead of staying silent all day.
+ */
 export function redactedBlockedSiteKey(at: Date = new Date()): string {
-  return `web:${at.toISOString().slice(0, 10)}`;
+  const bucketMs = Math.floor(at.getTime() / REDACTED_SITE_WINDOW_MS) * REDACTED_SITE_WINDOW_MS;
+  return `web:${new Date(bucketMs).toISOString().slice(0, 16)}`;
 }
 
 /**

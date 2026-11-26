@@ -40,7 +40,7 @@ class Reporting830WiringTest {
         // Blocker D's shape: one config read, the hostless key, and no rule-store read inside the alert.
         assertTrue(blockedSite.contains("val siteNames = config.siteNamesEnabled"))
         assertTrue(blockedSite.contains("\"blocked-day\""))
-        assertTrue(blockedSite.contains("\"web:\$day\""))
+        assertTrue(blockedSite.contains("AlertKeys.redactedBlockedSite(now)"))
         assertFalse(blockedSite.contains("rules.siteNamesEnabled()"))
 
         val dispatcher = source("apps/child-android/app/src/main/java/com/familyshield/agent/commands/CommandDispatcher.kt")

@@ -62,8 +62,10 @@ describe("#830 site names — the flag", () => {
 });
 
 describe("#830 site names — the blocked attempt is a hostless count while the flag is off", () => {
-  it("strips the domain and the blocked word from an alert, and groups by day", () => {
-    const at = new Date("2026-11-16T10:00:00Z");
+  it("strips the domain and the blocked word from an alert, and groups by 10-minute UTC window (#1128 item 3)", () => {
+    const at = new Date("2026-11-16T10:01:00Z");
+    const sameWindow = new Date("2026-11-16T10:09:59Z");
+    const nextWindow = new Date("2026-11-16T10:10:00Z");
     // An allowlist: `domain`, `childId` — and any other key a client invents — are not stored.
     expect(
       redactBlockedSiteHost(
@@ -71,7 +73,10 @@ describe("#830 site names — the blocked attempt is a hostless count while the 
         at,
       ),
     ).toEqual({ reason: "blocked_domain", day: "2026-11-16" });
-    expect(redactedBlockedSiteKey(at)).toBe("web:2026-11-16");
+    // Mutant: reverting redactedBlockedSiteKey to per-day `web:YYYY-MM-DD` fails the cross-window inequality below.
+    expect(redactedBlockedSiteKey(at)).toBe("web:2026-11-16T10:00");
+    expect(redactedBlockedSiteKey(sameWindow)).toBe("web:2026-11-16T10:00");
+    expect(redactedBlockedSiteKey(nextWindow)).toBe("web:2026-11-16T10:10");
   });
 });
 

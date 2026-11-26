@@ -1,0 +1,2 @@
+- **Hostless blocked-site alert 10-minute window dedupe (#1128 item 3):**
+  - Updated `AlertKeys.redactedBlockedSite` (`apps/child-android/.../AttemptCounter.kt`), `FilterVpnService.reportBlockedSite`, and `redactedBlockedSiteKey` (`services/api/src/lib/siteNames.ts`) from per-UTC-day (`web:YYYY-MM-DD`) to 10-minute UTC buckets (`web:YYYY-MM-DDTHH:M0`) so later blocked sites that day still notify the parent when `siteNames` is off, while carrying zero host/domain data and reporting the running daily count (`"<N> blocked sites today."`).
