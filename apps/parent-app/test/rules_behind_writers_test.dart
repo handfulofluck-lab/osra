@@ -203,7 +203,11 @@ void main() {
 
   Future<void> pumpSocialApi(WidgetTester tester, FakeApiClient api) async {
     await tester.pumpWidget(ProviderScope(
-      overrides: [apiClientProvider.overrideWithValue(api)],
+      overrides: [
+        apiClientProvider.overrideWithValue(api),
+        // P-17 (#1179) ships behind `OSRA_UX_P17`; this file exercises the new row.
+        p17SocialEnabledProvider.overrideWithValue(true),
+      ],
       child: localizedTestApp(const SocialScreen(childId: 'child-1')),
     ));
     await tester.pumpAndSettle();

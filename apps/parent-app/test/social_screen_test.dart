@@ -41,14 +41,19 @@ void main() {
       {bool tall = false,
       Locale locale = const Locale('en'),
       bool frameBoundary = false,
-      bool dark = false}) async {
+      bool dark = false,
+      bool uxP17 = true}) async {
     if (tall) {
       tester.view.physicalSize = const Size(1200, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
     }
     await tester.pumpWidget(ProviderScope(
-      overrides: [apiClientProvider.overrideWithValue(api)],
+      overrides: [
+        apiClientProvider.overrideWithValue(api),
+        // P-17 (#1179) ships behind `OSRA_UX_P17`; these rows test the new shape.
+        p17SocialEnabledProvider.overrideWithValue(uxP17),
+      ],
       child: localizedTestApp(
         frameBoundary
             ? RepaintBoundary(key: const ValueKey('frameRoot'), child: home)
@@ -403,6 +408,16 @@ void main() {
       expect(find.byKey(const ValueKey('socialIphoneNotYet')), findsOneWidget);
       expect(find.text('Not yet available on iPhone'), findsOneWidget);
       expect(socialAppRow('whatsapp'), findsNothing);
+    });
+
+    // P-17's switch: off restores the rows this screen shipped with, so the morning of a test can turn the new
+    // shape off without a revert.
+    testWidgets('with the switch off the section keeps its per-app switches', (tester) async {
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'),
+          FakeApiClient(socialRoutes()), tall: true, uxP17: false);
+      await flushFakeHttp(tester);
+      expect(find.byType(SwitchListTile), findsWidgets);
+      expect(find.byKey(const ValueKey('socialAppState-whatsapp')), findsNothing);
     });
 
     testWidgets('the four-app banner dismisses once and stays dismissed',        (tester) async {

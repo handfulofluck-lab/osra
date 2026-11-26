@@ -163,7 +163,15 @@ String formatDurationMmSs(int seconds) {
   return '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}';
 }
 
-/// Section (a): per-app monitoring switches, initialized from
+/// Feature switch for UX Final Decisions **P-17** (#1179). Enable with
+/// `--dart-define=OSRA_UX_P17=true`, or override [p17SocialEnabledProvider] in tests. When it is false the
+/// section keeps the per-app switches it shipped with, which is the fallback the Bureau's build condition asks
+/// for: a screen can be turned off on the morning of a test without a revert.
+const bool kEnableUxP17Social = bool.fromEnvironment('OSRA_UX_P17', defaultValue: false);
+
+final p17SocialEnabledProvider = Provider<bool>((ref) => kEnableUxP17Social);
+
+/// Section (a): per-app monitoring rows, initialized from
 /// RuleSet.socialMonitoring (absent = ON); Save PUTs the full ruleset with
 /// the merged socialMonitoring map.
 class MonitoringTogglesSection extends ConsumerStatefulWidget {
@@ -246,6 +254,29 @@ class _MonitoringTogglesSectionState
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  /// The shape this section shipped with, kept as the switch-off fallback (`OSRA_UX_P17=false`).
+  Widget _legacyAppTile(SocialAppInfo app, InstalledApp? installed) {
+    final l10n = context.l10n;
+    final value = _draft![app.appKey] ?? true;
+    return SwitchListTile(
+      key: ValueKey('socialAppRow-${app.appKey}'),
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      horizontalTitleGap: AppSpace.sm,
+      title: Text(app.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(app.appKey == 'youtube'
+          ? l10n.socialCommentsAndChats
+          : value
+              ? l10n.socialChecking
+              : l10n.socialOff),
+      secondary: installed == null
+          ? Icon(socialAppIcon(app.appKey))
+          : AppIconBadge(app: installed, size: 32),
+      value: value,
+      onChanged: _saving ? null : (v) => setState(() => _draft![app.appKey] = v),
+    );
   }
 
   /// P-17 (`#1179`, Bureau row): the parent reads the **device-reported state** of each app in words —
@@ -335,7 +366,11 @@ class _MonitoringTogglesSectionState
     final child = family?.children.where((c) => c.id == widget.childId).firstOrNull;
     // P-17 (Fix 8): an iPhone child's apps are not scanned for messages yet, and the section must say so
     // rather than show a list of "Checking" rows nothing is checking.
-    final iphoneOnly = devices.isNotEmpty && devices.every((d) => d.platform == 'ios');
+    // P-17 sits behind its own switch: off restores the rows this screen shipped with, which is the fallback
+    // the Bureau's build condition asks for.
+    final uxP17 = ref.watch(p17SocialEnabledProvider);
+    final iphoneOnly =
+        uxP17 && devices.isNotEmpty && devices.every((d) => d.platform == 'ios');
     // The server's word for the notification access this section depends on (ADR-0034): `ready`, `degraded`,
     // `unavailable`, `not_supported`. Absent means the phone never reported, and the row stays "Checking".
     final scanState = devices
@@ -354,7 +389,10 @@ class _MonitoringTogglesSectionState
             ),
           ),
         if (!iphoneOnly) ...[
-          for (final app in present) _appTile(app, installed[app.appKey], scanState: scanState),
+          for (final app in present)
+            uxP17
+                ? _appTile(app, installed[app.appKey], scanState: scanState)
+                : _legacyAppTile(app, installed[app.appKey]),
           if (absent.isNotEmpty)
             ExpansionTile(
               key: const ValueKey('socialNotInstalledGroup'),
@@ -365,7 +403,8 @@ class _MonitoringTogglesSectionState
                       : child?.displayName ?? l10n.unknown,
                   absent.length)),
               children: [
-                for (final app in absent) _appTile(app, null, scanState: scanState),
+                for (final app in absent)
+                  uxP17 ? _appTile(app, null, scanState: scanState) : _legacyAppTile(app, null),
               ],
             ),
         ],
