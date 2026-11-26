@@ -840,13 +840,13 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
             alert.deviceId,
           )
         : null;
-    final identity = resolveAppAlertIdentity(alert, installed);
+    final identity = resolveAppAlertIdentity(alert, installed, fallbackName: l10n.unknownApp);
     final childName = child?.displayName ?? l10n.childFallback;
 
     final title = isAppBlocked
         ? appAlertTitle(
             alert: alert,
-            localeName: context.localeName,
+            l10n: l10n,
             childName: childName,
             identity: identity,
           )
@@ -868,9 +868,8 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
     final body = isAppBlocked
         ? appAlertBody(
             alert: alert,
-            localeName: context.localeName,
+            l10n: l10n,
             childName: childName,
-            identity: identity,
           )
         : formatGeneralAlertBody(
             alert,

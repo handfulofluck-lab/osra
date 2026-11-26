@@ -19,7 +19,6 @@ import '../rules/rules_behind_banner.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../../widgets/layout_helpers.dart';
-import '../alerts/alert_detail_screen.dart' show isSocialAlertCategory;
 import '../dashboard/dashboard_screen.dart' show formatLastSeen;
 import '../pairing/pair_qr_screen.dart';
 import '../alerts/access_request_actions.dart';
@@ -1496,7 +1495,7 @@ class AlertTile extends ConsumerWidget {
             alert.deviceId,
           )
         : null;
-    final identity = resolveAppAlertIdentity(alert, installed);
+    final identity = resolveAppAlertIdentity(alert, installed, fallbackName: l10n.unknownApp);
 
     final String titleText;
     final contactName = alert.socialContactName;
@@ -1528,7 +1527,7 @@ class AlertTile extends ConsumerWidget {
       titleText = isAppBlocked
           ? appAlertTitle(
               alert: alert,
-              localeName: context.localeName,
+              l10n: l10n,
               childName: child?.displayName ?? l10n.childFallback,
               identity: identity,
             )

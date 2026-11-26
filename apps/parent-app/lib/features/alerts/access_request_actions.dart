@@ -180,7 +180,7 @@ class _AccessRequestActionsState extends ConsumerState<AccessRequestActions> {
       SnackBar(
         content: Text(
           accessResolvedSnack(
-            localeName: context.localeName,
+            l10n: context.l10n,
             resolution: resolution,
             identity: widget.identity,
             resolvedAt: at,
@@ -194,8 +194,6 @@ class _AccessRequestActionsState extends ConsumerState<AccessRequestActions> {
   Widget build(BuildContext context) {
     if (!isAccessRequestAlert(widget.alert)) return const SizedBox.shrink();
     final l10n = context.l10n;
-    final localeName = context.localeName;
-    final isEnglish = localeName.startsWith('en');
     final theme = Theme.of(context);
     final actionTextStyle =
         theme.textTheme.labelLarge?.copyWith(fontSize: 13, height: 1);
@@ -229,7 +227,7 @@ class _AccessRequestActionsState extends ConsumerState<AccessRequestActions> {
         if (resolved)
           _ResolvedLine(
             text: accessResolvedLine(
-              localeName: localeName,
+              l10n: l10n,
               resolution: _resolution,
               identity: widget.identity,
               resolvedByName: _resolvedByName,
@@ -241,7 +239,7 @@ class _AccessRequestActionsState extends ConsumerState<AccessRequestActions> {
           _IconLine(
             icon: Icons.lock,
             color: tokens.onSurfaceVariant,
-            text: accessReadOnlyLine(localeName: localeName, owner: owner),
+            text: accessReadOnlyLine(l10n: l10n, owner: owner),
             textColor: tokens.onSurfaceVariant,
           )
         else ...[
@@ -251,8 +249,7 @@ class _AccessRequestActionsState extends ConsumerState<AccessRequestActions> {
               color: theme.colorScheme.error,
               text: _failedAction == _AccessAction.keepBlocked
                   ? l10n.acknowledgeFailed
-                  : accessApproveError(
-                      localeName: localeName, identity: widget.identity),
+                  : accessApproveError(l10n: l10n, identity: widget.identity),
               textColor: theme.colorScheme.error,
             ),
             const SizedBox(height: AppSpace.sm),
@@ -283,7 +280,7 @@ class _AccessRequestActionsState extends ConsumerState<AccessRequestActions> {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  isEnglish ? 'Allowing…' : l10n.saving,
+                                  l10n.accessRequestAllowing,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -291,11 +288,11 @@ class _AccessRequestActionsState extends ConsumerState<AccessRequestActions> {
                             )
                           : Semantics(
                               label: accessAllowSemantics(
-                                localeName: localeName,
+                                l10n: l10n,
                                 identity: widget.identity,
                               ),
                               child: Text(
-                                isEnglish ? 'Allow' : 'السماح',
+                                l10n.accessRequestAllow,
                                 maxLines: 2,
                                 textAlign: TextAlign.center,
                               ),
@@ -318,11 +315,11 @@ class _AccessRequestActionsState extends ConsumerState<AccessRequestActions> {
                     onPressed: _saving ? null : _keepBlocked,
                     child: Semantics(
                       label: accessDenySemantics(
-                        localeName: localeName,
+                        l10n: l10n,
                         identity: widget.identity,
                       ),
                       child: Text(
-                        isEnglish ? 'Keep blocked' : l10n.pairClaimDeny,
+                        l10n.accessRequestKeepBlocked,
                         maxLines: 2,
                         textAlign: TextAlign.center,
                       ),
@@ -338,8 +335,8 @@ class _AccessRequestActionsState extends ConsumerState<AccessRequestActions> {
           _IconLine(
             icon: Icons.info_outline,
             color: tokens.onSurfaceVariant,
-            text: accessApproveDisclosure(
-                localeName: localeName, identity: widget.identity),
+            text:
+                accessApproveDisclosure(l10n: l10n, identity: widget.identity),
             textColor: tokens.onSurfaceVariant,
             muted: true,
           ),

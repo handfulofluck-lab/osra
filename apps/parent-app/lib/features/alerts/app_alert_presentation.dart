@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../api/models.dart';
 import '../../core/digits.dart';
 import '../../core/ltr_isolate.dart';
+import '../../l10n/app_localizations.dart';
 
 bool isAccessRequestAlert(Alert alert) {
   if (alert.category != 'app_blocked') return false;
@@ -22,8 +23,9 @@ typedef AppAlertIdentity = ({
 
 AppAlertIdentity resolveAppAlertIdentity(
   Alert alert,
-  InstalledAppsReport? report,
-) {
+  InstalledAppsReport? report, {
+  required String fallbackName,
+}) {
   final packageId = appAlertPackageId(alert);
   final installed =
       report?.apps.where((app) => app.packageId == packageId).firstOrNull;
@@ -36,7 +38,7 @@ AppAlertIdentity resolveAppAlertIdentity(
     return (name: metadataName, installed: installed, packageFallback: false);
   }
   return (
-    name: packageId.isEmpty ? 'an app' : packageId,
+    name: packageId.isEmpty ? fallbackName : packageId,
     installed: installed,
     packageFallback: packageId.isNotEmpty,
   );
@@ -62,137 +64,108 @@ String isolateAppAlertName(AppAlertIdentity identity) =>
         ? ltrIsolate(identity.name)
         : firstStrongIsolate(identity.name);
 
-String _childName(String? name) => firstStrongIsolate(
-    (name == null || name.trim().isEmpty) ? 'Child' : name.trim());
+String _childName(String? name, AppLocalizations l10n) {
+  final trimmed = name?.trim();
+  return firstStrongIsolate(
+    trimmed == null || trimmed.isEmpty ? l10n.childFallback : trimmed,
+  );
+}
 
 String appAlertTitle({
   required Alert alert,
-  required String localeName,
+  required AppLocalizations l10n,
   required String? childName,
   required AppAlertIdentity identity,
 }) {
   final app = isolateAppAlertName(identity);
-  if (isAccessRequestAlert(alert)) {
-    return localeName.startsWith('ar')
-        ? 'طلب السماح باستخدام تطبيق'
-        : '${_childName(childName)} asks to use $app';
-  }
-  return localeName.startsWith('ar')
-      ? 'تم حظر تطبيق'
-      : '$app was blocked on ${_childName(childName)}\'s phone';
+  final child = _childName(childName, l10n);
+  return isAccessRequestAlert(alert)
+      ? l10n.accessRequestTitle(child, app)
+      : l10n.accessRequestBlockedTitle(app, child);
 }
 
 String appAlertBody({
   required Alert alert,
-  required String localeName,
+  required AppLocalizations l10n,
   required String? childName,
-  required AppAlertIdentity identity,
 }) {
-  final child = _childName(childName);
-  final app = isolateAppAlertName(identity);
-  if (isAccessRequestAlert(alert)) {
-    return localeName.startsWith('ar')
-        ? 'وصل طلب من $child للسماح باستخدام $app.'
-        : '$child tapped "Request access" on the block screen.';
-  }
-  return localeName.startsWith('ar')
-      ? 'مُنع فتح $app على هاتف $child.'
-      : '$child tried to open it. Nothing for you to do.';
+  final child = _childName(childName, l10n);
+  return isAccessRequestAlert(alert)
+      ? l10n.accessRequestBody(child)
+      : l10n.accessRequestBlockedBody(child);
 }
 
 String accessApproveDisclosure({
-  required String localeName,
+  required AppLocalizations l10n,
   required AppAlertIdentity identity,
-}) {
-  final app = isolateAppAlertName(identity);
-  return localeName.startsWith('ar')
-      ? 'سيُسمح بتطبيق $app من الآن، مع استمرار تطبيق وقت النوم والساعات المدرسية والإيقاف المؤقت.'
-      : '$app will be allowed from now on. Bedtime, school time and Pause still apply.';
-}
+}) =>
+    l10n.accessRequestDisclosure(isolateAppAlertName(identity));
 
 String accessApproveError({
-  required String localeName,
+  required AppLocalizations l10n,
   required AppAlertIdentity identity,
-}) {
-  final app = isolateAppAlertName(identity);
-  return localeName.startsWith('ar')
-      ? 'تعذّر حفظ السماح. حاول مرة أخرى.'
-      : 'Couldn\'t allow $app. Check your connection and try again.';
-}
+}) =>
+    l10n.accessRequestAllowFailed(isolateAppAlertName(identity));
 
 String accessReadOnlyLine({
-  required String localeName,
+  required AppLocalizations l10n,
   required String owner,
 }) =>
-    localeName.startsWith('ar')
-        ? 'لا يمكن الموافقة على هذا الطلب أو رفضه إلا لمالك العائلة أو لوالد مشارك.'
-        : 'Only ${firstStrongIsolate(owner)} can answer this request. Ask them to open OSRA.';
+    l10n.accessRequestReadOnly(firstStrongIsolate(owner));
+
+String _timeSuffix(DateTime? resolvedAt) {
+  if (resolvedAt == null) return '';
+  final time = DateFormat('HH:mm', 'en').format(resolvedAt.toLocal());
+  return ' · ${ltrIsolate(normalizeDigits(time))}';
+}
 
 String accessResolvedLine({
-  required String localeName,
+  required AppLocalizations l10n,
   required String? resolution,
   required AppAlertIdentity identity,
   String? resolvedByName,
   DateTime? resolvedAt,
 }) {
   if (resolution != 'allowed' && resolution != 'kept_blocked') {
-    return localeName.startsWith('ar')
-        ? 'تم التعامل مع هذا الطلب'
-        : 'This request was handled';
-  }
-  if (localeName.startsWith('ar')) {
-    return resolution == 'allowed'
-        ? 'تمت الموافقة على هذا الطلب'
-        : 'رُفض هذا الطلب';
+    return l10n.accessRequestHandled;
   }
   final app = isolateAppAlertName(identity);
-  final time = resolvedAt == null
-      ? ''
-      : ltrIsolate(normalizeDigits(
-          DateFormat('HH:mm', 'en').format(resolvedAt.toLocal())));
-  final suffix = time.isEmpty ? '' : ' · $time';
+  final suffix = _timeSuffix(resolvedAt);
   final name = resolvedByName?.trim();
   if (name != null && name.isNotEmpty) {
     final actor = firstStrongIsolate(name);
     return resolution == 'allowed'
-        ? '$actor allowed $app$suffix'
-        : '$actor kept $app blocked$suffix';
+        ? l10n.accessRequestAllowedBy(actor, app, suffix)
+        : l10n.accessRequestKeptBlockedBy(actor, app, suffix);
   }
   return resolution == 'allowed'
-      ? 'You allowed $app$suffix'
-      : 'You kept $app blocked$suffix';
+      ? l10n.accessRequestAllowedByYou(app, suffix)
+      : l10n.accessRequestKeptBlockedByYou(app, suffix);
 }
 
 String accessResolvedSnack({
-  required String localeName,
+  required AppLocalizations l10n,
   required String resolution,
   required AppAlertIdentity identity,
   DateTime? resolvedAt,
 }) {
   final app = isolateAppAlertName(identity);
-  if (localeName.startsWith('ar')) {
-    return resolution == 'allowed' ? 'تم السماح بتطبيق $app' : 'رُفض الطلب';
-  }
-  return accessResolvedLine(
-    localeName: localeName,
-    resolution: resolution,
-    identity: identity,
-    resolvedAt: resolvedAt,
-  );
+  final suffix = _timeSuffix(resolvedAt);
+  return switch (resolution) {
+    'allowed' => l10n.accessRequestAllowedSnack(app, suffix),
+    'kept_blocked' => l10n.accessRequestKeptBlockedSnack(app, suffix),
+    _ => l10n.accessRequestHandled,
+  };
 }
 
 String accessAllowSemantics({
-  required String localeName,
+  required AppLocalizations l10n,
   required AppAlertIdentity identity,
 }) =>
-    localeName.startsWith('ar')
-        ? 'السماح باستخدام ${isolateAppAlertName(identity)}'
-        : 'Allow ${isolateAppAlertName(identity)}';
+    l10n.accessRequestAllowLabel(isolateAppAlertName(identity));
 
 String accessDenySemantics({
-  required String localeName,
+  required AppLocalizations l10n,
   required AppAlertIdentity identity,
 }) =>
-    localeName.startsWith('ar')
-        ? 'رفض طلب استخدام ${isolateAppAlertName(identity)}'
-        : 'Keep ${isolateAppAlertName(identity)} blocked';
+    l10n.accessRequestKeepBlockedLabel(isolateAppAlertName(identity));

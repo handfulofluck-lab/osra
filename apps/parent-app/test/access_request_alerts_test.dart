@@ -469,17 +469,17 @@ void main() {
       (tester) async {
     await _pumpDetail(tester, _alert(), locale: const Locale('ar'));
 
-    expect(find.text('طلب السماح باستخدام تطبيق'), findsOneWidget);
+    expect(find.text('طلب من \u{2068}Alex\u{2069} لاستخدام \u{2068}Security\u{2069}'), findsOneWidget);
     final body = tester
         .widget<Text>(find.byKey(const ValueKey('alertDetailBody')))
         .data!;
     expect(body,
-        'وصل طلب من \u{2068}Alex\u{2069} للسماح باستخدام \u{2068}Security\u{2069}.');
+        'وصل طلب السماح من شاشة الحظر على هاتف \u{2068}Alex\u{2069}.');
     expect(find.text('السماح'), findsOneWidget);
-    expect(find.text('رفض'), findsOneWidget);
+    expect(find.text('إبقاء الحظر'), findsOneWidget);
     expect(
       find.text(
-          'سيُسمح بتطبيق \u{2068}Security\u{2069} من الآن، مع استمرار تطبيق وقت النوم والساعات المدرسية والإيقاف المؤقت.'),
+          'سيُسمح باستخدام \u{2068}Security\u{2069} من الآن. وتبقى قواعد وقت النوم والساعات المدرسية والإيقاف المؤقت سارية.'),
       findsOneWidget,
     );
     expect(find.text('Child requested access to com.example.security'),
@@ -558,6 +558,30 @@ void main() {
     expect(find.text('Keep blocked'), findsNothing);
   });
 
+  testWidgets('Arabic shows the resolving parent and isolated local time',
+      (tester) async {
+    await _pumpDetail(
+      tester,
+      _alert(
+        acknowledged: true,
+        extraMetadata: {
+          'resolution': 'allowed',
+          'resolvedByName': 'Mariam',
+          'resolvedAt': DateTime(2026, 11, 25, 8, 5).toIso8601String(),
+        },
+      ),
+      locale: const Locale('ar'),
+    );
+
+    expect(
+      find.text(
+        'سُمح باستخدام \u{2068}Security\u{2069} بقرار من '
+        '\u{2068}Mariam\u{2069} · \u{2066}08:05\u{2069}',
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('all four resolved states hide the approval disclosure',
       (tester) async {
     for (final alert in [
@@ -624,6 +648,7 @@ void main() {
                 identity: resolveAppAlertIdentity(
                   current,
                   const InstalledAppsReport(),
+                  fallbackName: 'Unknown app',
                 ),
               ),
             ),
