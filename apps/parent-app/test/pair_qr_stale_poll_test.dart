@@ -38,19 +38,19 @@ void main() {
     return FakeApiClient(routes);
   }
 
+  /// Lets the fake-Dio zero-duration timer chains complete.
+  Future<void> flushFakeHttp(WidgetTester tester) async {
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+  }
+
   Future<void> pump(WidgetTester tester, FakeApiClient client) async {
     await tester.pumpWidget(ProviderScope(
       overrides: [apiClientProvider.overrideWithValue(client)],
       child: localizedTestApp(PairingQrScreen(childId: 'child-1', clock: () => now)),
     ));
     await flushFakeHttp(tester);
-  }
-
-  /// Lets the fake-Dio zero-duration timer chains complete.
-  Future<void> flushFakeHttp(WidgetTester tester) async {
-    for (var i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 50));
-    }
   }
 
   Future<void> nextClaimRead(WidgetTester tester) async {
