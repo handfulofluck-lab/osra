@@ -5,6 +5,8 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.SideEffect
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import com.familyshield.agent.R
@@ -42,7 +44,13 @@ class AskParentActivity : ComponentActivity() {
 
         val copy = buildCopy()
         setContent {
-            OsraTheme.OsraTheme {
+            val darkTheme = isSystemInDarkTheme()
+            SideEffect {
+                val controller = WindowCompat.getInsetsController(window, window.decorView)
+                controller.isAppearanceLightStatusBars = !darkTheme
+                controller.isAppearanceLightNavigationBars = !darkTheme
+            }
+            OsraTheme.OsraTheme(darkTheme = darkTheme) {
                 AskParentScreen(
                     copy = copy,
                     onSend = { minutes -> sendRequest(minutes) },
