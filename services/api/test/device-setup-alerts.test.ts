@@ -12,7 +12,7 @@ vi.mock("ioredis", async () => ({ Redis: (await import("./helpers.js")).MockRedi
 
 const CHILD = { id: "child-1", familyId: "fam-1" };
 const SECRET = randomBytes(32).toString("hex");
-const START = new Date("2026-11-26T01:00:00.000Z");
+const START = new Date();
 const ALL_REQUIRED = {
   accessibility: "granted",
   usage_access: "granted",
