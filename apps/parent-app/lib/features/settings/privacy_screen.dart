@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart' show LaunchMode, launchUrl;
 
 import '../../api/models.dart';
-import '../../l10n/app_localizations.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart' show apiClientProvider;
 import '../../providers/family_provider.dart';
