@@ -98,6 +98,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
   PushRegistration get _pushRegistration =>
       _push ??= PushRegistration(api: PushApi(_api), source: defaultPushSource());
 
+  /// Synchronises push token registration when the signed-in parent has
+  /// finished onboarding or granted notifications in system settings (#1173).
+  Future<PushRegistrationOutcome> syncPushRegistration({
+    String? refreshedToken,
+  }) async {
+    if (_disposed || !state.isAuthenticated) {
+      return PushRegistrationOutcome.unavailable;
+    }
+    return _pushRegistration.ensureRegistered(refreshedToken: refreshedToken);
+  }
+
   bool _disposed = false;
 
   @override
@@ -203,11 +214,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final res = await _api.raw.get('/v1/family/me');
       final overview = FamilyOverview.fromJson(Map<String, dynamic>.from(res.data as Map));
       _setState(AuthState(isAuthenticated: true, parent: overview.parent, family: overview.family));
-      // Fire-and-forget, deliberately: a push token is never a precondition for
-      // being signed in, and `register()` returns an outcome instead of throwing
-      // on every path. With no push SDK in the build it reports `unavailable`
-      // before the permission prompt, so it issues no request.
-      unawaited(_pushRegistration.register());
+      // #1173: Notification permission prompting and token registration are
+      // coordinated by NotificationPermissionController once the parent is
+      // signed in and past first-run family setup (never during onboarding or
+      // cold start before sign-in), and re-checked on AppLifecycleState.resumed.
     } on DioException catch (e) {
       if (e.response?.statusCode == 401) {
         try {
@@ -278,10 +288,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
 }
 
 /// Global auth state; bootstrap() runs at creation to restore a saved session.
+/// Injectable [PushTokenSource] for [authProvider]; overridden in tests (#1173).
+final pushTokenSourceProvider = Provider<PushTokenSource>(
+  (_) => defaultPushSource(),
+);
+
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
+  final api = ref.watch(apiClientProvider);
   final notifier = AuthNotifier(
-    ref.watch(apiClientProvider),
+    api,
     serverUrl: ref.watch(serverUrlProvider.notifier),
+    push: PushRegistration(
+      api: PushApi(api),
+      source: ref.watch(pushTokenSourceProvider),
+    ),
   );
   notifier.bootstrap();
   return notifier;

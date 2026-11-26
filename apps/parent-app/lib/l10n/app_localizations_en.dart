@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -3337,7 +3338,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String alertDeviceRestartedBodyMinutes(
-      String device, String when, int minutes) {
+    String device,
+    String when,
+    int minutes,
+  ) {
     String _temp0 = intl.Intl.pluralLogic(
       minutes,
       locale: localeName,
@@ -3636,4 +3640,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String alertBodyDataCleared(String model) {
     return 'OSRA was reinstalled on $model. Its protection was off until it was paired again.';
   }
+
+  @override
+  String get alertsOffBannerBody =>
+      'Alerts are off. You won\'t hear about urgent messages.';
+
+  @override
+  String get alertsOffTurnOnAction => 'Turn on alerts';
 }

@@ -123,6 +123,60 @@ class PushRegistration {
     return PushRegistrationOutcome.registered;
   }
 
+  /// Ensures the current or [refreshedToken] is registered with the server (#1173).
+  ///
+  /// Posts to `POST /v1/me/push-token` when no token has been registered in this
+  /// session yet (every cold launch) or when the SDK's token differs from
+  /// [_registeredToken] (rotation or recovery after permission was granted in
+  /// Settings), while skipping duplicate POSTs on routine foreground resumes
+  /// when the exact token is already registered.
+  Future<PushRegistrationOutcome> ensureRegistered({String? refreshedToken}) async {
+    if (refreshedToken != null && refreshedToken.isNotEmpty) {
+      if (refreshedToken == _registeredToken) {
+        return PushRegistrationOutcome.registered;
+      }
+      try {
+        await _api.register(
+          token: refreshedToken,
+          platform: _platform,
+          appVersion: _appVersion,
+        );
+      } catch (_) {
+        return PushRegistrationOutcome.failed;
+      }
+      _registeredToken = refreshedToken;
+      return PushRegistrationOutcome.registered;
+    }
+
+    final permission = await _source.requestPermission();
+    if (permission == PushPermission.unavailable) {
+      return PushRegistrationOutcome.unavailable;
+    }
+    if (permission == PushPermission.denied) {
+      return PushRegistrationOutcome.denied;
+    }
+
+    final token = await _source.token();
+    if (token == null || token.isEmpty) {
+      return PushRegistrationOutcome.noToken;
+    }
+    if (token == _registeredToken) {
+      return PushRegistrationOutcome.registered;
+    }
+
+    try {
+      await _api.register(
+        token: token,
+        platform: _platform,
+        appVersion: _appVersion,
+      );
+    } catch (_) {
+      return PushRegistrationOutcome.failed;
+    }
+    _registeredToken = token;
+    return PushRegistrationOutcome.registered;
+  }
+
   /// Removes this instance's token. Call it **before** the session is cleared:
   /// the route authenticates as the parent it is removing the token for.
   ///

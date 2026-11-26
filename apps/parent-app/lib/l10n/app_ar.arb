@@ -1163,18 +1163,65 @@
   "socialAlertMorePush": "{count, plural, =0{لا رسائل أخرى تستدعي المراجعة لدى {child} في {app}} =1{رسالة أخرى تستدعي المراجعة لدى {child} في {app}} =2{رسالتان أخريان تستدعيان المراجعة لدى {child} في {app}} few{{count} رسائل أخرى تستدعي المراجعة لدى {child} في {app}} many{{count} رسالة أخرى تستدعي المراجعة لدى {child} في {app}} other{{count} رسالة أخرى تستدعي المراجعة لدى {child} في {app}}}",
   "socialAlertNewSince": "+{count} جديدة",
   "phoneSetupStepsLeftThisPhone": "إعداد هذا الهاتف: {count, plural, =1{تبقى خطوة واحدة} =2{تبقى خطوتان} few{تبقى {count} خطوات} many{تبقى {count} خطوة} other{تبقى {count} خطوة}}",
-  "@phoneSetupStepsLeftThisPhone": { "placeholders": { "count": { "type": "int" } } },
+  "@phoneSetupStepsLeftThisPhone": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "phoneSetupProtected": "هذا الهاتف محمي.",
   "phoneSetupStepsLeft": "إعداد هاتف {childName}: {count, plural, =1{تبقى خطوة واحدة} =2{تبقى خطوتان} few{تبقى {count} خطوات} many{تبقى {count} خطوة} other{تبقى {count} خطوة}}",
-  "@phoneSetupStepsLeft": { "placeholders": { "childName": { "type": "String" }, "count": { "type": "int" } } },
+  "@phoneSetupStepsLeft": {
+    "placeholders": {
+      "childName": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "alertTitleSetupComplete": "الهاتف محمي",
   "alertTitleSetupIncomplete": "إعداد الهاتف يحتاج إلى متابعة",
   "alertBodySetupCompleted": "هاتف {childName} محمي.",
-  "@alertBodySetupCompleted": { "placeholders": { "childName": { "type": "String" } } },
+  "@alertBodySetupCompleted": {
+    "placeholders": {
+      "childName": {
+        "type": "String"
+      }
+    }
+  },
   "alertBodySetupIncomplete": "مرّت 30 دقيقة، وتبقى {count, plural, =1{خطوة واحدة} =2{خطوتان} few{{count} خطوات} many{{count} خطوة} other{{count} خطوة}} في إعداد هاتف {childName}{steps}",
-  "@alertBodySetupIncomplete": { "placeholders": { "childName": { "type": "String" }, "count": { "type": "int" }, "steps": { "type": "String" } } },
+  "@alertBodySetupIncomplete": {
+    "placeholders": {
+      "childName": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      },
+      "steps": {
+        "type": "String"
+      }
+    }
+  },
   "alertBodySetupIncompleteGeneric": "مرّت 30 دقيقة، وإعداد هاتف {childName} ما زال غير مكتمل.",
-  "@alertBodySetupIncompleteGeneric": { "placeholders": { "childName": { "type": "String" } } },
+  "@alertBodySetupIncompleteGeneric": {
+    "placeholders": {
+      "childName": {
+        "type": "String"
+      }
+    }
+  },
   "alertBodyDataCleared": "أُعيد تثبيت تطبيق أسرة للأطفال على {model}، وكانت الحماية متوقفة إلى أن أُعيد الإقران.",
-  "@alertBodyDataCleared": { "placeholders": { "model": { "type": "String" } } }
+  "@alertBodyDataCleared": {
+    "placeholders": {
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "alertsOffBannerBody": "التنبيهات متوقفة، فلن يصلك أي تنبيه عاجل.",
+  "alertsOffTurnOnAction": "تفعيل التنبيهات"
 }
