@@ -287,7 +287,8 @@ class AppLocalizationsAr extends AppLocalizations {
   String get settingsSignOutAllTitle => 'تسجيل الخروج من كل الأجهزة؟';
 
   @override
-  String get settingsSignOutAllBody => 'سيلزم تسجيل الدخول من جديد على كل جهاز يستخدم حسابك، بما فيه هذا الجهاز.';
+  String get settingsSignOutAllBody =>
+      'سيلزم تسجيل الدخول من جديد على كل جهاز يستخدم حسابك، بما فيه هذا الجهاز.';
 
   @override
   String get settingsSignOutAllConfirm => 'تسجيل الخروج من كل الأجهزة';

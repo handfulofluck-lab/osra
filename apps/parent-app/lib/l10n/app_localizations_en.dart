@@ -279,7 +279,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsSignOutAllTitle => 'Sign out of all devices?';
 
   @override
-  String get settingsSignOutAllBody => 'You will have to sign in again on every device that uses your account, including this one.';
+  String get settingsSignOutAllBody =>
+      'You will have to sign in again on every device that uses your account, including this one.';
 
   @override
   String get settingsSignOutAllConfirm => 'Sign out everywhere';
