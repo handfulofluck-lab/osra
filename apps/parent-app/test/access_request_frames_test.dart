@@ -184,8 +184,7 @@ void main() {
     if (state == _FrameState.saving ||
         state == _FrameState.allowed ||
         state == _FrameState.error) {
-      await tester
-          .tap(find.text(locale.languageCode == 'ar' ? 'السماح' : 'Allow'));
+      await tester.tap(find.byKey(const ValueKey('access-allow')));
       if (state == _FrameState.saving) {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
@@ -193,8 +192,7 @@ void main() {
         await flush(tester);
       }
     } else if (state == _FrameState.kept) {
-      await tester
-          .tap(find.text(locale.languageCode == 'ar' ? 'رفض' : 'Keep blocked'));
+      await tester.tap(find.byKey(const ValueKey('access-keep-blocked')));
       await flush(tester);
     }
 
