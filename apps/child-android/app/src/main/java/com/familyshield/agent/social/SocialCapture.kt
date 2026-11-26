@@ -30,23 +30,25 @@ class SocialCapture @Inject constructor(
 
     init {
         consent.addListener { paused ->
-            if (paused) conversationSeen.clear()
+            if (paused) synchronized(lock) { conversationSeen.clear() }
         }
-        rules.addRulesChangedListener {
-            conversationSeen.retainOnly { appKey -> rules.socialMonitoringEnabled(appKey) }
+        rules.addRulesAppliedListener {
+            synchronized(lock) {
+                conversationSeen.retainOnly { appKey -> rules.socialMonitoringEnabled(appKey) }
+            }
         }
     }
 
     /** Entry point from AccessibilityMonitorService; cheap no-op for unmonitored packages. */
     fun onAccessibilityEvent(event: AccessibilityEvent, nowMs: Long = System.currentTimeMillis()) {
         if (consent.isPaused()) {
-            conversationSeen.clear()
+            onMonitoringPaused()
             return // ADR-0008 §3
         }
         val pkg = event.packageName?.toString() ?: return
         val appKey = MonitoredApps.appKeyFor(pkg) ?: return
         if (!rules.socialMonitoringEnabled(appKey)) {
-            conversationSeen.forgetApp(appKey)
+            synchronized(lock) { conversationSeen.forgetApp(appKey) }
             return
         }
         synchronized(lock) {
@@ -62,24 +64,34 @@ class SocialCapture @Inject constructor(
                 root.recycle()
             }
         }
-        if (appKey == "whatsapp") {
-            val conversation = ConversationCapturePolicy.parse(texts, packageId = pkg) ?: return
-            if (!TestChatCaptureGate.allows(context, appKey, conversation.contact)) return
-            for (capture in conversationSeen.newCaptures(appKey, conversation, packageId = pkg)) {
-                val redacted = TextRedaction.redact(capture.text)
-                queue.enqueue(
-                    appKey,
-                    capture.contact,
-                    redacted,
-                    occurrenceId = capture.occurrenceId,
-                )
+        synchronized(lock) {
+            if (consent.isPaused()) {
+                conversationSeen.clear()
+                return
             }
-            return
+            if (!rules.socialMonitoringEnabled(appKey)) {
+                conversationSeen.forgetApp(appKey)
+                return
+            }
+            if (appKey == "whatsapp") {
+                val conversation = ConversationCapturePolicy.parse(texts, packageId = pkg) ?: return
+                if (!TestChatCaptureGate.allows(context, appKey, conversation.contact)) return
+                for (capture in conversationSeen.newCaptures(appKey, conversation, packageId = pkg)) {
+                    val redacted = TextRedaction.redact(capture.text)
+                    queue.enqueue(
+                        appKey,
+                        capture.contact,
+                        redacted,
+                        occurrenceId = capture.occurrenceId,
+                    )
+                }
+                return
+            }
+            val (contact, message) = SocialHeuristics.extractContactAndMessage(texts.mapNotNull { it.text })
+            val redacted = message?.let { TextRedaction.redact(it) } ?: return
+            if (!TestChatCaptureGate.allows(context, appKey, contact)) return
+            queue.enqueue(appKey, contact, redacted)
         }
-        val (contact, message) = SocialHeuristics.extractContactAndMessage(texts.mapNotNull { it.text })
-        val redacted = message?.let { TextRedaction.redact(it) } ?: return
-        if (!TestChatCaptureGate.allows(context, appKey, contact)) return
-        queue.enqueue(appKey, contact, redacted)
     }
 
     /** Depth-first collection of visible text/content-desc, stopping at [MAX_CAPTURE_CHARS]. */
@@ -107,7 +119,7 @@ class SocialCapture @Inject constructor(
         }
     }
 
-    fun onMonitoringPaused() = conversationSeen.clear()
+    fun onMonitoringPaused() = synchronized(lock) { conversationSeen.clear() }
 
     companion object {
         /** Max characters collected from the node tree per accessibility event. */

@@ -145,6 +145,92 @@ class SocialCaptureTest {
     }
 
     @Test
+    fun `consent withdrawal during admission clears state before the next capture`() {
+        val queue = Mockito.mock(SocialScanQueue::class.java)
+        val rules = Mockito.mock(RuleRepository::class.java)
+        Mockito.`when`(rules.socialMonitoringEnabled("whatsapp")).thenReturn(true)
+        val context = Mockito.mock(Context::class.java)
+        val consent = realConsent()
+        val capture = SocialCapture(rules, queue, consent, context)
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        Mockito.doAnswer {
+            entered.countDown()
+            release.await(5, java.util.concurrent.TimeUnit.SECONDS)
+            File(System.getProperty("java.io.tmpdir"))
+        }.`when`(context).filesDir
+        val root = node(null, "com.whatsapp:id/conversation_text_row", children = listOf(
+            node("Alex", "com.whatsapp:id/conversation_contact_name"),
+            node("repeat", "com.whatsapp:id/message_text"),
+        ))
+
+        Mockito.mockStatic(android.util.Log::class.java).use { ignored ->
+            val first = Thread { fire(capture, "com.whatsapp", root) }
+            first.start()
+            assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            val releaser = Thread {
+                while (!consent.isPaused()) Thread.sleep(1)
+                release.countDown()
+            }
+            releaser.start()
+            consent.onCommand(com.familyshield.agent.data.ConsentPolicy.COMMAND_REVOKED)
+            first.join(5_000)
+            releaser.join(5_000)
+            assertTrue(!first.isAlive)
+            assertTrue(!releaser.isAlive)
+            consent.onCommand(com.familyshield.agent.data.ConsentPolicy.COMMAND_GRANTED)
+            fire(capture, "com.whatsapp", root, 3_000L)
+        }
+
+        assertEquals(2, Mockito.mockingDetails(queue).invocations.size)
+    }
+
+    @Test
+    fun `app opt out during admission clears state before the next capture`() {
+        val queue = Mockito.mock(SocialScanQueue::class.java)
+        val rules = Mockito.mock(RuleRepository::class.java)
+        val enabled = java.util.concurrent.atomic.AtomicBoolean(true)
+        Mockito.`when`(rules.socialMonitoringEnabled("whatsapp")).thenAnswer { enabled.get() }
+        var appliedListener: (() -> Unit)? = null
+        Mockito.doAnswer { invocation ->
+            appliedListener = invocation.arguments[0] as () -> Unit
+            null
+        }.`when`(rules).addRulesAppliedListener(Mockito.any<() -> Unit>() ?: {})
+        val context = Mockito.mock(Context::class.java)
+        val capture = SocialCapture(rules, queue, realConsent(), context)
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        Mockito.doAnswer {
+            entered.countDown()
+            release.await(5, java.util.concurrent.TimeUnit.SECONDS)
+            File(System.getProperty("java.io.tmpdir"))
+        }.`when`(context).filesDir
+        val root = node(null, "com.whatsapp:id/conversation_text_row", children = listOf(
+            node("Alex", "com.whatsapp:id/conversation_contact_name"),
+            node("repeat", "com.whatsapp:id/message_text"),
+        ))
+
+        val first = Thread { fire(capture, "com.whatsapp", root) }
+        first.start()
+        assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        val releaser = Thread {
+            while (enabled.get()) Thread.sleep(1)
+            release.countDown()
+        }
+        releaser.start()
+        enabled.set(false)
+        appliedListener!!()
+        first.join(5_000)
+        releaser.join(5_000)
+        assertTrue(!first.isAlive)
+        assertTrue(!releaser.isAlive)
+        enabled.set(true)
+        fire(capture, "com.whatsapp", root, 3_000L)
+
+        assertEquals(2, Mockito.mockingDetails(queue).invocations.size)
+    }
+
+    @Test
     fun `app opt out clears capture state before any subsequent chat event`() {
         val tracker = ConversationCapturePolicy.SeenTracker()
         tracker.newCaptures("whatsapp", listOf(
@@ -162,8 +248,16 @@ class SocialCaptureTest {
             ConversationCapturePolicy.VisibleNode("repeat", "com.whatsapp:id/message_text", "android.widget.TextView", false, false, "com.whatsapp:id/conversation_text_row"),
         )).size)
         val source = File("src/main/java/com/familyshield/agent/social/SocialCapture.kt").readText()
-        assertTrue(source.contains("addRulesChangedListener"))
+        assertTrue(source.contains("addRulesAppliedListener"))
         assertTrue(source.contains("retainOnly"))
+        val repository = File("src/main/java/com/familyshield/agent/data/RuleRepository.kt").readText()
+        val applied = repository.indexOf("cached = updated")
+        val immediate = repository.indexOf("rulesAppliedListeners.forEach")
+        val categoryPack = repository.indexOf("blocklist.refresh(updated.webFilter.blockedCategories)")
+        val persisted = repository.indexOf("rulesChangedListeners.forEach")
+        assertTrue(applied in 0 until immediate)
+        assertTrue(immediate < categoryPack)
+        assertTrue(categoryPack < persisted)
     }
 
     @Test
