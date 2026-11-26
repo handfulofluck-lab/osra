@@ -67,14 +67,13 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
   /// (`GET /v1/devices/pair/:code/claim`), read every two seconds while the code is shown.
   Map<String, dynamic>? _claim;
   Timer? _claimTimer;
-  /// Issue counter for claim reads. The timer fires every two seconds and a slow response can land after a
-  /// newer one; without this, a stale "approved" could overwrite a confirmed "paired" and bring the spent QR
-  /// back (Codex, #1149 `7184806902`).
-  /// True while a claim read is in flight. The timer keeps ticking every two seconds, and a server slower than
-  /// that would otherwise have every answer superseded by the next tick — the screen would then never update at
-  /// all. One read at a time, so slow is slow rather than silent, and an older answer can never land after a
-  /// newer one (Codex, #1149).
-  bool _claimReadInFlight = false;
+  /// The QR generation whose claim read is open, or null. Keyed by generation rather than a plain flag: a read
+  /// still pending for a code the parent has replaced must not silence the poll for the code now on screen
+  /// (Codex, #1149). One read at a time per code, so a server slower than the two-second tick is slow rather
+  /// than silent, and an older answer can never land after a newer one for that code.
+  int? _claimReadGeneration;
+  /// Bumped by every [_generate]. An answer that arrives for an older generation changes nothing.
+  int _qrGeneration = 0;
   bool _deciding = false;
   bool _decisionFailed = false;
 
@@ -100,6 +99,7 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
 
   Future<void> _generate() async {
     _claimTimer?.cancel();
+    _qrGeneration++;
     setState(() {
       _loading = true;
       _errorKind = null;
@@ -176,20 +176,23 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
   /// code) is a missed tick, not an answer; the next tick tries again.
   Future<void> _readClaim() async {
     final code = _code;
+    final generation = _qrGeneration;
     final status = _claim?['status'];
     if (code == null || _expired || _deciding) return;
     if (status == 'paired' || status == 'denied') {
       _claimTimer?.cancel();
       return;
     }
-    if (_claimReadInFlight) return;
-    _claimReadInFlight = true;
+    if (_claimReadGeneration == generation) return;
+    _claimReadGeneration = generation;
     try {
       final res = await ref
           .read(apiClientProvider)
           .raw
           .get('/v1/devices/pair/$code/claim');
-      if (!mounted || code != _code || _deciding) return;
+      if (!mounted || generation != _qrGeneration || code != _code || _deciding) {
+        return;
+      }
       final data = Map<String, dynamic>.from(res.data as Map);
       // Pairing is final for this code: once the phone has its token the QR is spent, and nothing that arrives
       // afterwards may bring the code back on screen (Codex, #1149 `7184806902`).
@@ -202,7 +205,7 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
     } catch (_) {
       // Missed tick.
     } finally {
-      _claimReadInFlight = false;
+      if (_claimReadGeneration == generation) _claimReadGeneration = null;
     }
   }
 
