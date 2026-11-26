@@ -147,11 +147,8 @@ class LockActivity : ComponentActivity() {
         // parent already cleared (unlock, or resume_internet's dismiss). LockState is the truth, so a
         // stale instance finishes instead of re-asserting a restriction that is no longer stored.
         val decision = LockScreenPolicy.resolve(LockState.mode(this), intent.getStringExtra(EXTRA_MODE))
-        if (decision !is LockScreenPolicy.Decision.Show) {
-            finish()
-            return
-        }
-        allowedAppsState.value = loadAlwaysAllowedShortcuts(decision.mode)
+        if (decision !is LockScreenPolicy.Decision.Show) finish()
+        else allowedAppsState.value = loadAlwaysAllowedShortcuts(decision.mode)
     }
 
     override fun onUserLeaveHint() {
