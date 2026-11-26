@@ -100,13 +100,18 @@ class FilterVpnService : VpnService() {
             }
             ACTION_RELOAD -> { reloadConfig(); return START_STICKY }
             ACTION_FLUSH_VISITS -> { flushSiteVisits(); return START_STICKY }
+            ACTION_TRANSIENT_MODE -> {
+                val wanted = intent.getStringExtra(EXTRA_MODE) ?: return START_STICKY
+                applyTransientMode(wanted)
+                return START_STICKY
+            }
         }
         val wanted = intent?.getStringExtra(EXTRA_MODE) ?: VpnState.mode(this)
         startForegroundCompat()
         reloadConfig()
+        VpnState.setMode(this, wanted)
         if (tun == null || wanted != mode) {
             mode = wanted
-            VpnState.setMode(this, mode)
             openTunnel()
         }
         return START_STICKY
@@ -228,6 +233,27 @@ class FilterVpnService : VpnService() {
         tun = null
         pump = null
         VpnState.setEstablished(this, false)
+    }
+
+    /**
+     * #1224: switches an already-established tunnel between `MODE_SINKHOLE_ALL` and `MODE_DNS` without
+     * persisting `MODE_SINKHOLE_ALL` into [VpnState.mode], so a crash or reboot never strands the child
+     * offline and an active `pause_internet` (`VpnState.mode == MODE_SINKHOLE_ALL`) is never undone.
+     */
+    private fun applyTransientMode(wanted: String) {
+        if (tun == null || consent.isPaused()) return
+        if (wanted == MODE_DNS && (rules.isInternetPaused() || VpnState.mode(this) == MODE_SINKHOLE_ALL)) return
+        if (wanted == MODE_SINKHOLE_ALL &&
+            (rules.isInternetPaused() || com.familyshield.agent.enforcement.LockState.isActive(this) || mode != MODE_DNS)
+        ) {
+            return
+        }
+        upstream = systemDnsServers()
+        applyRules(rules.cachedRules())
+        if (wanted != mode) {
+            mode = wanted
+            openTunnel()
+        }
     }
 
     private fun pumpLoop(fd: ParcelFileDescriptor, gen: Int) {
@@ -524,6 +550,7 @@ class FilterVpnService : VpnService() {
         const val ACTION_STOP = "com.familyshield.agent.vpn.STOP"
         const val ACTION_RELOAD = "com.familyshield.agent.vpn.RELOAD"
         const val ACTION_FLUSH_VISITS = "com.familyshield.agent.vpn.FLUSH_VISITS"
+        const val ACTION_TRANSIENT_MODE = "com.familyshield.agent.vpn.TRANSIENT_MODE"
         const val EXTRA_MODE = "mode"
         private const val TUN_ADDR = "10.111.222.1"
         private const val TUN_ADDR6 = "fd00:6f73:7261::1"
@@ -569,6 +596,21 @@ class FilterVpnService : VpnService() {
             VpnState.clearFilterLoss(context)
             if (!isRunning) return
             context.startService(Intent(context, FilterVpnService::class.java).setAction(ACTION_STOP))
+        }
+
+        /**
+         * #1224: asks an already-running, consented tunnel to perform a transient mode hop without
+         * starting a stopped service (#848) or overwriting persistent [VpnState.mode].
+         */
+        fun switchRunningTunnelMode(context: Context, wantedMode: String): Boolean {
+            if (!isRunning || tunnelMode == null || !VpnState.isEnabled(context) || !isPrepared(context)) return false
+            return runCatching {
+                context.startService(
+                    Intent(context, FilterVpnService::class.java)
+                        .setAction(ACTION_TRANSIENT_MODE)
+                        .putExtra(EXTRA_MODE, wantedMode),
+                )
+            }.isSuccess
         }
     }
 }
