@@ -9,6 +9,7 @@ vi.mock("ioredis", async () => ({ Redis: (await import("./helpers.js")).MockRedi
 
 const START = new Date("2026-11-25T01:00:00.000Z");
 const EXPIRY = new Date(START.getTime() + 30 * 60_000);
+const COMPLETED_AT = new Date(START.getTime() + 1_000);
 const ALL_REQUIRED = {
   accessibility: "granted",
   usage_access: "granted",
@@ -74,6 +75,13 @@ describe("setup completion and timeout transitions (#1127)", () => {
     expect(prismaMock.alert.create).not.toHaveBeenCalled();
   });
 
+  it("does not alert a migration-backfilled device on its next all-ready report", async () => {
+    expect(await completeDeviceSetupIfReady(device({ setupCompletedAt: START }), COMPLETE, COMPLETED_AT)).toBe(false);
+    expect(prismaMock.device.updateMany).not.toHaveBeenCalled();
+    expect(prismaMock.alert.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+  });
+
   it("rolls completion back when the protected alert cannot be written", async () => {
     prismaMock.device.updateMany.mockResolvedValue({ count: 1 });
     prismaMock.alert.create.mockRejectedValue(new Error("synthetic alert write failure"));
@@ -91,13 +99,13 @@ describe("setup completion and timeout transitions (#1127)", () => {
     prismaMock.alert.create
       .mockRejectedValueOnce(new Error("synthetic alert write failure"))
       .mockResolvedValueOnce({ id: "protected-alert" });
-    await expect(completeDeviceSetupIfReady(device(), COMPLETE, START)).rejects.toThrow("synthetic alert write failure");
+    await expect(completeDeviceSetupIfReady(device(), COMPLETE, COMPLETED_AT)).rejects.toThrow("synthetic alert write failure");
 
-    expect(await completeDeviceSetupIfReady(device({ setupCompletedAt: START }), COMPLETE, START)).toBe(true);
+    expect(await completeDeviceSetupIfReady(device({ setupCompletedAt: COMPLETED_AT }), COMPLETE, COMPLETED_AT)).toBe(true);
     expect(prismaMock.alert.create).toHaveBeenCalledTimes(2);
     expect(prismaMock.device.updateMany).toHaveBeenCalledTimes(2);
     expect(prismaMock.device.updateMany).toHaveBeenLastCalledWith({
-      where: { id: "dev-1", setupCompletedAt: START },
+      where: { id: "dev-1", setupCompletedAt: COMPLETED_AT },
       data: { setupCompletedAt: null },
     });
   });

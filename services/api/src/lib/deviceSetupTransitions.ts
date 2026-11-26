@@ -22,6 +22,8 @@ export async function completeDeviceSetupIfReady(
   now: Date,
 ): Promise<boolean> {
   if (!device.pairedAt || requiredMissingGrants(capabilities)?.length !== 0) return false;
+  // Migration 0046 marks existing devices complete at pairing; that backfill is not a new alert episode.
+  if (device.setupCompletedAt?.getTime() === device.pairedAt.getTime()) return false;
   let claimedCompletion = false;
   if (!device.setupCompletedAt) {
     const claimed = await prisma.device.updateMany({
