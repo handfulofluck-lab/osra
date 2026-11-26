@@ -12,6 +12,7 @@ import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
+import 'pair_p05_screen.dart';
 import 'pair_qr_payload.dart';
 
 /// Full-screen first-run pairing view: the six-digit code as a scannable QR,
@@ -80,7 +81,9 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
   @override
   void initState() {
     super.initState();
-    _generate();
+    if (!ref.read(p05PairEnabledProvider)) {
+      _generate();
+    }
   }
 
   @override
@@ -272,6 +275,17 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // #1179 P-05 Pair behind switch (legacy PairingQrScreen stays as fallback).
+    if (ref.watch(p05PairEnabledProvider)) {
+      return PairP05Screen(
+        childId: widget.childId,
+        clock: widget.clock,
+        childName: widget.childName,
+        onBack: widget.onBack,
+        onContinue: widget.onContinue,
+        onSkip: widget.onSkip,
+      );
+    }
     final l10n = context.l10n;
     final overview = ref.watch(familyProvider).valueOrNull;
     final paired = widget.onboarding && _paired(overview);

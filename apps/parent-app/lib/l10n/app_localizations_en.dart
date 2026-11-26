@@ -3636,4 +3636,69 @@ class AppLocalizationsEn extends AppLocalizations {
   String alertBodyDataCleared(String model) {
     return 'OSRA was reinstalled on $model. Its protection was off until it was paired again.';
   }
+
+  @override
+  String pairP05Title(String child) {
+    return 'Connect $child\'s phone';
+  }
+
+  @override
+  String get pairP05TitleGeneric => 'Connect your child\'s phone';
+
+  @override
+  String pairP05Subtitle(String child) {
+    return 'On $child\'s phone, install OSRA Kids, then scan this.';
+  }
+
+  @override
+  String get pairP05SubtitleGeneric =>
+      'Install OSRA Kids on the child\'s phone, then scan this.';
+
+  @override
+  String get pairP05OrTypeCode => 'Or type this code';
+
+  @override
+  String pairP05ValidFor(String time) {
+    return 'Valid for $time';
+  }
+
+  @override
+  String get pairP05CodeExpired => 'Code expired';
+
+  @override
+  String get pairP05NewCode => 'New code';
+
+  @override
+  String pairP05WaitingFor(String child) {
+    return 'Waiting for $child\'s phone…';
+  }
+
+  @override
+  String get pairP05WaitingGeneric => 'Waiting for the child\'s phone…';
+
+  @override
+  String get pairP05ConfirmDeviceTitle => 'Confirm this device?';
+
+  @override
+  String pairP05ConfirmDeviceBody(String model) {
+    return '$model wants to connect. Confirm to link it.';
+  }
+
+  @override
+  String get pairP05ConfirmLink => 'Confirm and link';
+
+  @override
+  String get pairP05Decline => 'Decline';
+
+  @override
+  String get pairP05Connected => 'Phone connected.';
+
+  @override
+  String get pairP05SendInstallLink => 'Send install link';
+
+  @override
+  String get pairP05InstallLinkCopied => 'Install link copied to share.';
+
+  @override
+  String get pairP05SkipForNow => 'Skip for now';
 }
