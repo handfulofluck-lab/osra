@@ -57,7 +57,12 @@ class VisibleAlert {
     }
     return VisibleAlert(
       alertId: alert.id,
-      title: l10n.alertTitleFor(alert.category, alert.title, isEnglish: isEnglish),
+      title: l10n.alertTitleFor(
+        alert.category,
+        alert.title,
+        isEnglish: isEnglish,
+        tamperType: alert.metadata['type']?.toString(),
+      ),
       body: body,
     );
   }

@@ -12,7 +12,10 @@ def _top_category(result):
 
 def _response_shape_ok(result):
     """Assert the response has the app.py AnalyzeResponse shape."""
-    assert set(result) == {"categories", "severity", "flagged", "explanation"}
+    assert set(result) == {
+        "categories", "severity", "flagged", "explanation",
+        "model_version", "language", "cutoff", "path",
+    }
     assert set(result["categories"]) == set(CATEGORIES)
     assert all(0.0 <= p <= 1.0 for p in result["categories"].values())
     assert result["severity"] in ("info", "warning", "critical")
@@ -133,3 +136,49 @@ def test_never_raises_on_empty_or_very_long_input():
     long_result = analyze_text(long_text, "web", 9)
     _response_shape_ok(long_result)
     assert long_result["severity"] == "info"
+
+
+def test_rules_fallback_reports_honest_flag_time_metadata():
+    result = analyze_text("أريد أن أموت", "message", 14)
+    assert result["model_version"] is None
+    assert result["language"] == "ar"
+    assert result["cutoff"] == 0.6
+    assert result["path"] == "rules"
+
+
+def test_successful_distilbert_inference_uses_the_actual_checkpoint_identity(monkeypatch):
+    class Config:
+        _name_or_path = "actual-checkpoint-v12"
+
+    class LoadedModel:
+        config = Config()
+
+    monkeypatch.setattr("model._load_model", lambda: (LoadedModel(), object()))
+
+    def probabilities(_model, _tokenizer, _text):
+        return {category: 0.9 if category == "self_harm" else 0.0 for category in CATEGORIES}
+
+    monkeypatch.setattr("model._model_probabilities", probabilities)
+    result = analyze_text("bonjour", "message", 14)
+    assert result["model_version"] == "actual-checkpoint-v12"
+    assert result["language"] == "fr"
+    assert result["cutoff"] == 0.6
+    assert result["path"] == "own"
+
+
+def test_failed_distilbert_inference_does_not_claim_a_model_decision(monkeypatch):
+    class Config:
+        _name_or_path = "not-the-flag-time-model"
+
+    class LoadedModel:
+        config = Config()
+
+    monkeypatch.setattr("model._load_model", lambda: (LoadedModel(), object()))
+
+    def fail_inference(_model, _tokenizer, _text):
+        raise RuntimeError("inference failed")
+
+    monkeypatch.setattr("model._model_probabilities", fail_inference)
+    result = analyze_text("kill yourself", "message", 14)
+    assert result["model_version"] is None
+    assert result["path"] == "rules"

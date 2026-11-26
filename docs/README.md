@@ -10,6 +10,7 @@ Start here. This page is the map: what each document is for, and which one to re
 | Deciding who does what | [`../AGENTS.md`](../AGENTS.md) §1 — the live split: Kimi Code implements and merges, Claude (KCL lead) decides architecture, Antigravity verifies, the maintainer holds the trade-offs and the final call |
 | Setting the test environment up | [`TESTING.md`](TESTING.md) → [`test-guides/INSTALLATION-GUIDE.md`](test-guides/INSTALLATION-GUIDE.md) |
 | Running or interpreting tests | [`TESTING.md`](TESTING.md) |
+| Starting a live two-device test | [`testing/pre-test-checklist.md`](testing/pre-test-checklist.md) — all six start gates must be green for every child device |
 | Needing the one physical test phone (Galaxy Z Flip4, `R5CW116Y6GF`) | [`../AGENTS.md`](../AGENTS.md) §9 — who may hold it, the lease and its expiry, release and takeover → [`TESTING.md`](TESTING.md) §5.0 — claim text, pre-flight checks and reset commands → [`QA/DEVICE-REGISTER.md`](QA/DEVICE-REGISTER.md) — the durable per-device register, run checklist and recovery order; local helper [`../scripts/hardware/phone-claim.ps1`](../scripts/hardware/phone-claim.ps1) |
 | Touching an agent (human or AI) | [`../AGENTS.md`](../AGENTS.md) — roles, definition of done, PR rules, hygiene |
 | Implementing a change | [`ROADMAP.md`](ROADMAP.md) for the item → [`../AGENTS.md`](../AGENTS.md) §3 (definition of done) → [`TESTING.md`](TESTING.md) for the gates that must be green before review |
@@ -45,6 +46,7 @@ Start here. This page is the map: what each document is for, and which one to re
 | [`superpowers/plans/2026-11-13-windows-w1-service-tray.md`](superpowers/plans/2026-11-13-windows-w1-service-tray.md) | Approved Windows W1 implementation plan (#623): two hosts, session supervision, the typed pipe, configuration, pairing and capability boundaries, tests and unsigned artifact |
 | [`ops/ci-cost-2026-11.md`](ops/ci-cost-2026-11.md) | Measured 31-day GitHub Actions usage and the 2026 USD cost model behind the cheaper-CI workflow changes (#613) |
 | [`adr/`](adr/README.md) | Architecture decision records — context, decision, reasoning, rejected alternatives, costs |
+| [Consented staging own-model scoring](adr/0046-consented-staging-own-model-scoring.md) | #1144 staging-only analyzer routing, quotas and rollout guards |
 | [Bounded Mac metadata access](adr/0043-bounded-mac-metadata-access.md) | Proposed implementation record for #893; reviewed inputs, operating limits and private evidence prerequisites |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | What changed on which day, with the PR/issue that carried it, and the verification state |
 | [`../CHANGELOG.d/`](../CHANGELOG.d/README.md) | One changelog fragment per change — where entries are written now, and why the shared `[Unreleased]` block was replaced |

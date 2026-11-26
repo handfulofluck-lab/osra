@@ -1631,6 +1631,41 @@ class AppLocalizationsEn extends AppLocalizations {
   String get concerns => 'Concerns';
 
   @override
+  String get flagVoteQuestion => 'Was OSRA right to flag this?';
+
+  @override
+  String get flagVoteConcerning => 'Concerning';
+
+  @override
+  String get flagVoteNotConcerning => 'Not concerning';
+
+  @override
+  String get flagVoteHelp => 'Your answer helps OSRA check messages better.';
+
+  @override
+  String get flagVoteThanks => 'Thanks, noted';
+
+  @override
+  String flagVoteBy(String name, String vote) {
+    return '$name: $vote';
+  }
+
+  @override
+  String get flagVoteA11yConcerning => 'Mark as concerning';
+
+  @override
+  String get flagVoteA11yNotConcerning => 'Mark as not concerning';
+
+  @override
+  String get flagVoteClear => 'Clear vote';
+
+  @override
+  String get flagVoteCleared => 'Vote cleared';
+
+  @override
+  String get flagVoteA11yClear => 'Clear your vote on this message';
+
+  @override
   String get vaultTrustCopy =>
       'Excerpts travel over an encrypted connection and are stored encrypted on OSRA\'s servers.';
 
@@ -3020,6 +3055,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get riskAiConcern => 'Concerning content';
 
   @override
+  String get riskLateNight => 'Late at night';
+
+  @override
   String get phoneSetupOtherSpaceClone =>
       'This phone has another secure space that may run cloned apps (more than one copy of the same app). OSRA may not be able to monitor it until it is turned off in the phone\'s Settings.';
 
@@ -3528,5 +3566,62 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String socialAlertNewSince(int count) {
     return '+$count new';
+  }
+
+  @override
+  String phoneSetupStepsLeftThisPhone(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count steps',
+      one: '1 step',
+    );
+    return 'Setting up this phone: $_temp0 left';
+  }
+
+  @override
+  String get phoneSetupProtected => 'This phone is protected.';
+
+  @override
+  String phoneSetupStepsLeft(String childName, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count steps',
+      one: '1 step',
+    );
+    return 'Setting up $childName\'s phone: $_temp0 left';
+  }
+
+  @override
+  String get alertTitleSetupComplete => 'Phone is protected';
+
+  @override
+  String get alertTitleSetupIncomplete => 'Phone setup needs attention';
+
+  @override
+  String alertBodySetupCompleted(String childName) {
+    return '$childName\'s phone is protected.';
+  }
+
+  @override
+  String alertBodySetupIncomplete(String childName, int count, String steps) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count setup steps',
+      one: '1 setup step',
+    );
+    return '$childName\'s phone still has $_temp0 left after 30 minutes$steps.';
+  }
+
+  @override
+  String alertBodySetupIncompleteGeneric(String childName) {
+    return '$childName\'s phone setup is still incomplete after 30 minutes.';
+  }
+
+  @override
+  String alertBodyDataCleared(String model) {
+    return 'OSRA was reinstalled on $model. Its protection was off until it was paired again.';
   }
 }

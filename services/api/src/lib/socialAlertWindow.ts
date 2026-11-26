@@ -95,6 +95,7 @@ export interface SocialWindowMetadata {
   concernTypes: string[];
   flaggedCount: number;
   latestAt: string;
+  latestSourceEventId?: string;
   windowStartedAt: string;
   windowEndsAt: string;
   pushedCount: number;
@@ -125,6 +126,7 @@ export function parseSocialWindowMetadata(raw: unknown): SocialWindowMetadata | 
     concernTypes: Array.isArray(m.concernTypes) ? m.concernTypes.filter((x): x is string => typeof x === "string") : [],
     flaggedCount,
     latestAt: typeof m.latestAt === "string" ? m.latestAt : (typeof m.windowStartedAt === "string" ? m.windowStartedAt : m.windowEndsAt),
+    ...(typeof m.latestSourceEventId === "string" ? { latestSourceEventId: m.latestSourceEventId } : {}),
     windowStartedAt: typeof m.windowStartedAt === "string" ? m.windowStartedAt : m.windowEndsAt,
     windowEndsAt: m.windowEndsAt,
     pushedCount,
@@ -205,6 +207,7 @@ export interface DeferredSocialObservation {
   severity: SocialSeverity;
   concernTypes: string[];
   observedAt: string;
+  sourceEventId?: string;
   attribution?: Record<string, unknown>;
 }
 
@@ -221,6 +224,7 @@ function parseDeferredObservation(raw: unknown): DeferredSocialObservation | nul
         ? parsed.concernTypes.filter((x): x is string => typeof x === "string")
         : [],
       observedAt: parsed.observedAt,
+      ...(typeof parsed.sourceEventId === "string" ? { sourceEventId: parsed.sourceEventId } : {}),
       ...(parsed.attribution && typeof parsed.attribution === "object" && !Array.isArray(parsed.attribution)
         ? { attribution: parsed.attribution as Record<string, unknown> }
         : {}),
@@ -306,6 +310,7 @@ function mergeProviderOutcomes(
 export interface RecordFlaggedSocialAlertInput {
   childId: string;
   familyId: string;
+  sourceEventId?: string;
   childName?: string | null;
   deviceId?: string | null;
   appName: string;
@@ -398,12 +403,18 @@ async function applyObservationsToAlert(
     latestObservedAt = ctx.nowIso;
     const allIncomingConcerns: string[] = [];
     let combinedAttribution: Record<string, unknown> | undefined;
+    let latestSourceEventId = existingMeta?.latestSourceEventId;
+    let latestSourceAt = existingMeta?.latestAt ?? "";
     for (const obs of unapplied) {
       if (SOCIAL_SEVERITY_RANK[obs.severity] > SOCIAL_SEVERITY_RANK[highestIncomingSeverity]) {
         highestIncomingSeverity = obs.severity;
       }
       if (obs.observedAt > latestObservedAt) {
         latestObservedAt = obs.observedAt;
+      }
+      if (obs.sourceEventId && (!latestSourceEventId || obs.observedAt >= latestSourceAt)) {
+        latestSourceEventId = obs.sourceEventId;
+        latestSourceAt = obs.observedAt;
       }
       allIncomingConcerns.push(...obs.concernTypes);
       combinedAttribution = mergeProviderOutcomes(combinedAttribution, obs.attribution);
@@ -439,6 +450,7 @@ async function applyObservationsToAlert(
       concernTypes: mergedConcerns,
       flaggedCount: nextCount,
       latestAt: effectiveLatestAt,
+      ...(latestSourceEventId ? { latestSourceEventId } : {}),
       windowStartedAt: effectiveWindowStart,
       windowEndsAt: effectiveWindowEnd,
       pushedCount: nextPushedCount,
@@ -597,7 +609,7 @@ export async function replayDeferredSocialObservations(
 export async function recordFlaggedSocialAlert(
   input: RecordFlaggedSocialAlertInput,
 ): Promise<RecordFlaggedSocialAlertResult> {
-  const { childId, familyId, childName, deviceId, appName, category, severity, concernTypes, attribution } = input;
+  const { childId, familyId, sourceEventId, childName, deviceId, appName, category, severity, concernTypes, attribution } = input;
   const contact = input.contact.trim();
   const contactKey = socialContactKey(childId, contact);
   const throttleKey = socialAlertThrottleKey(childId, appName, contact);
@@ -618,6 +630,7 @@ export async function recordFlaggedSocialAlert(
       severity,
       concernTypes,
       observedAt: nowIso,
+      ...(sourceEventId ? { sourceEventId } : {}),
       ...(attribution && Object.keys(attribution).length > 0 ? { attribution } : {}),
     };
     const applyCtx: ApplyContext = {
@@ -663,6 +676,8 @@ export async function recordFlaggedSocialAlert(
               concernTypes,
               flaggedCount: 1,
               latestAt: nowIso,
+              // The alert link stays on its original event while feedback follows the latest event.
+              ...(sourceEventId ? { primarySocialEventId: sourceEventId, latestSourceEventId: sourceEventId } : {}),
               windowStartedAt: nowIso,
               windowEndsAt: windowEndsAtIso,
               pushedCount: 1,

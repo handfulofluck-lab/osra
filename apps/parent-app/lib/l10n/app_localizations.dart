@@ -2744,6 +2744,72 @@ abstract class AppLocalizations {
   /// **'Concerns'**
   String get concerns;
 
+  /// No description provided for @flagVoteQuestion.
+  ///
+  /// In en, this message translates to:
+  /// **'Was OSRA right to flag this?'**
+  String get flagVoteQuestion;
+
+  /// No description provided for @flagVoteConcerning.
+  ///
+  /// In en, this message translates to:
+  /// **'Concerning'**
+  String get flagVoteConcerning;
+
+  /// No description provided for @flagVoteNotConcerning.
+  ///
+  /// In en, this message translates to:
+  /// **'Not concerning'**
+  String get flagVoteNotConcerning;
+
+  /// No description provided for @flagVoteHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Your answer helps OSRA check messages better.'**
+  String get flagVoteHelp;
+
+  /// No description provided for @flagVoteThanks.
+  ///
+  /// In en, this message translates to:
+  /// **'Thanks, noted'**
+  String get flagVoteThanks;
+
+  /// No description provided for @flagVoteBy.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}: {vote}'**
+  String flagVoteBy(String name, String vote);
+
+  /// No description provided for @flagVoteA11yConcerning.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as concerning'**
+  String get flagVoteA11yConcerning;
+
+  /// No description provided for @flagVoteA11yNotConcerning.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as not concerning'**
+  String get flagVoteA11yNotConcerning;
+
+  /// No description provided for @flagVoteClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear vote'**
+  String get flagVoteClear;
+
+  /// No description provided for @flagVoteCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'Vote cleared'**
+  String get flagVoteCleared;
+
+  /// No description provided for @flagVoteA11yClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear your vote on this message'**
+  String get flagVoteA11yClear;
+
   /// No description provided for @vaultTrustCopy.
   ///
   /// In en, this message translates to:
@@ -5018,6 +5084,12 @@ abstract class AppLocalizations {
   /// **'Concerning content'**
   String get riskAiConcern;
 
+  /// #1138: timing tag on a Social concern card.
+  ///
+  /// In en, this message translates to:
+  /// **'Late at night'**
+  String get riskLateNight;
+
   /// Phone setup row (osra-security#6): the capability report's profiles.kinds holds clone. Arabic wording by Karim (2026-11-11).
   ///
   /// In en, this message translates to:
@@ -5756,6 +5828,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'+{count} new'**
   String socialAlertNewSince(int count);
+
+  /// No description provided for @phoneSetupStepsLeftThisPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Setting up this phone: {count, plural, =1{1 step} other{{count} steps}} left'**
+  String phoneSetupStepsLeftThisPhone(int count);
+
+  /// No description provided for @phoneSetupProtected.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone is protected.'**
+  String get phoneSetupProtected;
+
+  /// No description provided for @phoneSetupStepsLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'Setting up {childName}\'s phone: {count, plural, =1{1 step} other{{count} steps}} left'**
+  String phoneSetupStepsLeft(String childName, int count);
+
+  /// No description provided for @alertTitleSetupComplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone is protected'**
+  String get alertTitleSetupComplete;
+
+  /// No description provided for @alertTitleSetupIncomplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone setup needs attention'**
+  String get alertTitleSetupIncomplete;
+
+  /// No description provided for @alertBodySetupCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'{childName}\'s phone is protected.'**
+  String alertBodySetupCompleted(String childName);
+
+  /// No description provided for @alertBodySetupIncomplete.
+  ///
+  /// In en, this message translates to:
+  /// **'{childName}\'s phone still has {count, plural, =1{1 setup step} other{{count} setup steps}} left after 30 minutes{steps}.'**
+  String alertBodySetupIncomplete(String childName, int count, String steps);
+
+  /// No description provided for @alertBodySetupIncompleteGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'{childName}\'s phone setup is still incomplete after 30 minutes.'**
+  String alertBodySetupIncompleteGeneric(String childName);
+
+  /// No description provided for @alertBodyDataCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'OSRA was reinstalled on {model}. Its protection was off until it was paired again.'**
+  String alertBodyDataCleared(String model);
 }
 
 class _AppLocalizationsDelegate
