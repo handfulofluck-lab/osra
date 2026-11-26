@@ -98,7 +98,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }) =>
         LayoutBuilder(
           builder: (context, constraints) {
-            final narrow = constraints.maxWidth < 360 || MediaQuery.textScalerOf(context).scale(14) > 16;
+            // The spec is about the screen, not the row: at 390 px the value sits on the trailing side,
+            // at 320 px (or once the text is scaled) it wraps under its label. A row inside a card is
+            // ~60 px narrower than the screen, so measuring the row here would wrap at 390 too.
+            final screenWidth = MediaQuery.sizeOf(context).width;
+            final narrow = screenWidth < 360 || MediaQuery.textScalerOf(context).scale(14) > 16;
             final valueStyle =
                 theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant);
             final titleStyle = danger
