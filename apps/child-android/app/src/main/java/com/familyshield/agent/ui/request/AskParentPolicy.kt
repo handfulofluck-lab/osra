@@ -58,7 +58,7 @@ object AskParentPolicy {
         )
     }
 
-    /** Formats 0 / 1 / 2 / 3+ adult names per F7 & Arabic Language Bureau 7191839045. */
+    /** Formats 0 / 1 / 2 / 3 adult names per F7 & Arabic Language Bureau 7191839045; 4+ uses generic fallback. */
     fun formatAdults(
         names: List<String>,
         fallback: String,
@@ -69,18 +69,18 @@ object AskParentPolicy {
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .distinct()
-            .take(3)
             .map { firstStrongIsolate(it) }
             .toList()
         return when (clean.size) {
             0 -> fallback
             1 -> clean[0]
             2 -> if (isArabic) "${clean[0]} و${clean[1]}" else "${clean[0]} and ${clean[1]}"
-            else -> if (isArabic) {
+            3 -> if (isArabic) {
                 "${clean[0]} و${clean[1]} و${clean[2]}"
             } else {
                 "${clean[0]}, ${clean[1]} and ${clean[2]}"
             }
+            else -> fallback
         }
     }
 }

@@ -101,7 +101,7 @@ class AskParentActivity : ComponentActivity() {
         }
 
         return AskParentCopy(
-            title = getString(R.string.c03_title, adultsAddressing),
+            title = getString(R.string.c03_title, adultsSpeaking),
             closeLabel = getString(R.string.c03_close),
             questionLabel = getString(R.string.c03_question_label),
             selectedBadge = getString(R.string.c03_selected_badge),

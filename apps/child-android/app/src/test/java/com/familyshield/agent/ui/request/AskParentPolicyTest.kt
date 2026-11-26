@@ -43,15 +43,23 @@ class AskParentPolicyTest {
     }
 
     @Test
-    fun `formatAdults matches Arabic Bureau 7191839045 rules`() {
-        assertEquals("أهلك", AskParentPolicy.formatAdults(emptyList(), "أهلك", isArabic = true))
+    fun `formatAdults matches Arabic Bureau 7191839045 rules and uses generic fallback for 4+ adults`() {
+        assertEquals("أهلي", AskParentPolicy.formatAdults(emptyList(), "أهلي", isArabic = true))
         assertEquals(
             "\u2068سارة\u2069 و\u2068عمر\u2069",
-            AskParentPolicy.formatAdults(listOf("سارة", "عمر"), "أهلك", isArabic = true),
+            AskParentPolicy.formatAdults(listOf("سارة", "عمر"), "أهلي", isArabic = true),
+        )
+        assertEquals(
+            "أهلي",
+            AskParentPolicy.formatAdults(listOf("سارة", "عمر", "خالد", "نور"), "أهلي", isArabic = true),
         )
         assertEquals(
             "\u2068Sarah\u2069 and \u2068Omar\u2069",
-            AskParentPolicy.formatAdults(listOf("Sarah", "Omar"), "your parents", isArabic = false),
+            AskParentPolicy.formatAdults(listOf("Sarah", "Omar"), "my parents", isArabic = false),
+        )
+        assertEquals(
+            "my parents",
+            AskParentPolicy.formatAdults(listOf("Sarah", "Omar", "Khaled", "Noor"), "my parents", isArabic = false),
         )
     }
 
@@ -81,6 +89,7 @@ class AskParentPolicyTest {
             assertTrue("EN strings missing $key", enStrings.contains("name=\"$key\""))
             assertTrue("AR strings missing $key", arStrings.contains("name=\"$key\""))
         }
+        assertTrue(arStrings.contains("أطلب من %1\$s"))
         assertTrue(arStrings.contains("سيصل طلبك إلى %1\$s"))
         assertTrue(arStrings.contains("بانتظار الرد"))
         assertTrue(arStrings.contains("إرسال الطلب"))
