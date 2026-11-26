@@ -1,0 +1,1 @@
+- **Parent app (#1222 / #1228):** Alert detail now renders the newest-first list of individual blocked-site and blocked-app attempts from `alert.metadata.blockGroup.attempts` (showing local `HH:mm` + site/app name when present, localized `"Blocked site"` / `"Blocked app"` fallback when names are off, and `"Showing X of Y"` when capped at 50). Stacked on #1215.

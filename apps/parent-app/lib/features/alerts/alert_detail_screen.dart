@@ -28,6 +28,7 @@ import '../social/social_vote_controls.dart';
 import 'access_request_actions.dart';
 import 'alert_detail_p15.dart';
 import 'app_alert_presentation.dart';
+import 'blocked_attempts_section.dart';
 import 'sos_alert_actions.dart';
 
 /// Shared per-category localized body formatter used by both [AlertsScreen] and
@@ -958,6 +959,10 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
             identity: identity,
             nowProvider: nowProvider,
           ),
+          const SizedBox(height: AppSpace.lg),
+        ],
+        if (parseBlockedAttempts(alert).isNotEmpty) ...[
+          BlockedAttemptsSection(alert: alert),
           const SizedBox(height: AppSpace.lg),
         ],
         if (alert.category == 'sos' && alert.location != null) ...[
