@@ -76,6 +76,11 @@ void main() {
 
   Map<String, dynamic> familyWith({bool twoStepOn = true}) {
     final family = familyMeTwoChildren();
+    // The time zone row reads this; without it the frame shows the honest fallback, not the value.
+    family['family'] = {
+      ...(family['family'] as Map<String, dynamic>),
+      'utcOffsetMinutes': 240,
+    };
     family['parent'] = {
       ...(family['parent'] as Map<String, dynamic>),
       'mfaEnabled': twoStepOn,
