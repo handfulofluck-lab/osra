@@ -46,6 +46,7 @@ Start here. This page is the map: what each document is for, and which one to re
 | [`superpowers/plans/2026-11-13-windows-w1-service-tray.md`](superpowers/plans/2026-11-13-windows-w1-service-tray.md) | Approved Windows W1 implementation plan (#623): two hosts, session supervision, the typed pipe, configuration, pairing and capability boundaries, tests and unsigned artifact |
 | [`ops/ci-cost-2026-11.md`](ops/ci-cost-2026-11.md) | Measured 31-day GitHub Actions usage and the 2026 USD cost model behind the cheaper-CI workflow changes (#613) |
 | [`adr/`](adr/README.md) | Architecture decision records — context, decision, reasoning, rejected alternatives, costs |
+| [Consented staging own-model scoring](adr/0046-consented-staging-own-model-scoring.md) | #1144 staging-only analyzer routing, quotas and rollout guards |
 | [Bounded Mac metadata access](adr/0043-bounded-mac-metadata-access.md) | Proposed implementation record for #893; reviewed inputs, operating limits and private evidence prerequisites |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | What changed on which day, with the PR/issue that carried it, and the verification state |
 | [`../CHANGELOG.d/`](../CHANGELOG.d/README.md) | One changelog fragment per change — where entries are written now, and why the shared `[Unreleased]` block was replaced |

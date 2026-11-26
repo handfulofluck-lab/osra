@@ -5,6 +5,8 @@ import 'dart:math' as math;
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide Family;
+
+import '../core/bounded_refetch.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -544,18 +546,26 @@ abstract class RealtimeEffects {
 /// [RealtimeEffects] that invalidates the affected providers and writes the
 /// `live_activity` overlay the dashboard reads.
 class RiverpodRealtimeEffects implements RealtimeEffects {
-  RiverpodRealtimeEffects(this._ref);
+  RiverpodRealtimeEffects(this._ref) {
+    _ref.onDispose(_countRefetch.cancel);
+  }
 
   final Ref _ref;
+
+  /// #1056: an `alert` frame can be handled before its row is readable, so the unread count is read once
+  /// more shortly after. One extra read per event, not a poll, and cancelled with the ref.
+  late final BoundedRefetch _countRefetch = BoundedRefetch(run: _invalidateCount);
+
+  void _invalidateCount() {
+    _ref.invalidate(unacknowledgedAlertsProvider);
+    _ref.invalidate(unacknowledgedCountProvider);
+  }
 
   @override
   void invalidateAlerts() => _ref.invalidate(alertsProvider);
 
   @override
-  void invalidateUnacknowledgedCount() {
-    _ref.invalidate(unacknowledgedAlertsProvider);
-    _ref.invalidate(unacknowledgedCountProvider);
-  }
+  void invalidateUnacknowledgedCount() => _countRefetch.schedule();
 
   @override
   void invalidateFamily() => _ref.invalidate(familyProvider);
