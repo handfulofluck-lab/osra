@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -3337,7 +3338,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String alertDeviceRestartedBodyMinutes(
-      String device, String when, int minutes) {
+    String device,
+    String when,
+    int minutes,
+  ) {
     String _temp0 = intl.Intl.pluralLogic(
       minutes,
       locale: localeName,
@@ -3688,7 +3692,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String accessRequestKeptBlockedBy(
-      String actor, String app, String timeSuffix) {
+    String actor,
+    String app,
+    String timeSuffix,
+  ) {
     return '$actor kept $app blocked$timeSuffix';
   }
 
@@ -3771,5 +3778,41 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String locationP13RadiusMeters(String meters) {
     return '$meters m radius';
+  }
+
+  @override
+  String timeRequestTitle(String child, int minutes) {
+    return '$child asked for $minutes more minutes today';
+  }
+
+  @override
+  String timeRequestGrant(String minutes) {
+    return '+$minutes min';
+  }
+
+  @override
+  String get timeRequestDecline => 'Not today';
+
+  @override
+  String timeRequestGrantedBy(String actor, int minutes) {
+    return '$actor already gave $minutes minutes today';
+  }
+
+  @override
+  String timeRequestGrantedByYou(int minutes) {
+    return 'You already gave $minutes minutes today';
+  }
+
+  @override
+  String timeRequestDeclinedBy(String actor) {
+    return '$actor already declined this request';
+  }
+
+  @override
+  String get timeRequestDeclinedByYou => 'You already declined this request';
+
+  @override
+  String timeRequestDecidedAt(String time) {
+    return 'Decided $time';
   }
 }
