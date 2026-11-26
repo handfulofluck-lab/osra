@@ -63,70 +63,44 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('a slow earlier answer cannot un-pair a confirmed claim', (tester) async {
+  testWidgets('a server slower than the poll still updates the screen', (tester) async {
     final slow = Completer<Object?>();
     await pump(
       tester,
       clientReturning((call) => call == 1
-          ? FakeDeferred(slow.future) // the stale answer, delivered last
+          ? FakeDeferred(slow.future) // longer than the two-second tick
           : {'status': 'paired', 'claimId': 'c-1', 'deviceName': "Sam's phone"}),
     );
 
-    // Tick 1 starts the read that will answer late; tick 2 answers "paired" and stops the poll.
-    await nextClaimRead(tester);
-    await nextClaimRead(tester);
-    expect(find.byKey(const ValueKey('pairPairedTitle')), findsOneWidget);
+    await nextClaimRead(tester); // tick 1 starts the slow read
+    await nextClaimRead(tester); // tick 2 arrives while it is in flight: skipped, not queued
+    expect(find.byKey(const ValueKey('pairClaimCard')), findsNothing);
 
-    // The stale first answer now arrives carrying an earlier state.
-    slow.complete({'status': 'approved', 'claimId': 'c-1', 'deviceName': "Sam's phone"});
+    slow.complete({'status': 'pending', 'claimId': 'c-1', 'deviceName': "Sam's phone"});
+    await tester.pump();
     await flushFakeHttp(tester);
-    await tester.pump(const Duration(seconds: 3));
 
-    expect(find.byKey(const ValueKey('pairPairedTitle')), findsOneWidget,
-        reason: 'the spent code must not come back after the phone took its token');
-    expect(find.textContaining(code), findsNothing);
+    expect(find.byKey(const ValueKey('pairClaimCard')), findsOneWidget,
+        reason: 'a slow answer must reach the screen; discarding every slow answer is a silent poll');
+
+    await nextClaimRead(tester); // the next read answers paired
+    expect(find.byKey(const ValueKey('pairPairedTitle')), findsOneWidget);
     await unmount(tester);
   });
 
-  testWidgets('a decided claim is not overwritten by a pending answer', (tester) async {
+  testWidgets('a paired claim stops the poll and stays paired', (tester) async {
     await pump(
       tester,
-      clientReturning((call) => call == 2
-          ? {'status': 'paired', 'claimId': 'c-1', 'deviceName': "Sam's phone"}
-          : {'status': 'pending', 'claimId': 'c-1', 'deviceName': "Sam's phone"}),
+      clientReturning((call) => call == 1
+          ? {'status': 'pending', 'claimId': 'c-1', 'deviceName': "Sam's phone"}
+          : {'status': 'paired', 'claimId': 'c-1', 'deviceName': "Sam's phone"}),
     );
 
     await nextClaimRead(tester); // pending
     await nextClaimRead(tester); // paired
     expect(find.byKey(const ValueKey('pairPairedTitle')), findsOneWidget);
 
-    await nextClaimRead(tester); // a later read can only be stale; polling has stopped
-    expect(find.byKey(const ValueKey('pairPairedTitle')), findsOneWidget);
-    await unmount(tester);
-  });
-
-  /// Codex, #1149 review: with a server slower than the two-second poll, every answer used to be superseded by the
-  /// next tick, so the screen never updated at all. Serialising the reads makes slow *slow*, not silent.
-  testWidgets('a server slower than the poll still updates the screen', (tester) async {
-    final slow = Completer<Object?>();
-    await pump(
-      tester,
-      clientReturning((call) => call == 1
-          ? FakeDeferred(slow.future) // three seconds, longer than the two-second tick
-          : {'status': 'paired', 'claimId': 'c-1', 'deviceName': "Sam's phone"}),
-    );
-
-    await nextClaimRead(tester); // tick 1 starts the slow read
-    await nextClaimRead(tester); // tick 2 fires while it is still in flight — must be skipped, not queued
-    expect(find.byKey(const ValueKey('pairPairedTitle')), findsNothing);
-
-    slow.complete({'status': 'pending', 'claimId': 'c-1', 'deviceName': "Sam's phone"});
-    await flushFakeHttp(tester);
-    // The slow answer applies rather than being discarded for being old.
-    expect(find.byKey(const ValueKey('pairClaimCard')), findsOneWidget,
-        reason: 'a slow answer must reach the screen, or the parent waits forever');
-
-    await nextClaimRead(tester); // next read answers paired
+    await nextClaimRead(tester); // nothing is read any more; the screen must not regress
     expect(find.byKey(const ValueKey('pairPairedTitle')), findsOneWidget);
     await unmount(tester);
   });

@@ -70,10 +70,10 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
   /// Issue counter for claim reads. The timer fires every two seconds and a slow response can land after a
   /// newer one; without this, a stale "approved" could overwrite a confirmed "paired" and bring the spent QR
   /// back (Codex, #1149 `7184806902`).
-  int _claimRead = 0;
   /// True while a claim read is in flight. The timer keeps ticking every two seconds, and a server slower than
   /// that would otherwise have every answer superseded by the next tick — the screen would then never update at
-  /// all (Codex, #1149). One read at a time, so slow is slow rather than silent.
+  /// all. One read at a time, so slow is slow rather than silent, and an older answer can never land after a
+  /// newer one (Codex, #1149).
   bool _claimReadInFlight = false;
   bool _deciding = false;
   bool _decisionFailed = false;
@@ -184,16 +184,12 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
     }
     if (_claimReadInFlight) return;
     _claimReadInFlight = true;
-    final read = ++_claimRead;
     try {
       final res = await ref
           .read(apiClientProvider)
           .raw
           .get('/v1/devices/pair/$code/claim');
       if (!mounted || code != _code || _deciding) return;
-      // A newer read has started, so this answer is stale by definition: drop it rather than let it overwrite
-      // a fresher one.
-      if (read != _claimRead) return;
       final data = Map<String, dynamic>.from(res.data as Map);
       // Pairing is final for this code: once the phone has its token the QR is spent, and nothing that arrives
       // afterwards may bring the code back on screen (Codex, #1149 `7184806902`).
