@@ -3636,4 +3636,165 @@ class AppLocalizationsEn extends AppLocalizations {
   String alertBodyDataCleared(String model) {
     return 'OSRA was reinstalled on $model. Its protection was off until it was paired again.';
   }
+
+  @override
+  String childOverviewAppliedOnAt(String device, String time) {
+    return 'Applied on $device at $time';
+  }
+
+  @override
+  String get childOverviewSentToPhone => 'Sent to phone';
+
+  @override
+  String get childOverviewSwitchDevice => 'Switch device';
+
+  @override
+  String childOverviewTimeLeft(String duration) {
+    return '$duration left';
+  }
+
+  @override
+  String childOverviewOfLimit(String limit) {
+    return 'of $limit';
+  }
+
+  @override
+  String childOverviewBatteryPct(String pct) {
+    return 'Battery $pct%';
+  }
+
+  @override
+  String get childOverviewDailyLimitTitle => 'Daily limit';
+
+  @override
+  String get childOverviewNoLimit => 'No limit';
+
+  @override
+  String childOverviewWeekendsLimit(String duration) {
+    return 'Weekends $duration';
+  }
+
+  @override
+  String get childOverviewSchoolNights => 'School nights';
+
+  @override
+  String childOverviewAppsBlockedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count blocked',
+      one: '1 blocked',
+      zero: 'None blocked',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String childOverviewAppsWithLimits(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count with limits',
+      one: '1 with limit',
+      zero: 'No app limits',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get childOverviewWebFilterOn => 'On';
+
+  @override
+  String get childOverviewSafeSearchOn => 'Safe search on';
+
+  @override
+  String childOverviewCategoriesBlocked(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count categories blocked',
+      one: '1 category blocked',
+      zero: 'No categories blocked',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String childOverviewPlacesSaved(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count saved',
+      one: '1 saved',
+      zero: 'None saved',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get childOverviewPlacesEmptySubtitle => 'Add safe places';
+
+  @override
+  String childOverviewSocialAppsCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count apps',
+      one: '1 app',
+      zero: 'None active',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get childOverviewCheckingMessages => 'Checking messages';
+
+  @override
+  String get childOverviewNotYetAvailableIphone =>
+      'Not yet available on iPhone';
+
+  @override
+  String get childOverviewThisWeekTitle => 'This week';
+
+  @override
+  String get childOverviewUsageHistorySubtitle => 'Usage & history';
+
+  @override
+  String get childOverviewQuickActions => 'Quick actions';
+
+  @override
+  String get childOverviewPlus30Min => '+30 min';
+
+  @override
+  String get childOverviewTodayUsed => 'Used today';
+
+  @override
+  String get childOverviewTimeUp => 'Time\'s up';
+
+  @override
+  String childOverviewDurationHours(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count h',
+      one: '1 h',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String childOverviewDurationMinutes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count min',
+      one: '1 min',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String childOverviewDurationHoursMinutes(String hours, String minutes) {
+    return '$hours $minutes';
+  }
 }

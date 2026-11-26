@@ -5900,6 +5900,180 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'OSRA was reinstalled on {model}. Its protection was off until it was paired again.'**
   String alertBodyDataCleared(String model);
+
+  /// No description provided for @childOverviewAppliedOnAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Applied on {device} at {time}'**
+  String childOverviewAppliedOnAt(String device, String time);
+
+  /// No description provided for @childOverviewSentToPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent to phone'**
+  String get childOverviewSentToPhone;
+
+  /// No description provided for @childOverviewSwitchDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch device'**
+  String get childOverviewSwitchDevice;
+
+  /// No description provided for @childOverviewTimeLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'{duration} left'**
+  String childOverviewTimeLeft(String duration);
+
+  /// No description provided for @childOverviewOfLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'of {limit}'**
+  String childOverviewOfLimit(String limit);
+
+  /// No description provided for @childOverviewBatteryPct.
+  ///
+  /// In en, this message translates to:
+  /// **'Battery {pct}%'**
+  String childOverviewBatteryPct(String pct);
+
+  /// No description provided for @childOverviewDailyLimitTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Daily limit'**
+  String get childOverviewDailyLimitTitle;
+
+  /// No description provided for @childOverviewNoLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'No limit'**
+  String get childOverviewNoLimit;
+
+  /// No description provided for @childOverviewWeekendsLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Weekends {duration}'**
+  String childOverviewWeekendsLimit(String duration);
+
+  /// No description provided for @childOverviewSchoolNights.
+  ///
+  /// In en, this message translates to:
+  /// **'School nights'**
+  String get childOverviewSchoolNights;
+
+  /// No description provided for @childOverviewAppsBlockedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{None blocked} =1{1 blocked} other{{count} blocked}}'**
+  String childOverviewAppsBlockedCount(int count);
+
+  /// No description provided for @childOverviewAppsWithLimits.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No app limits} =1{1 with limit} other{{count} with limits}}'**
+  String childOverviewAppsWithLimits(int count);
+
+  /// No description provided for @childOverviewWebFilterOn.
+  ///
+  /// In en, this message translates to:
+  /// **'On'**
+  String get childOverviewWebFilterOn;
+
+  /// No description provided for @childOverviewSafeSearchOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Safe search on'**
+  String get childOverviewSafeSearchOn;
+
+  /// No description provided for @childOverviewCategoriesBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No categories blocked} =1{1 category blocked} other{{count} categories blocked}}'**
+  String childOverviewCategoriesBlocked(int count);
+
+  /// No description provided for @childOverviewPlacesSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{None saved} =1{1 saved} other{{count} saved}}'**
+  String childOverviewPlacesSaved(int count);
+
+  /// No description provided for @childOverviewPlacesEmptySubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Add safe places'**
+  String get childOverviewPlacesEmptySubtitle;
+
+  /// No description provided for @childOverviewSocialAppsCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{None active} =1{1 app} other{{count} apps}}'**
+  String childOverviewSocialAppsCount(int count);
+
+  /// No description provided for @childOverviewCheckingMessages.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking messages'**
+  String get childOverviewCheckingMessages;
+
+  /// No description provided for @childOverviewNotYetAvailableIphone.
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet available on iPhone'**
+  String get childOverviewNotYetAvailableIphone;
+
+  /// No description provided for @childOverviewThisWeekTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This week'**
+  String get childOverviewThisWeekTitle;
+
+  /// No description provided for @childOverviewUsageHistorySubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Usage & history'**
+  String get childOverviewUsageHistorySubtitle;
+
+  /// No description provided for @childOverviewQuickActions.
+  ///
+  /// In en, this message translates to:
+  /// **'Quick actions'**
+  String get childOverviewQuickActions;
+
+  /// No description provided for @childOverviewPlus30Min.
+  ///
+  /// In en, this message translates to:
+  /// **'+30 min'**
+  String get childOverviewPlus30Min;
+
+  /// No description provided for @childOverviewTodayUsed.
+  ///
+  /// In en, this message translates to:
+  /// **'Used today'**
+  String get childOverviewTodayUsed;
+
+  /// No description provided for @childOverviewTimeUp.
+  ///
+  /// In en, this message translates to:
+  /// **'Time\'s up'**
+  String get childOverviewTimeUp;
+
+  /// No description provided for @childOverviewDurationHours.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 h} other{{count} h}}'**
+  String childOverviewDurationHours(int count);
+
+  /// No description provided for @childOverviewDurationMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 min} other{{count} min}}'**
+  String childOverviewDurationMinutes(int count);
+
+  /// No description provided for @childOverviewDurationHoursMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours} {minutes}'**
+  String childOverviewDurationHoursMinutes(String hours, String minutes);
 }
 
 class _AppLocalizationsDelegate

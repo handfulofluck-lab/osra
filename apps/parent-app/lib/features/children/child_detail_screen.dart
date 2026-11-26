@@ -27,6 +27,7 @@ import '../social/social_screen.dart' show SocialSectionsView, socialAppLabel;
 import '../map/child_location_view.dart';
 import 'app_groups_section.dart';
 import 'child_apps_list.dart';
+import 'child_overview_p08.dart';
 import 'phone_setup_section.dart';
 import 'command_history_screen.dart' show formatCommandTime;
 import 'device_control_state.dart';
@@ -44,6 +45,10 @@ class ChildDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // #1179 P-08 Child Overview behind switch (old 5-tab screen stays as fallback).
+    if (initialTab == 0 && ref.watch(p08ChildOverviewEnabledProvider)) {
+      return ChildOverviewP08Screen(childId: childId);
+    }
     // #935: keep the live /v1/ws channel subscribed so `command_acked` updates delivery status immediately.
     ref.watch(wsProvider);
     final overview = ref.watch(familyProvider).valueOrNull;

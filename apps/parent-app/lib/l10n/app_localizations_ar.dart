@@ -3871,4 +3871,185 @@ class AppLocalizationsAr extends AppLocalizations {
   String alertBodyDataCleared(String model) {
     return 'أُعيد تثبيت تطبيق أسرة للأطفال على $model، وكانت الحماية متوقفة إلى أن أُعيد الإقران.';
   }
+
+  @override
+  String childOverviewAppliedOnAt(String device, String time) {
+    return 'طُبّقت القواعد على $device الساعة $time';
+  }
+
+  @override
+  String get childOverviewSentToPhone => 'أُرسلت إلى الهاتف';
+
+  @override
+  String get childOverviewSwitchDevice => 'تبديل الجهاز';
+
+  @override
+  String childOverviewTimeLeft(String duration) {
+    return 'المتبقي $duration';
+  }
+
+  @override
+  String childOverviewOfLimit(String limit) {
+    return 'من $limit';
+  }
+
+  @override
+  String childOverviewBatteryPct(String pct) {
+    return 'البطارية $pct%';
+  }
+
+  @override
+  String get childOverviewDailyLimitTitle => 'الحد اليومي';
+
+  @override
+  String get childOverviewNoLimit => 'بلا حد';
+
+  @override
+  String childOverviewWeekendsLimit(String duration) {
+    return 'عطلة نهاية الأسبوع $duration';
+  }
+
+  @override
+  String get childOverviewSchoolNights => 'ليالي الدراسة';
+
+  @override
+  String childOverviewAppsBlockedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count تطبيق محظور',
+      many: '$count تطبيقًا محظورًا',
+      few: '$count تطبيقات محظورة',
+      two: 'تطبيقان محظوران',
+      one: 'تطبيق واحد محظور',
+      zero: 'لا تطبيقات محظورة',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String childOverviewAppsWithLimits(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count تطبيق بحد زمني',
+      many: '$count تطبيقًا بحد زمني',
+      few: '$count تطبيقات بحد زمني',
+      two: 'تطبيقان بحد زمني',
+      one: 'تطبيق واحد بحد زمني',
+      zero: 'لا حدود للتطبيقات',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get childOverviewWebFilterOn => 'مفعّلة';
+
+  @override
+  String get childOverviewSafeSearchOn => 'البحث الآمن مفعّل';
+
+  @override
+  String childOverviewCategoriesBlocked(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count فئة محظورة',
+      many: '$count فئة محظورة',
+      few: '$count فئات محظورة',
+      two: 'فئتان محظورتان',
+      one: 'فئة واحدة محظورة',
+      zero: 'لا فئات محظورة',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String childOverviewPlacesSaved(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count مكان محفوظ',
+      many: '$count مكانًا محفوظًا',
+      few: '$count أماكن محفوظة',
+      two: 'مكانان محفوظان',
+      one: 'مكان واحد محفوظ',
+      zero: 'لا أماكن محفوظة',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get childOverviewPlacesEmptySubtitle => 'إضافة أماكن آمنة';
+
+  @override
+  String childOverviewSocialAppsCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count تطبيق',
+      many: '$count تطبيقًا',
+      few: '$count تطبيقات',
+      two: 'تطبيقان',
+      one: 'تطبيق واحد',
+      zero: 'غير مفعّل',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get childOverviewCheckingMessages => 'فحص الرسائل مفعّل';
+
+  @override
+  String get childOverviewNotYetAvailableIphone => 'غير متاح بعد على آيفون';
+
+  @override
+  String get childOverviewThisWeekTitle => 'هذا الأسبوع';
+
+  @override
+  String get childOverviewUsageHistorySubtitle => 'الاستخدام والسجل';
+
+  @override
+  String get childOverviewQuickActions => 'إجراءات سريعة';
+
+  @override
+  String get childOverviewPlus30Min => '+30 دقيقة';
+
+  @override
+  String get childOverviewTodayUsed => 'المستخدم اليوم';
+
+  @override
+  String get childOverviewTimeUp => 'انتهى الوقت';
+
+  @override
+  String childOverviewDurationHours(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count ساعة',
+      many: '$count ساعة',
+      few: '$count ساعات',
+      two: 'ساعتان',
+      one: 'ساعة واحدة',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String childOverviewDurationMinutes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count دقيقة',
+      many: '$count دقيقة',
+      few: '$count دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String childOverviewDurationHoursMinutes(String hours, String minutes) {
+    return '$hours و$minutes';
+  }
 }
