@@ -79,10 +79,11 @@ void main() {
     expect(find.text('Not yet available'), findsNWidgets(6));
     expect(find.byKey(const ValueKey('notYetCardLine-dev-1')), findsOneWidget);
     expect(
-      find.text("On Alex's iPhone, Lock, Pause device, Pause internet and Ring aren't available yet. "
-          'Screen-time limits, app blocking and the web filter work now.'),
+      find.text("On Alex's iPhone, Lock, Pause device, Pause internet and Ring aren't available yet."),
       findsOneWidget,
     );
+    // K31 on #1123: the card promises nothing the phone's capability report does not back.
+    expect(find.textContaining('work now'), findsNothing);
   });
 
   testWidgets('a tap on a not-yet control explains why and never sends a command', (tester) async {
@@ -109,8 +110,7 @@ void main() {
 
     expect(find.text('Not yet available'), findsNWidgets(4));
     expect(
-      find.text("On Alex's iPhone, Lock, Pause device and Pause internet aren't available yet. "
-          'Screen-time limits, app blocking and the web filter work now.'),
+      find.text("On Alex's iPhone, Lock, Pause device and Pause internet aren't available yet."),
       findsOneWidget,
     );
   });

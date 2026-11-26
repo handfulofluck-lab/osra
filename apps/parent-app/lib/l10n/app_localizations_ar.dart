@@ -3758,7 +3758,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String iosNotYetCardLine(String child, String actions) {
-    return 'على آيفون $child، لا تتوفر بعد هذه الميزات: $actions. أما حدود وقت الشاشة وحظر التطبيقات وتصفية الويب فتعمل الآن.';
+    return 'على آيفون $child، لا تتوفر بعد هذه الميزات: $actions.';
   }
 
   @override

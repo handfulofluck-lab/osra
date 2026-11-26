@@ -3535,7 +3535,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String iosNotYetCardLine(String child, String actions) {
-    return 'On $child\'s iPhone, $actions aren\'t available yet. Screen-time limits, app blocking and the web filter work now.';
+    return 'On $child\'s iPhone, $actions aren\'t available yet.';
   }
 
   @override

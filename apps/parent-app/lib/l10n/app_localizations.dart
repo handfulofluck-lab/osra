@@ -5766,7 +5766,7 @@ abstract class AppLocalizations {
   /// #1088: one line under an iPhone child's device row. {actions} is the joined list of action names.
   ///
   /// In en, this message translates to:
-  /// **'On {child}\'s iPhone, {actions} aren\'t available yet. Screen-time limits, app blocking and the web filter work now.'**
+  /// **'On {child}\'s iPhone, {actions} aren\'t available yet.'**
   String iosNotYetCardLine(String child, String actions);
 
   /// #1088: snackbar when a parent taps a not-yet control. Never sends a command.

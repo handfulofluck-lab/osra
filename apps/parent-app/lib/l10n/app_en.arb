@@ -1914,7 +1914,7 @@
   "@socialAlertNewSince": { "placeholders": { "count": { "type": "int" } } },
   "iosNotYetPill": "Not yet available",
   "@iosNotYetPill": {"description": "#1088: neutral pill under a control the child's build cannot run yet (UI/UX Bureau 7146060347)."},
-  "iosNotYetCardLine": "On {child}'s iPhone, {actions} aren't available yet. Screen-time limits, app blocking and the web filter work now.",
+  "iosNotYetCardLine": "On {child}'s iPhone, {actions} aren't available yet.",
   "@iosNotYetCardLine": {"description": "#1088: one line under an iPhone child's device row. {actions} is the joined list of action names.", "placeholders": {"child": {"type": "String"}, "actions": {"type": "String"}}},
   "iosNotYetTapSnack": "{action} isn't available on iPhone yet. It will arrive in an app update.",
   "@iosNotYetTapSnack": {"description": "#1088: snackbar when a parent taps a not-yet control. Never sends a command.", "placeholders": {"action": {"type": "String"}}},

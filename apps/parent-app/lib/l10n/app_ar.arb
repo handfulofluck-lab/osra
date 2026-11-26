@@ -1148,7 +1148,7 @@
   "socialAlertMorePush": "{count, plural, =0{لا رسائل أخرى تستدعي المراجعة لدى {child} في {app}} =1{رسالة أخرى تستدعي المراجعة لدى {child} في {app}} =2{رسالتان أخريان تستدعيان المراجعة لدى {child} في {app}} few{{count} رسائل أخرى تستدعي المراجعة لدى {child} في {app}} many{{count} رسالة أخرى تستدعي المراجعة لدى {child} في {app}} other{{count} رسالة أخرى تستدعي المراجعة لدى {child} في {app}}}",
   "socialAlertNewSince": "+{count} جديدة",
   "iosNotYetPill": "غير متاح بعد",
-  "iosNotYetCardLine": "على آيفون {child}، لا تتوفر بعد هذه الميزات: {actions}. أما حدود وقت الشاشة وحظر التطبيقات وتصفية الويب فتعمل الآن.",
+  "iosNotYetCardLine": "على آيفون {child}، لا تتوفر بعد هذه الميزات: {actions}.",
   "iosNotYetTapSnack": "«{action}» غير متاح على آيفون بعد، وسيصل في تحديث قادم للتطبيق.",
   "iosNotYetA11y": "{action}، غير متاح على آيفون بعد",
   "iosNotYetListSeparator": "، ",
