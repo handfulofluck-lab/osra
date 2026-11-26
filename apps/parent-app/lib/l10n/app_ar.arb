@@ -1146,6 +1146,8 @@
   "appsFilterBlocked": "المحظورة ({count})",
   "appsFilterLimited": "الحدود الزمنية ({count})",
   "appsNoMatch": "لا توجد تطبيقات مطابقة",
+  "appsSentToPhone": "أُرسلت إلى الهاتف",
+  "appsNotYetOnIphone": "غير متاح بعد على آيفون",
   "appAboutThisApp": "عن هذا التطبيق",
   "appBlockedNamedSnack": "تم حظر {app}",
   "socialCheckMessagesIn": "فحص الرسائل في هذه التطبيقات",
