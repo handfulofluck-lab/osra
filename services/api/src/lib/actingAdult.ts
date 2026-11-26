@@ -25,8 +25,14 @@ export const ATTRIBUTED_COMMANDS: ReadonlySet<string> = new Set([
 export function cleanByName(raw: unknown): string | undefined {
   if (typeof raw !== "string") return undefined;
   // Control characters and runs of whitespace would break a single feed row; the length cap keeps a
-  // pasted paragraph out of a command payload.
-  const name = raw.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+  // pasted paragraph out of a command payload. Bidi embedding/override (U+202A-202E) and isolate
+  // (U+2066-2069) controls are removed outright (#1237 review): they would reorder the feed text around
+  // the name on the child phone.
+  const name = raw
+    .replace(/[\u202a-\u202e\u2066-\u2069]/g, "")
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!name) return undefined;
   return Array.from(name).slice(0, BY_NAME_MAX).join("");
 }

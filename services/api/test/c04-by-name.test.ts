@@ -70,6 +70,11 @@ describe("C-04 byName: the server stamps the acting adult on child-visible comma
     expect(cleanByName("  Mama\n Sara ")).toBe("Mama Sara");
     expect(cleanByName("أبو أحمد")).toBe("أبو أحمد");
     expect(cleanByName("   ")).toBeUndefined();
+    // #1237 review: bidi embedding, override and isolate controls are stripped, not kept or turned into spaces.
+    expect(cleanByName("Ma\u202Ema\u202C")).toBe("Mama");
+    expect(cleanByName("\u202A\u202B\u202C\u202D\u202EDad\u2066\u2067\u2068\u2069")).toBe("Dad");
+    expect(cleanByName("\u2067\u202E")).toBeUndefined();
+    expect(cleanByName("أبو\u2068 أحمد\u2069")).toBe("أبو أحمد");
     expect(cleanByName(null)).toBeUndefined();
     expect(Array.from(cleanByName("x".repeat(200))!)).toHaveLength(BY_NAME_MAX);
     expect(withByName({ minutes: 5, byName: "Spoofed" }, undefined)).toEqual({ minutes: 5 });
