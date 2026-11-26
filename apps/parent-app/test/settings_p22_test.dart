@@ -51,6 +51,7 @@ void main() {
       'settingsRow-twoStep',
       'settingsRow-signOut',
       'settingsRow-signOutAll',
+      'settingsRow-digest',
       'settingsRow-deleteAccount',
     ]) {
       expect(find.byKey(ValueKey(key)), findsOneWidget, reason: '$key must be on the list');
@@ -69,6 +70,33 @@ void main() {
     expect(find.text('Off'), findsOneWidget);
     expect(find.byKey(const ValueKey('settingsRow-recoveryCodes')), findsNothing,
         reason: 'there are no recovery codes to open while two-step verification is off');
+  });
+
+
+
+  testWidgets('the security card is on top while two-step verification is off, and gone when it is on',
+      (tester) async {
+    await pump(tester, twoStepOn: false);
+    expect(find.byKey(const ValueKey('settingsSecurityCard')), findsOneWidget);
+    expect(find.text('Finish securing your account'), findsOneWidget);
+    expect(find.byKey(const ValueKey('settingsSecurityCardButton')), findsOneWidget);
+
+    await pump(tester, twoStepOn: true);
+    expect(find.byKey(const ValueKey('settingsSecurityCard')), findsNothing,
+        reason: 'the card shows only while something is unfinished');
+  });
+
+  testWidgets('sign out of all devices asks first, and cancel touches nothing', (tester) async {
+    await pump(tester);
+    await tester.tap(find.byKey(const ValueKey('settingsRow-signOutAll')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('settingsSignOutAllDialog')), findsOneWidget);
+    expect(find.text('Sign out everywhere'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('settingsSignOutAllCancel')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('settingsSignOutAllDialog')), findsNothing,
+        reason: 'cancel is the default and closes the dialog without revoking anything');
   });
 
   testWidgets('the list reads in Arabic', (tester) async {

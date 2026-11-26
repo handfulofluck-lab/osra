@@ -284,6 +284,25 @@ class AppLocalizationsAr extends AppLocalizations {
   String get settingsValueOff => 'غير مفعّل';
 
   @override
+  String get settingsSignOutAllTitle => 'تسجيل الخروج من كل الأجهزة؟';
+
+  @override
+  String get settingsSignOutAllBody =>
+      'سيلزم تسجيل الدخول من جديد على كل جهاز يستخدم حسابك، بما فيه هذا الجهاز.';
+
+  @override
+  String get settingsSignOutAllConfirm => 'تسجيل الخروج من كل الأجهزة';
+
+  @override
+  String get settingsSecurityCardTitle => 'إكمال تأمين حسابك';
+
+  @override
+  String get settingsSecurityCardLine => 'التحقق بخطوتين غير مفعّل';
+
+  @override
+  String get settingsSecurityCardButton => 'تفعيل';
+
+  @override
   String get signOutTooltip => 'تسجيل الخروج';
 
   @override
