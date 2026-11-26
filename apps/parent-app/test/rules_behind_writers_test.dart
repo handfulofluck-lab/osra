@@ -223,10 +223,11 @@ void main() {
     await tester.tap(find.textContaining('Not on '));
     await tester.pumpAndSettle();
     // P-17 (`#1179`): the row states the phone's word and opens the on/off choice, so there is no switch to
-    // reach into; the save path behind it is unchanged.
-    await tester.tap(find.byKey(const ValueKey('socialAppRow-whatsapp')));
+    // reach into; the save path behind it is unchanged. Both are driven directly because the row sits below the
+    // fold in this test's 800x600 view, exactly as the old switch was.
+    tester.widget<ListTile>(find.byKey(const ValueKey('socialAppRow-whatsapp'))).onTap!();
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('socialAppOff-whatsapp')));
+    tester.widget<ListTile>(find.byKey(const ValueKey('socialAppOff-whatsapp'))).onTap!();
     await tester.pumpAndSettle();
     tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Save monitoring')).onPressed!();
     await tester.pumpAndSettle();
