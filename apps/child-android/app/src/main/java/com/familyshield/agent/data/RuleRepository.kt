@@ -125,7 +125,7 @@ class RuleRepository @Inject constructor(
     /** Returns the decision for [packageId]; [verdict] is the same walk with the reason attached. */
     fun evaluate(packageId: String): Decision = verdict(packageId).decision
 
-    /** Enables or clears pause-the-internet (Feature #11); while paused every app except alwaysAllowedApps is blocked. */
+    /** Enables or clears network-only pause-the-internet (Feature #11, #1183); VPN sinkhole blocks traffic while offline apps stay open. */
     fun setPausedInternet(paused: Boolean) {
         pausedInternet = paused
     }

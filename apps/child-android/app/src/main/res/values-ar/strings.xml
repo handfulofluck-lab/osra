@@ -246,6 +246,8 @@
     <string name="lock_paused_body">سيعود إلى العمل عند انتهاء الإيقاف المؤقت.</string>
     <string name="lock_paused_internet_title">أوقف والدك أو والدتك الإنترنت مؤقتًا</string>
     <string name="lock_paused_internet_body">تظل التطبيقات التعليمية تعمل.</string>
+    <string name="notification_paused_internet_body">تظل التطبيقات التي لا تحتاج إلى إنترنت تعمل أثناء إيقاف الإنترنت مؤقتًا.</string>
+    <string name="lock_always_allowed_heading">المسموح به دائمًا</string>
 
     <string name="qr_permission_denied">رُفض إذن الكاميرا، لذلك لا يمكن تشغيل ماسح رمز QR. أدخل عنوان الخادم ورمز الإقران أدناه، أو اسمح بالكاميرا من الإعدادات وامسح مرة أخرى.</string>
     <string name="qr_preview_description">معاينة الكاميرا</string>
