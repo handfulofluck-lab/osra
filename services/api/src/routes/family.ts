@@ -389,7 +389,7 @@ export async function familyRoutes(app: FastifyInstance) {
             ruleSet: true,
             consents: true,
             geofences: true,
-            alerts: true,
+            alerts: { where: { heldDuringSetup: false } },
             pairingDecisions: true,
           },
         },

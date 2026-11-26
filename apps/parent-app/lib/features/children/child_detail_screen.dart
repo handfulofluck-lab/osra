@@ -257,7 +257,7 @@ class _OverviewTab extends ConsumerWidget {
                     ),
                   ),
                   // ADR-0034 decision 3: what this phone says it can do, and what is missing.
-                  PhoneSetupSection(device: d),
+                  PhoneSetupSection(device: d, childName: child?.displayName),
                   // ADR-0037 PR B3c: the iPhone's app groups, each with a Block switch.
                   AppGroupsSection(device: d),
                   // Plan 3.6: the latest command's real state, straight from the
