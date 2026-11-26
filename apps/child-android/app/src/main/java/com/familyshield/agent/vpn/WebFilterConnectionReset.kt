@@ -14,23 +14,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-/**
- * Issue #1224: service-owned transient `MODE_SINKHOLE_ALL -> MODE_DNS` connection reset when a
- * domain or category becomes newly blocked, plus shared policy seam for `#1226`.
- *
- * Reliability invariants:
- * 1. [TransientTunnelController] lives inside [FilterVpnService] under the service's lifetime.
- * 2. The hold timer (`pauseMs`) starts strictly AFTER `openMode(MODE_SINKHOLE_ALL)` establishes
- *    the new tunnel descriptor.
- * 3. Callers (`resetIfNeeded` / `resetOpenConnections`) await [FilterVpnService.awaitConnectionReset],
- *    acknowledging only an actual completed transition rather than intent dispatch.
- * 4. Entry or restore failures recover the authoritative mode (`authorizedMode`) with bounded retries,
- *    closing any leftover transient sinkhole if restoration cannot re-establish `MODE_DNS`.
- * 5. Authoritative `authorizedMode` / `internetPaused` is tracked separately from `consentPaused`:
- *    deliberate Internet Pause keeps `MODE_SINKHOLE_ALL`, whereas consent withdrawal interrupts the
- *    transient hold and restores `MODE_DNS` (or closes the tunnel) so `0.0.0.0/0` sinkhole routing
- *    never stays active under withdrawn consent.
- */
 object WebFilterConnectionReset {
     const val DEFAULT_PAUSE_MS: Long = 1_000L
     const val DEFAULT_RESTORE_RETRIES: Int = 3
@@ -40,6 +23,7 @@ object WebFilterConnectionReset {
         COMPLETED,
         SUPERSEDED_BY_PAUSE,
         CLEANED_UP_ON_CONSENT_CHANGE,
+        EXPIRED_INSTANCE,
         SKIPPED,
         FAILED_ENTRY_RECOVERED,
         FAILED_ENTRY_CLOSED,
@@ -50,78 +34,226 @@ object WebFilterConnectionReset {
             get() = this == COMPLETED || this == SUPERSEDED_BY_PAUSE
     }
 
-    data class ServiceSnapshot(
-        val authorizedMode: String = FilterVpnService.MODE_DNS,
-        val activeMode: String? = FilterVpnService.MODE_DNS,
-        val internetPaused: Boolean = false,
-        val consentPaused: Boolean = false,
-        val lockActive: Boolean = false,
-        val stopping: Boolean = false,
+    data class PolicySnapshot(
+        val dnsConfig: DnsFilterPolicy.Config = DnsFilterPolicy.Config(),
+        val alwaysAllowedApps: List<String> = emptyList(),
+        val webFilter: WebFilterRuleDto? = null,
     )
 
+    fun interface ServiceDispatcher {
+        suspend fun dispatch(block: () -> Unit)
+    }
+
     class TransientTunnelController(
-        private val readSnapshot: () -> ServiceSnapshot,
-        private val openMode: suspend (String) -> Boolean,
-        private val closeTunnel: suspend () -> Unit,
+        private val serviceInstanceId: () -> Long = { 1L },
+        private val serviceDispatcher: ServiceDispatcher,
+        private val prepareCommittedPolicy: suspend () -> Unit = {},
+        private val readCommittedPolicyOnServiceThread: () -> PolicySnapshot = { PolicySnapshot() },
+        private val applyPolicyOnServiceThread: (PolicySnapshot) -> Unit = {},
+        private val activeModeOnServiceThread: () -> String?,
+        private val openModeOnServiceThread: (String, PolicySnapshot) -> Boolean,
+        private val closeTunnelOnServiceThread: () -> Unit,
+        private val isInternetPausedOnServiceThread: () -> Boolean,
+        private val isConsentPausedOnServiceThread: () -> Boolean,
+        private val isLockActiveOnServiceThread: () -> Boolean,
         private val waitMs: suspend (Long) -> Unit = { delay(it) },
         private val pauseMs: Long = DEFAULT_PAUSE_MS,
         private val restoreRetries: Int = DEFAULT_RESTORE_RETRIES,
         private val retryBackoffMs: Long = DEFAULT_RETRY_BACKOFF_MS,
     ) {
         private val mutex = Mutex()
+        private var authorizedMode: String = FilterVpnService.MODE_DNS
+        private var stopping: Boolean = false
+        private var tunnelEpoch: Long = 0L
+        private var transientTunnelEpoch: Long? = null
+        private var lastAppliedBypassApps: List<String> = emptyList()
+        private val consentCleanedEpochs = HashSet<Long>()
         @Volatile private var currentDelaySignal: CompletableDeferred<Unit>? = null
 
-        /** Wakes an in-flight transient hold immediately on stop, pause_internet, or consent change. */
+        private suspend fun <T> runOnService(block: () -> T): T {
+            var out: Any? = null
+            var err: Throwable? = null
+            serviceDispatcher.dispatch {
+                try {
+                    out = block()
+                } catch (t: Throwable) {
+                    err = t
+                }
+            }
+            err?.let { throw it }
+            @Suppress("UNCHECKED_CAST")
+            return out as T
+        }
+
+        fun isStoppingOnServiceThread(): Boolean = stopping
+
         fun interruptTransientHold() {
             currentDelaySignal?.complete(Unit)
         }
 
-        suspend fun executeReset(): TransitionOutcome = mutex.withLock {
-            val initial = readSnapshot()
-            if (initial.stopping ||
-                initial.consentPaused ||
-                initial.internetPaused ||
-                initial.lockActive ||
-                initial.authorizedMode != FilterVpnService.MODE_DNS ||
-                initial.activeMode != FilterVpnService.MODE_DNS
-            ) {
-                return@withLock TransitionOutcome.SKIPPED
+        fun handleAuthoritativeStartOnServiceThread(wantedMode: String): Boolean {
+            stopping = false
+            authorizedMode = wantedMode
+            tunnelEpoch += 1L
+            transientTunnelEpoch = null
+            currentDelaySignal?.complete(Unit)
+            val policy = readCommittedPolicyOnServiceThread()
+            applyPolicyOnServiceThread(policy)
+            val currentActive = activeModeOnServiceThread()
+            if (currentActive != wantedMode || lastAppliedBypassApps != policy.alwaysAllowedApps) {
+                val ok = runCatching { openModeOnServiceThread(wantedMode, policy) }.getOrDefault(false)
+                if (ok) lastAppliedBypassApps = policy.alwaysAllowedApps
+                return ok && activeModeOnServiceThread() == wantedMode
             }
+            return true
+        }
 
-            val entered = runCatching { openMode(FilterVpnService.MODE_SINKHOLE_ALL) }.getOrDefault(false)
-            if (!entered) {
-                return@withLock withContext(NonCancellable) {
-                    recoverAfterFailedEntry()
-                }
-            }
-
-            val signal = CompletableDeferred<Unit>()
-            currentDelaySignal = signal
-            val postEstablish = readSnapshot()
-            if (postEstablish.stopping ||
-                postEstablish.consentPaused ||
-                postEstablish.internetPaused ||
-                postEstablish.authorizedMode != FilterVpnService.MODE_DNS
-            ) {
-                signal.complete(Unit)
-            }
-
-            var resolvedOutcome: TransitionOutcome? = null
-            try {
-                awaitWindowOrInterrupt(signal, pauseMs)
-                resolvedOutcome = withContext(NonCancellable) {
-                    restoreAfterWindow()
-                }
-                return@withLock resolvedOutcome
-            } finally {
-                currentDelaySignal = null
-                if (resolvedOutcome == null) {
-                    withContext(NonCancellable) {
-                        restoreAfterWindow()
-                    }
+        fun handleConsentChangedOnServiceThread(consentPausedNow: Boolean) {
+            if (!consentPausedNow || stopping) return
+            val activeTransient = transientTunnelEpoch ?: return
+            consentCleanedEpochs.add(activeTransient)
+            currentDelaySignal?.complete(Unit)
+            val policy = readCommittedPolicyOnServiceThread()
+            applyPolicyOnServiceThread(policy)
+            if (!isInternetPausedOnServiceThread() && authorizedMode == FilterVpnService.MODE_DNS) {
+                tunnelEpoch += 1L
+                val ok = runCatching { openModeOnServiceThread(FilterVpnService.MODE_DNS, policy) }.getOrDefault(false)
+                if (ok && activeModeOnServiceThread() == FilterVpnService.MODE_DNS) {
+                    lastAppliedBypassApps = policy.alwaysAllowedApps
+                    transientTunnelEpoch = null
+                } else {
+                    runCatching { closeTunnelOnServiceThread() }
+                    transientTunnelEpoch = activeTransient
                 }
             }
         }
+
+        fun handleServiceStopOnServiceThread() {
+            stopping = true
+            tunnelEpoch += 1L
+            transientTunnelEpoch = null
+            currentDelaySignal?.complete(Unit)
+            runCatching { closeTunnelOnServiceThread() }
+        }
+
+        suspend fun executeReset(requestInstanceId: Long = serviceInstanceId()): TransitionOutcome {
+            if (requestInstanceId <= 0L || requestInstanceId != serviceInstanceId()) {
+                return TransitionOutcome.EXPIRED_INSTANCE
+            }
+            return mutex.withLock {
+                executeResetLocked(requestInstanceId = requestInstanceId, allowFollowUp = true)
+            }
+        }
+
+        private sealed interface EntryDecision {
+            data class Immediate(val outcome: TransitionOutcome) : EntryDecision
+            data class FailedEntry(val hopEpoch: Long) : EntryDecision
+            data class Entered(
+                val hopEpoch: Long,
+                val preHopPolicy: PolicySnapshot,
+                val signal: CompletableDeferred<Unit>,
+            ) : EntryDecision
+        }
+
+        private sealed interface RestoreStep {
+            data class Done(val outcome: TransitionOutcome, val appliedPolicy: PolicySnapshot) : RestoreStep
+            data object Retry : RestoreStep
+        }
+
+        private suspend fun executeResetLocked(
+            requestInstanceId: Long,
+            allowFollowUp: Boolean,
+        ): TransitionOutcome {
+            runCatching { prepareCommittedPolicy() }
+            val entry = runOnService {
+                if (requestInstanceId <= 0L || requestInstanceId != serviceInstanceId()) {
+                    return@runOnService EntryDecision.Immediate(TransitionOutcome.EXPIRED_INSTANCE)
+                }
+                if (stopping ||
+                    isConsentPausedOnServiceThread() ||
+                    isInternetPausedOnServiceThread() ||
+                    isLockActiveOnServiceThread() ||
+                    authorizedMode != FilterVpnService.MODE_DNS ||
+                    activeModeOnServiceThread() != FilterVpnService.MODE_DNS
+                ) {
+                    return@runOnService EntryDecision.Immediate(TransitionOutcome.SKIPPED)
+                }
+                val prePolicy = readCommittedPolicyOnServiceThread()
+                applyPolicyOnServiceThread(prePolicy)
+                val hopEpoch = ++tunnelEpoch
+                transientTunnelEpoch = hopEpoch
+                val ok = runCatching {
+                    openModeOnServiceThread(FilterVpnService.MODE_SINKHOLE_ALL, prePolicy)
+                }.getOrDefault(false) && activeModeOnServiceThread() == FilterVpnService.MODE_SINKHOLE_ALL
+                if (!ok) return@runOnService EntryDecision.FailedEntry(hopEpoch)
+                lastAppliedBypassApps = prePolicy.alwaysAllowedApps
+                val sig = CompletableDeferred<Unit>()
+                currentDelaySignal = sig
+                if (stopping ||
+                    isConsentPausedOnServiceThread() ||
+                    isInternetPausedOnServiceThread() ||
+                    authorizedMode != FilterVpnService.MODE_DNS ||
+                    transientTunnelEpoch != hopEpoch
+                ) {
+                    sig.complete(Unit)
+                }
+                EntryDecision.Entered(hopEpoch = hopEpoch, preHopPolicy = prePolicy, signal = sig)
+            }
+
+            when (entry) {
+                is EntryDecision.Immediate -> return entry.outcome
+                is EntryDecision.FailedEntry -> return withContext(NonCancellable) { recoverAfterFailedEntry(entry.hopEpoch) }
+                is EntryDecision.Entered -> {
+                    var resolved: Pair<TransitionOutcome, PolicySnapshot?>? = null
+                    try {
+                        awaitWindowOrInterrupt(entry.signal, pauseMs)
+                        resolved = withContext(NonCancellable) { restoreAfterWindow(entry.hopEpoch) }
+                    } finally {
+                        currentDelaySignal = null
+                        if (resolved == null) {
+                            resolved = withContext(NonCancellable) { restoreAfterWindow(entry.hopEpoch) }
+                        }
+                        runOnService { consentCleanedEpochs.remove(entry.hopEpoch) }
+                    }
+                    val (outcome, restoredPolicy) = resolved
+                    if (outcome == TransitionOutcome.COMPLETED) {
+                        runCatching { prepareCommittedPolicy() }
+                        val needFollowUp = runOnService {
+                            if (stopping || requestInstanceId != serviceInstanceId()) return@runOnService false
+                            val finalPolicy = readCommittedPolicyOnServiceThread()
+                            applyPolicyOnServiceThread(finalPolicy)
+                            val target = expectedAuthoritativeModeOnServiceThread()
+                            if (activeModeOnServiceThread() == target &&
+                                lastAppliedBypassApps != finalPolicy.alwaysAllowedApps
+                            ) {
+                                if (runCatching { openModeOnServiceThread(target, finalPolicy) }.getOrDefault(false)) {
+                                    lastAppliedBypassApps = finalPolicy.alwaysAllowedApps
+                                }
+                            }
+                            allowFollowUp &&
+                                restoredPolicy != null &&
+                                hasNewEffectivePolicyBlock(restoredPolicy, finalPolicy) &&
+                                !isConsentPausedOnServiceThread() &&
+                                !isInternetPausedOnServiceThread() &&
+                                !isLockActiveOnServiceThread() &&
+                                authorizedMode == FilterVpnService.MODE_DNS &&
+                                activeModeOnServiceThread() == FilterVpnService.MODE_DNS
+                        }
+                        if (needFollowUp) {
+                            return executeResetLocked(requestInstanceId = requestInstanceId, allowFollowUp = false)
+                        }
+                    }
+                    return outcome
+                }
+            }
+        }
+
+        private fun expectedAuthoritativeModeOnServiceThread(): String =
+            if (isInternetPausedOnServiceThread() || authorizedMode == FilterVpnService.MODE_SINKHOLE_ALL) {
+                FilterVpnService.MODE_SINKHOLE_ALL
+            } else {
+                FilterVpnService.MODE_DNS
+            }
 
         private suspend fun awaitWindowOrInterrupt(signal: CompletableDeferred<Unit>, durationMs: Long) {
             if (signal.isCompleted) return
@@ -136,76 +268,147 @@ object WebFilterConnectionReset {
             }
         }
 
-        private suspend fun recoverAfterFailedEntry(): TransitionOutcome {
+        private suspend fun recoverAfterFailedEntry(hopEpoch: Long): TransitionOutcome {
             for (attempt in 0 until restoreRetries) {
-                val snap = readSnapshot()
-                if (snap.stopping) {
-                    runCatching { closeTunnel() }
-                    return TransitionOutcome.STOPPED
-                }
-                if (attempt > 0) {
-                    runCatching { waitMs(retryBackoffMs) }
-                    if (readSnapshot().stopping) {
-                        runCatching { closeTunnel() }
-                        return TransitionOutcome.STOPPED
+                if (attempt > 0) runCatching { waitMs(retryBackoffMs) }
+                runCatching { prepareCommittedPolicy() }
+                val step = runOnService {
+                    if (stopping) {
+                        if (transientTunnelEpoch == hopEpoch) {
+                            runCatching { closeTunnelOnServiceThread() }
+                            transientTunnelEpoch = null
+                        }
+                        return@runOnService RestoreStep.Done(TransitionOutcome.STOPPED, PolicySnapshot())
+                    }
+                    val policy = readCommittedPolicyOnServiceThread()
+                    applyPolicyOnServiceThread(policy)
+                    val target = expectedAuthoritativeModeOnServiceThread()
+                    if (transientTunnelEpoch != hopEpoch &&
+                        activeModeOnServiceThread() == target &&
+                        lastAppliedBypassApps == policy.alwaysAllowedApps
+                    ) {
+                        val out = if (target == FilterVpnService.MODE_SINKHOLE_ALL) {
+                            TransitionOutcome.SUPERSEDED_BY_PAUSE
+                        } else {
+                            TransitionOutcome.FAILED_ENTRY_RECOVERED
+                        }
+                        return@runOnService RestoreStep.Done(out, policy)
+                    }
+                    val ok = runCatching { openModeOnServiceThread(target, policy) }.getOrDefault(false) &&
+                        activeModeOnServiceThread() == target
+                    if (ok) {
+                        lastAppliedBypassApps = policy.alwaysAllowedApps
+                        if (transientTunnelEpoch == hopEpoch) transientTunnelEpoch = null
+                        val out = if (target == FilterVpnService.MODE_SINKHOLE_ALL) {
+                            TransitionOutcome.SUPERSEDED_BY_PAUSE
+                        } else {
+                            TransitionOutcome.FAILED_ENTRY_RECOVERED
+                        }
+                        RestoreStep.Done(out, policy)
+                    } else {
+                        RestoreStep.Retry
                     }
                 }
-                val latest = readSnapshot()
-                val target = if (latest.internetPaused || latest.authorizedMode == FilterVpnService.MODE_SINKHOLE_ALL) {
-                    FilterVpnService.MODE_SINKHOLE_ALL
-                } else {
-                    FilterVpnService.MODE_DNS
-                }
-                if (runCatching { openMode(target) }.getOrDefault(false)) {
-                    return TransitionOutcome.FAILED_ENTRY_RECOVERED
+                if (step is RestoreStep.Done) return step.outcome
+            }
+            runOnService {
+                if (transientTunnelEpoch == hopEpoch) {
+                    runCatching { closeTunnelOnServiceThread() }
+                    transientTunnelEpoch = null
                 }
             }
-            runCatching { closeTunnel() }
             return TransitionOutcome.FAILED_ENTRY_CLOSED
         }
 
-        private suspend fun restoreAfterWindow(): TransitionOutcome {
-            val initialSnap = readSnapshot()
-            if (initialSnap.stopping) {
-                runCatching { closeTunnel() }
-                return TransitionOutcome.STOPPED
-            }
-            if (initialSnap.internetPaused || initialSnap.authorizedMode == FilterVpnService.MODE_SINKHOLE_ALL) {
-                if (initialSnap.activeMode != FilterVpnService.MODE_SINKHOLE_ALL) {
-                    runCatching { openMode(FilterVpnService.MODE_SINKHOLE_ALL) }
-                }
-                return TransitionOutcome.SUPERSEDED_BY_PAUSE
-            }
-
-            val consentChangedAtStart = initialSnap.consentPaused
+        private suspend fun restoreAfterWindow(hopEpoch: Long): Pair<TransitionOutcome, PolicySnapshot?> {
             for (attempt in 0 until restoreRetries) {
-                if (attempt > 0) {
-                    runCatching { waitMs(retryBackoffMs) }
-                }
-                val snap = readSnapshot()
-                if (snap.stopping) {
-                    runCatching { closeTunnel() }
-                    return TransitionOutcome.STOPPED
-                }
-                if (snap.internetPaused || snap.authorizedMode == FilterVpnService.MODE_SINKHOLE_ALL) {
-                    if (snap.activeMode != FilterVpnService.MODE_SINKHOLE_ALL) {
-                        runCatching { openMode(FilterVpnService.MODE_SINKHOLE_ALL) }
+                if (attempt > 0) runCatching { waitMs(retryBackoffMs) }
+                runCatching { prepareCommittedPolicy() }
+                val step = runOnService {
+                    if (stopping) {
+                        if (transientTunnelEpoch == hopEpoch) {
+                            runCatching { closeTunnelOnServiceThread() }
+                            transientTunnelEpoch = null
+                        }
+                        return@runOnService RestoreStep.Done(TransitionOutcome.STOPPED, PolicySnapshot())
                     }
-                    return TransitionOutcome.SUPERSEDED_BY_PAUSE
-                }
-                if (runCatching { openMode(FilterVpnService.MODE_DNS) }.getOrDefault(false)) {
-                    return if (consentChangedAtStart || readSnapshot().consentPaused) {
-                        TransitionOutcome.CLEANED_UP_ON_CONSENT_CHANGE
+                    val policy = readCommittedPolicyOnServiceThread()
+                    applyPolicyOnServiceThread(policy)
+                    val target = expectedAuthoritativeModeOnServiceThread()
+                    val consentTriggered = isConsentPausedOnServiceThread() || consentCleanedEpochs.contains(hopEpoch)
+                    if (target == FilterVpnService.MODE_SINKHOLE_ALL) {
+                        if (activeModeOnServiceThread() == FilterVpnService.MODE_SINKHOLE_ALL &&
+                            lastAppliedBypassApps == policy.alwaysAllowedApps
+                        ) {
+                            if (transientTunnelEpoch == hopEpoch) transientTunnelEpoch = null
+                            return@runOnService RestoreStep.Done(TransitionOutcome.SUPERSEDED_BY_PAUSE, policy)
+                        }
+                        val ok = runCatching {
+                            openModeOnServiceThread(FilterVpnService.MODE_SINKHOLE_ALL, policy)
+                        }.getOrDefault(false) && activeModeOnServiceThread() == FilterVpnService.MODE_SINKHOLE_ALL
+                        return@runOnService if (ok) {
+                            lastAppliedBypassApps = policy.alwaysAllowedApps
+                            if (transientTunnelEpoch == hopEpoch) transientTunnelEpoch = null
+                            RestoreStep.Done(TransitionOutcome.SUPERSEDED_BY_PAUSE, policy)
+                        } else {
+                            RestoreStep.Retry
+                        }
+                    }
+                    if (transientTunnelEpoch != hopEpoch &&
+                        activeModeOnServiceThread() == FilterVpnService.MODE_DNS &&
+                        lastAppliedBypassApps == policy.alwaysAllowedApps
+                    ) {
+                        val out = if (consentTriggered) TransitionOutcome.CLEANED_UP_ON_CONSENT_CHANGE else TransitionOutcome.COMPLETED
+                        return@runOnService RestoreStep.Done(out, policy)
+                    }
+                    val ok = runCatching {
+                        openModeOnServiceThread(FilterVpnService.MODE_DNS, policy)
+                    }.getOrDefault(false) && activeModeOnServiceThread() == FilterVpnService.MODE_DNS
+                    if (ok) {
+                        lastAppliedBypassApps = policy.alwaysAllowedApps
+                        if (transientTunnelEpoch == hopEpoch) transientTunnelEpoch = null
+                        val out = if (consentTriggered) TransitionOutcome.CLEANED_UP_ON_CONSENT_CHANGE else TransitionOutcome.COMPLETED
+                        RestoreStep.Done(out, policy)
                     } else {
-                        TransitionOutcome.COMPLETED
+                        RestoreStep.Retry
                     }
+                }
+                if (step is RestoreStep.Done) return step.outcome to step.appliedPolicy
+            }
+            runOnService {
+                if (transientTunnelEpoch == hopEpoch) {
+                    runCatching { closeTunnelOnServiceThread() }
+                    transientTunnelEpoch = null
                 }
             }
-
-            // Never leave transient MODE_SINKHOLE_ALL active when MODE_DNS could not be restored.
-            runCatching { closeTunnel() }
-            return TransitionOutcome.RESTORE_FAILED_CLOSED
+            return TransitionOutcome.RESTORE_FAILED_CLOSED to null
         }
+    }
+
+    fun hasNewEffectivePolicyBlock(before: PolicySnapshot, after: PolicySnapshot): Boolean {
+        if (hasNewWebBlock(before.webFilter, after.webFilter)) return true
+        if (!before.dnsConfig.safeSearch && after.dnsConfig.safeSearch) return true
+        if (youtubeRestrictionRank(after.dnsConfig.youtubeMode) > youtubeRestrictionRank(before.dnsConfig.youtubeMode)) return true
+        val beforeManual = effectiveDomainsFromConfig(before.dnsConfig)
+        val afterManual = effectiveDomainsFromConfig(after.dnsConfig)
+        if ((afterManual - beforeManual).isNotEmpty()) return true
+        val beforeCats = before.dnsConfig.blockedCategories.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
+        val afterCats = after.dnsConfig.blockedCategories.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
+        return (afterCats - beforeCats).isNotEmpty()
+    }
+
+    private fun youtubeRestrictionRank(mode: String): Int = when (mode.trim().lowercase()) {
+        "strict" -> 2
+        "moderate" -> 1
+        else -> 0
+    }
+
+    private fun effectiveDomainsFromConfig(cfg: DnsFilterPolicy.Config): Set<String> {
+        val allowed = cfg.allowedDomains.map(DnsFilterPolicy::normalize).filter { it.isNotEmpty() }
+        return cfg.blockedDomains
+            .map(DnsFilterPolicy::normalize)
+            .filter { domain -> domain.isNotEmpty() && allowed.none { allow -> DnsFilterPolicy.matches(domain, allow) } }
+            .toSet()
     }
 
     fun hasNewWebBlock(before: WebFilterRuleDto?, after: WebFilterRuleDto?): Boolean {

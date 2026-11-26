@@ -77,29 +77,49 @@ class FilterVpnService : VpnService() {
     private val hadEstablishedTunnel = AtomicBoolean(false)
     private val lifecycleHandler by lazy { Handler(mainLooper) }
     private var mode: String = MODE_DNS
+    private val instanceId: Long = instanceSeq.incrementAndGet()
     @Volatile private var authorizedMode: String = MODE_DNS
     @Volatile private var serviceStopping: Boolean = false
+    @Volatile private var tunnelBypassApps: List<String> = emptyList()
+
+    private fun buildCommittedPolicySnapshot(): WebFilterConnectionReset.PolicySnapshot {
+        val set = rules.cachedRules()
+        val wf = set?.webFilter
+        val dnsCfg = DnsFilterPolicy.Config(
+            pausedInternet = rules.isInternetPaused(),
+            siteNamesEnabled = rules.siteNamesEnabled(),
+            safeSearch = wf?.safeSearchEnforced ?: false,
+            youtubeMode = wf?.youtubeRestrictedMode ?: "off",
+            allowedDomains = wf?.allowedDomains ?: emptyList(),
+            blockedDomains = wf?.blockedDomains ?: emptyList(),
+            categoryDomains = blocklist.domains(),
+            packLoaded = blocklist.packStored(),
+            blockedCategories = wf?.blockedCategories ?: emptyList(),
+        )
+        return WebFilterConnectionReset.PolicySnapshot(
+            dnsConfig = dnsCfg,
+            alwaysAllowedApps = set?.alwaysAllowedApps.orEmpty(),
+            webFilter = wf,
+        )
+    }
+
     private val transientResetController = WebFilterConnectionReset.TransientTunnelController(
-        readSnapshot = {
-            WebFilterConnectionReset.ServiceSnapshot(
-                authorizedMode = authorizedMode,
-                activeMode = tunnelMode,
-                internetPaused = rules.isInternetPaused(),
-                consentPaused = consent.isPaused(),
-                lockActive = com.familyshield.agent.enforcement.LockState.isActive(this),
-                stopping = serviceStopping,
-            )
+        serviceInstanceId = { if (serviceStopping) 0L else instanceId },
+        serviceDispatcher = WebFilterConnectionReset.ServiceDispatcher { block ->
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) { block() }
         },
-        openMode = { wanted ->
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) {
-                openTunnelForMode(wanted)
-            }
+        prepareCommittedPolicy = { runCatching { rules.currentRules() } },
+        readCommittedPolicyOnServiceThread = { buildCommittedPolicySnapshot() },
+        applyPolicyOnServiceThread = { snapshot ->
+            upstream = systemDnsServers()
+            config = snapshot.dnsConfig
         },
-        closeTunnel = {
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) {
-                stopTunnel()
-            }
-        },
+        activeModeOnServiceThread = { tunnelMode },
+        openModeOnServiceThread = { wanted, snapshot -> openTunnelForMode(wanted, snapshot) },
+        closeTunnelOnServiceThread = { stopTunnel() },
+        isInternetPausedOnServiceThread = { rules.isInternetPaused() },
+        isConsentPausedOnServiceThread = { consent.isPaused() },
+        isLockActiveOnServiceThread = { com.familyshield.agent.enforcement.LockState.isActive(this) },
     )
     private val running = AtomicBoolean(false)
     private val generation = java.util.concurrent.atomic.AtomicInteger(0)
@@ -111,16 +131,17 @@ class FilterVpnService : VpnService() {
     override fun onCreate() {
         super.onCreate()
         isRunning = true
+        currentInstanceId = instanceId
+        activeInstance = this
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
                 serviceStopping = true
-                transientResetController.interruptTransientHold()
+                transientResetController.handleServiceStopOnServiceThread()
                 completeAllPendingResets(WebFilterConnectionReset.TransitionOutcome.STOPPED)
                 hadEstablishedTunnel.set(false)
-                stopTunnel()
                 VpnState.clearFilterLoss(this)
                 stopSelf()
                 return START_NOT_STICKY
@@ -129,9 +150,17 @@ class FilterVpnService : VpnService() {
             ACTION_FLUSH_VISITS -> { flushSiteVisits(); return START_STICKY }
             ACTION_RESET_CONNECTIONS -> {
                 val reqId = intent.getStringExtra(EXTRA_RESET_REQUEST_ID)
+                val targetInstance = intent.getLongExtra(EXTRA_TARGET_INSTANCE_ID, 0L)
+                if (targetInstance <= 0L || targetInstance != instanceId || serviceStopping) {
+                    if (reqId != null) {
+                        pendingResetRequests.remove(reqId)?.complete(WebFilterConnectionReset.TransitionOutcome.EXPIRED_INSTANCE)
+                    }
+                    return START_STICKY
+                }
                 scope.launch {
-                    val outcome = runCatching { transientResetController.executeReset() }
-                        .getOrDefault(WebFilterConnectionReset.TransitionOutcome.RESTORE_FAILED_CLOSED)
+                    val outcome = runCatching {
+                        transientResetController.executeReset(requestInstanceId = targetInstance)
+                    }.getOrDefault(WebFilterConnectionReset.TransitionOutcome.RESTORE_FAILED_CLOSED)
                     if (reqId != null) {
                         pendingResetRequests.remove(reqId)?.complete(outcome)
                     }
@@ -143,45 +172,43 @@ class FilterVpnService : VpnService() {
         serviceStopping = false
         authorizedMode = wanted
         VpnState.setMode(this, wanted)
-        transientResetController.interruptTransientHold()
         startForegroundCompat()
+        transientResetController.handleAuthoritativeStartOnServiceThread(wanted)
         reloadConfig()
-        if (tun == null || wanted != mode) {
-            mode = wanted
-            openTunnel()
-        }
         return START_STICKY
     }
 
     override fun onRevoke() {
-        // Android can call this off the main thread. Serialize with start, re-mode and stop.
         lifecycleHandler.post {
             Log.w(TAG, "VPN revoked")
             serviceStopping = true
-            transientResetController.interruptTransientHold()
-            completeAllPendingResets(WebFilterConnectionReset.TransitionOutcome.STOPPED)
             try {
                 if (VpnState.recordFilterLoss(this, settings, consent, hadEstablishedTunnel.getAndSet(false))) {
                     TamperAlertWorker.enqueue(this, TamperAlertWorker.TYPE_VPN_REVOKED)
                 }
             } finally {
-                stopTunnel()
+                transientResetController.handleServiceStopOnServiceThread()
+                completeAllPendingResets(WebFilterConnectionReset.TransitionOutcome.STOPPED)
                 stopSelf()
             }
         }
     }
 
     override fun onDestroy() {
-        // A system revoke can already be queued on the main looper. Keep this instance's
-        // established latch until that callback consumes it or an explicit stop clears it.
         serviceStopping = true
-        transientResetController.interruptTransientHold()
+        transientResetController.handleServiceStopOnServiceThread()
         completeAllPendingResets(WebFilterConnectionReset.TransitionOutcome.STOPPED)
-        stopTunnel()
+        if (activeInstance === this) activeInstance = null
+        if (currentInstanceId == instanceId) currentInstanceId = 0L
         scope.cancel()
         workers.shutdownNow()
         isRunning = false
         super.onDestroy()
+    }
+
+    internal fun onConsentChangedMain(pausedNow: Boolean) {
+        if (serviceStopping) return
+        transientResetController.handleConsentChangedOnServiceThread(pausedNow)
     }
 
     private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
@@ -235,10 +262,11 @@ class FilterVpnService : VpnService() {
         }
         // Our own traffic, the FCM wake path (pause mode only) and the parent's always-allowed apps
         // bypass the tunnel entirely (#458). The list itself is a pure function so a row can pin it.
+        val allowedApps = tunnelBypassApps.ifEmpty { rules.cachedRules()?.alwaysAllowedApps.orEmpty() }
         val bypass = TunnelBypassPolicy.excludedPackages(
             sinkholeAll = mode == MODE_SINKHOLE_ALL,
             selfPackage = packageName,
-            alwaysAllowedApps = rules.cachedRules()?.alwaysAllowedApps.orEmpty(),
+            alwaysAllowedApps = allowedApps,
         )
         for (pkg in bypass) runCatching { builder.addDisallowedApplication(pkg) }
         val configure = Intent(this, PairingActivity::class.java)
@@ -277,10 +305,14 @@ class FilterVpnService : VpnService() {
         VpnState.setEstablished(this, false)
     }
 
-    private fun openTunnelForMode(wanted: String): Boolean {
+    private fun openTunnelForMode(
+        wanted: String,
+        snapshot: WebFilterConnectionReset.PolicySnapshot = buildCommittedPolicySnapshot(),
+    ): Boolean {
         if (serviceStopping) return false
         upstream = systemDnsServers()
-        applyRules(rules.cachedRules())
+        config = snapshot.dnsConfig
+        tunnelBypassApps = snapshot.alwaysAllowedApps
         mode = wanted
         openTunnel()
         return tun != null && tunnelMode == wanted
@@ -585,14 +617,28 @@ class FilterVpnService : VpnService() {
         const val ACTION_FLUSH_VISITS = "com.familyshield.agent.vpn.FLUSH_VISITS"
         const val ACTION_RESET_CONNECTIONS = "com.familyshield.agent.vpn.RESET_CONNECTIONS"
         private const val EXTRA_RESET_REQUEST_ID = "reset_request_id"
+        private const val EXTRA_TARGET_INSTANCE_ID = "target_instance_id"
+        private val instanceSeq = java.util.concurrent.atomic.AtomicLong(0L)
+        @Volatile var currentInstanceId: Long = 0L
+            private set
+        @Volatile private var activeInstance: FilterVpnService? = null
+        private val mainLooperHandler = android.os.Handler(android.os.Looper.getMainLooper())
         private val resetRequestSeq = java.util.concurrent.atomic.AtomicLong(0L)
         private val pendingResetRequests =
             java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.CompletableDeferred<WebFilterConnectionReset.TransitionOutcome>>()
 
         private fun completeAllPendingResets(outcome: WebFilterConnectionReset.TransitionOutcome) {
-            val keys = pendingResetRequests.keys.toList()
-            for (k in keys) {
+            for (k in pendingResetRequests.keys.toList()) {
                 pendingResetRequests.remove(k)?.complete(outcome)
+            }
+        }
+
+        fun onConsentChanged(pausedNow: Boolean) {
+            val svc = activeInstance ?: return
+            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+                svc.onConsentChangedMain(pausedNow)
+            } else {
+                mainLooperHandler.post { activeInstance?.onConsentChangedMain(pausedNow) }
             }
         }
         const val EXTRA_MODE = "mode"
@@ -650,7 +696,8 @@ class FilterVpnService : VpnService() {
             context: Context,
             timeoutMs: Long = 15_000L,
         ): WebFilterConnectionReset.TransitionOutcome {
-            if (!isRunning || tunnelMode != MODE_DNS || !VpnState.isEnabled(context) || !isPrepared(context)) {
+            val targetInstance = currentInstanceId
+            if (!isRunning || targetInstance <= 0L || tunnelMode != MODE_DNS || !VpnState.isEnabled(context) || !isPrepared(context)) {
                 return WebFilterConnectionReset.TransitionOutcome.SKIPPED
             }
             val reqId = "reset-${resetRequestSeq.incrementAndGet()}"
@@ -661,12 +708,11 @@ class FilterVpnService : VpnService() {
                     context.startService(
                         Intent(context, FilterVpnService::class.java)
                             .setAction(ACTION_RESET_CONNECTIONS)
-                            .putExtra(EXTRA_RESET_REQUEST_ID, reqId),
+                            .putExtra(EXTRA_RESET_REQUEST_ID, reqId)
+                            .putExtra(EXTRA_TARGET_INSTANCE_ID, targetInstance),
                     )
                 }.getOrNull()
-                if (started == null) {
-                    return WebFilterConnectionReset.TransitionOutcome.SKIPPED
-                }
+                if (started == null) return WebFilterConnectionReset.TransitionOutcome.SKIPPED
                 return kotlinx.coroutines.withTimeoutOrNull(timeoutMs) { deferred.await() }
                     ?: WebFilterConnectionReset.TransitionOutcome.SKIPPED
             } finally {

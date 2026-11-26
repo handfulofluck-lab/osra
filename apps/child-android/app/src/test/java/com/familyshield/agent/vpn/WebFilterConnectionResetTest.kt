@@ -5,84 +5,158 @@ import java.io.File
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.yield
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Issue #1224 (and reliability hardening): service-owned transient `MODE_SINKHOLE_ALL -> MODE_DNS`
- * connection reset when a domain or category is newly blocked, plus shared policy seam for `#1226`.
- */
 class WebFilterConnectionResetTest {
 
-    /**
-     * Synthetic harness mirroring `FilterVpnService`'s authoritative vs active tunnel state:
-     * `openTunnel` closes any existing fd (`activeMode = null`) BEFORE attempting `establish(wanted)`,
-     * so failed entry or failed restore leaves `activeMode == null` (or transient sinkhole) unless
-     * explicitly recovered or closed by `TransientTunnelController`.
-     */
     private class SyntheticServiceHarness(
-        var authorizedMode: String = FilterVpnService.MODE_DNS,
+        var instanceId: Long = 1L,
+        initialAuthorizedMode: String = FilterVpnService.MODE_DNS,
         var activeMode: String? = FilterVpnService.MODE_DNS,
         var internetPaused: Boolean = false,
         var consentPaused: Boolean = false,
         var lockActive: Boolean = false,
-        var stopping: Boolean = false,
-        val onEstablish: suspend SyntheticServiceHarness.(String, Int) -> Boolean = { _, _ -> true },
+        initialStopping: Boolean = false,
+        var committedPolicy: WebFilterConnectionReset.PolicySnapshot = WebFilterConnectionReset.PolicySnapshot(),
+        val onEstablish: (SyntheticServiceHarness, String, Int, WebFilterConnectionReset.PolicySnapshot) -> Boolean = { _, _, _, _ -> true },
         val onWait: suspend SyntheticServiceHarness.(Long) -> Unit = { ms -> nowMs += ms },
     ) {
         var nowMs: Long = 0L
         val log = mutableListOf<String>()
+        var appliedDnsConfig: DnsFilterPolicy.Config = committedPolicy.dnsConfig
+        var appliedBypassApps: List<String> = committedPolicy.alwaysAllowedApps
         private val attemptCounts = mutableMapOf<String, Int>()
+        private val serviceThreadMutex = Mutex()
+        private var currentThreadOnService: Boolean = false
 
         val controller: WebFilterConnectionReset.TransientTunnelController
 
         init {
             controller = WebFilterConnectionReset.TransientTunnelController(
-                readSnapshot = {
-                    WebFilterConnectionReset.ServiceSnapshot(
-                        authorizedMode = authorizedMode,
-                        activeMode = activeMode,
-                        internetPaused = internetPaused,
-                        consentPaused = consentPaused,
-                        lockActive = lockActive,
-                        stopping = stopping,
-                    )
+                serviceInstanceId = { if (controllerStopping) 0L else instanceId },
+                serviceDispatcher = WebFilterConnectionReset.ServiceDispatcher { block ->
+                    serviceThreadMutex.withLock {
+                        currentThreadOnService = true
+                        try {
+                            block()
+                        } finally {
+                            currentThreadOnService = false
+                        }
+                    }
                 },
-                openMode = { wanted ->
-                    // Mirrors FilterVpnService.openTunnel(): stopTunnel() closes the previous fd first.
+                readCommittedPolicyOnServiceThread = {
+                    assertTrue("policy read must run on service thread", currentThreadOnService)
+                    committedPolicy
+                },
+                applyPolicyOnServiceThread = { snap ->
+                    assertTrue("policy apply must run on service thread", currentThreadOnService)
+                    appliedDnsConfig = snap.dnsConfig
+                },
+                activeModeOnServiceThread = {
+                    assertTrue("activeMode read must run on service thread", currentThreadOnService)
+                    activeMode
+                },
+                openModeOnServiceThread = { wanted, snap ->
+                    assertTrue("openMode must run on service thread", currentThreadOnService)
                     activeMode = null
                     val n = (attemptCounts[wanted] ?: 0) + 1
                     attemptCounts[wanted] = n
                     log += "open:$wanted#$n@${nowMs}"
-                    val ok = onEstablish(wanted, n)
+                    val ok = onEstablish(this, wanted, n, snap)
                     if (ok) {
                         activeMode = wanted
+                        appliedBypassApps = snap.alwaysAllowedApps
                         log += "active:$wanted@${nowMs}"
                     } else {
                         log += "fail:$wanted#$n@${nowMs}"
                     }
                     ok
                 },
-                closeTunnel = {
+                closeTunnelOnServiceThread = {
+                    assertTrue("closeTunnel must run on service thread", currentThreadOnService)
                     activeMode = null
                     log += "close@${nowMs}"
                 },
+                isInternetPausedOnServiceThread = { internetPaused },
+                isConsentPausedOnServiceThread = { consentPaused },
+                isLockActiveOnServiceThread = { lockActive },
                 waitMs = { ms ->
                     log += "wait:${ms}@${nowMs}"
                     onWait(ms)
                 },
             )
+            runBlocking {
+                if (initialAuthorizedMode != FilterVpnService.MODE_DNS) {
+                    serviceThreadMutex.withLock {
+                        currentThreadOnService = true
+                        try {
+                            controller.handleAuthoritativeStartOnServiceThread(initialAuthorizedMode)
+                        } finally {
+                            currentThreadOnService = false
+                        }
+                    }
+                    log.clear()
+                    attemptCounts.clear()
+                    activeMode = if (initialStopping) null else activeMode
+                }
+                if (initialStopping) {
+                    serviceThreadMutex.withLock {
+                        currentThreadOnService = true
+                        try {
+                            controller.handleServiceStopOnServiceThread()
+                        } finally {
+                            currentThreadOnService = false
+                        }
+                    }
+                    log.clear()
+                }
+            }
         }
+
+        private val controllerStopping: Boolean
+            get() = controller.isStoppingOnServiceThread()
+
+        suspend fun serviceAuthoritativeStart(wantedMode: String, pausedFlag: Boolean = wantedMode == FilterVpnService.MODE_SINKHOLE_ALL): Boolean =
+            serviceThreadMutex.withLock {
+                currentThreadOnService = true
+                try {
+                    internetPaused = pausedFlag
+                    lockActive = pausedFlag
+                    controller.handleAuthoritativeStartOnServiceThread(wantedMode)
+                } finally {
+                    currentThreadOnService = false
+                }
+            }
+
+        suspend fun serviceConsentChanged(pausedNow: Boolean) =
+            serviceThreadMutex.withLock {
+                currentThreadOnService = true
+                try {
+                    consentPaused = pausedNow
+                    if (pausedNow) internetPaused = false
+                    controller.handleConsentChangedOnServiceThread(pausedNow)
+                } finally {
+                    currentThreadOnService = false
+                }
+            }
+
+        suspend fun serviceStop() =
+            serviceThreadMutex.withLock {
+                currentThreadOnService = true
+                try {
+                    controller.handleServiceStopOnServiceThread()
+                } finally {
+                    currentThreadOnService = false
+                }
+            }
     }
 
-    /**
-     * Mutant: skip `MODE_SINKHOLE_ALL` or `MODE_DNS`, invert order, or skip `1000 ms` hold ->
-     * `log` fails to record `sinkhole_all -> wait:1000 -> dns` or outcome is not `COMPLETED`.
-     */
     @Test
     fun `newly blocked domain triggers one service-owned sinkhole-then-DNS transition`() = runBlocking {
         val before = WebFilterRuleDto(blockedDomains = listOf("example.com"))
@@ -101,9 +175,6 @@ class WebFilterConnectionResetTest {
         )
     }
 
-    /**
-     * Mutant: check only `blockedDomains` and ignore `blockedCategories` -> returns false.
-     */
     @Test
     fun `newly blocked category and removed allowedDomains exemption trigger reset predicate`() {
         assertTrue(
@@ -120,9 +191,6 @@ class WebFilterConnectionResetTest {
         )
     }
 
-    /**
-     * Mutant: trigger on `before != after` -> unblocking or allow-only edits return true.
-     */
     @Test
     fun `allow-only, unblock, case-only edit, or unchanged rules do not trigger reset`() {
         val base = WebFilterRuleDto(
@@ -138,179 +206,260 @@ class WebFilterConnectionResetTest {
         assertFalse(WebFilterConnectionReset.shouldResetConnections(base, base.copy(allowedDomains = listOf("khanacademy.org", "wikipedia.org"))))
     }
 
-    /**
-     * Mutant: omit any pre-entry guard -> paused, locked, stopped, or unconsented tunnel transitions anyway.
-     */
     @Test
     fun `paused, locked, stopped, or unconsented states skip transition without touching tunnel`() = runBlocking {
         val states = listOf(
             SyntheticServiceHarness(internetPaused = true),
             SyntheticServiceHarness(lockActive = true),
-            SyntheticServiceHarness(authorizedMode = FilterVpnService.MODE_SINKHOLE_ALL),
+            SyntheticServiceHarness(initialAuthorizedMode = FilterVpnService.MODE_SINKHOLE_ALL, activeMode = FilterVpnService.MODE_SINKHOLE_ALL),
             SyntheticServiceHarness(activeMode = FilterVpnService.MODE_SINKHOLE_ALL),
             SyntheticServiceHarness(activeMode = null),
             SyntheticServiceHarness(consentPaused = true),
-            SyntheticServiceHarness(stopping = true),
+            SyntheticServiceHarness(initialStopping = true, activeMode = null),
         )
         for (h in states) {
-            val outcome = h.controller.executeReset()
-            assertEquals(WebFilterConnectionReset.TransitionOutcome.SKIPPED, outcome)
+            val outcome = h.controller.executeReset(requestInstanceId = 1L)
+            assertTrue(
+                outcome == WebFilterConnectionReset.TransitionOutcome.SKIPPED ||
+                    outcome == WebFilterConnectionReset.TransitionOutcome.EXPIRED_INSTANCE,
+            )
             assertFalse(outcome.acknowledged)
             assertTrue("ineligible state must not touch tunnel: ${h.log}", h.log.isEmpty())
         }
     }
 
-    /**
-     * Synthetic service test 1 — Failed entry:
-     * `openTunnel(MODE_SINKHOLE_ALL)` closes the established `MODE_DNS` fd first and then fails (`establish() == null`).
-     * Mutant: fail to recover `authorizedMode` on entry failure, or start the 1s hold anyway ->
-     * `activeMode` stays `null` (child loses DNS filter) or `acknowledged` falsely claims `true`.
-     */
     @Test
     fun `failed entry skips hold, immediately recovers authorized MODE_DNS, and does not acknowledge`() = runBlocking {
         val harness = SyntheticServiceHarness(
-            onEstablish = { wanted, _ -> wanted != FilterVpnService.MODE_SINKHOLE_ALL },
+            onEstablish = { _, wanted, _, _ -> wanted != FilterVpnService.MODE_SINKHOLE_ALL },
         )
-
         val outcome = harness.controller.executeReset()
-
         assertEquals(WebFilterConnectionReset.TransitionOutcome.FAILED_ENTRY_RECOVERED, outcome)
-        assertFalse("failed entry must not acknowledge transition", outcome.acknowledged)
-        assertEquals("authorized MODE_DNS must be recovered after failed entry", FilterVpnService.MODE_DNS, harness.activeMode)
+        assertFalse(outcome.acknowledged)
+        assertEquals(FilterVpnService.MODE_DNS, harness.activeMode)
         assertEquals(
             listOf("open:sinkhole_all#1@0", "fail:sinkhole_all#1@0", "open:dns#1@0", "active:dns@0"),
             harness.log,
         )
     }
 
-    /**
-     * Synthetic service test 2 — Failed restore (retry recovery + unrecoverable close):
-     * Mutant A: attempt `openMode(MODE_DNS)` only once with no retry -> transient failure leaves tunnel down.
-     * Mutant B: leave `activeMode == MODE_SINKHOLE_ALL` when all restore retries fail -> child remains blackholed.
-     */
     @Test
     fun `failed restore retries authorized MODE_DNS and closes transient tunnel if all retries fail`() = runBlocking {
-        // Case A: first restore fails, second succeeds after 250ms retry backoff
         val recoverable = SyntheticServiceHarness(
-            onEstablish = { wanted, attempt ->
-                !(wanted == FilterVpnService.MODE_DNS && attempt == 1)
-            },
+            onEstablish = { _, wanted, attempt, _ -> !(wanted == FilterVpnService.MODE_DNS && attempt == 1) },
         )
         val outcomeA = recoverable.controller.executeReset()
         assertEquals(WebFilterConnectionReset.TransitionOutcome.COMPLETED, outcomeA)
         assertTrue(outcomeA.acknowledged)
         assertEquals(FilterVpnService.MODE_DNS, recoverable.activeMode)
         assertEquals(
-            listOf(
-                "open:sinkhole_all#1@0",
-                "active:sinkhole_all@0",
-                "wait:1000@0",
-                "open:dns#1@1000",
-                "fail:dns#1@1000",
-                "wait:250@1000",
-                "open:dns#2@1250",
-                "active:dns@1250",
-            ),
+            listOf("open:sinkhole_all#1@0", "active:sinkhole_all@0", "wait:1000@0", "open:dns#1@1000", "fail:dns#1@1000", "wait:250@1000", "open:dns#2@1250", "active:dns@1250"),
             recoverable.log,
         )
 
-        // Case B: all 3 restore attempts fail -> closeTunnel() tears down transient routing
         val unrecoverable = SyntheticServiceHarness(
-            onEstablish = { wanted, _ -> wanted != FilterVpnService.MODE_DNS },
+            onEstablish = { _, wanted, _, _ -> wanted != FilterVpnService.MODE_DNS },
         )
         val outcomeB = unrecoverable.controller.executeReset()
         assertEquals(WebFilterConnectionReset.TransitionOutcome.RESTORE_FAILED_CLOSED, outcomeB)
         assertFalse(outcomeB.acknowledged)
-        assertNull("transient sinkhole must be closed when restore cannot re-open DNS", unrecoverable.activeMode)
+        assertNull(unrecoverable.activeMode)
         assertEquals("close@1500", unrecoverable.log.last())
     }
 
-    /**
-     * Synthetic service test 3 — Delayed establishment & actual transition acknowledgment:
-     * `establish(MODE_SINKHOLE_ALL)` takes 2,500 ms before becoming active.
-     * Mutant: start the 1,000 ms timer at intent dispatch (`t = 0`) or acknowledge dispatch before restore ->
-     * `MODE_DNS` fires at `1,000 ms` (before/during establishment) or deferred completes before `t = 3,500 ms`.
-     */
     @Test
     fun `delayed establishment starts 1s hold only after sinkhole interface is active and acknowledges at end`() = runBlocking {
-        val establishGate = CompletableDeferred<Unit>()
+        var establishLatencySimulated = false
         val harness = SyntheticServiceHarness(
-            onEstablish = { wanted, _ ->
-                if (wanted == FilterVpnService.MODE_SINKHOLE_ALL) {
-                    establishGate.await()
-                    nowMs += 2_500L
+            onEstablish = { h, wanted, _, _ ->
+                if (wanted == FilterVpnService.MODE_SINKHOLE_ALL && !establishLatencySimulated) {
+                    establishLatencySimulated = true
+                    h.nowMs += 2_500L
                 }
                 true
             },
         )
-
-        val deferredOutcome = async { harness.controller.executeReset() }
-        yield()
-        assertFalse("must not acknowledge while sinkhole establishment is still pending", deferredOutcome.isCompleted)
-
-        establishGate.complete(Unit)
-        val outcome = deferredOutcome.await()
-
+        val outcome = harness.controller.executeReset()
         assertEquals(WebFilterConnectionReset.TransitionOutcome.COMPLETED, outcome)
         assertTrue(outcome.acknowledged)
         assertEquals(3_500L, harness.nowMs)
         assertEquals(
-            listOf(
-                "open:sinkhole_all#1@0",
-                "active:sinkhole_all@2500",
-                "wait:1000@2500",
-                "open:dns#1@3500",
-                "active:dns@3500",
-            ),
+            listOf("open:sinkhole_all#1@0", "active:sinkhole_all@2500", "wait:1000@2500", "open:dns#1@3500", "active:dns@3500"),
             harness.log,
         )
     }
 
-    /**
-     * Synthetic service test 4 — Consent withdrawal vs deliberate Internet Pause during transient phase:
-     * Mutant A: gate DNS restoration on `!consentPaused` -> consent withdrawal during transient sinkhole
-     * skips cleanup and strands the child in `0.0.0.0/0` packet-dropping sinkhole mode!
-     * Mutant B: fail to distinguish deliberate `pause_internet` (`authorizedMode == MODE_SINKHOLE_ALL`) ->
-     * overwrites parent's Internet Pause back to `MODE_DNS`.
-     */
     @Test
-    fun `consent change cleans up transient sinkhole immediately while deliberate Internet Pause preserves sinkhole`() = runBlocking {
-        // Case A: consent withdrawn mid-window -> interrupts hold and restores MODE_DNS cleanup
-        val consentHarness = SyntheticServiceHarness(
-            onWait = {
-                nowMs += 200L
-                consentPaused = true
-                controller.interruptTransientHold()
-            },
-        )
-        val consentOutcome = consentHarness.controller.executeReset()
-        assertEquals(WebFilterConnectionReset.TransitionOutcome.CLEANED_UP_ON_CONSENT_CHANGE, consentOutcome)
-        assertFalse(consentOutcome.acknowledged)
-        assertEquals("transient sinkhole must be exited on consent withdrawal", FilterVpnService.MODE_DNS, consentHarness.activeMode)
-
-        // Case B: deliberate pause_internet mid-window -> preserves MODE_SINKHOLE_ALL
+    fun `service pause, consent withdrawal, and stop transition immediately while hold is suspended without packet events`() = runBlocking {
+        val holdEnteredA = CompletableDeferred<Unit>()
+        val neverFiresTimerA = CompletableDeferred<Unit>()
         val pauseHarness = SyntheticServiceHarness(
             onWait = {
-                nowMs += 300L
-                internetPaused = true
-                authorizedMode = FilterVpnService.MODE_SINKHOLE_ALL
-                lockActive = true
-                controller.interruptTransientHold()
+                nowMs = 150L
+                holdEnteredA.complete(Unit)
+                neverFiresTimerA.await()
             },
         )
-        val pauseOutcome = pauseHarness.controller.executeReset()
-        assertEquals(WebFilterConnectionReset.TransitionOutcome.SUPERSEDED_BY_PAUSE, pauseOutcome)
-        assertTrue(pauseOutcome.acknowledged)
-        assertEquals("deliberate pause_internet must stay in sinkhole_all", FilterVpnService.MODE_SINKHOLE_ALL, pauseHarness.activeMode)
+        val resetJobA = async { pauseHarness.controller.executeReset() }
+        holdEnteredA.await()
+        assertFalse(resetJobA.isCompleted)
+
+        assertTrue(pauseHarness.serviceAuthoritativeStart(FilterVpnService.MODE_SINKHOLE_ALL, pausedFlag = true))
+        val outA = resetJobA.await()
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.SUPERSEDED_BY_PAUSE, outA)
+        assertTrue(outA.acknowledged)
+        assertEquals(150L, pauseHarness.nowMs)
+        assertEquals(FilterVpnService.MODE_SINKHOLE_ALL, pauseHarness.activeMode)
+
+        val holdEnteredB = CompletableDeferred<Unit>()
+        val neverFiresTimerB = CompletableDeferred<Unit>()
+        val consentHarness = SyntheticServiceHarness(
+            onWait = {
+                nowMs = 200L
+                holdEnteredB.complete(Unit)
+                neverFiresTimerB.await()
+            },
+        )
+        val resetJobB = async { consentHarness.controller.executeReset() }
+        holdEnteredB.await()
+        assertFalse(resetJobB.isCompleted)
+
+        consentHarness.serviceConsentChanged(pausedNow = true)
+        assertEquals(FilterVpnService.MODE_DNS, consentHarness.activeMode)
+        val outB = resetJobB.await()
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.CLEANED_UP_ON_CONSENT_CHANGE, outB)
+        assertFalse(outB.acknowledged)
+        assertEquals(200L, consentHarness.nowMs)
+        assertEquals(FilterVpnService.MODE_DNS, consentHarness.activeMode)
+
+        val holdEnteredC = CompletableDeferred<Unit>()
+        val neverFiresTimerC = CompletableDeferred<Unit>()
+        val stopHarness = SyntheticServiceHarness(
+            onWait = {
+                nowMs = 250L
+                holdEnteredC.complete(Unit)
+                neverFiresTimerC.await()
+            },
+        )
+        val resetJobC = async { stopHarness.controller.executeReset() }
+        holdEnteredC.await()
+        assertFalse(resetJobC.isCompleted)
+
+        stopHarness.serviceStop()
+        assertNull(stopHarness.activeMode)
+        val outC = resetJobC.await()
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.STOPPED, outC)
+        assertFalse(outC.acknowledged)
+        assertEquals(250L, stopHarness.nowMs)
+        assertNull(stopHarness.activeMode)
     }
 
-    /**
-     * Source-wiring guard: `FilterVpnService` owns `TransientTunnelController` under its service lifetime,
-     * awaits actual `TransitionOutcome` completion (`awaitConnectionReset`), separates `authorizedMode`
-     * from transient `mode`, and touches neither `LockState.set`, `LockPeriodTracker`, nor `LockActivity`.
-     */
     @Test
-    fun `service owns TransientTunnelController and callers await actual transition without LockState drift`() {
+    fun `failed pause establish never falsely returns SUPERSEDED_BY_PAUSE and fallback never closes a newer tunnel`() = runBlocking {
+        val holdEntered = CompletableDeferred<Unit>()
+        val neverTimer = CompletableDeferred<Unit>()
+        var failSinkholeFromAttempt2 = false
+        val failedPauseHarness = SyntheticServiceHarness(
+            onEstablish = { _, wanted, attempt, _ ->
+                !(wanted == FilterVpnService.MODE_SINKHOLE_ALL && failSinkholeFromAttempt2 && attempt >= 2)
+            },
+            onWait = { ms ->
+                if (ms == 1_000L) {
+                    nowMs = 100L
+                    holdEntered.complete(Unit)
+                    neverTimer.await()
+                } else {
+                    nowMs += ms
+                }
+            },
+        )
+        val jobA = async { failedPauseHarness.controller.executeReset() }
+        holdEntered.await()
+        failSinkholeFromAttempt2 = true
+        failedPauseHarness.committedPolicy = WebFilterConnectionReset.PolicySnapshot(
+            alwaysAllowedApps = listOf("com.school.portal"),
+        )
+        assertFalse(failedPauseHarness.serviceAuthoritativeStart(FilterVpnService.MODE_SINKHOLE_ALL, pausedFlag = true))
+
+        val outA = jobA.await()
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.RESTORE_FAILED_CLOSED, outA)
+        assertFalse(outA.acknowledged)
+        assertNull(failedPauseHarness.activeMode)
+
+        var allowAuthoritativeEstablish = false
+        val newerTunnelHarness = SyntheticServiceHarness(
+            onEstablish = { _, wanted, attempt, _ ->
+                if (wanted == FilterVpnService.MODE_SINKHOLE_ALL && attempt == 1) true
+                else allowAuthoritativeEstablish
+            },
+            onWait = { ms ->
+                nowMs += ms
+                if (ms == 250L && nowMs == 1_250L) {
+                    allowAuthoritativeEstablish = true
+                    serviceAuthoritativeStart(FilterVpnService.MODE_DNS, pausedFlag = false)
+                    allowAuthoritativeEstablish = false
+                }
+            },
+        )
+        val outB = newerTunnelHarness.controller.executeReset()
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.COMPLETED, outB)
+        assertEquals(FilterVpnService.MODE_DNS, newerTunnelHarness.activeMode)
+        assertFalse(newerTunnelHarness.log.any { it.startsWith("close@") })
+    }
+
+    @Test
+    fun `post-hop committed policy wins for web filter and SafeSearch and expired instance requests are dropped`() = runBlocking {
+        val initialWf = WebFilterRuleDto(blockedDomains = listOf("old.example"))
+        val updatedWf = WebFilterRuleDto(
+            blockedDomains = listOf("old.example", "newlyblocked.example"),
+            blockedCategories = listOf("adult"),
+            safeSearchEnforced = true,
+            youtubeRestrictedMode = "strict",
+        )
+        val harness = SyntheticServiceHarness(
+            instanceId = 7L,
+            committedPolicy = WebFilterConnectionReset.PolicySnapshot(
+                dnsConfig = DnsFilterPolicy.Config(blockedDomains = listOf("old.example"), safeSearch = false, youtubeMode = "off"),
+                alwaysAllowedApps = emptyList(),
+                webFilter = initialWf,
+            ),
+            onWait = { ms ->
+                nowMs += ms
+                if (ms == 1_000L) {
+                    committedPolicy = WebFilterConnectionReset.PolicySnapshot(
+                        dnsConfig = DnsFilterPolicy.Config(
+                            blockedDomains = listOf("old.example", "newlyblocked.example"),
+                            blockedCategories = listOf("adult"),
+                            safeSearch = true,
+                            youtubeMode = "strict",
+                        ),
+                        alwaysAllowedApps = listOf("com.khanacademy.android"),
+                        webFilter = updatedWf,
+                    )
+                }
+            },
+        )
+
+        val out = harness.controller.executeReset(requestInstanceId = 7L)
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.COMPLETED, out)
+        assertTrue(out.acknowledged)
+        assertEquals(FilterVpnService.MODE_DNS, harness.activeMode)
+        assertEquals(listOf("old.example", "newlyblocked.example"), harness.appliedDnsConfig.blockedDomains)
+        assertEquals(listOf("adult"), harness.appliedDnsConfig.blockedCategories)
+        assertTrue(harness.appliedDnsConfig.safeSearch)
+        assertEquals("strict", harness.appliedDnsConfig.youtubeMode)
+        assertEquals(listOf("com.khanacademy.android"), harness.appliedBypassApps)
+
+        harness.instanceId = 8L
+        harness.log.clear()
+        val expiredOut = harness.controller.executeReset(requestInstanceId = 7L)
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.EXPIRED_INSTANCE, expiredOut)
+        assertFalse(expiredOut.acknowledged)
+        assertTrue(harness.log.isEmpty())
+    }
+
+    @Test
+    fun `service owns TransientTunnelController, stamps instanceId, wires immediate consent callback, and avoids LockState drift`() {
         val dispatcher = stripComments(sourceFile("app/src/main/java/com/familyshield/agent/commands/CommandDispatcher.kt"))
         val rulesBranch = dispatcher.substringAfter("\"rules_updated\" ->").substringBefore("\"locate_now\" ->")
         assertTrue(rulesBranch.indexOf("val beforeWebFilter") in 0..<rulesBranch.indexOf("rules.refresh()"))
@@ -323,12 +472,17 @@ class WebFilterConnectionResetTest {
         assertFalse(helperCode.contains("LockState.set"))
         assertFalse(helperCode.contains("LockPeriodTracker"))
         assertFalse(helperCode.contains("LockActivity"))
-        assertTrue("resetIfNeeded must await actual service transition", helperCode.contains("FilterVpnService.awaitConnectionReset("))
+        assertTrue(helperCode.contains("FilterVpnService.awaitConnectionReset("))
 
         val vpn = stripComments(sourceFile("app/src/main/java/com/familyshield/agent/vpn/FilterVpnService.kt"))
-        assertTrue("FilterVpnService must own TransientTunnelController", vpn.contains("WebFilterConnectionReset.TransientTunnelController("))
-        assertTrue("FilterVpnService must track separate authorizedMode", vpn.contains("authorizedMode = wanted"))
-        assertTrue("FilterVpnService must handle ACTION_RESET_CONNECTIONS", vpn.contains("ACTION_RESET_CONNECTIONS"))
+        assertTrue(vpn.contains("WebFilterConnectionReset.TransientTunnelController("))
+        assertTrue(vpn.contains("EXTRA_TARGET_INSTANCE_ID"))
+        assertTrue(vpn.contains("handleAuthoritativeStartOnServiceThread("))
+        assertTrue(vpn.contains("handleConsentChangedOnServiceThread("))
+        assertTrue(vpn.contains("handleServiceStopOnServiceThread()"))
+
+        val consentCode = stripComments(sourceFile("app/src/main/java/com/familyshield/agent/data/ConsentState.kt"))
+        assertTrue(consentCode.contains("FilterVpnService.onConsentChanged("))
     }
 
     private fun stripComments(src: String): String =
