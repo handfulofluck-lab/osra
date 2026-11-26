@@ -15,8 +15,18 @@
     -->
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <uses-permission android:name="android.permission.READ_SMS" />
+    <!--
+      ADR-0039 D5.5: the sideloaded build updates itself from osratech.com, so it is the one artefact
+      that may declare this. Play's Device and Network Abuse policy forbids a store app installing code
+      from outside Play, so src/main and src/play must never carry it; PlayManifestPolicy denies it by
+      name and the merged-manifest gate runs on the Play merge.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application>
+        <!-- ADR-0039 D5.4: the PackageInstaller session's status callback. Not exported: the system
+             delivers the PendingIntent this app created, from this app's identity. -->
+        <receiver android:name=".update.FullUpdateInstallReceiver" android:exported="false" />
         <service
             android:name=".services.NotificationCaptureService"
             android:exported="true"

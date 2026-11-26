@@ -35,6 +35,7 @@ class FullMergedManifestTest {
             "android.permission.READ_CALL_LOG",
             "android.permission.READ_SMS",
             "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE",
+            "android.permission.REQUEST_INSTALL_PACKAGES",
         )
         val problems = mutableListOf<String>()
         expectedPermissions.filterNot { it in merged.includedPermissions }

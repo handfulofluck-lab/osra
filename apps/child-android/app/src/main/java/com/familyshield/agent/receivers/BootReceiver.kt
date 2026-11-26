@@ -29,6 +29,11 @@ class BootReceiver : BroadcastReceiver() {
         guardStep("scheduled work") {
             WorkScheduler.scheduleAll(ctx)
             PendingPingWorker.schedule(ctx)
+            // ADR-0039 D5.1: the self-update check runs once at boot; the Play binding is a no-op.
+            val updates = EntryPointAccessors.fromApplication(ctx, WorkerEntryPoint::class.java)
+                .updateCheckScheduler()
+            updates.schedulePeriodic()
+            updates.checkNow()
         }
         // Plan 1.4: the web filter comes back with the phone (consent survives reboots; the tunnel does not).
         guardStep("web filter") {
