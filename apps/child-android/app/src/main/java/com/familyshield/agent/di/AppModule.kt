@@ -42,12 +42,16 @@ object AppModule {
      * Two answers at least a minute apart are what turn a `401 device_revoked` into an unlink, and a
      * second instance would restart that count on every poll.
      */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @Provides
     @Singleton
     fun provideUnlinkPolicy(settings: AgentSettings): UnlinkPolicy {
         // Issue #1162: the persisted first answer, so a process death between the two `device_revoked` answers
         // no longer restarts the clock. The write is fire-and-forget: the poll must never wait on DataStore.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        // One worker, so a `persist(ms)` and a fast `persist(null)` cannot land out of order and leave a stale
+        // timestamp on disk (Ahmed's #1164 nit). Bounded by the expiry either way, but implicit ordering is
+        // the kind of thing that only looks fine until it doesn't.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
         return UnlinkPolicy(
             persistedFirstRevokedAtMs = settings.firstRevokedAtMsSync(),
             persist = { ms -> scope.launch { settings.saveFirstRevokedAtMs(ms) } },

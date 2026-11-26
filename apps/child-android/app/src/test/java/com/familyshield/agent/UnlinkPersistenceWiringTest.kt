@@ -31,6 +31,16 @@ class UnlinkPersistenceWiringTest {
     }
 
     @Test
+    fun `the persist writes are serialised so they cannot land out of order`() {
+        // Mutant: back to `Dispatchers.IO` with no limit — two writes then race, and the older can win,
+        // leaving a timestamp the policy already considered cleared (Ahmed's #1164 nit).
+        assertTrue(
+            "one worker is what makes the write order exact",
+            module.contains("Dispatchers.IO.limitedParallelism(1)"),
+        )
+    }
+
+    @Test
     fun `the provider does not construct the policy bare`() {
         assertFalse(
             "UnlinkPolicy() with no store is the bug Ahmed caught on #1161",
