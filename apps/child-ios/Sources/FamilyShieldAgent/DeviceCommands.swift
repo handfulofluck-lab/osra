@@ -7,6 +7,24 @@ import os
 public struct DeviceCommand: Decodable, Equatable {
     public var id: String
     public var type: String
+    public var payload: [String: String]?
+
+    public init(id: String, type: String, payload: [String: String]? = nil) {
+        self.id = id
+        self.type = type
+        self.payload = payload
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, type, payload }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        type = try container.decode(String.self, forKey: .type)
+        guard container.contains(.payload) else { payload = nil; return }
+        // A malformed payload is not an absent ring target.
+        payload = (try? container.decode([String: String].self, forKey: .payload)) ?? ["ringId": "\u{0}"]
+    }
 }
 
 /// What the iOS agent does with a command. iOS enforces through Screen Time, so it handles what changes the
@@ -14,15 +32,22 @@ public struct DeviceCommand: Decodable, Equatable {
 public enum CommandAction: Equatable {
     /// Fetch the rules again; a withdrawn consent then answers 428 and clears everything.
     case syncRules
+    /// Consent was revoked: stop an active ring locally and sync the now-empty rules.
+    case consentRevoked
     /// A fresh point for the parent's map, uploaded before the ack (5.5 PR E).
     case locateNow
+    case ring
+    case stopRing
     /// Not something this agent can do; acked `failed` with the reason.
     case unsupported
 
     public static func forType(_ type: String) -> CommandAction {
         switch type {
-        case "rules_updated", "consent_revoked", "consent_granted": return .syncRules
+        case "rules_updated", "consent_granted": return .syncRules
+        case "consent_revoked": return .consentRevoked
         case "locate_now": return .locateNow
+        case "ring": return .ring
+        case "stop_ring": return .stopRing
         default: return .unsupported
         }
     }
@@ -55,15 +80,21 @@ public struct CommandClient {
         case deviceRevoked
     }
 
-    /// Claims the pending commands (`ack=1`: they come back until acked, as Android's ack-capable poll).
-    public func poll(_ identity: AgentIdentity) async throws -> CommandPoll {
+    /// Claims the pending commands by default (`ack=1`: they come back until acked, as Android's
+    /// ack-capable poll). Pass `claim: false` for a true peek: rows are read but left `pending`
+    /// (#760 device row: the notification service extension peeks before it tries AlarmKit).
+    /// `timeout` is per request: the app drains keep the 30-second default, and the ring service
+    /// extension's reduced drain passes its short NSE budget (#760).
+    public func poll(_ identity: AgentIdentity, claim: Bool = true, timeout: TimeInterval = 30) async throws -> CommandPoll {
         var components = URLComponents(url: devicesURL(identity).appendingPathComponent("commands"),
                                        resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "ack", value: "1")]
+        var queryItems = [URLQueryItem(name: "ack", value: "1")]
+        if !claim { queryItems.append(URLQueryItem(name: "peek", value: "1")) }
+        components?.queryItems = queryItems
         guard let url = components?.url else { throw CommandError.unusableResponse }
         var request = URLRequest(url: url)
         request.setValue("Bearer \(identity.deviceToken)", forHTTPHeaderField: "Authorization")
-        request.timeoutInterval = 30
+        request.timeoutInterval = timeout
         let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if DeviceRevocation.isRevoked(status: status, body: data) { throw CommandError.deviceRevoked }
@@ -73,6 +104,18 @@ public struct CommandClient {
         }
         let pushToken = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "X-Push-Token")
         return CommandPoll(commands: commands, serverHasPushToken: pushToken != "none")
+    }
+
+    /// Claims one specific pending command so it can be acked. Returns `.httpError(status: 404)`
+    /// when the row is no longer pending or does not belong to this device.
+    public func claim(_ identity: AgentIdentity, commandId: String) async throws {
+        var request = URLRequest(url: devicesURL(identity).appendingPathComponent("commands")
+            .appendingPathComponent(commandId).appendingPathComponent("claim"))
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(identity.deviceToken)", forHTTPHeaderField: "Authorization")
+        let (_, response) = try await session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 else { throw CommandError.httpError(status: status) }
     }
 
     /// Reports a command's outcome; `detail` says why when it failed.
@@ -106,6 +149,36 @@ public struct LiveLocateNow: LocateNowHandling {
     public func locateNow() async -> LocateAck? { await LocationController.shared.locateNow() }
 }
 
+public protocol RingCommandHandling {
+    func startRing(id: String) async -> RingCommandError?
+    func stopRing(targetId: String?) async -> RingCommandError?
+    func stopForConsentWithdrawal() async
+}
+
+public struct LiveRingCommands: RingCommandHandling {
+    private let controller: RingController?
+
+    public init(controller: RingController? = nil) {
+        self.controller = controller
+    }
+
+    public func startRing(id: String) async -> RingCommandError? {
+        await (controller ?? RingController.shared).start(commandId: id)
+    }
+
+    public func stopRing(targetId: String?) async -> RingCommandError? {
+        guard let text = targetId?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+            return await (controller ?? RingController.shared).stop(.parentCommand)
+        }
+        guard let target = UUID(uuidString: text) else { return .invalidCommand }
+        return await (controller ?? RingController.shared).stop(.parentCommand, commandId: target)
+    }
+
+    public func stopForConsentWithdrawal() async {
+        await (controller ?? RingController.shared).stopForConsentWithdrawal()
+    }
+}
+
 public enum CommandDrainer {
     private static let logger = Logger(subsystem: "com.osratech.child", category: "Commands")
 
@@ -124,6 +197,7 @@ public enum CommandDrainer {
     public static func drainNow(client: CommandClient = CommandClient(),
                                 tokenSession: URLSession = .shared,
                                 locator: LocateNowHandling = LiveLocateNow(),
+                                ring: RingCommandHandling = LiveRingCommands(),
                                 sync: () async -> RuleSyncer.Outcome = { await RuleSyncer.syncNow() }) async -> Result {
         var result = Result()
         guard let identity = AgentIdentityStore.load() else { return result }
@@ -143,6 +217,7 @@ public enum CommandDrainer {
         } catch CommandClient.CommandError.httpError(status: 428) {
             // ADR-0008 §2b: monitoring is paused. The rules endpoint answers 428 too, which clears them.
             result.consentWithdrawn = true
+            await ring.stopForConsentWithdrawal()
             _ = await sync()
             return result
         } catch {
@@ -170,6 +245,19 @@ public enum CommandDrainer {
                 }
                 try? await client.ack(identity, commandId: command.id, ok: ok,
                                       detail: ok ? [:] : ["reason": "rule_sync_failed"])
+                if outcome == .consentWithdrawn { await ring.stopForConsentWithdrawal() }
+                result.handled.append(command.type)
+            case .consentRevoked:
+                await ring.stopForConsentWithdrawal()
+                let outcome = await sync()
+                let ok: Bool
+                switch outcome {
+                case .synced, .consentWithdrawn: ok = true
+                case .notPaired, .failed: ok = false
+                }
+                try? await client.ack(identity, commandId: command.id, ok: ok,
+                                      detail: ok ? [:] : ["reason": "rule_sync_failed"])
+                result.consentWithdrawn = true
                 result.handled.append(command.type)
             case .locateNow:
                 // Several in one drain share one fix and one upload.
@@ -186,6 +274,25 @@ public enum CommandDrainer {
                     break // the point was not stored: no ack, so the server offers the command again in 120 s
                 }
                 result.handled.append(command.type)
+            case .ring:
+                if let error = await ring.startRing(id: command.id) {
+                    try? await client.ack(identity, commandId: command.id, ok: false,
+                                          detail: ["reason": error.rawValue])
+                    result.refused.append(command.type)
+                } else {
+                    try? await client.ack(identity, commandId: command.id, ok: true)
+                    result.handled.append(command.type)
+                }
+            case .stopRing:
+                let targetId = command.payload.map { $0["ringId"] ?? "" }
+                if let error = await ring.stopRing(targetId: targetId) {
+                    try? await client.ack(identity, commandId: command.id, ok: false,
+                                          detail: ["reason": error.rawValue])
+                    result.refused.append(command.type)
+                } else {
+                    try? await client.ack(identity, commandId: command.id, ok: true)
+                    result.handled.append(command.type)
+                }
             case .unsupported:
                 try? await client.ack(identity, commandId: command.id, ok: false,
                                       detail: ["reason": "not_supported", "type": command.type])

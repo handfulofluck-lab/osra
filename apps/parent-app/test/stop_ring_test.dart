@@ -80,7 +80,10 @@ void main() {
       final commands =
           api.requests.where((request) => request.method == 'POST');
       expect(commands.single.path, deviceCommandPath);
-      expect(commands.single.body, {'command': 'stop_ring'});
+      // #760: the card names the ring it is stopping, so the ack can say which ring was silenced. Main's
+      // version sent the bare command; `ring_stop_action_test.dart` pins the id and the "latest applied ring
+      // wins over a failed newer row" rule that makes the id worth sending at all.
+      expect(commands.single.body, {'command': 'stop_ring', 'payload': {'ringId': 'ring-fixture'}});
       expect(
         find.text(
             'Stop ringing queued for Pixel 7a — the device has not confirmed it yet.'),

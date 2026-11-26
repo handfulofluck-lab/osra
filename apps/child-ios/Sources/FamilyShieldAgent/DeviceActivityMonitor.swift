@@ -68,7 +68,8 @@ struct AlertReporter {
         body: String,
         childId: String?,
         metadata: [String: Any] = [:],
-        signedAt: Int? = nil
+        signedAt: Int? = nil,
+        dedupeKey: String? = nil
     ) -> URLRequest? {
         guard let apiBaseURL else {
             AlertReporter.logger.error("alert '\(category)' skipped: agent.apiBaseURL missing from shared app group (agent not paired)")
@@ -86,6 +87,7 @@ struct AlertReporter {
             "body": body,
             "metadata": metadata,
         ]
+        if let dedupeKey { payload["dedupeKey"] = dedupeKey }
         if let deviceId = AlertReporter.pairedDeviceId() {
             payload["deviceId"] = deviceId
         }

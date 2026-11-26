@@ -1,5 +1,7 @@
 import 'package:flutter/widgets.dart';
 
+import '../api/models.dart';
+
 import 'app_localizations.dart';
 
 export 'app_localizations.dart';
@@ -32,6 +34,7 @@ const serverAlertCategories = <String>[
   'vpn_detected',
   'install_request',
   'unknown_contact',
+  'ring',
 ];
 
 /// Human labels for values that cross the API boundary. Unknown values fall
@@ -75,7 +78,7 @@ extension AppLocalizationsLabels on AppLocalizations {
         _ => category,
       };
 
-  /// The short label under an alert's title, by **type** — the same 13
+  /// The short label under an alert's title, by **type** — the same 14
   /// categories as [serverAlertCategories], never a vocabulary of its own. A
   /// value the app does not know yet falls back to the raw key, so a new server
   /// category shows up as itself instead of a blank line, and the drift test
@@ -95,6 +98,7 @@ extension AppLocalizationsLabels on AppLocalizations {
         'install_request' => alertCategoryInstallRequest,
         'unknown_contact' => alertCategoryUnknownContact,
         'device_restarted' => alertCategoryDeviceRestarted,
+        'ring' => alertTitleRing,
         'social_concern' => alertCategorySocialConcern,
         'gaming_chat' => alertCategoryGamingChat,
         _ => category,
@@ -133,6 +137,7 @@ extension AppLocalizationsLabels on AppLocalizations {
         'install_request' => alertTitleInstallRequest,
         'unknown_contact' => alertTitleUnknownContact,
         'device_restarted' => alertDeviceRestartedTitle,
+        'ring' => alertTitleRing,
         'social_concern' => alertTitleSocialConcern,
         'gaming_chat' => alertTitleGamingChat,
         _ => isEnglish ? serverTitle : alertTitleGeneric,
@@ -190,4 +195,30 @@ extension AppLocalizationsLabels on AppLocalizations {
         'expired' => statusExpired,
         _ => statusPending,
       };
+}
+
+
+String alertBodyFor(Alert alert, AppLocalizations l10n) {
+  if (alert.category != 'ring') return alert.body;
+  final params = alert.metadata['bodyParams'];
+  final values = params is Map ? params : const <String, dynamic>{};
+  final ringId = values['ringId']?.toString() ?? '';
+  if (ringId.isEmpty) return alert.body;
+  switch (alert.metadata['bodyKey']) {
+    case 'alertBodyRingChildDismissed':
+      final count = values['dismissalCount'] is num
+          ? (values['dismissalCount'] as num).toInt()
+          : int.tryParse('${values['dismissalCount']}') ?? 0;
+      return count > 0 ? l10n.alertBodyRingChildDismissed(count) : alert.body;
+    case 'alertBodyRingPinStopped':
+      return l10n.alertBodyRingPinStopped;
+    case 'alertBodyRingParentStopped':
+      return l10n.alertBodyRingParentStopped;
+    case 'alertBodyRingTimedOut':
+      return values['afterRestart'] == true
+          ? l10n.alertBodyRingAfterRestart
+          : l10n.alertBodyRingTimedOut;
+    default:
+      return alert.body;
+  }
 }

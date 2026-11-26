@@ -2,6 +2,7 @@ import { prisma } from "../../db.js";
 import { FcmProvider, loadServiceAccountFromEnv } from "./fcm.js";
 import { ApnsProvider, loadApnsConfigFromEnv } from "./apns.js";
 import type { PushMessage, PushPlatform, PushProvider } from "./types.js";
+import { releaseRingDismissalPush, reserveRingDismissalPush, ringMetadataObject } from "./ring-dismissal.js";
 
 /**
  * Parent notification policy (Phase 2a). Given an alert, decide which parents' devices receive a
@@ -20,6 +21,7 @@ export interface AlertLike {
   title: string;
   body: string;
   createdAt?: Date | string;
+  metadata?: unknown;
 }
 
 type Severity = "info" | "warning" | "critical";
@@ -31,8 +33,9 @@ export function minPushSeverity(env: NodeJS.ProcessEnv = process.env): Severity 
   return v && v in SEVERITY_RANK ? v : "info";
 }
 
-export function shouldPush(alert: Pick<AlertLike, "severity" | "category"> | null | undefined, min: Severity): boolean {
+export function shouldPush(alert: Pick<AlertLike, "severity" | "category" | "metadata"> | null | undefined, min: Severity): boolean {
   if (!alert) return false;
+  if (alert.category === "ring" && ringMetadataObject(alert.metadata).state === "parent_stopped") return false;
   const sev = (alert.severity as Severity) in SEVERITY_RANK ? (alert.severity as Severity) : "info";
   // Issue #889 (UI/UX Bureau ruling): routine `info` restarts (< 30 min gap) stay in the Alerts list
   // and unread badge without waking the parent's phone; `warning` restarts (>= 30 min gap) still push.
@@ -133,7 +136,7 @@ export interface NotifyOutcome {
   recipients: number;
   delivered: number;
   pruned: number;
-  skipped: "severity" | "no_providers" | "no_tokens" | "prefs" | null;
+  skipped: "severity" | "no_providers" | "no_tokens" | "prefs" | "coalesced" | null;
 }
 
 export type PushErrorClass =
@@ -321,6 +324,23 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
     }
 
     outcome.recipients = tokens.length;
+    const ringWindow = await reserveRingDismissalPush(familyId, alert);
+    if (ringWindow.coalesced) {
+      // #760: the ring-dismissal window is already open for this family, so this alert is deliberately not
+      // pushed. Logged like every other skip in this function, so the new outcome log never loses a path.
+      logParentAlertOutcome({
+        recipients: outcome.recipients,
+        delivered: 0,
+        stale: 0,
+        pruned: 0,
+        failed: 0,
+        cleanup: "none",
+        skipped: "coalesced",
+        category: alert.category,
+        severity: alert.severity,
+      });
+      return { ...outcome, skipped: "coalesced" };
+    }
     const dead: string[] = [];
     let failed = 0;
     const byPlatform = new Map<string, number>();
@@ -383,6 +403,11 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
         cleanup = "failed";
         console.error("[push] parent alert cleanup failed errorClass=cleanup_failed");
       }
+    }
+    // #760: a ring-dismissal push reserved a window. If nothing reached a parent, give it back so the
+    // next alert is not swallowed by a reservation that never delivered.
+    if (outcome.delivered === 0 && ringWindow.reservation) {
+      await releaseRingDismissalPush(ringWindow.reservation);
     }
 
     logParentAlertOutcome({
@@ -453,6 +478,46 @@ export function buildDeviceWakeMessage(): PushMessage {
   };
 }
 
+/**
+ * One constant key for the iOS ring alert (#750): every ring of one device replaces the previous
+ * ring on the lock screen. There is deliberately no command id in it — nothing about the command
+ * may reach Apple, and APNs scopes a collapse id to one device token anyway.
+ */
+export const DEVICE_RING_COLLAPSE_KEY = "osra-ring";
+
+/**
+ * The iOS `ring` alert (#750), the one device push that is visible. A physical-device row proved a
+ * priority-5 background push does not wake a locked/suspended/force-quit iPhone, so the ring goes
+ * as a `time-sensitive` alert at high priority. The words come from the child bundle's
+ * localization keys (`ring_notification_title` / `ring_notification_body`), so no OSRA text, no
+ * command id, no child data and no wake marker travel in the payload — the notification extension
+ * on the phone re-arms the ring from the durable command row the enqueue already wrote.
+ */
+export function buildDeviceRingMessage(): PushMessage {
+  return {
+    data: {},
+    locKeys: { titleKey: "ring_notification_title", bodyKey: "ring_notification_body" },
+    priority: "high",
+    threadId: DEVICE_RING_COLLAPSE_KEY,
+    collapseKey: DEVICE_RING_COLLAPSE_KEY,
+    interruptionLevel: "time-sensitive",
+    deviceTarget: true,
+    // #760 redesign: the bundled `ring.wav` is shipped in the iOS app bundle and played by the
+    // time-sensitive notification, so the alert is audible even before the app opens.
+    sound: "ring.wav",
+  };
+}
+
+/**
+ * The message one command wakes a device with. Only an iPhone `ring` is the visible alert — every
+ * other command, and every command on Android (including `ring`, whose agent shows its own alarm
+ * UI from the queue row), stays the background wake of #319.
+ */
+function buildDeviceMessageForCommand(platform: string | null | undefined, commandType?: string): PushMessage {
+  if (platform === "ios" && commandType === "ring") return buildDeviceRingMessage();
+  return buildDeviceWakeMessage();
+}
+
 export interface WakeOutcome {
   delivered: number;
   clearedToken: boolean;
@@ -472,7 +537,7 @@ export interface WakeOutcome {
  * is the only place a device token is ever removed — the agent re-registers on its next `onNewToken`
  * or poll tick.
  */
-export async function notifyDeviceWake(deviceId: string, commandId?: string): Promise<WakeOutcome> {
+export async function notifyDeviceWake(deviceId: string, commandId?: string, commandType?: string): Promise<WakeOutcome> {
   const outcome: WakeOutcome = { delivered: 0, clearedToken: false, skipped: null };
   // The command id and the device are on every line this call can write, so the fields live once.
   const tag = `[push] device wake command=${commandId ?? "none"} device=${deviceId}`;
@@ -498,7 +563,7 @@ export async function notifyDeviceWake(deviceId: string, commandId?: string): Pr
       return { ...outcome, skipped: "unsupported_platform" };
     }
 
-    const message = buildDeviceWakeMessage();
+    const message = buildDeviceMessageForCommand(device.platform, commandType);
     const result = await provider.send(device.pushToken, message);
     const sent = `provider=${provider.platform} priority=${message.priority}`;
     if (result.ok) {
@@ -530,15 +595,16 @@ export async function notifyDeviceWake(deviceId: string, commandId?: string): Pr
 /**
  * Test seam: swap the wake sender so a command-path test can assert the fan-out without a provider.
  * Production leaves it as [notifyDeviceWake]. The second argument is the command id (#673): a fake may
- * ignore it, and the wake log is where it is used.
+ * ignore it, and the wake log is where it is used. The third argument is the command type (#750):
+ * only an iOS `ring` becomes a visible alert.
  */
-let deviceWakeSender: (deviceId: string, commandId?: string) => Promise<WakeOutcome> = notifyDeviceWake;
+let deviceWakeSender: (deviceId: string, commandId?: string, commandType?: string) => Promise<WakeOutcome> = notifyDeviceWake;
 
-export function setDeviceWakeSender(fn: ((deviceId: string, commandId?: string) => Promise<WakeOutcome>) | null): void {
+export function setDeviceWakeSender(fn: ((deviceId: string, commandId?: string, commandType?: string) => Promise<WakeOutcome>) | null): void {
   deviceWakeSender = fn ?? notifyDeviceWake;
 }
 
-export function getDeviceWakeSender(): (deviceId: string, commandId?: string) => Promise<WakeOutcome> {
+export function getDeviceWakeSender(): (deviceId: string, commandId?: string, commandType?: string) => Promise<WakeOutcome> {
   return deviceWakeSender;
 }
 
@@ -550,9 +616,9 @@ export function getDeviceWakeSender(): (deviceId: string, commandId?: string) =>
  * [commandId] is the `DeviceCommand` row this wake is for, carried only so the log line can name it
  * (#673). It is not part of the push: the payload stays `{ "w": "1" }`.
  */
-export function wakeDeviceDetached(deviceId: string, commandId?: string): void {
+export function wakeDeviceDetached(deviceId: string, commandId?: string, commandType?: string): void {
   try {
-    void deviceWakeSender(deviceId, commandId).catch(() => undefined);
+    void deviceWakeSender(deviceId, commandId, commandType).catch(() => undefined);
   } catch {
     /* a sender that throws synchronously is not allowed to fail the caller */
   }

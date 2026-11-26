@@ -20,6 +20,9 @@ public enum A11yID {
     public static let statusSyncFailed = "status.syncFailed"
     public static let statusScreenTime = "status.screenTime"
     public static let statusScreenTimeButton = "status.screenTime.button"
+    /// #880: the ringing permission row and its one button.
+    public static let statusAlarmRinging = "status.alarmRinging"
+    public static let statusAlarmRingingButton = "status.alarmRinging.button"
     public static let statusLocation = "status.location"
     public static let statusLocationButton = "status.location.button"
     public static let statusGroups = "status.groups"
@@ -35,6 +38,10 @@ public enum A11yID {
     public static let pinGate = "pin.gate"
     public static let pinGateMessage = "pin.gateMessage"
     public static let pinContinue = "pin.continue"
+    /// #760: the keyboard's twin of `pin.continue`. It must be a different identifier: two elements answering
+    /// to `pin.continue` make every `app.buttons["pin.continue"]` tap ambiguous (escape suite, 24 Nov).
+    public static let pinContinueKeyboard = "pin.continue.keyboard"
+    public static let ringView = "ring.view"
 
     // App groups
     public static let groupsNewName = "groups.new.name"
@@ -56,7 +63,7 @@ public enum A11yID {
         statusPaired, statusChildName, statusServer, statusLastSynced, statusSyncNow, statusSyncFailed,
         statusScreenTime, statusScreenTimeButton, statusLocation, statusLocationButton, statusGroups, statusRepair,
         statusTechnicalDetails,
-        pinSetReason, pinNew, pinRepeat, pinSetError, pinSave, pinGate, pinGateMessage, pinContinue,
+        pinSetReason, pinNew, pinRepeat, pinSetError, pinSave, pinGate, pinGateMessage, pinContinue, ringView,
         groupsNewName, groupsNewChoose, groupsNewChosen, groupsNewAdd, groupsError,
     ]
 }

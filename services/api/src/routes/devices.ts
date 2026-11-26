@@ -7,7 +7,7 @@ import { getRedis, getJson, setJson, setJsonNx } from "../redis.js";
 import { guardianPermissions, requireAuth, requireFamily, requireOwnDevice, requireParent, requirePermission, sanitizeDevice } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
 import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
-import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, enqueueFailedDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
+import { ackDeviceCommand, claimDeviceCommand, claimPendingCommands, enqueueDeviceCommand, enqueueFailedDeviceCommand, listDeviceCommands, peekPendingCommands } from "../lib/deviceCommands.js";
 import { BUDGET_WINDOW_MINUTES, RETENTION_MINUTES, countingEnabled, idleBudgetThreshold, readDeviceCounts, summarise, withinBudget } from "../lib/idleBudget.js";
 import { LOCATION_GRANT_STATES, locateNowRefusal } from "../lib/locationGrant.js";
 import { commandRefusal, parseCapabilities, setupFor, withStoredGroups, withStoredProfiles } from "../lib/capabilities.js";
@@ -778,6 +778,10 @@ export async function deviceRoutes(app: FastifyInstance) {
    *
    * Issue #353 (5.8): the `X-Poll-After` header tells the agent when to poll next — 600 s when this
    * server can wake the device by push, 60 s when it cannot — and a poll refreshes a stale `lastSeen`.
+   *
+   * #760 device row: `?peek=1` returns pending rows without claiming them, so the notification service
+   * extension can look for a `ring` before it commits AlarmKit. A peek still counts as a poll, so the
+   * cadence headers and last-seen refresh behave the same way.
    */
   app.get("/:id/commands", { preHandler: requireFamily({ model: "device" }) }, async (req, reply) => {
     const { id } = req.params as { id: string };
@@ -788,13 +792,26 @@ export async function deviceRoutes(app: FastifyInstance) {
     const device = (req as unknown as { device: PolledDevice & { childId: string } }).device;
     if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
     const ackCapable = (req.query as { ack?: string })?.ack === "1";
-    const commands = await claimPendingCommands(id, { ackCapable });
+    const peek = (req.query as { peek?: string })?.peek === "1";
+    const commands = peek ? await peekPendingCommands(id) : await claimPendingCommands(id, { ackCapable });
     reply.header(POLL_AFTER_HEADER, String(pollAfterSeconds(device)));
     // #383: a wake that failed with a dead token cleared the row; say so, so the phone re-uploads the
     // token it still holds instead of waiting for Firebase to rotate it.
     reply.header(PUSH_TOKEN_HEADER, device?.pushToken ? PUSH_TOKEN_ON_FILE : PUSH_TOKEN_NONE);
     if (device) await touchLastSeen(device);
     return commands;
+  });
+
+  /** Agent claims a single pending command before acking it (Phase 2b, #760 device row). */
+  app.post("/:id/commands/:commandId/claim", { preHandler: requireFamily({ model: "device" }) }, async (req, reply) => {
+    const { id, commandId } = req.params as { id: string; commandId: string };
+    const user = req.user as { role?: string; deviceId?: string; sub?: string };
+    if (user.role !== "device" || (user.deviceId ?? user.sub) !== id) return reply.code(403).send({ error: "forbidden" });
+    const device = (req as unknown as { device: PolledDevice & { childId: string } }).device;
+    if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
+    const command = await claimDeviceCommand(id, commandId);
+    if (!command) return reply.code(404).send({ error: "no_pending_command" });
+    return { command };
   });
 
   /** Agent reports the outcome of a delivered command (Phase 2b). */

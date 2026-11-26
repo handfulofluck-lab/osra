@@ -1,14 +1,14 @@
 // World-class addendum types (docs/SPEC-ADDENDUM-WORLD-CLASS.md is the binding contract).
 
 export type CommandType =
-  | "lock" | "unlock" | "ring" | "sos_clear" | "pause" | "resume"
+  | "lock" | "unlock" | "ring" | "stop_ring" | "sos_clear" | "pause" | "resume"
   | "pause_internet" | "resume_internet" | "bonus_time" | "wind_down";
 
 export type AlertCategoryExtended =
   | "web_threat" | "app_blocked" | "screen_time_exceeded" | "geofence" | "sos"
   | "ai_concern" | "cyberbullying" | "self_harm" | "grooming"
   | "social_concern" | "gaming_chat" | "call_sms" | "tamper" | "vpn_detected"
-  | "install_request" | "unknown_contact" | "bonus_granted" | "wind_down";
+  | "install_request" | "unknown_contact" | "bonus_granted" | "wind_down" | "ring";
 
 /** Recommended default categories, applied to every new child (Feature #1). */
 export const DEFAULT_BLOCKED_CATEGORIES = [

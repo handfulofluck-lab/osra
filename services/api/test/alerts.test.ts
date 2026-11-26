@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createHmac } from "node:crypto";
 import { signV2 } from "../src/lib/internalAuth.js";
 import { alertsRoutes } from "../src/routes/alerts.js";
+import { ringAlertFields } from "../src/lib/alerts.js";
 import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
@@ -613,6 +614,339 @@ describe("alerts routes", () => {
     expect(res.json().error).toBe("child_not_found");
     expect(prismaMock.alert.create).not.toHaveBeenCalled();
     await app.close();
+  });
+});
+
+
+describe("ring alert intake", () => {
+  const ringId = "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6B";
+  const fallback: Record<string, string> = {
+    child_dismissed: "The ring alert was dismissed on the phone. It is ringing again.",
+    pin_stopped: "The ring was stopped on the phone with the parent PIN.",
+    parent_stopped: "A parent stopped the ring from the OSRA app.",
+    timed_out: "The ring ended by itself after 5 minutes.",
+  };
+
+  async function fixture() {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.deviceCommand.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
+      where.id === ringId.toLowerCase()
+        ? { id: ringId.toLowerCase(), deviceId: "dev-1", type: "ring", createdAt: new Date() }
+        : null);
+    const rows: Array<Record<string, unknown>> = [];
+    prismaMock.alert.findFirst.mockImplementation(async ({ where }: { where: { dedupeKey?: string } }) =>
+      rows.find((row) => row.dedupeKey === where.dedupeKey) ?? null);
+    prismaMock.alert.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+      if (data.dedupeKey && rows.some((row) => row.dedupeKey === data.dedupeKey)) {
+        throw Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+      }
+      const row = { id: `ring-alert-${rows.length + 1}`, createdAt: new Date(), ...data };
+      rows.push(row);
+      return row;
+    });
+    prismaMock.alert.updateMany.mockImplementation(async ({ where, data }: { where: { id: string }, data: Record<string, unknown> }) => {
+      const row = rows.find((candidate) => candidate.id === where.id);
+      if (!row) return { count: 0 };
+      if (Number(data.attemptCount) <= Number(row.attemptCount ?? 1)) return { count: 0 };
+      Object.assign(row, data);
+      return { count: 1 };
+    });
+    prismaMock.alert.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
+      rows.find((candidate) => candidate.id === where.id) ?? null);
+    async function postRing(state: string, dismissalCount: number | string = 0, extraMetadata: Record<string, unknown> = {}, overrideDedupeKey?: string | null, forRingId: string = ringId) {
+      const canonicalRingId = forRingId.toLowerCase();
+      const computedDedupeKey = state === "child_dismissed"
+        ? `ring:${canonicalRingId}:child_dismissed:${dismissalCount}`
+        : `ring:${canonicalRingId}:${state}`;
+      const dedupeKey = overrideDedupeKey === null ? undefined : (overrideDedupeKey ?? computedDedupeKey);
+      const payload: Record<string, unknown> = {
+        childId: CHILD.id, deviceId: "dev-1", severity: state === "child_dismissed" ? "warning" : "info",
+        category: "ring", title: "Phone ring",
+        body: state === "child_dismissed" && dismissalCount !== 1
+          ? `The ring alert was dismissed on the phone ${dismissalCount} times. It is still ringing.`
+          : state === "timed_out" && extraMetadata.afterRestart === true
+            ? "The ring ended after the phone was restarted."
+            : fallback[state],
+        metadata: { state, ringId: canonicalRingId, ...extraMetadata },
+      };
+      if (dedupeKey !== undefined) payload.dedupeKey = dedupeKey;
+      const raw = JSON.stringify(payload);
+      return app.inject({
+        method: "POST", url: "/v1/alerts/internal",
+        headers: { "content-type": "application/json", ...signV2(SECRET, raw, { caller: "ai-engine" }) },
+        payload: raw,
+      });
+    }
+    return { app, rows, postRing };
+  }
+
+  it("accepts ring and returns the existing alert on dedupe", async () => {
+    const { app, rows, postRing } = await fixture();
+    try {
+      expect((await postRing("child_dismissed", 1)).statusCode).toBe(201);
+      const retry = await postRing("child_dismissed", 1);
+      expect(retry.statusCode).toBe(200);
+      expect(rows).toHaveLength(1);
+      expect(retry.json().alert.metadata.bodyParams.dismissalCount).toBe(1);
+    } finally { await app.close(); }
+  });
+
+  it("strips a device bodyKey and stores the server key", async () => {
+    const { app, postRing } = await fixture();
+    try {
+      const response = await postRing("pin_stopped", 0, {
+        bodyKey: "callerChoice", bodyParams: { ringId: "callerChoice" },
+      });
+      expect(response.statusCode).toBe(201);
+      expect(response.json().alert.metadata.bodyKey).toBe("alertBodyRingPinStopped");
+      expect(response.json().alert.metadata.bodyParams).toEqual({ ringId: ringId.toLowerCase() });
+    } finally { await app.close(); }
+  });
+
+  it("maps all four states, deriving the count from the dedupe key", async () => {
+    const { app, postRing } = await fixture();
+    try {
+      const cases = [
+        ["child_dismissed", 3, "alertBodyRingChildDismissed", { ringId: ringId.toLowerCase(), dismissalCount: 3 }],
+        ["pin_stopped", 0, "alertBodyRingPinStopped", { ringId: ringId.toLowerCase() }],
+        ["parent_stopped", 0, "alertBodyRingParentStopped", { ringId: ringId.toLowerCase() }],
+        ["timed_out", 0, "alertBodyRingTimedOut", { ringId: ringId.toLowerCase() }],
+      ] as const;
+      for (const [state, count, key, params] of cases) {
+        const response = await postRing(state, count);
+        expect(response.statusCode).toBe(201);
+        expect(response.json().alert.metadata.bodyKey).toBe(key);
+        expect(response.json().alert.metadata.bodyParams).toEqual(params);
+        expect(response.json().alert.body).toBe(state === "child_dismissed"
+          ? `The ring alert was dismissed on the phone ${count} times. It is still ringing.`
+          : fallback[state]);
+      }
+    } finally { await app.close(); }
+  });
+
+  it("caps dismissal rows at ten per ring and keeps the latest count on the tenth", async () => {
+    const { app, rows, postRing } = await fixture();
+    try {
+      for (let count = 1; count <= 10; count += 1) {
+        expect((await postRing("child_dismissed", count)).statusCode).toBe(201);
+      }
+      for (let count = 11; count <= 12; count += 1) {
+        expect((await postRing("child_dismissed", count)).statusCode).toBe(200);
+      }
+      expect(rows).toHaveLength(10);
+      expect(rows[9].dedupeKey).toBe(`ring:${ringId.toLowerCase()}:child_dismissed:10`);
+      expect(rows[9].attemptCount).toBe(12);
+      expect(rows[9].body).toBe("The ring alert was dismissed on the phone 12 times. It is still ringing.");
+      expect((rows[9].metadata as { bodyParams: { dismissalCount: number } }).bodyParams.dismissalCount).toBe(12);
+    } finally { await app.close(); }
+  });
+
+  it("rejects a missing or malformed dismissal key instead of creating a row", async () => {
+    const { app, rows, postRing } = await fixture();
+    try {
+      expect((await postRing("child_dismissed", 1, {}, null)).statusCode).toBe(400);
+      expect((await postRing("child_dismissed", 1, {}, "not-a-ring-key")).statusCode).toBe(400);
+      expect(rows).toHaveLength(0);
+    } finally { await app.close(); }
+  });
+
+  it("canonicalizes a case-variant dismissal key to one row", async () => {
+    const { app, rows, postRing } = await fixture();
+    try {
+      expect((await postRing("child_dismissed", 1)).statusCode).toBe(201);
+      const mixedCase = `ring:${ringId.toUpperCase()}:child_dismissed:1`;
+      expect((await postRing("child_dismissed", 1, {}, mixedCase)).statusCode).toBe(200);
+      expect(rows).toHaveLength(1);
+    } finally { await app.close(); }
+  });
+
+  it("collapses concurrent same-bucket dismissal reports to one row", async () => {
+    const { app, rows, postRing } = await fixture();
+    try {
+      const responses = await Promise.all([
+        postRing("child_dismissed", 11),
+        postRing("child_dismissed", 11),
+      ]);
+      expect(responses.map((response) => response.statusCode).sort()).toEqual([200, 201]);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].dedupeKey).toBe(`ring:${ringId.toLowerCase()}:child_dismissed:10`);
+      expect(rows[0].attemptCount).toBe(11);
+    } finally { await app.close(); }
+  });
+
+  it("keeps the ten-row ceiling per ring, not per device", async () => {
+    const ring2 = "0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D";
+    const { app, rows, postRing } = await fixture();
+    try {
+      prismaMock.deviceCommand.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
+        [ringId.toLowerCase(), ring2.toLowerCase()].includes(where.id)
+          ? { id: where.id, deviceId: "dev-1", type: "ring", createdAt: new Date() }
+          : null);
+      for (let count = 1; count <= 10; count += 1) {
+        expect((await postRing("child_dismissed", count)).statusCode).toBe(201);
+      }
+      expect((await postRing("child_dismissed", 1, {}, undefined, ring2)).statusCode).toBe(201);
+      expect(rows).toHaveLength(11);
+      expect(rows[10].metadata as { ringId: string }).toMatchObject({ ringId: ring2.toLowerCase() });
+    } finally { await app.close(); }
+  });
+
+  it("keeps an unexpired restart ring active and returns its remaining seconds", async () => {
+    const started = Date.now() - 100_000;
+    const { app, rows, postRing } = await fixture();
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: ringId.toLowerCase(), deviceId: "dev-1", type: "ring", status: "acked",
+      createdAt: new Date(started), ackedAt: new Date(started),
+    });
+    try {
+      const response = await postRing("timed_out", 0, { afterRestart: true });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ active: true, retryAfterSeconds: 200 });
+      expect(rows).toHaveLength(0);
+    } finally { await app.close(); }
+  });
+
+  it("does not ack a restart timeout that is still within the 5-minute cap (#760 review)", async () => {
+    const { app, rows, postRing } = await fixture();
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: ringId.toLowerCase(), deviceId: "dev-1", type: "ring", status: "delivered",
+      createdAt: new Date(Date.now() - 600_000), ackedAt: null,
+    });
+    try {
+      prismaMock.deviceCommand.updateMany.mockClear();
+      const response = await postRing("timed_out", 0, { afterRestart: true });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ active: true, retryAfterSeconds: 300 });
+      expect(rows).toHaveLength(0);
+      // The command must stay delivered so the re-push job keeps trying and the parent /ack can settle it.
+      expect(prismaMock.deviceCommand.updateMany).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+
+  it("measures the restart cap from the first successful application", async () => {
+    const now = Date.now();
+    const { app, rows, postRing } = await fixture();
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: ringId.toLowerCase(), deviceId: "dev-1", type: "ring", status: "acked",
+      createdAt: new Date(now - 600_000), ackedAt: new Date(now - 60_000),
+    });
+    try {
+      const response = await postRing("timed_out", 0, { afterRestart: true });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ active: true, retryAfterSeconds: 240 });
+      expect(rows).toHaveLength(0);
+    } finally { await app.close(); }
+  });
+
+  it("does not certify a restart timeout without an applied acknowledgement", async () => {
+    const { app, rows, postRing } = await fixture();
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: ringId.toLowerCase(), deviceId: "dev-1", type: "ring", status: "delivered",
+      createdAt: new Date(Date.now() - 600_000), ackedAt: null,
+    });
+    try {
+      const response = await postRing("timed_out", 0, { afterRestart: true });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ active: true, retryAfterSeconds: 300 });
+      expect(rows).toHaveLength(0);
+    } finally { await app.close(); }
+  });
+
+  it("accepts a genuine restart timeout with afterRestart and the approved fallback", async () => {
+    const started = Date.now() - 600_000;
+    const { app, rows, postRing } = await fixture();
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: ringId.toLowerCase(), deviceId: "dev-1", type: "ring", status: "acked",
+      createdAt: new Date(started), ackedAt: new Date(started),
+    });
+    try {
+      const response = await postRing("timed_out", 0, { afterRestart: true });
+      expect(response.statusCode).toBe(201);
+      expect(response.json().alert.metadata.afterRestart).toBe(true);
+      expect(response.json().alert.metadata.bodyKey).toBe("alertBodyRingTimedOut");
+      expect(response.json().alert.metadata.bodyParams).toEqual({ ringId: ringId.toLowerCase(), afterRestart: true });
+      expect(prismaMock.deviceCommand.findUnique).toHaveBeenCalledWith({ where: { id: ringId.toLowerCase() } });
+      expect(response.json().alert.body).toBe("The ring ended after the phone was restarted.");
+      expect(rows).toHaveLength(1);
+    } finally {
+      await app.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not accept a restart timeout for an unknown ring command", async () => {
+    const { app, rows, postRing } = await fixture();
+    prismaMock.deviceCommand.findUnique.mockResolvedValue(null);
+    try {
+      const response = await postRing("timed_out", 0, { afterRestart: true });
+      expect(response.statusCode).toBe(400);
+      expect(response.json().error).toBe("invalid_ring_command");
+      expect(rows).toHaveLength(0);
+    } finally { await app.close(); }
+  });
+
+  it("refuses a ring id that belongs to another device", async () => {
+    const { app, rows, postRing } = await fixture();
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: ringId.toLowerCase(), deviceId: "dev-2", type: "ring", createdAt: new Date(),
+    });
+    try {
+      expect((await postRing("pin_stopped")).statusCode).toBe(400);
+      expect(rows).toHaveLength(0);
+    } finally { await app.close(); }
+  });
+
+  it("refuses a command that is not a ring", async () => {
+    const { app, rows, postRing } = await fixture();
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: ringId.toLowerCase(), deviceId: "dev-1", type: "lock", createdAt: new Date(),
+    });
+    try {
+      expect((await postRing("parent_stopped")).statusCode).toBe(400);
+      expect(rows).toHaveLength(0);
+    } finally { await app.close(); }
+  });
+
+  it("does not give a body key to a missing ring id", async () => {
+    const { app, rows, postRing } = await fixture();
+    try {
+      const response = await postRing("pin_stopped", 0, { ringId: undefined });
+      expect(response.statusCode).toBe(400);
+      expect(response.json().error).toBe("invalid_ring_command");
+      expect(rows).toHaveLength(0);
+    } finally { await app.close(); }
+  });
+
+  it("rejects zero, malformed, oversized, or another ring's dismissal count", async () => {
+    const { app, rows, postRing } = await fixture();
+    try {
+      for (const count of [0, "abc", 999999999999]) {
+        const response = await postRing("child_dismissed", count);
+        expect(response.statusCode).toBe(400);
+        expect(response.json().error).toBe("invalid_ring_dedupe");
+      }
+      expect(rows).toHaveLength(0);
+      const other = ringAlertFields("ring", { state: "child_dismissed", ringId },
+        "ring:00000000-0000-0000-0000-000000000000:child_dismissed:2");
+      expect(other.bodyKey).toBeUndefined();
+    } finally { await app.close(); }
+  });
+
+  it("drops localization for a wrong or missing dedupe key on non-dismissal ring states", async () => {
+    const { app, postRing } = await fixture();
+    try {
+      for (const state of ["pin_stopped", "parent_stopped", "timed_out"]) {
+        const wrong = await postRing(state, 0, {}, `ring:not-this-ring:${state}`);
+        expect(wrong.statusCode).toBe(201);
+        expect(wrong.json().alert.metadata.bodyKey).toBeUndefined();
+        expect(wrong.json().alert.metadata.bodyParams).toBeUndefined();
+      }
+      const missing = await postRing("pin_stopped", 0, {}, null);
+      expect(missing.statusCode).toBe(201);
+      expect(missing.json().alert.metadata.bodyKey).toBeUndefined();
+      expect(missing.json().alert.metadata.bodyParams).toBeUndefined();
+    } finally { await app.close(); }
   });
 });
 

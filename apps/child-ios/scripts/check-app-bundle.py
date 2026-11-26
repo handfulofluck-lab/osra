@@ -8,7 +8,7 @@ Controls key. None of those fail the build, so this script checks them after it 
     python3 scripts/check-app-bundle.py <path/to/OSRAAgent.app> [<path/to/OSRAAgent.app> ...]
 
 It checks, for each .app given:
-  1. PlugIns/ holds exactly the three expected .appex bundles, and nothing else;
+  1. PlugIns/ holds exactly the four expected .appex bundles, and nothing else;
   2. each .appex Info.plist has the expected NSExtensionPointIdentifier and NSExtensionPrincipalClass;
   3. on macOS (where `nm` reads Mach-O), each .appex binary defines its principal class (a Swift class of the
      extension's own module, #561);
@@ -21,7 +21,8 @@ It checks, for each .app given:
      placeholder and is refused by App Store Connect.
 And once, from the source tree (an unsigned build embeds no entitlements):
   5. every target's .entitlements file carries com.apple.developer.family-controls = true and the
-     app group group.com.osratech.child.
+     app group group.com.osratech.child — except the notification service extension (#760), which
+     answers the ring push, touches no Screen Time API and holds the app group only.
   6. each extension's Info.plist names "$(PRODUCT_MODULE_NAME).<Class>" and declares <Class> in its own sources (#561).
 And for the app and each .appex, built and in the source tree:
   7. Info.plist lists en and ar in CFBundleLocalizations, and the bundle carries en.lproj and ar.lproj (#654: an
@@ -51,6 +52,8 @@ EXTENSIONS = {
         "ShieldConfigurationExtension"),
     "OSRAAgentShieldAction.appex": (
         "com.apple.ManagedSettings.shield-action-service", "OSRAAgentShieldAction", "ShieldActionExtension"),
+    "OSRAAgentRingService.appex": (
+        "com.apple.usernotifications.service", "OSRAAgentRingService", "RingServiceExtension"),
 }
 
 # Extension folder in the source tree -> the .appex it builds.
@@ -58,6 +61,7 @@ EXTENSION_SOURCES = {
     "Extensions/Monitor": "OSRAAgentMonitor.appex",
     "Extensions/ShieldConfiguration": "OSRAAgentShieldConfiguration.appex",
     "Extensions/ShieldAction": "OSRAAgentShieldAction.appex",
+    "Extensions/RingService": "OSRAAgentRingService.appex",
 }
 
 DISPLAY_NAME = "OSRA Kids"
@@ -69,7 +73,13 @@ ENTITLEMENTS = [
     "Extensions/Monitor/Monitor.entitlements",
     "Extensions/ShieldConfiguration/ShieldConfiguration.entitlements",
     "Extensions/ShieldAction/ShieldAction.entitlements",
+    "Extensions/RingService/RingService.entitlements",
 ]
+
+# #760: the notification service extension answers the ring push. It polls the authenticated command
+# channel and shows a notification, so it holds the app group (shared identity store) but no Family
+# Controls entitlement — it touches no Screen Time API and must not carry one it never uses.
+FAMILY_CONTROLS_EXEMPT = ["Extensions/RingService/RingService.entitlements"]
 
 failures = []
 
@@ -324,7 +334,12 @@ def check_entitlements():
         ent = read_plist(path)
         family = ent.get("com.apple.developer.family-controls")
         groups = ent.get("com.apple.security.application-groups", [])
-        if family is True and groups == [APP_GROUP]:
+        if rel in FAMILY_CONTROLS_EXEMPT:
+            if family is None and groups == [APP_GROUP]:
+                ok(f"{rel}: {APP_GROUP} only, no family-controls (notification service extension)")
+            else:
+                fail(f"{rel}: family-controls={family!r}, application-groups={groups!r}; the NSE holds the app group only")
+        elif family is True and groups == [APP_GROUP]:
             ok(f"{rel}: family-controls and {APP_GROUP}")
         else:
             fail(f"{rel}: family-controls={family!r}, application-groups={groups!r}")

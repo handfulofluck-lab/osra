@@ -275,7 +275,9 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       return;
     }
     // Feature #16: conversation-coach card for AI/social alert categories.
-    final coachCard = coachCardFor(alert.category, _concernTypesOf(alert));
+    // UI/UX Bureau (#760): no coach card for ring alerts; fallback is opt-in.
+    // #760: a ring alert shows no conversation card — main's default-for-unknown category gave it one.
+    final coachCard = alert.category == 'ring' ? null : coachCardFor(alert.category, _concernTypesOf(alert));
     showDialog(
       context: context,
       builder: (dialogContext) {
@@ -314,18 +316,25 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   // Issue #475 follow-up (Claude's ruling): the line is scoped to THIS alert's child, in the
                   // dialog a parent opens later to ask "did my last change land?". The feed itself is
                   // family-wide, so it carries no line; the Block path already refetches the family.
-                  RulesBehindBanner(childId: alert.childId),
+                  // UI/UX Bureau (#760): a ring alert is not a rules-sync event, so the banner reads as a
+                  // false failure.
+                  if (alert.category != 'ring') RulesBehindBanner(childId: alert.childId),
                   // #755 Arabic Bureau (6868533968): SOS already states the event in its localized title and
                   // place lines, so never repeat the child agent's raw English sentence.
                   // #889 Arabic Bureau (6997818132): an unkeyed restart row in Arabic renders no body at all
                   // inside the app dialog (the title already states it), never raw English or the push prompt.
                   Builder(builder: (_) {
-                    final localizedBody = formatGeneralAlertBody(
-                      alert,
-                      l10n: l10n,
-                      localeName: dialogContext.localeName,
-                      now: widget.nowProvider?.call(),
-                    );
+                    // #760 UI/UX Bureau: a ring body is the Bureau's own sentence chosen by `bodyKey`,
+                    // never raw metadata. Every other category keeps main's one formatter (#755 SOS,
+                    // #889 restart).
+                    final localizedBody = alert.category == 'ring'
+                        ? alertBodyFor(alert, l10n)
+                        : formatGeneralAlertBody(
+                            alert,
+                            l10n: l10n,
+                            localeName: dialogContext.localeName,
+                            now: widget.nowProvider?.call(),
+                          );
                     if (localizedBody.isEmpty) return const SizedBox.shrink();
                     return Text(localizedBody);
                   }),
@@ -393,7 +402,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                       key: const ValueKey('alert-detail-time'),
                     ),
                   const Divider(),
-                  CoachCardSection(card: coachCard, compact: true),
+                  if (coachCard != null) CoachCardSection(card: coachCard, compact: true),
                 ],
               );
             },

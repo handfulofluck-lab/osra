@@ -58,6 +58,31 @@ export function ttlFor(type: string): number {
   return COMMAND_TTL_SECONDS[type] ?? DEFAULT_COMMAND_TTL_SECONDS;
 }
 
+/** The ring command is only useful while it is still ringing. Expire any open ring rows for this device. */
+export async function expireOpenRingCommands(deviceId: string): Promise<number> {
+  const result = await prisma.deviceCommand.updateMany({
+    where: { deviceId, type: "ring", status: { in: ["pending", "delivered"] } },
+    data: { status: "expired" },
+  });
+  return result.count;
+}
+
+/**
+ * Device-side ring report (dismissal, PIN stop, timeout, etc.). Marks the matching ring command as
+ * acked so the re-push job stops; the parent still receives the per-state alert that carried the
+ * report. Idempotent: a second report for the same command is ignored.
+ */
+export async function ackRingCommandOnReport(
+  deviceId: string,
+  ringId: string,
+  state: string,
+): Promise<void> {
+  await prisma.deviceCommand.updateMany({
+    where: { id: ringId, deviceId, type: "ring", status: { in: ["pending", "delivered"] } },
+    data: { status: "acked", ackedAt: new Date(), result: { state } },
+  });
+}
+
 type Row = {
   id: string;
   deviceId: string;
@@ -84,8 +109,9 @@ export function toMessage(row: Row): DeviceCommandMessage {
 /** Notify agents about a command that has already committed to the durable queue. */
 export async function wakeForDeviceCommand(message: DeviceCommandMessage): Promise<void> {
   await publishJson(`device:${message.deviceId}:commands`, message).catch(() => undefined);
-  // The push wake is detached so a slow provider cannot hold the request open.
-  wakeDeviceDetached(message.deviceId, message.id);
+  // The push wake is detached so a slow provider cannot hold the request open. The type travels with
+  // it: an iOS `ring` has to arrive as a visible alert, not the silent generic wake (#750).
+  wakeDeviceDetached(message.deviceId, message.id, message.type);
 }
 
 export interface EnqueueOptions {
@@ -114,6 +140,9 @@ export async function enqueueDeviceCommand(
       await wakeForDeviceCommand(message);
       return message;
     }
+  }
+  if (type === "stop_ring" || type === "consent_revoked") {
+    await expireOpenRingCommands(deviceId);
   }
   const ttl = opts.ttlSeconds ?? ttlFor(type);
   const row = await prisma.deviceCommand.create({
@@ -161,6 +190,40 @@ export async function enqueueFailedDeviceCommand(
     },
   });
   return toMessage(row);
+}
+
+/**
+ * Read pending rows without changing status or attempts.
+ *
+ * #760 device row: the notification service extension peeks before it tries AlarmKit, so a failed
+ * schedule leaves the row `pending` for the app's full drain instead of stuck in the 120 s redelivery
+ * window of a `delivered` row.
+ */
+export async function peekPendingCommands(deviceId: string): Promise<DeviceCommandMessage[]> {
+  const now = new Date();
+  const rows = await prisma.deviceCommand.findMany({
+    where: { deviceId, status: "pending", expiresAt: { gt: now } },
+    orderBy: { createdAt: "asc" },
+  });
+  return rows.map(toMessage);
+}
+
+/**
+ * Atomically claim one specific pending row for a device. Returns the row when the UPDATE matched,
+ * or `null` when the row is missing, expired, already claimed, or belongs to another device.
+ */
+export async function claimDeviceCommand(deviceId: string, commandId: string): Promise<DeviceCommandMessage | null> {
+  const now = new Date();
+  const row = await prisma.deviceCommand.findUnique({ where: { id: commandId } });
+  if (!row || row.deviceId !== deviceId || row.status !== "pending" || row.expiresAt <= now) {
+    return null;
+  }
+  const result = await prisma.deviceCommand.updateMany({
+    where: { id: commandId, deviceId, status: "pending", expiresAt: { gt: now } },
+    data: { status: "delivered", deliveredAt: now, attempts: { increment: 1 } },
+  });
+  if (result.count === 0) return null;
+  return toMessage(row as Row);
 }
 
 /**
@@ -216,7 +279,15 @@ export async function ackDeviceCommand(
       result: (detail ?? {}) as Prisma.InputJsonValue,
     },
   });
-  if (result.count === 0) return null;
+  if (result.count === 0) {
+    // #760 review: a ring report may mark the command acked before the agent's own /ack arrives.
+    // The agent's ack must be idempotent so the route does not return `no_delivered_command`.
+    const existing = await prisma.deviceCommand.findUnique({ where: { id: commandId } });
+    if (existing && existing.deviceId === deviceId && existing.type === "ring" && existing.status === "acked") {
+      return existing;
+    }
+    return null;
+  }
   // ADR-0031 claim 6: a `show_reset_code` row holds the plaintext 8-digit code, and the acknowledgement
   // is one of the two moments it must stop existing (the other is expiry, swept by the job). Clearing
   // is unconditional on the outcome and leaves the status/ack fields above untouched.

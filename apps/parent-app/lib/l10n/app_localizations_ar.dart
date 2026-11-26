@@ -3422,6 +3422,49 @@ class AppLocalizationsAr extends AppLocalizations {
       'على هواتف آيفون، يُخفى هذا التطبيق بدلًا من عرض شاشة الحظر.';
 
   @override
+  String get alertTitleRing => 'رنين الهاتف';
+
+  @override
+  String alertBodyRingChildDismissed(int count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'أُغلق تنبيه الرنين على الهاتف $countString مرة. ما زال الهاتف يرنّ.',
+      many:
+          'أُغلق تنبيه الرنين على الهاتف $countString مرة. ما زال الهاتف يرنّ.',
+      few:
+          'أُغلق تنبيه الرنين على الهاتف $countString مرات. ما زال الهاتف يرنّ.',
+      two: 'أُغلق تنبيه الرنين على الهاتف مرتين. ما زال الهاتف يرنّ.',
+      one: 'أُغلق تنبيه الرنين على الهاتف. عاد الهاتف إلى الرنين.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get alertBodyRingPinStopped =>
+      'أُوقف الرنين على الهاتف برمز PIN للوالدين.';
+
+  @override
+  String get alertBodyRingParentStopped =>
+      'أوقف أحد الوالدين الرنين من تطبيق الوالدين.';
+
+  @override
+  String get alertBodyRingTimedOut => 'انتهى الرنين تلقائيًا بعد 5 دقائق.';
+
+  @override
+  String get alertBodyRingAfterRestart =>
+      'انتهى الرنين بعد إعادة تشغيل الهاتف.';
+
+  @override
+  String get commandRefusedRingUnsupportedOs =>
+      'لا يمكن أن يرنّ هذا الآيفون حاليًا. يحتاج إلى iOS 26 أو أحدث.';
+
+  @override
   String get webSiteNamesOnlyNote =>
       'أسماء المواقع والخدمات على الإنترنت التي وصل إليها هذا الهاتف، لا الصفحات التي فُتحت. تُحفظ لمدة 90 يومًا.';
 

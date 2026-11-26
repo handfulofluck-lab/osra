@@ -17,9 +17,13 @@ vi.mock("../src/redis.js", async () => {
 
 import {
   ackDeviceCommand,
+  ackRingCommandOnReport,
+  claimDeviceCommand,
   claimPendingCommands,
   enqueueDeviceCommand,
+  expireOpenRingCommands,
   listDeviceCommands,
+  peekPendingCommands,
   ttlFor,
   MAX_ATTEMPTS,
   REDELIVER_AFTER_SECONDS,
@@ -45,6 +49,26 @@ describe("durable command queue (Phase 2b)", () => {
     expect(ttlFor("consent_revoked")).toBe(7 * 86400);
     expect(msg).toMatchObject({ deviceId: "dev-1", type: "ring", payload: {}, attempt: 0 });
     expect(publishJson).toHaveBeenCalledWith("device:dev-1:commands", expect.objectContaining({ id: msg.id, type: "ring" }));
+  });
+
+  it("carries the command type into the detached wake, so an iOS ring arrives as a visible alert (#750)", async () => {
+    // #750: `buildDeviceMessageForCommand` turns a wake into a visible ring alert only when it is told the
+    // type. Dropping the third argument here leaves the phone silent while the parent believes it is ringing,
+    // and no other test notices — this one does, because it is the only assertion on the wake's arguments.
+    const { setDeviceWakeSender } = await import("../src/lib/push/notify.js");
+    const calls: Array<{ deviceId: string; commandId?: string; commandType?: string }> = [];
+    setDeviceWakeSender(async (deviceId, commandId, commandType) => {
+      calls.push({ deviceId, commandId, commandType });
+      return { status: "ok" } as never;
+    });
+    try {
+      const msg = await enqueueDeviceCommand("dev-ring", "ring", {}, { requestedBy: "parent-1" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({ deviceId: "dev-ring", commandId: msg.id, commandType: "ring" });
+    } finally {
+      setDeviceWakeSender(null);
+    }
   });
 
   it("coalesces rules_updated onto an existing pending row instead of stacking duplicates", async () => {
@@ -130,6 +154,19 @@ describe("durable command queue (Phase 2b)", () => {
     expect(await ackDeviceCommand("dev-1", "nope", "ok")).toBeNull();
   });
 
+  it("a ring already acked by a device report stays acked when the device acks it (#760 review)", async () => {
+    // A ring report may mark the command acked before the agent's own /ack arrives. Idempotency keeps the
+    // route from returning a 404 and lets the parent see the command as settled.
+    prismaMock.deviceCommand.updateMany.mockResolvedValueOnce({ count: 0 });
+    prismaMock.deviceCommand.findUnique.mockResolvedValueOnce({ id: "c-ring", deviceId: "dev-1", type: "ring", status: "acked" });
+    expect(await ackDeviceCommand("dev-1", "c-ring", "ok")).toEqual({ id: "c-ring", deviceId: "dev-1", type: "ring", status: "acked" });
+    expect(prismaMock.deviceCommand.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "c-ring", deviceId: "dev-1", status: "delivered" },
+      }),
+    );
+  });
+
   it("history reports an unswept pending-but-expired row as expired", async () => {
     prismaMock.deviceCommand.findMany.mockResolvedValue([
       { id: "x", status: "pending", expiresAt: new Date(Date.now() - 1000), createdAt: new Date() },
@@ -139,6 +176,61 @@ describe("durable command queue (Phase 2b)", () => {
     const items = await listDeviceCommands("dev-1", 500);
     expect(items.map((i) => i.status)).toEqual(["expired", "pending", "acked"]);
     expect(prismaMock.deviceCommand.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 100 }));
+  });
+});
+
+describe("peek and single-command claim (#760 device row)", () => {
+  beforeEach(() => resetPrismaMock());
+
+  it("peeks pending rows without writing anything", async () => {
+    const t0 = new Date("2026-10-16T10:00:00Z");
+    const t1 = new Date("2026-10-16T10:01:00Z");
+    prismaMock.deviceCommand.findMany.mockResolvedValue([
+      { id: "a", deviceId: "dev-1", type: "ring", payload: {}, status: "pending", createdAt: t0, expiresAt: t1, attempts: 0 },
+      { id: "b", deviceId: "dev-1", type: "lock", payload: {}, status: "pending", createdAt: t1, expiresAt: t1, attempts: 0 },
+    ]);
+    const out = await peekPendingCommands("dev-1");
+    expect(out.map((c) => c.id)).toEqual(["a", "b"]);
+    expect(prismaMock.deviceCommand.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { deviceId: "dev-1", status: "pending", expiresAt: { gt: expect.any(Date) } },
+        orderBy: { createdAt: "asc" },
+      }),
+    );
+    expect(prismaMock.$queryRaw).not.toHaveBeenCalled();
+    expect(prismaMock.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it("claims a specific pending row and increments attempts", async () => {
+    const expiresAt = new Date(Date.now() + 60_000);
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: "c1", deviceId: "dev-1", type: "ring", payload: {}, status: "pending", createdAt: new Date(), expiresAt, attempts: 0,
+    });
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
+    const out = await claimDeviceCommand("dev-1", "c1");
+    expect(out).not.toBeNull();
+    expect(out?.id).toBe("c1");
+    expect(prismaMock.deviceCommand.updateMany).toHaveBeenCalledWith({
+      where: { id: "c1", deviceId: "dev-1", status: "pending", expiresAt: { gt: expect.any(Date) } },
+      data: { status: "delivered", deliveredAt: expect.any(Date), attempts: { increment: 1 } },
+    });
+  });
+
+  it("claim returns null for a missing, expired, or already-claimed row", async () => {
+    const expiresAt = new Date(Date.now() - 60_000);
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: "c1", deviceId: "dev-1", type: "ring", payload: {}, status: "pending", createdAt: new Date(), expiresAt, attempts: 0,
+    });
+    expect(await claimDeviceCommand("dev-1", "c1")).toBeNull();
+    expect(prismaMock.deviceCommand.updateMany).not.toHaveBeenCalled();
+
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: "c2", deviceId: "dev-1", type: "ring", payload: {}, status: "delivered", createdAt: new Date(), expiresAt: new Date(Date.now() + 60_000), attempts: 1,
+    });
+    expect(await claimDeviceCommand("dev-1", "c2")).toBeNull();
+
+    prismaMock.deviceCommand.findUnique.mockResolvedValue(null);
+    expect(await claimDeviceCommand("dev-1", "c3")).toBeNull();
   });
 });
 
@@ -325,5 +417,94 @@ describe("command routes (Phase 2b)", () => {
     expect(drain.statusCode).toBe(200);
     expect(prismaMock.$queryRaw.mock.calls[0][0].join("?")).toContain("\"ackedAt\" IS NULL");
     await app.close();
+  });
+
+  it("`?peek=1` returns pending rows without calling the claiming UPDATE", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.deviceCommand.findMany.mockResolvedValue([{ id: "c1", type: "ring", status: "pending", expiresAt: new Date(Date.now() + 1000), createdAt: new Date(), attempts: 0 }]);
+
+    const peek = await app.inject({ method: "GET", url: "/v1/devices/dev-1/commands?peek=1", headers: deviceHeader(app) });
+    expect(peek.statusCode).toBe(200);
+    expect(peek.json()).toEqual([expect.objectContaining({ id: "c1", type: "ring" })]);
+    expect(prismaMock.deviceCommand.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { deviceId: "dev-1", status: "pending", expiresAt: { gt: expect.any(Date) } } }),
+    );
+    expect(prismaMock.$queryRaw).not.toHaveBeenCalled();
+    expect(prismaMock.$executeRaw).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("device claims its pending command; parents, other devices, and missing rows cannot", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: "c1", deviceId: "dev-1", type: "ring", payload: {}, status: "pending", createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 1000), attempts: 0,
+    });
+    prismaMock.deviceCommand.updateMany.mockResolvedValueOnce({ count: 1 });
+
+    const ok = await app.inject({ method: "POST", url: "/v1/devices/dev-1/commands/c1/claim", headers: deviceHeader(app) });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().command).toMatchObject({ id: "c1", type: "ring" });
+    expect(prismaMock.deviceCommand.updateMany).toHaveBeenCalledWith({
+      where: { id: "c1", deviceId: "dev-1", status: "pending", expiresAt: { gt: expect.any(Date) } },
+      data: { status: "delivered", deliveredAt: expect.any(Date), attempts: { increment: 1 } },
+    });
+
+    const parent = await app.inject({ method: "POST", url: "/v1/devices/dev-1/commands/c1/claim", headers: authHeader(app) });
+    expect(parent.statusCode).toBe(403);
+    const other = await app.inject({ method: "POST", url: "/v1/devices/dev-1/commands/c1/claim", headers: deviceHeader(app, { deviceId: "dev-2", childId: "child-1", familyId: "fam-1" }) });
+    expect(other.statusCode).toBe(403);
+
+    prismaMock.deviceCommand.updateMany.mockResolvedValueOnce({ count: 0 });
+    const gone = await app.inject({ method: "POST", url: "/v1/devices/dev-1/commands/c9/claim", headers: deviceHeader(app) });
+    expect(gone.statusCode).toBe(404);
+    expect(gone.json()).toEqual({ error: "no_pending_command" });
+    await app.close();
+  });
+});
+
+
+describe("stop_ring targeting", () => {
+  beforeEach(() => resetPrismaMock());
+
+  it("preserves an optional target ring id in the durable command payload", async () => {
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 0 });
+    const ringId = "6f1c2b8e-3d4a-4e5f-9a0b-1c2d3e4f5a6b";
+    const command = await enqueueDeviceCommand("dev-1", "stop_ring", { ringId }, { requestedBy: "parent-1" });
+    expect(command.type).toBe("stop_ring");
+    expect(command.payload).toEqual({ ringId });
+  });
+
+  it("expires any open ring row for the same device when stop_ring is enqueued", async () => {
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 2 });
+    await enqueueDeviceCommand("dev-1", "stop_ring", {}, { requestedBy: "parent-1" });
+    expect(prismaMock.deviceCommand.updateMany).toHaveBeenCalledWith({
+      where: { deviceId: "dev-1", type: "ring", status: { in: ["pending", "delivered"] } },
+      data: { status: "expired" },
+    });
+  });
+});
+
+describe("ring command lifecycle (#760)", () => {
+  beforeEach(() => resetPrismaMock());
+
+  it("expires only the device's own open ring rows", async () => {
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
+    await expireOpenRingCommands("dev-1");
+    expect(prismaMock.deviceCommand.updateMany).toHaveBeenCalledWith({
+      where: { deviceId: "dev-1", type: "ring", status: { in: ["pending", "delivered"] } },
+      data: { status: "expired" },
+    });
+  });
+
+  it("acks the ring command when the device first reports any ring state", async () => {
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
+    await ackRingCommandOnReport("dev-1", "ring-cmd-1", "child_dismissed");
+    expect(prismaMock.deviceCommand.updateMany).toHaveBeenCalledWith({
+      where: { id: "ring-cmd-1", deviceId: "dev-1", type: "ring", status: { in: ["pending", "delivered"] } },
+      data: { status: "acked", ackedAt: expect.any(Date), result: { state: "child_dismissed" } },
+    });
   });
 });

@@ -406,7 +406,7 @@ class _SocialAlertDetailBodyState
     final availability = resolveSocialPreviewAvailability(alert, eventsAsync,
         exactConcernId: concernId);
     final latestSourceEventId = socialVoteEventId(alert);
-    final coachCard = coachCardFor(alert.category, concernTypes);
+    final coachCard = alert.category == 'ring' ? null : coachCardFor(alert.category, concernTypes);
 
     return ListView(
       key: const ValueKey('alertDetailScroll'),
@@ -554,7 +554,7 @@ class _SocialAlertDetailBodyState
         const SizedBox(height: AppSpace.lg),
         const Divider(),
         // 4. Conversation guide.
-        CoachCardSection(card: coachCard),
+        if (coachCard != null) CoachCardSection(card: coachCard),
         // 5. Keep /alerts reachable when launched cold from a notification tap.
         if (showAllAlertsButton) ...[
           const SizedBox(height: AppSpace.lg),
@@ -722,7 +722,7 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
       if (child != null && child.displayName.isNotEmpty) child.displayName,
       if (device != null && device.model.isNotEmpty) ltrIsolate(device.model),
     ];
-    final coachCard = coachCardFor(alert.category, const []);
+    final coachCard = alert.category == 'ring' ? null : coachCardFor(alert.category, const []);
     final voteEventId = socialVoteEventId(alert);
     final voteEventsAsync = voteEventId == null
         ? null
@@ -878,7 +878,7 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
           const SizedBox(height: AppSpace.lg),
         ],
         const Divider(),
-        CoachCardSection(card: coachCard),
+        if (coachCard != null) CoachCardSection(card: coachCard),
         if (showAllAlertsButton) ...[
           const SizedBox(height: AppSpace.lg),
           SizedBox(

@@ -2,8 +2,9 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
+import { raiseAlertOnce, ringAlertFields } from "../lib/alerts.js";
+import { ackRingCommandOnReport } from "../lib/deviceCommands.js";
 import { redactedBlockedSiteKey, redactBlockedSiteHost, siteNamesEnabled } from "../lib/siteNames.js";
-import { raiseAlertOnce } from "../lib/alerts.js";
 import { sanitizeAlertMetadata, withoutAlertLocation } from "../lib/alertLocation.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
 import { guardianPermissions, requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
@@ -35,6 +36,7 @@ const InternalAlertSchema = z.object({
     "vpn_detected",
     "install_request",
     "unknown_contact",
+    "ring",
   ]),
   title: z.string().min(1),
   body: z.string().min(1),
@@ -131,12 +133,56 @@ export async function alertsRoutes(app: FastifyInstance) {
     if (!(await assertProcessingAllowed(childId, reply))) return;
 
     const effectiveDeviceId = deviceId ?? auth.device?.id;
+    let acceptedMetadata = metadata;
+    let effectiveDedupeKey = dedupeKey;
+    let effectiveAttemptCount = attemptCount;
+    if (category === "ring") {
+      const ringId = typeof metadata?.ringId === "string" ? metadata.ringId.toLowerCase() : "";
+      const command = /^[0-9a-f-]{36}$/.test(ringId)
+        ? await prisma.deviceCommand.findUnique({ where: { id: ringId } })
+        : null;
+      if (!command || command.deviceId !== effectiveDeviceId || command.type !== "ring") {
+        return reply.code(400).send({ error: "invalid_ring_command" });
+      }
+      acceptedMetadata = { ...metadata, ringId };
+      if (metadata?.state === "child_dismissed") {
+        const prefix = `ring:${ringId}:child_dismissed:`;
+        const canonicalDedupe = dedupeKey?.toLowerCase() ?? "";
+        const rawCount = canonicalDedupe.startsWith(prefix) ? canonicalDedupe.slice(prefix.length) : "";
+        if (!/^[1-9][0-9]{0,3}$/.test(rawCount)) {
+          return reply.code(400).send({ error: "invalid_ring_dedupe" });
+        }
+        const count = Number(rawCount);
+        const bucket = Math.min(count, 10);
+        // Security guard (#760): every stored dismissal key is derived here, not trusted from
+        // the device. Counts 1–10 get their own row; every later count updates the tenth row
+        // in place through `applyAttemptCount`, which also suppresses the push.
+        effectiveDedupeKey = `${prefix}${bucket}`;
+        effectiveAttemptCount = count;
+      }
+      if (metadata?.state === "timed_out" && metadata.afterRestart === true) {
+        // Queue age is not ringing time: the first successful acknowledgement proves the alarm was applied.
+        const appliedAt = command.status === "acked" ? command.ackedAt : null;
+        const retryAfterSeconds = appliedAt
+          ? Math.min(300, Math.ceil((appliedAt.getTime() + 300_000 - Date.now()) / 1000))
+          : 300;
+        if (retryAfterSeconds > 0) {
+          return reply.code(200).send({ active: true, retryAfterSeconds });
+        }
+        acceptedMetadata.afterRestart = true;
+      }
+      // #760: the first ring report from the device proves the phone is ringing, so stop re-pushing.
+      // For an after-restart timeout that is still within the 5-minute cap we return early above; the
+      // command stays delivered so the re-push job keeps trying and the parent /ack can settle it.
+      await ackRingCommandOnReport(command.deviceId, ringId, String(metadata?.state ?? ""));
+    }
 
     // Claude's ruling on #841 finding 5: while the site-name flag is off, a blocked site is a count with no
     // host. The parent keeps the attempt; nothing in the row names a site, and the dedupe key groups by day.
     const redactSite = category === "web_threat" && !siteNamesEnabled();
-    const safeMetadata = redactSite ? redactBlockedSiteHost(metadata) : metadata;
-    const safeDedupeKey = redactSite ? redactedBlockedSiteKey() : dedupeKey;
+    const safeMetadata = redactSite ? redactBlockedSiteHost(metadata) : acceptedMetadata;
+    const safeDedupeKey = redactSite ? redactedBlockedSiteKey() : effectiveDedupeKey;
+    const safeAttemptCount = redactSite ? attemptCount : effectiveAttemptCount;
 
     // Phase 2a: one path creates the row, publishes the WS event and pushes to the parents' phones.
     // Issue #225: a repeated dedupeKey is a retry, not a new alert — 200 with the existing row.
@@ -150,12 +196,13 @@ export async function alertsRoutes(app: FastifyInstance) {
       // name a site, so the server owns both while the flag is off (Fable's blocker B).
       title: redactSite ? "Blocked site opened" : title,
       body: redactSite ? "Your child tried to open a blocked site." : body,
+      ...ringAlertFields(category, acceptedMetadata, dedupeKey),
       // Issue #672: an SOS may carry where it was sent from, as the five flat keys the agent writes.
       // The location is normalised here — or dropped, keeping every other key — and never rejects the
       // alert: an SOS with no usable fix is still an SOS a parent must receive.
       metadata: sanitizeAlertMetadata(safeMetadata),
       dedupeKey: safeDedupeKey,
-      attemptCount,
+      attemptCount: safeAttemptCount,
       childName: child.displayName,
     });
     return reply.code(deduplicated ? 200 : 201).send({ alert });

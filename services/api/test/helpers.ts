@@ -272,6 +272,7 @@ export function resetPrismaMock(): void {
     result: null,
     ...data,
   }));
+  prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 0 });
   prismaMock.$queryRaw.mockResolvedValue([{}]);
   prismaMock.$executeRaw.mockResolvedValue(0);
   prismaMock.family.findUnique.mockResolvedValue({

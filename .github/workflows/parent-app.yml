@@ -179,6 +179,35 @@ jobs:
           path: apps/parent-app/build/app/outputs/bundle/release/app-release.aab
           retention-days: 14
 
+  # UI/UX Bureau evidence for ring-alert UI changes (#760). This job generates
+  # golden-file screenshots in light/dark and English/Arabic, uploading them as
+  # artifacts so the author can attach them to the Bureau review thread. It runs
+  # only on PRs and manual triggers, does not gate the main job, and never
+  # commits binary images.
+  ring-ui-screenshots:
+    name: Generate ring UI screenshots
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/parent-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.9
+          cache: true
+      - run: flutter config --no-enable-swift-package-manager
+      - run: flutter pub get
+      - run: mkdir -p test/goldens
+      - run: flutter test --update-goldens test/ring_ui_golden.dart
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ring-ui-screenshots-${{ github.run_id }}
+          path: apps/parent-app/test/goldens/*.png
+          retention-days: 14
+
   # Whether this run builds iOS. A macOS minute bills as ten Linux minutes once the repository is private,
   # and most parent-app changes are Dart only, which the Android release build above already compiles. So a
   # pull request or a push builds iOS only when it changes something the iOS build reads and the Android one
