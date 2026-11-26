@@ -127,6 +127,8 @@ extension AppLocalizationsLabels on AppLocalizations {
         'tamper' => switch (tamperType) {
             'block_bypass' => alertTitleBlockBypass,
             'agent_data_cleared' => alertTitleDataCleared,
+            'setup_complete' => alertTitleSetupComplete,
+            'setup_incomplete' => alertTitleSetupIncomplete,
             _ => alertTitleTamper,
           },
         'vpn_detected' => alertTitleVpnDetected,

@@ -190,6 +190,9 @@ class Device {
   /// server *has* judged carries a setup whose [DeviceSetup.reportedAt] is the receipt time.
   final DeviceSetup? setup;
 
+  /// ADR-0047: when the server authenticated completion of required setup grants.
+  final DateTime? setupCompletedAt;
+
   const Device({
     required this.id,
     required this.childId,
@@ -201,6 +204,7 @@ class Device {
     this.lastSeen,
     this.pushToken,
     this.setup,
+    this.setupCompletedAt,
   });
 
   factory Device.fromJson(Map<String, dynamic> json) => Device(
@@ -213,6 +217,7 @@ class Device {
         batteryPct: _int(json['batteryPct']),
         lastSeen: DateTime.tryParse(_str(json['lastSeen'])),
         pushToken: _strOrNull(json['pushToken']),
+        setupCompletedAt: DateTime.tryParse(_str(json['setupCompletedAt'])),
         setup: json['setup'] is Map
             ? DeviceSetup.fromJson(
                 Map<String, dynamic>.from(json['setup'] as Map))

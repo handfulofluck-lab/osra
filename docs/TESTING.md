@@ -138,6 +138,17 @@ its preview opens. Also verify that a missing exact preview never substitutes an
 event from the same app. On a signed parent build, confirm this flow in Social activity
 and verify that the system notification still shows the generic alert.
 
+For initial setup alert holding (#1127, ADR-0047), run `test/device-setup-policy.test.ts`,
+`test/device-setup-alerts.test.ts`, `test/device-setup-transitions.test.ts` and
+`test/device-setup-migration.test.ts` from `services/api`. They cover required versus recommended
+grants, exact hold/never-hold matrices, parent list/ack/export exclusion, authenticated completion,
+protected-alert rollback, poll/scheduler timeout dedupe and paired-device backfill. The live probe
+adds G30–G32: a grant-matched tamper is not parent-listed, SOS stays visible, and all-ready telemetry
+creates one protected alert with `setupCompletedAt`. From `apps/parent-app`, run
+`flutter test test/phone_setup_section_test.dart test/setup_alerts_test.dart`; they prove the server
+timestamp, incomplete/protected/repair states, EN/AR body keys, grant labels, ICU plurals, malformed
+params and generic lock-screen bodies. These are software gates, not a handset run.
+
 ## 2. Prerequisites (dev machine)
 
 | Need | Where it lives here |

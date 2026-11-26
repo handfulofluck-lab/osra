@@ -40,4 +40,4 @@ The server already has the authenticated device identity, pairing instant, grant
 ## Evidence
 
 - `device-setup-policy.test.ts` covers required grants, exact hold/never-hold matrices, unknown state, the 30-minute boundary and setup-episode dedupe keys.
-- Before the PR is ready, route/job tests will cover held persistence without realtime/push, parent invisibility, authenticated completion, poll/job timeout sharing, migration backfill and the visible data-cleared path; parent tests will cover the server timestamp, step count, localized alert copy and EN/AR layouts. Physical-phone evidence is not claimed by the software suite.
+- Route/job tests cover held persistence without realtime/push, parent invisibility, authenticated completion, poll/job timeout sharing, protected-alert rollback, migration backfill and the visible data-cleared path. Parent tests cover the server timestamp, step count, localized alert copy, grant labels, malformed params and EN/AR layouts. Live probe rows G30–G32 and full-suite outputs are recorded on the PR; physical-phone evidence is not claimed by the software suite.

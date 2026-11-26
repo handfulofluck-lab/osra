@@ -5822,6 +5822,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'+{count} new'**
   String socialAlertNewSince(int count);
+
+  /// No description provided for @phoneSetupStepsLeftThisPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Setting up this phone: {count, plural, =1{1 step} other{{count} steps}} left'**
+  String phoneSetupStepsLeftThisPhone(int count);
+
+  /// No description provided for @phoneSetupProtected.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone is protected.'**
+  String get phoneSetupProtected;
+
+  /// No description provided for @phoneSetupStepsLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'Setting up {childName}\'s phone: {count, plural, =1{1 step} other{{count} steps}} left'**
+  String phoneSetupStepsLeft(String childName, int count);
+
+  /// No description provided for @alertTitleSetupComplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone is protected'**
+  String get alertTitleSetupComplete;
+
+  /// No description provided for @alertTitleSetupIncomplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone setup needs attention'**
+  String get alertTitleSetupIncomplete;
+
+  /// No description provided for @alertBodySetupCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'{childName}\'s phone is protected.'**
+  String alertBodySetupCompleted(String childName);
+
+  /// No description provided for @alertBodySetupIncomplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Setup on {childName}\'s phone is not complete after 30 minutes{steps}'**
+  String alertBodySetupIncomplete(String childName, int count, String steps);
+
+  /// No description provided for @alertBodyDataCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'OSRA was reinstalled on {model}. Its protection was off until it was paired again.'**
+  String alertBodyDataCleared(String model);
 }
 
 class _AppLocalizationsDelegate

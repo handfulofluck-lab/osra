@@ -17,6 +17,7 @@ import '../../push/restart_alert_text.dart';
 import '../../push/sos_fix_text.dart';
 import '../../theme/app_tokens.dart';
 import '../../widgets/error_retry_view.dart';
+import '../children/phone_setup_section.dart';
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
 import '../map/family_map_screen.dart'
@@ -47,7 +48,29 @@ String formatGeneralAlertBody(
         ) ??
         (isEnglish ? alert.body : '');
   }
-  return alert.body;
+  final rawParams = alert.metadata['bodyParams'];
+  final params = rawParams is Map ? Map<String, dynamic>.from(rawParams) : <String, dynamic>{};
+  String param(String name) => params[name]?.toString() ?? '';
+  String fallback() => isEnglish ? alert.body : '';
+  switch (alert.metadata['bodyKey']) {
+    case 'alertBodySetupCompleted':
+      final childName = param('childName');
+      if (childName.isNotEmpty) return l10n.alertBodySetupCompleted(ltrIsolate(childName));
+    case 'alertBodySetupIncomplete':
+      final childName = param('childName');
+      final count = params['count'] is num ? params['count'] as num : num.tryParse(param('count'));
+      if (childName.isNotEmpty && count != null) {
+        final rawMissing = alert.metadata['missing'];
+        final steps = rawMissing is List
+            ? rawMissing.map((grant) => PhoneSetupSection.grantLabel(l10n, grant.toString())).join(l10n.listSeparator)
+            : (isEnglish ? param('steps') : '');
+        return l10n.alertBodySetupIncomplete(ltrIsolate(childName), count.toInt(), steps.isEmpty ? '' : ': $steps');
+      }
+    case 'alertBodyDataCleared':
+      final model = param('model');
+      if (model.isNotEmpty) return l10n.alertBodyDataCleared(ltrIsolate(model));
+  }
+  return fallback();
 }
 
 /// Whether [category] uses the dedicated #972 full-screen social alert detail route.

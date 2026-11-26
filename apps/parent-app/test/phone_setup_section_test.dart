@@ -31,6 +31,7 @@ void main() {
     int? others,
     List<String> kinds = const [],
     bool withSetup = true,
+    DateTime? setupCompletedAt,
   }) =>
       Device.fromJson({
         'id': 'dev-1',
@@ -40,6 +41,7 @@ void main() {
         'osVersion': '15',
         'status': 'online',
         'batteryPct': 80,
+        if (setupCompletedAt != null) 'setupCompletedAt': setupCompletedAt.toIso8601String(),
         if (withSetup)
           'setup': {
             'reportedAt': '2026-11-10T09:15:00.000Z',
@@ -91,10 +93,31 @@ void main() {
       tester,
       device(missing: ['accessibility', 'location']),
     );
-    expect(find.text('What to fix on the phone'), findsOneWidget);
+    expect(find.text('Setting up this phone: 2 steps left'), findsOneWidget);
+    expect(find.text('What to fix on the phone'), findsNothing);
     expect(find.text('• Accessibility service'), findsOneWidget);
     expect(find.text('• Location (allow all the time)'), findsOneWidget);
     expect(find.text('Every permission this phone needs is in place.'), findsNothing);
+  });
+
+  testWidgets('an incomplete setup names its remaining step count and keeps the grant labels', (tester) async {
+    await pump(tester, device(missing: ['accessibility', 'location']));
+    expect(find.text('Setting up this phone: 2 steps left'), findsOneWidget);
+    expect(find.text('What to fix on the phone'), findsNothing);
+    expect(find.text('• Accessibility service'), findsOneWidget);
+    expect(find.text('• Location (allow all the time)'), findsOneWidget);
+  });
+
+  testWidgets('a completed setup is protected, while a later missing grant still needs repair', (tester) async {
+    final completed = DateTime.parse('2026-11-26T01:00:00.000Z');
+    await pump(tester, device(setupCompletedAt: completed));
+    expect(find.text('This phone is protected.'), findsOneWidget);
+    expect(find.text('Every permission this phone needs is in place.'), findsNothing);
+
+    await pump(tester, device(setupCompletedAt: completed, missing: ['overlay']));
+    expect(find.text('What to fix on the phone'), findsOneWidget);
+    expect(find.textContaining('steps left'), findsNothing);
+    expect(find.text('• Display over other apps'), findsOneWidget);
   });
 
   testWidgets('nothing missing is said plainly, not left blank', (tester) async {
@@ -126,6 +149,25 @@ void main() {
     expect(find.text('إعداد الهاتف'), findsOneWidget);
     expect(find.text('شاشة القفل · جاهز'), findsOneWidget);
     expect(find.text('• خدمة إمكانية الوصول'), findsOneWidget);
+  });
+
+  testWidgets('Arabic setup counts use the right plural forms', (tester) async {
+    final cases = <int, List<String>>{
+      1: ['accessibility'],
+      2: ['accessibility', 'location'],
+      3: ['accessibility', 'location', 'overlay'],
+      11: ['accessibility', 'location', 'overlay', 'battery', 'usb_debugging', 'notification_listener', 'web_filter', 'private_dns', 'device_admin', 'usage_access', 'family_controls'],
+    };
+    final expected = <int, String>{
+      1: 'إعداد هذا الهاتف: تبقى خطوة واحدة',
+      2: 'إعداد هذا الهاتف: تبقى خطوتان',
+      3: 'إعداد هذا الهاتف: تبقى 3 خطوات',
+      11: 'إعداد هذا الهاتف: تبقى 11 خطوة',
+    };
+    for (final entry in cases.entries) {
+      await pump(tester, device(missing: entry.value), locale: const Locale('ar'));
+      expect(find.text(expected[entry.key]!), findsOneWidget, reason: 'Arabic count ${entry.key}');
+    }
   });
 
   testWidgets('all thirteen grant keys get a human label, and the list matches the shared vocabulary', (tester) async {

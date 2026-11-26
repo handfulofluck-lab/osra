@@ -3790,4 +3790,56 @@ class AppLocalizationsAr extends AppLocalizations {
   String socialAlertNewSince(int count) {
     return '+$count جديدة';
   }
+
+  @override
+  String phoneSetupStepsLeftThisPhone(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'تبقى $count خطوة',
+      many: 'تبقى $count خطوة',
+      few: 'تبقى $count خطوات',
+      two: 'تبقى خطوتان',
+      one: 'تبقى خطوة واحدة',
+    );
+    return 'إعداد هذا الهاتف: $_temp0';
+  }
+
+  @override
+  String get phoneSetupProtected => 'هذا الهاتف محمي.';
+
+  @override
+  String phoneSetupStepsLeft(String childName, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'تبقى $count خطوة',
+      many: 'تبقى $count خطوة',
+      few: 'تبقى $count خطوات',
+      two: 'تبقى خطوتان',
+      one: 'تبقى خطوة واحدة',
+    );
+    return 'إعداد هاتف $childName: $_temp0';
+  }
+
+  @override
+  String get alertTitleSetupComplete => 'الهاتف محمي';
+
+  @override
+  String get alertTitleSetupIncomplete => 'إعداد الهاتف يحتاج إلى متابعة';
+
+  @override
+  String alertBodySetupCompleted(String childName) {
+    return 'هاتف $childName محمي.';
+  }
+
+  @override
+  String alertBodySetupIncomplete(String childName, int count, String steps) {
+    return 'لم يكتمل إعداد هاتف $childName بعد 30 دقيقة$steps';
+  }
+
+  @override
+  String alertBodyDataCleared(String model) {
+    return 'أعيد تثبيت تطبيق أسرة على $model. وكانت الحماية متوقفة حتى إعادة الاقتران.';
+  }
 }

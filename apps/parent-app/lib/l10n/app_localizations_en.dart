@@ -3564,4 +3564,50 @@ class AppLocalizationsEn extends AppLocalizations {
   String socialAlertNewSince(int count) {
     return '+$count new';
   }
+
+  @override
+  String phoneSetupStepsLeftThisPhone(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count steps',
+      one: '1 step',
+    );
+    return 'Setting up this phone: $_temp0 left';
+  }
+
+  @override
+  String get phoneSetupProtected => 'This phone is protected.';
+
+  @override
+  String phoneSetupStepsLeft(String childName, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count steps',
+      one: '1 step',
+    );
+    return 'Setting up $childName\'s phone: $_temp0 left';
+  }
+
+  @override
+  String get alertTitleSetupComplete => 'Phone is protected';
+
+  @override
+  String get alertTitleSetupIncomplete => 'Phone setup needs attention';
+
+  @override
+  String alertBodySetupCompleted(String childName) {
+    return '$childName\'s phone is protected.';
+  }
+
+  @override
+  String alertBodySetupIncomplete(String childName, int count, String steps) {
+    return 'Setup on $childName\'s phone is not complete after 30 minutes$steps';
+  }
+
+  @override
+  String alertBodyDataCleared(String model) {
+    return 'OSRA was reinstalled on $model. Its protection was off until it was paired again.';
+  }
 }

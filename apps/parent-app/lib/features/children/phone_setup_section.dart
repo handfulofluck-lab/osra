@@ -16,7 +16,8 @@ import '../dashboard/dashboard_screen.dart' show formatLastSeen;
 /// verdict is the one a `lock` command obeys.
 class PhoneSetupSection extends StatelessWidget {
   final Device device;
-  const PhoneSetupSection({super.key, required this.device});
+  final String? childName;
+  const PhoneSetupSection({super.key, required this.device, this.childName});
 
   /// The server's `GRANT_KEYS`, verbatim (`packages/shared-types/src/capabilities.ts`).
   ///
@@ -89,13 +90,27 @@ class PhoneSetupSection extends StatelessWidget {
           const SizedBox(height: AppSpace.xs),
           // The "what to fix" list first: it is the only part a parent can act on.
           if (setup.missing.isEmpty)
-            _line(context, Icons.check_circle_outline, context.tokens.ok, l10n.phoneSetupNothingMissing)
+            _line(
+              context,
+              Icons.check_circle_outline,
+              context.tokens.ok,
+              device.setupCompletedAt == null ? l10n.phoneSetupNothingMissing : l10n.phoneSetupProtected,
+            )
           else ...[
-            _line(context, Icons.priority_high, context.tokens.warn, l10n.phoneSetupFixList),
+            _line(
+              context,
+              Icons.priority_high,
+              context.tokens.warn,
+              device.setupCompletedAt == null
+                  ? (childName == null
+                      ? l10n.phoneSetupStepsLeftThisPhone(setup.missing.length)
+                      : l10n.phoneSetupStepsLeft(childName!, setup.missing.length))
+                  : l10n.phoneSetupFixList,
+            ),
             for (final grant in setup.missing)
               Padding(
                 padding: const EdgeInsetsDirectional.only(start: AppSpace.lg, top: AppSpace.xxs),
-                child: Text('• ${_grantLabel(l10n, grant)}', style: Theme.of(context).textTheme.bodySmall),
+                child: Text('• ${grantLabel(l10n, grant)}', style: Theme.of(context).textTheme.bodySmall),
               ),
           ],
           if (features.isNotEmpty) ...[
@@ -197,7 +212,7 @@ class PhoneSetupSection extends StatelessWidget {
         _ => l10n.phoneSetupStateUnavailable,
       };
 
-  String _grantLabel(AppLocalizations l10n, String key) => switch (key) {
+  static String grantLabel(AppLocalizations l10n, String key) => switch (key) {
         'accessibility' => l10n.grantAccessibility,
         'usage_access' => l10n.grantUsageAccess,
         'overlay' => l10n.grantOverlay,
