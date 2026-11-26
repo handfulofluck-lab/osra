@@ -61,7 +61,21 @@ describe("alerts routes", () => {
     prismaMock.child.findUnique.mockResolvedValue(CHILD);
     prismaMock.alert.create.mockResolvedValue({ id: "a-new", category: "grooming" });
 
-    const raw = JSON.stringify({ childId: CHILD.id, deviceId: "dev-1", severity: "critical", category: "grooming", title: "t", body: "b", metadata: { src: "ai" } });
+    const raw = JSON.stringify({
+      childId: CHILD.id,
+      deviceId: "dev-1",
+      severity: "critical",
+      category: "grooming",
+      title: "t",
+      body: "b",
+      metadata: {
+        src: "ai",
+        pushDeliveryId: "producer-fixture",
+        pushDeliverySeq: 1,
+        pushDeliveries: [],
+        summaryGroupedInto: "producer-fixture",
+      },
+    });
     const res = await app.inject({
       method: "POST",
       url: "/v1/alerts/internal",
@@ -74,7 +88,7 @@ describe("alerts routes", () => {
     expect(res.statusCode).toBe(201);
     expect(prismaMock.alert.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ childId: CHILD.id, category: "grooming" }),
+        data: expect.objectContaining({ childId: CHILD.id, category: "grooming", metadata: { src: "ai" } }),
       }),
     );
     // The alert must be published on the family's realtime channel.

@@ -20,10 +20,12 @@ export interface AlertLike {
   title: string;
   body: string;
   createdAt?: Date | string;
+  metadata?: unknown;
 }
 
 type Severity = "info" | "warning" | "critical";
 const SEVERITY_RANK: Record<Severity, number> = { info: 0, warning: 1, critical: 2 };
+const GROUPED_DELIVERY_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** Alerts at or above this severity are pushed. Env `PUSH_MIN_SEVERITY`, default "info". */
 export function minPushSeverity(env: NodeJS.ProcessEnv = process.env): Severity {
@@ -52,24 +54,43 @@ export function shouldPush(alert: Pick<AlertLike, "severity" | "category"> | nul
  *
  * - **Android**: `dataOnly`, `{ w: "1" }` and nothing else, `HIGH` priority because the app has to wake to
  *   fetch, and a constant collapse key because one wake reads every unseen alert.
- * - **iOS**: a visible alert built from localization keys, plus `content-available` and the same data. The
- *   bundle decides the words, so `aps` carries no literal text either.
+ * - **iOS**: a visible alert built from localization keys, plus `content-available`. The bundle decides
+ *   the words. For grouped social deliveries, the content-free `g` marker selects native presentation,
+ *   and an opaque UUID lets APNs collapse retries of that delivery independently of the display thread.
  *
  * The child-device wake keeps its own builder: it must never display anything, which is a different rule.
  */
-export function buildParentAlertMessage(platform: PushPlatform): PushMessage {
+export function buildParentAlertMessage(
+  platform: PushPlatform,
+  alert?: Pick<AlertLike, "category" | "metadata">,
+): PushMessage {
   const data = { w: "1" };
   if (platform === "ios") {
+    const deliveryId = groupedDeliveryId(alert);
     return {
-      data,
+      data: deliveryId ? { ...data, g: "1" } : data,
       locKeys: { titleKey: "PUSH_ALERT_TITLE", bodyKey: "PUSH_ALERT_BODY" },
       priority: "high",
       collapseKey: PARENT_WAKE_COLLAPSE_KEY,
-      // APNs takes the collapse id from `threadId`; FCM from `collapseKey`. Same constant for both.
       threadId: PARENT_WAKE_COLLAPSE_KEY,
+      ...(deliveryId ? { apnsCollapseId: deliveryId } : {}),
     };
   }
   return { data, dataOnly: true, priority: "high", collapseKey: PARENT_WAKE_COLLAPSE_KEY, threadId: PARENT_WAKE_COLLAPSE_KEY };
+}
+
+function groupedDeliveryId(alert: Pick<AlertLike, "category" | "metadata"> | undefined): string | undefined {
+  if (alert?.category !== "social_concern" && alert?.category !== "gaming_chat") return undefined;
+  const metadata = alert.metadata;
+  if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) return undefined;
+  const { pushDeliveryId, pushDeliverySeq } = metadata as Record<string, unknown>;
+  if (typeof pushDeliverySeq !== "number" || !Number.isSafeInteger(pushDeliverySeq) || pushDeliverySeq < 1) {
+    return undefined;
+  }
+  // Only server-issued v4 UUIDs fit this contract. They are opaque, ASCII and within the APNs limit.
+  return typeof pushDeliveryId === "string" && pushDeliveryId.length === 36 && GROUPED_DELIVERY_ID.test(pushDeliveryId)
+    ? pushDeliveryId
+    : undefined;
 }
 
 /** One constant key: every unseen alert is read by the same wake, so a second pending wake is redundant. */
@@ -343,7 +364,7 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
           return;
         }
         // #410: per-platform, and never the alert's text. `childName` is deliberately unused here now.
-        const message = buildParentAlertMessage(t.platform as PushPlatform);
+        const message = buildParentAlertMessage(t.platform as PushPlatform, alert);
         try {
           const result = await provider.send(t.token, message);
           if (result.ok) {
