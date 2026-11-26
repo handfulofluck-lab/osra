@@ -376,23 +376,22 @@ class _ChildAppsListState extends ConsumerState<ChildAppsList> {
         // Fix 11: at 320 px, or once the text is scaled, the three words need the full width of the row.
         final narrow = constraints.maxWidth < 380 || MediaQuery.textScalerOf(context).scale(14) > 16;
         return InkWell(
-            key: ValueKey('appRow-${app.packageId}'),
-            onTap: essential || widget.onInsight == null ? null : () => widget.onInsight!(app.packageId),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: AppSpace.xs),
-              child: narrow
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [head, const SizedBox(height: AppSpace.xs), controls],
-                    )
-                  : Row(
-                      children: [
-                        Expanded(child: head),
-                        const SizedBox(width: AppSpace.sm),
-                        controls,
-                      ],
-                    ),
-            ),
+          key: ValueKey('appRow-${app.packageId}'),
+          onTap: essential || widget.onInsight == null ? null : () => widget.onInsight!(app.packageId),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpace.xs),
+            child: narrow
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [head, const SizedBox(height: AppSpace.xs), controls],
+                  )
+                : Row(
+                    children: [
+                      Expanded(child: head),
+                      const SizedBox(width: AppSpace.sm),
+                      controls,
+                    ],
+                  ),
           ),
         );
       },
