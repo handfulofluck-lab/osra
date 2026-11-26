@@ -7,7 +7,18 @@ import { getRedis, getJson, setJson, setJsonNx } from "../redis.js";
 import { guardianPermissions, requireAuth, requireFamily, requireOwnDevice, requireParent, requirePermission, sanitizeDevice } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
 import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
-import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, enqueueFailedDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
+import {
+  ackDeviceCommand,
+  claimPendingCommands,
+  countParentPinCommandsSince,
+  enqueueDeviceCommand,
+  enqueueFailedDeviceCommand,
+  listDeviceCommands,
+  supersedeParentPinCommands,
+} from "../lib/deviceCommands.js";
+import { ReauthSchema, checkReauth } from "../lib/accountDeletion.js";
+import { hashParentPin, parentPinRefusalCode } from "../lib/parentPin.js";
+import { AUTH_RATE_LIMIT } from "../lib/rateLimits.js";
 import { BUDGET_WINDOW_MINUTES, RETENTION_MINUTES, countingEnabled, idleBudgetThreshold, readDeviceCounts, summarise, withinBudget } from "../lib/idleBudget.js";
 import { LOCATION_GRANT_STATES, locateNowRefusal } from "../lib/locationGrant.js";
 import { commandRefusal, parseCapabilities, setupFor, withStoredGroups, withStoredProfiles } from "../lib/capabilities.js";
@@ -77,6 +88,14 @@ const CommandSchema = z.object({
  * classification belongs to the internal producer, not to a set that answers "may this parent send it".
  */
 const SAFE_DIRECTION_COMMANDS = new Set(["unlock", "resume", "resume_internet", "sos_clear", "stop_ring"]);
+
+/** #1108: the body of `POST /:id/parent-pin`. The PIN is checked by `parentPinRefusalCode`, not here. */
+const ParentPinChangeSchema = z
+  .object({ pin: z.string().min(1).max(32) })
+  .merge(ReauthSchema)
+  .strict();
+const PARENT_PIN_CHANGES_PER_HOUR = 5;
+const PARENT_PIN_WINDOW_MS = 60 * 60 * 1000;
 
 const AckSchema = z.object({
   status: z.enum(["ok", "failed"]),
@@ -770,6 +789,77 @@ export async function deviceRoutes(app: FastifyInstance) {
     const message = await enqueueDeviceCommand(id, parsed.data.command, parsed.data.payload ?? {}, { requestedBy: user.sub });
     return { published: true, status: "pending", ...message };
   });
+
+  /**
+   * #1108: "Change device PIN". The parent sets a new OSRA PIN on a paired Android phone; nobody can read the
+   * old one, here or anywhere (Ahmed's R3 ruling 7151514667, option A, conditions 1–7).
+   *
+   * - Its own route, not `CommandSchema`: `set_parent_pin` is never parent-issueable with a payload the
+   *   parent chose — the API derives the hash, the parent only supplies the PIN.
+   * - Re-auth (password, plus a fresh TOTP when MFA is on) because an unattended, unlocked parent phone must
+   *   not be enough to take a child's protection PIN. `AUTH_RATE_LIMIT` (fails closed) plus 5 changes per
+   *   device per hour. A failed re-auth here has nothing to do with the phone's own PIN lockout.
+   * - The PIN exists only in this handler's memory. The hash is written to one `DeviceCommand` row with a
+   *   15-minute TTL, superseding any earlier one, and cleared on ack, supersede or expiry. The response,
+   *   `/commands/history`, pub/sub and the push wake never carry it.
+   * - Audit and co-parent notice: a `device_pin_changed` alert naming the parent, with neither PIN nor hash,
+   *   which every parent of the family sees and is always pushed (lib/push/notify.ts `shouldPush`).
+   */
+  app.post(
+    "/:id/parent-pin",
+    {
+      preHandler: [requireParent, requirePermission("devices"), requireFamily({ model: "device", hidePending: true })],
+      config: { rateLimit: AUTH_RATE_LIMIT },
+    },
+    async (req, reply) => {
+      const parsed = ParentPinChangeSchema.safeParse(req.body);
+      // The zod error is not echoed: its issues can quote the value, and the value here is a PIN or a password.
+      if (!parsed.success) return reply.code(400).send({ error: "invalid_body" });
+      const { id } = req.params as { id: string };
+      const user = req.user as AuthedUser;
+      const device = (req as unknown as {
+        device: { id: string; childId: string; platform: string; model?: string | null; child?: { familyId?: string; displayName?: string } };
+      }).device;
+      if (device.platform !== "android") return reply.code(409).send({ error: "command_not_supported" });
+      const refusal = parentPinRefusalCode(parsed.data.pin);
+      if (refusal) return reply.code(400).send({ error: refusal });
+      // Restricting direction: a new PIN keeps protection on, so it needs active consent like `lock`.
+      if (device.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
+      const parent = await prisma.parent.findUnique({ where: { id: user.sub } });
+      if (!parent) return reply.code(404).send({ error: "parent_not_found" });
+      const reauth = await checkReauth(parent, { password: parsed.data.password, mfaCode: parsed.data.mfaCode });
+      if (reauth) return reply.code(401).send({ error: reauth === "reauth_failed" ? "reauth_failed" : reauth });
+      const since = new Date(Date.now() - PARENT_PIN_WINDOW_MS);
+      if ((await countParentPinCommandsSince(id, since)) >= PARENT_PIN_CHANGES_PER_HOUR) {
+        return reply.code(429).send({ error: "pin_change_limit", retryAfterSeconds: PARENT_PIN_WINDOW_MS / 1000 });
+      }
+      const pinHash = await hashParentPin(parsed.data.pin);
+      await supersedeParentPinCommands(id);
+      const message = await enqueueDeviceCommand(id, "set_parent_pin", { pinHash }, { requestedBy: user.sub });
+      const familyId = device.child?.familyId ?? user.familyId;
+      try {
+        const who = parent.displayName?.trim() || "A parent";
+        const phone = device.model?.trim() || "a phone";
+        await raiseAlertOnce({
+          childId: device.childId,
+          familyId,
+          deviceId: id,
+          severity: "warning",
+          // Its own category (Antigravity's F1 on #1126): the parent app titles and words it in the reader's
+          // language from `changedByName` and `deviceModel`, so the English `body` is only the fallback.
+          category: "device_pin_changed",
+          title: "Device PIN changed",
+          body: `${who} set a new OSRA PIN on ${phone}. The old PIN no longer works once the phone receives it.`,
+          metadata: { type: "parent_pin_changed", changedBy: user.sub, changedByName: who, deviceModel: phone, commandId: message.id },
+          dedupeKey: `parent_pin_changed|${message.id}`,
+        });
+      } catch (err) {
+        req.log.error({ err, metric: "parent_pin_audit_not_recorded" }, "parent PIN audit alert not recorded");
+      }
+      // The id and status are what the app needs to follow delivery; the payload is not returned.
+      return reply.code(202).send({ published: true, status: "pending", id: message.id, expiresAt: message.expiresAt });
+    },
+  );
   /**
    * Agent drain (Phase 2b). Device JWT only — a parent token used to be able to consume the queue
    * (probe note B11); parents read `/commands/history` instead. `?ack=1` declares an ack-capable

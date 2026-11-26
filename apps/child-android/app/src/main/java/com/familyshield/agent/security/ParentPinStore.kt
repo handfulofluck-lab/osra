@@ -22,6 +22,29 @@ class ParentPinStore @Inject constructor(
     }
 
     /**
+     * #1108: store a PIN set from the parent app, which arrives as the API-derived hash (Ahmed's R3, option A).
+     *
+     * Condition 6: the value must be exactly the shape [ParentPin.hash] writes ([ParentPin.isPrehashed]), or
+     * nothing changes and the old PIN keeps working. The wrong-try debt is cleared only once the new value is
+     * written **and read back**; a write that did not land leaves the old PIN and its count as they were.
+     */
+    fun setPrehashed(pinHash: String?): SetPrehashedResult {
+        if (pinHash == null || !ParentPin.isPrehashed(pinHash)) return SetPrehashedResult.INVALID_SHAPE
+        val previous = secureStore.getString(SecureStore.KEY_PARENT_PIN)
+        runCatching { secureStore.putString(SecureStore.KEY_PARENT_PIN, pinHash) }
+        val readBack = runCatching { secureStore.getString(SecureStore.KEY_PARENT_PIN) }.getOrNull()
+        if (readBack != pinHash) {
+            // Put back what was there, so a half-applied change can never lock the parent out.
+            runCatching { secureStore.putString(SecureStore.KEY_PARENT_PIN, previous) }
+            return SetPrehashedResult.WRITE_FAILED
+        }
+        clearAttempts(secureStore)
+        return SetPrehashedResult.STORED
+    }
+
+    enum class SetPrehashedResult { STORED, INVALID_SHAPE, WRITE_FAILED }
+
+    /**
      * Constant-time check of [pin] against the stored hash. A PIN stored before #771 from an Arabic
      * keyboard still opens, and is re-hashed in its normalised form the first time it does.
      */

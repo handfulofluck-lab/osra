@@ -47,6 +47,22 @@ object ParentPin {
      */
     fun hasAcceptedLength(pin: String): Boolean = Digits.normalize(pin).length in MIN_LENGTH..MAX_LENGTH
 
+    /**
+     * #1108 (Ahmed's R3, condition 6): true only for the exact value this class writes,
+     * `pbkdf2$120000$<base64 of 16 bytes>$<base64 of 32 bytes>`. A PIN set from the parent app arrives
+     * already hashed (the API derives it, option A); anything else (another iteration count, a short salt,
+     * a plain PIN) is refused rather than stored.
+     */
+    fun isPrehashed(value: String?): Boolean {
+        if (value == null) return false
+        val m = PREHASHED.matchEntire(value) ?: return false
+        val salt = runCatching { unb64(m.groupValues[1]) }.getOrNull() ?: return false
+        val hash = runCatching { unb64(m.groupValues[2]) }.getOrNull() ?: return false
+        return salt.size == SALT_BYTES && hash.size == KEY_BITS / 8
+    }
+
+    private val PREHASHED = Regex("^pbkdf2\\$" + ITERATIONS + "\\$([A-Za-z0-9+/]{22}==)\\$([A-Za-z0-9+/]{43}=)$")
+
     /** Hashes [pin] with a fresh random salt into the storable string. */
     fun hash(pin: String, random: SecureRandom = SecureRandom()): String {
         val salt = ByteArray(SALT_BYTES).also { random.nextBytes(it) }

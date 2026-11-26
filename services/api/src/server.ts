@@ -37,7 +37,7 @@ import { registerIdleBudgetHook } from "./lib/idleBudget.js";
 import { registerClientHeader } from "./middleware/clientHeader.js";
 import { AUTH_RATE_LIMIT, registerRateLimits, trustProxyFromEnv } from "./lib/rateLimits.js";
 import { getRedis } from "./redis.js";
-import { LOGGER_SERIALIZERS } from "./lib/logRedaction.js";
+import { LOGGER_REDACT, LOGGER_SERIALIZERS } from "./lib/logRedaction.js";
 import { assertCorsConfigured } from "./lib/corsConfig.js";
 import { assertDatabaseTls } from "./lib/databaseTls.js";
 import { assertStagingAiScope } from "./lib/stagingQaModel.js";
@@ -79,7 +79,7 @@ try {
 // #442 PR 3: the request log keeps the URL but not the credential some links carry in it (`?token=`,
 // `?ticket=`), so a mailed deletion or digest link never lands in log aggregation (`lib/logRedaction.ts`).
 const app = Fastify({
-  logger: { level: process.env.LOG_LEVEL ?? "info", serializers: LOGGER_SERIALIZERS },
+  logger: { level: process.env.LOG_LEVEL ?? "info", serializers: LOGGER_SERIALIZERS, redact: LOGGER_REDACT },
   trustProxy: trustProxyFromEnv(),
 });
 

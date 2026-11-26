@@ -3567,4 +3567,89 @@ class AppLocalizationsEn extends AppLocalizations {
   String socialAlertNewSince(int count) {
     return '+$count new';
   }
+
+  @override
+  String get commandSetParentPin => 'Change device PIN';
+
+  @override
+  String get changeDevicePinButton => 'Change device PIN';
+
+  @override
+  String changeDevicePinTitle(String device) {
+    return 'New OSRA PIN for $device';
+  }
+
+  @override
+  String get changeDevicePinBody =>
+      'Forgot the PIN? Set a new one here. The old PIN stops working once the phone receives the change. Nobody can see the old PIN, including you.';
+
+  @override
+  String get changeDevicePinNew => 'New PIN';
+
+  @override
+  String get changeDevicePinRepeat => 'Repeat the new PIN';
+
+  @override
+  String get changeDevicePinDigitsHint => '4–8 digits';
+
+  @override
+  String get changeDevicePinProof =>
+      'To confirm it is you, enter your account password.';
+
+  @override
+  String get changeDevicePinCodeHelper =>
+      'Only if you use an authenticator app';
+
+  @override
+  String get changeDevicePinSave => 'Change PIN';
+
+  @override
+  String get changeDevicePinMismatch => 'The two PINs differ.';
+
+  @override
+  String get changeDevicePinTooShort => 'The PIN must be at least 4 digits.';
+
+  @override
+  String get changeDevicePinTooLong => 'The PIN must be at most 8 digits.';
+
+  @override
+  String get changeDevicePinNotDigits => 'Use digits only.';
+
+  @override
+  String get changeDevicePinWeak => 'Choose a less predictable PIN.';
+
+  @override
+  String get changeDevicePinPasswordRequired => 'Enter your account password.';
+
+  @override
+  String changeDevicePinQueued(String device) {
+    return 'New PIN sent to $device. It works once the phone receives it.';
+  }
+
+  @override
+  String get changeDevicePinWrongProof =>
+      'That password or code is not right. The PIN was not changed.';
+
+  @override
+  String get changeDevicePinLimit =>
+      'Too many PIN changes on this phone. Try again in an hour.';
+
+  @override
+  String get changeDevicePinNotSupported =>
+      'Changing the PIN from here works on Android phones only.';
+
+  @override
+  String get commandRefusedPinNotSaved =>
+      'The phone could not save the new PIN, so the old one still works. Try again.';
+
+  @override
+  String get alertCategoryDevicePinChanged => 'Device PIN';
+
+  @override
+  String get alertTitleDevicePinChanged => 'Device PIN changed';
+
+  @override
+  String alertBodyDevicePinChanged(String who, String device) {
+    return '$who set a new OSRA PIN on $device. The old PIN no longer works once the phone receives it.';
+  }
 }

@@ -97,6 +97,8 @@ extension AppLocalizationsLabels on AppLocalizations {
         'device_restarted' => alertCategoryDeviceRestarted,
         'social_concern' => alertCategorySocialConcern,
         'gaming_chat' => alertCategoryGamingChat,
+        // #1108: emitted by `POST /v1/devices/:id/parent-pin`, not InternalAlertSchema (like device_restarted).
+        'device_pin_changed' => alertCategoryDevicePinChanged,
         _ => category,
       };
 
@@ -135,6 +137,7 @@ extension AppLocalizationsLabels on AppLocalizations {
         'device_restarted' => alertDeviceRestartedTitle,
         'social_concern' => alertTitleSocialConcern,
         'gaming_chat' => alertTitleGamingChat,
+        'device_pin_changed' => alertTitleDevicePinChanged,
         _ => isEnglish ? serverTitle : alertTitleGeneric,
       };
 
@@ -181,6 +184,7 @@ extension AppLocalizationsLabels on AppLocalizations {
         'rules_updated' => commandRulesUpdated,
         'consent_granted' => commandConsentGranted,
         'consent_revoked' => commandConsentRevoked,
+        'set_parent_pin' => commandSetParentPin,
         _ => type.replaceAll('_', ' '),
       };
 

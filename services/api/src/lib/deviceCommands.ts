@@ -41,6 +41,9 @@ export const COMMAND_TTL_SECONDS: Record<string, number> = {
   // ADR-0031: the row carries the plaintext 8-digit code, so the row's life is the code's life (10
   // minutes). The expiry sweep clears the payload when it ends (src/jobs/mfaResetExpiry.ts).
   show_reset_code: 10 * 60,
+  // #1108 (Ahmed's R3, condition 2): the row carries a parent-PIN hash, which is as good as the PIN for an
+  // offline search, so it lives 15 minutes rather than the generic day. Expiry clears it (jobs/mfaResetExpiry.ts).
+  set_parent_pin: 15 * 60,
   rules_updated: 24 * 3600,
   consent_granted: 7 * 24 * 3600,
   consent_revoked: 7 * 24 * 3600,
@@ -83,7 +86,10 @@ export function toMessage(row: Row): DeviceCommandMessage {
 
 /** Notify agents about a command that has already committed to the durable queue. */
 export async function wakeForDeviceCommand(message: DeviceCommandMessage): Promise<void> {
-  await publishJson(`device:${message.deviceId}:commands`, message).catch(() => undefined);
+  // #1108 (condition 2): pub/sub is a wake-up, not a carrier. A credential payload never rides it; the
+  // agent fetches the row over its authenticated drain.
+  const published = DEVICE_ONLY_PAYLOAD_TYPES.has(message.type) ? { ...message, payload: {} } : message;
+  await publishJson(`device:${message.deviceId}:commands`, published).catch(() => undefined);
   // The push wake is detached so a slow provider cannot hold the request open.
   wakeDeviceDetached(message.deviceId, message.id);
 }
@@ -178,8 +184,12 @@ export async function claimPendingCommands(deviceId: string, opts: { ackCapable?
   // so ring/lock/unlock never reached a device. Columns are now timestamptz (migration 0012) AND
   // the instant is bound from JS, so the comparison is independent of the session time zone.
   const now = new Date();
+  // #1108 (N1 on #1126): an expired `set_parent_pin` loses its hash here as well, so a deployment that runs
+  // without the expiry job (JOBS_ENABLED=0) still clears it on the device's next poll.
   await prisma.$executeRaw`
-    UPDATE "DeviceCommand" SET "status" = 'expired'
+    UPDATE "DeviceCommand"
+    SET "status" = 'expired',
+        "payload" = CASE WHEN "type" = 'set_parent_pin' THEN '{}'::jsonb ELSE "payload" END
     WHERE "deviceId" = ${deviceId} AND "status" = 'pending' AND "expiresAt" <= ${now}`;
   const redeliverCutoff = new Date(now.getTime() - REDELIVER_AFTER_SECONDS * 1000);
   const rows = opts.ackCapable
@@ -221,6 +231,8 @@ export async function ackDeviceCommand(
   // is one of the two moments it must stop existing (the other is expiry, swept by the job). Clearing
   // is unconditional on the outcome and leaves the status/ack fields above untouched.
   await prisma.deviceCommand.updateMany({ where: { id: commandId, type: "show_reset_code" }, data: { payload: {} } });
+  // #1108 (condition 2): a `set_parent_pin` hash goes the same way, whatever the outcome.
+  await prisma.deviceCommand.updateMany({ where: { id: commandId, type: "set_parent_pin" }, data: { payload: {} } });
   return prisma.deviceCommand.findUnique({ where: { id: commandId } });
 }
 
@@ -234,7 +246,26 @@ export async function ackDeviceCommand(
  * writes it, the child's phone displays it, and the parent-facing view shows only that the command
  * existed.
  */
-const DEVICE_ONLY_PAYLOAD_TYPES = new Set(["show_reset_code"]);
+export const DEVICE_ONLY_PAYLOAD_TYPES: ReadonlySet<string> = new Set(["show_reset_code", "set_parent_pin"]);
+
+/**
+ * #1108 (condition 2): a new PIN supersedes any earlier one still on its way. The older rows are closed
+ * `failed` with `reason: superseded` and their hash is cleared in the same statement, so at most one
+ * parent-PIN hash per device exists at a time and a stale one can never be applied after a newer one.
+ */
+export async function supersedeParentPinCommands(deviceId: string): Promise<number> {
+  const now = new Date();
+  const result = await prisma.deviceCommand.updateMany({
+    where: { deviceId, type: "set_parent_pin", status: { in: ["pending", "delivered"] } },
+    data: { status: "failed", ackedAt: now, payload: {}, result: { reason: "superseded" } },
+  });
+  return result.count;
+}
+
+/** Parent-PIN changes made on [deviceId] since [since], for the per-device limit (condition 4). */
+export async function countParentPinCommandsSince(deviceId: string, since: Date): Promise<number> {
+  return prisma.deviceCommand.count({ where: { deviceId, type: "set_parent_pin", createdAt: { gte: since } } });
+}
 
 /** Parent-facing, non-destructive view: newest first, with status so the UI can say delivered/pending/failed. */
 export async function listDeviceCommands(deviceId: string, limit = 20) {

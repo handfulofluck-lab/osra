@@ -26,6 +26,7 @@ import '../rules/active_window.dart';
 import '../social/social_screen.dart' show SocialSectionsView, socialAppLabel;
 import '../map/child_location_view.dart';
 import 'app_groups_section.dart';
+import 'change_device_pin.dart';
 import 'child_apps_list.dart';
 import 'phone_setup_section.dart';
 import 'command_history_screen.dart' show formatCommandTime;
@@ -525,8 +526,13 @@ class _DeviceActionsSection extends ConsumerWidget {
       ],
     ];
 
+    // #1108: "Change device PIN" sits under the grid, full width, on Android phones only.
+    final changePin = canChangeDevicePin(device) ? ChangeDevicePinButton(device: device) : null;
+
     if (!pauseState.waiting) {
-      return _DeviceActionGrid(children: pairChildren);
+      final grid = _DeviceActionGrid(children: pairChildren);
+      if (changePin == null) return grid;
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [grid, changePin]);
     }
 
     return Column(
@@ -541,6 +547,7 @@ class _DeviceActionsSection extends ConsumerWidget {
         ),
         const SizedBox(height: AppSpace.xs),
         SizedBox(width: double.infinity, child: historyButton),
+        if (changePin != null) changePin,
       ],
     );
   }

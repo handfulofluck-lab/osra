@@ -42,6 +42,8 @@ export interface MfaResetExpiryRun {
   witnessPassedExpired: number;
   /** show_reset_code payloads cleared because their command expired. */
   codesCleared: number;
+  /** #1108: set_parent_pin hashes cleared because their command expired. */
+  pinHashesCleared: number;
   /** rows deleted by the 12-month retention rule. */
   retentionDeleted: number;
 }
@@ -70,6 +72,12 @@ export async function runMfaResetExpiry(now: Date = new Date()): Promise<MfaRese
     UPDATE "DeviceCommand"
     SET "payload" = '{}'::jsonb
     WHERE "type" = 'show_reset_code' AND "expiresAt" <= ${now} AND "payload" ? 'code'`;
+  // #1108 (Ahmed's R3, condition 2): a parent-PIN hash the phone never acknowledged is cleared when its
+  // 15-minute row ends. Ack and supersede clear it earlier (lib/deviceCommands.ts); this is the backstop.
+  const pinHashes = await prisma.$executeRaw`
+    UPDATE "DeviceCommand"
+    SET "payload" = '{}'::jsonb
+    WHERE "type" = 'set_parent_pin' AND "expiresAt" <= ${now} AND "payload" ? 'pinHash'`;
   const retentionCutoff = new Date(now.getTime() - MFA_RESET_RETENTION_MS);
   const retained = await prisma.mfaResetRequest.deleteMany({
     where: { outcomeAt: { lt: retentionCutoff } },
@@ -79,6 +87,7 @@ export async function runMfaResetExpiry(now: Date = new Date()): Promise<MfaRese
     mailboxExpired: mailbox.count,
     witnessPassedExpired: passed.count,
     codesCleared: Number(cleared),
+    pinHashesCleared: Number(pinHashes),
     retentionDeleted: retained.count,
   };
 }
@@ -95,11 +104,11 @@ export function startMfaResetExpiryScheduler(env: NodeJS.ProcessEnv = process.en
         // ~288 lines a day that say "nothing happened". A non-zero run is worth a line, because each
         // count is a state transition somebody might later ask about.
         const total =
-          run.witnessExpired + run.mailboxExpired + run.witnessPassedExpired + run.codesCleared + run.retentionDeleted;
+          run.witnessExpired + run.mailboxExpired + run.witnessPassedExpired + run.codesCleared + run.pinHashesCleared + run.retentionDeleted;
         if (total === 0) return;
         console.log(
           `[mfa-reset] expiry: ${run.witnessExpired} witness deadlines, ${run.mailboxExpired} unclicked links, ` +
-            `${run.witnessPassedExpired} missed windows expired; ${run.codesCleared} codes cleared, ${run.retentionDeleted} rows deleted by retention`,
+            `${run.witnessPassedExpired} missed windows expired; ${run.codesCleared} codes cleared, ${run.pinHashesCleared} PIN hashes cleared, ${run.retentionDeleted} rows deleted by retention`,
         );
       })
       .catch((err) => console.error("[mfa-reset] expiry tick failed", err));

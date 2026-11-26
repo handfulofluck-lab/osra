@@ -50,6 +50,7 @@ class CommandDispatcher @Inject constructor(
     private val deviceAdmin: com.familyshield.agent.security.DeviceAdminManager,
     private val api: ApiService,
     private val settings: AgentSettings,
+    private val parentPin: com.familyshield.agent.security.ParentPinStore,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var windDownJob: Job? = null
@@ -143,6 +144,9 @@ class CommandDispatcher @Inject constructor(
             "wind_down" -> dispatchMinutes(data) { windDown(it) }
             // ADR-0031: the family witness. Deferred, not acked at display: see [showResetCode].
             "show_reset_code" -> showResetCode(data, commandId)
+            // #1108: the parent set a new OSRA PIN from the parent app. The payload is the API-derived hash
+            // and is never logged; see [ParentPinCommand].
+            "set_parent_pin" -> ParentPinCommand.apply(data) { parentPin.setPrehashed(it) }
             // Issue #231 review: a type this agent does not know must not stay `delivered` forever.
             // `unsupported_command` lets the parent say "update OSRA on the child's phone".
             else -> {

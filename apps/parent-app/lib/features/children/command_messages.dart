@@ -38,6 +38,8 @@ String commandRefusalText(
     // ADR-0034 PRs 2–3, and the map branch below is ready for it.
     'not_supported' => l10n.commandRefusedNotSupported(type, deviceModel),
     'invalid_payload' => l10n.commandRefusedInvalidPayload,
+    // #1108: the phone refused or could not save a PIN set from the parent app; its old PIN still works.
+    'invalid_pin_hash' || 'pin_write_failed' => l10n.commandRefusedPinNotSaved,
     _ => l10n.commandFailed,
   };
 }

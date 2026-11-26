@@ -5828,6 +5828,150 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'+{count} new'**
   String socialAlertNewSince(int count);
+
+  /// #1108 Change device PIN (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'Change device PIN'**
+  String get commandSetParentPin;
+
+  /// #1108 Change device PIN (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'Change device PIN'**
+  String get changeDevicePinButton;
+
+  /// No description provided for @changeDevicePinTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New OSRA PIN for {device}'**
+  String changeDevicePinTitle(String device);
+
+  /// #1108 Change device PIN (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'Forgot the PIN? Set a new one here. The old PIN stops working once the phone receives the change. Nobody can see the old PIN, including you.'**
+  String get changeDevicePinBody;
+
+  /// #1108 Change device PIN (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'New PIN'**
+  String get changeDevicePinNew;
+
+  /// #1108 Change device PIN (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'Repeat the new PIN'**
+  String get changeDevicePinRepeat;
+
+  /// #1108 Change device PIN (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'4–8 digits'**
+  String get changeDevicePinDigitsHint;
+
+  /// #1108 Change device PIN (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'To confirm it is you, enter your account password.'**
+  String get changeDevicePinProof;
+
+  /// #1108 Change device PIN (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'Only if you use an authenticator app'**
+  String get changeDevicePinCodeHelper;
+
+  /// #1108 Change device PIN (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'Change PIN'**
+  String get changeDevicePinSave;
+
+  /// #1108 Change device PIN (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'The two PINs differ.'**
+  String get changeDevicePinMismatch;
+
+  /// #1108 Change device PIN (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'The PIN must be at least 4 digits.'**
+  String get changeDevicePinTooShort;
+
+  /// #1108 Change device PIN (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'The PIN must be at most 8 digits.'**
+  String get changeDevicePinTooLong;
+
+  /// #1108 Change device PIN (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'Use digits only.'**
+  String get changeDevicePinNotDigits;
+
+  /// #1108 Change device PIN (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a less predictable PIN.'**
+  String get changeDevicePinWeak;
+
+  /// #1108 Change device PIN (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your account password.'**
+  String get changeDevicePinPasswordRequired;
+
+  /// No description provided for @changeDevicePinQueued.
+  ///
+  /// In en, this message translates to:
+  /// **'New PIN sent to {device}. It works once the phone receives it.'**
+  String changeDevicePinQueued(String device);
+
+  /// #1108 Change device PIN (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'That password or code is not right. The PIN was not changed.'**
+  String get changeDevicePinWrongProof;
+
+  /// #1108 Change device PIN (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'Too many PIN changes on this phone. Try again in an hour.'**
+  String get changeDevicePinLimit;
+
+  /// #1108 Change device PIN (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'Changing the PIN from here works on Android phones only.'**
+  String get changeDevicePinNotSupported;
+
+  /// #1108 Change device PIN (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'The phone could not save the new PIN, so the old one still works. Try again.'**
+  String get commandRefusedPinNotSaved;
+
+  /// #1108 Change device PIN audit alert (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'Device PIN'**
+  String get alertCategoryDevicePinChanged;
+
+  /// #1108 Change device PIN audit alert (UI/UX Bureau copy pending)
+  ///
+  /// In en, this message translates to:
+  /// **'Device PIN changed'**
+  String get alertTitleDevicePinChanged;
+
+  /// No description provided for @alertBodyDevicePinChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'{who} set a new OSRA PIN on {device}. The old PIN no longer works once the phone receives it.'**
+  String alertBodyDevicePinChanged(String who, String device);
 }
 
 class _AppLocalizationsDelegate

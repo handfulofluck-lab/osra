@@ -107,6 +107,15 @@ void main() {
       expect(shouldRefreshOn401(options('/v1/auth/mfa/recovery-codes'), unauthorized('reauth_required')), isFalse);
     });
 
+    test('#1108: a wrong password on a device route is the answer, and an expired session still refreshes', () {
+      const path = '/v1/devices/dev-1/parent-pin';
+      expect(shouldRefreshOn401(options(path), unauthorized('reauth_failed')), isFalse);
+      expect(shouldRefreshOn401(options(path), unauthorized('reauth_required')), isFalse);
+      expect(shouldRefreshOn401(options(path), unauthorized('mfa_reenroll_required')), isFalse);
+      expect(shouldRefreshOn401(options(path), unauthorized('unauthorized')), isTrue);
+      expect(shouldRefreshOn401(options('/v1/devices/dev-1/command'), unauthorized('unauthorized')), isTrue);
+    });
+
     test('an auth 401 without a readable error body does not refresh', () {
       expect(shouldRefreshOn401(options('/v1/auth/mfa/verify')), isFalse);
       expect(
