@@ -159,6 +159,12 @@ class RuleRepository @Inject constructor(
         bonusMinutesToday
     }
 
+    /** Public read-only snapshot of today's bonus minutes for UI surfaces (C-01 / C-02). */
+    fun bonusMinutesTodaySnapshot(): Int = bonusMinutes()
+
+    /** Public read-only snapshot of the merged category blocklist for C-02 block explanation. */
+    fun blocklistSnapshot(): Map<String, String> = blocklist.apps()
+
     private fun resetBonusIfNewDayLocked(today: LocalDate) {
         if (bonusDay != today) {
             bonusMinutesToday = 0
