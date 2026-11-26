@@ -3253,6 +3253,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get riskAiConcern => 'محتوى مثير للقلق';
 
   @override
+  String get riskLateNight => 'في وقت متأخر ليلًا';
+
+  @override
   String get phoneSetupOtherSpaceClone =>
       'هذا الهاتف يحتوي على مساحة أخرى مؤمنة، ربما تتيح هذه المساحة تشغيل أكثر من نسخة من نفس التطبيق، وقد لا يتمكن هذا التطبيق من مراقبتها طالما لم يتم إلغاء هذه الخاصية من قسم الإعدادات الخاصة بالهاتف.';
 
