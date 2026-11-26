@@ -1991,5 +1991,16 @@
   "accessRequestAllowLabel": "Allow {app}",
   "@accessRequestAllowLabel": { "placeholders": { "app": { "type": "String" } } },
   "accessRequestKeepBlockedLabel": "Keep {app} blocked",
-  "@accessRequestKeepBlockedLabel": { "placeholders": { "app": { "type": "String" } } }
+  "@accessRequestKeepBlockedLabel": { "placeholders": { "app": { "type": "String" } } },
+  "p15CanBeWrong": "Possible concern — automatic checks can be wrong.",
+  "p15ActionsHeader": "What you can do",
+  "p15TalkWithChild": "Talk with {child}",
+  "@p15TalkWithChild": { "placeholders": { "child": { "type": "String" } } },
+  "p15HelpChildBlockContact": "Help {child} block {contact}",
+  "@p15HelpChildBlockContact": { "placeholders": { "child": { "type": "String" }, "contact": { "type": "String" } } },
+  "p15HelpBlockGuideBody": "Sit with {child} and open {app} together to block {contact} and mute their messages.",
+  "@p15HelpBlockGuideBody": { "placeholders": { "child": { "type": "String" }, "app": { "type": "String" }, "contact": { "type": "String" } } },
+  "p15AdjustLimits": "Adjust screen time & bedtime",
+  "p15ReviewAppRules": "Review app rules",
+  "p15IphoneNotYet": "Not yet available on iPhone"
 }

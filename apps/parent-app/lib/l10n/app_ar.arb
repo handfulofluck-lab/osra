@@ -1195,5 +1195,16 @@
   "accessRequestAllowedSnack": "سُمح باستخدام {app}",
   "accessRequestKeptBlockedSnack": "بقي {app} محظورًا",
   "accessRequestAllowLabel": "السماح باستخدام {app}",
-  "accessRequestKeepBlockedLabel": "إبقاء {app} محظورًا"
+  "accessRequestKeepBlockedLabel": "إبقاء {app} محظورًا",
+  "p15CanBeWrong": "ملاحظة محتملة — قد تخطئ الفحوصات التلقائية.",
+  "p15ActionsHeader": "ما يمكنك فعله",
+  "p15TalkWithChild": "تحدّث مع {child}",
+  "@p15TalkWithChild": { "placeholders": { "child": { "type": "String" } } },
+  "p15HelpChildBlockContact": "ساعد {child} على حظر {contact}",
+  "@p15HelpChildBlockContact": { "placeholders": { "child": { "type": "String" }, "contact": { "type": "String" } } },
+  "p15HelpBlockGuideBody": "اجلس مع {child} وافتحا {app} معًا لحظر {contact} وكتم رسائله.",
+  "@p15HelpBlockGuideBody": { "placeholders": { "child": { "type": "String" }, "app": { "type": "String" }, "contact": { "type": "String" } } },
+  "p15AdjustLimits": "تعديل وقت الشاشة ووقت النوم",
+  "p15ReviewAppRules": "مراجعة قواعد التطبيقات",
+  "p15IphoneNotYet": "غير متاح بعد على آيفون"
 }

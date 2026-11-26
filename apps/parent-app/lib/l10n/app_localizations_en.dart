@@ -3724,4 +3724,35 @@ class AppLocalizationsEn extends AppLocalizations {
   String accessRequestKeepBlockedLabel(String app) {
     return 'Keep $app blocked';
   }
+
+  @override
+  String get p15CanBeWrong =>
+      'Possible concern — automatic checks can be wrong.';
+
+  @override
+  String get p15ActionsHeader => 'What you can do';
+
+  @override
+  String p15TalkWithChild(String child) {
+    return 'Talk with $child';
+  }
+
+  @override
+  String p15HelpChildBlockContact(String child, String contact) {
+    return 'Help $child block $contact';
+  }
+
+  @override
+  String p15HelpBlockGuideBody(String child, String app, String contact) {
+    return 'Sit with $child and open $app together to block $contact and mute their messages.';
+  }
+
+  @override
+  String get p15AdjustLimits => 'Adjust screen time & bedtime';
+
+  @override
+  String get p15ReviewAppRules => 'Review app rules';
+
+  @override
+  String get p15IphoneNotYet => 'Not yet available on iPhone';
 }

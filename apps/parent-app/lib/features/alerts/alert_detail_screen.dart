@@ -26,6 +26,7 @@ import '../rules/app_picker.dart' show AppIconBadge;
 import '../social/social_screen.dart' show socialAppIcon, socialAppLabel;
 import '../social/social_vote_controls.dart';
 import 'access_request_actions.dart';
+import 'alert_detail_p15.dart';
 import 'app_alert_presentation.dart';
 import 'sos_alert_actions.dart';
 
@@ -324,6 +325,13 @@ class AlertDetailScreen extends ConsumerWidget {
           }
           if (!isSocialAlertCategory(alert.category)) {
             return _GeneralAlertDetailBody(
+              alert: alert,
+              showAllAlertsButton: !canPop,
+              nowProvider: nowProvider,
+            );
+          }
+          if (ref.watch(p15AlertDetailEnabledProvider)) {
+            return AlertDetailP15Body(
               alert: alert,
               showAllAlertsButton: !canPop,
               nowProvider: nowProvider,
