@@ -2,16 +2,42 @@ package com.familyshield.agent.social
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ConversationCapturePolicyTest {
     private val banner = "Messages and calls are end-to-end encrypted. Only people in this chat can read, listen to or share them."
 
+    private fun node(
+        text: String?,
+        id: String,
+        className: String = "android.widget.TextView",
+        editable: Boolean = false,
+        focused: Boolean = false,
+    ) = ConversationCapturePolicy.VisibleNode(text, id, className, editable, focused)
+
+    private fun header(name: String? = "Alex Rivera") = node(name, "com.whatsapp:id/conversation_contact_name")
+    private fun row() = node(null, "com.whatsapp:id/conversation_text_row", "android.widget.FrameLayout")
+    private fun bubble(text: String) = node(text, "com.whatsapp:id/message_text")
+
+    private fun conversation(
+        contact: String?,
+        messages: List<String>,
+        packageId: String = "com.whatsapp",
+    ): List<ConversationCapturePolicy.VisibleNode> = buildList {
+        add(header(contact))
+        add(row())
+        messages.forEach { add(bubble(it)) }
+        if (packageId != "com.whatsapp") {
+            add(node("com.whatsapp.w4b", "android.app.Activity", "com.whatsapp.w4b.Conversation"))
+        }
+    }
+
     @Test
     fun `short message beside encryption banner is captured without the banner or header`() {
         val conversation = ConversationCapturePolicy.parse(
-            listOf("Alex Rivera", "online", banner, "Today", "help", "18:42"),
+            listOf(header(), row(), bubble(banner), bubble("Today"), bubble("help"), bubble("18:42")),
         )
 
         assertEquals("Alex Rivera", conversation?.contact)
@@ -21,7 +47,7 @@ class ConversationCapturePolicyTest {
     @Test
     fun `same visible screen produces no new captures`() {
         val tracker = ConversationCapturePolicy.SeenTracker()
-        val texts = listOf("Alex Rivera", banner, "Today", "hello", "see you at 6")
+        val texts = conversation("Alex Rivera", listOf("hello", "see you at 6"))
 
         assertEquals(2, tracker.newCaptures("whatsapp", texts).size)
         repeat(4) {
@@ -32,41 +58,29 @@ class ConversationCapturePolicyTest {
     @Test
     fun `reopening old history in the same conversation adds no scans`() {
         val tracker = ConversationCapturePolicy.SeenTracker()
-        val oldHistory = listOf("Alex Rivera", banner, "Today", "old incoming", "old sent")
+        val oldHistory = conversation("Alex Rivera", listOf("old incoming", "old sent"))
         tracker.newCaptures("whatsapp", oldHistory)
-        tracker.newCaptures("whatsapp", listOf("Other contact", banner, "Today", "other chat"))
+        tracker.newCaptures("whatsapp", conversation("Other contact", listOf("other chat")))
 
         assertEquals(0, tracker.newCaptures("whatsapp", oldHistory).size)
     }
 
     @Test
-    fun `same text in two conversations is tracked independently`() {
+    fun `revisiting an earlier viewport does not requeue an already seen occurrence`() {
         val tracker = ConversationCapturePolicy.SeenTracker()
+        tracker.newCaptures("whatsapp", conversation("Alex", listOf("one", "two", "three", "four")))
+        assertEquals(listOf("five"), tracker.newCaptures("whatsapp", conversation("Alex", listOf("two", "three", "four", "five"))).map { it.text })
 
-        val first = tracker.newCaptures("whatsapp", listOf("Alex", banner, "Today", "same text"))
-        val second = tracker.newCaptures("whatsapp", listOf("Sam", banner, "Today", "same text"))
-
-        assertEquals(1, first.size)
-        assertEquals(1, second.size)
-        assertNotEquals(first.single().occurrenceId, second.single().occurrenceId)
+        assertEquals(0, tracker.newCaptures("whatsapp", conversation("Alex", listOf("three", "four"))).size)
+        assertEquals(0, tracker.newCaptures("whatsapp", conversation("Alex", listOf("two", "three"))).size)
     }
 
     @Test
-    fun `new sent line is captured after an unchanged screen`() {
+    fun `two genuinely separate messages with identical text both capture`() {
         val tracker = ConversationCapturePolicy.SeenTracker()
-        tracker.newCaptures("whatsapp", listOf("Alex Rivera", banner, "Today", "incoming"))
+        val first = tracker.newCaptures("whatsapp", conversation("Alex", listOf("ok", "later", "ok")))
 
-        val captures = tracker.newCaptures("whatsapp", listOf("Alex Rivera", banner, "Today", "incoming", "sent by child"))
-
-        assertEquals(listOf("sent by child"), captures.map { it.text })
-    }
-
-    @Test
-    fun `repeated text at a new bubble position is a genuinely new capture`() {
-        val tracker = ConversationCapturePolicy.SeenTracker()
-        val first = tracker.newCaptures("whatsapp", listOf("Alex Rivera", banner, "Today", "ok", "later", "ok"))
-
-        val second = tracker.newCaptures("whatsapp", listOf("Alex Rivera", banner, "Today", "ok", "later", "ok", "ok"))
+        val second = tracker.newCaptures("whatsapp", conversation("Alex", listOf("ok", "later", "ok", "ok")))
 
         assertEquals(3, first.size)
         assertEquals(listOf("ok"), second.map { it.text })
@@ -74,38 +88,49 @@ class ConversationCapturePolicyTest {
     }
 
     @Test
-    fun `scrolling the same bubbles does not queue them again`() {
+    fun `same text in two conversations is tracked independently`() {
         val tracker = ConversationCapturePolicy.SeenTracker()
-        tracker.newCaptures("whatsapp", listOf("Alex", banner, "Today", "one", "two", "three", "four"))
 
-        val captures = tracker.newCaptures("whatsapp", listOf("Alex", banner, "Today", "two", "three", "four", "five"))
+        val first = tracker.newCaptures("whatsapp", conversation("Alex", listOf("same text")))
+        val second = tracker.newCaptures("whatsapp", conversation("Sam", listOf("same text")))
 
-        assertEquals(listOf("five"), captures.map { it.text })
-        assertEquals(0, tracker.newCaptures("whatsapp", listOf("Alex", banner, "Today", "three", "four", "five")).size)
+        assertEquals(1, first.size)
+        assertEquals(1, second.size)
+        assertNotEquals(first.single().occurrenceId, second.single().occurrenceId)
     }
 
     @Test
-    fun `date system and input lines are not message candidates`() {
-        val conversation = ConversationCapturePolicy.parse(
-            listOf(
-                "Alex Rivera",
-                "typing…",
-                "Yesterday",
-                "26/11/2026",
-                "You deleted this message",
-                "Type a message",
-                "real message",
-                "7:05 PM",
-            ),
+    fun `whatsapp and whatsapp business do not share conversation state`() {
+        val tracker = ConversationCapturePolicy.SeenTracker()
+        val personal = conversation("Alex", listOf("same text"))
+        val business = conversation("Alex", listOf("same text"), packageId = "com.whatsapp.w4b")
+
+        assertEquals(1, tracker.newCaptures("whatsapp", personal).size)
+        assertEquals(1, tracker.newCaptures("whatsapp", business, packageId = "com.whatsapp.w4b").size)
+    }
+
+    @Test
+    fun `compose draft is never captured even beside a real bubble`() {
+        val nodes = listOf(
+            header(), row(), bubble("already sent"),
+            node("unsent harmful draft", "com.whatsapp:id/entry", "android.widget.EditText", editable = true, focused = true),
         )
 
-        assertEquals(listOf("real message"), conversation?.messages)
+        val conversation = ConversationCapturePolicy.parse(nodes)
+
+        assertEquals(listOf("already sent"), conversation?.messages)
+    }
+
+    @Test
+    fun `unknown layout and partial message row fail closed`() {
+        assertNull(ConversationCapturePolicy.parse(listOf(header(), bubble("not a recognised row"))))
+        assertNull(ConversationCapturePolicy.parse(listOf(node("navigation label", "com.whatsapp:id/menu"))))
     }
 
     @Test
     fun `capture count is capped to the newest bubbles per event`() {
         val messages = List(30) { "message $it" }
-        val conversation = ConversationCapturePolicy.parse(listOf("Alex", banner) + messages)
+        val conversation = ConversationCapturePolicy.parse(conversation("Alex", messages))
 
         assertEquals(ConversationCapturePolicy.MAX_MESSAGES_PER_EVENT, conversation?.messages?.size)
         assertEquals("message 29", conversation?.messages?.last())
@@ -116,30 +141,30 @@ class ConversationCapturePolicyTest {
         var now = 1_000L
         val tracker = ConversationCapturePolicy.SeenTracker(maxConversations = 2, ttlMs = 10_000L, clock = { now })
         repeat(3) { index ->
-            tracker.newCaptures("whatsapp", listOf("Contact $index", banner, "Today", "message $index"))
+            tracker.newCaptures("whatsapp", conversation("Contact $index", listOf("message $index")))
         }
         assertEquals(2, tracker.trackedConversations)
 
         now += 10_001L
-        tracker.newCaptures("whatsapp", listOf("Contact 2", banner, "Today", "message 2"))
+        tracker.newCaptures("whatsapp", conversation("Contact 2", listOf("message 2")))
         assertEquals(1, tracker.trackedConversations)
     }
 
     @Test
     fun `opting out releases all conversations for that app`() {
         val tracker = ConversationCapturePolicy.SeenTracker()
-        tracker.newCaptures("whatsapp", listOf("Alex", banner, "Today", "one"))
-        tracker.newCaptures("discord", listOf("Sam", "Today", "two"))
+        tracker.newCaptures("whatsapp", conversation("Alex", listOf("one")))
+        tracker.newCaptures("discord", conversation("Sam", listOf("two")))
 
         tracker.forgetApp("whatsapp")
 
         assertEquals(1, tracker.trackedConversations)
-        assertEquals(1, tracker.newCaptures("whatsapp", listOf("Alex", banner, "Today", "one")).size)
+        assertEquals(1, tracker.newCaptures("whatsapp", conversation("Alex", listOf("one"))).size)
     }
 
     @Test
     fun `conversation lines preserve document order`() {
-        val conversation = ConversationCapturePolicy.parse(listOf("Alex", banner, "Today", "first", "second", "third"))
+        val conversation = ConversationCapturePolicy.parse(conversation("Alex", listOf("first", "second", "third")))
 
         assertEquals(listOf("first", "second", "third"), conversation?.messages)
         assertTrue(conversation?.messages?.isNotEmpty() == true)

@@ -48,7 +48,8 @@ class SocialScanQueue @Inject constructor(
      * Queues one capture **durably** (plan 2.6: a Room row, so a kill, a reboot or an offline stretch
      * loses nothing) and flushes after [FLUSH_DELAY_MS] of quiet. Dedupe and the send-rate cap are
      * applied before the row is written. [source] is where the text came from (screen / notification);
-     * [occurrenceId] distinguishes a genuinely new line from a redraw with the same text.
+     * [occurrenceId] distinguishes a genuinely new line from a redraw with the same text; null keeps
+     * the legacy text-only same-source cooldown for callers without stable occurrence ids.
      */
     fun enqueue(
         app: String,
@@ -56,18 +57,21 @@ class SocialScanQueue @Inject constructor(
         text: String,
         nowMs: Long = System.currentTimeMillis(),
         source: String = ScanQueuePolicy.SOURCE_SCREEN,
-        occurrenceId: String = nowMs.toString(),
+        occurrenceId: String? = null,
     ) {
         if (text.isBlank()) return
         scope.launch {
             mutex.withLock {
-                if (!dedupe.shouldEnqueue(app, contact, text, nowMs, source, occurrenceId)) return@withLock
+                if (!dedupe.canEnqueue(app, contact, text, nowMs, source, occurrenceId)) return@withLock
                 if (!withinRateLimit(sendTimestamps, nowMs, RATE_WINDOW_MS, MAX_SENDS_PER_MINUTE)) {
                     return@withLock // NOTE: over rate — drop; the next user action re-captures.
                 }
                 pruneLocked(nowMs)
-                runCatching {
+                val inserted = runCatching {
                     dao.insert(com.familyshield.agent.data.db.PendingScanEntity(app = app, contact = contact, text = text, source = source, createdAt = nowMs))
+                }
+                if (inserted.isSuccess) {
+                    dedupe.record(app, contact, text, nowMs, source, occurrenceId)
                 }
                 if (flushJob == null) {
                     flushJob = scope.launch { delay(FLUSH_DELAY_MS); flush() }

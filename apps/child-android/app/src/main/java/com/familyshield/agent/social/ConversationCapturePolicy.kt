@@ -1,23 +1,35 @@
 package com.familyshield.agent.social
 
-/** Visible WhatsApp conversation lines and the bounded state that tells new bubbles from redraws. */
+/** Recognised WhatsApp conversation rows and bounded occurrence tracking for visible bubbles. */
 object ConversationCapturePolicy {
     const val MAX_MESSAGES_PER_EVENT: Int = 20
-    private const val MAX_TRACKED_MESSAGES: Int = 64
+    private const val MAX_OCCURRENCE_SIGNATURES: Int = 128
+    private const val CONVERSATION_CONTACT_NAME = "com.whatsapp:id/conversation_contact_name"
+    private const val CONVERSATION_TEXT_ROW = "com.whatsapp:id/conversation_text_row"
+    private const val MESSAGE_TEXT = "com.whatsapp:id/message_text"
+
+    data class VisibleNode(
+        val text: String?,
+        val viewIdResourceName: String,
+        val className: String,
+        val isEditable: Boolean,
+        val isFocused: Boolean,
+    )
 
     data class Conversation(val contact: String?, val messages: List<String>)
     data class Capture(val appKey: String, val contact: String?, val text: String, val occurrenceId: String)
 
-    fun parse(texts: List<String>): Conversation? {
-        val cleaned = texts.map { it.trim() }.filter { it.isNotEmpty() }
-        if (cleaned.isEmpty()) return null
-        val contactIndex = cleaned.indexOfFirst {
-            it.length in 2..SocialHeuristics.MAX_CONTACT_LENGTH && !it.contains('\n') && !isNoise(it)
-        }
-        val contact = contactIndex.takeIf { it >= 0 }?.let(cleaned::get)
-        val messages = cleaned.filterIndexed { index, text ->
-            index != contactIndex && !isNoise(text)
-        }.takeLast(MAX_MESSAGES_PER_EVENT)
+    fun parse(nodes: List<VisibleNode>): Conversation? {
+        if (nodes.isEmpty()) return null
+        val hasHeader = nodes.any { it.viewIdResourceName == CONVERSATION_CONTACT_NAME }
+        val hasMessageRow = nodes.any { it.viewIdResourceName == CONVERSATION_TEXT_ROW }
+        if (!hasHeader || !hasMessageRow) return null
+        val contact = nodes.firstOrNull { it.viewIdResourceName == CONVERSATION_CONTACT_NAME }
+            ?.text?.trim()?.takeIf { it.isNotEmpty() }
+        val messages = nodes.filter {
+            it.viewIdResourceName == MESSAGE_TEXT && !it.isEditable && !it.isFocused && !it.text.isNullOrBlank()
+        }.map { it.text!!.trim() }.filter { !isNoise(it) }.takeLast(MAX_MESSAGES_PER_EVENT)
+        if (messages.isEmpty()) return null
         return Conversation(contact, messages)
     }
 
@@ -27,52 +39,62 @@ object ConversationCapturePolicy {
         private val clock: () -> Long = System::currentTimeMillis,
     ) {
         private data class Seen(
-            val texts: ArrayDeque<String>,
+            val signatures: LinkedHashSet<String>,
             var nextOccurrenceId: Long,
             val touchedAtMs: Long,
         )
 
         private val seen = LinkedHashMap<String, Seen>()
-
         val trackedConversations: Int get() = seen.size
 
-        fun newCaptures(appKey: String, texts: List<String>): List<Capture> {
-            val conversation = parse(texts) ?: return emptyList()
-            return newCaptures(appKey, conversation)
+        fun newCaptures(
+            appKey: String,
+            nodes: List<VisibleNode>,
+            packageId: String = "com.whatsapp",
+        ): List<Capture> {
+            val conversation = parse(nodes) ?: return emptyList()
+            return newCaptures(appKey, conversation, packageId)
         }
 
-        fun newCaptures(appKey: String, conversation: Conversation): List<Capture> {
+        fun newCaptures(
+            appKey: String,
+            conversation: Conversation,
+            packageId: String = "com.whatsapp",
+        ): List<Capture> {
             prune()
-            if (conversation.messages.isEmpty()) return emptyList()
-            val key = conversationKey(appKey, conversation.contact)
+            val key = conversationKey(appKey, conversation.contact, packageId)
             val previous = seen[key]
-            val previousTexts = previous?.texts?.toList().orEmpty()
-            val fresh = freshSuffix(previousTexts, conversation.messages)
+            val signatures = previous?.signatures ?: LinkedHashSet()
             var nextId = previous?.nextOccurrenceId ?: 1L
-            val captures = fresh.map { text ->
-                Capture(appKey, conversation.contact, text, "$key\u0000${nextId++}")
+            val captures = mutableListOf<Capture>()
+            conversation.messages.forEachIndexed { index, text ->
+                val previousText = conversation.messages.getOrNull(index - 1)
+                val nextText = conversation.messages.getOrNull(index + 1)
+                val predecessor = "P\u0000$previousText\u0000$text"
+                val successor = "S\u0000$text\u0000$nextText"
+                val isNew = predecessor !in signatures &&
+                    (index == conversation.messages.lastIndex || successor !in signatures)
+                if (isNew) {
+                    captures += Capture(appKey, conversation.contact, text, "$key\u0000${nextId++}")
+                }
+                signatures += predecessor
+                signatures += successor
             }
-            val snapshot = ArrayDeque<String>()
-            snapshot.addAll(conversation.messages.takeLast(MAX_TRACKED_MESSAGES))
-            remember(key, Seen(snapshot, nextId, clock()))
+            while (signatures.size > MAX_OCCURRENCE_SIGNATURES) {
+                signatures.remove(signatures.first())
+            }
+            remember(key, Seen(signatures, nextId, clock()))
             return captures
         }
 
         fun forgetApp(appKey: String) {
-            seen.keys.removeAll { it.startsWith("$appKey\u0000") }
+            seen.keys.removeAll { key -> key.split('\u0000').getOrNull(1) == appKey }
         }
 
         fun clear() = seen.clear()
 
-        private fun freshSuffix(previous: List<String>, current: List<String>): List<String> {
-            val limit = minOf(previous.size, current.size)
-            val overlap = (limit downTo 1).firstOrNull { size ->
-                previous.takeLast(size) == current.take(size)
-            } ?: 0
-            return current.drop(overlap)
-        }
-
-        private fun conversationKey(appKey: String, contact: String?): String = "$appKey\u0000${contact.orEmpty()}"
+        private fun conversationKey(appKey: String, contact: String?, packageId: String): String =
+            "$packageId\u0000$appKey\u0000${contact.orEmpty()}"
 
         private fun prune() {
             val cutoff = clock() - ttlMs

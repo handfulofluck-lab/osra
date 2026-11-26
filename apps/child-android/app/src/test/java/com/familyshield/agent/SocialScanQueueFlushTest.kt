@@ -67,6 +67,22 @@ class SocialScanQueueFlushTest {
     }
 
     @Test
+    fun `failed durable insert leaves the occurrence retryable`() = runBlocking {
+        val dao = FakePendingScanDao(failInserts = 1)
+        val posts = CopyOnWriteArrayList<SocialScanBatchDto>()
+        val queue = queue(dao, posts)
+
+        queue.enqueue("whatsapp", "Alex", "ok", nowMs = 1_000L, source = "notification", occurrenceId = "n-1")
+        queue.enqueue("whatsapp", "Alex", "ok", nowMs = 1_100L, source = "notification", occurrenceId = "n-1")
+
+        withTimeout(2_000) {
+            while (dao.rows().isEmpty()) yield()
+        }
+        assertEquals(1, dao.rows().size)
+        assertEquals(0, posts.size)
+    }
+
+    @Test
     fun `caller cancellation leaves the row queued instead of looking empty`() = runBlocking {
         val dao = FakePendingScanDao(
             initialRows = listOf(scan()),
@@ -153,7 +169,9 @@ class SocialScanQueueFlushTest {
         initialRows: List<PendingScanEntity> = emptyList(),
         private val suspendOldest: Boolean = false,
         private val cancelOldest: Boolean = false,
+        private val failInserts: Int = 0,
     ) : PendingScanDao {
+        private var insertAttempts = 0
         val inserted = CompletableDeferred<Unit>()
         val deleted = CompletableDeferred<Unit>()
         val oldestEntered = CompletableDeferred<Unit>()
@@ -161,6 +179,7 @@ class SocialScanQueueFlushTest {
         private var nextId = initialRows.maxOfOrNull { it.id }?.plus(1) ?: 1
 
         override suspend fun insert(scan: PendingScanEntity): Long {
+            if (insertAttempts++ < failInserts) throw IllegalStateException("synthetic insert failure")
             yield()
             val id = synchronized(data) {
                 val id = nextId++

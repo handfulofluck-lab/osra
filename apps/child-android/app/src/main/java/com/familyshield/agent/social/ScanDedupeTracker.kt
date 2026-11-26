@@ -2,27 +2,38 @@ package com.familyshield.agent.social
 
 import kotlin.math.abs
 
-/** Bounded, occurrence-aware dedupe shared by screen and notification captures. */
+/** Bounded occurrence and cross-source dedupe, recorded only after durable queue admission. */
 class ScanDedupeTracker {
-    private data class Receipt(val source: String, val occurrenceId: String, val atMs: Long)
+    private data class Receipt(val source: String, val occurrenceId: String?, val atMs: Long)
 
     private val recent = LinkedHashMap<String, MutableList<Receipt>>()
 
-    fun shouldEnqueue(
+    fun canEnqueue(
         app: String,
         contact: String?,
         text: String,
         nowMs: Long,
         source: String,
-        occurrenceId: String,
+        occurrenceId: String?,
     ): Boolean {
         prune(nowMs)
-        val hash = SocialScanQueue.dedupeHash(app, contact, text)
+        val receipts = recent[canonicalHash(app, contact, text)].orEmpty()
+        if (occurrenceId == null && receipts.any { it.source == source }) return false
+        if (occurrenceId != null && receipts.any { it.source == source && it.occurrenceId == occurrenceId }) return false
+        return receipts.none { it.source != source && abs(nowMs - it.atMs) <= CROSS_SOURCE_DEDUPE_WINDOW_MS }
+    }
+
+    fun record(
+        app: String,
+        contact: String?,
+        text: String,
+        nowMs: Long,
+        source: String,
+        occurrenceId: String?,
+    ) {
+        prune(nowMs)
+        val hash = canonicalHash(app, contact, text)
         val receipts = recent[hash].orEmpty().toMutableList()
-        if (receipts.any { it.source == source && it.occurrenceId == occurrenceId }) return false
-        if (receipts.any { it.source != source && abs(nowMs - it.atMs) <= CROSS_SOURCE_DEDUPE_WINDOW_MS }) {
-            return false
-        }
         receipts += Receipt(source, occurrenceId, nowMs)
         recent.remove(hash)
         recent[hash] = receipts
@@ -30,15 +41,15 @@ class ScanDedupeTracker {
             val oldest = recent.keys.firstOrNull() ?: break
             recent.remove(oldest)
         }
-        return true
     }
 
     fun prune(nowMs: Long) {
-        recent.values.forEach { receipts ->
-            receipts.removeAll { nowMs - it.atMs > DEDUPE_WINDOW_MS }
-        }
+        recent.values.forEach { receipts -> receipts.removeAll { nowMs - it.atMs > DEDUPE_WINDOW_MS } }
         recent.entries.removeAll { it.value.isEmpty() }
     }
+
+    private fun canonicalHash(app: String, contact: String?, text: String): String =
+        SocialScanQueue.dedupeHash(app, contact?.trim(), text.trim().replace(Regex("\\s+"), " "))
 
     companion object {
         const val DEDUPE_WINDOW_MS: Long = SocialScanQueue.DEDUPE_WINDOW_MS

@@ -44,7 +44,7 @@ class SocialCapture @Inject constructor(
             if (!SocialHeuristics.shouldCapture(lastCaptureAt[SocialHeuristics.debounceKey(appKey)], nowMs)) return
             lastCaptureAt[SocialHeuristics.debounceKey(appKey)] = nowMs
         }
-        val texts = ArrayList<String>()
+        val texts = ArrayList<ConversationCapturePolicy.VisibleNode>()
         val root = event.source
         if (root != null) {
             try {
@@ -56,7 +56,7 @@ class SocialCapture @Inject constructor(
         if (appKey == "whatsapp") {
             val conversation = ConversationCapturePolicy.parse(texts) ?: return
             if (!TestChatCaptureGate.allows(context, appKey, conversation.contact)) return
-            for (capture in conversationSeen.newCaptures(appKey, conversation)) {
+            for (capture in conversationSeen.newCaptures(appKey, conversation, packageId = pkg)) {
                 val redacted = TextRedaction.redact(capture.text)
                 queue.enqueue(
                     appKey,
@@ -67,18 +67,26 @@ class SocialCapture @Inject constructor(
             }
             return
         }
-        val (contact, message) = SocialHeuristics.extractContactAndMessage(texts)
+        val (contact, message) = SocialHeuristics.extractContactAndMessage(texts.mapNotNull { it.text })
         val redacted = message?.let { TextRedaction.redact(it) } ?: return
         if (!TestChatCaptureGate.allows(context, appKey, contact)) return
         queue.enqueue(appKey, contact, redacted)
     }
 
     /** Depth-first collection of visible text/content-desc, stopping at [MAX_CAPTURE_CHARS]. */
-    private fun collectVisibleText(node: AccessibilityNodeInfo?, budget: StringBuilder, out: MutableList<String>) {
+    private fun collectVisibleText(node: AccessibilityNodeInfo?, budget: StringBuilder, out: MutableList<ConversationCapturePolicy.VisibleNode>) {
         if (node == null || !node.isVisibleToUser || budget.length >= MAX_CAPTURE_CHARS) return
         val text = node.text?.toString() ?: node.contentDescription?.toString()
         if (!text.isNullOrBlank()) {
-            out.add(text)
+            out.add(
+                ConversationCapturePolicy.VisibleNode(
+                    text = text,
+                    viewIdResourceName = node.viewIdResourceName.orEmpty(),
+                    className = node.className?.toString().orEmpty(),
+                    isEditable = node.isEditable,
+                    isFocused = node.isFocused,
+                ),
+            )
             budget.append(text).append('\n')
         }
         for (i in 0 until node.childCount) {
