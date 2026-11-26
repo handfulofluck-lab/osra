@@ -91,6 +91,7 @@ class Parent {
   final String displayName;
   final String role;
   final bool mfaEnabled;
+  final List<String> permissions;
 
   const Parent({
     required this.id,
@@ -99,6 +100,7 @@ class Parent {
     required this.displayName,
     this.role = 'owner',
     this.mfaEnabled = false,
+    this.permissions = const [],
   });
 
   factory Parent.fromJson(Map<String, dynamic> json) => Parent(
@@ -108,6 +110,7 @@ class Parent {
         displayName: _str(json['displayName']),
         role: _str(json['role'], 'owner'),
         mfaEnabled: _bool(json['mfaEnabled']),
+        permissions: _strList(json['permissions']),
       );
 }
 
@@ -1247,6 +1250,43 @@ class AlertFix {
   }
 }
 
+/// The first decision saved by the server for a daily-limit time request.
+@immutable
+class TimeRequestResolution {
+  final int? grantedMinutes;
+  final String actorName;
+  final DateTime resolvedAt;
+  final bool? decidedByViewer;
+
+  const TimeRequestResolution({
+    required this.grantedMinutes,
+    required this.actorName,
+    required this.resolvedAt,
+    this.decidedByViewer,
+  });
+
+  static TimeRequestResolution? fromJson(Object? json,
+      {bool ownSubmission = false}) {
+    if (json is! Map) return null;
+    final minutes = json['minutes'];
+    final grantedMinutes = switch (json['action']) {
+      'grant' when minutes == 15 => 15,
+      'grant' when minutes == 30 => 30,
+      'decline' when minutes == null => null,
+      _ => -1,
+    };
+    final resolvedAt = DateTime.tryParse(_str(json['resolvedAt']));
+    if (grantedMinutes == -1 || resolvedAt == null) return null;
+    final viewer = json['decidedByViewer'];
+    return TimeRequestResolution(
+      grantedMinutes: grantedMinutes,
+      actorName: _str(json['actorName']).trim(),
+      resolvedAt: resolvedAt,
+      decidedByViewer: viewer is bool ? viewer : (ownSubmission ? true : null),
+    );
+  }
+}
+
 /// One alert as the parent app reads it. [AlertFix] is #672: the SOS's own location, when it has one.
 @immutable
 class Alert {
@@ -1262,6 +1302,7 @@ class Alert {
   final DateTime? updatedAt;
   final bool acknowledged;
   final int attemptCount;
+  final TimeRequestResolution? timeRequestResolution;
 
   const Alert({
     required this.id,
@@ -1276,6 +1317,7 @@ class Alert {
     this.updatedAt,
     this.acknowledged = false,
     this.attemptCount = 1,
+    this.timeRequestResolution,
   });
 
   factory Alert.fromJson(Map<String, dynamic> json) => Alert(
@@ -1293,7 +1335,45 @@ class Alert {
         updatedAt: DateTime.tryParse(_str(json['updatedAt'])),
         acknowledged: _bool(json['acknowledged']),
         attemptCount: _int(json['attemptCount'], 1),
+        timeRequestResolution:
+            TimeRequestResolution.fromJson(json['timeRequestResolution']),
       );
+
+  Alert copyWith({
+    Map<String, dynamic>? metadata,
+    DateTime? updatedAt,
+    bool? acknowledged,
+    TimeRequestResolution? timeRequestResolution,
+  }) =>
+      Alert(
+        id: id,
+        childId: childId,
+        deviceId: deviceId,
+        severity: severity,
+        category: category,
+        title: title,
+        body: body,
+        metadata: metadata ?? this.metadata,
+        createdAt: createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+        acknowledged: acknowledged ?? this.acknowledged,
+        attemptCount: attemptCount,
+        timeRequestResolution:
+            timeRequestResolution ?? this.timeRequestResolution,
+      );
+
+  int? get requestedScreenTimeMinutes {
+    if (category != 'app_blocked' ||
+        metadata['requestType'] != 'time' ||
+        metadata['reason'] != 'daily_limit') {
+      return null;
+    }
+    return switch (metadata['minutes']) {
+      15 || '15' => 15,
+      30 || '30' => 30,
+      _ => null,
+    };
+  }
 
   /// #1029: whether this alert is a social/gaming chat concern alert.
   bool get isSocialAlert =>
