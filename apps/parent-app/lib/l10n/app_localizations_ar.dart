@@ -3871,4 +3871,49 @@ class AppLocalizationsAr extends AppLocalizations {
   String alertBodyDataCleared(String model) {
     return 'أُعيد تثبيت تطبيق أسرة للأطفال على $model، وكانت الحماية متوقفة إلى أن أُعيد الإقران.';
   }
+
+  @override
+  String get locationP13AllChildren => 'الكل';
+
+  @override
+  String get locationP13Refresh => 'تحديث';
+
+  @override
+  String get locationP13Refreshing => 'جارٍ التحديث…';
+
+  @override
+  String get locationP13Directions => 'الاتجاهات';
+
+  @override
+  String get locationP13EarlierToday => 'في وقت سابق اليوم';
+
+  @override
+  String get locationP13EarlierTodayEmpty =>
+      'لا توجد أماكن سابقة مسجّلة اليوم.';
+
+  @override
+  String get locationP13SavedPlacesTitle => 'الأماكن المحفوظة';
+
+  @override
+  String get locationP13AddPlace => 'إضافة مكان';
+
+  @override
+  String get locationP13AlertsEnterLeave => 'تنبيه عند الوصول والمغادرة';
+
+  @override
+  String get locationP13AlertsEnterOnly => 'تنبيه عند الوصول';
+
+  @override
+  String get locationP13AlertsLeaveOnly => 'تنبيه عند المغادرة';
+
+  @override
+  String get locationP13AlertsOff => 'التنبيهات متوقفة';
+
+  @override
+  String get locationP13NoLocationYet => 'لم يصل موقع بعد.';
+
+  @override
+  String locationP13RadiusMeters(String meters) {
+    return 'نطاق $meters متر';
+  }
 }

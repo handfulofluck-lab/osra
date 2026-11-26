@@ -3636,4 +3636,49 @@ class AppLocalizationsEn extends AppLocalizations {
   String alertBodyDataCleared(String model) {
     return 'OSRA was reinstalled on $model. Its protection was off until it was paired again.';
   }
+
+  @override
+  String get locationP13AllChildren => 'All';
+
+  @override
+  String get locationP13Refresh => 'Refresh';
+
+  @override
+  String get locationP13Refreshing => 'Checking…';
+
+  @override
+  String get locationP13Directions => 'Directions';
+
+  @override
+  String get locationP13EarlierToday => 'Earlier today';
+
+  @override
+  String get locationP13EarlierTodayEmpty =>
+      'No earlier places recorded today.';
+
+  @override
+  String get locationP13SavedPlacesTitle => 'Saved places';
+
+  @override
+  String get locationP13AddPlace => 'Add place';
+
+  @override
+  String get locationP13AlertsEnterLeave => 'Arrive & leave alerts';
+
+  @override
+  String get locationP13AlertsEnterOnly => 'Arrive alert';
+
+  @override
+  String get locationP13AlertsLeaveOnly => 'Leave alert';
+
+  @override
+  String get locationP13AlertsOff => 'Alerts off';
+
+  @override
+  String get locationP13NoLocationYet => 'No location reported yet.';
+
+  @override
+  String locationP13RadiusMeters(String meters) {
+    return '$meters m radius';
+  }
 }

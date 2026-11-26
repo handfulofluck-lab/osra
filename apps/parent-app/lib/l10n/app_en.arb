@@ -1957,5 +1957,20 @@
   "alertBodySetupIncompleteGeneric": "{childName}'s phone setup is still incomplete after 30 minutes.",
   "@alertBodySetupIncompleteGeneric": { "placeholders": { "childName": { "type": "String" } } },
   "alertBodyDataCleared": "OSRA was reinstalled on {model}. Its protection was off until it was paired again.",
-  "@alertBodyDataCleared": { "placeholders": { "model": { "type": "String" } } }
+  "@alertBodyDataCleared": { "placeholders": { "model": { "type": "String" } } },
+  "locationP13AllChildren": "All",
+  "locationP13Refresh": "Refresh",
+  "locationP13Refreshing": "Checking…",
+  "locationP13Directions": "Directions",
+  "locationP13EarlierToday": "Earlier today",
+  "locationP13EarlierTodayEmpty": "No earlier places recorded today.",
+  "locationP13SavedPlacesTitle": "Saved places",
+  "locationP13AddPlace": "Add place",
+  "locationP13AlertsEnterLeave": "Arrive & leave alerts",
+  "locationP13AlertsEnterOnly": "Arrive alert",
+  "locationP13AlertsLeaveOnly": "Leave alert",
+  "locationP13AlertsOff": "Alerts off",
+  "locationP13NoLocationYet": "No location reported yet.",
+  "locationP13RadiusMeters": "{meters} m radius",
+  "@locationP13RadiusMeters": { "placeholders": { "meters": { "type": "String" } } }
 }
