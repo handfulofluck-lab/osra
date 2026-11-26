@@ -404,9 +404,7 @@ class _SocialAlertDetailBodyState
     final contactDisplay = contactName != null
         ? firstStrongIsolate(contactName)
         : l10n.socialAlertUnknownContact;
-    final countContactLine = alert.hasSocialCountSummary
-        ? l10n.socialAlertFromContactOnly(contactDisplay)
-        : null;
+    final senderLine = l10n.socialAlertFromContactOnly(contactDisplay);
     final countLatestLine =
         alert.hasSocialCountSummary && latestClock.isNotEmpty
             ? l10n.socialAlertLatestAt(latestClock)
@@ -497,24 +495,22 @@ class _SocialAlertDetailBodyState
           ),
           const SizedBox(height: AppSpace.xs),
         ],
-        if (countContactLine != null) ...[
+        Text(
+          senderLine,
+          key: const ValueKey('alertDetailCountSub'),
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: tokens.onSurfaceVariant),
+        ),
+        if (countLatestLine != null) ...[
+          const SizedBox(height: 2),
           Text(
-            countContactLine,
-            key: const ValueKey('alertDetailCountSub'),
+            countLatestLine,
+            key: const ValueKey('alertDetailCountLatest'),
             style: theme.textTheme.bodyMedium
                 ?.copyWith(color: tokens.onSurfaceVariant),
           ),
-          if (countLatestLine != null) ...[
-            const SizedBox(height: 2),
-            Text(
-              countLatestLine,
-              key: const ValueKey('alertDetailCountLatest'),
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: tokens.onSurfaceVariant),
-            ),
-          ],
-          const SizedBox(height: AppSpace.md),
         ] else if (alert.createdAt != null) ...[
+          const SizedBox(height: AppSpace.xs),
           Text(
             formatAlertLocalTime(
               alert.createdAt!,
@@ -526,8 +522,8 @@ class _SocialAlertDetailBodyState
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: tokens.onSurfaceVariant),
           ),
-          const SizedBox(height: AppSpace.md),
         ],
+        const SizedBox(height: AppSpace.md),
         // 2. Short localized framing (never message content).
         if (appLabel != null) ...[
           Text(

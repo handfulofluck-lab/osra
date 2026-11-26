@@ -121,6 +121,13 @@ full for server validation. App and YouTube edits leave the rest of the ruleset 
 an empty school-day list stays empty on load. On staging, save and read back one app, web and
 YouTube edit on the signed parent app before marking the handset row passed.
 
+For Social sender and concern labels (#1135, #1138), run `flutter test
+test/social_alert_detail_test.dart test/social_screen_test.dart test/localization_test.dart` from
+`apps/parent-app`. Cover missing sender, saved name, profile name and a number-only label.
+Confirm the approved concern tags render as readable chips at 320 px and 200% in English
+and Arabic. On the signed parent app, open the alert and then the matching Social concern.
+The system notification remains generic.
+
 For Arabic and Latin list separators, run `flutter test test/localized_list_test.dart` from
 `apps/parent-app` (#794). Its nine tests cover the shared splitter and real Arabic-locale widgets for
 allowed/blocked domains, routine blocked/allowed apps and digest recipients. Each field saves both

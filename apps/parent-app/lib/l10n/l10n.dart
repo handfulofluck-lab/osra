@@ -140,11 +140,11 @@ extension AppLocalizationsLabels on AppLocalizations {
         _ => isEnglish ? serverTitle : alertTitleGeneric,
       };
 
-  /// Risk labels for the `concernTypes` tags on search results and social rows.
+  /// Labels for the `concernTypes` tags on search results and social rows.
   ///
   /// The vocabulary is the AI engine's `CATEGORIES` (`services/ai-engine/model.py`, minus `safe`) plus the
-  /// local search patterns in `services/api/src/routes/content.ts`. A tag with no label falls back to the raw
-  /// key, so a new server tag shows up as itself instead of a blank chip.
+  /// local search patterns in `services/api/src/routes/content.ts` and the Social timing tag.
+  /// A tag with no label falls back to the raw key.
   String searchRiskCategory(String tag) => switch (tag.trim().toLowerCase()) {
         'self_harm' => riskSelfHarm,
         'substance_use' => riskSubstanceUse,
@@ -156,6 +156,7 @@ extension AppLocalizationsLabels on AppLocalizations {
         'violence' => riskViolence,
         'hate_speech' => riskHateSpeech,
         'ai_concern' => riskAiConcern,
+        'late_night' => riskLateNight,
         _ => tag,
       };
 
