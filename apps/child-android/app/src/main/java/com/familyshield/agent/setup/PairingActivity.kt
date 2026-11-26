@@ -275,8 +275,10 @@ class PairingActivity : ComponentActivity() {
         // NOTE: reading the token (not the cache) — a fresh process has empty caches.
         lifecycleScope.launch {
             if (settings.isPaired()) {
+                SetupCompletionStore.seedUpgradeLatchIfNeeded(this@PairingActivity, settings.deviceId())
                 renderStage(SetupResumePolicy.resolvePairedStage(pinStore.isConfigured(), activeGuidedStage))
             } else {
+                SetupCompletionStore.markUpgradeMigrated(this@PairingActivity)
                 val hasTypedOrScanned = restoredScan != null ||
                     typedServer.isNotEmpty() || typedCode.isNotEmpty() || typedName.isNotEmpty()
                 renderUnpairedStage(

@@ -237,6 +237,8 @@ class AgentSettings @Inject constructor(
     suspend fun savePairing(baseUrl: String, deviceJwt: String, deviceId: String, childId: String, hmacSecret: String? = null): Boolean {
         secure.reopenIfUnreadable()
         if (!secureWriter.writePairing(SECURE_DEVICE_TOKEN, deviceJwt, SECURE_HMAC_SECRET, hmacSecret)) return false
+        // osra-security#80: a fresh pairing saved on this build is never an upgrade from an earlier build.
+        com.familyshield.agent.setup.SetupCompletionStore.markUpgradeMigrated(context)
         store.edit {
             it[KEY_BASE_URL] = baseUrl
             it.remove(KEY_DEVICE_TOKEN)

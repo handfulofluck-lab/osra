@@ -92,8 +92,9 @@ class AccessibilityMonitorService : AccessibilityService() {
         if (!settings.isPairedSync()) return false
         val deviceId = settings.deviceIdSync()
         if (deviceId != null && latchedCompletedDeviceId == deviceId) return false
+        val upgradeSeeded = com.familyshield.agent.setup.SetupCompletionStore.seedUpgradeLatchIfNeeded(this, deviceId)
         val alreadyCompleted = com.familyshield.agent.setup.SetupCompletionStore.isCompletedForDevice(this, deviceId)
-        if (alreadyCompleted) {
+        if (alreadyCompleted && !upgradeSeeded) {
             latchedCompletedDeviceId = deviceId
             return false
         }
@@ -121,14 +122,15 @@ class AccessibilityMonitorService : AccessibilityService() {
             requiredGrantsReady = ready,
             setupCompletedOnce = alreadyCompleted || (ready && deviceId != null),
         )
-        if (suppressed && deviceId != null) {
+        if (!ready && deviceId != null) {
             val fingerprint = com.familyshield.agent.setup.FirstRunOrderPolicy.missingGrantsFingerprint(missing)
             val lastNotified = com.familyshield.agent.setup.SetupCompletionStore.lastNotifiedMissingFingerprint(this, deviceId)
             if (com.familyshield.agent.setup.FirstRunOrderPolicy.shouldEnqueueMissingAlert(
                     paired = true,
-                    setupCompletedOnce = false,
+                    setupCompletedOnce = alreadyCompleted,
                     currentFingerprint = fingerprint,
                     lastNotifiedFingerprint = lastNotified,
+                    upgradeSeeded = upgradeSeeded,
                 )
             ) {
                 com.familyshield.agent.setup.SetupCompletionStore.recordNotifiedMissingFingerprint(this, deviceId, fingerprint)
@@ -141,6 +143,11 @@ class AccessibilityMonitorService : AccessibilityService() {
                         app = fingerprint,
                     )
                 }.onFailure { Log.w(TAG, "could not enqueue setup-incomplete alert (#1174)", it) }
+            }
+            if (alreadyCompleted && upgradeSeeded) {
+                // Upgraded phone reported its newly required missing grants once; cache latch in memory
+                // so future events avoid per-event IPC while keeping full protection active.
+                latchedCompletedDeviceId = deviceId
             }
         }
         return suppressed

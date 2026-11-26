@@ -44,11 +44,21 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
         val settings = entry.agentSettings()
         val childId = settings.childId() ?: return Result.success() // not paired: nobody to tell
         val deviceId = settings.deviceId()
+        com.familyshield.agent.setup.SetupCompletionStore.seedUpgradeLatchIfNeeded(applicationContext, deviceId)
+        val setupCompleted = com.familyshield.agent.setup.SetupCompletionStore.isCompletedForDevice(applicationContext, deviceId)
+        val upgradeSeeded = com.familyshield.agent.setup.SetupCompletionStore.isUpgradeSeededForDevice(applicationContext, deviceId)
+        // Claude (#1208, 7202013057): drop any queued setup_incomplete notice if setup completed by send time.
+        if (type == TYPE_SETUP_INCOMPLETE &&
+            com.familyshield.agent.setup.FirstRunOrderPolicy.shouldDropSetupIncompleteAtSendTime(
+                setupCompletedOnce = setupCompleted,
+                upgradeSeededWithMissingGrants = upgradeSeeded,
+            )
+        ) {
+            return Result.success()
+        }
         // Issue #1174 / Ahmed acceptance (7200575366): no tamper alert fires before initial setup
         // completes once; only the deduplicated TYPE_SETUP_INCOMPLETE notice is allowed mid-setup.
-        if (type != TYPE_SETUP_INCOMPLETE &&
-            !com.familyshield.agent.setup.SetupCompletionStore.isCompletedForDevice(applicationContext, deviceId)
-        ) {
+        if (type != TYPE_SETUP_INCOMPLETE && !setupCompleted) {
             return Result.success()
         }
         val guardWindow = guardWindow()

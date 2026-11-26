@@ -170,6 +170,129 @@ class FirstRunOrderPolicyTest {
     }
 
     @Test
+    fun `osra-security-80 upgrade path seeds latch without suppressing blocking and alerts once for newly required grants`() {
+        // (a) Pre-upgrade already-paired device updating to this build without NOTIFICATION_LISTENER:
+        // migration runs once, seeds completion latch without checking live grants, keeps blocking ON,
+        // and emits ONE deduplicated setup_incomplete alert for the newly required missing grant.
+        val upgradeDecision = FirstRunOrderPolicy.upgradeSeedDecision(
+            upgradeMigrated = false,
+            hasExistingPairedDeviceId = true,
+            alreadyLatched = false,
+        )
+        assertTrue("pre-upgrade paired device must seed completion latch", upgradeDecision.seedLatch)
+        assertTrue("migration flag must be recorded", upgradeDecision.markMigrated)
+
+        val missingRows = OnboardingPolicy.rows(notificationCaptureAvailable = true) {
+            it != OnboardingPolicy.Grant.NOTIFICATION_LISTENER
+        }
+        val missingGrants = OnboardingPolicy.missingRequired(missingRows)
+        assertEquals(listOf(OnboardingPolicy.Grant.NOTIFICATION_LISTENER), missingGrants)
+        assertFalse(
+            "upgraded device missing newly required grant must NOT suppress enforcement",
+            FirstRunOrderPolicy.shouldSuppressEnforcement(
+                paired = true,
+                requiredGrantsReady = OnboardingPolicy.canComplete(missingRows),
+                setupCompletedOnce = upgradeDecision.seedLatch,
+            ),
+        )
+        val fp = FirstRunOrderPolicy.missingGrantsFingerprint(missingGrants)
+        assertTrue(
+            "upgraded device reports newly required missing grant once",
+            FirstRunOrderPolicy.shouldEnqueueMissingAlert(
+                paired = true,
+                setupCompletedOnce = true,
+                currentFingerprint = fp,
+                lastNotifiedFingerprint = null,
+                upgradeSeeded = true,
+            ),
+        )
+        assertFalse(
+            "upgraded device must not repeat identical missing-grant alert",
+            FirstRunOrderPolicy.shouldEnqueueMissingAlert(
+                paired = true,
+                setupCompletedOnce = true,
+                currentFingerprint = fp,
+                lastNotifiedFingerprint = fp,
+                upgradeSeeded = true,
+            ),
+        )
+        assertFalse(
+            "queued alert for upgrade-seeded missing grant is allowed to send before completion",
+            FirstRunOrderPolicy.shouldDropSetupIncompleteAtSendTime(
+                setupCompletedOnce = true,
+                upgradeSeededWithMissingGrants = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `fresh pairing on this build still suppresses until first completion and drops late queued setup_incomplete`() {
+        // (b) Fresh pairing after migration flag is set (including after unpair/re-pair):
+        // never mistaken for an upgrade -> suppresses until first completion, enqueues missing alert once.
+        val freshDecision = FirstRunOrderPolicy.upgradeSeedDecision(
+            upgradeMigrated = true,
+            hasExistingPairedDeviceId = true,
+            alreadyLatched = false,
+        )
+        assertFalse("fresh pairing must NOT be seeded as an upgrade", freshDecision.seedLatch)
+        assertFalse("migration already done", freshDecision.markMigrated)
+        assertTrue(
+            "fresh never-completed pairing suppresses enforcement while required grants are missing",
+            FirstRunOrderPolicy.shouldSuppressEnforcement(
+                paired = true,
+                requiredGrantsReady = false,
+                setupCompletedOnce = false,
+            ),
+        )
+        val fp = FirstRunOrderPolicy.missingGrantsFingerprint(listOf(OnboardingPolicy.Grant.OVERLAY))
+        assertTrue(
+            FirstRunOrderPolicy.shouldEnqueueMissingAlert(
+                paired = true,
+                setupCompletedOnce = false,
+                currentFingerprint = fp,
+                lastNotifiedFingerprint = null,
+                upgradeSeeded = false,
+            ),
+        )
+
+        // (c) After first completion, revoking a grant never suppresses enforcement and any queued
+        // setup_incomplete:<deviceId> alert still sitting in WorkManager is dropped at send time.
+        assertFalse(
+            FirstRunOrderPolicy.shouldSuppressEnforcement(
+                paired = true,
+                requiredGrantsReady = false,
+                setupCompletedOnce = true,
+            ),
+        )
+        assertTrue(
+            "queued setup_incomplete notice must be dropped at send time once setup completed",
+            FirstRunOrderPolicy.shouldDropSetupIncompleteAtSendTime(
+                setupCompletedOnce = true,
+                upgradeSeededWithMissingGrants = false,
+            ),
+        )
+        assertFalse(
+            "queued setup_incomplete notice stays sendable while initial setup is still incomplete",
+            FirstRunOrderPolicy.shouldDropSetupIncompleteAtSendTime(
+                setupCompletedOnce = false,
+                upgradeSeededWithMissingGrants = false,
+            ),
+        )
+        assertEquals(
+            "setup_incomplete:dev-42",
+            com.familyshield.agent.security.TamperAlertWorker.dedupeKeyFor(
+                type = com.familyshield.agent.security.TamperAlertWorker.TYPE_SETUP_INCOMPLETE,
+                deviceId = "dev-42",
+                guardWindow = null,
+                app = "OVERLAY",
+                layout = "",
+                eventAtMs = 0L,
+                adminRemovedAtMs = 0L,
+            ),
+        )
+    }
+
+    @Test
     fun `Xiaomi MIUI background pop-up op 10021 and lock-screen op 10020 gate OVERLAY completion`() {
         assertTrue(MiuiBackgroundPopupPolicy.isXiaomiFamily("Xiaomi"))
         assertTrue(MiuiBackgroundPopupPolicy.isXiaomiFamily("Redmi"))
@@ -209,11 +332,21 @@ class FirstRunOrderPolicyTest {
         assertTrue("Transparency card composable missing", screens.contains("private fun OsraTransparencyCard("))
 
         // #1174 + osra-security#80: PairingActivity routes unpaired flow and latches completion.
+        val policySource = File(root, "java/com/familyshield/agent/setup/FirstRunOrderPolicy.kt").readText()
         assertTrue(activity.contains("FirstRunOrderPolicy.resolveUnpairedStage("))
         assertTrue(activity.contains("SetupCompletionStore.markCompleted("))
+        assertTrue(activity.contains("SetupCompletionStore.seedUpgradeLatchIfNeeded("))
+        assertTrue(activity.contains("SetupCompletionStore.markUpgradeMigrated("))
         assertTrue(activity.contains("OnboardingFamilyAgreementScreen("))
         assertTrue(activity.contains("ChildUxFlags.c05FirstRunEnabled"))
         assertTrue(settings.contains("SetupCompletionStore.clear(context)"))
+        assertTrue(settings.contains("SetupCompletionStore.markUpgradeMigrated(context)"))
+        assertTrue(service.contains("SetupCompletionStore.seedUpgradeLatchIfNeeded("))
+        assertTrue(worker.contains("SetupCompletionStore.seedUpgradeLatchIfNeeded("))
+        assertTrue(worker.contains("FirstRunOrderPolicy.shouldDropSetupIncompleteAtSendTime("))
+        assertTrue(blockActivity.contains("SetupCompletionStore.seedUpgradeLatchIfNeeded("))
+        val clearFn = policySource.substringAfter("fun clear(context: Context)").substringBefore("private fun prefs(")
+        assertTrue("SetupCompletionStore.clear must preserve KEY_UPGRADE_MIGRATED", clearFn.contains("putBoolean(KEY_UPGRADE_MIGRATED, true)"))
 
         // All 3 protection paths in AccessibilityMonitorService gated by requiredGrantsIncompleteForPairedDevice():
         val path1Guard = service.substringAfter("private fun guardProtectionScreens(").substringBefore("private fun stepIn(")
