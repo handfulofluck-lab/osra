@@ -13,6 +13,7 @@ import '../../api/permission_errors.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import 'rules_behind_banner.dart';
+import 'bedtime_p11_screen.dart';
 import 'app_display.dart';
 import 'app_picker.dart';
 import '../../theme/app_tokens.dart';
@@ -190,6 +191,9 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.initialTab == 3 && ref.watch(p11BedtimeEnabledProvider)) {
+      return BedtimeP11Screen(childId: widget.childId);
+    }
     final l10n = context.l10n;
     final rules = ref.watch(rulesProvider(widget.childId));
     ref.listen(rulesProvider(widget.childId), (_, next) => next.whenData(_applyLoaded));

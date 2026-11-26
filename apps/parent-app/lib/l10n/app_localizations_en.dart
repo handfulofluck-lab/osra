@@ -3636,4 +3636,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String alertBodyDataCleared(String model) {
     return 'OSRA was reinstalled on $model. Its protection was off until it was paired again.';
   }
+
+  @override
+  String get p11Title => 'Bedtime & school';
+
+  @override
+  String get p11BedtimeEveryNight => 'Every night';
+
+  @override
+  String get p11ScheduleOff => 'Off';
+
+  @override
+  String get p11CustomRoutines => 'Other routines';
 }

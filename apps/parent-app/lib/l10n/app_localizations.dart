@@ -5900,6 +5900,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'OSRA was reinstalled on {model}. Its protection was off until it was paired again.'**
   String alertBodyDataCleared(String model);
+
+  /// No description provided for @p11Title.
+  ///
+  /// In en, this message translates to:
+  /// **'Bedtime & school'**
+  String get p11Title;
+
+  /// No description provided for @p11BedtimeEveryNight.
+  ///
+  /// In en, this message translates to:
+  /// **'Every night'**
+  String get p11BedtimeEveryNight;
+
+  /// No description provided for @p11ScheduleOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get p11ScheduleOff;
+
+  /// No description provided for @p11CustomRoutines.
+  ///
+  /// In en, this message translates to:
+  /// **'Other routines'**
+  String get p11CustomRoutines;
 }
 
 class _AppLocalizationsDelegate
