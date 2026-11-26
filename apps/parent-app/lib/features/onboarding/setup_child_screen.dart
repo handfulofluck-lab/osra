@@ -112,25 +112,46 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
     if (mounted) context.go('/sign-in');
   }
 
+  /// #1169: a signed-in parent who already has children goes straight to Home
+  /// on Back (system Back or AppBar Back) instead of closing the app or signing out.
+  Future<void> _handleBack(bool hasExistingChildren) async {
+    if (hasExistingChildren) {
+      await ref.read(onboardingProvider.notifier).completeSetup();
+      if (mounted) context.go('/');
+      return;
+    }
+    await _leaveSetup();
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final family = ref.watch(familyProvider);
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.onboardingChildTitle),
-        leading: BackButton(onPressed: _busy ? null : _leaveSetup),
-      ),
-      body: SafeArea(
-        child: family.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (_, __) => _LoadFailed(
-            message: l10n.onboardingNoNetwork,
-            onRetry: () => ref.invalidate(familyProvider),
+    final hasExistingChildren = family.valueOrNull?.children.isNotEmpty ?? false;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || _busy) return;
+        _handleBack(hasExistingChildren);
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(l10n.onboardingChildTitle),
+          leading: BackButton(
+            onPressed: _busy ? null : () => _handleBack(hasExistingChildren),
           ),
-          data: (overview) => overview.children.isEmpty
-              ? _buildForm(context, l10n)
-              : _buildExisting(context, l10n, overview.children),
+        ),
+        body: SafeArea(
+          child: family.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (_, __) => _LoadFailed(
+              message: l10n.onboardingNoNetwork,
+              onRetry: () => ref.invalidate(familyProvider),
+            ),
+            data: (overview) => overview.children.isEmpty
+                ? _buildForm(context, l10n)
+                : _buildExisting(context, l10n, overview.children),
+          ),
         ),
       ),
     );

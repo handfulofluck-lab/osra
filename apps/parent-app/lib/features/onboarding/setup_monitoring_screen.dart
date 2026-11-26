@@ -8,6 +8,7 @@ import '../../l10n/l10n.dart';
 import '../../widgets/error_retry_view.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
+import '../../providers/onboarding_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../rules/app_picker.dart' show AppIconBadge;
 import '../social/social_app_catalog.dart';
@@ -180,6 +181,11 @@ class _SetupMonitoringScreenState extends ConsumerState<SetupMonitoringScreen> {
     }
   }
 
+  void _backToPair() {
+    ref.read(onboardingProvider.notifier).backToPairing();
+    context.go('/setup/pair');
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -187,8 +193,16 @@ class _SetupMonitoringScreenState extends ConsumerState<SetupMonitoringScreen> {
     final inventory =
         childId == null ? null : ref.watch(installedAppsProvider(childId));
     final rules = childId == null ? null : ref.watch(rulesProvider(childId));
-    return Scaffold(
-      appBar: AppBar(title: Text(l10n.setupMonitoringAppBarTitle)),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && !_saving) _backToPair();
+      },
+      child: Scaffold(
+      appBar: AppBar(
+        title: Text(l10n.setupMonitoringAppBarTitle),
+        leading: BackButton(onPressed: _saving ? null : _backToPair),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(AppSpace.lg),
         children: [
@@ -241,6 +255,7 @@ class _SetupMonitoringScreenState extends ConsumerState<SetupMonitoringScreen> {
                 : Text(l10n.setupMonitoringContinue),
           ),
         ),
+      ),
       ),
     );
   }

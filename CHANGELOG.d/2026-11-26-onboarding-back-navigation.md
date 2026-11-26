@@ -1,0 +1,3 @@
+- **Onboarding system Back navigation (#1169):**
+  - Wrapped `SetupChildScreen`, `SetupPairScreen`, `SetupMonitoringScreen`, and `SetupDoneScreen` in `PopScope(canPop: false, ...)` so pressing Android system Back never calls `SystemNavigator.pop` to close the app.
+  - From `/setup/pair`, `/setup/monitoring`, and `/setup/done`, system Back returns to the previous onboarding step; from `/setup/child`, a signed-in parent who already has children completes onboarding and returns directly to Home (`/`).

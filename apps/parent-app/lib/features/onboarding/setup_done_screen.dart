@@ -18,13 +18,20 @@ class SetupDoneScreen extends ConsumerWidget {
     final onboarding = ref.watch(onboardingProvider);
     final pending = onboarding.pairingPending;
     final tokens = context.tokens;
-    return Scaffold(
+    void backToPair() {
+      ref.read(onboardingProvider.notifier).backToPairing();
+      context.go('/setup/pair');
+    }
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) backToPair();
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: Text(l10n.onboardingDoneStepTitle),
-        leading: BackButton(onPressed: () {
-          ref.read(onboardingProvider.notifier).backToPairing();
-          context.go('/setup/pair');
-        }),
+        leading: BackButton(onPressed: backToPair),
       ),
       body: SafeArea(
         child: Center(
@@ -73,6 +80,7 @@ class SetupDoneScreen extends ConsumerWidget {
             ),
           ),
         ),
+      ),
       ),
     );
   }
