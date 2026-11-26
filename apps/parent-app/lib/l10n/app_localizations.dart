@@ -5995,14 +5995,14 @@ abstract class AppLocalizations {
   /// No description provided for @accessRequestAllowedSnack.
   ///
   /// In en, this message translates to:
-  /// **'You allowed {app}{timeSuffix}'**
-  String accessRequestAllowedSnack(String app, String timeSuffix);
+  /// **'You allowed {app}'**
+  String accessRequestAllowedSnack(String app);
 
   /// No description provided for @accessRequestKeptBlockedSnack.
   ///
   /// In en, this message translates to:
-  /// **'You kept {app} blocked{timeSuffix}'**
-  String accessRequestKeptBlockedSnack(String app, String timeSuffix);
+  /// **'You kept {app} blocked'**
+  String accessRequestKeptBlockedSnack(String app);
 
   /// No description provided for @accessRequestAllowLabel.
   ///

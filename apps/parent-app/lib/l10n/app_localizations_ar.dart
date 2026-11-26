@@ -3941,12 +3941,12 @@ class AppLocalizationsAr extends AppLocalizations {
   String get accessRequestHandled => 'تم التعامل مع هذا الطلب';
 
   @override
-  String accessRequestAllowedSnack(String app, String timeSuffix) {
+  String accessRequestAllowedSnack(String app) {
     return 'سُمح باستخدام $app';
   }
 
   @override
-  String accessRequestKeptBlockedSnack(String app, String timeSuffix) {
+  String accessRequestKeptBlockedSnack(String app) {
     return 'بقي $app محظورًا';
   }
 

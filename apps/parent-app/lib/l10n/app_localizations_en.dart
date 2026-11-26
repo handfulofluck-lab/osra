@@ -3706,13 +3706,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get accessRequestHandled => 'This request was handled';
 
   @override
-  String accessRequestAllowedSnack(String app, String timeSuffix) {
-    return 'You allowed $app$timeSuffix';
+  String accessRequestAllowedSnack(String app) {
+    return 'You allowed $app';
   }
 
   @override
-  String accessRequestKeptBlockedSnack(String app, String timeSuffix) {
-    return 'You kept $app blocked$timeSuffix';
+  String accessRequestKeptBlockedSnack(String app) {
+    return 'You kept $app blocked';
   }
 
   @override
