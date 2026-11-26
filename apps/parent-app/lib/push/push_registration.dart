@@ -189,10 +189,11 @@ class PushRegistration {
     if (token == null) return false;
     try {
       final removed = await _api.remove(token);
-      _registeredToken = null;
       return removed > 0;
     } catch (_) {
       return false;
+    } finally {
+      _registeredToken = null;
     }
   }
 }

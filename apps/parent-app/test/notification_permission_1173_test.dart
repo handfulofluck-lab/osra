@@ -301,6 +301,46 @@ void main() {
       );
     });
 
+    /// Mutant: clear `_registeredToken` only on successful `_api.remove` in `unregister()`,
+    /// and an offline sign-out leaves `_registeredToken` set so a second parent signing in
+    /// on the same app run skips `POST /v1/me/push-token`.
+    test('offline logout still clears _registeredToken so a subsequent sign-in re-registers', () async {
+      FlutterSecureStorage.setMockInitialValues({});
+      SharedPreferences.setMockInitialValues({kOnboardingCompleteKey: true});
+      final api = FakeApiClient({
+        ...pushRoutes(),
+        'DELETE /v1/me/push-token': (_) =>
+            const FakeHttpError(503, {'error': 'offline'}),
+      });
+      final platform = _FakePermissionPlatform(enabled: true, requestResult: true);
+      final pushSource = _FakePushSource();
+      final container = ProviderContainer(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          notificationPermissionPlatformProvider.overrideWithValue(platform),
+          pushTokenSourceProvider.overrideWithValue(pushSource),
+        ],
+      );
+      addTearDown(() async {
+        container.dispose();
+        await platform.dispose();
+      });
+
+      container.read(notificationLifecycleSyncProvider);
+      await container.read(authProvider.notifier).login('p1@osratech.com', 'good-password');
+      await settleAsync(16);
+      expect(api.calls('POST', '/v1/me/push-token'), hasLength(1));
+
+      await container.read(authProvider.notifier).logout();
+      await settleAsync(12);
+      expect(api.calls('DELETE', '/v1/me/push-token'), hasLength(1));
+
+      // Second parent signs in during the same app run with the same device FCM token.
+      await container.read(authProvider.notifier).login('p2@osratech.com', 'good-password');
+      await settleAsync(16);
+      expect(api.calls('POST', '/v1/me/push-token'), hasLength(2));
+    });
+
     /// Mutant: skip `syncPushRegistration()` after `requestPermission()` grants
     /// on sign-in to an existing account, and `POST /v1/me/push-token` stays empty.
     test('sign-in to an existing account prompts once immediately, posts token, and does not re-prompt', () async {
