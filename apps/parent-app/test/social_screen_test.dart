@@ -532,8 +532,8 @@ void main() {
 
       await reveal(tester, find.text('Maya'));
       expect(find.text('Maya'), findsOneWidget);
-      expect(find.text('grooming_risk'), findsOneWidget);
-      expect(find.text('late_night'), findsOneWidget);
+      expect(find.text('Grooming'), findsOneWidget);
+      expect(find.text('Late at night'), findsOneWidget);
       expect(find.textContaining('WhatsApp · '), findsOneWidget);
       // Severity tint on the card + colored leading icon.
       final card =
@@ -640,6 +640,45 @@ void main() {
         expect(tester.getTopLeft(find.byTooltip(tooltip)).dy,
             greaterThan(tester.getRect(find.text('Maya')).bottom));
         expect(tester.takeException(), isNull);
+      });
+    }
+
+    for (final locale in [const Locale('en'), const Locale('ar')]) {
+      testWidgets(
+          'localized Social concern chips fit 320 px at 200% in ${locale.languageCode}',
+          (tester) async {
+        tester.view.physicalSize = const Size(320, 1000);
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+          tester.platformDispatcher.clearTextScaleFactorTestValue();
+        });
+        final api = FakeApiClient(socialRoutes(concerns: [concernJson()]));
+        await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api,
+            locale: locale, frameBoundary: true);
+        await flushFakeHttp(tester);
+
+        final card = find.byKey(const ValueKey('se-1'));
+        await reveal(tester, card);
+        final labels = locale.languageCode == 'ar'
+            ? ['استدراج', 'في وقت متأخر ليلًا']
+            : ['Grooming', 'Late at night'];
+        for (final label in labels) {
+          final chip =
+              find.ancestor(of: find.text(label), matching: find.byType(Chip));
+          expect(chip, findsOneWidget);
+          expect(tester.getRect(chip).left,
+              greaterThanOrEqualTo(tester.getRect(card).left));
+          expect(tester.getRect(chip).right,
+              lessThanOrEqualTo(tester.getRect(card).right));
+        }
+        expect(find.text('grooming_risk'), findsNothing);
+        expect(find.text('late_night'), findsNothing);
+        expect(tester.takeException(), isNull);
+        await maybeCaptureFrame(
+            tester, 'social-concern-labels-${locale.languageCode}-320-200.png');
       });
     }
 
@@ -990,7 +1029,7 @@ void main() {
       };
       final api = FakeApiClient(socialRoutes(concerns: [
         concernJson(
-          contact: '\u200b',
+          contact: 'I',
           latestFeedback: feedback,
           ownFeedback: feedback,
         ),
@@ -1002,7 +1041,7 @@ void main() {
       await reveal(tester, pill);
       final contact = find.descendant(
         of: find.ancestor(of: pill, matching: find.byType(Card)),
-        matching: find.text('\u200b'),
+        matching: find.text('I'),
       );
       expect(tester.getRect(pill).top,
           greaterThanOrEqualTo(tester.getRect(contact).bottom));
@@ -1025,7 +1064,7 @@ void main() {
       };
       final api = FakeApiClient(socialRoutes(concerns: [
         concernJson(
-          contact: '\u200b',
+          contact: 'I',
           latestFeedback: feedback,
           ownFeedback: feedback,
         ),
@@ -1036,7 +1075,7 @@ void main() {
       final pill = find.widgetWithText(FilledButton, 'Not concerning');
       await reveal(tester, pill);
       final card = find.ancestor(of: pill, matching: find.byType(Card));
-      final contact = find.descendant(of: card, matching: find.text('\u200b'));
+      final contact = find.descendant(of: card, matching: find.text('I'));
       final contactRow = find.ancestor(of: contact, matching: find.byType(Row));
       final contactAllocation = contactRow.evaluate().isNotEmpty
           ? tester.getRect(contactRow).width - tester.getRect(pill).width - 8

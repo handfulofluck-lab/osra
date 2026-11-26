@@ -121,6 +121,13 @@ full for server validation. App and YouTube edits leave the rest of the ruleset 
 an empty school-day list stays empty on load. On staging, save and read back one app, web and
 YouTube edit on the signed parent app before marking the handset row passed.
 
+For Social sender and concern labels (#1135, #1138), run `flutter test
+test/social_alert_detail_test.dart test/social_screen_test.dart test/localization_test.dart` from
+`apps/parent-app`. Cover missing sender, saved name, profile name and a number-only label.
+Confirm the approved concern tags render as readable chips at 320 px and 200% in English
+and Arabic. On the signed parent app, open the alert and then the matching Social concern.
+The system notification remains generic.
+
 For the open Social list refresh (#1136), run `flutter test test/social_activity_refresh_test.dart
 test/social_screen_test.dart test/realtime_refresh_test.dart test/foreground_push_test.dart` from
 `apps/parent-app`. The tests verify foreground Apple notifications, app resume, a notification tap,
