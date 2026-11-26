@@ -290,6 +290,7 @@ class PairingActivity : ComponentActivity() {
     private var activeGuidedStage: GuidedStage? = null
     private var guidedFirstRun = true
     private var forceChecklistView = false
+    private var forceLegacyStatusView = false
     private val skippedPermissionSteps = mutableSetOf<OnboardingPolicy.Grant>()
 
     private val guidedBackCallback: androidx.activity.OnBackPressedCallback =
@@ -1005,7 +1006,7 @@ class PairingActivity : ComponentActivity() {
         }
     }
 
-    private fun showStatus(forceLegacy: Boolean = false) {
+    private fun showStatus() {
         // ADR-0010 §2 (#440 Flip4 follow-up): no status screen, and so no ungated action, before a PIN exists.
         if (SetupResumePolicy.pairedScreen(pinStore.isConfigured()) == PairedScreen.SET_PIN) {
             statusScreenShown = false
@@ -1014,6 +1015,8 @@ class PairingActivity : ComponentActivity() {
         }
         activeGuidedStage = GuidedStage.STATUS
         statusScreenShown = true
+        val forceLegacy = forceLegacyStatusView
+        forceLegacyStatusView = false
         lifecycleScope.launch {
             val childId = settings.childId() ?: "-"
             val deviceId = settings.deviceId() ?: "-"
@@ -1073,7 +1076,10 @@ class PairingActivity : ComponentActivity() {
                                 )
                             }
                         },
-                        onOpenDeviceSetup = { showStatus(forceLegacy = true) },
+                        onOpenDeviceSetup = {
+                            forceLegacyStatusView = true
+                            showStatus()
+                        },
                     )
                 }
                 return@launch

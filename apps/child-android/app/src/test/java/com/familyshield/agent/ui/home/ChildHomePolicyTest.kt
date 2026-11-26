@@ -132,7 +132,7 @@ class ChildHomePolicyTest {
 
         assertFalse("C-01 must never draw a red danger SOS button", screen.contains("palette.danger"))
         assertTrue("PairingActivity must keep C-01 behind ChildUxFlags fallback", activity.contains("ChildUxFlags.c01ChildHomeEnabled"))
-        assertTrue("PairingActivity must keep legacy setup/status reachable", activity.contains("showStatus(forceLegacy = true)"))
+        assertTrue("PairingActivity must keep legacy setup/status reachable", activity.contains("forceLegacyStatusView = true"))
 
         for (key in listOf(
             "c01_tab_today",
