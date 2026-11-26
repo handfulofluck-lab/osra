@@ -157,6 +157,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
             },
           }));
 
+  /// #716: stores the token pair a password change hands back. The change revoked every earlier session,
+  /// this device's included, so the old pair must be replaced before the next request.
+  Future<void> adoptSession(String token, String? refreshToken) async {
+    await _storage.write(key: 'jwt', value: token);
+    if (refreshToken != null) await _storage.write(key: 'refresh', value: refreshToken);
+  }
+
   /// Runs an auth call, persists the returned token, then loads /v1/family/me.
   Future<void> _authenticate(Future<Response<dynamic>> Function() call) async {
     await _applyServerUrl();

@@ -1957,5 +1957,21 @@
   "alertBodySetupIncompleteGeneric": "{childName}'s phone setup is still incomplete after 30 minutes.",
   "@alertBodySetupIncompleteGeneric": { "placeholders": { "childName": { "type": "String" } } },
   "alertBodyDataCleared": "OSRA was reinstalled on {model}. Its protection was off until it was paired again.",
-  "@alertBodyDataCleared": { "placeholders": { "model": { "type": "String" } } }
+  "@alertBodyDataCleared": { "placeholders": { "model": { "type": "String" } } },
+  "changePasswordMenu": "Change password",
+  "cpIntro": "Changing your password signs you out on every other device. This phone stays signed in.",
+  "cpCurrent": "Current password",
+  "cpNew": "New password",
+  "cpNewHint": "Use at least 12 characters.",
+  "cpConfirm": "Type the new password again",
+  "cpCode": "Authenticator code or recovery code",
+  "cpCodeHint": "Two-step sign-in is on, so a code is needed too.",
+  "cpBusy": "Changing…",
+  "cpMismatch": "The two new passwords don't match.",
+  "cpWrongCurrent": "Your current password isn't right.",
+  "cpCodeNeeded": "Enter a current code from your authenticator app, or an unused recovery code.",
+  "cpSame": "Choose a password that's different from your current one.",
+  "cpRateLimited": "Too many tries. Wait a few minutes, then try again.",
+  "cpFailed": "Your password wasn't changed. Check your connection and try again.",
+  "cpDone": "Password changed. Your other devices are signed out."
 }

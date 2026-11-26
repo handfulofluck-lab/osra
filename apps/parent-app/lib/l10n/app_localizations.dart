@@ -5900,6 +5900,102 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'OSRA was reinstalled on {model}. Its protection was off until it was paired again.'**
   String alertBodyDataCleared(String model);
+
+  /// No description provided for @changePasswordMenu.
+  ///
+  /// In en, this message translates to:
+  /// **'Change password'**
+  String get changePasswordMenu;
+
+  /// No description provided for @cpIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Changing your password signs you out on every other device. This phone stays signed in.'**
+  String get cpIntro;
+
+  /// No description provided for @cpCurrent.
+  ///
+  /// In en, this message translates to:
+  /// **'Current password'**
+  String get cpCurrent;
+
+  /// No description provided for @cpNew.
+  ///
+  /// In en, this message translates to:
+  /// **'New password'**
+  String get cpNew;
+
+  /// No description provided for @cpNewHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Use at least 12 characters.'**
+  String get cpNewHint;
+
+  /// No description provided for @cpConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Type the new password again'**
+  String get cpConfirm;
+
+  /// No description provided for @cpCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Authenticator code or recovery code'**
+  String get cpCode;
+
+  /// No description provided for @cpCodeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Two-step sign-in is on, so a code is needed too.'**
+  String get cpCodeHint;
+
+  /// No description provided for @cpBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'Changing…'**
+  String get cpBusy;
+
+  /// No description provided for @cpMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'The two new passwords don\'t match.'**
+  String get cpMismatch;
+
+  /// No description provided for @cpWrongCurrent.
+  ///
+  /// In en, this message translates to:
+  /// **'Your current password isn\'t right.'**
+  String get cpWrongCurrent;
+
+  /// No description provided for @cpCodeNeeded.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a current code from your authenticator app, or an unused recovery code.'**
+  String get cpCodeNeeded;
+
+  /// No description provided for @cpSame.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a password that\'s different from your current one.'**
+  String get cpSame;
+
+  /// No description provided for @cpRateLimited.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many tries. Wait a few minutes, then try again.'**
+  String get cpRateLimited;
+
+  /// No description provided for @cpFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Your password wasn\'t changed. Check your connection and try again.'**
+  String get cpFailed;
+
+  /// No description provided for @cpDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Password changed. Your other devices are signed out.'**
+  String get cpDone;
 }
 
 class _AppLocalizationsDelegate

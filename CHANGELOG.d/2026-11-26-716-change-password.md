@@ -1,0 +1,3 @@
+### Added
+- Change password while signed in (#716). `POST /v1/auth/password` takes the current password, a new one (12+ characters) and, when two-step sign-in is on, a current authenticator code or an unused recovery code. On success every session ends (the same revocation as `/logout-all`), the caller gets a fresh token pair so this phone stays signed in, and the parent gets an email (EN + AR, no link) telling them to use "Forgot password" if it was not them.
+- Parent app: "Change password" in the dashboard menu opens a screen with current / new / repeat fields, plus a code field when two-step sign-in is on. Refusals read as sentences; a wrong password is never refreshed and replayed. EN + AR strings.

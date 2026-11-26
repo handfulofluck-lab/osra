@@ -25,6 +25,7 @@ import 'features/rules/rules_editor_screen.dart';
 import 'features/settings/appearance_screen.dart';
 import 'features/settings/digest_prefs_screen.dart';
 import 'features/settings/delete_account_screen.dart';
+import 'features/settings/change_password_screen.dart';
 import 'features/settings/mfa_settings_screen.dart';
 import 'features/social/social_screen.dart';
 import 'features/content/search_safety_screen.dart';
@@ -115,6 +116,8 @@ final List<RouteBase> appRoutes = [
   GoRoute(path: '/settings/digests', builder: (_, __) => const DigestPrefsScreen()),
   GoRoute(path: '/settings/appearance', builder: (_, __) => const AppearanceScreen()),
   GoRoute(path: '/settings/mfa', builder: (_, __) => const MfaSettingsScreen()),
+  // #716: change the password while signed in.
+  GoRoute(path: '/settings/password', builder: (_, __) => const ChangePasswordScreen()),
   // #442 PR 2: Play requires account deletion to be reachable in the app.
   GoRoute(path: '/settings/delete-account', builder: (_, __) => const DeleteAccountScreen()),
   // ADR-0031 step 3b: the co-parent's approval prompt. The dashboard and the
