@@ -928,6 +928,21 @@ class _AppsTab extends ConsumerWidget {
                       const SizedBox(height: AppSpace.xs),
                       Text(l10n.appPickerIosEmptyBody(ltrIsolate(childName)),
                           style: Theme.of(context).textTheme.bodySmall),
+                      // P-09 (Fix 8): the iPhone app list is not read from the phone yet, and a parent must
+                      // be told that here rather than discover an empty list and guess why.
+                      const SizedBox(height: AppSpace.sm),
+                      Row(
+                        key: const ValueKey('appsTabIphoneNotYet'),
+                        children: [
+                          Icon(Icons.schedule, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          const SizedBox(width: AppSpace.xs),
+                          Flexible(
+                            child: Text(l10n.appsNotYetOnIphone,
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),

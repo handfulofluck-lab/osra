@@ -3505,6 +3505,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appsNoMatch => 'No apps match';
 
   @override
+  String get appsSentToPhone => 'Sent to phone';
+
+  @override
+  String get appsNotYetOnIphone => 'Not yet available on iPhone';
+
+  @override
   String get appAboutThisApp => 'About this app';
 
   @override

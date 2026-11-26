@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/app.dart' show appRoutes;
 import 'package:familyshield_parent/features/children/child_apps_list.dart';
 import 'package:familyshield_parent/l10n/app_localizations.dart';
@@ -12,9 +13,13 @@ import 'package:familyshield_parent/providers/auth_provider.dart';
 
 import 'fake_api_client.dart';
 
-/// Karim, 23 Nov: "blocking and unblocking apps is a stupid flow and lacks any app icons".
-/// The Apps tab lists every app on the phone with its icon and name, one switch per app, Undo, search,
-/// filters, and a sheet for time limits. Package ids are never shown.
+/// P-09 (`#1179`, UI/UX Bureau breakdown): the Apps tab states **Allow / Time limit / Block in words on every
+/// row**, never a bare switch, with Undo, count filters, search, and a minutes sheet behind Limit. The three
+/// words stack under the app name at 320 px or 200 % text (Fix 11). The iPhone state says the app list is not
+/// available there yet (Fix 8).
+///
+/// The rows below pin the behaviour that existed before P-09 and must survive it: one save at a time, Undo
+/// restoring the exact previous rule, essential apps never taking a rule, and names never being package ids.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -40,6 +45,21 @@ void main() {
     'summary': [],
   };
 
+  final iphoneFamily = {
+    ...family,
+    'devices': [
+      {
+        'id': 'dev-ios',
+        'childId': 'child-1',
+        'platform': 'ios',
+        'model': 'iPhone 13',
+        'osVersion': '18',
+        'status': 'online',
+        'batteryPct': 70,
+      },
+    ],
+  };
+
   final appsReport = {
     'deviceId': 'dev-and',
     'version': 1,
@@ -55,13 +75,14 @@ void main() {
 
   late List<Map<String, dynamic>> savedAppRules;
 
-  FakeApiClient api() {
+  FakeApiClient api({Map<String, dynamic>? familyMe}) {
     savedAppRules = [
       {'packageId': 'com.roblox.client', 'appName': 'Roblox', 'action': 'block'},
     ];
     return FakeApiClient({
-      ...standardRoutes(familyMe: family),
+      ...standardRoutes(familyMe: familyMe ?? family),
       'GET /v1/devices/dev-and/apps': (_) => appsReport,
+      'GET /v1/devices/dev-ios/apps': (_) => appsReport,
       'GET /v1/rules/child-1': (_) => {...ruleSetPayload('child-1'), 'appRules': savedAppRules},
       'PATCH /v1/rules/child-1': (req) {
         savedAppRules = [for (final r in (req.body['appRules'] as List)) Map<String, dynamic>.from(r as Map)];
@@ -93,6 +114,13 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// The chosen word renders filled, the other two plain, so the row states its own state in words.
+  bool wordSelected(WidgetTester tester, String action, String packageId) =>
+      tester.widget(find.byKey(ValueKey('appAction-$action-$packageId'))) is FilledButton;
+
+  bool wordEnabled(WidgetTester tester, String action, String packageId) =>
+      tester.widget<ButtonStyleButton>(find.byKey(ValueKey('appAction-$action-$packageId'))).onPressed != null;
+
   testWidgets('every reported app is listed with its icon and name, never its package id', (tester) async {
     await openAppsTab(tester, api());
 
@@ -101,7 +129,6 @@ void main() {
       expect(find.text(name), findsWidgets);
     }
     expect(find.textContaining('com.'), findsNothing, reason: 'a parent reads names, not package ids');
-    // Instagram and WhatsApp carry a real icon (decoded from the data URI); Roblox draws its letter.
     expect(
       find.descendant(of: find.byKey(const ValueKey('appRow-com.instagram.android')), matching: find.byType(Image)),
       findsOneWidget,
@@ -110,16 +137,17 @@ void main() {
       find.descendant(of: find.byKey(const ValueKey('appRow-com.roblox.client')), matching: find.text('R')),
       findsOneWidget,
     );
-    expect(find.text('Blocked'), findsWidgets);
-    expect(tester.widget<Switch>(find.byKey(const ValueKey('appSwitch-com.roblox.client'))).value, isFalse);
-    expect(tester.widget<Switch>(find.byKey(const ValueKey('appSwitch-com.instagram.android'))).value, isTrue);
+    // P-09: no switch anywhere on the list; the state is the chosen word.
+    expect(find.byType(Switch), findsNothing, reason: 'P-09 removes the bare switch from every row');
+    expect(wordSelected(tester, 'block', 'com.roblox.client'), isTrue);
+    expect(wordSelected(tester, 'allow', 'com.instagram.android'), isTrue);
   });
 
-  testWidgets('one tap blocks an app, saves at once, and Undo puts it back', (tester) async {
+  testWidgets('one tap on Block saves at once, and Undo puts it back', (tester) async {
     final client = api();
     await openAppsTab(tester, client);
 
-    await tester.tap(find.byKey(const ValueKey('appSwitch-com.instagram.android')));
+    await tester.tap(find.byKey(const ValueKey('appAction-block-com.instagram.android')));
     await tester.pumpAndSettle();
 
     final patch = client.calls('PATCH', '/v1/rules/child-1').single;
@@ -128,13 +156,13 @@ void main() {
       containsAll(['com.roblox.client:block', 'com.instagram.android:block']),
     );
     expect(find.text('Instagram blocked'), findsOneWidget);
-    expect(tester.widget<Switch>(find.byKey(const ValueKey('appSwitch-com.instagram.android'))).value, isFalse);
+    expect(wordSelected(tester, 'block', 'com.instagram.android'), isTrue);
 
     await tester.tap(find.text('Undo'));
     await tester.pumpAndSettle();
     final undo = client.calls('PATCH', '/v1/rules/child-1').last;
     expect((undo.data['appRules'] as List).map((r) => r['packageId']), ['com.roblox.client']);
-    expect(tester.widget<Switch>(find.byKey(const ValueKey('appSwitch-com.instagram.android'))).value, isTrue);
+    expect(wordSelected(tester, 'allow', 'com.instagram.android'), isTrue);
   });
 
   // Codex on #1008: Undo must put back an explicit "Always allowed" as itself, not as "no rule".
@@ -146,7 +174,7 @@ void main() {
     ];
     await openAppsTab(tester, client);
 
-    await tester.tap(find.byKey(const ValueKey('appSwitch-com.whatsapp')));
+    await tester.tap(find.byKey(const ValueKey('appAction-block-com.whatsapp')));
     await tester.pumpAndSettle();
     expect(find.text('WhatsApp blocked'), findsOneWidget);
 
@@ -157,13 +185,15 @@ void main() {
       (undo.data['appRules'] as List).map((r) => '${r['packageId']}:${r['action']}'),
       unorderedEquals(['com.roblox.client:block', 'com.whatsapp:allow']),
     );
-    expect(tester.widget<Switch>(find.byKey(const ValueKey('appSwitch-com.whatsapp'))).value, isTrue);
+    expect(wordSelected(tester, 'allow', 'com.whatsapp'), isTrue);
   });
 
   // Codex, osra-security#71: while one save is in flight, no other rule edit can start.
-  testWidgets('while a save is pending, the switch, the row and the sheet are all inert', (tester) async {
+  testWidgets('while a save is pending, every word on every row is inert', (tester) async {
     final pending = Completer<Object?>();
-    final client = api();
+    savedAppRules = [
+      {'packageId': 'com.roblox.client', 'appName': 'Roblox', 'action': 'block'},
+    ];
     final routes = <String, FakeRoute>{
       ...standardRoutes(familyMe: family),
       'GET /v1/devices/dev-and/apps': (_) => appsReport,
@@ -173,40 +203,79 @@ void main() {
     final slow = FakeApiClient(routes);
     await openAppsTab(tester, slow);
 
-    await tester.tap(find.byKey(const ValueKey('appSwitch-com.instagram.android')));
+    await tester.tap(find.byKey(const ValueKey('appAction-block-com.instagram.android')));
     await tester.pump(const Duration(milliseconds: 50));
     expect(slow.calls('PATCH', '/v1/rules/child-1'), hasLength(1));
 
-    // Another app's switch, its row and its sheet do nothing while the first save is pending.
-    expect(tester.widget<Switch>(find.byKey(const ValueKey('appSwitch-com.whatsapp'))).onChanged, isNull);
-    final row = tester.widget<ListTile>(find.byKey(const ValueKey('appRow-com.whatsapp')));
-    expect(row.onTap, isNull);
-    expect(row.enabled, isFalse);
-    await tester.tap(find.byKey(const ValueKey('appRow-com.whatsapp')), warnIfMissed: false);
+    expect(wordEnabled(tester, 'allow', 'com.whatsapp'), isFalse);
+    expect(wordEnabled(tester, 'time_limit', 'com.whatsapp'), isFalse);
+    expect(wordEnabled(tester, 'block', 'com.whatsapp'), isFalse);
+    await tester.tap(find.byKey(const ValueKey('appAction-block-com.whatsapp')), warnIfMissed: false);
     await tester.pump(const Duration(milliseconds: 50));
-    expect(find.byKey(const ValueKey('appSheetBlock')), findsNothing);
     expect(slow.calls('PATCH', '/v1/rules/child-1'), hasLength(1));
 
-    // The save finishes and interaction comes back.
     pending.complete({...ruleSetPayload('child-1'), 'appRules': savedAppRules});
     await tester.pumpAndSettle();
-    expect(tester.widget<Switch>(find.byKey(const ValueKey('appSwitch-com.whatsapp'))).onChanged, isNotNull);
-    expect(tester.widget<ListTile>(find.byKey(const ValueKey('appRow-com.whatsapp'))).onTap, isNotNull);
-    client.requests.clear();
+    expect(wordEnabled(tester, 'allow', 'com.whatsapp'), isTrue);
+  });
+
+  testWidgets('saving an app says it was sent to the phone on that row', (tester) async {
+    // The child has not reported the new rules version yet, so the line is earned and must show.
+    var rulesVersion = 4;
+    final behindFamily = {
+      ...family,
+      'children': [
+        {'id': 'child-1', 'displayName': 'Omar', 'birthYear': 2015, 'rulesVersion': rulesVersion, 'appliedRulesVersion': 3},
+      ],
+    };
+    savedAppRules = [
+      {'packageId': 'com.roblox.client', 'appName': 'Roblox', 'action': 'block'},
+    ];
+    final client = FakeApiClient({
+      ...standardRoutes(familyMe: behindFamily),
+      'GET /v1/family/me': (_) => {
+            ...behindFamily,
+            'children': [
+              {'id': 'child-1', 'displayName': 'Omar', 'birthYear': 2015, 'rulesVersion': rulesVersion, 'appliedRulesVersion': 3},
+            ],
+          },
+      'GET /v1/devices/dev-and/apps': (_) => appsReport,
+      'GET /v1/rules/child-1': (_) => {...ruleSetPayload('child-1'), 'appRules': savedAppRules},
+      'PATCH /v1/rules/child-1': (req) {
+        savedAppRules = [for (final r in (req.body['appRules'] as List)) Map<String, dynamic>.from(r as Map)];
+        rulesVersion++;
+        return {...ruleSetPayload('child-1'), 'appRules': savedAppRules};
+      },
+    });
+    await openAppsTab(tester, client);
+    expect(find.byKey(const ValueKey('appSentTo-com.whatsapp')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('appAction-block-com.whatsapp')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('appSentTo-com.whatsapp')), findsOneWidget,
+        reason: 'P-09: the row says the change left the parent app for the phone');
+    expect(
+      find.descendant(of: find.byKey(const ValueKey('appRow-com.roblox.client')), matching: find.text('Sent to phone')),
+      findsNothing,
+      reason: 'only the row that changed carries the line',
+    );
   });
 
   testWidgets('unblocking is the same single tap', (tester) async {
     final client = api();
     await openAppsTab(tester, client);
-    await tester.tap(find.byKey(const ValueKey('appSwitch-com.roblox.client')));
+    await tester.tap(find.byKey(const ValueKey('appAction-allow-com.roblox.client')));
     await tester.pumpAndSettle();
     expect(client.calls('PATCH', '/v1/rules/child-1').single.data['appRules'], isEmpty);
     expect(find.text('Roblox allowed'), findsOneWidget);
   });
 
-  testWidgets('an app the phone needs for calls is always allowed and has no switch', (tester) async {
+  testWidgets('an app the phone needs for calls is always allowed and has no words', (tester) async {
     await openAppsTab(tester, api());
-    expect(find.byKey(const ValueKey('appSwitch-com.samsung.android.dialer')), findsNothing);
+    for (final action in ['allow', 'time_limit', 'block']) {
+      expect(find.byKey(ValueKey('appAction-$action-com.samsung.android.dialer')), findsNothing);
+    }
     expect(
       find.descendant(of: find.byKey(const ValueKey('appRow-com.samsung.android.dialer')), matching: find.text('Always allowed')),
       findsOneWidget,
@@ -229,11 +298,12 @@ void main() {
     expect(find.text('Blocked (1)'), findsOneWidget);
   });
 
-  testWidgets('tapping a row offers a daily time limit', (tester) async {
+  // P-09: the Limit word opens the minutes sheet directly, instead of hiding the limit inside a menu.
+  testWidgets('the Limit word opens the minutes sheet and saves the chosen limit', (tester) async {
     final client = api();
     await openAppsTab(tester, client);
 
-    await tester.tap(find.byKey(const ValueKey('appRow-com.whatsapp')));
+    await tester.tap(find.byKey(const ValueKey('appAction-time_limit-com.whatsapp')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('appSheetLimit-60')));
     await tester.pumpAndSettle();
@@ -245,6 +315,52 @@ void main() {
       find.descendant(of: find.byKey(const ValueKey('appRow-com.whatsapp')), matching: find.text('Limit 1 h a day')),
       findsOneWidget,
     );
+    expect(wordSelected(tester, 'time_limit', 'com.whatsapp'), isTrue);
+  });
+
+  // P-09 / Fix 8: an iPhone child gets the approved line instead of an app list the phone cannot report.
+  testWidgets('an iPhone child sees "Not yet available on iPhone" instead of the list', (tester) async {
+    await openAppsTab(tester, api(familyMe: iphoneFamily));
+    expect(find.byKey(const ValueKey('appsTabIphoneNotYet')), findsOneWidget);
+    expect(find.text('Not yet available on iPhone'), findsOneWidget);
+    expect(find.byKey(const ValueKey('childAppsList')), findsNothing);
+  });
+
+  // P-09 / Fix 11: the three words take the full width under the name, and nothing overflows.
+  testWidgets('at 320 px and 200% text the words stack under the app name', (tester) async {
+    final client = api();
+    final ruleSet = RuleSet.fromJson({...ruleSetPayload('child-1'), 'appRules': savedAppRules});
+    final report = InstalledAppsReport.fromJson(appsReport);
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(client)],
+      child: MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: MediaQuery(
+            data: const MediaQueryData(size: Size(320, 900), textScaler: TextScaler.linear(2)),
+            child: SingleChildScrollView(
+              child: ChildAppsList(childId: 'child-1', ruleSet: ruleSet, report: report),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final name = tester.getRect(find.text('WhatsApp'));
+    final control = tester.getRect(find.byKey(const ValueKey('appAction-allow-com.whatsapp')));
+    expect(control.top, greaterThanOrEqualTo(name.bottom - 1),
+        reason: 'Fix 11: the words sit under the name at 320 px / 200%, never beside it');
+    expect(tester.takeException(), isNull, reason: 'no row overflows at 320 px and 200%');
   });
 
   testWidgets('the list reads in Arabic', (tester) async {

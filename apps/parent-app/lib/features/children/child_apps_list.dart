@@ -9,6 +9,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../rules/app_picker.dart' show AppIconBadge;
+import '../rules/rules_freshness.dart';
 
 /// Karim, 23 Nov: "blocking and unblocking apps is a stupid flow and lacks any app icons".
 ///
@@ -57,6 +58,10 @@ class _ChildAppsListState extends ConsumerState<ChildAppsList> {
   /// until the snackbar says so). Cleared when the saved rules come back.
   List<AppRule>? _optimistic;
   bool _saving = false;
+
+  /// P-09: the app whose change the server has just taken ("Sent to phone"). It stays until the child's phone
+  /// reports the new rules version, so the line means "on its way to the phone", never "applied".
+  String? _sentTo;
 
   @override
   void didUpdateWidget(ChildAppsList old) {
@@ -115,6 +120,7 @@ class _ChildAppsListState extends ConsumerState<ChildAppsList> {
       // Issue #475: the family snapshot carries the rules version the "applied on the phone" line compares.
       ref.invalidate(familyProvider);
       if (!mounted) return;
+      setState(() => _sentTo = app.packageId);
       final text = switch (rule?.action) {
         'block' => l10n.appBlockedNamedSnack(app.label),
         'time_limit' => l10n.appLimitSnack(app.label, formatAppLimit(l10n, rule?.dailyLimitMinutes ?? 0)),
@@ -133,33 +139,26 @@ class _ChildAppsListState extends ConsumerState<ChildAppsList> {
       ));
     } on DioException catch (e) {
       if (!mounted) return;
-      setState(() => _optimistic = before);
+      setState(() {
+        _optimistic = before;
+        _sentTo = null;
+      });
       messenger.showSnackBar(SnackBar(content: Text(friendlyErrorText(l10n, e, () => l10n.saveFailed))));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
-  Future<void> _openSheet(InstalledApp app) async {
+  /// P-09: the Limit word opens this sheet directly, so a daily limit is one tap and a number, never a
+  /// menu of three actions with the limit hidden inside it.
+  Future<void> _openLimitSheet(InstalledApp app, {int? currentMinutes}) async {
     final l10n = context.l10n;
-    final rule = _ruleFor(app.packageId);
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
       builder: (ctx) {
         final theme = Theme.of(ctx);
-        Widget choice(String key, IconData icon, String label, bool selected, VoidCallback onTap) => ListTile(
-              key: ValueKey(key),
-              leading: Icon(icon),
-              title: Text(label),
-              trailing: selected ? Icon(Icons.check, color: theme.colorScheme.primary) : null,
-              onTap: () {
-                Navigator.of(ctx).pop();
-                onTap();
-              },
-            );
-        final action = rule?.action ?? 'allow';
         return SafeArea(
           child: SingleChildScrollView(
             child: Column(
@@ -169,16 +168,9 @@ class _ChildAppsListState extends ConsumerState<ChildAppsList> {
                 ListTile(
                   leading: AppIconBadge(app: app, size: 40),
                   title: Text(app.label, style: theme.textTheme.titleMedium),
+                  subtitle: Text(l10n.appActionTimeLimit),
                 ),
                 const Divider(height: 1),
-                choice('appSheetAllow', Icons.check_circle_outline, l10n.appActionAllow, action == 'allow',
-                    () => _setAction(app, 'allow')),
-                choice('appSheetBlock', Icons.block, l10n.appActionBlock, action == 'block',
-                    () => _setAction(app, 'block')),
-                Padding(
-                  padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, AppSpace.sm, AppSpace.lg, 0),
-                  child: Text(l10n.appActionTimeLimit, style: theme.textTheme.titleSmall),
-                ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: AppSpace.lg, vertical: AppSpace.sm),
                   child: Wrap(
@@ -189,7 +181,7 @@ class _ChildAppsListState extends ConsumerState<ChildAppsList> {
                         ChoiceChip(
                           key: ValueKey('appSheetLimit-$m'),
                           label: Text(formatAppLimit(l10n, m)),
-                          selected: action == 'time_limit' && rule?.dailyLimitMinutes == m,
+                          selected: currentMinutes == m,
                           onSelected: (_) {
                             Navigator.of(ctx).pop();
                             _setAction(app, 'time_limit', minutes: m);
@@ -235,6 +227,14 @@ class _ChildAppsListState extends ConsumerState<ChildAppsList> {
     final apps = byPackage.values.toList()..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
     final blockedCount = _rules.where((r) => r.action == 'block').length;
     final limitedCount = _rules.where((r) => r.action == 'time_limit').length;
+    // P-09's "Sent to phone" is only truthful while the child's phone has not reported the new rules version;
+    // the same signal the rules banner uses (#475/#1157), so the line clears itself when the phone applies them.
+    final family = ref.watch(familyProvider).valueOrNull;
+    final child = family?.children.where((c) => c.id == widget.childId).firstOrNull;
+    final rulesOnTheirWay = family != null &&
+        child != null &&
+        rulesFreshness(child, hasPairedDevice: family.devicesFor(widget.childId).isNotEmpty) !=
+            RulesFreshness.current;
     final shown = [
       for (final a in apps)
         if ((query.isEmpty || a.label.toLowerCase().contains(query)) &&
@@ -290,50 +290,137 @@ class _ChildAppsListState extends ConsumerState<ChildAppsList> {
             padding: const EdgeInsets.symmetric(vertical: AppSpace.lg),
             child: Center(child: Text(l10n.appsNoMatch, key: const ValueKey('appsNoMatch'))),
           ),
-        for (final app in shown) _row(context, app, theme),
+        for (final app in shown) _row(context, app, theme, rulesOnTheirWay: rulesOnTheirWay),
       ],
     );
   }
 
-  Widget _row(BuildContext context, InstalledApp app, ThemeData theme) {
+  /// P-09 (`#1179`, Bureau row): **Allow / Time limit / Block in words on every row**, never a bare switch,
+  /// with the current choice filled in. The three words stack under the app name when the row is narrow or the
+  /// text is large (Fix 11), so a 320 px / 200 % screen never clips a label. Undo stays on the snackbar and
+  /// "Sent to phone" appears on the row that was just saved, until the child's phone reports the new rules.
+  Widget _row(BuildContext context, InstalledApp app, ThemeData theme, {required bool rulesOnTheirWay}) {
     final l10n = context.l10n;
     final rule = _ruleFor(app.packageId);
     final essential = app.essential == true;
     final action = rule?.action ?? 'allow';
-    final (String state, Color? color) = essential
-        ? (l10n.alwaysAllowed, theme.colorScheme.onSurfaceVariant)
-        : switch (action) {
-            'block' => (l10n.appStateBlocked, theme.colorScheme.error),
-            'time_limit' => (
-                l10n.appStateLimit(formatAppLimit(l10n, rule?.dailyLimitMinutes ?? 0)),
-                context.tokens.severityWarningText
-              ),
-            _ => (l10n.appStateAllowed, theme.colorScheme.onSurfaceVariant),
-          };
     final note = widget.windowNote?.call(app.packageId);
-    return ListTile(
-      key: ValueKey('appRow-${app.packageId}'),
-      contentPadding: EdgeInsets.zero,
-      leading: Opacity(opacity: action == 'block' ? 0.45 : 1, child: AppIconBadge(app: app, size: 40)),
-      title: Text(app.label, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(state,
-              key: ValueKey('appState-${app.packageId}'), style: theme.textTheme.bodySmall?.copyWith(color: color)),
-          if (note != null) note,
-        ],
-      ),
-      trailing: essential
-          ? Icon(Icons.lock_outline, size: 20, color: theme.colorScheme.onSurfaceVariant)
-          : Switch(
-              key: ValueKey('appSwitch-${app.packageId}'),
-              value: action != 'block',
-              onChanged: _saving ? null : (allowed) => _setAction(app, allowed ? 'allow' : 'block'),
-            ),
-      enabled: !_saving || essential,
-      onTap: essential || _saving ? null : () => _openSheet(app),
+    final stateColor = switch (action) {
+      'block' => theme.colorScheme.error,
+      'time_limit' => context.tokens.severityWarningText,
+      _ => theme.colorScheme.onSurfaceVariant,
+    };
+    final stateText = essential
+        ? l10n.alwaysAllowed
+        : switch (action) {
+            'block' => l10n.appStateBlocked,
+            'time_limit' => l10n.appStateLimit(formatAppLimit(l10n, rule?.dailyLimitMinutes ?? 0)),
+            _ => l10n.appStateAllowed,
+          };
+
+    final head = Row(
+      children: [
+        Opacity(opacity: action == 'block' ? 0.45 : 1, child: AppIconBadge(app: app, size: 40)),
+        const SizedBox(width: AppSpace.sm),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(app.label,
+                  maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall),
+              Text(stateText,
+                  key: ValueKey('appState-${app.packageId}'),
+                  style: theme.textTheme.bodySmall?.copyWith(color: stateColor)),
+              if (note != null) note,
+              if (_sentTo == app.packageId && rulesOnTheirWay)
+                Text(l10n.appsSentToPhone,
+                    key: ValueKey('appSentTo-${app.packageId}'),
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary)),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    final controls = essential
+        ? Icon(Icons.lock_outline, size: 20, color: theme.colorScheme.onSurfaceVariant)
+        : Wrap(
+            spacing: AppSpace.xs,
+            runSpacing: AppSpace.xxs,
+            children: [
+              for (final choice in const ['allow', 'time_limit', 'block'])
+                _AppActionWord(
+                  buttonKey: ValueKey('appAction-$choice-${app.packageId}'),
+                  label: switch (choice) {
+                    'block' => l10n.appActionBlock,
+                    'time_limit' => l10n.appActionTimeLimit,
+                    _ => l10n.appActionAllow,
+                  },
+                  selected: action == choice,
+                  onPressed: _saving
+                      ? null
+                      : () {
+                          if (choice == 'time_limit') {
+                            _openLimitSheet(app, currentMinutes: rule?.dailyLimitMinutes);
+                          } else {
+                            _setAction(app, choice);
+                          }
+                        },
+                ),
+            ],
+          );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Fix 11: at 320 px, or once the text is scaled, the three words need the full width of the row.
+        final narrow = constraints.maxWidth < 380 || MediaQuery.textScalerOf(context).scale(14) > 16;
+        return InkWell(
+          key: ValueKey('appRow-${app.packageId}'),
+          onTap: essential || widget.onInsight == null ? null : () => widget.onInsight!(app.packageId),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpace.xs),
+            child: narrow
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [head, const SizedBox(height: AppSpace.xs), controls],
+                  )
+                : Row(
+                    children: [
+                      Expanded(child: head),
+                      const SizedBox(width: AppSpace.sm),
+                      controls,
+                    ],
+                  ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// One of the three words on an app row. The chosen one is filled, the others are plain text buttons, so the
+/// row states its own state instead of hiding it in a switch.
+class _AppActionWord extends StatelessWidget {
+  final Key buttonKey;
+  final String label;
+  final bool selected;
+  final VoidCallback? onPressed;
+
+  const _AppActionWord({
+    required this.buttonKey,
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: kMinInteractiveDimension),
+      child: selected
+          ? FilledButton.tonal(key: buttonKey, onPressed: onPressed, child: Text(label))
+          : TextButton(key: buttonKey, onPressed: onPressed, child: Text(label)),
     );
   }
 }

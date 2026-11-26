@@ -540,8 +540,7 @@ void main() {
 
       await tester.tap(find.text('Game').first);
       await tester.pumpAndSettle();
-      // Karim 23 Nov: a row opens the app's choices first; "About this app" opens the insight sheet.
-      await tester.tap(find.byKey(const ValueKey('appSheetInsight')));
+      // P-09 (#1179): the row itself opens the insight sheet; the three rule words live on the row.
       await tester.pumpAndSettle();
 
       expect(api.calls('GET', '/v1/insights/apps').single.query['packageId'], 'com.example.game');
@@ -563,8 +562,7 @@ void main() {
 
       await tester.tap(find.text('Game').first);
       await tester.pumpAndSettle();
-      // Karim 23 Nov: a row opens the app's choices first; "About this app" opens the insight sheet.
-      await tester.tap(find.byKey(const ValueKey('appSheetInsight')));
+      // P-09 (#1179): the row itself opens the insight sheet; the three rule words live on the row.
       await tester.pumpAndSettle();
 
       expect(find.text('No insights for this app yet'), findsOneWidget);

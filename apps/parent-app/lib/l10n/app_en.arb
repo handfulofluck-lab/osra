@@ -1915,6 +1915,8 @@
   "appsFilterLimited": "Time limits ({count})",
   "@appsFilterLimited": { "placeholders": { "count": { "type": "int" } } },
   "appsNoMatch": "No apps match",
+  "appsSentToPhone": "Sent to phone",
+  "appsNotYetOnIphone": "Not yet available on iPhone",
   "appAboutThisApp": "About this app",
   "appBlockedNamedSnack": "{app} blocked",
   "@appBlockedNamedSnack": { "placeholders": { "app": { "type": "String" } } },
