@@ -125,6 +125,15 @@ class PhoneSetupSection extends StatelessWidget {
                     style: Theme.of(context).textTheme.bodySmall),
               ),
           ],
+          if (const {'windows', 'macos'}
+                  .contains(device.platform.toLowerCase()) &&
+              setup.features['child_account_admin'] == 'degraded')
+            _line(
+              context,
+              Icons.admin_panel_settings_outlined,
+              context.tokens.warn,
+              l10n.p06AdminWarning(firstStrongIsolate(childName ?? '')),
+            ),
           if (features.isNotEmpty) ...[
             const SizedBox(height: AppSpace.xs),
             Wrap(

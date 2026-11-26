@@ -1305,6 +1305,10 @@ camera-ready state and the denial fallback, and the typed path was paired end-to
 API. The camera → review → confirm steps remain covered by the JVM state machine and are still part of
 the open 3.2 hardware row.
 
+## P-06 finish-setup widget contract
+
+Run `flutter test --no-pub test/onboarding_test.dart test/device_setup_model_test.dart test/phone_setup_section_test.dart`. The P-06 cases pin first-device-only completion, the seven-grant Play gate and the eight-grant Full gate (notification access included), mixed/missing/malformed capability states and flavours, iOS availability, multiple devices, child identity, the instruction sheet, and Windows/Mac administrator warnings. The existing full happy-path fixture includes all seven Play grants so it proves the route still completes only after confirmed setup. Pull-to-refresh and the 30-second visible-screen timer invalidate the same family provider; neither changes the completion rule.
+
 ## 5j. Push wake on hardware (roadmap 1.5)
 
 Prerequisite: a build that carries `google-services.json`. Without it the gms plugin is skipped,

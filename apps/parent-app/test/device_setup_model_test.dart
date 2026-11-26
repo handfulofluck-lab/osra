@@ -18,16 +18,23 @@ void main() {
         if (setup != null) 'setup': setup,
       };
 
-  test('a device that never reported carries no setup, which is "not known yet"', () {
+  test(
+      'a device that never reported carries no setup, which is "not known yet"',
+      () {
     final device = Device.fromJson(deviceJson());
     expect(device.setup, isNull);
   });
 
-  test('the whole block parses: features, missing, stale, age and other spaces', () {
+  test('the whole block parses: features, missing, stale, age and other spaces',
+      () {
     final device = Device.fromJson(deviceJson(setup: {
       'reportedAt': '2026-11-10T09:15:00.000Z',
       'stale': true,
-      'features': {'lock_screen': 'ready', 'web_filter': 'unavailable', 'notification_scan': 'not_supported'},
+      'features': {
+        'lock_screen': 'ready',
+        'web_filter': 'unavailable',
+        'notification_scan': 'not_supported'
+      },
       'missing': ['accessibility', 'location'],
       'profiles': {
         'others': 1,
@@ -57,8 +64,11 @@ void main() {
     expect(setup.feature('notification_scan'), isNull);
   });
 
-  test('a device with no other spaces reports zero, and no profiles at all stays null', () {
-    expect(DeviceSetup.fromJson({'features': {}, 'profiles': null}).profiles, isNull);
+  test(
+      'a device with no other spaces reports zero, and no profiles at all stays null',
+      () {
+    expect(DeviceSetup.fromJson({'features': {}, 'profiles': null}).profiles,
+        isNull);
     final withZero = DeviceSetup.fromJson({
       'profiles': {'others': 0, 'kinds': <String>[]},
     });
@@ -79,10 +89,61 @@ void main() {
     expect(setup.stale, isFalse);
   });
 
-  test('an unknown feature key is kept, so a newer phone is not silently blanked', () {
+  test(
+      'an unknown feature key is kept, so a newer phone is not silently blanked',
+      () {
     final setup = DeviceSetup.fromJson({
       'features': {'some_future_feature': 'ready'},
     });
     expect(setup.feature('some_future_feature'), 'ready');
+  });
+
+  test('raw capability grants parse every explicit state', () {
+    final device = Device.fromJson(deviceJson(setup: null)
+      ..addAll({
+        'capabilities': {
+          'grants': {
+            'accessibility': 'granted',
+            'location': 'missing',
+            'battery': 'not_applicable',
+          },
+        },
+      }));
+    expect(device.capabilityGrants, {
+      'accessibility': 'granted',
+      'location': 'missing',
+      'battery': 'not_applicable',
+    });
+  });
+
+  test('absent or malformed capability grants are empty, never assumed granted',
+      () {
+    expect(Device.fromJson(deviceJson()).capabilityGrants, isEmpty);
+    final malformed = Device.fromJson(deviceJson(setup: null)
+      ..addAll({
+        'capabilities': {'grants': 'not a map'},
+      }));
+    expect(malformed.capabilityGrants, isEmpty);
+  });
+
+  test('the reported flavour is parsed defensively for the required-grant list',
+      () {
+    final full = Device.fromJson(deviceJson()
+      ..addAll({
+        'capabilities': {
+          'client': {'app': 'child-android', 'flavour': 'full'},
+          'grants': <String, String>{},
+        },
+      }));
+    expect(full.capabilityFlavour, 'full');
+
+    final malformed = Device.fromJson(deviceJson()
+      ..addAll({
+        'capabilities': {
+          'client': {'flavour': 42},
+          'grants': <String, String>{},
+        },
+      }));
+    expect(malformed.capabilityFlavour, isEmpty);
   });
 }

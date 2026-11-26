@@ -1,0 +1,4 @@
+### Parent app — finish setup on the child (#1179, P-06)
+- The final onboarding screen now shows a progress ring and per-grant rows. Only an explicit `granted` report for the paired child’s own device turns a row green. Play builds require seven Android grants before Done; Full builds also require notification access, for eight.
+- First-device setup cannot be completed by another child’s device or guessed when multiple devices exist. iOS keeps its real reported grants while Android-only rows say “Not yet available on iPhone”. Battery, work-profile and Windows/Mac administrator warnings are preserved.
+- Adds child-side instructions, Home as the escape, pull-to-refresh and a bounded visible-screen refresh, final Bureau EN/AR strings and defensive capability/flavour parsing. No parent switches or reminder action.

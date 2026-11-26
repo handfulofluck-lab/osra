@@ -1209,6 +1209,54 @@
   "onboardingDonePendingTitle": "One step left",
   "onboardingDonePendingBody": "Your child is added, but their phone is not paired yet. You can pair it any time from the dashboard.",
   "onboardingGoToDashboard": "Go to dashboard",
+  "p06ProgressTitle": "Finish setting up {childName}'s device",
+  "@p06ProgressTitle": {
+    "placeholders": {
+      "childName": {
+        "type": "String"
+      }
+    }
+  },
+  "p06ProgressCount": "{confirmed} of {total} confirmed",
+  "@p06ProgressCount": {
+    "placeholders": {
+      "confirmed": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "p06ConfirmedOnPhone": "Confirmed",
+  "p06WaitingForPhone": "Waiting",
+  "p06ShowMeHow": "Show me how",
+  "p06GuideTitle": "Finish these steps on {childName}'s device",
+  "@p06GuideTitle": {
+    "placeholders": {
+      "childName": {
+        "type": "String"
+      }
+    }
+  },
+  "p06GuideBody": "Open OSRA on {childName}'s device and allow each item there. This screen updates by itself as each one is confirmed.",
+  "@p06GuideBody": {
+    "placeholders": {
+      "childName": {
+        "type": "String"
+      }
+    }
+  },
+  "p06BatteryWarning": "This phone may stop OSRA to save battery. Allow OSRA to run in the background.",
+  "p06AdminWarning": "{childName}'s account on this computer is an administrator, so it can turn OSRA off. Use a standard account for full protection.",
+  "@p06AdminWarning": {
+    "placeholders": {
+      "childName": {
+        "type": "String"
+      }
+    }
+  },
+  "p06NotYetIphone": "Not yet available on iPhone",
   "onboardingFinishSetupTitle": "Finish setting up",
   "onboardingFinishSetupBody": "Pair {childName}'s phone to start protection.",
   "@onboardingFinishSetupBody": {

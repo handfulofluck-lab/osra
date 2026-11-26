@@ -192,6 +192,13 @@ class Device {
   /// server *has* judged carries a setup whose [DeviceSetup.reportedAt] is the receipt time.
   final DeviceSetup? setup;
 
+  /// Raw grant states reported by the agent. Only an explicit `granted` counts as proof;
+  /// absent or malformed data is empty rather than optimistic.
+  final Map<String, String> capabilityGrants;
+
+  /// Build flavour from the same capability report; Full Android requires notification access.
+  final String capabilityFlavour;
+
   /// ADR-0047: when the server authenticated completion of required setup grants.
   final DateTime? setupCompletedAt;
 
@@ -209,6 +216,8 @@ class Device {
     this.lastSeen,
     this.pushToken,
     this.setup,
+    this.capabilityGrants = const {},
+    this.capabilityFlavour = '',
     this.setupCompletedAt,
     this.hasSetupCompletedAtField = false,
   });
@@ -229,6 +238,21 @@ class Device {
             ? DeviceSetup.fromJson(
                 Map<String, dynamic>.from(json['setup'] as Map))
             : null,
+        capabilityGrants: json['capabilities'] is Map &&
+                (json['capabilities'] as Map)['grants'] is Map
+            ? {
+                for (final entry
+                    in ((json['capabilities'] as Map)['grants'] as Map).entries)
+                  if (entry.value is String)
+                    entry.key.toString(): entry.value as String,
+              }
+            : const {},
+        capabilityFlavour: json['capabilities'] is Map &&
+                (json['capabilities'] as Map)['client'] is Map &&
+                ((json['capabilities'] as Map)['client'] as Map)['flavour']
+                    is String
+            ? _str(((json['capabilities'] as Map)['client'] as Map)['flavour'])
+            : '',
       );
 
   /// The server's own online/offline judgement (`status`), never a clock rule on this phone.

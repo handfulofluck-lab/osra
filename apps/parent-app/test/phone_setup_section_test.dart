@@ -57,13 +57,14 @@ void main() {
       });
 
   Future<void> pump(WidgetTester tester, Device d,
-      {Locale locale = const Locale('en')}) async {
+      {Locale locale = const Locale('en'), String? childName}) async {
     await tester.pumpWidget(MaterialApp(
       locale: locale,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       home: Scaffold(
-          body: SingleChildScrollView(child: PhoneSetupSection(device: d))),
+          body: SingleChildScrollView(
+              child: PhoneSetupSection(device: d, childName: childName))),
     ));
     await tester.pumpAndSettle();
   }
@@ -97,6 +98,30 @@ void main() {
         find.text('Notification scan · Not in this version'), findsOneWidget);
     // `call_sms_log` was never reported: no chip, and certainly not "Not available".
     expect(find.textContaining('Calls and texts'), findsNothing);
+  });
+
+  testWidgets(
+      'Windows and Mac administrator accounts show the weak-protection warning',
+      (tester) async {
+    for (final platform in ['windows', 'macos']) {
+      await pump(
+          tester,
+          device(
+              platform: platform,
+              features: {'child_account_admin': 'degraded'}),
+          childName: 'Alex');
+      expect(find.textContaining('Alex'), findsOneWidget);
+      expect(
+          find.textContaining('account on this computer is an administrator'),
+          findsOneWidget);
+      expect(find.textContaining('Use a standard account for full protection.'),
+          findsOneWidget);
+      expect(find.textContaining('child_account_admin'), findsNothing,
+          reason: 'the feature chip must use the Bureau label, not the wire key');
+    }
+    await pump(tester, device(features: {'child_account_admin': 'degraded'}));
+    expect(find.textContaining('account on this computer is an administrator'),
+        findsNothing);
   });
 
   testWidgets('the fix list names the grants a parent can act on',

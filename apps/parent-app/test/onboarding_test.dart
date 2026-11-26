@@ -56,6 +56,21 @@ void main() {
         'status': 'online',
         'batteryPct': 80,
         'lastSeen': DateTime.now().toUtc().toIso8601String(),
+        'capabilities': {
+          'client': {'app': 'child-android', 'flavour': 'play'},
+          'grants': {
+            'accessibility': 'granted',
+            'usage_access': 'granted',
+            'overlay': 'granted',
+            'device_admin': 'granted',
+            'web_filter': 'granted',
+            'location': 'granted',
+            'private_dns': 'granted',
+            'family_controls': 'granted',
+            'background_refresh': 'granted',
+            'battery': 'granted',
+          },
+        },
       };
 
   /// A stateful family route: the wizard's POSTs mutate these lists, so the
@@ -78,7 +93,8 @@ void main() {
           },
       'POST /v1/family/children': addChild ??
           (req) {
-            final child = childJson('child-new', req.body['displayName'] as String? ?? 'Child');
+            final child = childJson(
+                'child-new', req.body['displayName'] as String? ?? 'Child');
             children.add(child);
             return {
               'child': child,
@@ -88,7 +104,8 @@ void main() {
       'POST /v1/devices/pair': pair ??
           (_) => {
                 'code': '482916',
-                'expiresAt': (pairExpiry ?? DateTime.now().toUtc().add(const Duration(minutes: 10)))
+                'expiresAt': (pairExpiry ??
+                        DateTime.now().toUtc().add(const Duration(minutes: 10)))
                     .toIso8601String(),
               },
     };
@@ -118,7 +135,8 @@ void main() {
 
   /// Pumps frames until [finder] matches (fake Dio chains complete through
   /// zero-duration timers, so one frame is not enough).
-  Future<void> waitFor(WidgetTester tester, Finder finder, {int frames = 40}) async {
+  Future<void> waitFor(WidgetTester tester, Finder finder,
+      {int frames = 40}) async {
     for (var i = 0; i < frames; i++) {
       if (finder.evaluate().isNotEmpty) return;
       await tester.pump(const Duration(milliseconds: 50));
@@ -134,7 +152,10 @@ void main() {
   /// at Welcome explicitly when the previous test left another route mounted.
   Future<void> startFromWelcome(WidgetTester tester) async {
     for (var attempt = 0; attempt < 5; attempt++) {
-      if (find.byKey(const ValueKey('onboardingGetStarted')).evaluate().isNotEmpty) break;
+      if (find
+          .byKey(const ValueKey('onboardingGetStarted'))
+          .evaluate()
+          .isNotEmpty) break;
       router.go('/welcome');
       await flush(tester, frames: 10);
     }
@@ -152,12 +173,14 @@ void main() {
       await tester.pump();
       return;
     }
-    final scrollable = find.byWidgetPredicate((w) => w is Scrollable && w.axis == Axis.vertical);
+    final scrollable = find
+        .byWidgetPredicate((w) => w is Scrollable && w.axis == Axis.vertical);
     await tester.scrollUntilVisible(finder, 200, scrollable: scrollable.first);
     await tester.pump();
   }
 
-  Future<void> signIn(WidgetTester tester, {String password = 'good-password'}) async {
+  Future<void> signIn(WidgetTester tester,
+      {String password = 'good-password'}) async {
     await tester.enterText(fieldByLabel('Server'), 'http://testserver');
     await tester.enterText(fieldByLabel('Email'), 'qa@osratech.com');
     await tester.enterText(fieldByLabel('Password'), password);
@@ -178,7 +201,8 @@ void main() {
   }
 
   group('first-run gating', () {
-    testWidgets('a fresh install opens the welcome step, not the login screen', (tester) async {
+    testWidgets('a fresh install opens the welcome step, not the login screen',
+        (tester) async {
       final api = FakeApiClient(onboardingRoutes(children: [], devices: []));
       SharedPreferences.setMockInitialValues({});
       await pumpApp(tester, api);
@@ -189,7 +213,8 @@ void main() {
       expect(currentPath(), '/welcome');
     });
 
-    testWidgets('a completed setup never shows the wizard again', (tester) async {
+    testWidgets('a completed setup never shows the wizard again',
+        (tester) async {
       SharedPreferences.setMockInitialValues({kOnboardingCompleteKey: true});
       final api = FakeApiClient(onboardingRoutes(children: [], devices: []));
       await pumpApp(tester, api);
@@ -200,7 +225,8 @@ void main() {
       expect(currentPath(), '/login');
     });
 
-    testWidgets('a completed setup with a stored session opens the dashboard', (tester) async {
+    testWidgets('a completed setup with a stored session opens the dashboard',
+        (tester) async {
       SharedPreferences.setMockInitialValues({kOnboardingCompleteKey: true});
       FlutterSecureStorage.setMockInitialValues({'jwt': 'jwt-token'});
       final api = FakeApiClient(onboardingRoutes(
@@ -215,7 +241,9 @@ void main() {
     });
   });
 
-  testWidgets('sign-in cannot be skipped: a direct setup route lands on sign-in', (tester) async {
+  testWidgets(
+      'sign-in cannot be skipped: a direct setup route lands on sign-in',
+      (tester) async {
     SharedPreferences.setMockInitialValues({});
     final api = FakeApiClient(onboardingRoutes(children: [], devices: []));
     await pumpApp(tester, api);
@@ -234,7 +262,8 @@ void main() {
   });
 
   group('resume', () {
-    testWidgets('an in-progress pair step reopens the same child', (tester) async {
+    testWidgets('an in-progress pair step reopens the same child',
+        (tester) async {
       SharedPreferences.setMockInitialValues({
         kOnboardingCompleteKey: false,
         kOnboardingStepKey: 'pair',
@@ -276,7 +305,8 @@ void main() {
     });
   });
 
-  testWidgets('skipping pairing leaves a persistent dashboard affordance', (tester) async {
+  testWidgets('skipping pairing leaves a persistent dashboard affordance',
+      (tester) async {
     SharedPreferences.setMockInitialValues({
       kOnboardingCompleteKey: false,
       kOnboardingStepKey: 'pair',
@@ -323,11 +353,13 @@ void main() {
     await unmount(tester);
   });
 
-  testWidgets('the full happy path reaches Done only after a confirmed device', (tester) async {
+  testWidgets('the full happy path reaches Done only after a confirmed device',
+      (tester) async {
     SharedPreferences.setMockInitialValues({});
     final children = <Map<String, dynamic>>[];
     final devices = <Map<String, dynamic>>[];
-    final api = FakeApiClient(onboardingRoutes(children: children, devices: devices));
+    final api =
+        FakeApiClient(onboardingRoutes(children: children, devices: devices));
 
     await pumpApp(tester, api);
     await tester.pumpAndSettle();
@@ -338,8 +370,10 @@ void main() {
     expect(currentPath(), '/setup/child');
     expect(find.byKey(const ValueKey('onboardingChildName')), findsOneWidget);
 
-    await tester.enterText(find.byKey(const ValueKey('onboardingChildName')), 'Alex');
-    await tester.enterText(find.byKey(const ValueKey('onboardingBirthYear')), '2014');
+    await tester.enterText(
+        find.byKey(const ValueKey('onboardingChildName')), 'Alex');
+    await tester.enterText(
+        find.byKey(const ValueKey('onboardingBirthYear')), '2014');
     final add = find.byKey(const ValueKey('onboardingAddChild'));
     // #874: the question now sits above each dropdown and wraps, so on a 320 px screen the button is
     // below the built range; scroll to it as prb_layout_matrix_test.dart already does.
@@ -347,7 +381,10 @@ void main() {
       await tester.scrollUntilVisible(
         add,
         200,
-        scrollable: find.byWidgetPredicate((w) => w is Scrollable && w.axis == Axis.vertical).first,
+        scrollable: find
+            .byWidgetPredicate(
+                (w) => w is Scrollable && w.axis == Axis.vertical)
+            .first,
       );
     }
     await tester.ensureVisible(add);
@@ -376,9 +413,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(currentPath(), '/setup/done');
-    expect(find.text("You're all set"), findsOneWidget);
+    expect(find.textContaining('Finish setting up'), findsOneWidget);
     expect(find.byKey(const ValueKey('onboardingDoneTitle')), findsOneWidget);
 
+    await scrollTo(tester, find.byKey(const ValueKey('onboardingFinish')));
     await tester.tap(find.byKey(const ValueKey('onboardingFinish')));
     await flush(tester);
     expect(find.byType(DashboardScreen), findsOneWidget);
@@ -388,8 +426,201 @@ void main() {
     expect(prefs.getBool(kPairingPendingKey), isFalse);
   });
 
+  group('P-06 finish setup on child', () {
+    const requiredGrants = [
+      'accessibility',
+      'usage_access',
+      'overlay',
+      'device_admin',
+      'web_filter',
+      'location',
+      'private_dns',
+    ];
+
+    String expectedCount(int confirmed, int total) =>
+        '\u{2066}$confirmed\u{2069} of \u{2066}$total\u{2069} confirmed';
+
+    Map<String, dynamic> p06Device({
+      String id = 'dev-1',
+      String childId = 'child-1',
+      String platform = 'android',
+      String flavour = 'play',
+      Map<String, String> states = const {},
+    }) {
+      return {
+        ...deviceJson(id, childId),
+        'platform': platform,
+        'capabilities': {
+          'client': {
+            'app': platform == 'ios' ? 'child-ios' : 'child-android',
+            'flavour': flavour
+          },
+          'grants': {
+            for (final key in requiredGrants) key: states[key] ?? 'granted',
+            'notification_listener':
+                states['notification_listener'] ?? 'granted',
+            'family_controls': states['family_controls'] ?? 'granted',
+            'background_refresh': states['background_refresh'] ?? 'granted',
+            'battery': states['battery'] ?? 'missing',
+          },
+        },
+      };
+    }
+
+    void p06Prefs() {
+      SharedPreferences.setMockInitialValues({
+        kOnboardingCompleteKey: false,
+        kOnboardingStepKey: 'done',
+        kOnboardingChildIdKey: 'child-1',
+      });
+      FlutterSecureStorage.setMockInitialValues({'jwt': 'jwt-token'});
+    }
+
+    Future<void> pumpStep(
+            WidgetTester tester, Widget home, FakeApiClient api) =>
+        pumpApp(tester, api);
+
+    testWidgets('only explicit grants turn rows green and Done stays gated',
+        (tester) async {
+      p06Prefs();
+      final api = FakeApiClient(onboardingRoutes(
+        children: [childJson('child-1', 'Alex')],
+        devices: [
+          p06Device(states: {
+            'accessibility': 'granted',
+            for (final key
+                in requiredGrants.where((key) => key != 'accessibility'))
+              key: 'missing',
+          }),
+        ],
+      ));
+      await pumpStep(tester, const SetupDoneScreen(), api);
+
+      expect(find.textContaining('Finish setting up'), findsOneWidget);
+      expect(find.text('Confirmed'), findsOneWidget);
+      expect(find.text('Waiting'), findsNWidgets(6));
+      expect(find.text(expectedCount(1, 7)), findsOneWidget);
+      expect(find.text('Done'), findsNothing);
+      expect(find.text('Show me how'), findsOneWidget);
+      expect(find.byKey(const ValueKey('onboardingFinish')), findsOneWidget);
+      expect(find.byType(Switch), findsNothing);
+      expect(find.byType(SwitchListTile), findsNothing);
+      expect(find.text('Send reminder'), findsNothing);
+    });
+
+    testWidgets('all seven Play grants unlock Done', (tester) async {
+      p06Prefs();
+      final api = FakeApiClient(onboardingRoutes(
+        children: [childJson('child-1', 'Alex')],
+        devices: [p06Device()],
+      ));
+      await pumpStep(tester, const SetupDoneScreen(), api);
+      expect(find.text(expectedCount(7, 7)), findsOneWidget);
+      expect(find.text('Done'), findsOneWidget);
+      await tester
+          .ensureVisible(find.byKey(const ValueKey('onboardingFinish')));
+      await tester.tap(find.byKey(const ValueKey('onboardingFinish')));
+      await flush(tester);
+      expect(find.byType(DashboardScreen), findsOneWidget);
+    });
+
+    testWidgets(
+        'Full lists eight required grants and waits for notification access',
+        (tester) async {
+      p06Prefs();
+      final api = FakeApiClient(onboardingRoutes(
+        children: [childJson('child-1', 'Alex')],
+        devices: [
+          p06Device(
+              flavour: 'full', states: {'notification_listener': 'missing'})
+        ],
+      ));
+      await pumpStep(tester, const SetupDoneScreen(), api);
+      expect(find.text(expectedCount(7, 8)), findsOneWidget);
+      expect(find.text('Waiting'), findsOneWidget);
+      expect(find.byKey(const ValueKey('p06-grant-notification_listener')),
+          findsOneWidget);
+      expect(find.text('Done'), findsNothing);
+    });
+
+    testWidgets('all eight Full grants unlock Done', (tester) async {
+      p06Prefs();
+      final api = FakeApiClient(onboardingRoutes(
+        children: [childJson('child-1', 'Alex')],
+        devices: [p06Device(flavour: 'full')],
+      ));
+      await pumpStep(tester, const SetupDoneScreen(), api);
+      expect(find.text(expectedCount(8, 8)), findsOneWidget);
+      expect(find.text('Done'), findsOneWidget);
+    });
+
+    testWidgets('Show me how opens the child-side instructions',
+        (tester) async {
+      p06Prefs();
+      final api = FakeApiClient(onboardingRoutes(
+        children: [childJson('child-1', 'Alex')],
+        devices: [
+          p06Device(states: {'accessibility': 'missing'})
+        ],
+      ));
+      await pumpStep(tester, const SetupDoneScreen(), api);
+      await tester.ensureVisible(find.text('Show me how'));
+      await tester.tap(find.text('Show me how'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Finish these steps on'), findsOneWidget);
+      expect(
+        find.textContaining('Open OSRA on'),
+        findsOneWidget,
+      );
+      expect(
+          find.textContaining(
+              'This screen updates by itself as each one is confirmed.'),
+          findsOneWidget);
+    });
+
+    testWidgets(
+        'Android-only rows are unavailable on iPhone but real iOS grants remain',
+        (tester) async {
+      p06Prefs();
+      final api = FakeApiClient(onboardingRoutes(
+        children: [childJson('child-1', 'Alex')],
+        devices: [p06Device(platform: 'ios')],
+      ));
+      await pumpStep(tester, const SetupDoneScreen(), api);
+      expect(find.text('Not yet available on iPhone'), findsNWidgets(7));
+      expect(find.text('Confirmed'), findsNWidgets(2));
+      expect(find.text('Done'), findsNothing);
+    });
+
+    testWidgets(
+        'multiple devices for one child do not guess which setup to complete',
+        (tester) async {
+      p06Prefs();
+      final api = FakeApiClient(onboardingRoutes(
+        children: [childJson('child-1', 'Alex')],
+        devices: [p06Device(id: 'dev-old'), p06Device(id: 'dev-new')],
+      ));
+      await pumpStep(tester, const SetupDoneScreen(), api);
+      expect(find.text('Done'), findsNothing);
+      expect(find.byKey(const ValueKey('onboardingFinish')), findsOneWidget);
+    });
+
+    testWidgets('another child\'s device cannot complete this setup',
+        (tester) async {
+      p06Prefs();
+      final api = FakeApiClient(onboardingRoutes(
+        children: [childJson('child-1', 'Alex')],
+        devices: [p06Device(childId: 'child-other')],
+      ));
+      await pumpStep(tester, const SetupDoneScreen(), api);
+      expect(find.text('Done'), findsNothing);
+      expect(find.byKey(const ValueKey('onboardingFinish')), findsOneWidget);
+    });
+  });
+
   group('honest failure states', () {
-    testWidgets('a wrong password says what to check, not the API code', (tester) async {
+    testWidgets('a wrong password says what to check, not the API code',
+        (tester) async {
       SharedPreferences.setMockInitialValues({});
       final api = FakeApiClient(onboardingRoutes(children: [], devices: []));
       await pumpApp(tester, api);
@@ -399,7 +630,10 @@ void main() {
       await signIn(tester, password: 'wrong-password');
       await tester.pumpAndSettle();
 
-      expect(find.text('The email or password is incorrect. Check it and try again.'), findsOneWidget);
+      expect(
+          find.text(
+              'The email or password is incorrect. Check it and try again.'),
+          findsOneWidget);
       expect(find.text('invalid_credentials'), findsNothing);
     });
 
@@ -419,7 +653,8 @@ void main() {
       expect(find.textContaining("Couldn't connect to OSRA"), findsOneWidget);
     });
 
-    testWidgets('a child-creation refusal names the consent problem', (tester) async {
+    testWidgets('a child-creation refusal names the consent problem',
+        (tester) async {
       SharedPreferences.setMockInitialValues({
         kOnboardingCompleteKey: false,
         kOnboardingStepKey: 'add_child',
@@ -428,25 +663,31 @@ void main() {
       final routes = onboardingRoutes(
         children: [],
         devices: [],
-        addChild: (_) => const FakeHttpError(428, {'error': 'parental_consent_required'}),
+        addChild: (_) =>
+            const FakeHttpError(428, {'error': 'parental_consent_required'}),
       );
       final api = FakeApiClient(routes);
       await pumpApp(tester, api);
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byKey(const ValueKey('onboardingChildName')), 'Alex');
-      await tester.enterText(find.byKey(const ValueKey('onboardingBirthYear')), '2014');
+      await tester.enterText(
+          find.byKey(const ValueKey('onboardingChildName')), 'Alex');
+      await tester.enterText(
+          find.byKey(const ValueKey('onboardingBirthYear')), '2014');
       final add = find.byKey(const ValueKey('onboardingAddChild'));
       // #874: the question now sits above each dropdown and wraps, so on a 320 px screen the button is
-    // below the built range; scroll to it as prb_layout_matrix_test.dart already does.
-    if (add.evaluate().isEmpty) {
-      await tester.scrollUntilVisible(
-        add,
-        200,
-        scrollable: find.byWidgetPredicate((w) => w is Scrollable && w.axis == Axis.vertical).first,
-      );
-    }
-    await tester.ensureVisible(add);
+      // below the built range; scroll to it as prb_layout_matrix_test.dart already does.
+      if (add.evaluate().isEmpty) {
+        await tester.scrollUntilVisible(
+          add,
+          200,
+          scrollable: find
+              .byWidgetPredicate(
+                  (w) => w is Scrollable && w.axis == Axis.vertical)
+              .first,
+        );
+      }
+      await tester.ensureVisible(add);
       await tester.pumpAndSettle();
       await tester.tap(add);
       await flush(tester);
@@ -455,7 +696,9 @@ void main() {
       expect(currentPath(), '/setup/child');
     });
 
-    testWidgets('an expired pairing code disables Continue and offers a new code', (tester) async {
+    testWidgets(
+        'an expired pairing code disables Continue and offers a new code',
+        (tester) async {
       SharedPreferences.setMockInitialValues({
         kOnboardingCompleteKey: false,
         kOnboardingStepKey: 'pair',
@@ -473,7 +716,8 @@ void main() {
       await waitFor(tester, find.text('Code expired'));
 
       expect(find.text('Code expired'), findsOneWidget);
-      final done = tester.widget<FilledButton>(find.byKey(const ValueKey('onboardingPairDone')));
+      final done = tester.widget<FilledButton>(
+          find.byKey(const ValueKey('onboardingPairDone')));
       expect(done.onPressed, isNull);
       expect(find.byKey(const ValueKey('onboardingPairSkip')), findsOneWidget);
       expect(find.text('Generate a new code to keep pairing.'), findsOneWidget);
@@ -512,7 +756,9 @@ void main() {
       expect(
         exceptions,
         isEmpty,
-        reason: exceptions.map((e) => e is FlutterError ? e.toStringDeep() : '$e').join('\n'),
+        reason: exceptions
+            .map((e) => e is FlutterError ? e.toStringDeep() : '$e')
+            .join('\n'),
       );
     }
 
@@ -537,7 +783,8 @@ void main() {
       expectRtlAndNoOverflow(tester);
     });
 
-    testWidgets('the consent notice speaks Arabic and names no law (#426)', (tester) async {
+    testWidgets('the consent notice speaks Arabic and names no law (#426)',
+        (tester) async {
       // Roadmap 3.1's last half. The notice was deliberately English pending Karim's wording ("we need
       // to confirm that you are their parent or guardian", 2026-10-28 09:02Z), which also decided that
       // the law names leave the app — COPPA/GDPR-K belong in the privacy policy, not in a sentence a
@@ -551,10 +798,13 @@ void main() {
       expect(
         find.text('قبل إضافة طفل، نحتاج إلى التأكّد من أنك وليّ أمره.'),
         findsOneWidget,
-        reason: 'the consent notice must be the approved Arabic, not the old English sentence',
+        reason:
+            'the consent notice must be the approved Arabic, not the old English sentence',
       );
-      expect(find.textContaining('COPPA'), findsNothing, reason: 'law names stay out of the app');
-      expect(find.textContaining('Verifiable'), findsNothing, reason: 'no English notice text');
+      expect(find.textContaining('COPPA'), findsNothing,
+          reason: 'law names stay out of the app');
+      expect(find.textContaining('Verifiable'), findsNothing,
+          reason: 'no English notice text');
       expectRtlAndNoOverflow(tester);
     });
 
@@ -588,7 +838,8 @@ void main() {
 
   group('ARB parity', () {
     Map<String, dynamic> readArb(String name) =>
-        jsonDecode(File('lib/l10n/$name').readAsStringSync()) as Map<String, dynamic>;
+        jsonDecode(File('lib/l10n/$name').readAsStringSync())
+            as Map<String, dynamic>;
 
     test('the wizard added the same keys to both locales', () {
       final en = readArb('app_en.arb');
@@ -599,8 +850,10 @@ void main() {
       };
       expect(wizardKeys, isNotEmpty);
       for (final key in wizardKeys) {
-        expect(ar.containsKey(key), isTrue, reason: 'app_ar.arb is missing $key');
-        expect((ar[key] as String?)?.trim(), isNotEmpty, reason: 'app_ar.arb has an empty $key');
+        expect(ar.containsKey(key), isTrue,
+            reason: 'app_ar.arb is missing $key');
+        expect((ar[key] as String?)?.trim(), isNotEmpty,
+            reason: 'app_ar.arb has an empty $key');
       }
     });
   });
