@@ -9,15 +9,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import 'fake_api_client.dart';
 
-/// #1179 P-13 Location tests (G18, A2, A7, A8).
+/// #1179 P-13 Location tests (G18, G6, A2, A7, A8 + Kimi-Mac B1–B4).
 ///
 /// Mutant checks:
 /// - Removing `p13LocationEnabledProvider` gate breaks the fallback test.
-/// - Showing raw lat/lng or a `"Live"` badge fails the forbidden-copy assertions.
-/// - Dropping Ring -> Stop ring toggle fails A2; dropping Earlier today fails A7.
+/// - Showing only one marker in All mode breaks B1.
+/// - Enabling Ring on iOS breaks B2.
+/// - Ignoring `{status: 'failed', reason}` on Ring breaks B3.
+/// - Swallowing locate POST / location GET / geofences GET errors breaks B4.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -25,19 +28,32 @@ void main() {
     FlutterSecureStorage.setMockInitialValues({});
   });
 
-  FakeApiClient buildApi({List<String>? sentCommands}) {
+  FakeApiClient buildApi({
+    List<String>? sentCommands,
+    String child1Platform = 'android',
+    Object? Function(dynamic req)? commandResponse,
+    bool failLocationGet = false,
+    bool failGeofencesGet = false,
+  }) {
     final nowIso = DateTime.now().subtract(const Duration(minutes: 4)).toUtc().toIso8601String();
+    final routes = standardRoutes();
+    if (child1Platform == 'ios') {
+      routes['GET /v1/family/me'] = (_) => familyMeTwoChildren(alexPlatform: 'ios');
+    }
     return FakeApiClient({
-      ...standardRoutes(),
-      'GET /v1/location/child-1/latest': (_) => {
-            'latest': {
-              'deviceId': 'dev-1',
-              'lat': 25.1124,
-              'lng': 55.1981,
-              'accuracyM': 60,
-              'timestamp': nowIso,
-            },
+      ...routes,
+      'GET /v1/location/child-1/latest': (_) {
+        if (failLocationGet) throw FakeNetworkError();
+        return {
+          'latest': {
+            'deviceId': 'dev-1',
+            'lat': 25.1124,
+            'lng': 55.1981,
+            'accuracyM': 60,
+            'timestamp': nowIso,
           },
+        };
+      },
       'GET /v1/location/child-2/latest': (_) => {
             'latest': {
               'deviceId': 'dev-2',
@@ -52,22 +68,26 @@ void main() {
               {'lat': 25.1124, 'lng': 55.1981, 'accuracyM': 60, 'timestamp': nowIso},
             ],
           },
-      'GET /v1/location/geofences/child-1': (_) => {
-            'geofences': [
-              {
-                'id': 'g1',
-                'childId': 'child-1',
-                'label': 'School',
-                'lat': 25.1124,
-                'lng': 55.1981,
-                'radiusM': 150,
-                'notifyOnEnter': true,
-                'notifyOnExit': true,
-              },
-            ],
-          },
+      'GET /v1/location/geofences/child-1': (_) {
+        if (failGeofencesGet) throw FakeNetworkError();
+        return {
+          'geofences': [
+            {
+              'id': 'g1',
+              'childId': 'child-1',
+              'label': 'School',
+              'lat': 25.1124,
+              'lng': 55.1981,
+              'radiusM': 150,
+              'notifyOnEnter': true,
+              'notifyOnExit': true,
+            },
+          ],
+        };
+      },
       'POST /v1/devices/dev-1/command': (req) {
         sentCommands?.add((req.data as Map?)?['command']?.toString() ?? '');
+        if (commandResponse != null) return commandResponse(req);
         return {'ok': true};
       },
     });
@@ -80,7 +100,7 @@ void main() {
         ),
       ];
 
-  testWidgets('#1179 P-13 switch ON shows place in words, no Live badge, no raw coordinates, All/child chips, Saved places', (tester) async {
+  testWidgets('#1179 P-13 switch ON: All mode renders both child pins (B1), no Live/raw coords, Ring toggle (A2), Earlier today (A7)', (tester) async {
     final cmds = <String>[];
     final api = buildApi(sentCommands: cmds);
     await tester.pumpWidget(
@@ -101,19 +121,20 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('p13MapCard')), findsOneWidget);
+    expect(find.byKey(const ValueKey('p13AllChildrenMap')), findsOneWidget);
+    final mapWidget = tester.widget<GoogleMap>(find.byKey(const ValueKey('p13AllChildrenMap')));
+    expect(mapWidget.markers.map((m) => m.markerId.value), containsAll(['child-1', 'child-2']));
+
     expect(find.byKey(const ValueKey('p13PlaceCard')), findsOneWidget);
     expect(find.textContaining('Al Barsha, Dubai'), findsAtLeastNWidgets(1));
-    // Forbidden: raw coordinates and "Live" badge
     expect(find.textContaining('25.1124'), findsNothing);
     expect(find.text('Live'), findsNothing);
-    // Chips for All + both children
     expect(find.byKey(const ValueKey('p13Chip-all')), findsOneWidget);
     expect(find.byKey(const ValueKey('p13Chip-child-1')), findsOneWidget);
     expect(find.byKey(const ValueKey('p13Chip-child-2')), findsOneWidget);
-    // A8 Saved places + Add place
     expect(find.byKey(const ValueKey('p13SavedPlace-g1')), findsOneWidget);
     expect(find.byKey(const ValueKey('p13AddPlaceButton')), findsOneWidget);
-    // A2 Ring -> Stop ringing toggle
+
     await tester.ensureVisible(find.byKey(const ValueKey('p13RingButton')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('p13RingButton')));
@@ -122,12 +143,102 @@ void main() {
     await tester.pumpAndSettle();
     expect(cmds, ['ring', 'stop_ring']);
 
-    // A7 Earlier today row opens sheet
     await tester.ensureVisible(find.byKey(const ValueKey('p13EarlierTodayRow')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('p13EarlierTodayRow')));
     await tester.pumpAndSettle();
     expect(find.textContaining('Earlier today'), findsAtLeastNWidgets(1));
+  });
+
+  testWidgets('#1179 P-13 B2: iPhone child shows Not yet available on iPhone and sends zero Ring POSTs', (tester) async {
+    final cmds = <String>[];
+    final api = buildApi(sentCommands: cmds, child1Platform: 'ios');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          p13LocationEnabledProvider.overrideWithValue(true),
+          placemarkLookupProvider.overrideWithValue(fakePlacemark()),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const FamilyMapScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Not yet available on iPhone'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const ValueKey('p13RingButton')));
+    await tester.tap(find.byKey(const ValueKey('p13RingButton')));
+    await tester.pumpAndSettle();
+    expect(cmds, isEmpty);
+  });
+
+  testWidgets('#1179 P-13 B3: up-front refused Ring shows refusal snackbar and does not flip to Stop ringing', (tester) async {
+    final cmds = <String>[];
+    final api = buildApi(
+      sentCommands: cmds,
+      commandResponse: (_) => {'status': 'failed', 'reason': 'unsupported_command'},
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          p13LocationEnabledProvider.overrideWithValue(true),
+          placemarkLookupProvider.overrideWithValue(fakePlacemark()),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const FamilyMapScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byKey(const ValueKey('p13RingButton')));
+    await tester.tap(find.byKey(const ValueKey('p13RingButton')));
+    await tester.pumpAndSettle();
+    expect(cmds, ['ring']);
+    expect(find.text('Stop ringing'), findsNothing);
+    expect(find.byType(SnackBar), findsOneWidget);
+  });
+
+  testWidgets('#1179 P-13 B4: location/geofence read failures show error + retry instead of empty state, and locate POST failure shows snackbar', (tester) async {
+    final api = buildApi(
+      failLocationGet: true,
+      failGeofencesGet: true,
+      commandResponse: (_) => throw FakeNetworkError(),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          p13LocationEnabledProvider.overrideWithValue(true),
+          placemarkLookupProvider.overrideWithValue(fakePlacemark()),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const LocationP13Screen(initialChildId: 'child-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('p13LocationError')), findsOneWidget);
+    expect(find.byKey(const ValueKey('p13GeofencesError')), findsOneWidget);
+    expect(find.text('No location reported yet.'), findsNothing);
+
+    await tester.ensureVisible(find.byKey(const ValueKey('p13RefreshButton')));
+    await tester.tap(find.byKey(const ValueKey('p13RefreshButton')));
+    await tester.pumpAndSettle();
+    expect(find.byType(SnackBar), findsOneWidget);
   });
 
   testWidgets('#1179 P-13 switch OFF falls back to legacy FamilyMapScreen', (tester) async {
@@ -155,8 +266,12 @@ void main() {
 
   for (final cfg in [
     (locale: const Locale('en'), dark: false, size: const Size(390, 844), scale: 1.0),
+    (locale: const Locale('en'), dark: true, size: const Size(390, 844), scale: 1.0),
     (locale: const Locale('ar'), dark: false, size: const Size(390, 844), scale: 1.0),
+    (locale: const Locale('ar'), dark: true, size: const Size(390, 844), scale: 1.0),
+    (locale: const Locale('en'), dark: false, size: const Size(320, 568), scale: 2.0),
     (locale: const Locale('en'), dark: true, size: const Size(320, 568), scale: 2.0),
+    (locale: const Locale('ar'), dark: false, size: const Size(320, 568), scale: 2.0),
     (locale: const Locale('ar'), dark: true, size: const Size(320, 568), scale: 2.0),
   ]) {
     testWidgets(

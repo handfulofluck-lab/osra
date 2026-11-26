@@ -1,7 +1,9 @@
+import 'dart:async' show unawaited;
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../api/models.dart';
 import '../../api/permission_errors.dart';
@@ -12,8 +14,10 @@ import '../../providers/family_provider.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../../widgets/error_retry_view.dart';
+import '../children/command_messages.dart';
 import 'child_location_view.dart';
-import 'family_map_screen.dart' show showGeofenceCreateDialog;
+import 'family_map_screen.dart'
+    show fitCameraToChildren, mapIsAvailable, showGeofenceCreateDialog;
 
 /// Feature switch for UX Final Decisions P-13 Location (#1179).
 ///
@@ -30,12 +34,14 @@ final p13LocationEnabledProvider = Provider<bool>(
 );
 
 /// UX Final Decisions **P-13 Location** (#1179, G18, A2, A7, A8):
-/// - Real map with child pin and accuracy ring (no `"Live"` badge, no route
-///   drawn on the card, never raw coordinates).
+/// - Real map with child pin(s) and accuracy ring (in `All` mode, shows every
+///   child's pin on the family map; no `"Live"` badge, no route drawn on the
+///   card, never raw coordinates).
 /// - Child selector chips (`All` + each child).
 /// - Place card in words (`PlaceNameText` + `FreshnessLine` + accuracy +
-///   battery), with **Refresh** (waits while keeping the old pin visible),
-///   **Directions**, and **Ring** (flips to **Stop ringing** while ringing, A2).
+///   battery), with **Refresh** (awaits refreshed reads while keeping the old
+///   pin visible), **Directions**, and **Ring** (flips to **Stop ringing**
+///   while ringing on Android, A2; shows "Not yet available on iPhone" on iOS, G6).
 /// - **"Earlier today"** row (A7) opening today's places in a bottom sheet.
 /// - **Saved places** list with radius + enter/leave alert state and **"Add
 ///   place"** (A8, keeping radius and both alert switches).
@@ -71,17 +77,40 @@ class _LocationP13ScreenState extends ConsumerState<LocationP13Screen> {
 
   Future<void> _refreshLocation(Child child, Device? device) async {
     if (_refreshing) return;
+    final l10n = context.l10n;
     setState(() => _refreshing = true);
     try {
       if (device != null) {
-        await ref.read(apiClientProvider).raw.post(
-          '/v1/devices/${device.id}/command',
-          data: {'command': 'locate_now'},
-        ).catchError((_) => Response(requestOptions: RequestOptions()));
+        try {
+          final response = await ref.read(apiClientProvider).raw.post(
+            '/v1/devices/${device.id}/command',
+            data: {'command': 'locate_now'},
+          );
+          final body = response.data;
+          if (mounted && body is Map && body['status'] == 'failed') {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  commandRefusalText(l10n, 'locate_now', device.model, body['reason']),
+                ),
+              ),
+            );
+          }
+        } on DioException catch (e) {
+          if (mounted) {
+            showErrorSnackBar(
+              context,
+              commandErrorText(l10n, 'locate_now', device.model, e),
+              onRetry: () => _refreshLocation(child, device),
+            );
+          }
+        }
       }
-      ref.invalidate(locationProvider(child.id));
-      ref.invalidate(locationHistoryProvider(child.id));
-      ref.invalidate(familyProvider);
+      await Future.wait([
+        ref.refresh(locationProvider(child.id).future).then<void>((_) {}).catchError((_) {}),
+        ref.refresh(locationHistoryProvider(child.id).future).then<void>((_) {}).catchError((_) {}),
+        ref.refresh(familyProvider.future).then<void>((_) {}).catchError((_) {}),
+      ]);
     } finally {
       if (mounted) setState(() => _refreshing = false);
     }
@@ -89,34 +118,43 @@ class _LocationP13ScreenState extends ConsumerState<LocationP13Screen> {
 
   Future<void> _toggleRing(Device device) async {
     if (_sendingCommand) return;
+    if (device.platform.toLowerCase() == 'ios') return;
     final l10n = context.l10n;
     final cmd = _ringSent ? 'stop_ring' : 'ring';
     setState(() => _sendingCommand = true);
     try {
-      await ref.read(apiClientProvider).raw.post(
+      final response = await ref.read(apiClientProvider).raw.post(
         '/v1/devices/${device.id}/command',
         data: {'command': cmd},
       );
       ref.invalidate(deviceCommandHistoryProvider(device.id));
-      if (mounted) {
-        setState(() => _ringSent = cmd == 'ring');
+      if (!mounted) return;
+      final body = response.data;
+      if (body is Map && body['status'] == 'failed') {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              l10n.commandQueued(
-                cmd == 'ring' ? l10n.commandRing : l10n.commandStopRing,
-                ltrIsolate(device.model),
-              ),
+              commandRefusalText(l10n, cmd, device.model, body['reason']),
             ),
           ),
         );
+        return;
       }
+      setState(() => _ringSent = cmd == 'ring');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            l10n.commandQueued(
+              cmd == 'ring' ? l10n.commandRing : l10n.commandStopRing,
+              ltrIsolate(device.model),
+            ),
+          ),
+        ),
+      );
     } on DioException catch (e) {
       if (mounted) {
-        showErrorSnackBar(
-          context,
-          friendlyErrorText(l10n, e, () => l10n.commandFailed),
-          onRetry: () => _toggleRing(device),
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(commandErrorText(l10n, cmd, device.model, e))),
         );
       }
     } finally {
@@ -171,9 +209,22 @@ class _LocationP13ScreenState extends ConsumerState<LocationP13Screen> {
           final focusedChild = _resolveFocusedChild(children)!;
           final devices = overview.devicesFor(focusedChild.id);
           final primaryDevice = devices.isNotEmpty ? devices.first : null;
-          final ping = ref.watch(locationProvider(focusedChild.id)).valueOrNull;
-          final geofences = ref.watch(geofencesProvider(focusedChild.id)).valueOrNull ?? const <Geofence>[];
+          final isIosDevice = primaryDevice?.platform.toLowerCase() == 'ios';
+          final locationAsync = ref.watch(locationProvider(focusedChild.id));
+          final geofencesAsync = ref.watch(geofencesProvider(focusedChild.id));
+          final ping = locationAsync.valueOrNull;
+          final geofences = geofencesAsync.valueOrNull ?? const <Geofence>[];
           final accuracy = ping != null && ping.accuracyM > 0 ? ping.accuracyM.round() : null;
+
+          final allPins = <({Child child, LocationPing ping, Device? device})>[];
+          if (showAllMode) {
+            for (final c in children) {
+              final p = ref.watch(locationProvider(c.id)).valueOrNull;
+              if (p != null) {
+                allPins.add((child: c, ping: p, device: overview.devicesFor(c.id).firstOrNull));
+              }
+            }
+          }
 
           return RefreshIndicator(
             onRefresh: () => _refreshLocation(focusedChild, primaryDevice),
@@ -220,7 +271,8 @@ class _LocationP13ScreenState extends ConsumerState<LocationP13Screen> {
                     ),
                     const SizedBox(height: AppSpace.md),
                   ],
-                  // Map with accuracy ring (old pin stays visible while Refresh is running)
+                  // Map with accuracy ring (old pin stays visible while Refresh is running;
+                  // All mode renders every child's pin on the family map)
                   Card(
                     key: const ValueKey('p13MapCard'),
                     clipBehavior: Clip.antiAlias,
@@ -229,30 +281,55 @@ class _LocationP13ScreenState extends ConsumerState<LocationP13Screen> {
                       borderRadius: BorderRadius.circular(AppRadius.md),
                       side: BorderSide(color: tokens.border),
                     ),
-                    child: ping != null
+                    child: showAllMode && allPins.isNotEmpty
                         ? AspectRatio(
                             aspectRatio: 16 / 10,
-                            child: ChildLocationMap(
-                              ping: ping,
-                              childName: focusedChild.displayName,
+                            child: _AllChildrenP13Map(
+                              pins: allPins,
+                              geofences: geofences,
                             ),
                           )
-                        : Padding(
-                            padding: const EdgeInsets.all(AppSpace.xl),
-                            child: Column(
-                              children: [
-                                Icon(Icons.location_off_outlined, size: 32, color: tokens.onSurfaceVariant),
-                                const SizedBox(height: AppSpace.sm),
-                                Text(
-                                  l10n.locationP13NoLocationYet,
-                                  textAlign: TextAlign.center,
-                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                        color: tokens.onSurfaceVariant,
-                                      ),
+                        : ping != null
+                            ? AspectRatio(
+                                aspectRatio: 16 / 10,
+                                child: ChildLocationMap(
+                                  ping: ping,
+                                  childName: focusedChild.displayName,
                                 ),
-                              ],
-                            ),
-                          ),
+                              )
+                            : locationAsync.hasError
+                                ? Padding(
+                                    key: const ValueKey('p13LocationError'),
+                                    padding: const EdgeInsets.all(AppSpace.lg),
+                                    child: ErrorRetryView(
+                                      message: friendlyErrorText(
+                                        l10n,
+                                        locationAsync.error!,
+                                        () => l10n.familyLoadFailed,
+                                      ),
+                                      onRetry: () => ref.invalidate(locationProvider(focusedChild.id)),
+                                    ),
+                                  )
+                                : Padding(
+                                    padding: const EdgeInsets.all(AppSpace.xl),
+                                    child: Column(
+                                      children: [
+                                        Icon(
+                                          Icons.location_off_outlined,
+                                          size: 32,
+                                          color: tokens.onSurfaceVariant,
+                                        ),
+                                        const SizedBox(height: AppSpace.sm),
+                                        Text(
+                                          l10n.locationP13NoLocationYet,
+                                          textAlign: TextAlign.center,
+                                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                                color: tokens.onSurfaceVariant,
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                   ),
                   const SizedBox(height: AppSpace.md),
                   // Place card in words (no "Live" badge, no route drawn on card)
@@ -320,7 +397,7 @@ class _LocationP13ScreenState extends ConsumerState<LocationP13Screen> {
                             ),
                           ],
                           const SizedBox(height: AppSpace.md),
-                          // Actions: Refresh, Directions, Ring / Stop ringing (A2)
+                          // Actions: Refresh, Directions, Ring / Stop ringing (A2) or iOS unavailable (G6)
                           Wrap(
                             spacing: AppSpace.sm,
                             runSpacing: AppSpace.sm,
@@ -353,17 +430,23 @@ class _LocationP13ScreenState extends ConsumerState<LocationP13Screen> {
                               ),
                               FilledButton.tonalIcon(
                                 key: const ValueKey('p13RingButton'),
-                                onPressed: (primaryDevice == null || _sendingCommand)
+                                onPressed: (primaryDevice == null || isIosDevice || _sendingCommand)
                                     ? null
                                     : () => _toggleRing(primaryDevice),
                                 style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
                                 icon: Icon(
-                                  _ringSent
-                                      ? Icons.notifications_off_outlined
-                                      : Icons.notifications_active_outlined,
+                                  isIosDevice
+                                      ? Icons.phone_iphone_outlined
+                                      : _ringSent
+                                          ? Icons.notifications_off_outlined
+                                          : Icons.notifications_active_outlined,
                                   size: 18,
                                 ),
-                                label: Text(_ringSent ? l10n.commandStopRing : l10n.ring),
+                                label: Text(
+                                  isIosDevice
+                                      ? l10n.locationP13RingNotYetOnIphone
+                                      : (_ringSent ? l10n.commandStopRing : l10n.ring),
+                                ),
                               ),
                             ],
                           ),
@@ -429,7 +512,27 @@ class _LocationP13ScreenState extends ConsumerState<LocationP13Screen> {
                     ],
                   ),
                   const SizedBox(height: AppSpace.xs),
-                  if (geofences.isEmpty)
+                  if (geofencesAsync.hasError && !geofencesAsync.hasValue)
+                    Card(
+                      key: const ValueKey('p13GeofencesError'),
+                      color: tokens.surfaceContainer,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.md),
+                        side: BorderSide(color: tokens.border),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppSpace.md),
+                        child: ErrorRetryView(
+                          message: friendlyErrorText(
+                            l10n,
+                            geofencesAsync.error!,
+                            () => l10n.familyLoadFailed,
+                          ),
+                          onRetry: () => ref.invalidate(geofencesProvider(focusedChild.id)),
+                        ),
+                      ),
+                    )
+                  else if (geofences.isEmpty)
                     Card(
                       color: tokens.surfaceContainer,
                       shape: RoundedRectangleBorder(
@@ -479,6 +582,90 @@ class _LocationP13ScreenState extends ConsumerState<LocationP13Screen> {
     if (g.notifyOnEnter) return l10n.locationP13AlertsEnterOnly;
     if (g.notifyOnExit) return l10n.locationP13AlertsLeaveOnly;
     return l10n.locationP13AlertsOff;
+  }
+}
+
+class _AllChildrenP13Map extends StatefulWidget {
+  final List<({Child child, LocationPing ping, Device? device})> pins;
+  final List<Geofence> geofences;
+
+  const _AllChildrenP13Map({
+    required this.pins,
+    required this.geofences,
+  });
+
+  @override
+  State<_AllChildrenP13Map> createState() => _AllChildrenP13MapState();
+}
+
+class _AllChildrenP13MapState extends State<_AllChildrenP13Map> {
+  GoogleMapController? _controller;
+  bool _fitDone = false;
+
+  void _maybeFit() {
+    if (_fitDone || widget.pins.length < 2) return;
+    _fitDone = true;
+    unawaited(fitCameraToChildren(
+      _controller,
+      [for (final item in widget.pins) LatLng(item.ping.lat, item.ping.lng)],
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final first = widget.pins.first;
+    final useGoogle = mapIsAvailable(Theme.of(context).platform);
+    if (!useGoogle) {
+      return ChildLocationMap(
+        ping: first.ping,
+        childName: first.child.displayName,
+      );
+    }
+    final tokens = context.tokens;
+    final markers = <Marker>{
+      for (final item in widget.pins)
+        Marker(
+          markerId: MarkerId(item.child.id),
+          position: LatLng(item.ping.lat, item.ping.lng),
+          infoWindow: InfoWindow(title: item.child.displayName),
+        ),
+    };
+    final circles = <Circle>{
+      for (final item in widget.pins)
+        if (item.ping.accuracyM > 0)
+          Circle(
+            circleId: CircleId('acc-${item.child.id}'),
+            center: LatLng(item.ping.lat, item.ping.lng),
+            radius: item.ping.accuracyM,
+            fillColor: tokens.primary.withValues(alpha: 0.12),
+            strokeColor: tokens.primary,
+            strokeWidth: 1,
+          ),
+      for (final fence in widget.geofences)
+        Circle(
+          circleId: CircleId('fence-${fence.id}'),
+          center: LatLng(fence.lat, fence.lng),
+          radius: fence.radiusM,
+          fillColor: tokens.primary.withValues(alpha: 0.15),
+          strokeColor: tokens.primary,
+          strokeWidth: 1,
+        ),
+    };
+    return GoogleMap(
+      key: const ValueKey('p13AllChildrenMap'),
+      initialCameraPosition: CameraPosition(
+        target: LatLng(first.ping.lat, first.ping.lng),
+        zoom: 13,
+      ),
+      markers: markers,
+      circles: circles,
+      onMapCreated: (c) {
+        _controller = c;
+        _maybeFit();
+      },
+      myLocationButtonEnabled: false,
+      zoomControlsEnabled: false,
+    );
   }
 }
 
@@ -555,7 +742,10 @@ class _EarlierTodaySheet extends ConsumerWidget {
                 padding: EdgeInsets.all(AppSpace.lg),
                 child: Center(child: CircularProgressIndicator()),
               ),
-              error: (_, __) => Text(l10n.locationP13EarlierTodayEmpty),
+              error: (e, _) => ErrorRetryView(
+                message: friendlyErrorText(l10n, e, () => l10n.familyLoadFailed),
+                onRetry: () => ref.invalidate(locationHistoryProvider(child.id)),
+              ),
               data: (pings) {
                 if (pings.isEmpty) {
                   return Padding(
