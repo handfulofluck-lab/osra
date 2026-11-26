@@ -217,13 +217,17 @@ object BlockExplainPolicy {
             !bedtimeActive &&
             !schoolActive
 
+        // Only show "Back at HH:mm" (today) or "Tomorrow at HH:mm" (tomorrow). A contiguous chain
+        // extending past tomorrow omits the card rather than printing the wrong day (Codex #1188 P2).
+        val visibleBackAt = backAt?.takeIf { !it.toLocalDate().isAfter(local.toLocalDate().plusDays(1)) }
+
         return BlockExplanation(
             cause = primaryCause,
             routineName = routineName,
             usedMinutes = usedMinutes,
             limitMinutes = limitMinutes,
-            backAtTime = backAt?.format(HH_MM),
-            backAtTomorrow = backAt != null && backAt.toLocalDate().isAfter(local.toLocalDate()),
+            backAtTime = visibleBackAt?.format(HH_MM),
+            backAtTomorrow = visibleBackAt != null && visibleBackAt.toLocalDate().isAfter(local.toLocalDate()),
             canAskForMoreTime = canAskTime,
             stillOpenPackages = stillOpen,
         )

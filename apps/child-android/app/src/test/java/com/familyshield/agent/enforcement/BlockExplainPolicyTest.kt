@@ -249,6 +249,33 @@ class BlockExplainPolicyTest {
     }
 
     @Test
+    fun `multi-day contiguous chain extending past tomorrow omits Back again card instead of saying Tomorrow`() {
+        val rules = RuleSetDto(
+            screenTime = ScreenTimeRuleDto(
+                bedtimeStart = "21:00",
+                bedtimeEnd = "07:00",
+                // Thu (4) + Fri (5) school windows 06:00-22:00 chain with daily bedtime 21:00-07:00 until Saturday 07:00.
+                schoolHours = SchoolHoursDto(start = "06:00", end = "22:00", days = listOf(4, 5)),
+            ),
+        )
+        val exp = BlockExplainPolicy.explain(
+            ruleSet = rules,
+            packageId = minecraft,
+            now = wedNight,
+            minutesUsedToday = emptyMap(),
+            blocklist = emptyMap(),
+            pausedInternet = false,
+            bonusMinutes = 0,
+            fallbackReason = BlockActivity.REASON_BLOCKED,
+            fallbackWindow = WindowReason(WindowKind.BEDTIME, null, "07:00"),
+        )
+        assertEquals(BlockCause.BEDTIME, exp.cause)
+        assertNull("Return date past tomorrow must be omitted rather than mislabelled Tomorrow", exp.backAtTime)
+        assertFalse(exp.backAtTomorrow)
+        assertFalse(exp.canAskForMoreTime)
+    }
+
+    @Test
     fun `time request only emits 15 or 30 minutes and rejects 60 for this cut`() {
         val exp = BlockExplanation(cause = BlockCause.DAILY_LIMIT, canAskForMoreTime = true)
         assertEquals("15", BlockExplainPolicy.buildRequestPayload(minecraft, exp, "time_limit", 15).metadata["minutes"])
