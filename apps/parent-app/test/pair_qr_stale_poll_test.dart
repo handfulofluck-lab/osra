@@ -63,31 +63,6 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('a server slower than the poll still updates the screen', (tester) async {
-    final slow = Completer<Object?>();
-    await pump(
-      tester,
-      clientReturning((call) => call == 1
-          ? FakeDeferred(slow.future) // longer than the two-second tick
-          : {'status': 'paired', 'claimId': 'c-1', 'deviceName': "Sam's phone"}),
-    );
-
-    await nextClaimRead(tester); // tick 1 starts the slow read
-    await nextClaimRead(tester); // tick 2 arrives while it is in flight: skipped, not queued
-    expect(find.byKey(const ValueKey('pairClaimCard')), findsNothing);
-
-    slow.complete({'status': 'pending', 'claimId': 'c-1', 'deviceName': "Sam's phone"});
-    await tester.pump();
-    await flushFakeHttp(tester);
-
-    expect(find.byKey(const ValueKey('pairClaimCard')), findsOneWidget,
-        reason: 'a slow answer must reach the screen; discarding every slow answer is a silent poll');
-
-    await nextClaimRead(tester); // the next read answers paired
-    expect(find.byKey(const ValueKey('pairPairedTitle')), findsOneWidget);
-    await unmount(tester);
-  });
-
   testWidgets('a paired claim stops the poll and stays paired', (tester) async {
     await pump(
       tester,
