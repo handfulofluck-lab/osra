@@ -53,6 +53,7 @@ Status is one of `accepted`, `superseded by ADR-XXXX`, `deprecated`, or `propose
 | [0044](0044-parent-feedback-on-flagged-messages.md) | Parent votes on flagged messages stay per-parent and editable, tied to the vault event with cascading deletion and counts-only, sub-five-suppressed evaluation; no message text or ids leave for analytics | accepted |
 | [0045](0045-parent-feedback-ownership-and-conflict-writes.md) | Event reads distinguish `ownFeedback` from family `latestFeedback`; conditional conflict writes preserve different racing verdicts, local-only hits use rules metadata, and only already-orphaned events are deleted before the child FK | accepted |
 | [0046](0046-consented-staging-own-model-scoring.md) | Explicit, consented staging own-model routing, atomic quotas and private collector rollout checks | proposed |
+| [0048](0048-flagged-message-context.md) | Context around a flagged message: on-request, blurred 1+1 with a five-minute following window and 24-hour deletion; no default 3+3 archive and no extra AI scoring | proposed |
 
 ## Writing a new ADR
 
