@@ -3959,4 +3959,32 @@ class AppLocalizationsAr extends AppLocalizations {
   String accessRequestKeepBlockedLabel(String app) {
     return 'إبقاء $app محظورًا';
   }
+
+  @override
+  String timeRequestTitle(String child, String minutes) {
+    return '$child asked for $minutes more minutes today';
+  }
+
+  @override
+  String timeRequestGrant(String minutes) {
+    return '+$minutes min';
+  }
+
+  @override
+  String get timeRequestDecline => 'Not today';
+
+  @override
+  String timeRequestGrantedBy(String actor, String minutes) {
+    return '$actor gave $minutes more minutes';
+  }
+
+  @override
+  String timeRequestDeclinedBy(String actor) {
+    return '$actor declined this request';
+  }
+
+  @override
+  String timeRequestDecidedAt(String time) {
+    return 'Decided $time';
+  }
 }

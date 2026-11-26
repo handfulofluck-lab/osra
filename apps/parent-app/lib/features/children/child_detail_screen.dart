@@ -24,6 +24,7 @@ import '../pairing/pair_qr_screen.dart';
 import '../alerts/access_request_actions.dart';
 import '../alerts/alert_detail_screen.dart';
 import '../alerts/app_alert_presentation.dart';
+import '../alerts/time_request_actions.dart';
 import '../rules/active_window.dart';
 import '../social/social_screen.dart' show SocialSectionsView, socialAppLabel;
 import '../map/child_location_view.dart';
@@ -1330,8 +1331,8 @@ class _AlertsTab extends ConsumerWidget {
       data: (page) {
         if (page.items.isEmpty) return Center(child: Text(l10n.noRecentAlerts));
         final items = [...page.items]..sort((a, b) {
-            final aPinned = isAccessRequestAlert(a) && !a.acknowledged;
-            final bPinned = isAccessRequestAlert(b) && !b.acknowledged;
+            final aPinned = isParentDecisionAlert(a) && !a.acknowledged;
+            final bPinned = isParentDecisionAlert(b) && !b.acknowledged;
             if (aPinned != bPinned) return aPinned ? -1 : 1;
             final aTime = a.effectiveTimestamp;
             final bTime = b.effectiveTimestamp;
@@ -1464,6 +1465,7 @@ class AlertTile extends ConsumerWidget {
   final VoidCallback? onTap;
   final VoidCallback? onAck;
   final AccessRequestResolved? onRequestResolved;
+  final ValueChanged<Alert>? onTimeRequestResolved;
 
   /// #1029: count of additional flagged messages that arrived after the parent last opened this alert.
   final int newSinceCount;
@@ -1473,6 +1475,7 @@ class AlertTile extends ConsumerWidget {
     this.onTap,
     this.onAck,
     this.onRequestResolved,
+    this.onTimeRequestResolved,
     this.newSinceCount = 0,
   });
 
@@ -1485,17 +1488,19 @@ class AlertTile extends ConsumerWidget {
     final tokens = context.tokens;
     final theme = Theme.of(context);
     final isAppBlocked = alert.category == 'app_blocked';
+    final isTimeRequest = alert.requestedScreenTimeMinutes != null;
     final overview =
         isAppBlocked ? ref.watch(familyProvider).valueOrNull : null;
     final child =
         overview?.children.where((c) => c.id == alert.childId).firstOrNull;
-    final installed = isAppBlocked
+    final installed = isAppBlocked && !isTimeRequest
         ? alertInstalledAppsReport(
             ref.watch(installedAppsByDeviceProvider(alert.childId)).valueOrNull,
             alert.deviceId,
           )
         : null;
-    final identity = resolveAppAlertIdentity(alert, installed, fallbackName: l10n.unknownApp);
+    final identity = resolveAppAlertIdentity(alert, installed,
+        fallbackName: l10n.unknownApp);
 
     final String titleText;
     final contactName = alert.socialContactName;
@@ -1606,13 +1611,16 @@ class AlertTile extends ConsumerWidget {
                   ? AppAlertLeading(alert: alert, identity: identity)
                   : Icon(Icons.circle,
                       color: severityColor(alert.severity, context), size: 14),
-              title: Text(
-                titleText,
-                maxLines: alert.hasSocialCountSummary ? 3 : 2,
-                overflow: TextOverflow.ellipsis,
-              ),
+              title: isTimeRequest
+                  ? Text(titleText,
+                      softWrap: true, overflow: TextOverflow.visible)
+                  : Text(
+                      titleText,
+                      maxLines: alert.hasSocialCountSummary ? 3 : 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
               subtitle: subtitleContent,
-              trailing: onAck == null || isAccessRequestAlert(alert)
+              trailing: onAck == null || isParentDecisionAlert(alert)
                   ? null
                   : IconButton(
                       icon: const Icon(Icons.check),
@@ -1633,6 +1641,20 @@ class AlertTile extends ConsumerWidget {
                   alert: alert,
                   identity: identity,
                   onResolved: onRequestResolved,
+                ),
+              ),
+            if (timeRequestActionsEnabled && isTimeRequest)
+              Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                  AppSpace.lg,
+                  0,
+                  AppSpace.lg,
+                  AppSpace.lg,
+                ),
+                child: TimeRequestActions(
+                  key: ValueKey(alert.id),
+                  alert: alert,
+                  onResolved: onTimeRequestResolved,
                 ),
               ),
           ],

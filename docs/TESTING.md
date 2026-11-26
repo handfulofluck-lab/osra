@@ -20,6 +20,14 @@ these gates exist, see `docs/adr/0005-adversarial-acceptance-gate.md` and
 
 For the 12-app Social monitoring catalog (#1037), run `flutter test test/social_screen_test.dart test/setup_monitoring_test.dart`. The tests pin the shared Android package mapping, missing-key ON behavior, installed-first grouping, usable collapsed controls, onboarding preselection, Select all, and one-time banner persistence. To generate the UI/UX Bureau's 320 px / 200% EN and AR frames, set `OSRA_FRAME_DIR` to a scratch output directory and run the same command; `test/frame_capture.dart` writes `social-*.png` and `onboarding-*.png` only when that variable is set, so ordinary test runs have no filesystem side effects.
 
+For the P-20 daily-limit request, run `flutter test --dart-define=OSRA_UX_P20=true
+test/time_request_actions_test.dart test/time_request_frames_test.dart` from `apps/parent-app`.
+Run the same tests without the define to check the fallback. An opt-in `OSRA_FRAME_DIR`
+captures the card and detail at 390 px and 320 px with 200% text. The fixture checks title
+wrapping and 48 dp tap targets. For device evidence, send an Android daily-limit request
+in a paired test family, approve it once, and confirm the child receives the grant. A
+separate decline should close the request with no new bonus.
+
 Run the iOS launch classifier fixtures with
 `bash apps/child-ios/scripts/test-classify-launch-failure.sh`. A failure log that contains
 both an explicit target-app crash and a simulator launch error or runner stall is ambiguous

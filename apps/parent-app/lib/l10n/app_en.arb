@@ -1991,5 +1991,16 @@
   "accessRequestAllowLabel": "Allow {app}",
   "@accessRequestAllowLabel": { "placeholders": { "app": { "type": "String" } } },
   "accessRequestKeepBlockedLabel": "Keep {app} blocked",
-  "@accessRequestKeepBlockedLabel": { "placeholders": { "app": { "type": "String" } } }
+  "@accessRequestKeepBlockedLabel": { "placeholders": { "app": { "type": "String" } } },
+  "timeRequestTitle": "{child} asked for {minutes} more minutes today",
+  "@timeRequestTitle": { "placeholders": { "child": { "type": "String" }, "minutes": { "type": "String" } } },
+  "timeRequestGrant": "+{minutes} min",
+  "@timeRequestGrant": { "placeholders": { "minutes": { "type": "String" } } },
+  "timeRequestDecline": "Not today",
+  "timeRequestGrantedBy": "{actor} gave {minutes} more minutes",
+  "@timeRequestGrantedBy": { "placeholders": { "actor": { "type": "String" }, "minutes": { "type": "String" } } },
+  "timeRequestDeclinedBy": "{actor} declined this request",
+  "@timeRequestDeclinedBy": { "placeholders": { "actor": { "type": "String" } } },
+  "timeRequestDecidedAt": "Decided {time}",
+  "@timeRequestDecidedAt": { "placeholders": { "time": { "type": "String" } } }
 }

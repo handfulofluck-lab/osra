@@ -12,6 +12,9 @@ bool isAccessRequestAlert(Alert alert) {
   return alert.title == 'Access requested';
 }
 
+bool isParentDecisionAlert(Alert alert) =>
+    isAccessRequestAlert(alert) || alert.requestedScreenTimeMinutes != null;
+
 String appAlertPackageId(Alert alert) =>
     alert.metadata['packageId']?.toString().trim() ?? '';
 
@@ -77,8 +80,13 @@ String appAlertTitle({
   required String? childName,
   required AppAlertIdentity identity,
 }) {
-  final app = isolateAppAlertName(identity);
   final child = _childName(childName, l10n);
+  final minutes = alert.requestedScreenTimeMinutes;
+  if (minutes != null) {
+    return l10n.timeRequestTitle(
+        child, ltrIsolate(normalizeDigits('$minutes')));
+  }
+  final app = isolateAppAlertName(identity);
   return isAccessRequestAlert(alert)
       ? l10n.accessRequestTitle(child, app)
       : l10n.accessRequestBlockedTitle(app, child);
@@ -89,6 +97,8 @@ String appAlertBody({
   required AppLocalizations l10n,
   required String? childName,
 }) {
+  if (alert.requestedScreenTimeMinutes != null)
+    return l10n.extraScreenTimeToday;
   final child = _childName(childName, l10n);
   return isAccessRequestAlert(alert)
       ? l10n.accessRequestBody(child)
