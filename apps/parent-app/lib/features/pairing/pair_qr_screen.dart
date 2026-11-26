@@ -71,6 +71,10 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
   /// newer one; without this, a stale "approved" could overwrite a confirmed "paired" and bring the spent QR
   /// back (Codex, #1149 `7184806902`).
   int _claimRead = 0;
+  /// True while a claim read is in flight. The timer keeps ticking every two seconds, and a server slower than
+  /// that would otherwise have every answer superseded by the next tick — the screen would then never update at
+  /// all (Codex, #1149). One read at a time, so slow is slow rather than silent.
+  bool _claimReadInFlight = false;
   bool _deciding = false;
   bool _decisionFailed = false;
 
@@ -178,6 +182,8 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
       _claimTimer?.cancel();
       return;
     }
+    if (_claimReadInFlight) return;
+    _claimReadInFlight = true;
     final read = ++_claimRead;
     try {
       final res = await ref
@@ -199,6 +205,8 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
       }
     } catch (_) {
       // Missed tick.
+    } finally {
+      _claimReadInFlight = false;
     }
   }
 

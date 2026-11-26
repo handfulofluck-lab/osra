@@ -104,4 +104,30 @@ void main() {
     expect(find.byKey(const ValueKey('pairPairedTitle')), findsOneWidget);
     await unmount(tester);
   });
+
+  /// Codex, #1149 review: with a server slower than the two-second poll, every answer used to be superseded by the
+  /// next tick, so the screen never updated at all. Serialising the reads makes slow *slow*, not silent.
+  testWidgets('a server slower than the poll still updates the screen', (tester) async {
+    final slow = Completer<Object?>();
+    await pump(
+      tester,
+      clientReturning((call) => call == 1
+          ? FakeDeferred(slow.future) // three seconds, longer than the two-second tick
+          : {'status': 'paired', 'claimId': 'c-1', 'deviceName': "Sam's phone"}),
+    );
+
+    await nextClaimRead(tester); // tick 1 starts the slow read
+    await nextClaimRead(tester); // tick 2 fires while it is still in flight — must be skipped, not queued
+    expect(find.byKey(const ValueKey('pairPairedTitle')), findsNothing);
+
+    slow.complete({'status': 'pending', 'claimId': 'c-1', 'deviceName': "Sam's phone"});
+    await flushFakeHttp(tester);
+    // The slow answer applies rather than being discarded for being old.
+    expect(find.byKey(const ValueKey('pairClaimCard')), findsOneWidget,
+        reason: 'a slow answer must reach the screen, or the parent waits forever');
+
+    await nextClaimRead(tester); // next read answers paired
+    expect(find.byKey(const ValueKey('pairPairedTitle')), findsOneWidget);
+    await unmount(tester);
+  });
 }
