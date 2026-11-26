@@ -22,6 +22,11 @@ void main() {
   Future<void> pump(WidgetTester tester,
       {bool twoStepOn = true, Locale locale = const Locale('en')}) async {
     final family = familyMeTwoChildren();
+    // A21: the family clock, so the read-only time zone row has a real offset to show.
+    family['family'] = {
+      ...(family['family'] as Map<String, dynamic>),
+      'utcOffsetMinutes': 240,
+    };
     family['parent'] = {
       ...(family['parent'] as Map<String, dynamic>),
       'mfaEnabled': twoStepOn,
