@@ -76,6 +76,10 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
       _busy = true;
       _error = null;
     });
+    final String token;
+    final String? refreshToken;
+    // Only the request itself can fail the change. Once a token comes back the server has changed the
+    // password and ended the other sessions, so nothing after this block may say "wasn't changed".
     try {
       final res = await ref.read(apiClientProvider).raw.post('/v1/auth/password', data: {
         'currentPassword': _current.text,
@@ -83,12 +87,11 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
         if (mfa) 'code': _code.text.trim(),
       });
       final data = res.data is Map ? res.data as Map : const <String, dynamic>{};
-      final token = data['token'];
-      if (token is! String || token.isEmpty) throw const FormatException('password change missing token');
-      await ref.read(authProvider.notifier).adoptSession(token, data['refreshToken'] as String?);
-      if (!mounted) return;
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(l10n.cpDone)));
-      if (context.canPop()) context.pop();
+      final t = data['token'];
+      if (t is! String || t.isEmpty) throw const FormatException('password change missing token');
+      token = t;
+      final r = data['refreshToken'];
+      refreshToken = r is String ? r : null;
     } on DioException catch (e) {
       if (!mounted) return;
       logParentError(e);
@@ -96,6 +99,7 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
         _busy = false;
         _error = changePasswordError(l10n, e);
       });
+      return;
     } catch (e) {
       if (!mounted) return;
       logParentError(e);
@@ -103,6 +107,21 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
         _busy = false;
         _error = l10n.cpFailed;
       });
+      return;
+    }
+    try {
+      await ref.read(authProvider.notifier).adoptSession(token, refreshToken);
+    } catch (e) {
+      // The change stands; without the new pair this phone signs in again with the new password.
+      logParentError(e);
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(l10n.cpDone)));
+    final router = GoRouter.maybeOf(context);
+    if (router != null) {
+      if (router.canPop()) router.pop();
+    } else {
+      Navigator.maybeOf(context)?.maybePop();
     }
   }
 
