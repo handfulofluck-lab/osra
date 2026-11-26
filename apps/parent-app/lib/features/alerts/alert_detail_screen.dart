@@ -49,25 +49,59 @@ String formatGeneralAlertBody(
         (isEnglish ? alert.body : '');
   }
   final rawParams = alert.metadata['bodyParams'];
-  final params = rawParams is Map ? Map<String, dynamic>.from(rawParams) : <String, dynamic>{};
-  String param(String name) => params[name]?.toString() ?? '';
-  String fallback() => isEnglish ? alert.body : '';
-  switch (alert.metadata['bodyKey']) {
+  final params = rawParams is Map
+      ? Map<String, dynamic>.from(rawParams)
+      : <String, dynamic>{};
+  final bodyKey = alert.metadata['bodyKey'];
+  String stringParam(String name) {
+    final value = params[name];
+    return value is String ? value : '';
+  }
+
+  String fallback() => isEnglish ||
+          (bodyKey != 'alertBodySetupCompleted' &&
+              bodyKey != 'alertBodySetupIncomplete' &&
+              bodyKey != 'alertBodyDataCleared')
+      ? alert.body
+      : '';
+  switch (bodyKey) {
     case 'alertBodySetupCompleted':
-      final childName = param('childName');
-      if (childName.isNotEmpty) return l10n.alertBodySetupCompleted(firstStrongIsolate(childName));
+      final childName = stringParam('childName');
+      if (childName.isNotEmpty)
+        return l10n.alertBodySetupCompleted(firstStrongIsolate(childName));
     case 'alertBodySetupIncomplete':
-      final childName = param('childName');
-      final count = params['count'] is num ? params['count'] as num : num.tryParse(param('count'));
-      if (childName.isNotEmpty && count != null) {
-        final rawMissing = alert.metadata['missing'];
-        final steps = rawMissing is List
-            ? rawMissing.map((grant) => PhoneSetupSection.grantLabel(l10n, grant.toString())).join(l10n.listSeparator)
-            : (isEnglish ? param('steps') : '');
-        return l10n.alertBodySetupIncomplete(firstStrongIsolate(childName), count.toInt(), steps.isEmpty ? '' : ': $steps');
+      final childName = stringParam('childName');
+      if (childName.isEmpty) break;
+      final isolatedName = firstStrongIsolate(childName);
+      final rawCount = params['count'];
+      final count = rawCount is num &&
+              rawCount.isFinite &&
+              rawCount > 0 &&
+              rawCount == rawCount.roundToDouble()
+          ? rawCount.toInt()
+          : null;
+      if (count == null)
+        return l10n.alertBodySetupIncompleteGeneric(isolatedName);
+      final rawMissing = alert.metadata['missing'];
+      late final String steps;
+      if (rawMissing is List) {
+        if (rawMissing.isEmpty ||
+            rawMissing.any((grant) => grant is! String || grant.isEmpty)) {
+          return l10n.alertBodySetupIncompleteGeneric(isolatedName);
+        }
+        steps = rawMissing
+            .map((grant) => PhoneSetupSection.grantLabel(l10n, grant as String))
+            .join(l10n.listSeparator);
+      } else {
+        final rawSteps = params['steps'];
+        if (!isEnglish || rawSteps is! String || rawSteps.isEmpty) {
+          return l10n.alertBodySetupIncompleteGeneric(isolatedName);
+        }
+        steps = rawSteps;
       }
+      return l10n.alertBodySetupIncomplete(isolatedName, count, ': $steps');
     case 'alertBodyDataCleared':
-      final model = param('model');
+      final model = stringParam('model');
       if (model.isNotEmpty) return l10n.alertBodyDataCleared(ltrIsolate(model));
   }
   return fallback();

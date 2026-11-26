@@ -1110,7 +1110,8 @@ export async function deviceRoutes(app: FastifyInstance) {
       },
     });
     // ADR-0047: only this authenticated telemetry report may complete setup. Pair-claim and stored
-    // reports are deliberately excluded; a failed protected-alert write rolls the transition back.
+    // reports are deliberately excluded; a failed protected-alert write rolls back this attempt, and
+    // a failed rollback is recovered by retrying the deduped alert on a later all-ready report.
     if (capabilitiesOk && capabilitiesParsed) {
       await completeDeviceSetupIfReady(device as unknown as SetupTransitionDevice, capabilitiesParsed, now)
         .catch((err) => req.log.warn({ err, deviceId: id }, "device setup completion failed (telemetry)"));

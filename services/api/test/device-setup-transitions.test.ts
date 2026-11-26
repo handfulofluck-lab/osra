@@ -62,6 +62,7 @@ describe("setup completion and timeout transitions (#1127)", () => {
         metadata: expect.objectContaining({ type: "setup_complete", bodyKey: "alertBodySetupCompleted" }),
       }),
     });
+    prismaMock.alert.findFirst.mockResolvedValue({ id: "existing-complete", attemptCount: 1 });
     expect(await completeDeviceSetupIfReady(device({ setupCompletedAt: START }), COMPLETE, START)).toBe(false);
     expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
   });
@@ -77,6 +78,24 @@ describe("setup completion and timeout transitions (#1127)", () => {
     prismaMock.device.updateMany.mockResolvedValue({ count: 1 });
     prismaMock.alert.create.mockRejectedValue(new Error("synthetic alert write failure"));
     await expect(completeDeviceSetupIfReady(device(), COMPLETE, START)).rejects.toThrow("synthetic alert write failure");
+    expect(prismaMock.device.updateMany).toHaveBeenLastCalledWith({
+      where: { id: "dev-1", setupCompletedAt: START },
+      data: { setupCompletedAt: null },
+    });
+  });
+
+  it("retries the protected alert after both its first write and rollback fail", async () => {
+    prismaMock.device.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockRejectedValueOnce(new Error("synthetic rollback failure"));
+    prismaMock.alert.create
+      .mockRejectedValueOnce(new Error("synthetic alert write failure"))
+      .mockResolvedValueOnce({ id: "protected-alert" });
+    await expect(completeDeviceSetupIfReady(device(), COMPLETE, START)).rejects.toThrow("synthetic alert write failure");
+
+    expect(await completeDeviceSetupIfReady(device({ setupCompletedAt: START }), COMPLETE, START)).toBe(true);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(2);
+    expect(prismaMock.device.updateMany).toHaveBeenCalledTimes(2);
     expect(prismaMock.device.updateMany).toHaveBeenLastCalledWith({
       where: { id: "dev-1", setupCompletedAt: START },
       data: { setupCompletedAt: null },

@@ -3851,6 +3851,11 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String alertBodySetupIncompleteGeneric(String childName) {
+    return 'مرّت 30 دقيقة، وإعداد هاتف $childName ما زال غير مكتمل.';
+  }
+
+  @override
   String alertBodyDataCleared(String model) {
     return 'أُعيد تثبيت تطبيق أسرة للأطفال على $model، وكانت الحماية متوقفة إلى أن أُعيد الإقران.';
   }

@@ -65,8 +65,10 @@ class PhoneSetupSection extends StatelessWidget {
       // Every agent older than this report, and every phone before its first upload. "We do not know yet",
       // never "nothing works".
       return Padding(
-        padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, 0, AppSpace.lg, AppSpace.sm),
-        child: Text(l10n.phoneSetupNeverReported, style: Theme.of(context).textTheme.bodySmall),
+        padding: const EdgeInsetsDirectional.fromSTEB(
+            AppSpace.lg, 0, AppSpace.lg, AppSpace.sm),
+        child: Text(l10n.phoneSetupNeverReported,
+            style: Theme.of(context).textTheme.bodySmall),
       );
     }
 
@@ -78,14 +80,18 @@ class PhoneSetupSection extends StatelessWidget {
 
     return Padding(
       key: const ValueKey('phoneSetupSection'),
-      padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, 0, AppSpace.lg, AppSpace.sm),
+      padding: const EdgeInsetsDirectional.fromSTEB(
+          AppSpace.lg, 0, AppSpace.lg, AppSpace.sm),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(l10n.phoneSetupTitle, style: Theme.of(context).textTheme.titleSmall),
+          Text(l10n.phoneSetupTitle,
+              style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: AppSpace.xxs),
           Text(
-            setup.stale ? l10n.phoneSetupStale(age) : l10n.phoneSetupReported(age),
+            setup.stale
+                ? l10n.phoneSetupStale(age)
+                : l10n.phoneSetupReported(age),
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: AppSpace.xs),
@@ -95,23 +101,28 @@ class PhoneSetupSection extends StatelessWidget {
               context,
               Icons.check_circle_outline,
               context.tokens.ok,
-              device.setupCompletedAt == null ? l10n.phoneSetupNothingMissing : l10n.phoneSetupProtected,
+              device.tracksSetupCompletion && device.setupCompletedAt != null
+                  ? l10n.phoneSetupProtected
+                  : l10n.phoneSetupNothingMissing,
             )
           else ...[
             _line(
               context,
               Icons.priority_high,
               context.tokens.warn,
-              device.setupCompletedAt == null
+              device.tracksSetupCompletion && device.setupCompletedAt == null
                   ? (childName == null
                       ? l10n.phoneSetupStepsLeftThisPhone(setup.missing.length)
-                      : l10n.phoneSetupStepsLeft(firstStrongIsolate(childName!), setup.missing.length))
+                      : l10n.phoneSetupStepsLeft(
+                          firstStrongIsolate(childName!), setup.missing.length))
                   : l10n.phoneSetupFixList,
             ),
             for (final grant in setup.missing)
               Padding(
-                padding: const EdgeInsetsDirectional.only(start: AppSpace.lg, top: AppSpace.xxs),
-                child: Text('• ${grantLabel(l10n, grant)}', style: Theme.of(context).textTheme.bodySmall),
+                padding: const EdgeInsetsDirectional.only(
+                    start: AppSpace.lg, top: AppSpace.xxs),
+                child: Text('• ${grantLabel(l10n, grant)}',
+                    style: Theme.of(context).textTheme.bodySmall),
               ),
           ],
           if (features.isNotEmpty) ...[
@@ -119,30 +130,37 @@ class PhoneSetupSection extends StatelessWidget {
             Wrap(
               spacing: AppSpace.xs,
               runSpacing: AppSpace.xxs,
-              children: [for (final f in features) _featureChip(context, l10n, f, setup.features[f]!)],
+              children: [
+                for (final f in features)
+                  _featureChip(context, l10n, f, setup.features[f]!)
+              ],
             ),
           ],
           // osra-security#6 item 2: another space is not a fault by itself, but it is where OSRA cannot see.
           for (final kind in _profileKinds(setup.profiles))
             Padding(
               padding: const EdgeInsetsDirectional.only(top: AppSpace.xxs),
-              child: _line(context, Icons.layers_outlined, context.tokens.warn, _profileText(l10n, kind)),
+              child: _line(context, Icons.layers_outlined, context.tokens.warn,
+                  _profileText(l10n, kind)),
             ),
         ],
       ),
     );
   }
 
-  Widget _line(BuildContext context, IconData icon, Color color, String text) => Row(
+  Widget _line(BuildContext context, IconData icon, Color color, String text) =>
+      Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, size: 16, color: color),
           const SizedBox(width: AppSpace.xxs),
-          Expanded(child: Text(text, style: Theme.of(context).textTheme.bodySmall)),
+          Expanded(
+              child: Text(text, style: Theme.of(context).textTheme.bodySmall)),
         ],
       );
 
-  Widget _featureChip(BuildContext context, AppLocalizations l10n, String key, String state) {
+  Widget _featureChip(
+      BuildContext context, AppLocalizations l10n, String key, String state) {
     final (icon, color) = switch (state) {
       'ready' => (Icons.check_circle, context.tokens.ok),
       'degraded' => (Icons.error_outline, context.tokens.warn),
@@ -150,7 +168,8 @@ class PhoneSetupSection extends StatelessWidget {
       _ => (Icons.cancel_outlined, context.tokens.danger),
     };
     return Container(
-      padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.sm, AppSpace.xs, AppSpace.sm, AppSpace.xs),
+      padding: const EdgeInsetsDirectional.fromSTEB(
+          AppSpace.sm, AppSpace.xs, AppSpace.sm, AppSpace.xs),
       decoration: BoxDecoration(
         color: context.tokens.surfaceContainer,
         borderRadius: BorderRadius.circular(AppRadius.sm),
@@ -165,7 +184,8 @@ class PhoneSetupSection extends StatelessWidget {
           Flexible(
             child: Text(
               '${_featureLabel(l10n, key)} · ${_stateLabel(l10n, state)}',
-              style: Theme.of(context).textTheme.labelLarge ?? Theme.of(context).textTheme.bodySmall,
+              style: Theme.of(context).textTheme.labelLarge ??
+                  Theme.of(context).textTheme.bodySmall,
               softWrap: true,
             ),
           ),

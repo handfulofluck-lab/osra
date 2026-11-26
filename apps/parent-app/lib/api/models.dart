@@ -195,6 +195,9 @@ class Device {
   /// ADR-0047: when the server authenticated completion of required setup grants.
   final DateTime? setupCompletedAt;
 
+  /// Whether the server sent [setupCompletedAt], distinguishing an explicit null from a legacy response.
+  final bool hasSetupCompletedAtField;
+
   const Device({
     required this.id,
     required this.childId,
@@ -207,6 +210,7 @@ class Device {
     this.pushToken,
     this.setup,
     this.setupCompletedAt,
+    this.hasSetupCompletedAtField = false,
   });
 
   factory Device.fromJson(Map<String, dynamic> json) => Device(
@@ -220,6 +224,7 @@ class Device {
         lastSeen: DateTime.tryParse(_str(json['lastSeen'])),
         pushToken: _strOrNull(json['pushToken']),
         setupCompletedAt: DateTime.tryParse(_str(json['setupCompletedAt'])),
+        hasSetupCompletedAtField: json.containsKey('setupCompletedAt'),
         setup: json['setup'] is Map
             ? DeviceSetup.fromJson(
                 Map<String, dynamic>.from(json['setup'] as Map))
@@ -233,6 +238,10 @@ class Device {
   /// `services/api/src/jobs/deviceSilence.ts` owns the flip to `offline`, and an agent call or an upload
   /// owns the flip back; [lastSeen] is shown beside the word as an age, not re-read as a verdict.
   bool get isOnline => status == 'online';
+
+  /// ADR-0047 first-setup state exists only for Android responses carrying the new server field.
+  bool get tracksSetupCompletion =>
+      platform.toLowerCase() == 'android' && hasSetupCompletedAtField;
 
   /// Whether the server has a capability report for this phone (ADR-0034 decision 3).
   ///

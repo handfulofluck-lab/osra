@@ -3616,6 +3616,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String alertBodySetupIncompleteGeneric(String childName) {
+    return '$childName\'s phone setup is still incomplete after 30 minutes.';
+  }
+
+  @override
   String alertBodyDataCleared(String model) {
     return 'OSRA was reinstalled on $model. Its protection was off until it was paired again.';
   }

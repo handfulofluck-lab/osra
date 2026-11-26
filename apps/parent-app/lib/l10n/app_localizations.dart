@@ -5871,6 +5871,12 @@ abstract class AppLocalizations {
   /// **'{childName}\'s phone still has {count, plural, =1{1 setup step} other{{count} setup steps}} left after 30 minutes{steps}.'**
   String alertBodySetupIncomplete(String childName, int count, String steps);
 
+  /// No description provided for @alertBodySetupIncompleteGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'{childName}\'s phone setup is still incomplete after 30 minutes.'**
+  String alertBodySetupIncompleteGeneric(String childName);
+
   /// No description provided for @alertBodyDataCleared.
   ///
   /// In en, this message translates to:

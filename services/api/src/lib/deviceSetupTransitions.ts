@@ -21,14 +21,18 @@ export async function completeDeviceSetupIfReady(
   capabilities: unknown,
   now: Date,
 ): Promise<boolean> {
-  if (!device.pairedAt || device.setupCompletedAt || requiredMissingGrants(capabilities)?.length !== 0) return false;
-  const claimed = await prisma.device.updateMany({
-    where: { id: device.id, setupCompletedAt: null },
-    data: { setupCompletedAt: now },
-  });
-  if ((claimed?.count ?? 0) === 0) return false;
+  if (!device.pairedAt || requiredMissingGrants(capabilities)?.length !== 0) return false;
+  let claimedCompletion = false;
+  if (!device.setupCompletedAt) {
+    const claimed = await prisma.device.updateMany({
+      where: { id: device.id, setupCompletedAt: null },
+      data: { setupCompletedAt: now },
+    });
+    if ((claimed?.count ?? 0) === 0) return false;
+    claimedCompletion = true;
+  }
   try {
-    await raiseAlertOnce({
+    const { deduplicated } = await raiseAlertOnce({
       childId: device.childId,
       familyId: device.child.familyId,
       deviceId: device.id,
@@ -42,14 +46,16 @@ export async function completeDeviceSetupIfReady(
       dedupeKey: completionDedupeKey(device.id, device.pairedAt),
       childName: device.child.displayName,
     });
-    return true;
+    return !deduplicated;
   } catch (err) {
-    // Do not strand a completed flag without its one protected alert. A later authenticated report
-    // may claim the same episode again; the dedupe key covers a failure after the row was inserted.
-    await prisma.device.updateMany({
-      where: { id: device.id, setupCompletedAt: now },
-      data: { setupCompletedAt: null },
-    }).catch(() => undefined);
+    // Only this attempt's claim may be rolled back. If that rollback also fails, the next all-ready
+    // authenticated report retries the same deduped alert instead of exiting on the completed flag.
+    if (claimedCompletion) {
+      await prisma.device.updateMany({
+        where: { id: device.id, setupCompletedAt: now },
+        data: { setupCompletedAt: null },
+      }).catch(() => undefined);
+    }
     throw err;
   }
 }
