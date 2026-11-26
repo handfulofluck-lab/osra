@@ -110,3 +110,42 @@ export function readProviderModelSnapshot(data: unknown, receipt: ProviderReceip
 export function flaggedProviders(receipts: ProviderReceipts): ProviderReceipts {
   return Object.fromEntries(Object.entries(receipts).filter(([, receipt]) => receipt.status === "scored" && receipt.flagged));
 }
+
+/** What the own model said about one scan, flagged or not, with no text (Ahmed's 26 Nov WhatsApp test). */
+export type OwnScanScoreReceipt = {
+  modelVersion: string | null;
+  lang: string | null;
+  topCategory: string | null;
+  topScore: number | null;
+  cutoff: number | null;
+};
+
+/**
+ * The flagged-only receipt keeps scores for flagged categories alone, so a scan that stayed quiet left no
+ * way to tell a cut-off miss from text that never reached the model. This reads the raw own-model outcome:
+ * the highest of the seven harm scores, the language and the cut-off. Never the text.
+ */
+export function readOwnScanScoreReceipt(data: unknown): OwnScanScoreReceipt | undefined {
+  if (!record(data) || !record(data.outcomes) || !record(data.outcomes.own)) return undefined;
+  const raw = data.outcomes.own;
+  if (raw.status !== "scored") return undefined;
+  let topCategory: string | null = null;
+  let topScore: number | null = null;
+  if (record(raw.categories)) {
+    for (const label of harmful) {
+      const score = raw.categories[label];
+      if (typeof score === "number" && Number.isFinite(score) && score >= 0 && score <= 1 &&
+          (topScore === null || score > topScore)) {
+        topCategory = label;
+        topScore = score;
+      }
+    }
+  }
+  return {
+    modelVersion: typeof raw.model === "string" && ownModels.has(raw.model) ? raw.model : null,
+    lang: typeof raw.language === "string" && languages.has(raw.language) ? raw.language : null,
+    topCategory,
+    topScore: topScore === null ? null : Math.round(topScore * 10_000) / 10_000,
+    cutoff: typeof raw.cutoff === "number" && Number.isFinite(raw.cutoff) ? raw.cutoff : null,
+  };
+}

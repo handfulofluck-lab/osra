@@ -1,0 +1,1 @@
+- Staging: each scan's `staging QA scan resolved` log line now carries the own model's language, top harm score, cut-off and the scored text's length. It never carries the text. This lets a quiet scan show whether the cut-off or the capture missed (Ahmed's 26 Nov WhatsApp test).

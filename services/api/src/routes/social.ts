@@ -8,7 +8,7 @@ import { checkActiveConsent } from "../lib/consent.js";
 import { requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
 import { decryptSnippet, encryptSnippet } from "../lib/snippetVault.js";
 import { isValidTimeZone } from "../lib/digestSchedule.js";
-import { failedProviders, flaggedProviders, readProviderAnalysis, readProviderModelSnapshot, type ProviderReceipts } from "../lib/stagingProviderOutcomes.js";
+import { failedProviders, flaggedProviders, readProviderAnalysis, readOwnScanScoreReceipt, readProviderModelSnapshot, type OwnScanScoreReceipt, type ProviderReceipts } from "../lib/stagingProviderOutcomes.js";
 import { reserveStagingAiCall } from "../lib/stagingAiQuota.js";
 import { STAGING_QA_MODEL, STAGING_QA_REGION, stagingAiAllChildrenEnabled, stagingQaDeadline, stagingQaModel, stagingQaModelEnabled, type StagingQaModel } from "../lib/stagingQaModel.js";
 
@@ -55,7 +55,7 @@ type FlagTimeSnapshot = {
   cutoff: number | null;
   path: "own" | "hybrid_second_look" | "rules" | null;
 };
-type ScanAnalysis = { verdict: Verdict | null; attempted: boolean; providers?: ProviderReceipts; model?: FlagTimeSnapshot };
+type ScanAnalysis = { verdict: Verdict | null; attempted: boolean; providers?: ProviderReceipts; model?: FlagTimeSnapshot; ownScore?: OwnScanScoreReceipt };
 
 // NOTE: fail-open — when the AI engine is unreachable the scan falls back to a local
 // keyword/regex check so obvious self-harm language is never silently dropped.
@@ -199,7 +199,10 @@ async function analyzeStagingFixture(text: string, qa: StagingQaModel, batchDead
     if (providerMode) {
       if (qa.allChildren && scored?.region !== "eu-north-1") return failure(true, "unavailable");
       const analysis = readProviderAnalysis(scored, providerMode, qa.traceId);
-      return { ...analysis, attempted: true, model: readProviderModelSnapshot(scored, analysis.providers.own) };
+      return {
+        ...analysis, attempted: true, model: readProviderModelSnapshot(scored, analysis.providers.own),
+        ownScore: readOwnScanScoreReceipt(scored),
+      };
     }
     if (scored?.trace_id !== qa.traceId || scored.model !== STAGING_QA_MODEL || scored.region !== STAGING_QA_REGION) {
       return failure(true, "unavailable");
@@ -348,6 +351,11 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
     fallback: ai.verdict === null,
     modelFlagged: ai.verdict?.flagged ?? null,
     rulesFlagged: local.flagged,
+    // Ahmed's 26 Nov test: language, top score and cut-off for every scan, and the length of what was
+    // scored, so a quiet scan says whether the cut-off or the capture missed. Never the text.
+    childId,
+    textChars: text.length,
+    ...(ai.ownScore ? { own: ai.ownScore } : {}),
   };
   const receipt = ai.providers && qa ? { childId, traceId: qa.traceId, providers: ai.providers } : undefined;
   if (!verdict.flagged) {
