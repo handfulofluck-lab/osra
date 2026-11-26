@@ -1134,7 +1134,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get youtubeRestrictedDesc =>
-      'Filters out potentially mature content on YouTube across child devices.';
+      'Hides most mature videos. YouTube\'s own filter misses some, so to be sure, block YouTube or set a time limit in Apps.';
 
   @override
   String get strict => 'Strict';

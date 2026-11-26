@@ -15,11 +15,12 @@ import '../../providers/family_provider.dart';
 import 'rules_behind_banner.dart';
 import 'app_display.dart';
 import 'app_picker.dart';
+import 'web_filter_p12_screen.dart' show WebFilterP12Screen, p12WebFilterEnabledProvider;
 import '../../theme/app_tokens.dart';
 import '../../widgets/error_retry_view.dart';
 import '../../widgets/layout_helpers.dart';
 
-const _kCategories = ['pornography', 'gambling', 'violence', 'drugs', 'social_media', 'chat']; // legacy extras; the recommended 13 live in kRecommendedCategories (models.dart)
+const kLegacyWebCategories = ['pornography', 'gambling', 'violence', 'drugs', 'social_media', 'chat']; // legacy extras; the recommended 13 live in kRecommendedCategories (models.dart)
 
 /// Parses "HH:mm" into a [TimeOfDay]; falls back to [fallback].
 TimeOfDay parseTime(String value, TimeOfDay fallback) {
@@ -59,6 +60,9 @@ class RulesEditorScreen extends ConsumerStatefulWidget {
   final String childId;
   final int initialTab;
   const RulesEditorScreen({super.key, required this.childId, this.initialTab = 0});
+
+  /// Tab index of the Web filter tab, where P-12 dispatches when its switch is on.
+  static const int webFilterTab = 1;
 
   @override
   ConsumerState<RulesEditorScreen> createState() => _RulesEditorScreenState();
@@ -299,6 +303,9 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
   }
 
   Widget _editorBody(AppLocalizations l10n) {
+    if (widget.initialTab == RulesEditorScreen.webFilterTab && ref.watch(p12WebFilterEnabledProvider)) {
+      return WebFilterP12Screen(childId: widget.childId);
+    }
     return DefaultTabController(
       length: 4,
       initialIndex: widget.initialTab.clamp(0, 3),
@@ -425,7 +432,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
         setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: f(wf), appRules: _draft.appRules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
 
     // Recommended categories first, then any legacy extras still editable.
-    final categories = [...kRecommendedCategories, for (final c in _kCategories) if (!kRecommendedCategories.contains(c)) c];
+    final categories = [...kRecommendedCategories, for (final c in kLegacyWebCategories) if (!kRecommendedCategories.contains(c)) c];
 
     return ListView(
       key: const ValueKey('webFilterList'),

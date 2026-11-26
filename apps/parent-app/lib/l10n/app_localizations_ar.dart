@@ -1177,7 +1177,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get youtubeRestrictedDesc =>
-      'يزيل المحتوى غير المناسب المحتمل على يوتيوب عبر أجهزة الأطفال.';
+      'يُخفي معظم الفيديوهات غير المناسبة، لكن تصفية يوتيوب ليست دقيقة تمامًا. للتأكد، احظر يوتيوب أو اضبط له حدًا زمنيًا في «التطبيقات».';
 
   @override
   String get strict => 'صارم';

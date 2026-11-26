@@ -2051,7 +2051,7 @@ abstract class AppLocalizations {
   /// No description provided for @youtubeRestrictedDesc.
   ///
   /// In en, this message translates to:
-  /// **'Filters out potentially mature content on YouTube across child devices.'**
+  /// **'Hides most mature videos. YouTube\'s own filter misses some, so to be sure, block YouTube or set a time limit in Apps.'**
   String get youtubeRestrictedDesc;
 
   /// No description provided for @strict.

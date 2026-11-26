@@ -654,7 +654,7 @@
   "blockedDomainsLabel": "Blocked domains (comma-separated)",
   "enforceSafeSearch": "Enforce SafeSearch",
   "youtubeRestrictedMode": "YouTube Restricted Mode",
-  "youtubeRestrictedDesc": "Filters out potentially mature content on YouTube across child devices.",
+  "youtubeRestrictedDesc": "Hides most mature videos. YouTube's own filter misses some, so to be sure, block YouTube or set a time limit in Apps.",
   "strict": "Strict",
   "moderate": "Moderate",
   "off": "Off",
