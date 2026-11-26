@@ -222,7 +222,11 @@ void main() {
     childJson['rulesVersion'] = 8;
     await tester.tap(find.textContaining('Not on '));
     await tester.pumpAndSettle();
-    tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'WhatsApp')).onChanged!(false);
+    // P-17 (`#1179`): the row states the phone's word and opens the on/off choice, so there is no switch to
+    // reach into; the save path behind it is unchanged.
+    await tester.tap(find.byKey(const ValueKey('socialAppRow-whatsapp')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('socialAppOff-whatsapp')));
     await tester.pumpAndSettle();
     tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Save monitoring')).onPressed!();
     await tester.pumpAndSettle();
