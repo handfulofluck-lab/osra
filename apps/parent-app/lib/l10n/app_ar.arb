@@ -1176,5 +1176,9 @@
   "alertBodySetupIncompleteGeneric": "مرّت 30 دقيقة، وإعداد هاتف {childName} ما زال غير مكتمل.",
   "@alertBodySetupIncompleteGeneric": { "placeholders": { "childName": { "type": "String" } } },
   "alertBodyDataCleared": "أُعيد تثبيت تطبيق أسرة للأطفال على {model}، وكانت الحماية متوقفة إلى أن أُعيد الإقران.",
-  "@alertBodyDataCleared": { "placeholders": { "model": { "type": "String" } } }
+  "@alertBodyDataCleared": { "placeholders": { "model": { "type": "String" } } },
+  "p11Title": "وقت النوم والمدرسة",
+  "p11BedtimeEveryNight": "كل ليلة",
+  "p11ScheduleOff": "متوقف",
+  "p11CustomRoutines": "روتينات أخرى"
 }

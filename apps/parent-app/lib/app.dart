@@ -100,8 +100,16 @@ final List<RouteBase> appRoutes = [
       childId: s.pathParameters['id']!,
       initialTab: switch (s.uri.queryParameters['tab']) {
         'apps' => 2,
+        'routines' || 'bedtime' => 3,
         _ => 0,
       },
+    ),
+  ),
+  GoRoute(
+    path: '/child/:id/bedtime',
+    builder: (_, s) => RulesEditorScreen(
+      childId: s.pathParameters['id']!,
+      initialTab: 3,
     ),
   ),
   GoRoute(
