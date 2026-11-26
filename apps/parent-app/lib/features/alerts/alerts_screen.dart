@@ -1,4 +1,5 @@
-import 'dart:ui' as ui show TextDirection;
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
@@ -7,26 +8,118 @@ import 'package:url_launcher/url_launcher.dart' show launchUrl, LaunchMode;
 
 import '../../api/permission_errors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../core/date_formatting.dart';
+import '../../core/digits.dart';
+import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
-import '../rules/rules_behind_banner.dart';
 import '../../theme/app_tokens.dart';
 import '../children/child_detail_screen.dart' show AlertTile;
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
+import '../../widgets/error_retry_view.dart';
+import 'alert_detail_screen.dart';
 import 'sos_alert_actions.dart';
 import '../map/family_map_screen.dart'
     show FamilyMapScreen, MapFocus, mapIsAvailable;
 import '../../push/sos_fix_text.dart';
 
+/// U45: formats the alert detail dialog timestamp using the #889 time keys
+/// (`alertAtTime`, `alertYesterdayAtTime`, `alertOnDateAtTime`), 24-hour
+/// `HH:mm` without seconds, Western `0-9` digits, and LRI/PDI isolation.
+@visibleForTesting
+String formatAlertDetailTime(
+  DateTime createdAt, {
+  required AppLocalizations l10n,
+  required String localeName,
+  DateTime? now,
+}) {
+  final localTime = createdAt.toLocal();
+  final refLocal = (now ?? DateTime.now()).toLocal();
+  final localDay = DateTime.utc(localTime.year, localTime.month, localTime.day);
+  final today = DateTime.utc(refLocal.year, refLocal.month, refLocal.day);
+  final yesterday = DateTime.utc(refLocal.year, refLocal.month, refLocal.day - 1);
+
+  final clock = normalizeDigits(DateFormat('HH:mm', 'en').format(localTime));
+  final isolatedClock = ltrIsolate(clock);
+
+  if (localDay == today) {
+    return l10n.alertAtTime(isolatedClock);
+  }
+  if (localDay == yesterday) {
+    return l10n.alertYesterdayAtTime(isolatedClock);
+  }
+  final isArabic = localeName.toLowerCase().startsWith('ar');
+  final sameYear = localTime.year == refLocal.year;
+  final pattern =
+      isArabic ? (sameYear ? 'd MMMM' : 'd MMMM y') : (sameYear ? 'd MMM' : 'd MMM y');
+  final resolvedLocale =
+      DateFormat.localeExists(localeName) ? localeName : (isArabic ? 'ar' : 'en');
+  final dateLabel = normalizeDigits(
+    DateFormat(pattern, resolvedLocale).format(localTime),
+  );
+  return l10n.alertOnDateAtTime(dateLabel, isolatedClock);
+}
+
+/// #1029: Returns true when [incoming] is a stale aggregate snapshot of [existing]
+/// (e.g. an older periodic-refresh response arriving after a newer realtime update).
+bool _isStaleSocialAggregate(Alert existing, Alert incoming) {
+  if (!existing.isSocialAlert || !incoming.isSocialAlert) return false;
+  if (incoming.socialMessageCount < existing.socialMessageCount) return true;
+  if (incoming.socialMessageCount == existing.socialMessageCount) {
+    final prevTs = existing.effectiveTimestamp;
+    final nextTs = incoming.effectiveTimestamp;
+    if (prevTs != null && nextTs != null && nextTs.isBefore(prevTs)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// #1029: Upserts [incoming] alerts into [existing] by `id` (never duplicating a card),
+/// reconciles social aggregate versions by freshness so out-of-order responses never roll
+/// a contact card backwards, and sorts descending by [Alert.effectiveTimestamp] so an alert
+/// updated in place during a throttle window moves to the top of the feed.
+@visibleForTesting
+List<Alert> mergeAlertsInPlace(List<Alert> existing, Iterable<Alert> incoming) {
+  final byId = <String, Alert>{
+    for (final a in existing) a.id: a,
+  };
+  for (final a in incoming) {
+    final prev = byId[a.id];
+    if (prev != null && _isStaleSocialAggregate(prev, a)) continue;
+    byId[a.id] = a;
+  }
+  final merged = byId.values.toList();
+  merged.sort((a, b) {
+    final ta = a.effectiveTimestamp;
+    final tb = b.effectiveTimestamp;
+    if (ta == null && tb == null) return 0;
+    if (ta == null) return 1;
+    if (tb == null) return -1;
+    return tb.compareTo(ta);
+  });
+  return merged;
+}
+
 /// Alerts feed: grouped by day, severity-colored, swipe-to-acknowledge with
 /// optimistic removal, detail dialog per category, and paged "load more".
 class AlertsScreen extends ConsumerStatefulWidget {
-  const AlertsScreen({super.key});
+  const AlertsScreen({
+    super.key,
+    @visibleForTesting this.nowProvider,
+    @visibleForTesting this.liveRefreshInterval = const Duration(seconds: 30),
+  });
+
+  final DateTime Function()? nowProvider;
+  /// #1029: bounded live refresh interval while the feed is open so running counts
+  /// update in place without requiring a pull-to-refresh gesture.
+  final Duration liveRefreshInterval;
 
   @override
   ConsumerState<AlertsScreen> createState() => _AlertsScreenState();
@@ -37,6 +130,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   int _page = 0;
   bool _hasMore = true;
   bool _loading = false;
+  bool _liveRefreshing = false;
+  Timer? _liveRefreshTimer;
   String? _error;
 
   /// A read this guardian's invite does not cover (ADR-0014 amendment, decision 7). Kept apart
@@ -47,6 +142,45 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   void initState() {
     super.initState();
     _loadMore();
+    if (widget.liveRefreshInterval > Duration.zero) {
+      _liveRefreshTimer = Timer.periodic(
+        widget.liveRefreshInterval,
+        (_) => _refreshLivePage(),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _liveRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  /// #1029: silent bounded page-1 refresh so an open feed updates running counts,
+  /// moves updated cards to the top, and shows "+N new" without a manual gesture.
+  Future<void> _refreshLivePage() async {
+    if (!mounted || _loading || _liveRefreshing || _refused != null) return;
+    _liveRefreshing = true;
+    try {
+      final res = await ref
+          .read(apiClientProvider)
+          .raw
+          .get('/v1/alerts', queryParameters: {'page': 1, 'limit': 20});
+      if (!mounted) return;
+      final pageData = AlertsPage.fromJson(res.data);
+      setState(() {
+        final merged = mergeAlertsInPlace(_items, pageData.items);
+        _items
+          ..clear()
+          ..addAll(merged);
+        if (_page == 0) _page = 1;
+        _hasMore = pageData.items.isNotEmpty && _items.length < pageData.total;
+      });
+    } on DioException {
+      // Transient background refresh failure keeps the visible feed intact.
+    } finally {
+      _liveRefreshing = false;
+    }
   }
 
   Future<void> _loadMore() async {
@@ -62,22 +196,32 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
           .raw
           .get('/v1/alerts', queryParameters: {'page': _page + 1, 'limit': 20});
       final pageData = AlertsPage.fromJson(res.data);
+      final isFirstPage = _page == 0;
       setState(() {
         _page++;
-        // De-dupe in case a live refresh raced us.
-        final known = _items.map((a) => a.id).toSet();
-        _items.addAll(pageData.items.where((a) => !known.contains(a.id)));
+        // #1029: upsert by id and sort by effectiveTimestamp desc so in-place
+        // updated social alerts refresh their count and move to the top without duplicating.
+        final merged = mergeAlertsInPlace(_items, pageData.items);
+        _items
+          ..clear()
+          ..addAll(merged);
         _hasMore = pageData.items.isNotEmpty && _items.length < pageData.total;
       });
+      if (isFirstPage) {
+        final summary = ref.read(unacknowledgedAlertsProvider).valueOrNull;
+        ref.read(alertsSeenProvider.notifier).markFeedViewed(
+              pageData.items,
+              unackedTotalSnapshot: summary?.total,
+              unackedItemsSnapshot: summary?.items,
+            );
+      }
     } on DioException catch (e) {
+      if (!mounted) return;
       final refused = ReadPermissionRequired.from(e);
       setState(() {
         _refused = refused;
-        // `e.message` is null for a rejected response that carried no message — the fake in the tests
-        // does exactly that — and a null `_error` renders the EMPTY state, so a 500 looked like "no
-        // alerts yet". Name the status instead of trusting the message to exist.
         _error = refused == null
-            ? (e.message ?? 'HTTP ${e.response?.statusCode ?? e.type.name}')
+            ? friendlyErrorText(context.l10n, e, () => context.l10n.alertsLoadFailed)
             : null;
       });
     } finally {
@@ -90,12 +234,17 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     setState(() => _items.removeAt(index));
     try {
       await ref.read(apiClientProvider).raw.post('/v1/alerts/${alert.id}/ack');
+      ref.read(alertsSeenProvider.notifier).markAcknowledged(alert.id);
+      ref.invalidate(unacknowledgedAlertsProvider);
       ref.invalidate(unacknowledgedCountProvider);
     } on DioException catch (e) {
       setState(() => _items.insert(index, alert));
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(context.l10n.acknowledgeFailed('${e.message}'))));
+        showErrorSnackBar(
+          context,
+          friendlyErrorText(context.l10n, e, () => context.l10n.acknowledgeFailed),
+          onRetry: () => _ack(alert, index),
+        );
       }
     }
   }
@@ -103,6 +252,27 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   /// Feature #8: an install_request alert offers Block (append a block
   /// appRule to the child's ruleset) and Allow (just dismiss) actions.
   void _showDetail(Alert alert) {
+    // #972: social/gaming chat alerts open the dedicated full-screen scrollable detail route
+    // so 200% text size, authorized Social activity action, and unavailable-preview states stay accessible.
+    if (isSocialAlertCategory(alert.category)) {
+      // #1029: opening the social alert clears any "+N new" badge until more messages arrive.
+      ref.read(alertsSeenProvider.notifier).markAlertOpened(alert);
+      final router = GoRouter.maybeOf(context);
+      if (router != null) {
+        router.push('/alerts/${Uri.encodeComponent(alert.id)}', extra: alert);
+      } else {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => AlertDetailScreen(
+              alertId: alert.id,
+              initialAlert: alert,
+              nowProvider: widget.nowProvider,
+            ),
+          ),
+        );
+      }
+      return;
+    }
     // Feature #16: conversation-coach card for AI/social alert categories.
     final coachCard = coachCardFor(alert.category, _concernTypesOf(alert));
     showDialog(
@@ -111,6 +281,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
         final l10n = dialogContext.l10n;
         return AlertDialog(
           scrollable: true,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           title: Row(
             children: [
               Icon(Icons.circle,
@@ -126,107 +297,102 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                       style: Theme.of(dialogContext).textTheme.titleMedium)),
             ],
           ),
-          content: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Issue #475 follow-up (Claude's ruling): the line is scoped to THIS alert's child, in the
-              // dialog a parent opens later to ask "did my last change land?". The feed itself is
-              // family-wide, so it carries no line; the Block path already refetches the family.
-              RulesBehindBanner(childId: alert.childId),
-              if (alert.body.isNotEmpty) Text(alert.body),
-              // #672: where, in words and in the Bureau's sentence, in the alert the parent opened
-              // deliberately — the lock screen carries neither. The coordinates are isolated (LRI/PDI)
-              // so they keep their order in Arabic; the accuracy clause only when the fix has one.
-              if (alert.category == 'sos' && alert.location != null) ...[
-                const SizedBox(height: AppSpace.sm),
-                Builder(builder: (_) {
-                  final fix = alert.location!;
-                  final text = SosFixText.of(alert, fix, DateTime.now());
-                  final accuracy = text.accuracyClause(l10n, fix);
-                  return Column(
-                    key: const ValueKey('alert-sos-location'),
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // #743 UI/UX: the place is a sentence a parent reads, so it takes the dialog's
-                      // default body style — the same weight as the alert's own body. Only the accuracy
-                      // is a detail, and it stays small and muted under it.
-                      Text(
-                        text.locationLine(l10n, fix.isolatedCoords),
-                        key: const ValueKey('alert-sos-location-line'),
-                      ),
-                      if (accuracy != null)
-                        Text(accuracy,
-                            style: Theme.of(dialogContext)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(
-                                  color: Theme.of(dialogContext).hintColor,
-                                )),
-                    ],
-                  );
-                }),
-              ],
-              // #444: the agent cannot end another app's VoIP call, so this alert must say the call
-              // kept going rather than let the parent assume the block ended it. Only for the call
-              // layout: a split-screen or PiP bypass already reads correctly from the body.
-              if (alert.category == 'tamper' &&
-                  alert.metadata['type']?.toString() == 'block_bypass' &&
-                  alert.metadata['layout']?.toString() == 'call') ...[
-                const SizedBox(height: AppSpace.sm),
-                Text(
-                  l10n.alertCallBypassNote,
-                  key: const ValueKey('alert-call-bypass-note'),
-                  style: Theme.of(dialogContext).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(dialogContext).colorScheme.error,
-                      ),
-                ),
-              ],
-              const SizedBox(height: AppSpace.sm),
-              Text(
-                  '${l10n.categoryLabel(l10n.alertCategory(alert.category))} · '
-                  '${l10n.severityLabel(l10n.severityName(alert.severity))}'),
-              if (alert.createdAt != null)
-                Text(l10n.timeLabel(DateFormat.yMMMd(dialogContext.localeName)
-                    .add_Hms()
-                    .format(alert.createdAt!.toLocal()))),
-              const Divider(),
-              CoachCardSection(card: coachCard),
-              // #743 UI/UX: no raw `key: value` row is shown to a parent by default, on any alert. On an
-              // SOS this PR would have put `lat: 25.2769`, a machine timestamp and the device id directly
-              // under the sentence, in English developer words on an Arabic screen and with the
-              // coordinates a second time at a different precision, in the middle of an emergency. The
-              // rows stay available, closed by default and last in the content, for the case that needs
-              // them (a support call). Values are drawn left to right in code, both languages, because a
-              // value can be an Arabic app name and would otherwise reorder its own parts.
-              if (alert.metadata.isNotEmpty) ...[
-                const Divider(),
-                ExpansionTile(
-                  key: const ValueKey('alert-technical-details'),
-                  tilePadding: EdgeInsets.zero,
-                  childrenPadding: EdgeInsets.zero,
-                  title: Text(
-                    l10n.alertTechnicalDetails,
-                    style: Theme.of(dialogContext)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: Theme.of(dialogContext).hintColor),
-                  ),
-                  children: [
-                    for (final entry in alert.metadata.entries)
-                      Padding(
-                        padding:
-                            const EdgeInsets.symmetric(vertical: AppSpace.xxs),
-                        child: Text(
-                          '${entry.key}: ${entry.value}',
-                          textDirection: ui.TextDirection.ltr,
-                          style: Theme.of(dialogContext).textTheme.bodySmall,
+          content: Consumer(
+            builder: (dialogContext, dialogRef, _) {
+              final childName = dialogRef
+                  .watch(familyProvider)
+                  .valueOrNull
+                  ?.children
+                  .where((c) => c.id == alert.childId)
+                  .firstOrNull
+                  ?.displayName;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // #1128: an alert is not a rule change, so no RulesBehindBanner belongs here.
+                  // #755 Arabic Bureau (6868533968): SOS already states the event in its localized title and
+                  // place lines, so never repeat the child agent's raw English sentence.
+                  // #889 Arabic Bureau (6997818132): an unkeyed restart row in Arabic renders no body at all
+                  // inside the app dialog (the title already states it), never raw English or the push prompt.
+                  Builder(builder: (_) {
+                    final localizedBody = formatGeneralAlertBody(
+                      alert,
+                      l10n: l10n,
+                      localeName: dialogContext.localeName,
+                      now: widget.nowProvider?.call(),
+                    );
+                    if (localizedBody.isEmpty) return const SizedBox.shrink();
+                    return Text(localizedBody);
+                  }),
+                  // #672: where, in words and in the Bureau's sentence, in the alert the parent opened
+                  // deliberately — the lock screen carries neither. The coordinates are isolated (LRI/PDI)
+                  // so they keep their order in Arabic; the accuracy clause only when the fix has one.
+                  if (alert.category == 'sos' && alert.location != null) ...[
+                    const SizedBox(height: AppSpace.sm),
+                    Builder(builder: (_) {
+                      final fix = alert.location!;
+                      final text = SosFixText.of(alert, fix, DateTime.now());
+                      final accuracy = text.accuracyClause(l10n, fix);
+                      return Column(
+                        key: const ValueKey('alert-sos-location'),
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // #743 UI/UX: the place is a sentence a parent reads, so it takes the dialog's
+                          // default body style — the same weight as the alert's own body. Only the accuracy
+                          // is a detail, and it stays small and muted under it.
+                          Text(
+                            text.locationLine(l10n, fix.isolatedCoords),
+                            key: const ValueKey('alert-sos-location-line'),
+                          ),
+                          if (accuracy != null)
+                            Text(accuracy,
+                                style: Theme.of(dialogContext)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color: Theme.of(dialogContext).hintColor,
+                                    )),
+                        ],
+                      );
+                    }),
+                  ],
+                  // #444: the agent cannot end another app's VoIP call, so this alert must say the call
+                  // kept going rather than let the parent assume the block ended it. Only for the call
+                  // layout: a split-screen or PiP bypass already reads correctly from the body.
+                  if (alert.category == 'tamper' &&
+                      alert.metadata['type']?.toString() == 'block_bypass' &&
+                      alert.metadata['layout']?.toString() == 'call') ...[
+                    const SizedBox(height: AppSpace.sm),
+                    Text(
+                      l10n.alertCallBypassNote,
+                      key: const ValueKey('alert-call-bypass-note'),
+                      style: Theme.of(dialogContext).textTheme.bodyMedium?.copyWith(
+                            color: Theme.of(dialogContext).colorScheme.error,
+                          ),
+                    ),
+                  ],
+                  const SizedBox(height: AppSpace.sm),
+                  if (childName != null && childName.isNotEmpty)
+                    Text(l10n.alertChildLabel(childName)),
+                  Text(l10n.categoryLabel(l10n.alertCategory(alert.category))),
+                  if (alert.createdAt != null)
+                    Text(
+                      l10n.alertDetailSent(
+                        formatAlertDetailTime(
+                          alert.createdAt!,
+                          l10n: l10n,
+                          localeName: dialogContext.localeName,
+                          now: widget.nowProvider?.call(),
                         ),
                       ),
-                  ],
-                ),
-              ],
-            ],
+                      key: const ValueKey('alert-detail-time'),
+                    ),
+                  const Divider(),
+                  CoachCardSection(card: coachCard, compact: true),
+                ],
+              );
+            },
           ),
           actions: [
             if (alert.category == 'install_request') ...[
@@ -348,8 +514,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
           .showSnackBar(SnackBar(content: Text(l10n.appBlockedSnack)));
     } catch (e) {
       if (dialogContext.mounted) {
-        ScaffoldMessenger.of(dialogContext)
-            .showSnackBar(SnackBar(content: Text(l10n.blockFailed('$e'))));
+        showErrorSnackBar(
+          dialogContext,
+          friendlyErrorText(l10n, e, () => l10n.blockFailed),
+        );
       }
     }
   }
@@ -357,13 +525,25 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    // Group by local day, most recent first.
+    final seen = ref.watch(alertsSeenProvider);
+    // #1029: when the realtime /v1/ws alert invalidation path reloads alertsProvider,
+    // merge the fresh page into the open feed immediately without requiring a gesture.
+    ref.listen<AsyncValue<AlertsPage>>(alertsProvider(const AlertFilter()), (prev, next) {
+      if (next is! AsyncData<AlertsPage> || !mounted || _items.isEmpty) return;
+      final page = next.value;
+      setState(() {
+        final merged = mergeAlertsInPlace(_items, page.items);
+        _items
+          ..clear()
+          ..addAll(merged);
+      });
+    });
+    // Group by local day using effectiveTimestamp (latestAt ?? updatedAt ?? createdAt), most recent first.
     final groups = <String, List<Alert>>{};
     final order = <String>[];
     for (final a in _items) {
-      final day = a.createdAt == null
-          ? 'Unknown'
-          : DateFormat('yyyy-MM-dd').format(a.createdAt!.toLocal());
+      final ts = a.effectiveTimestamp;
+      final day = ts == null ? 'Unknown' : dayKey(ts.toLocal());
       if (!groups.containsKey(day)) {
         groups[day] = [];
         order.add(day);
@@ -383,7 +563,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
               ),
             )
           : _error != null && _items.isEmpty
-              ? Center(child: Text(l10n.alertsLoadFailed('$_error')))
+              ? ErrorRetryView(message: _error!, onRetry: _loadMore)
               : RefreshIndicator(
                   onRefresh: () async {
                     setState(() {
@@ -436,6 +616,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                   onDismissed: (_) => _ack(alert, index),
                                   child: AlertTile(
                                       alert: alert,
+                                      newSinceCount: computeSocialNewSinceCount(alert, seen),
                                       onTap: () => _showDetail(alert)),
                                 );
                               }),
@@ -460,6 +641,6 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     if (key == 'Unknown') return context.l10n.unknown;
     final d = DateTime.tryParse(key);
     if (d == null) return key;
-    return DateFormat('EEEE, MMM d, yyyy', context.localeName).format(d);
+    return formatDayHeader(d, context.localeName);
   }
 }

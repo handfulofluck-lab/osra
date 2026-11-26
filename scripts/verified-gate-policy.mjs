@@ -7,7 +7,7 @@
  * then decides whether those signatures are ENOUGH for this PR:
  *
  *   - Author: read from the head branch prefix (kimi/ claude/ qa/ verify/ fable/ ahmed/ k31/ k31mac/ antigravity/
- *     hydrogen/). A branch with no known prefix is Kimi's ONLY when it carries a Kimi-authored commit (Kimi's
+ *     hydrogen/, neon/, codex/). A branch with no known prefix is Kimi's ONLY when it carries a Kimi-authored commit (Kimi's
  *     convention before 13 Nov) or is one of the five LEGACY_UNPREFIXED branches open on 14 Nov; otherwise the gate fails closed (Fable's note on #788: an `antigravity-fix/` or
  *     `gemini/` branch must not pass as Kimi's). Kimi-authored non-merge commits (commit email) add Kimi as a
  *     co-author whatever the prefix.
@@ -15,6 +15,8 @@
  *     moonshot = K31, K31-Mac; google-carbon = Antigravity (Gemini 4 Carbon); google-hydrogen = Hydrogen (Gemini 4
  *     Hydrogen). The maintainer ruled 2026-11-14 17:58Z that Carbon and Hydrogen are different models, so they may
  *     sign each other's work (allowed, not preferred: Team collaboration sync picks another family first).
+ *     Neon is a Gemini contributor and shares a review family with each of them (board #50, 7043472688
+ *     and 7049371235). Their existing cross-family pairing still applies to each other.
  *   - Risk tier: the higher of the `risk:R1/R2/R3` label and the tier computed from the changed paths. A label can
  *     raise the tier, never lower it.
  *       R1: one signer who is not an author.
@@ -52,9 +54,20 @@ export const FAMILY = {
   // Two Google models, two families (maintainer 2026-11-14 17:58Z): cross-signing allowed, not preferred.
   Antigravity: 'google-carbon',
   Hydrogen: 'google-hydrogen',
+  Neon: 'google-neon',
+  // OpenAI family (maintainer, 2026-11-17 16:19 UTC, #617): Codex joins with authority to sign.
+  Codex: 'openai',
 };
 // Antigravity (Gemini 4 Carbon) is a security key from 2026-11-14 18:01Z (maintainer's decision card, #617).
 export const SECURITY_KEYS = ['Ahmed', 'Fable', 'Antigravity'];
+
+const NEON_PEER_FAMILIES = new Set([FAMILY.Antigravity, FAMILY.Hydrogen]);
+
+function sameReviewFamily(first, second) {
+  return first === second ||
+    (first === FAMILY.Neon && NEON_PEER_FAMILIES.has(second)) ||
+    (second === FAMILY.Neon && NEON_PEER_FAMILIES.has(first));
+}
 
 const PREFIXES = [
   [/^(claude|qa|verify)\//, 'Claude'],
@@ -65,9 +78,11 @@ const PREFIXES = [
   [/^kimi\//, 'Kimi Code'],
   [/^antigravity\//, 'Antigravity'],
   [/^hydrogen\//, 'Hydrogen'],
+  [/^neon\//, 'Neon'],
+  [/^codex\//, 'Codex'],
 ];
 
-const PREFIX_LIST = 'kimi/ claude/ qa/ verify/ fable/ ahmed/ k31/ k31mac/ antigravity/ hydrogen/';
+const PREFIX_LIST = 'kimi/ claude/ qa/ verify/ fable/ ahmed/ k31/ k31mac/ antigravity/ hydrogen/ neon/ codex/';
 
 export function authorFromRef(ref) {
   const r = String(ref).toLowerCase();
@@ -164,6 +179,14 @@ const ARABIC_PATHS = [
   /\.ar\.[a-z]+$/,
   /^docs\/(store|customer)\//,
   /^services\/api\/src\/lib\/email\//,
+  // The server's own Arabic copy (#846, Arabic Bureau 6955960186): the consent text merged in #875 with a
+  // dead Arabic link and no Bureau line, because none of these files matched a path the gate watches. Each
+  // one holds Arabic a parent reads, so each one now asks for the `Arabic-Bureau:` line.
+  /^services\/api\/src\/lib\/consentCopy\.ts$/,
+  /^services\/api\/src\/lib\/htmlPage\.ts$/,
+  /^services\/api\/src\/routes\/linkPages\.ts$/,
+  /^services\/api\/src\/routes\/account\.ts$/,
+  /^services\/api\/src\/routes\/digests\.ts$/,
 ];
 
 const any = (files, res) => files.some((f) => res.some((re) => re.test(f)));
@@ -201,14 +224,16 @@ export function decide({ headRef = '', kimiCommits = 0, labels = [], files = [],
   const author = prefixAuthor ?? 'Kimi Code';
   const authors = new Set([author]);
   if (kimiCommits > 0) authors.add('Kimi Code');
-  const authorFamilies = new Set([...authors].map((a) => FAMILY[a]));
+  const authorFamilies = [...new Set([...authors].map((a) => FAMILY[a]))];
 
   const labelTier = Math.max(0, ...labels.map((l) => /^risk:R([123])$/.exec(l)).filter(Boolean).map((m) => Number(m[1])));
   const tier = Math.max(labelTier, pathTier(files));
 
   const signers = [...new Set(signatures.filter((s) => s.kind === 'verify').map((s) => s.name))].filter((n) => FAMILY[n]);
   const notAuthor = signers.filter((n) => !authors.has(n));
-  const crossFamily = notAuthor.filter((n) => !authorFamilies.has(FAMILY[n]));
+  const crossFamily = notAuthor.filter((name) =>
+    authorFamilies.every((family) => !sameReviewFamily(FAMILY[name], family)),
+  );
 
   let ok;
   if (tier === 1) {
@@ -216,7 +241,7 @@ export function decide({ headRef = '', kimiCommits = 0, labels = [], files = [],
     if (!ok) reasons.push('R1 needs one signature from a member who is not the author');
   } else if (tier === 2) {
     ok = crossFamily.length >= 1;
-    if (!ok) reasons.push(`R2 needs one signature from a model family other than the author's (${[...authorFamilies].join(', ')})`);
+    if (!ok) reasons.push(`R2 needs one signature from a model family other than the author's (${authorFamilies.join(', ')})`);
   } else {
     const keys = notAuthor.filter((n) => SECURITY_KEYS.includes(n));
     ok = keys.some((k) => crossFamily.some((c) => c !== k));
@@ -261,7 +286,7 @@ export function decide({ headRef = '', kimiCommits = 0, labels = [], files = [],
 }
 
 // The signer is the LAST line that starts with "— <Name>" (a footer such as "_Generated by …_" may follow it).
-const SIGNER_RE = /^\s*— (Antigravity|Hydrogen|Claude|Fable|Kimi Code|K31-Mac|K31|Ahmed)(?![\w-])/;
+const SIGNER_RE = /^\s*— (Antigravity|Hydrogen|Neon|Claude|Fable|Kimi Code|K31-Mac|K31|Ahmed|Codex)(?![\w-])/;
 const KEYWORD = {
   verify: /^\s*[*_]*Verified-sha:[*_]*\s*`?([0-9a-fA-F]{7,40})(?![0-9a-fA-F])/,
   uiux: /^\s*[*_]*UIUX-Bureau:[*_]*\s*reviewed\s*`?([0-9a-fA-F]{7,40})(?![0-9a-fA-F])/,
@@ -327,6 +352,11 @@ function selftest() {
     ['UI change with UI/UX line', { headRef: 'kimi/x', files: ['apps/parent-app/lib/features/home/home.dart'], signatures: [...v('Claude'), { kind: 'uiux' }] }, true],
     ['Arabic change with UI/UX line only', { headRef: 'kimi/x', files: ['apps/parent-app/lib/l10n/app_ar.arb'], signatures: [...v('Claude'), { kind: 'uiux' }] }, false],
     ['Arabic change with both lines', { headRef: 'kimi/x', files: ['apps/parent-app/lib/l10n/app_ar.arb'], signatures: [...v('Claude'), { kind: 'uiux' }, { kind: 'arabic' }] }, true],
+    // #846: the consent copy carries Arabic a parent accepts at sign-up, and it merged without a Bureau
+    // line because the gate watched no server copy file. These rows are what make that impossible again.
+    ['the consent copy needs the Arabic line', { headRef: 'kimi/x', files: ['services/api/src/lib/consentCopy.ts'], signatures: v('Claude', 'Fable') }, false],
+    ['the consent copy with the Arabic line', { headRef: 'kimi/x', files: ['services/api/src/lib/consentCopy.ts'], signatures: [...v('Claude', 'Fable'), { kind: 'arabic' }] }, true],
+    ['the mailed link pages need the Arabic line', { headRef: 'kimi/x', files: ['services/api/src/routes/linkPages.ts'], signatures: v('Claude', 'Fable') }, false],
     ['needs:arabic label forces the Arabic line', { headRef: 'kimi/x', labels: ['needs:arabic'], files: ['a/b.ts'], signatures: v('Claude') }, false],
     // Unknown prefix fails closed unless Kimi's own commit is on it (Fable's notes on #788).
     ['unknown prefix, no Kimi commit, signed by Antigravity', { headRef: 'gemini/x', files: ['a/b.ts'], signatures: v('Antigravity') }, false],
@@ -339,6 +369,14 @@ function selftest() {
     ['legacy Kimi branch (feat/) with a Kimi commit, signed by Kimi', { headRef: 'feat/x', kimiCommits: 2, files: ['a/b.ts'], signatures: v('Kimi Code') }, false],
     ['k31/ R2 signed by Hydrogen (Hydrogen is not Moonshot)', { headRef: 'k31/x', files: ['a/b.ts'], signatures: v('Hydrogen') }, true],
     ['k31mac/ R2 signed by Hydrogen', { headRef: 'k31mac/x', files: ['a/b.ts'], signatures: v('Hydrogen') }, true],
+    // Codex (OpenAI, maintainer 2026-11-17 16:19 UTC, #617): a third vendor, so he verifies K31 and the
+    // Anthropic seat verifies him. A branch with his prefix reads as his, and a self-signature never counts.
+    ['codex/ R2 signed by K31', { headRef: 'codex/x', files: ['a/b.ts'], signatures: v('K31') }, true],
+    ['codex/ R2 signed only by Codex', { headRef: 'codex/x', files: ['a/b.ts'], signatures: v('Codex') }, false],
+    ['K31 R2 signed by Codex (different family)', { headRef: 'k31/x', files: ['a/b.ts'], signatures: v('Codex') }, true],
+    ['R3 path, Codex + Ahmed on a K31 PR', { headRef: 'k31/x', files: ['infra/terraform/main.tf'], signatures: v('Codex', 'Ahmed') }, true],
+    // Codex is not a security key (maintainer, 2026-11-17): adding him to SECURITY_KEYS must fail this row.
+    ['Codex is not a security key: K31 R3 Codex + Hydrogen', { headRef: 'k31/x', files: ['infra/terraform/main.tf'], signatures: v('Codex', 'Hydrogen') }, false],
     ['unknown signer name ignored', { headRef: 'kimi/x', files: ['a/b.ts'], signatures: v('Mallory') }, false],
     // New members 2026-11-14 (#785, #786): prefixes, two Google families, Antigravity as a security key.
     ['antigravity/ prefix names Antigravity: self-signed', { headRef: 'antigravity/x', files: ['a/b.ts'], signatures: v('Antigravity') }, false],
@@ -346,6 +384,20 @@ function selftest() {
     ['antigravity/ is not Kimi: Kimi may sign it', { headRef: 'antigravity/x', files: ['a/b.ts'], signatures: v('Kimi Code') }, true],
     ['hydrogen/ prefix names Hydrogen: self-signed', { headRef: 'hydrogen/x', files: ['a/b.ts'], signatures: v('Hydrogen') }, false],
     ['hydrogen/ R2 signed by Antigravity (different families, allowed)', { headRef: 'hydrogen/x', files: ['a/b.ts'], signatures: v('Antigravity') }, true],
+    // Removing Neon from the registry, either direction of its same-family check, or Neon's lack of a
+    // security key must fail one of these cases. Carbon and Hydrogen retain their existing pairing.
+    ['neon/ R2 signed by Codex', { headRef: 'neon/x', files: ['a/b.ts'], signatures: v('Codex') }, true],
+    ['neon/ R2 cannot self-sign', { headRef: 'neon/x', files: ['a/b.ts'], signatures: v('Neon') }, false],
+    ['neon/ R2 signed by Antigravity (same family)', { headRef: 'neon/x', files: ['a/b.ts'], signatures: v('Antigravity') }, false],
+    ['neon/ R2 signed by Hydrogen (same family)', { headRef: 'neon/x', files: ['a/b.ts'], signatures: v('Hydrogen') }, false],
+    ['antigravity/ R2 signed by Neon (same family)', { headRef: 'antigravity/x', files: ['a/b.ts'], signatures: v('Neon') }, false],
+    ['hydrogen/ R2 signed by Neon (same family)', { headRef: 'hydrogen/x', files: ['a/b.ts'], signatures: v('Neon') }, false],
+    ['antigravity/ R2 signed by Hydrogen (existing allowance)', { headRef: 'antigravity/x', files: ['a/b.ts'], signatures: v('Hydrogen') }, true],
+    ['codex/ R2 signed by Neon', { headRef: 'codex/x', files: ['a/b.ts'], signatures: v('Neon') }, true],
+    ['neon/ R3 signed by Codex and Ahmed', { headRef: 'neon/x', files: ['infra/terraform/main.tf'], signatures: v('Codex', 'Ahmed') }, true],
+    ['neon/ R3 signed by Hydrogen and Ahmed (no separate cross-family verifier)', { headRef: 'neon/x', files: ['infra/terraform/main.tf'], signatures: v('Hydrogen', 'Ahmed') }, false],
+    ['Neon is not a security key: K31 R3 Codex + Neon', { headRef: 'k31/x', files: ['infra/terraform/main.tf'], signatures: v('Codex', 'Neon') }, false],
+    ['near-miss prefix neon-fix/ is unknown', { headRef: 'neon-fix/x', files: ['a/b.ts'], signatures: v('Codex') }, false],
     ['Claude R2 signed by Hydrogen', { headRef: 'claude/x', files: ['apps/child-android/app/src/main/java/A.kt'], signatures: v('Hydrogen') }, true],
     ['Kimi R3 signed by Antigravity alone (key is not also its own partner)', { headRef: 'kimi/x', files: ['services/api/src/auth/jwt.ts'], signatures: v('Antigravity') }, false],
     ['Kimi R3 signed by Antigravity + Hydrogen', { headRef: 'kimi/x', files: ['services/api/src/auth/jwt.ts'], signatures: v('Antigravity', 'Hydrogen') }, true],
@@ -515,6 +567,14 @@ function selftest() {
     'docs/legal/terms.ar.md',
     'docs/customer/faq.md',
     'services/api/src/lib/email/templates.ts',
+    // The five server files #904 added anchors for (#846). Each needs its own sample: without one, deleting
+    // its pattern removes two cases and the selftest only gets shorter, which a count cannot tell apart
+    // from a pass. With one, the case named after the file goes red — Hydrogen's and Ahmed's note on #904.
+    'services/api/src/lib/consentCopy.ts',
+    'services/api/src/lib/htmlPage.ts',
+    'services/api/src/routes/linkPages.ts',
+    'services/api/src/routes/account.ts',
+    'services/api/src/routes/digests.ts',
   ];
   const allButArabic = [...v('Claude', 'Fable'), { kind: 'uiux' }];
   for (const f of arabicPaths) {
@@ -541,6 +601,8 @@ function selftest() {
   const FOOT = '\n\n---\n_Generated by [Claude Code](https://claude.ai/code)_';
   const parseCases = [
     ['a real signature with the footer', `Checked.\n\nVerified-sha: ${H}\n— Claude (architecture + testing), team coordinator${FOOT}`, [`verify:Claude:${H}`]],
+    ['Neon signs by name', `Verified-sha: ${H}\n— Neon (development)`, [`verify:Neon:${H}`]],
+    ['a signer name with a Neon prefix is unknown', `Verified-sha: ${H}\n— Neon-Fake`, []],
     ['Hydrogen signs by name', `Verified-sha: ${H}\n— Hydrogen`, [`verify:Hydrogen:${H}`]],
     ['Antigravity signs by name', `Verified-sha: ${H}\n— Antigravity (security key)`, [`verify:Antigravity:${H}`]],
     ['Kimi signature', `Verified-sha: ${H.slice(0, 8)}\n— Kimi Code (development lead)`, [`verify:Kimi Code:${H.slice(0, 8)}`]],
@@ -560,6 +622,12 @@ function selftest() {
     ['UI/UX line signed by the coordinator is not the Bureau', `UIUX-Bureau: reviewed ${H}\n— Claude (architecture + testing), team coordinator`, []],
     ['Arabic line signed by the Bureau', `Arabic-Bureau: reviewed ${H}\n— Claude (Arabic Language Bureau)`, [`arabic:-:${H}`]],
     ['Arabic line signed by the coordinator is not the Bureau', `Arabic-Bureau: reviewed ${H}\n— Claude (architecture + testing), team coordinator`, []],
+    // Codex (OpenAI, #617): the signature has to parse by name, and the Bureau line too — a gate that
+    // recognised him in `cases` but not in `parseCases` would pass while his real comments counted for nothing.
+    ['Codex signs by name', `Verified-sha: ${H}
+— Codex (development + verification)`, [`verify:Codex:${H}`]],
+    ['Codex UI/UX Bureau line', `UIUX-Bureau: reviewed ${H}
+— Codex for the UI/UX Bureau`, [`uiux:-:${H}`]],
     ['a longer name is not a member (Claudette is not Claude)', `Verified-sha: ${H}\n— Claudette`, []],
     ['Arabic line inline in a request is not a review', `Bureau, please post \`Arabic-Bureau: reviewed ${H}\`.\n— Claude (Arabic Language Bureau)`, []],
     ['a longer hex run is not a sha', `Verified-sha: ${H}ff\n— K31`, []],

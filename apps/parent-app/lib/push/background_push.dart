@@ -2,11 +2,13 @@ import 'dart:ui' show DartPluginRegistrant, PlatformDispatcher, Locale;
 
 import 'package:dio/dio.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/models.dart';
+import '../core/date_formatting.dart';
 import '../l10n/l10n.dart';
 import '../providers/locale_provider.dart' show kAppLocaleKey;
 import '../providers/server_provider.dart' show effectiveServerUrl, kDefaultServerUrl, kServerUrlKey;
@@ -56,13 +58,41 @@ class AlertFetchFailed {
   const AlertFetchFailed(this.reason);
 }
 
+/// #1028: Coordinates in-flight notification claims across concurrent background
+/// and foreground wake handlers so two handlers overlapping at `readShown()`
+/// never present the same delivery twice, while releasing the claim on failure so
+/// a failed post can still retry.
+class AlertPresentationClaimer {
+  AlertPresentationClaimer();
+
+  /// Shared process-wide claimer used by default when neither handler injects one.
+  static final AlertPresentationClaimer shared = AlertPresentationClaimer();
+
+  final Set<String> _inFlight = <String>{};
+
+  /// Atomically claims [alertId] for presentation; returns false if another
+  /// handler already holds the claim.
+  bool tryClaim(String alertId) => _inFlight.add(alertId);
+
+  /// Releases a previously claimed [alertId] (called after persistence succeeds
+  /// or immediately when presentation fails so retries are not blocked).
+  void release(String alertId) => _inFlight.remove(alertId);
+
+  /// Releases every id in [alertIds].
+  void releaseAll(Iterable<String> alertIds) {
+    for (final id in alertIds) {
+      _inFlight.remove(id);
+    }
+  }
+}
+
 /// One background wake: read the session, read the alerts, show what is new.
 ///
 /// Plan (§5 of the #360 decision):
 /// 1. read `jwt` — no session, no fetch, no notification;
 /// 2. `GET /v1/alerts?ack=false` — 401 ends the wake, never refreshes;
 /// 3. [planNotifications] drops acked, duplicated and surplus rows;
-/// 4. post one notification per alert, then persist the ids.
+/// 4. post one notification per delivery, then persist the keys.
 ///
 /// Step 4 is after step 3 on purpose: a wake that shows nothing must not write,
 /// or a failed post would silence a real alert forever.
@@ -74,13 +104,17 @@ class BackgroundAlertWake {
     required this.readShown,
     required this.writeShown,
     required this.toVisible,
-  });
+    this.presentGroupedDeliveries = true,
+    AlertPresentationClaimer? claimer,
+  }) : claimer = claimer ?? AlertPresentationClaimer.shared;
 
   final Future<String?> Function() readJwt;
   final Future<Object> Function(String jwt) fetchAlerts;
   final LocalNotifier notifier;
   final Future<Set<String>> Function() readShown;
   final Future<void> Function(Set<String>) writeShown;
+  final AlertPresentationClaimer claimer;
+  final bool presentGroupedDeliveries;
 
   /// How an alert becomes a lock-screen row. A seam because the language comes
   /// from the parent's stored choice, resolved outside this class (#395 review).
@@ -115,26 +149,47 @@ class BackgroundAlertWake {
     }
 
     final shown = await readShown();
-    final plan = planNotifications(alerts: alerts, alreadyShown: shown);
+    final plan = planNotifications(
+      alerts: alerts,
+      alreadyShown: shown,
+      presentGroupedDeliveries: presentGroupedDeliveries,
+    );
     if (plan.isEmpty) return WakeOutcome.nothingNew;
 
+    final claimedToShow = <NotificationDelivery>[];
+    for (final delivery in plan.toShow) {
+      if (claimer.tryClaim(delivery.key)) {
+        claimedToShow.add(delivery);
+      }
+    }
+    if (claimedToShow.isEmpty) return WakeOutcome.nothingNew;
+
+    final claimedIds = claimedToShow.map((delivery) => delivery.key).toList(growable: false);
     try {
-      for (final alert in plan.toShow) {
-        await notifier.show(toVisible(alert));
+      for (final delivery in claimedToShow) {
+        await notifier.show(toVisible(delivery.alert).withDeliveryId(delivery.deliveryId));
       }
     } catch (_) {
-      // A post failed: write nothing, so the next wake shows these again. The
-      // stable notification id per alert means a row that did post is replaced,
-      // not stacked. Returning instead of throwing also matches [WakeOutcome]'s
-      // promise that no path throws, which is what a background isolate needs
-      // (#395 review F5).
+      // A post failed: release claims and write nothing, so the next wake
+      // retries these alerts cleanly (#395 review F5, #1028).
+      claimer.releaseAll(claimedIds);
       return WakeOutcome.failed;
     }
 
-    final merged = {...shown, ...plan.remember};
-    // Bounded so the store cannot grow without limit across months of wakes.
-    final bounded = merged.length <= maxRememberedIds ? merged : merged.skip(merged.length - maxRememberedIds).toSet();
-    await writeShown(bounded);
+    try {
+      // Re-read shown before merging so concurrent handlers never clobber
+      // each other's persisted ids.
+      final latestShown = await readShown();
+      final claimedSet = claimedToShow.map((delivery) => delivery.rememberKey).toSet();
+      final toShowSet = plan.toShow.map((delivery) => delivery.rememberKey).toSet();
+      final remember = plan.remember.where((id) => !toShowSet.contains(id) || claimedSet.contains(id));
+      final merged = {...latestShown, ...shown, ...remember};
+      // Bounded so the store cannot grow without limit across months of wakes.
+      final bounded = compactShownNotificationKeys(merged, limit: maxRememberedIds);
+      await writeShown(bounded);
+    } finally {
+      claimer.releaseAll(claimedIds);
+    }
     return WakeOutcome.shown;
   }
 
@@ -172,10 +227,15 @@ String? resolveBackgroundBaseUrl(String? persisted, {String builtIn = kDefaultSe
 /// stop arriving in production while working perfectly in debug.
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await configureDateFormatting();
   WidgetsFlutterBinding.ensureInitialized();
   // Before any plugin is touched: the background isolate starts with no plugin
   // registrations, so secure storage and shared preferences would both fail.
   DartPluginRegistrant.ensureInitialized();
+
+  // iOS already presents the native banner for a grouped push. The generic
+  // background callback is only needed for locally presented alerts.
+  if (defaultTargetPlatform == TargetPlatform.iOS && isNativeGroupedWakeData(message.data)) return;
 
   await (await buildWake()).run();
 }
@@ -184,7 +244,7 @@ const _shownKey = 'push.shownAlertIds';
 
 /// The real seams, in one place so [firebaseMessagingBackgroundHandler] stays a
 /// three-line entry point and a test can build the same object.
-Future<BackgroundAlertWake> buildWake() async {
+Future<BackgroundAlertWake> buildWake({bool? presentGroupedDeliveries}) async {
   const storage = FlutterSecureStorage();
   final prefs = await SharedPreferences.getInstance();
 
@@ -194,6 +254,7 @@ Future<BackgroundAlertWake> buildWake() async {
   final dio = base == null ? null : Dio(BaseOptions(baseUrl: base));
 
   return BackgroundAlertWake(
+    presentGroupedDeliveries: presentGroupedDeliveries ?? (defaultTargetPlatform != TargetPlatform.iOS),
     readJwt: () async {
       try {
         return await storage.read(key: 'jwt');
@@ -222,6 +283,11 @@ Future<BackgroundAlertWake> buildWake() async {
     notifier: FlutterLocalNotifier(),
     readShown: () async {
       final p = await SharedPreferences.getInstance();
+      // #1028: reload so the foreground isolate sees alert ids persisted by the
+      // background isolate (and vice versa), preventing duplicate notifications.
+      try {
+        await p.reload();
+      } catch (_) {}
       return (p.getStringList(_shownKey) ?? const []).toSet();
     },
     writeShown: (ids) async {

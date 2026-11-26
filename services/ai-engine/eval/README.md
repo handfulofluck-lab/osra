@@ -17,7 +17,14 @@ python -m eval.run_eval --split test    # score the held-out side of the templat
 python -m eval.run_eval --json out.json # same, machine-readable
 python -m eval.run_eval --write-md EVAL.md   # refresh the table inside EVAL.md
 python -m eval.run_eval --fail-under-recall 0.85 --fail-under-precision 0.6
+python -m eval.deepseek_rows --input rows.jsonl --output rows.scored.jsonl   # one line per row (#918)
 ```
+
+`eval.deepseek_rows` scores JSONL rows and writes the per-row log `{id, text, probs, refused,
+latency_ms, tokens_in, tokens_out}`, the shape a Bedrock run can be diffed against. Two things about it
+are deliberate: the **output file is the resume** (each line is flushed as it lands, and a re-run skips
+ids already there, so a killed run loses one row and the token counts stay real), and the **data rule
+is a filter in code** — a row labelled outside hate/bullying/violence/safe is counted and never sent.
 
 `--scorer model` uses whatever `MODEL_PATH` points at (DistilBERT when the checkpoint exists, the
 rules layer otherwise). `--scorer deepseek` is plan 4.1 and refuses to run without

@@ -2,6 +2,7 @@ import { prisma } from "../db.js";
 import { publishJson } from "../redis.js";
 import { enqueueDeviceCommand } from "./deviceCommands.js";
 import { hasEnforcingPlan, PREMIUM_FEATURES } from "./planGate.js";
+import { siteNamesEnabled } from "./siteNames.js";
 
 /** Parents keep their stored rules after a lapse; only the agent's enforcement projection is filtered. */
 export async function filterAgentRules<T extends Record<string, unknown>>(childId: string, ruleSet: T): Promise<T> {
@@ -12,6 +13,16 @@ export async function filterAgentRules<T extends Record<string, unknown>>(childI
   const filtered = { ...ruleSet };
   for (const feature of features) delete filtered[feature];
   return filtered;
+}
+
+/** Normalize legacy `"x"` socialMonitoring key to canonical `"twitter"` when `"twitter"` is absent (#1036). */
+export function normalizeSocialMonitoring(raw: unknown): Record<string, boolean> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, boolean> = { ...(raw as Record<string, boolean>) };
+  if (!Object.hasOwn(out, "twitter") && Object.hasOwn(out, "x") && typeof out.x === "boolean") {
+    out.twitter = out.x;
+  }
+  return out;
 }
 
 /** Map a flat Prisma RuleSet row to the nested API shape shared with agents. */
@@ -43,7 +54,13 @@ export function toApiRuleSet(row: Record<string, unknown>) {
     appGroupRules: (row.appGroupRules as unknown[]) ?? [],
     alwaysAllowedApps: row.alwaysAllowedApps,
     bonusMinutesToday: row.bonusMinutesToday,
-    socialMonitoring: (row.socialMonitoring as Record<string, boolean>) ?? {},
+    /**
+     * #830 gating: the agent may capture site names only when the server flag is on. It is part of the
+     * rule projection because that is how the agent learns everything else it must honour, and an agent
+     * that has not synced since the flag went on behaves like one on a server where it is off.
+     */
+    siteNames: siteNamesEnabled(),
+    socialMonitoring: normalizeSocialMonitoring(row.socialMonitoring),
     contactAllowlist: (row.contactAllowlist as string[]) ?? [],
     updatedAt: row.updatedAt,
     // Issue #475: the version the parent app compares against what the device has applied. Older rows

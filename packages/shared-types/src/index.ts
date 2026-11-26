@@ -16,7 +16,11 @@ export interface Parent { id: UUID; familyId: UUID; email: string; displayName: 
 export interface Child { id: UUID; familyId: UUID; displayName: string; birthYear: number;
   avatarUrl?: string; consentRecordId: UUID; }
 export interface Device { id: UUID; childId: UUID; platform: Platform; model: string;
-  osVersion: string; status: DeviceStatus; batteryPct: number; lastSeen: ISODate; pushToken?: string; }
+  osVersion: string; status: DeviceStatus; batteryPct: number; lastSeen: ISODate; pushToken?: string;
+  /** Issue #867: the boot instant the agent last reported; present once a current agent has checked in. */
+  lastBootAt?: ISODate;
+  /** ADR-0047: server-set when authenticated telemetry completes required Android setup grants. */
+  setupCompletedAt?: ISODate; }
 export interface RuleSet { id: UUID; childId: UUID; screenTime: ScreenTimeRule;
   webFilter: WebFilterRule; appRules: AppRule[]; routines: Routine[]; updatedAt: ISODate;
   /** ADR-0037 PR B3: iPhone app groups the parent blocks, by the id the phone reported. */
@@ -41,12 +45,16 @@ export interface Geofence { id: UUID; childId: UUID; label: string; lat: number;
  * always carries the English `body` as a fallback for an app that does not know the key yet.
  */
 export const ALERT_BODY_KEYS = [
+  "alertBodyDeviceRestarted",
   "alertBodyDeviceSilent",
   "alertBodyGeofenceEnter",
   "alertBodyGeofenceExit",
   "alertBodySearchFlagged",
   "alertBodySocialConcern",
   "alertBodyYouTubeFlagged",
+  "alertBodySetupCompleted",
+  "alertBodySetupIncomplete",
+  "alertBodyDataCleared",
 ] as const;
 export type AlertBodyKey = typeof ALERT_BODY_KEYS[number];
 export type AlertBodyParams = Record<string, string | number>;
@@ -54,7 +62,7 @@ export type AlertBodyParams = Record<string, string | number>;
 export interface Alert { id: UUID; childId: UUID; deviceId?: UUID;
   severity: "info"|"warning"|"critical";
   category: "web_threat"|"app_blocked"|"screen_time_exceeded"|"geofence"|"sos"|
-            "ai_concern"|"cyberbullying"|"self_harm"|"grooming";
+            "ai_concern"|"cyberbullying"|"self_harm"|"grooming"|"device_restarted";
   title: string; body: string; metadata: Record<string, unknown>;
   createdAt: ISODate; acknowledged: boolean; }
 export interface ConsentRecord { id: UUID; childId: UUID; parentId: UUID;

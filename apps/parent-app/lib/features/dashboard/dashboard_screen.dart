@@ -8,8 +8,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
-import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
+import '../../widgets/field_question.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/controls_provider.dart';
 import '../../providers/family_provider.dart';
@@ -17,9 +17,11 @@ import '../../providers/mfa_reset_provider.dart';
 import '../../providers/onboarding_provider.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
+import '../../widgets/error_retry_view.dart';
 import '../auth/mfa_reset_approval_screen.dart';
 import '../auth/mfa_reset_messages.dart';
 import '../children/consent_step.dart';
+import '../map/child_location_view.dart';
 
 /// Parent dashboard: grid of child cards with live status, pull-to-refresh
 /// and a consent-first "Add child" flow.
@@ -29,7 +31,7 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final family = ref.watch(familyProvider);
-    final unread = ref.watch(unacknowledgedCountProvider);
+    final unread = ref.watch(alertsBadgeCountProvider);
     // ADR-0031 step 3b: a signed-in owner/co-parent is told on open that
     // someone needs a witness. A guardian's 403 becomes an empty list in the
     // provider, so this is absent rather than an error.
@@ -86,7 +88,10 @@ class DashboardScreen extends ConsumerWidget {
       ),
       body: family.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(l10n.familyLoadFailed('$e'))),
+        error: (e, _) => ErrorRetryView(
+          message: friendlyErrorText(l10n, e, () => l10n.familyLoadFailed),
+          onRetry: () => ref.invalidate(familyProvider),
+        ),
         data: (overview) {
           final setupBanner = _finishSetupBanner(context, ref, overview);
           final banners = <Widget>[
@@ -146,6 +151,7 @@ class DashboardScreen extends ConsumerWidget {
             onRefresh: () async {
               ref.invalidate(familyProvider);
               ref.invalidate(mfaResetPendingProvider);
+              ref.invalidate(wellbeingProvider);
             },
             child: banners.isEmpty
                 ? content
@@ -288,7 +294,7 @@ class ChildCard extends ConsumerWidget {
     final dailyLimit = rules?.screenTime.dailyLimitMinutes ?? 0;
     final progress = dailyLimit > 0 ? (child.screenTimeTodayMinutes / dailyLimit).clamp(0.0, 1.0) : 0.0;
     final live = ref.watch(liveActivityProvider)[child.id];
-    final wellbeing = ref.watch(wellbeingProvider(child.id)).valueOrNull;
+    final wellbeing = ref.watch(wellbeingProvider(child.id)).asData?.value;
 
     final tokens = context.tokens;
     return Card(
@@ -353,15 +359,18 @@ class ChildCard extends ConsumerWidget {
                       const Icon(Icons.location_on_outlined, size: 14),
                       const SizedBox(width: AppSpace.xs),
                       Expanded(
-                        child: Text(
-                          // #406: a refusal names the owner; "no location yet" would read as a normal state.
-                          locationRefused
-                              ? l10n.readPermissionRequired
-                              : location == null
-                                  ? l10n.noLocationYet
-                                  : ltrIsolate('${location.lat.toStringAsFixed(4)}, ${location.lng.toStringAsFixed(4)}'),
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
+                        // #406: a refusal names the owner; "no location yet" would read as a normal state.
+                        // Karim 22 Nov: a place name and how fresh it is, never raw coordinates.
+                        child: locationRefused || location == null
+                            ? Text(
+                                locationRefused ? l10n.readPermissionRequired : l10n.noLocationYet,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              )
+                            : PlaceSummaryLine(
+                                ping: location,
+                                style: Theme.of(context).textTheme.bodySmall,
+                                onTap: () => context.push('/child/${child.id}?tab=location'),
+                              ),
                       ),
                     ],
                   ),
@@ -586,13 +595,17 @@ Future<void> toggleInternetWithConfirm(BuildContext context, WidgetRef ref, Chil
     // #441 review: the pill is the main entry to pause/resume, so it needs the same sentence as the
     // device card — and it must not print `ControlsRefusal(428)`, which is what '$e' became.
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(readErrorText(l10n, r.error, () => l10n.internetChangeFailed('${r.error}'))),
-      ));
+      showErrorSnackBar(
+        context,
+        friendlyErrorText(l10n, r.error, () => l10n.internetChangeFailed),
+      );
     }
   } catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.internetChangeFailed('$e'))));
+      showErrorSnackBar(
+        context,
+        friendlyErrorText(l10n, e, () => l10n.internetChangeFailed),
+      );
     }
   }
 }
@@ -658,9 +671,8 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
       // exist yet — the generic consent sentences would point at a page that is not there. The one case
       // worth a sentence is the region mismatch, because the dialog has a region dropdown and the fix
       // is to pick the family's.
-      final data = e.response?.data;
       setState(() => _error = addChildConsentRegionError(context.l10n, e) ??
-          (data is Map ? '${data['error'] ?? data['message'] ?? e.message}' : (e.message ?? '')));
+          friendlyErrorText(context.l10n, e, () => context.l10n.onboardingChildFailed));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -685,16 +697,36 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
                 onMethodChanged: (m) => setState(() => _method = m),
               ),
               const SizedBox(height: AppSpace.md),
-              DropdownButtonFormField<String>(
+              FieldQuestion(
+                text: l10n.jurisdictionLabel,
+                child: DropdownButtonFormField<String>(
+                key: const ValueKey('addChildJurisdiction'),
                 initialValue: _jurisdiction,
-                decoration: InputDecoration(labelText: l10n.jurisdictionLabel, border: const OutlineInputBorder()),
+                // #874 B6 (UI/UX Bureau): `isExpanded` false sized the button to its widest item, so at
+                // 200 % text the field overflowed by 27 px (82 px at 320 px / 200 %). Expanded, the label
+                // is laid out inside the field; the `selectedItemBuilder` below lets it wrap there instead
+                // of being cut, which is what «رسالة نصية مع تأكيد» needed on the consent-method field.
+                isExpanded: true,
+                // #874: the default `isDense: true` caps the field at 48 px and clips the wrapped
+                // selected value at AR 320 / 200 % (Arabic Language Bureau's frame).
+                isDense: false,
+                decoration: const InputDecoration(border: OutlineInputBorder()),
                 items: [
                   DropdownMenuItem(value: 'US', child: Text(l10n.regionUS)),
                   DropdownMenuItem(value: 'EU', child: Text(l10n.regionEU)),
                   DropdownMenuItem(value: 'UK', child: Text(l10n.regionUK)),
                   DropdownMenuItem(value: 'OTHER', child: Text(l10n.regionOther)),
                 ],
+                // Same order as `items`: the family region is a place name, so the selected value may take
+                // two lines rather than one line with an ellipsis.
+                selectedItemBuilder: (context) => [
+                  Text(l10n.regionUS),
+                  Text(l10n.regionEU),
+                  Text(l10n.regionUK),
+                  Text(l10n.regionOther),
+                ],
                 onChanged: (v) => setState(() => _jurisdiction = v ?? 'US'),
+                ),
               ),
             ] else ...[
               TextField(

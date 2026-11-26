@@ -61,6 +61,12 @@
     <string name="pair_pin_repeat">Repeat the PIN</string>
     <string name="pair_pin_save">Save PIN</string>
     <string name="pair_pin_mismatch">The two PINs differ.</string>
+    <!-- osra-security#24: the gate's own notice while a lockout is open. A plural rather than a sentence built in
+         code, so "1 minute" cannot read "1 minutes"; the Arabic value is the Arabic Language Bureau's line. -->
+    <plurals name="pin_locked_notice">
+        <item quantity="one">Too many tries. Try again in %1$d minute, or ask your parent.</item>
+        <item quantity="other">Too many tries. Try again in %1$d minutes, or ask your parent.</item>
+    </plurals>
     <string name="pair_qr_invalid">That QR code is not a valid OSRA pairing code. Enter the details manually or scan again.</string>
     <string name="pair_scan_empty">The scanner did not return a code. Enter the details manually or scan again.</string>
     <string name="pair_network_error">network error</string>
@@ -96,6 +102,11 @@
     <!-- The `· أسرة` tail on a title. The sweep (13 Nov) says an Arabic title drops it, because the Arabic
          title is already Arabic. -->
     <string name="title_brand_suffix">%1$s · أسرة</string>
+
+    <!-- U44 (#952): branded Compose welcome screen before setup steps. -->
+    <string name="setup_welcome_title">Let\'s set up this phone</string>
+    <string name="setup_welcome_body">A few steps so your parent can help keep this phone safe.</string>
+    <string name="setup_welcome_start">Start</string>
 
     <!-- PairingActivity: "protect this device", setup complete, the checklist and the status screen. -->
     <string name="setup_protect_title">Protect this device · أسرة</string>
@@ -156,6 +167,12 @@
          `grantAccessibility` … `grantNotificationListener`, so both phones name a permission the same way. -->
     <string name="onboarding_grant_accessibility_title">Accessibility service</string>
     <string name="onboarding_grant_accessibility_why">Blocks apps, enforces limits and guards the uninstall screens. Nothing works without it.</string>
+    <!-- Issue #1131: Android 13+ non-store install "Allow restricted settings" guide on the Accessibility step. -->
+    <string name="restricted_settings_step_1">Tap %1$s once. Android will say \"Restricted setting\". Tap OK.</string>
+    <string name="restricted_settings_open_app_info">Open app info</string>
+    <string name="restricted_settings_step_2">Tap ⋮ (top right), then \"Allow restricted settings\", then confirm.</string>
+    <string name="restricted_settings_step_3">Go back to Accessibility and switch %1$s on.</string>
+    <string name="restricted_settings_waiting">Waiting for %1$s to turn on…</string>
     <string name="onboarding_grant_usage_title">Usage access</string>
     <string name="onboarding_grant_usage_why">Counts screen time per app so daily limits and reports are right.</string>
     <string name="onboarding_grant_overlay_title">Display over other apps</string>

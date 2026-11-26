@@ -2,10 +2,13 @@
 
 **For:** release security gate #637, box 1 ("threat model read against the build").
 **Author:** Claude (Fable, server gate). **Reviewer and owner of the verdict:** Ahmed (security).
-**Read from:** `main@da0b3f0c` (2026-11-14; §5 updated the same evening), plus the open pull requests named in the last column where a control
-is not on `main` yet.
+**Read from:** the gate candidate `main@7be1a92b` (named on #637, 2026-11-17); the candidate is now `main@0036d6b9`, which adds only #886, and Ahmed's read against it (#637 comment 6957582839) is folded in on 2026-11-18. First pass `main@da0b3f0c`
+(2026-11-14); this second pass takes Antigravity's completeness read (#780 comment 6884240350) and what batches A to F
+of #766 put in place. Where a control exists in code but is not yet live in production, the row says so.
 **Scope:** `services/api` and what runs it in production: `infra/terraform/{base,env}` in account `osra-production`,
-Frankfurt (`eu-central-1`), per [ADR-0028](../../adr/0028-hosting-regions-and-scaling.md),
+Frankfurt (`eu-central-1`), and `infra/terraform/org-audit` in the management account (organisation CloudTrail with
+Object Lock, GuardDuty in both regions, the locked backup copy vault in `eu-west-1`, Identity Center and the
+deployer's guardrails), per [ADR-0028](../../adr/0028-hosting-regions-and-scaling.md),
 [ADR-0030](../../adr/0030-regions-after-uae-outage.md) and
 [ADR-0033](../../adr/0033-production-message-scoring.md). The client apps have their own gates (#630 to #636).
 
@@ -22,9 +25,9 @@ can check it. It describes the design. It does not describe any unfixed weakness
 | A3 | Activity, app use, alerts, rules | A family's daily life | PostgreSQL; 90 days for events, 365 for daily totals, 12 months for alerts |
 | A10 | The family's subscription state | A forged entitlement gives the paid product away; a forged cancellation takes it from a paying family | PostgreSQL; the truth is Google Play's (ADR-0041) |
 | A4 | Parent accounts: e-mail, password hash, MFA secret, sessions | Whoever holds one controls a child's device | PostgreSQL (argon2 hashes; MFA secret encrypted), Redis (session caches) |
-| A5 | Per-device secrets | Whoever holds one can speak as that child's device | PostgreSQL ([ADR-0003](../../adr/0003-per-device-hmac-agent-auth.md)) |
+| A5 | Per-device secrets | Whoever holds one can speak as that child's device | PostgreSQL, encrypted with `VAULT_KEY` before it is stored (#839; [ADR-0003](../../adr/0003-per-device-hmac-agent-auth.md)) |
 | A6 | The command channel (lock, pause, ring, rules) | A forged command locks a child out or lets one loose | API, Redis, FCM and APNs |
-| A7 | Service secrets: `JWT_SECRET`, `VAULT_KEY`, `INTERNAL_HMAC_SECRET`, database password, push keys | Each one opens A1 to A6 | Secrets Manager; Terraform state |
+| A7 | Service secrets: `JWT_SECRET`, `VAULT_KEY`, `INTERNAL_HMAC_SECRET`, database passwords, push keys | Each one opens A1 to A6 | Secrets Manager only. Production writes them out of band (`secrets_out_of_band`, batch B #781; `production-secrets.sh`), so Terraform state holds their names, never their values |
 | A8 | The production account and its deploy path | Whoever can deploy can read everything | AWS IAM, GitHub Actions OIDC, the state bucket |
 | A9 | The logs | Kept for months, read outside the database's access rules | CloudWatch |
 
@@ -72,6 +75,7 @@ the live probe (`services/api/scripts/qa-probe.mjs`). "#766 n" is an item of the
 | Known attack traffic and bad-reputation sources | AWS managed WAF rule groups on the ALB block from the first day. The WAF's own per-address rate rule only **counts** at launch (`waf_rate_action = "count"`) and is switched to block after two weeks of real traffic, so that families behind one carrier address are not locked out. Until then the limits that enforce are the API's per-route limits in the row above | `infra/terraform/env/waf.tf` (`waf_rate_action`, `waf_rate_limit`). Day 0: managed groups block, rate rule counts. Day 14: a reviewed change sets `block` |
 | A hostile web page calling the API with a parent's session | Production must name its browser origins; a wildcard or an unset list refuses to boot | `src/lib/corsConfig.ts`; `test/cors-config.test.ts` |
 | Reaching the database or cache directly | Both in private subnets; security groups admit only the API tasks; the database is not publicly accessible | `infra/terraform/env/network.tf`, `rds.tf` |
+| Oversized requests | Fastify's default body limit (1 MiB) on every route, smaller limits on the form pages (1 to 8 KiB), and batch arrays capped in the route schemas. The WAF's managed body-size rule only **counts** (`SizeRestrictions_BODY` overridden in `waf.tf`), because some legitimate batches pass 8 KB; the API's own limits are the ones that enforce | `src/server.ts` (no `bodyLimit` override), `src/routes/linkPages.ts`, `account.ts`, `digests.ts`; `env/waf.tf` |
 
 ### 4.2 Between families and between roles (T2, T4)
 
@@ -80,6 +84,11 @@ the live probe (`services/api/scripts/qa-probe.mjs`). "#766 n" is an item of the
 | Reading or changing another family's child, device, rule or alert | Every resource is loaded through the caller's family; a foreign id answers 403 | `src/middleware/requireFamily.ts`; [authz-matrix.md](authz-matrix.md) (one row per route, refusal columns asserted live by probe section Q); `test/security.test.ts` |
 | A guardian reading what the invitation did not grant | Reads are gated by the permission on the invite (ADR-0014 amendment) | `test/guardian-reads.test.ts`, `test/sessions-and-roles.test.ts` |
 | Processing a child's data after consent is withdrawn | The consent gate answers 428 before the handler runs | `src/middleware/requireConsent.ts`; `test/consent.test.ts` |
+| A forged proof that the adult accepted the terms (#875, #878, #886) | The stored hash and version come from the copy the server served, never from the request | `test/register-consent.test.ts` ("stores the served hash, version and surface") |
+| An account created without its consent record | The consent row is written through the same transaction as the account; a failed insert leaves no account and no session | `test/register-consent.test.ts` ("writes the account and its consent row through the same transaction client", "a failed consent insert leaves no session") |
+| Reading or writing another parent's consent | The `/v1/me` consent routes are scoped to the token's `sub` | `test/consent-routes.test.ts` (state read, row written and history scoped to the signed-in parent) |
+| Flooding the consent history with repeat writes | A repeat of the newest state appends nothing | `test/consent-routes.test.ts` ("a repeat of the newest state is not a second consent act") |
+| The public consent copy route | Read-only, `cache-control: no-store`, under the global rate limit | `src/routes/consentCopy.ts`; `test/consent-copy.test.ts` |
 | A device token used on a parent route, or the reverse | Role guards on every route group | authz-matrix.md columns `403r`, `403d` |
 
 ### 4.3 Accounts and sessions (T5)
@@ -89,7 +98,7 @@ the live probe (`services/api/scripts/qa-probe.mjs`). "#766 n" is an item of the
 | A stolen password | Optional TOTP MFA; a used code cannot be replayed, and the replay store failing closes sign-in in production | `src/lib/mfaVerify.ts`; `test/auth.test.ts` |
 | Staying signed in after the parent reacts | Logout-all, a password reset or an MFA change bumps a session version held in PostgreSQL; every request is checked against it before any route runs. Redis is a cache the database rebuilds ([ADR-0032](../../adr/0032-durable-revocation.md)) | `src/middleware/sessionGuard.ts`; `test/durable-revocation.test.ts`; `scripts/check-redis-durability.mjs` |
 | A stolen refresh token | Rotation with reuse detection: a replayed token revokes the family of tokens | `test/token-hygiene.test.ts` |
-| Taking over an account through "I lost my authenticator" | MFA reset needs the e-mail link and a witness on a paired device, with a 24-hour window (ADR-0031) | `test/mfa-reset.test.ts`, `test/mfa-reset-expiry.test.ts` |
+| Taking over an account through "I lost my authenticator" | MFA reset needs the e-mail link (single use, 30 minutes) and a witness on a paired device. The witness must land within 24 hours of the mailbox confirmation (`MFA_RESET_WITNESS_DEADLINE_MS`), and a 72-hour reset window starts when it passes (`MFA_RESET_WINDOW_MS`), during which the parent can cancel (ADR-0031) | `test/mfa-reset.test.ts`, `test/mfa-reset-expiry.test.ts` |
 | A reset or deletion link read from a log | The request log redacts `token=` and `ticket=` values | `src/lib/logRedaction.ts`; `test/account-deletion-web.test.ts` |
 | A JWT on a WebSocket URL | The socket accepts a single-use ticket only ([ADR-0022](../../adr/0022-websocket-ticket-only.md)) | `test/realtime.test.ts` |
 
@@ -126,6 +135,7 @@ Open private item for this area: osra-security#15 (§5).
 | Threat | Control | Check |
 |---|---|---|
 | Forging a report as another child's device | Each device signs with its own secret, minted at pairing and shown once (ADR-0003); a nonce stops replays, and the nonce store failing closes the route in production | `src/lib/internalAuth.ts`; `test/internal-signing.test.ts` |
+| Reading every device's secret from a database copy (T8) | The secret is stored under `VAULT_KEY` and decrypted only to check a signature; a value that does not decrypt counts as no secret; a row from before the change is re-stored encrypted after it next verifies | `src/lib/internalAuth.ts` (`deviceKey`, `sealLegacyKey`); `test/device-key-at-rest.test.ts` (K1 to K6), `test/pairing.test.ts` (osra-security#14, #839) |
 | Using a device after the parent removed it | Removal revokes the device; its token answers `401 device_revoked` on every route | `sessionGuard.ts`; `test/durable-revocation.test.ts`; probe |
 | Guessing a pairing code | Six digits, short-lived, 10 claims a minute per address, and the parent approves the claim | `test/pairing.test.ts`, `test/pair-claim-rate-limit.test.ts` |
 | Going quiet: wiping or uninstalling the agent so nothing reports | The server raises an alert when a device stays silent past its reporting window | `src/jobs/deviceSilence.ts`; `test/device-silence.test.ts` |
@@ -138,12 +148,13 @@ What the child can do on the device itself belongs to the client gates and the c
 
 | Threat | Control | Check |
 |---|---|---|
-| A stolen disk or snapshot | RDS storage encrypted; Redis encrypted at rest | `rds.tf` (`storage_encrypted`), `elasticache.tf` |
+| A stolen disk or snapshot | RDS storage encrypted with the stack's own customer key (alias `osra-production-rds`), with an alarm on any change to that key's state; Redis encrypted at rest | `rds.tf` (`kms_key_id`, `db_customer_kms_key`), `alarms.tf` (`rds-key-danger`), `elasticache.tf`; batch D #783 |
+| The API's database login doing more than read and write rows | The API connects as `osra_api`: it can read and write rows, owns nothing and cannot change the schema or roles. Migrations run as a separate one-off `db-admin` task with its own execution role, which the API's role cannot read | `env/db_admin.tf`; batch B #781. Live once the schema phase has run db-admin (box 7 evidence) |
 | A database dump revealing a child's words | Excerpts are encrypted by the API with `VAULT_KEY` before they reach the database | `src/lib/snippetVault.ts`; `test/content.test.ts` |
 | Something inside the VPC answering as the database | The API checks the database's certificate chain and hostname, and refuses to start on a URL that would not | `src/lib/databaseTls.ts`, `scripts/check-db-tls.mjs` (#777); `rds.force_ssl` (#766 9) |
-| Reading cache traffic, or writing to the cache from inside the VPC | Redis TLS (`rediss://`), and an AUTH token | `test/redis-url-tls.test.ts`; AUTH is #766 3 |
-| Plain HTTP between the ALB and the task | Inside the VPC, security groups admit only the ALB | TLS on the task, or a written acceptance: #766 4 |
-| Losing the database | Multi-AZ, 14 days of point-in-time restore, deletion protection, a final snapshot | `rds.tf`, `env/production_guard.tf`; copy outside the account and one restore drill: #766 5 |
+| Reading cache traffic, or writing to the cache from inside the VPC | Redis TLS (`rediss://`), and an AUTH token written out of band | `test/redis-url-tls.test.ts`; `elasticache.tf` (`transit_encryption_enabled`, `auth_token`); `production_guard.tf` requires both |
+| Plain HTTP between the ALB and the task | Inside the VPC; the task's security group admits port 3000 only from the ALB's. TLS ends at the ALB. **Proposed for acceptance for the closed beta only**, with HTTPS to the task before public launch | `env/network.tf` (`api_from_alb`); `infra/terraform/README.md` ("Load balancer to task"). Needs Ahmed's and Karim's written acceptance on #637 (§5) |
+| Losing the database | Multi-AZ, 14 days of point-in-time restore, deletion protection, a final snapshot; a daily AWS Backup in Frankfurt, kept 14 days. For the closed beta the copy to the locked vault in another account and region (`eu-west-1`) is OFF (`backup_offsite_copy_enabled = false`, Karim 18 Nov: "Frankfurt only", #907), because the privacy notice says backups stay in Frankfurt; it comes back only after counsel clears the EU wording. Until then, losing the production account itself also loses its backups | `rds.tf`, `env/production_guard.tf`, `env/backup.tf`, `org-audit/backup_vault.tf`; batch D #783. One restore drill: `restore-drill.sh`, log due on #637 (box 7) |
 | Personal data in logs | No log call names a field a family typed or owns; identifiers only | `test/log-hygiene.test.ts` (#778) |
 | Keeping data longer than the privacy policy says | A nightly job deletes past each window; the windows are capped | `src/lib/usageModel.ts`; `test/usage-model.test.ts`; §6 below |
 | An account that cannot be erased | Deletion from the app and from a web link removes every child-scoped row | `test/account-deletion.test.ts`; the table-count step in `api-image.yml` |
@@ -165,6 +176,7 @@ What the child can do on the device itself belongs to the client gates and the c
 | A secret committed to the repository | Key-material and PIN checks on every pull request; a full-history scan | `scripts/check-no-service-account-keys.mjs`, `check-no-pins.mjs`; gitleaks in CI: #767 |
 | A development switch left on in production | The production task definition is checked against a list of required, allowed and forbidden variables, and every variable the API reads must be on it | `check-production-taskdef.mjs` (#778) |
 | A dependency that changes under us | A frozen lockfile in the image build; the image runs as a non-root user | `services/api/Dockerfile` |
+| Compromised code in a task sending data anywhere | The task can leave the VPC only on port 443; inside the VPC it reaches only PostgreSQL (5432) and Redis (6379), each by security group. 443 is still open to any address, so this limits the channel, not the destination. Accepted for the closed beta; **revisit before public launch** with an egress allowlist (VPC endpoints plus the APNs and FCM hosts) | `env/network.tf` (`api_https`, `api_to_rds`, `api_to_redis`); #766 item 6 |
 
 ### 4.8 Operating the account (T7)
 
@@ -173,24 +185,32 @@ What the child can do on the device itself belongs to the client gates and the c
 | Destroying production by mistake | `down.sh` refuses production; RDS and the ALB carry deletion protection; `up.sh` only applies a plan file that was saved and read | `infra/terraform/down.sh`, `up.sh`; `env/production_guard.tf` |
 | Running production with the staging credential, or the reverse | `up.sh` requires a named profile for production and refuses the staging one; the provider pins the account id | #772; `backend/*.hcl` |
 | Production created without its protections | Both stacks refuse to plan production unless every protection is set | `*/production_guard.tf`; `*/tests/environments.tftest.hcl` |
-| Secrets readable from Terraform state | State bucket versioned, encrypted, TLS-only | Customer key, tighter bucket policy, and `JWT_SECRET` and `VAULT_KEY` out of state: #766 1 and 10 |
-| A misused deploy credential | Owner decision of 2026-11-14 (#637 comment 6881338157): Karim signs in with MFA; Claude and Kimi keep one permanent, full-rights machine credential on his PC. That is a written exception to "no long-lived keys", accepted by the owner, with compensating controls: self-rotation, the organisation trail, and an alarm when the credential is used from anywhere but that PC | The controls are #766 batch E (#784); this row is complete only when that is applied and its evidence is on #637. osra-security#27 |
-| An action nobody can reconstruct afterwards | Alarms on the stack's health and a budget alarm | Organisation CloudTrail, GuardDuty and the ALB, VPC, WAF and PostgreSQL logs: #766 2 |
+| Secrets readable from Terraform state | Production secrets are written out of band, so state holds no secret values; the state bucket is versioned, encrypted with a customer key, TLS-only, and its policy is limited to the deploy role | batch B #781 (applied 15 Nov; secrets rotated after, new `INTERNAL_HMAC_SECRET` fingerprint on #637) |
+| A misused deploy credential | Owner decision of 2026-11-14 (#637 comment 6881338157): Karim signs in through Identity Center with MFA; Claude and Kimi keep one permanent, full-rights machine credential on his PC. That is a written exception to "no long-lived keys", accepted by the owner, with Ahmed's six compensating controls (#637 comment 6881460052): no erasing evidence or backups (deny policies, and an SCP in production); no self-escalation (own keys only, a boundary on every role it creates, no new identity providers); a key-age rule at 100 days; the key in the PC's credential store; an alarm (not a deny) on use from elsewhere; root with MFA and no keys | `org-audit/agent_guardrails.tf`, `role_boundary.tf`, `access.tf`, `identity_center.tf`; batches E and F (#784, #793), applied 15 Nov (F3 20:54 UAE). Refused-call evidence: #637 comment 6898743142. osra-security#27 |
+| An action nobody can reconstruct afterwards | An organisation CloudTrail whose bucket sits outside the production account under S3 Object Lock (365 days); GuardDuty in both regions; VPC flow logs, WAF logs (the authorization and cookie headers, the device signature header and the whole query string redacted) and PostgreSQL logs, 90 days; the alarm topic encrypted with its own key. **ALB access logs are off on purpose**: they record the full query string, where a WebSocket ticket or a reset token travels, and the WAF's redacted log covers the same requests | `org-audit/main.tf` (`trail_retention_days`), `guardduty.tf`; `env/audit_logs.tf`, `env/ecs.tf` (comment above the ALB), `env/alarms.tf` (`aws_kms_key.alarms`); batch C #782 |
 
 ## 5. Open items for this gate
 
 Each is tracked where its detail may be written. This page gives the number only.
 
-| Item | State on 2026-11-14 | Needed for sign-off |
+| Item | State on 2026-11-18 | Needed for sign-off |
 |---|---|---|
-| osra-security#27 (who can deploy to production, and how) | Decided by Karim 2026-11-14; controls being built (#784) | #784 applied and its evidence posted on #637 |
-| #789 (four mailed links opened no page) | Pages built (`src/routes/linkPages.ts`); in review | Merged, and the pages reviewed by the UI/UX Bureau and the Arabic Language Bureau |
-| osra-security#14, #15, #20, #26 | Open; Ahmed to say which belong to this gate | Triage, then closed or accepted |
-| #766 items 1 to 13 | Batches A to D, 15 to 17 Nov | Merged and applied before the service phase |
-| #777 | Merged 2026-11-14 | Done |
-| #778 | In review | Merged |
-| #772 | Merged 2026-11-14 | Done |
-| #767 | In review | Merged |
+| osra-security#27 (who can deploy to production, and how) | Decided by Karim 2026-11-14; batches E and F applied 15 Nov; refused-call evidence on #637. **Accepted residuals, not done:** the 22 Oct key is still the effective production key, and the follow-ups (retire it, split plan from apply, and the rest of Fable's list) are still open | Ahmed reads the evidence and closes it, with the residuals listed |
+| osra-security#14 (device secret at rest) | Fixed by #839 (merged 16 Nov) | After the service phase: a count of device rows still stored the old way, expected to fall to 0 (row 7) |
+| osra-security#15 (billing) | **Accepted by Karim for the beta**, 16 Nov (#637 comment 6909499225); fix before paid launch | None for the beta |
+| osra-security#20 (an SOS's place in alert data) | **Closed** (fixed by #743, `1864f1bb`) | Done |
+| osra-security#26 | Closed | Done |
+| osra-security#32 | **Closed** | Done |
+| #789 (mailed links opened no page) | Merged 15 Nov (#804) with both Bureaus' lines | Done |
+| Push (APNs and FCM) in the production task | **Required by Karim** for the first testers (16 Nov); wiring merged (#840); the empty APNs secret applied 17 Nov | Box 3 launch run at exit 0 with the four `PLAY_*` values listed as Karim's accepted exception |
+| Plain HTTP from the ALB to the task (#766 item 4) | **Accepted for the closed beta only** by Ahmed (#637 comment 6950396150) and Karim (17 Nov 19:13 UAE, #637 comment 6952130548), on four conditions: private subnets with no public IP, task ingress from the ALB's security group only, TLS on that hop before any public launch (public-launch-gate issue), and this written acceptance | The service-phase plan shows the first two conditions |
+| Backup lifetime against the privacy notice (§6) | **Decided: 14 days everywhere** (#906 merged): the AWS Backup plan, and up.sh's pre-migration backup as an AWS Backup job with `DeleteAfterDays: 14` | Row 6 evidence as deployed |
+| Backup location against the privacy notice (§6) | **Decided by Karim 18 Nov: Frankfurt only.** The copy to the `eu-west-1` vault is turned off (#907) and the notice is unchanged | Row 6 evidence that the deployed plan has no copy action |
+| Restore drill (#766 item 5) | Script merged; first recovery point taken | Drill log on #637 |
+| #766 items 1 to 13 | Batches A to F merged and applied 15 Nov; base apply for push 17 Nov; schema phase (db-admin, migrate) and service phase still to run | Applied before the service phase is signed |
+| #777, #778, #772, #767 | Merged | Done |
+
+Not in the candidate `0036d6b9`, so not in this pass: #760's ring routes and the `child_dismissed` cap, and #884's boot report. They belong to the next server candidate's pass.
 
 ## 6. What the configuration must match in the published privacy policy
 
@@ -203,9 +223,11 @@ Each is tracked where its detail may be written. This page gives the number only
 | Daily app-use totals: 365 days | `ROLLUP_RETENTION_DAYS` unset (default 365). The code accepts a larger number, so production must leave it unset or at most 365; `check-production-taskdef.mjs` fails a larger value |
 | Alerts: 12 months, or until the child or the account is deleted | `ALERT_RETENTION_DAYS` unset (default 365); the code caps it at 365 (`src/lib/usageModel.ts`) and `check-production-taskdef.mjs` fails a larger value |
 | Records of a reset of two-step sign-in: 12 months after the reset ends | The nightly job in `src/jobs/mfaResetExpiry.ts`; `test/mfa-reset-expiry.test.ts`. No setting changes it |
-| Each encrypted database backup is deleted within 90 days | Point-in-time restore is 14 days. A backup copy outside the account (#766 5) must expire within 90 days |
+| "Data deleted from our live systems can remain in a backup until that backup expires, 14 days later" (section 11) | Point-in-time restore is 14 days and keeps the promise. **It is broken today by the AWS Backup plan** (`env/backup.tf`: 30 days in the account, 90 days in the copy vault) and by the named snapshots `up.sh` takes before each migration, which never expire. Fix before the first family's data: either both lifecycles at 14 days and named snapshots deleted after 14 days, or a reviewed change to the notice (owner's decision, through the Arabic Language Bureau for the Arabic text) |
+| Installed-app list: kept for app rules and new-install alerts, replaced with each report and deleted when the device is removed | `src/routes/devices.ts` (the installed-apps write is a replace, not a merge; its `DeviceApp` rows cascade when unpairing deletes the device) |
+| Deleting an account: the creator's deletion removes the whole family and every child's data; an invited parent's removes only their own account | `src/routes/account.ts`; `test/account-deletion.test.ts` |
 | Server logs hold identifiers and no messages or content, for at most 90 days | `test/log-hygiene.test.ts`; log retention of **exactly 90 days** satisfies both this ceiling and the security floor asked for in #766 11 |
-| Data is stored in the EU | Every resource in `eu-central-1`; secrets resolve from `eu-central-1` ARNs only |
+| Data is stored in the EU | Every resource that holds family data is in `eu-central-1`, backups included (the `eu-west-1` copy is off, row "Losing the database"); secrets resolve from `eu-central-1` ARNs only. The management account's org trail, GuardDuty and the empty copy vault hold no family data |
 
 ## 7. What this model does not cover
 

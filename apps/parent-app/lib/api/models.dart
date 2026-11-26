@@ -1,5 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show Color, Colors;
+
+import '../core/social_sender.dart';
 
 /// Plain Dart models mirroring `packages/shared-types/src/index.ts` field
 /// names (displayName, birthYear, batteryPct, lastSeen, blockedCategories,
@@ -188,6 +192,12 @@ class Device {
   /// server *has* judged carries a setup whose [DeviceSetup.reportedAt] is the receipt time.
   final DeviceSetup? setup;
 
+  /// ADR-0047: when the server authenticated completion of required setup grants.
+  final DateTime? setupCompletedAt;
+
+  /// Whether the server sent [setupCompletedAt], distinguishing an explicit null from a legacy response.
+  final bool hasSetupCompletedAtField;
+
   const Device({
     required this.id,
     required this.childId,
@@ -199,6 +209,8 @@ class Device {
     this.lastSeen,
     this.pushToken,
     this.setup,
+    this.setupCompletedAt,
+    this.hasSetupCompletedAtField = false,
   });
 
   factory Device.fromJson(Map<String, dynamic> json) => Device(
@@ -211,6 +223,8 @@ class Device {
         batteryPct: _int(json['batteryPct']),
         lastSeen: DateTime.tryParse(_str(json['lastSeen'])),
         pushToken: _strOrNull(json['pushToken']),
+        setupCompletedAt: DateTime.tryParse(_str(json['setupCompletedAt'])),
+        hasSetupCompletedAtField: json.containsKey('setupCompletedAt'),
         setup: json['setup'] is Map
             ? DeviceSetup.fromJson(
                 Map<String, dynamic>.from(json['setup'] as Map))
@@ -224,6 +238,10 @@ class Device {
   /// `services/api/src/jobs/deviceSilence.ts` owns the flip to `offline`, and an agent call or an upload
   /// owns the flip back; [lastSeen] is shown beside the word as an age, not re-read as a verdict.
   bool get isOnline => status == 'online';
+
+  /// ADR-0047 first-setup state exists only for Android responses carrying the new server field.
+  bool get tracksSetupCompletion =>
+      platform.toLowerCase() == 'android' && hasSetupCompletedAtField;
 
   /// Whether the server has a capability report for this phone (ADR-0034 decision 3).
   ///
@@ -404,6 +422,10 @@ class ScreenTimeRule {
     final school = json['schoolHours'] is Map
         ? Map<String, dynamic>.from(json['schoolHours'] as Map)
         : const <String, dynamic>{};
+    final rawDays = school['days'];
+    final days = _intList(rawDays);
+    final hasSchoolDays =
+        days.isNotEmpty || (rawDays is List && rawDays.isEmpty);
     return ScreenTimeRule(
       dailyLimitMinutes: _int(json['dailyLimitMinutes'], 180),
       weekendLimitMinutes: _int(json['weekendLimitMinutes'], 240),
@@ -411,9 +433,7 @@ class ScreenTimeRule {
       bedtimeEnd: _str(json['bedtimeEnd'], '07:00'),
       schoolStart: _str(school['start'], '08:00'),
       schoolEnd: _str(school['end'], '15:00'),
-      schoolDays: _intList(school['days']).isEmpty
-          ? const [1, 2, 3, 4, 5]
-          : _intList(school['days']),
+      schoolDays: hasSchoolDays ? days : const [1, 2, 3, 4, 5],
     );
   }
 
@@ -550,17 +570,26 @@ class InstalledApp {
   /// before this field: selectable, with no label. A stale row must not claim either answer.
   final bool? essential;
 
+  /// U33 (#868): a URL the server serves this app's icon from, or null while it has not arrived.
+  ///
+  /// Null is the normal state until the child agent uploads icons (`kimi/u33-app-icons`): the picker
+  /// draws a letter avatar in the brand tint for null, never a blank square. The field is additive, so
+  /// an older server answer simply leaves it null and nothing else in the row changes.
+  final String? iconUrl;
+
   const InstalledApp({
     required this.packageId,
     required this.label,
     this.isSystem = false,
     this.essential,
+    this.iconUrl,
   });
 
   factory InstalledApp.fromJson(Map<String, dynamic> json) {
     final packageId = _str(json['packageId']);
     final label = _str(json['label']).trim();
     final rawEssential = json['essential'];
+    final rawIcon = _strOrNull(json['iconUrl'])?.trim();
     return InstalledApp(
       packageId: packageId,
       // The API already falls back to the package id; repeat it so a hand-written
@@ -569,6 +598,8 @@ class InstalledApp {
       isSystem: _bool(json['isSystem']),
       // Absent and explicit null both mean "not reported"; anything that is not a bool is not a claim.
       essential: rawEssential is bool ? rawEssential : null,
+      // An empty string is not a URL: treat it as "no icon yet" so the row draws its letter avatar.
+      iconUrl: rawIcon == null || rawIcon.isEmpty ? null : rawIcon,
     );
   }
 }
@@ -621,6 +652,26 @@ class InstalledAppsReport {
       truncated: truncated || other.truncated,
     );
   }
+}
+
+/// U33 (#868): one device's installed-app report, kept apart so the picker can group rows under the
+/// device that reported them. A child with two Android phones gets two of these; a phone that has not
+/// reported arrives with an empty [report] (and its own empty state), never as a missing entry.
+@immutable
+class DeviceApps {
+  final String deviceId;
+
+  /// The device's display name. Today that is the model string the phone reported (`Pixel 7a`); a
+  /// user-set name needs an API field that does not exist yet (asked on #868).
+  final String label;
+
+  final InstalledAppsReport report;
+
+  const DeviceApps({
+    required this.deviceId,
+    required this.label,
+    this.report = const InstalledAppsReport(),
+  });
 }
 
 /// A named time window (homework, dinner, ...). Times are "HH:mm"; `days`
@@ -737,7 +788,7 @@ class RuleSet {
     );
   }
 
-  /// Full PUT body — the server PATCH-merges, so we always send everything.
+  /// The complete ruleset body.
   Map<String, dynamic> toJson() => {
         'screenTime': screenTime.toJson(),
         'webFilter': webFilter.toJson(),
@@ -747,6 +798,35 @@ class RuleSet {
         'contactAllowlist': contactAllowlist,
         'alwaysAllowedApps': alwaysAllowedApps,
         'appGroupRules': [for (final r in appGroupRules) r.toJson()],
+      };
+
+  /// Changes to send to the server's rules PATCH endpoint.
+  ///
+  /// The endpoint merges screen time and web filter by field. Keep an
+  /// unchanged bedtime or school window out of the patch so the API only
+  /// checks for overlap when a parent edits a schedule.
+  Map<String, dynamic> changesFrom(RuleSet saved) {
+    final before = saved.toJson();
+    final after = toJson();
+    final patch = _changedFields(before, after);
+    for (final section in ['screenTime', 'webFilter']) {
+      if (!patch.containsKey(section)) continue;
+      patch[section] = _changedFields(
+        before[section] as Map<String, dynamic>,
+        after[section] as Map<String, dynamic>,
+      );
+    }
+    return patch;
+  }
+
+  static Map<String, dynamic> _changedFields(
+    Map<String, dynamic> before,
+    Map<String, dynamic> after,
+  ) =>
+      {
+        for (final field in after.entries)
+          if (jsonEncode(before[field.key]) != jsonEncode(field.value))
+            field.key: field.value,
       };
 
   /// A copy with only the fields given changed; every other field, [appGroupRules] included, is kept.
@@ -836,6 +916,13 @@ class SocialConcernEvent {
   final String preview;
   final List<String> concernTypes;
   final DateTime? createdAt;
+  final String? latestFeedbackVerdict;
+  final String? latestFeedbackParentDisplayName;
+  final DateTime? latestFeedbackFirstVotedAt;
+  final DateTime? latestFeedbackLastChangedAt;
+  final String? ownFeedbackVerdict;
+  final DateTime? ownFeedbackFirstVotedAt;
+  final DateTime? ownFeedbackLastChangedAt;
 
   const SocialConcernEvent({
     required this.id,
@@ -845,18 +932,44 @@ class SocialConcernEvent {
     required this.preview,
     this.concernTypes = const [],
     this.createdAt,
+    this.latestFeedbackVerdict,
+    this.latestFeedbackParentDisplayName,
+    this.latestFeedbackFirstVotedAt,
+    this.latestFeedbackLastChangedAt,
+    this.ownFeedbackVerdict,
+    this.ownFeedbackFirstVotedAt,
+    this.ownFeedbackLastChangedAt,
   });
 
-  factory SocialConcernEvent.fromJson(Map<String, dynamic> json) =>
-      SocialConcernEvent(
-        id: _str(json['id']),
-        app: _str(json['app']),
-        contact: _str(json['contact']),
-        severity: _str(json['severity'], 'info'),
-        preview: _str(json['preview']),
-        concernTypes: _strList(json['concernTypes']),
-        createdAt: DateTime.tryParse(_str(json['createdAt'])),
-      );
+  factory SocialConcernEvent.fromJson(Map<String, dynamic> json) {
+    final latestFeedback = json['latestFeedback'];
+    final feedback =
+        latestFeedback is Map ? latestFeedback : const <String, dynamic>{};
+    final verdict = _str(feedback['verdict']);
+    final parentDisplayName = _str(feedback['parentDisplayName']);
+    final ownFeedback = json['ownFeedback'];
+    final own = ownFeedback is Map ? ownFeedback : const <String, dynamic>{};
+    final ownVerdict = _str(own['verdict']);
+    return SocialConcernEvent(
+      id: _str(json['id']),
+      app: _str(json['app']),
+      contact: _str(json['contact']),
+      severity: _str(json['severity'], 'info'),
+      preview: _str(json['preview']),
+      concernTypes: _strList(json['concernTypes']),
+      createdAt: DateTime.tryParse(_str(json['createdAt'])),
+      latestFeedbackVerdict: verdict.isEmpty ? null : verdict,
+      latestFeedbackParentDisplayName:
+          parentDisplayName.isEmpty ? null : parentDisplayName,
+      latestFeedbackFirstVotedAt:
+          DateTime.tryParse(_str(feedback['firstVotedAt'])),
+      latestFeedbackLastChangedAt:
+          DateTime.tryParse(_str(feedback['lastChangedAt'])),
+      ownFeedbackVerdict: ownVerdict.isEmpty ? null : ownVerdict,
+      ownFeedbackFirstVotedAt: DateTime.tryParse(_str(own['firstVotedAt'])),
+      ownFeedbackLastChangedAt: DateTime.tryParse(_str(own['lastChangedAt'])),
+    );
+  }
 }
 
 /// A flagged search query event (Track 1 & 2 content monitoring).
@@ -1141,7 +1254,9 @@ class Alert {
   final String body;
   final Map<String, dynamic> metadata;
   final DateTime? createdAt;
+  final DateTime? updatedAt;
   final bool acknowledged;
+  final int attemptCount;
 
   const Alert({
     required this.id,
@@ -1153,7 +1268,9 @@ class Alert {
     required this.body,
     this.metadata = const {},
     this.createdAt,
+    this.updatedAt,
     this.acknowledged = false,
+    this.attemptCount = 1,
   });
 
   factory Alert.fromJson(Map<String, dynamic> json) => Alert(
@@ -1168,8 +1285,80 @@ class Alert {
             ? Map<String, dynamic>.from(json['metadata'] as Map)
             : const {},
         createdAt: DateTime.tryParse(_str(json['createdAt'])),
+        updatedAt: DateTime.tryParse(_str(json['updatedAt'])),
         acknowledged: _bool(json['acknowledged']),
+        attemptCount: _int(json['attemptCount'], 1),
       );
+
+  /// #1029: whether this alert is a social/gaming chat concern alert.
+  bool get isSocialAlert =>
+      category == 'social_concern' || category == 'gaming_chat';
+
+  static int? _positiveMetaInt(Map<String, dynamic> meta, List<String> keys) {
+    for (final k in keys) {
+      final v = meta[k];
+      if (v is num && v.toInt() > 0) return v.toInt();
+      if (v is String) {
+        final parsed = int.tryParse(v.trim());
+        if (parsed != null && parsed > 0) return parsed;
+      }
+    }
+    return null;
+  }
+
+  /// #1029: explicit flagged message count from metadata (or `attemptCount` when > 1), else null.
+  int? get socialFlaggedCount =>
+      _positiveMetaInt(
+          metadata, const ['flaggedCount', 'messageCount', 'count']) ??
+      (attemptCount > 1 ? attemptCount : null);
+
+  /// #1029: total flagged messages represented by this social alert (at least 1).
+  int get socialMessageCount =>
+      socialFlaggedCount ?? (attemptCount > 0 ? attemptCount : 1);
+
+  /// #1029: distinct contact count from metadata (count only, never names on card/push).
+  int? get socialContactCount {
+    final explicit = _positiveMetaInt(
+      metadata,
+      const ['contactCount', 'distinctContactCount', 'contactsCount'],
+    );
+    if (explicit != null) return explicit;
+    final contact = metadata['contact']?.toString().trim() ?? '';
+    return contact.isNotEmpty ? 1 : null;
+  }
+
+  /// #1029: contact display name from metadata (as the child's app shows it), or null if absent/blank.
+  String? get socialContactName =>
+      socialSenderDisplayName(metadata['contact']?.toString());
+
+  /// #1029: latest flagged-message timestamp in the throttle window, if present.
+  DateTime? get socialLatestAt {
+    for (final k in const ['latestAt', 'lastAt', 'updatedAt']) {
+      final raw = metadata[k];
+      if (raw is String && raw.trim().isNotEmpty) {
+        final parsed = DateTime.tryParse(raw.trim());
+        if (parsed != null) return parsed;
+      }
+    }
+    return updatedAt ?? createdAt;
+  }
+
+  /// #1029: timestamp used for feed ordering and day grouping so in-place updated alerts move to top.
+  DateTime? get effectiveTimestamp => socialLatestAt ?? updatedAt ?? createdAt;
+
+  /// #1029: true when this social alert carries running-count aggregate metadata (or attemptCount > 1)
+  /// and an app name so the card/detail renders `socialAlertCountTitle` + `socialAlertCountSub`.
+  bool get hasSocialCountSummary {
+    if (!isSocialAlert) return false;
+    final app = metadata['app']?.toString().trim() ?? '';
+    if (app.isEmpty) return false;
+    return socialFlaggedCount != null ||
+        _positiveMetaInt(
+              metadata,
+              const ['contactCount', 'distinctContactCount', 'contactsCount'],
+            ) !=
+            null;
+  }
 
   /// Issue #672: the fix an SOS carried, or null. Every other category has none — this reads metadata
   /// only, so the getter is safe on any alert.
@@ -1513,13 +1702,17 @@ class WellbeingScore {
       this.breakdown = const {}});
 
   factory WellbeingScore.fromJson(Map<String, dynamic> json) {
+    final score = _intOrNull(json['score']);
+    if (score == null || score < 0 || score > 100) {
+      throw const FormatException('Invalid wellbeing score');
+    }
     final raw = json['breakdown'] is Map
         ? Map<String, dynamic>.from(json['breakdown'] as Map)
         : const <String, dynamic>{};
     return WellbeingScore(
       childId: _str(json['childId']),
       week: _str(json['week']),
-      score: _int(json['score']),
+      score: score,
       breakdown: {for (final e in raw.entries) e.key: _int(e.value)},
     );
   }

@@ -49,7 +49,7 @@
 "location_open_settings" = "Open Settings";
 "location_footer" = "Your parents see this device on their map when it moves a noticeable distance, and get alerts for the places they set. Choose \"Allow While Using App\", then \"Change to Always Allow\".";
 "groups" = "App groups";
-"groups_status_footer" = "Parents only: choose apps to block here. Blocked apps show the OSRA screen with \"Ask parent\".";
+"groups_status_footer" = "Parents only: choose apps to block here. Blocked apps show the OSRA screen with \"Request access\".";
 "repair_button" = "Re-pair this device";
 "repair_title" = "Re-pair";
 "pin_set_title" = "Set a parent PIN";
@@ -81,7 +81,7 @@
 "groups_name_field" = "Group name, e.g. Games";
 "groups_choose" = "Choose apps";
 "groups_add" = "Add group";
-"groups_new_footer" = "Up to 40 characters. Blocked apps show the OSRA screen with \"Ask parent\".";
+"groups_new_footer" = "Up to 40 characters. Blocked apps show the OSRA screen with \"Request access\".";
 "groups_error_choose" = "Choose at least one app, category or website.";
 "groups_error_name" = "Give the group a name.";
 "groups_error_max" = "There can be at most 20 groups.";

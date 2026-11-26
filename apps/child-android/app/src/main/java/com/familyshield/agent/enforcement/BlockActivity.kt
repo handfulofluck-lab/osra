@@ -9,18 +9,25 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Bundle
+import android.net.VpnService
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -45,6 +52,8 @@ import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.DeviceUnlinker
 import com.familyshield.agent.network.dto.AlertDto
+import com.familyshield.agent.vpn.FilterVpnService
+import com.familyshield.agent.vpn.VpnState
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -69,6 +78,9 @@ class BlockActivity : ComponentActivity() {
     @Inject lateinit var settings: AgentSettings
     @Inject lateinit var appBlocker: AppBlocker
     @Inject lateinit var rules: RuleRepository
+    // S1 (osra-security#39): the same pause the filter service honours. Without it a blocked app tapped
+    // while consent is withdrawn still increments the persisted counter and posts a row.
+    @Inject lateinit var consent: com.familyshield.agent.data.ConsentState
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -84,6 +96,27 @@ class BlockActivity : ComponentActivity() {
             appLabel = newLabel
         },
     )
+
+    private val vpnConsent = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        VpnState.endOwnConsent()
+        if (result.resultCode == RESULT_OK && VpnState.isFilterLost(this, settings, consent)) {
+            FilterVpnService.start(this)
+        }
+    }
+
+    private fun reconnectFilter() {
+        if (!VpnState.isFilterLost(this, settings, consent)) {
+            finish()
+            return
+        }
+        val prompt = VpnService.prepare(this)
+        if (prompt == null) {
+            FilterVpnService.start(this)
+        } else {
+            VpnState.beginOwnConsent()
+            runCatching { vpnConsent.launch(prompt) }.onFailure { VpnState.endOwnConsent() }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -107,14 +140,19 @@ class BlockActivity : ComponentActivity() {
         })
 
         applyIntent(intent)
+        // #830: every block the child meets is reported, not only the "Request access" tap, so the parent
+        // sees "tried to open X" with a growing attempt count.
+        reportBlockedAttempt(request.packageId, request.reason)
 
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF131318)) {
                     // Keyed on the package so the "Request sent" state belongs to one app, not to the
                     // instance: a second block starts with a fresh button.
-                    key(request.packageId) {
-                        BlockScreen(
+                    key(request.packageId, request.reason) {
+                        if (request.reason == REASON_FILTER_LOST) {
+                            FilterRecoveryScreen(onReconnect = ::reconnectFilter, onExit = ::goHome)
+                        } else BlockScreen(
                             appLabel = appLabel,
                             timeLimit = request.timeLimit,
                             window = request.window,
@@ -136,8 +174,11 @@ class BlockActivity : ComponentActivity() {
      */
     private val unlinkedReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action != DeviceUnlinker.ACTION_UNLINKED) return
-            if (!settings.isPairedSync()) finish()
+            when (intent?.action) {
+                DeviceUnlinker.ACTION_UNLINKED -> if (!settings.isPairedSync()) finish()
+                VpnState.ACTION_FILTER_LOSS_CHANGED ->
+                    if (request.reason == REASON_FILTER_LOST) closeIfNoLongerBlocked()
+            }
         }
     }
 
@@ -146,7 +187,7 @@ class BlockActivity : ComponentActivity() {
         ContextCompat.registerReceiver(
             this,
             unlinkedReceiver,
-            IntentFilter(DeviceUnlinker.ACTION_UNLINKED),
+            IntentFilter(DeviceUnlinker.ACTION_UNLINKED).apply { addAction(VpnState.ACTION_FILTER_LOSS_CHANGED) },
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
     }
@@ -180,6 +221,10 @@ class BlockActivity : ComponentActivity() {
      * the bug this closes.
      */
     private fun closeIfNoLongerBlocked() {
+        if (request.reason == REASON_FILTER_LOST) {
+            if (!VpnState.isFilterLost(this, settings, consent)) finish()
+            return
+        }
         val pkg = session.request.packageId
         val decision = rules.verdict(pkg).decision
         if (BlockRecheckPolicy.decide(pkg, decision) == BlockRecheckPolicy.Action.FINISH) {
@@ -195,6 +240,11 @@ class BlockActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         applyIntent(intent)
+        // Hydrogen's #836 blocker: a `singleTask` reuse skipped the attempt report, which runs only in
+        // onCreate — so a second block of the same or another app never incremented the parent's row.
+        // `session.apply` above has already replaced `request`, so this reports the block in front.
+        reportBlockedAttempt(request.packageId, request.reason)
+        if (request.reason == REASON_FILTER_LOST) closeIfNoLongerBlocked()
     }
 
     private fun applyIntent(intent: Intent) {
@@ -220,6 +270,35 @@ class BlockActivity : ComponentActivity() {
         }
         startActivity(homeIntent)
         finish()
+    }
+
+    /**
+     * #830: one grouped `app_blocked` row per app per UTC day. The count is monotonic
+     * ([AttemptCounter]); the server updates the existing row only when the count is higher and never
+     * pushes again, so a child tapping a blocked app ten times reads "10 attempts" and one notification.
+     */
+    private fun reportBlockedAttempt(pkg: String, reason: String) {
+        // Recovery has one incident alert from the VPN service, independent of app attempts.
+        if (reason == REASON_FILTER_LOST || consent.isPaused()) return
+        val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString()
+        val attempts = AttemptCounter.next(this, "app", pkg, day)
+        scope.launch {
+            runCatching {
+                api.postInternalAlert(
+                    AlertDto(
+                        childId = settings.childId(),
+                        deviceId = settings.deviceId(),
+                        severity = "info",
+                        category = "app_blocked",
+                        title = "Blocked app opened",
+                        body = "Your child tried to open a blocked app.",
+                        metadata = mapOf("packageId" to pkg, "reason" to reason),
+                        dedupeKey = AlertKeys.blockedApp(pkg, day),
+                        attemptCount = attempts,
+                    ),
+                )
+            }
+        }
     }
 
     /** POSTs an app_blocked alert for the blocked package; failures are swallowed (best effort). */
@@ -261,6 +340,7 @@ class BlockActivity : ComponentActivity() {
 
         /** Reason value: the app's daily time limit is used up. */
         const val REASON_TIME_LIMIT: String = "time_limit"
+        const val REASON_FILTER_LOST: String = "filter_lost"
     }
 }
 
@@ -276,6 +356,34 @@ private fun windowFrom(intent: Intent): WindowReason? {
     val ends = intent.getStringExtra(BlockActivity.EXTRA_WINDOW_ENDS) ?: return null
     val parsed = runCatching { WindowKind.valueOf(kind) }.getOrNull() ?: return null
     return WindowReason(parsed, intent.getStringExtra(BlockActivity.EXTRA_WINDOW_NAME), ends)
+}
+
+@Composable
+private fun FilterRecoveryScreen(onReconnect: () -> Unit, onExit: () -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+        val viewportHeight = maxHeight
+        Column(
+            modifier = Modifier.fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .heightIn(min = viewportHeight)
+                .padding(32.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = stringResource(R.string.setup_web_filter_disconnected),
+                style = MaterialTheme.typography.headlineMedium,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+            )
+            Button(onClick = onReconnect) {
+                Text(stringResource(R.string.setup_web_filter_reconnect))
+            }
+            TextButton(onClick = onExit) {
+                Text(stringResource(R.string.block_exit_home), color = Color.White)
+            }
+        }
+    }
 }
 
 @Composable

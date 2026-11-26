@@ -1,0 +1,1 @@
+Staging QA can exercise Android screen and notification captures from enabled monitored apps on a time-limited synthetic pairing (#962). Device delivery and live inference require a separate acceptance run.

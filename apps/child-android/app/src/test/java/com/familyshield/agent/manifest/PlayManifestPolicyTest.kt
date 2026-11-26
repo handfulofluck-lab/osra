@@ -32,6 +32,9 @@ class PlayManifestPolicyTest {
             <intent>
                 <action android:name="android.intent.action.DIAL" />
             </intent>
+            <intent>
+                <action android:name="android.net.VpnService" />
+            </intent>
         </queries>
     """.trimIndent()
 
@@ -130,12 +133,23 @@ class PlayManifestPolicyTest {
                     <action android:name="android.intent.action.MAIN" />
                     <category android:name="android.intent.category.HOME" />
                 </intent>
+                <intent>
+                    <action android:name="android.net.VpnService" />
+                </intent>
             </queries>
         """.trimIndent()
         val violations = PlayManifestPolicy.queryViolations(merged(queries = queries))
         assertEquals(2, violations.size)
         assertTrue(violations.toString(), violations.any { "com.android.phone.EmergencyDialer.DIAL" in it })
         assertTrue(violations.toString(), violations.any { "android.intent.action.DIAL" in it })
+    }
+
+    @Test
+    fun `a missing VPN provider query fails the query check`() {
+        // Mutant: remove the VPN provider intent from the required queries.
+        val queries = requiredQueries.replace("android.net.VpnService", "com.example.OTHER_ACTION")
+        val violations = PlayManifestPolicy.queryViolations(merged(queries = queries))
+        assertTrue(violations.toString(), violations.single().contains("android.net.VpnService"))
     }
 
     @Test

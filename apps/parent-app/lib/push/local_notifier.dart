@@ -3,6 +3,9 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../api/models.dart';
 import '../l10n/l10n.dart';
+import 'alert_notification.dart';
+import 'notification_tap.dart';
+import 'restart_alert_text.dart';
 import 'sos_fix_text.dart';
 
 /// The visible half of an alert: what the parent reads on the lock screen.
@@ -22,10 +25,20 @@ import 'sos_fix_text.dart';
 @immutable
 class VisibleAlert {
   final String alertId;
+  final String? deliveryId;
   final String title;
   final String body;
 
-  const VisibleAlert({required this.alertId, required this.title, required this.body});
+  const VisibleAlert({
+    required this.alertId,
+    this.deliveryId,
+    required this.title,
+    required this.body,
+  });
+
+  VisibleAlert withDeliveryId(String? id) => id == deliveryId
+      ? this
+      : VisibleAlert(alertId: alertId, deliveryId: id, title: title, body: body);
 
   /// The one shape every producer uses, from one [Alert].
   ///
@@ -37,13 +50,30 @@ class VisibleAlert {
   factory VisibleAlert.from(Alert alert, {required AppLocalizations l10n, required bool isEnglish, DateTime? now}) {
     final fix = alert.category == 'sos' ? alert.location : null;
     // #672 UI/UX review: the lock screen says a location exists and how old it is — **no coordinates**.
-    // The numbers are in the alert's detail, which the tap opens.
-    final body = fix == null
-        ? l10n.alertPushBodyGeneric
-        : SosFixText.of(alert, fix, now ?? DateTime.now()).notificationBody(l10n);
+    // #889 UI/UX & Arabic Bureau: a warning restart notification uses the localized restart sentence
+    // (which carries only device model + time/gap, never the server's English).
+    final String body;
+    if (fix != null) {
+      body = SosFixText.of(alert, fix, now ?? DateTime.now()).notificationBody(l10n);
+    } else if (alert.category == 'device_restarted') {
+      body = RestartAlertText.tryFormat(
+            alert,
+            l10n: l10n,
+            localeName: isEnglish ? 'en' : 'ar',
+            now: now,
+          ) ??
+          l10n.alertPushBodyGeneric;
+    } else {
+      body = l10n.alertPushBodyGeneric;
+    }
     return VisibleAlert(
       alertId: alert.id,
-      title: l10n.alertTitleFor(alert.category, alert.title, isEnglish: isEnglish),
+      title: l10n.alertTitleFor(
+        alert.category,
+        alert.title,
+        isEnglish: isEnglish,
+        tamperType: alert.metadata['type']?.toString(),
+      ),
       body: body,
     );
   }
@@ -66,7 +96,7 @@ class UnavailableNotifier implements LocalNotifier {
 
 /// `flutter_local_notifications`, one channel for alerts.
 ///
-/// A stable notification id per alert ([_idFor]) matters: a redelivered wake
+/// A stable notification id per delivery ([_idFor]) matters: a redelivered wake
 /// replaces the existing notification instead of stacking a second copy, so the
 /// duplicate rule in `planNotifications` is not the only thing standing between
 /// the parent and a wall of identical rows.
@@ -94,15 +124,49 @@ class FlutterLocalNotifier implements LocalNotifier {
           requestSoundPermission: false,
         ),
       ),
+      onDidReceiveNotificationResponse: (response) {
+        notificationTapController.recordTap(response.payload);
+      },
     );
     _ready = true;
+  }
+
+  /// #972: wires foreground/warm notification taps and captures a cold-start launch tap
+  /// so GoRouter opens `/alerts/:id` once authentication finishes.
+  static Future<void> registerTapHandlers({
+    FlutterLocalNotificationsPlugin? plugin,
+    NotificationTapController? controller,
+  }) async {
+    final p = plugin ?? FlutterLocalNotificationsPlugin();
+    final tapController = controller ?? notificationTapController;
+    try {
+      await p.initialize(
+        settings: const InitializationSettings(
+          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          iOS: DarwinInitializationSettings(
+            requestAlertPermission: false,
+            requestBadgePermission: false,
+            requestSoundPermission: false,
+          ),
+        ),
+        onDidReceiveNotificationResponse: (response) {
+          tapController.recordTap(response.payload);
+        },
+      );
+      final launch = await p.getNotificationAppLaunchDetails();
+      if (launch != null && launch.didNotificationLaunchApp) {
+        tapController.recordTap(launch.notificationResponse?.payload);
+      }
+    } catch (_) {
+      // Headless test environments or unsupported desktop platforms have no plugin channel.
+    }
   }
 
   @override
   Future<void> show(VisibleAlert alert) async {
     await _ensureInitialised();
     await _plugin.show(
-      id: _idFor(alert.alertId),
+      id: _idFor(pushNotificationKey(alert.alertId, alert.deliveryId)),
       title: alert.title,
       body: alert.body,
       notificationDetails: const NotificationDetails(
@@ -116,17 +180,21 @@ class FlutterLocalNotifier implements LocalNotifier {
           // and the OS draws that even when the device is locked (#395 review).
           visibility: NotificationVisibility.private,
         ),
-        iOS: DarwinNotificationDetails(),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBanner: true,
+          presentList: true,
+          presentSound: true,
+        ),
       ),
       payload: alert.alertId,
     );
   }
 
-  /// A stable 31-bit id from the alert id, so the same alert always lands on the
-  /// same notification slot.
-  static int _idFor(String alertId) {
+  /// A stable 31-bit platform id from the delivery key.
+  static int _idFor(String key) {
     var hash = 0;
-    for (final unit in alertId.codeUnits) {
+    for (final unit in key.codeUnits) {
       hash = (hash * 31 + unit) & 0x7fffffff;
     }
     return hash;

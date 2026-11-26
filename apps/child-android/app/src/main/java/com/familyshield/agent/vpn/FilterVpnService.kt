@@ -10,6 +10,7 @@ import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.VpnService
 import android.os.Build
+import android.os.Handler
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import com.familyshield.agent.R
@@ -56,8 +57,25 @@ import kotlinx.coroutines.launch
 class FilterVpnService : VpnService() {
     @Inject lateinit var rules: RuleRepository
     @Inject lateinit var blocklist: BlocklistStore
+    @Inject lateinit var api: com.familyshield.agent.network.ApiService
+    @Inject lateinit var settings: com.familyshield.agent.data.AgentSettings
+    // S1 (osra-security#39): this service became a collector in #830/#841, so it is the one collector that
+    // has to consult the consent pause itself. ADR-0008 §3 pauses enforcement and collection together.
+    @Inject lateinit var consent: com.familyshield.agent.data.ConsentState
+
+    /** host → the last time a `web_threat` was posted, so one page load is one attempt. */
+    private val lastSiteAlert = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    /** host → the last time a visit row was written; a new visit counts only after the quiet gap. */
+    private val lastSiteVisit = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    /** #830 B2: hosts waiting for the next batched upload, capped by [SITE_VISIT_BATCH_MAX]. */
+    private val pendingVisits = java.util.LinkedHashMap<String, Boolean>()
+    private val pendingVisitsLock = Any()
+    private val visitFlusherStarted = java.util.concurrent.atomic.AtomicBoolean(false)
 
     private var tun: ParcelFileDescriptor? = null
+    // A failed re-mode can close the old descriptor before Android delivers its revocation callback.
+    private val hadEstablishedTunnel = AtomicBoolean(false)
+    private val lifecycleHandler by lazy { Handler(mainLooper) }
     private var mode: String = MODE_DNS
     private val running = AtomicBoolean(false)
     private val generation = java.util.concurrent.atomic.AtomicInteger(0)
@@ -73,8 +91,15 @@ class FilterVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_STOP -> { stopTunnel(); stopSelf(); return START_NOT_STICKY }
+            ACTION_STOP -> {
+                hadEstablishedTunnel.set(false)
+                stopTunnel()
+                VpnState.clearFilterLoss(this)
+                stopSelf()
+                return START_NOT_STICKY
+            }
             ACTION_RELOAD -> { reloadConfig(); return START_STICKY }
+            ACTION_FLUSH_VISITS -> { flushSiteVisits(); return START_STICKY }
         }
         val wanted = intent?.getStringExtra(EXTRA_MODE) ?: VpnState.mode(this)
         startForegroundCompat()
@@ -88,15 +113,23 @@ class FilterVpnService : VpnService() {
     }
 
     override fun onRevoke() {
-        // Another VPN app took the slot, or the child disconnected us from Settings › VPN: tell the parent.
-        Log.w(TAG, "VPN revoked")
-        VpnState.setRevokedAt(this, System.currentTimeMillis())
-        TamperAlertWorker.enqueue(this, TamperAlertWorker.TYPE_VPN_REVOKED)
-        stopTunnel()
-        stopSelf()
+        // Android can call this off the main thread. Serialize with start, re-mode and stop.
+        lifecycleHandler.post {
+            Log.w(TAG, "VPN revoked")
+            try {
+                if (VpnState.recordFilterLoss(this, settings, consent, hadEstablishedTunnel.getAndSet(false))) {
+                    TamperAlertWorker.enqueue(this, TamperAlertWorker.TYPE_VPN_REVOKED)
+                }
+            } finally {
+                stopTunnel()
+                stopSelf()
+            }
+        }
     }
 
     override fun onDestroy() {
+        // A system revoke can already be queued on the main looper. Keep this instance's
+        // established latch until that callback consumes it or an explicit stop clears it.
         stopTunnel()
         scope.cancel()
         workers.shutdownNow()
@@ -124,11 +157,16 @@ class FilterVpnService : VpnService() {
         val wf = set?.webFilter
         config = DnsFilterPolicy.Config(
             pausedInternet = rules.isInternetPaused(),
+            siteNamesEnabled = rules.siteNamesEnabled(),
             safeSearch = wf?.safeSearchEnforced ?: false,
             youtubeMode = wf?.youtubeRestrictedMode ?: "off",
             allowedDomains = wf?.allowedDomains ?: emptyList(),
             blockedDomains = wf?.blockedDomains ?: emptyList(),
             categoryDomains = blocklist.domains(),
+            // #1079: the two facts that decide whether those domains are the whole story. Without them the
+            // table cannot tell an empty pack from a family that blocks nothing (Hydrogen's #1097 review).
+            packLoaded = blocklist.packStored(),
+            blockedCategories = wf?.blockedCategories ?: emptyList(),
         )
     }
 
@@ -170,13 +208,14 @@ class FilterVpnService : VpnService() {
         }
         tun = fd
         VpnState.setEstablished(this, true)
-        VpnState.setRevokedAt(this, 0L)
         running.set(true)
         // #234: only now is there a tunnel. Set after the fd exists, never before, so the dispatcher's
         // wait cannot be satisfied by a service that failed to establish.
         tunnelMode = mode
         val gen = generation.incrementAndGet()
         pump = Thread({ pumpLoop(fd, gen) }, "osra-dns-sinkhole-$gen").also { it.isDaemon = true; it.start() }
+        hadEstablishedTunnel.set(true)
+        VpnState.clearFilterLoss(this)
         Log.i(TAG, "tunnel up, mode=$mode")
     }
 
@@ -214,22 +253,176 @@ class FilterVpnService : VpnService() {
         val query = packet.copyOfRange(udp.payloadOffset, udp.payloadOffset + udp.payloadLength)
         val reply: ByteArray? = if (q == null) {
             forward(query)
+        } else if (consent.isPaused()) {
+            // S1 (osra-security#39): while consent is withdrawn the tunnel filters nothing and records
+            // nothing. Whatever was queued for upload is dropped here rather than flushed after a re-grant,
+            // which is what made a withdrawn window's browsing history reach the server.
+            synchronized(pendingVisitsLock) { pendingVisits.clear() }
+            forward(query)
         } else {
             val d = DnsFilterPolicy.decide(q.name, config)
             when (d.action) {
-                DnsFilterPolicy.Action.FORWARD -> forward(query)
+                DnsFilterPolicy.Action.FORWARD -> {
+                    // #830/#841: the visit row is gated inside recordSiteVisit, which uploads nothing
+                    // while the flag is off. Both call sites are pinned by Reporting830WiringTest so a
+                    // later merge cannot drop the feature and leave the tests green.
+                    recordSiteVisit(q.name, blocked = false)
+                    forward(query)
+                }
                 DnsFilterPolicy.Action.SINK -> {
                     if (config.pausedInternet) DnsMessage.buildNxDomain(query, q) else {
                         Log.i(TAG, "sink ${q.name} (${d.reason})")
+                        recordSiteVisit(q.name, blocked = true)
+                        reportBlockedSite(q.name, d.reason)
                         DnsMessage.buildSink(query, q)
                     }
                 }
-                DnsFilterPolicy.Action.REWRITE -> rewrite(query, q, d.target!!)
+                DnsFilterPolicy.Action.REWRITE -> {
+                    // #830 row 5: SafeSearch and YouTube Restricted Mode are enabled by default for every child,
+                    // so Google, Bing, DuckDuckGo and YouTube lookups take REWRITE rather than FORWARD. Record the
+                    // queried host (gated by SiteVisitGate); the CNAME target stays excluded by SiteVisitGate.
+                    recordSiteVisit(q.name, blocked = false)
+                    rewrite(query, q, d.target!!)
+                }
             }
         }
         if (reply == null) return
         val ip = IpPacket.buildUdpReply(udp, reply)
         synchronized(output) { runCatching { output.write(ip) } }
+    }
+
+    /**
+     * #830: a blocked site the child tried to open is one grouped `web_threat` row per host per UTC day.
+     * A page load is many DNS queries, so a host is posted at most once per ten minutes and the count
+     * increments on later attempts; the server never pushes an aggregate again (ADR-0029).
+     */
+    private fun reportBlockedSite(host: String, reason: String) {
+        // S1: before AttemptCounter.next, not after it. The counter is persisted on disk, so a paused window
+        // that incremented it would add its attempts to the first count the parent sees after a re-grant.
+        if (consent.isPaused()) return
+        if (!reason.startsWith("blocked_domain:") && !reason.startsWith("category:")) return
+        // #841 review: the visit path normalises `q.name`, this one did not — mixed case or a trailing
+        // dot split the quiet window, the attempt counter and the dedupe key, and slid past the
+        // exclusion list. One normalised name, and an excluded or empty one is not reported at all.
+        val name = DnsFilterPolicy.normalize(host)
+        if (name.isEmpty() || SiteVisitGate.isExcludedHost(name)) return
+        // Fable's blocker D: one read of the flag for the whole alert, so a single row cannot be built
+        // half in each state; while it is off the quiet window and the counter use a hostless key, so the
+        // parent's count is the day's total rather than the largest single host's.
+        val siteNames = config.siteNamesEnabled
+        val alertKey = if (siteNames) name else "blocked-day"
+        val now = System.currentTimeMillis()
+        val last = lastSiteAlert[alertKey]
+        if (!com.familyshield.agent.enforcement.AlertKeys.siteAlertDue(last, now, SITE_ALERT_QUIET_MS)) return
+        if (lastSiteAlert.size > 512) {
+            lastSiteAlert.entries.removeIf { now - it.value > SITE_ALERT_QUIET_MS }
+        }
+        lastSiteAlert[alertKey] = now
+        val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString()
+        val attempts = com.familyshield.agent.enforcement.AttemptCounter.next(this, "web", alertKey, day)
+        scope.launch {
+            runCatching {
+                api.postInternalAlert(
+                    com.familyshield.agent.network.dto.AlertDto(
+                        childId = settings.childId(),
+                        deviceId = settings.deviceId(),
+                        severity = "info",
+                        category = "web_threat",
+                        title = "Blocked site opened",
+                        body = "Your child tried to open a blocked site.",
+                        // Claude's ruling on #841 finding 5: with the flag off the attempt is still
+                        // reported, but the parent gets a count with no host — no domain, a coarse reason
+                        // (never the blocked word itself) and one row per day.
+                        metadata = if (siteNames) {
+                            mapOf("domain" to name, "reason" to reason)
+                        } else {
+                            mapOf("reason" to reason.substringBefore(':'))
+                        },
+                        dedupeKey = if (siteNames) {
+                            com.familyshield.agent.enforcement.AlertKeys.blockedSite(name, day)
+                        } else {
+                            "web:$day"
+                        },
+                        attemptCount = attempts,
+                    ),
+                )
+            }
+        }
+    }
+
+    /**
+     * #830: one `url` activity row per host per [SITE_VISIT_QUIET_MS], batched. The DNS filter sees
+     * names, not pages, so the payload carries the host in `url` and `domain` and never a path; the
+     * server also reduces anything a client sends to its host. With the flag off **no** name leaves the
+     * phone, blocked or not ([SiteVisitGate], Fable's blocker A); the blocked attempt still reaches the
+     * parent as a hostless count through its alert.
+     */
+    private fun recordSiteVisit(host: String, blocked: Boolean) {
+        if (consent.isPaused()) return
+        // One normalised name for the quiet window, the batch and the exclusion check: `q.name` arrives
+        // with its DNS casing and a trailing dot, and two spellings of one host split the maps (#841).
+        val name = DnsFilterPolicy.normalize(host)
+        if (name.isEmpty()) return
+        if (!SiteVisitGate.shouldUpload(config.siteNamesEnabled, blocked, SiteVisitGate.isExcludedHost(name))) return
+        val now = System.currentTimeMillis()
+        val last = lastSiteVisit[name]
+        if (!com.familyshield.agent.enforcement.AlertKeys.siteAlertDue(last, now, SITE_VISIT_QUIET_MS)) return
+        if (lastSiteVisit.size > 512) {
+            lastSiteVisit.entries.removeIf { now - it.value > SITE_VISIT_QUIET_MS }
+        }
+        lastSiteVisit[name] = now
+        val flushNow = synchronized(pendingVisitsLock) {
+            pendingVisits[name] = blocked
+            pendingVisits.size >= SITE_VISIT_BATCH_MAX
+        }
+        startVisitFlusher()
+        if (flushNow) flushSiteVisits()
+    }
+
+    /** One flusher per service lifetime; the scope is cancelled in [onDestroy]. */
+    private fun startVisitFlusher() {
+        // One flusher, whatever the worker race: compare-and-set, not a check-then-set (#841 review).
+        if (!visitFlusherStarted.compareAndSet(false, true)) return
+        scope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(SITE_VISIT_FLUSH_MS)
+                flushSiteVisits()
+            }
+        }
+    }
+
+    /** Sends queued names as one batch; a failed upload drops them rather than replaying a day late. */
+    private fun flushSiteVisits() {
+        if (consent.isPaused()) {
+            // S1: a pause drains the queue instead of uploading it. Without this the 60 s flusher posts the
+            // withdrawn window's names on the next tick, or the moment consent comes back.
+            synchronized(pendingVisitsLock) { pendingVisits.clear() }
+            return
+        }
+        val batch: List<Pair<String, Boolean>>
+        synchronized(pendingVisitsLock) {
+            if (pendingVisits.isEmpty()) return
+            batch = pendingVisits.entries.map { it.key to it.value }
+            pendingVisits.clear()
+        }
+        scope.launch {
+            val deviceId = settings.deviceId() ?: return@launch
+            runCatching {
+                api.postActivityEvents(
+                    deviceId,
+                    com.familyshield.agent.network.dto.ActivityEventBatchDto(
+                        // The whole drained batch: the API accepts up to 200 events, and truncating to the
+                        // queue cap after clearing the map dropped whatever four workers had just added.
+                        events = batch.map { (host, blocked) ->
+                            com.familyshield.agent.network.dto.ActivityEventDto(
+                                type = "url",
+                                payload = mapOf("url" to host, "domain" to host, "blocked" to blocked),
+                            )
+                        },
+                    ),
+                )
+            }
+        }
     }
 
     /** Sends [query] to the first reachable upstream resolver through a protected socket. */
@@ -302,6 +495,17 @@ class FilterVpnService : VpnService() {
     }
 
     companion object {
+        /** #830: one `web_threat` per host per ten minutes; a page load issues many DNS queries. */
+        private const val SITE_ALERT_QUIET_MS = 10 * 60 * 1000L
+        /** #830: a new visit counts only after five quiet minutes for that host (UI/UX's example). */
+        private const val SITE_VISIT_QUIET_MS = 5 * 60 * 1000L
+        /**
+         * #830 B2: visits leave the phone in batches, not one request per name. A page load resolves a
+         * dozen names; [SITE_VISIT_FLUSH_MS] bounds how long a name waits, and [SITE_VISIT_BATCH_MAX] is
+         * the cap the server also enforces.
+         */
+        private const val SITE_VISIT_FLUSH_MS = 15_000L
+        private const val SITE_VISIT_BATCH_MAX = 20
         /**
          * The mode of the tunnel that is **actually established**, or null when there is none.
          *
@@ -319,6 +523,7 @@ class FilterVpnService : VpnService() {
         const val MODE_SINKHOLE_ALL = "sinkhole_all"
         const val ACTION_STOP = "com.familyshield.agent.vpn.STOP"
         const val ACTION_RELOAD = "com.familyshield.agent.vpn.RELOAD"
+        const val ACTION_FLUSH_VISITS = "com.familyshield.agent.vpn.FLUSH_VISITS"
         const val EXTRA_MODE = "mode"
         private const val TUN_ADDR = "10.111.222.1"
         private const val TUN_ADDR6 = "fd00:6f73:7261::1"
@@ -342,6 +547,12 @@ class FilterVpnService : VpnService() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(i) else context.startService(i)
         }
 
+        /** Flushes any queued site visits when the screen turns off (#830 row 5); no-op when stopped. */
+        fun flushIfRunning(context: Context) {
+            if (!isRunning) return
+            runCatching { context.startService(Intent(context, FilterVpnService::class.java).setAction(ACTION_FLUSH_VISITS)) }
+        }
+
         /**
          * Re-applies the cached rules to the running filter. [startIfStopped] is false where the caller
          * may not adopt "a rule change revives the VPN" as a policy: the `rules_updated` command path
@@ -355,6 +566,7 @@ class FilterVpnService : VpnService() {
         }
 
         fun stop(context: Context) {
+            VpnState.clearFilterLoss(context)
             if (!isRunning) return
             context.startService(Intent(context, FilterVpnService::class.java).setAction(ACTION_STOP))
         }

@@ -73,6 +73,9 @@ unset AWS_PROFILE
 umask 077
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+# aws.exe on Windows cannot open a Git Bash path (/tmp/...) given as file://; use the mixed form C:/...
+# (15 Nov rotation failed at jwt until TMPDIR pointed at a Windows folder). No-op on Linux and macOS.
+if command -v cygpath >/dev/null 2>&1; then tmp=$(cygpath -m "$tmp"); fi
 
 # keep <arn>: true when the secret already has a value and this run must leave it alone.
 keep() {
@@ -119,8 +122,9 @@ if keep "$redis_url_arn"; then echo "    redis-url: exists, unchanged"; else
 
 if keep "$dburl_arn"; then echo "    database-url: exists, unchanged"; else
   fetch "$apidb_arn" >"$tmp/apidb2"
-  # Prisma 5 verifies chain and host name only in this form (tested in #777); the host is the RDS name.
-  printf 'postgresql://osra_api:%s@%s:5432/osra?schema=public&sslmode=require&sslaccept=strict&sslcert=/app/certs/rds-global-bundle.pem&connection_limit=10' \
+  # Prisma 5 verifies chain and host name only in this form (#777), and loads only the first PEM block of
+  # sslcert (#919), so sslcert points at the single eu-central-1 rds-ca-rsa2048-g1 root; the host is the RDS name.
+  printf 'postgresql://osra_api:%s@%s:5432/osra?schema=public&sslmode=require&sslaccept=strict&sslcert=/app/certs/rds-eu-central-1-rsa2048-g1.pem&connection_limit=10' \
     "$(cat "$tmp/apidb2")" "$db_host" >"$tmp/dburl"
   put "$dburl_arn" "$tmp/dburl" database-url; fi
 

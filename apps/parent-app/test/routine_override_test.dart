@@ -3,6 +3,7 @@ import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/rules/active_window.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/providers/clock_provider.dart';
+import 'package:flutter/foundation.dart' show ValueKey;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -312,7 +313,10 @@ void main() {
 
     testWidgets('an allowed app is not described as blocked by school hours', (tester) async {
       await pumpApps(tester, monday(10, 0));
-      expect(find.textContaining('Blocked now by'), findsNothing);
+      expect(find.byKey(const ValueKey('blocked-now-com.example.meet')), findsNothing);
+      // Karim 23 Nov: the Apps tab now lists every reported app. One with no rule of its own really is
+      // held by school hours on the phone (RuleEngine.kt), and its row says so.
+      expect(find.text('Blocked now by School hours (until 15:00)'), findsWidgets);
     });
   });
   /// #476: the child's phone enforces a routine in the family's zone, so the sentence is read there.
@@ -373,7 +377,8 @@ void main() {
       final parent = monday(17, 30);
       await pumpApps(tester, parent, parent.timeZoneOffset.inMinutes - 240);
       // 13:30 on the family clock: Homework (17:00–19:00) has not started on the child's phone.
-      expect(find.textContaining('Blocked now by'), findsNothing);
+      expect(find.byKey(const ValueKey('blocked-now-com.example.meet')), findsNothing);
+      expect(find.textContaining('Homework'), findsNothing);
     });
 
     testWidgets('with the family an hour ahead, 16:30 parent time is 17:30 there and in the window', (tester) async {

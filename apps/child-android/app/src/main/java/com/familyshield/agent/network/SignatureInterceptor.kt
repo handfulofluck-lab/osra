@@ -8,12 +8,17 @@ import okhttp3.Interceptor
 import okhttp3.Response
 
 /**
- * Signs every request whose path contains an `internal` segment (spec §12.3) with the v2 internal
- * signing contract (ADR-0014):
+ * Signs internal/HMAC-authenticated API requests with the v2 signing contract (ADR-0014):
  *
  *   X-FamilyShield-Timestamp: unix seconds
  *   X-FamilyShield-Nonce:     32 hex chars, unique per request
  *   X-FamilyShield-Signature: HMAC-SHA256(secret, "<timestamp>.<nonce>.<body>")
+ *
+ * Endpoints requiring v2 HMAC (`authenticateInternalRequest` on the server):
+ *  - `POST /v1/alerts/internal`
+ *  - `POST /v1/social/scan`
+ *  - `POST /v1/content/search-event`
+ *  - `POST /v1/content/youtube-watch`
  *
  * The server rejects a request whose timestamp is more than 5 minutes off its clock, and a nonce it
  * has already seen for this device — so a captured request cannot be replayed. [secretProvider]
@@ -29,7 +34,7 @@ class SignatureInterceptor(
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
-        if (!request.url.pathSegments.contains("internal")) return chain.proceed(request)
+        if (!shouldSign(request.url.pathSegments)) return chain.proceed(request)
         val body = request.body ?: return chain.proceed(request)
         val secret = secretProvider() ?: return chain.proceed(request)
         val buffer = okio.Buffer()
@@ -52,6 +57,19 @@ class SignatureInterceptor(
         const val HEADER_NONCE: String = "X-FamilyShield-Nonce"
 
         private val random = SecureRandom()
+
+        private val SIGNED_ENDPOINT_TAILS: Set<List<String>> = setOf(
+            listOf("v1", "social", "scan"),
+            listOf("v1", "content", "search-event"),
+            listOf("v1", "content", "youtube-watch"),
+        )
+
+        /** True for any route whose server handler enforces `authenticateInternalRequest`. */
+        fun shouldSign(pathSegments: List<String>): Boolean {
+            val clean = pathSegments.filter { it.isNotEmpty() }
+            if ("internal" in clean) return true
+            return clean.size >= 3 && clean.takeLast(3) in SIGNED_ENDPOINT_TAILS
+        }
 
         /** The v2 signing string: `timestamp.nonce.` followed by the exact body bytes. */
         fun signingBytes(timestamp: String, nonce: String, body: ByteArray): ByteArray {

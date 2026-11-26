@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:familyshield_parent/core/ltr_isolate.dart';
 import 'package:familyshield_parent/features/reports/reports_screen.dart';
 import 'package:familyshield_parent/features/reports/usage_history_screen.dart';
 import 'package:familyshield_parent/l10n/l10n.dart';
@@ -137,6 +139,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(api.calls('GET', '/v1/reports/usage').last.query['days'], 30);
       expect(api.calls('GET', '/v1/reports/web').last.query['days'], 30);
+
+      await tester.tap(find.text('7d'));
+      await tester.pumpAndSettle();
+      // Mutant: keep an inactive time window alive and reopen its old usage or web rows.
+      for (final path in ['/v1/reports/usage', '/v1/reports/web']) {
+        expect(api.calls('GET', path).map((r) => r.query['days']), [7, 14, 30, 7]);
+      }
     });
 
     testWidgets('a 30-day series renders 30 bars, an honest total and a per-day list', (tester) async {
@@ -207,10 +216,16 @@ void main() {
       final api = trendApi();
       await pumpScreen(tester, const UsageHistoryScreen(childId: 'child-1'), api);
 
-      expect(find.text('tiktok.com'), findsOneWidget);
-      expect(find.text('khanacademy.org'), findsOneWidget);
-      expect(find.text('Blocked'), findsOneWidget);
-      expect(find.text('Allowed'), findsOneWidget);
+      // #830: rows are site names grouped per host, drawn in a first-strong isolate; no Blocked/Allowed
+      // tag on these rows (blocked attempts live in Alerts).
+      expect(find.text(ltrIsolateHost('tiktok.com')), findsOneWidget);
+      expect(find.text(ltrIsolateHost('khanacademy.org')), findsOneWidget);
+      expect(find.text('Blocked'), findsNothing);
+      expect(find.text('Allowed'), findsNothing);
+      expect(
+        find.text('Names of sites and online services this phone connected to, not the pages opened. Kept for 90 days.'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('Blocked only sends blocked=true and hides allowed visits', (tester) async {
@@ -227,8 +242,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.calls('GET', '/v1/reports/web').last.query['blocked'], 'true');
-      expect(find.text('tiktok.com'), findsOneWidget);
-      expect(find.text('khanacademy.org'), findsNothing);
+      expect(find.text(ltrIsolateHost('tiktok.com')), findsOneWidget);
+      expect(find.text(ltrIsolateHost('khanacademy.org')), findsNothing);
     });
 
     testWidgets('Blocked only with no blocked visits shows the filtered empty state', (tester) async {
@@ -259,8 +274,8 @@ void main() {
       await pumpScreen(tester, const UsageHistoryScreen(childId: 'child-1'), api);
       expect(api.calls('GET', '/v1/reports/web').single.query['limit'], 20);
       expect(find.textContaining('Showing the latest 20 visits'), findsOneWidget);
-      expect(find.text('site19.example'), findsOneWidget);
-      expect(find.text('site20.example'), findsNothing);
+      expect(find.text(ltrIsolateHost('site19.example')), findsOneWidget);
+      expect(find.text(ltrIsolateHost('site20.example')), findsNothing);
 
       final selector = find.byKey(const ValueKey('webLimitSelector'));
       await tester.scrollUntilVisible(selector, 200, scrollable: find.byType(Scrollable).first);
@@ -269,15 +284,31 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.calls('GET', '/v1/reports/web').last.query['limit'], 100);
-      expect(find.text('site24.example'), findsOneWidget);
+      expect(find.text(ltrIsolateHost('site24.example')), findsOneWidget);
       expect(find.textContaining('Showing the latest 100 visits'), findsNothing);
     });
 
-    testWidgets('empty history shows the empty state', (tester) async {
+    testWidgets("empty history keeps the screen's existing empty state (#830)", (tester) async {
       final api = trendApi(visits: const []);
       await pumpScreen(tester, const UsageHistoryScreen(childId: 'child-1'), api);
 
       expect(find.text('No browsing history in the last 7 days'), findsOneWidget);
+      expect(
+        find.text('Names of sites and online services this phone connected to, not the pages opened. Kept for 90 days.'),
+        findsNothing,
+      );
+    });
+
+    testWidgets('two visits to one host read as one site with a count (#830)', (tester) async {
+      final now = DateTime.now();
+      final api = trendApi(visits: [
+        visitJson('v1', 'youtube.com', false, now.subtract(const Duration(minutes: 30))),
+        visitJson('v2', 'youtube.com', false, now.subtract(const Duration(minutes: 2))),
+      ]);
+      await pumpScreen(tester, const UsageHistoryScreen(childId: 'child-1'), api);
+
+      expect(find.text(ltrIsolateHost('youtube.com')), findsOneWidget);
+      expect(find.text('Visited 2 times'), findsOneWidget);
     });
 
     testWidgets('web error shows an honest error and a retry', (tester) async {
@@ -291,8 +322,12 @@ void main() {
   });
 
   group('UsageHistoryScreen — entry point and layout', () {
-    testWidgets('reports screen opens the history screen for the same child', (tester) async {
-      final api = FakeApiClient(standardRoutes());
+    testWidgets('reports opens history for the same child and refreshes the summary on return', (tester) async {
+      var total = 0;
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/reports/summary': (_) => {'totalAppMinutes': total},
+      });
       final router = GoRouter(
         initialLocation: '/child/child-1/reports',
         routes: [
@@ -316,6 +351,13 @@ void main() {
 
       expect(find.byType(UsageHistoryScreen), findsOneWidget);
       expect(api.calls('GET', '/v1/reports/usage').single.query['childId'], 'child-1');
+
+      total = 22;
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      // Mutant: pop to the still-mounted report without reading the newly available activity.
+      expect(api.calls('GET', '/v1/reports/summary'), hasLength(2));
+      expect(find.textContaining('Total 22 min'), findsOneWidget);
     });
 
     testWidgets('320x568: selector, 30 bars and the browsing controls do not overflow', (tester) async {
@@ -343,4 +385,77 @@ void main() {
       expect(exceptions, isEmpty, reason: exceptions.join('\n'));
     });
   });
+
+  group('UsageHistoryScreen — a site name is readable in full (#841 condition 2)', () {
+    // The host the Bureau's frame cut was 45 characters with four dots; this one is the same shape.
+    const longHost = 'a-very-long-fictional-learning-and-reading-platform.example.co.uk';
+
+    testWidgets('at 320 px the whole host wraps and is never truncated', (tester) async {
+      final api = trendApi(visits: [
+        visitJson('v1', longHost, false, DateTime.now().subtract(const Duration(minutes: 5))),
+      ]);
+      await pumpScreen(tester, const UsageHistoryScreen(childId: 'child-1'), api, surface: const Size(320, 640));
+
+      final row = find.byKey(const ValueKey('webSite-$longHost'));
+      expect(row, findsOneWidget, reason: 'the row is keyed by the host it groups');
+
+      // 1. The full name, not a shortened copy: the isolate + break markers around the same characters.
+      final title = find.descendant(of: row, matching: find.text(ltrIsolateHost(longHost)));
+      expect(title, findsOneWidget);
+      expect(find.textContaining('…'), findsNothing, reason: 'the Bureau refused the ellipsis by name');
+
+      // 2. It grows instead of clipping. `didExceedMaxLines` is the layout's own answer to "was anything
+      //    dropped" — the row the old `maxLines: 1, overflow: ellipsis` produced failed exactly here.
+      //
+      //    NOTE: no line *count* is asserted. Widget tests draw with a fixed-face test font whose glyphs are
+      //    one em square, so 51 characters need about five lines here where Roboto needs two on the handset;
+      //    the Bureau's three-line allowance is a real-font measurement, and a count from this font would be
+      //    a number about the test harness, not about the screen.
+      final paragraph = tester.renderObject<RenderParagraph>(title);
+      expect(paragraph.didExceedMaxLines, isFalse, reason: 'nothing is cut off');
+      expect(_lineCount(paragraph, ltrIsolateHost(longHost)), greaterThan(1), reason: 'it wraps');
+
+      expect(drainExceptions(tester), isEmpty);
+    });
+
+    testWidgets('at 320 px with 200% text it still draws in full, with nothing cut', (tester) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final api = trendApi(visits: [
+        visitJson('v1', longHost, false, DateTime.now().subtract(const Duration(minutes: 5))),
+      ]);
+      await pumpScreen(tester, const UsageHistoryScreen(childId: 'child-1'), api, surface: const Size(320, 640));
+
+      final title = find.descendant(
+        of: find.byKey(const ValueKey('webSite-$longHost')),
+        matching: find.text(ltrIsolateHost(longHost)),
+      );
+      expect(title, findsOneWidget, reason: 'the full host is in the tree, not a shortened copy');
+      expect(find.textContaining('…'), findsNothing);
+      expect(tester.renderObject<RenderParagraph>(title).didExceedMaxLines, isFalse);
+      expect(drainExceptions(tester), isEmpty, reason: 'and it is laid out without overflowing its row');
+    });
+
+    testWidgets('at 100% text on a wide screen the same host fits on one line', (tester) async {
+      final api = trendApi(visits: [
+        visitJson('v1', longHost, false, DateTime.now().subtract(const Duration(minutes: 5))),
+      ]);
+      await pumpScreen(tester, const UsageHistoryScreen(childId: 'child-1'), api, surface: const Size(1600, 900));
+
+      final title = find.descendant(
+        of: find.byKey(const ValueKey('webSite-$longHost')),
+        matching: find.text(ltrIsolateHost(longHost)),
+      );
+      expect(_lineCount(tester.renderObject<RenderParagraph>(title), ltrIsolateHost(longHost)), 1);
+    });
+  });
+}
+
+/// How many visual lines a laid-out paragraph occupies.
+///
+/// `RenderParagraph` has no public line count, so the boxes of one selection over the whole text are
+/// grouped by their top edge: one top edge per line.
+int _lineCount(RenderParagraph paragraph, String text) {
+  final boxes = paragraph.getBoxesForSelection(TextSelection(baseOffset: 0, extentOffset: text.length));
+  return boxes.map((box) => box.top.round()).toSet().length;
 }

@@ -6,6 +6,7 @@ import '../../l10n/l10n.dart';
 import '../../theme/app_tokens.dart';
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
+import '../social/social_vote_controls.dart';
 
 /// Severity indicator colour for the vault modal: the pinned dot role for the
 /// icon and the readable role for the severity chip label.
@@ -24,6 +25,7 @@ class SnippetVaultModal extends StatelessWidget {
   final List<String> concernTypes;
   final String? sourceLabel;
   final DateTime? timestamp;
+  final String? eventId;
 
   const SnippetVaultModal({
     super.key,
@@ -33,6 +35,7 @@ class SnippetVaultModal extends StatelessWidget {
     this.concernTypes = const [],
     this.sourceLabel,
     this.timestamp,
+    this.eventId,
   });
 
   /// Opens the modal as a responsive bottom sheet.
@@ -44,6 +47,7 @@ class SnippetVaultModal extends StatelessWidget {
     List<String> concernTypes = const [],
     String? sourceLabel,
     DateTime? timestamp,
+    String? eventId,
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -56,6 +60,7 @@ class SnippetVaultModal extends StatelessWidget {
         concernTypes: concernTypes,
         sourceLabel: sourceLabel,
         timestamp: timestamp,
+        eventId: eventId,
       ),
     );
   }
@@ -67,7 +72,9 @@ class SnippetVaultModal extends StatelessWidget {
     final sevColor = snippetSeverityColor(severity, context);
     final sevText = context.tokens.severityText(severity);
     final formattedTime = timestamp != null
-        ? DateFormat.yMMMd(context.localeName).add_Hms().format(timestamp!.toLocal())
+        ? DateFormat.yMMMd(context.localeName)
+            .add_Hms()
+            .format(timestamp!.toLocal())
         : null;
 
     return DraggableScrollableSheet(
@@ -86,7 +93,8 @@ class SnippetVaultModal extends StatelessWidget {
               Expanded(
                 child: Text(
                   title.isEmpty ? l10n.decryptedVaultContent : title,
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.bold),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -102,7 +110,9 @@ class SnippetVaultModal extends StatelessWidget {
             Row(
               children: [
                 if (sourceLabel != null)
-                  Text(sourceLabel!, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold)),
+                  Text(sourceLabel!,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(fontWeight: FontWeight.bold)),
                 if (sourceLabel != null && formattedTime != null)
                   Text(' · ', style: theme.textTheme.bodySmall),
                 if (formattedTime != null)
@@ -114,7 +124,8 @@ class SnippetVaultModal extends StatelessWidget {
                   side: BorderSide(color: sevColor.withValues(alpha: 0.4)),
                   label: Text(
                     l10n.severityName(severity),
-                    style: theme.textTheme.labelSmall?.copyWith(color: sevText, fontWeight: FontWeight.bold),
+                    style: theme.textTheme.labelSmall
+                        ?.copyWith(color: sevText, fontWeight: FontWeight.bold),
                   ),
                 ),
               ],
@@ -136,7 +147,8 @@ class SnippetVaultModal extends StatelessWidget {
                       children: [
                         Text(
                           l10n.encryptedFamilyVault,
-                          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                          style: theme.textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 2),
                         Text(
@@ -165,14 +177,18 @@ class SnippetVaultModal extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(l10n.decryptedContent, style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                    Text(l10n.decryptedContent,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant)),
                     InkWell(
                       onTap: () {
                         Clipboard.setData(ClipboardData(text: snippet));
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.contentCopied)));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(l10n.contentCopied)));
                       },
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 2),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -188,11 +204,16 @@ class SnippetVaultModal extends StatelessWidget {
                 const SizedBox(height: 8),
                 SelectableText(
                   snippet.isEmpty ? l10n.noPreviewContent : snippet,
-                  style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
+                  style: theme.textTheme.bodyLarge
+                      ?.copyWith(fontWeight: FontWeight.w500),
                 ),
               ],
             ),
           ),
+          if (eventId != null && eventId!.trim().isNotEmpty) ...[
+            const SizedBox(height: 20),
+            SocialVoteControls(eventId: eventId!),
+          ],
           if (concernTypes.isNotEmpty) ...[
             const SizedBox(height: 16),
             Text(l10n.detectedConcernTypes, style: theme.textTheme.titleSmall),
@@ -204,7 +225,8 @@ class SnippetVaultModal extends StatelessWidget {
                 for (final c in concernTypes)
                   Chip(
                     visualDensity: VisualDensity.compact,
-                    label: Text(l10n.searchRiskCategory(c), style: theme.textTheme.bodySmall),
+                    label: Text(l10n.searchRiskCategory(c),
+                        style: theme.textTheme.bodySmall),
                   ),
               ],
             ),

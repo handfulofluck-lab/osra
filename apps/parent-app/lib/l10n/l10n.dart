@@ -94,6 +94,9 @@ extension AppLocalizationsLabels on AppLocalizations {
         'vpn_detected' => alertCategoryVpnDetected,
         'install_request' => alertCategoryInstallRequest,
         'unknown_contact' => alertCategoryUnknownContact,
+        'device_restarted' => alertCategoryDeviceRestarted,
+        'social_concern' => alertCategorySocialConcern,
+        'gaming_chat' => alertCategoryGamingChat,
         _ => category,
       };
 
@@ -124,19 +127,24 @@ extension AppLocalizationsLabels on AppLocalizations {
         'tamper' => switch (tamperType) {
             'block_bypass' => alertTitleBlockBypass,
             'agent_data_cleared' => alertTitleDataCleared,
+            'setup_complete' => alertTitleSetupComplete,
+            'setup_incomplete' => alertTitleSetupIncomplete,
             _ => alertTitleTamper,
           },
         'vpn_detected' => alertTitleVpnDetected,
         'install_request' => alertTitleInstallRequest,
         'unknown_contact' => alertTitleUnknownContact,
+        'device_restarted' => alertDeviceRestartedTitle,
+        'social_concern' => alertTitleSocialConcern,
+        'gaming_chat' => alertTitleGamingChat,
         _ => isEnglish ? serverTitle : alertTitleGeneric,
       };
 
-  /// Risk labels for the `concernTypes` tags on search results and social rows.
+  /// Labels for the `concernTypes` tags on search results and social rows.
   ///
   /// The vocabulary is the AI engine's `CATEGORIES` (`services/ai-engine/model.py`, minus `safe`) plus the
-  /// local search patterns in `services/api/src/routes/content.ts`. A tag with no label falls back to the raw
-  /// key, so a new server tag shows up as itself instead of a blank chip.
+  /// local search patterns in `services/api/src/routes/content.ts` and the Social timing tag.
+  /// A tag with no label falls back to the raw key.
   String searchRiskCategory(String tag) => switch (tag.trim().toLowerCase()) {
         'self_harm' => riskSelfHarm,
         'substance_use' => riskSubstanceUse,
@@ -148,6 +156,7 @@ extension AppLocalizationsLabels on AppLocalizations {
         'violence' => riskViolence,
         'hate_speech' => riskHateSpeech,
         'ai_concern' => riskAiConcern,
+        'late_night' => riskLateNight,
         _ => tag,
       };
 

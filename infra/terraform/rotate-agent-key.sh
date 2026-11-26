@@ -7,6 +7,7 @@
 # into the key store through a private temporary file: never printed, never on a command line.
 # Key store: if the profile uses agent-credential.ps1 (move-agent-key-to-store.sh, Ahmed control 4) the key is
 # written to the DPAPI store; otherwise to the credentials file, the pre-migration layout.
+# --check prints which mode the profile is in and exits before any key is created.
 #
 #   bash infra/terraform/rotate-agent-key.sh            # profile osra-staging, user osra-staging-deployer
 #   AGENT_PROFILE=x AGENT_USER=y bash infra/terraform/rotate-agent-key.sh
@@ -14,16 +15,37 @@
 # Expect one "osra-agent-key-changed" alarm email for the create and one for the delete.
 set -euo pipefail
 
+# Mac phase1 has no rotation. Refuse before reading storage or invoking any credential/AWS helper.
+# The existing Windows path below remains unchanged.
+if [ "${1:-}" = "--mac" ]; then
+  echo "Mac rotation is disabled in phase 1; renewal requires the owner's approved MFA key-creation step." >&2
+  exit 1
+fi
+
 PROFILE="${AGENT_PROFILE:-osra-staging}"
 USER_NAME="${AGENT_USER:-osra-staging-deployer}"
 cred_file="${AWS_SHARED_CREDENTIALS_FILE:-$HOME/.aws/credentials}"
 config_file="${AWS_CONFIG_FILE:-$HOME/.aws/config}"
 export AWS_PAGER=""
 . "$(dirname "$0")/lib/agent-store.sh"
-if aws configure get credential_process --profile "$PROFILE" 2>/dev/null | grep -q 'agent-credential.ps1'; then
+# Store mode when the profile has a credential_process and no key lines, whatever the helper's path is
+# spelled as (#821 Fable B2). Store mode reads the key back through the installed helper, so stop before any
+# key is created if that helper is not installed yet (Fable B3).
+if [ -z "$(aws configure get aws_access_key_id --profile "$PROFILE" 2>/dev/null)" ] \
+   && [ -n "$(aws configure get credential_process --profile "$PROFILE" 2>/dev/null)" ]; then
   mode=store; key_file="$AGENT_STORE"
+  if [ ! -f "$AGENT_HELPER" ] || ! aws configure get credential_process --profile "$PROFILE" | grep -qi "$AGENT_HELPER_PATTERN"; then
+    echo "Profile $PROFILE does not run the installed helper $AGENT_HELPER yet: run move-agent-key-to-store.sh first to install it and repoint the profile. No key was created." >&2
+    exit 1
+  fi
 else
   mode=file; key_file="$cred_file"
+fi
+
+if [ "${1:-}" = "--check" ]; then
+  # Prints the mode and stops before anything is created (Fable on #821).
+  echo "Check: profile $PROFILE is in $mode mode ($key_file); no key was created."
+  exit 0
 fi
 
 old_ids=$(aws iam list-access-keys --profile "$PROFILE" --user-name "$USER_NAME" \

@@ -13,8 +13,14 @@ class CoachCardSection extends StatefulWidget {
   /// for the emergency number when the device locale carries no country. The
   /// card always resolves from the device first (#723).
   final String? region;
+  final bool compact;
 
-  const CoachCardSection({super.key, required this.card, this.region});
+  const CoachCardSection({
+    super.key,
+    required this.card,
+    this.region,
+    this.compact = false,
+  });
 
   @override
   State<CoachCardSection> createState() => _CoachCardSectionState();
@@ -38,12 +44,16 @@ class _CoachCardSectionState extends State<CoachCardSection> {
       for (final tip in _arabic ? card.tipsAr : card.tips)
         fillHelpNumbers(tip, numbers, arabic: _arabic),
     ];
+    final hideLeading = widget.compact ||
+        MediaQuery.textScalerOf(context).scale(1) >= 1.5 ||
+        MediaQuery.sizeOf(context).width < 360;
     return ExpansionTile(
-      leading: const Icon(Icons.forum_outlined),
+      tilePadding: hideLeading ? EdgeInsets.zero : null,
+      leading: hideLeading ? null : const Icon(Icons.forum_outlined),
       // The card is deliberately bilingual: its heading follows the card's
       // language, not the surrounding UI locale.
-      title:
-          Text(_arabic ? 'كيف تتحدث مع طفلك عن هذا' : 'How to talk about this'),
+      title: Text(
+          _arabic ? 'كيف تتحدث مع طفلك عن هذا' : 'How to talk about this'),
       subtitle: Text(title),
       children: [
         Align(
@@ -73,7 +83,8 @@ class _CoachCardSectionState extends State<CoachCardSection> {
                   alignment: AlignmentDirectional.centerEnd,
                   child: TextButton.icon(
                     key: const ValueKey('coachLangToggle'),
-                    onPressed: () => setState(() => _arabicOverride = !_arabic),
+                    onPressed: () =>
+                        setState(() => _arabicOverride = !_arabic),
                     icon: const Icon(Icons.translate, size: 18),
                     label: Text(_arabic ? 'EN' : 'عربي'),
                   ),

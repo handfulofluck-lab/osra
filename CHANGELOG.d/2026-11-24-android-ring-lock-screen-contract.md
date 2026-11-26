@@ -1,0 +1,1 @@
+- #866 pins the ring and the PIN gate to the lock-screen presentation: four JVM contract tests hold `setShowWhenLocked`/`turnScreenOn` and the manifest attributes, and each mutant reddens the row that names it.

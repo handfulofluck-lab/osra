@@ -1,0 +1,1 @@
+- Android child app: show the 3-step "Allow restricted settings" guide and "Open app info" action on Android 13+ non-store installs during the Accessibility onboarding step, and require live service binding (`AccessibilityMonitorService.isRunning`) before completing (#1131).

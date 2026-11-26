@@ -58,12 +58,19 @@ object WorkScheduler {
         )
     }
 
-    /** Enqueues a one-off immediate rules refresh (run right after pairing, §14.2). */
+    /**
+     * Enqueues a one-off immediate rules refresh (run right after pairing, §14.2, and on every push, #864).
+     *
+     * `APPEND_OR_REPLACE`, not `KEEP` (Ahmed's #1107 review): with `KEEP`, two rule changes seconds apart collapse
+     * into one sync — and if that sync already fetched before the second change committed, the second change waits
+     * for the six-hour tick. Appending gives at most the running sync plus one follow-up, which is what "a burst of
+     * pushes collapses" was always meant to mean.
+     */
     fun syncNow(context: Context) {
         val network = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
         WorkManager.getInstance(context).enqueueUniqueWork(
             RULES_SYNC_NOW,
-            ExistingWorkPolicy.KEEP,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
             OneTimeWorkRequestBuilder<RulesSyncWorker>()
                 .setConstraints(network)
                 .build(),

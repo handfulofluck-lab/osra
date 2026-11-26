@@ -1,0 +1,1 @@
+- The child-wide internet status endpoint reports the latest Pause or Resume request and exact device command receipts alongside the existing requested pause flag.

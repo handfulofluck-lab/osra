@@ -233,8 +233,8 @@ abstract class AppLocalizations {
   /// No description provided for @deleteAccountFailed.
   ///
   /// In en, this message translates to:
-  /// **'The account was not deleted. {detail}'**
-  String deleteAccountFailed(String detail);
+  /// **'Couldn\'t delete your account. Check your connection and try again.'**
+  String get deleteAccountFailed;
 
   /// No description provided for @cancel.
   ///
@@ -410,6 +410,12 @@ abstract class AppLocalizations {
   /// **'Create account'**
   String get createAccount;
 
+  /// No description provided for @consentRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'To create an account, please tick this box.'**
+  String get consentRequired;
+
   /// No description provided for @familyNameLabel.
   ///
   /// In en, this message translates to:
@@ -533,8 +539,8 @@ abstract class AppLocalizations {
   /// No description provided for @familyLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load family: {error}'**
-  String familyLoadFailed(String error);
+  /// **'Couldn\'t load your family. Check your connection and try again.'**
+  String get familyLoadFailed;
 
   /// No description provided for @noChildrenYet.
   ///
@@ -659,8 +665,8 @@ abstract class AppLocalizations {
   /// No description provided for @internetChangeFailed.
   ///
   /// In en, this message translates to:
-  /// **'Internet change failed: {error}'**
-  String internetChangeFailed(String error);
+  /// **'Couldn\'t change internet access. Check your connection and try again.'**
+  String get internetChangeFailed;
 
   /// No description provided for @parentalConsent.
   ///
@@ -713,7 +719,7 @@ abstract class AppLocalizations {
   /// No description provided for @jurisdictionLabel.
   ///
   /// In en, this message translates to:
-  /// **'Jurisdiction'**
+  /// **'Where does your family live?'**
   String get jurisdictionLabel;
 
   /// No description provided for @childNameLabel.
@@ -899,8 +905,8 @@ abstract class AppLocalizations {
   /// No description provided for @bonusFailed.
   ///
   /// In en, this message translates to:
-  /// **'Bonus failed: {error}'**
-  String bonusFailed(String error);
+  /// **'Couldn\'t add bonus time. Check your connection and try again.'**
+  String get bonusFailed;
 
   /// No description provided for @windDown.
   ///
@@ -929,8 +935,8 @@ abstract class AppLocalizations {
   /// No description provided for @windDownFailed.
   ///
   /// In en, this message translates to:
-  /// **'Wind down failed: {error}'**
-  String windDownFailed(String error);
+  /// **'Couldn\'t start wind-down. Check your connection and try again.'**
+  String get windDownFailed;
 
   /// No description provided for @commandQueued.
   ///
@@ -947,8 +953,8 @@ abstract class AppLocalizations {
   /// No description provided for @commandFailed.
   ///
   /// In en, this message translates to:
-  /// **'Command failed: {error}'**
-  String commandFailed(String error);
+  /// **'Couldn\'t send the command. Check your connection and try again.'**
+  String get commandFailed;
 
   /// No description provided for @commandErrorForbidden.
   ///
@@ -1028,11 +1034,17 @@ abstract class AppLocalizations {
   /// **'The phone hasn\'t picked this change up yet.'**
   String get rulesBehindHint;
 
+  /// No description provided for @rulesWaitingFirstApply.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the phone to apply rules.'**
+  String get rulesWaitingFirstApply;
+
   /// No description provided for @rulesLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load rules: {error}'**
-  String rulesLoadFailed(String error);
+  /// **'Couldn\'t load rules. Check your connection and try again.'**
+  String get rulesLoadFailed;
 
   /// No description provided for @noPerAppRules.
   ///
@@ -1061,8 +1073,8 @@ abstract class AppLocalizations {
   /// No description provided for @locationLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load location: {error}'**
-  String locationLoadFailed(String error);
+  /// **'Couldn\'t load location. Check your connection and try again.'**
+  String get locationLoadFailed;
 
   /// No description provided for @noLocationReported.
   ///
@@ -1073,13 +1085,13 @@ abstract class AppLocalizations {
   /// No description provided for @accuracyLabel.
   ///
   /// In en, this message translates to:
-  /// **'Accuracy ±{meters} m · {time}'**
+  /// **'Accuracy ±{meters} m · {time}'**
   String accuracyLabel(int meters, String time);
 
   /// No description provided for @accuracyShort.
   ///
   /// In en, this message translates to:
-  /// **'±{meters} m'**
+  /// **'±{meters} m'**
   String accuracyShort(int meters);
 
   /// No description provided for @mapPreview.
@@ -1091,8 +1103,8 @@ abstract class AppLocalizations {
   /// No description provided for @locationHistoryLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load history: {error}'**
-  String locationHistoryLoadFailed(String error);
+  /// **'Couldn\'t load location history. Check your connection and try again.'**
+  String get locationHistoryLoadFailed;
 
   /// No description provided for @noLocationHistoryToday.
   ///
@@ -1187,8 +1199,8 @@ abstract class AppLocalizations {
   /// No description provided for @familyInvitesLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load invites: {error}'**
-  String familyInvitesLoadFailed(String error);
+  /// **'Couldn\'t load invites. Check your connection and try again.'**
+  String get familyInvitesLoadFailed;
 
   /// No description provided for @familyNoPendingInvites.
   ///
@@ -1211,8 +1223,8 @@ abstract class AppLocalizations {
   /// No description provided for @familyRevokeFailed.
   ///
   /// In en, this message translates to:
-  /// **'Revoke failed: {error}'**
-  String familyRevokeFailed(String error);
+  /// **'Couldn\'t revoke invite. Check your connection and try again.'**
+  String get familyRevokeFailed;
 
   /// No description provided for @familyEnterEmail.
   ///
@@ -1373,8 +1385,8 @@ abstract class AppLocalizations {
   /// No description provided for @familyMapCommandFailed.
   ///
   /// In en, this message translates to:
-  /// **'Command failed: {error}'**
-  String familyMapCommandFailed(String error);
+  /// **'Couldn\'t send the command. Check your connection and try again.'**
+  String get familyMapCommandFailed;
 
   /// No description provided for @familyMapNoChildren.
   ///
@@ -1409,13 +1421,13 @@ abstract class AppLocalizations {
   /// No description provided for @familyMapRadius.
   ///
   /// In en, this message translates to:
-  /// **'Radius: {meters} m'**
+  /// **'Radius: {meters} m'**
   String familyMapRadius(int meters);
 
   /// No description provided for @familyMapMeters.
   ///
   /// In en, this message translates to:
-  /// **'{meters} m'**
+  /// **'{meters} m'**
   String familyMapMeters(int meters);
 
   /// No description provided for @familyMapCreate.
@@ -1427,8 +1439,8 @@ abstract class AppLocalizations {
   /// No description provided for @alertsLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load alerts: {error}'**
-  String alertsLoadFailed(String error);
+  /// **'Couldn\'t load alerts. Check your connection and try again.'**
+  String get alertsLoadFailed;
 
   /// No description provided for @noRecentAlerts.
   ///
@@ -1469,8 +1481,8 @@ abstract class AppLocalizations {
   /// No description provided for @insightsLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load insights: {error}'**
-  String insightsLoadFailed(String error);
+  /// **'Couldn\'t load app insights. Check your connection and try again.'**
+  String get insightsLoadFailed;
 
   /// No description provided for @commandLock.
   ///
@@ -1514,6 +1526,18 @@ abstract class AppLocalizations {
   /// **'Resume device'**
   String get commandResumeDevice;
 
+  /// No description provided for @commandPausingDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Pausing…'**
+  String get commandPausingDevice;
+
+  /// No description provided for @commandResumingDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Resuming…'**
+  String get commandResumingDevice;
+
   /// No description provided for @commandPauseInternet.
   ///
   /// In en, this message translates to:
@@ -1525,6 +1549,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Resume internet'**
   String get commandResumeInternet;
+
+  /// No description provided for @scopeThisDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'This device'**
+  String get scopeThisDevice;
+
+  /// No description provided for @scopeAllDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'All paired devices'**
+  String get scopeAllDevices;
+
+  /// No description provided for @deviceControlPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for this device'**
+  String get deviceControlPending;
+
+  /// No description provided for @deviceControlFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'This device couldn\'t apply the change'**
+  String get deviceControlFailed;
 
   /// No description provided for @commandBonusTime.
   ///
@@ -1613,8 +1661,8 @@ abstract class AppLocalizations {
   /// No description provided for @acknowledgeFailed.
   ///
   /// In en, this message translates to:
-  /// **'Acknowledge failed: {error}'**
-  String acknowledgeFailed(String error);
+  /// **'Couldn\'t dismiss alert. Check your connection and try again.'**
+  String get acknowledgeFailed;
 
   /// No description provided for @categoryLabel.
   ///
@@ -1661,8 +1709,8 @@ abstract class AppLocalizations {
   /// No description provided for @blockFailed.
   ///
   /// In en, this message translates to:
-  /// **'Block failed: {error}'**
-  String blockFailed(String error);
+  /// **'Couldn\'t block app. Check your connection and try again.'**
+  String get blockFailed;
 
   /// No description provided for @severityCritical.
   ///
@@ -2114,6 +2162,18 @@ abstract class AppLocalizations {
   /// **'The list appears after the child device\'s next check-in (up to 15 minutes).'**
   String get installedAppsEmptyHint;
 
+  /// No description provided for @appPickerIosEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No apps chosen yet'**
+  String get appPickerIosEmptyTitle;
+
+  /// No description provided for @appPickerIosEmptyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Open OSRA on {child}\'s iPhone and choose the apps you want to manage. They\'ll appear here.'**
+  String appPickerIosEmptyBody(Object child);
+
   /// No description provided for @installedAppsNoMatch.
   ///
   /// In en, this message translates to:
@@ -2123,8 +2183,32 @@ abstract class AppLocalizations {
   /// No description provided for @installedAppsLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Could not load apps: {error}'**
-  String installedAppsLoadFailed(String error);
+  /// **'Couldn\'t load installed apps. Check your connection and try again.'**
+  String get installedAppsLoadFailed;
+
+  /// No description provided for @appNoLongerInstalled.
+  ///
+  /// In en, this message translates to:
+  /// **'App no longer installed'**
+  String get appNoLongerInstalled;
+
+  /// No description provided for @appNoLongerInstalledRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'App no longer installed. Remove'**
+  String get appNoLongerInstalledRemove;
+
+  /// No description provided for @appNamePending.
+  ///
+  /// In en, this message translates to:
+  /// **'Name not available yet'**
+  String get appNamePending;
+
+  /// No description provided for @appNamePendingRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Name not available yet. Remove'**
+  String get appNamePendingRemove;
 
   /// No description provided for @installedAppsTruncated.
   ///
@@ -2231,8 +2315,8 @@ abstract class AppLocalizations {
   /// No description provided for @reportLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load report: {error}'**
-  String reportLoadFailed(String error);
+  /// **'Couldn\'t load report. Check your connection and try again.'**
+  String get reportLoadFailed;
 
   /// No description provided for @noActivityDays.
   ///
@@ -2252,11 +2336,23 @@ abstract class AppLocalizations {
   /// **'Total {total} min · avg {avg} min/day'**
   String totalAverage(int total, int avg);
 
+  /// No description provided for @chartLegendRow.
+  ///
+  /// In en, this message translates to:
+  /// **'{app}: {minutes} min'**
+  String chartLegendRow(String app, int minutes);
+
   /// No description provided for @noAppUsage.
   ///
   /// In en, this message translates to:
   /// **'No app usage recorded'**
   String get noAppUsage;
+
+  /// No description provided for @noPerAppBreakdown.
+  ///
+  /// In en, this message translates to:
+  /// **'Per-app usage is unavailable'**
+  String get noPerAppBreakdown;
 
   /// No description provided for @webSection.
   ///
@@ -2333,7 +2429,7 @@ abstract class AppLocalizations {
   /// No description provided for @couldNotLoadScreenTime.
   ///
   /// In en, this message translates to:
-  /// **'Could not load screen time'**
+  /// **'Could not load screen time. Check your connection and try again.'**
   String get couldNotLoadScreenTime;
 
   /// No description provided for @noScreenTimeData.
@@ -2387,7 +2483,7 @@ abstract class AppLocalizations {
   /// No description provided for @couldNotLoadBrowsing.
   ///
   /// In en, this message translates to:
-  /// **'Could not load browsing history'**
+  /// **'Could not load browsing history. Check your connection and try again.'**
   String get couldNotLoadBrowsing;
 
   /// No description provided for @noBlockedSites.
@@ -2633,8 +2729,14 @@ abstract class AppLocalizations {
   /// No description provided for @saveFailed.
   ///
   /// In en, this message translates to:
-  /// **'Save failed: {error}'**
-  String saveFailed(String error);
+  /// **'Couldn\'t save changes. Check your connection and try again.'**
+  String get saveFailed;
+
+  /// No description provided for @saveFailedServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t save your changes. Your changes are still here — try again.'**
+  String get saveFailedServer;
 
   /// No description provided for @saveMonitoring.
   ///
@@ -2648,10 +2750,76 @@ abstract class AppLocalizations {
   /// **'Concerns'**
   String get concerns;
 
+  /// No description provided for @flagVoteQuestion.
+  ///
+  /// In en, this message translates to:
+  /// **'Was OSRA right to flag this?'**
+  String get flagVoteQuestion;
+
+  /// No description provided for @flagVoteConcerning.
+  ///
+  /// In en, this message translates to:
+  /// **'Concerning'**
+  String get flagVoteConcerning;
+
+  /// No description provided for @flagVoteNotConcerning.
+  ///
+  /// In en, this message translates to:
+  /// **'Not concerning'**
+  String get flagVoteNotConcerning;
+
+  /// No description provided for @flagVoteHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Your answer helps OSRA check messages better.'**
+  String get flagVoteHelp;
+
+  /// No description provided for @flagVoteThanks.
+  ///
+  /// In en, this message translates to:
+  /// **'Thanks, noted'**
+  String get flagVoteThanks;
+
+  /// No description provided for @flagVoteBy.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}: {vote}'**
+  String flagVoteBy(String name, String vote);
+
+  /// No description provided for @flagVoteA11yConcerning.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as concerning'**
+  String get flagVoteA11yConcerning;
+
+  /// No description provided for @flagVoteA11yNotConcerning.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as not concerning'**
+  String get flagVoteA11yNotConcerning;
+
+  /// No description provided for @flagVoteClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear vote'**
+  String get flagVoteClear;
+
+  /// No description provided for @flagVoteCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'Vote cleared'**
+  String get flagVoteCleared;
+
+  /// No description provided for @flagVoteA11yClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear your vote on this message'**
+  String get flagVoteA11yClear;
+
   /// No description provided for @vaultTrustCopy.
   ///
   /// In en, this message translates to:
-  /// **'Snippets are encrypted with your family key before leaving the device and stored encrypted on your server.'**
+  /// **'Excerpts travel over an encrypted connection and are stored encrypted on OSRA\'s servers.'**
   String get vaultTrustCopy;
 
   /// No description provided for @noConcernsDetected.
@@ -2708,6 +2876,18 @@ abstract class AppLocalizations {
   /// **'No phone calls or texts yet'**
   String get noCallsOrTexts;
 
+  /// No description provided for @activityLockRow.
+  ///
+  /// In en, this message translates to:
+  /// **'Device locked'**
+  String get activityLockRow;
+
+  /// No description provided for @activityLockRowDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{The lock screen did not come up} =1{The lock screen came up once} other{The lock screen came up {count} times}}'**
+  String activityLockRowDetail(int count);
+
   /// No description provided for @unknownNumber.
   ///
   /// In en, this message translates to:
@@ -2762,11 +2942,11 @@ abstract class AppLocalizations {
   /// **'{count}h ago'**
   String relativeHoursAgo(int count);
 
-  /// No description provided for @alertTechnicalDetails.
+  /// No description provided for @alertChildLabel.
   ///
   /// In en, this message translates to:
-  /// **'Technical details'**
-  String get alertTechnicalDetails;
+  /// **'Child: {name}'**
+  String alertChildLabel(String name);
 
   /// No description provided for @relativeOverHoursAgo.
   ///
@@ -2855,7 +3035,7 @@ abstract class AppLocalizations {
   /// No description provided for @couldNotLoadCommandHistory.
   ///
   /// In en, this message translates to:
-  /// **'Could not load command history'**
+  /// **'Could not load command history. Check your connection and try again.'**
   String get couldNotLoadCommandHistory;
 
   /// No description provided for @createdEvent.
@@ -3269,7 +3449,7 @@ abstract class AppLocalizations {
   /// No description provided for @onboardingNoNetwork.
   ///
   /// In en, this message translates to:
-  /// **'Cannot reach the server. Check the server address and your internet connection, then try again.'**
+  /// **'Couldn\'t connect to OSRA. Check your internet connection, then try again.'**
   String get onboardingNoNetwork;
 
   /// No description provided for @onboardingChildTitle.
@@ -3893,8 +4073,8 @@ abstract class AppLocalizations {
   /// No description provided for @searchSafetyLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load search activity: {error}'**
-  String searchSafetyLoadFailed(String error);
+  /// **'Couldn\'t load search activity. Check your connection and try again.'**
+  String get searchSafetyLoadFailed;
 
   /// No description provided for @searchSafetyEmptyTitle.
   ///
@@ -3953,8 +4133,8 @@ abstract class AppLocalizations {
   /// No description provided for @digestPrefsLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load preferences: {error}'**
-  String digestPrefsLoadFailed(String error);
+  /// **'Couldn\'t load digest settings. Check your connection and try again.'**
+  String get digestPrefsLoadFailed;
 
   /// No description provided for @digestPrefsDailyTitle.
   ///
@@ -4001,8 +4181,14 @@ abstract class AppLocalizations {
   /// No description provided for @digestPrefsEmailsHelper.
   ///
   /// In en, this message translates to:
-  /// **'For the digest summary (separate addresses with commas)'**
+  /// **'For the digest summary'**
   String get digestPrefsEmailsHelper;
+
+  /// No description provided for @digestPrefsAddEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Add email'**
+  String get digestPrefsAddEmail;
 
   /// No description provided for @digestPrefsConfirmationSent.
   ///
@@ -4085,8 +4271,8 @@ abstract class AppLocalizations {
   /// No description provided for @digestPrefsSaveFailed.
   ///
   /// In en, this message translates to:
-  /// **'Save failed: {error}'**
-  String digestPrefsSaveFailed(String error);
+  /// **'Couldn\'t save digest settings. Check your connection and try again.'**
+  String get digestPrefsSaveFailed;
 
   /// No description provided for @digestPrefsTimezoneSet.
   ///
@@ -4097,8 +4283,8 @@ abstract class AppLocalizations {
   /// No description provided for @digestPrefsTimezoneFailed.
   ///
   /// In en, this message translates to:
-  /// **'Timezone not saved: {error}'**
-  String digestPrefsTimezoneFailed(String error);
+  /// **'Couldn\'t update time zone. Check your connection and try again.'**
+  String get digestPrefsTimezoneFailed;
 
   /// No description provided for @digestPrefsTestTitle.
   ///
@@ -4115,8 +4301,8 @@ abstract class AppLocalizations {
   /// No description provided for @digestPrefsSendFailed.
   ///
   /// In en, this message translates to:
-  /// **'Send failed: {error}'**
-  String digestPrefsSendFailed(String error);
+  /// **'Couldn\'t send test digest. Check your connection and try again.'**
+  String get digestPrefsSendFailed;
 
   /// No description provided for @digestPrefsNoDigests.
   ///
@@ -4694,6 +4880,18 @@ abstract class AppLocalizations {
   /// **'Blocked site attempted'**
   String get alertTitleBlockedSite;
 
+  /// No description provided for @blockedSiteDomainLine.
+  ///
+  /// In en, this message translates to:
+  /// **'Site: {domain}'**
+  String blockedSiteDomainLine(String domain);
+
+  /// No description provided for @blockedSiteNamesNotCollected.
+  ///
+  /// In en, this message translates to:
+  /// **'Site names aren\'t collected yet, so only the block is shown.'**
+  String get blockedSiteNamesNotCollected;
+
   /// No description provided for @alertTitleDailyLimit.
   ///
   /// In en, this message translates to:
@@ -4903,6 +5101,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Concerning content'**
   String get riskAiConcern;
+
+  /// #1138: timing tag on a Social concern card.
+  ///
+  /// In en, this message translates to:
+  /// **'Late at night'**
+  String get riskLateNight;
 
   /// Phone setup row (osra-security#6): the capability report's profiles.kinds holds clone. Arabic wording by Karim (2026-11-11).
   ///
@@ -5132,11 +5336,29 @@ abstract class AppLocalizations {
   /// **'App groups on this iPhone'**
   String get appGroupsTitle;
 
-  /// ADR-0037: one line under the heading. Arabic is a draft pending Karim's review.
+  /// No description provided for @appsTabAndroidHeading.
   ///
   /// In en, this message translates to:
-  /// **'Groups are made on the child\'s iPhone, behind the parent PIN. Block one here and the iPhone shields its apps.'**
-  String get appGroupsBody;
+  /// **'Android apps'**
+  String get appsTabAndroidHeading;
+
+  /// No description provided for @appsTabIphoneHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'iPhone apps'**
+  String get appsTabIphoneHeading;
+
+  /// No description provided for @appGroupsEditorNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage iPhone apps from the Apps tab. The rules on this screen apply to Android apps only.'**
+  String get appGroupsEditorNote;
+
+  /// No description provided for @appGroupsBlockOnlyAdds.
+  ///
+  /// In en, this message translates to:
+  /// **'Turning this switch off doesn\'t lift a block set on the iPhone itself.'**
+  String get appGroupsBlockOnlyAdds;
 
   /// ADR-0037: what one group holds, as counts only (the parent app never learns which apps). Arabic is a draft pending Karim's review.
   ///
@@ -5162,6 +5384,12 @@ abstract class AppLocalizations {
   /// **'Which apps should OSRA watch for you?'**
   String get setupMonitoringTitle;
 
+  /// No description provided for @setupMonitoringAppBarTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Social apps'**
+  String get setupMonitoringAppBarTitle;
+
   /// No description provided for @setupMonitoringIntro.
   ///
   /// In en, this message translates to:
@@ -5185,6 +5413,493 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'On the iPhone, this app is hidden instead of showing the OSRA screen.'**
   String get appRuleHiddenOnIphone;
+
+  /// No description provided for @webSiteNamesOnlyNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Names of sites and online services this phone connected to, not the pages opened. Kept for 90 days.'**
+  String get webSiteNamesOnlyNote;
+
+  /// No description provided for @webSiteVisits.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Visited once} other{Visited {count} times}}'**
+  String webSiteVisits(int count);
+
+  /// No description provided for @webSiteSeenRange.
+  ///
+  /// In en, this message translates to:
+  /// **'{first} to {last}'**
+  String webSiteSeenRange(String first, String last);
+
+  /// No description provided for @webSitesSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No sites visited} =1{1 site visited} other{{count} sites visited}}'**
+  String webSitesSummary(int count);
+
+  /// No description provided for @showPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Show password'**
+  String get showPassword;
+
+  /// No description provided for @hidePassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide password'**
+  String get hidePassword;
+
+  /// No description provided for @passwordMinHint.
+  ///
+  /// In en, this message translates to:
+  /// **'At least 12 characters.'**
+  String get passwordMinHint;
+
+  /// No description provided for @familyNameHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'Other parents you invite will see this.'**
+  String get familyNameHelper;
+
+  /// No description provided for @errorNoConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'No internet connection. Check your connection and try again.'**
+  String get errorNoConnection;
+
+  /// No description provided for @authSignInFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t sign in right now. Check your connection and try again.'**
+  String get authSignInFailed;
+
+  /// No description provided for @authMfaReenrollRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Two-step verification was reset but not finished. Open \"Lost your authenticator?\" if you still have the setup screen open; otherwise contact support.'**
+  String get authMfaReenrollRequired;
+
+  /// No description provided for @familyInviteFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t send invite. Check the email and try again.'**
+  String get familyInviteFailed;
+
+  /// No description provided for @digestPrefsTimezonePickerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose time zone'**
+  String get digestPrefsTimezonePickerTitle;
+
+  /// No description provided for @digestPrefsTimezoneSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search city or offset (for example Dubai, +4)'**
+  String get digestPrefsTimezoneSearchHint;
+
+  /// No description provided for @digestPrefsTimezoneEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No matching time zones'**
+  String get digestPrefsTimezoneEmpty;
+
+  /// No description provided for @alertDeviceRestartedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Device restarted'**
+  String get alertDeviceRestartedTitle;
+
+  /// No description provided for @alertCategoryDeviceRestarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Device restart'**
+  String get alertCategoryDeviceRestarted;
+
+  /// No description provided for @alertAtTime.
+  ///
+  /// In en, this message translates to:
+  /// **'at {time}'**
+  String alertAtTime(String time);
+
+  /// No description provided for @alertYesterdayAtTime.
+  ///
+  /// In en, this message translates to:
+  /// **'yesterday at {time}'**
+  String alertYesterdayAtTime(String time);
+
+  /// No description provided for @alertOnDateAtTime.
+  ///
+  /// In en, this message translates to:
+  /// **'on {date} at {time}'**
+  String alertOnDateAtTime(String date, String time);
+
+  /// No description provided for @alertDetailSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent {when}'**
+  String alertDetailSent(String when);
+
+  /// No description provided for @alertDeviceRestartedBodyMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{device} restarted {when} and was back {minutes, plural, =0{in less than a minute} =1{after 1 minute} other{after {minutes} minutes}}.'**
+  String alertDeviceRestartedBodyMinutes(
+      String device, String when, int minutes);
+
+  /// No description provided for @alertDeviceRestartedBodyHours.
+  ///
+  /// In en, this message translates to:
+  /// **'{device} restarted {when} and was back after about {hours, plural, =1{1 hour} other{{hours} hours}}.'**
+  String alertDeviceRestartedBodyHours(String device, String when, int hours);
+
+  /// No description provided for @alertTitleSocialConcern.
+  ///
+  /// In en, this message translates to:
+  /// **'Social safety alert'**
+  String get alertTitleSocialConcern;
+
+  /// No description provided for @alertTitleGamingChat.
+  ///
+  /// In en, this message translates to:
+  /// **'Gaming chat alert'**
+  String get alertTitleGamingChat;
+
+  /// No description provided for @alertCategorySocialConcern.
+  ///
+  /// In en, this message translates to:
+  /// **'Social safety'**
+  String get alertCategorySocialConcern;
+
+  /// No description provided for @alertCategoryGamingChat.
+  ///
+  /// In en, this message translates to:
+  /// **'Gaming chat'**
+  String get alertCategoryGamingChat;
+
+  /// No description provided for @socialAlertFlaggedInApp.
+  ///
+  /// In en, this message translates to:
+  /// **'Flagged for review in {app}'**
+  String socialAlertFlaggedInApp(String app);
+
+  /// No description provided for @socialAlertOpenActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Social activity'**
+  String get socialAlertOpenActivity;
+
+  /// No description provided for @socialAlertPreviewNoPermissionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Preview unavailable for your account'**
+  String get socialAlertPreviewNoPermissionTitle;
+
+  /// No description provided for @socialAlertPreviewNoPermissionBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask the family owner to enable Social access to view the encrypted preview. Alert details and the conversation guide remain available here.'**
+  String get socialAlertPreviewNoPermissionBody;
+
+  /// No description provided for @socialAlertPreviewExpiredTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Preview no longer available'**
+  String get socialAlertPreviewExpiredTitle;
+
+  /// No description provided for @socialAlertPreviewExpiredBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The encrypted preview has expired or was not stored for this alert. Alert details and the conversation guide remain saved here.'**
+  String get socialAlertPreviewExpiredBody;
+
+  /// No description provided for @socialAlertUnavailableTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Alert unavailable'**
+  String get socialAlertUnavailableTitle;
+
+  /// No description provided for @socialAlertUnavailableBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This alert could not be found. Open Alerts to review recent activity.'**
+  String get socialAlertUnavailableBody;
+
+  /// No description provided for @socialAlertViewAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All alerts'**
+  String get socialAlertViewAll;
+
+  /// No description provided for @locationUpdatedJustNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Updated just now'**
+  String get locationUpdatedJustNow;
+
+  /// No description provided for @locationUpdatedMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Updated 1 min ago} other{Updated {count} min ago}}'**
+  String locationUpdatedMinutes(int count);
+
+  /// No description provided for @locationUpdatedHours.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Updated 1 hour ago} other{Updated {count} hours ago}}'**
+  String locationUpdatedHours(int count);
+
+  /// No description provided for @locationUpdatedDays.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Updated 1 day ago} other{Updated {count} days ago}}'**
+  String locationUpdatedDays(int count);
+
+  /// No description provided for @locationUpdatedUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Update time unknown'**
+  String get locationUpdatedUnknown;
+
+  /// No description provided for @locationFindingAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'Finding address…'**
+  String get locationFindingAddress;
+
+  /// No description provided for @locationAddressUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Address not available'**
+  String get locationAddressUnavailable;
+
+  /// No description provided for @locationMapSemantics.
+  ///
+  /// In en, this message translates to:
+  /// **'Map showing where {name} is'**
+  String locationMapSemantics(String name);
+
+  /// No description provided for @locationRecentre.
+  ///
+  /// In en, this message translates to:
+  /// **'Centre on the latest location'**
+  String get locationRecentre;
+
+  /// No description provided for @undo.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get undo;
+
+  /// No description provided for @hoursShort.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours} h'**
+  String hoursShort(int hours);
+
+  /// No description provided for @appStateAllowed.
+  ///
+  /// In en, this message translates to:
+  /// **'Allowed'**
+  String get appStateAllowed;
+
+  /// No description provided for @appStateBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Blocked'**
+  String get appStateBlocked;
+
+  /// No description provided for @appStateLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Limit {limit} a day'**
+  String appStateLimit(String limit);
+
+  /// No description provided for @appAllowedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'{app} allowed'**
+  String appAllowedSnack(String app);
+
+  /// No description provided for @appLimitSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'{app} limited to {limit} a day'**
+  String appLimitSnack(String app, String limit);
+
+  /// No description provided for @appsFilterAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All ({count})'**
+  String appsFilterAll(int count);
+
+  /// No description provided for @appsFilterBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Blocked ({count})'**
+  String appsFilterBlocked(int count);
+
+  /// No description provided for @appsFilterLimited.
+  ///
+  /// In en, this message translates to:
+  /// **'Time limits ({count})'**
+  String appsFilterLimited(int count);
+
+  /// No description provided for @appsNoMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'No apps match'**
+  String get appsNoMatch;
+
+  /// No description provided for @appAboutThisApp.
+  ///
+  /// In en, this message translates to:
+  /// **'About this app'**
+  String get appAboutThisApp;
+
+  /// No description provided for @appBlockedNamedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'{app} blocked'**
+  String appBlockedNamedSnack(String app);
+
+  /// No description provided for @socialCheckMessagesIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Check messages in'**
+  String get socialCheckMessagesIn;
+
+  /// No description provided for @socialNotOnChildPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Not on {child}\'s phone ({count})'**
+  String socialNotOnChildPhone(String child, int count);
+
+  /// No description provided for @socialChecking.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking'**
+  String get socialChecking;
+
+  /// No description provided for @socialOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get socialOff;
+
+  /// No description provided for @socialCommentsAndChats.
+  ///
+  /// In en, this message translates to:
+  /// **'Comments and chats'**
+  String get socialCommentsAndChats;
+
+  /// No description provided for @socialNewAppsBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'You can now choose YouTube, Telegram, Reddit and Messenger too.'**
+  String get socialNewAppsBanner;
+
+  /// No description provided for @socialPrivacyLine.
+  ///
+  /// In en, this message translates to:
+  /// **'OSRA only flags concerning messages. It never shows you every chat.'**
+  String get socialPrivacyLine;
+
+  /// No description provided for @selectAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Select all'**
+  String get selectAll;
+
+  /// No description provided for @socialAlertCountTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 concerning message on {app}} other{{count} concerning messages on {app}}}'**
+  String socialAlertCountTitle(int count, String app);
+
+  /// No description provided for @socialAlertFromContactOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'From {contact}'**
+  String socialAlertFromContactOnly(String contact);
+
+  /// No description provided for @socialAlertLatestAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Latest {time}'**
+  String socialAlertLatestAt(String time);
+
+  /// No description provided for @socialAlertUnknownContact.
+  ///
+  /// In en, this message translates to:
+  /// **'an unknown contact'**
+  String get socialAlertUnknownContact;
+
+  /// No description provided for @socialAlertMorePush.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 more concerning message for {child} on {app}} other{{count} more concerning messages for {child} on {app}}}'**
+  String socialAlertMorePush(int count, String child, String app);
+
+  /// No description provided for @socialAlertNewSince.
+  ///
+  /// In en, this message translates to:
+  /// **'+{count} new'**
+  String socialAlertNewSince(int count);
+
+  /// No description provided for @phoneSetupStepsLeftThisPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Setting up this phone: {count, plural, =1{1 step} other{{count} steps}} left'**
+  String phoneSetupStepsLeftThisPhone(int count);
+
+  /// No description provided for @phoneSetupProtected.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone is protected.'**
+  String get phoneSetupProtected;
+
+  /// No description provided for @phoneSetupStepsLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'Setting up {childName}\'s phone: {count, plural, =1{1 step} other{{count} steps}} left'**
+  String phoneSetupStepsLeft(String childName, int count);
+
+  /// No description provided for @alertTitleSetupComplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone is protected'**
+  String get alertTitleSetupComplete;
+
+  /// No description provided for @alertTitleSetupIncomplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone setup needs attention'**
+  String get alertTitleSetupIncomplete;
+
+  /// No description provided for @alertBodySetupCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'{childName}\'s phone is protected.'**
+  String alertBodySetupCompleted(String childName);
+
+  /// No description provided for @alertBodySetupIncomplete.
+  ///
+  /// In en, this message translates to:
+  /// **'{childName}\'s phone still has {count, plural, =1{1 setup step} other{{count} setup steps}} left after 30 minutes{steps}.'**
+  String alertBodySetupIncomplete(String childName, int count, String steps);
+
+  /// No description provided for @alertBodySetupIncompleteGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'{childName}\'s phone setup is still incomplete after 30 minutes.'**
+  String alertBodySetupIncompleteGeneric(String childName);
+
+  /// No description provided for @alertBodyDataCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'OSRA was reinstalled on {model}. Its protection was off until it was paired again.'**
+  String alertBodyDataCleared(String model);
 }
 
 class _AppLocalizationsDelegate

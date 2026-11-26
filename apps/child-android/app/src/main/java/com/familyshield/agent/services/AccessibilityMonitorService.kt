@@ -17,6 +17,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.ConsentState
@@ -26,6 +29,7 @@ import com.familyshield.agent.enforcement.AppBlocker
 import com.familyshield.agent.enforcement.BlockRaisePolicy
 import com.familyshield.agent.enforcement.BypassAlertFloor
 import com.familyshield.agent.enforcement.EssentialPackages
+import com.familyshield.agent.enforcement.FilterRecoveryPolicy
 import com.familyshield.agent.enforcement.LockEnforcementPolicy
 import com.familyshield.agent.enforcement.LockState
 import com.familyshield.agent.enforcement.OverlayRetryBudget
@@ -52,7 +56,10 @@ import com.familyshield.agent.security.TamperScreen
 import com.familyshield.agent.security.TamperScreenPolicy
 import com.familyshield.agent.security.TamperState
 import com.familyshield.agent.social.SocialCapture
+import com.familyshield.agent.telemetry.FOREGROUND_HEARTBEAT_MS
 import com.familyshield.agent.telemetry.UsageReporter
+import com.familyshield.agent.vpn.FilterVpnService
+import com.familyshield.agent.vpn.VpnState
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -205,6 +212,44 @@ class AccessibilityMonitorService : AccessibilityService() {
         override fun onReceive(context: android.content.Context?, intent: Intent?) = packageFacts.refresh()
     }
 
+    /** #830 row 5: periodic local foreground heartbeat while interactive; stops completely while screen is off. */
+    private val foregroundHeartbeat = object : Runnable {
+        override fun run() {
+            val interactive = runCatching {
+                getSystemService(android.os.PowerManager::class.java)?.isInteractive ?: false
+            }.getOrDefault(false)
+            if (!interactive) return
+            usage.recordActiveHeartbeat(System.currentTimeMillis())
+            main.postDelayed(this, FOREGROUND_HEARTBEAT_MS)
+        }
+    }
+
+    private fun scheduleForegroundHeartbeat() {
+        main.removeCallbacks(foregroundHeartbeat)
+        main.postDelayed(foregroundHeartbeat, FOREGROUND_HEARTBEAT_MS)
+    }
+
+    private val screenStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: Intent?) {
+            when (intent?.action) {
+                Intent.ACTION_SCREEN_OFF -> {
+                    main.removeCallbacks(foregroundHeartbeat)
+                    serviceScope.launch { usage.onScreenOff(System.currentTimeMillis()) }
+                    FilterVpnService.flushIfRunning(this@AccessibilityMonitorService)
+                }
+                Intent.ACTION_SCREEN_ON -> scheduleForegroundHeartbeat()
+            }
+        }
+    }
+
+    private val filterRecoveryCovers = mutableMapOf<WindowBounds, PipCoverOverlay>()
+
+    private val filterLossReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: Intent?) {
+            if (intent?.action == VpnState.ACTION_FILTER_LOSS_CHANGED) refreshFilterRecovery()
+        }
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         // Issue #231 review: this callback is the system telling us it has bound the service, so it
@@ -223,6 +268,22 @@ class AccessibilityMonitorService : AccessibilityService() {
             addDataScheme("package")
         }
         runCatching { registerReceiver(packageChangeReceiver, filter) }
+        val screenFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON)
+        }
+        runCatching { registerReceiver(screenStateReceiver, screenFilter) }
+        val interactiveNow = runCatching {
+            getSystemService(android.os.PowerManager::class.java)?.isInteractive ?: false
+        }.getOrDefault(false)
+        if (interactiveNow) scheduleForegroundHeartbeat()
+        ContextCompat.registerReceiver(
+            this,
+            filterLossReceiver,
+            IntentFilter(VpnState.ACTION_FILTER_LOSS_CHANGED),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        refreshFilterRecovery()
         calls.onConnected()
         media.onConnected()
         rules.addRulesChangedListener(rulesChanged)
@@ -273,10 +334,14 @@ class AccessibilityMonitorService : AccessibilityService() {
         rules.removeRulesChangedListener(rulesChanged)
         pipCover.remove()
         guardCover.remove()
+        updateFilterRecoveryCovers(emptySet())
         // #460 review: a deferred raise posted inside the fallback window must not fire after the
         // service is gone — the child turning accessibility off is exactly when that window exists.
         cancelDeferredRaise()
+        main.removeCallbacks(foregroundHeartbeat)
+        runCatching { unregisterReceiver(screenStateReceiver) }
         runCatching { unregisterReceiver(packageChangeReceiver) }
+        runCatching { unregisterReceiver(filterLossReceiver) }
         super.onDestroy()
     }
 
@@ -292,6 +357,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         // package, and only the guard's cover needs it.
         if (event?.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
             coverSharedProtectionScreens()
+            refreshFilterRecovery()
             return
         }
         val eventPkg = event?.packageName?.toString() ?: return
@@ -344,8 +410,13 @@ class AccessibilityMonitorService : AccessibilityService() {
         // records, captures and enforces nothing.
         if (consentState.isPaused()) {
             pipCover.remove()
+            updateFilterRecoveryCovers(emptySet())
             // #460 review: consent withdrawn inside the fallback window must not still show a block
             // screen — ADR-0008 §3 says a paused agent records, captures and enforces nothing.
+            cancelDeferredRaise()
+            return
+        }
+        if (enforceFilterRecovery(snapshot, foreground)) {
             cancelDeferredRaise()
             return
         }
@@ -369,6 +440,40 @@ class AccessibilityMonitorService : AccessibilityService() {
         // Issue #460: the launcher may be the Home we asked for, so the deferred block screen goes on
         // top of it. Called after the block step, which may have deferred a new raise this event.
         advanceDeferredRaise(foreground ?: eventPkg)
+    }
+
+    private fun refreshFilterRecovery() {
+        if (!VpnState.isFilterLost(this, settings, consentState)) {
+            updateFilterRecoveryCovers(emptySet())
+            return
+        }
+        val snapshot = windowSnapshot()
+        enforceFilterRecovery(snapshot, snapshot.activePackage)
+    }
+
+    private fun enforceFilterRecovery(snapshot: WindowSnapshot, foreground: String?): Boolean {
+        if (!VpnState.isFilterLost(this, settings, consentState) ||
+            LockState.isActive(this) || Ringer.isRinging ||
+            getSystemService(android.app.KeyguardManager::class.java)?.isKeyguardLocked == true
+        ) {
+            updateFilterRecoveryCovers(emptySet())
+            return false
+        }
+        val ownConsentPending = VpnState.hasPendingOwnConsent()
+        val presentation = FilterRecoveryPolicy.presentation(snapshot, foreground) { pkg ->
+            pkg == packageName || EssentialPackages.isEssential(pkg, packageFacts) ||
+                pkg == TamperScreenPolicy.VPN_DIALOG_PACKAGE && ownConsentPending
+        }
+        updateFilterRecoveryCovers(presentation.coveredWindows)
+        presentation.blockedForeground?.let(blocker::showFilterRecovery)
+        return presentation.blockedForeground != null || presentation.coveredWindows.isNotEmpty()
+    }
+
+    private fun updateFilterRecoveryCovers(bounds: Set<WindowBounds>) {
+        (filterRecoveryCovers.keys - bounds).forEach { old -> filterRecoveryCovers.remove(old)?.remove() }
+        bounds.forEach { target ->
+            filterRecoveryCovers.getOrPut(target) { PipCoverOverlay(this) }.update(target)
+        }
     }
 
     /**
@@ -802,6 +907,8 @@ class AccessibilityMonitorService : AccessibilityService() {
             agentServiceDescription = getString(com.familyshield.agent.R.string.accessibility_description),
             ourLocationActive = permissionWindowLocationActive ?: locationGrantedNow(),
             ourSpecialAccess = specialAccessLatch ?: specialAccessHeld(),
+            filterProtectionActive = !consentState.isPaused() && VpnState.isEnabled(this),
+            ownVpnConsentPending = VpnState.hasPendingOwnConsent(),
         )
         if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) return // no filter to bypass yet
         if (!TamperScreenPolicy.shouldGuard(screen, pinStore.isConfigured(), TamperState.graceUntil(this), now)) return
@@ -886,6 +993,8 @@ class AccessibilityMonitorService : AccessibilityService() {
                             agentServiceDescription = getString(com.familyshield.agent.R.string.accessibility_description),
                             ourLocationActive = permissionWindowLocationActive ?: locationGrantedNow(),
                             ourSpecialAccess = specialAccessLatch ?: specialAccessHeld(),
+                            filterProtectionActive = !consentState.isPaused() && VpnState.isEnabled(this),
+                            ownVpnConsentPending = VpnState.hasPendingOwnConsent(),
                         )
                         if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) {
                             screen = TamperScreen.NONE
@@ -985,9 +1094,19 @@ class AccessibilityMonitorService : AccessibilityService() {
          * launch rule and re-raises the overlay, whereas `Settings.Secure` only says the user enabled
          * it. Same-process state, so it describes the process that is about to dispatch the command.
          */
-        @Volatile
-        var isRunning: Boolean = false
-            internal set
+        private val _runningState = MutableStateFlow(false)
+
+        /**
+         * Live state of [isRunning] so foreground onboarding screens waiting for the OS to finish
+         * binding after the parent returns from Settings advance immediately (#1131 review).
+         */
+        val runningState: StateFlow<Boolean> = _runningState.asStateFlow()
+
+        var isRunning: Boolean
+            get() = _runningState.value
+            internal set(value) {
+                _runningState.value = value
+            }
 
         /**
          * Issue #132: [ensureLocationServiceRunning]'s decision, pure so the JVM suite holds it in

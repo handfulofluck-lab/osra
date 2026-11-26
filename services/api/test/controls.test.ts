@@ -18,6 +18,7 @@ vi.mock("ioredis", async () => {
 
 const CHILD = { id: "child-1", familyId: "fam-1" };
 const DEVICES = [{ id: "dev-1" }, { id: "dev-2" }];
+const INTERNET_PATH = "/v1/controls/children/child-1";
 const PAUSED_KEY = "child:child-1:internet-paused";
 
 /** In-memory Redis state so pause/status/resume round-trips behave like a real store. */
@@ -33,7 +34,7 @@ function wireRedis(): MockRedis {
   redis.del.mockImplementation(async (...keys: string[]) =>
     keys.reduce((n, k) => n + (store.delete(k) ? 1 : 0), 0),
   );
-  redis.publish.mockResolvedValue(1);
+  redis.publish.mockClear().mockResolvedValue(1);
   redis.lpush.mockResolvedValue(1);
   redis.ltrim.mockResolvedValue("OK");
   return redis;
@@ -79,6 +80,37 @@ function queuedCommands(): Array<{ deviceId: string; type: string; payload: Reco
   return prismaMock.deviceCommand.create.mock.calls.map(([arg]: [{ data: { deviceId: string; type: string; payload: Record<string, unknown> } }]) => arg.data);
 }
 
+/** Echo the transaction's persisted rows so the next GET sees the exact IDs created by POST. */
+function wireInternetOperation() {
+  const requestedAt = new Date("2026-11-21T03:00:00.000Z");
+  let operation: Record<string, unknown> | null = null;
+  const commands: Array<Record<string, unknown>> = [];
+  prismaMock.child.findUnique.mockResolvedValue(CHILD);
+  prismaMock.$queryRaw.mockResolvedValue([{ id: CHILD.id }]);
+  prismaMock.device.findMany.mockResolvedValue(DEVICES);
+  prismaMock.childInternetOperation.findUnique.mockImplementation(async () => operation);
+  prismaMock.childInternetOperation.upsert.mockImplementation(async ({ create }: { create: Record<string, unknown> }) => {
+    operation = { id: "op-1", generation: 1, requestedAt, ...create };
+    return operation;
+  });
+  prismaMock.deviceCommand.createManyAndReturn.mockImplementation(async ({ data }: { data: Array<Record<string, unknown>> }) => {
+    const rows = data.map((command, index) => ({
+      id: `cmd-${index + 1}`,
+      status: "pending",
+      attempts: 0,
+      createdAt: requestedAt,
+      deliveredAt: null,
+      ackedAt: null,
+      result: null,
+      ...command,
+    }));
+    commands.push(...rows);
+    return rows;
+  });
+  prismaMock.deviceCommand.findMany.mockImplementation(async () => commands);
+  return commands;
+}
+
 describe("controls routes (features #10/#11)", () => {
   beforeEach(() => {
     resetPrismaMock();
@@ -86,67 +118,237 @@ describe("controls routes (features #10/#11)", () => {
     wireRedis();
   });
 
-  it("pause-internet fans pause_internet out to every device and flips status to paused", async () => {
+  it("returns the legacy paused-only shape when the child has no durable internet request", async () => {
     const app = await buildFullApp();
     prismaMock.child.findUnique.mockResolvedValue(CHILD);
-    prismaMock.device.findMany.mockResolvedValue(DEVICES);
+    prismaMock.childInternetOperation.findUnique.mockResolvedValue(null);
+    try {
+      const getStatus = () => app.inject({ url: `${INTERNET_PATH}/status`, headers: authHeader(app) });
+      const unset = await getStatus();
+      expect(unset.statusCode).toBe(200);
+      expect(unset.json()).toEqual({ paused: false });
 
-    const res = await app.inject({
-      method: "POST",
-      url: "/v1/controls/children/child-1/pause-internet",
-      headers: authHeader(app),
-    });
-    expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ childId: "child-1", paused: true });
-
-    const redis = getRedis() as unknown as MockRedis;
-    for (const deviceId of ["dev-1", "dev-2"]) {
-      expect(redis.publish).toHaveBeenCalledWith(
-        `device:${deviceId}:commands`,
-        expect.stringContaining('"type":"pause_internet"'),
-      );
-      expect(queuedCommands()).toContainEqual(expect.objectContaining({ deviceId, type: "pause_internet" }));
+      store.set(PAUSED_KEY, JSON.stringify({ pausedAt: "2026-09-16T10:00:00.000Z" }));
+      const legacyPaused = await getStatus();
+      expect(legacyPaused.statusCode).toBe(200);
+      expect(legacyPaused.json()).toEqual({ paused: true });
+      expect(prismaMock.deviceCommand.findMany).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
     }
-    expect(store.get(PAUSED_KEY)).toEqual(expect.stringContaining('"pausedAt"'));
-
-    const status = await app.inject({
-      method: "GET",
-      url: "/v1/controls/children/child-1/status",
-      headers: authHeader(app),
-    });
-    expect(status.statusCode).toBe(200);
-    expect(status.json()).toEqual({ paused: true });
-    await app.close();
   });
 
-  it("resume-internet fans resume_internet out to every device and clears the paused state", async () => {
+  it.each([
+    ["pause-internet", "pause", true],
+    ["pause", "pause", true],
+    ["resume-internet", "resume", false],
+    ["resume", "resume", false],
+  ] as const)("%s stores one request and its devices in a single transaction", async (path, action, paused) => {
     const app = await buildFullApp();
-    store.set(PAUSED_KEY, JSON.stringify({ pausedAt: "2026-09-16T10:00:00.000Z" }));
-    prismaMock.child.findUnique.mockResolvedValue(CHILD);
-    prismaMock.device.findMany.mockResolvedValue(DEVICES);
-
-    const res = await app.inject({
-      method: "POST",
-      url: "/v1/controls/children/child-1/resume-internet",
-      headers: authHeader(app),
-    });
-    expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ childId: "child-1", paused: false });
-
+    const commands = wireInternetOperation();
     const redis = getRedis() as unknown as MockRedis;
-    for (const deviceId of ["dev-1", "dev-2"]) {
-      expect(queuedCommands()).toContainEqual(expect.objectContaining({ deviceId, type: "resume_internet" }));
-    }
-    expect(store.has(PAUSED_KEY)).toBe(false);
-
-    const status = await app.inject({
-      method: "GET",
-      url: "/v1/controls/children/child-1/status",
-      headers: authHeader(app),
+    if (!paused) store.set(PAUSED_KEY, JSON.stringify({ pausedAt: "2026-09-16T10:00:00.000Z" }));
+    prismaMock.$transaction.mockImplementationOnce(async (transaction: (tx: typeof prismaMock) => Promise<unknown>) => {
+      expect(prismaMock.childInternetOperation.upsert).not.toHaveBeenCalled();
+      expect(prismaMock.deviceCommand.createManyAndReturn).not.toHaveBeenCalled();
+      const result = await transaction(prismaMock);
+      expect(prismaMock.deviceCommand.createManyAndReturn).toHaveBeenCalledTimes(1);
+      expect(prismaMock.childInternetOperation.upsert).toHaveBeenCalledTimes(1);
+      expect(redis.publish).not.toHaveBeenCalled();
+      return result;
     });
-    expect(status.statusCode).toBe(200);
-    expect(status.json()).toEqual({ paused: false });
-    await app.close();
+    try {
+      const result = await app.inject({ method: "POST", url: `${INTERNET_PATH}/${path}`, headers: authHeader(app) });
+      expect(result.statusCode).toBe(200);
+      expect(result.json()).toEqual({ childId: CHILD.id, paused });
+      expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+      expect(prismaMock.$queryRaw).toHaveBeenCalled();
+      expect(commands).toHaveLength(2);
+      expect(commands).toEqual(expect.arrayContaining(DEVICES.map(({ id }) =>
+        expect.objectContaining({ deviceId: id, type: `${action}_internet` }),
+      )));
+      for (const { id } of DEVICES) {
+        expect(redis.publish).toHaveBeenCalledWith(
+          `device:${id}:commands`,
+          expect.stringContaining(`"type":"${action}_internet"`),
+        );
+      }
+
+      const status = await app.inject({ url: `${INTERNET_PATH}/status`, headers: authHeader(app) });
+      expect(status.statusCode).toBe(200);
+      expect(status.json()).toEqual({
+        paused,
+        internetRequest: {
+          id: expect.any(String),
+          generation: 1,
+          action,
+          requestedAt: expect.any(String),
+          devices: expect.arrayContaining(commands.map(({ id, deviceId }) => ({ deviceId, commandId: id, status: "pending" }))),
+        },
+      });
+      expect(status.json().internetRequest.devices).toHaveLength(2);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("reports only the latest request's exact command receipts, with unknown for unmatched devices", async () => {
+    const app = await buildFullApp();
+    const requestedAt = new Date("2026-11-21T03:00:00.000Z");
+    const expiresAt = new Date(Date.now() + 60_000);
+    const targets = [
+      { deviceId: "dev-1", commandId: "cmd-1" },
+      { deviceId: "dev-2", commandId: "cmd-2" },
+      { deviceId: "dev-3", commandId: "cmd-3" },
+      { deviceId: "dev-4", commandId: "cmd-4" },
+      { deviceId: "dev-5", commandId: "cmd-5" },
+      { deviceId: "dev-removed", commandId: "cmd-removed" },
+    ];
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.childInternetOperation.findUnique.mockResolvedValue({
+      id: "op-resume",
+      childId: CHILD.id,
+      generation: 2,
+      desiredPaused: false,
+      requestedAt,
+      targets,
+    });
+    prismaMock.device.findMany.mockResolvedValue([
+      ...targets.filter(({ deviceId }) => deviceId !== "dev-removed").map(({ deviceId }) => ({ id: deviceId })),
+      { id: "dev-added" },
+    ]);
+    prismaMock.deviceCommand.findMany.mockResolvedValue([
+      { id: "cmd-1", deviceId: "dev-1", type: "resume_internet", status: "acked", expiresAt },
+      { id: "cmd-2", deviceId: "dev-2", type: "resume_internet", status: "failed", expiresAt },
+      { id: "cmd-3", deviceId: "dev-3", type: "resume_internet", status: "delivered", expiresAt },
+      { id: "cmd-4", deviceId: "dev-4", type: "pause_internet", status: "acked", expiresAt },
+      { id: "cmd-5", deviceId: "dev-added", type: "resume_internet", status: "acked", expiresAt },
+      { id: "cmd-older", deviceId: "dev-4", type: "resume_internet", status: "acked", expiresAt },
+    ]);
+    store.set(PAUSED_KEY, JSON.stringify({ pausedAt: "2026-09-16T10:00:00.000Z" }));
+    try {
+      const status = await app.inject({ url: `${INTERNET_PATH}/status`, headers: authHeader(app) });
+      expect(status.statusCode).toBe(200);
+      expect(status.json()).toMatchObject({
+        paused: false,
+        internetRequest: {
+          id: "op-resume",
+          generation: 2,
+          action: "resume",
+          requestedAt: requestedAt.toISOString(),
+          devices: expect.arrayContaining([
+            { deviceId: "dev-1", commandId: "cmd-1", status: "acked" },
+            { deviceId: "dev-2", commandId: "cmd-2", status: "failed" },
+            { deviceId: "dev-3", commandId: "cmd-3", status: "delivered" },
+            { deviceId: "dev-4", commandId: "cmd-4", status: "unknown" },
+            { deviceId: "dev-5", commandId: "cmd-5", status: "unknown" },
+            { deviceId: "dev-removed", commandId: "cmd-removed", status: "unknown" },
+            { deviceId: "dev-added", commandId: null, status: "unknown" },
+          ]),
+        },
+      });
+      expect(status.json().internetRequest.devices).toHaveLength(7);
+      expect(prismaMock.childInternetOperation.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { childId: CHILD.id } }),
+      );
+      const [commandRead] = prismaMock.deviceCommand.findMany.mock.calls[0];
+      expect(commandRead.where.id.in).toEqual(expect.arrayContaining(["cmd-1", "cmd-2", "cmd-3", "cmd-4", "cmd-5"]));
+      expect(commandRead.where.id.in).not.toContain("cmd-older");
+      expect(commandRead.where.device.is ?? commandRead.where.device).toMatchObject({ childId: CHILD.id });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it.each([
+    { commandStatus: "pending", expiredStatus: "expired" },
+    { commandStatus: "delivered", expiredStatus: "unconfirmed" },
+  ])("reports $commandStatus as $expiredStatus at the exact expiry", async ({ commandStatus, expiredStatus }) => {
+    const app = await buildFullApp();
+    const commands = wireInternetOperation();
+    prismaMock.device.findMany.mockResolvedValue([DEVICES[0]]);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-21T03:00:00.000Z"));
+    try {
+      const result = await app.inject({ method: "POST", url: `${INTERNET_PATH}/resume`, headers: authHeader(app) });
+      expect(result.statusCode).toBe(200);
+      expect(commands).toHaveLength(1);
+      const [command] = commands;
+      command.status = commandStatus;
+      const expiresAt = command.expiresAt as Date;
+      const status = () => app.inject({ url: `${INTERNET_PATH}/status`, headers: authHeader(app) });
+
+      vi.setSystemTime(expiresAt.getTime() - 1);
+      const before = await status();
+      expect(before.statusCode).toBe(200);
+      expect(before.json().internetRequest.devices).toEqual([
+        { deviceId: DEVICES[0].id, commandId: command.id, status: commandStatus },
+      ]);
+
+      vi.setSystemTime(expiresAt);
+      const atExpiry = await status();
+      expect(atExpiry.statusCode).toBe(200);
+      expect(atExpiry.json().internetRequest.devices).toEqual([
+        { deviceId: DEVICES[0].id, commandId: command.id, status: expiredStatus },
+      ]);
+    } finally {
+      vi.useRealTimers();
+      await app.close();
+    }
+  });
+
+  it("records the requested state with no command receipts when there are no target devices", async () => {
+    const app = await buildFullApp();
+    const commands = wireInternetOperation();
+    prismaMock.device.findMany.mockResolvedValue([]);
+    try {
+      const result = await app.inject({ method: "POST", url: `${INTERNET_PATH}/pause`, headers: authHeader(app) });
+      expect(result.statusCode).toBe(200);
+      expect(result.json()).toEqual({ childId: CHILD.id, paused: true });
+      expect(commands).toEqual([]);
+      expect((getRedis() as unknown as MockRedis).publish).not.toHaveBeenCalled();
+
+      const status = await app.inject({ url: `${INTERNET_PATH}/status`, headers: authHeader(app) });
+      expect(status.statusCode).toBe(200);
+      expect(status.json()).toMatchObject({ paused: true, internetRequest: { action: "pause", devices: [] } });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("does not wake a device or project a pause when the transaction fails after creating command rows", async () => {
+    const app = await buildFullApp();
+    wireInternetOperation();
+    const redis = getRedis() as unknown as MockRedis;
+    prismaMock.childInternetOperation.upsert.mockRejectedValueOnce(new Error("synthetic operation write failure"));
+    try {
+      const result = await app.inject({ method: "POST", url: `${INTERNET_PATH}/pause`, headers: authHeader(app) });
+      expect(result.statusCode).toBeGreaterThanOrEqual(500);
+      expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+      expect(prismaMock.deviceCommand.createManyAndReturn).toHaveBeenCalledTimes(1);
+      expect(redis.publish).not.toHaveBeenCalled();
+
+      const status = await app.inject({ url: `${INTERNET_PATH}/status`, headers: authHeader(app) });
+      expect(status.statusCode).toBe(200);
+      expect(status.json()).toEqual({ paused: false });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("returns 404 when the child disappears before the operation can be locked", async () => {
+    const app = await buildFullApp();
+    wireInternetOperation();
+    prismaMock.$queryRaw.mockResolvedValue([]);
+    try {
+      const result = await app.inject({ method: "POST", url: `${INTERNET_PATH}/resume`, headers: authHeader(app) });
+      expect(result.statusCode).toBe(404);
+      expect(prismaMock.deviceCommand.createManyAndReturn).not.toHaveBeenCalled();
+      expect(prismaMock.childInternetOperation.upsert).not.toHaveBeenCalled();
+      expect((getRedis() as unknown as MockRedis).publish).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
   });
 
   it("bonus increments bonusMinutesToday, notifies devices, and is visible via GET /v1/rules", async () => {
@@ -277,6 +479,8 @@ describe("controls routes (features #10/#11)", () => {
     const routes: Array<[string, string, unknown?]> = [
       ["POST", "/v1/controls/children/child-1/pause-internet"],
       ["POST", "/v1/controls/children/child-1/resume-internet"],
+      ["POST", `${INTERNET_PATH}/pause`],
+      ["POST", `${INTERNET_PATH}/resume`],
       ["POST", "/v1/controls/children/child-1/bonus", { minutes: 15 }],
       ["POST", "/v1/controls/children/child-1/wind-down", { minutes: 15 }],
       ["GET", "/v1/controls/children/child-1/status"],
@@ -286,6 +490,8 @@ describe("controls routes (features #10/#11)", () => {
       expect(res.statusCode).toBe(403);
     }
     expect(prismaMock.device.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.childInternetOperation.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
     expect(prismaMock.ruleSet.upsert).not.toHaveBeenCalled();
     await app.close();
   });
