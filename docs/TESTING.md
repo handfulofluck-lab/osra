@@ -24,8 +24,8 @@ For the P-20 daily-limit request, run `flutter test --dart-define=OSRA_UX_P20=tr
 test/time_request_actions_test.dart test/time_request_frames_test.dart` from `apps/parent-app`.
 Run the same tests without the define to check the fallback. An opt-in `OSRA_FRAME_DIR`
 captures the card and detail at 390 px and 320 px with 200% text in English and Arabic.
-The fixture checks title wrapping, the Screen time label, both clock settings and 48 dp tap
-targets. For device evidence, send an Android daily-limit request
+The fixture checks title wrapping, the Screen time label, both clock settings, localized
+clock direction, and 48 dp tap targets. For device evidence, send an Android daily-limit request
 in a paired test family, approve it once, and confirm the child receives the grant. A
 separate decline should close the request with no new bonus.
 

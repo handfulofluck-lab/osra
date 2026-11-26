@@ -29,7 +29,7 @@ String formatTimeRequestTimestamp(
   );
   final sameDay = DateUtils.isSameDay(local, (now ?? DateTime.now()).toLocal());
   final label = sameDay ? time : '${material.formatMediumDate(local)} · $time';
-  return ltrIsolate(normalizeDigits(label));
+  return firstStrongIsolate(normalizeDigits(label));
 }
 
 String appAlertPackageId(Alert alert) =>

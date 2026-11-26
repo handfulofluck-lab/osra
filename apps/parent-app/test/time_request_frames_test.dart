@@ -116,6 +116,9 @@ void main() {
               if (!detail) {
                 expect(find.textContaining(l10n.alertCategoryScreenTime),
                     findsOneWidget);
+                // A forced LTR isolate reverses the Arabic day-period marker.
+                expect(find.textContaining(firstStrongIsolate(time)),
+                    findsWidgets);
               }
               final expectedTitle =
                   l10n.timeRequestTitle(firstStrongIsolate('Alex'), 15);
