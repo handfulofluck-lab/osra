@@ -1,0 +1,1 @@
+- Parent app: auto-dispose `locationHistoryProvider` and invalidate it on realtime `location` events so Location history no longer stays stuck on a cached load error or stale snapshot until Retry (#1055).

@@ -88,7 +88,10 @@ final liveActivityProvider = StateProvider<Map<String, LiveActivity>>((ref) => c
 /// Today's location history for one child (feature #15,
 /// `GET /v1/location/:childId/history?from=<local midnight>&to=<now>`).
 /// Pings arrive newest-first from some agents, so they are sorted ascending.
-final locationHistoryProvider = FutureProvider.family<List<LocationPing>, String>((ref, childId) async {
+///
+/// `#1055`: `autoDispose` so a prior load failure (or stale day snapshot) is
+/// dropped when leaving the Location tab instead of staying cached until Retry.
+final locationHistoryProvider = FutureProvider.autoDispose.family<List<LocationPing>, String>((ref, childId) async {
   final api = ref.watch(apiClientProvider);
   final now = DateTime.now();
   final from = DateTime(now.year, now.month, now.day);

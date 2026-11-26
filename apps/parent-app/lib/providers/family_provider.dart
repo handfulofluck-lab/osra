@@ -571,7 +571,11 @@ class RiverpodRealtimeEffects implements RealtimeEffects {
   void invalidateFamily() => _ref.invalidate(familyProvider);
 
   @override
-  void invalidateLocation(String childId) => _ref.invalidate(locationProvider(childId));
+  void invalidateLocation(String childId) {
+    _ref.invalidate(locationProvider(childId));
+    // #1055: a new fix also makes today's history (or a cached history error) stale.
+    _ref.invalidate(locationHistoryProvider(childId));
+  }
 
   @override
   void invalidateConsent(String childId) => _ref.invalidate(consentStatusProvider(childId));
