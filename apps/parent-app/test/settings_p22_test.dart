@@ -84,7 +84,8 @@ void main() {
     await pump(tester);
     expect(find.byKey(const ValueKey('settingsRow-timeZone')), findsOneWidget);
     // fixture family: utcOffsetMinutes 240 -> UTC+4, in Western digits
-    expect(find.text('UTC+4'), findsOneWidget);
+    // ltrIsolate wraps the digits in isolate marks, so the match is a contains, not an exact text.
+    expect(find.textContaining('UTC+4'), findsOneWidget);
     expect(find.textContaining('/'), findsNothing, reason: 'never the raw Asia/Dubai id');
     final tile = tester.widget<ListTile>(find.byKey(const ValueKey('settingsRow-timeZone')));
     expect(tile.enabled, isFalse, reason: 'read-only until #1211: no chevron and no ripple');
