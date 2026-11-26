@@ -222,7 +222,7 @@ object NotificationCapturePolicy {
             val candidates = when {
                 lines.any { it.atMs != null } -> {
                     val lastAt = state?.lastAtMs ?: 0L
-                    lines.filter { it.atMs != null && it.atMs > lastAt }
+                    lines.filter { it.atMs != null && it.atMs >= lastAt }
                 }
                 else -> lines
             }

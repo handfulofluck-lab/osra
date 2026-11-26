@@ -503,6 +503,18 @@ class NotificationCapturePolicyTest {
     }
 
     @Test
+    fun `a second sender in a later snapshot at the same timestamp is not discarded`() {
+        // Codex #1150 re-review mutant: atMs > lastAt discards Bob before sender+text identity
+        // can prove that this is a different person, not a replay of Alice.
+        val tracker = NotificationCapturePolicy.BurstTracker()
+        val alice = snap(messages = listOf("same words"), messageSenders = listOf("Alice"), messageTimesMs = listOf(1_000L))
+        assertEquals(listOf("Alice"), tracker.newCaptures(alice).map { it.contact })
+        val both = snap(messages = listOf("same words", "same words"), messageSenders = listOf("Alice", "Bob"), messageTimesMs = listOf(1_000L, 1_000L))
+        assertEquals(listOf("Bob"), tracker.newCaptures(both).map { it.contact })
+        assertEquals(emptyList<String>(), tracker.newCaptures(both).map { it.text })
+    }
+
+    @Test
     fun `the category rejection is limited to whatsapp and leaves other monitored apps unchanged`() {
         // #1150 review mutant: applying the new non-message category rule before the app check
         // drops this otherwise valid Discord conversation.
