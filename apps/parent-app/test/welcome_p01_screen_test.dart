@@ -192,6 +192,20 @@ void main() {
     expect(find.byKey(const ValueKey('p01-example-badge')), findsNothing);
   });
 
+  // Mutant: reverting `firstStrongIsolate` to `ltrIsolate` or keeping `"21:30 → 07:00"`
+  // in `app_ar.arb` fails the Arabic bedtime isolation assertion.
+  testWidgets('P-01 Arabic bedtime tile uses firstStrongIsolate with natural Arabic range copy',
+      (tester) async {
+    await tester.pumpWidget(_realRouterHarness(
+      p01Enabled: true,
+      locale: const Locale('ar'),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('\u{2068}من 21:30 إلى 07:00\u{2069}'), findsOneWidget);
+    expect(find.textContaining('→'), findsNothing);
+  });
+
   // Mutant: removing P-01 switch fails `p01-welcome-title` inside the 8-combo matrix.
   testWidgets('Bureau matrix: zero overflow across all 8 combos (EN/AR x light/dark x 390@1x and 320@2x)',
       (tester) async {

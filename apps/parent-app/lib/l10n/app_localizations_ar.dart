@@ -4173,7 +4173,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get p01PreviewScreenTimeValue => 'المتبقي ساعة و20 دقيقة';
 
   @override
-  String get p01PreviewBedtimeValue => '21:30 → 07:00';
+  String get p01PreviewBedtimeValue => 'من 21:30 إلى 07:00';
 
   @override
   String get p01PreviewAppsValue => 'تطبيقان محظوران';

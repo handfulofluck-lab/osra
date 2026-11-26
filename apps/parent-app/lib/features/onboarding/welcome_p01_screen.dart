@@ -61,7 +61,7 @@ class WelcomeP01Screen extends ConsumerWidget {
         initials: isArabic ? 'ع' : 'O',
         childName: isArabic ? 'عمر' : 'Omar',
         stateLabel: l10n.homeStateBedtime,
-        timeLeftText: ltrIsolate(l10n.p01PreviewBedtimeValue),
+        timeLeftText: firstStrongIsolate(l10n.p01PreviewBedtimeValue),
         progress: 0.90,
         showExampleBadge: false,
       ),
