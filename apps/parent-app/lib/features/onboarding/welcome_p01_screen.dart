@@ -7,6 +7,7 @@ import '../../l10n/l10n.dart';
 import '../../providers/locale_provider.dart';
 import '../../providers/onboarding_provider.dart';
 import '../../theme/app_tokens.dart';
+import '../dashboard/home_p07_screen.dart';
 
 /// Build-time switch for UX Final Decisions P-01 Welcome (#1179).
 /// Defaults to `false` so the legacy [WelcomeScreen] stays as fallback.
@@ -17,8 +18,8 @@ final p01WelcomeEnabledProvider = Provider<bool>((ref) => kP01WelcomeDefault);
 
 /// P-01 Welcome screen (#1179, Karim pick 0):
 /// - Language switch on top (EN ↔ AR).
-/// - 2×2 preview of Home tiles labelled "Example" (no demo tooltips).
-/// - Two buttons: Create account / Sign in.
+/// - 2×2 preview of the real P-07 Home tiles ([HomeP07PreviewTile]) labelled "Example" (no demo tooltips).
+/// - Two buttons: Create account (`/create-account`) / Sign in (`/sign-in`).
 /// - One no-ads line (no residency, speed, or "on-device" claims).
 class WelcomeP01Screen extends ConsumerWidget {
   const WelcomeP01Screen({super.key});
@@ -29,10 +30,50 @@ class WelcomeP01Screen extends ConsumerWidget {
     final tokens = context.tokens;
     final isArabic = Localizations.localeOf(context).languageCode == 'ar';
 
-    void openAccount() {
+    void openCreateAccount() {
+      ref.read(onboardingProvider.notifier).begin();
+      context.go('/create-account');
+    }
+
+    void openSignIn() {
       ref.read(onboardingProvider.notifier).begin();
       context.go('/sign-in');
     }
+
+    final previewTiles = <HomeP07PreviewTile>[
+      HomeP07PreviewTile(
+        initials: isArabic ? 'ل' : 'L',
+        childName: isArabic ? 'ليلى' : 'Layla',
+        stateLabel: l10n.homeStateAtSchool,
+        timeLeftText: l10n.p01PreviewScreenTimeValue,
+        progress: 0.65,
+        showExampleBadge: false,
+      ),
+      HomeP07PreviewTile(
+        initials: isArabic ? 'ع' : 'O',
+        childName: isArabic ? 'عمر' : 'Omar',
+        stateLabel: l10n.homeStateBedtime,
+        timeLeftText: ltrIsolate(l10n.p01PreviewBedtimeValue),
+        progress: 0.90,
+        showExampleBadge: false,
+      ),
+      HomeP07PreviewTile(
+        initials: isArabic ? 'م' : 'M',
+        childName: isArabic ? 'مريم' : 'Maya',
+        stateLabel: l10n.homeStateHomework,
+        timeLeftText: l10n.p01PreviewAppsValue,
+        progress: 0.45,
+        showExampleBadge: false,
+      ),
+      HomeP07PreviewTile(
+        initials: isArabic ? 'ز' : 'Z',
+        childName: isArabic ? 'زيد' : 'Zaid',
+        stateLabel: l10n.homeStateFreeTime,
+        timeLeftText: l10n.p01PreviewLocationValue,
+        progress: 0.35,
+        showExampleBadge: false,
+      ),
+    ];
 
     return Scaffold(
       body: SafeArea(
@@ -86,7 +127,8 @@ class WelcomeP01Screen extends ConsumerWidget {
                   ),
                   const SizedBox(height: AppSpace.xs),
                   Text(
-                    l10n.onboardingWelcomeBody,
+                    l10n.p01WelcomeSubtitle,
+                    key: const ValueKey('p01-welcome-subtitle'),
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                           color: tokens.onSurfaceVariant,
                         ),
@@ -115,37 +157,14 @@ class WelcomeP01Screen extends ConsumerWidget {
                     ],
                   ),
                   const SizedBox(height: AppSpace.sm),
-                  _ExampleHomeGrid(
-                    tiles: [
-                      _PreviewTile(
-                        icon: Icons.timer_outlined,
-                        title: l10n.screenTime,
-                        value: l10n.p01PreviewScreenTimeValue,
-                      ),
-                      _PreviewTile(
-                        icon: Icons.bedtime_outlined,
-                        title: l10n.bedtime,
-                        value: ltrIsolate(l10n.p01PreviewBedtimeValue),
-                      ),
-                      _PreviewTile(
-                        icon: Icons.apps_outlined,
-                        title: l10n.tabApps,
-                        value: l10n.p01PreviewAppsValue,
-                      ),
-                      _PreviewTile(
-                        icon: Icons.place_outlined,
-                        title: l10n.tabLocation,
-                        value: l10n.p01PreviewLocationValue,
-                      ),
-                    ],
-                  ),
+                  _ExampleHomeGrid(tiles: previewTiles),
                   const SizedBox(height: AppSpace.xl),
                   FilledButton(
                     key: const ValueKey('p01-create-account'),
                     style: FilledButton.styleFrom(
                       minimumSize: const Size(double.infinity, 52),
                     ),
-                    onPressed: openAccount,
+                    onPressed: openCreateAccount,
                     child: Text(l10n.createAccount),
                   ),
                   const SizedBox(height: AppSpace.sm),
@@ -154,7 +173,7 @@ class WelcomeP01Screen extends ConsumerWidget {
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size(double.infinity, 52),
                     ),
-                    onPressed: openAccount,
+                    onPressed: openSignIn,
                     child: Text(l10n.signIn),
                   ),
                   const SizedBox(height: AppSpace.md),
@@ -176,26 +195,13 @@ class WelcomeP01Screen extends ConsumerWidget {
   }
 }
 
-class _PreviewTile {
-  final IconData icon;
-  final String title;
-  final String value;
-
-  const _PreviewTile({
-    required this.icon,
-    required this.title,
-    required this.value,
-  });
-}
-
 class _ExampleHomeGrid extends StatelessWidget {
-  final List<_PreviewTile> tiles;
+  final List<HomeP07PreviewTile> tiles;
 
   const _ExampleHomeGrid({required this.tiles});
 
   @override
   Widget build(BuildContext context) {
-    final tokens = context.tokens;
     final scale = MediaQuery.textScalerOf(context).scale(1.0);
     return LayoutBuilder(
       key: const ValueKey('p01-preview-grid'),
@@ -211,37 +217,7 @@ class _ExampleHomeGrid extends StatelessWidget {
             for (final tile in tiles)
               SizedBox(
                 width: tileWidth,
-                child: Card(
-                  color: tokens.surfaceContainer,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppRadius.md),
-                    side: BorderSide(color: tokens.border),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSpace.md),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(tile.icon, color: tokens.primary, size: 22),
-                        const SizedBox(height: AppSpace.xs),
-                        Text(
-                          tile.title,
-                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                                color: tokens.onSurfaceVariant,
-                              ),
-                        ),
-                        const SizedBox(height: AppSpace.xxs),
-                        Text(
-                          tile.value,
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                color: tokens.onSurface,
-                                fontWeight: FontWeight.w600,
-                              ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                child: tile,
               ),
           ],
         );

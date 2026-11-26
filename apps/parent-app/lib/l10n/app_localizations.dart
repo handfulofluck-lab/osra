@@ -6016,6 +6016,252 @@ abstract class AppLocalizations {
   /// **'Keep {app} blocked'**
   String accessRequestKeepBlockedLabel(String app);
 
+  /// No description provided for @timeRequestTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{child} asked for {minutes} more minutes today'**
+  String timeRequestTitle(String child, int minutes);
+
+  /// No description provided for @timeRequestGrant.
+  ///
+  /// In en, this message translates to:
+  /// **'+{minutes} min'**
+  String timeRequestGrant(String minutes);
+
+  /// No description provided for @timeRequestDecline.
+  ///
+  /// In en, this message translates to:
+  /// **'Not today'**
+  String get timeRequestDecline;
+
+  /// No description provided for @timeRequestGrantedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'{actor} already gave {minutes} minutes today'**
+  String timeRequestGrantedBy(String actor, int minutes);
+
+  /// No description provided for @timeRequestGrantedByYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You already gave {minutes} minutes today'**
+  String timeRequestGrantedByYou(int minutes);
+
+  /// No description provided for @timeRequestDeclinedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'{actor} already declined this request'**
+  String timeRequestDeclinedBy(String actor);
+
+  /// No description provided for @timeRequestDeclinedByYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You already declined this request'**
+  String get timeRequestDeclinedByYou;
+
+  /// No description provided for @timeRequestDecidedAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Decided {time}'**
+  String timeRequestDecidedAt(String time);
+
+  /// No description provided for @homeTabHome.
+  ///
+  /// In en, this message translates to:
+  /// **'Home'**
+  String get homeTabHome;
+
+  /// No description provided for @homeTabFamily.
+  ///
+  /// In en, this message translates to:
+  /// **'Family'**
+  String get homeTabFamily;
+
+  /// No description provided for @homeTabSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get homeTabSettings;
+
+  /// No description provided for @homeFilterAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get homeFilterAll;
+
+  /// No description provided for @homeNeedsYou.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs you'**
+  String get homeNeedsYou;
+
+  /// No description provided for @homeSafetyAlertsToReview.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 safety alert to review} other{{count} safety alerts to review}}'**
+  String homeSafetyAlertsToReview(int count);
+
+  /// No description provided for @homeDurationHoursMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours} {minutes}'**
+  String homeDurationHoursMinutes(String hours, String minutes);
+
+  /// No description provided for @homeTimeLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'{duration} left'**
+  String homeTimeLeft(String duration);
+
+  /// No description provided for @homeOfLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'of {limit}'**
+  String homeOfLimit(String limit);
+
+  /// No description provided for @homeSeenJustNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Seen just now'**
+  String get homeSeenJustNow;
+
+  /// No description provided for @homeSeenAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'Seen {duration} ago'**
+  String homeSeenAgo(String duration);
+
+  /// No description provided for @homeOfflineFor.
+  ///
+  /// In en, this message translates to:
+  /// **'Offline for {duration}'**
+  String homeOfflineFor(String duration);
+
+  /// No description provided for @homeStateAtSchool.
+  ///
+  /// In en, this message translates to:
+  /// **'At school'**
+  String get homeStateAtSchool;
+
+  /// No description provided for @homeStateBedtime.
+  ///
+  /// In en, this message translates to:
+  /// **'Bedtime'**
+  String get homeStateBedtime;
+
+  /// No description provided for @homeStateFreeTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Free time'**
+  String get homeStateFreeTime;
+
+  /// No description provided for @homeStateHomework.
+  ///
+  /// In en, this message translates to:
+  /// **'Homework'**
+  String get homeStateHomework;
+
+  /// No description provided for @homeStatePaused.
+  ///
+  /// In en, this message translates to:
+  /// **'Paused'**
+  String get homeStatePaused;
+
+  /// No description provided for @homeBatteryPct.
+  ///
+  /// In en, this message translates to:
+  /// **'Battery {pct}%'**
+  String homeBatteryPct(String pct);
+
+  /// No description provided for @homeBonusPlus15.
+  ///
+  /// In en, this message translates to:
+  /// **'+15 min'**
+  String get homeBonusPlus15;
+
+  /// No description provided for @homeBonusPlus30.
+  ///
+  /// In en, this message translates to:
+  /// **'+30 min'**
+  String get homeBonusPlus30;
+
+  /// No description provided for @homePauseInternet.
+  ///
+  /// In en, this message translates to:
+  /// **'Pause internet'**
+  String get homePauseInternet;
+
+  /// No description provided for @homeResumeInternet.
+  ///
+  /// In en, this message translates to:
+  /// **'Resume internet'**
+  String get homeResumeInternet;
+
+  /// No description provided for @homeLockAllDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock'**
+  String get homeLockAllDevices;
+
+  /// No description provided for @homeUnlockAllDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock'**
+  String get homeUnlockAllDevices;
+
+  /// No description provided for @homeNotYetAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet available'**
+  String get homeNotYetAvailable;
+
+  /// No description provided for @homeNotYetOnIphone.
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet available on iPhone'**
+  String get homeNotYetOnIphone;
+
+  /// No description provided for @homeKeepBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep blocked'**
+  String get homeKeepBlocked;
+
+  /// No description provided for @homeNotToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Not today'**
+  String get homeNotToday;
+
+  /// No description provided for @homeTimeRequestTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes, plural, =1{{child} asked for 1 more minute of screen time} other{{child} asked for {minutes} more minutes of screen time}}'**
+  String homeTimeRequestTitle(String child, int minutes);
+
+  /// No description provided for @homeAccessRequestTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{child} asked to open {app}'**
+  String homeAccessRequestTitle(String child, String app);
+
+  /// No description provided for @homeSentToPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent to phone'**
+  String get homeSentToPhone;
+
+  /// No description provided for @homeSendingBonusSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Adding {duration} for today'**
+  String homeSendingBonusSnack(String duration);
+
+  /// No description provided for @homeExampleBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Example'**
+  String get homeExampleBadge;
+
   /// No description provided for @p01WelcomeSubtitle.
   ///
   /// In en, this message translates to:

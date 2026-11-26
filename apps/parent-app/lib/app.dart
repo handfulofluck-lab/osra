@@ -12,6 +12,7 @@ import 'features/alerts/alerts_screen.dart';
 import 'features/auth/mfa_reset_approval_screen.dart';
 import 'features/family/family_screen.dart';
 import 'features/map/family_map_screen.dart';
+import 'features/auth/create_account_screen.dart';
 import 'features/onboarding/setup_child_screen.dart';
 import 'features/onboarding/setup_done_screen.dart';
 import 'features/onboarding/setup_monitoring_screen.dart';
@@ -38,7 +39,7 @@ import 'push/foreground_push.dart';
 import 'push/notification_tap.dart';
 import 'theme/app_theme.dart';
 
-const _setupRoutes = {'/welcome', '/sign-in', '/setup/child', '/setup/pair', '/setup/monitoring', '/setup/done'};
+const _setupRoutes = {'/welcome', '/sign-in', '/create-account', '/setup/child', '/setup/pair', '/setup/monitoring', '/setup/done'};
 
 bool _isSetupRoute(String location) => _setupRoutes.contains(location);
 
@@ -46,6 +47,7 @@ final List<RouteBase> appRoutes = [
   GoRoute(path: '/starting', builder: (_, __) => const StartupScreen()),
   GoRoute(path: '/welcome', builder: (_, __) => const WelcomeScreen()),
   GoRoute(path: '/sign-in', builder: (_, __) => const LoginScreen(onboarding: true)),
+  GoRoute(path: '/create-account', builder: (_, __) => const CreateAccountScreen(onboarding: true)),
   GoRoute(path: '/setup/child', builder: (_, __) => const SetupChildScreen()),
   GoRoute(path: '/setup/pair', builder: (_, __) => const SetupPairScreen()),
   // Play decision 14 A: the parent picks the monitored apps here, between pairing and the hand-over, so the
@@ -191,7 +193,7 @@ final router = GoRouter(
       // Sign-in cannot be skipped: every unauthenticated location resolves to
       // either Welcome (fresh) or the account step (a resume that lost its
       // session).
-      if (location == '/sign-in') return null;
+      if (location == '/sign-in' || location == '/create-account') return null;
       return onboarding.step == OnboardingStep.none ? '/welcome' : '/sign-in';
     }
 

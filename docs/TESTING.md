@@ -20,6 +20,15 @@ these gates exist, see `docs/adr/0005-adversarial-acceptance-gate.md` and
 
 For the 12-app Social monitoring catalog (#1037), run `flutter test test/social_screen_test.dart test/setup_monitoring_test.dart`. The tests pin the shared Android package mapping, missing-key ON behavior, installed-first grouping, usable collapsed controls, onboarding preselection, Select all, and one-time banner persistence. To generate the UI/UX Bureau's 320 px / 200% EN and AR frames, set `OSRA_FRAME_DIR` to a scratch output directory and run the same command; `test/frame_capture.dart` writes `social-*.png` and `onboarding-*.png` only when that variable is set, so ordinary test runs have no filesystem side effects.
 
+For the P-20 daily-limit request, run `flutter test --dart-define=OSRA_UX_P20=true
+test/time_request_actions_test.dart test/time_request_frames_test.dart` from `apps/parent-app`.
+Run the same tests without the define to check the fallback. An opt-in `OSRA_FRAME_DIR`
+captures the card and detail at 390 px and 320 px with 200% text in English and Arabic.
+The fixture checks title wrapping, the Screen time label, both clock settings and 48 dp tap
+targets. For device evidence, send an Android daily-limit request
+in a paired test family, approve it once, and confirm the child receives the grant. A
+separate decline should close the request with no new bonus.
+
 Run the iOS launch classifier fixtures with
 `bash apps/child-ios/scripts/test-classify-launch-failure.sh`. A failure log that contains
 both an explicit target-app crash and a simulator launch error or runner stall is ambiguous
@@ -1867,3 +1876,16 @@ that the old matcher missed (#310).
 ### Staging analyzer task size (#962)
 
 For an approved staging OSRA-model window, set `staging_qa_analyzer.own_model_task_size` to true in the private window configuration. Review the Terraform plan for 2048 CPU units and 8192 MiB on the analyzer task. The sizing flag only takes effect while the analyzer is armed. On rollback, check the replacement task uses 512 CPU units and 1024 MiB. The flag controls capacity only. Check checkpoint delivery and live scoring separately.
+
+### Parent Home P-07 + P-07-RTL (#1179)
+
+Run from `apps/parent-app`:
+
+```bash
+flutter test --dart-define=OSRA_UX_P07=true test/p07_home_screen_test.dart
+flutter test test/p07_home_screen_test.dart
+```
+
+- **Shared G4 / P-20 time-request actions:** Home `Needs you` renders `TimeRequestActions` on Android daily-limit requests (`POST /v1/alerts/:id/time-decision`, including `409` winning caregiver receipts), while child-card quick `+15 min` / `+30 min` buttons keep the 5-second local Undo hold over `POST /v1/controls/children/:id/bonus`.
+- **G5 daily time-left window:** `deviceCommandHistoryProvider` reads `limit=100` (matching the server `listDeviceCommands` cap). If more than 100 commands are sent to one device in a single day so an earlier same-day `acked` grant ages out of that slice, `computeHomeTimeSummary` conservatively drops the aged-out grant and clamps `remainingMinutes` at `0` rather than reading stale `ruleSet.bonusMinutesToday`.
+- **A10 live-arrival pairing claims:** while Home watches an unexpired pairing code in `status: waiting`, `activePairingClaimProvider` re-polls every 2 seconds until a claim arrives, `404` is returned, the code expires, or Home unmounts.
