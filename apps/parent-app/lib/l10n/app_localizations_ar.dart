@@ -3882,5 +3882,5 @@ class AppLocalizationsAr extends AppLocalizations {
   String get p11ScheduleOff => 'متوقف';
 
   @override
-  String get p11CustomRoutines => 'روتينات أخرى';
+  String get p11CustomRoutines => 'جداول أخرى';
 }
