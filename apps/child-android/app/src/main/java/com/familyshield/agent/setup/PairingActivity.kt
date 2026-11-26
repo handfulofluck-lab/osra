@@ -710,12 +710,6 @@ class PairingActivity : ComponentActivity() {
                     setOnClickListener { launchAdminSheet() }
                 },
             )
-            addView(
-                Button(this@PairingActivity).apply {
-                    text = getString(R.string.setup_skip)
-                    setOnClickListener { showComplete() }
-                },
-            )
         }
     }
 
