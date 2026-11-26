@@ -18,7 +18,6 @@ import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
-import '../rules/rules_behind_banner.dart';
 import '../../theme/app_tokens.dart';
 import '../children/child_detail_screen.dart' show AlertTile;
 import '../coach/coach_card_section.dart';
@@ -311,10 +310,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Issue #475 follow-up (Claude's ruling): the line is scoped to THIS alert's child, in the
-                  // dialog a parent opens later to ask "did my last change land?". The feed itself is
-                  // family-wide, so it carries no line; the Block path already refetches the family.
-                  RulesBehindBanner(childId: alert.childId),
+                  // #1128: an alert is not a rule change, so no RulesBehindBanner belongs here.
                   // #755 Arabic Bureau (6868533968): SOS already states the event in its localized title and
                   // place lines, so never repeat the child agent's raw English sentence.
                   // #889 Arabic Bureau (6997818132): an unkeyed restart row in Arabic renders no body at all

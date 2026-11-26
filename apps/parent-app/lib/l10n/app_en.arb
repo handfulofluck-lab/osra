@@ -1618,6 +1618,15 @@
   "digestPrefsSendHourLabel": "Send hour",
   "alertTitleSos": "SOS pressed",
   "alertTitleBlockedSite": "Blocked site attempted",
+  "blockedSiteDomainLine": "Site: {domain}",
+  "@blockedSiteDomainLine": {
+    "placeholders": {
+      "domain": {
+        "type": "String"
+      }
+    }
+  },
+  "blockedSiteNamesNotCollected": "Site names aren't collected yet, so only the block is shown.",
   "alertTitleDailyLimit": "Daily limit reached",
   "alertTitleAppBlocked": "App blocked",
   "alertTitleGeofence": "Place alert",

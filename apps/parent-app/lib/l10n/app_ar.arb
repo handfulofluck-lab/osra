@@ -942,6 +942,8 @@
   "digestPrefsSendHourLabel": "ساعة الإرسال",
   "alertTitleSos": "تم الضغط على زر الاستغاثة",
   "alertTitleBlockedSite": "تمت محاولة زيارة موقع محظور",
+  "blockedSiteDomainLine": "الموقع: {domain}",
+  "blockedSiteNamesNotCollected": "لا تُجمع أسماء المواقع حاليًا، لذا يظهر الحظر فقط.",
   "alertTitleDailyLimit": "تم بلوغ الحد اليومي",
   "alertTitleAppBlocked": "تم حظر تطبيق",
   "alertTitleGeofence": "تنبيه دخول أو مغادرة مكان",
