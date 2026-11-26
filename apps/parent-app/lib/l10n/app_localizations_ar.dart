@@ -260,6 +260,30 @@ class AppLocalizationsAr extends AppLocalizations {
   String get digestPreferencesMenu => 'تفضيلات الملخص';
 
   @override
+  String get settingsTitle => 'الإعدادات';
+
+  @override
+  String get settingsGroupLanguage => 'اللغة والمظهر';
+
+  @override
+  String get settingsGroupSecurity => 'الأمان';
+
+  @override
+  String get settingsGroupAccount => 'الحساب';
+
+  @override
+  String get settingsSignOut => 'تسجيل الخروج';
+
+  @override
+  String get settingsSignOutAll => 'تسجيل الخروج من كل الأجهزة';
+
+  @override
+  String get settingsValueOn => 'مفعّل';
+
+  @override
+  String get settingsValueOff => 'غير مفعّل';
+
+  @override
   String get signOutTooltip => 'تسجيل الخروج';
 
   @override
