@@ -198,7 +198,7 @@ jobs:
                       "android_client_info": {"package_name": "com.osratech.parent"},
                   },
                   "oauth_client": [{"client_id": "synthetic", "client_type": 3}],
-                  "api_key": [{"current_key": "AIzaSySYNTHETIC-SYNTHETIC-SYNTHETIC-123"}],
+                  "api_key": [{"current_key": "synthetic-api-key-not-a-secret"}],
               }],
           }
           Path("android/app/google-services.json").write_text(json.dumps(config), encoding="utf-8")
