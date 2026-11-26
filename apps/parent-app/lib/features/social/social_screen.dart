@@ -42,13 +42,26 @@ class SocialScreen extends ConsumerWidget {
 /// The four shared social sections (monitoring toggles, concerns vault,
 /// calls & texts timeline, contact allowlist), embeddable both in
 /// [SocialScreen] and in the child-detail Social tab.
-class SocialSectionsView extends StatelessWidget {
+class SocialSectionsView extends ConsumerWidget {
   final String childId;
   final String? concernId;
   const SocialSectionsView({super.key, required this.childId, this.concernId});
 
   @override
-  Widget build(BuildContext context) => Column(
+  Widget build(BuildContext context, WidgetRef ref) => RefreshIndicator(
+        onRefresh: () async {
+          try {
+            final concerns = socialEventsProvider(childId);
+            ref.invalidate(concerns);
+            await ref.read(concerns.future);
+          } catch (_) {
+            // ConcernsSection renders the provider's error and retry action.
+          }
+        },
+        child: _sections(),
+      );
+
+  Widget _sections() => Column(
         children: [
           // Issue #475 follow-up: these four sections write rules (monitoring toggles, contact
           // allowlist), so the line lives with them rather than with the wrapper — the child-detail
@@ -57,6 +70,7 @@ class SocialSectionsView extends StatelessWidget {
           Expanded(
             child: ListView(
               key: const ValueKey('socialSectionsList'),
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(AppSpace.lg),
               children: [
                 if (concernId != null) ...[

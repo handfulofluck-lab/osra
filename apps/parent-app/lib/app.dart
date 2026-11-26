@@ -32,7 +32,9 @@ import 'l10n/l10n.dart';
 import 'providers/auth_provider.dart';
 import 'providers/locale_provider.dart';
 import 'providers/onboarding_provider.dart';
+import 'providers/social_provider.dart';
 import 'providers/theme_provider.dart';
+import 'push/foreground_push.dart';
 import 'push/notification_tap.dart';
 import 'theme/app_theme.dart';
 
@@ -227,11 +229,26 @@ final router = GoRouter(
   routes: appRoutes,
 );
 
+/// Refresh cached concerns after app-wide signals that may lack a child ID.
+final _socialActivityRefreshProvider = Provider<void>((ref) {
+  void refresh() => ref.invalidate(socialEventsProvider);
+
+  final lifecycle = AppLifecycleListener(onResume: refresh);
+  foregroundAlertWakes.addListener(refresh);
+  notificationTapController.addListener(refresh);
+  ref.onDispose(() {
+    lifecycle.dispose();
+    foregroundAlertWakes.removeListener(refresh);
+    notificationTapController.removeListener(refresh);
+  });
+});
+
 class FamilyShieldApp extends ConsumerWidget {
   const FamilyShieldApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(_socialActivityRefreshProvider);
     final mode = ref.watch(themeModeProvider);
     final locale = ref.watch(localeProvider);
     return MaterialApp.router(

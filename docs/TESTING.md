@@ -128,6 +128,14 @@ Confirm the approved concern tags render as readable chips at 320 px and 200% in
 and Arabic. On the signed parent app, open the alert and then the matching Social concern.
 The system notification remains generic.
 
+For the open Social list refresh (#1136), run `flutter test test/social_activity_refresh_test.dart
+test/social_screen_test.dart test/realtime_refresh_test.dart test/foreground_push_test.dart` from
+`apps/parent-app`. The tests verify foreground Apple notifications, app resume, a notification tap,
+per-child realtime alerts and pull-to-refresh on a short list. For the signed iPhone row, leave the
+Social tab open and send a synthetic message that adds a concern. Confirm the new card appears while
+the app is open, after a background/resume, and after opening a notification and returning to Social.
+Repeat with a pull gesture and record the Parent build and child build.
+
 For Arabic and Latin list separators, run `flutter test test/localized_list_test.dart` from
 `apps/parent-app` (#794). Its nine tests cover the shared splitter and real Arabic-locale widgets for
 allowed/blocked domains, routine blocked/allowed apps and digest recipients. Each field saves both
