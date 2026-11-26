@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show Color, Colors;
 
+import '../core/social_sender.dart';
+
 /// Plain Dart models mirroring `packages/shared-types/src/index.ts` field
 /// names (displayName, birthYear, batteryPct, lastSeen, blockedCategories,
 /// dailyLimitMinutes, bedtimeStart, ...). All `fromJson` factories tolerate
@@ -190,6 +192,12 @@ class Device {
   /// server *has* judged carries a setup whose [DeviceSetup.reportedAt] is the receipt time.
   final DeviceSetup? setup;
 
+  /// ADR-0047: when the server authenticated completion of required setup grants.
+  final DateTime? setupCompletedAt;
+
+  /// Whether the server sent [setupCompletedAt], distinguishing an explicit null from a legacy response.
+  final bool hasSetupCompletedAtField;
+
   const Device({
     required this.id,
     required this.childId,
@@ -201,6 +209,8 @@ class Device {
     this.lastSeen,
     this.pushToken,
     this.setup,
+    this.setupCompletedAt,
+    this.hasSetupCompletedAtField = false,
   });
 
   factory Device.fromJson(Map<String, dynamic> json) => Device(
@@ -213,6 +223,8 @@ class Device {
         batteryPct: _int(json['batteryPct']),
         lastSeen: DateTime.tryParse(_str(json['lastSeen'])),
         pushToken: _strOrNull(json['pushToken']),
+        setupCompletedAt: DateTime.tryParse(_str(json['setupCompletedAt'])),
+        hasSetupCompletedAtField: json.containsKey('setupCompletedAt'),
         setup: json['setup'] is Map
             ? DeviceSetup.fromJson(
                 Map<String, dynamic>.from(json['setup'] as Map))
@@ -226,6 +238,10 @@ class Device {
   /// `services/api/src/jobs/deviceSilence.ts` owns the flip to `offline`, and an agent call or an upload
   /// owns the flip back; [lastSeen] is shown beside the word as an age, not re-read as a verdict.
   bool get isOnline => status == 'online';
+
+  /// ADR-0047 first-setup state exists only for Android responses carrying the new server field.
+  bool get tracksSetupCompletion =>
+      platform.toLowerCase() == 'android' && hasSetupCompletedAtField;
 
   /// Whether the server has a capability report for this phone (ADR-0034 decision 3).
   ///
@@ -408,7 +424,8 @@ class ScreenTimeRule {
         : const <String, dynamic>{};
     final rawDays = school['days'];
     final days = _intList(rawDays);
-    final hasSchoolDays = days.isNotEmpty || (rawDays is List && rawDays.isEmpty);
+    final hasSchoolDays =
+        days.isNotEmpty || (rawDays is List && rawDays.isEmpty);
     return ScreenTimeRule(
       dailyLimitMinutes: _int(json['dailyLimitMinutes'], 180),
       weekendLimitMinutes: _int(json['weekendLimitMinutes'], 240),
@@ -899,6 +916,13 @@ class SocialConcernEvent {
   final String preview;
   final List<String> concernTypes;
   final DateTime? createdAt;
+  final String? latestFeedbackVerdict;
+  final String? latestFeedbackParentDisplayName;
+  final DateTime? latestFeedbackFirstVotedAt;
+  final DateTime? latestFeedbackLastChangedAt;
+  final String? ownFeedbackVerdict;
+  final DateTime? ownFeedbackFirstVotedAt;
+  final DateTime? ownFeedbackLastChangedAt;
 
   const SocialConcernEvent({
     required this.id,
@@ -908,18 +932,44 @@ class SocialConcernEvent {
     required this.preview,
     this.concernTypes = const [],
     this.createdAt,
+    this.latestFeedbackVerdict,
+    this.latestFeedbackParentDisplayName,
+    this.latestFeedbackFirstVotedAt,
+    this.latestFeedbackLastChangedAt,
+    this.ownFeedbackVerdict,
+    this.ownFeedbackFirstVotedAt,
+    this.ownFeedbackLastChangedAt,
   });
 
-  factory SocialConcernEvent.fromJson(Map<String, dynamic> json) =>
-      SocialConcernEvent(
-        id: _str(json['id']),
-        app: _str(json['app']),
-        contact: _str(json['contact']),
-        severity: _str(json['severity'], 'info'),
-        preview: _str(json['preview']),
-        concernTypes: _strList(json['concernTypes']),
-        createdAt: DateTime.tryParse(_str(json['createdAt'])),
-      );
+  factory SocialConcernEvent.fromJson(Map<String, dynamic> json) {
+    final latestFeedback = json['latestFeedback'];
+    final feedback =
+        latestFeedback is Map ? latestFeedback : const <String, dynamic>{};
+    final verdict = _str(feedback['verdict']);
+    final parentDisplayName = _str(feedback['parentDisplayName']);
+    final ownFeedback = json['ownFeedback'];
+    final own = ownFeedback is Map ? ownFeedback : const <String, dynamic>{};
+    final ownVerdict = _str(own['verdict']);
+    return SocialConcernEvent(
+      id: _str(json['id']),
+      app: _str(json['app']),
+      contact: _str(json['contact']),
+      severity: _str(json['severity'], 'info'),
+      preview: _str(json['preview']),
+      concernTypes: _strList(json['concernTypes']),
+      createdAt: DateTime.tryParse(_str(json['createdAt'])),
+      latestFeedbackVerdict: verdict.isEmpty ? null : verdict,
+      latestFeedbackParentDisplayName:
+          parentDisplayName.isEmpty ? null : parentDisplayName,
+      latestFeedbackFirstVotedAt:
+          DateTime.tryParse(_str(feedback['firstVotedAt'])),
+      latestFeedbackLastChangedAt:
+          DateTime.tryParse(_str(feedback['lastChangedAt'])),
+      ownFeedbackVerdict: ownVerdict.isEmpty ? null : ownVerdict,
+      ownFeedbackFirstVotedAt: DateTime.tryParse(_str(own['firstVotedAt'])),
+      ownFeedbackLastChangedAt: DateTime.tryParse(_str(own['lastChangedAt'])),
+    );
+  }
 }
 
 /// A flagged search query event (Track 1 & 2 content monitoring).
@@ -1258,11 +1308,13 @@ class Alert {
 
   /// #1029: explicit flagged message count from metadata (or `attemptCount` when > 1), else null.
   int? get socialFlaggedCount =>
-      _positiveMetaInt(metadata, const ['flaggedCount', 'messageCount', 'count']) ??
+      _positiveMetaInt(
+          metadata, const ['flaggedCount', 'messageCount', 'count']) ??
       (attemptCount > 1 ? attemptCount : null);
 
   /// #1029: total flagged messages represented by this social alert (at least 1).
-  int get socialMessageCount => socialFlaggedCount ?? (attemptCount > 0 ? attemptCount : 1);
+  int get socialMessageCount =>
+      socialFlaggedCount ?? (attemptCount > 0 ? attemptCount : 1);
 
   /// #1029: distinct contact count from metadata (count only, never names on card/push).
   int? get socialContactCount {
@@ -1276,10 +1328,8 @@ class Alert {
   }
 
   /// #1029: contact display name from metadata (as the child's app shows it), or null if absent/blank.
-  String? get socialContactName {
-    final raw = metadata['contact']?.toString().trim() ?? '';
-    return raw.isEmpty ? null : raw;
-  }
+  String? get socialContactName =>
+      socialSenderDisplayName(metadata['contact']?.toString());
 
   /// #1029: latest flagged-message timestamp in the throttle window, if present.
   DateTime? get socialLatestAt {

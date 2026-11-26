@@ -13,6 +13,7 @@ describe("private provider receipts", () => {
   it("retains Stockholm on the staged own-model outcome and parent alert attribution", () => {
     const outcome = readProviderAnalysis({ ...both, region: "eu-north-1", mode: "own", outcomes: { own } }, "own", trace);
     expect(outcome.providers.own).toMatchObject({ status: "scored", region: "eu-north-1" });
+    expect(outcome.providers.own).not.toHaveProperty("language");
     expect(flaggedProviders(outcome.providers).own).toEqual(outcome.providers.own);
   });
 

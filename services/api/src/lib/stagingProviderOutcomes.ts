@@ -17,8 +17,17 @@ export type ProviderAnalysis = {
   providers: ProviderReceipts;
   verdict: { flagged: boolean; severity: Severity; concernTypes: string[] } | null;
 };
+export type ProviderModelSnapshot = {
+  modelVersion: string;
+  lang: string | null;
+  topCategory: string | null;
+  topScore: number | null;
+  cutoff: number | null;
+  path: "own" | "hybrid_second_look";
+};
 
 const harmful = ["cyberbullying", "self_harm", "grooming", "violence", "sexual_content", "substance_use", "hate_speech"];
+const languages = new Set(["en", "id", "ms", "tr", "ur", "ar", "fr", "uncertain"]);
 const ownModels = new Set(["v9", "v9b", "v9+v9b"]);
 const selected = (mode: ProviderMode): Provider[] => mode === "both" ? ["bedrock", "own"] : [mode];
 const unavailable = (reason: Reason = "unavailable"): Receipt => ({ status: "unavailable", reason });
@@ -82,6 +91,20 @@ export function readProviderAnalysis(data: unknown, mode: ProviderMode, traceId:
     for (const category of outcome.receipt.flagged_categories) concerns.add(category);
   }
   return { providers, verdict: anyScored ? { flagged: concerns.size > 0, severity, concernTypes: [...concerns] } : null };
+}
+
+export function readProviderModelSnapshot(data: unknown, receipt: ProviderReceipts["own"]): ProviderModelSnapshot | undefined {
+  if (receipt?.status !== "scored" || !record(data) || !record(data.outcomes) || !record(data.outcomes.own)) return undefined;
+  const raw = data.outcomes.own;
+  const top = Object.entries(receipt.categories).sort((a, b) => b[1] - a[1])[0];
+  return {
+    modelVersion: receipt.model,
+    lang: typeof raw.language === "string" && languages.has(raw.language) ? raw.language : null,
+    topCategory: top?.[0] ?? null,
+    topScore: top?.[1] ?? null,
+    cutoff: typeof raw.cutoff === "number" && Number.isFinite(raw.cutoff) ? raw.cutoff : null,
+    path: receipt.model === "v9+v9b" ? "hybrid_second_look" : "own",
+  };
 }
 
 export function flaggedProviders(receipts: ProviderReceipts): ProviderReceipts {

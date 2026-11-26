@@ -2,7 +2,8 @@ import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show Listenable, TargetPlatform, ValueNotifier, defaultTargetPlatform, visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/models.dart';
@@ -10,6 +11,11 @@ import 'background_push.dart';
 import 'notification_tap.dart';
 
 const _shownAlertIdsKey = 'push.shownAlertIds';
+
+final _foregroundAlertWakes = ValueNotifier(0);
+
+/// A foreground notification indicates the authenticated activity cache may be stale.
+Listenable get foregroundAlertWakes => _foregroundAlertWakes;
 
 /// #1028: Returns true when iOS itself will render a visible foreground banner
 /// and sound for this push payload, so the client must NOT post a second local
@@ -287,6 +293,10 @@ Future<StreamSubscription<T>?> enablePushAlerts<T>({
     final data = extractData != null
         ? extractData(msg)
         : (msg is RemoteMessage ? msg.data : const <String, dynamic>{});
+    if (isGenericAlertWakeData(data, hasNotificationPayload: hasNotif) ||
+        (data['alertId']?.toString().trim().isNotEmpty ?? false)) {
+      _foregroundAlertWakes.value++;
+    }
     unawaited(bridge.handleMessage(hasNotificationPayload: hasNotif, data: data));
   });
 }

@@ -119,6 +119,7 @@ describe("DELETE /v1/family — the owner deletes the whole family", () => {
     expect(prismaMock.mfaResetRequest.deleteMany).toHaveBeenCalledWith({ where: { parentId: parentIds } });
     expect(prismaMock.parentPushToken.deleteMany).toHaveBeenCalledWith({ where: { parentId: parentIds } });
     expect(prismaMock.parentMfaRecoveryCode.deleteMany).toHaveBeenCalledWith({ where: { parentId: parentIds } });
+    expect(prismaMock.socialEventFeedback.deleteMany).toHaveBeenCalledWith({ where: { parentId: parentIds } });
     expect(prismaMock.parent.deleteMany).toHaveBeenCalledWith({ where: { familyId: "fam-1" } });
     expect(prismaMock.family.delete).toHaveBeenCalledWith({ where: { id: "fam-1" } });
     // Revoked before anything is deleted. Mutant: move the bump after the transaction.
@@ -219,6 +220,7 @@ describe("DELETE /v1/me — a co-parent or guardian deletes only themselves", ()
     expect(prismaMock.parent.deleteMany).toHaveBeenCalledWith({ where: { id: CO.id } });
     expect(prismaMock.parentPushToken.deleteMany).toHaveBeenCalledWith({ where: { parentId: CO.id } });
     expect(prismaMock.parentMfaRecoveryCode.deleteMany).toHaveBeenCalledWith({ where: { parentId: CO.id } });
+    expect(prismaMock.socialEventFeedback.deleteMany).toHaveBeenCalledWith({ where: { parentId: CO.id } });
     expect(prismaMock.mfaResetRequest.deleteMany).toHaveBeenCalledWith({ where: { parentId: CO.id } });
     expect(prismaMock.familyInvite.deleteMany).toHaveBeenCalledWith({ where: { familyId: "fam-1", email: CO.email } });
     // The family, the children and the other parent stay.

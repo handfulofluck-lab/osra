@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { redactedBlockedSiteKey, redactBlockedSiteHost, siteNamesEnabled } from "../lib/siteNames.js";
 import { raiseAlertOnce } from "../lib/alerts.js";
+import { shouldHoldTamperDuringSetup, type SetupDevice } from "../lib/deviceSetup.js";
 import { sanitizeAlertMetadata, withoutAlertLocation } from "../lib/alertLocation.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
 import { guardianPermissions, requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
@@ -64,6 +65,7 @@ export async function alertsRoutes(app: FastifyInstance) {
     const query = parsed.data;
     const where = {
       child: { familyId: user.familyId },
+      heldDuringSetup: false,
       ...(query.childId ? { childId: query.childId } : {}),
       ...(query.severity ? { severity: query.severity } : {}),
       ...(query.category ? { category: query.category } : {}),
@@ -86,7 +88,10 @@ export async function alertsRoutes(app: FastifyInstance) {
   });
 
   /** Acknowledge an alert. */
-  app.post("/:id/ack", { preHandler: [requireParent, requirePermission("alerts"), requireFamily({ model: "alert" })] }, async (req) => {
+  app.post("/:id/ack", { preHandler: [requireParent, requirePermission("alerts"), requireFamily({ model: "alert" })] }, async (req, reply) => {
+    if ((req as unknown as { alert?: { heldDuringSetup?: boolean } }).alert?.heldDuringSetup) {
+      return reply.code(404).send({ error: "not_found" });
+    }
     const { id } = req.params as { id: string };
     const alert = await prisma.alert.update({ where: { id }, data: { acknowledged: true } });
     // Issue #672 review (Claude's B1b): the ack returns the row, so a guardian holding `alerts` without
@@ -131,12 +136,22 @@ export async function alertsRoutes(app: FastifyInstance) {
     if (!(await assertProcessingAllowed(childId, reply))) return;
 
     const effectiveDeviceId = deviceId ?? auth.device?.id;
+    const heldDuringSetup = auth.device
+      ? shouldHoldTamperDuringSetup(
+          auth.device as unknown as SetupDevice,
+          category,
+          typeof metadata.type === "string" ? metadata.type : null,
+          new Date(),
+        )
+      : false;
 
     // Claude's ruling on #841 finding 5: while the site-name flag is off, a blocked site is a count with no
     // host. The parent keeps the attempt; nothing in the row names a site, and the dedupe key groups by day.
     const redactSite = category === "web_threat" && !siteNamesEnabled();
     const safeMetadata = redactSite ? redactBlockedSiteHost(metadata) : metadata;
-    const safeDedupeKey = redactSite ? redactedBlockedSiteKey() : dedupeKey;
+    // ADR-0047: held retries share a separate namespace so a real post-setup event with the
+    // producer's original key creates a new visible row instead of deduplicating the held one.
+    const safeDedupeKey = redactSite ? redactedBlockedSiteKey() : heldDuringSetup && dedupeKey ? `held|${dedupeKey}` : dedupeKey;
 
     // Phase 2a: one path creates the row, publishes the WS event and pushes to the parents' phones.
     // Issue #225: a repeated dedupeKey is a retry, not a new alert — 200 with the existing row.
@@ -156,6 +171,7 @@ export async function alertsRoutes(app: FastifyInstance) {
       metadata: sanitizeAlertMetadata(safeMetadata),
       dedupeKey: safeDedupeKey,
       attemptCount,
+      heldDuringSetup,
       childName: child.displayName,
     });
     return reply.code(deduplicated ? 200 : 201).send({ alert });
