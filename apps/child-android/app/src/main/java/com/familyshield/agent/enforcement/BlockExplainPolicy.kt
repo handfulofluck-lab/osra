@@ -251,28 +251,31 @@ object BlockExplainPolicy {
         explanation: BlockExplanation,
         fallbackReason: String,
         requestedMinutes: Int = 15,
+        appName: String = "",
     ): ChildRequestPayload {
         if (explanation.canAskForMoreTime) {
             val mins = if (requestedMinutes in ALLOWED_TIME_REQUEST_MINUTES) requestedMinutes else 15
             return ChildRequestPayload(
                 title = "Screen time requested",
                 body = "Child asked for $mins more minutes of screen time",
-                metadata = mapOf(
-                    "requestType" to "time",
-                    "minutes" to mins.toString(),
-                    "packageId" to packageId,
-                    "reason" to "daily_limit",
-                ),
+                metadata = buildMap {
+                    put("requestType", "time")
+                    put("minutes", mins.toString())
+                    put("packageId", packageId)
+                    put("reason", "daily_limit")
+                    if (appName.isNotBlank()) put("appName", appName)
+                },
             )
         }
         return ChildRequestPayload(
             title = "Access requested",
             body = "Child requested access to $packageId",
-            metadata = mapOf(
-                "requestType" to "access",
-                "packageId" to packageId,
-                "reason" to fallbackReason,
-            ),
+            metadata = buildMap {
+                put("packageId", packageId)
+                put("reason", fallbackReason)
+                if (appName.isNotBlank()) put("appName", appName)
+                put("requestType", "access")
+            },
         )
     }
 

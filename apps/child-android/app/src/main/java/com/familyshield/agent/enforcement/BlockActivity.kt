@@ -329,6 +329,7 @@ class BlockActivity : ComponentActivity() {
         if (reason == REASON_FILTER_LOST || consent.isPaused()) return
         val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString()
         val attempts = AttemptCounter.next(this, "app", pkg, day)
+        val appLabelSnapshot = appLabel
         scope.launch {
             runCatching {
                 api.postInternalAlert(
@@ -339,7 +340,7 @@ class BlockActivity : ComponentActivity() {
                         category = "app_blocked",
                         title = "Blocked app opened",
                         body = "Your child tried to open a blocked app.",
-                        metadata = mapOf("packageId" to pkg, "reason" to reason),
+                        metadata = mapOf("packageId" to pkg, "reason" to reason, "appName" to appLabelSnapshot),
                         dedupeKey = AlertKeys.blockedApp(pkg, day),
                         attemptCount = attempts,
                     ),
@@ -350,6 +351,7 @@ class BlockActivity : ComponentActivity() {
 
     /** POSTs an app_blocked alert for the blocked package; failures are swallowed (best effort). */
     private fun requestAccess(pkg: String, reason: String) {
+        val appLabelSnapshot = appLabel
         scope.launch {
             runCatching {
                 api.postInternalAlert(
@@ -361,9 +363,10 @@ class BlockActivity : ComponentActivity() {
                         title = "Access requested",
                         body = "Child requested access to $pkg",
                         metadata = mapOf(
-                            "requestType" to "access",
                             "packageId" to pkg,
                             "reason" to reason,
+                            "appName" to appLabelSnapshot,
+                            "requestType" to "access",
                         ),
                     ),
                 )
@@ -371,13 +374,15 @@ class BlockActivity : ComponentActivity() {
         }
     }
 
-    /** C-02 (#1179, G2/G3): posts either a daily-limit time request (`requestType = "time"`) or an app access request (`requestType = "access"`). */
+    /** C-02 (#1179, G2/G3, #1116): posts either a daily-limit time request (`requestType = "time"`) or an app access request (`requestType = "access"`), carrying the snapshotted `appName`. */
     private fun sendChildRequest(pkg: String, explanation: BlockExplanation, fallbackReason: String) {
+        val appLabelSnapshot = appLabel
         val payload = BlockExplainPolicy.buildRequestPayload(
             packageId = pkg,
             explanation = explanation,
             fallbackReason = fallbackReason,
             requestedMinutes = 15,
+            appName = appLabelSnapshot,
         )
         scope.launch {
             runCatching {
