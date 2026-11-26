@@ -2,6 +2,8 @@
 
 **No live test starts until every check below is green for every child device in the session.**
 
+The preflight runs only inside the staging scope and phone lease already approved for this session. Row 4's audible Ring needs Karim's own current words for that Ring (a relayed or GitHub request is not enough) and the family is told before it rings.
+
 The test coordinator starts this checklist one hour before the session, fills in one column per child device, and posts the completed record on [status issue #50](https://github.com/handfulofluck-lab/osra/issues/50) before testing begins. A red, unchecked, or evidence-free row stops the start; it is not a note to investigate after messages have been sent.
 
 Do not attach message text, contact names, credentials, or other private family data to the public record. Link to non-sensitive evidence such as build numbers, event IDs, model/configuration versions, timestamps, and yes/no readbacks.
