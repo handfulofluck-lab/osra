@@ -20,6 +20,7 @@ import '../../theme/app_tokens.dart';
 import '../../widgets/error_retry_view.dart';
 import '../auth/mfa_reset_approval_screen.dart';
 import '../auth/mfa_reset_messages.dart';
+import '../children/add_child_p04_screen.dart';
 import '../children/consent_step.dart';
 import '../map/child_location_view.dart';
 
@@ -165,7 +166,7 @@ class DashboardScreen extends ConsumerWidget {
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => showDialog(context: context, builder: (_) => const AddChildDialog()),
+        onPressed: () => openAddChildFlow(context, ref),
         icon: const Icon(Icons.person_add),
         label: Text(l10n.addChild),
       ),
@@ -608,6 +609,18 @@ Future<void> toggleInternetWithConfirm(BuildContext context, WidgetRef ref, Chil
       );
     }
   }
+}
+
+void openAddChildFlow(BuildContext context, WidgetRef ref) {
+  if (ref.read(p04AddChildEnabledProvider)) {
+    final jurisdiction = ref.read(authProvider).family?.region;
+    if (jurisdiction == null) return;
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => AddChildP04Screen(jurisdiction: jurisdiction),
+    ));
+    return;
+  }
+  showDialog(context: context, builder: (_) => const AddChildDialog());
 }
 
 /// Two-step add-child dialog: parental consent first (method + jurisdiction

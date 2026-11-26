@@ -1160,6 +1160,36 @@ abstract class AppLocalizations {
   /// **'The consent region must match your family\'s region ({region}). Choose {region} and try again.'**
   String addChildConsentRegion(String region);
 
+  /// No description provided for @p04WhatWeCollect.
+  ///
+  /// In en, this message translates to:
+  /// **'What we collect'**
+  String get p04WhatWeCollect;
+
+  /// No description provided for @p04GuardianConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'I\'m this child\'s parent or legal guardian.'**
+  String get p04GuardianConfirm;
+
+  /// No description provided for @p04GuardianRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Tick the box to confirm you\'re this child\'s parent or guardian.'**
+  String get p04GuardianRequired;
+
+  /// No description provided for @p04AgeRange.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter an age from {min} to {max}.'**
+  String p04AgeRange(String min, String max);
+
+  /// No description provided for @p04AddTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a child'**
+  String get p04AddTitle;
+
   /// No description provided for @familyDone.
   ///
   /// In en, this message translates to:

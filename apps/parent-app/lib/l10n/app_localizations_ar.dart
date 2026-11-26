@@ -672,6 +672,25 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String get p04WhatWeCollect => 'البيانات التي نجمعها';
+
+  @override
+  String get p04GuardianConfirm =>
+      'أنا وليّ أمر هذا الطفل (أحد والديه أو الوصي القانوني عليه).';
+
+  @override
+  String get p04GuardianRequired =>
+      'حدّد المربع لتأكيد أنك وليّ أمر هذا الطفل.';
+
+  @override
+  String p04AgeRange(String min, String max) {
+    return 'أدخل عمرًا من $min إلى $max.';
+  }
+
+  @override
+  String get p04AddTitle => 'إضافة طفل';
+
+  @override
   String get familyDone => 'تم';
 
   @override
