@@ -1218,5 +1218,13 @@
   "pairP05Connected": "تم ربط الهاتف.",
   "pairP05SendInstallLink": "إرسال رابط التثبيت",
   "pairP05InstallLinkCopied": "تم نسخ رابط التثبيت للمشاركة.",
-  "pairP05SkipForNow": "التخطي حاليًا"
+  "pairP05SkipForNow": "التخطي حاليًا",
+  "timeRequestTitle": "طلب من {child}: {minutes, plural, =1{دقيقة إضافية واحدة} =2{دقيقتان إضافيتان} few{{minutes} دقائق إضافية} many{{minutes} دقيقة إضافية} other{{minutes} دقيقة إضافية}} اليوم",
+  "timeRequestGrant": "+{minutes} دقيقة",
+  "timeRequestDecline": "ليس اليوم",
+  "timeRequestGrantedBy": "سبق منح وقت إضافي اليوم بقرار من {actor}: {minutes, plural, =1{دقيقة واحدة} =2{دقيقتان} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}",
+  "timeRequestGrantedByYou": "سبق منح وقت إضافي اليوم بقرارك: {minutes, plural, =1{دقيقة واحدة} =2{دقيقتان} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}",
+  "timeRequestDeclinedBy": "سبق رفض هذا الطلب بقرار من {actor}",
+  "timeRequestDeclinedByYou": "سبق رفض هذا الطلب بقرارك",
+  "timeRequestDecidedAt": "وقت القرار: {time}"
 }

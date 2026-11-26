@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -3532,7 +3533,10 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String alertDeviceRestartedBodyMinutes(
-      String device, String when, int minutes) {
+    String device,
+    String when,
+    int minutes,
+  ) {
     String _temp0 = intl.Intl.pluralLogic(
       minutes,
       locale: localeName,
@@ -3923,7 +3927,10 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String accessRequestKeptBlockedBy(
-      String actor, String app, String timeSuffix) {
+    String actor,
+    String app,
+    String timeSuffix,
+  ) {
     return 'بقي $app محظورًا بقرار من $actor$timeSuffix';
   }
 
@@ -4024,4 +4031,67 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get pairP05SkipForNow => 'التخطي حاليًا';
+
+  @override
+  String timeRequestTitle(String child, int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة إضافية',
+      many: '$minutes دقيقة إضافية',
+      few: '$minutes دقائق إضافية',
+      two: 'دقيقتان إضافيتان',
+      one: 'دقيقة إضافية واحدة',
+    );
+    return 'طلب من $child: $_temp0 اليوم';
+  }
+
+  @override
+  String timeRequestGrant(String minutes) {
+    return '+$minutes دقيقة';
+  }
+
+  @override
+  String get timeRequestDecline => 'ليس اليوم';
+
+  @override
+  String timeRequestGrantedBy(String actor, int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة',
+      many: '$minutes دقيقة',
+      few: '$minutes دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    return 'سبق منح وقت إضافي اليوم بقرار من $actor: $_temp0';
+  }
+
+  @override
+  String timeRequestGrantedByYou(int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة',
+      many: '$minutes دقيقة',
+      few: '$minutes دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    return 'سبق منح وقت إضافي اليوم بقرارك: $_temp0';
+  }
+
+  @override
+  String timeRequestDeclinedBy(String actor) {
+    return 'سبق رفض هذا الطلب بقرار من $actor';
+  }
+
+  @override
+  String get timeRequestDeclinedByYou => 'سبق رفض هذا الطلب بقرارك';
+
+  @override
+  String timeRequestDecidedAt(String time) {
+    return 'وقت القرار: $time';
+  }
 }

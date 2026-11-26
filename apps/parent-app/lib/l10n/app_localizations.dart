@@ -63,7 +63,7 @@ import 'app_localizations_en.dart';
 /// property.
 abstract class AppLocalizations {
   AppLocalizations(String locale)
-      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -86,16 +86,16 @@ abstract class AppLocalizations {
   /// of delegates is preferred or required.
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
-    delegate,
-    GlobalMaterialLocalizations.delegate,
-    GlobalCupertinoLocalizations.delegate,
-    GlobalWidgetsLocalizations.delegate,
-  ];
+        delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('ar'),
-    Locale('en')
+    Locale('en'),
   ];
 
   /// No description provided for @appName.
@@ -5545,7 +5545,10 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{device} restarted {when} and was back {minutes, plural, =0{in less than a minute} =1{after 1 minute} other{after {minutes} minutes}}.'**
   String alertDeviceRestartedBodyMinutes(
-      String device, String when, int minutes);
+    String device,
+    String when,
+    int minutes,
+  );
 
   /// No description provided for @alertDeviceRestartedBodyHours.
   ///
@@ -5972,7 +5975,10 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{actor} kept {app} blocked{timeSuffix}'**
   String accessRequestKeptBlockedBy(
-      String actor, String app, String timeSuffix);
+    String actor,
+    String app,
+    String timeSuffix,
+  );
 
   /// No description provided for @accessRequestAllowedByYou.
   ///
@@ -6123,6 +6129,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Skip for now'**
   String get pairP05SkipForNow;
+
+  /// No description provided for @timeRequestTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{child} asked for {minutes} more minutes today'**
+  String timeRequestTitle(String child, int minutes);
+
+  /// No description provided for @timeRequestGrant.
+  ///
+  /// In en, this message translates to:
+  /// **'+{minutes} min'**
+  String timeRequestGrant(String minutes);
+
+  /// No description provided for @timeRequestDecline.
+  ///
+  /// In en, this message translates to:
+  /// **'Not today'**
+  String get timeRequestDecline;
+
+  /// No description provided for @timeRequestGrantedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'{actor} already gave {minutes} minutes today'**
+  String timeRequestGrantedBy(String actor, int minutes);
+
+  /// No description provided for @timeRequestGrantedByYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You already gave {minutes} minutes today'**
+  String timeRequestGrantedByYou(int minutes);
+
+  /// No description provided for @timeRequestDeclinedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'{actor} already declined this request'**
+  String timeRequestDeclinedBy(String actor);
+
+  /// No description provided for @timeRequestDeclinedByYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You already declined this request'**
+  String get timeRequestDeclinedByYou;
+
+  /// No description provided for @timeRequestDecidedAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Decided {time}'**
+  String timeRequestDecidedAt(String time);
 }
 
 class _AppLocalizationsDelegate
@@ -6152,8 +6206,9 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   }
 
   throw FlutterError(
-      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-      'an issue with the localizations generation tool. Please file an issue '
-      'on GitHub with a reproducible sample app and the gen-l10n configuration '
-      'that was used.');
+    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+    'an issue with the localizations generation tool. Please file an issue '
+    'on GitHub with a reproducible sample app and the gen-l10n configuration '
+    'that was used.',
+  );
 }
