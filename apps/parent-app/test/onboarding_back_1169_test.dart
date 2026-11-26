@@ -243,4 +243,60 @@ void main() {
       expect(find.byKey(const ValueKey('homeSentinel')), findsNothing);
     },
   );
+
+  testWidgets(
+    '#1169 (review): repeated system Back during pending empty-family lookup opens only one leave dialog',
+    (tester) async {
+      final completer = Completer<FamilyOverview>();
+      final api = FakeApiClient(standardRoutes());
+      final router = buildTestRouter(initialLocation: '/setup/child');
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            familyProvider.overrideWith((ref) => completer.future),
+          ],
+          child: MaterialApp.router(
+            theme: AppTheme.light,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            routerConfig: router,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Press system Back twice while familyProvider is still loading.
+      await tester.binding.handlePopRoute();
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+
+      completer.complete(
+        FamilyOverview.fromJson({
+          ...familyMeTwoChildren(),
+          'children': <Map<String, dynamic>>[],
+          'devices': <Map<String, dynamic>>[],
+        }),
+      );
+      await tester.pumpAndSettle();
+
+      expect(systemPopCount, 0);
+      expect(find.byType(AlertDialog), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    '#1169 (UI/UX Bureau): AppBar Back on /setup/child with existing children goes Home, never sign-out dialog',
+    (tester) async {
+      final router = buildTestRouter(initialLocation: '/setup/child');
+      await pumpAt(tester, router);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+
+      expect(systemPopCount, 0);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byKey(const ValueKey('homeSentinel')), findsOneWidget);
+    },
+  );
 }
