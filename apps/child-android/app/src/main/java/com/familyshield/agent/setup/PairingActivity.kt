@@ -33,6 +33,7 @@ import com.familyshield.agent.ui.pairing.OnboardingLoadingScreen
 import com.familyshield.agent.ui.pairing.OnboardingPermissionStepScreen
 import com.familyshield.agent.ui.pairing.OnboardingWelcomeScreen
 import com.familyshield.agent.ui.pairing.PermissionStepCopy
+import com.familyshield.agent.ui.pairing.RestrictedSettingsGuideCopy
 import com.familyshield.agent.ui.pairing.WelcomeCopy
 import com.familyshield.agent.ui.theme.OsraTheme
 import com.familyshield.agent.commands.CommandPollWorker
@@ -293,6 +294,23 @@ class PairingActivity : ComponentActivity() {
     private var forceLegacyStatusView = false
     private val skippedPermissionSteps = mutableSetOf<OnboardingPolicy.Grant>()
 
+    /**
+     * Issue #1131 review: observes [AccessibilityMonitorService.runningState] only while an
+     * ungranted Accessibility step or checklist is visible in the foreground, so returning from
+     * Settings before Android finishes binding advances automatically when `onServiceConnected`
+     * fires instead of stalling on a stale resume snapshot.
+     */
+    private val accessibilityBindObserver by lazy {
+        AccessibilityBindObserver(
+            runningState = com.familyshield.agent.services.AccessibilityMonitorService.runningState,
+            isAccessibilityGranted = { grants.isGranted(OnboardingPolicy.Grant.ACCESSIBILITY) },
+            onBoundWhileVisible = {
+                commsCapture.onPermissionsChanged()
+                onPermissionOrActionReturned()
+            },
+        )
+    }
+
     private val guidedBackCallback: androidx.activity.OnBackPressedCallback =
         object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -346,7 +364,13 @@ class PairingActivity : ComponentActivity() {
         )
     }
 
+    override fun onPause() {
+        accessibilityBindObserver.stop()
+        super.onPause()
+    }
+
     override fun onStop() {
+        accessibilityBindObserver.stop()
         runCatching { unregisterReceiver(unlinkedReceiver) }
         super.onStop()
     }
@@ -878,6 +902,9 @@ class PairingActivity : ComponentActivity() {
         replaceWithCompose {
             OnboardingChecklistScreen(copy = copy)
         }
+        if (rows.any { it.grant == OnboardingPolicy.Grant.ACCESSIBILITY && !it.granted }) {
+            accessibilityBindObserver.arm(lifecycleScope, lifecycle)
+        }
     }
 
     private fun nextUngrantedPermissionStep(rows: List<OnboardingPolicy.Row>): OnboardingPolicy.Row? =
@@ -894,6 +921,30 @@ class PairingActivity : ComponentActivity() {
         activeGuidedStage = GuidedStage.PERMISSION_STEP
         val g = row.grant
         val brand = "${getString(R.string.app_name)} · ${getString(R.string.app_name_ar)}"
+        val restrictedGuide = if (
+            g == OnboardingPolicy.Grant.ACCESSIBILITY &&
+            !row.granted &&
+            RestrictedSettingsPolicy.requiresGuide(
+                sdkInt = Build.VERSION.SDK_INT,
+                installerPackageName = RestrictedSettingsPolicy.installerPackageName(this),
+                isPlayBuild = !BuildConfig.CAPTURE_NOTIFICATIONS,
+            )
+        ) {
+            val serviceLabel = RestrictedSettingsPolicy.isolateServiceLabel(
+                getString(R.string.accessibility_service_label),
+            )
+            RestrictedSettingsGuideCopy(
+                steps = listOf(
+                    getString(R.string.restricted_settings_step_1, serviceLabel),
+                    getString(R.string.restricted_settings_step_2),
+                    getString(R.string.restricted_settings_step_3, serviceLabel),
+                ),
+                openAppInfoButton = getString(R.string.restricted_settings_open_app_info),
+                waitingLine = getString(R.string.restricted_settings_waiting, serviceLabel),
+            )
+        } else {
+            null
+        }
         val copy = PermissionStepCopy(
             brandLabel = brand,
             progressLine = progressLine(rows),
@@ -902,6 +953,7 @@ class PairingActivity : ComponentActivity() {
             grantButton = getString(R.string.setup_grant_button, getString(g.titleRes)),
             optionalBadge = if (g.required) null else getString(R.string.setup_recommended),
             oemHint = OnboardingPolicy.oemHint(g, Build.MANUFACTURER),
+            restrictedSettingsGuide = restrictedGuide,
             skipLabel = if (!g.required) getString(R.string.setup_skip) else null,
             checklistLabel = getString(R.string.setup_checklist_button),
         )
@@ -909,6 +961,11 @@ class PairingActivity : ComponentActivity() {
             OnboardingPermissionStepScreen(
                 copy = copy,
                 onGrant = { triggerGrant(g) },
+                onOpenAppInfo = if (restrictedGuide != null) {
+                    { runCatching { startActivity(grants.appInfoIntent()) } }
+                } else {
+                    null
+                },
                 onSkip = if (!g.required) {
                     {
                         skippedPermissionSteps.add(g)
@@ -923,6 +980,9 @@ class PairingActivity : ComponentActivity() {
                     showChecklist(rows, firstRun)
                 },
             )
+        }
+        if (g == OnboardingPolicy.Grant.ACCESSIBILITY && !row.granted) {
+            accessibilityBindObserver.arm(lifecycleScope, lifecycle)
         }
     }
 
@@ -1662,6 +1722,7 @@ class PairingActivity : ComponentActivity() {
     // ---- view helpers ----
 
     private fun replaceWith(build: LinearLayout.() -> Unit) {
+        accessibilityBindObserver.stop()
         val pad = (16 * resources.displayMetrics.density).toInt()
         root.setPadding(pad, pad, pad, pad)
         root.removeAllViews()
@@ -1669,6 +1730,7 @@ class PairingActivity : ComponentActivity() {
     }
 
     private fun replaceWithCompose(content: @androidx.compose.runtime.Composable () -> Unit) {
+        accessibilityBindObserver.stop()
         root.setPadding(0, 0, 0, 0)
         root.removeAllViews()
         root.addView(
