@@ -3871,4 +3871,124 @@ class AppLocalizationsAr extends AppLocalizations {
   String alertBodyDataCleared(String model) {
     return 'أُعيد تثبيت تطبيق أسرة للأطفال على $model، وكانت الحماية متوقفة إلى أن أُعيد الإقران.';
   }
+
+  @override
+  String get privacyMenu => 'الخصوصية والبيانات';
+
+  @override
+  String get privacyTitle => 'الخصوصية والبيانات';
+
+  @override
+  String get privacyKeptHeader => 'نحتفظ بها ثم تُحذف تلقائيًا';
+
+  @override
+  String get privacyFullDetails => 'التفاصيل الكاملة';
+
+  @override
+  String get privacyRowExcerpts => 'مقتطفات الرسائل المُنبَّه عليها';
+
+  @override
+  String get privacyRowAlerts => 'التنبيهات';
+
+  @override
+  String get privacyRowLocation => 'سجل المواقع';
+
+  @override
+  String get privacyRowStoredIn => 'مكان التخزين';
+
+  @override
+  String get privacyStorageFrankfurt => 'الاتحاد الأوروبي (فرانكفورت، ألمانيا)';
+
+  @override
+  String get privacyStorageStockholm => 'الاتحاد الأوروبي (ستوكهولم، السويد)';
+
+  @override
+  String get privacyStorageIreland => 'الاتحاد الأوروبي (أيرلندا)';
+
+  @override
+  String privacyDays(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count يوم',
+      many: '$count يومًا',
+      few: '$count أيام',
+      two: 'يومان',
+      one: 'يوم واحد',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String privacyMonths(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count شهر',
+      many: '$count شهرًا',
+      few: '$count أشهر',
+      two: 'شهران',
+      one: 'شهر واحد',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get privacyWhoCanSee => 'من يمكنه رؤية البيانات';
+
+  @override
+  String get privacyWhoCanSeeDesc =>
+      'البالغون في العائلة وما يمكن لكل منهم رؤيته';
+
+  @override
+  String get privacyManage => 'إدارة';
+
+  @override
+  String get privacyCopyTitle => 'احصل على نسخة من بيانات عائلتك';
+
+  @override
+  String get privacyCopyDesc =>
+      'راسلنا من البريد الإلكتروني الذي تسجّل الدخول به، ونردّ خلال شهر.';
+
+  @override
+  String get privacyCopyAction => 'مراسلة';
+
+  @override
+  String get privacyConsentTitle => 'الموافقة لكل طفل';
+
+  @override
+  String get privacyConsentDesc => 'راجِعها أو اسحبها لكل طفل على حدة';
+
+  @override
+  String get privacyOpen => 'فتح';
+
+  @override
+  String get privacyChooseChild => 'اختر طفلًا';
+
+  @override
+  String get privacyNoChildren => 'لم تُضِف أي طفل بعد.';
+
+  @override
+  String get privacyDeleteFamilyTitle => 'حذف حساب العائلة';
+
+  @override
+  String get privacyDeleteFamilyDesc =>
+      'يحذف العائلة كلها، ومعها بيانات كل طفل، فورًا. يطلب كلمة المرور.';
+
+  @override
+  String get privacyDeleteSelfTitle => 'حذف حسابي';
+
+  @override
+  String get privacyDeleteSelfDesc =>
+      'يحذف حسابك أنت فقط، وتبقى العائلة كما هي.';
+
+  @override
+  String get privacyDeleteAction => 'حذف…';
+
+  @override
+  String get privacyLoadFailed =>
+      'تعذّر تحميل مدد الاحتفاظ. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
+
+  @override
+  String get privacyRetry => 'حاول مرة أخرى';
 }
