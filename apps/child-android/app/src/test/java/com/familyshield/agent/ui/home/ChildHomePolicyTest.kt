@@ -197,11 +197,14 @@ class ChildHomePolicyTest {
         val enStrings = File(root, "res/values/strings.xml").readText()
         val arStrings = File(root, "res/values-ar/strings.xml").readText()
 
+        val activityCode = activity.lineSequence()
+            .filterNot { it.trimStart().startsWith("//") || it.trimStart().startsWith("*") }
+            .joinToString("\n")
         assertFalse("C-01 must never draw a red danger SOS button", screen.contains("palette.danger"))
-        assertFalse("B1: PairingActivity must never call bonusMinutesTodaySnapshot", activity.contains("bonusMinutesTodaySnapshot"))
-        assertFalse("B1: PairingActivity must never read ruleSet.bonusMinutesToday", activity.contains("bonusMinutesToday"))
-        assertTrue("B1: PairingActivity must sum today bonus from decisions", activity.contains("ChildHomePolicy.bonusMinutesForToday("))
-        assertTrue("B2: PairingActivity must route time requests through submitTimeRequest", activity.contains("ChildHomePolicy.submitTimeRequest("))
+        assertFalse("B1: PairingActivity must never call bonusMinutesTodaySnapshot", activityCode.contains("bonusMinutesTodaySnapshot"))
+        assertFalse("B1: PairingActivity code must never read bonusMinutesToday", activityCode.contains("bonusMinutesToday"))
+        assertTrue("B1: PairingActivity must sum today bonus from decisions", activityCode.contains("ChildHomePolicy.bonusMinutesForToday("))
+        assertTrue("B2: PairingActivity must route time requests through submitTimeRequest", activityCode.contains("ChildHomePolicy.submitTimeRequest("))
         assertTrue("PairingActivity must keep C-01 behind ChildUxFlags fallback", activity.contains("ChildUxFlags.c01ChildHomeEnabled"))
         assertTrue("PairingActivity must keep legacy setup/status reachable", activity.contains("forceLegacyStatusView = true"))
 
