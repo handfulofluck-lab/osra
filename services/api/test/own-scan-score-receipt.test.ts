@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readOwnScanScoreReceipt } from "../src/lib/stagingProviderOutcomes.js";
+import { readOwnScanScoreReceipt, readProviderAnalysis } from "../src/lib/stagingProviderOutcomes.js";
 
 const quiet = {
   status: "scored", model: "v9", flagged: false, severity: "info", flagged_categories: [],
@@ -7,29 +7,42 @@ const quiet = {
   language: "en", cutoff: 0.6, text: "never copied",
 };
 
+/** The receipt the route passes in: what the provider parser validated for this exact response. */
+function receiptFor(own: Record<string, unknown>, trace = "t-1") {
+  return readProviderAnalysis({ trace_id: trace, region: "eu-north-1", mode: "own", outcomes: { own } }, "own", "t-1").providers.own;
+}
+const read = (own: Record<string, unknown>) => readOwnScanScoreReceipt({ outcomes: { own } }, receiptFor(own));
+
 describe("own-model score receipt for every staging scan (Ahmed, 26 Nov)", () => {
   it("keeps the top harm score, language and cut-off of a scan that did not flag", () => {
-    expect(readOwnScanScoreReceipt({ outcomes: { own: quiet } })).toEqual({
+    expect(read(quiet)).toEqual({
       modelVersion: "v9", lang: "en", topCategory: "cyberbullying", topScore: 0.4123, cutoff: 0.6,
     });
   });
 
   it("never carries the text or unknown fields", () => {
-    const receipt = readOwnScanScoreReceipt({ outcomes: { own: quiet } });
+    const receipt = read(quiet);
     expect(JSON.stringify(receipt)).not.toContain("never copied");
     expect(Object.keys(receipt ?? {}).sort()).toEqual(["cutoff", "lang", "modelVersion", "topCategory", "topScore"]);
   });
 
-  it("drops an unknown model, language or out-of-range score instead of trusting it", () => {
-    const odd = { ...quiet, model: "v99", language: "xx", cutoff: "high", categories: { ...quiet.categories, cyberbullying: 7 } };
-    expect(readOwnScanScoreReceipt({ outcomes: { own: odd } })).toEqual({
-      modelVersion: null, lang: null, topCategory: "violence", topScore: 0.38, cutoff: null,
-    });
+  it("drops an unknown language or cut-off instead of trusting it", () => {
+    const odd = { ...quiet, language: "xx", cutoff: "high" };
+    expect(read(odd)).toEqual({ modelVersion: "v9", lang: null, topCategory: "cyberbullying", topScore: 0.4123, cutoff: null });
+  });
+
+  it("logs nothing when the parser rejects the outcome (unknown model, out-of-range score)", () => {
+    expect(read({ ...quiet, model: "v99" })).toBeUndefined();
+    expect(read({ ...quiet, categories: { ...quiet.categories, cyberbullying: 7 } })).toBeUndefined();
   });
 
   it("answers nothing for an unavailable or missing own outcome", () => {
-    expect(readOwnScanScoreReceipt({ outcomes: { own: { status: "unavailable", reason: "timeout" } } })).toBeUndefined();
-    expect(readOwnScanScoreReceipt({ outcomes: {} })).toBeUndefined();
-    expect(readOwnScanScoreReceipt(null)).toBeUndefined();
+    expect(read({ status: "unavailable", reason: "timeout" })).toBeUndefined();
+    expect(readOwnScanScoreReceipt({ outcomes: {} }, undefined)).toBeUndefined();
+    expect(readOwnScanScoreReceipt(null, receiptFor(quiet))).toBeUndefined();
+  });
+
+  it("answers nothing when the parser rejected the response (mismatched trace)", () => {
+    expect(readOwnScanScoreReceipt({ outcomes: { own: quiet } }, receiptFor(quiet, "other-trace"))).toBeUndefined();
   });
 });

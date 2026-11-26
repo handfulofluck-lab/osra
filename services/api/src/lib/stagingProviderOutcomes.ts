@@ -122,13 +122,16 @@ export type OwnScanScoreReceipt = {
 
 /**
  * The flagged-only receipt keeps scores for flagged categories alone, so a scan that stayed quiet left no
- * way to tell a cut-off miss from text that never reached the model. This reads the raw own-model outcome:
+ * way to tell a cut-off miss from text that never reached the model. This reads the validated own receipt:
  * the highest of the seven harm scores, the language and the cut-off. Never the text.
  */
-export function readOwnScanScoreReceipt(data: unknown): OwnScanScoreReceipt | undefined {
+export function readOwnScanScoreReceipt(data: unknown, receipt: ProviderReceipts["own"]): OwnScanScoreReceipt | undefined {
+  // Codex (#1227): only a receipt the provider parser validated and scored (trace, mode, region, model and all
+  // seven scores in range) may be logged. The receipt keeps flagged scores only, so the quiet top score comes
+  // from the same raw outcome the parser just validated, plus its language and cut-off.
+  if (receipt?.status !== "scored") return undefined;
   if (!record(data) || !record(data.outcomes) || !record(data.outcomes.own)) return undefined;
   const raw = data.outcomes.own;
-  if (raw.status !== "scored") return undefined;
   let topCategory: string | null = null;
   let topScore: number | null = null;
   if (record(raw.categories)) {
@@ -142,7 +145,7 @@ export function readOwnScanScoreReceipt(data: unknown): OwnScanScoreReceipt | un
     }
   }
   return {
-    modelVersion: typeof raw.model === "string" && ownModels.has(raw.model) ? raw.model : null,
+    modelVersion: typeof receipt.model === "string" && ownModels.has(receipt.model) ? receipt.model : null,
     lang: typeof raw.language === "string" && languages.has(raw.language) ? raw.language : null,
     topCategory,
     topScore: topScore === null ? null : Math.round(topScore * 10_000) / 10_000,

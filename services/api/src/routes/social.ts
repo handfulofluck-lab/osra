@@ -201,7 +201,7 @@ async function analyzeStagingFixture(text: string, qa: StagingQaModel, batchDead
       const analysis = readProviderAnalysis(scored, providerMode, qa.traceId);
       return {
         ...analysis, attempted: true, model: readProviderModelSnapshot(scored, analysis.providers.own),
-        ownScore: readOwnScanScoreReceipt(scored),
+        ownScore: readOwnScanScoreReceipt(scored, analysis.providers.own),
       };
     }
     if (scored?.trace_id !== qa.traceId || scored.model !== STAGING_QA_MODEL || scored.region !== STAGING_QA_REGION) {

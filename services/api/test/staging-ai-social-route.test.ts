@@ -71,7 +71,8 @@ describe("staging own-model scoring for opted-in pairings", () => {
     const stream = new Writable({
       write(chunk, _encoding, next) { logs.push(String(chunk)); next(); },
     });
-    app = Fastify({ logger: { level: "warn", stream } });
+    // info, so the staging QA proof line (#1227 score receipt) is visible to the receipt controls below.
+    app = Fastify({ logger: { level: "info", stream } });
     await app.register(socialRoutes, { prefix: "/v1/social" });
     await app.ready();
   });
@@ -168,5 +169,38 @@ describe("staging own-model scoring for opted-in pairings", () => {
     expect(prismaMock.stagingScanOutcome.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ providers: { own: { status: "unavailable", reason: "unavailable" } } }),
     });
+  });
+
+  function ownLogs(): Array<Record<string, unknown>> {
+    return logs.flatMap((line) => line.split(/\r?\n/)).filter(Boolean).map((line) => JSON.parse(line))
+      .filter((entry) => typeof entry.msg === "string" && entry.msg.startsWith("staging QA scan resolved"));
+  }
+
+  function respondWith(extra: { trace?: string; own: Record<string, unknown> }) {
+    analyze.mockImplementationOnce(async (_url: URL, options: RequestInit) => {
+      const request = JSON.parse(String(options.body));
+      return { ok: true, json: async () => ({
+        trace_id: extra.trace ?? request.trace_id, region: "eu-north-1", mode: "own", outcomes: { own: extra.own },
+      }) };
+    });
+  }
+
+  it("#1227: a quiet scan logs the validated own score, language and cut-off, never the text", async () => {
+    respondWith({ own: { status: "scored", model: "v9", flagged: false, severity: "info", flagged_categories: [],
+      categories: { ...scores, cyberbullying: 0.41234, violence: 0.2 }, language: "en", cutoff: 0.6 } });
+    expect((await scan()).statusCode).toBe(200);
+    const [entry] = ownLogs();
+    expect(entry?.own).toEqual({ modelVersion: "v9", lang: "en", topCategory: "cyberbullying", topScore: 0.4123, cutoff: 0.6 });
+    expect(logs.join("")).not.toContain(safeFixture);
+  });
+
+  it("#1227: a mismatched trace logs no own score beside its unavailable verdict", async () => {
+    respondWith({ trace: "someone-elses-trace", own: { status: "scored", model: "v9", flagged: false, severity: "info",
+      flagged_categories: [], categories: { ...scores, cyberbullying: 0.9 }, language: "en", cutoff: 0.6 } });
+    expect((await scan()).statusCode).toBe(200);
+    expect(prismaMock.stagingScanOutcome.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ providers: { own: { status: "unavailable", reason: "unavailable" } } }),
+    });
+    for (const entry of ownLogs()) expect(entry).not.toHaveProperty("own");
   });
 });
