@@ -67,6 +67,10 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
   /// (`GET /v1/devices/pair/:code/claim`), read every two seconds while the code is shown.
   Map<String, dynamic>? _claim;
   Timer? _claimTimer;
+  /// Issue counter for claim reads. The timer fires every two seconds and a slow response can land after a
+  /// newer one; without this, a stale "approved" could overwrite a confirmed "paired" and bring the spent QR
+  /// back (Codex, #1149 `7184806902`).
+  int _claimRead = 0;
   bool _deciding = false;
   bool _decisionFailed = false;
 
@@ -174,13 +178,20 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
       _claimTimer?.cancel();
       return;
     }
+    final read = ++_claimRead;
     try {
       final res = await ref
           .read(apiClientProvider)
           .raw
           .get('/v1/devices/pair/$code/claim');
       if (!mounted || code != _code || _deciding) return;
+      // A newer read has started, so this answer is stale by definition: drop it rather than let it overwrite
+      // a fresher one.
+      if (read != _claimRead) return;
       final data = Map<String, dynamic>.from(res.data as Map);
+      // Pairing is final for this code: once the phone has its token the QR is spent, and nothing that arrives
+      // afterwards may bring the code back on screen (Codex, #1149 `7184806902`).
+      if (_claim?['status'] == 'paired' && data['status'] != 'paired') return;
       setState(() => _claim = data);
       if (data['status'] == 'paired') {
         _claimTimer?.cancel();
