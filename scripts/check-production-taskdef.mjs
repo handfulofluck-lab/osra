@@ -125,6 +125,10 @@ const OPTIONAL = {
   // The code caps alerts at 365 by itself (usageModel.ts); the rule keeps a too-large value from reading as intended.
   ALERT_RETENTION_DAYS: (v) => (Number.isInteger(Number(v)) && Number(v) >= 7 && Number(v) <= 365 ? null : 'alerts are kept 12 months at most (privacy policy); 7 to 365'),
   // The code accepts any number at or above the event window, so nothing but this rule stops 1000 days.
+  // #1139 alert grouping: first N flagged messages per (child, app) push, then one grouped summary per window.
+  // The code clamps too (socialAlertWindow.ts); the rule keeps an out-of-range value from reading as intended.
+  SOCIAL_ALERT_FIRST_PUSHES: (v) => (Number.isInteger(Number(v)) && Number(v) >= 1 && Number(v) <= 20 ? null : 'first pushes per child and app: a whole number 1 to 20 (#1139)'),
+  SOCIAL_ALERT_SUMMARY_MINUTES: (v) => (Number.isInteger(Number(v)) && Number(v) >= 1 && Number(v) <= 60 ? null : 'grouped summary every 1 to 60 minutes (#1139)'),
   ROLLUP_RETENTION_DAYS: (v) => (Number.isInteger(Number(v)) && Number(v) >= 90 && Number(v) <= 365 ? null : 'daily totals are kept 365 days at most (privacy policy); 90 to 365'),
 };
 
@@ -434,6 +438,8 @@ function selftest() {
     ['Play package missing at launch', (t) => dropEnv(t, 'PLAY_PACKAGE_NAME'), 'PLAY_PACKAGE_NAME: missing (needed at launch'],
     ['staging own-model switch forbidden in production', (t) => setEnv(t, 'OSRA_STAGING_QA_OWN_MODEL_ENABLED', '1'), 'OSRA_STAGING_QA_OWN_MODEL_ENABLED: not allowed'],
     ['push-per-message switch forbidden in production, even as false', (t) => setEnv(t, 'SOCIAL_ALERT_PUSH_EVERY_MESSAGE', 'false'), 'SOCIAL_ALERT_PUSH_EVERY_MESSAGE: not allowed'],
+    ['first-push budget out of range', (t) => setEnv(t, 'SOCIAL_ALERT_FIRST_PUSHES', '50'), 'SOCIAL_ALERT_FIRST_PUSHES: first pushes per child and app'],
+    ['summary cadence out of range', (t) => setEnv(t, 'SOCIAL_ALERT_SUMMARY_MINUTES', '0'), 'SOCIAL_ALERT_SUMMARY_MINUTES: grouped summary every'],
   ];
 
   let failed = 0;
