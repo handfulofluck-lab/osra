@@ -22,6 +22,11 @@ void main() {
   Future<void> pump(WidgetTester tester,
       {bool twoStepOn = true, Locale locale = const Locale('en')}) async {
     final family = familyMeTwoChildren();
+    // A21: the family clock, so the read-only time zone row has a real offset to show.
+    family['family'] = {
+      ...(family['family'] as Map<String, dynamic>),
+      'utcOffsetMinutes': 240,
+    };
     family['parent'] = {
       ...(family['parent'] as Map<String, dynamic>),
       'mfaEnabled': twoStepOn,
@@ -73,6 +78,18 @@ void main() {
   });
 
 
+
+
+  testWidgets('the time zone row is read-only and shows the family offset, never an IANA id', (tester) async {
+    await pump(tester);
+    expect(find.byKey(const ValueKey('settingsRow-timeZone')), findsOneWidget);
+    // fixture family: utcOffsetMinutes 240 -> UTC+4, in Western digits
+    // ltrIsolate wraps the digits in isolate marks, so the match is a contains, not an exact text.
+    expect(find.textContaining('UTC+4'), findsOneWidget);
+    expect(find.textContaining('/'), findsNothing, reason: 'never the raw Asia/Dubai id');
+    final tile = tester.widget<ListTile>(find.byKey(const ValueKey('settingsRow-timeZone')));
+    expect(tile.enabled, isFalse, reason: 'read-only until #1211: no chevron and no ripple');
+  });
 
   testWidgets('the security card is on top while two-step verification is off, and gone when it is on',
       (tester) async {

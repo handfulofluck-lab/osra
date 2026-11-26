@@ -93,6 +93,7 @@
   "settingsSecurityCardTitle": "إكمال تأمين حسابك",
   "settingsSecurityCardLine": "التحقق بخطوتين غير مفعّل",
   "settingsSecurityCardButton": "تفعيل",
+  "settingsTimeZone": "المنطقة الزمنية",
   "signOutTooltip": "تسجيل الخروج",
   "familyLoadFailed": "تعذّر تحميل بيانات عائلتك. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "noChildrenYet": "لا يوجد أطفال بعد — اضغط «إضافة طفل»",

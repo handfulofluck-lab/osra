@@ -295,6 +295,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsSecurityCardButton => 'Turn on';
 
   @override
+  String get settingsTimeZone => 'Time zone';
+
+  @override
   String get signOutTooltip => 'Sign out';
 
   @override

@@ -303,6 +303,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get settingsSecurityCardButton => 'تفعيل';
 
   @override
+  String get settingsTimeZone => 'المنطقة الزمنية';
+
+  @override
   String get signOutTooltip => 'تسجيل الخروج';
 
   @override

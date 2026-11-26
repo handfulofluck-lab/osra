@@ -107,6 +107,7 @@
   "settingsSecurityCardTitle": "Finish securing your account",
   "settingsSecurityCardLine": "Two-step verification is off",
   "settingsSecurityCardButton": "Turn on",
+  "settingsTimeZone": "Time zone",
   "signOutTooltip": "Sign out",
   "familyLoadFailed": "Couldn't load your family. Check your connection and try again.",
   "noChildrenYet": "No children yet — tap \"Add child\"",
