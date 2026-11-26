@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fake_api_client.dart';
+import 'social_app_fixtures.dart';
 import 'frame_capture.dart';
 import 'test_app.dart';
 
@@ -40,7 +41,15 @@ void main() {
     tester.view.physicalSize = Size(width, width >= 380 ? 1400 : 1200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
-    final api = FakeApiClient(standardRoutes(familyMe: family));
+    // P-17's frames are about the per-app state rows, so the child must have social apps installed; the plain
+    // standard routes would show all twelve as "not on the phone" and photograph nothing.
+    final api = FakeApiClient({
+      ...standardRoutes(familyMe: family),
+      'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(
+            apps: socialInventory({'whatsapp', 'instagram', 'tiktok', 'youtube'}),
+          ),
+      'GET /v1/devices/dev-2/apps': (_) => installedAppsPayload(apps: const []),
+    });
     await tester.pumpWidget(ProviderScope(
       overrides: [
         apiClientProvider.overrideWithValue(api),
