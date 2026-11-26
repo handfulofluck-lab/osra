@@ -14,31 +14,15 @@ enum PushPermission {
 }
 
 /// What a platform push SDK has to provide.
-///
-/// The whole point of this interface is that the forwarding logic below (in
-/// [PushRegistration]) is platform-agnostic and testable without a plugin: an
-/// APNs source and an FCM source differ in how they ask for permission and
-/// where the token comes from, not in what happens next.
-///
-/// Since #360 the shipped implementation is [FcmPushTokenSource], backed by
-/// `firebase_messaging` on Android and on iOS, and [defaultPushSource] is the
-/// seam a test replaces. [UnavailablePushTokenSource] remains for the case where
-/// Firebase has no configuration at all, so an unsupported build reports
-/// [PushPermission.unavailable] instead of pretending a token exists.
 abstract class PushTokenSource {
   /// Ask the OS. Must not throw: a refusal is [PushPermission.denied].
   Future<PushPermission> requestPermission();
 
-  /// The token to forward, or null when none has been minted yet — an APNs
-  /// registration is asynchronous and can also fail without an error the app
-  /// is allowed to see.
+  /// The token to forward, or null when none has been minted yet.
   Future<String?> token();
 }
 
-/// The source used until a push SDK is added. It grants nothing and mints
-/// nothing, so [PushRegistration.register] returns `unavailable` before any
-/// request — which is why wiring it into sign-in cannot change a session's
-/// outcome.
+/// The source used until a push SDK is added.
 class UnavailablePushTokenSource implements PushTokenSource {
   const UnavailablePushTokenSource();
 
@@ -50,10 +34,6 @@ class UnavailablePushTokenSource implements PushTokenSource {
 }
 
 /// The `platform` value `POST /v1/me/push-token` expects for a running target.
-///
-/// iOS is the only non-Android mobile target this app ships. Every other target
-/// is reported as `android` — the other value the route accepts — rather than
-/// `web`, which would make `notify.ts` route an APNs token to the FCM provider.
 PushPlatform pushPlatformFor(TargetPlatform target) =>
     target == TargetPlatform.iOS ? PushPlatform.ios : PushPlatform.android;
 
@@ -65,7 +45,7 @@ enum PushRegistrationOutcome {
   /// The parent refused the OS prompt. Do not ask again in this session.
   denied,
 
-  /// No push SDK in this build ([UnavailablePushTokenSource]).
+  /// No push SDK in this build ([UnavailablePushTokenSource]), or session ended.
   unavailable,
 
   /// Permission granted but the SDK has not produced a token.
@@ -76,26 +56,33 @@ enum PushRegistrationOutcome {
 }
 
 /// Push registration over the interface the server already has.
-///
-/// The order is fixed — permission, then a token, then the forward — so nothing
-/// is sent unless the OS granted it and a token exists. The forward is the
-/// existing `POST /v1/me/push-token`, which already accepts `platform: "ios"`,
-/// so this is a seam for APNs rather than a second registration path.
 class PushRegistration {
   PushRegistration({
     required PushApi api,
     PushTokenSource source = const UnavailablePushTokenSource(),
     PushPlatform? platform,
     String? appVersion,
+    Future<bool> Function()? canPostRefreshedToken,
   })  : _api = api,
         _source = source,
         _platform = platform ?? pushPlatformFor(defaultTargetPlatform),
-        _appVersion = appVersion;
+        _appVersion = appVersion,
+        _canPostRefreshedToken = canPostRefreshedToken;
 
   final PushApi _api;
   final PushTokenSource _source;
   final PushPlatform _platform;
   final String? _appVersion;
+  final Future<bool> Function()? _canPostRefreshedToken;
+
+  /// Monotonic session epoch bumped at the start of [unregister] so an in-flight
+  /// registration started before logout can never attach a token to a departed session.
+  int _sessionEpoch = 0;
+
+  /// Tracks an in-flight `POST /v1/me/push-token` call so [unregister] can await
+  /// it (while the session bearer token is still valid) and remove that row too.
+  Future<void>? _inFlightRegister;
+  String? _inFlightToken;
 
   /// The token this instance forwarded, so [unregister] removes only a row the
   /// server is known to hold.
@@ -104,51 +91,39 @@ class PushRegistration {
   /// The token this instance registered, for [unregister].
   String? get registeredToken => _registeredToken;
 
-  /// Permission → token → forward. Never throws: a push token is not a
+  /// Permission -> token -> forward. Never throws: a push token is not a
   /// precondition for being signed in.
   Future<PushRegistrationOutcome> register() async {
+    final epoch = _sessionEpoch;
     final permission = await _source.requestPermission();
+    if (_sessionEpoch != epoch) return PushRegistrationOutcome.unavailable;
     if (permission == PushPermission.unavailable) return PushRegistrationOutcome.unavailable;
     if (permission == PushPermission.denied) return PushRegistrationOutcome.denied;
 
     final token = await _source.token();
+    if (_sessionEpoch != epoch) return PushRegistrationOutcome.unavailable;
     if (token == null || token.isEmpty) return PushRegistrationOutcome.noToken;
 
-    try {
-      await _api.register(token: token, platform: _platform, appVersion: _appVersion);
-    } catch (_) {
-      return PushRegistrationOutcome.failed;
-    }
-    _registeredToken = token;
-    return PushRegistrationOutcome.registered;
+    return _postTokenForEpoch(token: token, epoch: epoch);
   }
 
   /// Ensures the current or [refreshedToken] is registered with the server (#1173).
-  ///
-  /// Posts to `POST /v1/me/push-token` when no token has been registered in this
-  /// session yet (every cold launch) or when the SDK's token differs from
-  /// [_registeredToken] (rotation or recovery after permission was granted in
-  /// Settings), while skipping duplicate POSTs on routine foreground resumes
-  /// when the exact token is already registered.
   Future<PushRegistrationOutcome> ensureRegistered({String? refreshedToken}) async {
+    final epoch = _sessionEpoch;
     if (refreshedToken != null && refreshedToken.isNotEmpty) {
+      if (_sessionEpoch != epoch) return PushRegistrationOutcome.unavailable;
+      if (_canPostRefreshedToken != null && !await _canPostRefreshedToken()) {
+        return PushRegistrationOutcome.denied;
+      }
+      if (_sessionEpoch != epoch) return PushRegistrationOutcome.unavailable;
       if (refreshedToken == _registeredToken) {
         return PushRegistrationOutcome.registered;
       }
-      try {
-        await _api.register(
-          token: refreshedToken,
-          platform: _platform,
-          appVersion: _appVersion,
-        );
-      } catch (_) {
-        return PushRegistrationOutcome.failed;
-      }
-      _registeredToken = refreshedToken;
-      return PushRegistrationOutcome.registered;
+      return _postTokenForEpoch(token: refreshedToken, epoch: epoch);
     }
 
     final permission = await _source.requestPermission();
+    if (_sessionEpoch != epoch) return PushRegistrationOutcome.unavailable;
     if (permission == PushPermission.unavailable) {
       return PushRegistrationOutcome.unavailable;
     }
@@ -157,6 +132,7 @@ class PushRegistration {
     }
 
     final token = await _source.token();
+    if (_sessionEpoch != epoch) return PushRegistrationOutcome.unavailable;
     if (token == null || token.isEmpty) {
       return PushRegistrationOutcome.noToken;
     }
@@ -164,14 +140,34 @@ class PushRegistration {
       return PushRegistrationOutcome.registered;
     }
 
+    return _postTokenForEpoch(token: token, epoch: epoch);
+  }
+
+  Future<PushRegistrationOutcome> _postTokenForEpoch({
+    required String token,
+    required int epoch,
+  }) async {
+    if (_sessionEpoch != epoch) return PushRegistrationOutcome.unavailable;
+    final req = _api.register(
+      token: token,
+      platform: _platform,
+      appVersion: _appVersion,
+    );
+    _inFlightRegister = req;
+    _inFlightToken = token;
     try {
-      await _api.register(
-        token: token,
-        platform: _platform,
-        appVersion: _appVersion,
-      );
+      await req;
     } catch (_) {
       return PushRegistrationOutcome.failed;
+    } finally {
+      if (identical(_inFlightRegister, req)) {
+        _inFlightRegister = null;
+        _inFlightToken = null;
+      }
+    }
+    if (_sessionEpoch != epoch) {
+      _registeredToken = null;
+      return PushRegistrationOutcome.unavailable;
     }
     _registeredToken = token;
     return PushRegistrationOutcome.registered;
@@ -179,21 +175,39 @@ class PushRegistration {
 
   /// Removes this instance's token. Call it **before** the session is cleared:
   /// the route authenticates as the parent it is removing the token for.
-  ///
-  /// Returns whether a row was actually removed. A token forwarded by an
-  /// earlier launch is not known here — a full logout-time removal across
-  /// restarts needs the last token persisted, which this does not do (roadmap
-  /// 3.9 says so).
   Future<bool> unregister() async {
-    final token = _registeredToken;
-    if (token == null) return false;
-    try {
-      final removed = await _api.remove(token);
-      return removed > 0;
-    } catch (_) {
+    _sessionEpoch += 1;
+    final pendingReq = _inFlightRegister;
+    final pendingTok = _inFlightToken;
+    if (pendingReq != null) {
+      try {
+        await pendingReq;
+      } catch (_) {}
+    }
+    final tokens = <String>{
+      if (_registeredToken != null && _registeredToken!.isNotEmpty)
+        _registeredToken!,
+      if (pendingTok != null && pendingTok.isNotEmpty) pendingTok,
+    };
+    if (tokens.isEmpty) {
+      _registeredToken = null;
+      _inFlightRegister = null;
+      _inFlightToken = null;
       return false;
+    }
+    var removedAny = false;
+    try {
+      for (final token in tokens) {
+        try {
+          final removed = await _api.remove(token);
+          if (removed > 0) removedAny = true;
+        } catch (_) {}
+      }
+      return removedAny;
     } finally {
       _registeredToken = null;
+      _inFlightRegister = null;
+      _inFlightToken = null;
     }
   }
 }

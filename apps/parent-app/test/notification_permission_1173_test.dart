@@ -64,6 +64,27 @@ class _FakePermissionPlatform extends NotificationPermissionPlatform {
   Future<void> dispose() => refreshController.close();
 }
 
+class _SuspendingPushSource implements PushTokenSource {
+  _SuspendingPushSource();
+
+  PushPermission permission = PushPermission.granted;
+  Completer<String?> tokenCompleter = Completer<String?>();
+  int permissionCalls = 0;
+  int tokenCalls = 0;
+
+  @override
+  Future<PushPermission> requestPermission() async {
+    permissionCalls += 1;
+    return permission;
+  }
+
+  @override
+  Future<String?> token() {
+    tokenCalls += 1;
+    return tokenCompleter.future;
+  }
+}
+
 class _FakePushSource implements PushTokenSource {
   _FakePushSource();
 
@@ -339,6 +360,185 @@ void main() {
       await container.read(authProvider.notifier).login('p2@osratech.com', 'good-password');
       await settleAsync(16);
       expect(api.calls('POST', '/v1/me/push-token'), hasLength(2));
+    });
+
+    /// Mutant A: check only `auth.isAuthenticated` on `onTokenRefresh` -> posts token mid-onboarding.
+    /// Mutant B: skip `areNotificationsEnabled() == true` check on refresh or `ensureRegistered(refreshedToken:)`
+    /// -> posts device push identifier while OS notifications are disabled, or prompts unexpectedly.
+    test('token refresh respects onboarding readiness and non-prompting OS notification setting, then posts once eligible', () async {
+      FlutterSecureStorage.setMockInitialValues({});
+      SharedPreferences.setMockInitialValues({
+        kOnboardingCompleteKey: false,
+        kOnboardingStepKey: 'welcome',
+      });
+      final api = FakeApiClient(pushRoutes());
+      final platform = _FakePermissionPlatform(enabled: false, requestResult: false);
+      final pushSource = _FakePushSource();
+      final container = ProviderContainer(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          notificationPermissionPlatformProvider.overrideWithValue(platform),
+          pushTokenSourceProvider.overrideWithValue(pushSource),
+        ],
+      );
+      addTearDown(() async {
+        container.dispose();
+        await platform.dispose();
+      });
+
+      container.read(notificationLifecycleSyncProvider);
+      await container.read(onboardingProvider.notifier).signedIn();
+      await container.read(authProvider.notifier).login('qa@osratech.com', 'good-password');
+      await settleAsync(12);
+      expect(container.read(authProvider).isAuthenticated, isTrue);
+      expect(container.read(onboardingProvider).inProgress, isTrue);
+
+      // 1. Token refresh during incomplete onboarding (even if OS notifications were enabled) -> 0 POSTs, 0 prompts.
+      platform.enabled = true;
+      platform.refreshController.add('fcm-token-mid-onboarding-0001');
+      await settleAsync(12);
+      expect(api.calls('POST', '/v1/me/push-token'), isEmpty);
+      expect(platform.requestCalls, 0);
+
+      // 2. Complete onboarding while OS notifications are disabled -> prompt runs once (denied), 0 POSTs.
+      platform.enabled = false;
+      await container.read(onboardingProvider.notifier).completeSetup();
+      await settleAsync(16);
+      expect(platform.requestCalls, 1);
+      expect(api.calls('POST', '/v1/me/push-token'), isEmpty);
+
+      // 3. Token refresh while OS notifications are disabled -> non-prompting check blocks POST (0 extra prompts, 0 POSTs).
+      final enabledChecksBefore = platform.areEnabledCalls;
+      platform.refreshController.add('fcm-token-disabled-os-0002');
+      await settleAsync(12);
+      expect(platform.areEnabledCalls, greaterThan(enabledChecksBefore));
+      expect(platform.requestCalls, 1);
+      expect(api.calls('POST', '/v1/me/push-token'), isEmpty);
+
+      // Direct refreshed-token call on AuthNotifier/PushRegistration also enforces non-prompting permission.
+      final directBlocked = await container
+          .read(authProvider.notifier)
+          .syncPushRegistration(refreshedToken: 'fcm-token-direct-disabled-0003');
+      expect(directBlocked, PushRegistrationOutcome.denied);
+      expect(api.calls('POST', '/v1/me/push-token'), isEmpty);
+
+      // 4. Parent enables notifications in OS Settings -> subsequent token refresh posts cleanly with 0 extra prompts.
+      platform.enabled = true;
+      await container.read(notificationPermissionControllerProvider.notifier).onAppResumed();
+      await settleAsync(14);
+      expect(api.calls('POST', '/v1/me/push-token'), hasLength(1));
+
+      platform.refreshController.add('fcm-token-eligible-refresh-0004');
+      await settleAsync(14);
+      final posts = api.calls('POST', '/v1/me/push-token');
+      expect(posts, hasLength(2));
+      expect(posts.last.body['token'], 'fcm-token-eligible-refresh-0004');
+      expect(platform.requestCalls, 1);
+    });
+
+    /// Mutant A: fail to bump `_sessionEpoch` on `unregister()` -> suspended `token()` resolving after
+    /// `logout()` still POSTs `/v1/me/push-token` or sets `_registeredToken` on a departed session.
+    /// Mutant B: fail to await in-flight `POST /v1/me/push-token` inside `unregister()` before
+    /// `/v1/auth/logout` -> `POST` lands on the server without `DELETE` (or `DELETE` hits 401 after logout).
+    test('logout during in-flight registration never leaves a token attached to a departed session', () async {
+      // Subcase A: logout while PushTokenSource.token() is suspended.
+      FlutterSecureStorage.setMockInitialValues({'refresh': 'rt-1'});
+      SharedPreferences.setMockInitialValues({kOnboardingCompleteKey: true});
+      final apiA = FakeApiClient(pushRoutes());
+      final platformA = _FakePermissionPlatform(enabled: true, requestResult: true);
+      final suspendingSource = _SuspendingPushSource();
+      final containerA = ProviderContainer(
+        overrides: [
+          apiClientProvider.overrideWithValue(apiA),
+          notificationPermissionPlatformProvider.overrideWithValue(platformA),
+          pushTokenSourceProvider.overrideWithValue(suspendingSource),
+        ],
+      );
+      addTearDown(() async {
+        containerA.dispose();
+        await platformA.dispose();
+      });
+
+      containerA.read(notificationLifecycleSyncProvider);
+      await containerA.read(authProvider.notifier).login('p1@osratech.com', 'good-password');
+      await settleAsync(16);
+      expect(suspendingSource.tokenCalls, 1);
+      expect(apiA.calls('POST', '/v1/me/push-token'), isEmpty);
+
+      // Logout finishes while token() is still pending, then token() resolves late.
+      await containerA.read(authProvider.notifier).logout();
+      suspendingSource.tokenCompleter.complete('fcm-token-late-after-logout');
+      await settleAsync(12);
+      expect(apiA.calls('POST', '/v1/me/push-token'), isEmpty);
+
+      // Subcase B: logout while POST /v1/me/push-token is in flight on the wire.
+      FlutterSecureStorage.setMockInitialValues({'refresh': 'rt-2'});
+      SharedPreferences.setMockInitialValues({kOnboardingCompleteKey: true});
+      final serverActiveTokens = <String>{};
+      var serverSessionRevoked = false;
+      final postGate = Completer<void>();
+
+      final apiB = FakeApiClient({
+        ...pushRoutes(),
+        'POST /v1/auth/login': (_) => {
+              'token': 'jwt-b',
+              'refreshToken': 'rt-2',
+            },
+        'POST /v1/auth/logout': (_) {
+          serverSessionRevoked = true;
+          return const {'ok': true};
+        },
+        'POST /v1/me/push-token': (req) => FakeDeferred(
+              postGate.future.then((_) {
+                final tok = req.body['token'] as String;
+                if (!serverSessionRevoked) {
+                  serverActiveTokens.add(tok);
+                }
+                return {
+                  'id': 'push-row-b',
+                  'platform': req.body['platform'] ?? 'android',
+                  'registeredAt': '2026-11-27T00:00:00Z',
+                };
+              }),
+            ),
+        'DELETE /v1/me/push-token': (req) {
+          if (serverSessionRevoked) {
+            return const FakeHttpError(401, {'error': 'session_revoked'});
+          }
+          final tok = req.body['token'] as String;
+          final removed = serverActiveTokens.remove(tok) ? 1 : 0;
+          return {'removed': removed};
+        },
+      });
+      final platformB = _FakePermissionPlatform(enabled: true, requestResult: true);
+      final pushSourceB = _FakePushSource();
+      final containerB = ProviderContainer(
+        overrides: [
+          apiClientProvider.overrideWithValue(apiB),
+          notificationPermissionPlatformProvider.overrideWithValue(platformB),
+          pushTokenSourceProvider.overrideWithValue(pushSourceB),
+        ],
+      );
+      addTearDown(() async {
+        containerB.dispose();
+        await platformB.dispose();
+      });
+
+      containerB.read(notificationLifecycleSyncProvider);
+      await containerB.read(authProvider.notifier).login('p1@osratech.com', 'good-password');
+      await settleAsync(16);
+      expect(apiB.calls('POST', '/v1/me/push-token'), hasLength(1));
+
+      // Start logout while POST /v1/me/push-token is suspended on the wire, then release POST.
+      final logoutFuture = containerB.read(authProvider.notifier).logout();
+      await settleAsync(4);
+      postGate.complete();
+      await logoutFuture;
+      await settleAsync(8);
+
+      expect(apiB.calls('DELETE', '/v1/me/push-token'), hasLength(1));
+      expect(apiB.calls('POST', '/v1/auth/logout'), hasLength(1));
+      expect(serverActiveTokens, isEmpty);
     });
 
     /// Mutant: skip `syncPushRegistration()` after `requestPermission()` grants

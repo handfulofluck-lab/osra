@@ -11,6 +11,8 @@ import '../api/permission_errors.dart';
 import '../api/push_api.dart';
 import '../push/push_registration.dart';
 import '../push/fcm_push_token_source.dart';
+import '../push/notification_permission_service.dart'
+    show notificationPermissionPlatformProvider;
 import 'server_provider.dart';
 
 /// Injectable [ApiClient] source; overridden in tests with a fake.
@@ -103,13 +105,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<PushRegistrationOutcome> syncPushRegistration({
     String? refreshedToken,
   }) async {
-    if (_disposed || !state.isAuthenticated) {
+    if (_disposed || _loggingOut || !state.isAuthenticated) {
       return PushRegistrationOutcome.unavailable;
     }
     return _pushRegistration.ensureRegistered(refreshedToken: refreshedToken);
   }
 
   bool _disposed = false;
+  bool _loggingOut = false;
 
   @override
   void dispose() {
@@ -213,6 +216,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       final res = await _api.raw.get('/v1/family/me');
       final overview = FamilyOverview.fromJson(Map<String, dynamic>.from(res.data as Map));
+      _loggingOut = false;
       _setState(AuthState(isAuthenticated: true, parent: overview.parent, family: overview.family));
       // #1173: Notification permission prompting and token registration are
       // coordinated by NotificationPermissionController once the parent is
@@ -234,25 +238,30 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   /// Deletes the stored tokens and resets to the logged-out state.
   Future<void> logout() async {
-    // Before logout: `/v1/auth/logout` revokes the access token issued with this
-    // refresh token (`services/api/src/routes/auth.ts:1442`, ADR-0014), and
-    // `DELETE /v1/me/push-token` authenticates with it — so the removal has to
-    // go first or it is a 401 and the row survives on a signed-out phone.
+    _loggingOut = true;
     try {
-      await _push?.unregister();
-    } catch (_) {}
-    // Handoff item 2: revoke the refresh token server-side before clearing locally.
-    try {
-      final refresh = await _storage.read(key: 'refresh');
-      if (refresh != null) {
-        await _api.raw.post('/v1/auth/logout', data: {'refreshToken': refresh});
-      }
-    } catch (_) {}
-    try {
-      await _storage.delete(key: 'jwt');
-      await _storage.delete(key: 'refresh');
-    } catch (_) {}
-    _setState(const AuthState());
+      // Before logout: `/v1/auth/logout` revokes the access token issued with this
+      // refresh token (`services/api/src/routes/auth.ts:1442`, ADR-0014), and
+      // `DELETE /v1/me/push-token` authenticates with it — so the removal has to
+      // go first or it is a 401 and the row survives on a signed-out phone.
+      try {
+        await _push?.unregister();
+      } catch (_) {}
+      // Handoff item 2: revoke the refresh token server-side before clearing locally.
+      try {
+        final refresh = await _storage.read(key: 'refresh');
+        if (refresh != null) {
+          await _api.raw.post('/v1/auth/logout', data: {'refreshToken': refresh});
+        }
+      } catch (_) {}
+      try {
+        await _storage.delete(key: 'jwt');
+        await _storage.delete(key: 'refresh');
+      } catch (_) {}
+      _setState(const AuthState());
+    } finally {
+      _loggingOut = false;
+    }
   }
 
   /// Structured token for a failed auth response; technical text is logged only.
@@ -301,6 +310,11 @@ final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
     push: PushRegistration(
       api: PushApi(api),
       source: ref.watch(pushTokenSourceProvider),
+      canPostRefreshedToken: () async =>
+          (await ref
+              .read(notificationPermissionPlatformProvider)
+              .areNotificationsEnabled()) ==
+          true,
     ),
   );
   notifier.bootstrap();

@@ -240,15 +240,40 @@ class NotificationPermissionController
     return next;
   }
 
+  bool _isReadyForAlerts() => isReadyForPushAlerts(
+        auth: _ref.read(authProvider),
+        onboarding: _ref.read(onboardingProvider),
+      );
+
   void _handleTokenRefresh(String token) {
-    if (token.trim().isEmpty) return;
+    final trimmed = token.trim();
+    if (trimmed.isEmpty) return;
     unawaited(_enqueue(() async {
-      final auth = _ref.read(authProvider);
-      if (!auth.isAuthenticated) return;
+      if (!_isReadyForAlerts()) return;
+      final platform = _ref.read(notificationPermissionPlatformProvider);
+      final enabled = await platform.areNotificationsEnabled();
+      if (_disposed || !_isReadyForAlerts()) return;
+      if (enabled == false) {
+        _setStateSafe(
+          state.copyWith(
+            osNotificationsEnabled: false,
+            lastPushOutcome: PushRegistrationOutcome.denied,
+          ),
+        );
+        return;
+      }
+      // Non-prompting check: only post refreshed token when OS notifications are enabled.
+      if (enabled != true) return;
       final outcome = await _ref
           .read(authProvider.notifier)
-          .syncPushRegistration(refreshedToken: token.trim());
-      _setStateSafe(state.copyWith(lastPushOutcome: outcome));
+          .syncPushRegistration(refreshedToken: trimmed);
+      if (_disposed || !_isReadyForAlerts()) return;
+      _setStateSafe(
+        state.copyWith(
+          osNotificationsEnabled: true,
+          lastPushOutcome: outcome,
+        ),
+      );
     }));
   }
 
@@ -285,7 +310,7 @@ class NotificationPermissionController
           }
         }
 
-        if (_disposed || !_ref.read(authProvider).isAuthenticated) return;
+        if (_disposed || !_isReadyForAlerts()) return;
 
         if (enabled == false) {
           _setStateSafe(
@@ -319,17 +344,13 @@ class NotificationPermissionController
   /// clears the Home banner once notifications are turned on in Settings and
   /// immediately registers any missing or changed push token.
   Future<void> onAppResumed() => _enqueue(() async {
-        final auth = _ref.read(authProvider);
-        final onboarding = _ref.read(onboardingProvider);
-        if (!auth.isAuthenticated ||
-            !onboarding.loaded ||
-            onboarding.inProgress) {
+        if (!_isReadyForAlerts()) {
           return;
         }
 
         final platform = _ref.read(notificationPermissionPlatformProvider);
         final enabled = await platform.areNotificationsEnabled();
-        if (_disposed || !_ref.read(authProvider).isAuthenticated) return;
+        if (_disposed || !_isReadyForAlerts()) return;
 
         if (enabled == false) {
           _setStateSafe(
@@ -368,11 +389,10 @@ final notificationPermissionControllerProvider = StateNotifierProvider<
 final notificationLifecycleSyncProvider = Provider<void>((ref) {
   final controller = ref.watch(notificationPermissionControllerProvider.notifier);
 
-  bool isReady() {
-    final auth = ref.read(authProvider);
-    final onboarding = ref.read(onboardingProvider);
-    return auth.isAuthenticated && onboarding.loaded && !onboarding.inProgress;
-  }
+  bool isReady() => isReadyForPushAlerts(
+        auth: ref.read(authProvider),
+        onboarding: ref.read(onboardingProvider),
+      );
 
   unawaited(controller.evaluate(readyForAlerts: isReady()));
 
@@ -390,3 +410,11 @@ final notificationLifecycleSyncProvider = Provider<void>((ref) {
   );
   ref.onDispose(lifecycle.dispose);
 });
+
+/// Shared readiness predicate for launch, foreground resume, and FCM token
+/// refresh: authenticated and past first-run family setup (#1173).
+bool isReadyForPushAlerts({
+  required AuthState auth,
+  required OnboardingState onboarding,
+}) =>
+    auth.isAuthenticated && onboarding.loaded && !onboarding.inProgress;
