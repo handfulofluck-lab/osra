@@ -687,7 +687,12 @@ void main() {
       expect(find.byKey(const ValueKey('alertDetailGeneralScroll')),
           findsOneWidget);
       expect(find.byKey(const ValueKey('alertDetailBody')), findsOneWidget);
-      expect(find.text('TikTok was blocked by your schedule.'), findsOneWidget);
+      expect(find.text('TikTok was blocked by your schedule.'), findsNothing);
+      expect(
+        find.text(
+            '\u{2068}Alex\u{2069} tried to open it. Nothing for you to do.'),
+        findsOneWidget,
+      );
       expect(find.byKey(const ValueKey('alertDetailOpenSocial')), findsNothing);
       expect(find.byKey(const ValueKey('alertDetailFraming')), findsNothing);
       expect(socialEventsCalls, 0);
