@@ -39,6 +39,8 @@ from typing import Callable, Literal, Mapping, Sequence
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, UUID4, ValidationError
 
+from staging_own_model import APPROVED_PROMPT_SHA256, consented_staging_scoring, is_in_process_cpu_call
+
 LABELS: tuple[str, ...] = (
     "cyberbullying",
     "self_harm",
@@ -602,14 +604,18 @@ def warmup_own_models_from_env() -> dict[str, str]:
     return get_registry().preload_models(tags)
 
 
-def _own_model_approval() -> tuple[datetime, set[str] | None]:
-    """Staging-only approval gate mirroring `staging_qa._test_approval` (no Bedrock prompt needed)."""
+def _own_model_approval(*, in_process: bool) -> tuple[datetime | None, set[str] | None]:
+    """Keep the fixture gate for legacy calls and allow consented traffic through the collector."""
     enabled = (
         os.environ.get("OSRA_STAGING_QA_OWN_MODEL_ENABLED") == "1"
         or os.environ.get("OSRA_STAGING_QA_ANALYZER_ENABLED") == "1"
     )
     if os.environ.get("OSRA_DEPLOYMENT_SCOPE") != "staging" or not enabled:
         raise HTTPException(status_code=404, detail="not_found")
+    if consented_staging_scoring(APPROVED_PROMPT_SHA256):
+        if not in_process:
+            raise HTTPException(status_code=404, detail="not_found")
+        return None, None
     try:
         expires_at = datetime.fromisoformat(os.environ.get("OSRA_STAGING_QA_EXPIRES_AT", ""))
     except ValueError:
@@ -679,7 +685,7 @@ def effective_inference_timeout_seconds(env: Mapping[str, str] | None = None) ->
 
 @router.post("/analyze/staging-qa/own", response_model=OwnModelQaResponse, include_in_schema=False)
 async def analyze_staging_qa_own(request: Request) -> OwnModelQaResponse:
-    expires_at, digests = _own_model_approval()
+    expires_at, digests = _own_model_approval(in_process=is_in_process_cpu_call(request.scope))
     body = bytearray()
     async for chunk in request.stream():
         if len(body) + len(chunk) > MAX_REQUEST_BYTES:
@@ -697,19 +703,20 @@ async def analyze_staging_qa_own(request: Request) -> OwnModelQaResponse:
 
     trace_id = str(data.trace_id)
     region = os.environ.get("OSRA_OWN_MODEL_REGION", REGION_DEFAULT)
-    configured_timeout = effective_inference_timeout_seconds()
-    remaining_approval = (expires_at - datetime.now(timezone.utc)).total_seconds()
-    timeout_seconds = min(configured_timeout, max(0.0, remaining_approval))
+    timeout_seconds = effective_inference_timeout_seconds()
+    if expires_at is not None:
+        remaining_approval = (expires_at - datetime.now(timezone.utc)).total_seconds()
+        timeout_seconds = min(timeout_seconds, remaining_approval)
 
     started = monotonic()
     try:
-        if remaining_approval <= 0:
+        if timeout_seconds <= 0:
             raise TimeoutError("staging QA approval expired")
         resolved_lang, loaded, probs, flagged, thresholds_sha = await asyncio.wait_for(
             asyncio.to_thread(get_registry().score, data.text, data.lang),
             timeout=timeout_seconds,
         )
-        if datetime.now(timezone.utc) >= expires_at:
+        if expires_at is not None and datetime.now(timezone.utc) >= expires_at:
             raise TimeoutError("staging QA approval expired")
     except TimeoutError:
         logger.warning(

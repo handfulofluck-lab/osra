@@ -1,0 +1,1 @@
+- #864 makes a parent's rule change reach the child at once: a push now asks for the rules as well as the commands, instead of waiting for the six-hour sync. A domain rule added from the parent no longer waits for a restart.

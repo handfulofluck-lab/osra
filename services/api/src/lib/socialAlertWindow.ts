@@ -13,6 +13,18 @@ export const SOCIAL_ALERT_WINDOW_MS = SOCIAL_ALERT_WINDOW_SECONDS * 1000;
 /** Default budget a concurrent replica waits for `__pending__` before handing off to the deferred queue. */
 export const DEFAULT_PENDING_WAIT_MS = 5_000;
 
+/**
+ * Issue #1061: staging-only switch — one push per flagged message instead of the 10-minute window.
+ *
+ * Karim asked to see how the own model judges each message during the 24 Nov test, so a message that
+ * is folded into a window would otherwise be invisible until the summary. Card aggregation is unchanged:
+ * the Alerts list still shows one card per contact with a running count; only the pushes multiply.
+ * Production keeps the window: `scripts/check-production-taskdef.mjs` refuses this name outright.
+ */
+export function pushEveryMessageEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.SOCIAL_ALERT_PUSH_EVERY_MESSAGE === "true";
+}
+
 export type SocialSeverity = "info" | "warning" | "critical";
 export const SOCIAL_SEVERITY_RANK: Record<SocialSeverity, number> = { info: 0, warning: 1, critical: 2 };
 
@@ -83,6 +95,7 @@ export interface SocialWindowMetadata {
   concernTypes: string[];
   flaggedCount: number;
   latestAt: string;
+  latestSourceEventId?: string;
   windowStartedAt: string;
   windowEndsAt: string;
   pushedCount: number;
@@ -113,6 +126,7 @@ export function parseSocialWindowMetadata(raw: unknown): SocialWindowMetadata | 
     concernTypes: Array.isArray(m.concernTypes) ? m.concernTypes.filter((x): x is string => typeof x === "string") : [],
     flaggedCount,
     latestAt: typeof m.latestAt === "string" ? m.latestAt : (typeof m.windowStartedAt === "string" ? m.windowStartedAt : m.windowEndsAt),
+    ...(typeof m.latestSourceEventId === "string" ? { latestSourceEventId: m.latestSourceEventId } : {}),
     windowStartedAt: typeof m.windowStartedAt === "string" ? m.windowStartedAt : m.windowEndsAt,
     windowEndsAt: m.windowEndsAt,
     pushedCount,
@@ -193,6 +207,7 @@ export interface DeferredSocialObservation {
   severity: SocialSeverity;
   concernTypes: string[];
   observedAt: string;
+  sourceEventId?: string;
   attribution?: Record<string, unknown>;
 }
 
@@ -209,6 +224,7 @@ function parseDeferredObservation(raw: unknown): DeferredSocialObservation | nul
         ? parsed.concernTypes.filter((x): x is string => typeof x === "string")
         : [],
       observedAt: parsed.observedAt,
+      ...(typeof parsed.sourceEventId === "string" ? { sourceEventId: parsed.sourceEventId } : {}),
       ...(parsed.attribution && typeof parsed.attribution === "object" && !Array.isArray(parsed.attribution)
         ? { attribution: parsed.attribution as Record<string, unknown> }
         : {}),
@@ -294,6 +310,7 @@ function mergeProviderOutcomes(
 export interface RecordFlaggedSocialAlertInput {
   childId: string;
   familyId: string;
+  sourceEventId?: string;
   childName?: string | null;
   deviceId?: string | null;
   appName: string;
@@ -330,6 +347,8 @@ interface ApplyContext {
   nowIso: string;
   windowEndsAtIso: string;
   redis: ReturnType<typeof getRedis>;
+  /** #1061: push after every applied observation instead of waiting for the window summary. */
+  pushEveryMessage?: boolean;
 }
 
 async function applyObservationsToAlert(
@@ -384,12 +403,18 @@ async function applyObservationsToAlert(
     latestObservedAt = ctx.nowIso;
     const allIncomingConcerns: string[] = [];
     let combinedAttribution: Record<string, unknown> | undefined;
+    let latestSourceEventId = existingMeta?.latestSourceEventId;
+    let latestSourceAt = existingMeta?.latestAt ?? "";
     for (const obs of unapplied) {
       if (SOCIAL_SEVERITY_RANK[obs.severity] > SOCIAL_SEVERITY_RANK[highestIncomingSeverity]) {
         highestIncomingSeverity = obs.severity;
       }
       if (obs.observedAt > latestObservedAt) {
         latestObservedAt = obs.observedAt;
+      }
+      if (obs.sourceEventId && (!latestSourceEventId || obs.observedAt >= latestSourceAt)) {
+        latestSourceEventId = obs.sourceEventId;
+        latestSourceAt = obs.observedAt;
       }
       allIncomingConcerns.push(...obs.concernTypes);
       combinedAttribution = mergeProviderOutcomes(combinedAttribution, obs.attribution);
@@ -406,8 +431,9 @@ async function applyObservationsToAlert(
       SOCIAL_SEVERITY_RANK[highestIncomingSeverity] > SOCIAL_SEVERITY_RANK[normalizeSocialSeverity(current.severity)]
         ? highestIncomingSeverity
         : normalizeSocialSeverity(current.severity);
-    const nextPushedCount = bypass ? nextCount : prevPushedCount;
-    nextPushedSeverity = bypass ? highestIncomingSeverity : prevPushedSeverity;
+    const pushEvery = ctx.pushEveryMessage === true;
+    const nextPushedCount = bypass || pushEvery ? nextCount : prevPushedCount;
+    nextPushedSeverity = bypass || pushEvery ? highestIncomingSeverity : prevPushedSeverity;
     const nextSummaryPending = nextCount > nextPushedCount;
     const mergedConcerns = [...new Set([...(existingMeta?.concernTypes ?? []), ...allIncomingConcerns])].slice(0, 5);
     const mergedAttribution = mergeProviderOutcomes(existingMeta?.providerOutcomes, combinedAttribution);
@@ -424,6 +450,7 @@ async function applyObservationsToAlert(
       concernTypes: mergedConcerns,
       flaggedCount: nextCount,
       latestAt: effectiveLatestAt,
+      ...(latestSourceEventId ? { latestSourceEventId } : {}),
       windowStartedAt: effectiveWindowStart,
       windowEndsAt: effectiveWindowEnd,
       pushedCount: nextPushedCount,
@@ -582,10 +609,11 @@ export async function replayDeferredSocialObservations(
 export async function recordFlaggedSocialAlert(
   input: RecordFlaggedSocialAlertInput,
 ): Promise<RecordFlaggedSocialAlertResult> {
-  const { childId, familyId, childName, deviceId, appName, category, severity, concernTypes, attribution } = input;
+  const { childId, familyId, sourceEventId, childName, deviceId, appName, category, severity, concernTypes, attribution } = input;
   const contact = input.contact.trim();
   const contactKey = socialContactKey(childId, contact);
   const throttleKey = socialAlertThrottleKey(childId, appName, contact);
+  const pushEvery = pushEveryMessageEnabled();
   const waitBudgetMs =
     typeof input.pendingWaitMs === "number" && Number.isFinite(input.pendingWaitMs) && input.pendingWaitMs >= 0
       ? input.pendingWaitMs
@@ -602,6 +630,7 @@ export async function recordFlaggedSocialAlert(
       severity,
       concernTypes,
       observedAt: nowIso,
+      ...(sourceEventId ? { sourceEventId } : {}),
       ...(attribution && Object.keys(attribution).length > 0 ? { attribution } : {}),
     };
     const applyCtx: ApplyContext = {
@@ -615,6 +644,7 @@ export async function recordFlaggedSocialAlert(
       nowIso,
       windowEndsAtIso,
       redis,
+      pushEveryMessage: pushEvery,
     };
 
     for (let claimPass = 0; claimPass < 2; claimPass += 1) {
@@ -646,6 +676,8 @@ export async function recordFlaggedSocialAlert(
               concernTypes,
               flaggedCount: 1,
               latestAt: nowIso,
+              // The alert link stays on its original event while feedback follows the latest event.
+              ...(sourceEventId ? { primarySocialEventId: sourceEventId, latestSourceEventId: sourceEventId } : {}),
               windowStartedAt: nowIso,
               windowEndsAt: windowEndsAtIso,
               pushedCount: 1,
@@ -816,6 +848,12 @@ export async function recordFlaggedSocialAlert(
         : [];
       const batch = matchingPending.length > 0 ? [...matchingPending, observation] : [observation];
       const applied = await applyObservationsToAlert(existing, state, batch, applyCtx);
+      // Issue #1061: with the switch on, every applied observation is pushed now; the summary stays off because
+      // applyObservationsToAlert counts it as already pushed.
+      // `bypass` already pushed inside applyObservationsToAlert, so a severity step-up must not push twice.
+      if (pushEvery && applied.committed && applied.updatedAlert && !applied.bypassed) {
+        await notifyParentsOfAlert(familyId, applied.updatedAlert, childName ?? undefined);
+      }
       if (applied.committed && windowDeferredKey && pending.rawCount > 0) {
         await ackDeferredEntries(redis, windowDeferredKey, pending.rawCount);
       }

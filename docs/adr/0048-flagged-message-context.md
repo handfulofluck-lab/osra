@@ -1,4 +1,4 @@
-# ADR-0044 — Context around a flagged message: on-request, blurred 1+1, not a 3+3 archive
+# ADR-0048 — Context around a flagged message: on-request, blurred 1+1, not a 3+3 archive
 
 - **Status:** proposed for Karim's decision. This is a study, not approval to build or to change message
   collection. No real family's message behavior changes under this ADR.
@@ -115,7 +115,7 @@ replaced with measured alert frequency, text size, and storage pricing.
 At an illustrative $0.10/GB transfer price, that is **$0.18 vs $0.54 per month at 10k families**, and
 **$1.80 vs $5.40 at 100k**. Transfer and raw storage are therefore not the main objection. Database rows,
 indexes, vault reads/writes, operational review, and breach impact dominate. A 90-day context retention would
-roughly triple these steady-state ciphertext volumes; the recommended 24-hour deletion avoids that growth.
+roughly triple the vault's total steady-state ciphertext volume; the recommended 24-hour deletion avoids that growth.
 
 **AI cost is $0 under the recommendation** because context is not scored. For comparison only, if surrounding
 messages were also sent to the model, a reasonable estimate is about **30% more tokens for 1+1** and **90%

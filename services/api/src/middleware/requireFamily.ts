@@ -2,7 +2,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { prisma } from "../db.js";
 
 /** Models that can be family-scoped via requireFamily, with their familyId resolution. */
-type FamilyScopedModel = "child" | "device" | "geofence" | "alert";
+type FamilyScopedModel = "child" | "device" | "geofence" | "alert" | "socialEvent";
 
 type FamilyScopedResource = {
   id?: string;
@@ -48,6 +48,7 @@ const loaders: Record<
   device: async (id) => prisma.device.findUnique({ where: { id }, include: { child: true } }),
   geofence: async (id) => prisma.geofence.findUnique({ where: { id }, include: { child: true } }),
   alert: async (id) => prisma.alert.findUnique({ where: { id }, include: { child: true } }),
+  socialEvent: async (id) => prisma.socialEvent.findUnique({ where: { id }, include: { child: true } }),
 };
 
 function resourceFamilyId(resource: FamilyScopedResource): string | undefined {

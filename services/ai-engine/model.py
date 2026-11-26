@@ -9,6 +9,8 @@ returns the same response shape.
 import os
 import re
 
+from own_model_service import detect_language
+
 CATEGORIES = [
     "cyberbullying",
     "self_harm",
@@ -222,13 +224,24 @@ def _merge_model_and_rules(probs, rule_scores):
     return merged
 
 
+FLAG_CUTOFF = 0.6
+
+
 def _severity(top_prob):
     """Map the top category probability to a severity level and flagged flag."""
     if top_prob >= 0.85:
         return "critical", True
-    if top_prob >= 0.6:
+    if top_prob >= FLAG_CUTOFF:
         return "warning", True
     return "info", False
+
+
+def _loaded_model_version(model):
+    config = getattr(model, "config", None)
+    source = getattr(config, "_name_or_path", None)
+    if not isinstance(source, str) or not source.strip():
+        source = os.environ.get("MODEL_PATH", "").strip()
+    return source.strip() or None
 
 
 def analyze_text(text, context="message", child_age=None):
@@ -237,10 +250,12 @@ def analyze_text(text, context="message", child_age=None):
     # model and rules layer do not yet differentiate by either (simplest
     # interpretation of spec §4.3).
     probs = None
+    used_model = False
     pipeline = _load_model()
     if pipeline:
         try:
             probs = _model_probabilities(pipeline[0], pipeline[1], text)
+            used_model = True
         except Exception:
             probs = None  # fall back to keyword/regex classification
     rule_scores, matched_rules = _rules_scores(text or "")
@@ -260,4 +275,8 @@ def analyze_text(text, context="message", child_age=None):
         "severity": severity,
         "flagged": flagged,
         "explanation": explanation,
+        "model_version": _loaded_model_version(pipeline[0]) if used_model else None,
+        "language": detect_language(text or ""),
+        "cutoff": FLAG_CUTOFF,
+        "path": "own" if used_model else "rules",
     }
