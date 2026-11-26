@@ -329,8 +329,11 @@ class BlockExplainPolicyTest {
             assertTrue("EN strings missing $key", enStrings.contains("name=\"$key\""))
             assertTrue("AR strings missing $key", arStrings.contains("name=\"$key\""))
         }
-        // Arabic Bureau 7191839045 core lines:
-        assertTrue(arStrings.contains("توقّف %1\$s الآن"))
+        // Arabic Bureau 7191839045 + 7204732398 core lines:
+        assertTrue(arStrings.contains("%1\$s متوقف مؤقتًا"))
+        assertTrue(arStrings.contains("المستخدم: %1\$s · الحد: %2\$s"))
+        assertTrue(arStrings.contains("وقت الشاشة اليومي: المستخدم %1\$s، والحد %2\$s"))
+        assertTrue(arStrings.contains("جدول «%1\$s» سارٍ الآن."))
         assertTrue(arStrings.contains("ما زال متاحًا لك"))
         assertTrue(arStrings.contains("إرسال استغاثة إلى أهلي"))
         assertTrue(arStrings.contains("الاتصال بأهلي"))
