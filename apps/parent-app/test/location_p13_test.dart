@@ -241,6 +241,83 @@ void main() {
     expect(find.byType(SnackBar), findsOneWidget);
   });
 
+  // Mutant: reverting `_AllChildrenP13Map` iOS fallback to `ChildLocationMap(pins.first)`
+  // drops `osmPin-child-2` and fails this test (Kimi-Mac B5).
+  testWidgets('#1179 P-13 B5: no-Google-key / iPhone path renders both osmPin-child-1 and osmPin-child-2 in All mode',
+      (tester) async {
+    final api = buildApi();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          p13LocationEnabledProvider.overrideWithValue(true),
+          placemarkLookupProvider.overrideWithValue(fakePlacemark()),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light.copyWith(platform: TargetPlatform.iOS),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const FamilyMapScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('p13AllChildrenOsmMap')), findsOneWidget);
+    expect(find.byKey(const ValueKey('osmPin-child-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('osmPin-child-2')), findsOneWidget);
+  });
+
+  // Mutant: placing battery beside PlaceNameText in the same Row causes horizontal overlap/collision
+  // at 320px/200% and fails this geometry check (Kimi-Mac B6).
+  testWidgets('#1179 P-13 B6: battery label stays below address without colliding at 320px / 200% in EN and AR',
+      (tester) async {
+    for (final locale in const [Locale('en'), Locale('ar')]) {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final api = buildApi();
+      await tester.pumpWidget(
+        ProviderScope(
+          key: UniqueKey(),
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            p13LocationEnabledProvider.overrideWithValue(true),
+            placemarkLookupProvider.overrideWithValue(fakePlacemark()),
+          ],
+          child: MaterialApp(
+            locale: locale,
+            theme: AppTheme.light,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(2.0)),
+              child: child!,
+            ),
+            home: const FamilyMapScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final placeFinder = find.descendant(
+        of: find.byKey(const ValueKey('p13PlaceCard')),
+        matching: find.byType(PlaceNameText),
+      );
+      final batteryFinder = find.byKey(const ValueKey('p13BatteryLabel'));
+      expect(placeFinder, findsOneWidget);
+      expect(batteryFinder, findsOneWidget);
+      final placeRect = tester.getRect(placeFinder);
+      final batteryRect = tester.getRect(batteryFinder);
+      expect(
+        batteryRect.top,
+        greaterThanOrEqualTo(placeRect.bottom),
+        reason: 'Battery must sit on its own row below PlaceNameText in $locale',
+      );
+    }
+  });
+
   testWidgets('#1179 P-13 switch OFF falls back to legacy FamilyMapScreen', (tester) async {
     final api = buildApi();
     await tester.pumpWidget(

@@ -2,8 +2,10 @@ import 'dart:async' show unawaited;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart' as fm;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart' as ll;
 
 import '../../api/models.dart';
 import '../../api/permission_errors.dart';
@@ -377,23 +379,47 @@ class _LocationP13ScreenState extends ConsumerState<LocationP13Screen> {
                                   ],
                                 ),
                               ),
-                              if (primaryDevice != null && primaryDevice.batteryPct > 0)
-                                Text(
-                                  ltrIsolate('${primaryDevice.batteryPct}%'),
-                                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                            ],
+                          ),
+                          if (ping != null || (primaryDevice != null && primaryDevice.batteryPct > 0)) ...[
+                            const SizedBox(height: AppSpace.sm),
+                            Wrap(
+                              spacing: AppSpace.md,
+                              runSpacing: AppSpace.xs,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                if (ping != null)
+                                  FreshnessLine(
+                                    timestamp: ping.timestamp,
+                                    style: Theme.of(context).textTheme.bodySmall,
+                                    suffix: accuracy != null ? l10n.accuracyShort(accuracy) : null,
+                                  ),
+                                if (primaryDevice != null && primaryDevice.batteryPct > 0)
+                                  Row(
+                                    key: const ValueKey('p13BatteryLabel'),
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        primaryDevice.batteryPct <= 20
+                                            ? Icons.battery_alert_outlined
+                                            : Icons.battery_std_outlined,
+                                        size: 16,
                                         color: primaryDevice.batteryPct <= 20
                                             ? tokens.warn
                                             : tokens.onSurfaceVariant,
                                       ),
-                                ),
-                            ],
-                          ),
-                          if (ping != null) ...[
-                            const SizedBox(height: AppSpace.sm),
-                            FreshnessLine(
-                              timestamp: ping.timestamp,
-                              style: Theme.of(context).textTheme.bodySmall,
-                              suffix: accuracy != null ? l10n.accuracyShort(accuracy) : null,
+                                      const SizedBox(width: AppSpace.xxs),
+                                      Text(
+                                        ltrIsolate('${primaryDevice.batteryPct}%'),
+                                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                              color: primaryDevice.batteryPct <= 20
+                                                  ? tokens.warn
+                                                  : tokens.onSurfaceVariant,
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                              ],
                             ),
                           ],
                           const SizedBox(height: AppSpace.md),
@@ -614,14 +640,82 @@ class _AllChildrenP13MapState extends State<_AllChildrenP13Map> {
   @override
   Widget build(BuildContext context) {
     final first = widget.pins.first;
+    final tokens = context.tokens;
     final useGoogle = mapIsAvailable(Theme.of(context).platform);
     if (!useGoogle) {
-      return ChildLocationMap(
-        ping: first.ping,
-        childName: first.child.displayName,
+      final osmCoords = [
+        for (final item in widget.pins) ll.LatLng(item.ping.lat, item.ping.lng),
+      ];
+      return fm.FlutterMap(
+        key: const ValueKey('p13AllChildrenOsmMap'),
+        options: fm.MapOptions(
+          initialCenter: osmCoords.first,
+          initialZoom: 13,
+          initialCameraFit: osmCoords.length > 1
+              ? fm.CameraFit.coordinates(
+                  coordinates: osmCoords,
+                  padding: const EdgeInsets.all(48),
+                )
+              : null,
+        ),
+        children: [
+          fm.TileLayer(
+            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            userAgentPackageName: 'com.osratech.parent',
+          ),
+          fm.CircleLayer(circles: [
+            for (final item in widget.pins)
+              if (item.ping.accuracyM > 0)
+                fm.CircleMarker(
+                  point: ll.LatLng(item.ping.lat, item.ping.lng),
+                  radius: item.ping.accuracyM,
+                  useRadiusInMeter: true,
+                  color: tokens.primary.withValues(alpha: 0.12),
+                  borderColor: tokens.primary,
+                  borderStrokeWidth: 1,
+                ),
+            for (final fence in widget.geofences)
+              fm.CircleMarker(
+                point: ll.LatLng(fence.lat, fence.lng),
+                radius: fence.radiusM,
+                useRadiusInMeter: true,
+                color: tokens.primary.withValues(alpha: 0.15),
+                borderColor: tokens.primary,
+                borderStrokeWidth: 1,
+              ),
+          ]),
+          fm.MarkerLayer(markers: [
+            for (final item in widget.pins)
+              fm.Marker(
+                point: ll.LatLng(item.ping.lat, item.ping.lng),
+                width: (140 * MediaQuery.textScalerOf(context).scale(1.0)).clamp(140.0, 220.0),
+                height: (72 * MediaQuery.textScalerOf(context).scale(1.0)).clamp(72.0, 144.0),
+                alignment: Alignment.topCenter,
+                child: Column(
+                  key: ValueKey('osmPin-${item.child.id}'),
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Material(
+                      elevation: 1,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        child: Text(
+                          firstStrongIsolate(item.child.displayName),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    OutlinedPin(color: tokens.primary),
+                  ],
+                ),
+              ),
+          ]),
+          const OsmAttribution(),
+        ],
       );
     }
-    final tokens = context.tokens;
     final markers = <Marker>{
       for (final item in widget.pins)
         Marker(
