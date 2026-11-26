@@ -6,11 +6,14 @@ import com.familyshield.agent.network.dto.RuleSetDto
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import java.io.IOException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mockito.Mockito
 
@@ -26,9 +29,13 @@ class RuleRepositoryRefreshTest {
         val consent = Mockito.mock(ConsentState::class.java)
         val packageFacts = Mockito.mock(PackageFacts::class.java)
         val childId = AtomicReference<String?>(null)
+        val initChildIdRead = CountDownLatch(1)
         val writes = AtomicInteger(0)
         val updated = RuleSetDto(rulesVersion = 7)
-        Mockito.`when`(settings.childId()).thenAnswer { childId.get() }
+        Mockito.`when`(settings.childId()).thenAnswer {
+            initChildIdRead.countDown()
+            childId.get()
+        }
         Mockito.`when`(settings.rulesJson()).thenReturn(null)
         Mockito.`when`(api.getRules("child-1")).thenReturn(updated)
         Mockito.`when`(settings.saveRulesJson(Mockito.anyString())).thenAnswer {
@@ -36,8 +43,9 @@ class RuleRepositoryRefreshTest {
         }
         val moshi = Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build()
         val repository = RuleRepository(api, settings, moshi, blocklist, null, consent, packageFacts)
-        // Let the init coroutine finish its intentional no-child path before the two explicit retries.
-        kotlinx.coroutines.delay(100)
+        // Prove the init refresh read null before the explicit retries set a child. A sleep only made
+        // the third save disappear on a fast machine; it could not establish that ordering (#1151 review).
+        assertTrue("init coroutine never read the initial child id", initChildIdRead.await(2, TimeUnit.SECONDS))
         childId.set("child-1")
 
         assertNull(repository.refresh())
