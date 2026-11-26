@@ -4,7 +4,7 @@ import { readOwnScanScoreReceipt, readProviderAnalysis } from "../src/lib/stagin
 const quiet = {
   status: "scored", model: "v9", flagged: false, severity: "info", flagged_categories: [],
   categories: { cyberbullying: 0.41234, self_harm: 0, grooming: 0.02, violence: 0.38, sexual_content: 0, substance_use: 0, hate_speech: 0.1 },
-  language: "en", cutoff: 0.6, text: "never copied",
+  language: "en", text: "never copied",
 };
 
 /** The receipt the route passes in: what the provider parser validated for this exact response. */
@@ -16,19 +16,19 @@ const read = (own: Record<string, unknown>) => readOwnScanScoreReceipt({ outcome
 describe("own-model score receipt for every staging scan (Ahmed, 26 Nov)", () => {
   it("keeps the top harm score, language and cut-off of a scan that did not flag", () => {
     expect(read(quiet)).toEqual({
-      modelVersion: "v9", lang: "en", topCategory: "cyberbullying", topScore: 0.4123, cutoff: 0.6,
+      modelVersion: "v9", lang: "en", topCategory: "cyberbullying", topScore: 0.4123,
     });
   });
 
   it("never carries the text or unknown fields", () => {
     const receipt = read(quiet);
     expect(JSON.stringify(receipt)).not.toContain("never copied");
-    expect(Object.keys(receipt ?? {}).sort()).toEqual(["cutoff", "lang", "modelVersion", "topCategory", "topScore"]);
+    expect(Object.keys(receipt ?? {}).sort()).toEqual(["lang", "modelVersion", "topCategory", "topScore"]);
   });
 
   it("drops an unknown language or cut-off instead of trusting it", () => {
-    const odd = { ...quiet, language: "xx", cutoff: "high" };
-    expect(read(odd)).toEqual({ modelVersion: "v9", lang: null, topCategory: "cyberbullying", topScore: 0.4123, cutoff: null });
+    const odd = { ...quiet, language: "xx", cutoff: 0.6 };
+    expect(read(odd)).toEqual({ modelVersion: "v9", lang: null, topCategory: "cyberbullying", topScore: 0.4123 });
   });
 
   it("logs nothing when the parser rejects the outcome (unknown model, out-of-range score)", () => {

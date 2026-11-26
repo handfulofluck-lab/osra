@@ -185,22 +185,25 @@ describe("staging own-model scoring for opted-in pairings", () => {
     });
   }
 
-  it("#1227: a quiet scan logs the validated own score, language and cut-off, never the text", async () => {
+  it("#1227: a quiet scan logs the validated own score and language, never the text", async () => {
     respondWith({ own: { status: "scored", model: "v9", flagged: false, severity: "info", flagged_categories: [],
-      categories: { ...scores, cyberbullying: 0.41234, violence: 0.2 }, language: "en", cutoff: 0.6 } });
+      categories: { ...scores, cyberbullying: 0.41234, violence: 0.2 }, language: "en" } });
     expect((await scan()).statusCode).toBe(200);
     const [entry] = ownLogs();
-    expect(entry?.own).toEqual({ modelVersion: "v9", lang: "en", topCategory: "cyberbullying", topScore: 0.4123, cutoff: 0.6 });
+    expect(entry?.own).toEqual({ modelVersion: "v9", lang: "en", topCategory: "cyberbullying", topScore: 0.4123 });
     expect(logs.join("")).not.toContain(safeFixture);
   });
 
   it("#1227: a mismatched trace logs no own score beside its unavailable verdict", async () => {
     respondWith({ trace: "someone-elses-trace", own: { status: "scored", model: "v9", flagged: false, severity: "info",
-      flagged_categories: [], categories: { ...scores, cyberbullying: 0.9 }, language: "en", cutoff: 0.6 } });
+      flagged_categories: [], categories: { ...scores, cyberbullying: 0.9 }, language: "en" } });
     expect((await scan()).statusCode).toBe(200);
     expect(prismaMock.stagingScanOutcome.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ providers: { own: { status: "unavailable", reason: "unavailable" } } }),
     });
-    for (const entry of ownLogs()) expect(entry).not.toHaveProperty("own");
+    // Codex (#1227 point 2): the proof line must exist, so the omission check below cannot pass vacuously.
+    const proof = ownLogs();
+    expect(proof.length).toBeGreaterThan(0);
+    for (const entry of proof) expect(entry).not.toHaveProperty("own");
   });
 });

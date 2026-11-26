@@ -117,18 +117,19 @@ export type OwnScanScoreReceipt = {
   lang: string | null;
   topCategory: string | null;
   topScore: number | null;
-  cutoff: number | null;
 };
 
 /**
  * The flagged-only receipt keeps scores for flagged categories alone, so a scan that stayed quiet left no
  * way to tell a cut-off miss from text that never reached the model. This reads the validated own receipt:
- * the highest of the seven harm scores, the language and the cut-off. Never the text.
+ * the highest of the seven harm scores and the language. Never the text. The cut-off is not in the provider's
+ * response contract (ai-engine ScoredOutcome); it stays in the serving config and alarm-levels notes, and
+ * exposing it from the engine is after Saturday (Claude, #1227 7204404478).
  */
 export function readOwnScanScoreReceipt(data: unknown, receipt: ProviderReceipts["own"]): OwnScanScoreReceipt | undefined {
   // Codex (#1227): only a receipt the provider parser validated and scored (trace, mode, region, model and all
   // seven scores in range) may be logged. The receipt keeps flagged scores only, so the quiet top score comes
-  // from the same raw outcome the parser just validated, plus its language and cut-off.
+  // from the same raw outcome the parser just validated, plus its language.
   if (receipt?.status !== "scored") return undefined;
   if (!record(data) || !record(data.outcomes) || !record(data.outcomes.own)) return undefined;
   const raw = data.outcomes.own;
@@ -149,6 +150,5 @@ export function readOwnScanScoreReceipt(data: unknown, receipt: ProviderReceipts
     lang: typeof raw.language === "string" && languages.has(raw.language) ? raw.language : null,
     topCategory,
     topScore: topScore === null ? null : Math.round(topScore * 10_000) / 10_000,
-    cutoff: typeof raw.cutoff === "number" && Number.isFinite(raw.cutoff) ? raw.cutoff : null,
   };
 }
