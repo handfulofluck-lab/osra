@@ -6,6 +6,10 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import com.familyshield.agent.security.AccessibilityServiceListPolicy
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 
 /**
  * Issue #1131: Android 13+ (API 33) blocks sideloaded apps from enabling Accessibility until the
@@ -91,4 +95,40 @@ object RestrictedSettingsPolicy {
     fun appInfoIntent(packageName: String): Intent =
         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+}
+
+/**
+ * Issue #1131 review: observes [runningState] while the Accessibility onboarding step (or checklist
+ * with Accessibility ungranted) is visible in the foreground, so a parent who returns from Settings
+ * before Android finishes binding the accessibility service advances automatically the moment the
+ * bind arrives instead of stalling on a stale resume snapshot.
+ *
+ * Stops observing immediately on [stop] (called when the screen changes or the activity pauses).
+ */
+class AccessibilityBindObserver(
+    private val runningState: StateFlow<Boolean>,
+    private val isAccessibilityGranted: () -> Boolean,
+    private val onBoundWhileVisible: () -> Unit,
+) {
+    private var observeJob: Job? = null
+
+    val isObserving: Boolean
+        get() = observeJob?.isActive == true
+
+    fun start(scope: CoroutineScope) {
+        stop()
+        observeJob = scope.launch {
+            runningState.collect { running ->
+                if (running && isAccessibilityGranted()) {
+                    stop()
+                    onBoundWhileVisible()
+                }
+            }
+        }
+    }
+
+    fun stop() {
+        observeJob?.cancel()
+        observeJob = null
+    }
 }

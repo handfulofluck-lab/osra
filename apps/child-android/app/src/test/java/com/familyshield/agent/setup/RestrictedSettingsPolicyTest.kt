@@ -1,5 +1,11 @@
 package com.familyshield.agent.setup
 
+import com.familyshield.agent.services.AccessibilityMonitorService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -94,6 +100,10 @@ class RestrictedSettingsPolicyTest {
         assertTrue(activity.contains("RestrictedSettingsPolicy.requiresGuide"))
         assertTrue(activity.contains("RestrictedSettingsPolicy.isolateServiceLabel"))
         assertTrue(activity.contains("grants.appInfoIntent()"))
+        assertTrue(activity.contains("AccessibilityMonitorService.runningState"))
+        assertTrue(activity.contains("accessibilityBindObserver.start(lifecycleScope)"))
+        assertTrue(activity.contains("accessibilityBindObserver.stop()"))
+        assertTrue(activity.contains("override fun onPause()"))
 
         for (key in listOf(
             "restricted_settings_step_1",
@@ -108,6 +118,137 @@ class RestrictedSettingsPolicyTest {
         // Arabic Bureau #1131 (7168407917): no "top right" direction hardcoding and no Latin "Android".
         assertTrue(arStrings.contains("في أعلى الشاشة"))
         assertTrue(arStrings.contains("السماح بالإعدادات المحظورة"))
+    }
+
+    @Test
+    fun `return before bind followed by bind while visible advances once and stops observing`() {
+        val running = MutableStateFlow(false)
+        val scope = CoroutineScope(Dispatchers.Unconfined + Job())
+        var advances = 0
+        val observer = AccessibilityBindObserver(
+            runningState = running,
+            isAccessibilityGranted = {
+                RestrictedSettingsPolicy.isAccessibilityBoundAndEnabled(
+                    enabledServicesSetting = enabledList,
+                    packageName = pkg,
+                    serviceClassName = service,
+                    isServiceRunning = running.value,
+                )
+            },
+            onBoundWhileVisible = { advances += 1 },
+        )
+        try {
+            // Parent returned to PairingActivity before Android finished binding -> still waiting.
+            observer.start(scope)
+            assertTrue(observer.isObserving)
+            assertEquals(0, advances)
+
+            // Android finishes binding while the Accessibility step is still visible -> advances now.
+            running.value = true
+            assertEquals(1, advances)
+            assertFalse(observer.isObserving)
+
+            // Subsequent flips do not re-trigger once stopped.
+            running.value = false
+            running.value = true
+            assertEquals(1, advances)
+        } finally {
+            observer.stop()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `stopping observer when leaving foreground ignores later bind`() {
+        val running = MutableStateFlow(false)
+        val scope = CoroutineScope(Dispatchers.Unconfined + Job())
+        var advances = 0
+        val observer = AccessibilityBindObserver(
+            runningState = running,
+            isAccessibilityGranted = {
+                RestrictedSettingsPolicy.isAccessibilityBoundAndEnabled(
+                    enabledServicesSetting = enabledList,
+                    packageName = pkg,
+                    serviceClassName = service,
+                    isServiceRunning = running.value,
+                )
+            },
+            onBoundWhileVisible = { advances += 1 },
+        )
+        try {
+            observer.start(scope)
+            assertTrue(observer.isObserving)
+
+            // Activity pauses / leaves foreground.
+            observer.stop()
+            assertFalse(observer.isObserving)
+
+            // Service binds while backgrounded -> observer must not fire.
+            running.value = true
+            assertEquals(0, advances)
+        } finally {
+            observer.stop()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `bind that arrives before observer subscribes advances immediately without stalling`() {
+        val running = MutableStateFlow(true)
+        val scope = CoroutineScope(Dispatchers.Unconfined + Job())
+        var advances = 0
+        val observer = AccessibilityBindObserver(
+            runningState = running,
+            isAccessibilityGranted = {
+                RestrictedSettingsPolicy.isAccessibilityBoundAndEnabled(
+                    enabledServicesSetting = enabledList,
+                    packageName = pkg,
+                    serviceClassName = service,
+                    isServiceRunning = running.value,
+                )
+            },
+            onBoundWhileVisible = { advances += 1 },
+        )
+        try {
+            observer.start(scope)
+            assertEquals(1, advances)
+            assertFalse(observer.isObserving)
+        } finally {
+            observer.stop()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `AccessibilityMonitorService isRunning transitions drive runningState observer`() {
+        val previous = AccessibilityMonitorService.isRunning
+        val scope = CoroutineScope(Dispatchers.Unconfined + Job())
+        var advances = 0
+        try {
+            AccessibilityMonitorService.isRunning = false
+            val observer = AccessibilityBindObserver(
+                runningState = AccessibilityMonitorService.runningState,
+                isAccessibilityGranted = {
+                    RestrictedSettingsPolicy.isAccessibilityBoundAndEnabled(
+                        enabledServicesSetting = enabledList,
+                        packageName = pkg,
+                        serviceClassName = service,
+                        isServiceRunning = AccessibilityMonitorService.isRunning,
+                    )
+                },
+                onBoundWhileVisible = { advances += 1 },
+            )
+            observer.start(scope)
+            assertTrue(observer.isObserving)
+            assertEquals(0, advances)
+
+            AccessibilityMonitorService.isRunning = true
+            assertEquals(1, advances)
+            assertFalse(observer.isObserving)
+        } finally {
+            AccessibilityMonitorService.isRunning = previous
+            scope.cancel()
+        }
     }
 
     private fun findAppSrcRoot(): File {

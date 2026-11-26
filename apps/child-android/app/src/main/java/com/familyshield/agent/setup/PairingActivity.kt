@@ -289,6 +289,23 @@ class PairingActivity : ComponentActivity() {
     private var forceChecklistView = false
     private val skippedPermissionSteps = mutableSetOf<OnboardingPolicy.Grant>()
 
+    /**
+     * Issue #1131 review: observes [AccessibilityMonitorService.runningState] only while an
+     * ungranted Accessibility step or checklist is visible in the foreground, so returning from
+     * Settings before Android finishes binding advances automatically when `onServiceConnected`
+     * fires instead of stalling on a stale resume snapshot.
+     */
+    private val accessibilityBindObserver by lazy {
+        AccessibilityBindObserver(
+            runningState = com.familyshield.agent.services.AccessibilityMonitorService.runningState,
+            isAccessibilityGranted = { grants.isGranted(OnboardingPolicy.Grant.ACCESSIBILITY) },
+            onBoundWhileVisible = {
+                commsCapture.onPermissionsChanged()
+                onPermissionOrActionReturned()
+            },
+        )
+    }
+
     private val guidedBackCallback: androidx.activity.OnBackPressedCallback =
         object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -342,7 +359,13 @@ class PairingActivity : ComponentActivity() {
         )
     }
 
+    override fun onPause() {
+        accessibilityBindObserver.stop()
+        super.onPause()
+    }
+
     override fun onStop() {
+        accessibilityBindObserver.stop()
         runCatching { unregisterReceiver(unlinkedReceiver) }
         super.onStop()
     }
@@ -874,6 +897,12 @@ class PairingActivity : ComponentActivity() {
         replaceWithCompose {
             OnboardingChecklistScreen(copy = copy)
         }
+        if (
+            rows.any { it.grant == OnboardingPolicy.Grant.ACCESSIBILITY && !it.granted } &&
+            lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+        ) {
+            accessibilityBindObserver.start(lifecycleScope)
+        }
     }
 
     private fun nextUngrantedPermissionStep(rows: List<OnboardingPolicy.Row>): OnboardingPolicy.Row? =
@@ -949,6 +978,13 @@ class PairingActivity : ComponentActivity() {
                     showChecklist(rows, firstRun)
                 },
             )
+        }
+        if (
+            g == OnboardingPolicy.Grant.ACCESSIBILITY &&
+            !row.granted &&
+            lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+        ) {
+            accessibilityBindObserver.start(lifecycleScope)
         }
     }
 
@@ -1403,6 +1439,7 @@ class PairingActivity : ComponentActivity() {
     // ---- view helpers ----
 
     private fun replaceWith(build: LinearLayout.() -> Unit) {
+        accessibilityBindObserver.stop()
         val pad = (16 * resources.displayMetrics.density).toInt()
         root.setPadding(pad, pad, pad, pad)
         root.removeAllViews()
@@ -1410,6 +1447,7 @@ class PairingActivity : ComponentActivity() {
     }
 
     private fun replaceWithCompose(content: @androidx.compose.runtime.Composable () -> Unit) {
+        accessibilityBindObserver.stop()
         root.setPadding(0, 0, 0, 0)
         root.removeAllViews()
         root.addView(
