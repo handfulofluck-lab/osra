@@ -156,4 +156,30 @@ class EssentialPackagesTest {
         // ...but never over a call.
         assertFalse(LockEnforcementPolicy.shouldReraise("locked", "com.samsung.android.dialer", "com.familyshield.agent", facts))
     }
+
+    @Test
+    fun `a system OEM security centre or permission prompt is never covered (issue 1096)`() {
+        val setup = listOf(
+            "com.miui.securitycenter",
+            "com.google.android.permissioncontroller",
+            "com.android.permissioncontroller",
+            "com.samsung.android.lool",
+            "com.coloros.safecenter",
+            "com.huawei.systemmanager",
+        )
+        val facts = FakeFacts(system = setup.toSet())
+        for (pkg in setup) {
+            assertTrue("$pkg as a system app must stay reachable during setup", EssentialPackages.isEssential(pkg, facts))
+        }
+    }
+
+    @Test
+    fun `a sideloaded app named like an OEM security centre stays blockable (issue 1096)`() {
+        // The Full build is sideloaded: a child can install com.miui.securitycenter on a Samsung.
+        val facts = FakeFacts()
+        for (pkg in EssentialPackages.SYSTEM_SETUP_SURFACES) {
+            assertFalse("$pkg that is not a system app must not be exempt", EssentialPackages.isEssential(pkg, facts))
+            assertFalse("$pkg must not be on the name-only set", EssentialPackages.isEssential(pkg))
+        }
+    }
 }
