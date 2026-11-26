@@ -37,8 +37,8 @@ void main() {
 
   test('setup completion has localized title and body, with generic lock-screen body', () {
     final row = alert(type: 'setup_complete', bodyKey: 'alertBodySetupCompleted', bodyParams: {'childName': 'Child One'});
-    expect(formatGeneralAlertBody(row, l10n: en, localeName: 'en'), "${ltrIsolate('Child One')}'s phone is protected.");
-    expect(formatGeneralAlertBody(row, l10n: ar, localeName: 'ar'), 'هاتف ${ltrIsolate('Child One')} محمي.');
+    expect(formatGeneralAlertBody(row, l10n: en, localeName: 'en'), "${firstStrongIsolate('Child One')}'s phone is protected.");
+    expect(formatGeneralAlertBody(row, l10n: ar, localeName: 'ar'), 'هاتف ${firstStrongIsolate('Child One')} محمي.');
     expect(ar.alertTitleFor('tamper', row.title, isEnglish: false, tamperType: 'setup_complete'), 'الهاتف محمي');
     final visible = VisibleAlert.from(row, l10n: ar, isEnglish: false);
     expect(visible.title, 'الهاتف محمي');
@@ -54,11 +54,11 @@ void main() {
     );
     expect(
       formatGeneralAlertBody(row, l10n: en, localeName: 'en'),
-      "Setup on ${ltrIsolate('Child One')}'s phone is not complete after 30 minutes: Accessibility service, Display over other apps",
+      "${firstStrongIsolate('Child One')}'s phone still has 2 setup steps left after 30 minutes: Accessibility service, Display over other apps.",
     );
     expect(
       formatGeneralAlertBody(row, l10n: ar, localeName: 'ar'),
-      'لم يكتمل إعداد هاتف ${ltrIsolate('Child One')} بعد 30 دقيقة: خدمة إمكانية الوصول، العرض فوق التطبيقات الأخرى',
+      'مرّت 30 دقيقة، وتبقى خطوتان في إعداد هاتف ${firstStrongIsolate('Child One')}: خدمة إمكانية الوصول، العرض فوق التطبيقات الأخرى',
     );
     expect(ar.alertTitleFor('tamper', row.title, isEnglish: false, tamperType: 'setup_incomplete'), 'إعداد الهاتف يحتاج إلى متابعة');
   });
@@ -71,7 +71,7 @@ void main() {
     );
     expect(
       formatGeneralAlertBody(row, l10n: ar, localeName: 'ar'),
-      'أعيد تثبيت تطبيق أسرة على ${ltrIsolate('Pixel 7a')}. وكانت الحماية متوقفة حتى إعادة الاقتران.',
+      'أُعيد تثبيت تطبيق أسرة للأطفال على ${ltrIsolate('Pixel 7a')}، وكانت الحماية متوقفة إلى أن أُعيد الإقران.',
     );
     expect(VisibleAlert.from(row, l10n: ar, isEnglish: false).title, 'مُسحت بيانات تطبيق أسرة للأطفال على أحد الهواتف');
   });

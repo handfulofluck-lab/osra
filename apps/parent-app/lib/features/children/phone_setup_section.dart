@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
+import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/app_tokens.dart';
 import '../dashboard/dashboard_screen.dart' show formatLastSeen;
@@ -104,7 +105,7 @@ class PhoneSetupSection extends StatelessWidget {
               device.setupCompletedAt == null
                   ? (childName == null
                       ? l10n.phoneSetupStepsLeftThisPhone(setup.missing.length)
-                      : l10n.phoneSetupStepsLeft(childName!, setup.missing.length))
+                      : l10n.phoneSetupStepsLeft(firstStrongIsolate(childName!), setup.missing.length))
                   : l10n.phoneSetupFixList,
             ),
             for (final grant in setup.missing)

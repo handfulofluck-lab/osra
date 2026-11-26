@@ -1938,7 +1938,7 @@
   "alertTitleSetupIncomplete": "Phone setup needs attention",
   "alertBodySetupCompleted": "{childName}'s phone is protected.",
   "@alertBodySetupCompleted": { "placeholders": { "childName": { "type": "String" } } },
-  "alertBodySetupIncomplete": "Setup on {childName}'s phone is not complete after 30 minutes{steps}",
+  "alertBodySetupIncomplete": "{childName}'s phone still has {count, plural, =1{1 setup step} other{{count} setup steps}} left after 30 minutes{steps}.",
   "@alertBodySetupIncomplete": { "placeholders": { "childName": { "type": "String" }, "count": { "type": "int" }, "steps": { "type": "String" } } },
   "alertBodyDataCleared": "OSRA was reinstalled on {model}. Its protection was off until it was paired again.",
   "@alertBodyDataCleared": { "placeholders": { "model": { "type": "String" } } }

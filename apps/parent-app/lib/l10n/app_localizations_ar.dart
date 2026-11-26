@@ -3835,11 +3835,20 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String alertBodySetupIncomplete(String childName, int count, String steps) {
-    return 'لم يكتمل إعداد هاتف $childName بعد 30 دقيقة$steps';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count خطوة',
+      many: '$count خطوة',
+      few: '$count خطوات',
+      two: 'خطوتان',
+      one: 'خطوة واحدة',
+    );
+    return 'مرّت 30 دقيقة، وتبقى $_temp0 في إعداد هاتف $childName$steps';
   }
 
   @override
   String alertBodyDataCleared(String model) {
-    return 'أعيد تثبيت تطبيق أسرة على $model. وكانت الحماية متوقفة حتى إعادة الاقتران.';
+    return 'أُعيد تثبيت تطبيق أسرة للأطفال على $model، وكانت الحماية متوقفة إلى أن أُعيد الإقران.';
   }
 }

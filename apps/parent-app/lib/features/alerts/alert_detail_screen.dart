@@ -55,7 +55,7 @@ String formatGeneralAlertBody(
   switch (alert.metadata['bodyKey']) {
     case 'alertBodySetupCompleted':
       final childName = param('childName');
-      if (childName.isNotEmpty) return l10n.alertBodySetupCompleted(ltrIsolate(childName));
+      if (childName.isNotEmpty) return l10n.alertBodySetupCompleted(firstStrongIsolate(childName));
     case 'alertBodySetupIncomplete':
       final childName = param('childName');
       final count = params['count'] is num ? params['count'] as num : num.tryParse(param('count'));
@@ -64,7 +64,7 @@ String formatGeneralAlertBody(
         final steps = rawMissing is List
             ? rawMissing.map((grant) => PhoneSetupSection.grantLabel(l10n, grant.toString())).join(l10n.listSeparator)
             : (isEnglish ? param('steps') : '');
-        return l10n.alertBodySetupIncomplete(ltrIsolate(childName), count.toInt(), steps.isEmpty ? '' : ': $steps');
+        return l10n.alertBodySetupIncomplete(firstStrongIsolate(childName), count.toInt(), steps.isEmpty ? '' : ': $steps');
       }
     case 'alertBodyDataCleared':
       final model = param('model');

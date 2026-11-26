@@ -3603,7 +3603,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String alertBodySetupIncomplete(String childName, int count, String steps) {
-    return 'Setup on $childName\'s phone is not complete after 30 minutes$steps';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count setup steps',
+      one: '1 setup step',
+    );
+    return '$childName\'s phone still has $_temp0 left after 30 minutes$steps.';
   }
 
   @override
