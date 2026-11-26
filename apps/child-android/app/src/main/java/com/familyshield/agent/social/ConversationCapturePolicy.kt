@@ -4,9 +4,6 @@ package com.familyshield.agent.social
 object ConversationCapturePolicy {
     const val MAX_MESSAGES_PER_EVENT: Int = 20
     private const val MAX_OCCURRENCE_SIGNATURES: Int = 128
-    private const val CONVERSATION_CONTACT_NAME = "com.whatsapp:id/conversation_contact_name"
-    private const val CONVERSATION_TEXT_ROW = "com.whatsapp:id/conversation_text_row"
-    private const val MESSAGE_TEXT = "com.whatsapp:id/message_text"
 
     data class VisibleNode(
         val text: String?,
@@ -14,20 +11,23 @@ object ConversationCapturePolicy {
         val className: String,
         val isEditable: Boolean,
         val isFocused: Boolean,
+        val parentViewIdResourceName: String = "",
     )
 
     data class Conversation(val contact: String?, val messages: List<String>)
     data class Capture(val appKey: String, val contact: String?, val text: String, val occurrenceId: String)
 
-    fun parse(nodes: List<VisibleNode>): Conversation? {
+    fun parse(nodes: List<VisibleNode>, packageId: String = "com.whatsapp"): Conversation? {
         if (nodes.isEmpty()) return null
-        val hasHeader = nodes.any { it.viewIdResourceName == CONVERSATION_CONTACT_NAME }
-        val hasMessageRow = nodes.any { it.viewIdResourceName == CONVERSATION_TEXT_ROW }
+        val hasHeader = nodes.any { matches(it.viewIdResourceName, "conversation_contact_name", packageId) }
+        val hasMessageRow = nodes.any { matches(it.viewIdResourceName, "conversation_text_row", packageId) }
         if (!hasHeader || !hasMessageRow) return null
-        val contact = nodes.firstOrNull { it.viewIdResourceName == CONVERSATION_CONTACT_NAME }
+        val contact = nodes.firstOrNull { matches(it.viewIdResourceName, "conversation_contact_name", packageId) }
             ?.text?.trim()?.takeIf { it.isNotEmpty() }
         val messages = nodes.filter {
-            it.viewIdResourceName == MESSAGE_TEXT && !it.isEditable && !it.isFocused && !it.text.isNullOrBlank()
+            matches(it.viewIdResourceName, "message_text", packageId) &&
+                matches(it.parentViewIdResourceName, "conversation_text_row", packageId) &&
+                !it.isEditable && !it.isFocused && !it.text.isNullOrBlank()
         }.map { it.text!!.trim() }.filter { !isNoise(it) }.takeLast(MAX_MESSAGES_PER_EVENT)
         if (messages.isEmpty()) return null
         return Conversation(contact, messages)
@@ -52,7 +52,7 @@ object ConversationCapturePolicy {
             nodes: List<VisibleNode>,
             packageId: String = "com.whatsapp",
         ): List<Capture> {
-            val conversation = parse(nodes) ?: return emptyList()
+            val conversation = parse(nodes, packageId) ?: return emptyList()
             return newCaptures(appKey, conversation, packageId)
         }
 
@@ -70,8 +70,8 @@ object ConversationCapturePolicy {
             conversation.messages.forEachIndexed { index, text ->
                 val previousText = conversation.messages.getOrNull(index - 1)
                 val nextText = conversation.messages.getOrNull(index + 1)
-                val predecessor = "P\u0000$previousText\u0000$text"
-                val successor = "S\u0000$text\u0000$nextText"
+                val predecessor = occurrenceSignature("P\u0000$previousText\u0000$text")
+                val successor = occurrenceSignature("S\u0000$text\u0000$nextText")
                 val isNew = predecessor !in signatures &&
                     (index == conversation.messages.lastIndex || successor !in signatures)
                 if (isNew) {
@@ -109,6 +109,25 @@ object ConversationCapturePolicy {
                 seen.remove(oldest)
             }
         }
+    }
+
+    fun occurrenceSignature(raw: String): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it) }
+    }
+
+    fun isStructuralMarker(viewIdResourceName: String): Boolean = listOf(
+        "conversation_contact_name",
+        "conversation_text_row",
+        "message_text",
+    ).any { base ->
+        viewIdResourceName == "com.whatsapp:id/$base" || viewIdResourceName == "com.whatsapp.w4b:id/$base"
+    }
+
+    private fun matches(actual: String, base: String, packageId: String): Boolean = when (packageId) {
+        "com.whatsapp" -> actual == "com.whatsapp:id/$base"
+        "com.whatsapp.w4b" -> actual == "com.whatsapp.w4b:id/$base"
+        else -> false
     }
 
     private fun isNoise(text: String): Boolean {

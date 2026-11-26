@@ -74,10 +74,10 @@ class SocialCapture @Inject constructor(
     }
 
     /** Depth-first collection of visible text/content-desc, stopping at [MAX_CAPTURE_CHARS]. */
-    private fun collectVisibleText(node: AccessibilityNodeInfo?, budget: StringBuilder, out: MutableList<ConversationCapturePolicy.VisibleNode>) {
+    internal fun collectVisibleText(node: AccessibilityNodeInfo?, budget: StringBuilder, out: MutableList<ConversationCapturePolicy.VisibleNode>) {
         if (node == null || !node.isVisibleToUser || budget.length >= MAX_CAPTURE_CHARS) return
         val text = node.text?.toString() ?: node.contentDescription?.toString()
-        if (!text.isNullOrBlank()) {
+        if (!text.isNullOrBlank() || ConversationCapturePolicy.isStructuralMarker(node.viewIdResourceName.orEmpty())) {
             out.add(
                 ConversationCapturePolicy.VisibleNode(
                     text = text,
@@ -85,6 +85,7 @@ class SocialCapture @Inject constructor(
                     className = node.className?.toString().orEmpty(),
                     isEditable = node.isEditable,
                     isFocused = node.isFocused,
+                    parentViewIdResourceName = node.parent?.viewIdResourceName.orEmpty(),
                 ),
             )
             budget.append(text).append('\n')
@@ -96,6 +97,8 @@ class SocialCapture @Inject constructor(
             if (budget.length >= MAX_CAPTURE_CHARS) return
         }
     }
+
+    fun onMonitoringPaused() = conversationSeen.clear()
 
     companion object {
         /** Max characters collected from the node tree per accessibility event. */

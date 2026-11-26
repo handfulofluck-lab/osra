@@ -15,20 +15,33 @@ class ConversationCapturePolicyTest {
         className: String = "android.widget.TextView",
         editable: Boolean = false,
         focused: Boolean = false,
-    ) = ConversationCapturePolicy.VisibleNode(text, id, className, editable, focused)
+        parentViewIdResourceName: String = "",
+    ) = ConversationCapturePolicy.VisibleNode(text, id, className, editable, focused, parentViewIdResourceName)
 
-    private fun header(name: String? = "Alex Rivera") = node(name, "com.whatsapp:id/conversation_contact_name")
-    private fun row() = node(null, "com.whatsapp:id/conversation_text_row", "android.widget.FrameLayout")
-    private fun bubble(text: String) = node(text, "com.whatsapp:id/message_text")
+    private fun resource(base: String, packageId: String): String = when (packageId) {
+        "com.whatsapp" -> "com.whatsapp:id/$base"
+        "com.whatsapp.w4b" -> "com.whatsapp.w4b:id/$base"
+        else -> "unsupported.example:id/$base"
+    }
+
+    private fun header(name: String? = "Alex Rivera", packageId: String = "com.whatsapp") =
+        node(name, resource("conversation_contact_name", packageId))
+    private fun row(packageId: String = "com.whatsapp") =
+        node(null, resource("conversation_text_row", packageId), "android.widget.FrameLayout")
+    private fun bubble(text: String, packageId: String = "com.whatsapp") = node(
+        text,
+        resource("message_text", packageId),
+        parentViewIdResourceName = resource("conversation_text_row", packageId),
+    )
 
     private fun conversation(
         contact: String?,
         messages: List<String>,
         packageId: String = "com.whatsapp",
     ): List<ConversationCapturePolicy.VisibleNode> = buildList {
-        add(header(contact))
-        add(row())
-        messages.forEach { add(bubble(it)) }
+        add(header(contact, packageId))
+        add(row(packageId))
+        messages.forEach { add(bubble(it, packageId)) }
         if (packageId != "com.whatsapp") {
             add(node("com.whatsapp.w4b", "android.app.Activity", "com.whatsapp.w4b.Conversation"))
         }
@@ -123,7 +136,7 @@ class ConversationCapturePolicyTest {
 
     @Test
     fun `unknown layout and partial message row fail closed`() {
-        assertNull(ConversationCapturePolicy.parse(listOf(header(), bubble("not a recognised row"))))
+        assertNull(ConversationCapturePolicy.parse(listOf(header(), bubble("not a recognised row").copy(parentViewIdResourceName = "com.whatsapp:id/other"))))
         assertNull(ConversationCapturePolicy.parse(listOf(node("navigation label", "com.whatsapp:id/menu"))))
     }
 
@@ -160,6 +173,16 @@ class ConversationCapturePolicyTest {
 
         assertEquals(1, tracker.trackedConversations)
         assertEquals(1, tracker.newCaptures("whatsapp", conversation("Alex", listOf("one"))).size)
+    }
+
+    @Test
+    fun `occurrence signatures are opaque and deterministic`() {
+        val first = ConversationCapturePolicy.occurrenceSignature("sensitive message text")
+        val second = ConversationCapturePolicy.occurrenceSignature("sensitive message text")
+
+        assertEquals(first, second)
+        assertEquals(64, first.length)
+        assertTrue(!first.contains("sensitive message text"))
     }
 
     @Test
