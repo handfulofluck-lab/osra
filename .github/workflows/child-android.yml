@@ -2,7 +2,7 @@ name: Child Android
 
 # The child agent (Android JVM unit tests, no emulator). Until 2026-10-24 this was the `child-android` job of
 # ci.yml and ran on every pull request; now it runs when the agent changes, on main when it changes, and
-# nightly on main whatever changed. `scripts/check-merged-manifest-gate.mjs` runs from the repository root in
+# weekly on main whatever changed. `scripts/check-merged-manifest-gate.mjs` runs from the repository root in
 # this job, so a change to it runs the job too. `scripts/check-ci-paths.mjs` keeps the two lists identical,
 # makes sure they name this file, and fails if a `node scripts/…` step here is not covered by them.
 on:
@@ -18,7 +18,7 @@ on:
       - "scripts/check-merged-manifest-gate.mjs"
       - ".github/workflows/child-android.yml"
   schedule:
-    - cron: "11 2 * * *"
+    - cron: "11 2 * * 1"
   workflow_dispatch:
 
 concurrency:
@@ -45,6 +45,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
       # Plan 1.8: same upload keystore as the parent app, materialised from the secret when present.
       # The build refuses a signed release without google-services.json (#409), and refuses a half-configured
       # one (any of the four OSRA_UPLOAD_* variables without the rest). So the keystore and its three passwords
@@ -180,6 +181,31 @@ jobs:
           grep -q 'cleartextTrafficPermitted="true"' app/src/debug/res/xml/network_security_config.xml \
             || { echo "::error::debug cleartext is not on"; exit 1; }
           echo "debug cleartext on (dev servers)"
+      - name: Release APKs carry no debug test-chat capture filter
+        run: |
+          for FLAVOUR in play full; do
+            REL_APK="app/build/outputs/apk/$FLAVOUR/release/app-$FLAVOUR-release.apk"
+            DBG_APK="app/build/outputs/apk/$FLAVOUR/debug/app-$FLAVOUR-debug.apk"
+            [ -f "$REL_APK" ] || { echo "::error::$REL_APK is missing"; exit 1; }
+            [ -f "$DBG_APK" ] || { echo "::error::$DBG_APK is missing"; exit 1; }
+            python3 - "$REL_APK" "$DBG_APK" <<'PY'
+          import sys, zipfile
+          needle = b"osra_test_chat_filter"
+          def count_hits(apk):
+              with zipfile.ZipFile(apk) as z:
+                  return sum(z.read(n).count(needle) for n in z.namelist() if n.endswith(".dex"))
+          rel_apk, dbg_apk = sys.argv[1], sys.argv[2]
+          rel_hits = count_hits(rel_apk)
+          dbg_hits = count_hits(dbg_apk)
+          print(f"{rel_apk}: hits={rel_hits}; {dbg_apk}: positive-control hits={dbg_hits}")
+          if rel_hits != 0:
+              print(f"::error::{rel_apk} contains debug test-chat filter sentinel ({rel_hits} hits)")
+              sys.exit(1)
+          if dbg_hits < 1:
+              print(f"::error::{dbg_apk} missing debug test-chat filter sentinel (positive control failed)")
+              sys.exit(1)
+          PY
+          done
       # RELEASING.md R4 counts on these artefacts, so an empty upload fails the job instead of warning.
       - uses: actions/upload-artifact@v4
         with:

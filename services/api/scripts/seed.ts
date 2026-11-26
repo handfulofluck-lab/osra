@@ -4,6 +4,8 @@ import argon2 from "argon2";
 import { resolveDemoPassword } from "./seed-password.js";
 
 const prisma = new PrismaClient();
+const CURRENT_DEMO_EMAIL = "demo@osratech.com";
+const LEGACY_DEMO_EMAIL = "demo@familyshield.dev";
 
 /** Idempotent seed per spec §3: running twice must not duplicate rows. */
 async function main() {
@@ -14,17 +16,23 @@ async function main() {
     (await prisma.family.findFirst({ where: { name: "Demo Family" } })) ??
     (await prisma.family.create({ data: { name: "Demo Family", region: "US" } }));
 
-  const parent = await prisma.parent.upsert({
-    where: { email: "demo@familyshield.dev" },
-    update: {},
-    create: {
-      familyId: family.id,
-      email: "demo@familyshield.dev",
-      passwordHash,
-      displayName: "Demo Parent",
-      role: "owner",
-    },
-  });
+  const legacyParent = await prisma.parent.findUnique({ where: { email: LEGACY_DEMO_EMAIL } });
+  const parent = legacyParent
+    ? await prisma.parent.update({
+        where: { id: legacyParent.id },
+        data: { email: CURRENT_DEMO_EMAIL },
+      })
+    : await prisma.parent.upsert({
+        where: { email: CURRENT_DEMO_EMAIL },
+        update: {},
+        create: {
+          familyId: family.id,
+          email: CURRENT_DEMO_EMAIL,
+          passwordHash,
+          displayName: "Demo Parent",
+          role: "owner",
+        },
+      });
 
   const child =
     (await prisma.child.findFirst({
@@ -61,6 +69,10 @@ async function main() {
         model: "Pixel 7a",
         osVersion: "14",
         status: "online",
+        // Issue #790: the demo device is a family device the parent app draws and the probe checks the
+        // lists against, so it is paired from the start. Without this it would be pending, absent from
+        // `GET /v1/devices` and deleted by `jobs/pendingDevices.ts` half an hour after seeding.
+        pairedAt: new Date(),
         pushToken: "demo-token",
       },
     }));

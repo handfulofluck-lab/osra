@@ -125,4 +125,26 @@ final class CapabilityReportTests: XCTestCase {
         let body = try XCTUnwrap(JSONSerialization.jsonObject(with: sent.body) as? [String: Any])
         XCTAssertNil(body["capabilities"])
     }
+
+    /// #693: a developer-signed Release build is `dev`, not TestFlight; only App Store signing removes the profile.
+    func testEachKindOfBuildReportsItsFlavour() {
+        typealias C = CapabilityReport.Client
+        XCTAssertEqual(C.flavour(isDebug: true, hasEmbeddedProfile: true, receiptName: "sandboxReceipt"), .dev, "debug")
+        XCTAssertEqual(C.flavour(isDebug: false, hasEmbeddedProfile: true, receiptName: "sandboxReceipt"), .dev,
+                       "developer-signed Release on a device: has a profile and a sandbox receipt path")
+        XCTAssertEqual(C.flavour(isDebug: false, hasEmbeddedProfile: true, receiptName: nil), .dev, "ad hoc")
+        XCTAssertEqual(C.flavour(isDebug: false, hasEmbeddedProfile: false, receiptName: "sandboxReceipt"), .testflight)
+        XCTAssertEqual(C.flavour(isDebug: false, hasEmbeddedProfile: false, receiptName: "receipt"), .appstore)
+        XCTAssertEqual(C.flavour(isDebug: false, hasEmbeddedProfile: false, receiptName: nil), .appstore)
+    }
+
+    /// #693: the real build passes its real profile lookup, so the wiring cannot fall back to a constant.
+    func testCurrentReadsTheEmbeddedProfile() throws {
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent/CapabilityReport.swift")
+        let text = try String(contentsOf: source, encoding: .utf8)
+        XCTAssertTrue(text.contains(
+            #"hasEmbeddedProfile: bundle.path(forResource: "embedded", ofType: "mobileprovision") != nil"#))
+        XCTAssertTrue(text.contains("receiptName: bundle.appStoreReceiptURL?.lastPathComponent"))
+    }
 }

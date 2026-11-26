@@ -1,6 +1,9 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { getRedis } from "../redis.js";
 import { markDeviceRevoked } from "./deviceRevocation.js";
+import { stripAlertLocation } from "./alertLocation.js";
+import { hostOf, isExcludedSiteHost, siteVisitRetentionDays } from "./siteNames.js";
 
 /**
  * Phase 2c (ADR-0013): the durable usage model.
@@ -20,6 +23,12 @@ import { markDeviceRevoked } from "./deviceRevocation.js";
 
 /** Device-reported day total (telemetry `totalMinutes`), kept apart from per-app rows. */
 export const DEVICE_TOTAL_APP = "*";
+
+/** A phone cannot sensibly report more apps than this in one tick; beyond it the payload is a bug. */
+const MAX_APP_USAGE_ENTRIES = 200;
+
+/** Every minute of one day: a larger per-app figure is a broken counter, not a longer day. */
+const MAX_MINUTES_PER_DAY = 1440;
 
 const MS_PER_DAY = 86_400_000;
 
@@ -94,16 +103,17 @@ export function bucketEvents(events: IncomingEvent[]): {
       if (cur) cur.minutes += minutes;
       else usage.set(key, { day, app, minutes });
     } else if (e.type === "url") {
-      const url = typeof p.url === "string" ? p.url.slice(0, 2048) : "";
-      let domain = typeof p.domain === "string" && p.domain ? p.domain : "";
-      if (!domain && url) {
-        try { domain = new URL(url).hostname; } catch { domain = ""; }
-      }
-      if (!domain) domain = "unknown";
+      // #841 (Fable B1, Antigravity's direct-call finding): `bucketEvents` is also reached through
+      // `recordActivityUsage` without the route's gate, so the reduction has to live here too: the host
+      // only, never a path or query, and an address with no host is not a visit at all.
+      const rawUrl = typeof p.url === "string" ? p.url : "";
+      const rawDomain = typeof p.domain === "string" && p.domain ? p.domain : "";
+      const host = hostOf(rawDomain || rawUrl).slice(0, 253);
+      if (!host) continue;
       visits.push({
         ts,
-        domain: domain.toLowerCase().slice(0, 253),
-        url,
+        domain: host,
+        url: host,
         blocked: p.blocked === true,
         category: typeof p.category === "string" ? p.category.slice(0, 64) : "",
       });
@@ -121,14 +131,95 @@ async function addMinutes(childId: string, deviceId: string, day: Date, app: str
   });
 }
 
+/**
+ * #830 gating for the raw log: the same rule the `WebVisit` write uses, applied before
+ * `ActivityEvent` stores anything. Returns the events that may be kept, with a `url` event's payload
+ * reduced to the host — so a full address with a path or query never lands in the table a parent reads
+ * through `GET /v1/reports/activity?type=url`. While the flag is off an unblocked name is dropped
+ * here, not only at the rollup; a blocked attempt stays because it is the parent's rule reporting
+ * itself. Excluded hosts are dropped in both states.
+ */
+export function gateActivityEvents<T extends { type: string; payload: Record<string, unknown> }>(events: T[], siteNames: boolean): T[] {
+  const kept: T[] = [];
+  for (const event of events) {
+    if (event.type !== "url") {
+      kept.push(event);
+      continue;
+    }
+    const p = event.payload ?? {};
+    const raw = typeof p.url === "string" && p.url ? p.url : typeof p.domain === "string" ? p.domain : "";
+    const host = hostOf(raw).slice(0, 253);
+    if (!host || isExcludedSiteHost(host)) continue;
+    // Claude's ruling on #841 finding 5: with the flag off, no host is stored anywhere — a blocked
+    // attempt included. Its count reaches the parent through the alert, which is gated separately below.
+    if (!siteNames) continue;
+    const blocked = p.blocked === true;
+    const payload: Record<string, unknown> = { url: host, domain: host, blocked };
+    if (typeof p.category === "string" && p.category) payload.category = p.category.slice(0, 64);
+    kept.push({ ...event, payload });
+  }
+  return kept;
+}
+
 /** Ingestion hook: fold a device's activity batch into the rollup tables. Best-effort per row. */
-export async function recordActivityUsage(childId: string, deviceId: string, events: IncomingEvent[]): Promise<{ usageRows: number; visits: number }> {
+export async function recordActivityUsage(
+  childId: string,
+  deviceId: string,
+  events: IncomingEvent[],
+  options: { siteNames?: boolean } = {},
+): Promise<{ usageRows: number; visits: number }> {
   const { usage, visits } = bucketEvents(events);
   for (const { day, app, minutes } of usage.values()) await addMinutes(childId, deviceId, day, app, minutes);
-  if (visits.length > 0) {
-    await prisma.webVisit.createMany({ data: visits.map((v) => ({ childId, deviceId, ...v })) });
+  // #830 gating (Fable B1, Claude's conditions): with the flag off, a name that was not blocked never
+  // becomes a row — the server drops it even if a phone sends it. A blocked attempt is not browsing
+  // history (it is the parent's own rule reporting itself), so it stays. The exclusion list applies in
+  // both states: our API, the enforcement hosts and the OS connectivity checks are not sites the child
+  // visited.
+  // Claude's ruling on #841 finding 5: while the flag is off, **no host** is stored — visited or blocked.
+  // The blocked attempt still reaches the parent as a count (the alert row), with no name attached.
+  const keep = options.siteNames === true
+    ? visits.filter((v) => v.domain !== "unknown" && !isExcludedSiteHost(v.domain))
+    : [];
+  if (keep.length > 0) {
+    await prisma.webVisit.createMany({ data: keep.map((v) => ({ childId, deviceId, ...v })) });
   }
-  return { usageRows: usage.size, visits: visits.length };
+  return { usageRows: usage.size, visits: keep.length };
+}
+
+/**
+ * Ingestion hook (#830/S1): the per-app minutes a phone reports in telemetry, folded into the same
+ * `AppUsageDaily` rows the activity path writes.
+ *
+ * Until this existed the *only* per-app writer was [recordActivityUsage], which is fed by **persistent**
+ * activity events — and the child's only event producer marks its `app_usage` events `live`, which
+ * `routes/devices.ts` filters out of the persistent path on purpose (BUG-002). So `apps` was empty for
+ * every family on every device, while the day total (from `totalMinutes`) was right. That is exactly the
+ * "22 minutes, no breakdown" a parent saw on the Flip4.
+ *
+ * `*` is skipped: the total has its own writer ([recordDeviceTotal]) and two writers for one counter would
+ * double it. Entries are bounded, and a malformed one costs that entry rather than the upload — telemetry
+ * is the heartbeat, not the report.
+ */
+export async function recordAppUsage(
+  childId: string,
+  deviceId: string,
+  entries: ReadonlyArray<{ packageId: string; minutes: number }>,
+  at: Date = new Date(),
+): Promise<number> {
+  const day = utcDay(at);
+  let written = 0;
+  for (const entry of entries.slice(0, MAX_APP_USAGE_ENTRIES)) {
+    // N1 (Antigravity's review of #901): the same bounds `bucketEvents` applies — a 200-character package id
+    // and a 1440-minute ceiling, which is every minute of one day. Without them an oversized float reaches an
+    // `Int` column and a long id reaches a `text` one; neither should be able to fail the heartbeat.
+    const app = typeof entry?.packageId === "string" ? entry.packageId.trim().slice(0, 200) : "";
+    const raw = typeof entry?.minutes === "number" && Number.isFinite(entry.minutes) ? Math.round(entry.minutes) : 0;
+    const minutes = Math.min(raw, MAX_MINUTES_PER_DAY);
+    if (!app || app === DEVICE_TOTAL_APP || !(minutes > 0)) continue;
+    await addMinutes(childId, deviceId, day, app, minutes);
+    written += 1;
+  }
+  return written;
 }
 
 /** Telemetry hook: the device-reported running total for the day (delta windows accumulate, #31). */
@@ -159,7 +250,7 @@ export interface UsageDay {
 export async function usageSeries(childId: string, days: number, at: Date = new Date()): Promise<UsageDay[]> {
   const today = utcDay(at);
   const from = new Date(today.getTime() - (days - 1) * MS_PER_DAY);
-  const rows = await prisma.appUsageDaily.findMany({ where: { childId, day: { gte: from, lte: today } } });
+  const rows = (await prisma.appUsageDaily.findMany({ where: { childId, day: { gte: from, lte: today } } })) ?? [];
   const byDay = new Map<string, UsageDay>();
   for (let i = 0; i < days; i += 1) {
     const d = dayKey(new Date(from.getTime() + i * MS_PER_DAY));
@@ -246,6 +337,11 @@ export interface RetentionResult {
   usageDays: number;
   /** Play decision 10 B: alerts older than `ALERT_RETENTION_DAYS` (365, never raised). */
   alerts: number;
+  /**
+   * Issue #672 review (Fable B2): alerts still inside the year but past the location window whose five
+   * location keys were removed. The rows stay; only the place goes.
+   */
+  alertLocations: number;
 }
 
 /**
@@ -257,12 +353,18 @@ export interface RetentionResult {
  */
 export async function applyRetention(at: Date = new Date(), env: NodeJS.ProcessEnv = process.env): Promise<RetentionResult> {
   const rawCutoff = new Date(at.getTime() - retentionDays(env) * MS_PER_DAY);
+  // #830: site names keep their own, shorter window (90 days, named in the privacy notice and the
+  // Play form). A raised RETENTION_DAYS must not extend them silently.
+  const visitCutoff = new Date(at.getTime() - siteVisitRetentionDays(retentionDays(env)) * MS_PER_DAY);
   const locationCutoff = new Date(at.getTime() - locationRetentionDays(env) * MS_PER_DAY);
   const rollupCutoff = utcDay(new Date(at.getTime() - rollupRetentionDays(env) * MS_PER_DAY));
   const alertCutoff = new Date(at.getTime() - alertRetentionDays(env) * MS_PER_DAY);
-  const [a, w, s, l, u, al] = await Promise.all([
+  const [a, url, w, s, l, u, al] = await Promise.all([
     prisma.activityEvent.deleteMany({ where: { ts: { lt: rawCutoff } } }),
-    prisma.webVisit.deleteMany({ where: { ts: { lt: rawCutoff } } }),
+    // #830: `url` rows in the raw log are site names too, so they leave at the 90-day window rather
+    // than the raw one. Gating at ingestion stops new ones; this removes the older rows.
+    prisma.activityEvent.deleteMany({ where: { type: "url", ts: { lt: visitCutoff } } }),
+    prisma.webVisit.deleteMany({ where: { ts: { lt: visitCutoff } } }),
     prisma.socialEvent.deleteMany({ where: { createdAt: { lt: rawCutoff } } }),
     prisma.locationPing.deleteMany({ where: { timestamp: { lt: locationCutoff } } }),
     prisma.appUsageDaily.deleteMany({ where: { day: { lt: rollupCutoff } } }),
@@ -270,18 +372,40 @@ export async function applyRetention(at: Date = new Date(), env: NodeJS.ProcessE
     // erased, which is not a retention policy a data-safety form can describe.
     prisma.alert.deleteMany({ where: { createdAt: { lt: alertCutoff } } }),
   ]);
+  // Issue #672 review (Fable B2, ADR-0028 decision 5): a child's coordinates must not outlive the 30-day
+  // location window by riding inside an alert kept for up to a year — the privacy notice and the store
+  // data-safety answers both say 30 days. The alert stays (a parent must not lose the record of an SOS);
+  // the five keys come off. The scan is bounded by the alert year and costs one read per row that still
+  // has a location, on a nightly job.
+  const stale = (await prisma.alert.findMany({
+    where: { createdAt: { lt: locationCutoff } },
+    select: { id: true, metadata: true },
+  })) ?? [];
+  let alertLocations = 0;
+  for (const alert of stale) {
+    const stripped = stripAlertLocation((alert as { metadata?: unknown }).metadata);
+    if (stripped === null) continue;
+    // Prisma types a JSON column as InputJsonValue; the value is the same bag with five keys removed.
+    await prisma.alert.update({
+      where: { id: (alert as { id: string }).id },
+      data: { metadata: stripped as Prisma.InputJsonValue },
+    });
+    alertLocations += 1;
+  }
   return {
-    activityEvents: a.count,
+    activityEvents: a.count + url.count,
     webVisits: w.count,
     socialEvents: s.count,
     locationPings: l.count,
     usageDays: u.count,
     alerts: al.count,
+    alertLocations,
   };
 }
 
 /** Every child-scoped table, in an order that respects the foreign keys. Exported so a test can assert the list. */
 export const CHILD_SCOPED_DELETE_ORDER = [
+  "childInternetOperation",
   "deviceCommand",
   // Roadmap 3.4: the installed-app inventory is device-scoped but is child data; deleting it
   // explicitly (before the Device rows cascade) makes the GDPR erasure result countable.
@@ -289,6 +413,7 @@ export const CHILD_SCOPED_DELETE_ORDER = [
   "locationPing",
   "alert",
   "activityEvent",
+  "stagingScanOutcome",
   "socialEvent",
   "installRequest",
   "webVisit",
@@ -320,12 +445,16 @@ export interface EraseResult {
 export async function eraseChildData(childId: string, deviceTokenTtlSeconds: number): Promise<EraseResult> {
   const devices = await prisma.device.findMany({ where: { childId }, select: { id: true } });
   const deviceIds = devices.map((d) => d.id);
-  const results = await prisma.$transaction([
+  const [, ...results] = await prisma.$transaction([
+    // Serialize against child-wide internet requests before deleting their rows or device commands.
+    prisma.$queryRaw`SELECT id FROM "Child" WHERE id = ${childId} FOR UPDATE`,
+    prisma.childInternetOperation.deleteMany({ where: { childId } }),
     prisma.deviceCommand.deleteMany({ where: { deviceId: { in: deviceIds } } }),
     prisma.deviceApp.deleteMany({ where: { deviceId: { in: deviceIds } } }),
     prisma.locationPing.deleteMany({ where: { childId } }),
     prisma.alert.deleteMany({ where: { childId } }),
     prisma.activityEvent.deleteMany({ where: { childId } }),
+    prisma.stagingScanOutcome.deleteMany({ where: { childId } }),
     prisma.socialEvent.deleteMany({ where: { childId } }),
     prisma.installRequest.deleteMany({ where: { childId } }),
     prisma.webVisit.deleteMany({ where: { childId } }),

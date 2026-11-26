@@ -17,7 +17,7 @@ import { appendFileSync } from "node:fs";
 const API = process.env.API_BASE ?? "http://127.0.0.1:3000";
 // The seed's development credentials (services/api/scripts/seed.ts, used when SEED_DEMO_PASSWORD is
 // unset outside production); the same pair services/api/scripts/e2e.mjs logs in with.
-const PARENT = { email: "demo@familyshield.dev", password: "CorrectHorseBatteryStaple!" };
+const PARENT = { email: "demo@osratech.com", password: "CorrectHorseBatteryStaple!" };
 const RUN_MARKER = process.env.OSRA_TEST_RUN_MARKER ?? "";
 // What IntegrationTests/LiveAPITests.swift case 6 expects to sync. Keep the two in step.
 const LIVE_RULES = {

@@ -8,7 +8,7 @@ Suites at ship time: API **178** · Android JVM **146** · Desktop xunit **161**
 - Parent app: "Recommended protection" switch with confirm-to-disable.
 
 ## Phase 2 — Web enforcement (#3, #18, #11)
-- **HTTPS filtering (Windows)**: env-gated `FS_HTTPS_INSPECT=1` — generated self-signed root CA (`%LOCALAPPDATA%\FamilyShield\rootCert.pfx`, installed to CurrentUser\Root), Titanium TLS inspection, blocked categories fail closed over TLS. Off by default (documented trust implications).
+- **HTTPS filtering (Windows)**: env-gated `FS_HTTPS_INSPECT=1` — generated self-signed root CA (`%LOCALAPPDATA%\OSRA\rootCert.pfx`, installed to CurrentUser\Root; the folder was renamed by #608), Titanium TLS inspection, blocked categories fail closed over TLS. Off by default (documented trust implications).
 - **Pause the internet**: `pause_internet`/`resume_internet` commands + `POST /v1/controls/children/:id/pause|resume(-internet)`; Windows sinkholes at the proxy + kills non-allowed apps; Android full-screen pause overlay; dashboard "Internet" pill + per-device Pause net/Resume net buttons; status endpoint + Redis flag.
 
 ## Phase 3 — Social & messaging (#2, #6, #17, #27)

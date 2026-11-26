@@ -37,6 +37,7 @@ BUNDLE_IDS = {
     "OSRAAgentShieldAction": f"{APP_ID}.ShieldAction",
     "OSRAAgentHostedTests": f"{APP_ID}.HostedTests",
     "FamilyShieldAgentIntegrationTests": f"{APP_ID}.IntegrationTests",
+    "OSRAAgentUITests": f"{APP_ID}.UITests",
 }
 
 ENTITLEMENTS = [
@@ -46,7 +47,7 @@ ENTITLEMENTS = [
     "Extensions/ShieldAction/ShieldAction.entitlements",
 ]
 
-SWIFT_DIRS = ["Sources", "App", "Extensions", "HostedTests", "IntegrationTests", "Tests"]
+SWIFT_DIRS = ["Sources", "App", "Extensions", "HostedTests", "IntegrationTests", "Tests", "UITests"]
 
 # Swift constants that must spell the app group, as (file, declaration prefix).
 GROUP_CONSTANTS = [

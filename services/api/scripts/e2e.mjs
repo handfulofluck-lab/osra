@@ -177,7 +177,7 @@ const nextMessage = (channel) =>
   });
 
 // --- 1. Seeded parent login + /me envelope ---
-const login = await call("POST", "/v1/auth/login", { body: { email: "demo@familyshield.dev", password: "CorrectHorseBatteryStaple!" } });
+const login = await call("POST", "/v1/auth/login", { body: { email: "demo@osratech.com", password: "CorrectHorseBatteryStaple!" } });
 check("seeded parent login", login.status === 200 && !!login.data?.token);
 const token = login.data?.token;
 
@@ -359,7 +359,7 @@ check("GET device merges telemetry", devGet.status === 200 && devGet.data?.telem
 
 // --- 10. Cross-family isolation ---
 // Fixed email + login fallback: re-runs must not mint a new family every time.
-let reg2 = await call("POST", "/v1/auth/register", { body: { email: "e2e-crossfamily@example.com", password: "AnotherCorrectHorse!", displayName: "Eve", familyName: "Other Family", region: "EU" } });
+let reg2 = await call("POST", "/v1/auth/register", { body: { email: "e2e-crossfamily@example.com", password: "AnotherCorrectHorse!", displayName: "Eve", familyName: "Other Family", region: "EU", consents: { termsPrivacy: true, textVersion: "signup-v1", locale: "en" } } });
 if (reg2.status === 409) reg2 = await call("POST", "/v1/auth/login", { body: { email: "e2e-crossfamily@example.com", password: "AnotherCorrectHorse!" } });
 check("second family register/login -> token", (reg2.status === 201 || reg2.status === 200) && !!reg2.data?.token, `got ${reg2.status}`);
 const token2 = reg2.data.token;
@@ -482,6 +482,7 @@ if (process.env.DATABASE_URL) {
     const where = { where: { childId: sam.id } };
     const counts = {
       activityEvent: await db.activityEvent.count(where), socialEvent: await db.socialEvent.count(where),
+      stagingScanOutcome: await db.stagingScanOutcome.count(where),
       installRequest: await db.installRequest.count(where), webVisit: await db.webVisit.count(where),
       appUsageDaily: await db.appUsageDaily.count(where), locationPing: await db.locationPing.count(where),
       deviceApp: await db.deviceApp.count({ where: { deviceId: { in: erased.data?.deletedDevices ?? [] } } }),

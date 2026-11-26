@@ -39,3 +39,7 @@ def test_analyze_passes_innocent_text(client):
     body = response.json()
     assert body["flagged"] is False
     assert body["severity"] == "info"
+    assert body["language"] == "en"
+    assert body["cutoff"] == 0.6
+    assert body["path"] == "rules"
+    assert body["model_version"] is None

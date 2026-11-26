@@ -1,0 +1,4 @@
+### Parent app — the child card names what each control reaches, and shows a waiting or refused command (#969)
+- The per-handset controls (record delivery, ring, stop ring, lock, unlock, pause, resume) now sit under **This device**, and the internet control under **All paired devices**, so the two "Resume" buttons no longer read as the same thing.
+- A queued per-handset command shows **Waiting for this device** on the card, and a failed one shows **This device couldn't apply the change**. Both use the Arabic Language Bureau's copy (`604` `7116638057`), which is deliberately not the command-history wording: those keys describe a delivery state, these name the device the parent is looking at.
+- No control moved and no command changed. The failed line appears only for a refused command; a delivered-and-acknowledged one leaves the card silent.

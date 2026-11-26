@@ -73,6 +73,6 @@ class LocationServiceStartSitesTest {
          * still-running service is the same outcome as before #132. A *new* entry here is a claim
          * that the start happens with the activity visible, not a way to silence the check.
          */
-        private val FOREGROUND_START_SITES = setOf("PairingActivity.kt")
+        private val FOREGROUND_START_SITES = setOf("PairingActivity.kt", "SosActivity.kt")
     }
 }

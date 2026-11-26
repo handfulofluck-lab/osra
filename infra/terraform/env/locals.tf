@@ -22,4 +22,14 @@ locals {
 
   # Empty certificate = non-release mode: no HTTPS listener, and port 80 forwards.
   https_enabled = local.certificate_arn != ""
+
+  # rediss:// when the cache requires TLS: ioredis enables TLS for that scheme on its own (#714).
+  redis_url = format(
+    "%s://%s:6379",
+    var.redis_transit_encryption ? "rediss" : "redis",
+    aws_elasticache_replication_group.main.primary_endpoint_address,
+  )
+
+  # Where alarms send notifications: the SNS topic in production, nowhere in staging.
+  alarm_actions = var.alarms_enabled ? [aws_sns_topic.alarms[0].arn] : []
 }

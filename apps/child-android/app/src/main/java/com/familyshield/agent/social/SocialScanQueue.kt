@@ -15,6 +15,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -77,11 +78,15 @@ class SocialScanQueue @Inject constructor(
      */
     suspend fun flush() {
         mutex.withLock {
-            flushJob?.cancel()
+            val callerJob = currentCoroutineContext()[Job]
+            if (flushJob != null && flushJob !== callerJob) flushJob?.cancel()
             flushJob = null
             val now = System.currentTimeMillis()
             runCatching { dao.purge(now - ScanQueuePolicy.MAX_AGE_MS, ScanQueuePolicy.MAX_ATTEMPTS) }
-            val batch = runCatching { dao.oldest(ScanQueuePolicy.BATCH_SIZE) }.getOrDefault(emptyList())
+                .onFailure { if (it is CancellationException) throw it }
+            val batch = runCatching { dao.oldest(ScanQueuePolicy.BATCH_SIZE) }
+                .onFailure { if (it is CancellationException) throw it }
+                .getOrDefault(emptyList())
             if (batch.isEmpty()) return@withLock
             val childId = settings.childId()
             val deviceId = settings.deviceId()
@@ -92,7 +97,7 @@ class SocialScanQueue @Inject constructor(
                 toDto = { row ->
                     SocialScanDto(childId = childId, deviceId = deviceId, app = row.app, contact = row.contact, text = row.text, source = row.source)
                 },
-                post = { items -> api.postSocialScanBatch(SocialScanBatchDto(items)).results },
+                post = { items -> api.postSocialScanBatch(SocialScanBatchDto(deviceId = deviceId, items = items)).results },
                 isPermanentRejection = { e -> e is retrofit2.HttpException && e.code() in 400..499 && e.code() != 429 },
             ).send(batch)
             for (row in outcome.sent) {

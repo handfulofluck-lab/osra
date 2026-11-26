@@ -2,9 +2,12 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
+import { redactedBlockedSiteKey, redactBlockedSiteHost, siteNamesEnabled } from "../lib/siteNames.js";
 import { raiseAlertOnce } from "../lib/alerts.js";
+import { shouldHoldTamperDuringSetup, type SetupDevice } from "../lib/deviceSetup.js";
+import { sanitizeAlertMetadata, withoutAlertLocation } from "../lib/alertLocation.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
-import { requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
+import { guardianPermissions, requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
 
 const ListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -62,6 +65,7 @@ export async function alertsRoutes(app: FastifyInstance) {
     const query = parsed.data;
     const where = {
       child: { familyId: user.familyId },
+      heldDuringSetup: false,
       ...(query.childId ? { childId: query.childId } : {}),
       ...(query.severity ? { severity: query.severity } : {}),
       ...(query.category ? { category: query.category } : {}),
@@ -74,14 +78,26 @@ export async function alertsRoutes(app: FastifyInstance) {
       skip: (query.page - 1) * query.limit,
       take: query.limit,
     });
-    return { items: alerts, meta: { total, page: query.page, limit: query.limit } };
+    // Issue #672 review (Fable B1, ADR-0014 amendment decision 3): a guardian may be given `alerts`
+    // without `location`. The alert is theirs to read; the child's coordinates are not, so the five keys
+    // come off every row on this broad read — the same rule that withholds geofences from `GET /v1/family`.
+    // `guardianPermissions` is null for owners, co-parents and device tokens, so their rows are untouched.
+    const perms = await guardianPermissions(req);
+    const items = perms !== null && !perms.includes("location") ? alerts.map(withoutAlertLocation) : alerts;
+    return { items, meta: { total, page: query.page, limit: query.limit } };
   });
 
   /** Acknowledge an alert. */
-  app.post("/:id/ack", { preHandler: [requireParent, requirePermission("alerts"), requireFamily({ model: "alert" })] }, async (req) => {
+  app.post("/:id/ack", { preHandler: [requireParent, requirePermission("alerts"), requireFamily({ model: "alert" })] }, async (req, reply) => {
+    if ((req as unknown as { alert?: { heldDuringSetup?: boolean } }).alert?.heldDuringSetup) {
+      return reply.code(404).send({ error: "not_found" });
+    }
     const { id } = req.params as { id: string };
     const alert = await prisma.alert.update({ where: { id }, data: { acknowledged: true } });
-    return { alert };
+    // Issue #672 review (Claude's B1b): the ack returns the row, so a guardian holding `alerts` without
+    // `location` would read the place here even though the list withholds it. Same rule, same helper.
+    const perms = await guardianPermissions(req);
+    return { alert: perms !== null && !perms.includes("location") ? withoutAlertLocation(alert) : alert };
   });
 
   /** HMAC-signed endpoint for device/AI-originated alerts (ai-engine, child agents). */
@@ -97,7 +113,16 @@ export async function alertsRoutes(app: FastifyInstance) {
     }
     const parsed = InternalAlertSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const { childId, deviceId, severity, category, title, body, metadata, dedupeKey, attemptCount } = parsed.data;
+    const { childId, deviceId, severity, category, title, body, dedupeKey, attemptCount } = parsed.data;
+    // Provider attribution and delivery identity are assigned by the server.
+    const {
+      providerOutcomes: _providerOutcomes,
+      pushDeliveryId: _pushDeliveryId,
+      pushDeliverySeq: _pushDeliverySeq,
+      pushDeliveries: _pushDeliveries,
+      summaryGroupedInto: _summaryGroupedInto,
+      ...metadata
+    } = parsed.data.metadata ?? {};
 
     if (auth.device) {
       // Revocation is not checked here: sessionGuard refuses device JWTs, and an unpaired phone has no
@@ -118,6 +143,22 @@ export async function alertsRoutes(app: FastifyInstance) {
     if (!(await assertProcessingAllowed(childId, reply))) return;
 
     const effectiveDeviceId = deviceId ?? auth.device?.id;
+    const heldDuringSetup = auth.device
+      ? shouldHoldTamperDuringSetup(
+          auth.device as unknown as SetupDevice,
+          category,
+          typeof metadata.type === "string" ? metadata.type : null,
+          new Date(),
+        )
+      : false;
+
+    // Claude's ruling on #841 finding 5: while the site-name flag is off, a blocked site is a count with no
+    // host. The parent keeps the attempt; nothing in the row names a site, and the dedupe key groups by day.
+    const redactSite = category === "web_threat" && !siteNamesEnabled();
+    const safeMetadata = redactSite ? redactBlockedSiteHost(metadata) : metadata;
+    // ADR-0047: held retries share a separate namespace so a real post-setup event with the
+    // producer's original key creates a new visible row instead of deduplicating the held one.
+    const safeDedupeKey = redactSite ? redactedBlockedSiteKey() : heldDuringSetup && dedupeKey ? `held|${dedupeKey}` : dedupeKey;
 
     // Phase 2a: one path creates the row, publishes the WS event and pushes to the parents' phones.
     // Issue #225: a repeated dedupeKey is a retry, not a new alert — 200 with the existing row.
@@ -127,11 +168,17 @@ export async function alertsRoutes(app: FastifyInstance) {
       deviceId: effectiveDeviceId,
       severity,
       category,
-      title,
-      body,
-      metadata,
-      dedupeKey,
+      // A redacted web_threat carries no client text either: the title and body are free text that could
+      // name a site, so the server owns both while the flag is off (Fable's blocker B).
+      title: redactSite ? "Blocked site opened" : title,
+      body: redactSite ? "Your child tried to open a blocked site." : body,
+      // Issue #672: an SOS may carry where it was sent from, as the five flat keys the agent writes.
+      // The location is normalised here — or dropped, keeping every other key — and never rejects the
+      // alert: an SOS with no usable fix is still an SOS a parent must receive.
+      metadata: sanitizeAlertMetadata(safeMetadata),
+      dedupeKey: safeDedupeKey,
       attemptCount,
+      heldDuringSetup,
       childName: child.displayName,
     });
     return reply.code(deduplicated ? 200 : 201).send({ alert });

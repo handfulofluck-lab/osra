@@ -84,7 +84,7 @@ public enum LocationUploadOutcome: Equatable {
     case stored
     /// 428: consent was withdrawn; collection stops and the buffer is emptied (ADR-0008 §2b).
     case consentWithdrawn
-    /// 401: kept, as the rest of the agent keeps its state on a 401 (a re-pair replaces the token).
+    /// 401: kept. A `device_revoked` 401 has already unpaired the phone (#690), which empties the buffer.
     case unauthorized
     /// 400 and the other refusals: the batch is dropped, so one bad ping cannot wedge the buffer.
     case rejected(status: Int)
@@ -170,8 +170,11 @@ public struct LocationClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 20
         do {
-            let (_, response) = try await session.data(for: request)
-            return (response as? HTTPURLResponse)?.statusCode ?? 0
+            let (data, response) = try await session.data(for: request)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            // #690: a removed phone stops being paired here too; the 401 still answers the caller as before.
+            DeviceRevocation.handle(status: status, body: data)
+            return status
         } catch {
             Self.logger.error("location request failed: \(error.localizedDescription, privacy: .public)")
             return 0
@@ -208,7 +211,9 @@ public enum LocationPermissionAction: Equatable {
     public static func of(_ status: CLAuthorizationStatus, alwaysPromptUsed: Bool) -> LocationPermissionAction {
         switch status {
         case .notDetermined: return .askWhenInUse
+        #if os(iOS)
         case .authorizedWhenInUse: return alwaysPromptUsed ? .openSettings : .askAlways
+        #endif
         case .authorizedAlways: return .hidden
         default: return .openSettings // .denied, .restricted
         }
@@ -264,7 +269,9 @@ public final class LocationController {
             guard let self else { return }
             // When In Use first, then the upgrade to Always, which significant-change monitoring needs.
             // iOS shows that upgrade once; after it, the button opens Settings.
+            #if os(iOS)
             if status == .authorizedWhenInUse && !Self.alwaysPromptUsed { self.askAlways() }
+            #endif
             self.startIfAllowed()
             Task { @MainActor in await self.reportGrant() }
         }

@@ -7,7 +7,7 @@ import { requireConsent } from "../middleware/requireConsent.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
 import { DEFAULT_RULESET } from "../lib/defaultRules.js";
-import { toApiRuleSet } from "../lib/ruleSync.js";
+import { filterAgentRules, toApiRuleSet } from "../lib/ruleSync.js";
 import { touchAgentLastSeen } from "../lib/pollCadence.js";
 import { APP_GROUPS_MAX } from "@familyshield/shared-types";
 
@@ -154,14 +154,27 @@ function toRow(data: z.infer<typeof RuleSetInputSchema>, childId: string) {
   };
 }
 
-/** Reject overlapping bedtime/school windows unless the payload opts out with allowOverlap. */
-function overlapError(data: z.infer<typeof RuleSetInputSchema>): string | null {
+type ScheduleOverlapError = {
+  error: "schedule_overlap";
+  windows: {
+    bedtime: { start: string; end: string };
+    schoolHours: { start: string; end: string; days: number[] };
+  };
+};
+
+/** Empty school days cannot collide; an explicit legacy allowOverlap still opts out. */
+function overlapError(data: z.infer<typeof RuleSetInputSchema>): ScheduleOverlapError | null {
   if (data.allowOverlap) return null;
   const { bedtimeStart, bedtimeEnd, schoolHours } = data.screenTime;
-  if (windowsOverlap(bedtimeStart, bedtimeEnd, schoolHours.start, schoolHours.end)) {
-    return `bedtime window ${bedtimeStart}-${bedtimeEnd} overlaps school hours ${schoolHours.start}-${schoolHours.end}; set allowOverlap: true to permit this`;
-  }
-  return null;
+  if (schoolHours.days.length === 0) return null;
+  if (!windowsOverlap(bedtimeStart, bedtimeEnd, schoolHours.start, schoolHours.end)) return null;
+  return {
+    error: "schedule_overlap",
+    windows: {
+      bedtime: { start: bedtimeStart, end: bedtimeEnd },
+      schoolHours,
+    },
+  };
 }
 
 export async function rulesRoutes(app: FastifyInstance) {
@@ -176,7 +189,8 @@ export async function rulesRoutes(app: FastifyInstance) {
     // the phone is alive — `lastSeen` moves here too, not only on the heartbeat. Parent reads are skipped.
     await touchAgentLastSeen(user);
     const row = await prisma.ruleSet.findUnique({ where: { childId } });
-    return row ? toApiRuleSet(row as unknown as Record<string, unknown>) : { childId, ...DEFAULT_RULESET };
+    const rules = row ? toApiRuleSet(row as unknown as Record<string, unknown>) : { childId, ...DEFAULT_RULESET };
+    return user?.role === "device" ? filterAgentRules(childId, rules) : rules;
   });
 
   /** Full validated upsert of a child's ruleset; publishes the ruleset to Redis. */
@@ -184,7 +198,7 @@ export async function rulesRoutes(app: FastifyInstance) {
     const parsed = RuleSetInputSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const overlap = overlapError(parsed.data);
-    if (overlap) return reply.code(400).send({ error: overlap });
+    if (overlap) return reply.code(400).send(overlap);
     const { childId } = req.params as { childId: string };
     // Issue #475: the bump is part of the write statement, so a saved ruleset and its version cannot
     // disagree even if two parents write at once.
@@ -194,7 +208,7 @@ export async function rulesRoutes(app: FastifyInstance) {
       update: { ...toRow(parsed.data, childId), rulesVersion: { increment: 1 } },
     });
     const api = toApiRuleSet(row as unknown as Record<string, unknown>);
-    await publishJson(`child:${childId}:rules`, api);
+    await publishJson(`child:${childId}:rules`, await filterAgentRules(childId, api));
     await notifyDevices(childId);
     return api;
   });
@@ -229,7 +243,7 @@ export async function rulesRoutes(app: FastifyInstance) {
       sp?.bedtimeStart !== undefined || sp?.bedtimeEnd !== undefined || sp?.schoolHours !== undefined;
     if (windowsTouched) {
       const overlap = overlapError(validated.data);
-      if (overlap) return reply.code(400).send({ error: overlap });
+      if (overlap) return reply.code(400).send(overlap);
     }
     const row = await prisma.ruleSet.upsert({
       where: { childId },
@@ -237,7 +251,7 @@ export async function rulesRoutes(app: FastifyInstance) {
       update: { ...toRow(validated.data, childId), rulesVersion: { increment: 1 } },
     });
     const api = toApiRuleSet(row as unknown as Record<string, unknown>);
-    await publishJson(`child:${childId}:rules`, api);
+    await publishJson(`child:${childId}:rules`, await filterAgentRules(childId, api));
     await notifyDevices(childId);
     return api;
   });

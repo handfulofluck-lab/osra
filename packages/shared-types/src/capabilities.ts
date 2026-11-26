@@ -50,12 +50,21 @@ export const GRANT_STATES = ["granted", "missing", "not_applicable"] as const;
 export type GrantState = (typeof GRANT_STATES)[number];
 
 /**
- * The fixed feature list, in the ADR's order.
+ * The fixed feature list, in the ADR's order, plus the one key the 2026-11-13 amendment appends for the
+ * computer clients: `child_account_admin` (ADR-0041 D5.5).
  *
  * `degraded` means the feature works by a weaker path the agent's own policy still acknowledges as
  * applied — not "it might work". `unavailable` means it cannot work on this phone as things stand, and is
  * a fault. `not_supported` means the build cannot do it at all, and is the server's word (A1), not the
  * device's.
+ *
+ * `child_account_admin` is the one key a phone never sends. `ready` means the child's own Windows or Mac
+ * account is a standard user; `degraded` means it is an administrator, so protection is weak on that
+ * computer and the parent app warns; `unavailable` and `not_supported` are for a computer that cannot
+ * report the fact. An absent key means "not reported", which is every Android and iOS device — and that
+ * absent case is why this is an enum state and not a boolean, which could not tell "not reported" from
+ * "reported and fine". Only `agent-desktop` and `agent-macos` may carry it; `parseCapabilities` refuses it
+ * from any other app.
  */
 export const FEATURE_KEYS = [
   "lock_screen",
@@ -68,6 +77,7 @@ export const FEATURE_KEYS = [
   "uninstall_guard",
   "notification_scan",
   "call_sms_log",
+  "child_account_admin",
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
@@ -145,6 +155,8 @@ export interface DeviceCapabilitiesV1 {
   profiles?: DeviceProfiles;
   /** ADR-0037, `child-ios` only and optional: a report without it keeps the stored groups. */
   groups?: AppGroupReport[];
+  /** Windows: the interactive tray supplied this report; it is not a service attestation. */
+  source?: "tray";
 }
 
 /** The largest serialized report the server accepts (A2). */
@@ -160,7 +172,7 @@ export interface DeviceSetup {
   reportedAt: string | null;
   stale: boolean;
   features: Partial<Record<FeatureKey, FeatureState>>;
-  /** The grants the device reported as `missing` — the "what to fix" list. */
+  /** Generic missing permissions; desktop account-administrator state uses ADR-0041 D5's warning instead. */
   missing: GrantKey[];
   /** osra-security#6 item 2: the last reported other spaces, or null when no report has carried them. */
   profiles: DeviceProfiles | null;

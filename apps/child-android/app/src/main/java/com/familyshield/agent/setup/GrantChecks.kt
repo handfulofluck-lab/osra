@@ -57,13 +57,16 @@ class GrantChecks(private val context: Context, private val deviceAdmin: DeviceA
         }.let { it?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
     }
 
+    /** Opens OSRA's App info screen so the parent can grant "Allow restricted settings" (#1131). */
+    fun appInfoIntent(): Intent = RestrictedSettingsPolicy.appInfoIntent(context.packageName)
+
     private fun accessibilityEnabled(): Boolean {
         val enabled = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
-            ?: return false
-        return AccessibilityServiceListPolicy.isEnabled(
-            enabled,
-            context.packageName,
-            AccessibilityMonitorService::class.java.name,
+        return RestrictedSettingsPolicy.isAccessibilityBoundAndEnabled(
+            enabledServicesSetting = enabled,
+            packageName = context.packageName,
+            serviceClassName = AccessibilityMonitorService::class.java.name,
+            isServiceRunning = AccessibilityMonitorService.isRunning,
         )
     }
 

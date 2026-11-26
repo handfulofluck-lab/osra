@@ -1,8 +1,9 @@
 name: Agent desktop
 
 # The Windows desktop agent. Until 2026-10-24 this was the `agent-desktop` job of ci.yml and ran on every pull
-# request on a Windows runner (billed at twice the Linux rate in a private repository); now it runs when the
-# agent changes, on main when it changes, and nightly on main whatever changed. Nothing outside
+# request on a Windows runner (billed above the Linux rate in a private repository — about 1.67× at the
+# 2026 rates); now it runs when the
+# agent changes, on main when it changes, and weekly on main whatever changed. Nothing outside
 # `apps/agent-desktop/` is read by this job. `scripts/check-ci-paths.mjs` keeps the two lists identical and
 # makes sure they name this file.
 on:
@@ -16,7 +17,7 @@ on:
       - "apps/agent-desktop/**"
       - ".github/workflows/agent-desktop.yml"
   schedule:
-    - cron: "11 2 * * *"
+    - cron: "11 2 * * 1"
   workflow_dispatch:
 
 concurrency:
@@ -34,4 +35,25 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
-      - run: dotnet test tests/FamilyShield.Agent.Tests --nologo
+      - run: dotnet test tests/FamilyShield.Agent.Tests -c Debug --nologo
+      - run: dotnet test tests/FamilyShield.Agent.Tests -c Release --nologo
+      - run: dotnet publish src/OSRA.Service -c Release -r win-x64 --self-contained true -o artifacts/windows-w1
+      - run: dotnet publish src/OSRA -c Release -r win-x64 --self-contained true -o artifacts/windows-w1
+      - name: Verify the real Windows service boundary
+        shell: pwsh
+        run: ./tests/run-windows-service-pipe.ps1
+        env:
+          OSRA_WINDOWS_SERVICE_TEST: "1"
+      - name: Check the co-located hosts
+        run: |
+          $required = @('OSRA.Service.exe', 'OSRA.exe', 'OSRA.Agent.dll')
+          foreach ($name in $required) {
+            if (-not (Test-Path (Join-Path 'artifacts/windows-w1' $name) -PathType Leaf)) {
+              throw "Missing required artifact file: $name"
+            }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OSRA.Windows-W1-unsigned
+          path: apps/agent-desktop/artifacts/windows-w1
+          if-no-files-found: error

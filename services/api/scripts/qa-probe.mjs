@@ -13,6 +13,7 @@
  */
 import { createHmac, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
+import { checkG25InstalledApps, describeInstalledAppKeys } from "./qa-probe-g25.mjs";
 
 // Node 20 hides the global WebSocket behind a flag — re-exec ourselves with it (same shim as e2e.mjs).
 if (typeof globalThis.WebSocket === "undefined" && !process.env.FS_WS_FLAGGED) {
@@ -218,13 +219,14 @@ const stamp = Date.now();
 const emailA = `qa-a-${stamp}@example.com`;
 const emailB = `qa-b-${stamp}@example.com`;
 const PASSWORD = "QaProbePassw0rd!";
+const SIGNUP_CONSENTS = Object.freeze({ termsPrivacy: true, textVersion: "signup-v1", locale: "en" });
 
 // ── setup: two independent families ─────────────────────────────────────────
 const regA = await call("POST", "/v1/auth/register", {
-  body: { email: emailA, password: PASSWORD, displayName: "QA A", familyName: "QA Family A", region: "US" },
+  body: { email: emailA, password: PASSWORD, displayName: "QA A", familyName: "QA Family A", region: "US", consents: SIGNUP_CONSENTS },
 });
 const regB = await call("POST", "/v1/auth/register", {
-  body: { email: emailB, password: PASSWORD, displayName: "QA B", familyName: "QA Family B", region: "EU" },
+  body: { email: emailB, password: PASSWORD, displayName: "QA B", familyName: "QA Family B", region: "EU", consents: SIGNUP_CONSENTS },
 });
 let tokenA = regA.data?.token;
 const tokenB = regB.data?.token;
@@ -261,17 +263,17 @@ const kidB = childB.data?.child?.id;
 // ── A. registration / login validation & enumeration ────────────────────────
 console.log("\n── A. auth validation ──");
 const shortPw = await call("POST", "/v1/auth/register", {
-  body: { email: `qa-short-${stamp}@example.com`, password: "short", displayName: "x", familyName: "y", region: "US" },
+  body: { email: `qa-short-${stamp}@example.com`, password: "short", displayName: "x", familyName: "y", region: "US", consents: SIGNUP_CONSENTS },
 });
 check("A1 short password rejected (400)", shortPw.status === 400, `got ${shortPw.status}`);
 
 const badEmail = await call("POST", "/v1/auth/register", {
-  body: { email: "not-an-email", password: PASSWORD, displayName: "x", familyName: "y", region: "US" },
+  body: { email: "not-an-email", password: PASSWORD, displayName: "x", familyName: "y", region: "US", consents: SIGNUP_CONSENTS },
 });
 check("A2 malformed email rejected (400)", badEmail.status === 400, `got ${badEmail.status}`);
 
 const dup = await call("POST", "/v1/auth/register", {
-  body: { email: emailA, password: PASSWORD, displayName: "x", familyName: "y", region: "US" },
+  body: { email: emailA, password: PASSWORD, displayName: "x", familyName: "y", region: "US", consents: SIGNUP_CONSENTS },
 });
 check("A3 duplicate registration rejected (409)", dup.status === 409, `got ${dup.status}`);
 
@@ -511,7 +513,12 @@ async function claimApproved(code, body, parentToken) {
   if (claim.status !== 202) return claim;
   const approve = await call("POST", `/v1/devices/pair/claims/${claim.data.claimId}/approve`, { token: parentToken });
   if (approve.status !== 200) return approve;
-  return call("POST", `/v1/devices/pair/claims/${claim.data.claimId}/poll`, { body: { pollSecret: claim.data.pollSecret } });
+  const paired = await call("POST", `/v1/devices/pair/claims/${claim.data.claimId}/poll`, { body: { pollSecret: claim.data.pollSecret } });
+  const deviceId = paired.data?.device?.id ?? paired.data?.deviceId;
+  if (paired.status === 201 && paired.data?.token && deviceId) {
+    await call("POST", `/v1/devices/${deviceId}/telemetry`, { token: paired.data.token, body: { batteryPct: 100 } });
+  }
+  return paired;
 }
 
 /** Parent mints a code, the device claims it and the parent allows it — a real device JWT + per-device secret. */
@@ -573,6 +580,11 @@ check("G2 second device paired", !!d2.token && !!d2.deviceId, `status=${d2.statu
     const racing = await Promise.all(Array.from({ length: 6 }, () => call("POST", `/v1/devices/pair/claims/${claimId}/poll`, { body: { pollSecret } })));
     const winners = racing.filter((r) => r.status === 201 && r.data?.token);
     check("G2h nine wrong secrets leave an approved claim alone: the right secret still gets its token (201)", winners.length >= 1, `polls=${racing.map((r) => r.status).join(",")}`);
+    const winner = winners[0];
+    const winnerDeviceId = winner?.data?.device?.id ?? winner?.data?.deviceId;
+    if (winner?.data?.token && winnerDeviceId) {
+      await call("POST", `/v1/devices/${winnerDeviceId}/telemetry`, { token: winner.data.token, body: { batteryPct: 100 } });
+    }
     const kidDevices = ((await call("GET", "/v1/devices", { token: tokenA })).data?.devices ?? []).filter((d) => d.model === "qa-unapproved");
     check("G2j six polls of an approved claim at the same moment: exactly one token (one 201, five 404) and one device", racing.map((r) => r.status).sort().join(",") === "201,404,404,404,404,404" && winners.length === 1 && kidDevices.length === 1, `polls=${racing.map((r) => r.status).join(",")} devices=${kidDevices.length}`);
   } else {
@@ -749,8 +761,8 @@ console.log("\n── G2. location & rules authorization ──");
   check("G24 installed apps: the device uploads its own inventory (202) and duplicates collapse", appsWrite.status === 202 && appsWrite.data?.accepted === true && appsWrite.data?.count === 2, `got ${appsWrite.status} ${JSON.stringify(appsWrite.data)}`);
   const appsRead = await call("GET", `/v1/devices/${d2.deviceId}/apps`, { token: tokenA });
   const appInventory = appsRead.data?.apps ?? [];
-  const appKeys = appInventory.length ? Object.keys(appInventory[0]).sort().join(",") : "";
-  check("G25 installed apps: the parent reads version 1 with package+label+system+essential", appsRead.status === 200 && appsRead.data?.version === 1 && appsRead.data?.count === 2 && appInventory.length === 2 && appKeys === "essential,isSystem,label,packageId" && appInventory.some((a) => a.packageId === "com.android.settings" && a.isSystem === true) && appInventory.some((a) => a.packageId === "com.android.settings" && a.essential === true) && appInventory.some((a) => a.packageId === "com.example.game" && a.essential === false), `status=${appsRead.status} version=${appsRead.data?.version} count=${appsRead.data?.count} keys=${appKeys}`);
+  const appKeys = describeInstalledAppKeys(appInventory);
+  check("G25 installed apps: the parent reads version 1 with package+label+system+essential", checkG25InstalledApps(appsRead), `status=${appsRead.status} version=${appsRead.data?.version} count=${appsRead.data?.count} keys=${appKeys}`);
   const appsOtherFamily = await call("GET", `/v1/devices/${d2.deviceId}/apps`, { token: tokenB });
   check("G26 installed apps: another family cannot read the inventory (403)", appsOtherFamily.status === 403, `got ${appsOtherFamily.status}`);
   const appsSibling = await call("POST", `/v1/devices/${deviceIdA}/apps`, { token: d2.token, body: { version: 1, apps: [] } });
@@ -773,6 +785,53 @@ console.log("\n── G2. location & rules authorization ──");
   const appsClear = await call("POST", `/v1/devices/${d2.deviceId}/apps`, { token: d2.token, body: { version: 1, apps: [] } });
   const appsAfterClear = await call("GET", `/v1/devices/${d2.deviceId}/apps`, { token: tokenA });
   check("G29 installed apps: a later report replaces the list and an empty report clears it", appsReplace.status === 202 && appsAfterReplace.data?.count === 1 && appsAfterReplace.data?.apps?.[0]?.packageId === "com.example.only" && appsClear.status === 202 && appsAfterClear.data?.count === 0, `replace=${appsReplace.status} count=${appsAfterReplace.data?.count} clear=${appsClear.status} after=${appsAfterClear.data?.count}`);
+
+// #1127 / ADR-0047: the server, not the phone, decides the bounded setup window. A grant-matched
+// tamper is persisted quietly, an unrelated SOS remains visible, and authenticated all-ready
+// telemetry completes setup once. The parent list is the same surface a family would read.
+const setupCapabilities = (accessibility) => ({
+  client: { app: "child-android", version: "0.2.0", build: 42, flavour: "full" },
+  grants: {
+    accessibility,
+    usage_access: "granted",
+    overlay: "granted",
+    device_admin: "granted",
+    web_filter: "granted",
+    location: "granted",
+    private_dns: "granted",
+  },
+  features: {},
+});
+const setupMissingReport = await call("POST", `/v1/devices/${d2.deviceId}/telemetry`, {
+  token: d2.token,
+  body: { capabilities: setupCapabilities("missing") },
+});
+const setupTamperBody = JSON.stringify({
+  childId: kidA2,
+  deviceId: d2.deviceId,
+  severity: "critical",
+  category: "tamper",
+  title: "qa setup accessibility off",
+  body: "synthetic setup grant event",
+  metadata: { type: "accessibility_off" },
+  dedupeKey: `qa-1127|${stamp}`,
+});
+const setupHeld = await call("POST", "/v1/alerts/internal", { rawBody: setupTamperBody, headers: signV2(d2.secret, setupTamperBody) });
+const setupHeldList = await call("GET", `/v1/alerts?childId=${kidA2}&category=tamper`, { token: tokenA });
+const setupHeldHidden = !(setupHeldList.data?.items ?? []).some((row) => row.metadata?.type === "accessibility_off");
+check("G30 initial setup grant-matched tamper is audit-only, never parent-listed", setupMissingReport.status === 202 && setupHeld.status === 201 && setupHeld.data?.alert?.heldDuringSetup === true && setupHeldHidden, `telemetry=${setupMissingReport.status} alert=${setupHeld.status} held=${setupHeld.data?.alert?.heldDuringSetup} hidden=${setupHeldHidden}`);
+const setupSosBody = JSON.stringify({ childId: kidA2, deviceId: d2.deviceId, severity: "critical", category: "sos", title: "qa setup SOS control", body: "visible control" });
+const setupSos = await call("POST", "/v1/alerts/internal", { rawBody: setupSosBody, headers: signV2(d2.secret, setupSosBody) });
+const setupSosList = await call("GET", `/v1/alerts?childId=${kidA2}&category=sos`, { token: tokenA });
+check("G31 SOS remains visible during the same setup window", setupSos.status === 201 && (setupSosList.data?.items ?? []).some((row) => row.category === "sos" && row.heldDuringSetup === false), `alert=${setupSos.status} listed=${setupSosList.data?.items?.length}`);
+const setupCompleteReport = await call("POST", `/v1/devices/${d2.deviceId}/telemetry`, {
+  token: d2.token,
+  body: { capabilities: setupCapabilities("granted") },
+});
+const setupCompletedDevice = await call("GET", `/v1/devices/${d2.deviceId}`, { token: tokenA });
+const setupCompleteList = await call("GET", `/v1/alerts?childId=${kidA2}&category=tamper`, { token: tokenA });
+const setupCompleteRows = (setupCompleteList.data?.items ?? []).filter((row) => row.metadata?.type === "setup_complete");
+check("G32 authenticated all-ready telemetry completes setup with one protected alert", setupCompleteReport.status === 202 && !!setupCompletedDevice.data?.device?.setupCompletedAt && setupCompleteRows.length === 1, `telemetry=${setupCompleteReport.status} completed=${setupCompletedDevice.data?.device?.setupCompletedAt} protected=${setupCompleteRows.length}`);
 
   // #319 (roadmap 1.5). `POST /:id/push-token` is the device's own registration path and nothing
   // else: Claude's decision (2026-10-23) keeps the path the Android client already calls and makes it
@@ -837,7 +896,7 @@ console.log("\n── G2. location & rules authorization ──");
     // /logout-all revoked the account's sessions.
     const resetEmail = `qa-reset-${stamp}@example.com`;
     const resetReg = await call("POST", "/v1/auth/register", {
-      body: { email: resetEmail, password: PASSWORD, displayName: "QA Reset", familyName: "QA Reset Family", region: "US" },
+      body: { email: resetEmail, password: PASSWORD, displayName: "QA Reset", familyName: "QA Reset Family", region: "US", consents: SIGNUP_CONSENTS },
     });
     const resetSub = resetReg.data?.token
       ? JSON.parse(Buffer.from(resetReg.data.token.split(".")[1], "base64url").toString()).sub
@@ -1234,7 +1293,7 @@ const waitForNextTotpWindow = async () => {
 const RECOVERY_CODE_FORMAT = /^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){3}$/;
 const recEmail = `qa-recovery-${stamp}@example.com`;
 const recReg = await call("POST", "/v1/auth/register", {
-  body: { email: recEmail, password: PASSWORD, displayName: "QA Recovery", familyName: "QA Recovery Family", region: "US" },
+  body: { email: recEmail, password: PASSWORD, displayName: "QA Recovery", familyName: "QA Recovery Family", region: "US", consents: SIGNUP_CONSENTS },
 });
 let recToken = recReg.data?.token;
 const recEnroll = await call("POST", "/v1/auth/mfa/enroll", { token: recToken, body: {} });
@@ -1355,19 +1414,19 @@ const mrGuardianEmail = `qa-mfa-guardian-${stamp}@example.com`;
 const mrOtherEmail = `qa-mfa-other-${stamp}@example.com`;
 const mrCoParentEmail = `qa-mfa-coparent-${stamp}@example.com`;
 const mrReg = await call("POST", "/v1/auth/register", {
-  body: { email: mrEmail, password: PASSWORD, displayName: "QA Reset Parent", familyName: "QA Reset Family", region: "US" },
+  body: { email: mrEmail, password: PASSWORD, displayName: "QA Reset Parent", familyName: "QA Reset Family", region: "US", consents: SIGNUP_CONSENTS },
 });
 let mrToken = mrReg.data?.token;
 // The guardian: invited into the reset parent's family and moved there, so it is a real same-family
 // parent whose role is deliberately partial (ADR-0031 claim 4).
 const mrGuardianReg = await call("POST", "/v1/auth/register", {
-  body: { email: mrGuardianEmail, password: PASSWORD, displayName: "QA Reset Guardian", familyName: "QA Guardian Family", region: "US" },
+  body: { email: mrGuardianEmail, password: PASSWORD, displayName: "QA Reset Guardian", familyName: "QA Guardian Family", region: "US", consents: SIGNUP_CONSENTS },
 });
 let mrGuardianToken = mrGuardianReg.data?.token;
 // A live owner of a *different* family: section N turns parent B into a co-parent of family A, so B's
 // registration token is no longer a cross-family credential by the time this block runs.
 const mrOtherReg = await call("POST", "/v1/auth/register", {
-  body: { email: mrOtherEmail, password: PASSWORD, displayName: "QA Other Owner", familyName: "QA Other Family", region: "US" },
+  body: { email: mrOtherEmail, password: PASSWORD, displayName: "QA Other Owner", familyName: "QA Other Family", region: "US", consents: SIGNUP_CONSENTS },
 });
 const mrOtherToken = mrOtherReg.data?.token;
 // The co-parent: a real `co-parent` of the reset family, the caller `pending` lists the requester's
@@ -1378,7 +1437,7 @@ const mrOtherToken = mrOtherReg.data?.token;
 // address (#313 review). Registration and the invite happen before the requester's MFA verification,
 // which revokes the owner's session the invite needs.
 const mrCoParentReg = await call("POST", "/v1/auth/register", {
-  body: { email: mrCoParentEmail, password: PASSWORD, displayName: "QA Reset Co-Parent", familyName: "QA Co-Parent Family", region: "US" },
+  body: { email: mrCoParentEmail, password: PASSWORD, displayName: "QA Reset Co-Parent", familyName: "QA Co-Parent Family", region: "US", consents: SIGNUP_CONSENTS },
 });
 let mrCoParentToken = mrCoParentReg.data?.token;
 
@@ -1577,7 +1636,7 @@ if (typeof mrConfirmToken !== "string") {
 // row would be superseded by the second request and answer 200, so the second refusal is the proof.
 const nwEmail = `qa-mfa-nowitness-${stamp}@example.com`;
 const nwReg = await call("POST", "/v1/auth/register", {
-  body: { email: nwEmail, password: PASSWORD, displayName: "QA No Witness", familyName: "QA No Witness Family", region: "US" },
+  body: { email: nwEmail, password: PASSWORD, displayName: "QA No Witness", familyName: "QA No Witness Family", region: "US", consents: SIGNUP_CONSENTS },
 });
 const nwEnroll = await call("POST", "/v1/auth/mfa/enroll", { token: nwReg.data?.token, body: {} });
 const nwSecret = nwEnroll.data?.secret ?? "";
@@ -2031,7 +2090,7 @@ console.log("\n── Q. plan 2.7 authorization matrix ──");
   // -> Q9b 200; drop the confirmation filter in send-now -> Q9c lists the stranger. The 21st-invite 429
   // is not probed: reaching it sends 20 real invites on a deployed API (test/invites.test.ts pins it).
   const longName = await qcall("POST", "/v1/auth/register", {
-    body: { email: `qa-longname-${stamp}@example.com`, password: PASSWORD, displayName: "QA", familyName: "q".repeat(81), region: "US" },
+    body: { email: `qa-longname-${stamp}@example.com`, password: PASSWORD, displayName: "QA", familyName: "q".repeat(81), region: "US", consents: SIGNUP_CONSENTS },
   });
   check("Q9a an 81-character familyName is refused at registration (400)", longName.status === 400 && !!longName.data?.error?.fieldErrors?.familyName, `got ${longName.status} ${JSON.stringify(longName.data?.error?.fieldErrors ?? null)}`);
   if (nwToken) {
@@ -2196,7 +2255,7 @@ check("H2 /health/deep reports db+redis", healthDeep.status === 200 && healthDee
   for (let i = 0; i < 5; i++) {
     const email = `qa-ad-${stamp}-${i}@example.com`;
     adRegs.push((await call("POST", "/v1/auth/register", {
-      body: { email, password: PASSWORD, displayName: "QA AD", familyName: "QA Family AD", region: "US" },
+      body: { email, password: PASSWORD, displayName: "QA AD", familyName: "QA Family AD", region: "US", consents: SIGNUP_CONSENTS },
     })).status);
     adKnown.push(email);
   }

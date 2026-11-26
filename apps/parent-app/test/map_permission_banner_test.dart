@@ -1,8 +1,11 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart' as fm;
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/map/family_map_screen.dart';
 import 'package:familyshield_parent/l10n/app_localizations.dart';
@@ -75,5 +78,29 @@ void main() {
       await pumpWith(tester, const FamilyMapScreen(), const []);
       expect(find.text(l10n.readPermissionRequired), findsNothing);
     });
+  });
+
+/// #598: on iOS the Google Maps SDK aborts in `checkServicePreconditions` when `GMSServices.provideAPIKey`
+/// was never called. `mapIsAvailable` is the pure decision; these rows pin that the screen honours it, which
+/// is the half a unit test of the predicate cannot see.
+  test("a build with no iOS maps key draws no map view, and does not throw", () {
+    expect(mapIsAvailable(TargetPlatform.iOS, key: ""), isFalse);
+    expect(mapIsAvailable(TargetPlatform.iOS, key: "a-real-key"), isTrue);
+    // Android gets its key from the Gradle manifest, which Dart cannot read; the crash is iOS-only.
+    expect(mapIsAvailable(TargetPlatform.android, key: ""), isTrue);
+  });
+
+  testWidgets("on iOS with no key compiled in, the map screen draws OpenStreetMap instead of a GoogleMap", (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      await pumpWith(tester, const FamilyMapScreen(), const []);
+      // No GoogleMap is constructed, which is what crashed (#598). Karim 22 Nov: a parent still gets a real map.
+      expect(find.byType(GoogleMap), findsNothing);
+      expect(find.byType(fm.FlutterMap), findsOneWidget);
+      expect(find.text('Not available'), findsNothing);
+      expect(tester.takeException(), isNull);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 }

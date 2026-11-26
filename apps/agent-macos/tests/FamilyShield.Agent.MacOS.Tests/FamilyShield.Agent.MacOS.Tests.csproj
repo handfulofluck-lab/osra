@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>FamilyShield.Agent.MacOS.Tests</RootNamespace>
+    <AssemblyName>FamilyShield.Agent.MacOS.Tests</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
+    <PackageReference Include="xunit" Version="2.8.1" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Platform-pure services compiled directly (linked, forward-slash paths) so the tests run on
+         Windows/Linux without the net8.0-macos workload the app itself requires. -->
+    <Compile Include="../../Services/DataFolderMigration.cs" Link="DataFolderMigration.cs" />
+    <Compile Include="../../Services/PortableStatus.cs" Link="PortableStatus.cs" />
+  </ItemGroup>
+
+</Project>

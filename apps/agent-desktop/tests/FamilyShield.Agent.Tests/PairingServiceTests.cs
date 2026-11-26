@@ -1,4 +1,6 @@
 using System.Net;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Text;
 using FamilyShield.Agent.Services;
 using Xunit;
@@ -23,9 +25,11 @@ public sealed class PairingServiceTests
         private readonly Queue<(int Status, string Body)> _answers = new(answers);
         public List<string> Paths { get; } = new();
         public List<string> Bodies { get; } = new();
+        public List<string?> ClientHeaders { get; } = [];
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
+            ClientHeaders.Add(request.Headers.TryGetValues("X-OSRA-Client", out var values) ? string.Join("", values) : null);
             Paths.Add(request.RequestUri!.AbsolutePath);
             Bodies.Add(request.Content is null ? "" : await request.Content.ReadAsStringAsync(ct));
             var (status, body) = _answers.Count > 0 ? _answers.Dequeue() : (202, """{"status":"pending"}""");
@@ -36,11 +40,24 @@ public sealed class PairingServiceTests
     private static readonly Func<TimeSpan, CancellationToken, Task> NoDelay = (_, _) => Task.CompletedTask;
 
     [Fact]
+    public async Task A_pairing_code_typed_with_Arabic_digits_is_sent_as_Western_digits()
+    {
+        var handler = new ScriptedHandler((202, Ticket), (201, Paired));
+        var config = await PairingService.ClaimAsync(Api, "١٢٣٤٥٦", parentPin: Pin, handler: handler, delay: NoDelay);
+
+        Assert.NotNull(config);
+        Assert.Contains("\"code\":\"123456\"", handler.Bodies[0]);
+        // Ordinal: xUnit v3's DoesNotContain is culture-aware and treats the Arabic-Indic digit as 1.
+        Assert.False(handler.Bodies[0].Contains("١", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Waits_for_the_parent_then_maps_the_polled_token_to_a_config()
     {
         var handler = new ScriptedHandler((202, Ticket), (202, """{"status":"pending"}"""), (201, Paired));
         var waited = false;
-        var config = await PairingService.ClaimAsync(Api, "123456", parentPin: Pin, onWaiting: () => waited = true, handler: handler, delay: NoDelay);
+        var config = await PairingService.ClaimAsync(Api, "123456", parentPin: Pin,
+            onWaiting: () => waited = true, handler: handler, delay: NoDelay, account: new TestAccountIdentity(true));
 
         Assert.True(waited);
         Assert.NotNull(config);
@@ -50,6 +67,12 @@ public sealed class PairingServiceTests
         Assert.Equal("ab12", config.HmacSecret);
         Assert.Equal(new[] { "/v1/devices/pair/claim", "/v1/devices/pair/claims/c-1/poll", "/v1/devices/pair/claims/c-1/poll" }, handler.Paths);
         Assert.Contains("\"pollSecret\":\"s-1\"", handler.Bodies[1]);
+        Assert.All(handler.ClientHeaders, header => Assert.Equal("agent-desktop/0.1.0+1 (windows)", header));
+        var claim = JsonDocument.Parse(handler.Bodies[0]);
+        Assert.Equal("degraded", claim.RootElement.GetProperty("capabilities").GetProperty("features").GetProperty("child_account_admin").GetString());
+        Assert.Equal("degraded", claim.RootElement.GetProperty("capabilities").GetProperty("features").GetProperty("lock_screen").GetString());
+        Assert.DoesNotContain(Pin, handler.Bodies[0]);
+        Assert.DoesNotContain("jwt-9", handler.Bodies[0]);
     }
 
     [Fact]
@@ -90,6 +113,17 @@ public sealed class PairingServiceTests
     }
 
     [Fact]
+    public void PairingDialogHasOnlyCodeAndTwoPinFieldsWithTheProductionServer()
+    {
+        var source = ReadDesktopSource("PairingDialog.cs");
+        Assert.DoesNotContain("_serverBox", source);
+        Assert.DoesNotContain("Server URL:", source);
+        Assert.Equal(3, source.Split("new TextBox").Length - 1);
+        Assert.Contains("PairingService.ClaimAsync(AgentConfig.ProductionApiBase", source);
+        Assert.DoesNotContain("check the code and server URL", source);
+    }
+
+    [Fact]
     public async Task Polls_every_two_seconds()
     {
         var handler = new ScriptedHandler((202, Ticket), (202, "{}"), (202, "{}"), (201, Paired));
@@ -98,4 +132,12 @@ public sealed class PairingServiceTests
             delay: (d, _) => { delays.Add(d); return Task.CompletedTask; });
         Assert.Equal(new[] { TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2) }, delays);
     }
+
+    private static string ReadDesktopSource(string fileName)
+    {
+        var directory = Path.GetDirectoryName(GetSourceFile());
+        return File.ReadAllText(Path.Combine(directory!, "..", "..", "Services", fileName));
+    }
+
+    private static string GetSourceFile([CallerFilePath] string path = "") => path;
 }

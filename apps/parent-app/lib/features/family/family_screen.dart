@@ -9,6 +9,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../../api/permission_errors.dart';
+import '../../widgets/error_retry_view.dart';
 import '../auth/mfa_reset_messages.dart';
 
 /// The four grantable permission scopes for an invited member (#13).
@@ -37,7 +38,10 @@ class FamilyScreen extends ConsumerWidget {
       appBar: AppBar(title: Text(context.l10n.familyMembersTitle)),
       body: family.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(readErrorText(context.l10n, e, () => context.l10n.familyLoadFailed('$e')))),
+        error: (e, _) => ErrorRetryView(
+          message: friendlyErrorText(context.l10n, e, () => context.l10n.familyLoadFailed),
+          onRetry: () => ref.invalidate(familyProvider),
+        ),
         data: (overview) {
           final parents = overview.parents.isEmpty && overview.parent.id.isNotEmpty
               // NOTE: older servers omit the parents array — fall back to the
@@ -78,7 +82,10 @@ class FamilyScreen extends ConsumerWidget {
                   padding: EdgeInsets.all(AppSpace.lg),
                   child: Center(child: CircularProgressIndicator()),
                 ),
-                error: (e, _) => Text(readErrorText(context.l10n, e, () => context.l10n.familyInvitesLoadFailed('$e'))),
+                error: (e, _) => ErrorRetryView(
+                  message: friendlyErrorText(context.l10n, e, () => context.l10n.familyInvitesLoadFailed),
+                  onRetry: () => ref.invalidate(familyInvitesProvider),
+                ),
                 data: (items) {
                   final pending = items.where((i) => i.status == 'pending').toList();
                   if (pending.isEmpty) {
@@ -130,7 +137,11 @@ class FamilyScreen extends ConsumerWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.familyRevokeFailed('$e'))));
+        showErrorSnackBar(
+          context,
+          friendlyErrorText(context.l10n, e, () => context.l10n.familyRevokeFailed),
+          onRetry: () => _revokeInvite(context, ref, invite),
+        );
       }
     }
   }
@@ -191,10 +202,9 @@ class _InviteMemberDialogState extends ConsumerState<InviteMemberDialog> {
       });
     } on DioException catch (e) {
       if (!mounted) return;
-      final body = e.response?.data;
       setState(() {
         _sending = false;
-        _error = body is Map ? '${body['error'] ?? e.message}' : e.message;
+        _error = friendlyErrorText(context.l10n, e, () => context.l10n.familyInviteFailed);
       });
     }
   }
@@ -213,71 +223,70 @@ class _InviteMemberDialogState extends ConsumerState<InviteMemberDialog> {
     final tokens = context.tokens;
     final token = _acceptToken;
     return AlertDialog(
+      scrollable: true,
       title: Text(token == null ? context.l10n.familyInviteMember : context.l10n.familyInviteSent),
-      content: SingleChildScrollView(
-        child: token == null
-            ? Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: _email,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: InputDecoration(
-                      labelText: context.l10n.familyEmailLabel,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
-                    ),
+      content: token == null
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: _email,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: InputDecoration(
+                    labelText: context.l10n.familyEmailLabel,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                   ),
-                  const SizedBox(height: AppSpace.md),
-                  DropdownButtonFormField<String>(
-                    initialValue: _role,
-                    isExpanded: true,
-                    decoration: InputDecoration(
-                      labelText: context.l10n.familyRoleLabel,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
-                    ),
-                    items: [
-                      DropdownMenuItem(value: 'co-parent', child: Text(context.l10n.familyRoleCoParent)),
-                      DropdownMenuItem(value: 'guardian', child: Text(context.l10n.familyRoleGuardian)),
-                    ],
-                    onChanged: (v) => setState(() => _role = v ?? 'co-parent'),
+                ),
+                const SizedBox(height: AppSpace.md),
+                DropdownButtonFormField<String>(
+                  initialValue: _role,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    labelText: context.l10n.familyRoleLabel,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                   ),
-                  const SizedBox(height: AppSpace.sm),
-                  Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: Text(context.l10n.familyPermissions, style: Theme.of(context).textTheme.titleSmall),
-                  ),
-                  for (final p in kInvitePermissions)
-                    CheckboxListTile(
-                      dense: true,
-                      title: Text(familyPermissionName(context.l10n, p)),
-                      value: _permissions[p] ?? true,
-                      onChanged: (v) => setState(() => _permissions[p] = v ?? false),
-                    ),
-                  if (_error != null) ...[
-                    const SizedBox(height: AppSpace.sm),
-                    Text(_error!,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.danger)),
+                  items: [
+                    DropdownMenuItem(value: 'co-parent', child: Text(context.l10n.familyRoleCoParent)),
+                    DropdownMenuItem(value: 'guardian', child: Text(context.l10n.familyRoleGuardian)),
                   ],
-                ],
-              )
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(context.l10n.familyInviteSentTo(_invitedEmail ?? '')),
-                  const SizedBox(height: AppSpace.md),
-                  SelectableText(
-                    token,
-                    // Deliberate: the accept token keeps its literal monospace
-                    // style; AppType.recoveryCode is 16 px with 0.4 tracking
-                    // and would change this dialog's 320 px layout.
-                    style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                  onChanged: (v) => setState(() => _role = v ?? 'co-parent'),
+                ),
+                const SizedBox(height: AppSpace.sm),
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Text(context.l10n.familyPermissions, style: Theme.of(context).textTheme.titleSmall),
+                ),
+                for (final p in kInvitePermissions)
+                  CheckboxListTile(
+                    dense: true,
+                    title: Text(familyPermissionName(context.l10n, p)),
+                    value: _permissions[p] ?? true,
+                    onChanged: (v) => setState(() => _permissions[p] = v ?? false),
                   ),
+                if (_error != null) ...[
                   const SizedBox(height: AppSpace.sm),
-                  Text(context.l10n.familyTokenExplanation),
+                  Text(_error!,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.danger)),
                 ],
-              ),
-      ),
+              ],
+            )
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(context.l10n.familyInviteSentTo(_invitedEmail ?? '')),
+                const SizedBox(height: AppSpace.md),
+                SelectableText(
+                  token,
+                  // Deliberate: the accept token keeps its literal monospace
+                  // style; AppType.recoveryCode is 16 px with 0.4 tracking
+                  // and would change this dialog's 320 px layout.
+                  style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: AppSpace.sm),
+                Text(context.l10n.familyTokenExplanation),
+              ],
+            ),
       actions: token == null
           ? [
               TextButton(onPressed: _sending ? null : () => Navigator.of(context).pop(false), child: Text(context.l10n.cancel)),

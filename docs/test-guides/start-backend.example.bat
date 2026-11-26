@@ -46,6 +46,8 @@ REM === SET REAL SECRETS BEFORE GOING ONLINE (any long random strings) ===
 set JWT_SECRET=CHANGE_ME-long-random-hex
 set INTERNAL_HMAC_SECRET=CHANGE_ME-long-random-hex
 set PORT=3000
+REM Optional URL-event e2e only. Ordinary launches keep site names off by default.
+if "%OSRA_E2E_SITE_NAMES%"=="1" set SITE_NAMES_ENABLED=true
 REM base64 32-byte AES key, e.g. from: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 set VAULT_KEY=CHANGE_ME-base64-32-bytes
 REM =====================================================================
@@ -61,7 +63,7 @@ echo [5/5] Starting API on port 3000...
 echo.
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4"') do echo    LAN address candidate: http://%%a:3000
 echo.
-echo    Demo parent login:  demo@familyshield.dev / CorrectHorseBatteryStaple!
+echo    Demo parent login:  demo@osratech.com / local seed default in services/api/scripts/seed-password.ts
 echo.
 node dist\server.js
 goto :eof

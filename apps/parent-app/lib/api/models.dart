@@ -1,12 +1,17 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show Color, Colors;
+
+import '../core/social_sender.dart';
 
 /// Plain Dart models mirroring `packages/shared-types/src/index.ts` field
 /// names (displayName, birthYear, batteryPct, lastSeen, blockedCategories,
 /// dailyLimitMinutes, bedtimeStart, ...). All `fromJson` factories tolerate
 /// missing/extra keys and never throw on absent optional fields.
 
-String _str(dynamic v, [String fallback = '']) => v is String ? v : (v?.toString() ?? fallback);
+String _str(dynamic v, [String fallback = '']) =>
+    v is String ? v : (v?.toString() ?? fallback);
 int _int(dynamic v, [int fallback = 0]) {
   if (v is int) return v;
   if (v is num) return v.toInt();
@@ -16,20 +21,38 @@ int _int(dynamic v, [int fallback = 0]) {
 
 bool _bool(dynamic v, [bool fallback = false]) => v is bool ? v : fallback;
 String? _strOrNull(dynamic v) => v == null ? null : _str(v);
+double? _doubleOrNull(dynamic v) {
+  if (v is num) return v.isFinite ? v.toDouble() : null;
+  if (v is String) {
+    final parsed = double.tryParse(v.trim());
+    return parsed != null && parsed.isFinite ? parsed : null;
+  }
+  return null;
+}
+
 int? _intOrNull(dynamic v) {
   if (v is int) return v;
   if (v is num) return v.toInt();
   if (v is String) return int.tryParse(v);
   return null;
 }
-List<String> _strList(dynamic v) => v is List ? [for (final e in v) _str(e)] : const <String>[];
-List<int> _intList(dynamic v) => v is List ? [for (final e in v) _int(e)] : const <int>[];
+
+List<String> _strList(dynamic v) =>
+    v is List ? [for (final e in v) _str(e)] : const <String>[];
+List<int> _intList(dynamic v) =>
+    v is List ? [for (final e in v) _int(e)] : const <int>[];
+
 /// Like [_mapList], but skips an entry that is not an object instead of throwing, so one odd entry in a
 /// list this app reads from a newer phone or server never costs the whole response (ADR-0037 groups).
-List<Map<String, dynamic>> _mapEntries(dynamic v) =>
-    v is List ? [for (final e in v) if (e is Map) Map<String, dynamic>.from(e)] : const <Map<String, dynamic>>[];
-List<Map<String, dynamic>> _mapList(dynamic v) =>
-    v is List ? [for (final e in v) Map<String, dynamic>.from(e as Map)] : const <Map<String, dynamic>>[];
+List<Map<String, dynamic>> _mapEntries(dynamic v) => v is List
+    ? [
+        for (final e in v)
+          if (e is Map) Map<String, dynamic>.from(e)
+      ]
+    : const <Map<String, dynamic>>[];
+List<Map<String, dynamic>> _mapList(dynamic v) => v is List
+    ? [for (final e in v) Map<String, dynamic>.from(e as Map)]
+    : const <Map<String, dynamic>>[];
 
 /// Family account record; `region` is one of US/EU/UK/OTHER.
 @immutable
@@ -43,7 +66,12 @@ class Family {
   /// has no zone set (`timezoneSource = default`); the app then reads windows on its own clock.
   final int? utcOffsetMinutes;
 
-  const Family({required this.id, required this.name, required this.region, this.createdAt, this.utcOffsetMinutes});
+  const Family(
+      {required this.id,
+      required this.name,
+      required this.region,
+      this.createdAt,
+      this.utcOffsetMinutes});
 
   factory Family.fromJson(Map<String, dynamic> json) => Family(
         id: _str(json['id']),
@@ -123,16 +151,24 @@ class Child {
         avatarUrl: _strOrNull(json['avatarUrl']),
         consentRecordId: _str(json['consentRecordId']),
         screenTimeTodayMinutes: _int(json['screenTimeTodayMinutes']),
-        rulesVersion: json['rulesVersion'] is num ? _int(json['rulesVersion']) : null,
-        appliedRulesVersion: json['appliedRulesVersion'] is num ? _int(json['appliedRulesVersion']) : null,
+        rulesVersion:
+            json['rulesVersion'] is num ? _int(json['rulesVersion']) : null,
+        appliedRulesVersion: json['appliedRulesVersion'] is num
+            ? _int(json['appliedRulesVersion'])
+            : null,
       );
 
   /// First letters of the display name, for avatar initials.
   String get initials {
-    final parts = displayName.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    final parts = displayName
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
     if (parts.isEmpty) return '?';
     if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return (parts.first.substring(0, 1) + parts.last.substring(0, 1)).toUpperCase();
+    return (parts.first.substring(0, 1) + parts.last.substring(0, 1))
+        .toUpperCase();
   }
 }
 
@@ -156,6 +192,12 @@ class Device {
   /// server *has* judged carries a setup whose [DeviceSetup.reportedAt] is the receipt time.
   final DeviceSetup? setup;
 
+  /// ADR-0047: when the server authenticated completion of required setup grants.
+  final DateTime? setupCompletedAt;
+
+  /// Whether the server sent [setupCompletedAt], distinguishing an explicit null from a legacy response.
+  final bool hasSetupCompletedAtField;
+
   const Device({
     required this.id,
     required this.childId,
@@ -167,6 +209,8 @@ class Device {
     this.lastSeen,
     this.pushToken,
     this.setup,
+    this.setupCompletedAt,
+    this.hasSetupCompletedAtField = false,
   });
 
   factory Device.fromJson(Map<String, dynamic> json) => Device(
@@ -179,8 +223,11 @@ class Device {
         batteryPct: _int(json['batteryPct']),
         lastSeen: DateTime.tryParse(_str(json['lastSeen'])),
         pushToken: _strOrNull(json['pushToken']),
+        setupCompletedAt: DateTime.tryParse(_str(json['setupCompletedAt'])),
+        hasSetupCompletedAtField: json.containsKey('setupCompletedAt'),
         setup: json['setup'] is Map
-            ? DeviceSetup.fromJson(Map<String, dynamic>.from(json['setup'] as Map))
+            ? DeviceSetup.fromJson(
+                Map<String, dynamic>.from(json['setup'] as Map))
             : null,
       );
 
@@ -191,6 +238,10 @@ class Device {
   /// `services/api/src/jobs/deviceSilence.ts` owns the flip to `offline`, and an agent call or an upload
   /// owns the flip back; [lastSeen] is shown beside the word as an age, not re-read as a verdict.
   bool get isOnline => status == 'online';
+
+  /// ADR-0047 first-setup state exists only for Android responses carrying the new server field.
+  bool get tracksSetupCompletion =>
+      platform.toLowerCase() == 'android' && hasSetupCompletedAtField;
 
   /// Whether the server has a capability report for this phone (ADR-0034 decision 3).
   ///
@@ -238,10 +289,14 @@ class DeviceSetup {
               }
             : const {},
         missing: json['missing'] is List
-            ? [for (final v in json['missing'] as List) if (v is String) v]
+            ? [
+                for (final v in json['missing'] as List)
+                  if (v is String) v
+              ]
             : const [],
         profiles: json['profiles'] is Map
-            ? DeviceProfiles.fromJson(Map<String, dynamic>.from(json['profiles'] as Map))
+            ? DeviceProfiles.fromJson(
+                Map<String, dynamic>.from(json['profiles'] as Map))
             : null,
         groups: json['groups'] is List
             ? [
@@ -271,7 +326,10 @@ class DeviceProfiles {
   factory DeviceProfiles.fromJson(Map<String, dynamic> json) => DeviceProfiles(
         others: _int(json['others']),
         kinds: json['kinds'] is List
-            ? [for (final v in json['kinds'] as List) if (v is String) v]
+            ? [
+                for (final v in json['kinds'] as List)
+                  if (v is String) v
+              ]
             : const [],
       );
 }
@@ -333,8 +391,9 @@ class DeviceCommand {
   /// The agent's own refusal reason (`lock_screen_unavailable`, `background_location_missing`, …),
   /// or null when the row carries none. Issue #231: a device-side refusal arrives as an ack, long
   /// after the POST returned, so this is the only place the parent can learn why it failed.
-  String? get refusalReason =>
-      result != null && result!['reason'] is String ? result!['reason'] as String : null;
+  String? get refusalReason => result != null && result!['reason'] is String
+      ? result!['reason'] as String
+      : null;
 }
 
 /// Daily screen-time windows. Times are "HH:mm" local strings; `days` is a
@@ -360,7 +419,13 @@ class ScreenTimeRule {
   });
 
   factory ScreenTimeRule.fromJson(Map<String, dynamic> json) {
-    final school = json['schoolHours'] is Map ? Map<String, dynamic>.from(json['schoolHours'] as Map) : const <String, dynamic>{};
+    final school = json['schoolHours'] is Map
+        ? Map<String, dynamic>.from(json['schoolHours'] as Map)
+        : const <String, dynamic>{};
+    final rawDays = school['days'];
+    final days = _intList(rawDays);
+    final hasSchoolDays =
+        days.isNotEmpty || (rawDays is List && rawDays.isEmpty);
     return ScreenTimeRule(
       dailyLimitMinutes: _int(json['dailyLimitMinutes'], 180),
       weekendLimitMinutes: _int(json['weekendLimitMinutes'], 240),
@@ -368,7 +433,7 @@ class ScreenTimeRule {
       bedtimeEnd: _str(json['bedtimeEnd'], '07:00'),
       schoolStart: _str(school['start'], '08:00'),
       schoolEnd: _str(school['end'], '15:00'),
-      schoolDays: _intList(school['days']).isEmpty ? const [1, 2, 3, 4, 5] : _intList(school['days']),
+      schoolDays: hasSchoolDays ? days : const [1, 2, 3, 4, 5],
     );
   }
 
@@ -377,7 +442,11 @@ class ScreenTimeRule {
         'weekendLimitMinutes': weekendLimitMinutes,
         'bedtimeStart': bedtimeStart,
         'bedtimeEnd': bedtimeEnd,
-        'schoolHours': {'start': schoolStart, 'end': schoolEnd, 'days': schoolDays},
+        'schoolHours': {
+          'start': schoolStart,
+          'end': schoolEnd,
+          'days': schoolDays
+        },
       };
 }
 
@@ -447,7 +516,8 @@ class WebFilterRule {
         allowedDomains: allowedDomains ?? this.allowedDomains,
         blockedDomains: blockedDomains ?? this.blockedDomains,
         safeSearchEnforced: safeSearchEnforced ?? this.safeSearchEnforced,
-        youtubeRestrictedMode: youtubeRestrictedMode ?? this.youtubeRestrictedMode,
+        youtubeRestrictedMode:
+            youtubeRestrictedMode ?? this.youtubeRestrictedMode,
       );
 }
 
@@ -460,13 +530,19 @@ class AppRule {
   final String action;
   final int? dailyLimitMinutes;
 
-  const AppRule({required this.packageId, required this.appName, this.action = 'allow', this.dailyLimitMinutes});
+  const AppRule(
+      {required this.packageId,
+      required this.appName,
+      this.action = 'allow',
+      this.dailyLimitMinutes});
 
   factory AppRule.fromJson(Map<String, dynamic> json) => AppRule(
         packageId: _str(json['packageId']),
         appName: _str(json['appName']),
         action: _str(json['action'], 'allow'),
-        dailyLimitMinutes: json['dailyLimitMinutes'] == null ? null : _int(json['dailyLimitMinutes']),
+        dailyLimitMinutes: json['dailyLimitMinutes'] == null
+            ? null
+            : _int(json['dailyLimitMinutes']),
       );
 
   Map<String, dynamic> toJson() => {
@@ -494,17 +570,26 @@ class InstalledApp {
   /// before this field: selectable, with no label. A stale row must not claim either answer.
   final bool? essential;
 
+  /// U33 (#868): a URL the server serves this app's icon from, or null while it has not arrived.
+  ///
+  /// Null is the normal state until the child agent uploads icons (`kimi/u33-app-icons`): the picker
+  /// draws a letter avatar in the brand tint for null, never a blank square. The field is additive, so
+  /// an older server answer simply leaves it null and nothing else in the row changes.
+  final String? iconUrl;
+
   const InstalledApp({
     required this.packageId,
     required this.label,
     this.isSystem = false,
     this.essential,
+    this.iconUrl,
   });
 
   factory InstalledApp.fromJson(Map<String, dynamic> json) {
     final packageId = _str(json['packageId']);
     final label = _str(json['label']).trim();
     final rawEssential = json['essential'];
+    final rawIcon = _strOrNull(json['iconUrl'])?.trim();
     return InstalledApp(
       packageId: packageId,
       // The API already falls back to the package id; repeat it so a hand-written
@@ -513,6 +598,8 @@ class InstalledApp {
       isSystem: _bool(json['isSystem']),
       // Absent and explicit null both mean "not reported"; anything that is not a bool is not a claim.
       essential: rawEssential is bool ? rawEssential : null,
+      // An empty string is not a URL: treat it as "no icon yet" so the row draws its letter avatar.
+      iconUrl: rawIcon == null || rawIcon.isEmpty ? null : rawIcon,
     );
   }
 }
@@ -533,8 +620,11 @@ class InstalledAppsReport {
     this.truncated = false,
   });
 
-  factory InstalledAppsReport.fromJson(Map<String, dynamic> json) => InstalledAppsReport(
-        apps: [for (final m in _mapList(json['apps'])) InstalledApp.fromJson(m)],
+  factory InstalledAppsReport.fromJson(Map<String, dynamic> json) =>
+      InstalledAppsReport(
+        apps: [
+          for (final m in _mapList(json['apps'])) InstalledApp.fromJson(m)
+        ],
         version: _int(json['version'], 1),
         reportedAt: DateTime.tryParse(_str(json['reportedAt'])),
         truncated: _bool(json['truncated']),
@@ -562,6 +652,26 @@ class InstalledAppsReport {
       truncated: truncated || other.truncated,
     );
   }
+}
+
+/// U33 (#868): one device's installed-app report, kept apart so the picker can group rows under the
+/// device that reported them. A child with two Android phones gets two of these; a phone that has not
+/// reported arrives with an empty [report] (and its own empty state), never as a missing entry.
+@immutable
+class DeviceApps {
+  final String deviceId;
+
+  /// The device's display name. Today that is the model string the phone reported (`Pixel 7a`); a
+  /// user-set name needs an API field that does not exist yet (asked on #868).
+  final String label;
+
+  final InstalledAppsReport report;
+
+  const DeviceApps({
+    required this.deviceId,
+    required this.label,
+    this.report = const InstalledAppsReport(),
+  });
 }
 
 /// A named time window (homework, dinner, ...). Times are "HH:mm"; `days`
@@ -641,17 +751,33 @@ class RuleSet {
   });
 
   factory RuleSet.fromJson(Map<String, dynamic> json) {
-    final root = json['ruleSet'] is Map ? Map<String, dynamic>.from(json['ruleSet'] as Map) : json;
-    final social = root['socialMonitoring'] is Map ? Map<String, dynamic>.from(root['socialMonitoring'] as Map) : const <String, dynamic>{};
+    final root = json['ruleSet'] is Map
+        ? Map<String, dynamic>.from(json['ruleSet'] as Map)
+        : json;
+    final social = root['socialMonitoring'] is Map
+        ? Map<String, dynamic>.from(root['socialMonitoring'] as Map)
+        : const <String, dynamic>{};
     return RuleSet(
       id: _str(root['id']),
       childId: _str(root['childId']),
-      screenTime: root['screenTime'] is Map ? ScreenTimeRule.fromJson(Map<String, dynamic>.from(root['screenTime'] as Map)) : const ScreenTimeRule(),
-      webFilter: root['webFilter'] is Map ? WebFilterRule.fromJson(Map<String, dynamic>.from(root['webFilter'] as Map)) : const WebFilterRule(),
-      appRules: [for (final m in _mapList(root['appRules'])) AppRule.fromJson(m)],
-      routines: [for (final m in _mapList(root['routines'])) Routine.fromJson(m)],
+      screenTime: root['screenTime'] is Map
+          ? ScreenTimeRule.fromJson(
+              Map<String, dynamic>.from(root['screenTime'] as Map))
+          : const ScreenTimeRule(),
+      webFilter: root['webFilter'] is Map
+          ? WebFilterRule.fromJson(
+              Map<String, dynamic>.from(root['webFilter'] as Map))
+          : const WebFilterRule(),
+      appRules: [
+        for (final m in _mapList(root['appRules'])) AppRule.fromJson(m)
+      ],
+      routines: [
+        for (final m in _mapList(root['routines'])) Routine.fromJson(m)
+      ],
       // NOTE: apps absent from the map default to ON in the UI (spec #2).
-      socialMonitoring: {for (final e in social.entries) e.key: e.value == true},
+      socialMonitoring: {
+        for (final e in social.entries) e.key: e.value == true
+      },
       contactAllowlist: _strList(root['contactAllowlist']),
       alwaysAllowedApps: _strList(root['alwaysAllowedApps']),
       appGroupRules: [
@@ -662,7 +788,7 @@ class RuleSet {
     );
   }
 
-  /// Full PUT body — the server PATCH-merges, so we always send everything.
+  /// The complete ruleset body.
   Map<String, dynamic> toJson() => {
         'screenTime': screenTime.toJson(),
         'webFilter': webFilter.toJson(),
@@ -672,6 +798,35 @@ class RuleSet {
         'contactAllowlist': contactAllowlist,
         'alwaysAllowedApps': alwaysAllowedApps,
         'appGroupRules': [for (final r in appGroupRules) r.toJson()],
+      };
+
+  /// Changes to send to the server's rules PATCH endpoint.
+  ///
+  /// The endpoint merges screen time and web filter by field. Keep an
+  /// unchanged bedtime or school window out of the patch so the API only
+  /// checks for overlap when a parent edits a schedule.
+  Map<String, dynamic> changesFrom(RuleSet saved) {
+    final before = saved.toJson();
+    final after = toJson();
+    final patch = _changedFields(before, after);
+    for (final section in ['screenTime', 'webFilter']) {
+      if (!patch.containsKey(section)) continue;
+      patch[section] = _changedFields(
+        before[section] as Map<String, dynamic>,
+        after[section] as Map<String, dynamic>,
+      );
+    }
+    return patch;
+  }
+
+  static Map<String, dynamic> _changedFields(
+    Map<String, dynamic> before,
+    Map<String, dynamic> after,
+  ) =>
+      {
+        for (final field in after.entries)
+          if (jsonEncode(before[field.key]) != jsonEncode(field.value))
+            field.key: field.value,
       };
 
   /// A copy with only the fields given changed; every other field, [appGroupRules] included, is kept.
@@ -729,7 +884,12 @@ class AppGroupReport {
   final int categories;
   final int sites;
 
-  const AppGroupReport({required this.id, required this.label, this.apps = 0, this.categories = 0, this.sites = 0});
+  const AppGroupReport(
+      {required this.id,
+      required this.label,
+      this.apps = 0,
+      this.categories = 0,
+      this.sites = 0});
 
   static AppGroupReport? tryFromJson(Map<String, dynamic> json) {
     final id = _str(json['id']);
@@ -756,6 +916,13 @@ class SocialConcernEvent {
   final String preview;
   final List<String> concernTypes;
   final DateTime? createdAt;
+  final String? latestFeedbackVerdict;
+  final String? latestFeedbackParentDisplayName;
+  final DateTime? latestFeedbackFirstVotedAt;
+  final DateTime? latestFeedbackLastChangedAt;
+  final String? ownFeedbackVerdict;
+  final DateTime? ownFeedbackFirstVotedAt;
+  final DateTime? ownFeedbackLastChangedAt;
 
   const SocialConcernEvent({
     required this.id,
@@ -765,17 +932,44 @@ class SocialConcernEvent {
     required this.preview,
     this.concernTypes = const [],
     this.createdAt,
+    this.latestFeedbackVerdict,
+    this.latestFeedbackParentDisplayName,
+    this.latestFeedbackFirstVotedAt,
+    this.latestFeedbackLastChangedAt,
+    this.ownFeedbackVerdict,
+    this.ownFeedbackFirstVotedAt,
+    this.ownFeedbackLastChangedAt,
   });
 
-  factory SocialConcernEvent.fromJson(Map<String, dynamic> json) => SocialConcernEvent(
-        id: _str(json['id']),
-        app: _str(json['app']),
-        contact: _str(json['contact']),
-        severity: _str(json['severity'], 'info'),
-        preview: _str(json['preview']),
-        concernTypes: _strList(json['concernTypes']),
-        createdAt: DateTime.tryParse(_str(json['createdAt'])),
-      );
+  factory SocialConcernEvent.fromJson(Map<String, dynamic> json) {
+    final latestFeedback = json['latestFeedback'];
+    final feedback =
+        latestFeedback is Map ? latestFeedback : const <String, dynamic>{};
+    final verdict = _str(feedback['verdict']);
+    final parentDisplayName = _str(feedback['parentDisplayName']);
+    final ownFeedback = json['ownFeedback'];
+    final own = ownFeedback is Map ? ownFeedback : const <String, dynamic>{};
+    final ownVerdict = _str(own['verdict']);
+    return SocialConcernEvent(
+      id: _str(json['id']),
+      app: _str(json['app']),
+      contact: _str(json['contact']),
+      severity: _str(json['severity'], 'info'),
+      preview: _str(json['preview']),
+      concernTypes: _strList(json['concernTypes']),
+      createdAt: DateTime.tryParse(_str(json['createdAt'])),
+      latestFeedbackVerdict: verdict.isEmpty ? null : verdict,
+      latestFeedbackParentDisplayName:
+          parentDisplayName.isEmpty ? null : parentDisplayName,
+      latestFeedbackFirstVotedAt:
+          DateTime.tryParse(_str(feedback['firstVotedAt'])),
+      latestFeedbackLastChangedAt:
+          DateTime.tryParse(_str(feedback['lastChangedAt'])),
+      ownFeedbackVerdict: ownVerdict.isEmpty ? null : ownVerdict,
+      ownFeedbackFirstVotedAt: DateTime.tryParse(_str(own['firstVotedAt'])),
+      ownFeedbackLastChangedAt: DateTime.tryParse(_str(own['lastChangedAt'])),
+    );
+  }
 }
 
 /// A flagged search query event (Track 1 & 2 content monitoring).
@@ -797,7 +991,8 @@ class SearchEventItem {
     this.createdAt,
   });
 
-  factory SearchEventItem.fromJson(Map<String, dynamic> json) => SearchEventItem(
+  factory SearchEventItem.fromJson(Map<String, dynamic> json) =>
+      SearchEventItem(
         id: _str(json['id']),
         engine: _str(json['engine'], 'search'),
         query: _str(json['query']),
@@ -826,16 +1021,20 @@ class ActivityEvent {
   final Map<String, dynamic> payload;
   final DateTime? ts;
 
-  const ActivityEvent({required this.id, required this.type, this.payload = const {}, this.ts});
+  const ActivityEvent(
+      {required this.id, required this.type, this.payload = const {}, this.ts});
 
   factory ActivityEvent.fromJson(Map<String, dynamic> json) => ActivityEvent(
         id: _str(json['id']),
         type: _str(json['type']),
-        payload: json['payload'] is Map ? Map<String, dynamic>.from(json['payload'] as Map) : const {},
+        payload: json['payload'] is Map
+            ? Map<String, dynamic>.from(json['payload'] as Map)
+            : const {},
         ts: DateTime.tryParse(_str(json['ts'] ?? json['createdAt'])),
       );
 
-  String? get number => payload['number'] is String ? payload['number'] as String : null;
+  String? get number =>
+      payload['number'] is String ? payload['number'] as String : null;
 
   /// Issue 4.5: **null when the agent sent no duration** — a missed call carries none, and reading that
   /// as 0 renders "0:00", which says the call connected and ended instantly.
@@ -872,7 +1071,12 @@ class LocationPing {
   final double accuracyM;
   final DateTime? timestamp;
 
-  const LocationPing({required this.deviceId, required this.lat, required this.lng, this.accuracyM = 0, this.timestamp});
+  const LocationPing(
+      {required this.deviceId,
+      required this.lat,
+      required this.lng,
+      this.accuracyM = 0,
+      this.timestamp});
 
   factory LocationPing.fromJson(Map<String, dynamic> json) => LocationPing(
         deviceId: _str(json['deviceId']),
@@ -954,6 +1158,91 @@ class FamilyInvite {
 
 /// A safety/security alert. `severity` is info/warning/critical;
 /// `category` is one of the shared-types Alert categories.
+/// Issue #672: where an SOS was sent from, read from the alert's metadata.
+///
+/// The child agent writes five flat keys (`SosLocationPolicy` in `apps/child-android`) and
+/// `services/api/src/lib/alertLocation.ts` stores them normalised — numbers, ISO time. This is the one
+/// place the app interprets them, and it is deliberately forgiving: a stored fix that does not describe a
+/// point is `null`, so an alert is never lost to a location it could not read.
+///
+/// No place name: this app has no reverse geocoder (`family_map_screen.dart` calls that a non-goal), so
+/// "near" means the coordinates. The age is what makes that honest.
+@immutable
+class AlertFix {
+  final double lat;
+  final double lng;
+
+  /// Horizontal accuracy in metres, when the phone knew it.
+  final double? accuracyM;
+
+  /// When the platform took the fix, when the alert dated it.
+  final DateTime? takenAt;
+
+  /// How old the fix was when the SOS was sent, when the phone said so.
+  final Duration? age;
+
+  const AlertFix(
+      {required this.lat,
+      required this.lng,
+      this.accuracyM,
+      this.takenAt,
+      this.age});
+
+  /// The fix in [metadata], or null when there is no usable one.
+  static AlertFix? fromMetadata(Map<String, dynamic> metadata) {
+    final lat = _doubleOrNull(metadata['lat']);
+    final lng = _doubleOrNull(metadata['lng']);
+    // A half fix is not a fix: one axis cannot place a pin, so it must not place a wrong one.
+    if (lat == null || lng == null) return null;
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+    final accuracy = _doubleOrNull(metadata['accuracyM']);
+    final ageSeconds = _doubleOrNull(metadata['ageSeconds']);
+    return AlertFix(
+      lat: lat,
+      lng: lng,
+      accuracyM: accuracy != null && accuracy >= 0 ? accuracy : null,
+      takenAt: DateTime.tryParse(_strOrNull(metadata['takenAt']) ?? ''),
+      age: ageSeconds != null && ageSeconds >= 0
+          ? Duration(seconds: ageSeconds.round())
+          : null,
+    );
+  }
+
+  /// The coordinates as the parent reads them: **five** decimals, about one metre.
+  ///
+  /// Five, not six, and the same five in [copyText]: a parent reading the screen aloud while someone else
+  /// pastes the copied text must not see two different numbers for the same fix (UI/UX Bureau, #743).
+  String get coordsText => copyText;
+
+  /// What "Copy coordinates" puts on the clipboard. Identical to [coordsText] on purpose — one number,
+  /// one place to change it.
+  String get copyText => '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
+
+  /// U+2066 (LRI) … U+2069 (PDI) around [coordsText], in **code** and for every language (#672 Arabic
+  /// Language Bureau): in a right-to-left line the two numbers are two separate left-to-right runs, so
+  /// without the isolate they are laid out from the right and the pair draws longitude first — a parent
+  /// who reads the line aloud or types it into a map lands in another country. The marks do not go into
+  /// the ARB: they are direction, not words.
+  String get isolatedCoords => '\u2066$coordsText\u2069';
+
+  /// How old the fix is *now*: the platform time when the alert dated it (a cache older than the alert is
+  /// then aged past what the phone thought), else the phone's own figure plus the time since the alert, so
+  /// a notification read ten minutes later does not claim the fix is still fresh.
+  Duration? ageAt(DateTime now, {DateTime? alertCreatedAt}) {
+    final taken = takenAt;
+    if (taken != null) {
+      final byTime = now.difference(taken);
+      return byTime.isNegative ? Duration.zero : byTime;
+    }
+    final sent = age;
+    if (sent == null) return null;
+    final created = alertCreatedAt;
+    final since = created == null ? Duration.zero : now.difference(created);
+    return sent + (since.isNegative ? Duration.zero : since);
+  }
+}
+
+/// One alert as the parent app reads it. [AlertFix] is #672: the SOS's own location, when it has one.
 @immutable
 class Alert {
   final String id;
@@ -965,7 +1254,9 @@ class Alert {
   final String body;
   final Map<String, dynamic> metadata;
   final DateTime? createdAt;
+  final DateTime? updatedAt;
   final bool acknowledged;
+  final int attemptCount;
 
   const Alert({
     required this.id,
@@ -977,7 +1268,9 @@ class Alert {
     required this.body,
     this.metadata = const {},
     this.createdAt,
+    this.updatedAt,
     this.acknowledged = false,
+    this.attemptCount = 1,
   });
 
   factory Alert.fromJson(Map<String, dynamic> json) => Alert(
@@ -988,10 +1281,88 @@ class Alert {
         category: _str(json['category']),
         title: _str(json['title']),
         body: _str(json['body']),
-        metadata: json['metadata'] is Map ? Map<String, dynamic>.from(json['metadata'] as Map) : const {},
+        metadata: json['metadata'] is Map
+            ? Map<String, dynamic>.from(json['metadata'] as Map)
+            : const {},
         createdAt: DateTime.tryParse(_str(json['createdAt'])),
+        updatedAt: DateTime.tryParse(_str(json['updatedAt'])),
         acknowledged: _bool(json['acknowledged']),
+        attemptCount: _int(json['attemptCount'], 1),
       );
+
+  /// #1029: whether this alert is a social/gaming chat concern alert.
+  bool get isSocialAlert =>
+      category == 'social_concern' || category == 'gaming_chat';
+
+  static int? _positiveMetaInt(Map<String, dynamic> meta, List<String> keys) {
+    for (final k in keys) {
+      final v = meta[k];
+      if (v is num && v.toInt() > 0) return v.toInt();
+      if (v is String) {
+        final parsed = int.tryParse(v.trim());
+        if (parsed != null && parsed > 0) return parsed;
+      }
+    }
+    return null;
+  }
+
+  /// #1029: explicit flagged message count from metadata (or `attemptCount` when > 1), else null.
+  int? get socialFlaggedCount =>
+      _positiveMetaInt(
+          metadata, const ['flaggedCount', 'messageCount', 'count']) ??
+      (attemptCount > 1 ? attemptCount : null);
+
+  /// #1029: total flagged messages represented by this social alert (at least 1).
+  int get socialMessageCount =>
+      socialFlaggedCount ?? (attemptCount > 0 ? attemptCount : 1);
+
+  /// #1029: distinct contact count from metadata (count only, never names on card/push).
+  int? get socialContactCount {
+    final explicit = _positiveMetaInt(
+      metadata,
+      const ['contactCount', 'distinctContactCount', 'contactsCount'],
+    );
+    if (explicit != null) return explicit;
+    final contact = metadata['contact']?.toString().trim() ?? '';
+    return contact.isNotEmpty ? 1 : null;
+  }
+
+  /// #1029: contact display name from metadata (as the child's app shows it), or null if absent/blank.
+  String? get socialContactName =>
+      socialSenderDisplayName(metadata['contact']?.toString());
+
+  /// #1029: latest flagged-message timestamp in the throttle window, if present.
+  DateTime? get socialLatestAt {
+    for (final k in const ['latestAt', 'lastAt', 'updatedAt']) {
+      final raw = metadata[k];
+      if (raw is String && raw.trim().isNotEmpty) {
+        final parsed = DateTime.tryParse(raw.trim());
+        if (parsed != null) return parsed;
+      }
+    }
+    return updatedAt ?? createdAt;
+  }
+
+  /// #1029: timestamp used for feed ordering and day grouping so in-place updated alerts move to top.
+  DateTime? get effectiveTimestamp => socialLatestAt ?? updatedAt ?? createdAt;
+
+  /// #1029: true when this social alert carries running-count aggregate metadata (or attemptCount > 1)
+  /// and an app name so the card/detail renders `socialAlertCountTitle` + `socialAlertCountSub`.
+  bool get hasSocialCountSummary {
+    if (!isSocialAlert) return false;
+    final app = metadata['app']?.toString().trim() ?? '';
+    if (app.isEmpty) return false;
+    return socialFlaggedCount != null ||
+        _positiveMetaInt(
+              metadata,
+              const ['contactCount', 'distinctContactCount', 'contactsCount'],
+            ) !=
+            null;
+  }
+
+  /// Issue #672: the fix an SOS carried, or null. Every other category has none — this reads metadata
+  /// only, so the getter is safe on any alert.
+  AlertFix? get location => AlertFix.fromMetadata(metadata);
 }
 
 /// One page of alerts from `GET /v1/alerts`.
@@ -1002,15 +1373,26 @@ class AlertsPage {
   final int page;
   final int limit;
 
-  const AlertsPage({required this.items, required this.total, this.page = 1, this.limit = 20});
+  const AlertsPage(
+      {required this.items,
+      required this.total,
+      this.page = 1,
+      this.limit = 20});
 
   factory AlertsPage.fromJson(dynamic json) {
     if (json is List) {
-      return AlertsPage(items: [for (final a in json) Alert.fromJson(Map<String, dynamic>.from(a as Map))], total: json.length);
+      return AlertsPage(items: [
+        for (final a in json)
+          Alert.fromJson(Map<String, dynamic>.from(a as Map))
+      ], total: json.length);
     }
-    final map = json is Map ? Map<String, dynamic>.from(json) : const <String, dynamic>{};
+    final map = json is Map
+        ? Map<String, dynamic>.from(json)
+        : const <String, dynamic>{};
     final items = [for (final a in _mapList(map['items'])) Alert.fromJson(a)];
-    final meta = map['meta'] is Map ? Map<String, dynamic>.from(map['meta'] as Map) : const <String, dynamic>{};
+    final meta = map['meta'] is Map
+        ? Map<String, dynamic>.from(map['meta'] as Map)
+        : const <String, dynamic>{};
     return AlertsPage(
       items: items,
       total: _int(map['total'] ?? meta['total'], items.length),
@@ -1058,7 +1440,14 @@ class ConsentRecord {
 /// What the consent screen shows for one child. Derived from the server's
 /// active/inactive answer plus the raw `records` history, so a withdrawn or
 /// expired record is reported as such instead of as "no record".
-enum ConsentState { active, expiring, expired, revoked, jurisdictionMismatch, none }
+enum ConsentState {
+  active,
+  expiring,
+  expired,
+  revoked,
+  jurisdictionMismatch,
+  none
+}
 
 /// `GET /v1/family/children/:id/consent` (ADR-0008). `records` is newest
 /// first and includes revoked/expired rows.
@@ -1082,35 +1471,43 @@ class ConsentStatus {
 
   factory ConsentStatus.fromJson(Map<String, dynamic> json) {
     final consent = json['consent'] is Map
-        ? ConsentRecord.fromJson(Map<String, dynamic>.from(json['consent'] as Map))
+        ? ConsentRecord.fromJson(
+            Map<String, dynamic>.from(json['consent'] as Map))
         : null;
     return ConsentStatus(
       active: _bool(json['active']),
       reason: _strOrNull(json['reason']),
       jurisdiction: _str(json['jurisdiction']),
       consent: consent,
-      records: [for (final r in _mapList(json['records'])) ConsentRecord.fromJson(r)],
+      records: [
+        for (final r in _mapList(json['records'])) ConsentRecord.fromJson(r)
+      ],
     );
   }
 
   /// The record the screen describes: the server's active one, else the
   /// newest row in the history.
-  ConsentRecord? get current => consent ?? (records.isEmpty ? null : records.first);
+  ConsentRecord? get current =>
+      consent ?? (records.isEmpty ? null : records.first);
 
   /// The state at [now]; kept as a function so expiry is testable.
   ConsentState stateAt(DateTime now) {
     final record = current;
     if (active) {
       final expiresAt = record?.expiresAt;
-      if (expiresAt != null && !expiresAt.isBefore(now) && expiresAt.difference(now) <= expiringWindow) {
+      if (expiresAt != null &&
+          !expiresAt.isBefore(now) &&
+          expiresAt.difference(now) <= expiringWindow) {
         return ConsentState.expiring;
       }
       return ConsentState.active;
     }
     if (record != null && record.revokedAt != null) return ConsentState.revoked;
     final expiresAt = record?.expiresAt;
-    if (expiresAt != null && !expiresAt.isAfter(now)) return ConsentState.expired;
-    if (reason == 'consent_jurisdiction_mismatch') return ConsentState.jurisdictionMismatch;
+    if (expiresAt != null && !expiresAt.isAfter(now))
+      return ConsentState.expired;
+    if (reason == 'consent_jurisdiction_mismatch')
+      return ConsentState.jurisdictionMismatch;
     return ConsentState.none;
   }
 
@@ -1168,9 +1565,14 @@ class ReportSummary {
 
   factory ReportSummary.fromJson(Map<String, dynamic> json) => ReportSummary(
         totalAppMinutes: _int(json['totalAppMinutes']),
-        topApps: [for (final m in _mapList(json['topApps'])) TopApp.fromJson(m)],
+        topApps: [
+          for (final m in _mapList(json['topApps'])) TopApp.fromJson(m)
+        ],
         urlVisits: _int(json['urlVisits']),
-        topBlockedDomains: [for (final m in _mapList(json['topBlockedDomains'])) BlockedDomain.fromJson(m)],
+        topBlockedDomains: [
+          for (final m in _mapList(json['topBlockedDomains']))
+            BlockedDomain.fromJson(m)
+        ],
         socialConcerns: _int(json['socialConcerns']),
         calls: _int(json['calls']),
         sms: _int(json['sms']),
@@ -1178,7 +1580,13 @@ class ReportSummary {
 
   /// True when there is nothing to chart or list for the selected range.
   bool get isEmpty =>
-      totalAppMinutes == 0 && topApps.isEmpty && urlVisits == 0 && topBlockedDomains.isEmpty && socialConcerns == 0 && calls == 0 && sms == 0;
+      totalAppMinutes == 0 &&
+      topApps.isEmpty &&
+      urlVisits == 0 &&
+      topBlockedDomains.isEmpty &&
+      socialConcerns == 0 &&
+      calls == 0 &&
+      sms == 0;
 }
 
 /// One app's minutes inside a [UsageDay] (`GET /v1/reports/usage`).
@@ -1224,14 +1632,21 @@ class UsageReport {
   final int totalMinutes;
   final List<UsageDay> series;
 
-  const UsageReport({required this.childId, this.days = 0, this.totalMinutes = 0, this.series = const []});
+  const UsageReport(
+      {required this.childId,
+      this.days = 0,
+      this.totalMinutes = 0,
+      this.series = const []});
 
   factory UsageReport.fromJson(Map<String, dynamic> json) {
-    final series = [for (final m in _mapList(json['series'])) UsageDay.fromJson(m)];
+    final series = [
+      for (final m in _mapList(json['series'])) UsageDay.fromJson(m)
+    ];
     return UsageReport(
       childId: _str(json['childId']),
       days: _int(json['days'], series.length),
-      totalMinutes: _int(json['totalMinutes'], series.fold<int>(0, (n, d) => n + d.minutes)),
+      totalMinutes: _int(
+          json['totalMinutes'], series.fold<int>(0, (n, d) => n + d.minutes)),
       series: series,
     );
   }
@@ -1280,14 +1695,24 @@ class WellbeingScore {
   final int score;
   final Map<String, int> breakdown;
 
-  const WellbeingScore({required this.childId, this.week = '', this.score = 0, this.breakdown = const {}});
+  const WellbeingScore(
+      {required this.childId,
+      this.week = '',
+      this.score = 0,
+      this.breakdown = const {}});
 
   factory WellbeingScore.fromJson(Map<String, dynamic> json) {
-    final raw = json['breakdown'] is Map ? Map<String, dynamic>.from(json['breakdown'] as Map) : const <String, dynamic>{};
+    final score = _intOrNull(json['score']);
+    if (score == null || score < 0 || score > 100) {
+      throw const FormatException('Invalid wellbeing score');
+    }
+    final raw = json['breakdown'] is Map
+        ? Map<String, dynamic>.from(json['breakdown'] as Map)
+        : const <String, dynamic>{};
     return WellbeingScore(
       childId: _str(json['childId']),
       week: _str(json['week']),
-      score: _int(json['score']),
+      score: score,
       breakdown: {for (final e in raw.entries) e.key: _int(e.value)},
     );
   }
@@ -1307,7 +1732,8 @@ class DigestRecipientStatus {
   /// claim a mail went out — the same distinction `unsent` makes for a failed send.
   final bool limited;
 
-  const DigestRecipientStatus({required this.email, this.status = 'pending', this.limited = false});
+  const DigestRecipientStatus(
+      {required this.email, this.status = 'pending', this.limited = false});
 
   bool get isConfirmed => status == 'confirmed';
   bool get isUnsent => status == 'unsent';
@@ -1316,7 +1742,8 @@ class DigestRecipientStatus {
   /// Anything that is not confirmed: the address receives no digest either way.
   bool get isPending => !isConfirmed;
 
-  factory DigestRecipientStatus.fromJson(Map<String, dynamic> json) => DigestRecipientStatus(
+  factory DigestRecipientStatus.fromJson(Map<String, dynamic> json) =>
+      DigestRecipientStatus(
         email: _str(json['email']),
         status: _str(json['status'], 'pending'),
         limited: json['limited'] == true,
@@ -1348,8 +1775,11 @@ class DigestPrefs {
         pushEnabled: _bool(json['pushEnabled'], true),
         emails: _strList(json['emails']),
         recipients: [
-          for (final r in (json['recipients'] is List ? json['recipients'] as List : const []))
-            if (r is Map) DigestRecipientStatus.fromJson(Map<String, dynamic>.from(r)),
+          for (final r in (json['recipients'] is List
+              ? json['recipients'] as List
+              : const []))
+            if (r is Map)
+              DigestRecipientStatus.fromJson(Map<String, dynamic>.from(r)),
         ],
       );
 
@@ -1370,7 +1800,12 @@ class AppInsight {
   final List<String> risks;
   final List<String> alternatives;
 
-  const AppInsight({this.packageId = '', this.appName = '', this.ageRating = '', this.risks = const [], this.alternatives = const []});
+  const AppInsight(
+      {this.packageId = '',
+      this.appName = '',
+      this.ageRating = '',
+      this.risks = const [],
+      this.alternatives = const []});
 
   factory AppInsight.fromJson(Map<String, dynamic> json) => AppInsight(
         packageId: _str(json['packageId']),
@@ -1390,7 +1825,8 @@ class LiveActivity {
   final int minutesToday;
   final DateTime? ts;
 
-  const LiveActivity({required this.childId, this.app = '', this.minutesToday = 0, this.ts});
+  const LiveActivity(
+      {required this.childId, this.app = '', this.minutesToday = 0, this.ts});
 
   factory LiveActivity.fromJson(Map<String, dynamic> json) => LiveActivity(
         childId: _str(json['childId']),
@@ -1410,7 +1846,11 @@ class LiveActivity {
 
 /// Ring color for a wellbeing score (#28): red under 50, amber under 75, green
 /// at 75+.
-Color wellbeingColor(int score) => score < 50 ? Colors.red : score < 75 ? Colors.amber : Colors.green;
+Color wellbeingColor(int score) => score < 50
+    ? Colors.red
+    : score < 75
+        ? Colors.amber
+        : Colors.green;
 
 /// Everything `GET /v1/family/me` returns for the signed-in parent.
 @immutable
@@ -1430,8 +1870,12 @@ class FamilyOverview {
   });
 
   factory FamilyOverview.fromJson(Map<String, dynamic> json) {
-    final familyJson = json['family'] is Map ? Map<String, dynamic>.from(json['family'] as Map) : <String, dynamic>{'id': '', 'name': '', 'region': 'US'};
-    final parentJson = json['parent'] is Map ? Map<String, dynamic>.from(json['parent'] as Map) : <String, dynamic>{'id': '', 'email': ''};
+    final familyJson = json['family'] is Map
+        ? Map<String, dynamic>.from(json['family'] as Map)
+        : <String, dynamic>{'id': '', 'name': '', 'region': 'US'};
+    final parentJson = json['parent'] is Map
+        ? Map<String, dynamic>.from(json['parent'] as Map)
+        : <String, dynamic>{'id': '', 'email': ''};
     // NOTE: children/devices/parents may live at the root or nested under `family`.
     final childrenRaw = json['children'] ?? familyJson['children'];
     final devicesRaw = json['devices'] ?? familyJson['devices'];
@@ -1446,7 +1890,8 @@ class FamilyOverview {
   }
 
   /// Devices belonging to one child.
-  List<Device> devicesFor(String childId) => devices.where((d) => d.childId == childId).toList();
+  List<Device> devicesFor(String childId) =>
+      devices.where((d) => d.childId == childId).toList();
 }
 
 /// `POST /v1/auth/mfa/enroll` — a new TOTP secret and the `otpauth://` URL the
@@ -1475,7 +1920,8 @@ class RecoveryCodeBatch {
 
   const RecoveryCodeBatch({this.codes = const [], this.issuedAt});
 
-  factory RecoveryCodeBatch.fromJson(Map<String, dynamic> json) => RecoveryCodeBatch(
+  factory RecoveryCodeBatch.fromJson(Map<String, dynamic> json) =>
+      RecoveryCodeBatch(
         codes: _strList(json['recoveryCodes']),
         issuedAt: DateTime.tryParse(_str(json['recoveryCodesIssuedAt'])),
       );
@@ -1492,9 +1938,11 @@ class MfaResetRequestResult {
   final DateTime? expiresAt;
   final String? confirmToken;
 
-  const MfaResetRequestResult({required this.requestId, this.expiresAt, this.confirmToken});
+  const MfaResetRequestResult(
+      {required this.requestId, this.expiresAt, this.confirmToken});
 
-  factory MfaResetRequestResult.fromJson(Map<String, dynamic> json) => MfaResetRequestResult(
+  factory MfaResetRequestResult.fromJson(Map<String, dynamic> json) =>
+      MfaResetRequestResult(
         requestId: _str(json['requestId']),
         expiresAt: DateTime.tryParse(_str(json['expiresAt'])),
         confirmToken: _strOrNull(json['confirmToken']),
@@ -1511,9 +1959,11 @@ class MfaResetConfirmResult {
   final String witness;
   final DateTime? codeExpiresAt;
 
-  const MfaResetConfirmResult({required this.requestId, required this.witness, this.codeExpiresAt});
+  const MfaResetConfirmResult(
+      {required this.requestId, required this.witness, this.codeExpiresAt});
 
-  factory MfaResetConfirmResult.fromJson(Map<String, dynamic> json) => MfaResetConfirmResult(
+  factory MfaResetConfirmResult.fromJson(Map<String, dynamic> json) =>
+      MfaResetConfirmResult(
         requestId: _str(json['requestId']),
         witness: _str(json['witness']),
         codeExpiresAt: DateTime.tryParse(_str(json['codeExpiresAt'])),
@@ -1531,7 +1981,8 @@ class MfaResetWitnessAccepted {
 
   const MfaResetWitnessAccepted({required this.state, this.windowEndsAt});
 
-  factory MfaResetWitnessAccepted.fromJson(Map<String, dynamic> json) => MfaResetWitnessAccepted(
+  factory MfaResetWitnessAccepted.fromJson(Map<String, dynamic> json) =>
+      MfaResetWitnessAccepted(
         state: _str(json['state']),
         windowEndsAt: DateTime.tryParse(_str(json['windowEndsAt'])),
       );
@@ -1600,12 +2051,14 @@ class MfaResetStatusView {
     this.outcomeAt,
   });
 
-  factory MfaResetStatusView.fromJson(Map<String, dynamic> json) => MfaResetStatusView(
+  factory MfaResetStatusView.fromJson(Map<String, dynamic> json) =>
+      MfaResetStatusView(
         requestId: _str(json['requestId']),
         state: _str(json['state']),
         createdAt: DateTime.tryParse(_str(json['createdAt'])),
         emailConfirmedAt: DateTime.tryParse(_str(json['emailConfirmedAt'])),
-        mailboxLinkExpiresAt: DateTime.tryParse(_str(json['mailboxLinkExpiresAt'])),
+        mailboxLinkExpiresAt:
+            DateTime.tryParse(_str(json['mailboxLinkExpiresAt'])),
         witnessDeadline: DateTime.tryParse(_str(json['witnessDeadline'])),
         codeExpiresAt: DateTime.tryParse(_str(json['codeExpiresAt'])),
         attemptsRemaining: _intOrNull(json['attemptsRemaining']),
@@ -1646,7 +2099,9 @@ class MfaResetPendingRequest {
   });
 
   factory MfaResetPendingRequest.fromJson(Map<String, dynamic> json) {
-    final requester = json['requester'] is Map ? Map<String, dynamic>.from(json['requester'] as Map) : const <String, dynamic>{};
+    final requester = json['requester'] is Map
+        ? Map<String, dynamic>.from(json['requester'] as Map)
+        : const <String, dynamic>{};
     return MfaResetPendingRequest(
       requestId: _str(json['requestId']),
       state: _str(json['state']),

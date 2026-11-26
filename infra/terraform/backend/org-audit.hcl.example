@@ -1,0 +1,4 @@
+# Copy to org-audit.hcl (gitignored). State in the management account's existing state bucket.
+bucket = "<management state bucket>"
+key    = "org-audit/terraform.tfstate"
+region = "<that bucket's region>"

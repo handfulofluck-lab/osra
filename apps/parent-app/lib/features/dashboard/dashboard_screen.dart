@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/digits.dart';
 import '../../api/permission_errors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +9,7 @@ import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
 import '../../l10n/l10n.dart';
+import '../../widgets/field_question.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/controls_provider.dart';
 import '../../providers/family_provider.dart';
@@ -15,9 +17,11 @@ import '../../providers/mfa_reset_provider.dart';
 import '../../providers/onboarding_provider.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
+import '../../widgets/error_retry_view.dart';
 import '../auth/mfa_reset_approval_screen.dart';
 import '../auth/mfa_reset_messages.dart';
 import '../children/consent_step.dart';
+import '../map/child_location_view.dart';
 
 /// Parent dashboard: grid of child cards with live status, pull-to-refresh
 /// and a consent-first "Add child" flow.
@@ -27,7 +31,7 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final family = ref.watch(familyProvider);
-    final unread = ref.watch(unacknowledgedCountProvider);
+    final unread = ref.watch(alertsBadgeCountProvider);
     // ADR-0031 step 3b: a signed-in owner/co-parent is told on open that
     // someone needs a witness. A guardian's 403 becomes an empty list in the
     // provider, so this is absent rather than an error.
@@ -43,10 +47,17 @@ class DashboardScreen extends ConsumerWidget {
           IconButton(
             tooltip: l10n.alertsTooltip,
             onPressed: () => context.push('/alerts'),
-            icon: Badge(
-              isLabelVisible: unread.hasValue && (unread.value ?? 0) > 0,
-              label: Text('${unread.value ?? 0}'),
-              child: const Icon(Icons.notifications_outlined),
+            // B3: count badge follows accessibility text scale up to 1.3x so
+            // digits stay legible without overlapping the bell or neighbouring AppBar icons.
+            icon: MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.3),
+              ),
+              child: Badge(
+                isLabelVisible: unread.hasValue && (unread.value ?? 0) > 0,
+                label: Text('${unread.value ?? 0}'),
+                child: const Icon(Icons.notifications_outlined),
+              ),
             ),
           ),
           PopupMenuButton<String>(
@@ -77,13 +88,24 @@ class DashboardScreen extends ConsumerWidget {
       ),
       body: family.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(l10n.familyLoadFailed('$e'))),
+        error: (e, _) => ErrorRetryView(
+          message: friendlyErrorText(l10n, e, () => l10n.familyLoadFailed),
+          onRetry: () => ref.invalidate(familyProvider),
+        ),
         data: (overview) {
           final setupBanner = _finishSetupBanner(context, ref, overview);
           final banners = <Widget>[
             if (pendingResets.isNotEmpty) _pendingApprovalBanner(context, pendingResets),
             if (setupBanner != null) setupBanner,
           ];
+          final isWide = MediaQuery.sizeOf(context).width >= 600;
+          const listPadding = EdgeInsetsDirectional.only(
+            start: AppSpace.md,
+            end: AppSpace.md,
+            top: AppSpace.md,
+            bottom: AppSpace.xxl * 3, // 96 dp clearance for floating "add child" button
+          );
+
           final content = overview.children.isEmpty
               ? ListView(
                   children: [
@@ -91,19 +113,45 @@ class DashboardScreen extends ConsumerWidget {
                     Center(child: Text(l10n.noChildrenYet)),
                   ],
                 )
-              : GridView.count(
-                  // NOTE: one column under 400px — two 110px-wide cards made
-                  // the card content overflow on 320px-wide screens.
-                  crossAxisCount: MediaQuery.sizeOf(context).width < 400 ? 1 : 2,
-                  padding: const EdgeInsets.all(AppSpace.md),
-                  mainAxisSpacing: AppSpace.md,
-                  crossAxisSpacing: AppSpace.md,
-                  children: [for (final child in overview.children) ChildCard(child: child)],
-                );
+              : !isWide
+                  ? ListView.separated(
+                      key: const ValueKey('dashboardCardsList'),
+                      padding: listPadding,
+                      itemCount: overview.children.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: AppSpace.md),
+                      itemBuilder: (_, i) => ChildCard(child: overview.children[i]),
+                    )
+                  : ListView.separated(
+                      key: const ValueKey('dashboardCardsList'),
+                      padding: listPadding,
+                      itemCount: (overview.children.length + 1) ~/ 2,
+                      separatorBuilder: (_, __) => const SizedBox(height: AppSpace.md),
+                      itemBuilder: (_, rowIndex) {
+                        final children = overview.children;
+                        final first = children[rowIndex * 2];
+                        final secondIndex = rowIndex * 2 + 1;
+                        final second = secondIndex < children.length ? children[secondIndex] : null;
+                        return IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(child: ChildCard(child: first)),
+                              const SizedBox(width: AppSpace.md),
+                              Expanded(
+                                child: second != null
+                                    ? ChildCard(child: second)
+                                    : const SizedBox.shrink(),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
           return RefreshIndicator(
             onRefresh: () async {
               ref.invalidate(familyProvider);
               ref.invalidate(mfaResetPendingProvider);
+              ref.invalidate(wellbeingProvider);
             },
             child: banners.isEmpty
                 ? content
@@ -134,7 +182,7 @@ class DashboardScreen extends ConsumerWidget {
     final name = first.requesterName.trim().isEmpty ? l10n.mfaResetRoleFamilyMember : first.requesterName;
     final role = mfaResetRoleName(l10n, first.requesterRole);
     return Card(
-      margin: const EdgeInsets.fromLTRB(AppSpace.md, AppSpace.md, AppSpace.md, 0),
+      margin: const EdgeInsetsDirectional.fromSTEB(AppSpace.md, AppSpace.md, AppSpace.md, 0),
       child: ListTile(
         key: const ValueKey('mfaResetPendingBanner'),
         leading: const Icon(Icons.lock_reset),
@@ -183,7 +231,7 @@ class DashboardScreen extends ConsumerWidget {
       margin: const EdgeInsetsDirectional.fromSTEB(AppSpace.md, AppSpace.md, AppSpace.md, 0),
       color: tokens.surfaceVariant,
       child: Padding(
-        padding: const EdgeInsets.all(AppSpace.md),
+        padding: const EdgeInsetsDirectional.all(AppSpace.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -246,7 +294,7 @@ class ChildCard extends ConsumerWidget {
     final dailyLimit = rules?.screenTime.dailyLimitMinutes ?? 0;
     final progress = dailyLimit > 0 ? (child.screenTimeTodayMinutes / dailyLimit).clamp(0.0, 1.0) : 0.0;
     final live = ref.watch(liveActivityProvider)[child.id];
-    final wellbeing = ref.watch(wellbeingProvider(child.id)).valueOrNull;
+    final wellbeing = ref.watch(wellbeingProvider(child.id)).asData?.value;
 
     final tokens = context.tokens;
     return Card(
@@ -254,84 +302,147 @@ class ChildCard extends ConsumerWidget {
       child: InkWell(
         onTap: () => context.push('/child/${child.id}'),
         child: Padding(
-          padding: const EdgeInsets.all(AppSpace.md),
+          padding: const EdgeInsetsDirectional.all(AppSpace.md),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  CircleAvatar(child: Text(child.initials)),
-                  const SizedBox(width: AppSpace.sm),
-                  Expanded(child: Text(child.displayName, style: Theme.of(context).textTheme.titleMedium, overflow: TextOverflow.ellipsis)),
-                ],
-              ),
-              if (live != null && live.isFresh()) ...[
-                const SizedBox(height: AppSpace.xs),
-                LiveActivityChip(childId: child.id, activity: live),
-              ],
-              const SizedBox(height: AppSpace.sm),
-              Wrap(
-                spacing: AppSpace.sm,
-                runSpacing: AppSpace.xs,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  if (device != null)
-                    Chip(
-                      visualDensity: VisualDensity.compact,
-                      avatar: Icon(Icons.circle, size: 10, color: _statusColor(tokens, device.status)),
-                      // #601: the server's word, not a local clock rule. There is no string for
-                      // `locked`/`sos` (nothing in the API writes them today), so a value that is not
-                      // `online` reads as `offline`.
-                      label: Text(device.isOnline ? l10n.statusOnline : l10n.statusOffline),
-                    ),
-                  if (device != null && device.batteryPct > 0)
-                    Chip(
-                      visualDensity: VisualDensity.compact,
-                      avatar: Icon(device.batteryPct <= 20 ? Icons.battery_alert : Icons.battery_std, size: 14),
-                      label: Text('${device.batteryPct}%'),
-                    ),
-                  InternetPill(child: child),
-                ],
-              ),
-              const SizedBox(height: AppSpace.sm),
-              Row(
-                children: [
-                  const Icon(Icons.location_on_outlined, size: 14),
-                  const SizedBox(width: AppSpace.xs),
-                  Expanded(
-                    child: Text(
-                      // #406: a refusal names the owner; "no location yet" would read as a normal state.
-                      locationRefused
-                          ? l10n.readPermissionRequired
-                          : location == null
-                              ? l10n.noLocationYet
-                              : '${location.lat.toStringAsFixed(4)}, ${location.lng.toStringAsFixed(4)}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                  Row(
+                    children: [
+                      CircleAvatar(child: Text(child.initials)),
+                      const SizedBox(width: AppSpace.sm),
+                      // B2: no line limit on dashboard card child names so cards expand cleanly.
+                      Expanded(
+                        child: Text(
+                          child.displayName,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (live != null && live.isFresh()) ...[
+                    const SizedBox(height: AppSpace.xs),
+                    LiveActivityChip(childId: child.id, activity: live),
+                  ],
+                  const SizedBox(height: AppSpace.sm),
+                  Wrap(
+                    spacing: AppSpace.sm,
+                    runSpacing: AppSpace.xs,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (device != null)
+                        Chip(
+                          visualDensity: VisualDensity.compact,
+                          avatar: Icon(Icons.circle, size: 10, color: _statusColor(tokens, device.status)),
+                          // #601: the server's word, not a local clock rule. There is no string for
+                          // `locked`/`sos` (nothing in the API writes them today), so a value that is not
+                          // `online` reads as `offline`.
+                          label: Text(device.isOnline ? l10n.statusOnline : l10n.statusOffline),
+                        ),
+                      if (device != null && device.batteryPct > 0)
+                        Chip(
+                          visualDensity: VisualDensity.compact,
+                          avatar: Icon(device.batteryPct <= 20 ? Icons.battery_alert : Icons.battery_std, size: 14),
+                          label: Text('${device.batteryPct}%'),
+                        ),
+                      InternetPill(child: child),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpace.sm),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.location_on_outlined, size: 14),
+                      const SizedBox(width: AppSpace.xs),
+                      Expanded(
+                        // #406: a refusal names the owner; "no location yet" would read as a normal state.
+                        // Karim 22 Nov: a place name and how fresh it is, never raw coordinates.
+                        child: locationRefused || location == null
+                            ? Text(
+                                locationRefused ? l10n.readPermissionRequired : l10n.noLocationYet,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              )
+                            : PlaceSummaryLine(
+                                ping: location,
+                                style: Theme.of(context).textTheme.bodySmall,
+                                onTap: () => context.push('/child/${child.id}?tab=location'),
+                              ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-              const Spacer(),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              const SizedBox(height: AppSpace.md),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(l10n.screenTime, style: Theme.of(context).textTheme.bodySmall),
-                  // NOTE: flexible + ellipsis — narrow cards overflowed this row.
-                  Flexible(
-                    child: Text(l10n.screenTimeValue(child.screenTimeTodayMinutes, dailyLimit > 0 ? dailyLimit : 0),
-                        style: Theme.of(context).textTheme.bodySmall,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.end),
+                  Builder(
+                    builder: (context) {
+                      final style = Theme.of(context).textTheme.bodySmall;
+                      final valueText = dailyLimit > 0
+                          ? l10n.screenTimeValue(child.screenTimeTodayMinutes, dailyLimit)
+                          : l10n.minutesShort(child.screenTimeTodayMinutes);
+                      final screenWidth = MediaQuery.sizeOf(context).width;
+                      final isWide = screenWidth >= 600;
+                      // ListView horizontal padding (AppSpace.md * 2, plus AppSpace.md col gap on wide) + Card default margin (8) + Card padding (AppSpace.md * 2).
+                      final maxContentWidth = isWide
+                          ? (screenWidth - AppSpace.md * 3) / 2 - AppSpace.md * 2 - 8
+                          : screenWidth - AppSpace.md * 4 - 8;
+                      final scaler = MediaQuery.textScalerOf(context);
+                      final direction = Directionality.of(context);
+                      final labelPainter = TextPainter(
+                        text: TextSpan(text: l10n.screenTime, style: style),
+                        maxLines: 1,
+                        textDirection: direction,
+                        textScaler: scaler,
+                      )..layout();
+                      final labelWidth = labelPainter.width;
+                      labelPainter.dispose();
+                      final valuePainter = TextPainter(
+                        text: TextSpan(text: valueText, style: style),
+                        maxLines: 1,
+                        textDirection: direction,
+                        textScaler: scaler,
+                      )..layout();
+                      final valueWidth = valuePainter.width;
+                      valuePainter.dispose();
+                      if (labelWidth + AppSpace.sm + valueWidth <= maxContentWidth) {
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(l10n.screenTime, style: style),
+                            const SizedBox(width: AppSpace.sm),
+                            Flexible(child: Text(valueText, style: style, textAlign: TextAlign.end)),
+                          ],
+                        );
+                      }
+                      // NOTE: stack end-aligned when tight so neither label nor value truncates with ellipsis at high scale.
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(l10n.screenTime, style: style),
+                          const SizedBox(height: AppSpace.xs),
+                          Text(valueText, style: style, textAlign: TextAlign.end),
+                        ],
+                      );
+                    },
                   ),
+                  if (dailyLimit > 0) ...[
+                    const SizedBox(height: AppSpace.xs),
+                    LinearProgressIndicator(value: progress),
+                  ],
+                  if (wellbeing != null) ...[
+                    const SizedBox(height: AppSpace.sm),
+                    WellbeingRow(score: wellbeing),
+                  ],
                 ],
               ),
-              const SizedBox(height: AppSpace.xs),
-              LinearProgressIndicator(value: dailyLimit > 0 ? progress : null),
-              if (wellbeing != null) ...[
-                const SizedBox(height: AppSpace.sm),
-                WellbeingRow(score: wellbeing),
-              ],
             ],
           ),
         ),
@@ -359,7 +470,6 @@ class LiveActivityChip extends StatelessWidget {
           '● ${context.l10n.liveActivityToday(activity.app, activity.minutesToday)}',
           key: ValueKey('liveChip-$childId'),
           style: Theme.of(context).textTheme.labelMedium?.copyWith(color: tokens.ok),
-          overflow: TextOverflow.ellipsis,
         ),
       ),
     );
@@ -415,8 +525,8 @@ class WellbeingRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: AppSpace.sm),
-          // NOTE: flexible — the row overflowed 320px-wide cards.
-          Flexible(child: Text(l10n.wellbeingScore(score.score), style: Theme.of(context).textTheme.bodySmall, overflow: TextOverflow.ellipsis)),
+          // NOTE: flexible without ellipsis — wraps cleanly on 320px cards at 2.0 scale.
+          Flexible(child: Text(l10n.wellbeingScore(score.score), style: Theme.of(context).textTheme.bodySmall)),
         ],
       ),
     );
@@ -465,6 +575,7 @@ Future<void> toggleInternetWithConfirm(BuildContext context, WidgetRef ref, Chil
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
+      scrollable: true,
       title: Text(paused ? l10n.resumeInternetTitle(child.displayName) : l10n.pauseInternetTitle(child.displayName)),
       content: Text(paused ? l10n.resumeInternetBody : l10n.pauseInternetBody),
       actions: [
@@ -484,13 +595,17 @@ Future<void> toggleInternetWithConfirm(BuildContext context, WidgetRef ref, Chil
     // #441 review: the pill is the main entry to pause/resume, so it needs the same sentence as the
     // device card — and it must not print `ControlsRefusal(428)`, which is what '$e' became.
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(readErrorText(l10n, r.error, () => l10n.internetChangeFailed('${r.error}'))),
-      ));
+      showErrorSnackBar(
+        context,
+        friendlyErrorText(l10n, r.error, () => l10n.internetChangeFailed),
+      );
     }
   } catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.internetChangeFailed('$e'))));
+      showErrorSnackBar(
+        context,
+        friendlyErrorText(l10n, e, () => l10n.internetChangeFailed),
+      );
     }
   }
 }
@@ -546,7 +661,7 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
     try {
       await ref.read(apiClientProvider).raw.post('/v1/family/children', data: {
         'displayName': _name.text.trim(),
-        'birthYear': int.tryParse(_birthYear.text.trim()) ?? DateTime.now().year,
+        'birthYear': int.tryParse(normalizeDigits(_birthYear.text.trim())) ?? DateTime.now().year,
         'consent': {'method': _method, 'jurisdiction': _jurisdiction},
       });
       ref.invalidate(familyProvider);
@@ -556,9 +671,8 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
       // exist yet — the generic consent sentences would point at a page that is not there. The one case
       // worth a sentence is the region mismatch, because the dialog has a region dropdown and the fix
       // is to pick the family's.
-      final data = e.response?.data;
       setState(() => _error = addChildConsentRegionError(context.l10n, e) ??
-          (data is Map ? '${data['error'] ?? data['message'] ?? e.message}' : (e.message ?? '')));
+          friendlyErrorText(context.l10n, e, () => context.l10n.onboardingChildFailed));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -569,11 +683,11 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
     final tokens = context.tokens;
     final l10n = context.l10n;
     return AlertDialog(
+      scrollable: true,
       title: Text(_consentDone ? l10n.childDetails : l10n.parentalConsent),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
             if (!_consentDone) ...[
               // The notice and the method picker are shared with the consent
               // screen's "give consent again" action (#437 part B), so the
@@ -583,16 +697,36 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
                 onMethodChanged: (m) => setState(() => _method = m),
               ),
               const SizedBox(height: AppSpace.md),
-              DropdownButtonFormField<String>(
+              FieldQuestion(
+                text: l10n.jurisdictionLabel,
+                child: DropdownButtonFormField<String>(
+                key: const ValueKey('addChildJurisdiction'),
                 initialValue: _jurisdiction,
-                decoration: InputDecoration(labelText: l10n.jurisdictionLabel, border: const OutlineInputBorder()),
+                // #874 B6 (UI/UX Bureau): `isExpanded` false sized the button to its widest item, so at
+                // 200 % text the field overflowed by 27 px (82 px at 320 px / 200 %). Expanded, the label
+                // is laid out inside the field; the `selectedItemBuilder` below lets it wrap there instead
+                // of being cut, which is what «رسالة نصية مع تأكيد» needed on the consent-method field.
+                isExpanded: true,
+                // #874: the default `isDense: true` caps the field at 48 px and clips the wrapped
+                // selected value at AR 320 / 200 % (Arabic Language Bureau's frame).
+                isDense: false,
+                decoration: const InputDecoration(border: OutlineInputBorder()),
                 items: [
                   DropdownMenuItem(value: 'US', child: Text(l10n.regionUS)),
                   DropdownMenuItem(value: 'EU', child: Text(l10n.regionEU)),
                   DropdownMenuItem(value: 'UK', child: Text(l10n.regionUK)),
                   DropdownMenuItem(value: 'OTHER', child: Text(l10n.regionOther)),
                 ],
+                // Same order as `items`: the family region is a place name, so the selected value may take
+                // two lines rather than one line with an ellipsis.
+                selectedItemBuilder: (context) => [
+                  Text(l10n.regionUS),
+                  Text(l10n.regionEU),
+                  Text(l10n.regionUK),
+                  Text(l10n.regionOther),
+                ],
                 onChanged: (v) => setState(() => _jurisdiction = v ?? 'US'),
+                ),
               ),
             ] else ...[
               TextField(
@@ -610,12 +744,11 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
                 ),
               ),
             ],
-            if (_error != null) ...[
-              const SizedBox(height: AppSpace.md),
-              Text(_error!, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.danger)),
-            ],
+          if (_error != null) ...[
+            const SizedBox(height: AppSpace.md),
+            Text(_error!, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.danger)),
           ],
-        ),
+        ],
       ),
       actions: [
         TextButton(onPressed: _busy ? null : () => Navigator.of(context).pop(), child: Text(l10n.cancel)),

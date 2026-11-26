@@ -16,4 +16,10 @@ locals {
   certificate_arn = var.certificate_arn != "" ? var.certificate_arn : (
     local.create_certificate ? aws_acm_certificate.api[0].arn : ""
   )
+
+  # The zone the certificate validates in and env's alias record goes into: created here in production,
+  # looked up in staging, absent in non-release mode.
+  hosted_zone_id = var.create_hosted_zone ? aws_route53_zone.api[0].zone_id : (
+    var.hosted_zone_name != "" ? data.aws_route53_zone.main[0].zone_id : ""
+  )
 }

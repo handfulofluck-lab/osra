@@ -12,8 +12,10 @@ import 'package:familyshield_parent/features/auth/login_screen.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
+import 'package:familyshield_parent/l10n/app_localizations.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/providers/onboarding_provider.dart';
+import 'package:familyshield_parent/providers/server_provider.dart';
 
 import 'fake_api_client.dart';
 import 'test_app.dart';
@@ -94,7 +96,8 @@ void main() {
       expect(fieldByLabel('Server'), findsOneWidget);
       expect(fieldByLabel('Email'), findsOneWidget);
       expect(fieldByLabel('Password'), findsOneWidget);
-      expect(fieldByLabel('Authentication code (if MFA is on)'), findsOneWidget);
+      expect(fieldByLabel('Authenticator code'), findsOneWidget);
+      expect(find.text('Only if two-step verification is on for your account.'), findsOneWidget);
       expect(find.text('Sign in'), findsOneWidget);
     });
 
@@ -117,13 +120,15 @@ void main() {
       await pumpScreen(tester, const LoginScreen(), api);
 
       await tester.enterText(fieldByLabel('Server'), 'http://testserver');
-      await tester.enterText(fieldByLabel('Email'), 'qa@familyshield.dev');
+      await tester.enterText(fieldByLabel('Email'), 'qa@osratech.com');
       await tester.enterText(fieldByLabel('Password'), 'wrong-password');
       await tapSignIn(tester);
       await tester.pumpAndSettle();
 
       expect(api.calls('POST', '/v1/auth/login'), hasLength(1));
-      expect(find.text('invalid_credentials'), findsOneWidget);
+      final en = lookupAppLocalizations(const Locale('en'));
+      expect(find.text(en.onboardingWrongPassword), findsOneWidget);
+      expect(find.text('invalid_credentials'), findsNothing);
     });
 
     // NOTE: success navigation is asserted by pumping the REAL app router
@@ -139,7 +144,7 @@ void main() {
       expect(find.byType(LoginScreen), findsOneWidget);
 
       await tester.enterText(fieldByLabel('Server'), 'http://testserver');
-      await tester.enterText(fieldByLabel('Email'), 'qa@familyshield.dev');
+      await tester.enterText(fieldByLabel('Email'), 'qa@osratech.com');
       await tester.enterText(fieldByLabel('Password'), 'good-password');
       await tapSignIn(tester);
       await tester.pumpAndSettle();
@@ -148,6 +153,42 @@ void main() {
       expect(find.byType(DashboardScreen), findsOneWidget);
       expect(find.text('Alex'), findsOneWidget);
       expect(find.text('Sam'), findsOneWidget);
+    });
+
+    testWidgets('a locked build hides the server field outside debug', (tester) async {
+      const builtIn = 'https://api.osratech.com';
+      final api = FakeApiClient(standardRoutes());
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          serverUrlProvider.overrideWith((_) => ServerUrlNotifier(api, builtIn: builtIn)),
+        ],
+        child: localizedTestApp(const LoginScreen(debug: false, builtIn: builtIn)),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('loginServerField')), findsNothing);
+      expect(find.text('Server'), findsNothing);
+      // The read-only caption stays: the built-in server is shown, not editable/redirectable.
+      expect(find.text('Server: https://api.osratech.com'), findsOneWidget);
+    });
+
+    testWidgets('debug keeps the server field visible and locked to the built-in value', (tester) async {
+      const builtIn = 'https://api.osratech.com';
+      final api = FakeApiClient(standardRoutes());
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          serverUrlProvider.overrideWith((_) => ServerUrlNotifier(api, builtIn: builtIn)),
+        ],
+        child: localizedTestApp(const LoginScreen(debug: true, builtIn: builtIn)),
+      ));
+      await tester.pumpAndSettle();
+
+      final field = tester.widget<TextField>(find.byKey(const ValueKey('loginServerField')));
+      expect(field.readOnly, isTrue);
+      expect(field.enabled, isFalse);
+      expect(field.controller!.text, builtIn);
     });
   });
 
@@ -189,7 +230,7 @@ void main() {
       await pumpScreen(tester, const DashboardScreen(), api);
       expect(api.calls('GET', '/v1/family/me'), hasLength(1));
 
-      await tester.fling(find.byType(GridView), const Offset(0, 400), 900);
+      await tester.fling(find.byType(ListView).first, const Offset(0, 400), 900);
       await tester.pump();
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
@@ -240,7 +281,7 @@ void main() {
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
       expect(find.text('Pixel 7a'), findsOneWidget);
-      expect(find.text('android 14 · online'), findsOneWidget);
+      expect(find.text('Android 14 · online'), findsOneWidget);
       expect(find.text('55%'), findsOneWidget);
       expect(find.text('Last seen: never'), findsNothing);
     });
@@ -294,7 +335,7 @@ void main() {
 
       expect(find.text('Galaxy A14'), findsOneWidget);
       // #601: the server says online, so the page says online; lastSeen is a separate age line.
-      expect(find.text('android 13 · online'), findsOneWidget);
+      expect(find.text('Android 13 · online'), findsOneWidget);
       expect(find.text('0%'), findsNothing);
     });
 
@@ -303,6 +344,10 @@ void main() {
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
       for (final (label, command) in [('Ring', 'ring'), ('Lock', 'lock'), ('Unlock', 'unlock')]) {
+        // #969: the card grew two scope headings and a status line, so the controls sit lower than the 600 px
+        // test viewport. Scroll them into view instead of shrinking the card for the test's convenience.
+        await tester.ensureVisible(find.text(label));
+        await tester.pumpAndSettle();
         await tester.tap(find.text(label));
         await flushFakeHttp(tester);
         expect(find.textContaining('$label queued for Pixel 7a'), findsOneWidget);
@@ -333,6 +378,8 @@ void main() {
       });
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
+      await tester.ensureVisible(find.text('Lock'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Lock'));
       await flushFakeHttp(tester);
 
@@ -355,6 +402,8 @@ void main() {
       });
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
+      await tester.ensureVisible(find.text('Lock'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Lock'));
       await flushFakeHttp(tester);
 
@@ -385,7 +434,7 @@ void main() {
       );
     });
 
-    testWidgets('an unknown refusal reason still names the code, not "queued"', (tester) async {
+    testWidgets('an unknown refusal reason shows a localized failure instead of the raw code or "queued" (R-ID-1)', (tester) async {
       final api = FakeApiClient({
         ...standardRoutes(),
         'POST /v1/devices/dev-1/command': (_) => {
@@ -396,10 +445,14 @@ void main() {
       });
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
+      await tester.ensureVisible(find.text('Lock'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Lock'));
       await flushFakeHttp(tester);
 
-      expect(find.textContaining('some_new_reason'), findsOneWidget);
+      final en = lookupAppLocalizations(const Locale('en'));
+      expect(find.text(en.commandFailed), findsOneWidget);
+      expect(find.textContaining('some_new_reason'), findsNothing);
       expect(find.textContaining('queued'), findsNothing);
     });
   });
@@ -498,15 +551,17 @@ void main() {
       expect(find.text('Paused'), findsNothing);
     });
 
-    testWidgets('child detail Pause net button POSTs the pause endpoint', (tester) async {
+    testWidgets('child detail Pause internet button POSTs the pause endpoint', (tester) async {
       final api = pausedApi(startPaused: false);
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
-      await tester.tap(find.text('Pause net'));
+      await tester.ensureVisible(find.text('Pause internet'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pause internet'));
       await flushFakeHttp(tester);
 
       expect(api.calls('POST', '/v1/controls/children/child-1/pause'), hasLength(1));
-      expect(find.text('Resume net'), findsOneWidget);
+      expect(find.text('Resume internet'), findsOneWidget);
       // Run out the snackbar so no timer is left pending at test end.
       await tester.pump(const Duration(seconds: 5));
       await tester.pumpAndSettle();
@@ -574,7 +629,7 @@ void main() {
       expect(severityIconColor(tester, 'Daily limit reached'), Colors.blue);
 
       // Grouped under one header per distinct local day.
-      String dayLabel(DateTime at) => DateFormat('EEEE, MMM d, yyyy').format(DateTime(at.year, at.month, at.day));
+      String dayLabel(DateTime at) => DateFormat.yMMMMEEEEd().format(DateTime(at.year, at.month, at.day));
       final days = {
         for (final a in alertItems) dayLabel(DateTime.parse(a['createdAt'] as String).toLocal()),
       };
@@ -643,49 +698,60 @@ void main() {
       expect(tester.widget<SwitchListTile>(tile).value, isFalse);
     });
 
-    testWidgets('add and remove an app rule row', (tester) async {
+    testWidgets('remove an app rule row', (tester) async {
       final api = FakeApiClient(standardRoutes());
       await pumpRules(tester, api);
 
       await tester.tap(find.text('Apps'));
       await tester.pumpAndSettle();
-      expect(find.text('com.example.game'), findsOneWidget);
+      // U33 (#868): the row names the app and shows its icon; the package id is never shown, and the
+      // package-id dialog that used to add a rule is gone, so this row can only be removed here.
+      expect(find.text('Game'), findsOneWidget);
+      expect(find.text('com.example.game'), findsNothing);
 
-      // #172 grew the always-allowed block above the rule list, so "Add app rule" is below the fold on
-      // the 800x600 test surface. Dragging the list is the deterministic form (one scrollable, named by
-      // key, rather than "the first Scrollable on the screen").
-      await tester.drag(find.byKey(const ValueKey('appsRulesList')), const Offset(0, -260));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Add app rule'));
-      await tester.pumpAndSettle();
-      final dialog = find.byType(AlertDialog);
-      await tester.enterText(find.descendant(of: dialog, matching: find.byType(TextField)).first, 'Test App');
-      await tester.enterText(find.descendant(of: dialog, matching: find.byType(TextField)).last, 'com.test.app');
-      await tester.tap(find.descendant(of: dialog, matching: find.text('Add')));
-      await tester.pumpAndSettle();
-      expect(find.text('com.test.app'), findsOneWidget);
-
-      final gameCard = find.ancestor(of: find.text('com.example.game'), matching: find.byType(Card));
+      final gameCard = find.ancestor(of: find.text('Game'), matching: find.byType(Card));
       await tester.tap(find.descendant(of: gameCard, matching: find.byIcon(Icons.delete_outline)));
       await tester.pumpAndSettle();
-      expect(find.text('com.example.game'), findsNothing);
-      expect(find.text('com.test.app'), findsOneWidget);
+      expect(find.text('Game'), findsNothing);
     });
 
-    testWidgets('Save PUTs the full ruleset with all four sections', (tester) async {
-      final api = FakeApiClient(standardRoutes());
+    testWidgets('Save retries removal of the final app rule after a refusal', (tester) async {
+      var saveAttempts = 0;
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'PATCH /v1/rules/child-1': (request) {
+          saveAttempts++;
+          if (saveAttempts == 1) {
+            return const FakeHttpError(428, {'error': 'parental_consent_required'});
+          }
+          return request.body;
+        },
+      });
       await pumpRules(tester, api);
+
+      await tester.tap(find.text('Apps'));
+      await tester.pumpAndSettle();
+      final gameCard = find.ancestor(of: find.text('Game'), matching: find.byType(Card));
+      await tester.tap(find.descendant(of: gameCard, matching: find.byIcon(Icons.delete_outline)));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
 
-      final puts = api.calls('PUT', '/v1/rules/child-1');
-      expect(puts, hasLength(1));
-      final body = puts.single.body;
-      expect(body.keys, containsAll(['screenTime', 'webFilter', 'appRules', 'routines']));
-      expect((body['screenTime'] as Map)['dailyLimitMinutes'], 120);
-      expect(body['appRules'], hasLength(1));
-      expect(body['routines'], hasLength(1));
+      final firstSave = api.calls('PATCH', '/v1/rules/child-1');
+      expect(firstSave, hasLength(1));
+      expect(firstSave.single.body, {'appRules': <Object>[]});
+      expect(find.byKey(const ValueKey('rules-save-error-banner')), findsOneWidget);
+      expect(find.text('Rules saved'), findsNothing);
+
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      // Advancing the saved baseline before the request succeeds empties this retry.
+      final saves = api.calls('PATCH', '/v1/rules/child-1');
+      expect(saves, hasLength(2));
+      expect(saves.last.body, {'appRules': <Object>[]});
+      expect(find.byKey(const ValueKey('rules-save-error-banner')), findsNothing);
       expect(find.text('Rules saved'), findsOneWidget);
     });
   });
@@ -741,9 +807,9 @@ void main() {
       // The uncheck is part of the draft and is what gets saved.
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
-      final puts = api.calls('PUT', '/v1/rules/child-1');
-      expect(puts, hasLength(1));
-      expect((puts.single.body['webFilter'] as Map)['blockedCategories'], isEmpty);
+      final patches = api.calls('PATCH', '/v1/rules/child-1');
+      expect(patches, hasLength(1));
+      expect((patches.single.body['webFilter'] as Map)['blockedCategories'], isEmpty);
     });
 
     testWidgets('cancel on the confirm dialog keeps all 13 checked', (tester) async {
@@ -761,7 +827,7 @@ void main() {
         await reveal(tester, categoryTile(c));
         expect(categoryChecked(tester, c), isTrue, reason: '$c should stay checked');
       }
-      expect(api.calls('PUT', '/v1/rules/child-1'), isEmpty);
+      expect(api.calls('PATCH', '/v1/rules/child-1'), isEmpty);
     });
 
     testWidgets('partial selection shows the switch OFF; turning ON checks all 13', (tester) async {

@@ -69,6 +69,23 @@ generic, so server English never reaches an Arabic screen.
 5. If the language is RTL, it needs no code change beyond step 1 — the layout rules below are
    direction-agnostic.
 
+## Dates and numbers (R9)
+
+- Use Western digits for every date and time on every surface, including Arabic. Do not emit Arabic-Indic digits.
+- `lib/core/date_formatting.dart` applies `DateFormat.useNativeDigitsByDefaultFor('ar', false)` and awaits locale-data initialization. App startup and the background notification isolate each call it once before any `DateFormat` is created.
+- Day headers call `formatDayHeader(date, context.localeName)`, which uses `DateFormat.yMMMMEEEEd`: day, then month, then year, with the locale's own punctuation and order. Do not replace it with the English `EEEE, MMM d, yyyy` pattern.
+- `test/arabic_date_format_test.dart`, `alerts_dialog_test.dart` and `social_screen_test.dart` exercise the direct, background and Arabic widget paths and reject every Arabic-Indic digit. Existing Arabic copy and number/plural paths are not changed by that rule's implementation.
+
+## Email localization (#796)
+
+- Invitation roles use a whole sentence selected per language, never a wire value inserted into a sentence.
+  Inviter and family names have separate known/missing cases in English and Arabic; no generic name is
+  invented. Names are wrapped in `<bdi>` for HTML and LRI/PDI for plain text, not embedded as markup in the
+  source template.
+- Digest period labels and screen-time minutes use `Intl.PluralRules`. Other Arabic counts use the Bureau's
+  label/number shape with no noun after the number. App names and child names are isolated the same way as
+  inviter/family names. The Arabic Language Bureau supplies the exact strings; K31 does not author them.
+
 ## Android child agent
 
 The child agent does not use ARB. Its strings are Android resources: `res/values/strings.xml` is
@@ -88,9 +105,24 @@ plurals alike.
   `EdgeInsets.only(left:)`, `EdgeInsets.fromLTRB`, or `Alignment.centerLeft` for chrome.
 - Do not hard-code `TextDirection`. `MaterialApp` derives it from the locale; tests wrap a
   screen in `Directionality(textDirection: TextDirection.rtl)` to prove it.
+- In code review, reject a bare value made of several numeric pieces, or a number with a plus or
+  minus sign, in a `Text` or ARB placeholder: coordinates, a phone number, `+15`. Wrap the value with
+  `ltrIsolate` from `lib/core/ltr_isolate.dart` so its LRI/PDI boundary preserves the order in an RTL
+  sentence. A plain number, a time, a date, a version or a percentage does not need it. A number with
+  a Latin unit (`8 m`) is not isolated: the unit is translated in the ARB line. Keep the isolate in
+  code, not inside an Arabic translation (#751). #743 and #727 adopt the same helper when they fold it.
 - `Row`, `Wrap`, `TabBar` and `AppBar` actions mirror automatically. Prefer `Wrap` over a
   fixed `Row` where translated labels are longer, and make tab bars scrollable when four or
   more labels must fit 320 px.
+
+### Typed list separators (#794)
+
+- Allowed/blocked domains, routine blocked/allowed apps and digest recipients accept Latin `,` and `;`,
+  Arabic U+060C and U+061B, and line breaks. The shared `splitLocalizedList` helper trims items and drops
+  empty ones; a parent is not asked to change keyboard to enter several items.
+- LRM/RLM/ALM (U+200E/U+200F/U+061C) are stripped only from domain input before its existing validation.
+  Email addresses and app package IDs retain those marks; in particular, the API still refuses an email
+  containing RLM. This changes parsing only, not any English or Arabic wording.
 - Directional icons (`Icons.chevron_left/right`, `arrow_*`) mirror from their
   `matchTextDirection` flag; check any icon that does not.
 - `apps/parent-app/android/app/src/main/AndroidManifest.xml` sets `android:supportsRtl="true"`

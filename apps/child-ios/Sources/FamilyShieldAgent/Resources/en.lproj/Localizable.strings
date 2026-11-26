@@ -1,7 +1,7 @@
 /* #511: the iPhone block screen, the same wording as the Android agent (values/strings.xml). */
 "block_title_blocked" = "This app is blocked by your parent";
 "block_request_access" = "Request access";
-"block_exit_home" = "Exit to Home screen";
+"block_exit_home" = "Close app";
 /* %1$@ is the window (Bedtime, or the routine's name), %2$@ its end time (HH:MM). */
 "block_window_line" = "Blocked by %1$@ until %2$@";
 "block_window_bedtime" = "Bedtime";
@@ -31,6 +31,7 @@
 "status_paired" = "Paired";
 "status_child" = "Child";
 "status_server" = "Server";
+"status_technical_details" = "Technical details";
 "status_device" = "Device";
 "screen_time" = "Screen Time";
 "screen_time_on" = "On";
@@ -48,7 +49,7 @@
 "location_open_settings" = "Open Settings";
 "location_footer" = "Your parents see this device on their map when it moves a noticeable distance, and get alerts for the places they set. Choose \"Allow While Using App\", then \"Change to Always Allow\".";
 "groups" = "App groups";
-"groups_status_footer" = "Parents only: choose apps to block here. Blocked apps show the OSRA screen with \"Ask parent\".";
+"groups_status_footer" = "Parents only: choose apps to block here. Blocked apps show the OSRA screen with \"Request access\".";
 "repair_button" = "Re-pair this device";
 "repair_title" = "Re-pair";
 "pin_set_title" = "Set a parent PIN";
@@ -56,6 +57,7 @@
 "pin_new_field" = "New PIN (4-8 digits)";
 "pin_repeat_field" = "Repeat the PIN";
 "pin_save" = "Save PIN";
+"pin_set_reason" = "Set a parent PIN so only a parent can change OSRA Kids or pair this phone again.";
 "pin_set_footer" = "Parents only. The PIN protects the app groups and re-pairing on this phone. It stays on this phone and is never sent anywhere.";
 "pin_mismatch" = "The two PINs are different.";
 "pin_save_failed" = "The PIN could not be saved. Try again.";
@@ -79,7 +81,7 @@
 "groups_name_field" = "Group name, e.g. Games";
 "groups_choose" = "Choose apps";
 "groups_add" = "Add group";
-"groups_new_footer" = "Up to 40 characters. Blocked apps show the OSRA screen with \"Ask parent\".";
+"groups_new_footer" = "Up to 40 characters. Blocked apps show the OSRA screen with \"Request access\".";
 "groups_error_choose" = "Choose at least one app, category or website.";
 "groups_error_name" = "Give the group a name.";
 "groups_error_max" = "There can be at most 20 groups.";

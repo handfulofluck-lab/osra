@@ -39,9 +39,24 @@ object ScanQueuePolicy {
      * calls, media controls), so they never reach the queue.
      */
     fun fromNotification(title: CharSequence?, text: CharSequence?, bigText: CharSequence?, messages: List<CharSequence?>): Pair<String?, String>? {
-        val contact = title?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-        val body = (messages.lastOrNull { !it.isNullOrBlank() } ?: bigText?.takeIf { it.isNotBlank() } ?: text)
-            ?.toString()?.trim().orEmpty()
+        val contact = contactOf(title)
+        val body = cleanText(messages.lastOrNull()) ?: cleanText(bigText) ?: cleanText(text) ?: return null
+        return contact to body
+    }
+
+    /** The sender (or the group) a notification names, or null when it names none. */
+    fun contactOf(title: CharSequence?): String? = title?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+
+    /**
+     * The line a message entry contributes, or null when it is not a message at all.
+     *
+     * Issue #1027: a WhatsApp burst updates ONE notification whose `EXTRA_MESSAGES` holds every line, so the
+     * capture path has to ask this per entry rather than about the newest one only. The noise rules live here
+     * so the single-line and the whole-burst callers cannot drift apart.
+     */
+    fun cleanText(raw: CharSequence?): String? {
+        if (raw.isNullOrBlank()) return null
+        val body = raw.toString().trim()
         if (body.isEmpty()) return null
         val lower = body.lowercase()
         if (NOISE.any { lower == it || lower.startsWith(it) }) return null
@@ -50,7 +65,7 @@ object ScanQueuePolicy {
         // a shape. Without this, a summary becomes a scan row with the sender as the group and the
         // count as the message (plan 2.6).
         if (NOISE_PATTERN.matches(lower)) return null
-        return contact to body
+        return body
     }
 
     /** "3 new messages", "12 new messages from Work" — the collapsed-notification placeholders. */

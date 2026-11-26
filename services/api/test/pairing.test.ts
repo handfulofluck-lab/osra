@@ -8,6 +8,7 @@ import { locationRoutes } from "../src/routes/location.js";
 import { getRedis } from "../src/redis.js";
 import { MAX_POLL_MISSES, PAIR_SCRIPTS } from "../src/lib/pairApproval.js";
 import { PAIR_POLL_RATE_LIMIT } from "../src/lib/rateLimits.js";
+import { decryptSecret } from "../src/lib/secretVault.js";
 import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
@@ -251,10 +252,22 @@ describe("device pairing (spec §14.1)", () => {
     expect(body.familyId).toBe("fam-1");
     expect(body.device.id).toBe("dev-9");
     expect(body.device.childId).toBe("child-1");
-    expect(body.device.status).toBe("online");
+    // Issue #790: the poll creates a PENDING device — offline (it has not proved itself, so it is not
+    // online in either sense) and with `pairedAt` null, which is what keeps it out of the parent's
+    // list until its first accepted request. Was "online" before #790; mutated back, this row fails.
+    expect(body.device.status).toBe("offline");
+    expect(prismaMock.device.create.mock.calls[0][0].data.pairedAt).toBeNull();
     expect(body.device.model).toBe("Alex's Phone"); // deviceName wins over model
     expect(body.device.pushToken).toBe("tok-1");
     expect(body.device).not.toHaveProperty("familyId");
+    // osra-security#14: the phone gets its raw key once; the database row holds it only under VAULT_KEY,
+    // and the stored value is not echoed back.
+    expect(body.hmacSecret).toMatch(/^[0-9a-f]{64}$/);
+    const stored = prismaMock.device.create.mock.calls[0][0].data.internalSecret as string;
+    expect(stored.startsWith("enc1:")).toBe(true);
+    expect(stored).not.toContain(body.hmacSecret);
+    expect(decryptSecret(stored)).toBe(body.hmacSecret);
+    expect(body.device).not.toHaveProperty("internalSecret");
 
     const decoded = app.jwt.verify<{ sub: string; deviceId: string; childId: string; familyId: string; role: string; exp?: number }>(
       body.token,
@@ -268,6 +281,63 @@ describe("device pairing (spec §14.1)", () => {
 
     // The code is burned once the device exists.
     expect(store.has("pair:123456")).toBe(false);
+    await app.close();
+  });
+
+  // Issue #790 (R2), the reporting half of the bug: the Mac seat paired, its first secret-proof was
+  // refused, and the parent app still showed the computer as a working phone. The row the poll creates
+  // is pending, so neither the device list nor the family envelope may contain it. Mutants: drop
+  // `pairedAt: { not: null }` from either query -> the row is drawn as a phone that never worked.
+  it("the device the poll created is absent from the parent's device list and from the family envelope", async () => {
+    const app = await buildFullApp();
+    store.set("pair:232323", JSON.stringify({ childId: "child-1", familyId: "fam-1" }));
+    prismaMock.device.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: "dev-pending", ...data }));
+    prismaMock.family.findUnique.mockResolvedValue({
+      id: "fam-1",
+      name: "Demo Family",
+      region: "US",
+      timezone: "UTC",
+      timezoneSource: "default",
+      parents: [],
+      children: [],
+    });
+
+    const { poll } = await pairThrough(app, { code: "232323", platform: "windows", model: "Surface", osVersion: "11" });
+    expect(poll.statusCode).toBe(201);
+    expect(poll.json().device.status).toBe("offline");
+
+    const list = await app.inject({ method: "GET", url: "/v1/devices", headers: authHeader(app) });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().devices).toEqual([]);
+    expect(prismaMock.device.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { child: { familyId: "fam-1" }, pairedAt: { not: null } } }),
+    );
+
+    // The family envelope is what the parent app's device cards and its flat device list are built
+    // from, so the filter has to be on the include rather than on the response.
+    const me = await app.inject({ method: "GET", url: "/v1/family/me", headers: authHeader(app) });
+    expect(me.statusCode).toBe(200);
+    expect(me.json().devices).toEqual([]);
+    const include = prismaMock.family.findUnique.mock.calls.at(-1)?.[0]?.include as {
+      children: { include: { devices: unknown } };
+    };
+    expect(include.children.include.devices).toEqual({ where: { pairedAt: { not: null } } });
+    await app.close();
+  });
+
+  it("the GDPR export carries the same pending filter as the family list", async () => {
+    // B2 (Antigravity's review of #888): mutant M9 — replacing the filter with `devices: true` in
+    // `GET /v1/family/export` — survived the whole suite. An export is the parent's record; a phone that
+    // never proved itself was never part of it, and a data-subject answer must not invent a device.
+    const app = await buildApp(familyRoutes, "/v1/family");
+    prismaMock.family.findUnique.mockResolvedValue({ id: "fam-1", name: "F", region: "OTHER", parents: [], children: [] });
+
+    const res = await app.inject({ method: "GET", url: "/v1/family/export", headers: authHeader(app) });
+    expect(res.statusCode).toBe(200);
+    const query = prismaMock.family.findUnique.mock.calls.at(-1)?.[0] as {
+      include: { children: { include: { devices: unknown } } };
+    };
+    expect(query.include.children.include.devices).toEqual({ where: { pairedAt: { not: null } } });
     await app.close();
   });
 

@@ -91,9 +91,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'Could not load your family. Check your connection and try again.';
 
   @override
-  String deleteAccountFailed(String detail) {
-    return 'The account was not deleted. $detail';
-  }
+  String get deleteAccountFailed =>
+      'Couldn\'t delete your account. Check your connection and try again.';
 
   @override
   String get cancel => 'Cancel';
@@ -176,13 +175,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get passwordLabel => 'Password';
 
   @override
-  String get mfaCodeLabel => 'Authentication code (if MFA is on)';
+  String get mfaCodeLabel => 'Authenticator code';
+
+  @override
+  String get mfaCodeHelper =>
+      'Only if two-step verification is on for your account.';
 
   @override
   String get signIn => 'Sign in';
 
   @override
   String get createAccount => 'Create account';
+
+  @override
+  String get consentRequired => 'To create an account, please tick this box.';
 
   @override
   String get familyNameLabel => 'Family name';
@@ -249,9 +255,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get signOutTooltip => 'Sign out';
 
   @override
-  String familyLoadFailed(String error) {
-    return 'Failed to load family: $error';
-  }
+  String get familyLoadFailed =>
+      'Couldn\'t load your family. Check your connection and try again.';
 
   @override
   String get noChildrenYet => 'No children yet — tap \"Add child\"';
@@ -330,9 +335,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get resume => 'Resume';
 
   @override
-  String internetChangeFailed(String error) {
-    return 'Internet change failed: $error';
-  }
+  String get internetChangeFailed =>
+      'Couldn\'t change internet access. Check your connection and try again.';
 
   @override
   String get parentalConsent => 'Parental consent';
@@ -348,7 +352,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get consentMethodLabel => 'Consent method';
 
   @override
-  String get consentMethodSmsPlus => 'SMS +';
+  String get consentMethodSmsPlus => 'Text message plus confirmation';
 
   @override
   String get consentMethodKba => 'Knowledge-based questions';
@@ -360,7 +364,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get consentMethodCreditCard => 'Credit card';
 
   @override
-  String get jurisdictionLabel => 'Jurisdiction';
+  String get jurisdictionLabel => 'Where does your family live?';
 
   @override
   String get childNameLabel => 'Child name';
@@ -467,9 +471,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String bonusFailed(String error) {
-    return 'Bonus failed: $error';
-  }
+  String get bonusFailed =>
+      'Couldn\'t add bonus time. Check your connection and try again.';
 
   @override
   String get windDown => 'Wind down';
@@ -493,9 +496,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String windDownFailed(String error) {
-    return 'Wind down failed: $error';
-  }
+  String get windDownFailed =>
+      'Couldn\'t start wind-down. Check your connection and try again.';
 
   @override
   String commandQueued(String command, String device) {
@@ -508,9 +510,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String commandFailed(String error) {
-    return 'Command failed: $error';
-  }
+  String get commandFailed =>
+      'Couldn\'t send the command. Check your connection and try again.';
 
   @override
   String commandErrorForbidden(String command, String device) {
@@ -571,9 +572,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get rulesBehindHint => 'The phone hasn\'t picked this change up yet.';
 
   @override
-  String rulesLoadFailed(String error) {
-    return 'Failed to load rules: $error';
-  }
+  String get rulesWaitingFirstApply => 'Waiting for the phone to apply rules.';
+
+  @override
+  String get rulesLoadFailed =>
+      'Couldn\'t load rules. Check your connection and try again.';
 
   @override
   String get noPerAppRules => 'No per-app rules';
@@ -588,25 +591,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appActionAllow => 'Allow';
 
   @override
-  String locationLoadFailed(String error) {
-    return 'Failed to load location: $error';
-  }
+  String get locationLoadFailed =>
+      'Couldn\'t load location. Check your connection and try again.';
 
   @override
   String get noLocationReported => 'No location reported yet';
 
   @override
   String accuracyLabel(int meters, String time) {
-    return 'Accuracy ±$meters m · $time';
+    return 'Accuracy ±$meters m · $time';
+  }
+
+  @override
+  String accuracyShort(int meters) {
+    return '±$meters m';
   }
 
   @override
   String get mapPreview => 'Map preview';
 
   @override
-  String locationHistoryLoadFailed(String error) {
-    return 'Failed to load history: $error';
-  }
+  String get locationHistoryLoadFailed =>
+      'Couldn\'t load location history. Check your connection and try again.';
 
   @override
   String get noLocationHistoryToday => 'No location history for today';
@@ -659,9 +665,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get familyPendingInvites => 'Pending invites';
 
   @override
-  String familyInvitesLoadFailed(String error) {
-    return 'Failed to load invites: $error';
-  }
+  String get familyInvitesLoadFailed =>
+      'Couldn\'t load invites. Check your connection and try again.';
 
   @override
   String get familyNoPendingInvites => 'No pending invites';
@@ -675,9 +680,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String familyRevokeFailed(String error) {
-    return 'Revoke failed: $error';
-  }
+  String get familyRevokeFailed =>
+      'Couldn\'t revoke invite. Check your connection and try again.';
 
   @override
   String get familyEnterEmail => 'Enter an email address';
@@ -769,9 +773,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String familyMapCommandFailed(String error) {
-    return 'Command failed: $error';
-  }
+  String get familyMapCommandFailed =>
+      'Couldn\'t send the command. Check your connection and try again.';
 
   @override
   String get familyMapNoChildren => 'No children to show';
@@ -792,21 +795,20 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String familyMapRadius(int meters) {
-    return 'Radius: $meters m';
+    return 'Radius: $meters m';
   }
 
   @override
   String familyMapMeters(int meters) {
-    return '$meters m';
+    return '$meters m';
   }
 
   @override
   String get familyMapCreate => 'Create';
 
   @override
-  String alertsLoadFailed(String error) {
-    return 'Failed to load alerts: $error';
-  }
+  String get alertsLoadFailed =>
+      'Couldn\'t load alerts. Check your connection and try again.';
 
   @override
   String get noRecentAlerts => 'No recent alerts';
@@ -829,9 +831,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noInsightsYet => 'No insights for this app yet';
 
   @override
-  String insightsLoadFailed(String error) {
-    return 'Failed to load insights: $error';
-  }
+  String get insightsLoadFailed =>
+      'Couldn\'t load app insights. Check your connection and try again.';
 
   @override
   String get commandLock => 'Lock';
@@ -855,10 +856,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commandResumeDevice => 'Resume device';
 
   @override
+  String get commandPausingDevice => 'Pausing…';
+
+  @override
+  String get commandResumingDevice => 'Resuming…';
+
+  @override
   String get commandPauseInternet => 'Pause internet';
 
   @override
   String get commandResumeInternet => 'Resume internet';
+
+  @override
+  String get scopeThisDevice => 'This device';
+
+  @override
+  String get scopeAllDevices => 'All paired devices';
+
+  @override
+  String get deviceControlPending => 'Waiting for this device';
+
+  @override
+  String get deviceControlFailed => 'This device couldn\'t apply the change';
 
   @override
   String get commandBonusTime => 'Bonus time';
@@ -903,9 +922,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get loadMore => 'Load more';
 
   @override
-  String acknowledgeFailed(String error) {
-    return 'Acknowledge failed: $error';
-  }
+  String get acknowledgeFailed =>
+      'Couldn\'t dismiss alert. Check your connection and try again.';
 
   @override
   String categoryLabel(String category) {
@@ -935,9 +953,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appBlockedSnack => 'App blocked';
 
   @override
-  String blockFailed(String error) {
-    return 'Block failed: $error';
-  }
+  String get blockFailed =>
+      'Couldn\'t block app. Check your connection and try again.';
 
   @override
   String get severityCritical => 'Critical';
@@ -1177,12 +1194,31 @@ class AppLocalizationsEn extends AppLocalizations {
       'The list appears after the child device\'s next check-in (up to 15 minutes).';
 
   @override
+  String get appPickerIosEmptyTitle => 'No apps chosen yet';
+
+  @override
+  String appPickerIosEmptyBody(Object child) {
+    return 'Open OSRA on $child\'s iPhone and choose the apps you want to manage. They\'ll appear here.';
+  }
+
+  @override
   String get installedAppsNoMatch => 'No apps match your search.';
 
   @override
-  String installedAppsLoadFailed(String error) {
-    return 'Could not load apps: $error';
-  }
+  String get installedAppsLoadFailed =>
+      'Couldn\'t load installed apps. Check your connection and try again.';
+
+  @override
+  String get appNoLongerInstalled => 'App no longer installed';
+
+  @override
+  String get appNoLongerInstalledRemove => 'App no longer installed. Remove';
+
+  @override
+  String get appNamePending => 'Name not available yet';
+
+  @override
+  String get appNamePendingRemove => 'Name not available yet. Remove';
 
   @override
   String installedAppsTruncated(int count) {
@@ -1242,9 +1278,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get thirtyDays => '30 days';
 
   @override
-  String reportLoadFailed(String error) {
-    return 'Failed to load report: $error';
-  }
+  String get reportLoadFailed =>
+      'Couldn\'t load report. Check your connection and try again.';
 
   @override
   String noActivityDays(int days) {
@@ -1266,7 +1301,15 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String chartLegendRow(String app, int minutes) {
+    return '$app: $minutes min';
+  }
+
+  @override
   String get noAppUsage => 'No app usage recorded';
+
+  @override
+  String get noPerAppBreakdown => 'Per-app usage is unavailable';
 
   @override
   String get webSection => 'Web';
@@ -1352,7 +1395,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get couldNotLoadScreenTime => 'Could not load screen time';
+  String get couldNotLoadScreenTime =>
+      'Could not load screen time. Check your connection and try again.';
 
   @override
   String noScreenTimeData(int days) {
@@ -1405,7 +1449,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get showLabel => 'Show';
 
   @override
-  String get couldNotLoadBrowsing => 'Could not load browsing history';
+  String get couldNotLoadBrowsing =>
+      'Could not load browsing history. Check your connection and try again.';
 
   @override
   String noBlockedSites(int days) {
@@ -1575,9 +1620,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get monitoringSaved => 'Monitoring saved';
 
   @override
-  String saveFailed(String error) {
-    return 'Save failed: $error';
-  }
+  String get saveFailed =>
+      'Couldn\'t save changes. Check your connection and try again.';
+
+  @override
+  String get saveFailedServer =>
+      'Couldn\'t save your changes. Your changes are still here — try again.';
 
   @override
   String get saveMonitoring => 'Save monitoring';
@@ -1586,8 +1634,43 @@ class AppLocalizationsEn extends AppLocalizations {
   String get concerns => 'Concerns';
 
   @override
+  String get flagVoteQuestion => 'Was OSRA right to flag this?';
+
+  @override
+  String get flagVoteConcerning => 'Concerning';
+
+  @override
+  String get flagVoteNotConcerning => 'Not concerning';
+
+  @override
+  String get flagVoteHelp => 'Your answer helps OSRA check messages better.';
+
+  @override
+  String get flagVoteThanks => 'Thanks, noted';
+
+  @override
+  String flagVoteBy(String name, String vote) {
+    return '$name: $vote';
+  }
+
+  @override
+  String get flagVoteA11yConcerning => 'Mark as concerning';
+
+  @override
+  String get flagVoteA11yNotConcerning => 'Mark as not concerning';
+
+  @override
+  String get flagVoteClear => 'Clear vote';
+
+  @override
+  String get flagVoteCleared => 'Vote cleared';
+
+  @override
+  String get flagVoteA11yClear => 'Clear your vote on this message';
+
+  @override
   String get vaultTrustCopy =>
-      'Snippets are encrypted with your family key before leaving the device and stored encrypted on your server.';
+      'Excerpts travel over an encrypted connection and are stored encrypted on OSRA\'s servers.';
 
   @override
   String get noConcernsDetected => 'No concerns detected';
@@ -1618,6 +1701,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noCallsOrTexts => 'No phone calls or texts yet';
 
   @override
+  String get activityLockRow => 'Device locked';
+
+  @override
+  String activityLockRowDetail(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'The lock screen came up $count times',
+      one: 'The lock screen came up once',
+      zero: 'The lock screen did not come up',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get unknownNumber => 'Unknown number';
 
   @override
@@ -1646,6 +1744,16 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String relativeHoursAgo(int count) {
     return '${count}h ago';
+  }
+
+  @override
+  String alertChildLabel(String name) {
+    return 'Child: $name';
+  }
+
+  @override
+  String relativeOverHoursAgo(int count) {
+    return 'more than ${count}h ago';
   }
 
   @override
@@ -1692,7 +1800,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'A command is confirmed only when the child device reports back. Delivered means the device collected it; it has not confirmed it ran.';
 
   @override
-  String get couldNotLoadCommandHistory => 'Could not load command history';
+  String get couldNotLoadCommandHistory =>
+      'Could not load command history. Check your connection and try again.';
 
   @override
   String createdEvent(String time) {
@@ -1934,7 +2043,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get onboardingNoNetwork =>
-      'Cannot reach the server. Check the server address and your internet connection, then try again.';
+      'Couldn\'t connect to OSRA. Check your internet connection, then try again.';
 
   @override
   String get onboardingChildTitle => 'Add your child';
@@ -2323,9 +2432,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get searchSafetyTitle => 'Search safety';
 
   @override
-  String searchSafetyLoadFailed(String error) {
-    return 'Failed to load search activity: $error';
-  }
+  String get searchSafetyLoadFailed =>
+      'Couldn\'t load search activity. Check your connection and try again.';
 
   @override
   String get searchSafetyEmptyTitle => 'No flagged searches detected';
@@ -2361,9 +2469,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get digestPrefsTitle => 'Digest preferences';
 
   @override
-  String digestPrefsLoadFailed(String error) {
-    return 'Failed to load preferences: $error';
-  }
+  String get digestPrefsLoadFailed =>
+      'Couldn\'t load digest settings. Check your connection and try again.';
 
   @override
   String get digestPrefsDailyTitle => 'Daily email digest';
@@ -2387,8 +2494,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get digestPrefsEmailsLabel => 'Digest emails';
 
   @override
-  String get digestPrefsEmailsHelper =>
-      'For the digest summary (separate addresses with commas)';
+  String get digestPrefsEmailsHelper => 'For the digest summary';
+
+  @override
+  String get digestPrefsAddEmail => 'Add email';
 
   @override
   String get digestPrefsConfirmationSent =>
@@ -2433,9 +2542,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get digestPrefsSaved => 'Digest preferences saved';
 
   @override
-  String digestPrefsSaveFailed(String error) {
-    return 'Save failed: $error';
-  }
+  String get digestPrefsSaveFailed =>
+      'Couldn\'t save digest settings. Check your connection and try again.';
 
   @override
   String digestPrefsTimezoneSet(String zone) {
@@ -2443,9 +2551,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String digestPrefsTimezoneFailed(String error) {
-    return 'Timezone not saved: $error';
-  }
+  String get digestPrefsTimezoneFailed =>
+      'Couldn\'t update time zone. Check your connection and try again.';
 
   @override
   String get digestPrefsTestTitle => 'Test digest';
@@ -2454,9 +2561,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get digestPrefsClose => 'Close';
 
   @override
-  String digestPrefsSendFailed(String error) {
-    return 'Send failed: $error';
-  }
+  String get digestPrefsSendFailed =>
+      'Couldn\'t send test digest. Check your connection and try again.';
 
   @override
   String get digestPrefsNoDigests => 'No digests generated';
@@ -2811,6 +2917,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get alertTitleBlockedSite => 'Blocked site attempted';
 
   @override
+  String blockedSiteDomainLine(String domain) {
+    return 'Site: $domain';
+  }
+
+  @override
+  String get blockedSiteNamesNotCollected =>
+      'Site names aren\'t collected yet, so only the block is shown.';
+
+  @override
   String get alertTitleDailyLimit => 'Daily limit reached';
 
   @override
@@ -2861,6 +2976,67 @@ class AppLocalizationsEn extends AppLocalizations {
       'Open OSRA to see the details.\nProtecting your family at all times.';
 
   @override
+  String alertSosWhereMinutes(int n, String coords) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Last location: $coords, $n min ago',
+      one: 'Last location: $coords, 1 min ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertSosWhereHours(int n, String coords) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Last location: $coords, more than $n hours ago',
+      one: 'Last location: $coords, more than 1 hour ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertSosLocationMinutes(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Location from $n min ago. Tap to see it on the map.',
+      one: 'Location from 1 min ago. Tap to see it on the map.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertSosLocationHours(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Location from more than $n hours ago. Tap to see it on the map.',
+      one: 'Location from more than 1 hour ago. Tap to see it on the map.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertLocationAccuracy(int m) {
+    return 'accurate to about $m m';
+  }
+
+  @override
+  String get alertCopyCoordinates => 'Copy coordinates';
+
+  @override
+  String get alertCoordinatesCopied => 'Coordinates copied';
+
+  @override
+  String get alertOpenInMaps => 'Open in Maps';
+
+  @override
+  String get alertShowOnMap => 'Show on map';
+
+  @override
   String get riskSelfHarm => 'Self-harm';
 
   @override
@@ -2891,8 +3067,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get riskAiConcern => 'Concerning content';
 
   @override
+  String get riskLateNight => 'Late at night';
+
+  @override
   String get phoneSetupOtherSpaceClone =>
-      'This phone has a second space for cloned apps (Dual Messenger).';
+      'This phone has another secure space that may run cloned apps (more than one copy of the same app). OSRA may not be able to monitor it until it is turned off in the phone\'s Settings.';
 
   @override
   String get phoneSetupOtherSpaceWork => 'This phone has a work profile.';
@@ -3015,8 +3194,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appGroupsTitle => 'App groups on this iPhone';
 
   @override
-  String get appGroupsBody =>
-      'Groups are made on the child\'s iPhone, behind the parent PIN. Block one here and the iPhone shields its apps.';
+  String get appsTabAndroidHeading => 'Android apps';
+
+  @override
+  String get appsTabIphoneHeading => 'iPhone apps';
+
+  @override
+  String get appGroupsEditorNote =>
+      'Manage iPhone apps from the Apps tab. The rules on this screen apply to Android apps only.';
+
+  @override
+  String get appGroupsBlockOnlyAdds =>
+      'Turning this switch off doesn\'t lift a block set on the iPhone itself.';
 
   @override
   String appGroupsCounts(Object apps, Object categories, Object sites) {
@@ -3033,6 +3222,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get setupMonitoringTitle => 'Which apps should OSRA watch for you?';
 
   @override
+  String get setupMonitoringAppBarTitle => 'Social apps';
+
+  @override
   String get setupMonitoringIntro =>
       'OSRA checks messages in these apps for signs of bullying, grooming or self-harm, and tells you when it finds something. Tick the apps you want; you can change this any time in the rules.';
 
@@ -3046,4 +3238,402 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get appRuleHiddenOnIphone =>
       'On the iPhone, this app is hidden instead of showing the OSRA screen.';
+
+  @override
+  String get webSiteNamesOnlyNote =>
+      'Names of sites and online services this phone connected to, not the pages opened. Kept for 90 days.';
+
+  @override
+  String webSiteVisits(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Visited $count times',
+      one: 'Visited once',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String webSiteSeenRange(String first, String last) {
+    return '$first to $last';
+  }
+
+  @override
+  String webSitesSummary(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count sites visited',
+      one: '1 site visited',
+      zero: 'No sites visited',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get showPassword => 'Show password';
+
+  @override
+  String get hidePassword => 'Hide password';
+
+  @override
+  String get passwordMinHint => 'At least 12 characters.';
+
+  @override
+  String get familyNameHelper => 'Other parents you invite will see this.';
+
+  @override
+  String get errorNoConnection =>
+      'No internet connection. Check your connection and try again.';
+
+  @override
+  String get authSignInFailed =>
+      'Couldn\'t sign in right now. Check your connection and try again.';
+
+  @override
+  String get authMfaReenrollRequired =>
+      'Two-step verification was reset but not finished. Open \"Lost your authenticator?\" if you still have the setup screen open; otherwise contact support.';
+
+  @override
+  String get familyInviteFailed =>
+      'Couldn\'t send invite. Check the email and try again.';
+
+  @override
+  String get digestPrefsTimezonePickerTitle => 'Choose time zone';
+
+  @override
+  String get digestPrefsTimezoneSearchHint =>
+      'Search city or offset (for example Dubai, +4)';
+
+  @override
+  String get digestPrefsTimezoneEmpty => 'No matching time zones';
+
+  @override
+  String get alertDeviceRestartedTitle => 'Device restarted';
+
+  @override
+  String get alertCategoryDeviceRestarted => 'Device restart';
+
+  @override
+  String alertAtTime(String time) {
+    return 'at $time';
+  }
+
+  @override
+  String alertYesterdayAtTime(String time) {
+    return 'yesterday at $time';
+  }
+
+  @override
+  String alertOnDateAtTime(String date, String time) {
+    return 'on $date at $time';
+  }
+
+  @override
+  String alertDetailSent(String when) {
+    return 'Sent $when';
+  }
+
+  @override
+  String alertDeviceRestartedBodyMinutes(
+      String device, String when, int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: 'after $minutes minutes',
+      one: 'after 1 minute',
+      zero: 'in less than a minute',
+    );
+    return '$device restarted $when and was back $_temp0.';
+  }
+
+  @override
+  String alertDeviceRestartedBodyHours(String device, String when, int hours) {
+    String _temp0 = intl.Intl.pluralLogic(
+      hours,
+      locale: localeName,
+      other: '$hours hours',
+      one: '1 hour',
+    );
+    return '$device restarted $when and was back after about $_temp0.';
+  }
+
+  @override
+  String get alertTitleSocialConcern => 'Social safety alert';
+
+  @override
+  String get alertTitleGamingChat => 'Gaming chat alert';
+
+  @override
+  String get alertCategorySocialConcern => 'Social safety';
+
+  @override
+  String get alertCategoryGamingChat => 'Gaming chat';
+
+  @override
+  String socialAlertFlaggedInApp(String app) {
+    return 'Flagged for review in $app';
+  }
+
+  @override
+  String get socialAlertOpenActivity => 'Open Social activity';
+
+  @override
+  String get socialAlertPreviewNoPermissionTitle =>
+      'Preview unavailable for your account';
+
+  @override
+  String get socialAlertPreviewNoPermissionBody =>
+      'Ask the family owner to enable Social access to view the encrypted preview. Alert details and the conversation guide remain available here.';
+
+  @override
+  String get socialAlertPreviewExpiredTitle => 'Preview no longer available';
+
+  @override
+  String get socialAlertPreviewExpiredBody =>
+      'The encrypted preview has expired or was not stored for this alert. Alert details and the conversation guide remain saved here.';
+
+  @override
+  String get socialAlertUnavailableTitle => 'Alert unavailable';
+
+  @override
+  String get socialAlertUnavailableBody =>
+      'This alert could not be found. Open Alerts to review recent activity.';
+
+  @override
+  String get socialAlertViewAll => 'All alerts';
+
+  @override
+  String get locationUpdatedJustNow => 'Updated just now';
+
+  @override
+  String locationUpdatedMinutes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Updated $count min ago',
+      one: 'Updated 1 min ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String locationUpdatedHours(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Updated $count hours ago',
+      one: 'Updated 1 hour ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String locationUpdatedDays(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Updated $count days ago',
+      one: 'Updated 1 day ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get locationUpdatedUnknown => 'Update time unknown';
+
+  @override
+  String get locationFindingAddress => 'Finding address…';
+
+  @override
+  String get locationAddressUnavailable => 'Address not available';
+
+  @override
+  String locationMapSemantics(String name) {
+    return 'Map showing where $name is';
+  }
+
+  @override
+  String get locationRecentre => 'Centre on the latest location';
+
+  @override
+  String get undo => 'Undo';
+
+  @override
+  String hoursShort(int hours) {
+    return '$hours h';
+  }
+
+  @override
+  String get appStateAllowed => 'Allowed';
+
+  @override
+  String get appStateBlocked => 'Blocked';
+
+  @override
+  String appStateLimit(String limit) {
+    return 'Limit $limit a day';
+  }
+
+  @override
+  String appAllowedSnack(String app) {
+    return '$app allowed';
+  }
+
+  @override
+  String appLimitSnack(String app, String limit) {
+    return '$app limited to $limit a day';
+  }
+
+  @override
+  String appsFilterAll(int count) {
+    return 'All ($count)';
+  }
+
+  @override
+  String appsFilterBlocked(int count) {
+    return 'Blocked ($count)';
+  }
+
+  @override
+  String appsFilterLimited(int count) {
+    return 'Time limits ($count)';
+  }
+
+  @override
+  String get appsNoMatch => 'No apps match';
+
+  @override
+  String get appAboutThisApp => 'About this app';
+
+  @override
+  String appBlockedNamedSnack(String app) {
+    return '$app blocked';
+  }
+
+  @override
+  String get socialCheckMessagesIn => 'Check messages in';
+
+  @override
+  String socialNotOnChildPhone(String child, int count) {
+    return 'Not on $child\'s phone ($count)';
+  }
+
+  @override
+  String get socialChecking => 'Checking';
+
+  @override
+  String get socialOff => 'Off';
+
+  @override
+  String get socialCommentsAndChats => 'Comments and chats';
+
+  @override
+  String get socialNewAppsBanner =>
+      'You can now choose YouTube, Telegram, Reddit and Messenger too.';
+
+  @override
+  String get socialPrivacyLine =>
+      'OSRA only flags concerning messages. It never shows you every chat.';
+
+  @override
+  String get selectAll => 'Select all';
+
+  @override
+  String socialAlertCountTitle(int count, String app) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count concerning messages on $app',
+      one: '1 concerning message on $app',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String socialAlertFromContactOnly(String contact) {
+    return 'From $contact';
+  }
+
+  @override
+  String socialAlertLatestAt(String time) {
+    return 'Latest $time';
+  }
+
+  @override
+  String get socialAlertUnknownContact => 'an unknown contact';
+
+  @override
+  String socialAlertMorePush(int count, String child, String app) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count more concerning messages for $child on $app',
+      one: '1 more concerning message for $child on $app',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String socialAlertNewSince(int count) {
+    return '+$count new';
+  }
+
+  @override
+  String phoneSetupStepsLeftThisPhone(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count steps',
+      one: '1 step',
+    );
+    return 'Setting up this phone: $_temp0 left';
+  }
+
+  @override
+  String get phoneSetupProtected => 'This phone is protected.';
+
+  @override
+  String phoneSetupStepsLeft(String childName, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count steps',
+      one: '1 step',
+    );
+    return 'Setting up $childName\'s phone: $_temp0 left';
+  }
+
+  @override
+  String get alertTitleSetupComplete => 'Phone is protected';
+
+  @override
+  String get alertTitleSetupIncomplete => 'Phone setup needs attention';
+
+  @override
+  String alertBodySetupCompleted(String childName) {
+    return '$childName\'s phone is protected.';
+  }
+
+  @override
+  String alertBodySetupIncomplete(String childName, int count, String steps) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count setup steps',
+      one: '1 setup step',
+    );
+    return '$childName\'s phone still has $_temp0 left after 30 minutes$steps.';
+  }
+
+  @override
+  String alertBodySetupIncompleteGeneric(String childName) {
+    return '$childName\'s phone setup is still incomplete after 30 minutes.';
+  }
+
+  @override
+  String alertBodyDataCleared(String model) {
+    return 'OSRA was reinstalled on $model. Its protection was off until it was paired again.';
+  }
 }

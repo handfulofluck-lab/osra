@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { familyRoutes } from "../src/routes/family.js";
+import { CHILD_SCOPED_DELETE_ORDER } from "../src/lib/usageModel.js";
 import { getRedis } from "../src/redis.js";
 import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
 
@@ -98,7 +99,7 @@ describe("family routes", () => {
       createdAt: new Date().toISOString(),
       parents: [{
         id: "parent-1",
-        email: "demo@familyshield.dev",
+        email: "demo@osratech.com",
         passwordHash: "argon2$secret",
         mfaSecret: "mfa",
         // ADR-0023: a joined batch must never reach a response, even though the relation is not
@@ -259,7 +260,7 @@ describe("family routes", () => {
       name: "Demo",
       region: "US",
       createdAt: new Date(),
-      parents: [{ id: "parent-1", email: "demo@familyshield.dev", passwordHash: "x" }],
+      parents: [{ id: "parent-1", email: "demo@osratech.com", passwordHash: "x" }],
       children: [
         {
           id: CHILD_ID,
@@ -305,6 +306,7 @@ describe("family routes", () => {
     prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
     prismaMock.child.delete.mockResolvedValue({ id: CHILD_ID });
     prismaMock.device.findMany.mockResolvedValue([{ id: "dev-1" }, { id: "dev-2" }]);
+    prismaMock.childInternetOperation.deleteMany.mockResolvedValue({ count: 1 });
     for (const m of ["deviceCommand", "locationPing", "alert", "activityEvent", "socialEvent", "installRequest", "webVisit", "appUsageDaily", "device", "ruleSet", "geofence", "consentRecord"] as const) {
       prismaMock[m].deleteMany.mockResolvedValue({ count: 1 });
     }
@@ -316,6 +318,11 @@ describe("family routes", () => {
     });
     expect(res.statusCode).toBe(200);
     const cascade = { where: { childId: CHILD_ID } };
+    expect(prismaMock.$queryRaw.mock.calls[0][0].join("")).toContain("FOR UPDATE");
+    expect(prismaMock.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      prismaMock.childInternetOperation.deleteMany.mock.invocationCallOrder[0],
+    );
+    expect(prismaMock.childInternetOperation.deleteMany).toHaveBeenCalledWith(cascade);
     expect(prismaMock.device.deleteMany).toHaveBeenCalledWith(cascade);
     expect(prismaMock.ruleSet.deleteMany).toHaveBeenCalledWith(cascade);
     expect(prismaMock.locationPing.deleteMany).toHaveBeenCalledWith(cascade);
@@ -336,13 +343,18 @@ describe("family routes", () => {
     expect(prismaMock.pairingDecision.deleteMany).toHaveBeenCalledWith(cascade);
     expect(prismaMock.child.delete).toHaveBeenCalledWith({ where: { id: CHILD_ID } });
     const txCalls = prismaMock.$transaction.mock.calls[0][0] as unknown[];
-    expect(txCalls).toHaveLength(15);
+    expect(txCalls).toHaveLength(1 + CHILD_SCOPED_DELETE_ORDER.length);
     // Each deleted device's token is revoked like an unpair (#56), bounded by the token lifetime.
     const redis = getRedis() as unknown as MockRedis;
     for (const id of ["dev-1", "dev-2"]) {
       expect(redis.set).toHaveBeenCalledWith(`revoked:device:${id}`, expect.any(String), "EX", 315_576_000);
     }
-    expect(res.json()).toMatchObject({ erased: true, childId: CHILD_ID, deletedDevices: ["dev-1", "dev-2"] });
+    expect(res.json()).toMatchObject({
+      erased: true,
+      childId: CHILD_ID,
+      deletedDevices: ["dev-1", "dev-2"],
+      rows: { childInternetOperation: 1 },
+    });
     await app.close();
   });
 
@@ -576,7 +588,7 @@ describe("family routes", () => {
       parents: [
         {
           id: "parent-1",
-          email: "demo@familyshield.dev",
+          email: "demo@osratech.com",
           passwordHash: "argon2$secret",
           mfaSecret: "JBSWY3DPEHPK3PXP",
           mfaEnabled: true,
@@ -592,12 +604,12 @@ describe("family routes", () => {
     const res = await app.inject({ method: "GET", url: "/v1/family/export", headers: authHeader(app) });
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-disposition"]).toContain("attachment");
-    expect(res.headers["content-disposition"]).toContain(`familyshield-export-${FAMILY.id}.json`);
+    expect(res.headers["content-disposition"]).toContain(`osra-export-${FAMILY.id}.json`);
     const body = res.json();
     expect(body.exportedAt).toBeTruthy();
     expect(body.family.children).toHaveLength(1);
     expect(body.family.parents).toHaveLength(1);
-    expect(body.family.parents[0].email).toBe("demo@familyshield.dev");
+    expect(body.family.parents[0].email).toBe("demo@osratech.com");
     // Credential material must never leave the API — including in exports.
     const raw = JSON.stringify(body);
     expect(raw).not.toContain("passwordHash");
@@ -625,7 +637,7 @@ describe("family routes", () => {
       id: FAMILY.id,
       name: "Demo",
       region: "US",
-      parents: [{ id: "parent-1", email: "demo@familyshield.dev" }],
+      parents: [{ id: "parent-1", email: "demo@osratech.com" }],
       children: [{ id: CHILD_ID, displayName: "Alex", devices: [], consents: [] }],
     });
 
@@ -644,3 +656,56 @@ describe("family routes", () => {
   });
 });
 
+
+
+describe("GET /v1/family/entitlement (ADR-0041 D1)", () => {
+  beforeEach(() => resetPrismaMock());
+
+  const purchase = {
+    familyId: "fam-1", source: "google_play", productId: "family.monthly", storeRefHash: "a".repeat(64),
+    status: "active", expiresAt: new Date("2027-01-01T00:00:00.000Z"), autoRenews: true,
+    lastVerifiedAt: new Date("2026-11-15T00:00:00.000Z"), cause: "verify",
+  };
+
+  it("gives an owner the exact eligible response and their stable random account id", async () => {
+    const app = await buildApp(familyRoutes, "/v1/family");
+    prismaMock.familyPurchase.findMany.mockResolvedValue([purchase]);
+    prismaMock.family.findUnique.mockResolvedValue({ id: "fam-1", storeAccountId: "b".repeat(32) });
+    const res = await app.inject({ method: "GET", url: "/v1/family/entitlement", headers: authHeader(app) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      plan: "family", until: "2027-01-01T00:00:00.000Z", source: "google_play", manage_on: "google_play",
+      store_account_id: "b".repeat(32),
+    });
+    await app.close();
+  });
+
+  it("gives a guardian the four plan fields and never the store account id", async () => {
+    const app = await buildApp(familyRoutes, "/v1/family");
+    prismaMock.parent.findUnique.mockResolvedValue({
+      id: "parent-1", familyId: "fam-1", role: "guardian", permissions: [], email: "guardian@example.com",
+    });
+    prismaMock.familyPurchase.findMany.mockResolvedValue([]);
+    const res = await app.inject({ method: "GET", url: "/v1/family/entitlement", headers: authHeader(app) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ plan: null, until: null, source: null, manage_on: null });
+    expect(prismaMock.family.updateMany).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("does not expose the purchase-account id through the broad family envelope", async () => {
+    const app = await buildApp(familyRoutes, "/v1/family");
+    prismaMock.parent.findUnique.mockResolvedValue({
+      id: "parent-1", familyId: "fam-1", role: "guardian", permissions: [], email: "guardian@example.com",
+    });
+    prismaMock.family.findUnique.mockResolvedValue({
+      id: "fam-1", name: "Demo", region: "US", timezone: "UTC", timezoneSource: "default",
+      storeAccountId: "b".repeat(32), parents: [], children: [],
+    });
+    const res = await app.inject({ method: "GET", url: "/v1/family/me", headers: authHeader(app) });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).not.toContain("storeAccountId");
+    expect(res.body).not.toContain("b".repeat(32));
+    await app.close();
+  });
+});

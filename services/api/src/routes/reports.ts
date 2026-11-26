@@ -4,12 +4,13 @@ import { prisma } from "../db.js";
 import { guardianPermissions, requireFamily, requireGuardianRead, requireParent } from "../middleware/requireFamily.js";
 import { computeWellbeingScore, currentIsoWeek, summarizeChildActivity } from "../lib/activitySummary.js";
 import { usageSeries, webHistory } from "../lib/usageModel.js";
+import { siteNamesEnabled } from "../lib/siteNames.js";
 
 const ActivityReportQuerySchema = z.object({
   childId: z.string().min(1),
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
-  type: z.enum(["url", "app_usage", "call", "sms"]).optional(),
+  type: z.enum(["url", "app_usage", "call", "sms", "lock_period"]).optional(),
   limit: z.coerce.number().int().min(1).max(1000).default(200),
 });
 
@@ -41,10 +42,14 @@ export async function reportsRoutes(app: FastifyInstance) {
     const parsed = ActivityReportQuerySchema.safeParse(req.query ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const q = parsed.data;
+    const siteNames = siteNamesEnabled();
     const rows = await prisma.activityEvent.findMany({
       where: {
         childId: q.childId,
         ...(q.type ? { type: q.type } : {}),
+        // Claude's finding-5 ruling, read side (Fable's blocker C): while the flag is off **no** `url`
+        // row is returned, blocked or not. A row written before the gate existed must not leak here.
+        ...(siteNames ? {} : { NOT: { type: "url" } }),
         ...(q.from || q.to
           ? { ts: { ...(q.from ? { gte: new Date(q.from) } : {}), ...(q.to ? { lte: new Date(q.to) } : {}) } }
           : {}),
@@ -59,7 +64,7 @@ export async function reportsRoutes(app: FastifyInstance) {
   app.get("/summary", { preHandler: [requireParent, requireFamily({ param: "childId", model: "child", source: "query" })] }, async (req, reply) => {
     const parsed = SummaryQuerySchema.safeParse(req.query ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const summary = await summarizeChildActivity(parsed.data.childId, parsed.data.days);
+    const summary = await summarizeChildActivity(parsed.data.childId, parsed.data.days, { siteNames: siteNamesEnabled() });
     // ADR-0014 amendment, decision 5's exception: the counts stay for every family adult, but domain
     // names are browsing content, and `GET /v1/reports/web?blocked=true` already refuses a guardian
     // without `social`. The same reader must not get them here instead.
@@ -90,7 +95,15 @@ export async function reportsRoutes(app: FastifyInstance) {
     const parsed = WebQuerySchema.safeParse(req.query ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const q = parsed.data;
-    const items = await webHistory(q.childId, q.days, q.limit, { blockedOnly: q.blocked === "true", domain: q.domain });
+    // Under the ruling there is no address to show while the flag is off — no visit, blocked or not
+    // (Fable's blocker C). The blocked attempt reaches the parent through its alert, as a count.
+    // Same shape as the normal reply: the parent app reads `childId` and `days`, and an off state must
+    // look like an empty list, not a malformed one (Fable, point 3).
+    if (!siteNamesEnabled()) return { childId: q.childId, days: q.days, items: [] };
+    const items = await webHistory(q.childId, q.days, q.limit, {
+      blockedOnly: q.blocked === "true",
+      domain: q.domain,
+    });
     return { childId: q.childId, days: q.days, items };
   });
 

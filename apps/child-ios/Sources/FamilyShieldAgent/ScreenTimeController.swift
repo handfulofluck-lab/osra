@@ -4,7 +4,7 @@ import os
 import UIKit
 #endif
 
-#if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+#if os(iOS)
 import DeviceActivity
 import FamilyControls
 import ManagedSettings
@@ -43,11 +43,16 @@ public final class ScreenTimeController {
         let store = ManagedSettingsStore(named: Self.rulesStoreName)
         let tokens = TokenResolver.applicationTokens(forBundleIdentifiers: packageIds)
         store.shield.applications = tokens.isEmpty ? nil : tokens
-        store.application.blockedApplications = Set(packageIds.map { Application(bundleIdentifier: $0) })
+        // #1090: hide only the apps no shield can cover. `blockedApplications` removes the icon from the Home Screen
+        // and the App Library, so hiding a shielded app moves it instead of blocking it.
+        let hidden = BlockedAppHiding.hiddenBundleIdentifiers(packageIds) {
+            Application(bundleIdentifier: $0).token != nil
+        }
+        store.application.blockedApplications = Set(hidden.map { Application(bundleIdentifier: $0) })
     }
 
     /// ADR-0037: shields exactly the apps, categories and websites of the blocked groups, nothing else. These are
-    /// picker tokens, so iOS shows the OSRA shield (and Ask parent) instead of hiding the app, which is what
+    /// picker tokens, so iOS shows the OSRA shield (and Request access) instead of hiding the app, which is what
     /// `blockedApplications` does for the bundle-id rules above.
     /// [serverBlocked]: the groups the parent blocked from the parent app (ADR-0037 PR B3); the last synced set by
     /// default, so the groups screen's own commits keep them.

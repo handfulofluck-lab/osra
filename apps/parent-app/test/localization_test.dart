@@ -187,7 +187,12 @@ void main() {
     testWidgets('reports', (tester) async {
       await pumpArabic(tester, const ReportsScreen(childId: 'child-1'), arabicApi());
       expect(find.text('التقارير'), findsOneWidget);
-      expect(find.text('الإجمالي: 300 دقيقة · المتوسط: 43 دقيقة يوميًا'), findsOneWidget);
+      // #841 (Arabic Language Bureau, 22:22Z): at 320 px the total and the average do not share a line, so
+      // they are drawn as two lines with **no** separator — a «·» left at the end of an RTL line reads as a
+      // stray mark. Both halves are asserted, so a regression that drops one cannot pass as "split".
+      expect(find.text('الإجمالي: 300 دقيقة'), findsOneWidget);
+      expect(find.text('المتوسط: 43 دقيقة يوميًا'), findsOneWidget);
+      expect(find.textContaining('·'), findsNothing);
       expectRtlAndNoOverflow(tester);
     });
 
@@ -494,10 +499,12 @@ void main() {
       expect(find.text('الإشعارات الفورية'), findsOneWidget);
       // The buttons sit below the fold at 320x568 and a ListView builds lazily, so they are reached by
       // scrolling -- an assertion that fails without it is testing the viewport, not the copy.
-      await tester.drag(find.byType(ListView), const Offset(0, -400));
+      await tester.scrollUntilVisible(find.text('حفظ التفضيلات'), 150, scrollable: find.byType(Scrollable).first);
       await tester.pumpAndSettle();
       expect(find.text('حفظ التفضيلات'), findsOneWidget);
       // The send hour and timezone are separate fields, not one run-on line.
+      await tester.scrollUntilVisible(find.text('ساعة الإرسال'), -150, scrollable: find.byType(Scrollable).first);
+      await tester.pumpAndSettle();
       expect(find.text('ساعة الإرسال'), findsOneWidget);
       expect(find.text('18:00'), findsOneWidget);
       expectRtlAndNoOverflow(tester);
@@ -527,9 +534,13 @@ void main() {
       await tester.pumpAndSettle();
 
       // The rows sit under the switches and the email field, and a ListView builds lazily at 320x568.
-      await tester.drag(find.byType(ListView), const Offset(0, -200));
+      await tester.scrollUntilVisible(
+        find.text('أرسلنا رابط التأكيد. لن يصل الملخّص إلى هذا العنوان قبل تأكيده.'),
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
-      expect(find.text('تم إرسال رابط التأكيد — لن يستلم هذا العنوان أي ملخّص قبل التأكيد'), findsOneWidget);
+      expect(find.text('أرسلنا رابط التأكيد. لن يصل الملخّص إلى هذا العنوان قبل تأكيده.'), findsOneWidget);
       expect(find.byKey(const ValueKey('digestRecipient-grandma@example.com')), findsOneWidget);
       expectRtlAndNoOverflow(tester);
     });
@@ -562,8 +573,94 @@ void main() {
         find.text('لم يُرسَل بعد: هناك تأكيدات كثيرة بانتظار الردّ. حاول مرة أخرى غدًا.'),
         findsOneWidget,
       );
-      expect(find.textContaining('تم إرسال رابط التأكيد'), findsNothing);
+      expect(find.textContaining('أرسلنا رابط التأكيد'), findsNothing);
       expectRtlAndNoOverflow(tester);
+    });
+  });
+
+  group('Arabic wording approved in #604', () {
+    final ar = lookupAppLocalizations(const Locale('ar'));
+
+    test('appName stays OSRA', () {
+      expect(ar.appName, 'OSRA');
+    });
+
+    test('commandRefusedBackgroundLocation', () {
+      expect(
+        ar.commandRefusedBackgroundLocation('رن', 'Pixel 7'),
+        'لم يُرسل «رن» إلى Pixel 7: لم يمنح الهاتف إذن الموقع «السماح دائمًا»، لذا لا يمكن لطلب تحديد الموقع وتنبيهات النطاقات الجغرافية الوصول إليه. اطلب من طفلك فتح تطبيق أسرة للأطفال ومنح الإذن.',
+      );
+    });
+
+    test('commandRefusedLocationPermission', () {
+      expect(
+        ar.commandRefusedLocationPermission('رن', 'Pixel 7'),
+        'لم يُرسل «رن» إلى Pixel 7: لا يوجد إذن موقع على الهاتف. اطلب من طفلك فتح تطبيق أسرة للأطفال ومنح إذن الموقع.',
+      );
+    });
+
+    test('commandRefusedLockScreen', () {
+      expect(
+        ar.commandRefusedLockScreen,
+        'لا يمكن تثبيت القفل على هاتف طفلك: فعّل خدمة إمكانية الوصول لتطبيق أسرة للأطفال على ذلك الهاتف.',
+      );
+    });
+
+    test('commandRefusedWebFilterStart', () {
+      expect(
+        ar.commandRefusedWebFilterStart,
+        'تعذّر بدء إيقاف الإنترنت على هاتف طفلك. افتح تطبيق أسرة للأطفال على ذلك الهاتف وحاول مجددًا.',
+      );
+    });
+
+    test('commandRefusedWebFilter', () {
+      expect(ar.commandRefusedWebFilter, 'تصفية الويب غير مُعدّة على هاتف طفلك، لذا لم يتوقف الإنترنت.');
+    });
+
+    test('commandRefusedUnsupportedCommand', () {
+      expect(ar.commandRefusedUnsupportedCommand, 'يحتاج هذا الأمر إلى إصدار أحدث من تطبيق أسرة للأطفال على هاتف طفلك.');
+    });
+
+    test('scanQr', () {
+      expect(ar.scanQr, 'امسح رمز QR باستخدام تطبيق أسرة للأطفال على جهاز الطفل.');
+    });
+
+    test('pairClaimDataCleared', () {
+      expect(
+        ar.pairClaimDataCleared,
+        'مُسحت بيانات تطبيق أسرة للأطفال على هذا الهاتف، لذلك فقد حمايته. اسمح به فقط إذا كنت تتوقع ذلك.',
+      );
+    });
+
+    test('appearanceDesc', () {
+      expect(ar.appearanceDesc, 'يتبع هذا الجهاز إعدادات النظام. يُطبَّق الوضع الفاتح أو الداكن على تطبيق أسرة فقط.');
+    });
+
+    test('languageDesc', () {
+      expect(ar.languageDesc, 'يتبع هذا الجهاز إعدادات النظام. تُطبَّق اللغة الإنجليزية أو العربية على تطبيق أسرة فقط.');
+    });
+
+    test('onboardingWelcomeTitle', () {
+      expect(ar.onboardingWelcomeTitle, 'مرحبًا بك في تطبيق أسرة');
+    });
+
+    test('onboardingPairIntro', () {
+      expect(ar.onboardingPairIntro('Alex'), 'افتح تطبيق أسرة للأطفال على هاتف Alex واختر الإقران برمز.');
+    });
+
+    test('alertCallBypassNote', () {
+      expect(
+        ar.alertCallBypassNote,
+        'تم حظر تطبيق المكالمات، لكن المكالمة استمرت خلف شاشة الحظر. لا يستطيع تطبيق أسرة للأطفال إنهاء مكالمة تطبيق آخر، لذا تبقى الشاشة محظورة حتى تنتهي المكالمة.',
+      );
+    });
+
+    test('alertTitleDataCleared', () {
+      expect(ar.alertTitleDataCleared, 'مُسحت بيانات تطبيق أسرة للأطفال على أحد الهواتف');
+    });
+
+    test('phoneSetupOtherSpaceOther', () {
+      expect(ar.phoneSetupOtherSpaceOther, 'في هذا الهاتف مساحة أخرى، وقد لا يصل تطبيق أسرة للأطفال إلى التطبيقات داخلها.');
     });
   });
 
@@ -578,6 +675,16 @@ void main() {
       expect(ar.serverLabel, 'الخادم (السيرفر)');
       expect(ar.totalAverage(300, 43), 'الإجمالي: 300 دقيقة · المتوسط: 43 دقيقة يوميًا');
       expect(ar.digestPrefsPushBody, 'إرسال التنبيهات الحرجة كإشعارات فورية');
+      // #570: Karim's clone-space sentence (2026-11-11), pinned in both locales.
+      expect(
+        ar.phoneSetupOtherSpaceClone,
+        'هذا الهاتف يحتوي على مساحة أخرى مؤمنة، ربما تتيح هذه المساحة تشغيل أكثر من نسخة من نفس التطبيق، وقد لا يتمكن هذا التطبيق من مراقبتها طالما لم يتم إلغاء هذه الخاصية من قسم الإعدادات الخاصة بالهاتف.',
+      );
+      final en = await AppLocalizations.delegate.load(const Locale('en'));
+      expect(
+        en.phoneSetupOtherSpaceClone,
+        'This phone has another secure space that may run cloned apps (more than one copy of the same app). OSRA may not be able to monitor it until it is turned off in the phone\'s Settings.',
+      );
     });
 
     test('the screen-time value reads used-then-limit', () async {
@@ -599,7 +706,8 @@ void main() {
       final ar = await arabic();
       final en = await AppLocalizations.delegate.load(const Locale('en'));
       expect(ar.digestPrefsEmailsLabel, 'عناوين البريد الإلكتروني');
-      expect(ar.digestPrefsEmailsHelper, 'لتلقي الملخّص (افصل بينها بفواصل)');
+      expect(ar.digestPrefsEmailsHelper, 'يُرسَل الملخّص إلى هذه العناوين.');
+      expect(ar.digestPrefsAddEmail, 'إضافة عنوان بريد إلكتروني');
       expect(en.digestPrefsEmailsLabel, 'Digest emails');
       expect(en.digestPrefsEmailsHelper, isNotEmpty);
     });
@@ -714,6 +822,15 @@ void main() {
       // reads as itself instead of an empty label.
       expect(en.alertCategory('not_a_category'), 'not_a_category');
       expect(ar.alertCategory('not_a_category'), 'not_a_category');
+
+      // #889: device_restarted is emitted by the telemetry route rather than InternalAlertSchema,
+      // and must still translate both its chip label and alert title cleanly in EN & AR.
+      expect(en.alertCategory('device_restarted'), en.alertCategoryDeviceRestarted);
+      expect(ar.alertCategory('device_restarted'), ar.alertCategoryDeviceRestarted);
+      expect(ar.alertCategory('device_restarted'), isNot('device_restarted'));
+      expect(en.alertTitleFor('device_restarted', 'SERVER', isEnglish: true), en.alertDeviceRestartedTitle);
+      expect(ar.alertTitleFor('device_restarted', 'SERVER', isEnglish: false), ar.alertDeviceRestartedTitle);
+      expect(ar.alertTitleFor('device_restarted', 'SERVER', isEnglish: false), isNot('SERVER'));
     });
 
     test('search risk tags are localized, with the raw key only as a fallback', () async {
@@ -722,8 +839,11 @@ void main() {
       expect(ar.searchRiskCategory('substance_use'), 'تعاطي المواد');
       expect(ar.searchRiskCategory('self_harm'), 'إيذاء النفس');
       expect(ar.searchRiskCategory('grooming_risk'), 'استدراج');
+      expect(ar.searchRiskCategory('late_night'), 'في وقت متأخر ليلًا');
       expect(en.searchRiskCategory('substance_use'), 'Substance use');
-      expect(en.searchRiskCategory('late_night'), 'late_night');
+      expect(en.searchRiskCategory('late_night'), 'Late at night');
+      expect(en.searchRiskCategory('future_tag'), 'future_tag');
+      expect(ar.searchRiskCategory('future_tag'), 'future_tag');
     });
   });
 
@@ -771,28 +891,32 @@ void main() {
       expect(rect.width, greaterThan(0));
     }
 
-    testWidgets('320x568: the action is a tooltipped icon and still opens the rules editor', (tester) async {
+    testWidgets('320x568: actions fold into the overflow menu and still open the rules editor', (tester) async {
       await pumpChildDetail(tester, 320);
-      final action = find.byKey(const ValueKey('editRulesButton'));
-      expect(action, findsOneWidget);
-      // The compact shape: an icon with the label as its tooltip, not a text
-      // button that runs out of room.
-      expect(tester.widget<IconButton>(action).tooltip, 'تعديل القواعد');
+      final menu = find.byKey(const ValueKey('childActionsMenu'));
+      expect(menu, findsOneWidget);
       expect(find.widgetWithText(TextButton, 'تعديل القواعد'), findsNothing);
-      expectInsideAppBar(tester, action);
+      expectInsideAppBar(tester, menu);
       expect(drainExceptions(tester), isEmpty);
 
-      await tester.tap(action);
+      await tester.tap(menu);
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(
+        of: find.byType(PopupMenuItem<String>),
+        matching: find.text('تعديل القواعد'),
+      ));
       await tester.pumpAndSettle();
       expect(find.byType(RulesEditorScreen), findsOneWidget);
     });
 
     for (final width in <double>[360, 375, 411]) {
-      testWidgets('${width.toInt()}px: the label shows in full and opens the rules editor', (tester) async {
+      testWidgets('${width.toInt()}px: top bar has tooltipped icon and overview tab has tonal button', (tester) async {
         await pumpChildDetail(tester, width);
         final action = find.byKey(const ValueKey('editRulesButton'));
         expect(action, findsOneWidget);
-        expect(find.widgetWithText(TextButton, 'تعديل القواعد'), findsOneWidget);
+        expect(tester.widget<IconButton>(action).tooltip, 'تعديل القواعد');
+        expect(find.widgetWithText(TextButton, 'تعديل القواعد'), findsNothing);
+        expect(find.widgetWithText(FilledButton, 'تعديل القواعد'), findsOneWidget);
         expectInsideAppBar(tester, action);
         expect(drainExceptions(tester), isEmpty);
 

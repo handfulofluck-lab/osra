@@ -9,7 +9,7 @@ typedef ReportQuery = ({String childId, int days});
 
 /// Aggregate report summary for one child and day range (feature #4,
 /// `GET /v1/reports/summary?childId&days=`).
-final reportSummaryProvider = FutureProvider.family<ReportSummary, ReportQuery>((ref, query) async {
+final reportSummaryProvider = FutureProvider.autoDispose.family<ReportSummary, ReportQuery>((ref, query) async {
   final api = ref.watch(apiClientProvider);
   final res = await api.raw.get('/v1/reports/summary', queryParameters: {
     'childId': query.childId,
@@ -24,7 +24,7 @@ typedef UsageQuery = ({String childId, int days});
 /// Daily screen-time series for one child (roadmap 3.5,
 /// `GET /v1/reports/usage?childId&days=`, max 366). The server returns the whole
 /// window oldest first and fills missing days with 0 (`usageSeries`).
-final usageReportProvider = FutureProvider.family<UsageReport, UsageQuery>((ref, query) async {
+final usageReportProvider = FutureProvider.autoDispose.family<UsageReport, UsageQuery>((ref, query) async {
   final api = ref.watch(apiClientProvider);
   final res = await api.raw.get('/v1/reports/usage', queryParameters: {
     'childId': query.childId,
@@ -39,7 +39,7 @@ typedef WebHistoryQuery = ({String childId, int days, bool blockedOnly, int limi
 
 /// Browsing history for one child, newest first (roadmap 3.5,
 /// `GET /v1/reports/web?childId&days=&limit=&blocked=`).
-final webHistoryProvider = FutureProvider.family<List<WebVisit>, WebHistoryQuery>((ref, query) async {
+final webHistoryProvider = FutureProvider.autoDispose.family<List<WebVisit>, WebHistoryQuery>((ref, query) async {
   final api = ref.watch(apiClientProvider);
   final res = await api.raw.get('/v1/reports/web', queryParameters: {
     'childId': query.childId,
@@ -53,7 +53,7 @@ final webHistoryProvider = FutureProvider.family<List<WebVisit>, WebHistoryQuery
 
 /// Weekly wellbeing score for one child (feature #28, `GET /v1/reports/wellbeing/:childId`).
 /// The server computes the current 7-day window when no `week` is passed.
-final wellbeingProvider = FutureProvider.family<WellbeingScore, String>((ref, childId) async {
+final wellbeingProvider = FutureProvider.autoDispose.family<WellbeingScore, String>((ref, childId) async {
   final api = ref.watch(apiClientProvider);
   final res = await api.raw.get('/v1/reports/wellbeing/$childId');
   return WellbeingScore.fromJson(Map<String, dynamic>.from(res.data as Map));
@@ -92,10 +92,19 @@ final locationHistoryProvider = FutureProvider.family<List<LocationPing>, String
   final api = ref.watch(apiClientProvider);
   final now = DateTime.now();
   final from = DateTime(now.year, now.month, now.day);
-  final res = await api.raw.get('/v1/location/$childId/history', queryParameters: {
-    'from': from.toIso8601String(),
-    'to': now.toIso8601String(),
-  });
+  final Response<dynamic> res;
+  try {
+    res = await api.raw.get('/v1/location/$childId/history', queryParameters: {
+      // #869: the API accepts UTC/Z datetimes. Convert the local-day boundary,
+      // rather than constructing UTC midnight, so "today" stays the parent's day.
+      'from': from.toUtc().toIso8601String(),
+      'to': now.toUtc().toIso8601String(),
+    });
+  } on DioException catch (e) {
+    // #850: no location yet is an empty day, not an error.
+    if (e.response?.statusCode == 404) return const <LocationPing>[];
+    rethrow;
+  }
   final data = res.data is Map ? Map<String, dynamic>.from(res.data as Map) : const <String, dynamic>{};
   final pings = <LocationPing>[
     for (final p in (data['pings'] as List? ?? const []))

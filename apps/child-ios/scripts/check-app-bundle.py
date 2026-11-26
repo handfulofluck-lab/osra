@@ -23,6 +23,10 @@ And once, from the source tree (an unsigned build embeds no entitlements):
   5. every target's .entitlements file carries com.apple.developer.family-controls = true and the
      app group group.com.osratech.child.
   6. each extension's Info.plist names "$(PRODUCT_MODULE_NAME).<Class>" and declares <Class> in its own sources (#561).
+And for the app and each .appex, built and in the source tree:
+  7. Info.plist lists en and ar in CFBundleLocalizations, and the bundle carries en.lproj and ar.lproj (#654: an
+     extension that declares only English gets English from iOS, so the block screen stayed English on an
+     Arabic phone).
 
 It prints what it found, so the CI log shows the bundle list, and exits 1 on any mismatch.
 """
@@ -122,6 +126,8 @@ def check_app(app):
         else:
             fail(f"{name}: NSExtensionPrincipalClass = {got_principal!r}, expected {principal!r}")
         check_principal_linked(appex, name, module, cls)
+        check_localizations(appex, name)
+    check_localizations(app, "app")
 
 
 def check_icon(app):
@@ -279,6 +285,35 @@ def check_principal_sources():
             fail(f"{folder}: no `class {cls}:` in its own Swift files")
 
 
+LANGUAGES = ["en", "ar"]
+
+# Source folder -> the bundle it builds, for the localization check (#654).
+LOCALIZED_SOURCES = {"App": "app", **EXTENSION_SOURCES}
+
+
+def check_localizations(bundle, name):
+    """#654: the bundle tells iOS it speaks English and Arabic, so iOS hands it the phone's language."""
+    info_path = os.path.join(bundle, "Info.plist")
+    if not os.path.isfile(info_path):
+        fail(f"{name}: no Info.plist")
+        return
+    declared = read_plist(info_path).get("CFBundleLocalizations") or []
+    missing = [lang for lang in LANGUAGES if lang not in declared]
+    if missing:
+        fail(f"{name}: CFBundleLocalizations = {declared!r}, missing {missing}")
+    else:
+        ok(f"{name}: CFBundleLocalizations has {', '.join(LANGUAGES)}")
+    for lang in LANGUAGES:
+        if not os.path.isdir(os.path.join(bundle, f"{lang}.lproj")):
+            fail(f"{name}: no {lang}.lproj")
+
+
+def check_localization_sources():
+    print("\nlocalizations (source files)")
+    for folder in LOCALIZED_SOURCES:
+        check_localizations(os.path.join(ROOT, folder), folder)
+
+
 def check_entitlements():
     print("\nentitlements (source files: an unsigned build embeds none)")
     for rel in ENTITLEMENTS:
@@ -303,6 +338,7 @@ def main(argv):
         check_app(app)
     check_entitlements()
     check_principal_sources()
+    check_localization_sources()
     print(f"\n{len(failures)} problem(s)")
     return 1 if failures else 0
 
