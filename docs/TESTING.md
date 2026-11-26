@@ -121,6 +121,21 @@ full for server validation. App and YouTube edits leave the rest of the ruleset 
 an empty school-day list stays empty on load. On staging, save and read back one app, web and
 YouTube edit on the signed parent app before marking the handset row passed.
 
+For Social sender and concern labels (#1135, #1138), run `flutter test
+test/social_alert_detail_test.dart test/social_screen_test.dart test/localization_test.dart` from
+`apps/parent-app`. Cover missing sender, saved name, profile name and a number-only label.
+Confirm the approved concern tags render as readable chips at 320 px and 200% in English
+and Arabic. On the signed parent app, open the alert and then the matching Social concern.
+The system notification remains generic.
+
+For the open Social list refresh (#1136), run `flutter test test/social_activity_refresh_test.dart
+test/social_screen_test.dart test/realtime_refresh_test.dart test/foreground_push_test.dart` from
+`apps/parent-app`. The tests verify foreground Apple notifications, app resume, a notification tap,
+per-child realtime alerts and pull-to-refresh on a short list. For the signed iPhone row, leave the
+Social tab open and send a synthetic message that adds a concern. Confirm the new card appears while
+the app is open, after a background/resume, and after opening a notification and returning to Social.
+Repeat with a pull gesture and record the Parent build and child build.
+
 For Arabic and Latin list separators, run `flutter test test/localized_list_test.dart` from
 `apps/parent-app` (#794). Its nine tests cover the shared splitter and real Arabic-locale widgets for
 allowed/blocked domains, routine blocked/allowed apps and digest recipients. Each field saves both
@@ -130,6 +145,24 @@ raw Latin `.split(',')` must turn its owning row red with `['a.com، b.com']` in
 Disabling direction-mark removal on blocked domains must turn its dedicated row red. The real API Zod
 validation row is in `services/api/test/reports.test.ts`: a digest recipient containing RLM gets 400 and
 no preferences write. These are network-free widget tests and an injected API test, not a phone run.
+
+For alert-to-concern navigation (#1140), run `flutter test test/social_alert_detail_test.dart
+test/social_screen_test.dart` from `apps/parent-app`. The regression gives the same app
+two flagged events, uses the older one as the alert's origin, and verifies that only
+its preview opens. Also verify that a missing exact preview never substitutes another
+event from the same app. On a signed parent build, confirm this flow in Social activity
+and verify that the system notification still shows the generic alert.
+
+For initial setup alert holding (#1127, ADR-0047), run `test/device-setup-policy.test.ts`,
+`test/device-setup-alerts.test.ts`, `test/device-setup-transitions.test.ts` and
+`test/device-setup-migration.test.ts` from `services/api`. They cover required versus recommended
+grants, exact hold/never-hold matrices, parent list/ack/export exclusion, authenticated completion,
+protected-alert rollback, poll/scheduler timeout dedupe and paired-device backfill. The live probe
+adds G30–G32: a grant-matched tamper is not parent-listed, SOS stays visible, and all-ready telemetry
+creates one protected alert with `setupCompletedAt`. From `apps/parent-app`, run
+`flutter test test/phone_setup_section_test.dart test/setup_alerts_test.dart`; they prove the server
+timestamp, incomplete/protected/repair states, EN/AR body keys, grant labels, ICU plurals, malformed
+params and generic lock-screen bodies. These are software gates, not a handset run.
 
 ## 2. Prerequisites (dev machine)
 
@@ -158,6 +191,22 @@ curl -s http://127.0.0.1:3000/health/deep   # {"ok":true,"version":"0.1.0","db":
 
 `127.0.0.1`, not `localhost`: on this host `localhost` resolves to `::1` first and a v4-only server then
 looks dead (§6, the spare-port trap). The same rule applies to `API_BASE` in §3.
+
+For #1144, run `test/staging-ai-social-route.test.ts`, `test/staging-ai-quota.test.ts`,
+`test/stagingQaModel.test.ts` and the AI engine tests. The staged rollout requires security approval.
+The existing private Stockholm analyzer endpoint, own-model flags and checkpoint and prompt pins
+must be present. Set `OSRA_DEPLOYMENT_SCOPE=staging`, `OSRA_STAGING_QA_ENGINE=own`,
+`OSRA_OWN_MODEL_REGION=eu-north-1` and `OSRA_STAGING_AI_ALL_CHILDREN=1` on both the API and
+analyzer task. The API also needs the existing analyzer enabled switch and private analyzer URL.
+The analyzer needs both the QA analyzer and own-model enabled switches. Keep the private ingress
+and current vault configuration. The optional API caps
+`OSRA_STAGING_AI_FAMILY_DAILY_CAP` and `OSRA_STAGING_AI_GLOBAL_DAILY_CAP` default to 250 per
+family local day and 2,000 per staging UTC day. Invalid cap configuration disables analyzer calls.
+
+During the approved staged window, exercise two opted-in test families and record the live
+Stockholm model receipt and Parent result with a harmless control. Confirm missing consent or a
+disabled app prevents scoring. Remove `OSRA_STAGING_AI_ALL_CHILDREN` from both tasks to disarm
+the broader mode. Mixed versions or mismatched settings use local rules.
 
 ## 3. Running the gates
 
@@ -1278,6 +1327,23 @@ mis-measure.
 5. Read the API log to tell the failure modes apart: `[push] device wake failed` is a provider problem, a
    device with a null token is the agent never publishing, and a wake that arrives whose command never runs
    is the agent's own fetch being blocked. They do not share a fix.
+
+### Parent grouped notifications (#1139)
+
+Run `flutter test test/push_delivery_grouping_test.dart test/background_push_test.dart test/foreground_push_test.dart`
+from `apps/parent-app`. The grouping fixture sends the authenticated alert snapshots through the
+same planner and notification plugin used by a Parent wake. Check that SDK notification IDs
+differ for the first three deliveries and the summary. Each local tap payload should still be
+the original alert ID. The fixture also covers a critical fourth delivery, a coalesced wake,
+a silent update on an existing card, and a new card with no issued delivery.
+
+On a dedicated staging family, use the signed Parent cut paired with the matching server cut and
+agree on the synthetic input and timing in the test record. Send five flagged events from one
+app to one child within two minutes. Count three immediate Parent notifications and one summary
+after the configured window. Repeat with a critical fourth event and record its immediate
+notification. Check an existing contact and a separate contact so their cards and the shared
+per-app budget are both covered. Record visible notifications and tap destinations for each
+Parent platform. Keep the raw notification content and device identifiers off the shared record.
 
 ## 5k. The iOS child agent on an iPhone (roadmap 5.5)
 

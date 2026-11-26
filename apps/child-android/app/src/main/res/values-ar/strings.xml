@@ -175,6 +175,12 @@
 
     <string name="onboarding_grant_accessibility_title">خدمة إمكانية الوصول</string>
     <string name="onboarding_grant_accessibility_why">تحظر التطبيقات وتطبّق الحدود وتحمي شاشات إلغاء التثبيت. لا يعمل شيء بدونها.</string>
+    <!-- Issue #1131: Arabic Language Bureau staged copy (#1131 comment 7168407917). -->
+    <string name="restricted_settings_step_1">اضغط على «%1$s» مرة واحدة. ستظهر رسالة «إعداد محظور». اضغط «حسنًا».</string>
+    <string name="restricted_settings_open_app_info">فتح معلومات التطبيق</string>
+    <string name="restricted_settings_step_2">اضغط على زر القائمة ⋮ في أعلى الشاشة، ثم «السماح بالإعدادات المحظورة»، ثم أكّد.</string>
+    <string name="restricted_settings_step_3">عُد إلى إعدادات سهولة الاستخدام وفعّل «%1$s».</string>
+    <string name="restricted_settings_waiting">في انتظار تفعيل «%1$s»…</string>
     <string name="onboarding_grant_usage_title">الوصول إلى بيانات الاستخدام</string>
     <string name="onboarding_grant_usage_why">يحسب وقت الشاشة لكل تطبيق، لتكون الحدود اليومية والتقارير صحيحة.</string>
     <string name="onboarding_grant_overlay_title">العرض فوق التطبيقات الأخرى</string>

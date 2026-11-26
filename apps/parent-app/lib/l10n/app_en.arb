@@ -340,6 +340,7 @@
   "@commandRefusedNotSupported": {"placeholders": {"command": {"type": "String"}, "device": {"type": "String"}}},
   "commandRefusedInvalidPayload": "The phone rejected this command's settings.",
   "rulesBehindHint": "The phone hasn't picked this change up yet.",
+  "rulesWaitingFirstApply": "Waiting for the phone to apply rules.",
   "rulesLoadFailed": "Couldn't load rules. Check your connection and try again.",
   "noPerAppRules": "No per-app rules",
   "appActionBlock": "Block",
@@ -1617,6 +1618,15 @@
   "digestPrefsSendHourLabel": "Send hour",
   "alertTitleSos": "SOS pressed",
   "alertTitleBlockedSite": "Blocked site attempted",
+  "blockedSiteDomainLine": "Site: {domain}",
+  "@blockedSiteDomainLine": {
+    "placeholders": {
+      "domain": {
+        "type": "String"
+      }
+    }
+  },
+  "blockedSiteNamesNotCollected": "Site names aren't collected yet, so only the block is shown.",
   "alertTitleDailyLimit": "Daily limit reached",
   "alertTitleAppBlocked": "App blocked",
   "alertTitleGeofence": "Place alert",
@@ -1713,6 +1723,10 @@
   "riskViolence": "Violence",
   "riskHateSpeech": "Hate speech",
   "riskAiConcern": "Concerning content",
+  "riskLateNight": "Late at night",
+  "@riskLateNight": {
+    "description": "#1138: timing tag on a Social concern card."
+  },
   "phoneSetupOtherSpaceClone": "This phone has another secure space that may run cloned apps (more than one copy of the same app). OSRA may not be able to monitor it until it is turned off in the phone's Settings.",
   "@phoneSetupOtherSpaceClone": {
     "description": "Phone setup row (osra-security#6): the capability report's profiles.kinds holds clone. Arabic wording by Karim (2026-11-11)."
@@ -1928,5 +1942,20 @@
   "socialAlertMorePush": "{count, plural, =1{1 more concerning message for {child} on {app}} other{{count} more concerning messages for {child} on {app}}}",
   "@socialAlertMorePush": { "placeholders": { "count": { "type": "int" }, "child": { "type": "String" }, "app": { "type": "String" } } },
   "socialAlertNewSince": "+{count} new",
-  "@socialAlertNewSince": { "placeholders": { "count": { "type": "int" } } }
+  "@socialAlertNewSince": { "placeholders": { "count": { "type": "int" } } },
+  "phoneSetupStepsLeftThisPhone": "Setting up this phone: {count, plural, =1{1 step} other{{count} steps}} left",
+  "@phoneSetupStepsLeftThisPhone": { "placeholders": { "count": { "type": "int" } } },
+  "phoneSetupProtected": "This phone is protected.",
+  "phoneSetupStepsLeft": "Setting up {childName}'s phone: {count, plural, =1{1 step} other{{count} steps}} left",
+  "@phoneSetupStepsLeft": { "placeholders": { "childName": { "type": "String" }, "count": { "type": "int" } } },
+  "alertTitleSetupComplete": "Phone is protected",
+  "alertTitleSetupIncomplete": "Phone setup needs attention",
+  "alertBodySetupCompleted": "{childName}'s phone is protected.",
+  "@alertBodySetupCompleted": { "placeholders": { "childName": { "type": "String" } } },
+  "alertBodySetupIncomplete": "{childName}'s phone still has {count, plural, =1{1 setup step} other{{count} setup steps}} left after 30 minutes{steps}.",
+  "@alertBodySetupIncomplete": { "placeholders": { "childName": { "type": "String" }, "count": { "type": "int" }, "steps": { "type": "String" } } },
+  "alertBodySetupIncompleteGeneric": "{childName}'s phone setup is still incomplete after 30 minutes.",
+  "@alertBodySetupIncompleteGeneric": { "placeholders": { "childName": { "type": "String" } } },
+  "alertBodyDataCleared": "OSRA was reinstalled on {model}. Its protection was off until it was paired again.",
+  "@alertBodyDataCleared": { "placeholders": { "model": { "type": "String" } } }
 }

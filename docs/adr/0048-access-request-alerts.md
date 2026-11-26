@@ -1,4 +1,4 @@
-# ADR-0046: Access-request alerts and parent approval
+# ADR-0048: Access-request alerts and parent approval
 
 Status: accepted
 

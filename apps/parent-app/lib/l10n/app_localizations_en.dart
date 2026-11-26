@@ -572,6 +572,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get rulesBehindHint => 'The phone hasn\'t picked this change up yet.';
 
   @override
+  String get rulesWaitingFirstApply => 'Waiting for the phone to apply rules.';
+
+  @override
   String get rulesLoadFailed =>
       'Couldn\'t load rules. Check your connection and try again.';
 
@@ -2914,6 +2917,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get alertTitleBlockedSite => 'Blocked site attempted';
 
   @override
+  String blockedSiteDomainLine(String domain) {
+    return 'Site: $domain';
+  }
+
+  @override
+  String get blockedSiteNamesNotCollected =>
+      'Site names aren\'t collected yet, so only the block is shown.';
+
+  @override
   String get alertTitleDailyLimit => 'Daily limit reached';
 
   @override
@@ -3053,6 +3065,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get riskAiConcern => 'Concerning content';
+
+  @override
+  String get riskLateNight => 'Late at night';
 
   @override
   String get phoneSetupOtherSpaceClone =>
@@ -3563,5 +3578,62 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String socialAlertNewSince(int count) {
     return '+$count new';
+  }
+
+  @override
+  String phoneSetupStepsLeftThisPhone(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count steps',
+      one: '1 step',
+    );
+    return 'Setting up this phone: $_temp0 left';
+  }
+
+  @override
+  String get phoneSetupProtected => 'This phone is protected.';
+
+  @override
+  String phoneSetupStepsLeft(String childName, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count steps',
+      one: '1 step',
+    );
+    return 'Setting up $childName\'s phone: $_temp0 left';
+  }
+
+  @override
+  String get alertTitleSetupComplete => 'Phone is protected';
+
+  @override
+  String get alertTitleSetupIncomplete => 'Phone setup needs attention';
+
+  @override
+  String alertBodySetupCompleted(String childName) {
+    return '$childName\'s phone is protected.';
+  }
+
+  @override
+  String alertBodySetupIncomplete(String childName, int count, String steps) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count setup steps',
+      one: '1 setup step',
+    );
+    return '$childName\'s phone still has $_temp0 left after 30 minutes$steps.';
+  }
+
+  @override
+  String alertBodySetupIncompleteGeneric(String childName) {
+    return '$childName\'s phone setup is still incomplete after 30 minutes.';
+  }
+
+  @override
+  String alertBodyDataCleared(String model) {
+    return 'OSRA was reinstalled on $model. Its protection was off until it was paired again.';
   }
 }

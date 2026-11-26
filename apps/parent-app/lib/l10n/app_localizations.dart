@@ -1034,6 +1034,12 @@ abstract class AppLocalizations {
   /// **'The phone hasn\'t picked this change up yet.'**
   String get rulesBehindHint;
 
+  /// No description provided for @rulesWaitingFirstApply.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the phone to apply rules.'**
+  String get rulesWaitingFirstApply;
+
   /// No description provided for @rulesLoadFailed.
   ///
   /// In en, this message translates to:
@@ -4874,6 +4880,18 @@ abstract class AppLocalizations {
   /// **'Blocked site attempted'**
   String get alertTitleBlockedSite;
 
+  /// No description provided for @blockedSiteDomainLine.
+  ///
+  /// In en, this message translates to:
+  /// **'Site: {domain}'**
+  String blockedSiteDomainLine(String domain);
+
+  /// No description provided for @blockedSiteNamesNotCollected.
+  ///
+  /// In en, this message translates to:
+  /// **'Site names aren\'t collected yet, so only the block is shown.'**
+  String get blockedSiteNamesNotCollected;
+
   /// No description provided for @alertTitleDailyLimit.
   ///
   /// In en, this message translates to:
@@ -5083,6 +5101,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Concerning content'**
   String get riskAiConcern;
+
+  /// #1138: timing tag on a Social concern card.
+  ///
+  /// In en, this message translates to:
+  /// **'Late at night'**
+  String get riskLateNight;
 
   /// Phone setup row (osra-security#6): the capability report's profiles.kinds holds clone. Arabic wording by Karim (2026-11-11).
   ///
@@ -5822,6 +5846,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'+{count} new'**
   String socialAlertNewSince(int count);
+
+  /// No description provided for @phoneSetupStepsLeftThisPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Setting up this phone: {count, plural, =1{1 step} other{{count} steps}} left'**
+  String phoneSetupStepsLeftThisPhone(int count);
+
+  /// No description provided for @phoneSetupProtected.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone is protected.'**
+  String get phoneSetupProtected;
+
+  /// No description provided for @phoneSetupStepsLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'Setting up {childName}\'s phone: {count, plural, =1{1 step} other{{count} steps}} left'**
+  String phoneSetupStepsLeft(String childName, int count);
+
+  /// No description provided for @alertTitleSetupComplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone is protected'**
+  String get alertTitleSetupComplete;
+
+  /// No description provided for @alertTitleSetupIncomplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone setup needs attention'**
+  String get alertTitleSetupIncomplete;
+
+  /// No description provided for @alertBodySetupCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'{childName}\'s phone is protected.'**
+  String alertBodySetupCompleted(String childName);
+
+  /// No description provided for @alertBodySetupIncomplete.
+  ///
+  /// In en, this message translates to:
+  /// **'{childName}\'s phone still has {count, plural, =1{1 setup step} other{{count} setup steps}} left after 30 minutes{steps}.'**
+  String alertBodySetupIncomplete(String childName, int count, String steps);
+
+  /// No description provided for @alertBodySetupIncompleteGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'{childName}\'s phone setup is still incomplete after 30 minutes.'**
+  String alertBodySetupIncompleteGeneric(String childName);
+
+  /// No description provided for @alertBodyDataCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'OSRA was reinstalled on {model}. Its protection was off until it was paired again.'**
+  String alertBodyDataCleared(String model);
 }
 
 class _AppLocalizationsDelegate

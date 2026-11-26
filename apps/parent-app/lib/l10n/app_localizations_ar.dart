@@ -597,6 +597,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get rulesBehindHint => 'لم يستلم الهاتف هذا التغيير بعد.';
 
   @override
+  String get rulesWaitingFirstApply => 'بانتظار أن يطبّق الهاتف القواعد.';
+
+  @override
   String get rulesLoadFailed =>
       'تعذّر تحميل القواعد. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
 
@@ -3099,6 +3102,15 @@ class AppLocalizationsAr extends AppLocalizations {
   String get alertTitleBlockedSite => 'تمت محاولة زيارة موقع محظور';
 
   @override
+  String blockedSiteDomainLine(String domain) {
+    return 'الموقع: $domain';
+  }
+
+  @override
+  String get blockedSiteNamesNotCollected =>
+      'لا تُجمع أسماء المواقع حاليًا، لذا يظهر الحظر فقط.';
+
+  @override
   String get alertTitleDailyLimit => 'تم بلوغ الحد اليومي';
 
   @override
@@ -3251,6 +3263,9 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get riskAiConcern => 'محتوى مثير للقلق';
+
+  @override
+  String get riskLateNight => 'في وقت متأخر ليلًا';
 
   @override
   String get phoneSetupOtherSpaceClone =>
@@ -3789,5 +3804,71 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String socialAlertNewSince(int count) {
     return '+$count جديدة';
+  }
+
+  @override
+  String phoneSetupStepsLeftThisPhone(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'تبقى $count خطوة',
+      many: 'تبقى $count خطوة',
+      few: 'تبقى $count خطوات',
+      two: 'تبقى خطوتان',
+      one: 'تبقى خطوة واحدة',
+    );
+    return 'إعداد هذا الهاتف: $_temp0';
+  }
+
+  @override
+  String get phoneSetupProtected => 'هذا الهاتف محمي.';
+
+  @override
+  String phoneSetupStepsLeft(String childName, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'تبقى $count خطوة',
+      many: 'تبقى $count خطوة',
+      few: 'تبقى $count خطوات',
+      two: 'تبقى خطوتان',
+      one: 'تبقى خطوة واحدة',
+    );
+    return 'إعداد هاتف $childName: $_temp0';
+  }
+
+  @override
+  String get alertTitleSetupComplete => 'الهاتف محمي';
+
+  @override
+  String get alertTitleSetupIncomplete => 'إعداد الهاتف يحتاج إلى متابعة';
+
+  @override
+  String alertBodySetupCompleted(String childName) {
+    return 'هاتف $childName محمي.';
+  }
+
+  @override
+  String alertBodySetupIncomplete(String childName, int count, String steps) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count خطوة',
+      many: '$count خطوة',
+      few: '$count خطوات',
+      two: 'خطوتان',
+      one: 'خطوة واحدة',
+    );
+    return 'مرّت 30 دقيقة، وتبقى $_temp0 في إعداد هاتف $childName$steps';
+  }
+
+  @override
+  String alertBodySetupIncompleteGeneric(String childName) {
+    return 'مرّت 30 دقيقة، وإعداد هاتف $childName ما زال غير مكتمل.';
+  }
+
+  @override
+  String alertBodyDataCleared(String model) {
+    return 'أُعيد تثبيت تطبيق أسرة للأطفال على $model، وكانت الحماية متوقفة إلى أن أُعيد الإقران.';
   }
 }

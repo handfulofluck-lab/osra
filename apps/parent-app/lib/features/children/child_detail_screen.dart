@@ -19,6 +19,7 @@ import '../rules/rules_behind_banner.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../../widgets/layout_helpers.dart';
+import '../alerts/alert_detail_screen.dart' show isSocialAlertCategory;
 import '../dashboard/dashboard_screen.dart' show formatLastSeen;
 import '../pairing/pair_qr_screen.dart';
 import '../alerts/access_request_actions.dart';
@@ -278,7 +279,7 @@ class _OverviewTab extends ConsumerWidget {
                         ),
                       ),
                       // ADR-0034 decision 3: what this phone says it can do, and what is missing.
-                      PhoneSetupSection(device: d),
+                      PhoneSetupSection(device: d, childName: child?.displayName),
                       // ADR-0037 PR B3c: the iPhone's app groups, each with a Block switch.
                       AppGroupsSection(device: d),
                       // Plan 3.6: the latest command's real state, straight from the
@@ -1498,7 +1499,12 @@ class AlertTile extends ConsumerWidget {
     final identity = resolveAppAlertIdentity(alert, installed);
 
     final String titleText;
-    final String? socialContactLine;
+    final contactName = alert.socialContactName;
+    final socialContactLine = isSocialAlertCategory(alert.category)
+        ? l10n.socialAlertFromContactOnly(contactName == null
+            ? l10n.socialAlertUnknownContact
+            : firstStrongIsolate(contactName))
+        : null;
     final String? socialLatestLine;
     final String? genericSubtitleText;
     if (alert.hasSocialCountSummary) {
@@ -1510,15 +1516,8 @@ class AlertTile extends ConsumerWidget {
       final latestAt = alert.effectiveTimestamp;
       final latestClock = latestAt == null
           ? ''
-          : ltrIsolate(normalizeDigits(
-              DateFormat('HH:mm', 'en').format(latestAt.toLocal())));
-      final contactName = alert.socialContactName;
-      final contactDisplay = contactName != null
-          ? firstStrongIsolate(contactName)
-          : l10n.socialAlertUnknownContact;
-      socialContactLine = l10n.socialAlertFromContactOnly(contactDisplay);
-      socialLatestLine =
-          latestClock.isEmpty ? null : l10n.socialAlertLatestAt(latestClock);
+          : ltrIsolate(normalizeDigits(DateFormat('HH:mm', 'en').format(latestAt.toLocal())));
+      socialLatestLine = latestClock.isEmpty ? null : l10n.socialAlertLatestAt(latestClock);
       genericSubtitleText = null;
     } else {
       final when = alert.createdAt == null
@@ -1539,7 +1538,6 @@ class AlertTile extends ConsumerWidget {
               isEnglish: context.localeName.startsWith('en'),
               tamperType: alert.metadata['type']?.toString(),
             );
-      socialContactLine = null;
       socialLatestLine = null;
       genericSubtitleText = '${l10n.alertCategory(alert.category)} · $when';
     }
@@ -1566,18 +1564,20 @@ class AlertTile extends ConsumerWidget {
     final mutedStyle =
         theme.textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant);
     final Widget subtitleContent;
-    if (alert.hasSocialCountSummary) {
+    if (socialContactLine != null || newBadge != null) {
       subtitleContent = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            socialContactLine!,
-            key: ValueKey('alert-contact-${alert.id}'),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: mutedStyle,
-          ),
+          if (socialContactLine != null)
+            Text(
+              socialContactLine,
+              key: ValueKey('alert-contact-${alert.id}'),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: mutedStyle,
+            ),
+          if (genericSubtitleText != null) Text(genericSubtitleText),
           if (socialLatestLine != null)
             Text(
               socialLatestLine,
@@ -1591,18 +1591,7 @@ class AlertTile extends ConsumerWidget {
         ],
       );
     } else {
-      final genericWidget = Text(genericSubtitleText!);
-      subtitleContent = newBadge == null
-          ? genericWidget
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                genericWidget,
-                const SizedBox(height: AppSpace.xs),
-                newBadge,
-              ],
-            );
+      subtitleContent = Text(genericSubtitleText!);
     }
 
     return Card(

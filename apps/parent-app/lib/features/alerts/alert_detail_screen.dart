@@ -17,12 +17,12 @@ import '../../push/restart_alert_text.dart';
 import '../../push/sos_fix_text.dart';
 import '../../theme/app_tokens.dart';
 import '../../widgets/error_retry_view.dart';
+import '../children/phone_setup_section.dart';
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
 import '../map/family_map_screen.dart'
     show FamilyMapScreen, MapFocus, mapIsAvailable;
 import '../rules/app_picker.dart' show AppIconBadge;
-import '../rules/rules_behind_banner.dart';
 import '../social/social_screen.dart' show socialAppIcon, socialAppLabel;
 import '../social/social_vote_controls.dart';
 import 'access_request_actions.dart';
@@ -41,6 +41,16 @@ String formatGeneralAlertBody(
   if (alert.category == 'sos') {
     return '';
   }
+  if (alert.category == 'web_threat') {
+    final domain = alert.metadata['domain']?.toString().trim() ?? '';
+    final base = isEnglish && alert.body.trim().isNotEmpty
+        ? alert.body.trim()
+        : '';
+    final detail = domain.isNotEmpty
+        ? l10n.blockedSiteDomainLine(ltrIsolate(domain))
+        : l10n.blockedSiteNamesNotCollected;
+    return base.isEmpty ? detail : '$base\n$detail';
+  }
   if (alert.category == 'device_restarted') {
     return RestartAlertText.tryFormat(
           alert,
@@ -50,7 +60,63 @@ String formatGeneralAlertBody(
         ) ??
         (isEnglish ? alert.body : '');
   }
-  return alert.body;
+  final rawParams = alert.metadata['bodyParams'];
+  final params = rawParams is Map
+      ? Map<String, dynamic>.from(rawParams)
+      : <String, dynamic>{};
+  final bodyKey = alert.metadata['bodyKey'];
+  String stringParam(String name) {
+    final value = params[name];
+    return value is String ? value : '';
+  }
+
+  String fallback() => isEnglish ||
+          (bodyKey != 'alertBodySetupCompleted' &&
+              bodyKey != 'alertBodySetupIncomplete' &&
+              bodyKey != 'alertBodyDataCleared')
+      ? alert.body
+      : '';
+  switch (bodyKey) {
+    case 'alertBodySetupCompleted':
+      final childName = stringParam('childName');
+      if (childName.isNotEmpty)
+        return l10n.alertBodySetupCompleted(firstStrongIsolate(childName));
+    case 'alertBodySetupIncomplete':
+      final childName = stringParam('childName');
+      if (childName.isEmpty) break;
+      final isolatedName = firstStrongIsolate(childName);
+      final rawCount = params['count'];
+      final count = rawCount is num &&
+              rawCount.isFinite &&
+              rawCount > 0 &&
+              rawCount == rawCount.roundToDouble()
+          ? rawCount.toInt()
+          : null;
+      if (count == null)
+        return l10n.alertBodySetupIncompleteGeneric(isolatedName);
+      final rawMissing = alert.metadata['missing'];
+      late final String steps;
+      if (rawMissing is List) {
+        if (rawMissing.isEmpty ||
+            rawMissing.any((grant) => grant is! String || grant.isEmpty)) {
+          return l10n.alertBodySetupIncompleteGeneric(isolatedName);
+        }
+        steps = rawMissing
+            .map((grant) => PhoneSetupSection.grantLabel(l10n, grant as String))
+            .join(l10n.listSeparator);
+      } else {
+        final rawSteps = params['steps'];
+        if (!isEnglish || rawSteps is! String || rawSteps.isEmpty) {
+          return l10n.alertBodySetupIncompleteGeneric(isolatedName);
+        }
+        steps = rawSteps;
+      }
+      return l10n.alertBodySetupIncomplete(isolatedName, count, ': $steps');
+    case 'alertBodyDataCleared':
+      final model = stringParam('model');
+      if (model.isNotEmpty) return l10n.alertBodyDataCleared(ltrIsolate(model));
+  }
+  return fallback();
 }
 
 /// Whether [category] uses the dedicated #972 full-screen social alert detail route.
@@ -120,8 +186,9 @@ String formatAlertLocalTime(
 /// "Open Social activity" CTA or an explicit unavailable-preview explanation.
 SocialPreviewAvailability resolveSocialPreviewAvailability(
   Alert alert,
-  AsyncValue<List<SocialConcernEvent>> eventsAsync,
-) {
+  AsyncValue<List<SocialConcernEvent>> eventsAsync, {
+  String? exactConcernId,
+}) {
   return eventsAsync.when(
     loading: () => SocialPreviewAvailability.available,
     error: (err, _) {
@@ -134,6 +201,12 @@ SocialPreviewAvailability resolveSocialPreviewAvailability(
       return SocialPreviewAvailability.transientError;
     },
     data: (events) {
+      if (exactConcernId != null) {
+        return events.any((event) =>
+                event.id == exactConcernId && event.preview.isNotEmpty)
+            ? SocialPreviewAvailability.available
+            : SocialPreviewAvailability.expired;
+      }
       if (events.isEmpty) return SocialPreviewAvailability.expired;
       final appKey =
           alert.metadata['app']?.toString().trim().toLowerCase() ?? '';
@@ -393,9 +466,7 @@ class _SocialAlertDetailBodyState
     final contactDisplay = contactName != null
         ? firstStrongIsolate(contactName)
         : l10n.socialAlertUnknownContact;
-    final countContactLine = alert.hasSocialCountSummary
-        ? l10n.socialAlertFromContactOnly(contactDisplay)
-        : null;
+    final senderLine = l10n.socialAlertFromContactOnly(contactDisplay);
     final countLatestLine =
         alert.hasSocialCountSummary && latestClock.isNotEmpty
             ? l10n.socialAlertLatestAt(latestClock)
@@ -409,8 +480,14 @@ class _SocialAlertDetailBodyState
       if (device != null && device.model.isNotEmpty) ltrIsolate(device.model),
     ];
 
-    final eventsAsync = ref.watch(socialEventsProvider(alert.childId));
-    final availability = resolveSocialPreviewAvailability(alert, eventsAsync);
+    final primary = alert.metadata['primarySocialEventId'];
+    final concernId = primary is String && primary.isNotEmpty ? primary : null;
+    final eventsProvider = concernId == null
+        ? socialEventsProvider(alert.childId)
+        : socialConcernProvider((childId: alert.childId, eventId: concernId));
+    final eventsAsync = ref.watch(eventsProvider);
+    final availability = resolveSocialPreviewAvailability(alert, eventsAsync,
+        exactConcernId: concernId);
     final latestSourceEventId = socialVoteEventId(alert);
     final coachCard = coachCardFor(alert.category, concernTypes);
 
@@ -418,7 +495,6 @@ class _SocialAlertDetailBodyState
       key: const ValueKey('alertDetailScroll'),
       padding: const EdgeInsets.all(AppSpace.lg),
       children: [
-        RulesBehindBanner(childId: alert.childId),
         // 1. Top context: title, affected app, concern, child/device, and local time.
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -480,24 +556,22 @@ class _SocialAlertDetailBodyState
           ),
           const SizedBox(height: AppSpace.xs),
         ],
-        if (countContactLine != null) ...[
+        Text(
+          senderLine,
+          key: const ValueKey('alertDetailCountSub'),
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: tokens.onSurfaceVariant),
+        ),
+        if (countLatestLine != null) ...[
+          const SizedBox(height: 2),
           Text(
-            countContactLine,
-            key: const ValueKey('alertDetailCountSub'),
+            countLatestLine,
+            key: const ValueKey('alertDetailCountLatest'),
             style: theme.textTheme.bodyMedium
                 ?.copyWith(color: tokens.onSurfaceVariant),
           ),
-          if (countLatestLine != null) ...[
-            const SizedBox(height: 2),
-            Text(
-              countLatestLine,
-              key: const ValueKey('alertDetailCountLatest'),
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: tokens.onSurfaceVariant),
-            ),
-          ],
-          const SizedBox(height: AppSpace.md),
         ] else if (alert.createdAt != null) ...[
+          const SizedBox(height: AppSpace.xs),
           Text(
             formatAlertLocalTime(
               alert.createdAt!,
@@ -509,8 +583,8 @@ class _SocialAlertDetailBodyState
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: tokens.onSurfaceVariant),
           ),
-          const SizedBox(height: AppSpace.md),
         ],
+        const SizedBox(height: AppSpace.md),
         // 2. Short localized framing (never message content).
         if (appLabel != null) ...[
           Text(
@@ -521,24 +595,33 @@ class _SocialAlertDetailBodyState
           const SizedBox(height: AppSpace.lg),
         ],
         // 3. Primary Social activity action OR preview-availability / retry callout (inside scroll for 200%).
-        if (availability == SocialPreviewAvailability.available)
+        if (availability == SocialPreviewAvailability.available) ...[
+          if (concernId == null) ...[
+            const _PreviewUnavailableCard(
+                availability: SocialPreviewAvailability.expired),
+            const SizedBox(height: AppSpace.sm),
+          ],
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
               key: const ValueKey('alertDetailOpenSocial'),
-              onPressed: () => context.push('/child/${alert.childId}/social'),
+              onPressed: () => context.push(Uri(
+                path: '/child/${alert.childId}/social',
+                queryParameters:
+                    concernId == null ? null : {'concernId': concernId},
+              ).toString()),
               icon: const Icon(Icons.lock_open_rounded, size: 18),
               label: Text(l10n.socialAlertOpenActivity),
             ),
-          )
-        else if (availability == SocialPreviewAvailability.transientError)
+          ),
+        ] else if (availability == SocialPreviewAvailability.transientError)
           _PreviewRetryCard(
             message: friendlyErrorText(
               l10n,
               eventsAsync.error ?? Exception('preview_unavailable'),
               () => l10n.alertsLoadFailed,
             ),
-            onRetry: () => ref.invalidate(socialEventsProvider(alert.childId)),
+            onRetry: () => ref.invalidate(eventsProvider),
           )
         else
           _PreviewUnavailableCard(availability: availability),
@@ -807,7 +890,6 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
       key: const ValueKey('alertDetailGeneralScroll'),
       padding: const EdgeInsets.all(AppSpace.lg),
       children: [
-        RulesBehindBanner(childId: alert.childId),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
