@@ -1,8 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${API_BASE:?Set the staging API base URL}"
-: "${BUILD_NUMBER:?Set the APK versionCode}"
+if [[ -z "${API_BASE:-}" ]]; then
+  echo "::error::Set the staging API base URL"
+  exit 1
+fi
+if [[ -z "${BUILD_NUMBER:-}" ]]; then
+  echo "::error::Set the APK versionCode"
+  exit 1
+fi
+if [[ "${CI_SYNTHETIC:-0}" != "1" && -z "${OSRA_EXPECTED_SIGNER_SHA256:-}" ]]; then
+  echo "::error::Set the lab signer certificate digest for the real staging build"
+  exit 1
+fi
+if [[ "${CI_SYNTHETIC:-0}" != "1" && ! "$OSRA_EXPECTED_SIGNER_SHA256" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+  echo "::error::OSRA_EXPECTED_SIGNER_SHA256 must be exactly 64 hexadecimal characters"
+  exit 1
+fi
 
 if [[ "$API_BASE" != "https://api.staging.osratech.com" ]]; then
   echo "::error::API_BASE must be exactly https://api.staging.osratech.com for this staging build"
@@ -24,7 +38,7 @@ VALUES_XML="build/app/intermediates/packaged_res/release/packageReleaseResources
 BADGING="$(mktemp)"
 PERMISSIONS="$(mktemp)"
 SIGNER_LOG="$(mktemp)"
-trap 'rm -f "$BADGING" "$PERMISSIONS" "$SIGNER_LOG"' EXIT
+trap 'rc=$?; rm -f "$BADGING" "$PERMISSIONS" "$SIGNER_LOG"; exit $rc' EXIT
 
 if [[ -z "${AAPT:-}" ]]; then
   AAPT="$(python - "$ANDROID_HOME/build-tools" <<'PY'
@@ -108,11 +122,6 @@ else
 fi
 
 if [[ "${CI_SYNTHETIC:-0}" != "1" ]]; then
-  : "${OSRA_EXPECTED_SIGNER_SHA256:?Set the lab signer certificate digest for the real staging build}"
-  if ! [[ "$OSRA_EXPECTED_SIGNER_SHA256" =~ ^[0-9A-Fa-f]{64}$ ]]; then
-    echo "::error::OSRA_EXPECTED_SIGNER_SHA256 must be exactly 64 hexadecimal characters"
-    exit 1
-  fi
   if ! grep -Fxi "Signer #1 certificate SHA-256 digest: ${OSRA_EXPECTED_SIGNER_SHA256}" "$SIGNER_LOG" > /dev/null; then
     echo "::error::APK signer does not match the Lab Parent certificate"
     exit 1

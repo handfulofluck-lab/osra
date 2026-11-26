@@ -1313,7 +1313,7 @@ the open 3.2 hardware row.
 - **Local synthetic proof:** prepare the same synthetic config shown in that workflow step, then run `CI_SYNTHETIC=1 API_BASE=https://api.staging.osratech.com BUILD_NUMBER=99 bash scripts/build-parent-staging-apk.sh`. This is a build fixture, not a release.
 - **Private real build:** place the real gitignored Firebase config and lab signing inputs on the approved private builder, set `OSRA_EXPECTED_SIGNER_SHA256` to the Lab Parent certificate digest, and run the same helper without `CI_SYNTHETIC`. The helper refuses any other signer. Publish only through the approved private release channel and compare the old/new certificate digests before installation. No real APK or real Firebase config belongs in the public workflow or repository.
 
-The Firebase JSON, keystore and passwords remain gitignored. Flutter's console can hide the underlying `:app:processReleaseGoogleServices` task name, so the helper proves the plugin ran by requiring `google_app_id` and `project_id` in the generated release `values.xml`; a package that compiles without those resources has no working push registration.
+The Firebase JSON, keystore and passwords remain gitignored. Flutter's console can hide the underlying `:app:processReleaseGoogleServices` task name, so the helper proves the plugin ran by requiring `google_app_id` and `project_id` in the generated release `values.xml`; a package that compiles without those resources has no working push registration. Required inputs are validated before building, and the cleanup trap preserves the original non-zero status on older Bash instead of allowing a false success.
 
 ## 5j. Push wake on hardware (roadmap 1.5)
 

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 
 const WORKFLOW = ".github/workflows/parent-app.yml";
 const BUILD_SCRIPT = "scripts/build-parent-staging-apk.sh";
@@ -24,8 +25,8 @@ function contractErrors(workflow, script) {
   require(active.includes("package: name='com.osratech.parent' versionCode="), "missing_package_version_assertion");
   require(active.includes("OSRA_EXPECTED_SIGNER_SHA256"), "missing_signer_guard");
   require(active.includes("verify --print-certs"), "missing_signer_verification");
-  require(active.includes("${API_BASE:?"), "missing_api_base_requirement");
-  require(active.includes("${BUILD_NUMBER:?"), "missing_build_number_requirement");
+  require(active.includes("${API_BASE:?") || active.includes('[[ -z "${API_BASE:-}" ]]'), "missing_api_base_requirement");
+  require(active.includes("${BUILD_NUMBER:?") || active.includes('[[ -z "${BUILD_NUMBER:-}" ]]'), "missing_build_number_requirement");
   require(active.includes('if [[ "${CI_SYNTHETIC:-0}" != "1" ]]'), "real_build_guard_not_conditional");
   require(active.includes("unset OSRA_UPLOAD_KEYSTORE"), "inherited_signing_not_cleared");
   require(active.includes("^[0-9A-Fa-f]{64}$"), "missing_exact_digest");
@@ -80,6 +81,30 @@ const cases = [
   ["private upload in build script", validWorkflow, `${validScript}\ngh release upload`, "private_upload_in_build_script"],
 ];
 
+const behavioralCases = [
+  ["missing API_BASE", { BUILD_NUMBER: "99" }],
+  ["missing BUILD_NUMBER", { API_BASE: "https://api.staging.osratech.com" }],
+  ["missing signer digest", { API_BASE: "https://api.staging.osratech.com", BUILD_NUMBER: "99" }],
+  ["malformed signer digest", { API_BASE: "https://api.staging.osratech.com", BUILD_NUMBER: "99", OSRA_EXPECTED_SIGNER_SHA256: ".*" }],
+];
+
+function runBehavioralSelftests() {
+  let passed = 0;
+  for (const [name, overrides] of behavioralCases) {
+    const env = { ...process.env, ...overrides };
+    delete env.CI_SYNTHETIC;
+    if (name !== "malformed signer digest") delete env.OSRA_EXPECTED_SIGNER_SHA256;
+    const result = spawnSync("bash", [BUILD_SCRIPT], { env, encoding: "utf8" });
+    const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+    if (result.status !== 0 && !output.includes("Parent staging APK verified")) {
+      passed += 1;
+    } else {
+      fail(`${name}: expected non-zero exit and no success line, got status=${result.status}`);
+    }
+  }
+  return passed;
+}
+
 function fail(code) {
   console.error(`::error::${code}`);
   process.exitCode = 1;
@@ -95,7 +120,8 @@ if (process.argv.includes("--selftest")) {
       fail(`${name}: expected ${expected ?? "no errors"}, got ${errors.join(",") || "no errors"}`);
     }
   }
-  if (!process.exitCode) console.log(`parent-staging-build selftest: ${passed}/${cases.length} checks pass`);
+  passed += runBehavioralSelftests();
+  if (!process.exitCode) console.log(`parent-staging-build selftest: ${passed}/${cases.length + behavioralCases.length} checks pass`);
 } else {
   const workflow = fs.existsSync(WORKFLOW) ? fs.readFileSync(WORKFLOW, "utf8") : "";
   const script = fs.existsSync(BUILD_SCRIPT) ? fs.readFileSync(BUILD_SCRIPT, "utf8") : "";
