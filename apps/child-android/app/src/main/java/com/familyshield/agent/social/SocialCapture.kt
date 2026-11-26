@@ -12,9 +12,10 @@ import javax.inject.Singleton
  * package maps to a monitored app (whatsapp/instagram/tiktok/snapchat/twitter/discord/roblox/line)
  * and the rule set does not opt that app out (absent socialMonitoring key = enabled), the visible
  * node tree is walked (text + content-description, visible nodes only, capped at
- * [MAX_CAPTURE_CHARS] chars per event), a likely contact + message candidate are extracted,
- * the message is redacted (TextRedaction) and queued for server-side AI scanning
- * (SocialScanQueue). Debounced to one capture per package per 1500 ms.
+ * [MAX_CAPTURE_CHARS] chars per event). WhatsApp/WhatsApp Business queues every new visible
+ * conversation bubble through a bounded per-conversation tracker; other monitored apps keep the
+ * existing single-candidate heuristic. Text is redacted (TextRedaction) and queued for server-side
+ * AI scanning (SocialScanQueue). Debounced to one capture per package per 1500 ms.
  */
 @Singleton
 class SocialCapture @Inject constructor(
@@ -25,13 +26,20 @@ class SocialCapture @Inject constructor(
 ) {
     private val lock = Any()
     private val lastCaptureAt = HashMap<String, Long>()
+    private val conversationSeen = ConversationCapturePolicy.SeenTracker()
 
     /** Entry point from AccessibilityMonitorService; cheap no-op for unmonitored packages. */
     fun onAccessibilityEvent(event: AccessibilityEvent, nowMs: Long = System.currentTimeMillis()) {
-        if (consent.isPaused()) return // ADR-0008 §3
+        if (consent.isPaused()) {
+            conversationSeen.clear()
+            return // ADR-0008 §3
+        }
         val pkg = event.packageName?.toString() ?: return
         val appKey = MonitoredApps.appKeyFor(pkg) ?: return
-        if (!rules.socialMonitoringEnabled(appKey)) return
+        if (!rules.socialMonitoringEnabled(appKey)) {
+            conversationSeen.forgetApp(appKey)
+            return
+        }
         synchronized(lock) {
             if (!SocialHeuristics.shouldCapture(lastCaptureAt[SocialHeuristics.debounceKey(appKey)], nowMs)) return
             lastCaptureAt[SocialHeuristics.debounceKey(appKey)] = nowMs
@@ -44,6 +52,20 @@ class SocialCapture @Inject constructor(
             } finally {
                 root.recycle()
             }
+        }
+        if (appKey == "whatsapp") {
+            val conversation = ConversationCapturePolicy.parse(texts) ?: return
+            if (!TestChatCaptureGate.allows(context, appKey, conversation.contact)) return
+            for (capture in conversationSeen.newCaptures(appKey, conversation)) {
+                val redacted = TextRedaction.redact(capture.text)
+                queue.enqueue(
+                    appKey,
+                    capture.contact,
+                    redacted,
+                    occurrenceId = capture.occurrenceId,
+                )
+            }
+            return
         }
         val (contact, message) = SocialHeuristics.extractContactAndMessage(texts)
         val redacted = message?.let { TextRedaction.redact(it) } ?: return

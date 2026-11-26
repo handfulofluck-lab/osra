@@ -22,8 +22,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Feature #2/#17 social scan queue: batches redacted captures for 3 s, dedupes by content hash,
- * caps the send rate at [MAX_SENDS_PER_MINUTE] and HMAC-POSTs the batch, six captures per request
+ * Feature #2/#17 social scan queue: batches redacted captures for 3 s, dedupes repeated capture
+ * occurrences and matching cross-source lines, caps the send rate at [MAX_SENDS_PER_MINUTE] and HMAC-POSTs the batch, six captures per request
  * (#490), to POST /v1/social/scan (the server runs the AI scan and raises alerts). On 200 nothing extra happens
  * here — flagged content surfaces as server-side alerts. A numeric contact (e.g. an unsaved
  * WhatsApp number) is also checked against the Feature #27 allowlist; an unknown number raises a
@@ -39,7 +39,7 @@ class SocialScanQueue @Inject constructor(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
-    private val recentHashes = LinkedHashMap<String, Long>() // insertion-ordered for pruning
+    private val dedupe = ScanDedupeTracker()
     private val sendTimestamps = ArrayDeque<Long>()
     private val lastAlertAt = HashMap<String, Long>()
     private var flushJob: Job? = null
@@ -47,19 +47,24 @@ class SocialScanQueue @Inject constructor(
     /**
      * Queues one capture **durably** (plan 2.6: a Room row, so a kill, a reboot or an offline stretch
      * loses nothing) and flushes after [FLUSH_DELAY_MS] of quiet. Dedupe and the send-rate cap are
-     * applied before the row is written. [source] is where the text came from (screen / notification).
+     * applied before the row is written. [source] is where the text came from (screen / notification);
+     * [occurrenceId] distinguishes a genuinely new line from a redraw with the same text.
      */
-    fun enqueue(app: String, contact: String?, text: String, nowMs: Long = System.currentTimeMillis(), source: String = ScanQueuePolicy.SOURCE_SCREEN) {
+    fun enqueue(
+        app: String,
+        contact: String?,
+        text: String,
+        nowMs: Long = System.currentTimeMillis(),
+        source: String = ScanQueuePolicy.SOURCE_SCREEN,
+        occurrenceId: String = nowMs.toString(),
+    ) {
         if (text.isBlank()) return
-        val hash = dedupeHash(app, contact, text)
         scope.launch {
             mutex.withLock {
-                val last = recentHashes[hash]
-                if (last != null && nowMs - last < DEDUPE_WINDOW_MS) return@withLock
+                if (!dedupe.shouldEnqueue(app, contact, text, nowMs, source, occurrenceId)) return@withLock
                 if (!withinRateLimit(sendTimestamps, nowMs, RATE_WINDOW_MS, MAX_SENDS_PER_MINUTE)) {
                     return@withLock // NOTE: over rate — drop; the next user action re-captures.
                 }
-                recentHashes[hash] = nowMs
                 pruneLocked(nowMs)
                 runCatching {
                     dao.insert(com.familyshield.agent.data.db.PendingScanEntity(app = app, contact = contact, text = text, source = source, createdAt = nowMs))
@@ -144,10 +149,7 @@ class SocialScanQueue @Inject constructor(
     }
 
     private fun pruneLocked(nowMs: Long) {
-        val it = recentHashes.entries.iterator()
-        while (it.hasNext()) {
-            if (nowMs - it.next().value > DEDUPE_WINDOW_MS) it.remove() else break
-        }
+        dedupe.prune(nowMs)
         while (sendTimestamps.isNotEmpty() && nowMs - sendTimestamps.first() > RATE_WINDOW_MS) {
             sendTimestamps.removeFirst()
         }

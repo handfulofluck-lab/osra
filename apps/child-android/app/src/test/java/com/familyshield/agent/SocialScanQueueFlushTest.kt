@@ -51,6 +51,22 @@ class SocialScanQueueFlushTest {
     }
 
     @Test
+    fun `identical text with different occurrence ids writes two durable rows`() = runBlocking {
+        val dao = FakePendingScanDao()
+        val posts = CopyOnWriteArrayList<SocialScanBatchDto>()
+        val queue = queue(dao, posts)
+
+        queue.enqueue("whatsapp", "Alex", "ok", nowMs = 1_000L, source = "notification", occurrenceId = "n-1")
+        queue.enqueue("whatsapp", "Alex", "ok", nowMs = 2_000L, source = "notification", occurrenceId = "n-2")
+
+        withTimeout(2_000) {
+            while (dao.rows().size < 2) yield()
+        }
+        assertEquals(listOf("ok", "ok"), dao.rows().map { it.text })
+        assertEquals(0, posts.size)
+    }
+
+    @Test
     fun `caller cancellation leaves the row queued instead of looking empty`() = runBlocking {
         val dao = FakePendingScanDao(
             initialRows = listOf(scan()),
