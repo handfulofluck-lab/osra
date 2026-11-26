@@ -209,6 +209,29 @@ describe("#1222 blocked attempts follow the #1139 grouped-alert rule", () => {
     expect(rows[0].attemptCount).toBe(2);
   });
 
+  it("a distinct attempt with a lower device count that arrives later is still counted (Codex #1228 [Sat] point 2)", async () => {
+    const key = { producerKey: "app:com.x:2026-11-26" };
+    await attempt("app_blocked", 0, { ...key, producerAttemptCount: 1 });
+    await attempt("app_blocked", 1, { ...key, producerAttemptCount: 3 }); // count 3 arrives first (reconnect)
+    const late = await attempt("app_blocked", 2, { ...key, producerAttemptCount: 2 });
+    expect(late.retry).toBe(false);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].attemptCount).toBe(3);
+    expect(entries(rows[0])).toHaveLength(3);
+    // The very same attempt again is a retry.
+    const again = await attempt("app_blocked", 3, { ...key, producerAttemptCount: 2 });
+    expect(again.retry).toBe(true);
+    expect(rows[0].attemptCount).toBe(3);
+    expect(entries(rows[0])).toHaveLength(3);
+  });
+
+  it("keeps a normal app label intact, including the letter s (Codex #1228 [Sat] point 3)", async () => {
+    await attempt("app_blocked", 0, { metadata: { packageId: "com.supercell.clashofclans", appName: "Clash  of\tClans s" } });
+    await attempt("app_blocked", 20, { metadata: { packageId: "com.snapchat.android", appName: "Snapchat" } });
+    expect(entries(rows[0])).toEqual([{ at: at(0).toISOString(), app: "Clash of Clans s" }]);
+    expect(entries(rows[1])).toEqual([{ at: at(20).toISOString(), app: "Snapchat" }]);
+  });
+
   it("an earlier attempt that finishes later never moves the group backwards (Codex #1228 finding 2)", async () => {
     await attempt("app_blocked", 0);
     await attempt("app_blocked", 5);

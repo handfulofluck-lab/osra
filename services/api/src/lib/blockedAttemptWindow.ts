@@ -115,7 +115,7 @@ export function withAttempt(list: BlockedAttemptEntry[] | undefined, entry: Bloc
 /** What one attempt shows in the parent's list: the site with names on, the app's label or package. */
 export function attemptEntry(kind: BlockedKind, subject: string, metadata: Record<string, unknown>, at: string): BlockedAttemptEntry {
   if (kind === "web") return subject ? { at, site: subject } : { at };
-  const label = typeof metadata.appName === "string" ? metadata.appName.replace(/s+/g, " ").trim().slice(0, 80) : "";
+  const label = typeof metadata.appName === "string" ? metadata.appName.replace(/\s+/g, " ").trim().slice(0, 80) : "";
   const app = label || subject;
   return app ? { at, app } : { at };
 }
@@ -173,21 +173,14 @@ export interface RecordBlockedAttemptResult {
   retry: boolean;
 }
 
-async function isRetry(redis: ReturnType<typeof getRedis>, input: RecordBlockedAttemptInput): Promise<boolean> {
-  if (!input.deviceId || !input.producerKey || !input.producerAttemptCount) return false;
-  try {
-    const seen = Number.parseInt((await redis.get(blockedSeenKey(input.deviceId, input.category, input.producerKey))) ?? "", 10);
-    return Number.isFinite(seen) && input.producerAttemptCount <= seen;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Codex (#1228 finding 1): two in-flight copies of one attempt could both pass the seen-count read before either
  * wrote it, counting and pushing twice. The attempt identity (device, category, producer key, producer count) is
  * now claimed with SET NX before anything is counted or pushed; a copy that loses the claim is a retry. If the
  * write then fails, the claim is released so the phone's normal retry still records the attempt.
+ * Codex (#1228 [Sat] point 2): the kept claim (two days) is also the retry test, by exact identity. A distinct
+ * attempt with a lower producer count that arrives after a higher one (reconnect, reordering) is new and counted;
+ * only the very same (key, count) is a retry.
  */
 export function blockedClaimKey(deviceId: string, category: string, producerKey: string, count: number): string {
   return `blocked:claim:${deviceId}:${category}:${producerKey}:${count}`;
@@ -241,10 +234,6 @@ export async function recordBlockedAttempt(input: RecordBlockedAttemptInput): Pr
     const existing = await openRow(input.childId, input.category, prefix);
     return existing ? { alert: existing, created: false, pushed: false, retry: true } : null;
   };
-  if (await isRetry(redis, input)) {
-    const existing = await retryResult();
-    if (existing) return existing;
-  }
   const claim = await claimAttempt(redis, input);
   if (claim === "lost") {
     const existing = await retryResult();
