@@ -43,7 +43,9 @@ vi.mock("../src/lib/push/notify.js", () => ({
 const { prisma } = await import("../src/db.js");
 const { incompleteDedupeKey } = await import("../src/lib/deviceSetup.js");
 const { storeAlertOnce } = await import("../src/lib/alerts.js");
-const { completeDeviceSetupIfReady, raisePhoneSetupNotice, withSetupOpen } = await import("../src/lib/deviceSetupTransitions.js");
+const { AWAIT_REPORT, completeDeviceSetupIfReady, raisePhoneSetupNotice, withSetupOpen } = await import("../src/lib/deviceSetupTransitions.js");
+// A completed pairing's late notice is either dropped or kept queued on the phone (osra-security#82); never an alert.
+const NOT_AN_ALERT = [null, "await_report"];
 
 const describeDatabase = databaseUrl ? describe.sequential : describe.skip;
 const apiRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -123,7 +125,7 @@ describeDatabase("setup completion and the setup notice on real Postgres (osra-s
     const { device, transition, notice, pairedAt } = await pairing(null, "granted");
     expect(await completeDeviceSetupIfReady(transition, caps("granted"), new Date())).toBe(true);
     sent.events.length = 0;
-    expect(await raisePhoneSetupNotice(device.id, pairedAt, notice)).toBeNull();
+    expect(NOT_AN_ALERT).toContain(await raisePhoneSetupNotice(device.id, pairedAt, notice));
     expect(await noticeRows(device.id)).toHaveLength(0);
     expect(sent.events).toEqual([]);
   });
@@ -143,7 +145,7 @@ describeDatabase("setup completion and the setup notice on real Postgres (osra-s
     expect(await stateAfter(raised)).toBe("pending");
     held.open();
     await completion;
-    expect(await raised).toBeNull();
+    expect(NOT_AN_ALERT).toContain(await raised);
     expect(await noticeRows(device.id)).toHaveLength(0);
     expect(sent.events).toEqual([]);
   });
@@ -197,8 +199,10 @@ describeDatabase("setup completion and the setup notice on real Postgres (osra-s
     expect((await deviceNow(device.id)).setupCompletedAt?.getTime()).toBe(completedAt.getTime());
   });
 
-  it("stale retry: a completed pairing with every required grant writes nothing", async () => {
+  it("stale retry: kept queued until a report after it shows every grant, then dropped; nothing written", async () => {
     const { device, notice, pairedAt } = await pairing(new Date(Date.now() - 30 * 60_000), "granted");
+    expect(await raisePhoneSetupNotice(device.id, pairedAt, notice)).toBe(AWAIT_REPORT);
+    await prisma.device.update({ where: { id: device.id }, data: { capabilitiesReportedAt: new Date(Date.now() + 1_000) } });
     expect(await raisePhoneSetupNotice(device.id, pairedAt, notice)).toBeNull();
     expect(await noticeRows(device.id)).toHaveLength(0);
     expect(sent.events).toEqual([]);
