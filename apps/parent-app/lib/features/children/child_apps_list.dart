@@ -9,6 +9,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../rules/app_picker.dart' show AppIconBadge;
+import '../rules/rules_freshness.dart';
 
 /// Karim, 23 Nov: "blocking and unblocking apps is a stupid flow and lacks any app icons".
 ///
@@ -58,17 +59,14 @@ class _ChildAppsListState extends ConsumerState<ChildAppsList> {
   List<AppRule>? _optimistic;
   bool _saving = false;
 
-  /// P-09: the app whose change the server has just taken ("Sent to phone"), cleared when the saved rules
-  /// come back from the server — that line says the request left this phone, never that the child applied it.
+  /// P-09: the app whose change the server has just taken ("Sent to phone"). It stays until the child's phone
+  /// reports the new rules version, so the line means "on its way to the phone", never "applied".
   String? _sentTo;
 
   @override
   void didUpdateWidget(ChildAppsList old) {
     super.didUpdateWidget(old);
-    if (!identical(old.ruleSet, widget.ruleSet) && !_saving) {
-      _optimistic = null;
-      _sentTo = null;
-    }
+    if (!identical(old.ruleSet, widget.ruleSet) && !_saving) _optimistic = null;
   }
 
   @override
@@ -229,6 +227,14 @@ class _ChildAppsListState extends ConsumerState<ChildAppsList> {
     final apps = byPackage.values.toList()..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
     final blockedCount = _rules.where((r) => r.action == 'block').length;
     final limitedCount = _rules.where((r) => r.action == 'time_limit').length;
+    // P-09's "Sent to phone" is only truthful while the child's phone has not reported the new rules version;
+    // the same signal the rules banner uses (#475/#1157), so the line clears itself when the phone applies them.
+    final family = ref.watch(familyProvider).valueOrNull;
+    final child = family?.children.where((c) => c.id == widget.childId).firstOrNull;
+    final rulesOnTheirWay = family != null &&
+        child != null &&
+        rulesFreshness(child, hasPairedDevice: family.devicesFor(widget.childId).isNotEmpty) !=
+            RulesFreshness.current;
     final shown = [
       for (final a in apps)
         if ((query.isEmpty || a.label.toLowerCase().contains(query)) &&
@@ -284,7 +290,7 @@ class _ChildAppsListState extends ConsumerState<ChildAppsList> {
             padding: const EdgeInsets.symmetric(vertical: AppSpace.lg),
             child: Center(child: Text(l10n.appsNoMatch, key: const ValueKey('appsNoMatch'))),
           ),
-        for (final app in shown) _row(context, app, theme),
+        for (final app in shown) _row(context, app, theme, rulesOnTheirWay: rulesOnTheirWay),
       ],
     );
   }
@@ -292,8 +298,8 @@ class _ChildAppsListState extends ConsumerState<ChildAppsList> {
   /// P-09 (`#1179`, Bureau row): **Allow / Time limit / Block in words on every row**, never a bare switch,
   /// with the current choice filled in. The three words stack under the app name when the row is narrow or the
   /// text is large (Fix 11), so a 320 px / 200 % screen never clips a label. Undo stays on the snackbar and
-  /// "Sent to phone" appears on the row that was just saved, until the saved rules come back.
-  Widget _row(BuildContext context, InstalledApp app, ThemeData theme) {
+  /// "Sent to phone" appears on the row that was just saved, until the child's phone reports the new rules.
+  Widget _row(BuildContext context, InstalledApp app, ThemeData theme, {required bool rulesOnTheirWay}) {
     final l10n = context.l10n;
     final rule = _ruleFor(app.packageId);
     final essential = app.essential == true;
@@ -327,7 +333,7 @@ class _ChildAppsListState extends ConsumerState<ChildAppsList> {
                   key: ValueKey('appState-${app.packageId}'),
                   style: theme.textTheme.bodySmall?.copyWith(color: stateColor)),
               if (note != null) note,
-              if (_sentTo == app.packageId)
+              if (_sentTo == app.packageId && rulesOnTheirWay)
                 Text(l10n.appsSentToPhone,
                     key: ValueKey('appSentTo-${app.packageId}'),
                     style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary)),

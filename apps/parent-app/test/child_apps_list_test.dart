@@ -220,7 +220,33 @@ void main() {
   });
 
   testWidgets('saving an app says it was sent to the phone on that row', (tester) async {
-    final client = api();
+    // The child has not reported the new rules version yet, so the line is earned and must show.
+    var rulesVersion = 4;
+    final behindFamily = {
+      ...family,
+      'children': [
+        {'id': 'child-1', 'displayName': 'Omar', 'birthYear': 2015, 'rulesVersion': rulesVersion, 'appliedRulesVersion': 3},
+      ],
+    };
+    savedAppRules = [
+      {'packageId': 'com.roblox.client', 'appName': 'Roblox', 'action': 'block'},
+    ];
+    final client = FakeApiClient({
+      ...standardRoutes(familyMe: behindFamily),
+      'GET /v1/family/me': (_) => {
+            ...behindFamily,
+            'children': [
+              {'id': 'child-1', 'displayName': 'Omar', 'birthYear': 2015, 'rulesVersion': rulesVersion, 'appliedRulesVersion': 3},
+            ],
+          },
+      'GET /v1/devices/dev-and/apps': (_) => appsReport,
+      'GET /v1/rules/child-1': (_) => {...ruleSetPayload('child-1'), 'appRules': savedAppRules},
+      'PATCH /v1/rules/child-1': (req) {
+        savedAppRules = [for (final r in (req.body['appRules'] as List)) Map<String, dynamic>.from(r as Map)];
+        rulesVersion++;
+        return {...ruleSetPayload('child-1'), 'appRules': savedAppRules};
+      },
+    });
     await openAppsTab(tester, client);
     expect(find.byKey(const ValueKey('appSentTo-com.whatsapp')), findsNothing);
 
