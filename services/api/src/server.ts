@@ -41,6 +41,9 @@ import { getRedis } from "./redis.js";
 import { LOGGER_SERIALIZERS } from "./lib/logRedaction.js";
 import { assertCorsConfigured } from "./lib/corsConfig.js";
 import { assertDatabaseTls } from "./lib/databaseTls.js";
+import { assertStagingAiScope } from "./lib/stagingQaModel.js";
+
+assertStagingAiScope();
 
 // Review 3.7: fail fast on missing/known-dev secrets instead of booting insecurely.
 const JWT_SECRET = process.env.JWT_SECRET;
