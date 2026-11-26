@@ -331,6 +331,7 @@
     <string name="c01_open_device_setup">Device setup &amp; status</string>
     <string name="c01_activity_empty">No app activity recorded yet today.</string>
     <string name="c01_close">Close</string>
+    <string name="c01_request_failed">Could not send your request right now. Check your connection and try again.</string>
     <plurals name="c01_hours">
         <item quantity="one">%1$d hour</item>
         <item quantity="other">%1$d hours</item>

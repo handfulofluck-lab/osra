@@ -132,6 +132,64 @@ class ChildHomePolicyTest {
     }
 
     @Test
+    fun `G5 B1 bonusMinutesForToday sums only today bonus_time grants and ignores yesterday and ruleSet aggregate`() {
+        val yesterdayMs = wedAfternoon.minusDays(1).toInstant().toEpochMilli()
+        val todayMorningMs = wedAfternoon.minusHours(3).toInstant().toEpochMilli()
+        val todayEarlierMs = wedAfternoon.minusMinutes(20).toInstant().toEpochMilli()
+        val decisions = listOf(
+            ChildDecisionRecord(kind = "bonus_time", minutes = 45, timestampMs = yesterdayMs),
+            ChildDecisionRecord(kind = "bonus_time", minutes = 15, timestampMs = todayMorningMs),
+            ChildDecisionRecord(kind = "bonus_time", minutes = 30, timestampMs = todayEarlierMs),
+            ChildDecisionRecord(kind = "rules_updated", minutes = 60, timestampMs = todayEarlierMs),
+            ChildDecisionRecord(kind = "bonus_time", minutes = -10, timestampMs = todayEarlierMs),
+        )
+        assertEquals(45, ChildHomePolicy.bonusMinutesForToday(decisions, wedAfternoon))
+        // Even if ruleSet carries a stale/unrelated aggregate, timeBudget uses only local today grants.
+        val rules = RuleSetDto(
+            screenTime = ScreenTimeRuleDto(dailyLimitMinutes = 120, weekendLimitMinutes = 180),
+        )
+        val nextDay = wedAfternoon.plusDays(1)
+        assertEquals(0, ChildHomePolicy.bonusMinutesForToday(decisions, nextDay))
+        val nextDayBudget = ChildHomePolicy.timeBudget(
+            ruleSet = rules,
+            now = nextDay,
+            minutesUsedToday = mapOf("a" to 20),
+            localBonusMinutes = ChildHomePolicy.bonusMinutesForToday(decisions, nextDay),
+        )
+        assertEquals(120, nextDayBudget.effectiveLimitMinutes)
+        assertEquals(100, nextDayBudget.remainingMinutes)
+    }
+
+    @Test
+    fun `B2 submitTimeRequest persists pending only on POST success and never latches on failure`() {
+        val saved = mutableListOf<PendingChildRequest>()
+        val failed = kotlinx.coroutines.runBlocking {
+            ChildHomePolicy.submitTimeRequest(
+                minutes = 30,
+                nowMs = 1_700_000_000_000L,
+                postRequest = { Result.failure(java.io.IOException("offline")) },
+                persistPending = { saved += it },
+            )
+        }
+        assertFalse("failed POST must return false", failed)
+        assertTrue("failed POST must NEVER save PendingChildRequest", saved.isEmpty())
+
+        val succeeded = kotlinx.coroutines.runBlocking {
+            ChildHomePolicy.submitTimeRequest(
+                minutes = 30,
+                nowMs = 1_700_000_000_000L,
+                postRequest = { Result.success(Unit) },
+                persistPending = { saved += it },
+            )
+        }
+        assertTrue("successful POST must return true", succeeded)
+        assertEquals(1, saved.size)
+        assertEquals("time", saved[0].requestType)
+        assertEquals(30, saved[0].minutes)
+        assertEquals(1_700_000_000_000L, saved[0].sentAtMs)
+    }
+
+    @Test
     fun `C-01 screen uses calm SOS row, keeps legacy fallback, and has EN-AR parity`() {
         val root = findAppSrcRoot()
         val screen = File(root, "java/com/familyshield/agent/ui/home/ChildHomeScreen.kt").readText()
@@ -140,6 +198,10 @@ class ChildHomePolicyTest {
         val arStrings = File(root, "res/values-ar/strings.xml").readText()
 
         assertFalse("C-01 must never draw a red danger SOS button", screen.contains("palette.danger"))
+        assertFalse("B1: PairingActivity must never call bonusMinutesTodaySnapshot", activity.contains("bonusMinutesTodaySnapshot"))
+        assertFalse("B1: PairingActivity must never read ruleSet.bonusMinutesToday", activity.contains("bonusMinutesToday"))
+        assertTrue("B1: PairingActivity must sum today bonus from decisions", activity.contains("ChildHomePolicy.bonusMinutesForToday("))
+        assertTrue("B2: PairingActivity must route time requests through submitTimeRequest", activity.contains("ChildHomePolicy.submitTimeRequest("))
         assertTrue("PairingActivity must keep C-01 behind ChildUxFlags fallback", activity.contains("ChildUxFlags.c01ChildHomeEnabled"))
         assertTrue("PairingActivity must keep legacy setup/status reachable", activity.contains("forceLegacyStatusView = true"))
 
@@ -155,6 +217,7 @@ class ChildHomePolicyTest {
             "c01_send_sos",
             "c01_call_parent",
             "c01_waiting_reply",
+            "c01_request_failed",
         )) {
             assertTrue("EN strings missing $key", enStrings.contains("name=\"$key\""))
             assertTrue("AR strings missing $key", arStrings.contains("name=\"$key\""))

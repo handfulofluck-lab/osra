@@ -331,6 +331,7 @@
     <string name="c01_open_device_setup">إعداد الهاتف وحالته</string>
     <string name="c01_activity_empty">لم يُسجَّل استخدام للتطبيقات اليوم بعد.</string>
     <string name="c01_close">إغلاق</string>
+    <string name="c01_request_failed">تعذّر إرسال طلبك الآن. تحقّق من الاتصال وحاول مرة أخرى.</string>
     <plurals name="c01_hours">
         <item quantity="zero">%1$d ساعة</item>
         <item quantity="one">ساعة</item>

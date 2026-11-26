@@ -42,6 +42,13 @@ enum class PendingRequestStatus {
     NO_ANSWER_YET,
 }
 
+/** Send-button state for C-01 Requests tab (B2: never latch pending until POST succeeds). */
+enum class TimeRequestSendState {
+    IDLE,
+    SENDING,
+    FAILED,
+}
+
 /** Local record of a received parent decision for the C-01 Messages tab (G10). */
 data class ChildDecisionRecord(
     val kind: String, // "bonus_time" | "rules_updated" | "pause_internet" | "resume_internet"
@@ -143,6 +150,48 @@ object ChildHomePolicy {
         } else {
             PendingRequestStatus.WAITING
         }
+    }
+
+    /**
+     * G5 (#1179, B1): sum only today's accepted `bonus_time` decision records in `now.zone`.
+     * Grants from earlier local days, non-bonus decisions, and any server `ruleSet.bonusMinutesToday`
+     * aggregate are deliberately excluded.
+     */
+    fun bonusMinutesForToday(decisions: List<ChildDecisionRecord>, now: ZonedDateTime): Int {
+        val today = now.toLocalDate()
+        val zone = now.zone
+        return decisions
+            .asSequence()
+            .filter { it.kind == "bonus_time" && (it.minutes ?: 0) > 0 && it.timestampMs > 0L }
+            .filter { java.time.Instant.ofEpochMilli(it.timestampMs).atZone(zone).toLocalDate() == today }
+            .sumOf { it.minutes ?: 0 }
+    }
+
+    /**
+     * B2 (#1191): submits a C-01 time request and persists [PendingChildRequest] ONLY when
+     * [postRequest] succeeds. A failed/offline POST returns `false` and leaves no false 2-hour
+     * pending card behind.
+     */
+    suspend fun submitTimeRequest(
+        minutes: Int,
+        nowMs: Long,
+        postRequest: suspend (Int) -> Result<Unit>,
+        persistPending: (PendingChildRequest) -> Unit,
+    ): Boolean {
+        val allowed = if (minutes == 30) 30 else 15
+        val result = postRequest(allowed)
+        if (result.isSuccess) {
+            persistPending(
+                PendingChildRequest(
+                    requestType = "time",
+                    minutes = allowed,
+                    appLabel = null,
+                    sentAtMs = nowMs,
+                ),
+            )
+            return true
+        }
+        return false
     }
 
     /** Formats epoch-ms in 24-hour Western digits `"HH:mm"` for "Sent to {adults} · 15:10". */

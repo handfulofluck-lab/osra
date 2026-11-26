@@ -104,6 +104,7 @@ data class ChildHomeCopy(
     val request15Label: String,
     val request30Label: String,
     val requestsDisabledLine: String,
+    val requestFailedLine: String = "",
     val messagesHeaderTitle: String,
     val messagesEmptyLine: String,
     val allDecisions: List<ChildDecisionItemUi>,
@@ -129,6 +130,7 @@ fun ChildHomeScreen(
     onRequestMoreTime: (Int) -> Unit,
     onSendSos: () -> Unit,
     onOpenDeviceSetup: () -> Unit,
+    requestSendState: TimeRequestSendState = TimeRequestSendState.IDLE,
 ) {
     val palette = OsraTheme.LocalOsraPalette.current
     val radii = OsraTheme.LocalOsraRadii.current
@@ -190,6 +192,7 @@ fun ChildHomeScreen(
                             cardShape = cardShape,
                             controlShape = controlShape,
                             cardBorder = cardBorder,
+                            requestSendState = requestSendState,
                             onRequestMoreTime = onRequestMoreTime,
                         )
                         ChildHomeTab.MESSAGES -> MessagesTabContent(
@@ -673,6 +676,7 @@ private fun RequestsTabContent(
     cardShape: RoundedCornerShape,
     controlShape: RoundedCornerShape,
     cardBorder: BorderStroke?,
+    requestSendState: TimeRequestSendState,
     onRequestMoreTime: (Int) -> Unit,
 ) {
     val palette = OsraTheme.LocalOsraPalette.current
@@ -718,8 +722,15 @@ private fun RequestsTabContent(
                     color = palette.muted,
                 )
             } else {
+                if (requestSendState == TimeRequestSendState.FAILED && copy.requestFailedLine.isNotBlank()) {
+                    Text(
+                        text = copy.requestFailedLine,
+                        style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
+                        color = palette.warn,
+                    )
+                }
                 // G2/G3 (Karim 17:02 + Codex 17:37): 15 or 30 min of daily screen time only (no 60 min, no per-app scope, no note).
-                val enabled = !copy.pendingIsWaiting
+                val enabled = !copy.pendingIsWaiting && requestSendState != TimeRequestSendState.SENDING
                 if (compact) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),

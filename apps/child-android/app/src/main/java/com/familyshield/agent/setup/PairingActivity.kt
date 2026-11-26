@@ -1058,10 +1058,11 @@ class PairingActivity : ComponentActivity() {
             }
 
             if (!forceLegacy && com.familyshield.agent.ui.theme.ChildUxFlags.c01ChildHomeEnabled) {
-                val copy = buildChildHomeCopy()
+                val initialCopy = buildChildHomeCopy()
+                childHomeCopyState.value = initialCopy
                 replaceWithCompose {
                     com.familyshield.agent.ui.home.ChildHomeScreen(
-                        copy = copy,
+                        copy = childHomeCopyState.value ?: initialCopy,
                         onCallParent = {
                             runCatching {
                                 startActivity(Intent(Intent.ACTION_DIAL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -1080,6 +1081,7 @@ class PairingActivity : ComponentActivity() {
                             forceLegacyStatusView = true
                             showStatus()
                         },
+                        requestSendState = childHomeSendState.value,
                     )
                 }
                 return@launch
@@ -1404,38 +1406,54 @@ class PairingActivity : ComponentActivity() {
         CommandPollWorker.requestFetchNow(this)
     }
 
+    private val childHomeSendState = androidx.compose.runtime.mutableStateOf(
+        com.familyshield.agent.ui.home.TimeRequestSendState.IDLE,
+    )
+    private val childHomeCopyState = androidx.compose.runtime.mutableStateOf<com.familyshield.agent.ui.home.ChildHomeCopy?>(null)
+
     private fun sendChildHomeTimeRequest(minutes: Int) {
-        val allowed = if (minutes == 30) 30 else 15
+        if (childHomeSendState.value == com.familyshield.agent.ui.home.TimeRequestSendState.SENDING) return
+        childHomeSendState.value = com.familyshield.agent.ui.home.TimeRequestSendState.SENDING
         val nowMs = System.currentTimeMillis()
-        com.familyshield.agent.ui.home.ChildHomeStore.savePendingRequest(
-            this,
-            com.familyshield.agent.ui.home.PendingChildRequest(
-                requestType = "time",
-                minutes = allowed,
-                appLabel = null,
-                sentAtMs = nowMs,
-            ),
-        )
-        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            runCatching {
-                api.postInternalAlert(
-                    com.familyshield.agent.network.dto.AlertDto(
-                        childId = settings.childId(),
-                        deviceId = settings.deviceId(),
-                        severity = "info",
-                        category = "app_blocked",
-                        title = "Screen time requested",
-                        body = "Child asked for $allowed more minutes of screen time",
-                        metadata = mapOf(
-                            "requestType" to "time",
-                            "minutes" to allowed.toString(),
-                            "reason" to "daily_limit",
-                        ),
-                    ),
-                )
+        lifecycleScope.launch {
+            val succeeded = com.familyshield.agent.ui.home.ChildHomePolicy.submitTimeRequest(
+                minutes = minutes,
+                nowMs = nowMs,
+                postRequest = { allowed ->
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        runCatching {
+                            api.postInternalAlert(
+                                com.familyshield.agent.network.dto.AlertDto(
+                                    childId = settings.childId(),
+                                    deviceId = settings.deviceId(),
+                                    severity = "info",
+                                    category = "app_blocked",
+                                    title = "Screen time requested",
+                                    body = "Child asked for $allowed more minutes of screen time",
+                                    metadata = mapOf(
+                                        "requestType" to "time",
+                                        "minutes" to allowed.toString(),
+                                        "reason" to "daily_limit",
+                                    ),
+                                ),
+                            )
+                            Unit
+                        }.onFailure { err ->
+                            android.util.Log.w("PairingActivity", "C-01 time request failed", err)
+                        }
+                    }
+                },
+                persistPending = { pending ->
+                    com.familyshield.agent.ui.home.ChildHomeStore.savePendingRequest(this@PairingActivity, pending)
+                },
+            )
+            if (succeeded) {
+                childHomeSendState.value = com.familyshield.agent.ui.home.TimeRequestSendState.IDLE
+                childHomeCopyState.value = buildChildHomeCopy()
+            } else {
+                childHomeSendState.value = com.familyshield.agent.ui.home.TimeRequestSendState.FAILED
             }
         }
-        showStatus()
     }
 
     private fun formatChildHomeDuration(totalMinutes: Int): String {
@@ -1458,7 +1476,9 @@ class PairingActivity : ComponentActivity() {
         val nowMs = System.currentTimeMillis()
         val ruleSet = rules.cachedRules()
         val usageSnapshot = rules.minutesSnapshot()
-        val bonusMinutes = rules.bonusMinutesTodaySnapshot()
+        val storedDecisions = com.familyshield.agent.ui.home.ChildHomeStore.decisions(this)
+        // G5 (#1191 B1): sum only today's accepted bonus_time grants; never read ruleSet.bonusMinutesToday.
+        val bonusMinutes = com.familyshield.agent.ui.home.ChildHomePolicy.bonusMinutesForToday(storedDecisions, now)
         val isArabic = resources.configuration.locales[0]?.language == "ar"
 
         val adultNames = ruleSet?.adultNames.orEmpty()
@@ -1508,7 +1528,7 @@ class PairingActivity : ComponentActivity() {
             com.familyshield.agent.ui.home.PendingRequestStatus.NONE -> null
         }
 
-        val decisionsUi = com.familyshield.agent.ui.home.ChildHomeStore.decisions(this).map { item ->
+        val decisionsUi = storedDecisions.map { item ->
             val timeStr = com.familyshield.agent.ui.home.AdultsNameFormatter.ltrIsolate(
                 com.familyshield.agent.ui.home.ChildHomePolicy.formatClockHhMm(item.timestampMs),
             )
@@ -1623,6 +1643,7 @@ class PairingActivity : ComponentActivity() {
             request15Label = getString(R.string.c01_request_15_min),
             request30Label = getString(R.string.c01_request_30_min),
             requestsDisabledLine = getString(R.string.c01_requests_no_limit),
+            requestFailedLine = getString(R.string.c01_request_failed),
             messagesHeaderTitle = getString(R.string.c01_messages_title),
             messagesEmptyLine = getString(R.string.c01_messages_empty, adultsSpeaking),
             allDecisions = decisionsUi,
