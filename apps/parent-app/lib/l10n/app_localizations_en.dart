@@ -3680,4 +3680,92 @@ class AppLocalizationsEn extends AppLocalizations {
   String alertBodyDataCleared(String model) {
     return 'OSRA was reinstalled on $model. Its protection was off until it was paired again.';
   }
+
+  @override
+  String accessRequestTitle(String child, String app) {
+    return '$child asks to use $app';
+  }
+
+  @override
+  String accessRequestBlockedTitle(String app, String child) {
+    return '$app was blocked on $child\'s phone';
+  }
+
+  @override
+  String accessRequestBody(String child) {
+    return '$child tapped \"Request access\" on the block screen.';
+  }
+
+  @override
+  String accessRequestBlockedBody(String child) {
+    return '$child tried to open it. Nothing for you to do.';
+  }
+
+  @override
+  String get accessRequestAllow => 'Allow';
+
+  @override
+  String get accessRequestAllowing => 'Allowing…';
+
+  @override
+  String get accessRequestKeepBlocked => 'Keep blocked';
+
+  @override
+  String accessRequestDisclosure(String app) {
+    return '$app will be allowed from now on. Bedtime, school time and Pause still apply.';
+  }
+
+  @override
+  String accessRequestAllowFailed(String app) {
+    return 'Couldn\'t allow $app. Check your connection and try again.';
+  }
+
+  @override
+  String accessRequestReadOnly(String owner) {
+    return 'Only $owner can answer this request. Ask them to open OSRA.';
+  }
+
+  @override
+  String accessRequestAllowedBy(String actor, String app, String timeSuffix) {
+    return '$actor allowed $app$timeSuffix';
+  }
+
+  @override
+  String accessRequestKeptBlockedBy(
+      String actor, String app, String timeSuffix) {
+    return '$actor kept $app blocked$timeSuffix';
+  }
+
+  @override
+  String accessRequestAllowedByYou(String app, String timeSuffix) {
+    return 'You allowed $app$timeSuffix';
+  }
+
+  @override
+  String accessRequestKeptBlockedByYou(String app, String timeSuffix) {
+    return 'You kept $app blocked$timeSuffix';
+  }
+
+  @override
+  String get accessRequestHandled => 'This request was handled';
+
+  @override
+  String accessRequestAllowedSnack(String app) {
+    return 'You allowed $app';
+  }
+
+  @override
+  String accessRequestKeptBlockedSnack(String app) {
+    return 'You kept $app blocked';
+  }
+
+  @override
+  String accessRequestAllowLabel(String app) {
+    return 'Allow $app';
+  }
+
+  @override
+  String accessRequestKeepBlockedLabel(String app) {
+    return 'Keep $app blocked';
+  }
 }

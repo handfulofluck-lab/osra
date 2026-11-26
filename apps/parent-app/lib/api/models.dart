@@ -91,6 +91,7 @@ class Parent {
   final String displayName;
   final String role;
   final bool mfaEnabled;
+  final List<String> permissions;
 
   const Parent({
     required this.id,
@@ -99,6 +100,7 @@ class Parent {
     required this.displayName,
     this.role = 'owner',
     this.mfaEnabled = false,
+    this.permissions = const [],
   });
 
   factory Parent.fromJson(Map<String, dynamic> json) => Parent(
@@ -108,6 +110,7 @@ class Parent {
         displayName: _str(json['displayName']),
         role: _str(json['role'], 'owner'),
         mfaEnabled: _bool(json['mfaEnabled']),
+        permissions: _strList(json['permissions']),
       );
 }
 
@@ -1312,6 +1315,26 @@ class Alert {
         updatedAt: DateTime.tryParse(_str(json['updatedAt'])),
         acknowledged: _bool(json['acknowledged']),
         attemptCount: _int(json['attemptCount'], 1),
+      );
+
+  Alert copyWith({
+    Map<String, dynamic>? metadata,
+    DateTime? updatedAt,
+    bool? acknowledged,
+  }) =>
+      Alert(
+        id: id,
+        childId: childId,
+        deviceId: deviceId,
+        severity: severity,
+        category: category,
+        title: title,
+        body: body,
+        metadata: metadata ?? this.metadata,
+        createdAt: createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+        acknowledged: acknowledged ?? this.acknowledged,
+        attemptCount: attemptCount,
       );
 
   /// #1029: whether this alert is a social/gaming chat concern alert.

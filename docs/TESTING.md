@@ -1309,6 +1309,16 @@ the open 3.2 hardware row.
 
 Run `flutter test --no-pub test/onboarding_test.dart test/device_setup_model_test.dart test/phone_setup_section_test.dart`. The P-06 cases pin first-device-only completion, the seven-grant Play gate and the eight-grant Full gate (notification access included), mixed/missing/malformed capability states and flavours, iOS availability, multiple devices, child identity, the instruction sheet, and Windows/Mac administrator warnings. The existing full happy-path fixture includes all seven Play grants so it proves the route still completes only after confirmed setup. Pull-to-refresh and the 30-second visible-screen timer invalidate the same family provider; neither changes the completion rule.
 
+## CI staging Parent APK (synthetic CI proof, private real build)
+
+`scripts/build-parent-staging-apk.sh` is the single command for both proofs of the staging Parent APK. It requires `API_BASE=https://api.staging.osratech.com` and a positive `BUILD_NUMBER`, then checks the Firebase release task, package/versionCode, `INTERNET`, `POST_NOTIFICATIONS`, and the APK signature. `scripts/check-parent-staging-build.mjs --selftest` proves the contract checker itself; the normal invocation fails if the workflow stops being synthetic-only, gains a public APK artifact, or loses one of those assertions.
+
+- **Public CI proof:** `.github/workflows/parent-app.yml` writes a synthetic, non-secret Firebase config and runs the helper with `CI_SYNTHETIC=1`. No APK is uploaded as an Actions artifact. The existing AAB artifact is unchanged. Synthetic values must not look like credentials: gitleaks scans the entire PR history, so an API-key-shaped fixture cannot be removed by a later commit alone.
+- **Local synthetic proof:** prepare the same synthetic config shown in that workflow step, then run `CI_SYNTHETIC=1 API_BASE=https://api.staging.osratech.com BUILD_NUMBER=99 bash scripts/build-parent-staging-apk.sh`. This is a build fixture, not a release.
+- **Private real build:** place the real gitignored Firebase config and lab signing inputs on the approved private builder, set `OSRA_EXPECTED_SIGNER_SHA256` to the Lab Parent certificate digest, and run the same helper without `CI_SYNTHETIC`. The helper refuses any other signer. Publish only through the approved private release channel and compare the old/new certificate digests before installation. No real APK or real Firebase config belongs in the public workflow or repository.
+
+The Firebase JSON, keystore and passwords remain gitignored. Flutter's console can hide the underlying `:app:processReleaseGoogleServices` task name, so the helper proves the plugin ran by requiring `google_app_id` and `project_id` in the generated release `values.xml`; a package that compiles without those resources has no working push registration. Required inputs are validated before building, and the cleanup trap preserves the original non-zero status on older Bash instead of allowing a false success.
+
 ## 5j. Push wake on hardware (roadmap 1.5)
 
 Prerequisite: a build that carries `google-services.json`. Without it the gms plugin is skipped,
