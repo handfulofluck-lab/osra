@@ -572,6 +572,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get rulesBehindHint => 'The phone hasn\'t picked this change up yet.';
 
   @override
+  String get rulesWaitingFirstApply => 'Waiting for the phone to apply rules.';
+
+  @override
   String get rulesLoadFailed =>
       'Couldn\'t load rules. Check your connection and try again.';
 
