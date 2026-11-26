@@ -54,6 +54,7 @@ Status is one of `accepted`, `superseded by ADR-XXXX`, `deprecated`, or `propose
 | [0045](0045-parent-feedback-ownership-and-conflict-writes.md) | Event reads distinguish `ownFeedback` from family `latestFeedback`; conditional conflict writes preserve different racing verdicts, local-only hits use rules metadata, and only already-orphaned events are deleted before the child FK | accepted |
 | [0046](0046-consented-staging-own-model-scoring.md) | Explicit, consented staging own-model routing, atomic quotas and private collector rollout checks | proposed |
 | [0047](0047-server-owned-setup-window.md) | Initial Android setup is server-owned: exact grant-linked tamper events are audit-only for at most 30 minutes, authenticated capabilities complete setup once, and data-clear/reinstall stays visible | accepted |
+| [0049](0049-time-request-resolution.md) | Resolve a daily-limit request once by alert ID, with the grant, durable commands, decision receipt and acknowledgement in one database transaction (#1179) | accepted |
 
 ## Writing a new ADR
 

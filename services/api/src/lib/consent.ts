@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import type { FastifyReply } from "fastify";
 import { prisma } from "../db.js";
 
@@ -25,9 +26,10 @@ export interface ActiveConsentResult {
 export async function checkActiveConsent(
   childId: string,
   familyRegion?: string,
+  db: Pick<Prisma.TransactionClient, "consentRecord"> = prisma,
 ): Promise<ActiveConsentResult> {
   const now = new Date();
-  const consent = await prisma.consentRecord.findFirst({
+  const consent = await db.consentRecord.findFirst({
     where: {
       childId,
       revokedAt: null,
