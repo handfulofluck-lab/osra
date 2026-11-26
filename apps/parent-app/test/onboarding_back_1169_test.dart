@@ -1,9 +1,13 @@
+import 'dart:async';
+
+import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/features/onboarding/setup_child_screen.dart';
 import 'package:familyshield_parent/features/onboarding/setup_done_screen.dart';
 import 'package:familyshield_parent/features/onboarding/setup_monitoring_screen.dart';
 import 'package:familyshield_parent/features/onboarding/setup_pair_screen.dart';
 import 'package:familyshield_parent/l10n/app_localizations.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
+import 'package:familyshield_parent/providers/family_provider.dart';
 import 'package:familyshield_parent/providers/onboarding_provider.dart';
 import 'package:familyshield_parent/theme/app_theme.dart';
 import 'package:flutter/material.dart';
@@ -167,6 +171,76 @@ void main() {
 
       expect(systemPopCount, 0);
       expect(router.routerDelegate.currentConfiguration.uri.path, '/setup/pair');
+    },
+  );
+
+  testWidgets(
+    '#1169 (review): system Back during pending family lookup awaits response and goes Home when children exist',
+    (tester) async {
+      final completer = Completer<FamilyOverview>();
+      final api = FakeApiClient(standardRoutes());
+      final router = buildTestRouter(initialLocation: '/setup/child');
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            familyProvider.overrideWith((ref) => completer.future),
+          ],
+          child: MaterialApp.router(
+            theme: AppTheme.light,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            routerConfig: router,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Press system Back while familyProvider is still loading: must NOT show sign-out dialog.
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(systemPopCount, 0);
+      expect(find.byType(AlertDialog), findsNothing);
+
+      // Complete the deferred lookup with existing children -> navigates to Home.
+      completer.complete(FamilyOverview.fromJson(familyMeTwoChildren()));
+      await tester.pumpAndSettle();
+
+      expect(systemPopCount, 0);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byKey(const ValueKey('homeSentinel')), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    '#1169 (review): system Back on failed family lookup keeps retry screen and never signs out or closes app',
+    (tester) async {
+      final api = FakeApiClient(standardRoutes());
+      final router = buildTestRouter(initialLocation: '/setup/child');
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            familyProvider.overrideWith(
+              (ref) => Future<FamilyOverview>.error(Exception('offline')),
+            ),
+          ],
+          child: MaterialApp.router(
+            theme: AppTheme.light,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            routerConfig: router,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(systemPopCount, 0);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byKey(const ValueKey('homeSentinel')), findsNothing);
     },
   );
 }

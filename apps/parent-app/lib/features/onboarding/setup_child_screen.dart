@@ -112,10 +112,27 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
     if (mounted) context.go('/sign-in');
   }
 
-  /// #1169: a signed-in parent who already has children goes straight to Home
-  /// on Back (system Back or AppBar Back) instead of closing the app or signing out.
-  Future<void> _handleBack(bool hasExistingChildren) async {
-    if (hasExistingChildren) {
+  /// #1169: Android system Back on `/setup/child`:
+  /// - Known non-empty family → complete onboarding and return to Home (`/`).
+  /// - Pending family lookup → await `familyProvider.future` before deciding, so a
+  ///   slow lookup never misclassifies an existing family as empty (#1170 review).
+  /// - Failed lookup → keep the retry screen visible (never sign out or close app).
+  /// - Known empty family → open the existing `_leaveSetup()` confirmation dialog.
+  Future<void> _handleSystemBack() async {
+    final current = ref.read(familyProvider);
+    if (current.hasError) return;
+    FamilyOverview overview;
+    if (current.hasValue) {
+      overview = current.requireValue;
+    } else {
+      try {
+        overview = await ref.read(familyProvider.future);
+      } catch (_) {
+        return;
+      }
+      if (!mounted) return;
+    }
+    if (overview.children.isNotEmpty) {
       await ref.read(onboardingProvider.notifier).completeSetup();
       if (mounted) context.go('/');
       return;
@@ -127,18 +144,17 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final family = ref.watch(familyProvider);
-    final hasExistingChildren = family.valueOrNull?.children.isNotEmpty ?? false;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop || _busy) return;
-        _handleBack(hasExistingChildren);
+        _handleSystemBack();
       },
       child: Scaffold(
         appBar: AppBar(
           title: Text(l10n.onboardingChildTitle),
           leading: BackButton(
-            onPressed: _busy ? null : () => _handleBack(hasExistingChildren),
+            onPressed: _busy ? null : _leaveSetup,
           ),
         ),
         body: SafeArea(
