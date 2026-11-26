@@ -72,7 +72,8 @@ void main() {
           : {'status': 'paired', 'claimId': 'c-1', 'deviceName': "Sam's phone"}),
     );
 
-    // The first read is in flight; the second tick answers "paired" and stops the poll.
+    // Tick 1 starts the read that will answer late; tick 2 answers "paired" and stops the poll.
+    await nextClaimRead(tester);
     await nextClaimRead(tester);
     expect(find.byKey(const ValueKey('pairPairedTitle')), findsOneWidget);
 
