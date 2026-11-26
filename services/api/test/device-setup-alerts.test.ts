@@ -99,6 +99,43 @@ describe("initial-setup alert holding (#1127)", () => {
     await app.close();
   });
 
+  it("creates a new visible row when the same tamper key happens after setup", async () => {
+    // Ahmed's #1127 blocker: matching only (deviceId, category, dedupeKey) would return the
+    // held row forever, so a real post-setup tamper never publishes or pushes.
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    const { raw, headers } = signed(tamper());
+    let heldLookup = false;
+    prismaMock.alert.findFirst.mockImplementation(async ({ where }) => {
+      if (!heldLookup) {
+        heldLookup = true;
+        return null;
+      }
+      return where.dedupeKey === "held|setup-test|accessibility_off"
+        ? { id: "held-existing", category: "tamper", heldDuringSetup: true, attemptCount: 1 }
+        : null;
+    });
+    const first = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers, payload: raw });
+    expect(first.statusCode).toBe(201);
+    expect(prismaMock.alert.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ dedupeKey: "held|setup-test|accessibility_off", heldDuringSetup: true }),
+    });
+
+    prismaMock.device.findUnique.mockResolvedValue(device({ setupCompletedAt: new Date(), capabilities: {
+      client: { app: "child-android", version: "0.2.0", build: 42, flavour: "full" },
+      grants: ALL_REQUIRED,
+      features: {},
+    } }));
+    const later = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers: signed(tamper()).headers, payload: raw });
+    expect(later.statusCode).toBe(201);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(2);
+    expect(prismaMock.alert.create).toHaveBeenLastCalledWith({
+      data: expect.objectContaining({ dedupeKey: "setup-test|accessibility_off", heldDuringSetup: false }),
+    });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(MockRedis.instances.flatMap((redis) => redis.publish.mock.calls)).toHaveLength(1);
+    await app.close();
+  });
+
   it("keeps SOS and unrelated tamper events visible", async () => {
     const app = await buildApp(alertsRoutes, "/v1/alerts");
     for (const [category, type] of [["sos", "accessibility_off"], ["tamper", "private_dns_bypass"], ["tamper", "protection_screen_opened"]] as const) {

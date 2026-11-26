@@ -149,7 +149,9 @@ export async function alertsRoutes(app: FastifyInstance) {
     // host. The parent keeps the attempt; nothing in the row names a site, and the dedupe key groups by day.
     const redactSite = category === "web_threat" && !siteNamesEnabled();
     const safeMetadata = redactSite ? redactBlockedSiteHost(metadata) : metadata;
-    const safeDedupeKey = redactSite ? redactedBlockedSiteKey() : dedupeKey;
+    // ADR-0047: held retries share a separate namespace so a real post-setup event with the
+    // producer's original key creates a new visible row instead of deduplicating the held one.
+    const safeDedupeKey = redactSite ? redactedBlockedSiteKey() : heldDuringSetup && dedupeKey ? `held|${dedupeKey}` : dedupeKey;
 
     // Phase 2a: one path creates the row, publishes the WS event and pushes to the parents' phones.
     // Issue #225: a repeated dedupeKey is a retry, not a new alert — 200 with the existing row.
