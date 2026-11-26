@@ -118,16 +118,16 @@
     <string name="c05_checks_location_title">Where your phone is</string>
     <string name="c05_checks_location_subtitle">So a parent can find you</string>
     <string name="c05_checks_messages_title">Risky messages only</string>
-    <string name="c05_checks_messages_subtitle">Parents never read all your chats</string>
-    <string name="c05_roadmap_heading">NEXT</string>
+    <string name="c05_checks_messages_subtitle">Parents only see messages that look risky</string>
+    <string name="c05_roadmap_heading">Next</string>
     <string name="c05_roadmap_step_1">1 · Allow a few things, one at a time. Each one says why.</string>
     <string name="c05_roadmap_step_2">2 · Connect your phone with your parent\'s code.</string>
     <string name="c05_roadmap_step_3">3 · Read your family rules together.</string>
     <string name="c05_welcome_footer_hint">A parent can help you tap Allow.</string>
-    <string name="c05_continue_to_pairing">Continue to pairing</string>
+    <string name="c05_continue_to_pairing">Continue</string>
     <string name="c05_agreement_title">Your family rules</string>
     <string name="c05_agreement_body">Read these together before opening your phone.</string>
-    <string name="c05_agreement_finish">Open home</string>
+    <string name="c05_agreement_finish">Done, let\'s start</string>
 
     <!-- PairingActivity: "protect this device", setup complete, the checklist and the status screen. -->
     <string name="setup_protect_title">Protect this device · أسرة</string>

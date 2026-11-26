@@ -12,29 +12,42 @@ import org.junit.Test
 class OnboardingPolicyTest {
 
     @Test
-    fun `required set is the seven the product does not work without`() {
+    fun `required set is the eight Full grants (seven on Play where notification listener is absent)`() {
         val required = Grant.values().filter { it.required }
         assertEquals(
-            listOf(Grant.ACCESSIBILITY, Grant.USAGE_ACCESS, Grant.OVERLAY, Grant.DEVICE_ADMIN, Grant.WEB_FILTER, Grant.LOCATION, Grant.PRIVATE_DNS),
+            listOf(
+                Grant.ACCESSIBILITY,
+                Grant.USAGE_ACCESS,
+                Grant.OVERLAY,
+                Grant.DEVICE_ADMIN,
+                Grant.WEB_FILTER,
+                Grant.LOCATION,
+                Grant.PRIVATE_DNS,
+                Grant.NOTIFICATION_LISTENER,
+            ),
             required,
         )
         assertFalse(Grant.BATTERY.required)
-        assertFalse(Grant.NOTIFICATION_LISTENER.required)
+        assertTrue(Grant.NOTIFICATION_LISTENER.required)
     }
 
     @Test
     fun `cannot complete while a required grant is missing, can with only recommended ones missing`() {
-        val allButBattery = OnboardingPolicy.rows { it != Grant.BATTERY && it != Grant.NOTIFICATION_LISTENER }
+        val allButBattery = OnboardingPolicy.rows { it != Grant.BATTERY && it != Grant.USB_DEBUGGING }
         assertTrue(OnboardingPolicy.canComplete(allButBattery))
-        assertEquals("7 of 7 required grants done — protection is complete", OnboardingPolicy.progressLine(allButBattery))
+        assertEquals("8 of 8 required grants done — protection is complete", OnboardingPolicy.progressLine(allButBattery))
+
+        val noNotificationOnFull = OnboardingPolicy.rows(notificationCaptureAvailable = true) { it != Grant.NOTIFICATION_LISTENER }
+        assertFalse(OnboardingPolicy.canComplete(noNotificationOnFull))
+        assertEquals(listOf(Grant.NOTIFICATION_LISTENER), OnboardingPolicy.missingRequired(noNotificationOnFull))
 
         val noOverlay = OnboardingPolicy.rows { it != Grant.OVERLAY }
         assertFalse(OnboardingPolicy.canComplete(noOverlay))
         assertEquals(listOf(Grant.OVERLAY), OnboardingPolicy.missingRequired(noOverlay))
-        assertEquals("6 of 7 required grants done", OnboardingPolicy.progressLine(noOverlay))
+        assertEquals("7 of 8 required grants done", OnboardingPolicy.progressLine(noOverlay))
 
         val nothing = OnboardingPolicy.rows { false }
-        assertEquals(7, OnboardingPolicy.missingRequired(nothing).size)
+        assertEquals(8, OnboardingPolicy.missingRequired(nothing).size)
     }
 
     @Test
@@ -74,8 +87,9 @@ class OnboardingPolicyTest {
         val play = OnboardingPolicy.rows(notificationCaptureAvailable = false) { false }
         assertTrue(full.any { it.grant == OnboardingPolicy.Grant.NOTIFICATION_LISTENER })
         assertFalse(play.any { it.grant == OnboardingPolicy.Grant.NOTIFICATION_LISTENER })
-        // The row is recommended, not required: the progress line and the completion rule are identical.
-        assertEquals(OnboardingPolicy.progressLine(full), OnboardingPolicy.progressLine(play))
+        // Full requires notification access (8 grants); Play omits it and stays at 7 required grants.
+        assertEquals("0 of 8 required grants done", OnboardingPolicy.progressLine(full))
+        assertEquals("0 of 7 required grants done", OnboardingPolicy.progressLine(play))
         val playAllGranted = OnboardingPolicy.rows(notificationCaptureAvailable = false) { true }
         assertTrue(OnboardingPolicy.canComplete(playAllGranted))
         assertTrue(OnboardingPolicy.canComplete(OnboardingPolicy.rows(notificationCaptureAvailable = true) { true }))

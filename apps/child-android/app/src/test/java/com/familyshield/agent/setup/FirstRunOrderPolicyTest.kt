@@ -7,14 +7,11 @@ import org.junit.Test
 import java.io.File
 
 /**
- * C-05 First run (#1179) + #1174 (permissions before pairing, no enforcement until required grants
- * are complete, no Skip on required grants, live grant re-read on resume) + U74 fix 1 ("Open app
- * info" straight after step 1 of the #1176 restricted-settings guide).
- *
- * Mutants:
- * - Return PAIRING_FORM before requiredGrantsReady -> pre-pair permissions test goes red.
- * - Return false from shouldSuppressEnforcement while required grants incomplete -> enforcement gate test goes red.
- * - Move onOpenAppInfo back below step 2 -> U74 ordering test goes red.
+ * C-05 First run (#1179) + #1174 (permissions before pairing, 3-path setup completion gate,
+ * deduplicated missing-permissions alert, no premature tamper/block alerts) + osra-security#80
+ * (one-way completion latch so revoking a grant after setup never suppresses enforcement) +
+ * osra-security#78 (Xiaomi/MIUI background pop-up op 10021/10020 required inside OVERLAY) +
+ * U74 fix 1 ("Open app info" straight after step 1 of the #1176 restricted-settings guide).
  */
 class FirstRunOrderPolicyTest {
 
@@ -105,19 +102,101 @@ class FirstRunOrderPolicyTest {
     }
 
     @Test
-    fun `enforcement is suppressed while paired phone still lacks required grants`() {
-        assertTrue(FirstRunOrderPolicy.shouldSuppressEnforcement(paired = true, requiredGrantsReady = false))
-        assertFalse(FirstRunOrderPolicy.shouldSuppressEnforcement(paired = true, requiredGrantsReady = true))
-        assertFalse(FirstRunOrderPolicy.shouldSuppressEnforcement(paired = false, requiredGrantsReady = false))
-        assertFalse(FirstRunOrderPolicy.shouldSuppressEnforcement(paired = false, requiredGrantsReady = true))
+    fun `enforcement is suppressed only before first completion and never after revoking a grant post-setup`() {
+        // Fresh never-completed paired device -> suppresses all 3 paths until required grants finish.
+        assertTrue(
+            FirstRunOrderPolicy.shouldSuppressEnforcement(
+                paired = true,
+                requiredGrantsReady = false,
+                setupCompletedOnce = false,
+            ),
+        )
+        // Fresh paired device with all required grants ready -> enforces immediately.
+        assertFalse(
+            FirstRunOrderPolicy.shouldSuppressEnforcement(
+                paired = true,
+                requiredGrantsReady = true,
+                setupCompletedOnce = false,
+            ),
+        )
+        // osra-security#80 regression: once setup completed once, losing PRIVATE_DNS, WEB_FILTER,
+        // LOCATION, OVERLAY, or USAGE_ACCESS must NEVER suppress enforcement.
+        for (revoked in listOf(
+            OnboardingPolicy.Grant.PRIVATE_DNS,
+            OnboardingPolicy.Grant.WEB_FILTER,
+            OnboardingPolicy.Grant.LOCATION,
+            OnboardingPolicy.Grant.OVERLAY,
+            OnboardingPolicy.Grant.USAGE_ACCESS,
+        )) {
+            val rowsAfterRevoke = OnboardingPolicy.rows { it != revoked }
+            assertFalse("sanity: revoking $revoked makes canComplete false", OnboardingPolicy.canComplete(rowsAfterRevoke))
+            assertFalse(
+                "revoking $revoked after first completion must NOT suppress enforcement",
+                FirstRunOrderPolicy.shouldSuppressEnforcement(
+                    paired = true,
+                    requiredGrantsReady = OnboardingPolicy.canComplete(rowsAfterRevoke),
+                    setupCompletedOnce = true,
+                ),
+            )
+        }
+        // Unpaired devices never enter paired enforcement suppression.
+        assertFalse(
+            FirstRunOrderPolicy.shouldSuppressEnforcement(
+                paired = false,
+                requiredGrantsReady = false,
+                setupCompletedOnce = false,
+            ),
+        )
     }
 
     @Test
-    fun `wiring enforces U74 button placement, #1174 suppression, agreement-last screen, and EN-AR copy`() {
+    fun `missing-permissions alert deduplicates per fingerprint and stops after completion`() {
+        val fp1 = FirstRunOrderPolicy.missingGrantsFingerprint(
+            listOf(OnboardingPolicy.Grant.WEB_FILTER, OnboardingPolicy.Grant.OVERLAY),
+        )
+        val fp1Reordered = FirstRunOrderPolicy.missingGrantsFingerprint(
+            listOf(OnboardingPolicy.Grant.OVERLAY, OnboardingPolicy.Grant.WEB_FILTER),
+        )
+        assertEquals(fp1, fp1Reordered)
+        assertTrue(FirstRunOrderPolicy.shouldEnqueueMissingAlert(true, false, fp1, null))
+        assertFalse("same missing set must not repeat", FirstRunOrderPolicy.shouldEnqueueMissingAlert(true, false, fp1, fp1))
+        val fp2 = FirstRunOrderPolicy.missingGrantsFingerprint(listOf(OnboardingPolicy.Grant.WEB_FILTER))
+        assertTrue("smaller missing set updates single row", FirstRunOrderPolicy.shouldEnqueueMissingAlert(true, false, fp2, fp1))
+        assertFalse("after completion never sends missing-permissions alert", FirstRunOrderPolicy.shouldEnqueueMissingAlert(true, true, fp2, null))
+        assertFalse("unpaired never sends alert", FirstRunOrderPolicy.shouldEnqueueMissingAlert(false, false, fp1, null))
+
+        val body = FirstRunOrderPolicy.missingPermissionsAlertBody(listOf("Display over other apps", "Web filter"))
+        assertTrue(body.contains("Display over other apps, Web filter"))
+    }
+
+    @Test
+    fun `Xiaomi MIUI background pop-up op 10021 and lock-screen op 10020 gate OVERLAY completion`() {
+        assertTrue(MiuiBackgroundPopupPolicy.isXiaomiFamily("Xiaomi"))
+        assertTrue(MiuiBackgroundPopupPolicy.isXiaomiFamily("Redmi"))
+        assertTrue(MiuiBackgroundPopupPolicy.isXiaomiFamily("POCO"))
+        assertFalse(MiuiBackgroundPopupPolicy.isXiaomiFamily("samsung"))
+        assertFalse(MiuiBackgroundPopupPolicy.isXiaomiFamily("Google"))
+
+        // Non-Xiaomi never blocked by MIUI ops.
+        assertTrue(MiuiBackgroundPopupPolicy.isBackgroundPopupAllowed("samsung", op10021Mode = 1, op10020Mode = 1))
+        // Xiaomi with 10021 = ignore (1) -> setup must NOT complete.
+        assertFalse(MiuiBackgroundPopupPolicy.isBackgroundPopupAllowed("Xiaomi", op10021Mode = 1, op10020Mode = 0))
+        // Xiaomi with 10020 = ignore (1) -> setup must NOT complete.
+        assertFalse(MiuiBackgroundPopupPolicy.isBackgroundPopupAllowed("Redmi", op10021Mode = 0, op10020Mode = 1))
+        // Xiaomi with both allowed (0) -> complete.
+        assertTrue(MiuiBackgroundPopupPolicy.isBackgroundPopupAllowed("Redmi", op10021Mode = 0, op10020Mode = 0))
+    }
+
+    @Test
+    fun `wiring covers all 3 protection paths, setup-alert gate, MIUI check, U74 button, and Bureau copy`() {
         val root = findAppSrcRoot()
         val screens = File(root, "java/com/familyshield/agent/ui/pairing/OnboardingWelcomeAndStepsScreen.kt").readText()
         val activity = File(root, "java/com/familyshield/agent/setup/PairingActivity.kt").readText()
         val service = File(root, "java/com/familyshield/agent/services/AccessibilityMonitorService.kt").readText()
+        val grantChecks = File(root, "java/com/familyshield/agent/setup/GrantChecks.kt").readText()
+        val worker = File(root, "java/com/familyshield/agent/security/TamperAlertWorker.kt").readText()
+        val blockActivity = File(root, "java/com/familyshield/agent/enforcement/BlockActivity.kt").readText()
+        val settings = File(root, "java/com/familyshield/agent/data/AgentSettings.kt").readText()
         val enStrings = File(root, "res/values/strings.xml").readText()
         val arStrings = File(root, "res/values-ar/strings.xml").readText()
 
@@ -129,17 +208,43 @@ class FirstRunOrderPolicyTest {
         assertTrue("Agreement-last composable missing", screens.contains("fun OnboardingFamilyAgreementScreen("))
         assertTrue("Transparency card composable missing", screens.contains("private fun OsraTransparencyCard("))
 
-        // #1174: PairingActivity routes unpaired flow through FirstRunOrderPolicy, re-reads grants on resume,
-        // and renders agreement-last in showComplete. (#1175 no-skip on Device Admin stays with PR #1198.)
+        // #1174 + osra-security#80: PairingActivity routes unpaired flow and latches completion.
         assertTrue(activity.contains("FirstRunOrderPolicy.resolveUnpairedStage("))
+        assertTrue(activity.contains("SetupCompletionStore.markCompleted("))
         assertTrue(activity.contains("OnboardingFamilyAgreementScreen("))
         assertTrue(activity.contains("ChildUxFlags.c05FirstRunEnabled"))
+        assertTrue(settings.contains("SetupCompletionStore.clear(context)"))
 
-        // #1174 requirement #2: AccessibilityMonitorService suppresses enforcement when required grants are incomplete.
-        assertTrue(service.contains("FirstRunOrderPolicy.shouldSuppressEnforcement("))
-        assertTrue(service.contains("requiredGrantsIncompleteForPairedDevice()"))
+        // All 3 protection paths in AccessibilityMonitorService gated by requiredGrantsIncompleteForPairedDevice():
+        val path1Guard = service.substringAfter("private fun guardProtectionScreens(").substringBefore("private fun stepIn(")
+        val path1Cover = service.substringAfter("private fun coverSharedProtectionScreens(").substringBefore("private fun removeGuardCover(")
+        val path2Filter = service.substringAfter("private fun enforceFilterRecovery(").substringBefore("private fun updateFilterRecoveryCovers(")
+        val path3Blocks = service.substringAfter("private fun enforceVisibleBlocks(").substringBefore("private fun dismissPictureInPicture(")
+        assertTrue("Path 1 guardProtectionScreens must check setup gate", path1Guard.contains("requiredGrantsIncompleteForPairedDevice()"))
+        assertTrue("Path 1 coverSharedProtectionScreens must check setup gate", path1Cover.contains("requiredGrantsIncompleteForPairedDevice()"))
+        assertTrue("Path 2 enforceFilterRecovery must check setup gate", path2Filter.contains("requiredGrantsIncompleteForPairedDevice()"))
+        assertTrue("Path 3 enforceVisibleBlocks must check setup gate", path3Blocks.contains("requiredGrantsIncompleteForPairedDevice()"))
+        assertTrue("Missing-permissions alert must enqueue TYPE_SETUP_INCOMPLETE", service.contains("TamperAlertWorker.TYPE_SETUP_INCOMPLETE"))
 
-        // EN + AR string parity for all C-05 keys, with no Latin OSRA leaked into Arabic C-05 strings.
+        // Premature tamper and app_blocked alerts suppressed until setup completes once.
+        assertTrue(worker.contains("TYPE_SETUP_INCOMPLETE"))
+        assertTrue(worker.contains("SetupCompletionStore.isCompletedForDevice("))
+        assertTrue(blockActivity.contains("SetupCompletionStore.isCompletedForDevice("))
+
+        // Xiaomi/MIUI background pop-up wired into GrantChecks OVERLAY.
+        assertTrue(grantChecks.contains("MiuiBackgroundPopupPolicy.isGranted(context)"))
+        assertTrue(grantChecks.contains("MiuiBackgroundPopupPolicy.miuiPermEditorIntent(context)"))
+
+        // UI/UX Bureau (7199957531) & Arabic Bureau (7199958781) exact strings + EN/AR parity.
+        assertTrue(enStrings.contains("Parents only see messages that look risky"))
+        assertTrue(enStrings.contains("<string name=\"c05_roadmap_heading\">Next</string>"))
+        assertTrue(enStrings.contains("<string name=\"c05_continue_to_pairing\">Continue</string>"))
+        assertTrue(enStrings.contains("Done, let\\'s start"))
+        assertTrue(arStrings.contains("اقرؤوا هذه القواعد معًا قبل البدء باستخدام هاتفك."))
+        assertTrue(arStrings.contains("يمكن لأهلك مساعدتك في منح الأذونات."))
+        assertTrue(arStrings.contains("لا شيء مخفي"))
+        assertTrue(arStrings.contains("لا يطّلع أهلك إلا على الرسائل الخطرة، لا على كل محادثاتك."))
+
         val c05Keys = listOf(
             "c05_step_badge_1",
             "c05_step_badge_3",

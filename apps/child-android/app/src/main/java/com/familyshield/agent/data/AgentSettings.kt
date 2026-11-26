@@ -45,6 +45,7 @@ class AgentSettings @Inject constructor(
     )
 
     @Volatile private var deviceIdCache: String? = null
+    @Volatile private var deviceIdLoaded: Boolean = false
     @Volatile private var childIdCache: String? = null
     @Volatile private var tokenCache: String? = null
     @Volatile private var hmacCache: String? = null
@@ -54,7 +55,23 @@ class AgentSettings @Inject constructor(
     @Volatile private var tokenLoaded: Boolean = false
 
     /** Returns the enrolled device id, or null when not yet provisioned. */
-    suspend fun deviceId(): String? = read(KEY_DEVICE_ID).also { deviceIdCache = it }
+    suspend fun deviceId(): String? = read(KEY_DEVICE_ID).also {
+        deviceIdCache = it
+        deviceIdLoaded = true
+    }
+
+    /** Synchronous snapshot of the enrolled device id (loaded once per process, matching [baseUrlSync]). */
+    fun deviceIdSync(): String? {
+        if (!deviceIdLoaded) {
+            synchronized(this) {
+                if (!deviceIdLoaded) {
+                    deviceIdCache = runBlocking { read(KEY_DEVICE_ID) }
+                    deviceIdLoaded = true
+                }
+            }
+        }
+        return deviceIdCache
+    }
 
     /** Returns the enrolled child id, or null when not yet provisioned. */
     suspend fun childId(): String? = read(KEY_CHILD_ID).also { childIdCache = it }
@@ -230,6 +247,7 @@ class AgentSettings @Inject constructor(
         baseUrlCache = baseUrl
         tokenCache = deviceJwt
         deviceIdCache = deviceId
+        deviceIdLoaded = true
         childIdCache = childId
         if (hmacSecret != null) hmacCache = hmacSecret
         baseUrlLoaded = true
@@ -274,8 +292,10 @@ class AgentSettings @Inject constructor(
         baseUrlCache = null
         tokenCache = null
         deviceIdCache = null
+        deviceIdLoaded = true
         childIdCache = null
         tokenLoaded = true // loaded, and known to be null
+        com.familyshield.agent.setup.SetupCompletionStore.clear(context)
         com.familyshield.agent.vpn.VpnState.clearFilterLoss(context)
     }
 

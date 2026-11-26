@@ -44,6 +44,13 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
         val settings = entry.agentSettings()
         val childId = settings.childId() ?: return Result.success() // not paired: nobody to tell
         val deviceId = settings.deviceId()
+        // Issue #1174 / Ahmed acceptance (7200575366): no tamper alert fires before initial setup
+        // completes once; only the deduplicated TYPE_SETUP_INCOMPLETE notice is allowed mid-setup.
+        if (type != TYPE_SETUP_INCOMPLETE &&
+            !com.familyshield.agent.setup.SetupCompletionStore.isCompletedForDevice(applicationContext, deviceId)
+        ) {
+            return Result.success()
+        }
         val guardWindow = guardWindow()
         val dedupeKey = dedupeKeyFor(
             type = type,
@@ -61,10 +68,12 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
         )
         // The window key is stable across attempts; the local key adds the count so attempt N+1 is
         // posted and a WorkManager retry of attempt N is not.
-        val postKey = if (type == TYPE_GUARD_TRIGGERED && guardWindow != null) {
-            TamperAlertDedupe.guardPostKey(deviceId, guardWindow)
-        } else {
-            dedupeKey
+        val postKey = when {
+            type == TYPE_GUARD_TRIGGERED && guardWindow != null ->
+                TamperAlertDedupe.guardPostKey(deviceId, guardWindow)
+            type == TYPE_SETUP_INCOMPLETE && dedupeKey != null ->
+                "$dedupeKey:${app.ifBlank { detail }}"
+            else -> dedupeKey
         }
         val dispatcher = TamperAlertDispatcher(
             wasPosted = { TamperState.isTamperAlertPosted(applicationContext, it) },
@@ -84,7 +93,7 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
                     AlertDto(
                         childId = childId,
                         deviceId = deviceId,
-                        severity = "critical",
+                        severity = if (type == TYPE_SETUP_INCOMPLETE) "warning" else "critical",
                         category = "tamper",
                         title = TITLES[type] ?: "Protection was changed",
                         body = bodyFor(type, detail, guardWindow),
@@ -153,6 +162,8 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
         /** osra-security#29, second half: the accessibility service was unbound while paired. */
         const val TYPE_ACCESSIBILITY_OFF = "accessibility_off"
         const val TYPE_BLOCK_BYPASS = "block_bypass"
+        /** Issue #1174: paired phone has not finished required onboarding permissions yet. */
+        const val TYPE_SETUP_INCOMPLETE = "setup_incomplete_permissions"
         private const val KEY_TYPE = "type"
         private const val KEY_DETAIL = "detail"
         private const val KEY_EVENT_AT_MS = "event_at_ms"
@@ -170,6 +181,7 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             TYPE_ACCESSIBILITY_OFF to "Protection was disabled",
             TYPE_BLOCK_BYPASS to "A blocked app stayed on screen",
             TYPE_PIN_LOCKOUT to "Too many wrong parent-PIN tries",
+            TYPE_SETUP_INCOMPLETE to "Setup is not finished yet",
         )
         private val BODIES = mapOf(
             TYPE_ACCESSIBILITY_OFF to "The OSRA accessibility service was turned off on this device",
@@ -177,12 +189,15 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             TYPE_GUARD_TRIGGERED to "A protection-removal screen was opened on this device and the PIN was asked for.",
             TYPE_VPN_REVOKED to "OSRA's web filter (VPN) was disconnected on this device — another VPN app took over or it was turned off in Settings. Web filtering is off until it is reconnected.",
             TYPE_BLOCK_BYPASS to "A blocked app stayed visible in picture-in-picture or split screen after the block screen was shown twice.",
+            TYPE_SETUP_INCOMPLETE to "Some required permissions are still missing on this device. Protection will start once setup finishes.",
         )
 
         /** Issue #175: a block bypass also names the app and the layout, so the parent knows what stayed on screen. */
-        internal fun metadataFor(type: String, app: String, layout: String): Map<String, String> =
-            if (type == TYPE_BLOCK_BYPASS) mapOf("type" to type, "app" to app, "layout" to layout)
-            else mapOf("type" to type)
+        internal fun metadataFor(type: String, app: String, layout: String): Map<String, String> = when (type) {
+            TYPE_BLOCK_BYPASS -> mapOf("type" to type, "app" to app, "layout" to layout)
+            TYPE_SETUP_INCOMPLETE -> mapOf("type" to type, "missingGrants" to app)
+            else -> mapOf("type" to type)
+        }
 
         /**
          * #813 review (Claude): the dedupe key as a pure function, so a test can drive it. It used to be computed
@@ -206,6 +221,7 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             // #792 B1, landed with the #813 fold as Claude and Antigravity asked: a lockout key carries the instant
             // and the count, so the next lockout is a new key and a retry of this one is not.
             TYPE_PIN_LOCKOUT -> TamperAlertDedupe.pinLockoutKey(deviceId, eventAtMs, attemptCount)
+            TYPE_SETUP_INCOMPLETE -> deviceId?.takeIf { it.isNotBlank() }?.let { "setup_incomplete:$it" }
             else -> null
         }
 

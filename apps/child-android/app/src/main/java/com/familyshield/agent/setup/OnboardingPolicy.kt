@@ -34,7 +34,8 @@ object OnboardingPolicy {
         PRIVATE_DNS(R.string.onboarding_grant_private_dns_title, R.string.onboarding_grant_private_dns_why, true),
         BATTERY(R.string.onboarding_grant_battery_title, R.string.onboarding_grant_battery_why, false),
         USB_DEBUGGING(R.string.onboarding_grant_usb_title, R.string.onboarding_grant_usb_why, false),
-        NOTIFICATION_LISTENER(R.string.onboarding_grant_notification_title, R.string.onboarding_grant_notification_why, false),
+        // osra-security#78: required on the Full build (rows() omits it on Play via BuildConfig.CAPTURE_NOTIFICATIONS).
+        NOTIFICATION_LISTENER(R.string.onboarding_grant_notification_title, R.string.onboarding_grant_notification_why, true),
     }
 
     data class Row(val grant: Grant, val granted: Boolean)

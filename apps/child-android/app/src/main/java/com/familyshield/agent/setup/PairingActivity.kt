@@ -755,6 +755,10 @@ class PairingActivity : ComponentActivity() {
             error.visibility = View.GONE
             result.onSuccess { pairing ->
                 if (settings.savePairing(pairing.baseUrl, pairing.token, pairing.deviceId, pairing.childId, pairing.hmacSecret)) {
+                    val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
+                    if (OnboardingPolicy.canComplete(rows)) {
+                        SetupCompletionStore.markCompleted(this@PairingActivity, pairing.deviceId)
+                    }
                     startAgent()
                     // ADR-0010: the parent is holding the phone right now — this is the moment to set the PIN
                     // that gates every protection-removal action from here on.
@@ -911,6 +915,9 @@ class PairingActivity : ComponentActivity() {
     private fun showComplete() {
         val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
         if (!OnboardingPolicy.canComplete(rows)) { showChecklist(rows, firstRun = guidedFirstRun); return }
+        if (settings.isPairedSync()) {
+            SetupCompletionStore.markCompleted(this, settings.deviceIdSync())
+        }
         statusScreenShown = false
         activeGuidedStage = GuidedStage.COMPLETE
         if (ChildUxFlags.c05FirstRunEnabled) {
