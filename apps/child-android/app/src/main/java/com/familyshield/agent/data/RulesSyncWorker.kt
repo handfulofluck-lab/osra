@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.familyshield.agent.di.WorkerEntryPoint
+import com.familyshield.agent.network.dto.RuleSetDto
 import dagger.hilt.android.EntryPointAccessors
 
 /** Periodically refreshes the rule set from the backend (RuleRepository.refresh). */
@@ -26,8 +27,9 @@ class RulesSyncWorker(
             val rules = entryPoint.ruleRepository().refresh()
             // #1130: refresh deliberately returns null when a paired device could not fetch its first
             // rule set. That is retryable work, not success; WorkManager supplies the backoff.
-            if (rules == null && entryPoint.agentSettings().isPaired()) {
-                return Result.retry()
+            when (refreshOutcome(rules, entryPoint.agentSettings().isPaired())) {
+                RefreshOutcome.RETRY -> return Result.retry()
+                RefreshOutcome.SUCCESS -> Unit
             }
             // Plan 1.4: the sinkhole re-reads the web filter (domains, SafeSearch, YouTube mode) after every sync.
             if (com.familyshield.agent.vpn.VpnState.isEnabled(applicationContext)) {
@@ -42,5 +44,11 @@ class RulesSyncWorker(
     companion object {
         /** Unique work name for the periodic rules sync. */
         const val WORK_NAME: String = "rules_sync"
+
+        enum class RefreshOutcome { SUCCESS, RETRY }
+
+        /** The actual result branch, testable without the catch block's identical retry text. */
+        fun refreshOutcome(rules: RuleSetDto?, isPaired: Boolean): RefreshOutcome =
+            if (rules == null && isPaired) RefreshOutcome.RETRY else RefreshOutcome.SUCCESS
     }
 }

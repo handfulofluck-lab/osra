@@ -125,7 +125,7 @@ class LocationService : Service() {
         }
         isServiceRunning = true
         // #1151: a recreated foreground service must refresh rules immediately after process death.
-        WorkScheduler.syncNow(this)
+        WorkScheduler.syncNowAtStartup(this)
         startUpdates(STATIONARY_INTERVAL_MS)
         if (!flushLoopStarted) {
             flushLoopStarted = true

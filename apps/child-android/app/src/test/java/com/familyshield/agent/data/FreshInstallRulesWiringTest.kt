@@ -25,7 +25,11 @@ class FreshInstallRulesWiringTest {
         val scheduleAll = scheduler.substringAfter("fun scheduleAll(").substringBefore("fun syncNow(")
         assertTrue(
             "scheduleAll must include the immediate one-time sync as well as the periodic worker",
-            scheduleAll.contains("syncNow(context)"),
+            scheduleAll.contains("syncNowAtStartup(context)"),
+        )
+        assertTrue(
+            "startup requests coalesce to the latest one worker; push refreshes keep APPEND_OR_REPLACE",
+            scheduler.contains("ExistingWorkPolicy.REPLACE") && scheduler.contains("ExistingWorkPolicy.APPEND_OR_REPLACE"),
         )
     }
 
@@ -35,8 +39,8 @@ class FreshInstallRulesWiringTest {
         assertTrue("the refresh result must be inspected", doWork.contains("val rules = entryPoint.ruleRepository().refresh()"))
         assertTrue(
             "null rules on a paired device means retry, not a false success",
-            doWork.contains("if (rules == null && entryPoint.agentSettings().isPaired())") &&
-                doWork.contains("Result.retry()"),
+            doWork.contains("refreshOutcome(rules, entryPoint.agentSettings().isPaired())") &&
+                doWork.contains("RefreshOutcome.RETRY -> return Result.retry()"),
         )
     }
 
@@ -44,14 +48,14 @@ class FreshInstallRulesWiringTest {
     fun `pairing does not enqueue a duplicate now that every start syncs`() {
         assertFalse(
             "scheduleAll owns the post-pairing immediate sync too; a second call doubles the fetch",
-            pairing.contains("WorkScheduler.syncNow(this)"),
+            pairing.contains("WorkScheduler.syncNowAtStartup(this)"),
         )
     }
 
     @Test
     fun `package replacement enqueues the same durable rules refresh after the genuine-update gate`() {
         val gate = packageReplaced.indexOf("BroadcastGate.genuineSelfReplace(ownFacts(context)")
-        val sync = packageReplaced.indexOf("WorkScheduler.syncNow(context)")
+        val sync = packageReplaced.indexOf("WorkScheduler.syncNowAtStartup(context)")
         val post = packageReplaced.indexOf("api.postInternalAlert(")
         assertTrue("a genuine replacement schedules rules before the best-effort alert", gate in 0 until sync && sync < post)
     }
@@ -61,7 +65,7 @@ class FreshInstallRulesWiringTest {
         val onStart = locationService.substringAfter("override fun onStartCommand(").substringBefore("override fun onDestroy(")
         assertTrue(
             "service restart must not wait for boot, pairing, a push, or the six-hour tick",
-            onStart.contains("WorkScheduler.syncNow(this)"),
+            onStart.contains("WorkScheduler.syncNowAtStartup(this)"),
         )
     }
 
