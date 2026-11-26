@@ -4874,6 +4874,18 @@ abstract class AppLocalizations {
   /// **'Blocked site attempted'**
   String get alertTitleBlockedSite;
 
+  /// No description provided for @blockedSiteDomainLine.
+  ///
+  /// In en, this message translates to:
+  /// **'Site: {domain}'**
+  String blockedSiteDomainLine(String domain);
+
+  /// No description provided for @blockedSiteNamesNotCollected.
+  ///
+  /// In en, this message translates to:
+  /// **'Site names aren\'t collected yet, so only the block is shown.'**
+  String get blockedSiteNamesNotCollected;
+
   /// No description provided for @alertTitleDailyLimit.
   ///
   /// In en, this message translates to:

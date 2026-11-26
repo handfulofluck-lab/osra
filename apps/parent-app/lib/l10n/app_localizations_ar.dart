@@ -3099,6 +3099,15 @@ class AppLocalizationsAr extends AppLocalizations {
   String get alertTitleBlockedSite => 'تمت محاولة زيارة موقع محظور';
 
   @override
+  String blockedSiteDomainLine(String domain) {
+    return 'الموقع: $domain';
+  }
+
+  @override
+  String get blockedSiteNamesNotCollected =>
+      'لا تُجمع أسماء المواقع حاليًا، لذا يظهر الحظر فقط.';
+
+  @override
   String get alertTitleDailyLimit => 'تم بلوغ الحد اليومي';
 
   @override

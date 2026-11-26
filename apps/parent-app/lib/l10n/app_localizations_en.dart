@@ -2914,6 +2914,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get alertTitleBlockedSite => 'Blocked site attempted';
 
   @override
+  String blockedSiteDomainLine(String domain) {
+    return 'Site: $domain';
+  }
+
+  @override
+  String get blockedSiteNamesNotCollected =>
+      'Site names aren\'t collected yet, so only the block is shown.';
+
+  @override
   String get alertTitleDailyLimit => 'Daily limit reached';
 
   @override
