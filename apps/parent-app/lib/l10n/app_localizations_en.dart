@@ -3731,4 +3731,40 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get alertsOffTurnOnAction => 'Turn on alerts';
+
+  @override
+  String timeRequestTitle(String child, int minutes) {
+    return '$child asked for $minutes more minutes today';
+  }
+
+  @override
+  String timeRequestGrant(String minutes) {
+    return '+$minutes min';
+  }
+
+  @override
+  String get timeRequestDecline => 'Not today';
+
+  @override
+  String timeRequestGrantedBy(String actor, int minutes) {
+    return '$actor already gave $minutes minutes today';
+  }
+
+  @override
+  String timeRequestGrantedByYou(int minutes) {
+    return 'You already gave $minutes minutes today';
+  }
+
+  @override
+  String timeRequestDeclinedBy(String actor) {
+    return '$actor already declined this request';
+  }
+
+  @override
+  String get timeRequestDeclinedByYou => 'You already declined this request';
+
+  @override
+  String timeRequestDecidedAt(String time) {
+    return 'Decided $time';
+  }
 }

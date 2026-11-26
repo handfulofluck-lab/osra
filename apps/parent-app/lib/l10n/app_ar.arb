@@ -1197,5 +1197,13 @@
   "accessRequestAllowLabel": "السماح باستخدام {app}",
   "accessRequestKeepBlockedLabel": "إبقاء {app} محظورًا",
   "alertsOffBannerBody": "التنبيهات متوقفة، فلن يصلك أي تنبيه عاجل.",
-  "alertsOffTurnOnAction": "تفعيل التنبيهات"
+  "alertsOffTurnOnAction": "تفعيل التنبيهات",
+  "timeRequestTitle": "طلب من {child}: {minutes, plural, =1{دقيقة إضافية واحدة} =2{دقيقتان إضافيتان} few{{minutes} دقائق إضافية} many{{minutes} دقيقة إضافية} other{{minutes} دقيقة إضافية}} اليوم",
+  "timeRequestGrant": "+{minutes} دقيقة",
+  "timeRequestDecline": "ليس اليوم",
+  "timeRequestGrantedBy": "سبق منح وقت إضافي اليوم بقرار من {actor}: {minutes, plural, =1{دقيقة واحدة} =2{دقيقتان} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}",
+  "timeRequestGrantedByYou": "سبق منح وقت إضافي اليوم بقرارك: {minutes, plural, =1{دقيقة واحدة} =2{دقيقتان} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}",
+  "timeRequestDeclinedBy": "سبق رفض هذا الطلب بقرار من {actor}",
+  "timeRequestDeclinedByYou": "سبق رفض هذا الطلب بقرارك",
+  "timeRequestDecidedAt": "وقت القرار: {time}"
 }

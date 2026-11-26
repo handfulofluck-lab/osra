@@ -1993,5 +1993,19 @@
   "accessRequestKeepBlockedLabel": "Keep {app} blocked",
   "@accessRequestKeepBlockedLabel": { "placeholders": { "app": { "type": "String" } } },
   "alertsOffBannerBody": "Alerts are off. You won't hear about urgent messages.",
-  "alertsOffTurnOnAction": "Turn on alerts"
+  "alertsOffTurnOnAction": "Turn on alerts",
+  "timeRequestTitle": "{child} asked for {minutes} more minutes today",
+  "@timeRequestTitle": { "placeholders": { "child": { "type": "String" }, "minutes": { "type": "int" } } },
+  "timeRequestGrant": "+{minutes} min",
+  "@timeRequestGrant": { "placeholders": { "minutes": { "type": "String" } } },
+  "timeRequestDecline": "Not today",
+  "timeRequestGrantedBy": "{actor} already gave {minutes} minutes today",
+  "@timeRequestGrantedBy": { "placeholders": { "actor": { "type": "String" }, "minutes": { "type": "int" } } },
+  "timeRequestGrantedByYou": "You already gave {minutes} minutes today",
+  "@timeRequestGrantedByYou": { "placeholders": { "minutes": { "type": "int" } } },
+  "timeRequestDeclinedBy": "{actor} already declined this request",
+  "@timeRequestDeclinedBy": { "placeholders": { "actor": { "type": "String" } } },
+  "timeRequestDeclinedByYou": "You already declined this request",
+  "timeRequestDecidedAt": "Decided {time}",
+  "@timeRequestDecidedAt": { "placeholders": { "time": { "type": "String" } } }
 }
