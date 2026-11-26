@@ -3755,4 +3755,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get p15IphoneNotYet => 'Not yet available on iPhone';
+
+  @override
+  String get blockedAttemptsTitle => 'Blocked attempts';
+
+  @override
+  String blockedAttemptsShowingOf(String shown, String total) {
+    return 'Showing $shown of $total';
+  }
 }

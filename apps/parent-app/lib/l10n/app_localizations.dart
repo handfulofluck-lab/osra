@@ -6063,6 +6063,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Not yet available on iPhone'**
   String get p15IphoneNotYet;
+
+  /// No description provided for @blockedAttemptsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Blocked attempts'**
+  String get blockedAttemptsTitle;
+
+  /// No description provided for @blockedAttemptsShowingOf.
+  ///
+  /// In en, this message translates to:
+  /// **'Showing {shown} of {total}'**
+  String blockedAttemptsShowingOf(String shown, String total);
 }
 
 class _AppLocalizationsDelegate

@@ -1206,5 +1206,8 @@
   "@p15HelpBlockGuideBody": { "placeholders": { "child": { "type": "String" }, "app": { "type": "String" }, "contact": { "type": "String" } } },
   "p15AdjustLimits": "تعديل وقت الشاشة ووقت النوم",
   "p15ReviewAppRules": "مراجعة قواعد التطبيقات",
-  "p15IphoneNotYet": "غير متاح بعد على آيفون"
+  "p15IphoneNotYet": "غير متاح بعد على آيفون",
+  "blockedAttemptsTitle": "المحاولات المحظورة",
+  "blockedAttemptsShowingOf": "عرض {shown} من {total}",
+  "@blockedAttemptsShowingOf": { "placeholders": { "shown": { "type": "String" }, "total": { "type": "String" } } }
 }

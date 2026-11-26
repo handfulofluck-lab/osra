@@ -3989,4 +3989,12 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get p15IphoneNotYet => 'غير متاح بعد على آيفون';
+
+  @override
+  String get blockedAttemptsTitle => 'المحاولات المحظورة';
+
+  @override
+  String blockedAttemptsShowingOf(String shown, String total) {
+    return 'عرض $shown من $total';
+  }
 }

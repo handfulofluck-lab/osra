@@ -2002,5 +2002,8 @@
   "@p15HelpBlockGuideBody": { "placeholders": { "child": { "type": "String" }, "app": { "type": "String" }, "contact": { "type": "String" } } },
   "p15AdjustLimits": "Adjust screen time & bedtime",
   "p15ReviewAppRules": "Review app rules",
-  "p15IphoneNotYet": "Not yet available on iPhone"
+  "p15IphoneNotYet": "Not yet available on iPhone",
+  "blockedAttemptsTitle": "Blocked attempts",
+  "blockedAttemptsShowingOf": "Showing {shown} of {total}",
+  "@blockedAttemptsShowingOf": { "placeholders": { "shown": { "type": "String" }, "total": { "type": "String" } } }
 }
