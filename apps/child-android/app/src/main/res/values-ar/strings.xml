@@ -119,6 +119,27 @@
     <string name="setup_welcome_body">بضع خطوات ليساعد والدك أو والدتك في الحفاظ على أمان هذا الهاتف.</string>
     <string name="setup_welcome_start">البدء</string>
 
+    <!-- C-05 (#1179) & #1174: transparent first-run welcome, permissions-before-pairing, agreement last. -->
+    <string name="c05_step_badge_1">الخطوة 1 من 3</string>
+    <string name="c05_step_badge_3">الخطوة 3 من 3</string>
+    <string name="c05_checks_title">ما الذي يتابعه تطبيق أسرة</string>
+    <string name="c05_checks_badge">واضح دائمًا</string>
+    <string name="c05_checks_screen_time_title">وقت شاشتك وروتينك اليومي</string>
+    <string name="c05_checks_screen_time_subtitle">مثل الحد اليومي ووقت النوم</string>
+    <string name="c05_checks_location_title">موقع هاتفك</string>
+    <string name="c05_checks_location_subtitle">ليتمكّن أهلك من الاطمئنان عليك</string>
+    <string name="c05_checks_messages_title">الرسائل الخطرة فقط</string>
+    <string name="c05_checks_messages_subtitle">لا يقرأ أهلك كل محادثاتك أبدًا</string>
+    <string name="c05_roadmap_heading">الخطوات التالية</string>
+    <string name="c05_roadmap_step_1">1 · السماح ببعض الأذونات خطوةً بخطوة، مع شرح سبب كل إذن.</string>
+    <string name="c05_roadmap_step_2">2 · ربط هاتفك برمز من هاتف أهلك.</string>
+    <string name="c05_roadmap_step_3">3 · قراءة قواعد عائلتك معًا.</string>
+    <string name="c05_welcome_footer_hint">يمكن لأهلك مساعدتك في الضغط على «سماح».</string>
+    <string name="c05_continue_to_pairing">متابعة إلى الإقران</string>
+    <string name="c05_agreement_title">قواعد عائلتك</string>
+    <string name="c05_agreement_body">اقرأا هذه القواعد معًا قبل فتح هاتفك.</string>
+    <string name="c05_agreement_finish">فتح الشاشة الرئيسية</string>
+
     <string name="setup_protect_title">احمِ هذا الجهاز</string>
     <string name="setup_protect_body">في الشاشة التالية، اضغط «تفعيل» ليصبح تطبيق أسرة للأطفال مسؤول الجهاز. بذلك لا يمكن إلغاء تثبيته دون رمز PIN للوالدين، ويمكن قفل الجهاز عن بُعد من تطبيق الوالدين. وبدونه تقتصر الحماية على التنبيه.</string>
     <string name="setup_activate_admin">فعّل مسؤول الجهاز</string>

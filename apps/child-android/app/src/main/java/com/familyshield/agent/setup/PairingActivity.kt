@@ -28,13 +28,19 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.familyshield.agent.ui.pairing.ChecklistCopy
 import com.familyshield.agent.ui.pairing.ChecklistRowUi
+import com.familyshield.agent.ui.pairing.FamilyAgreementCopy
 import com.familyshield.agent.ui.pairing.OnboardingChecklistScreen
+import com.familyshield.agent.ui.pairing.OnboardingFamilyAgreementScreen
 import com.familyshield.agent.ui.pairing.OnboardingLoadingScreen
 import com.familyshield.agent.ui.pairing.OnboardingPermissionStepScreen
 import com.familyshield.agent.ui.pairing.OnboardingWelcomeScreen
 import com.familyshield.agent.ui.pairing.PermissionStepCopy
 import com.familyshield.agent.ui.pairing.RestrictedSettingsGuideCopy
+import com.familyshield.agent.ui.pairing.RoadmapCardCopy
+import com.familyshield.agent.ui.pairing.TransparencyCardCopy
+import com.familyshield.agent.ui.pairing.TransparencyItemCopy
 import com.familyshield.agent.ui.pairing.WelcomeCopy
+import com.familyshield.agent.ui.theme.ChildUxFlags
 import com.familyshield.agent.ui.theme.OsraTheme
 import com.familyshield.agent.commands.CommandPollWorker
 import com.familyshield.agent.comms.CommsCapture
@@ -268,12 +274,18 @@ class PairingActivity : ComponentActivity() {
         onBackPressedDispatcher.addCallback(this, guidedBackCallback)
         // NOTE: reading the token (not the cache) — a fresh process has empty caches.
         lifecycleScope.launch {
-            when {
-                settings.isPaired() ->
-                    renderStage(SetupResumePolicy.resolvePairedStage(pinStore.isConfigured(), activeGuidedStage))
-                welcomeCompleted || restoredScan != null || typedServer.isNotEmpty() || typedCode.isNotEmpty() || typedName.isNotEmpty() ->
-                    showForm(typedServer, typedCode, typedName, scanned = restoredScan)
-                else -> showWelcome(typedServer, typedCode, typedName, scanned = restoredScan)
+            if (settings.isPaired()) {
+                renderStage(SetupResumePolicy.resolvePairedStage(pinStore.isConfigured(), activeGuidedStage))
+            } else {
+                val hasTypedOrScanned = restoredScan != null ||
+                    typedServer.isNotEmpty() || typedCode.isNotEmpty() || typedName.isNotEmpty()
+                renderUnpairedStage(
+                    prefillServer = typedServer,
+                    prefillCode = typedCode,
+                    prefillName = typedName,
+                    scanned = restoredScan,
+                    hasTypedOrScanned = hasTypedOrScanned,
+                )
             }
         }
     }
@@ -316,7 +328,9 @@ class PairingActivity : ComponentActivity() {
                         forceChecklistView = false
                         showChecklist(rows, firstRun = guidedFirstRun)
                     }
-                    BackAction.TO_PROTECTION_SETUP -> showProtectionSetup()
+                    BackAction.TO_PROTECTION_SETUP -> {
+                        if (settings.isPairedSync()) showProtectionSetup() else showChecklist(rows, firstRun = true)
+                    }
                     BackAction.TO_STATUS -> finishGuidedSetupAndShowStatus()
                     BackAction.SYSTEM_DEFAULT -> {
                         isEnabled = false
@@ -405,6 +419,14 @@ class PairingActivity : ComponentActivity() {
                 // used to leave this screen claiming admin and web filter until the activity was
                 // recreated. Only the status screen is replaced: a half-typed pairing form stays.
                 showForm()
+            } else if (
+                activeGuidedStage == GuidedStage.PERMISSION_STEP ||
+                activeGuidedStage == GuidedStage.CHECKLIST ||
+                activeGuidedStage == GuidedStage.STALE_KNOX_ADMIN
+            ) {
+                // Issue #1174: re-read live grants on every resume during pre-pair onboarding so the
+                // progress count is never stale and setup advances to pairing as soon as ready.
+                onPermissionOrActionReturned()
             }
         }
     }
@@ -412,7 +434,12 @@ class PairingActivity : ComponentActivity() {
     private fun onPermissionOrActionReturned(staleKnox: Boolean = false) {
         lifecycleScope.launch {
             if (!settings.isPaired()) {
-                showComplete()
+                if (staleKnox) {
+                    showStaleKnoxAdmin()
+                    return@launch
+                }
+                welcomeCompleted = true
+                renderUnpairedStage()
                 return@launch
             }
             val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
@@ -425,6 +452,37 @@ class PairingActivity : ComponentActivity() {
                 forceChecklist = forceChecklistView,
             )
             renderStage(next)
+        }
+    }
+
+    private fun renderUnpairedStage(
+        prefillServer: String = "",
+        prefillCode: String = "",
+        prefillName: String = "",
+        scanned: PairQrPayload? = null,
+        hasTypedOrScanned: Boolean = scanned != null ||
+            prefillServer.isNotEmpty() || prefillCode.isNotEmpty() || prefillName.isNotEmpty(),
+    ) {
+        val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
+        when (
+            FirstRunOrderPolicy.resolveUnpairedStage(
+                welcomeCompleted = welcomeCompleted,
+                requiredGrantsReady = OnboardingPolicy.canComplete(rows),
+                forceChecklist = forceChecklistView,
+                hasTypedOrScannedPairing = hasTypedOrScanned,
+                c05Enabled = ChildUxFlags.c05FirstRunEnabled,
+            )
+        ) {
+            PrePairStage.WELCOME -> showWelcome(prefillServer, prefillCode, prefillName, scanned = scanned)
+            PrePairStage.PRE_PAIR_PERMISSIONS -> {
+                forceChecklistView = false
+                showChecklist(rows, firstRun = true)
+            }
+            PrePairStage.PRE_PAIR_CHECKLIST -> {
+                forceChecklistView = true
+                showChecklist(rows, firstRun = true)
+            }
+            PrePairStage.PAIRING_FORM -> showForm(prefillServer, prefillCode, prefillName, scanned = scanned)
         }
     }
 
@@ -456,6 +514,25 @@ class PairingActivity : ComponentActivity() {
 
     // ---- states ----
 
+    private fun buildTransparencyCard(): TransparencyCardCopy = TransparencyCardCopy(
+        title = getString(R.string.c05_checks_title),
+        badge = getString(R.string.c05_checks_badge),
+        items = listOf(
+            TransparencyItemCopy(
+                title = getString(R.string.c05_checks_screen_time_title),
+                subtitle = getString(R.string.c05_checks_screen_time_subtitle),
+            ),
+            TransparencyItemCopy(
+                title = getString(R.string.c05_checks_location_title),
+                subtitle = getString(R.string.c05_checks_location_subtitle),
+            ),
+            TransparencyItemCopy(
+                title = getString(R.string.c05_checks_messages_title),
+                subtitle = getString(R.string.c05_checks_messages_subtitle),
+            ),
+        ),
+    )
+
     private fun showWelcome(
         prefillServer: String = "",
         prefillCode: String = "",
@@ -466,6 +543,7 @@ class PairingActivity : ComponentActivity() {
         activeGuidedStage = null
         skippedPermissionSteps.clear()
         val brand = "${getString(R.string.app_name)} · ${getString(R.string.app_name_ar)}"
+        val c05 = ChildUxFlags.c05FirstRunEnabled
         replaceWithCompose {
             OnboardingWelcomeScreen(
                 copy = WelcomeCopy(
@@ -473,10 +551,30 @@ class PairingActivity : ComponentActivity() {
                     title = getString(R.string.setup_welcome_title),
                     body = getString(R.string.setup_welcome_body),
                     start = getString(R.string.setup_welcome_start),
+                    stepBadge = if (c05) getString(R.string.c05_step_badge_1) else null,
+                    transparencyCard = if (c05) buildTransparencyCard() else null,
+                    roadmapCard = if (c05) {
+                        RoadmapCardCopy(
+                            heading = getString(R.string.c05_roadmap_heading),
+                            lines = listOf(
+                                getString(R.string.c05_roadmap_step_1),
+                                getString(R.string.c05_roadmap_step_2),
+                                getString(R.string.c05_roadmap_step_3),
+                            ),
+                        )
+                    } else {
+                        null
+                    },
+                    footerHint = if (c05) getString(R.string.c05_welcome_footer_hint) else null,
                 ),
                 onStart = {
                     welcomeCompleted = true
-                    showForm(prefillServer, prefillCode, prefillName, scanned = scanned)
+                    renderUnpairedStage(
+                        prefillServer = prefillServer,
+                        prefillCode = prefillCode,
+                        prefillName = prefillName,
+                        scanned = scanned,
+                    )
                 },
             )
         }
@@ -776,7 +874,7 @@ class PairingActivity : ComponentActivity() {
                 Button(this@PairingActivity).apply {
                     text = getString(R.string.setup_continue_without)
                     setOnClickListener {
-                        showComplete()
+                        if (settings.isPairedSync()) showComplete() else showForm()
                     }
                 },
             )
@@ -815,6 +913,37 @@ class PairingActivity : ComponentActivity() {
         if (!OnboardingPolicy.canComplete(rows)) { showChecklist(rows, firstRun = guidedFirstRun); return }
         statusScreenShown = false
         activeGuidedStage = GuidedStage.COMPLETE
+        if (ChildUxFlags.c05FirstRunEnabled) {
+            val brand = "${getString(R.string.app_name)} · ${getString(R.string.app_name_ar)}"
+            val noticeRes = OnboardingPolicy.captureNoticeRes(
+                BuildConfig.CAPTURE_NOTIFICATIONS,
+                BuildConfig.CAPTURE_CALL_SMS,
+            )
+            val copy = FamilyAgreementCopy(
+                brandLabel = brand,
+                stepBadge = getString(R.string.c05_step_badge_3),
+                title = getString(R.string.c05_agreement_title),
+                body = getString(R.string.c05_agreement_body),
+                progressLine = progressLine(rows),
+                transparencyCard = buildTransparencyCard(),
+                captureNotice = noticeRes?.let { getString(it) },
+                optionalCallSmsPrompt = if (BuildConfig.CAPTURE_CALL_SMS) getString(R.string.setup_call_sms_invite) else null,
+                optionalCallSmsButton = if (BuildConfig.CAPTURE_CALL_SMS) getString(R.string.setup_grant_call_sms) else null,
+                finishButton = getString(R.string.c05_agreement_finish),
+            )
+            replaceWithCompose {
+                OnboardingFamilyAgreementScreen(
+                    copy = copy,
+                    onGrantCallSms = if (BuildConfig.CAPTURE_CALL_SMS) {
+                        { commsPermissionLauncher.launch(COMMS_PERMISSIONS) }
+                    } else {
+                        null
+                    },
+                    onFinish = { finishGuidedSetupAndShowStatus() },
+                )
+            }
+            return
+        }
         replaceWith {
             addView(label(getString(R.string.setup_complete_title)))
             addView(label(progressLine(rows)).apply { setTextColor(0xFF2E7D32.toInt()) })
@@ -885,12 +1014,16 @@ class PairingActivity : ComponentActivity() {
             },
             footerLabel = when {
                 !firstRun -> getString(R.string.setup_back)
-                OnboardingPolicy.canComplete(rows) -> getString(R.string.setup_done)
+                OnboardingPolicy.canComplete(rows) -> getString(
+                    if (settings.isPairedSync()) R.string.setup_done else R.string.c05_continue_to_pairing,
+                )
                 else -> null
             },
             onFooterClick = when {
                 !firstRun -> { { finishGuidedSetupAndShowStatus() } }
-                OnboardingPolicy.canComplete(rows) -> { { showComplete() } }
+                OnboardingPolicy.canComplete(rows) -> {
+                    { if (settings.isPairedSync()) showComplete() else showForm() }
+                }
                 else -> null
             },
         )
@@ -966,6 +1099,9 @@ class PairingActivity : ComponentActivity() {
                         skippedPermissionSteps.add(g)
                         val remaining = nextUngrantedPermissionStep(rows)
                         if (remaining != null) showPermissionStep(rows, remaining, firstRun)
+                        else if (!settings.isPairedSync()) {
+                            if (OnboardingPolicy.canComplete(rows)) showForm() else showChecklist(rows, firstRun)
+                        }
                         else if (firstRun) showComplete()
                         else finishGuidedSetupAndShowStatus()
                     }

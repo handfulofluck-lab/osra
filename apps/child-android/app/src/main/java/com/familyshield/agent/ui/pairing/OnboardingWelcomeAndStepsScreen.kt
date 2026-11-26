@@ -42,7 +42,33 @@ import com.familyshield.agent.ui.theme.OsraTheme
 import com.familyshield.agent.ui.theme.OsraTokens
 
 /**
- * Words passed into [OnboardingWelcomeScreen] from Android resources (`setup_welcome_*`),
+ * C-05 (#1179): Single disclosure row inside the "What OSRA checks" transparency card.
+ */
+data class TransparencyItemCopy(
+    val title: String,
+    val subtitle: String,
+)
+
+/**
+ * C-05 (#1179): "What OSRA checks" + "Never hidden" transparency card shown on welcome and the
+ * final family agreement screen.
+ */
+data class TransparencyCardCopy(
+    val title: String,
+    val badge: String,
+    val items: List<TransparencyItemCopy>,
+)
+
+/**
+ * C-05 (#1179): Compact upcoming-steps roadmap shown on the welcome screen.
+ */
+data class RoadmapCardCopy(
+    val heading: String,
+    val lines: List<String>,
+)
+
+/**
+ * Words passed into [OnboardingWelcomeScreen] from Android resources (`setup_welcome_*`, `c05_*`),
  * so the composable holds no hardcoded strings and renders EN/AR identically.
  */
 data class WelcomeCopy(
@@ -50,6 +76,27 @@ data class WelcomeCopy(
     val title: String,
     val body: String,
     val start: String,
+    val stepBadge: String? = null,
+    val transparencyCard: TransparencyCardCopy? = null,
+    val roadmapCard: RoadmapCardCopy? = null,
+    val footerHint: String? = null,
+)
+
+/**
+ * C-05 (#1179, Pick 0 — agreement last): Final family rules agreement card rendered after pairing
+ * and required permissions are complete, right before opening the child home screen.
+ */
+data class FamilyAgreementCopy(
+    val brandLabel: String,
+    val stepBadge: String,
+    val title: String,
+    val body: String,
+    val progressLine: String,
+    val transparencyCard: TransparencyCardCopy,
+    val captureNotice: String? = null,
+    val optionalCallSmsPrompt: String? = null,
+    val optionalCallSmsButton: String? = null,
+    val finishButton: String,
 )
 
 /**
@@ -100,18 +147,35 @@ fun OnboardingWelcomeScreen(
             .background(palette.page)
             .systemBarsPadding()
             .verticalScroll(scroll)
-            .padding(horizontal = OsraTokens.spaces.xl, vertical = OsraTokens.spaces.xl),
+            .padding(horizontal = OsraTokens.spaces.xl, vertical = OsraTokens.spaces.lg),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = OsraTokens.spaces.xl),
+                .padding(top = OsraTokens.spaces.md),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            OsraBrandMark(brandLabel = copy.brandLabel)
-            Spacer(modifier = Modifier.height(OsraTokens.spaces.xl))
+            OsraBrandMark(brandLabel = copy.brandLabel, compact = copy.transparencyCard != null)
+            copy.stepBadge?.let { badge ->
+                Spacer(modifier = Modifier.height(OsraTokens.spaces.sm))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(radii.bar))
+                        .background(palette.tint)
+                        .padding(horizontal = OsraTokens.spaces.md, vertical = OsraTokens.spaces.xs),
+                ) {
+                    Text(
+                        text = badge,
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            textDirection = TextDirection.Content,
+                        ),
+                        color = palette.primary,
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(OsraTokens.spaces.md))
             Text(
                 text = copy.title,
                 style = MaterialTheme.typography.headlineMedium.copy(
@@ -123,7 +187,7 @@ fun OnboardingWelcomeScreen(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth(),
             )
-            Spacer(modifier = Modifier.height(OsraTokens.spaces.md))
+            Spacer(modifier = Modifier.height(OsraTokens.spaces.sm))
             Text(
                 text = copy.body,
                 style = MaterialTheme.typography.bodyLarge.copy(
@@ -133,29 +197,89 @@ fun OnboardingWelcomeScreen(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
             )
+            copy.transparencyCard?.let { card ->
+                Spacer(modifier = Modifier.height(OsraTokens.spaces.lg))
+                OsraTransparencyCard(card = card)
+            }
+            copy.roadmapCard?.let { roadmap ->
+                Spacer(modifier = Modifier.height(OsraTokens.spaces.md))
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(
+                            width = 1.dp,
+                            color = palette.cardBorder,
+                            shape = RoundedCornerShape(radii.card),
+                        ),
+                    color = palette.card,
+                    shape = RoundedCornerShape(radii.card),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(OsraTokens.spaces.md),
+                        verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.xs),
+                    ) {
+                        Text(
+                            text = roadmap.heading,
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                textDirection = TextDirection.Content,
+                            ),
+                            color = palette.muted,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        roadmap.lines.forEach { line ->
+                            Text(
+                                text = line,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    textDirection = TextDirection.Content,
+                                ),
+                                color = palette.ink,
+                            )
+                        }
+                    }
+                }
+            }
         }
 
-        Spacer(modifier = Modifier.height(OsraTokens.spaces.xl))
-
-        Button(
-            onClick = onStart,
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .defaultMinSize(minHeight = OsraTokens.sizes.primaryButtonHeight),
-            shape = RoundedCornerShape(radii.control),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = palette.primary,
-                contentColor = palette.onPrimary,
-            ),
+                .padding(top = OsraTokens.spaces.lg),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.sm),
         ) {
-            Text(
-                text = copy.start,
-                style = MaterialTheme.typography.labelLarge.copy(
-                    textDirection = TextDirection.Content,
+            copy.footerHint?.let { hint ->
+                Text(
+                    text = hint,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        textDirection = TextDirection.Content,
+                    ),
+                    color = palette.muted,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Button(
+                onClick = onStart,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = OsraTokens.sizes.primaryButtonHeight),
+                shape = RoundedCornerShape(radii.control),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = palette.primary,
+                    contentColor = palette.onPrimary,
                 ),
-                maxLines = 2,
-                textAlign = TextAlign.Center,
-            )
+            ) {
+                Text(
+                    text = copy.start,
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        textDirection = TextDirection.Content,
+                    ),
+                    maxLines = 2,
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
     }
 }
@@ -274,23 +398,26 @@ fun OnboardingPermissionStepScreen(
                                     ),
                                     color = palette.ink,
                                 )
-                            }
-                            if (onOpenAppInfo != null) {
-                                Spacer(modifier = Modifier.height(OsraTokens.spaces.xs))
-                                OutlinedButton(
-                                    onClick = onOpenAppInfo,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .defaultMinSize(minHeight = OsraTokens.sizes.primaryButtonHeight),
-                                    shape = RoundedCornerShape(radii.control),
-                                ) {
-                                    Text(
-                                        text = guide.openAppInfoButton,
-                                        style = MaterialTheme.typography.labelLarge.copy(
-                                            textDirection = TextDirection.Content,
-                                        ),
-                                        textAlign = TextAlign.Center,
-                                    )
+                                // U74 fix 1: place "Open app info" straight after step 1 so the parent
+                                // can jump to App info right after tapping OK on "Restricted setting".
+                                if (index == 0 && onOpenAppInfo != null) {
+                                    Spacer(modifier = Modifier.height(OsraTokens.spaces.xs))
+                                    OutlinedButton(
+                                        onClick = onOpenAppInfo,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .defaultMinSize(minHeight = OsraTokens.sizes.primaryButtonHeight),
+                                        shape = RoundedCornerShape(radii.control),
+                                    ) {
+                                        Text(
+                                            text = guide.openAppInfoButton,
+                                            style = MaterialTheme.typography.labelLarge.copy(
+                                                textDirection = TextDirection.Content,
+                                            ),
+                                            textAlign = TextAlign.Center,
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(OsraTokens.spaces.xs))
                                 }
                             }
                             Text(
@@ -643,6 +770,235 @@ fun OnboardingChecklistScreen(
                     textAlign = TextAlign.Center,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun OsraTransparencyCard(
+    card: TransparencyCardCopy,
+    modifier: Modifier = Modifier,
+) {
+    val palette = OsraTheme.LocalOsraPalette.current
+    val radii = OsraTheme.LocalOsraRadii.current
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = palette.cardBorder,
+                shape = RoundedCornerShape(radii.card),
+            ),
+        color = palette.tint,
+        shape = RoundedCornerShape(radii.card),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(OsraTokens.spaces.md),
+            verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.sm),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = card.title,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        textDirection = TextDirection.Content,
+                    ),
+                    color = palette.ink,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = card.badge,
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        textDirection = TextDirection.Content,
+                    ),
+                    color = palette.primary,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = OsraTokens.spaces.sm),
+                )
+            }
+            card.items.forEach { item ->
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.xxs),
+                ) {
+                    Text(
+                        text = item.title,
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            textDirection = TextDirection.Content,
+                        ),
+                        color = palette.ink,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        text = item.subtitle,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            textDirection = TextDirection.Content,
+                        ),
+                        color = palette.muted,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * C-05 (#1179, Pick 0 — agreement last): Final family rules agreement screen shown after pairing
+ * and required grants are complete, right before opening the child home screen.
+ */
+@Composable
+fun OnboardingFamilyAgreementScreen(
+    copy: FamilyAgreementCopy,
+    onGrantCallSms: (() -> Unit)? = null,
+    onFinish: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val palette = OsraTheme.LocalOsraPalette.current
+    val radii = OsraTheme.LocalOsraRadii.current
+    val scroll = rememberScrollState()
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(palette.page)
+            .systemBarsPadding()
+            .padding(horizontal = OsraTokens.spaces.xl, vertical = OsraTokens.spaces.lg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scroll),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.md),
+        ) {
+            OsraBrandMark(brandLabel = copy.brandLabel, compact = true)
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(radii.bar))
+                    .background(palette.tint)
+                    .padding(horizontal = OsraTokens.spaces.md, vertical = OsraTokens.spaces.xs),
+            ) {
+                Text(
+                    text = copy.stepBadge,
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        textDirection = TextDirection.Content,
+                    ),
+                    color = palette.primary,
+                )
+            }
+            Text(
+                text = copy.title,
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    textDirection = TextDirection.Content,
+                ),
+                color = palette.ink,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                text = copy.body,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    textDirection = TextDirection.Content,
+                ),
+                color = palette.muted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                text = copy.progressLine,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    textDirection = TextDirection.Content,
+                ),
+                color = palette.ok,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OsraTransparencyCard(card = copy.transparencyCard)
+            copy.captureNotice?.let { notice ->
+                Text(
+                    text = notice,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        textDirection = TextDirection.Content,
+                    ),
+                    color = palette.muted,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (copy.optionalCallSmsPrompt != null && copy.optionalCallSmsButton != null && onGrantCallSms != null) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(
+                            width = 1.dp,
+                            color = palette.cardBorder,
+                            shape = RoundedCornerShape(radii.card),
+                        ),
+                    color = palette.card,
+                    shape = RoundedCornerShape(radii.card),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(OsraTokens.spaces.md),
+                        verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.sm),
+                    ) {
+                        Text(
+                            text = copy.optionalCallSmsPrompt,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                textDirection = TextDirection.Content,
+                            ),
+                            color = palette.muted,
+                        )
+                        OutlinedButton(
+                            onClick = onGrantCallSms,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = OsraTokens.sizes.primaryButtonHeight),
+                            shape = RoundedCornerShape(radii.control),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.ink),
+                        ) {
+                            Text(
+                                text = copy.optionalCallSmsButton,
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    textDirection = TextDirection.Content,
+                                ),
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(OsraTokens.spaces.md))
+
+        Button(
+            onClick = onFinish,
+            modifier = Modifier
+                .fillMaxWidth()
+                .defaultMinSize(minHeight = OsraTokens.sizes.primaryButtonHeight),
+            shape = RoundedCornerShape(radii.control),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = palette.primary,
+                contentColor = palette.onPrimary,
+            ),
+        ) {
+            Text(
+                text = copy.finishButton,
+                style = MaterialTheme.typography.labelLarge.copy(
+                    textDirection = TextDirection.Content,
+                ),
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }

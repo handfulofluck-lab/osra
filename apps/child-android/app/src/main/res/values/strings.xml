@@ -108,6 +108,27 @@
     <string name="setup_welcome_body">A few steps so your parent can help keep this phone safe.</string>
     <string name="setup_welcome_start">Start</string>
 
+    <!-- C-05 (#1179) & #1174: transparent first-run welcome, permissions-before-pairing, agreement last. -->
+    <string name="c05_step_badge_1">Step 1 of 3</string>
+    <string name="c05_step_badge_3">Step 3 of 3</string>
+    <string name="c05_checks_title">What OSRA checks</string>
+    <string name="c05_checks_badge">Never hidden</string>
+    <string name="c05_checks_screen_time_title">Your screen time and routines</string>
+    <string name="c05_checks_screen_time_subtitle">Like your daily limit and bedtime</string>
+    <string name="c05_checks_location_title">Where your phone is</string>
+    <string name="c05_checks_location_subtitle">So a parent can find you</string>
+    <string name="c05_checks_messages_title">Risky messages only</string>
+    <string name="c05_checks_messages_subtitle">Parents never read all your chats</string>
+    <string name="c05_roadmap_heading">NEXT</string>
+    <string name="c05_roadmap_step_1">1 · Allow a few things, one at a time. Each one says why.</string>
+    <string name="c05_roadmap_step_2">2 · Connect your phone with your parent\'s code.</string>
+    <string name="c05_roadmap_step_3">3 · Read your family rules together.</string>
+    <string name="c05_welcome_footer_hint">A parent can help you tap Allow.</string>
+    <string name="c05_continue_to_pairing">Continue to pairing</string>
+    <string name="c05_agreement_title">Your family rules</string>
+    <string name="c05_agreement_body">Read these together before opening your phone.</string>
+    <string name="c05_agreement_finish">Open home</string>
+
     <!-- PairingActivity: "protect this device", setup complete, the checklist and the status screen. -->
     <string name="setup_protect_title">Protect this device · أسرة</string>
     <string name="setup_protect_body">On the next screen, tap \"Activate\" to give OSRA device-admin rights. With it, this app cannot be uninstalled without the parent PIN and your parent can lock the device remotely. Without it, protection is alert-only.</string>

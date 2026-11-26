@@ -77,6 +77,22 @@ class AccessibilityMonitorService : AccessibilityService() {
     /** Issue #83 review F1 / #165: what the OS says a package is, shared with [AppBlocker]'s overlay guard. */
     @Inject lateinit var packageFacts: PackageFacts
 
+    /** Issue #1174: live grant state so app-block/routine enforcement waits until required grants finish. */
+    private val grantChecks by lazy {
+        com.familyshield.agent.setup.GrantChecks(this, deviceAdmin)
+    }
+
+    private fun requiredGrantsIncompleteForPairedDevice(): Boolean {
+        if (!settings.isPairedSync()) return false
+        val rows = com.familyshield.agent.setup.OnboardingPolicy.rows(
+            com.familyshield.agent.BuildConfig.CAPTURE_NOTIFICATIONS,
+        ) { grantChecks.isGranted(it) }
+        return com.familyshield.agent.setup.FirstRunOrderPolicy.shouldSuppressEnforcement(
+            paired = true,
+            requiredGrantsReady = com.familyshield.agent.setup.OnboardingPolicy.canComplete(rows),
+        )
+    }
+
     private var lastLocationCheckMs = 0L
     private var lastGuardMs = 0L
 
@@ -512,7 +528,7 @@ class AccessibilityMonitorService : AccessibilityService() {
      * reports no event, that is the app staying blocked with no screen.
      */
     private fun raiseDeferredIfDue() {
-        if (consentState.isPaused()) {
+        if (consentState.isPaused() || requiredGrantsIncompleteForPairedDevice()) {
             cancelDeferredRaise()
             return
         }
@@ -543,6 +559,12 @@ class AccessibilityMonitorService : AccessibilityService() {
      * by [pipCover], because a PiP window stays above the block screen.
      */
     private fun enforceVisibleBlocks(snapshot: WindowSnapshot, active: String?) {
+        // Issue #1174: no app-block or routine enforcement until all required onboarding grants are done.
+        if (requiredGrantsIncompleteForPairedDevice()) {
+            pipCover.update(null)
+            cancelDeferredRaise()
+            return
+        }
         val found = VisibleBlockStep.decide(
             snapshot,
             active,
