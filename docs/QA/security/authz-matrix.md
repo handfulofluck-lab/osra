@@ -438,6 +438,7 @@ which credential the route accepts and what it must refuse.
 | `POST /v1/auth/reset/confirm` | 1286 | a `password_reset` token, once | reuse; any other purpose |
 | `POST /v1/auth/token/refresh` | 1370 | a refresh token whose rotation record is current | a rotated (reused) refresh token: theft response, every session revoked |
 | `POST /v1/auth/logout` | 1426 | anything (best-effort revocation) | — |
+| `POST /v1/auth/password` (#716) | 1487 | a live parent session + the current password + (MFA on) a current TOTP or an unused recovery code | every purpose token; a wrong current password `401 invalid_credentials`; MFA on without a valid code `401 mfa_required`; on success every session (the caller's included) is revoked and a fresh pair is returned |
 | `POST /v1/auth/logout-all` | 1449 | a live parent session | every purpose token |
 
 The MFA reset rows follow ADR-0031 (`docs/adr/0031-mfa-reset-family-witness.md`). The probe already walks

@@ -81,6 +81,36 @@ export function passwordResetEmail(to: string, link: string, locale: Locale = "b
 }
 
 /**
+ * #716: the account password was changed from a signed-in session. Like the recovery notice it carries no
+ * link: it tells the parent what happened and, if it was not them, to use "Forgot password" on the sign-in
+ * screen, which works from the mailbox alone.
+ */
+export function passwordChangedEmail(to: string, locale: Locale = "both"): EmailMessage {
+  const { html, text } = shell(
+    {
+      en: {
+        title: "Your OSRA password was changed",
+        body: [
+          "The password for this account was just changed in the OSRA app. Every other device has been signed out.",
+          "If that was you, there is nothing else to do.",
+          "If it was not you, open OSRA, tap \"Forgot password\" on the sign-in screen to choose a new one, and check who has access to your email.",
+        ],
+      },
+      ar: {
+        title: "تم تغيير كلمة مرور حسابك في تطبيق أسرة",
+        body: [
+          "تم تغيير كلمة مرور هذا الحساب للتو من داخل تطبيق أسرة، وسُجّل الخروج من كل الأجهزة الأخرى.",
+          "إذا كنت أنت من فعل ذلك، فلا حاجة لأي إجراء آخر.",
+          "إذا لم تكن أنت، فافتح تطبيق أسرة واضغط «نسيت كلمة المرور» في شاشة تسجيل الدخول لاختيار كلمة مرور جديدة، وتحقّق ممن يمكنه الوصول إلى بريدك الإلكتروني.",
+        ],
+      },
+    },
+    locale,
+  );
+  return { to, subject: "Your OSRA password was changed · تم تغيير كلمة المرور", html, text };
+}
+
+/**
  * ADR-0023: a recovery code was used. It states what happened and what the parent must do, and it
  * carries **no link**: the support path (Option B) is not decided, so inviting a click would promise
  * a channel that does not exist. It never carries the code itself either.

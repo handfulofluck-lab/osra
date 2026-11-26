@@ -3959,4 +3959,57 @@ class AppLocalizationsAr extends AppLocalizations {
   String accessRequestKeepBlockedLabel(String app) {
     return 'إبقاء $app محظورًا';
   }
+
+  @override
+  String get changePasswordMenu => 'تغيير كلمة المرور';
+
+  @override
+  String get cpIntro =>
+      'يؤدي تغيير كلمة المرور إلى تسجيل خروجك من كل الأجهزة الأخرى. يبقى هذا الهاتف مسجَّل الدخول.';
+
+  @override
+  String get cpCurrent => 'كلمة المرور الحالية';
+
+  @override
+  String get cpNew => 'كلمة المرور الجديدة';
+
+  @override
+  String get cpNewHint => 'استخدم 12 حرفًا على الأقل.';
+
+  @override
+  String get cpConfirm => 'اكتب كلمة المرور الجديدة مرة أخرى';
+
+  @override
+  String get cpCode => 'رمز تطبيق المصادقة أو رمز الاسترداد';
+
+  @override
+  String get cpCodeHint => 'التحقق بخطوتين مفعَّل، لذلك يلزم إدخال رمز أيضًا.';
+
+  @override
+  String get cpBusy => 'جارٍ التغيير…';
+
+  @override
+  String get cpMismatch => 'كلمتا المرور الجديدتان غير متطابقتين.';
+
+  @override
+  String get cpWrongCurrent => 'كلمة المرور الحالية غير صحيحة.';
+
+  @override
+  String get cpCodeNeeded =>
+      'أدخل رمزًا حاليًا من تطبيق المصادقة، أو رمز استرداد لم يُستخدم من قبل.';
+
+  @override
+  String get cpSame => 'اختر كلمة مرور مختلفة عن كلمة المرور الحالية.';
+
+  @override
+  String get cpRateLimited =>
+      'محاولات كثيرة جدًا. انتظر بضع دقائق ثم حاول مرة أخرى.';
+
+  @override
+  String get cpFailed =>
+      'لم تتغيّر كلمة المرور. تحقّق من اتصالك وحاول مرة أخرى.';
+
+  @override
+  String get cpDone =>
+      'تم تغيير كلمة المرور، وتم تسجيل الخروج من أجهزتك الأخرى.';
 }

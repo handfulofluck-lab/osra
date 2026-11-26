@@ -6,7 +6,7 @@ import type { MfaResetRequest as MfaResetRequestRow } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { appPublicUrl, emailConfigured, getEmailSender } from "../lib/email/index.js";
-import { mfaRecoveredEmail, passwordResetEmail } from "../lib/email/templates.js";
+import { mfaRecoveredEmail, passwordChangedEmail, passwordResetEmail } from "../lib/email/templates.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
 import { consentEventFor, recordSignupConsent } from "../lib/parentConsent.js";
 import {
@@ -87,6 +87,17 @@ const MfaEnrollSchema = z.object({
  * that survive it — a stolen session alone must not hand itself a fresh batch.
  */
 const MfaRecoveryCodeRequestSchema = MfaEnrollSchema;
+
+/**
+ * #716: change the password from a signed-in session. The new password follows the same rule as register and
+ * reset (12 characters at least); the upper bound only caps the hashing work a request can ask for. `code` is a
+ * current authenticator code or an unused recovery code, required when the account has MFA on.
+ */
+const PasswordChangeSchema = z.object({
+  currentPassword: z.string().min(1).max(256),
+  newPassword: z.string().min(12).max(256),
+  code: z.string().min(1).max(64).optional(),
+});
 
 /** ADR-0023: recovery takes the account password and one unused code, nothing else. */
 const MfaRecoverSchema = z.object({
@@ -1458,6 +1469,73 @@ export async function authRoutes(app: FastifyInstance) {
       if (jti) await revokeTokenOnce(jti, parentId ?? "");
     }
     return { ok: true };
+  });
+
+  /**
+   * #716: a signed-in parent changes their password.
+   *
+   * A session alone is not enough: the current password is checked with the same argon2 compare as `/login`,
+   * and an account with MFA also needs a current authenticator code or an unused recovery code, so a stolen
+   * access token cannot take the account over. On success every session ends (the same revocation as
+   * `/logout-all` and `/reset/confirm`, which also bumps the sessions version and closes sockets), and the
+   * caller gets a fresh token pair in the response so this device stays signed in. The parent is emailed.
+   *
+   * Order follows `/mfa/recover`'s safe direction: the revocation runs before the password write, so a failure
+   * between them leaves every session dead and the old password working, never a new password with the old
+   * sessions still live.
+   */
+  app.post("/password", { preHandler: requireJwt, config: RL }, async (req, reply) => {
+    const parsed = PasswordChangeSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const user = req.user as { sub: string };
+    const parent = await prisma.parent.findUnique({ where: { id: user.sub } });
+    if (!parent) return reply.code(401).send({ error: "unauthorized" });
+    const ok = await argon2.verify(parent.passwordHash, parsed.data.currentPassword).catch(() => false);
+    if (!ok) return reply.code(401).send({ error: "invalid_credentials" });
+    if (parsed.data.newPassword === parsed.data.currentPassword) {
+      return reply.code(400).send({ error: "password_unchanged" });
+    }
+
+    let recoveryCodeId: string | null = null;
+    if (parent.mfaEnabled) {
+      const code = parsed.data.code?.trim() ?? "";
+      if (/^\d{6}$/.test(code)) {
+        if (!parent.mfaSecret || !(await verifyTotpFresh(parent.id, parent.mfaSecret, code))) {
+          return reply.code(401).send({ error: "mfa_required" });
+        }
+      } else {
+        const normalised = normaliseRecoveryCode(code);
+        const candidate = normalised.length === RECOVERY_CODE_LENGTH
+          ? await prisma.parentMfaRecoveryCode.findFirst({
+            where: { parentId: parent.id, codeHash: hashRecoveryCode(normalised), usedAt: null },
+          })
+          : null;
+        if (!candidate) return reply.code(401).send({ error: "mfa_required" });
+        recoveryCodeId = candidate.id;
+      }
+    }
+
+    const passwordHash = await argon2.hash(parsed.data.newPassword);
+    if (recoveryCodeId) {
+      // One-time use: of two concurrent requests with the same code, exactly one flips `usedAt`.
+      const claimed = await prisma.parentMfaRecoveryCode.updateMany({
+        where: { id: recoveryCodeId, usedAt: null },
+        data: { usedAt: new Date() },
+      });
+      if (claimed.count !== 1) return reply.code(401).send({ error: "mfa_required" });
+    }
+    await revokeAllRefreshTokens(parent.id);
+    await prisma.parent.update({ where: { id: parent.id }, data: { passwordHash } });
+    const { token, jti, sv } = await signParentToken(app, parent);
+    const refreshToken = await issueRefreshToken(parent.id, sv, jti);
+    // The change has happened; a mail provider outage must not turn it into an error the app retries.
+    try {
+      const sent = await getEmailSender().send(passwordChangedEmail(parent.email));
+      if (!sent.ok) req.log.warn({ reason: sent.reason }, "password changed email failed");
+    } catch (err) {
+      req.log.warn({ err }, "password changed email failed");
+    }
+    return { ok: true, token, refreshToken };
   });
 
   /** Revoke every refresh token of the authenticated parent (handoff item 2). */

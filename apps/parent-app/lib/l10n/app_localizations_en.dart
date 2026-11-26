@@ -3724,4 +3724,57 @@ class AppLocalizationsEn extends AppLocalizations {
   String accessRequestKeepBlockedLabel(String app) {
     return 'Keep $app blocked';
   }
+
+  @override
+  String get changePasswordMenu => 'Change password';
+
+  @override
+  String get cpIntro =>
+      'Changing your password signs you out on every other device. This phone stays signed in.';
+
+  @override
+  String get cpCurrent => 'Current password';
+
+  @override
+  String get cpNew => 'New password';
+
+  @override
+  String get cpNewHint => 'Use at least 12 characters.';
+
+  @override
+  String get cpConfirm => 'Type the new password again';
+
+  @override
+  String get cpCode => 'Authenticator code or recovery code';
+
+  @override
+  String get cpCodeHint => 'Two-step sign-in is on, so a code is needed too.';
+
+  @override
+  String get cpBusy => 'Changing…';
+
+  @override
+  String get cpMismatch => 'The two new passwords don\'t match.';
+
+  @override
+  String get cpWrongCurrent => 'Your current password isn\'t right.';
+
+  @override
+  String get cpCodeNeeded =>
+      'Enter a current code from your authenticator app, or an unused recovery code.';
+
+  @override
+  String get cpSame =>
+      'Choose a password that\'s different from your current one.';
+
+  @override
+  String get cpRateLimited =>
+      'Too many tries. Wait a few minutes, then try again.';
+
+  @override
+  String get cpFailed =>
+      'Your password wasn\'t changed. Check your connection and try again.';
+
+  @override
+  String get cpDone => 'Password changed. Your other devices are signed out.';
 }
