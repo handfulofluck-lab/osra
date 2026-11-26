@@ -50,7 +50,6 @@ String formatAppLimit(AppLocalizations l10n, int minutes) =>
 /// Daily limits offered in an app's sheet, in minutes.
 const kAppLimitChoices = [15, 30, 60, 120];
 
-
 /// Feature switch for UX Final Decisions **P-09** (#1179). Enable with
 /// `--dart-define=OSRA_UX_P09=true`, or override [p09AppsEnabledProvider] in tests. When it is false the
 /// list keeps the switch row and the choice sheet it shipped with, so a screen can be turned off on the
@@ -411,32 +410,7 @@ class _ChildAppsListState extends ConsumerState<ChildAppsList> {
       },
     );
   }
-}
 
-/// One of the three words on an app row. The chosen one is filled, the others are plain text buttons, so the
-/// row states its own state instead of hiding it in a switch.
-class _AppActionWord extends StatelessWidget {
-  final Key buttonKey;
-  final String label;
-  final bool selected;
-  final VoidCallback? onPressed;
-
-  const _AppActionWord({
-    required this.buttonKey,
-    required this.label,
-    required this.selected,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: kMinInteractiveDimension),
-      child: selected
-          ? FilledButton.tonal(key: buttonKey, onPressed: onPressed, child: Text(label))
-          : TextButton(key: buttonKey, onPressed: onPressed, child: Text(label)),
-    );
-  }
   Future<void> _openLegacySheet(InstalledApp app) async {
     final l10n = context.l10n;
     final rule = _ruleFor(app.packageId);
@@ -631,6 +605,32 @@ class _AppActionWord extends StatelessWidget {
             ),
       enabled: !_saving || essential,
       onTap: essential || _saving ? null : () => _openLegacySheet(app),
+    );
+  }
+}
+
+/// One of the three words on an app row. The chosen one is filled, the others are plain text buttons, so the
+/// row states its own state instead of hiding it in a switch.
+class _AppActionWord extends StatelessWidget {
+  final Key buttonKey;
+  final String label;
+  final bool selected;
+  final VoidCallback? onPressed;
+
+  const _AppActionWord({
+    required this.buttonKey,
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: kMinInteractiveDimension),
+      child: selected
+          ? FilledButton.tonal(key: buttonKey, onPressed: onPressed, child: Text(label))
+          : TextButton(key: buttonKey, onPressed: onPressed, child: Text(label)),
     );
   }
 }
