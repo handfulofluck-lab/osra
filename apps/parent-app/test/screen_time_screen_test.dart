@@ -213,7 +213,7 @@ void main() {
   testWidgets('S13 Arabic reads right to left with Arabic plurals', (tester) async {
     await pump(tester, api(), locale: const Locale('ar'));
 
-    expect(find.textContaining('متبقٍ'), findsOneWidget);
+    expect(find.textContaining('المتبقي اليوم'), findsOneWidget);
     expect(find.text('أيام الدراسة'), findsOneWidget);
     final dir = Directionality.of(tester.element(find.byKey(const ValueKey('screenTimeToday'))));
     expect(dir, TextDirection.rtl);

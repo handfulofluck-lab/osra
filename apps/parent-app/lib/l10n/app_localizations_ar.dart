@@ -3877,22 +3877,22 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String stLeftToday(String left) {
-    return 'متبقٍ $left اليوم';
+    return 'المتبقي اليوم: $left';
   }
 
   @override
   String stOverLimit(String over) {
-    return 'تجاوز حد اليوم بمقدار $over';
+    return 'الزيادة على حد اليوم: $over';
   }
 
   @override
   String stUsedOf(String used, String limit) {
-    return 'استُخدم $used من $limit';
+    return 'المستخدم: $used · الحد: $limit';
   }
 
   @override
   String stUsedToday(String used) {
-    return 'استُخدم $used اليوم';
+    return 'المستخدم اليوم: $used';
   }
 
   @override
@@ -3932,16 +3932,16 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String stLess(String label) {
-    return 'وقت أقل في $label';
+    return 'تقليل حد $label';
   }
 
   @override
   String stMore(String label) {
-    return 'وقت أكثر في $label';
+    return 'زيادة حد $label';
   }
 
   @override
-  String get stNeverCounted => 'لا يُحتسب أبدًا';
+  String get stNeverCounted => 'تطبيقات لا يُحتسب وقتها';
 
   @override
   String stNeverCountedCount(int count) {
@@ -3964,7 +3964,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get stView => 'عرض';
 
   @override
-  String get stWhereTimeWent => 'أين ذهب وقت اليوم';
+  String get stWhereTimeWent => 'توزيع وقت اليوم';
 
   @override
   String get stNoUseYet => 'لم يُبلَّغ عن استخدام أي تطبيق اليوم بعد';
@@ -3980,5 +3980,5 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get stIphoneNotYet =>
-      'غير متاح بعد على iPhone: الوقت المستخدم والحدود اليومية تعمل على هواتف Android فقط.';
+      'غير متاح بعد على آيفون: الوقت المستخدم والحدود اليومية تعمل على هواتف أندرويد فقط.';
 }
