@@ -10,7 +10,8 @@ import org.junit.Test
 /**
  * Issue #1179 (C-03 Ask a parent): pure JVM tests covering G2/G3 (whole-day screen time only,
  * 15/30 min only — never 60), #1185 (no child note field), idempotency dedupe key, single-pending
- * guard, F7 adult-name formatting, and EN/AR parity.
+ * & send-failure retry guards, F7 adult-name formatting (incl. 4+ fallback), real launch entry
+ * point from C-02 `BlockActivity`, `NoActionBar` manifest theme, LTR numeric isolation, and EN/AR parity.
  */
 class AskParentPolicyTest {
 
@@ -35,11 +36,13 @@ class AskParentPolicyTest {
     }
 
     @Test
-    fun `canSend enforces daily limit, single pending request, and no in-flight duplicate`() {
+    fun `canSend enforces daily limit, single pending request, and allows retry after send failure`() {
         assertTrue(AskParentPolicy.canSend(hasDailyLimit = true, hasPendingWaiting = false, isSending = false))
         assertFalse(AskParentPolicy.canSend(hasDailyLimit = false, hasPendingWaiting = false, isSending = false))
         assertFalse(AskParentPolicy.canSend(hasDailyLimit = true, hasPendingWaiting = true, isSending = false))
         assertFalse(AskParentPolicy.canSend(hasDailyLimit = true, hasPendingWaiting = false, isSending = true))
+        // After a failed POST, hasPendingWaiting stays false and isSending returns to false -> retryable.
+        assertEquals(listOf(AskSendState.IDLE, AskSendState.SENDING, AskSendState.SENT, AskSendState.FAILED), AskSendState.values().toList())
     }
 
     @Test
@@ -64,16 +67,50 @@ class AskParentPolicyTest {
     }
 
     @Test
-    fun `C-03 screen has no TextField note, no red danger CTA, NoActionBar theme, and EN-AR parity`() {
+    fun `C-03 wiring pins launch path from BlockActivity, NoActionBar theme, post-success persistence, LTR minutes, and EN-AR parity`() {
         val root = findAppSrcRoot()
         val screen = File(root, "java/com/familyshield/agent/ui/request/AskParentScreen.kt").readText()
+        val activity = File(root, "java/com/familyshield/agent/ui/request/AskParentActivity.kt").readText()
+        val blockActivity = File(root, "java/com/familyshield/agent/enforcement/BlockActivity.kt").readText()
+        val settings = File(root, "java/com/familyshield/agent/data/AgentSettings.kt").readText()
         val manifest = File(root, "AndroidManifest.xml").readText()
         val enStrings = File(root, "res/values/strings.xml").readText()
         val arStrings = File(root, "res/values-ar/strings.xml").readText()
 
+        // No note TextField (#1185) and no red danger CTA.
         assertFalse("C-03 must not include a child note TextField (#1185)", screen.contains("TextField"))
         assertFalse("C-03 must not use danger red tokens", screen.contains("palette.danger"))
-        assertTrue("AskParentActivity must use NoActionBar theme", manifest.contains("android:name=\".ui.request.AskParentActivity\""))
+
+        // Finding 1 (K31): C-03 must have a real launch path from C-02 BlockActivity.
+        assertTrue(
+            "BlockActivity must launch AskParentActivity for daily-limit time requests",
+            blockActivity.contains("AskParentActivity.intent("),
+        )
+
+        // Finding 5 (K31): assert NoActionBar inside the exact AskParentActivity manifest declaration.
+        val askActivityTag = manifest
+            .substringAfter("android:name=\".ui.request.AskParentActivity\"")
+            .substringBefore("/>")
+        assertTrue(
+            "AskParentActivity manifest declaration must set Theme.Material.NoActionBar",
+            askActivityTag.contains("android:theme=\"@android:style/Theme.Material.NoActionBar\""),
+        )
+
+        // Finding 3 (K31): recordPendingRequest runs ONLY inside result.onSuccess, never before POST,
+        // and failures transition to AskSendState.FAILED; clearPendingRequest is wired for expiry and unpair.
+        val sendFn = activity.substringAfter("private fun sendRequest(").substringBefore("private fun prefs()")
+        val onSuccessIdx = sendFn.indexOf(".onSuccess")
+        val recordIdx = sendFn.indexOf("recordPendingRequest(")
+        val onFailureIdx = sendFn.indexOf(".onFailure")
+        assertTrue("recordPendingRequest must run only after result.onSuccess", onSuccessIdx >= 0 && recordIdx > onSuccessIdx && recordIdx < onFailureIdx)
+        assertTrue("Failed POST must enter AskSendState.FAILED", sendFn.contains("AskSendState.FAILED"))
+        assertTrue("AskParentActivity must expose clearPendingRequest", activity.contains("fun clearPendingRequest("))
+        assertTrue("AgentSettings.clearPairing must clear C-03 pending request prefs", settings.contains("AskParentActivity.clearPendingRequest(context)"))
+
+        // Finding 4 (K31): minutes in preview and pending title are wrapped with ltrIsolate.
+        assertTrue(activity.contains("AskParentPolicy.ltrIsolate(\"15\")"))
+        assertTrue(activity.contains("AskParentPolicy.ltrIsolate(\"30\")"))
+        assertTrue(activity.contains("AskParentPolicy.ltrIsolate((pendingMinutes ?: 15).toString())"))
 
         for (key in listOf(
             "c03_title",
@@ -83,6 +120,7 @@ class AskParentPolicyTest {
             "c03_preview_sentence",
             "c03_goes_to",
             "c03_send_request",
+            "c03_send_failed",
             "c03_waiting_reply",
             "c03_footer_honest",
         )) {

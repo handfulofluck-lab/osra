@@ -1,5 +1,13 @@
 package com.familyshield.agent.ui.request
 
+/** Explicit delivery state for C-03 Ask a parent (K31 #1196 finding 3: never mark sent before POST succeeds). */
+enum class AskSendState {
+    IDLE,
+    SENDING,
+    SENT,
+    FAILED,
+}
+
 /** Payload posted to `/v1/alerts/internal` from C-03 Ask a parent (#1179, G2/G3). */
 data class AskTimeRequestPayload(
     val title: String,

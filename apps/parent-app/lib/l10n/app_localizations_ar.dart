@@ -3871,4 +3871,92 @@ class AppLocalizationsAr extends AppLocalizations {
   String alertBodyDataCleared(String model) {
     return 'أُعيد تثبيت تطبيق أسرة للأطفال على $model، وكانت الحماية متوقفة إلى أن أُعيد الإقران.';
   }
+
+  @override
+  String accessRequestTitle(String child, String app) {
+    return 'طلب من $child لاستخدام $app';
+  }
+
+  @override
+  String accessRequestBlockedTitle(String app, String child) {
+    return 'حُظر $app على هاتف $child';
+  }
+
+  @override
+  String accessRequestBody(String child) {
+    return 'وصل طلب السماح من شاشة الحظر على هاتف $child.';
+  }
+
+  @override
+  String accessRequestBlockedBody(String child) {
+    return 'جرت محاولة لفتحه على هاتف $child. لا حاجة إلى أي إجراء منك.';
+  }
+
+  @override
+  String get accessRequestAllow => 'السماح';
+
+  @override
+  String get accessRequestAllowing => 'جارٍ الحفظ…';
+
+  @override
+  String get accessRequestKeepBlocked => 'إبقاء الحظر';
+
+  @override
+  String accessRequestDisclosure(String app) {
+    return 'سيُسمح باستخدام $app من الآن. وتبقى قواعد وقت النوم والساعات المدرسية والإيقاف المؤقت سارية.';
+  }
+
+  @override
+  String accessRequestAllowFailed(String app) {
+    return 'تعذّر السماح باستخدام $app. تحقّق من اتصالك وحاول مجددًا.';
+  }
+
+  @override
+  String accessRequestReadOnly(String owner) {
+    return 'لا يستطيع الرد على هذا الطلب إلا $owner، من تطبيق أسرة.';
+  }
+
+  @override
+  String accessRequestAllowedBy(String actor, String app, String timeSuffix) {
+    return 'سُمح باستخدام $app بقرار من $actor$timeSuffix';
+  }
+
+  @override
+  String accessRequestKeptBlockedBy(
+      String actor, String app, String timeSuffix) {
+    return 'بقي $app محظورًا بقرار من $actor$timeSuffix';
+  }
+
+  @override
+  String accessRequestAllowedByYou(String app, String timeSuffix) {
+    return 'سُمح باستخدام $app بقرارك$timeSuffix';
+  }
+
+  @override
+  String accessRequestKeptBlockedByYou(String app, String timeSuffix) {
+    return 'بقي $app محظورًا بقرارك$timeSuffix';
+  }
+
+  @override
+  String get accessRequestHandled => 'تم التعامل مع هذا الطلب';
+
+  @override
+  String accessRequestAllowedSnack(String app) {
+    return 'سُمح باستخدام $app';
+  }
+
+  @override
+  String accessRequestKeptBlockedSnack(String app) {
+    return 'بقي $app محظورًا';
+  }
+
+  @override
+  String accessRequestAllowLabel(String app) {
+    return 'السماح باستخدام $app';
+  }
+
+  @override
+  String accessRequestKeepBlockedLabel(String app) {
+    return 'إبقاء $app محظورًا';
+  }
 }

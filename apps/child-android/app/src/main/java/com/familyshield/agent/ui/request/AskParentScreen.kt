@@ -59,6 +59,7 @@ data class AskParentCopy(
     val goesToLine: String,
     val sendButtonLabel: String,
     val sendingButtonLabel: String,
+    val sendFailedLine: String,
     val pendingTitle: String,
     val pendingWaitingBadge: String,
     val pendingSentLine: String,
@@ -82,6 +83,7 @@ data class AskParentCopy(
 @Composable
 fun AskParentScreen(
     copy: AskParentCopy,
+    sendState: AskSendState = AskSendState.IDLE,
     onSend: (Int) -> Unit,
     onClose: () -> Unit,
 ) {
@@ -92,14 +94,14 @@ fun AskParentScreen(
 
     val defaultMinutes = copy.options.firstOrNull()?.minutes ?: 15
     var selectedMinutes by remember { mutableIntStateOf(defaultMinutes) }
-    var sentNow by remember { mutableStateOf(false) }
 
     val activeOption = copy.options.firstOrNull { it.minutes == selectedMinutes } ?: copy.options.first()
-    val hasPending = copy.alreadyPending || sentNow
+    val hasPending = copy.alreadyPending || sendState == AskSendState.SENT
+    val isSending = sendState == AskSendState.SENDING
     val canSend = AskParentPolicy.canSend(
         hasDailyLimit = copy.hasDailyLimit,
         hasPendingWaiting = hasPending,
-        isSending = false,
+        isSending = isSending,
     )
 
     val cardShape = RoundedCornerShape(radii.card)
@@ -316,10 +318,26 @@ fun AskParentScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     if (!hasPending && copy.hasDailyLimit) {
+                        if (sendState == AskSendState.FAILED) {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = controlShape,
+                                color = palette.warnContainer,
+                                contentColor = palette.onWarnContainer,
+                            ) {
+                                Text(
+                                    text = copy.sendFailedLine,
+                                    modifier = Modifier.padding(horizontal = spaces.md, vertical = spaces.sm),
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        textDirection = TextDirection.Content,
+                                    ),
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                        }
                         Button(
                             onClick = {
                                 if (canSend) {
-                                    sentNow = true
                                     onSend(activeOption.minutes)
                                 }
                             },
@@ -334,7 +352,7 @@ fun AskParentScreen(
                             ),
                         ) {
                             Text(
-                                text = copy.sendButtonLabel,
+                                text = if (isSending) copy.sendingButtonLabel else copy.sendButtonLabel,
                                 style = MaterialTheme.typography.labelLarge.copy(
                                     textDirection = TextDirection.Content,
                                 ),

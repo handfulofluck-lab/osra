@@ -285,6 +285,60 @@
     <string name="notification_channel_content_filter">تصفية المواقع</string>
     <string name="notification_content_filter_active">تصفية المواقع تعمل</string>
 
+    <!-- C-02 Time's up / blocked (#1179; Arabic Bureau staged core copy 7191839045). -->
+    <string name="c02_paused_title">توقّف %1$s الآن</string>
+    <string name="c02_reason_daily_limit">انتهى الوقت المحدد لليوم</string>
+    <string name="c02_reason_app_limit">انتهى وقت التطبيق لليوم</string>
+    <string name="c02_reason_bedtime">حان وقت النوم</string>
+    <string name="c02_reason_school">ساعات المدرسة</string>
+    <string name="c02_reason_paused_internet">الإنترنت متوقف مؤقتًا</string>
+    <string name="c02_reason_blocked">محظور</string>
+    <string name="c02_subtitle_used_of">استخدمت %1$s من %2$s</string>
+    <string name="c02_subtitle_daily_limit">انتهى الوقت المحدد للشاشة اليوم.</string>
+    <string name="c02_subtitle_app_limit">انتهى الوقت المحدد لتطبيق %1$s اليوم.</string>
+    <string name="c02_subtitle_bedtime">حان وقت النوم الآن.</string>
+    <string name="c02_subtitle_school">ساعات المدرسة سارية الآن.</string>
+    <string name="c02_subtitle_routine">%1$s سارٍ الآن.</string>
+    <string name="c02_subtitle_paused_internet">الإنترنت متوقف مؤقتًا الآن.</string>
+    <string name="c02_subtitle_blocked">هذا التطبيق محظور حسب قواعد أهلك.</string>
+    <string name="c02_back_again_label">يعود متاحًا</string>
+    <string name="c02_back_at_today">يعود متاحًا الساعة %1$s</string>
+    <string name="c02_back_at_tomorrow">يعود متاحًا غدًا الساعة %1$s</string>
+    <string name="c02_still_open_label">ما زال متاحًا لك</string>
+    <string name="c02_messages_and_calls">الرسائل والمكالمات</string>
+    <string name="c02_always_open_pill">متاح دائمًا</string>
+    <string name="c02_ask_more_time_15">طلب 15 دقيقة إضافية من وقت الشاشة</string>
+    <string name="c02_ask_to_open">طلب فتح %1$s</string>
+    <string name="c02_waiting_reply">بانتظار الرد</string>
+    <string name="c02_call_parent">الاتصال بأهلي</string>
+    <string name="c02_see_my_rules">عرض قواعدي</string>
+    <string name="c02_send_sos_row">إرسال استغاثة إلى أهلي</string>
+    <string name="c02_emergency_note">مكالمات الطوارئ تعمل دائمًا</string>
+    <plurals name="c02_hours">
+        <item quantity="zero">%1$d ساعة</item>
+        <item quantity="one">ساعة واحدة</item>
+        <item quantity="two">ساعتان</item>
+        <item quantity="few">%1$d ساعات</item>
+        <item quantity="many">%1$d ساعة</item>
+        <item quantity="other">%1$d ساعة</item>
+    </plurals>
+    <plurals name="c02_minutes">
+        <item quantity="zero">%1$d دقيقة</item>
+        <item quantity="one">دقيقة واحدة</item>
+        <item quantity="two">دقيقتان</item>
+        <item quantity="few">%1$d دقائق</item>
+        <item quantity="many">%1$d دقيقة</item>
+        <item quantity="other">%1$d دقيقة</item>
+    </plurals>
+    <string name="c02_hours_and_minutes">%1$s و%2$s</string>
+    <string name="c02_rules_sheet_title">قواعدي</string>
+    <string name="c02_rules_daily_limit">وقت الشاشة اليومي: استخدمت %1$s من %2$s</string>
+    <string name="c02_rules_bedtime">وقت النوم: %1$s</string>
+    <string name="c02_rules_school">ساعات المدرسة: %1$s</string>
+    <string name="c02_rules_routines">الجداول: %1$s</string>
+    <string name="c02_rules_none">قواعد أهلك مفعّلة على هذا الهاتف.</string>
+    <string name="c02_rules_close">إغلاق</string>
+
     <!-- C-03 Ask a parent (#1179; Arabic Bureau staged core copy 7191839045 + review 7197378987). -->
     <string name="c03_title">أطلب من %1$s</string>
     <string name="c03_close">إغلاق</string>
@@ -297,11 +351,12 @@
     <string name="c03_option_30_eyebrow">وقت أطول</string>
     <string name="c03_option_30_amount">+30 دقيقة</string>
     <string name="c03_preview_eyebrow">ما سيُعرض على %1$s</string>
-    <string name="c03_preview_sentence">طلب %1$d دقيقة إضافية من وقت الشاشة، اليوم فقط.</string>
+    <string name="c03_preview_sentence">طلب %1$s دقيقة إضافية من وقت الشاشة، اليوم فقط.</string>
     <string name="c03_goes_to">سيصل طلبك إلى %1$s</string>
     <string name="c03_send_request">إرسال الطلب</string>
     <string name="c03_sending">جارٍ الإرسال…</string>
-    <string name="c03_pending_title">أُرسل الطلب: +%1$d دقيقة من وقت الشاشة</string>
+    <string name="c03_send_failed">تعذّر الإرسال الآن. حاول مرة أخرى.</string>
+    <string name="c03_pending_title">أُرسل الطلب: +%1$s دقيقة من وقت الشاشة</string>
     <string name="c03_waiting_reply">بانتظار الرد</string>
     <string name="c03_sent_to_line">أُرسل إلى %1$s · %2$s</string>
     <string name="c03_no_daily_limit">لا يوجد حد يومي مفعّل لوقت الشاشة حاليًا.</string>
