@@ -18,13 +18,13 @@ import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
-import '../rules/rules_behind_banner.dart';
 import '../../theme/app_tokens.dart';
 import '../children/child_detail_screen.dart' show AlertTile;
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
 import '../../widgets/error_retry_view.dart';
 import 'alert_detail_screen.dart';
+import 'app_alert_presentation.dart';
 import 'sos_alert_actions.dart';
 import '../map/family_map_screen.dart'
     show FamilyMapScreen, MapFocus, mapIsAvailable;
@@ -44,7 +44,8 @@ String formatAlertDetailTime(
   final refLocal = (now ?? DateTime.now()).toLocal();
   final localDay = DateTime.utc(localTime.year, localTime.month, localTime.day);
   final today = DateTime.utc(refLocal.year, refLocal.month, refLocal.day);
-  final yesterday = DateTime.utc(refLocal.year, refLocal.month, refLocal.day - 1);
+  final yesterday =
+      DateTime.utc(refLocal.year, refLocal.month, refLocal.day - 1);
 
   final clock = normalizeDigits(DateFormat('HH:mm', 'en').format(localTime));
   final isolatedClock = ltrIsolate(clock);
@@ -57,10 +58,12 @@ String formatAlertDetailTime(
   }
   final isArabic = localeName.toLowerCase().startsWith('ar');
   final sameYear = localTime.year == refLocal.year;
-  final pattern =
-      isArabic ? (sameYear ? 'd MMMM' : 'd MMMM y') : (sameYear ? 'd MMM' : 'd MMM y');
-  final resolvedLocale =
-      DateFormat.localeExists(localeName) ? localeName : (isArabic ? 'ar' : 'en');
+  final pattern = isArabic
+      ? (sameYear ? 'd MMMM' : 'd MMMM y')
+      : (sameYear ? 'd MMM' : 'd MMM y');
+  final resolvedLocale = DateFormat.localeExists(localeName)
+      ? localeName
+      : (isArabic ? 'ar' : 'en');
   final dateLabel = normalizeDigits(
     DateFormat(pattern, resolvedLocale).format(localTime),
   );
@@ -98,6 +101,9 @@ List<Alert> mergeAlertsInPlace(List<Alert> existing, Iterable<Alert> incoming) {
   }
   final merged = byId.values.toList();
   merged.sort((a, b) {
+    final aPinned = isAccessRequestAlert(a) && !a.acknowledged;
+    final bPinned = isAccessRequestAlert(b) && !b.acknowledged;
+    if (aPinned != bPinned) return aPinned ? -1 : 1;
     final ta = a.effectiveTimestamp;
     final tb = b.effectiveTimestamp;
     if (ta == null && tb == null) return 0;
@@ -118,6 +124,7 @@ class AlertsScreen extends ConsumerStatefulWidget {
   });
 
   final DateTime Function()? nowProvider;
+
   /// #1029: bounded live refresh interval while the feed is open so running counts
   /// update in place without requiring a pull-to-refresh gesture.
   final Duration liveRefreshInterval;
@@ -222,7 +229,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       setState(() {
         _refused = refused;
         _error = refused == null
-            ? friendlyErrorText(context.l10n, e, () => context.l10n.alertsLoadFailed)
+            ? friendlyErrorText(
+                context.l10n, e, () => context.l10n.alertsLoadFailed)
             : null;
       });
     } finally {
@@ -243,11 +251,30 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       if (mounted) {
         showErrorSnackBar(
           context,
-          friendlyErrorText(context.l10n, e, () => context.l10n.acknowledgeFailed),
+          friendlyErrorText(
+              context.l10n, e, () => context.l10n.acknowledgeFailed),
           onRetry: () => _ack(alert, index),
         );
       }
     }
+  }
+
+  void _requestResolved(Alert alert, String resolution, DateTime at) {
+    final updated = alert.copyWith(
+      acknowledged: true,
+      updatedAt: at,
+      metadata: {
+        ...alert.metadata,
+        'resolution': resolution,
+        'resolvedAt': at.toUtc().toIso8601String(),
+      },
+    );
+    final merged = mergeAlertsInPlace(_items, [updated]);
+    setState(() {
+      _items
+        ..clear()
+        ..addAll(merged);
+    });
   }
 
   /// Feature #8: an install_request alert offers Block (append a block
@@ -274,6 +301,23 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       }
       return;
     }
+    if (alert.category == 'app_blocked') {
+      final router = GoRouter.maybeOf(context);
+      if (router != null) {
+        router.push('/alerts/${Uri.encodeComponent(alert.id)}', extra: alert);
+      } else {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => AlertDetailScreen(
+              alertId: alert.id,
+              initialAlert: alert,
+              nowProvider: widget.nowProvider,
+            ),
+          ),
+        );
+      }
+      return;
+    }
     // Feature #16: conversation-coach card for AI/social alert categories.
     final coachCard = coachCardFor(alert.category, _concernTypesOf(alert));
     showDialog(
@@ -282,7 +326,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
         final l10n = dialogContext.l10n;
         return AlertDialog(
           scrollable: true,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           title: Row(
             children: [
               Icon(Icons.circle,
@@ -311,10 +356,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Issue #475 follow-up (Claude's ruling): the line is scoped to THIS alert's child, in the
-                  // dialog a parent opens later to ask "did my last change land?". The feed itself is
-                  // family-wide, so it carries no line; the Block path already refetches the family.
-                  RulesBehindBanner(childId: alert.childId),
+                  // #1128: an alert is not a rule change, so no RulesBehindBanner belongs here.
                   // #755 Arabic Bureau (6868533968): SOS already states the event in its localized title and
                   // place lines, so never repeat the child agent's raw English sentence.
                   // #889 Arabic Bureau (6997818132): an unkeyed restart row in Arabic renders no body at all
@@ -371,7 +413,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                     Text(
                       l10n.alertCallBypassNote,
                       key: const ValueKey('alert-call-bypass-note'),
-                      style: Theme.of(dialogContext).textTheme.bodyMedium?.copyWith(
+                      style: Theme.of(dialogContext)
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(
                             color: Theme.of(dialogContext).colorScheme.error,
                           ),
                     ),
@@ -532,7 +577,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     final seen = ref.watch(alertsSeenProvider);
     // #1029: when the realtime /v1/ws alert invalidation path reloads alertsProvider,
     // merge the fresh page into the open feed immediately without requiring a gesture.
-    ref.listen<AsyncValue<AlertsPage>>(alertsProvider(const AlertFilter()), (prev, next) {
+    ref.listen<AsyncValue<AlertsPage>>(alertsProvider(const AlertFilter()),
+        (prev, next) {
       if (next is! AsyncData<AlertsPage> || !mounted || _items.isEmpty) return;
       final page = next.value;
       setState(() {
@@ -542,10 +588,14 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
           ..addAll(merged);
       });
     });
-    // Group by local day using effectiveTimestamp (latestAt ?? updatedAt ?? createdAt), most recent first.
+    final pinned = _items
+        .where((alert) => isAccessRequestAlert(alert) && !alert.acknowledged)
+        .toList();
+    // Group the remainder by local day; unanswered requests stay ahead of every day header.
     final groups = <String, List<Alert>>{};
     final order = <String>[];
     for (final a in _items) {
+      if (pinned.any((request) => request.id == a.id)) continue;
       final ts = a.effectiveTimestamp;
       final day = ts == null ? 'Unknown' : dayKey(ts.toLocal());
       if (!groups.containsKey(day)) {
@@ -555,6 +605,27 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       groups[day]!.add(a);
     }
     order.sort((a, b) => b.compareTo(a));
+
+    Widget alertCard(Alert alert) {
+      final index = _items.indexOf(alert);
+      return Dismissible(
+        key: ValueKey(alert.id),
+        background: Container(
+          color: context.tokens.ok,
+          alignment: AlignmentDirectional.centerStart,
+          padding: const EdgeInsetsDirectional.only(start: AppSpace.xl),
+          child: Icon(Icons.check, color: context.tokens.onOk),
+        ),
+        onDismissed: (_) => _ack(alert, index),
+        child: AlertTile(
+          alert: alert,
+          newSinceCount: computeSocialNewSinceCount(alert, seen),
+          onRequestResolved: (resolution, at) =>
+              _requestResolved(alert, resolution, at),
+          onTap: () => _showDetail(alert),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.alertsTitle)),
@@ -588,6 +659,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                           padding: const EdgeInsets.only(top: 200),
                           child: Center(child: Text(l10n.noAlertsYet)),
                         ),
+                      for (final alert in pinned) alertCard(alert),
                       for (final day in order)
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -603,27 +675,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                 style: Theme.of(context).textTheme.titleSmall,
                               ),
                             ),
-                            for (var i = 0; i < groups[day]!.length; i++)
-                              Builder(builder: (_) {
-                                final alert = groups[day]![i];
-                                final index = _items.indexOf(alert);
-                                return Dismissible(
-                                  key: ValueKey(alert.id),
-                                  background: Container(
-                                    color: context.tokens.ok,
-                                    alignment: AlignmentDirectional.centerStart,
-                                    padding: const EdgeInsetsDirectional.only(
-                                        start: AppSpace.xl),
-                                    child: Icon(Icons.check,
-                                        color: context.tokens.onOk),
-                                  ),
-                                  onDismissed: (_) => _ack(alert, index),
-                                  child: AlertTile(
-                                      alert: alert,
-                                      newSinceCount: computeSocialNewSinceCount(alert, seen),
-                                      onTap: () => _showDetail(alert)),
-                                );
-                              }),
+                            for (final alert in groups[day]!) alertCard(alert),
                           ],
                         ),
                       if (_loading)

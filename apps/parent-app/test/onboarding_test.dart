@@ -519,7 +519,7 @@ void main() {
     testWidgets('welcome', (tester) async {
       final api = FakeApiClient(onboardingRoutes(children: [], devices: []));
       await pumpStep(tester, const WelcomeScreen(), api);
-      expect(find.text('مرحبًا بك في OSRA'), findsOneWidget);
+      expect(find.text('مرحبًا بك في تطبيق أسرة'), findsOneWidget);
       expectRtlAndNoOverflow(tester);
     });
 

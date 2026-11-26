@@ -1,0 +1,1 @@
+- Parent app: show an explicit "Waiting for the phone to apply rules." banner from pairing until the child device reports its first applied rules version (#1157).

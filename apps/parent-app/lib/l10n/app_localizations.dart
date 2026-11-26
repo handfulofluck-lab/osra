@@ -1034,6 +1034,12 @@ abstract class AppLocalizations {
   /// **'The phone hasn\'t picked this change up yet.'**
   String get rulesBehindHint;
 
+  /// No description provided for @rulesWaitingFirstApply.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the phone to apply rules.'**
+  String get rulesWaitingFirstApply;
+
   /// No description provided for @rulesLoadFailed.
   ///
   /// In en, this message translates to:
@@ -2743,6 +2749,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Concerns'**
   String get concerns;
+
+  /// No description provided for @flagVoteQuestion.
+  ///
+  /// In en, this message translates to:
+  /// **'Was OSRA right to flag this?'**
+  String get flagVoteQuestion;
+
+  /// No description provided for @flagVoteConcerning.
+  ///
+  /// In en, this message translates to:
+  /// **'Concerning'**
+  String get flagVoteConcerning;
+
+  /// No description provided for @flagVoteNotConcerning.
+  ///
+  /// In en, this message translates to:
+  /// **'Not concerning'**
+  String get flagVoteNotConcerning;
+
+  /// No description provided for @flagVoteHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Your answer helps OSRA check messages better.'**
+  String get flagVoteHelp;
+
+  /// No description provided for @flagVoteThanks.
+  ///
+  /// In en, this message translates to:
+  /// **'Thanks, noted'**
+  String get flagVoteThanks;
+
+  /// No description provided for @flagVoteBy.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}: {vote}'**
+  String flagVoteBy(String name, String vote);
+
+  /// No description provided for @flagVoteA11yConcerning.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as concerning'**
+  String get flagVoteA11yConcerning;
+
+  /// No description provided for @flagVoteA11yNotConcerning.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as not concerning'**
+  String get flagVoteA11yNotConcerning;
+
+  /// No description provided for @flagVoteClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear vote'**
+  String get flagVoteClear;
+
+  /// No description provided for @flagVoteCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'Vote cleared'**
+  String get flagVoteCleared;
+
+  /// No description provided for @flagVoteA11yClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear your vote on this message'**
+  String get flagVoteA11yClear;
 
   /// No description provided for @vaultTrustCopy.
   ///
@@ -4808,6 +4880,18 @@ abstract class AppLocalizations {
   /// **'Blocked site attempted'**
   String get alertTitleBlockedSite;
 
+  /// No description provided for @blockedSiteDomainLine.
+  ///
+  /// In en, this message translates to:
+  /// **'Site: {domain}'**
+  String blockedSiteDomainLine(String domain);
+
+  /// No description provided for @blockedSiteNamesNotCollected.
+  ///
+  /// In en, this message translates to:
+  /// **'Site names aren\'t collected yet, so only the block is shown.'**
+  String get blockedSiteNamesNotCollected;
+
   /// No description provided for @alertTitleDailyLimit.
   ///
   /// In en, this message translates to:
@@ -5017,6 +5101,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Concerning content'**
   String get riskAiConcern;
+
+  /// #1138: timing tag on a Social concern card.
+  ///
+  /// In en, this message translates to:
+  /// **'Late at night'**
+  String get riskLateNight;
 
   /// Phone setup row (osra-security#6): the capability report's profiles.kinds holds clone. Arabic wording by Karim (2026-11-11).
   ///
@@ -5798,6 +5888,175 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{devices} can\'t pause the internet yet, so it stays online.'**
   String iosPauseInternetSkips(String devices);
+
+  /// No description provided for @phoneSetupStepsLeftThisPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Setting up this phone: {count, plural, =1{1 step} other{{count} steps}} left'**
+  String phoneSetupStepsLeftThisPhone(int count);
+
+  /// No description provided for @phoneSetupProtected.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone is protected.'**
+  String get phoneSetupProtected;
+
+  /// No description provided for @phoneSetupStepsLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'Setting up {childName}\'s phone: {count, plural, =1{1 step} other{{count} steps}} left'**
+  String phoneSetupStepsLeft(String childName, int count);
+
+  /// No description provided for @alertTitleSetupComplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone is protected'**
+  String get alertTitleSetupComplete;
+
+  /// No description provided for @alertTitleSetupIncomplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone setup needs attention'**
+  String get alertTitleSetupIncomplete;
+
+  /// No description provided for @alertBodySetupCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'{childName}\'s phone is protected.'**
+  String alertBodySetupCompleted(String childName);
+
+  /// No description provided for @alertBodySetupIncomplete.
+  ///
+  /// In en, this message translates to:
+  /// **'{childName}\'s phone still has {count, plural, =1{1 setup step} other{{count} setup steps}} left after 30 minutes{steps}.'**
+  String alertBodySetupIncomplete(String childName, int count, String steps);
+
+  /// No description provided for @alertBodySetupIncompleteGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'{childName}\'s phone setup is still incomplete after 30 minutes.'**
+  String alertBodySetupIncompleteGeneric(String childName);
+
+  /// No description provided for @alertBodyDataCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'OSRA was reinstalled on {model}. Its protection was off until it was paired again.'**
+  String alertBodyDataCleared(String model);
+
+  /// No description provided for @accessRequestTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{child} asks to use {app}'**
+  String accessRequestTitle(String child, String app);
+
+  /// No description provided for @accessRequestBlockedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{app} was blocked on {child}\'s phone'**
+  String accessRequestBlockedTitle(String app, String child);
+
+  /// No description provided for @accessRequestBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{child} tapped \"Request access\" on the block screen.'**
+  String accessRequestBody(String child);
+
+  /// No description provided for @accessRequestBlockedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{child} tried to open it. Nothing for you to do.'**
+  String accessRequestBlockedBody(String child);
+
+  /// No description provided for @accessRequestAllow.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow'**
+  String get accessRequestAllow;
+
+  /// No description provided for @accessRequestAllowing.
+  ///
+  /// In en, this message translates to:
+  /// **'Allowing…'**
+  String get accessRequestAllowing;
+
+  /// No description provided for @accessRequestKeepBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep blocked'**
+  String get accessRequestKeepBlocked;
+
+  /// No description provided for @accessRequestDisclosure.
+  ///
+  /// In en, this message translates to:
+  /// **'{app} will be allowed from now on. Bedtime, school time and Pause still apply.'**
+  String accessRequestDisclosure(String app);
+
+  /// No description provided for @accessRequestAllowFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t allow {app}. Check your connection and try again.'**
+  String accessRequestAllowFailed(String app);
+
+  /// No description provided for @accessRequestReadOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Only {owner} can answer this request. Ask them to open OSRA.'**
+  String accessRequestReadOnly(String owner);
+
+  /// No description provided for @accessRequestAllowedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'{actor} allowed {app}{timeSuffix}'**
+  String accessRequestAllowedBy(String actor, String app, String timeSuffix);
+
+  /// No description provided for @accessRequestKeptBlockedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'{actor} kept {app} blocked{timeSuffix}'**
+  String accessRequestKeptBlockedBy(
+      String actor, String app, String timeSuffix);
+
+  /// No description provided for @accessRequestAllowedByYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You allowed {app}{timeSuffix}'**
+  String accessRequestAllowedByYou(String app, String timeSuffix);
+
+  /// No description provided for @accessRequestKeptBlockedByYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You kept {app} blocked{timeSuffix}'**
+  String accessRequestKeptBlockedByYou(String app, String timeSuffix);
+
+  /// No description provided for @accessRequestHandled.
+  ///
+  /// In en, this message translates to:
+  /// **'This request was handled'**
+  String get accessRequestHandled;
+
+  /// No description provided for @accessRequestAllowedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'You allowed {app}'**
+  String accessRequestAllowedSnack(String app);
+
+  /// No description provided for @accessRequestKeptBlockedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'You kept {app} blocked'**
+  String accessRequestKeptBlockedSnack(String app);
+
+  /// No description provided for @accessRequestAllowLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow {app}'**
+  String accessRequestAllowLabel(String app);
+
+  /// No description provided for @accessRequestKeepBlockedLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep {app} blocked'**
+  String accessRequestKeepBlockedLabel(String app);
 }
 
 class _AppLocalizationsDelegate
