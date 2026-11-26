@@ -3967,7 +3967,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get locationP13Refresh => 'تحديث';
 
   @override
-  String get locationP13Refreshing => 'جارٍ التحديث…';
+  String get locationP13Refreshing => 'جارٍ التحقق…';
 
   @override
   String get locationP13Directions => 'الاتجاهات';
@@ -4005,6 +4005,6 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String locationP13RadiusMeters(String meters) {
-    return 'نطاق $meters متر';
+    return 'نطاق $meters م';
   }
 }

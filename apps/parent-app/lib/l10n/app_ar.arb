@@ -1198,7 +1198,7 @@
   "accessRequestKeepBlockedLabel": "إبقاء {app} محظورًا",
   "locationP13AllChildren": "الكل",
   "locationP13Refresh": "تحديث",
-  "locationP13Refreshing": "جارٍ التحديث…",
+  "locationP13Refreshing": "جارٍ التحقق…",
   "locationP13Directions": "الاتجاهات",
   "locationP13EarlierToday": "في وقت سابق اليوم",
   "locationP13EarlierTodayEmpty": "لا توجد أماكن سابقة مسجّلة اليوم.",
@@ -1210,6 +1210,6 @@
   "locationP13AlertsOff": "التنبيهات متوقفة",
   "locationP13NoLocationYet": "لم يصل موقع بعد.",
   "locationP13RingNotYetOnIphone": "غير متاح بعد على آيفون",
-  "locationP13RadiusMeters": "نطاق {meters} متر",
+  "locationP13RadiusMeters": "نطاق {meters} م",
   "@locationP13RadiusMeters": { "placeholders": { "meters": { "type": "String" } } }
 }
