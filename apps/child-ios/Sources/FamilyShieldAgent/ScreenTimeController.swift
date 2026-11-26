@@ -143,6 +143,11 @@ public final class ScreenTimeController {
                 let center = DeviceActivityCenter()
                 Self.stop(center.activities.filter { $0.rawValue.hasPrefix("bedtime.") }, center: center)
             }
+        } else {
+            // #1172: the server blanks the times of a Bedtime the parent switched off. Stop any bedtime this
+            // phone scheduled earlier, so switching it off on the parent app really ends it here too.
+            let center = DeviceActivityCenter()
+            Self.stop(center.activities.filter { $0.rawValue.hasPrefix("bedtime.") }, center: center)
         }
         refused += scheduleRoutines(RuleStore.routineSchedules())
         RuleStore.recordUnscheduled(refused)

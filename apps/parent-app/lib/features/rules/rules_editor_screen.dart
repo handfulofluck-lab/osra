@@ -350,18 +350,26 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
       padding: const EdgeInsets.all(AppSpace.lg),
       children: [
         Text(l10n.dailyLimit(st.dailyLimitMinutes), style: Theme.of(context).textTheme.titleMedium),
-        Slider(value: limitSliderPosition(st.dailyLimitMinutes), min: kLimitSliderMin, max: kLimitSliderMax, divisions: 39, label: l10n.minutesShort(st.dailyLimitMinutes), semanticFormatterCallback: (v) => l10n.minutesShort(v.round()), onChanged: (v) => update((s) => ScreenTimeRule(dailyLimitMinutes: v.round(), weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
+        Slider(value: limitSliderPosition(st.dailyLimitMinutes), min: kLimitSliderMin, max: kLimitSliderMax, divisions: 39, label: l10n.minutesShort(st.dailyLimitMinutes), semanticFormatterCallback: (v) => l10n.minutesShort(v.round()), onChanged: (v) => update((s) => ScreenTimeRule(dailyLimitMinutes: v.round(), weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, bedtimeEnabled: s.bedtimeEnabled, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
         const SizedBox(height: AppSpace.sm),
         Text(l10n.weekendLimit(st.weekendLimitMinutes), style: Theme.of(context).textTheme.titleMedium),
-        Slider(value: limitSliderPosition(st.weekendLimitMinutes), min: kLimitSliderMin, max: kLimitSliderMax, divisions: 39, label: l10n.minutesShort(st.weekendLimitMinutes), semanticFormatterCallback: (v) => l10n.minutesShort(v.round()), onChanged: (v) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: v.round(), bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
+        Slider(value: limitSliderPosition(st.weekendLimitMinutes), min: kLimitSliderMin, max: kLimitSliderMax, divisions: 39, label: l10n.minutesShort(st.weekendLimitMinutes), semanticFormatterCallback: (v) => l10n.minutesShort(v.round()), onChanged: (v) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: v.round(), bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, bedtimeEnabled: s.bedtimeEnabled, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
         const Divider(height: AppSpace.xxl),
-        Text(l10n.bedtime, style: Theme.of(context).textTheme.titleMedium),
-        timeTile(l10n.starts, st.bedtimeStart, (t) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: formatTime(t), bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
-        timeTile(l10n.ends, st.bedtimeEnd, (t) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: formatTime(t), schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
+        // #1172: Bedtime has an off switch, and a new child starts with it off. The times stay, so turning it
+        // back on restores them.
+        SwitchListTile(
+          key: const ValueKey('bedtimeEnabledSwitch'),
+          contentPadding: EdgeInsets.zero,
+          title: Text(l10n.bedtime, style: Theme.of(context).textTheme.titleMedium),
+          value: st.bedtimeEnabled,
+          onChanged: (on) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, bedtimeEnabled: on, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays)),
+        ),
+        if (st.bedtimeEnabled) timeTile(l10n.starts, st.bedtimeStart, (t) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: formatTime(t), bedtimeEnd: s.bedtimeEnd, bedtimeEnabled: s.bedtimeEnabled, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
+        if (st.bedtimeEnabled) timeTile(l10n.ends, st.bedtimeEnd, (t) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: formatTime(t), bedtimeEnabled: s.bedtimeEnabled, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
         const Divider(height: AppSpace.xxl),
         Text(l10n.schoolHours, style: Theme.of(context).textTheme.titleMedium),
-        timeTile(l10n.starts, st.schoolStart, (t) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: formatTime(t), schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
-        timeTile(l10n.ends, st.schoolEnd, (t) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: formatTime(t), schoolDays: s.schoolDays))),
+        timeTile(l10n.starts, st.schoolStart, (t) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, bedtimeEnabled: s.bedtimeEnabled, schoolStart: formatTime(t), schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
+        timeTile(l10n.ends, st.schoolEnd, (t) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, bedtimeEnabled: s.bedtimeEnabled, schoolStart: s.schoolStart, schoolEnd: formatTime(t), schoolDays: s.schoolDays))),
         const SizedBox(height: AppSpace.sm),
         Wrap(
           spacing: AppSpace.sm,
@@ -373,7 +381,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
                 onSelected: (sel) => update((s) {
                   final days = {...s.schoolDays};
                   sel ? days.add(i) : days.remove(i);
-                  return ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: days.toList()..sort());
+                  return ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, bedtimeEnabled: s.bedtimeEnabled, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: days.toList()..sort());
                 }),
               ),
           ],

@@ -1,13 +1,19 @@
 import { DEFAULT_BLOCKED_CATEGORIES } from "@familyshield/shared-types";
 
-/** Default ruleset applied to every new child (Feature #1); categories come from shared-types. */
+/**
+ * Default ruleset applied to every new child (Feature #1); categories come from shared-types.
+ *
+ * #1172: no routine runs until a parent turns it on. Bedtime is saved off (its times stay as the suggestion
+ * the switch turns on) and School hours has no days, which every agent already reads as "no school window".
+ */
 export const DEFAULT_RULESET = {
   screenTime: {
     dailyLimitMinutes: 180,
     weekendLimitMinutes: 300,
     bedtimeStart: "21:00",
     bedtimeEnd: "07:00",
-    schoolHours: { start: "08:00", end: "15:00", days: [1, 2, 3, 4, 5] },
+    bedtimeEnabled: false,
+    schoolHours: { start: "08:00", end: "15:00", days: [] as number[] },
   },
   webFilter: {
     blockedCategories: [...DEFAULT_BLOCKED_CATEGORIES],
@@ -46,6 +52,7 @@ export function defaultRuleSetRow(childId: string) {
     weekendLimitMinutes: DEFAULT_RULESET.screenTime.weekendLimitMinutes,
     bedtimeStart: DEFAULT_RULESET.screenTime.bedtimeStart,
     bedtimeEnd: DEFAULT_RULESET.screenTime.bedtimeEnd,
+    bedtimeEnabled: DEFAULT_RULESET.screenTime.bedtimeEnabled,
     schoolHoursStart: DEFAULT_RULESET.screenTime.schoolHours.start,
     schoolHoursEnd: DEFAULT_RULESET.screenTime.schoolHours.end,
     schoolDays: DEFAULT_RULESET.screenTime.schoolHours.days,
