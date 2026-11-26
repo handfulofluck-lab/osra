@@ -340,6 +340,7 @@
   "@commandRefusedNotSupported": {"placeholders": {"command": {"type": "String"}, "device": {"type": "String"}}},
   "commandRefusedInvalidPayload": "The phone rejected this command's settings.",
   "rulesBehindHint": "The phone hasn't picked this change up yet.",
+  "rulesWaitingFirstApply": "Waiting for the phone to apply rules.",
   "rulesLoadFailed": "Couldn't load rules. Check your connection and try again.",
   "noPerAppRules": "No per-app rules",
   "appActionBlock": "Block",
@@ -1617,6 +1618,15 @@
   "digestPrefsSendHourLabel": "Send hour",
   "alertTitleSos": "SOS pressed",
   "alertTitleBlockedSite": "Blocked site attempted",
+  "blockedSiteDomainLine": "Site: {domain}",
+  "@blockedSiteDomainLine": {
+    "placeholders": {
+      "domain": {
+        "type": "String"
+      }
+    }
+  },
+  "blockedSiteNamesNotCollected": "Site names aren't collected yet, so only the block is shown.",
   "alertTitleDailyLimit": "Daily limit reached",
   "alertTitleAppBlocked": "App blocked",
   "alertTitleGeofence": "Place alert",

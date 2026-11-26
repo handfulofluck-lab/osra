@@ -1328,6 +1328,23 @@ mis-measure.
    device with a null token is the agent never publishing, and a wake that arrives whose command never runs
    is the agent's own fetch being blocked. They do not share a fix.
 
+### Parent grouped notifications (#1139)
+
+Run `flutter test test/push_delivery_grouping_test.dart test/background_push_test.dart test/foreground_push_test.dart`
+from `apps/parent-app`. The grouping fixture sends the authenticated alert snapshots through the
+same planner and notification plugin used by a Parent wake. Check that SDK notification IDs
+differ for the first three deliveries and the summary. Each local tap payload should still be
+the original alert ID. The fixture also covers a critical fourth delivery, a coalesced wake,
+a silent update on an existing card, and a new card with no issued delivery.
+
+On a dedicated staging family, use the signed Parent cut paired with the matching server cut and
+agree on the synthetic input and timing in the test record. Send five flagged events from one
+app to one child within two minutes. Count three immediate Parent notifications and one summary
+after the configured window. Repeat with a critical fourth event and record its immediate
+notification. Check an existing contact and a separate contact so their cards and the shared
+per-app budget are both covered. Record visible notifications and tap destinations for each
+Parent platform. Keep the raw notification content and device identifiers off the shared record.
+
 ## 5k. The iOS child agent on an iPhone (roadmap 5.5)
 
 First run on Karim's MacBook and iPhone 13, 11 Nov 2026 (#372). The ids are the decision-2B ones (#543).

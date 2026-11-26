@@ -22,7 +22,6 @@ import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
 import '../map/family_map_screen.dart'
     show FamilyMapScreen, MapFocus, mapIsAvailable;
-import '../rules/rules_behind_banner.dart';
 import '../social/social_screen.dart' show socialAppIcon, socialAppLabel;
 import '../social/social_vote_controls.dart';
 import 'sos_alert_actions.dart';
@@ -38,6 +37,16 @@ String formatGeneralAlertBody(
   final isEnglish = localeName.startsWith('en');
   if (alert.category == 'sos') {
     return '';
+  }
+  if (alert.category == 'web_threat') {
+    final domain = alert.metadata['domain']?.toString().trim() ?? '';
+    final base = isEnglish && alert.body.trim().isNotEmpty
+        ? alert.body.trim()
+        : '';
+    final detail = domain.isNotEmpty
+        ? l10n.blockedSiteDomainLine(ltrIsolate(domain))
+        : l10n.blockedSiteNamesNotCollected;
+    return base.isEmpty ? detail : '$base\n$detail';
   }
   if (alert.category == 'device_restarted') {
     return RestartAlertText.tryFormat(
@@ -467,7 +476,6 @@ class _SocialAlertDetailBodyState
       key: const ValueKey('alertDetailScroll'),
       padding: const EdgeInsets.all(AppSpace.lg),
       children: [
-        RulesBehindBanner(childId: alert.childId),
         // 1. Top context: title, affected app, concern, child/device, and local time.
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -788,7 +796,6 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
       key: const ValueKey('alertDetailGeneralScroll'),
       padding: const EdgeInsets.all(AppSpace.lg),
       children: [
-        RulesBehindBanner(childId: alert.childId),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

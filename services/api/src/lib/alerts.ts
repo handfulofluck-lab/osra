@@ -43,6 +43,11 @@ export interface RaiseAlertInput {
   attemptCount?: number | null;
   /** ADR-0047: server-derived only. Persist for security audit without realtime, push or parent reads. */
   heldDuringSetup?: boolean;
+  /**
+   * #1139: write and publish the row but do not push. The social window uses it once the (child, app)
+   * first-N budget is spent; its summary sweep pushes later.
+   */
+  skipPush?: boolean;
 }
 
 export type KeyedRaiseAlertInput = Omit<RaiseAlertInput, "bodyKey" | "params"> & {
@@ -202,6 +207,7 @@ export async function raiseAlertOnce(
   if (alert?.heldDuringSetup) return { alert, deduplicated: false };
 
   await publishFamilyEvent(normalizedInput.familyId, { type: "alert", payload: alert, ts: new Date().toISOString() });
+  if (normalizedInput.skipPush) return { alert, deduplicated: false };
 
   let childName = normalizedInput.childName;
   if (!childName) {

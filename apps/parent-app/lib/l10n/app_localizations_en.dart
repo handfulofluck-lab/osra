@@ -572,6 +572,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get rulesBehindHint => 'The phone hasn\'t picked this change up yet.';
 
   @override
+  String get rulesWaitingFirstApply => 'Waiting for the phone to apply rules.';
+
+  @override
   String get rulesLoadFailed =>
       'Couldn\'t load rules. Check your connection and try again.';
 
@@ -2912,6 +2915,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get alertTitleBlockedSite => 'Blocked site attempted';
+
+  @override
+  String blockedSiteDomainLine(String domain) {
+    return 'Site: $domain';
+  }
+
+  @override
+  String get blockedSiteNamesNotCollected =>
+      'Site names aren\'t collected yet, so only the block is shown.';
 
   @override
   String get alertTitleDailyLimit => 'Daily limit reached';
