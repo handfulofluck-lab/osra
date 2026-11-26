@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.familyshield.agent.security.AccessibilityServiceListPolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -112,25 +114,73 @@ class AccessibilityBindObserver(
     private val onBoundWhileVisible: () -> Unit,
 ) {
     private var observeJob: Job? = null
+    private var attachedLifecycle: Lifecycle? = null
+    private var lifecycleObserver: LifecycleEventObserver? = null
 
     val isObserving: Boolean
         get() = observeJob?.isActive == true
 
+    val isArmed: Boolean
+        get() = lifecycleObserver != null || isObserving
+
+    /**
+     * Arms observation against [lifecycle] so rendering inside `onResume()` (while Android's
+     * [Lifecycle.State] is still [Lifecycle.State.STARTED] before `ON_RESUME` dispatches) still
+     * starts collecting as soon as `ON_RESUME` arrives, and cancels immediately on `ON_PAUSE` /
+     * `ON_STOP` / `ON_DESTROY` or explicit [stop].
+     */
+    fun arm(scope: CoroutineScope, lifecycle: Lifecycle) {
+        stop()
+        if (lifecycle.currentState == Lifecycle.State.DESTROYED) return
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> startCollection(scope)
+                Lifecycle.Event.ON_PAUSE,
+                Lifecycle.Event.ON_STOP,
+                Lifecycle.Event.ON_DESTROY -> cancelCollection()
+                else -> Unit
+            }
+        }
+        attachedLifecycle = lifecycle
+        lifecycleObserver = observer
+        lifecycle.addObserver(observer)
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && !isObserving && lifecycleObserver === observer) {
+            startCollection(scope)
+        }
+    }
+
     fun start(scope: CoroutineScope) {
         stop()
+        startCollection(scope)
+    }
+
+    private fun startCollection(scope: CoroutineScope) {
+        cancelCollection()
         if (runningState.value && isAccessibilityGranted()) {
+            stop()
             onBoundWhileVisible()
             return
         }
         observeJob = scope.launch {
             runningState.first { running -> running && isAccessibilityGranted() }
-            observeJob = null
+            stop()
             onBoundWhileVisible()
         }
     }
 
-    fun stop() {
+    private fun cancelCollection() {
         observeJob?.cancel()
         observeJob = null
+    }
+
+    fun stop() {
+        cancelCollection()
+        val obs = lifecycleObserver
+        val lc = attachedLifecycle
+        lifecycleObserver = null
+        attachedLifecycle = null
+        if (obs != null && lc != null) {
+            lc.removeObserver(obs)
+        }
     }
 }

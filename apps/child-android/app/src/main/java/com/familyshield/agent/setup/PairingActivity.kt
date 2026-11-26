@@ -897,11 +897,8 @@ class PairingActivity : ComponentActivity() {
         replaceWithCompose {
             OnboardingChecklistScreen(copy = copy)
         }
-        if (
-            rows.any { it.grant == OnboardingPolicy.Grant.ACCESSIBILITY && !it.granted } &&
-            lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
-        ) {
-            accessibilityBindObserver.start(lifecycleScope)
+        if (rows.any { it.grant == OnboardingPolicy.Grant.ACCESSIBILITY && !it.granted }) {
+            accessibilityBindObserver.arm(lifecycleScope, lifecycle)
         }
     }
 
@@ -979,12 +976,8 @@ class PairingActivity : ComponentActivity() {
                 },
             )
         }
-        if (
-            g == OnboardingPolicy.Grant.ACCESSIBILITY &&
-            !row.granted &&
-            lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
-        ) {
-            accessibilityBindObserver.start(lifecycleScope)
+        if (g == OnboardingPolicy.Grant.ACCESSIBILITY && !row.granted) {
+            accessibilityBindObserver.arm(lifecycleScope, lifecycle)
         }
     }
 

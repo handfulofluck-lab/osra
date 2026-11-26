@@ -1,5 +1,8 @@
 package com.familyshield.agent.setup
 
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
 import com.familyshield.agent.services.AccessibilityMonitorService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -101,9 +104,10 @@ class RestrictedSettingsPolicyTest {
         assertTrue(activity.contains("RestrictedSettingsPolicy.isolateServiceLabel"))
         assertTrue(activity.contains("grants.appInfoIntent()"))
         assertTrue(activity.contains("AccessibilityMonitorService.runningState"))
-        assertTrue(activity.contains("accessibilityBindObserver.start(lifecycleScope)"))
+        assertTrue(activity.contains("accessibilityBindObserver.arm(lifecycleScope, lifecycle)"))
         assertTrue(activity.contains("accessibilityBindObserver.stop()"))
         assertTrue(activity.contains("override fun onPause()"))
+        assertFalse(activity.contains("lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)"))
 
         for (key in listOf(
             "restricted_settings_step_1",
@@ -249,6 +253,131 @@ class RestrictedSettingsPolicyTest {
             AccessibilityMonitorService.isRunning = previous
             scope.cancel()
         }
+    }
+
+    @Test
+    fun `render at STARTED followed by ON_RESUME then late bind advances once and stops observing`() {
+        val owner = FakeLifecycleOwner()
+        owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+        owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+        assertEquals(Lifecycle.State.STARTED, owner.lifecycle.currentState)
+
+        val running = MutableStateFlow(false)
+        val scope = CoroutineScope(Dispatchers.Unconfined + Job())
+        var advances = 0
+        val observer = AccessibilityBindObserver(
+            runningState = running,
+            isAccessibilityGranted = {
+                RestrictedSettingsPolicy.isAccessibilityBoundAndEnabled(
+                    enabledServicesSetting = enabledList,
+                    packageName = pkg,
+                    serviceClassName = service,
+                    isServiceRunning = running.value,
+                )
+            },
+            onBoundWhileVisible = { advances += 1 },
+        )
+        try {
+            // Matches PairingActivity rendering inline inside onResume() before ON_RESUME dispatches.
+            observer.arm(scope, owner.lifecycle)
+            assertTrue(observer.isArmed)
+            assertFalse(observer.isObserving)
+            assertEquals(0, advances)
+
+            // Lifecycle reaches RESUMED -> collection starts.
+            owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+            assertTrue(observer.isObserving)
+            assertEquals(0, advances)
+
+            // Late service bind arrives while visible -> advances once and detaches.
+            running.value = true
+            assertEquals(1, advances)
+            assertFalse(observer.isObserving)
+            assertFalse(observer.isArmed)
+        } finally {
+            observer.stop()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `armed observer pauses on ON_PAUSE and ignores bind while backgrounded`() {
+        val owner = FakeLifecycleOwner()
+        owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+        owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+
+        val running = MutableStateFlow(false)
+        val scope = CoroutineScope(Dispatchers.Unconfined + Job())
+        var advances = 0
+        val observer = AccessibilityBindObserver(
+            runningState = running,
+            isAccessibilityGranted = {
+                RestrictedSettingsPolicy.isAccessibilityBoundAndEnabled(
+                    enabledServicesSetting = enabledList,
+                    packageName = pkg,
+                    serviceClassName = service,
+                    isServiceRunning = running.value,
+                )
+            },
+            onBoundWhileVisible = { advances += 1 },
+        )
+        try {
+            observer.arm(scope, owner.lifecycle)
+            owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+            assertTrue(observer.isObserving)
+
+            // Backgrounding cancels collection; a late bind while paused does not fire.
+            owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+            assertFalse(observer.isObserving)
+            running.value = true
+            assertEquals(0, advances)
+
+            // Screen replacement / explicit stop detaches the lifecycle observer cleanly.
+            observer.stop()
+            assertFalse(observer.isArmed)
+        } finally {
+            observer.stop()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `already RESUMED and already bound advances once without double firing`() {
+        val owner = FakeLifecycleOwner()
+        owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+        owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+        owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+
+        val running = MutableStateFlow(true)
+        val scope = CoroutineScope(Dispatchers.Unconfined + Job())
+        var advances = 0
+        val observer = AccessibilityBindObserver(
+            runningState = running,
+            isAccessibilityGranted = {
+                RestrictedSettingsPolicy.isAccessibilityBoundAndEnabled(
+                    enabledServicesSetting = enabledList,
+                    packageName = pkg,
+                    serviceClassName = service,
+                    isServiceRunning = running.value,
+                )
+            },
+            onBoundWhileVisible = { advances += 1 },
+        )
+        try {
+            observer.arm(scope, owner.lifecycle)
+            assertEquals(1, advances)
+            assertFalse(observer.isObserving)
+            assertFalse(observer.isArmed)
+        } finally {
+            observer.stop()
+            scope.cancel()
+        }
+    }
+
+    private class FakeLifecycleOwner : LifecycleOwner {
+        val registry: LifecycleRegistry = LifecycleRegistry.createUnsafe(this)
+        override val lifecycle: Lifecycle
+            get() = registry
     }
 
     private fun findAppSrcRoot(): File {
