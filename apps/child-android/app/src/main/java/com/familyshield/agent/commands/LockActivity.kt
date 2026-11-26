@@ -39,7 +39,9 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.familyshield.agent.R
 import com.familyshield.agent.di.WorkerEntryPoint
+import com.familyshield.agent.enforcement.AndroidPackageFacts
 import com.familyshield.agent.enforcement.KeyguardPolicy
+import com.familyshield.agent.enforcement.LockEnforcementPolicy
 import com.familyshield.agent.enforcement.LockScreenPolicy
 import com.familyshield.agent.enforcement.LockPeriodTracker
 import com.familyshield.agent.enforcement.LockState
@@ -49,16 +51,18 @@ import dagger.hilt.android.EntryPointAccessors
 /** Launchable always-allowed app shortcut shown on [LockActivity] when the device is locked (#1183). */
 data class AlwaysAllowedShortcut(val packageId: String, val label: String)
 
-/** Pure JVM filter/sorter for always-allowed app buttons displayed under Lock (#1183). */
+/** Pure JVM filter/sorter for always-allowed app buttons displayed under Lock (#1183 + #1240 R3). */
 object LockAlwaysAllowedPolicy {
     fun resolveLaunchable(
         alwaysAllowedPackages: Collection<String>,
         ownPackage: String,
+        homePackages: Set<String> = emptySet(),
         resolveLabel: (String) -> String?,
     ): List<AlwaysAllowedShortcut> = alwaysAllowedPackages
         .asSequence()
         .map { it.trim() }
         .filter { it.isNotEmpty() && it != ownPackage }
+        .filterNot { LockEnforcementPolicy.isLockAllowlistDenied(it, homePackages) }
         .distinct()
         .mapNotNull { pkg ->
             resolveLabel(pkg)?.trim()?.takeIf { it.isNotEmpty() }?.let { AlwaysAllowedShortcut(pkg, it) }
@@ -217,9 +221,12 @@ class LockActivity : ComponentActivity() {
                 ?.alwaysAllowedApps
                 .orEmpty()
         }.getOrDefault(emptyList())
+        val homePackages = runCatching { AndroidPackageFacts(applicationContext).homePackages() }
+            .getOrDefault(emptySet())
         return LockAlwaysAllowedPolicy.resolveLaunchable(
             alwaysAllowedPackages = packages,
             ownPackage = packageName,
+            homePackages = homePackages,
             resolveLabel = { pkg ->
                 if (packageManager.getLaunchIntentForPackage(pkg) == null) {
                     null

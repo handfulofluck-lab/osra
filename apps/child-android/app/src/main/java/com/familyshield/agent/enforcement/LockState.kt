@@ -1,6 +1,7 @@
 package com.familyshield.agent.enforcement
 
 import android.content.Context
+import com.familyshield.agent.security.TamperScreenPolicy
 
 /**
  * Persisted "what should be on the screen right now" for the parent's lock / pause commands
@@ -77,8 +78,36 @@ object LockEnforcementPolicy {
     private val EXEMPT_SEGMENTS = setOf("emergency", "incallui", "dialer")
 
     /**
+     * #1240 Ahmed R3 ([Sat]): hard deny-set that can NEVER bypass Lock via `alwaysAllowedApps`,
+     * whatever the parent's list contains — Settings, OEM settings/security centers, package
+     * installers, Play Store, and VPN dialogs (plus dynamic `CATEGORY_HOME` launchers from
+     * [PackageFacts.homePackages]).
+     */
+    val LOCK_ALLOWLIST_DENIED_PACKAGES: Set<String> = TamperScreenPolicy.SYSTEM_PACKAGES + setOf(
+        TamperScreenPolicy.VPN_DIALOG_PACKAGE,
+        "com.samsung.android.settings",
+        "com.coloros.safecenter",
+        "com.oplus.safecenter",
+        "com.oppo.safe",
+        "com.vivo.permissionmanager",
+        "com.huawei.systemmanager",
+        "com.miui.packageinstaller",
+        "com.oplus.appdetail",
+        "com.android.vending",
+    )
+
+    /** True when [pkg] must never be granted a Lock exemption or shortcut through `alwaysAllowedApps`. */
+    fun isLockAllowlistDenied(pkg: String?, homePackages: Set<String> = emptySet()): Boolean {
+        val trimmed = pkg?.trim().orEmpty()
+        if (trimmed.isEmpty()) return true
+        return trimmed in LOCK_ALLOWLIST_DENIED_PACKAGES || trimmed in homePackages
+    }
+
+    /**
      * Whether [pkg] is a package the lock must never cover (issue #80, review of #83 F1), plus
-     * parent-configured always-allowed apps when [alwaysAllowedPackages] is supplied (issue #1183).
+     * parent-configured always-allowed apps when [alwaysAllowedPackages] is supplied (issue #1183)
+     * — subject to [isLockAllowlistDenied] so Settings/installers/Play Store/launchers can never
+     * become a door out of Lock (#1240 R3).
      */
     fun isExemptPackage(
         pkg: String?,
@@ -86,7 +115,7 @@ object LockEnforcementPolicy {
         alwaysAllowedPackages: Set<String> = emptySet(),
     ): Boolean {
         if (pkg.isNullOrBlank()) return false
-        if (pkg in alwaysAllowedPackages) return true
+        if (pkg in alwaysAllowedPackages && !isLockAllowlistDenied(pkg, facts.homePackages())) return true
         return isEmergencyOrSystemExempt(pkg, facts)
     }
 
@@ -122,8 +151,8 @@ object LockEnforcementPolicy {
      *
      * Order matters:
      * 1. An active call / emergency surface is never covered, whatever else is visible (issue #80).
-     * 2. An active app that is neither ours nor exempt (including [alwaysAllowedPackages]) raises
-     *    the overlay immediately.
+     * 2. An active app that is neither ours nor exempt (including non-denied [alwaysAllowedPackages])
+     *    raises the overlay immediately.
      * 3. An active always-allowed app (#1183) stays uncovered ONLY if no non-exempt app is visible
      *    beside it in split screen or PiP — so an always-allowed app cannot be used to prop open a
      *    blocked app in the other half of the screen.
@@ -143,7 +172,11 @@ object LockEnforcementPolicy {
         if (!active.isNullOrBlank() && active != ownPackage && isEmergencyOrSystemExempt(active, facts)) {
             return false
         }
-        if (!active.isNullOrBlank() && active != ownPackage && active !in alwaysAllowedPackages) {
+        val activeAllowed = !active.isNullOrBlank() &&
+            active != ownPackage &&
+            active in alwaysAllowedPackages &&
+            !isLockAllowlistDenied(active, facts.homePackages())
+        if (!active.isNullOrBlank() && active != ownPackage && !activeAllowed) {
             return true
         }
         if (snapshot.windows.any { it.packageName == ownPackage && it.inPictureInPicture }) return true

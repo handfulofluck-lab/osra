@@ -40,12 +40,17 @@ class PauseInternetAndLockAllowlist1183Test {
     private class FakeFacts(
         private val system: Set<String> = emptySet(),
         private val roles: Set<String> = emptySet(),
+        private val homes: Set<String> = emptySet(),
     ) : PackageFacts {
         override fun isSystemApp(pkg: String): Boolean = pkg in system
         override fun dialerRoleHolders(): Set<String> = roles
+        override fun homePackages(): Set<String> = homes
     }
 
-    private val facts = FakeFacts(system = setOf(dialer, "com.android.systemui"))
+    private val facts = FakeFacts(
+        system = setOf(dialer, "com.android.systemui"),
+        homes = setOf(launcher),
+    )
 
     private fun noonSaturday(): ZonedDateTime {
         val date = LocalDate.now().with(TemporalAdjusters.nextOrSame(DayOfWeek.SATURDAY))
@@ -125,6 +130,73 @@ class PauseInternetAndLockAllowlist1183Test {
         assertFalse(
             "emergency dialer stays uncovered even if another window is visible",
             LockEnforcementPolicy.shouldReraise("locked", emergencyWithGame, own, facts, allowed),
+        )
+    }
+
+    @Test
+    fun `Ahmed R3 hard deny-set blocks Settings, OEM security, installers, Play Store and launchers even when always-allowed`() {
+        val deniedCandidates = listOf(
+            "com.android.settings",
+            "com.samsung.android.settings",
+            "com.miui.securitycenter",
+            "com.coloros.safecenter",
+            "com.google.android.packageinstaller",
+            "com.android.packageinstaller",
+            "com.miui.packageinstaller",
+            "com.android.vending",
+            launcher,
+        )
+        val parentAllowlist = deniedCandidates + listOf(phoneApp, eduApp)
+        val allowSet = parentAllowlist.toSet()
+
+        // 1. Denied packages in alwaysAllowedApps -> NO shortcut under Lock AND Lock re-raises over them.
+        for (denied in deniedCandidates) {
+            assertTrue(
+                "$denied must be denied from Lock allowlist even if parent added it",
+                LockEnforcementPolicy.isLockAllowlistDenied(denied, setOf(launcher)),
+            )
+            assertFalse(
+                "$denied must NOT be exempt under Lock",
+                LockEnforcementPolicy.isExemptPackage(denied, facts, allowSet),
+            )
+            assertTrue(
+                "Lock must re-raise over $denied (single-package form)",
+                LockEnforcementPolicy.shouldReraise("locked", denied, own, facts, allowSet),
+            )
+            val snap = WindowSnapshot(activePackage = denied, windows = listOf(VisibleWindow(denied)))
+            assertTrue(
+                "Lock must re-raise over $denied (multi-window form)",
+                LockEnforcementPolicy.shouldReraise("locked", snap, own, facts, allowSet),
+            )
+        }
+
+        // 2. Normal allowed apps -> shortcut IS shown AND Lock stays open for them.
+        val shortcuts = LockAlwaysAllowedPolicy.resolveLaunchable(
+            alwaysAllowedPackages = parentAllowlist,
+            ownPackage = own,
+            homePackages = setOf(launcher),
+            resolveLabel = { pkg ->
+                when (pkg) {
+                    phoneApp -> "WhatsApp"
+                    eduApp -> "Khan Academy"
+                    "com.android.settings" -> "Settings"
+                    "com.android.vending" -> "Play Store"
+                    launcher -> "One UI Home"
+                    else -> pkg
+                }
+            },
+        )
+        assertEquals(
+            "Shortcuts must include only normal allowed apps and exclude all denied system/launcher packages",
+            listOf(
+                AlwaysAllowedShortcut(eduApp, "Khan Academy"),
+                AlwaysAllowedShortcut(phoneApp, "WhatsApp"),
+            ),
+            shortcuts,
+        )
+        assertFalse(
+            "Normal allowed messaging app stays open under Lock",
+            LockEnforcementPolicy.shouldReraise("locked", phoneApp, own, facts, allowSet),
         )
     }
 
