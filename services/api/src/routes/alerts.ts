@@ -5,6 +5,7 @@ import { registerRawBodyParser, authenticateInternalRequest } from "../lib/inter
 import { redactedBlockedSiteKey, redactBlockedSiteHost, siteNamesEnabled } from "../lib/siteNames.js";
 import { raiseAlertOnce } from "../lib/alerts.js";
 import { incompleteDedupeKey, shouldHoldTamperDuringSetup, type SetupDevice } from "../lib/deviceSetup.js";
+import { findSetupNotice, withSetupOpen } from "../lib/deviceSetupTransitions.js";
 import { sanitizeAlertMetadata, withoutAlertLocation } from "../lib/alertLocation.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
 import { guardianPermissions, requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
@@ -143,16 +144,8 @@ export async function alertsRoutes(app: FastifyInstance) {
     if (!(await assertProcessingAllowed(childId, reply))) return;
 
     const effectiveDeviceId = deviceId ?? auth.device?.id;
-    // #1208: the phone's setup notice shares the server reminder's key. Once the server has recorded
-    // completion, a notice still queued on the phone is stale: the parent gets no setup alert after
-    // "Phone is protected".
-    if (
-      auth.device &&
-      dedupeKey === incompleteDedupeKey(auth.device.id) &&
-      (auth.device as unknown as SetupDevice).setupCompletedAt
-    ) {
-      return reply.code(200).send({ dropped: "setup_complete" });
-    }
+    // #1208: the phone's setup notice shares the server reminder's key (handled below, under the device lock).
+    const setupNoticeDevice = auth.device && dedupeKey === incompleteDedupeKey(auth.device.id) ? auth.device : null;
     const heldDuringSetup = auth.device
       ? shouldHoldTamperDuringSetup(
           auth.device as unknown as SetupDevice,
@@ -172,7 +165,7 @@ export async function alertsRoutes(app: FastifyInstance) {
 
     // Phase 2a: one path creates the row, publishes the WS event and pushes to the parents' phones.
     // Issue #225: a repeated dedupeKey is a retry, not a new alert — 200 with the existing row.
-    const { alert, deduplicated } = await raiseAlertOnce({
+    const raise = () => raiseAlertOnce({
       childId,
       familyId: child.familyId,
       deviceId: effectiveDeviceId,
@@ -191,6 +184,21 @@ export async function alertsRoutes(app: FastifyInstance) {
       heldDuringSetup,
       childName: child.displayName,
     });
+
+    if (setupNoticeDevice) {
+      // A notice still queued on the phone after completion is stale, so the parent gets no setup alert after
+      // "Phone is protected". The check and the write hold the Device row (Codex, #1230 finding 2), so a
+      // completion that commits first always wins. A row under the pre-#1208 server key is the pairing's one
+      // notice too (finding 1): the phone's copy dedupes onto it.
+      const pairedAt = (setupNoticeDevice as unknown as SetupDevice).pairedAt;
+      const outcome = await withSetupOpen(setupNoticeDevice.id, async () => {
+        const existing = await findSetupNotice(setupNoticeDevice.id, pairedAt);
+        return existing ? { alert: existing, deduplicated: true } : raise();
+      });
+      if (!outcome) return reply.code(200).send({ dropped: "setup_complete" });
+      return reply.code(outcome.deduplicated ? 200 : 201).send({ alert: outcome.alert });
+    }
+    const { alert, deduplicated } = await raise();
     return reply.code(deduplicated ? 200 : 201).send({ alert });
   });
 

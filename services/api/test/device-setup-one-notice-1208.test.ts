@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PushProvider } from "../src/lib/push/types.js";
 import { setPushProviders } from "../src/lib/push/notify.js";
 import { signV2 } from "../src/lib/internalAuth.js";
-import { incompleteDedupeKey } from "../src/lib/deviceSetup.js";
+import { incompleteDedupeKey, legacyIncompleteDedupeKey } from "../src/lib/deviceSetup.js";
 import { completeDeviceSetupIfReady, evaluateDeviceSetupIncomplete } from "../src/lib/deviceSetupTransitions.js";
 import { alertsRoutes } from "../src/routes/alerts.js";
 import { buildApp, MockRedis, prismaMock, resetPrismaMock } from "./helpers.js";
@@ -39,19 +39,22 @@ describe("#1208 / osra-security#82: one setup notice per pairing, protection onl
   let alerts: Row[];
   let deviceRow: Record<string, unknown>;
 
-  const setupNotices = () => alerts.filter((a) => a.dedupeKey === incompleteDedupeKey("dev-1"));
+  const setupNotices = () => alerts.filter((a) =>
+    a.dedupeKey === incompleteDedupeKey("dev-1") || a.dedupeKey === legacyIncompleteDedupeKey("dev-1", START));
   const protectedNotices = () => alerts.filter((a) => (a.title as string) === "Phone is protected");
   const transitionDevice = () => ({ ...deviceRow, child: CHILD }) as never;
 
+  // The notice exactly as #1208's TamperAlertWorker serializes it at a79a1748 (TYPE_SETUP_INCOMPLETE):
+  // severity warning, category tamper, its title and body, metadata {type, missingGrants}, key setup_incomplete:<id>.
   function phoneNotice() {
     const raw = JSON.stringify({
       childId: CHILD.id,
       deviceId: "dev-1",
       severity: "warning",
       category: "tamper",
-      title: "Phone setup needs attention",
-      body: "Synthetic setup notice",
-      metadata: { type: "setup_incomplete", missing: ["notification_listener"] },
+      title: "Setup is not finished yet",
+      body: "Some required permissions are still missing on this device. Protection will start once setup finishes.",
+      metadata: { type: "setup_incomplete_permissions", missingGrants: "notification_listener" },
       dedupeKey: incompleteDedupeKey("dev-1"),
     });
     return { raw, headers: { "content-type": "application/json", ...signV2(SECRET, raw) } };
@@ -85,9 +88,16 @@ describe("#1208 / osra-security#82: one setup notice per pairing, protection onl
     prismaMock.parent.findMany.mockResolvedValue([{ id: "parent-1" }]);
     prismaMock.parentPushToken.findMany.mockResolvedValue([{ id: "token-1", parentId: "parent-1", platform: "android", token: "token" }]);
     // In-memory alert table keyed the way the partial unique index is: one row per dedupe key.
+    // The Device row lock read (#1230) sees the committed completion state, not a caller's snapshot.
+    prismaMock.$queryRaw.mockImplementation(async (strings: TemplateStringsArray) =>
+      Array.from(strings ?? []).join("").includes("FOR NO KEY UPDATE")
+        ? [{ setupCompletedAt: deviceRow.setupCompletedAt }]
+        : []);
     prismaMock.alert.findFirst.mockImplementation(async ({ where }) =>
       alerts.find((a) =>
-        a.dedupeKey === where.dedupeKey &&
+        (typeof where.dedupeKey === "object" && where.dedupeKey !== null
+          ? (where.dedupeKey.in as string[]).includes(a.dedupeKey as string)
+          : a.dedupeKey === where.dedupeKey) &&
         (where.category === undefined || a.category === where.category) &&
         (typeof where.heldDuringSetup !== "boolean" || a.heldDuringSetup === where.heldDuringSetup)) ?? null);
     prismaMock.alert.create.mockImplementation(async ({ data }) => {
@@ -168,6 +178,66 @@ describe("#1208 / osra-security#82: one setup notice per pairing, protection onl
     expect(posted.json()).toEqual({ dropped: "setup_complete" });
     expect(alerts).toHaveLength(0);
     expect(send).not.toHaveBeenCalled();
+    await app.close();
+  });
+function seedLegacyReminder(missing: string[]) {
+    alerts.push({
+      id: "legacy-1",
+      childId: CHILD.id,
+      deviceId: "dev-1",
+      severity: "warning",
+      category: "tamper",
+      title: "Phone setup needs attention",
+      heldDuringSetup: false,
+      attemptCount: 1,
+      dedupeKey: legacyIncompleteDedupeKey("dev-1", START),
+      metadata: { type: "setup_incomplete", missing, pairedAt: START.toISOString() },
+    });
+  }
+
+  it("upgrade, server first: a pre-#1208 reminder stays the one notice, no second row, no push", async () => {
+    seedLegacyReminder(["notification_listener"]);
+    expect(await evaluateDeviceSetupIncomplete(transitionDevice(), EXPIRY)).toEqual({ due: true, deduplicated: true });
+    expect(setupNotices()).toHaveLength(1);
+    expect(setupNotices()[0].id).toBe("legacy-1");
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("upgrade, phone first: the phone notice dedupes onto the pre-#1208 reminder, then the check adds nothing", async () => {
+    seedLegacyReminder(["notification_listener"]);
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    const { raw, headers } = phoneNotice();
+    const posted = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers, payload: raw });
+    expect(posted.statusCode).toBe(200);
+    expect(await evaluateDeviceSetupIncomplete(transitionDevice(), EXPIRY)).toEqual({ due: true, deduplicated: true });
+    expect(setupNotices()).toHaveLength(1);
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("a check holding a pre-completion snapshot writes nothing once completion has committed", async () => {
+    const stale = transitionDevice(); // read by the scheduler before completion
+    const done = await completeDeviceSetupIfReady(transitionDevice(), caps(Object.fromEntries(FULL_STEPS.map((k) => [k, "granted"]))), EXPIRY);
+    expect(done).toBe(true);
+    expect(await evaluateDeviceSetupIncomplete(stale, EXPIRY)).toEqual({ due: false, deduplicated: true });
+    expect(setupNotices()).toHaveLength(0);
+    expect(protectedNotices()).toHaveLength(1);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("a phone notice authenticated before completion committed is still dropped", async () => {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    const staleDevice = { ...deviceRow }; // what the request loaded at authentication
+    prismaMock.device.findUnique.mockImplementation(async () => ({ ...staleDevice }));
+    await completeDeviceSetupIfReady(transitionDevice(), caps(Object.fromEntries(FULL_STEPS.map((k) => [k, "granted"]))), new Date());
+    const { raw, headers } = phoneNotice();
+    const posted = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers, payload: raw });
+    expect(posted.statusCode).toBe(200);
+    expect(posted.json()).toEqual({ dropped: "setup_complete" });
+    expect(setupNotices()).toHaveLength(0);
+    expect(send).toHaveBeenCalledTimes(1); // the completion push only
     await app.close();
   });
 });

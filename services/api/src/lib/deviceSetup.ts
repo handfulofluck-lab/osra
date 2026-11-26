@@ -93,3 +93,18 @@ export function completionDedupeKey(deviceId: string, pairedAt: Date): string {
 export function incompleteDedupeKey(deviceId: string): string {
   return `setup_incomplete:${deviceId}`;
 }
+
+/**
+ * The key the server reminder used before #1208 (one per setup episode). A pairing that was already
+ * reminded under it keeps that row as its one notice after the upgrade: nothing re-pages it (Codex, #1230).
+ */
+export function legacyIncompleteDedupeKey(deviceId: string, pairedAt: Date): string {
+  return `setup_incomplete|${deviceId}|${episode(pairedAt)}`;
+}
+
+/** Both keys a pairing's one setup notice may live under, the shared one first. */
+export function setupNoticeKeys(deviceId: string, pairedAt: Date | null | undefined): string[] {
+  return pairedAt
+    ? [incompleteDedupeKey(deviceId), legacyIncompleteDedupeKey(deviceId, pairedAt)]
+    : [incompleteDedupeKey(deviceId)];
+}

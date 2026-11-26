@@ -5,8 +5,10 @@ import { raiseAlertOnce } from "./alerts.js";
 import {
   completionDedupeKey,
   incompleteDedupeKey,
+  legacyIncompleteDedupeKey,
   requiredMissingGrants,
   setupIncompleteDue,
+  setupNoticeKeys,
   SETUP_WINDOW_MS,
   type SetupDevice,
 } from "./deviceSetup.js";
@@ -64,6 +66,32 @@ export async function completeDeviceSetupIfReady(
   }
 }
 
+/**
+ * Codex (#1230, finding 2): a setup notice must never be written after completion has committed. Run the
+ * eligibility check and the write while holding the Device row with FOR NO KEY UPDATE: the completion claim
+ * (an UPDATE of setupCompletedAt) waits for us, and if completion committed first we see it and write nothing.
+ * NO KEY UPDATE, not UPDATE, so the alert insert's foreign-key check (KEY SHARE) on the same row is not blocked.
+ * Returns null when the device is gone or its setup is already complete.
+ */
+export async function withSetupOpen<T>(deviceId: string, fn: () => Promise<T>): Promise<T | null> {
+  return prisma.$transaction(
+    async (tx) => {
+      const rows = await tx.$queryRaw<{ setupCompletedAt: Date | null }[]>`
+        SELECT "setupCompletedAt" FROM "Device" WHERE "id" = ${deviceId} FOR NO KEY UPDATE`;
+      if (!rows?.[0] || rows[0].setupCompletedAt) return null;
+      return fn();
+    },
+    { maxWait: 5_000, timeout: 20_000 },
+  );
+}
+
+/** The pairing's one setup notice, under the shared key or the pre-#1208 server key. */
+export async function findSetupNotice(deviceId: string, pairedAt: Date | null | undefined) {
+  return prisma.alert.findFirst({
+    where: { deviceId, category: "tamper", dedupeKey: { in: setupNoticeKeys(deviceId, pairedAt) } },
+  });
+}
+
 export interface SetupIncompleteResult {
   due: boolean;
   deduplicated: boolean;
@@ -82,43 +110,49 @@ export async function evaluateDeviceSetupIncomplete(
   const metadata = { type: "setup_incomplete", missing, pairedAt: device.pairedAt.toISOString(), serverReminder: true };
   const dedupeKey = incompleteDedupeKey(device.id);
 
-  // #1208: the phone may already have posted its immediate notice under the same key. That row IS the one
-  // parent notice for this pairing: refresh what is still missing in place, publish it, and never page again.
-  const existing = await prisma.alert.findFirst({ where: { deviceId: device.id, category: "tamper", dedupeKey } });
-  if (existing) {
-    const prev = (existing.metadata && typeof existing.metadata === "object" && !Array.isArray(existing.metadata)
-      ? existing.metadata
-      : {}) as Record<string, unknown>;
-    const unchanged = prev.serverReminder === true && JSON.stringify(prev.missing ?? null) === JSON.stringify(missing);
-    if (!unchanged && !existing.heldDuringSetup) {
-      const updated = await prisma.alert.update({
-        where: { id: existing.id },
-        data: {
-          title,
-          body,
-          metadata: { ...prev, ...metadata, bodyKey: "alertBodySetupIncomplete", bodyParams: params } as Prisma.InputJsonValue,
-        },
-      });
-      await publishFamilyEvent(device.child.familyId, { type: "alert", payload: updated, ts: now.toISOString() });
+  // #1208: the phone may already have posted its immediate notice under the same key, or (Codex, finding 1)
+  // this pairing was reminded before the upgrade under the old per-episode key. Either row IS the one parent
+  // notice: refresh what is still missing in place when it changed, and never page again.
+  const legacyKey = legacyIncompleteDedupeKey(device.id, device.pairedAt);
+  const outcome = await withSetupOpen(device.id, async () => {
+    const existing = await findSetupNotice(device.id, device.pairedAt);
+    if (existing) {
+      const prev = (existing.metadata && typeof existing.metadata === "object" && !Array.isArray(existing.metadata)
+        ? existing.metadata
+        : {}) as Record<string, unknown>;
+      const serverRow = prev.serverReminder === true || existing.dedupeKey === legacyKey;
+      const unchanged = serverRow && JSON.stringify(prev.missing ?? null) === JSON.stringify(missing);
+      if (!unchanged && !existing.heldDuringSetup) {
+        const updated = await prisma.alert.update({
+          where: { id: existing.id },
+          data: {
+            title,
+            body,
+            metadata: { ...prev, ...metadata, bodyKey: "alertBodySetupIncomplete", bodyParams: params } as Prisma.InputJsonValue,
+          },
+        });
+        await publishFamilyEvent(device.child.familyId, { type: "alert", payload: updated, ts: now.toISOString() });
+      }
+      return { deduplicated: true };
     }
-    return { due: true, deduplicated: true };
-  }
-
-  const { deduplicated } = await raiseAlertOnce({
-    childId: device.childId,
-    familyId: device.child.familyId,
-    deviceId: device.id,
-    severity: "warning",
-    category: "tamper",
-    title,
-    body,
-    bodyKey: "alertBodySetupIncomplete",
-    params,
-    metadata,
-    dedupeKey,
-    childName: device.child.displayName,
+    return raiseAlertOnce({
+      childId: device.childId,
+      familyId: device.child.familyId,
+      deviceId: device.id,
+      severity: "warning",
+      category: "tamper",
+      title,
+      body,
+      bodyKey: "alertBodySetupIncomplete",
+      params,
+      metadata,
+      dedupeKey,
+      childName: device.child.displayName,
+    });
   });
-  return { due: true, deduplicated };
+  // Completion committed before we could write: no reminder at all.
+  if (!outcome) return { due: false, deduplicated: true };
+  return { due: true, deduplicated: outcome.deduplicated };
 }
 
 export interface SetupRun {

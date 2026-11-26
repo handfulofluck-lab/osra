@@ -43,6 +43,9 @@ describe("setup completion and timeout transitions (#1127)", () => {
   beforeEach(() => {
     resetPrismaMock();
     prismaMock.alert.create.mockImplementation(async ({ data }) => ({ id: "alert-created", ...data }));
+    // #1230: the setup-notice write holds the Device row; the lock read sees an open setup.
+    prismaMock.$queryRaw.mockImplementation(async (strings: TemplateStringsArray) =>
+      Array.from(strings ?? []).join("").includes("FOR NO KEY UPDATE") ? [{ setupCompletedAt: null }] : []);
   });
 
   afterEach(() => {
@@ -182,7 +185,8 @@ describe("setup completion and timeout transitions (#1127)", () => {
     prismaMock.device.findUnique.mockResolvedValue(device({
       capabilities: { ...COMPLETE, grants: { ...COMPLETE.grants, accessibility: "missing" } },
     }));
-    prismaMock.$queryRaw.mockResolvedValue([]);
+    prismaMock.$queryRaw.mockImplementation(async (strings: TemplateStringsArray) =>
+      Array.from(strings ?? []).join("").includes("FOR NO KEY UPDATE") ? [{ setupCompletedAt: null }] : []);
     const logWarn = vi.spyOn(app.log, "warn");
     const poll = await app.inject({ method: "GET", url: "/v1/devices/dev-1/commands", headers: deviceHeader(app) });
     expect(poll.statusCode).toBe(200);
