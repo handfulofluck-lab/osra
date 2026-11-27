@@ -19,6 +19,7 @@ class ChildHomeRefreshController(
     private val removeRulesChangedListener: (() -> Unit) -> Unit,
     private val onRefresh: () -> Unit,
     private val intervalMs: Long = REFRESH_INTERVAL_MS,
+    private val isResumed: () -> Boolean = { true },
 ) {
     private var tickJob: Job? = null
     private var activeListener: (() -> Unit)? = null
@@ -28,12 +29,21 @@ class ChildHomeRefreshController(
 
     fun start(scope: CoroutineScope) {
         stop()
-        val listener: () -> Unit = { onRefresh() }
+        // Guard against async callers (e.g., showStatus() resuming after a suspended report)
+        // invoking start() after onPause() has already fired (#1284 review).
+        if (!isResumed()) return
+        val listener: () -> Unit = {
+            if (isResumed()) onRefresh()
+        }
         activeListener = listener
         addRulesChangedListener(listener)
         tickJob = scope.launch {
             while (isActive) {
                 delay(intervalMs)
+                if (!isResumed()) {
+                    stop()
+                    break
+                }
                 onRefresh()
             }
         }

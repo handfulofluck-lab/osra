@@ -395,6 +395,7 @@ class PairingActivity : ComponentActivity() {
     }
 
     override fun onPause() {
+        activityResumed = false
         stopChildHomeRefresh()
         accessibilityBindObserver.stop()
         super.onPause()
@@ -430,6 +431,7 @@ class PairingActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        activityResumed = true
         // Issue #229: a grant made in Settings (not through this screen) reaches the logger here.
         commsCapture.onPermissionsChanged()
         lifecycleScope.launch {
@@ -1789,19 +1791,32 @@ class PairingActivity : ComponentActivity() {
         com.familyshield.agent.ui.home.TimeRequestSendState.IDLE,
     )
     private val childHomeCopyState = androidx.compose.runtime.mutableStateOf<com.familyshield.agent.ui.home.ChildHomeCopy?>(null)
+    private var activityResumed: Boolean = false
     private var childHomeRefreshController: com.familyshield.agent.ui.home.ChildHomeRefreshController? = null
 
+    private fun isChildHomeResumed(): Boolean =
+        activityResumed &&
+            lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) &&
+            !isFinishing &&
+            !isDestroyed &&
+            !forceLegacyStatusView
+
     private fun startChildHomeRefresh() {
+        if (!isChildHomeResumed()) {
+            stopChildHomeRefresh()
+            return
+        }
         val controller = childHomeRefreshController ?: com.familyshield.agent.ui.home.ChildHomeRefreshController(
             addRulesChangedListener = { listener -> rules.addRulesChangedListener(listener) },
             removeRulesChangedListener = { listener -> rules.removeRulesChangedListener(listener) },
             onRefresh = {
                 runOnUiThread {
-                    if (!isFinishing && !isDestroyed && !forceLegacyStatusView) {
+                    if (isChildHomeResumed()) {
                         childHomeCopyState.value = buildChildHomeCopy()
                     }
                 }
             },
+            isResumed = { isChildHomeResumed() },
         ).also { childHomeRefreshController = it }
         controller.start(lifecycleScope)
     }

@@ -69,13 +69,56 @@ class ChildHomeRefreshControllerTest {
     }
 
     @Test
+    fun `start while paused after suspended showStatus registers no listener and fires zero refreshes (#1283)`() {
+        // Mutant: removing the `if (!isResumed()) return` guard in ChildHomeRefreshController.start()
+        // registers a listener and starts the periodic ticker even though onPause() already ran.
+        val listeners = CopyOnWriteArrayList<() -> Unit>()
+        val refreshes = AtomicInteger(0)
+        var resumed = false
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val controller = ChildHomeRefreshController(
+                addRulesChangedListener = { listeners.add(it) },
+                removeRulesChangedListener = { listeners.remove(it) },
+                onRefresh = { refreshes.incrementAndGet() },
+                intervalMs = 30L,
+                isResumed = { resumed },
+            )
+
+            // Simulates showStatus() resuming from a suspended report after onPause() already fired.
+            controller.start(scope)
+            assertFalse("Controller must not run when start() is called while paused", controller.isRunning)
+            assertEquals("No rules listener may be registered while paused", 0, listeners.size)
+
+            Thread.sleep(90L)
+            assertEquals("Zero refreshes may fire while paused", 0, refreshes.get())
+
+            // Returning to foreground (onResume) allows start() to activate cleanly, then pausing stops updates.
+            resumed = true
+            controller.start(scope)
+            assertTrue(controller.isRunning)
+            assertEquals(1, listeners.size)
+
+            resumed = false
+            listeners.forEach { it() }
+            assertEquals("Paused listener callback must not refresh UI", 0, refreshes.get())
+            controller.stop()
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
     fun `PairingActivity starts ChildHomeRefreshController on Child Home and stops it in onPause (#1283)`() {
-        // Mutant: removing `stopChildHomeRefresh()` from `onPause()` or `startChildHomeRefresh()`
-        // from `showStatus()` fails these wiring checks.
+        // Mutant: removing `activityResumed = false` / `stopChildHomeRefresh()` from `onPause()`,
+        // `activityResumed = true` from `onResume()`, or `isChildHomeResumed()` guard fails these checks.
         assertEquals(60_000L, ChildHomeRefreshController.REFRESH_INTERVAL_MS)
         val activityFile = File(findAppSrcRoot(), "java/com/familyshield/agent/setup/PairingActivity.kt")
         val code = activityFile.readText()
-        assertTrue(code.contains("override fun onPause() {\n        stopChildHomeRefresh()"))
+        assertTrue(code.contains("override fun onPause() {\n        activityResumed = false\n        stopChildHomeRefresh()"))
+        assertTrue(code.contains("override fun onResume() {\n        super.onResume()\n        activityResumed = true"))
+        assertTrue(code.contains("lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)"))
+        assertTrue(code.contains("if (!isChildHomeResumed()) {"))
         assertTrue(code.contains("childHomeCopyState.value = initialCopy\n                startChildHomeRefresh()"))
         assertTrue(code.contains("addRulesChangedListener = { listener -> rules.addRulesChangedListener(listener) }"))
         assertTrue(code.contains("removeRulesChangedListener = { listener -> rules.removeRulesChangedListener(listener) }"))
