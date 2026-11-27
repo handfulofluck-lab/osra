@@ -36,7 +36,10 @@ void main() {
     tester.widget<ListTile>(find.byKey(const ValueKey('settingsRow-signOutAll'))).onTap!();
     await tester.pumpAndSettle();
     tester.widget<TextButton>(find.byKey(const ValueKey('settingsSignOutAllConfirm'))).onPressed!();
-    await tester.pumpAndSettle();
+    // Two pumps rather than pumpAndSettle: a SnackBar that has appeared must still be on screen when the
+    // assertion runs, and settling can carry a short-lived one past its own frame.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
   }
 
   testWidgets('a confirmed sign out everywhere revokes the account sessions once', (tester) async {
@@ -62,6 +65,10 @@ void main() {
     expect(api.calls('POST', '/v1/auth/logout-all'), hasLength(1));
     expect(find.byType(SnackBar), findsOneWidget,
         reason: 'the parent must learn the sign out did not happen, and can retry');
+    expect(
+        tester.widget<ListTile>(find.byKey(const ValueKey('settingsRow-signOutAll'))).onTap,
+        isNotNull,
+        reason: 'the row is usable again, so the retry the snackbar invites is actually possible');
     expect(find.byType(SettingsScreen), findsOneWidget,
         reason: 'the phone is not cleared on a failed revocation');
   });
