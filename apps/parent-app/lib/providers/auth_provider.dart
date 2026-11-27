@@ -245,6 +245,24 @@ class AuthNotifier extends StateNotifier<AuthState> {
     _setState(const AuthState());
   }
 
+  /// Account-wide sign-out (P-22). **Same ordering rule as [logout]**, which Codex caught on osra-security#92:
+  /// the push registration authenticates with the session this call is about to revoke, so it must be removed
+  /// first — after the revocation a removal is a 401 and the row survives on a signed-out phone, which
+  /// means that phone keeps receiving the family notifications.
+  Future<void> logoutEverywhere() async {
+    try {
+      await _push?.unregister();
+    } catch (_) {}
+    try {
+      await _api.raw.post('/v1/auth/logout-all');
+    } catch (_) {}
+    try {
+      await _storage.delete(key: 'jwt');
+      await _storage.delete(key: 'refresh');
+    } catch (_) {}
+    _setState(const AuthState());
+  }
+
   /// Structured token for a failed auth response; technical text is logged only.
   static String _errorMessage(DioException e) {
     logParentError(e);
