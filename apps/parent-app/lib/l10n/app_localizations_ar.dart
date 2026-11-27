@@ -4453,8 +4453,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get homeNotYetOnIphone => 'غير متاح بعد على آيفون';
 
   @override
-  String get homeIosExtraTimeNotYet =>
-      'الوقت الإضافي غير متاح بعد على آيفون.';
+  String get homeIosExtraTimeNotYet => 'الوقت الإضافي غير متاح بعد على آيفون.';
 
   @override
   String get homeIosAutoLiftNote =>
