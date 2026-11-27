@@ -1888,6 +1888,16 @@ describe("auth routes", () => {
       expect(sentTokens).toEqual([]);
       // Upgraded `sessionVersion=1` row survived the stale snapshot's conditional cleanup and delivers on the next alert!
       expect(pushRows.get("m".repeat(32))?.sessionVersion).toBe(1);
+      // Any row belonging to a parent missing from the eligible snapshot (e.g. ineligible guardian) is excluded, never defaulted to version 0:
+      pushRows.set("g".repeat(32), {
+        id: "pt-ineligible-guardian",
+        parentId: "guardian-no-alerts",
+        token: "g".repeat(32),
+        platform: "android",
+        sessionVersion: 0,
+        createdAt: new Date("2026-11-27T06:00:00Z"),
+        lastSeenAt: new Date("2026-11-27T06:00:00Z"),
+      });
       const nextOutcome = await notifyParentsOfAlert("fam-1", alertRow, "Alex");
       expect(nextOutcome).toEqual({ recipients: 1, delivered: 1, pruned: 0, skipped: null });
       expect(sentTokens).toEqual(["m".repeat(32)]);

@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../db.js";
 import { FcmProvider, loadServiceAccountFromEnv } from "./fcm.js";
 import { ApnsProvider, loadApnsConfigFromEnv } from "./apns.js";
@@ -318,46 +319,37 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
     // ADR-0014 amendment, decision 3: a guardian without `alerts` must not be pushed an alert either,
     // or the gate on `GET /v1/alerts` would be cosmetic — the push *is* the alert text on a lock
     // screen. Owners and co-parents are unaffected, which is why only guardians are filtered.
-    let parents = await prisma.parent.findMany({
-      where: {
-        familyId,
-        OR: [{ role: { not: "guardian" } }, { role: "guardian", permissions: { has: "alerts" } }],
+    const { parents, rawTokens } = await prisma.$transaction(
+      async (tx) => {
+        const eligibleParents = await tx.parent.findMany({
+          where: {
+            familyId,
+            OR: [{ role: { not: "guardian" } }, { role: "guardian", permissions: { has: "alerts" } }],
+          },
+          select: { id: true, sessionVersion: true },
+        });
+        const candidateTokens = eligibleParents.length === 0
+          ? []
+          : await tx.parentPushToken.findMany({
+              where: { parentId: { in: eligibleParents.map((p) => p.id) } },
+            });
+        return { parents: eligibleParents, rawTokens: candidateTokens };
       },
-      select: { id: true, sessionVersion: true },
-    });
-    const rawTokens = parents.length === 0
-      ? []
-      : await prisma.parentPushToken.findMany({ where: { parentId: { in: parents.map((p) => p.id) } } });
-    let minSessionVersionByParent = new Map(
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+    const minSessionVersionByParent = new Map(
       parents.map((p) => [p.id, typeof p.sessionVersion === "number" ? p.sessionVersion : 0]),
     );
-    // Monotonic reconciliation: if a parent bumped `sessionVersion` and registered a newer row between the
-    // two reads above, refresh `parents` once so `minSessionVersionByParent` is at least as new as `rawTokens`.
-    if (
-      rawTokens.some((row) => {
-        const rv = typeof (row as { sessionVersion?: unknown }).sessionVersion === "number"
-          ? (row as { sessionVersion: number }).sessionVersion
-          : 0;
-        return rv > (minSessionVersionByParent.get(row.parentId) ?? 0);
-      })
-    ) {
-      parents = await prisma.parent.findMany({
-        where: {
-          familyId,
-          OR: [{ role: { not: "guardian" } }, { role: "guardian", permissions: { has: "alerts" } }],
-        },
-        select: { id: true, sessionVersion: true },
-      });
-      minSessionVersionByParent = new Map(
-        parents.map((p) => [p.id, typeof p.sessionVersion === "number" ? p.sessionVersion : 0]),
-      );
-    }
     const retired: Array<{ id: string; parentId: string; minVersion: number }> = [];
     const tokens = rawTokens.filter((row) => {
+      const minVersion = minSessionVersionByParent.get(row.parentId);
+      // Exclude any row whose parent is not in the eligible snapshot (never default a missing parent to version 0).
+      if (minVersion === undefined) {
+        return false;
+      }
       const rowVersion = typeof (row as { sessionVersion?: unknown }).sessionVersion === "number"
         ? ((row as { sessionVersion: number }).sessionVersion)
         : 0;
-      const minVersion = minSessionVersionByParent.get(row.parentId) ?? 0;
       if (rowVersion < minVersion) {
         retired.push({ id: row.id, parentId: row.parentId, minVersion });
         return false;
