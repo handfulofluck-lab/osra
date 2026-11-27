@@ -148,3 +148,14 @@ output "loadtest_k6_security_group_id" {
   description = "Security group for the k6 tasks (load-test stack only)."
   value       = var.loadtest_mode ? aws_security_group.loadtest_k6[0].id : ""
 }
+
+# loadtest_mode and the loadtest environment go together: a staging stack cannot switch the mode on, and a stack
+# named loadtest cannot run without it (it would then be an unlabelled copy of staging with real-looking settings).
+resource "terraform_data" "loadtest_guard" {
+  lifecycle {
+    precondition {
+      condition     = var.loadtest_mode == (var.environment == "loadtest")
+      error_message = "loadtest_mode must be true exactly when environment = \"loadtest\"."
+    }
+  }
+}

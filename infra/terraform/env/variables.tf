@@ -17,8 +17,8 @@ variable "environment" {
 
   # A misspelling ("prod") would otherwise skip the production guard entirely (Fable, #765 re-review).
   validation {
-    condition     = contains(["staging", "production"], var.environment)
-    error_message = "environment must be exactly staging or production."
+    condition     = contains(["staging", "production", "loadtest"], var.environment)
+    error_message = "environment must be exactly staging, production or loadtest (the throw-away load-test stack, loadtest.sh)."
   }
 }
 

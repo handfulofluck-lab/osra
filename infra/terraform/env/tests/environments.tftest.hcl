@@ -1751,5 +1751,16 @@ run "production_refuses_loadtest_mode" {
     loadtest_mode            = true
   }
 
-  expect_failures = [terraform_data.production_guard]
+  expect_failures = [terraform_data.production_guard, terraform_data.loadtest_guard]
+}
+
+run "staging_refuses_loadtest_mode" {
+  command = plan
+
+  variables {
+    api_image     = "example/api:test"
+    loadtest_mode = true
+  }
+
+  expect_failures = [terraform_data.loadtest_guard]
 }
