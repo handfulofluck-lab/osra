@@ -1466,7 +1466,7 @@
   "homeUnlockAllDevices": "إلغاء القفل",
   "homeNotYetAvailable": "غير متاح بعد",
   "homeNotYetOnIphone": "غير متاح بعد على آيفون",
-  "homeIosAutoLiftNote": "على هاتف آيفون، ينتهي القفل وإيقاف الإنترنت تلقائيًا بعد ساعتين. أعِد تفعيلهما إذا احتجت إلى مدة أطول.",
+  "homeIosAutoLiftNote": "على هاتف آيفون، ينتهي القفل وإيقاف الإنترنت تلقائيًا بعد ثماني ساعات. أعِد تفعيلهما إذا احتجت إلى مدة أطول.",
   "homeKeepBlocked": "إبقاء الحظر",
   "homeNotToday": "ليس اليوم",
   "homeTimeRequestTitle": "{minutes, plural, =1{طلب من {child}: دقيقة إضافية من وقت الشاشة} =2{طلب من {child}: دقيقتان إضافيتان من وقت الشاشة} few{طلب من {child}: {minutes} دقائق إضافية من وقت الشاشة} many{طلب من {child}: {minutes} دقيقة إضافية من وقت الشاشة} other{طلب من {child}: {minutes} دقيقة إضافية من وقت الشاشة}}",

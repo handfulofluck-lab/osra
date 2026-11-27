@@ -4182,7 +4182,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get homeIosAutoLiftNote =>
-      'On iPhone, Lock and Pause end by themselves after 2 hours. Lock again if you need longer.';
+      'On iPhone, Lock and Pause end by themselves after 8 hours. Lock again if you need longer.';
 
   @override
   String get homeKeepBlocked => 'Keep blocked';

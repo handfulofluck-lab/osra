@@ -4454,7 +4454,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get homeIosAutoLiftNote =>
-      'على هاتف آيفون، ينتهي القفل وإيقاف الإنترنت تلقائيًا بعد ساعتين. أعِد تفعيلهما إذا احتجت إلى مدة أطول.';
+      'على هاتف آيفون، ينتهي القفل وإيقاف الإنترنت تلقائيًا بعد ثماني ساعات. أعِد تفعيلهما إذا احتجت إلى مدة أطول.';
 
   @override
   String get homeKeepBlocked => 'إبقاء الحظر';
