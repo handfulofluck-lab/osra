@@ -211,17 +211,18 @@ class WebFilterP12Screen extends ConsumerWidget {
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(color: tokens.onSurface),
                   ),
                 ),
-                const SizedBox(width: AppSpace.sm),
-                Flexible(
-                  child: _pill(
-                    context,
-                    key: const ValueKey('p12-not-blocked-pill'),
-                    label: l10n.p12NotBlockingYet,
-                    icon: Icons.block,
-                    color: tokens.warn,
-                  ),
-                ),
               ],
+            ),
+            const SizedBox(height: AppSpace.xs),
+            // Own line: sharing the row with the title left the pill ~80 px at
+            // 320 px / 200 % and split "Not blocking yet" mid-word
+            // (UI/UX Bureau, 7208986773).
+            _pill(
+              context,
+              key: const ValueKey('p12-not-blocked-pill'),
+              label: l10n.p12NotBlockingYet,
+              icon: Icons.block,
+              color: tokens.warn,
             ),
             if (model.isNotEmpty) ...[
               const SizedBox(height: AppSpace.xs),
@@ -284,14 +285,42 @@ class WebFilterP12Screen extends ConsumerWidget {
   /// A11: the one-tap preset for the 13 recommended categories, first row above
   /// the tiles (Karim's 17:06 rule — a shipped feature the design drops stays).
   Widget _recommendedCard(BuildContext context, AppLocalizations l10n, AppTokens tokens) {
+    final textTheme = Theme.of(context).textTheme;
     return Card(
       key: const ValueKey('p12-recommended-card'),
-      child: SwitchListTile.adaptive(
-        key: const ValueKey('p12-recommended-switch'),
-        title: Text(l10n.recommendedProtection),
-        subtitle: Text(l10n.recommendedProtectionSubtitle),
-        value: _recommendedOn,
-        onChanged: (v) => _toggleRecommended(context, v),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpace.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header first, switch beside it only while both fit: at 320 px /
+            // 200 % the trailing switch squeezed "Recommended protection" into
+            // "Recomme|nded" (UI/UX Bureau, 7208986773). Wrap drops the switch
+            // to its own line instead.
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: AppSpace.sm,
+              runSpacing: AppSpace.xxs,
+              children: [
+                Text(
+                  l10n.recommendedProtection,
+                  style: textTheme.titleMedium?.copyWith(color: tokens.onSurface),
+                ),
+                Switch.adaptive(
+                  key: const ValueKey('p12-recommended-switch'),
+                  value: _recommendedOn,
+                  onChanged: (v) => _toggleRecommended(context, v),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpace.xxs),
+            Text(
+              l10n.recommendedProtectionSubtitle,
+              style: textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -562,17 +591,45 @@ class WebFilterP12Screen extends ConsumerWidget {
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant),
             ),
             const SizedBox(height: AppSpace.sm),
-            SegmentedButton<String>(
-              key: const ValueKey('p12-youtube-mode'),
-              segments: [
-                ButtonSegment(value: 'strict', label: Text(l10n.strict)),
-                ButtonSegment(value: 'moderate', label: Text(l10n.moderate)),
-                ButtonSegment(value: 'off', label: Text(l10n.off)),
-              ],
-              selected: {wf.youtubeRestrictedMode},
-              onSelectionChanged: (sel) =>
-                  _updateWebFilter((w) => w.copyWith(youtubeRestrictedMode: sel.first)),
-            ),
+            // At 320 px / 200 % three horizontal segments split their own words
+            // ("Stri|ct", "Mod|erate"). A vertical radio list cannot: each
+            // label gets the card's full width (UI/UX Bureau, 7208986773).
+            if (MediaQuery.textScalerOf(context).scale(1) >= 1.3)
+              RadioGroup<String>(
+                groupValue: wf.youtubeRestrictedMode,
+                onChanged: (sel) {
+                  if (sel == null) return;
+                  _updateWebFilter((w) => w.copyWith(youtubeRestrictedMode: sel));
+                },
+                child: Column(
+                  children: [
+                    for (final (value, label) in [
+                      ('strict', l10n.strict),
+                      ('moderate', l10n.moderate),
+                      ('off', l10n.off),
+                    ])
+                      RadioListTile<String>(
+                        key: ValueKey('p12-youtube-mode-$value'),
+                        value: value,
+                        title: Text(label),
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                      ),
+                  ],
+                ),
+              )
+            else
+              SegmentedButton<String>(
+                key: const ValueKey('p12-youtube-mode'),
+                segments: [
+                  ButtonSegment(value: 'strict', label: Text(l10n.strict)),
+                  ButtonSegment(value: 'moderate', label: Text(l10n.moderate)),
+                  ButtonSegment(value: 'off', label: Text(l10n.off)),
+                ],
+                selected: {wf.youtubeRestrictedMode},
+                onSelectionChanged: (sel) =>
+                    _updateWebFilter((w) => w.copyWith(youtubeRestrictedMode: sel.first)),
+              ),
           ],
         ),
       ),
@@ -683,7 +740,10 @@ class _SiteDialogState extends State<_SiteDialog> {
         FilledButton(
           key: const ValueKey('p12-site-save'),
           onPressed: () => Navigator.of(context).pop(_controller.text),
-          child: Text(l10n.save),
+          // "Add", not "Save": the dialog adds a site to the list, and the list
+          // itself is only persisted by the editor's footer Save. Arabic is the
+          // existing `add` value the Bureau approved («إضافة», 7208993286).
+          child: Text(l10n.add),
         ),
       ],
     );

@@ -416,4 +416,76 @@ void main() {
           reason: 'iPhone "Not yet available" pill past the right edge ($locale)');
     }
   });
+
+  testWidgets(
+      'Bureau compact layout: at 320x568 @2.0 the strength options become a vertical radio list, '
+      'the status chip and the recommended header stop sharing their row, and the site dialog says "Add" '
+      '(mutant: restore SegmentedButton / the shared banner row / SwitchListTile / l10n.save, and each label breaks mid-word again)',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    Map<String, dynamic> degraded() =>
+        _overview(features: const {'web_filter': 'degraded'});
+
+    for (final locale in const [Locale('en'), Locale('ar')]) {
+      final l10n = lookupAppLocalizations(locale);
+
+      // Each check gets a fresh screen: the list is lazy and the test helper
+      // scrolls one direction only, so starting at the top keeps it honest.
+
+      // 1. Status chip has the row to itself: it sits below the warning icon.
+      await _pumpScreen(tester, api: _makeApi(overview: degraded()),
+          locale: locale, textScale: 2.0);
+      final pill = find.byKey(const ValueKey('p12-not-blocked-pill'));
+      expect(pill, findsOneWidget);
+      final iconBottom = tester.getRect(find.byIcon(Icons.error_outline)).bottom;
+      expect(tester.getRect(pill).top, greaterThanOrEqualTo(iconBottom),
+          reason: 'status chip shares the title row ($locale)');
+
+      // 2. Recommended header no longer squeezes its title behind a switch.
+      await _pumpScreen(tester, api: _makeApi(overview: degraded()),
+          locale: locale, textScale: 2.0);
+      final recommended = find.byKey(const ValueKey('p12-recommended-card'));
+      await _scrollTo(tester, recommended);
+      expect(find.descendant(of: recommended, matching: find.byType(SwitchListTile)),
+          findsNothing, reason: 'SwitchListTile squeezes the header ($locale)');
+      expect(
+          find.descendant(
+              of: recommended, matching: find.byKey(const ValueKey('p12-recommended-switch'))),
+          findsOneWidget);
+
+      // 3. Strength options are a vertical radio list, not three segments.
+      await _pumpScreen(tester, api: _makeApi(overview: degraded()),
+          locale: locale, textScale: 2.0);
+      await _scrollTo(tester, find.byKey(const ValueKey('p12-youtube-mode-strict')));
+      expect(find.byType(SegmentedButton<String>), findsNothing,
+          reason: 'horizontal segments split "Stri|ct" at 200% ($locale)');
+      for (final mode in const ['strict', 'moderate', 'off']) {
+        expect(find.byKey(ValueKey('p12-youtube-mode-$mode')), findsOneWidget);
+      }
+
+      // 4. The site dialog adds a site; it does not save the list.
+      await _pumpScreen(tester, api: _makeApi(overview: degraded()),
+          locale: locale, textScale: 2.0);
+      await _scrollTo(tester, find.byKey(const ValueKey('p12-add-allowed')));
+      await tester.tap(find.byKey(const ValueKey('p12-add-allowed')));
+      await tester.pumpAndSettle();
+      final saveButton = find.byKey(const ValueKey('p12-site-save'));
+      expect(saveButton, findsOneWidget);
+      expect(find.descendant(of: saveButton, matching: find.text(l10n.add)), findsOneWidget,
+          reason: 'dialog button must read "Add", not "Save" ($locale)');
+      expect(find.descendant(of: saveButton, matching: find.text(l10n.save)), findsNothing);
+      await tester.tap(find.text(l10n.cancel));
+      await tester.pumpAndSettle();
+
+      // 5. At 1.0x the compact three-segment control is still the layout.
+      await _pumpScreen(tester, api: _makeApi(overview: degraded()),
+          locale: locale, textScale: 1.0);
+      await _scrollTo(tester, find.byKey(const ValueKey('p12-youtube-mode')));
+      expect(find.byType(SegmentedButton<String>), findsOneWidget,
+          reason: 'normal text keeps the compact control ($locale)');
+    }
+  });
 }
