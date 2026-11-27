@@ -6207,6 +6207,198 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Allow a site'**
   String get p12AllowSiteTitle;
+
+  /// No description provided for @privacyMenu.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy and data'**
+  String get privacyMenu;
+
+  /// No description provided for @privacyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy and data'**
+  String get privacyTitle;
+
+  /// No description provided for @privacyKeptHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'Kept, then deleted automatically'**
+  String get privacyKeptHeader;
+
+  /// No description provided for @privacyFullDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'Full details'**
+  String get privacyFullDetails;
+
+  /// No description provided for @privacyRowExcerpts.
+  ///
+  /// In en, this message translates to:
+  /// **'Flagged message parts'**
+  String get privacyRowExcerpts;
+
+  /// No description provided for @privacyRowAlerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Alerts'**
+  String get privacyRowAlerts;
+
+  /// No description provided for @privacyRowLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'Location history'**
+  String get privacyRowLocation;
+
+  /// No description provided for @privacyRowStoredIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Stored in'**
+  String get privacyRowStoredIn;
+
+  /// No description provided for @privacyStorageFrankfurt.
+  ///
+  /// In en, this message translates to:
+  /// **'European Union (Frankfurt, Germany)'**
+  String get privacyStorageFrankfurt;
+
+  /// No description provided for @privacyStorageStockholm.
+  ///
+  /// In en, this message translates to:
+  /// **'European Union (Stockholm, Sweden)'**
+  String get privacyStorageStockholm;
+
+  /// No description provided for @privacyStorageIreland.
+  ///
+  /// In en, this message translates to:
+  /// **'European Union (Ireland)'**
+  String get privacyStorageIreland;
+
+  /// No description provided for @privacyDays.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 day} other{{count} days}}'**
+  String privacyDays(int count);
+
+  /// No description provided for @privacyMonths.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 month} other{{count} months}}'**
+  String privacyMonths(int count);
+
+  /// No description provided for @privacyWhoCanSee.
+  ///
+  /// In en, this message translates to:
+  /// **'Who can see data'**
+  String get privacyWhoCanSee;
+
+  /// No description provided for @privacyWhoCanSeeDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Adults in the family and what each can see'**
+  String get privacyWhoCanSeeDesc;
+
+  /// No description provided for @privacyManage.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage'**
+  String get privacyManage;
+
+  /// No description provided for @privacyCopyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Get a copy of your family data'**
+  String get privacyCopyTitle;
+
+  /// No description provided for @privacyCopyDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Email us from the address you sign in with. We answer within one month.'**
+  String get privacyCopyDesc;
+
+  /// No description provided for @privacyCopyAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get privacyCopyAction;
+
+  /// No description provided for @privacyConsentTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Consent for each child'**
+  String get privacyConsentTitle;
+
+  /// No description provided for @privacyConsentDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Review or withdraw, child by child'**
+  String get privacyConsentDesc;
+
+  /// No description provided for @privacyOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get privacyOpen;
+
+  /// No description provided for @privacyChooseChild.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a child'**
+  String get privacyChooseChild;
+
+  /// No description provided for @privacyNoChildren.
+  ///
+  /// In en, this message translates to:
+  /// **'No children added yet.'**
+  String get privacyNoChildren;
+
+  /// No description provided for @privacyDeleteFamilyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete family account'**
+  String get privacyDeleteFamilyTitle;
+
+  /// No description provided for @privacyDeleteFamilyDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Deletes the whole family, including the data of every child, at once. Asks for your password.'**
+  String get privacyDeleteFamilyDesc;
+
+  /// No description provided for @privacyDeleteSelfTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete my account'**
+  String get privacyDeleteSelfTitle;
+
+  /// No description provided for @privacyDeleteSelfDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Deletes only your own account. The family carries on.'**
+  String get privacyDeleteSelfDesc;
+
+  /// No description provided for @privacyDeleteAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete…'**
+  String get privacyDeleteAction;
+
+  /// No description provided for @privacyLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load what is kept. Check your connection and try again.'**
+  String get privacyLoadFailed;
+
+  /// P-23: the retention summary failed on the server side (not the parent's connection).
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load this right now. Try again in a moment.'**
+  String get privacyLoadFailedServer;
+
+  /// No description provided for @privacyRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get privacyRetry;
 }
 
 class _AppLocalizationsDelegate
