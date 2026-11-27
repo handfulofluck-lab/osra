@@ -669,6 +669,14 @@ POST /v1/devices/pair/claims/:claimId/deny      (same; Deny also deletes the cod
   PairingDecision row (who, which child, the phone's cleaned name). Allow on a `dataCleared`
   claim also raises one `tamper` alert, metadata { type: "agent_data_cleared" }, keyed by the claim.
 
+  Initial setup (#1127, ADR-0047): `Device.setupCompletedAt` is null until an authenticated telemetry
+  report marks every required Android grant ready. For 30 minutes from `pairedAt`, only tamper types
+  mapped to a currently missing grant are stored with `heldDuringSetup: true`; these rows return 201/200
+  but are not published, pushed, listed, acknowledged or exported. SOS and unrelated tamper remain
+  visible. Completion creates one `setup_complete` alert; poll/scheduler creates one `setup_incomplete`
+  alert at 30 minutes. Existing paired devices are backfilled complete by migration 0046. The existing
+  `dataCleared` alert remains visible and carries `alertBodyDataCleared` with the cleaned device model.
+
 POST /v1/devices/pair/claims/:claimId/poll     (NO auth; the poll secret is the credential;
   body: { pollSecret }                           60 a minute per claim)
   → 202 { status: "pending" } | 410 { error: "claim_denied" } | 428 (consent withdrawn) |

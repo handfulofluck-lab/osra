@@ -47,10 +47,17 @@ class _SetupMonitoringScreenState extends ConsumerState<SetupMonitoringScreen> {
     _selected.addAll(installedSocialAppsByKey(report).keys);
   }
 
-  void _applyRules(RuleSet ruleSet) {
+  void _applyRules(RuleSet ruleSet, InstalledAppsReport report) {
     if (_xChoiceInitialized) return;
     if (!ruleSet.socialMonitoring.containsKey('twitter') &&
         !ruleSet.socialMonitoring.containsKey('x')) {
+      return;
+    }
+    // #1142: the uniform server default is not an explicit parental X choice. Preserve
+    // decision 14 A's installed-app preselection instead of enabling an uninstalled app.
+    final isUniformDefault = ruleSet.socialMonitoring.length == kSocialApps.length &&
+        kSocialApps.every((app) => ruleSet.socialMonitoring[app.appKey] == true);
+    if (isUniformDefault && !installedSocialAppsByKey(report).containsKey('twitter')) {
       return;
     }
     _xChoiceInitialized = true;
@@ -214,7 +221,7 @@ class _SetupMonitoringScreenState extends ConsumerState<SetupMonitoringScreen> {
               ),
               data: (report) {
                 _applyInstalled(report);
-                rules?.whenData(_applyRules);
+                rules?.whenData((ruleSet) => _applyRules(ruleSet, report));
                 return _appList(report);
               },
             ),

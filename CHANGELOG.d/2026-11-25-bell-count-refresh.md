@@ -1,0 +1,1 @@
+- #1056: the unread-alert bell re-reads its count once shortly after a realtime alert arrives, so a badge no longer waits for the next screen visit when the alert row lands after its own event. One extra read per event, not a poll; the count itself is unchanged.

@@ -14,6 +14,7 @@ class RecordingEffects implements RealtimeEffects {
   int unacknowledged = 0;
   int family = 0;
   final List<String> locations = [];
+  final List<String> socialChildren = [];
   final List<String> consents = [];
   /// #876: the delivery lists a `rules_applied` frame also refreshes.
   int commandHistory = 0;
@@ -27,6 +28,9 @@ class RecordingEffects implements RealtimeEffects {
 
   @override
   void invalidateFamily() => family++;
+
+  @override
+  void invalidateSocialEvents(String childId) => socialChildren.add(childId);
 
   @override
   void invalidateLocation(String childId) => locations.add(childId);
@@ -58,6 +62,7 @@ void main() {
       expect(effects.unacknowledged, 1);
       expect(effects.family, 1);
       expect(effects.locations, isEmpty);
+      expect(effects.socialChildren, isEmpty);
       expect(effects.consents, isEmpty);
       expect(effects.activities, isEmpty);
     });

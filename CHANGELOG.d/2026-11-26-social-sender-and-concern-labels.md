@@ -1,0 +1,1 @@
+- Parent app (#1135, #1138): Social alerts and concern cards show a sender label even when the source supplies no name. Number-only labels are masked, and concern chips use readable English and Arabic wording. Signed-device verification is pending.
